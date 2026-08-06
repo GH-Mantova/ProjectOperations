@@ -85,6 +85,7 @@ export type WidgetCategory =
   | "forms"
   | "compliance"
   | "safety"
+  | "reporting"
   | "custom";
 
 export type WidgetProps = {

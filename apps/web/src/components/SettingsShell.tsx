@@ -75,7 +75,10 @@ const SECTIONS: NavSection[] = [
     label: "Personal",
     items: [
       { to: "/settings/account", label: "Account" },
-      { to: "/settings/notifications", label: "Notifications" },
+      // SLICE 5 (settings-restructure §3): relabelled from "Notifications"
+      // (which was a redirect to /inbox) to "Notification preferences" now
+      // that /settings/notifications hosts the real preferences screen.
+      { to: "/settings/notifications", label: "Notification preferences" },
       { to: "/settings/calendar-sync", label: "Calendar sync" }
     ]
   },

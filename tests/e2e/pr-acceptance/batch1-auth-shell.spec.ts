@@ -97,6 +97,25 @@ test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, 
     }
   });
 
+  // ── SLICE 5: /settings/notifications renders preferences page ─────────────
+
+  test("SLICE 5: /settings/notifications renders Notification preferences page (not a redirect to /inbox)", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto("/settings/notifications");
+    await page.waitForLoadState("networkidle");
+    // Must stay on /settings/notifications — not redirect to /inbox
+    await expect(page).not.toHaveURL(/\/inbox/);
+    await expect(page).toHaveURL(/\/settings\/notifications/);
+    // The page heading must be visible
+    await expect(
+      page.getByRole("heading", { name: "Notification preferences", level: 2 })
+    ).toBeVisible();
+    // Settings sub-nav must show "Notification preferences" (not "Notifications")
+    await expect(
+      page.getByRole("link", { name: "Notification preferences", exact: true })
+    ).toBeVisible();
+  });
+
   // ── Sidebar Dashboards group ──────────────────────────────────────────────
 
   test("Dashboards group header appears in sidebar above the section groups", async ({ page }) => {

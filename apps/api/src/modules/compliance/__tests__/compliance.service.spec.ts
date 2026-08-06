@@ -57,10 +57,24 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
 
   const notifications = { create: jest.fn().mockResolvedValue({ id: "notif-1" }) };
   const email = { sendNotificationEmail: jest.fn().mockResolvedValue(undefined) };
+  // SLICE-5: notification-preferences dependency. Echo the admin default so the
+  // pre-existing dispatch assertions (no stored user pref → admin behaviour) hold.
+  const notifPrefs = {
+    resolveEffectiveChannelForUser: jest
+      .fn()
+      .mockImplementation((_userId: string, _trigger: string, adminMethod: string) =>
+        Promise.resolve(adminMethod)
+      )
+  };
 
-  const service = new ComplianceService(prisma as never, notifications as never, email as never);
+  const service = new ComplianceService(
+    prisma as never,
+    notifications as never,
+    email as never,
+    notifPrefs as never
+  );
 
-  return { service, prisma, notifications, email };
+  return { service, prisma, notifications, email, notifPrefs };
 }
 
 const licenceRow = (overrides: Record<string, unknown> = {}) => ({

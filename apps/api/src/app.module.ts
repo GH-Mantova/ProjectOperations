@@ -73,6 +73,7 @@ import { CrmModule } from "./modules/crm/crm.module";
 import { MapLocationsModule } from "./modules/map-locations/map-locations.module";
 import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
+import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
 
 @Module({
   imports: [
@@ -152,7 +153,8 @@ import { SitesModule } from "./modules/sites/sites.module";
     CrmModule,
     MapLocationsModule,
     ReportingModule,
-    SitesModule
+    SitesModule,
+    NotificationPreferencesModule
   ]
 })
 export class AppModule {}

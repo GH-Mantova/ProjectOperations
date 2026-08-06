@@ -92,13 +92,12 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Estimating carries Tenders, Contracts, Directory, Rates & Lists, Reports (in order)", () => {
+  it("Estimating carries Tenders, Contracts, Directory, Reports (in order) — Rates & Lists moved to Settings", () => {
     const estimating = NAV_GROUPS.find((g) => g.id === "estimating");
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
       ["Directory", "/directory"],
-      ["Rates & Lists", "/admin/rates-lists"],
       ["Reports", "/reports"]
     ]);
   });

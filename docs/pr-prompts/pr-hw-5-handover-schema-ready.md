@@ -14,7 +14,6 @@ escalates: true
 rollback_strategy: Additive only — new Handover/HandoverValue/HandoverComplianceItem/HandoverSubcontractor/HandoverAttachment tables. To revert mid-flight, drop the new tables; nothing existing depends on them yet.
 requires_file_on_main:
   - apps/api/prisma/seeds/handover-default-template.ts
-  - apps/api/src/modules/contracts/contract-at-issue.service.ts
 ---
 
 # feat(api): handover instance schema (B-HW-5)

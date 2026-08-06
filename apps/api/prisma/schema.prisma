@@ -220,6 +220,9 @@ model User {
   // a user deletes their preferences automatically.
   notificationPreferences NotificationPreference[]
 
+  // B-HW-1: handover template versions published by this user.
+  handoverTemplatesPublished HandoverTemplate[] @relation("HandoverTemplatePublisher")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -6605,4 +6608,92 @@ model SwmsTemplateControlRow {
   @@unique([controlId, code])
   @@index([controlId, order])
   @@map("swms_template_control_rows")
+}
+
+// ─── Contract Handover Template (B-HW-1) ────────────────────────────────────
+// Versioned, configurable template that drives the handover wizard.
+// Each explicit Publish creates a new version row (isActive = true, previous
+// deactivated). Every Handover record pins the templateVersion it was created
+// on so it is frozen to that field map (legal-doc-versioning pattern).
+//
+// Fields use stable `key` values (immutable identifiers) so that rename /
+// retire operations are non-destructive to saved HandoverValue data.
+// B-HW-1 is schema + seed only. API + UI ship in B-HW-2 and B-HW-3.
+
+enum HandoverFieldType {
+  text
+  money
+  date
+  list
+  attachment
+  contact
+}
+
+enum HandoverFieldSourceType {
+  auto
+  capture
+  attach
+  derived
+}
+
+model HandoverTemplate {
+  id            String    @id @default(cuid())
+  version       Int
+  isActive      Boolean   @default(false) @map("is_active")
+  publishedAt   DateTime? @map("published_at")
+  publishedById String?   @map("published_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  publishedBy User?                    @relation("HandoverTemplatePublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+  sections    HandoverTemplateSection[]
+
+  @@index([isActive])
+  @@index([version])
+  @@map("handover_templates")
+}
+
+model HandoverTemplateSection {
+  id         String   @id @default(cuid())
+  templateId String   @map("template_id")
+  key        String
+  label      String
+  sortOrder  Int      @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  template HandoverTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fields   HandoverTemplateField[]
+
+  @@unique([templateId, key])
+  @@index([templateId, sortOrder])
+  @@map("handover_template_sections")
+}
+
+model HandoverTemplateField {
+  id          String                  @id @default(cuid())
+  sectionId   String                  @map("section_id")
+  // key is the stable/immutable identity clients bind to. Never change after creation;
+  // use retiredAt to retire a field instead of deleting or re-keying it.
+  key         String
+  label       String
+  type        HandoverFieldType
+  sourceType  HandoverFieldSourceType  @map("source_type")
+  // autoBinding is a dot-path expression referencing the tender/quote/contract
+  // source field for auto-prefill (e.g. "contract.contractValue").
+  autoBinding String?                  @map("auto_binding")
+  // listId links to a GlobalList for list-type fields.
+  listId      String?                  @map("list_id")
+  required    Boolean                  @default(false)
+  sortOrder   Int                      @map("sort_order")
+  retiredAt   DateTime?                @map("retired_at")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  section HandoverTemplateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, key])
+  @@index([sectionId, sortOrder])
+  @@index([retiredAt])
+  @@map("handover_template_fields")
 }

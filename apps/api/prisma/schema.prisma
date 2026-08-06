@@ -1803,6 +1803,18 @@ model AssetStatusHistory {
   @@map("asset_status_history")
 }
 
+// Atomic sequential counter for "Unique ID" form fields (F-4 wave 1).
+// Mirrors SafetyIncidentNumberSequence / HazardNumberSequence — a single row
+// (id = 1) is upserted on first use; subsequent increments are serialised via
+// Prisma's transaction. Prefix and zero-padding are driven by the individual
+// FormField.config, not this table (the table only stores the counter).
+model FormNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("form_number_sequences")
+}
+
 model FormTemplate {
   id                 String                @id @default(cuid())
   name               String

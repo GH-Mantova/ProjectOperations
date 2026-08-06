@@ -855,6 +855,7 @@ export function FormFillPage() {
                   context={ctx as Record<string, string | undefined>}
                   gps={gps}
                   responseSet={resolveResponseSet(field, templateSettings)}
+                  values={values}
                 />
               );
             })}
@@ -988,7 +989,8 @@ function FieldRender({
   error,
   context,
   gps,
-  responseSet
+  responseSet,
+  values
 }: {
   field: Field;
   required: boolean;
@@ -998,6 +1000,7 @@ function FieldRender({
   context: Record<string, string | undefined>;
   gps: { lat?: number; lng?: number; status: string; message?: string };
   responseSet: ResponseSet | null;
+  values?: ValueMap;
 }) {
   const config = (field.config ?? {}) as Record<string, unknown>;
   const options = (config.options ?? []) as string[];
@@ -1078,6 +1081,7 @@ function FieldRender({
         context={context}
         gps={gps}
         responseSet={responseSet}
+        values={values}
       />
       {error ? <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p> : null}
     </div>
@@ -1091,7 +1095,8 @@ function FieldInput({
   options,
   context,
   gps,
-  responseSet
+  responseSet,
+  values
 }: {
   field: Field;
   value: unknown;
@@ -1100,6 +1105,7 @@ function FieldInput({
   context: Record<string, string | undefined>;
   gps: { lat?: number; lng?: number; status: string; message?: string };
   responseSet: ResponseSet | null;
+  values?: ValueMap;
 }) {
   const t = field.fieldType;
   const config = (field.config ?? {}) as Record<string, unknown>;
@@ -1494,11 +1500,13 @@ function FieldInput({
     case "file":
       return <PhotoInput value={value as string[] | null} onChange={onChange} maxCount={Number(config.maxCount ?? 5)} />;
     case "lookup":
-      return <LookupInput field={field} value={value} onChange={onChange} />;
+      return <LookupInput field={field} value={value} onChange={onChange} values={values} />;
     case "existing_site":
       return <ExistingSiteInput field={field} value={value} onChange={onChange} />;
     case "calculation":
-      return <CalculationDisplay field={field} />;
+      return <CalculationDisplay field={field} values={values ?? {}} />;
+    case "unique_id":
+      return <UniqueIdDisplay value={value} />;
     case "table":
       return <TableInput field={field} value={value} onChange={onChange} />;
     case "terms":
@@ -1768,31 +1776,55 @@ function SubmittedSuccess({
  * The list of sources is authored on the template (`config.listSlug`), never
  * hardcoded here; this component just fetches whichever slug the designer
  * chose. Renders as a dropdown so it degrades gracefully on mobile.
+ *
+ * Nested lookup: when `config.dependsOnFieldKey` is set, the current value of
+ * that sibling field is appended as `?parentValue=<value>` on the fetch so the
+ * API can filter items by parent. The full items list is fetched whenever the
+ * parent value changes; if the parent field is blank the fetch is skipped and
+ * the dropdown shows "Select a parent value first".
+ *
+ * Note: the current global-lists API (`GET /lists/:slug/items`) does not yet
+ * filter by parentValue server-side. When a `dependsOnFieldKey` is configured
+ * the component appends the query param so a future API enhancement can act on
+ * it without a client change. Until then, the full list is returned and all
+ * items are shown (no client-side filtering — the designer must structure the
+ * list data to be inherently scoped or wait for the API enhancement).
  */
 function LookupInput({
   field,
   value,
-  onChange
+  onChange,
+  values
 }: {
   field: Field;
   value: unknown;
   onChange: (v: unknown) => void;
+  values?: ValueMap;
 }) {
   const { authFetch } = useAuth();
   const config = (field.config ?? {}) as Record<string, unknown>;
   const slug = String(config.listSlug ?? "").trim();
+  const dependsOnFieldKey = String(config.parentFieldKey ?? "").trim();
+  const parentValue = dependsOnFieldKey && values ? String(values[dependsOnFieldKey] ?? "") : "";
   const [items, setItems] = useState<Array<{ id: string; value: string; label: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) return;
+    // When a parent dependency is configured but no parent value is selected yet,
+    // clear the list and wait — avoids a spurious full-list fetch.
+    if (dependsOnFieldKey && !parentValue) {
+      setItems([]);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
     (async () => {
       try {
-        const res = await authFetch(`/lists/${encodeURIComponent(slug)}/items`);
+        const qs = parentValue ? `?parentValue=${encodeURIComponent(parentValue)}` : "";
+        const res = await authFetch(`/lists/${encodeURIComponent(slug)}/items${qs}`);
         if (!res.ok) throw new Error(`Could not load list "${slug}"`);
         const body = (await res.json()) as Array<{ id: string; value?: string; label: string }>;
         if (!cancelled) {
@@ -1809,12 +1841,19 @@ function LookupInput({
     return () => {
       cancelled = true;
     };
-  }, [authFetch, slug]);
+  }, [authFetch, slug, dependsOnFieldKey, parentValue]);
 
   if (!slug) {
     return (
       <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
         Lookup source not configured — set a list slug on the template.
+      </div>
+    );
+  }
+  if (dependsOnFieldKey && !parentValue) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13, color: "var(--text-muted)" }}>
+        Select a value in the parent field first.
       </div>
     );
   }
@@ -1908,13 +1947,62 @@ function ExistingSiteInput({
 }
 
 /**
- * Calculation — read-only display. The server always recomputes on submit,
- * so the client-side number is presentational only; do NOT call onChange.
+ * Compute a calculation result client-side from the live value map.
+ * Mirrors the server's `computeCalculation` in forms-engine.service.ts so the
+ * displayed number stays in sync as the user edits operand fields. The server
+ * always recomputes on submit — this is presentational only.
  */
-function CalculationDisplay({ field }: { field: Field }) {
+function clientComputeCalculation(
+  operation: string,
+  operands: number[],
+  decimals: number
+): number | null {
+  if (operands.length === 0) return null;
+  let raw: number;
+  switch (operation) {
+    case "sum":
+      raw = operands.reduce((a, b) => a + b, 0);
+      break;
+    case "difference":
+      raw = operands.slice(1).reduce((a, b) => a - b, operands[0]);
+      break;
+    case "product":
+      raw = operands.reduce((a, b) => a * b, 1);
+      break;
+    case "average":
+      raw = operands.reduce((a, b) => a + b, 0) / operands.length;
+      break;
+    case "min":
+      raw = Math.min(...operands);
+      break;
+    case "max":
+      raw = Math.max(...operands);
+      break;
+    default:
+      return null;
+  }
+  const factor = Math.pow(10, Math.max(0, Math.min(6, decimals)));
+  return Math.round(raw * factor) / factor;
+}
+
+/**
+ * Calculation — read-only display. Computes the live result from `values` so
+ * the number updates as the user fills operand fields. The server always
+ * recomputes on submit and the authoritative value is what the server returns;
+ * this is presentational only — do NOT call onChange.
+ */
+function CalculationDisplay({ field, values }: { field: Field; values: ValueMap }) {
   const config = (field.config ?? {}) as Record<string, unknown>;
   const operation = String(config.operation ?? "sum");
   const operandKeys = Array.isArray(config.operandKeys) ? (config.operandKeys as string[]) : [];
+  const decimals = typeof config.decimals === "number" ? config.decimals : 2;
+
+  const operands = operandKeys
+    .map((key) => values[key])
+    .map((v) => (typeof v === "number" ? v : Number(v)))
+    .filter((n) => Number.isFinite(n));
+  const result = clientComputeCalculation(operation, operands, decimals);
+
   return (
     <div
       style={{
@@ -1928,11 +2016,41 @@ function CalculationDisplay({ field }: { field: Field }) {
       }}
     >
       <span>
-        Auto-calculated ({operation} of {operandKeys.length || "no"} field
-        {operandKeys.length === 1 ? "" : "s"})
+        {result !== null ? result.toLocaleString() : "—"}
       </span>
       <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
-        computed
+        {operation}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Unique ID — read-only display. The server generates the ID atomically on
+ * submit from the FormNumberSequence row-locked counter. Before submission the
+ * field shows a placeholder; after submission the assigned ID is returned in
+ * the submission values and is displayed here. The client never generates or
+ * modifies this value.
+ */
+function UniqueIdDisplay({ value }: { value: unknown }) {
+  const assigned = value !== null && value !== undefined && String(value).trim() !== "";
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--surface-muted, #F6F6F6)",
+        borderRadius: 6,
+        fontSize: 13,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}
+    >
+      <span style={{ fontFamily: "monospace", fontWeight: 600 }}>
+        {assigned ? String(value) : "(will be assigned on submit)"}
+      </span>
+      <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
+        auto
       </span>
     </div>
   );

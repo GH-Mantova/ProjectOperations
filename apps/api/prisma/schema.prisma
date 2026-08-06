@@ -1974,6 +1974,11 @@ model FormSubmission {
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
   publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
+  // F-5 (Signature v2) — set by the submit path when a signature field
+  // configured to seal the form is signed. Once sealed, PATCH /values is
+  // rejected with 409 so downstream approvals/audits can trust the
+  // submission's field state is frozen.
+  sealedAt          DateTime?             @map("sealed_at")
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -2153,6 +2158,13 @@ model FormSignature {
   signerName   String         @map("signer_name")
   signedAt     DateTime       @default(now()) @map("signed_at")
   createdAt    DateTime       @default(now()) @map("created_at")
+  // F-5 (Signature v2) — role-gated signing. `requiredRole` mirrors the
+  // authored FormField.config.requiredRole at sign-time so the audit trail
+  // shows what the gate was configured to demand even if the template is
+  // republished later. `signedById` records the User that actually signed;
+  // nullable to keep the historical "signerName only" rows valid.
+  requiredRole String?        @map("required_role")
+  signedById   String?        @map("signed_by_id")
   submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])

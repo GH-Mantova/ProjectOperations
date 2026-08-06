@@ -31,7 +31,10 @@ route change). The `directory.view` permission code is unchanged (as already not
 own **independent** worksite (address, geofence, attendance, muster, diary) — that validates
 folding the physical layer onto the Job. But the same physical **address** may host **multiple
 Jobs**, sequentially or for different clients, with no shared record between them (e.g. job(1) at
-ABC for client XYZ, completed 2023; job(2) at ABC for client EFG, awarded 2024). **Migration rule:**
+ABC for client XYZ, completed 2023; job(2) at ABC for client EFG, awarded 2024). **Job identity = its own tender → SoW → contract
+lineage** — one contract mints one job; address and client are attributes, never identity, so no
+slice, migration, or UI may dedupe, merge, or auto-link jobs by shared address or shared client.
+**Migration rule:**
 where a legacy Site row is referenced by more than one Job, the physical layer is **COPIED onto each
 Job independently (fan-out)** — never merged, never assigned to a single "winning" Job. Attendance /
 muster / asset-checkout rows pointing at such a shared legacy Site are disambiguated by **time** (the

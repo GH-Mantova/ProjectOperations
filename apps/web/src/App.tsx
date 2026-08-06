@@ -374,7 +374,14 @@ export function App() {
                   per-user channel-preference page. */}
               <Route path="notifications" element={<NotificationPreferencesPage />} />
               <Route path="calendar-sync" element={<CalendarSyncPage />} />
-              <Route path="company" element={<AdminCompanyPage />} />
+              <Route
+                path="company"
+                element={
+                  <AdminOnly>
+                    <AdminCompanyPage />
+                  </AdminOnly>
+                }
+              />
               <Route path="ai" element={<AiSettingsPage />} />
               {/* SLICE 6: Reference data & Lists — single Company home for the
                   rates/lists surface previously mounted on UserProfilePage

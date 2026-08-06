@@ -27,9 +27,18 @@ rehome (B-SD-10) and the client-portfolio tabs still land (B-SD-9), but the clie
 `/directory/:id`. B-SD-11 is rewritten below to a name-preserving consolidation (no relabel, no
 route change). The `directory.view` permission code is unchanged (as already noted).
 
-**A2 — One job = one site (confirmed).** A worksite is never shared across jobs, validating the 1:1
-physical fold. The legacy multi-job-site abort-guard in B-SD-2/-5/-6 is retained purely as a safety
-net for historical data predating this rule; on current data it should never fire.
+**A2 — Worksite folds into each Job; an address is NOT unique (clarified).** Each Job carries its
+own **independent** worksite (address, geofence, attendance, muster, diary) — that validates
+folding the physical layer onto the Job. But the same physical **address** may host **multiple
+Jobs**, sequentially or for different clients, with no shared record between them (e.g. job(1) at
+ABC for client XYZ, completed 2023; job(2) at ABC for client EFG, awarded 2024). **Migration rule:**
+where a legacy Site row is referenced by more than one Job, the physical layer is **COPIED onto each
+Job independently (fan-out)** — never merged, never assigned to a single "winning" Job. Attendance /
+muster / asset-checkout rows pointing at such a shared legacy Site are disambiguated by **time** (the
+Job active at that row's timestamp), which is deterministic for sequential jobs. The abort-guard in
+B-SD-2/-5/-6 is retained ONLY for the genuinely ambiguous case of two Jobs active at the same address
+at the same time — that requires manual disposition, it is not an error to design out. (Optional,
+additive: an address-based "other jobs at this worksite" lookup, since addresses legitimately repeat.)
 
 This is a schema + IA program. No irreversible action lands in this SLICE-0 PR. Nothing here
 changes underlying behaviour of the compliance surfaces (attendance, muster, geofence, diary)

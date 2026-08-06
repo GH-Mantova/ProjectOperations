@@ -11,6 +11,8 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { AdminUsersTab } from "./pages/admin/AdminUsersTab";
 import { RolesPermissionsPage } from "./pages/administration/RolesPermissionsPage";
 import { AdministrationLandingPage } from "./pages/administration/AdministrationLandingPage";
+import { AdminClientVersionsPage } from "./pages/administration/AdminClientVersionsPage";
+import { MapLocationsPage } from "./pages/administration/MapLocationsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { InboxPage } from "./pages/InboxPage";
@@ -474,6 +476,25 @@ export function App() {
                 element={
                   <AdminOnly>
                     <AutomationsPage />
+                  </AdminOnly>
+                }
+              />
+              {/* SLICE 14 (settings-restructure §3): Client versions and Map
+                  locations dissolved from AdminSettingsPage inline tabs into
+                  standalone Administration pages. */}
+              <Route
+                path="administration/client-versions"
+                element={
+                  <AdminOnly>
+                    <AdminClientVersionsPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/map-locations"
+                element={
+                  <AdminOnly>
+                    <MapLocationsPage />
                   </AdminOnly>
                 }
               />

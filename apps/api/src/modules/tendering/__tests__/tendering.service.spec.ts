@@ -50,6 +50,17 @@ function makePrisma(tx: ReturnType<typeof makeTx>) {
   };
 }
 
+function makeOutcomeCaptureMock() {
+  return {
+    recordOutcome: jest.fn().mockImplementation(async (_tx, tenderId) => ({
+      id: `outcome-${tenderId}`,
+      tenderId,
+      supersedesId: null
+    })),
+    normalizeOutcome: jest.fn((input) => input ?? {})
+  };
+}
+
 function makeService(prisma: ReturnType<typeof makePrisma>) {
   return new TenderingService(
     prisma as never,
@@ -63,7 +74,8 @@ function makeService(prisma: ReturnType<typeof makePrisma>) {
     } as never,
     { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
     { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-    { createFromTender: jest.fn().mockResolvedValue(undefined) } as never
+    { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+    makeOutcomeCaptureMock() as never
   );
 }
 
@@ -100,6 +112,8 @@ describe("TenderingService.update — partial semantics", () => {
     expect(tx.tenderPricingSnapshot.createMany).not.toHaveBeenCalled();
     expect(tx.tenderFollowUp.deleteMany).not.toHaveBeenCalled();
     expect(tx.tenderFollowUp.createMany).not.toHaveBeenCalled();
+    // WL-1a — outcomes are APPEND-ONLY; deleteMany must never run through
+    // this path even when an outcomes array IS sent.
     expect(tx.tenderOutcome.deleteMany).not.toHaveBeenCalled();
     expect(tx.tenderOutcome.createMany).not.toHaveBeenCalled();
   });
@@ -191,7 +205,9 @@ describe("TenderingService.update — partial semantics", () => {
     expect(tx.tenderFollowUp.deleteMany).toHaveBeenCalledTimes(1);
     expect(tx.tenderFollowUp.createMany).toHaveBeenCalledTimes(1);
 
-    expect(tx.tenderOutcome.deleteMany).toHaveBeenCalledTimes(1);
+    // WL-1a — outcomes are APPEND-ONLY: createMany runs, but deleteMany
+    // must NOT (prior outcomes are preserved).
+    expect(tx.tenderOutcome.deleteMany).not.toHaveBeenCalled();
     expect(tx.tenderOutcome.createMany).toHaveBeenCalledTimes(1);
   });
 });

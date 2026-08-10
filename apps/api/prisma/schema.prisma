@@ -57,6 +57,7 @@ model User {
   assignedTenders            Tender[]                    @relation("TenderAssignedEstimator")
   tenderNotes                TenderNote[]                @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]            @relation("TenderFollowUpAssignee")
+  tenderOutcomesRecorded     TenderOutcome[]             @relation("TenderOutcomeRecordedBy")
   tenderEntriesAuthored      TenderEntry[]               @relation("TenderEntryAuthor")
   tenderEntriesAssigned      TenderEntry[]               @relation("TenderEntryAssignee")
   lockedTenderRateSets       TenderRateSet[]             @relation("TenderRateSetLockedBy")
@@ -733,6 +734,7 @@ model Client {
   cases               Case[]                    @relation("CaseClient")
   leads               Lead[]                    @relation("ClientLeads")
   opportunities       Opportunity[]             @relation("ClientOpportunities")
+  tenderOutcomes      TenderOutcome[]           @relation("ClientTenderOutcomes")
 
   @@unique([name])
   @@index([status])
@@ -1323,15 +1325,52 @@ model TenderEntry {
   @@map("tender_entries")
 }
 
+// WL-1a — Structured tender-outcome capture (result/reason enums + ML-feature
+// columns). All new columns are nullable and additive; existing rows stay
+// valid. Prior outcomes are never overwritten — the supersedesId self-relation
+// links a corrected outcome to the row it replaces (append-only).
+enum TenderOutcomeResult {
+  WON
+  LOST
+  NO_BID
+}
+
+enum TenderOutcomeReason {
+  PRICE_TOO_HIGH
+  LOST_ON_RELATIONSHIP
+  SCOPE_MISMATCH
+  TIMING_PROGRAM_CLASH
+  CAPACITY_CONSTRAINT
+  CLIENT_WENT_ANOTHER_DIRECTION
+  PROJECT_CANCELLED
+  NO_RESPONSE_FROM_CLIENT
+  DECLINED_TO_BID
+  OTHER
+}
+
 model TenderOutcome {
-  id          String   @id @default(cuid())
-  tenderId    String   @map("tender_id")
-  outcomeType String   @map("outcome_type")
-  notes       String?
-  recordedAt  DateTime @default(now()) @map("recorded_at")
-  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  id                 String               @id @default(cuid())
+  tenderId           String               @map("tender_id")
+  outcomeType        String               @map("outcome_type")
+  notes              String?
+  recordedAt         DateTime             @default(now()) @map("recorded_at")
+  resultType         TenderOutcomeResult? @map("result_type")
+  reason             TenderOutcomeReason?
+  tenderValue        Decimal?             @map("tender_value") @db.Decimal(14, 2)
+  ourPrice           Decimal?             @map("our_price") @db.Decimal(14, 2)
+  clientId           String?              @map("client_id")
+  scopeSummary       String?              @map("scope_summary")
+  competitorOrWinner String?              @map("competitor_or_winner")
+  recordedById       String?              @map("recorded_by_id")
+  supersedesId       String?              @unique @map("supersedes_id")
+  tender             Tender               @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  client             Client?              @relation("ClientTenderOutcomes", fields: [clientId], references: [id], onDelete: SetNull)
+  recordedBy         User?                @relation("TenderOutcomeRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  supersedes         TenderOutcome?       @relation("TenderOutcomeSupersedes", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy       TenderOutcome?       @relation("TenderOutcomeSupersedes")
 
   @@index([tenderId])
+  @@index([clientId])
   @@map("tender_outcomes")
 }
 

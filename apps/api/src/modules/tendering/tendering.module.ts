@@ -9,6 +9,7 @@ import { TenderRateSetController } from "./tender-rate-set.controller";
 import { TenderRateSetService } from "./tender-rate-set.service";
 import { TenderingController } from "./tendering.controller";
 import { TenderNumberService } from "./tender-number.service";
+import { TenderOutcomeCaptureService } from "./tender-outcome-capture.service";
 import { TenderingService } from "./tendering.service";
 import { TenderClientNotesController } from "./tender-client-notes.controller";
 import { TenderClientNotesService } from "./tender-client-notes.service";
@@ -57,6 +58,7 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
   providers: [
     TenderingService,
     TenderNumberService,
+    TenderOutcomeCaptureService,
     TenderLabelsService,
     TenderClientNotesService,
     TenderEntriesService,

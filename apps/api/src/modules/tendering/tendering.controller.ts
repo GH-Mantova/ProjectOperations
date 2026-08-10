@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { TenderOutcomeReason, TenderOutcomeResult } from "@prisma/client";
+import { Type } from "class-transformer";
+import { IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, Min, ValidateNested } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -20,9 +22,56 @@ import {
   UpsertTenderDto
 } from "./dto/tender.dto";
 
+// WL-1a — Structured outcome payload accepted by BOTH the status-change
+// path (nested) and the standalone POST /:id/outcome path. All fields are
+// optional; the whole payload itself is optional on updateStatus (capture
+// is skippable) and required (but with no field-level requirements yet) on
+// the standalone recorder.
+class TenderOutcomeCaptureDto {
+  @IsOptional()
+  @IsIn(Object.values(TenderOutcomeResult))
+  resultType?: TenderOutcomeResult;
+
+  @IsOptional()
+  @IsIn(Object.values(TenderOutcomeReason))
+  reason?: TenderOutcomeReason;
+
+  @IsOptional()
+  @IsNumberString()
+  tenderValue?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  ourPrice?: string;
+
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @IsOptional()
+  @IsString()
+  scopeSummary?: string;
+
+  @IsOptional()
+  @IsString()
+  competitorOrWinner?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 class UpdateTenderStatusDto {
   @IsString()
   status!: string;
+
+  // WL-1a — optional structured outcome captured alongside the status
+  // change. When present, appended via TenderOutcomeCaptureService. Absent
+  // means "skip capture" — Marco chose skippable-at-close.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TenderOutcomeCaptureDto)
+  outcome?: TenderOutcomeCaptureDto;
 }
 
 class UpdateTenderProbabilityDto {
@@ -433,7 +482,32 @@ export class TenderingController {
     @Body() dto: UpdateTenderStatusDto,
     @CurrentUser() actor: { sub: string }
   ) {
-    return this.service.updateStatus(id, dto.status, actor.sub);
+    return this.service.updateStatus(id, dto.status, actor.sub, dto.outcome);
+  }
+
+  /**
+   * WL-1a — Backfill / post-close recorder for a structured tender outcome.
+   *
+   * Appends a new TenderOutcome row without triggering a status change; the
+   * intended use is capturing outcome data after a tender is already closed
+   * (or correcting a prior recording — the new row's supersedesId links to
+   * the previous one). Prior outcomes are never modified.
+   *
+   * @returns the newly appended outcome row
+   */
+  @Post(":id/outcome")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({
+    summary: "Record a structured tender outcome (append-only; backfill / post-close path)"
+  })
+  @ApiResponse({ status: 201, description: "Newly appended tender outcome row." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  recordOutcome(
+    @Param("id") id: string,
+    @Body() dto: TenderOutcomeCaptureDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.recordTenderOutcome(id, dto, actor.sub);
   }
 
   /**

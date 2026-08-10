@@ -8,6 +8,7 @@ import { ClientStatsService } from "../master-data/client-stats.service";
 import { SharePointService } from "../platform/sharepoint.service";
 import { ProjectsService } from "../projects/projects.service";
 import { TenderNumberService } from "./tender-number.service";
+import { RecordTenderOutcomeInput, TenderOutcomeCaptureService } from "./tender-outcome-capture.service";
 import { clientSlug, FALLBACK_SLUG } from "../../common/id-format/client-slug";
 import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
 import {
@@ -132,7 +133,10 @@ export class TenderingService {
     // ProjectsModule doesn't reach back into TenderingModule today.
     @Inject(forwardRef(() => ProjectsService))
     private readonly projects: ProjectsService,
-    private readonly contracts: ContractsService
+    private readonly contracts: ContractsService,
+    // WL-1a — append-only recorder of TenderOutcome. Optional at close, but
+    // when the caller sends an outcome payload the writes go through here.
+    private readonly outcomeCapture: TenderOutcomeCaptureService
   ) {}
 
   /**
@@ -903,7 +907,12 @@ export class TenderingService {
    * @returns the updated tender with relations
    * @throws NotFoundException when the tender does not exist
    */
-  async updateStatus(id: string, status: string, actorId?: string) {
+  async updateStatus(
+    id: string,
+    status: string,
+    actorId?: string,
+    outcome?: RecordTenderOutcomeInput | null
+  ) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException("Tender not found.");
@@ -936,12 +945,21 @@ export class TenderingService {
       data,
       include: tenderInclude
     });
+
+    // WL-1a — capture is prompted but SKIPPABLE (Marco 2026-08-10). If no
+    // outcome payload was sent, do nothing here — closing a tender must
+    // never throw for a missing outcome. When a payload IS sent, append a
+    // new outcome row via the capture service (never overwrite priors).
+    if (outcome) {
+      await this.outcomeCapture.recordOutcome(this.prisma, id, outcome, actorId ?? null);
+    }
+
     await this.auditService.write({
       actorId,
       action: "tenders.status.update",
       entityType: "Tender",
       entityId: id,
-      metadata: { from: existing.status, to: status }
+      metadata: { from: existing.status, to: status, outcomeCaptured: Boolean(outcome) }
     });
 
     // Client scoring — SUBMITTED/AWARDED/LOST all count as a tender the
@@ -1011,6 +1029,44 @@ export class TenderingService {
     return contractAutoCreateWarning
       ? { ...tender, contractAutoCreateWarning }
       : tender;
+  }
+
+  /**
+   * WL-1a — Backfill / post-close recorder for a tender outcome.
+   *
+   * Standalone entry point (POST /tenders/:id/outcome) so an outcome can be
+   * appended AFTER a tender is already closed, without another status change.
+   * Wraps `TenderOutcomeCaptureService.recordOutcome` in a transaction; the
+   * append-only invariant holds — prior outcomes are never modified.
+   *
+   * @returns the newly appended outcome row
+   * @throws NotFoundException when the tender does not exist
+   */
+  async recordTenderOutcome(
+    id: string,
+    outcome: RecordTenderOutcomeInput,
+    actorId?: string
+  ) {
+    await this.ensureTenderExists(id);
+
+    const created = await this.prisma.$transaction(async (tx) =>
+      this.outcomeCapture.recordOutcome(tx, id, outcome, actorId ?? null)
+    );
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.outcome.record",
+      entityType: "Tender",
+      entityId: id,
+      metadata: {
+        outcomeId: created.id,
+        resultType: created.resultType,
+        reason: created.reason,
+        supersedesId: created.supersedesId
+      }
+    });
+
+    return created;
   }
 
   /**
@@ -1152,17 +1208,20 @@ export class TenderingService {
         }
       }
 
-      if (dto.outcomes !== undefined) {
-        await tx.tenderOutcome.deleteMany({ where: { tenderId: id } });
-        if (dto.outcomes.length) {
-          await tx.tenderOutcome.createMany({
-            data: dto.outcomes.map((item) => ({
-              tenderId: id,
-              outcomeType: item.outcomeType,
-              notes: item.notes
-            }))
-          });
-        }
+      // WL-1a — outcomes are APPEND-ONLY (Marco 2026-08-10). The nested
+      // upsert path never deletes prior outcomes; passing an outcomes array
+      // adds new rows on top of the existing chain. To correct an outcome,
+      // record a superseding one via the standalone POST /tenders/:id/outcome
+      // path (or updateStatus with an `outcome` payload) — both go through
+      // TenderOutcomeCaptureService and link supersedesId to the prior row.
+      if (dto.outcomes !== undefined && dto.outcomes.length) {
+        await tx.tenderOutcome.createMany({
+          data: dto.outcomes.map((item) => ({
+            tenderId: id,
+            outcomeType: item.outcomeType,
+            notes: item.notes
+          }))
+        });
       }
 
     });

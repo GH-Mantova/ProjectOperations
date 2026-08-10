@@ -13,9 +13,12 @@ scope:
 done_when: pnpm build && pnpm lint && grep -q "recordUsageReading" apps/api/src/modules/assets/assets.service.ts && grep -q "model AssetUsageReading" apps/api/prisma/schema.prisma
 size: 10
 gate_allow: migrations
+backfill: false
 seed_only: false
 escalates: true
 rollback_strategy: Drop the AssetUsageReading table (fv2_asset_usage_reading) and drop the currentHoursReading/currentKmReading/lastReadingAt nullable columns on Asset (fv2_asset_current_reading_denorm); no backfill was written for either migration so both drops are safe.
+requires_merged:
+  - 1000
 ---
 
 # Forms Engine v2 — asset usage readings (F-7, assets module only)

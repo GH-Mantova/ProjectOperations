@@ -75,6 +75,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
 import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
+import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
 
 @Module({
   imports: [
@@ -156,7 +157,8 @@ import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontr
     ReportingModule,
     SitesModule,
     NotificationPreferencesModule,
-    SubcontractorRatesModule
+    SubcontractorRatesModule,
+    ScheduleOfRatesModule
   ]
 })
 export class AppModule {}

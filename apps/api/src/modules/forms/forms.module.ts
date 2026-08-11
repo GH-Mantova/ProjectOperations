@@ -19,6 +19,7 @@ import { InspectionBuilderService } from "./inspection-builder.service";
 import { SubmissionPdfService } from "./submission-pdf.service";
 import { PublicLinkController } from "./public-link.controller";
 import { PublicLinkService } from "./public-link.service";
+import { PushExecutorService } from "./push-executor.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
@@ -57,8 +58,9 @@ import { PublicLinkService } from "./public-link.service";
     CorrectiveActionsService,
     InspectionBuilderService,
     SubmissionPdfService,
-    PublicLinkService
+    PublicLinkService,
+    PushExecutorService
   ],
-  exports: [RulesEngineService, FormsEngineService, FormsSnippetsService]
+  exports: [RulesEngineService, FormsEngineService, FormsSnippetsService, PushExecutorService]
 })
 export class FormsModule {}

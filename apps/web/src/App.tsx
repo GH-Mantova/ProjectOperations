@@ -17,6 +17,7 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { InboxPage } from "./pages/InboxPage";
 import { NotificationPreferencesPage } from "./pages/settings/NotificationPreferencesPage";
+import { HandoverTemplatePage } from "./pages/settings/HandoverTemplatePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -392,6 +393,8 @@ export function App() {
                   page gates internally on rates.manage || lists.manage
                   (settings-restructure-plan §3, §4 redirect map). */}
               <Route path="reference-data" element={<RatesListsAdminPage />} />
+              {/* B-HW-3: Handover Template editor — gated on handovertemplate.manage */}
+              <Route path="handover-template" element={<HandoverTemplatePage />} />
               <Route
                 path="data-model"
                 element={

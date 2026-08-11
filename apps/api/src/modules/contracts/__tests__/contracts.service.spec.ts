@@ -931,6 +931,147 @@ describe("ContractsService.updateClaimItem", () => {
   });
 });
 
+// ─── addClaimItem / removeClaimItem / updateClaimNotes — draft edits ──────
+
+describe("ContractsService.addClaimItem", () => {
+  it("rejects when the claim is not DRAFT", async () => {
+    const { service, prisma } = buildService();
+    (prisma.progressClaim as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      claimRow({ status: "SUBMITTED" })
+    );
+    await expect(
+      service.addClaimItem("contract-1", "claim-1", {
+        description: "Extra",
+        contractValue: 1000
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("throws NotFoundException when the claim belongs to another contract", async () => {
+    const { service, prisma } = buildService();
+    (prisma.progressClaim as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      claimRow({ contractId: "other-contract" })
+    );
+    await expect(
+      service.addClaimItem("contract-1", "claim-1", {
+        description: "Extra",
+        contractValue: 1000
+      })
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("appends a line at the next sortOrder and recomputes totalClaimed", async () => {
+    const { service, prisma } = buildService();
+    (prisma.claimLineItem as { findFirst?: jest.Mock }).findFirst = jest
+      .fn()
+      .mockResolvedValueOnce({ sortOrder: 7 });
+    (prisma.claimLineItem as { findMany: jest.Mock }).findMany.mockResolvedValueOnce([
+      lineItemRow({ thisClaimAmount: 500 }),
+      lineItemRow({ id: "item-2", thisClaimAmount: 750 })
+    ]);
+
+    await service.addClaimItem("contract-1", "claim-1", {
+      description: "Site cleanup",
+      discipline: "Other",
+      contractValue: 1500,
+      thisClaimAmount: 750
+    });
+
+    const createArgs = (prisma.claimLineItem as { create: jest.Mock }).create.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createArgs.data.claimId).toBe("claim-1");
+    expect(createArgs.data.description).toBe("Site cleanup");
+    expect(createArgs.data.discipline).toBe("Other");
+    expect(Number(createArgs.data.contractValue)).toBe(1500);
+    expect(Number(createArgs.data.thisClaimAmount)).toBe(750);
+    expect(createArgs.data.sortOrder).toBe(8);
+
+    const totalArgs = (prisma.progressClaim as { update: jest.Mock }).update.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(Number(totalArgs.data.totalClaimed)).toBe(1250);
+  });
+});
+
+describe("ContractsService.removeClaimItem", () => {
+  it("rejects when the claim is not DRAFT", async () => {
+    const { service, prisma } = buildService();
+    (prisma.claimLineItem as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      lineItemRow({ claim: { id: "claim-1", contractId: "contract-1", status: "APPROVED" } })
+    );
+    await expect(
+      service.removeClaimItem("contract-1", "claim-1", "item-1")
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("throws NotFoundException when the item is on a different claim", async () => {
+    const { service, prisma } = buildService();
+    (prisma.claimLineItem as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      lineItemRow({ claim: { id: "other-claim", contractId: "contract-1", status: "DRAFT" } })
+    );
+    await expect(
+      service.removeClaimItem("contract-1", "claim-1", "item-1")
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("deletes the line and recomputes totalClaimed from the remaining lines", async () => {
+    const { service, prisma } = buildService();
+    (prisma.claimLineItem as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      lineItemRow({ claim: { id: "claim-1", contractId: "contract-1", status: "DRAFT" } })
+    );
+    (prisma.claimLineItem as { delete?: jest.Mock }).delete = jest.fn().mockResolvedValue(undefined);
+    (prisma.claimLineItem as { findMany: jest.Mock }).findMany.mockResolvedValueOnce([
+      lineItemRow({ id: "item-2", thisClaimAmount: 400 })
+    ]);
+
+    await service.removeClaimItem("contract-1", "claim-1", "item-1");
+
+    const deleteArgs = (prisma.claimLineItem as { delete: jest.Mock }).delete.mock.calls[0]?.[0] as {
+      where: { id: string };
+    };
+    expect(deleteArgs.where).toEqual({ id: "item-1" });
+    const totalArgs = (prisma.progressClaim as { update: jest.Mock }).update.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(Number(totalArgs.data.totalClaimed)).toBe(400);
+  });
+});
+
+describe("ContractsService.updateClaimNotes", () => {
+  it("rejects when the claim is not DRAFT", async () => {
+    const { service, prisma } = buildService();
+    (prisma.progressClaim as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(
+      claimRow({ status: "SUBMITTED" })
+    );
+    await expect(
+      service.updateClaimNotes("contract-1", "claim-1", { notes: "Anything" })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("writes only the notes field on the claim", async () => {
+    const { service, prisma } = buildService();
+    await service.updateClaimNotes("contract-1", "claim-1", { notes: "Client requested reword." });
+
+    const updateArgs = (prisma.progressClaim as { update: jest.Mock }).update.mock.calls[0]?.[0] as {
+      where: { id: string };
+      data: Record<string, unknown>;
+    };
+    expect(updateArgs.where).toEqual({ id: "claim-1" });
+    expect(updateArgs.data).toEqual({ notes: "Client requested reword." });
+  });
+
+  it("clears notes when null is passed", async () => {
+    const { service, prisma } = buildService();
+    await service.updateClaimNotes("contract-1", "claim-1", { notes: null });
+
+    const updateArgs = (prisma.progressClaim as { update: jest.Mock }).update.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(updateArgs.data).toEqual({ notes: null });
+  });
+});
+
 // ─── submitClaim / approveClaim / payClaim — status flow + retention ───────
 
 describe("ContractsService.submitClaim", () => {

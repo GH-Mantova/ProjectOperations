@@ -41,7 +41,7 @@ function buildEngine(overrides: {
   const rules = {} as never;
   const notifications = {} as never;
   const audit = {} as never;
-  const engine = new FormsEngineService(prisma as never, rules, notifications, audit, {} as never, {} as never);
+  const engine = new FormsEngineService(prisma as never, rules, notifications, audit, {} as never, {} as never, {} as never);
   return { engine, prisma };
 }
 

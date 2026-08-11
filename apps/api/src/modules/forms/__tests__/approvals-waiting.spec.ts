@@ -22,6 +22,7 @@ describe("FormsEngineService.getApprovalsWaiting — batch 2 widget", () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     {} as never
   );
 

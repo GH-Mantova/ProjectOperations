@@ -462,6 +462,7 @@ export function DashboardCanvas({
                       entry={entry}
                       meta={meta}
                       globalPeriod={active.config.period as WidgetPeriod}
+                      dashboardFilters={active.config.dashboardFilters}
                       settingsOpen={openSettingsId === entry.id}
                       onOpenSettings={() =>
                         setOpenSettingsId((prev) => (prev === entry.id ? null : entry.id))
@@ -572,6 +573,7 @@ function SortableWidget({
   entry,
   meta,
   globalPeriod,
+  dashboardFilters,
   settingsOpen,
   onOpenSettings,
   onCloseSettings,
@@ -583,6 +585,7 @@ function SortableWidget({
   entry: WidgetConfigEntry;
   meta: WidgetMeta;
   globalPeriod: WidgetPeriod;
+  dashboardFilters?: WidgetFilters;
   settingsOpen: boolean;
   onOpenSettings: () => void;
   onCloseSettings: () => void;
@@ -761,6 +764,7 @@ function SortableWidget({
         onConfigChange={onConfigChange}
         colSpan={colSpan}
         rowSpan={rowSpan}
+        dashboardFilters={dashboardFilters}
       />
 
       {ghost ? (

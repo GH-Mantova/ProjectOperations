@@ -257,6 +257,94 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
 
+  // ── SLICE 5: Dashboard-level filter bar — set filter, both widgets receive it ──
+
+  test("SLICE 5 — dashboard-level filter bar renders and accepts input for report widgets", async ({ page }) => {
+    await loginAsAdmin(page);
+    page.on("dialog", (dialog) => void dialog.accept());
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
+
+    // Purge residual scratch dashboards from previous runs.
+    const residue = nav.getByRole("button", { name: /Remove e2e-slice5-/ });
+    while ((await residue.count()) > 0) {
+      const before = await residue.count();
+      await residue.first().click();
+      await page.getByTestId("confirm-dialog-confirm").click();
+      await expect(residue).toHaveCount(before - 1);
+    }
+
+    // Create a scratch dashboard (select a category to enable Create).
+    await nav.getByRole("button", { name: "New dashboard" }).click();
+    await expect(page.getByRole("heading", { name: "New dashboard" })).toBeVisible();
+    const dashName = `e2e-slice5-${Date.now()}`;
+    await page.getByRole("textbox", { name: "Name" }).fill(dashName);
+    await page.getByRole("button", { name: "Select all" }).first().click();
+    await page.getByRole("button", { name: "Create dashboard" }).click();
+    await expect(nav.getByRole("link", { name: dashName })).toBeVisible({ timeout: 10_000 });
+
+    // Navigate to the new dashboard.
+    await nav.getByRole("link", { name: dashName }).click();
+    await expect(page.getByRole("heading", { name: dashName })).toBeVisible();
+
+    // Add a report TABLE widget.
+    await page.getByTestId("add-widget-button").click();
+    await expect(page.getByTestId("widget-gallery-modal")).toBeVisible();
+    await page.getByTestId("gallery-search").fill("Tender pipeline");
+    await expect(page.getByText("Tender pipeline", { exact: true }).first()).toBeVisible({ timeout: 8_000 });
+    await page.getByText("Tender pipeline", { exact: true }).first().click();
+    await page.getByTestId("gallery-next").click();
+    await expect(page.getByTestId("gallery-preview")).toBeVisible();
+    await page.getByTestId("gallery-add").click();
+    await expect(page.getByTestId("widget-gallery-modal")).not.toBeVisible({ timeout: 5_000 });
+    const canvas = page.locator(".s7-canvas, [data-testid='dashboard-canvas'], main").first();
+    await canvas.click({ position: { x: 400, y: 200 }, timeout: 3_000 }).catch(() => {/* placement done */});
+    await expect(page.getByTestId("report-table-tender-pipeline")).toBeVisible({ timeout: 15_000 });
+
+    // Add a report CHART widget.
+    await page.getByTestId("add-widget-button").click();
+    await expect(page.getByTestId("widget-gallery-modal")).toBeVisible();
+    await page.getByTestId("gallery-search").fill("Tenders by status");
+    await expect(page.getByText("Tenders by status", { exact: true }).first()).toBeVisible({ timeout: 8_000 });
+    await page.getByText("Tenders by status", { exact: true }).first().click();
+    await page.getByTestId("gallery-next").click();
+    await expect(page.getByTestId("gallery-preview")).toBeVisible();
+    await page.getByTestId("gallery-add").click();
+    await expect(page.getByTestId("widget-gallery-modal")).not.toBeVisible({ timeout: 5_000 });
+    await canvas.click({ position: { x: 400, y: 300 }, timeout: 3_000 }).catch(() => {/* placement done */});
+    await expect(page.getByTestId("report-chart-tender-pipeline")).toBeVisible({ timeout: 15_000 });
+
+    // Open the Customise panel and verify the "Report filters" section is visible
+    // (it appears only when report widgets are present — SLICE 5 guard).
+    await page.getByRole("button", { name: "Customise" }).click();
+    await expect(page.getByRole("dialog", { name: "Customise dashboard" })).toBeVisible();
+    await expect(page.getByTestId("report-filters-section")).toBeVisible();
+
+    // Set a dashboard-level filter value (clientId field comes from the
+    // tender-pipeline definition's parameters).
+    const clientFilter = page.getByTestId("dashboard-filter-clientId");
+    await expect(clientFilter).toBeVisible();
+    await clientFilter.fill("e2e-client-01");
+    await expect(clientFilter).toHaveValue("e2e-client-01");
+
+    // Save the panel — the dashboardFilters value is persisted in config.
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("dialog", { name: "Customise dashboard" })).not.toBeVisible({ timeout: 5_000 });
+
+    // Re-open the panel and confirm the filter value survived the save.
+    await page.getByRole("button", { name: "Customise" }).click();
+    await expect(page.getByTestId("dashboard-filter-clientId")).toHaveValue("e2e-client-01", { timeout: 5_000 });
+    await page.keyboard.press("Escape");
+
+    // Both widgets are still visible on the canvas after the save.
+    await expect(page.getByTestId("report-table-tender-pipeline")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("report-chart-tender-pipeline")).toBeVisible({ timeout: 10_000 });
+
+    // Clean up.
+    await nav.getByRole("button", { name: `Remove ${dashName}` }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
+    await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
+  });
+
   // ── SLICE 7: Reporting dashboard starter template ────────────────────────
 
   test("SLICE 7 — create dashboard from Reporting dashboard template and see widgets on canvas", async ({ page }) => {

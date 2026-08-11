@@ -2,7 +2,7 @@
  * reportRegistry — factory that converts ReportDefinitionSummary[] into
  * WidgetMeta[] for the dashboard registry.
  *
- * SLICE 3 ships table widgets only. SLICE 4 will extend this file with chart
+ * SLICE 3 shipped table widgets. SLICE 4 extends this file with chart
  * widget emission (report:chart:<key>) for definitions that have a `chart` spec.
  *
  * W2 (parity audit): `from`/`to` parameters collapse into a single
@@ -12,6 +12,7 @@
  */
 
 import { makeReportTableWidget } from "./reportTableWidget";
+import { makeReportChartWidget } from "./reportChartWidget";
 import type { ConfigField, WidgetMeta } from "../types";
 
 /** Minimal summary shape returned by GET /reporting/definitions.
@@ -95,15 +96,24 @@ function buildConfigSchema(
 
 /**
  * Given a list of ReportDefinitionSummary objects (from GET /reporting/definitions),
- * produce a WidgetMeta entry for every definition that has columns.
+ * produce WidgetMeta entries for every definition that has columns.
  *
- * Widget type format: `report:table:<reportKey>` (SLICE 1 convention).
- * SLICE 4 adds `report:chart:<reportKey>` for defs with a `chart` spec.
+ * Widget type format:
+ *   `report:table:<reportKey>` — table widget for every definition with columns.
+ *   `report:chart:<reportKey>` — chart widget for definitions that have a `chart` spec.
+ *
+ * Both type formats follow the SLICE 1 naming convention.
  */
 export function registerReportWidgets(defs: ReportDefinitionSummary[]): WidgetMeta[] {
-  return defs
-    .filter((def) => def.columns && def.columns.length > 0)
-    .map((def): WidgetMeta => ({
+  const metas: WidgetMeta[] = [];
+
+  for (const def of defs) {
+    if (!def.columns || def.columns.length === 0) continue;
+
+    const configSchema = buildConfigSchema(def.parameters);
+
+    // Table widget — always emitted for definitions with columns.
+    metas.push({
       type: `report:table:${def.key}`,
       name: def.title,
       category: "reporting",
@@ -112,7 +122,26 @@ export function registerReportWidgets(defs: ReportDefinitionSummary[]): WidgetMe
       size: "full",
       defaultColSpan: 4,
       defaultRowSpan: 3,
-      configSchema: buildConfigSchema(def.parameters),
+      configSchema,
       component: makeReportTableWidget(def.key)
-    }));
+    });
+
+    // Chart widget — only emitted for definitions that have a chart spec.
+    if (def.chart) {
+      metas.push({
+        type: `report:chart:${def.key}`,
+        name: def.chart.title,
+        category: "reporting",
+        submodule: def.key,
+        description: def.description,
+        size: "full",
+        defaultColSpan: 4,
+        defaultRowSpan: 3,
+        configSchema,
+        component: makeReportChartWidget(def.key, def.chart)
+      });
+    }
+  }
+
+  return metas;
 }

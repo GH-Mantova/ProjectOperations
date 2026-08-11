@@ -37,6 +37,10 @@ export type WidgetConfigEntry = {
 export type UserDashboardConfig = {
   period: WidgetPeriod;
   widgets: WidgetConfigEntry[];
+  /** Optional dashboard-level filters applied to all report widgets.
+   *  Widget-level filters override these (see plan §5 filter composition rule).
+   *  Additive JSON field — no schema change required. */
+  dashboardFilters?: WidgetFilters;
 };
 
 export type UserDashboard = {
@@ -96,6 +100,9 @@ export type WidgetProps = {
    *  content (font sizes, row counts) to available space. */
   colSpan?: number;
   rowSpan?: number;
+  /** Dashboard-level filters from UserDashboardConfig.dashboardFilters.
+   *  Widget-level config.filters override these (plan §5 composition rule). */
+  dashboardFilters?: WidgetFilters;
 };
 
 export type WidgetSize = "kpi" | "half" | "full";
@@ -188,6 +195,21 @@ export function resolveVisibleFields(meta: WidgetMeta | undefined, entry: Widget
     return userFields.filter((k) => allowed.has(k));
   }
   return schema.filter((f) => f.defaultVisible).map((f) => f.key);
+}
+
+/** Resolve effective filters for a report widget, merging dashboard-level
+ *  and widget-level filters per plan §5:
+ *    effective = { ...dashboardFilters, ...widgetFilters }
+ *  - Widget key overrides dashboard key.
+ *  - Explicit empty-string in widgetFilters clears the dashboard-level value
+ *    (empty string counts as an override, per plan §5 rule 2).
+ *  - Keys absent in widgetFilters defer to dashboardFilters.
+ */
+export function resolveEffectiveFilters(
+  dashboardFilters: WidgetFilters | undefined,
+  widgetFilters: WidgetFilters | undefined
+): WidgetFilters {
+  return { ...(dashboardFilters ?? {}), ...(widgetFilters ?? {}) };
 }
 
 export function resolvePeriod(config: WidgetSubConfig, globalPeriod: WidgetPeriod): WidgetPeriod {

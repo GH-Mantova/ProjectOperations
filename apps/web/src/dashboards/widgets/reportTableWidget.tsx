@@ -15,7 +15,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-import type { WidgetProps } from "../types";
+import { resolveEffectiveFilters, type WidgetProps } from "../types";
 
 // ── Shared types (mirrors reporting.service.ts, local to avoid cross-layer
 //   import — see plan §7 "out of scope: rewriting the BI reporting layer")
@@ -114,16 +114,19 @@ type ReportTableState =
 
 function ReportTable({
   reportKey,
-  config
+  config,
+  dashboardFilters
 }: {
   reportKey: string;
   config: WidgetProps["config"];
+  dashboardFilters?: WidgetProps["dashboardFilters"];
 }) {
   const { authFetch } = useAuth();
   const [state, setState] = useState<ReportTableState>({ status: "loading" });
 
-  const filters = config.filters ?? {};
-  const query = buildQuery(filters);
+  // SLICE 5: resolve effective filters — widget overrides dashboard (plan §5).
+  const effectiveFilters = resolveEffectiveFilters(dashboardFilters, config.filters);
+  const query = buildQuery(effectiveFilters);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,7 +191,6 @@ function ReportTable({
     <div style={{ overflowX: "auto" }}>
       <table
         className="s7-table"
-        data-testid={`report-table-${reportKey}`}
         style={{ width: "100%", borderCollapse: "collapse" }}
       >
         <thead>
@@ -253,17 +255,21 @@ function ReportTable({
 
 /** Factory — binds a fixed reportKey into a WidgetProps-compatible component.
  *  Called by reportRegistry.ts at registration time; each report gets its own
- *  component instance with the key closed over. */
+ *  component instance with the key closed over.
+ *
+ *  SLICE 5: dashboardFilters is forwarded from WidgetProps so the widget can
+ *  resolve effectiveFilters = { ...dashboardFilters, ...config.filters }. */
 export function makeReportTableWidget(reportKey: string) {
-  const component = ({ config }: WidgetProps) => (
+  const component = ({ config, dashboardFilters }: WidgetProps) => (
     <div
+      data-testid={`report-table-${reportKey}`}
       style={{
         height: "100%",
         overflow: "auto",
         padding: 0
       }}
     >
-      <ReportTable reportKey={reportKey} config={config} />
+      <ReportTable reportKey={reportKey} config={config} dashboardFilters={dashboardFilters} />
     </div>
   );
   component.displayName = `ReportTableWidget(${reportKey})`;

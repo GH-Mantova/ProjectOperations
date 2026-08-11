@@ -464,6 +464,13 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/administration": "Settings",
   "/admin/estimate-rates": "Legacy estimate rates",
   "/admin/ai-settings": "AI Settings",
+  // /admin/automations redirects to /settings/administration/automations;
+  // explicit entry keeps the breadcrumb meaningful for users with bookmarks.
+  "/admin/automations": "Automations",
+  // Customer-voice survey pages — routes planned, not yet in App.tsx.
+  // Entries pre-registered so the breadcrumb resolves once the routes ship.
+  "/surveys/capture": "Surveys",
+  "/surveys/satisfaction": "Surveys",
   "/contracts": "Contracts"
 };
 

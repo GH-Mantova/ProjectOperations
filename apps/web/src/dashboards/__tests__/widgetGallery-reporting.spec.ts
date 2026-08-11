@@ -99,8 +99,10 @@ const MOCK_DEFS: ReportDefinitionSummary[] = [
 describe("registerReportWidgets", () => {
   const metas = registerReportWidgets(MOCK_DEFS);
 
-  it("emits exactly one WidgetMeta per definition with columns (5 total)", () => {
-    expect(metas).toHaveLength(5);
+  it("emits exactly one report:table WidgetMeta per definition with columns (5 total)", () => {
+    // SLICE 4 also emits report:chart:* metas for defs declaring a chart, so filter to
+    // table widgets to assert the one-table-per-columns-definition invariant.
+    expect(metas.filter((m) => m.type.startsWith("report:table:"))).toHaveLength(5);
   });
 
   it("every meta has category 'reporting'", () => {
@@ -170,12 +172,13 @@ describe("registerReportWidgets", () => {
     expect(meta?.configSchema).toEqual([]);
   });
 
-  // W5: worker-competency-expiry has no chart — factory must NOT emit a chart
-  // widget in this SLICE. (SLICE 4 will add chart widgets.) Verify by checking
-  // the type list contains no `report:chart:*` entries.
-  it("SLICE 3 does not emit any report:chart:* widgets (those belong to SLICE 4)", () => {
-    for (const meta of metas) {
-      expect(meta.type).not.toMatch(/^report:chart:/);
+  // SLICE 4: definitions that declare a `chart` now ALSO emit a report:chart:* widget.
+  it("SLICE 4 emits report:chart:* widgets for definitions that declare a chart", () => {
+    const chartMetas = metas.filter((m) => m.type.startsWith("report:chart:"));
+    expect(chartMetas.length).toBeGreaterThan(0);
+    // Every emitted chart widget follows the report:chart:<key> naming convention.
+    for (const meta of chartMetas) {
+      expect(meta.type).toMatch(/^report:chart:/);
     }
   });
 

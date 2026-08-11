@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { PlatformModule } from "../platform/platform.module";
+import { ContractArchiveService } from "./contract-archive.service";
 import { ClaimDraftReminderService } from "./claim-draft-reminder.service";
 import { ContractsController } from "./contracts.controller";
 import { ContractsService } from "./contracts.service";
@@ -16,11 +17,14 @@ import { ContractsService } from "./contracts.service";
  * ClaimDraftReminderService runs a monthly cron (28th of each month at
  * 8am AEST) that notifies the responsible user when no progress claim has
  * been generated yet for the current month on an ACTIVE contract.
+ *
+ * ContractArchiveService (S1) handles soft-archive, unarchive, and
+ * super-user hard-delete of contracts.
  */
 @Module({
   imports: [PlatformModule],
   controllers: [ContractsController],
-  providers: [ContractsService, ClaimDraftReminderService],
+  providers: [ContractsService, ClaimDraftReminderService, ContractArchiveService],
   exports: [ContractsService]
 })
 export class ContractsModule {}

@@ -201,6 +201,15 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "directory.view"
       },
       {
+        // SoR S2 — master rate-book for live-job variations (VC) and agreed
+        // records (AR). Gated on rates.manage (same as the API controller).
+        to: "/admin/schedule-of-rates",
+        label: "Schedule of Rates",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/admin/schedule-of-rates"),
+        requiresPermission: "rates.manage"
+      },
+      {
         to: "/reports",
         label: "Reports",
         icon: ICON_AUDIT,
@@ -463,6 +472,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/data-model": "Settings",
   "/settings/administration": "Settings",
   "/admin/estimate-rates": "Legacy estimate rates",
+  "/admin/schedule-of-rates": "Schedule of Rates",
   "/admin/ai-settings": "AI Settings",
   // /admin/automations redirects to /settings/administration/automations;
   // explicit entry keeps the breadcrumb meaningful for users with bookmarks.

@@ -3,12 +3,16 @@ import { PrismaModule } from "../../prisma/prisma.module";
 import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
 import { ScheduleOfRatesController } from "./schedule-of-rates.controller";
 import { ScheduleOfRatesService } from "./schedule-of-rates.service";
+import { SorClientRateCardController } from "./sor-client-rate-card.controller";
+import { SorClientRateCardService } from "./sor-client-rate-card.service";
 
 /**
- * Schedule of Rates module (SoR S1 + S5) — master rate-book for live jobs.
+ * Schedule of Rates module (SoR S1 + S3 + S5) — master rate-book for live jobs.
  *
- * Manages SorPeriod (H1/H2 year buckets), SorRate (labour/plant/waste/subbie
- * line items), and SorChangeLogEntry (append-only audit trail).
+ * S1: SorPeriod (H1/H2 year buckets), SorRate (labour/plant/waste/subbie
+ *     line items), SorChangeLogEntry (append-only audit trail).
+ * S3: SorClientRateCard + SorClientRateEntry (per-client override/add/remove
+ *     on top of master; snapshot-override-reset pattern).
  *
  * S5 adds: POST /schedule-of-rates/client-pdf — generates a client-facing PDF
  * from selected applicable rate lines. Internal margin / BMI columns are never
@@ -21,8 +25,8 @@ import { ScheduleOfRatesService } from "./schedule-of-rates.service";
  */
 @Module({
   imports: [PrismaModule, PdfRenderingModule],
-  controllers: [ScheduleOfRatesController],
-  providers: [ScheduleOfRatesService],
-  exports: [ScheduleOfRatesService]
+  controllers: [ScheduleOfRatesController, SorClientRateCardController],
+  providers: [ScheduleOfRatesService, SorClientRateCardService],
+  exports: [ScheduleOfRatesService, SorClientRateCardService]
 })
 export class ScheduleOfRatesModule {}

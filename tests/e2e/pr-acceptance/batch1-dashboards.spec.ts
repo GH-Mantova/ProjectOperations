@@ -291,12 +291,12 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await expect(page.getByTestId("widget-gallery-modal")).toBeVisible();
 
     // Search for a chart widget by its chart title. The seeded "tender-pipeline"
-    // report definition includes a chart spec with title "Pipeline value by month".
+    // report definition includes a chart spec with title "Tenders by status".
     // The gallery emits `report:chart:tender-pipeline` with name = chart title.
-    await page.getByTestId("gallery-search").fill("Pipeline value");
+    await page.getByTestId("gallery-search").fill("Tenders by status");
 
     // Wait for the search result.
-    const chartWidgetOption = page.getByText("Pipeline value by month", { exact: true }).first();
+    const chartWidgetOption = page.getByText("Tenders by status", { exact: true }).first();
     await expect(chartWidgetOption).toBeVisible({ timeout: 8_000 });
     await chartWidgetOption.click();
 
@@ -319,7 +319,7 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await expect(chartWidget).toBeVisible({ timeout: 15_000 });
 
     // Assert the chart title text is visible inside the widget.
-    await expect(page.getByText("Pipeline value by month").first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Tenders by status").first()).toBeVisible({ timeout: 5_000 });
 
     // Clean up.
     await nav.getByRole("button", { name: `Remove ${dashName}` }).click();

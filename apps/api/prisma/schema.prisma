@@ -223,6 +223,8 @@ model User {
 
   // B-HW-1: handover template versions published by this user.
   handoverTemplatesPublished HandoverTemplate[] @relation("HandoverTemplatePublisher")
+  // B-HW-5: handover instances created by this user.
+  handoversCreated           Handover[]         @relation("HandoverCreatedBy")
 
   // RC-1: subcontractor rate cards created / last-updated by this user.
   subcontractorRatesCreated SubcontractorRate[] @relation("SubcontractorRateCreatedBy")
@@ -1155,6 +1157,8 @@ model Tender {
   rateSet             TenderRateSet?
   // CRM — a Tender may have been converted from an Opportunity (unique).
   opportunity         Opportunity?              @relation("OpportunityConvertedTender")
+  // B-HW-5: handover instances initiated from this tender.
+  handovers           Handover[]                @relation("HandoverTender")
 
   @@index([status])
   @@index([estimatorUserId])
@@ -3898,6 +3902,8 @@ model Contract {
   variations            Variation[]
   progressClaims        ProgressClaim[]
   billingMilestones     BillingMilestone[]
+  // B-HW-5: handover instances for this contract.
+  handovers             Handover[]            @relation("HandoverContract")
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
@@ -6777,6 +6783,8 @@ model HandoverTemplate {
 
   publishedBy User?                    @relation("HandoverTemplatePublisher", fields: [publishedById], references: [id], onDelete: SetNull)
   sections    HandoverTemplateSection[]
+  // B-HW-5: handover instances pinned to this template version.
+  handovers   Handover[]               @relation("HandoverTemplateVersion")
 
   @@index([isActive])
   @@index([version])
@@ -6826,6 +6834,128 @@ model HandoverTemplateField {
   @@index([sectionId, sortOrder])
   @@index([retiredAt])
   @@map("handover_template_fields")
+}
+
+// ─── Handover instances (B-HW-5) ────────────────────────────────────────────
+// One Handover is created per contract at the moment of contract issuance and
+// drives the handover wizard. The handover pins the template version it was
+// created on (templateVersionId) so subsequent template edits never affect
+// in-flight or finalised handovers — same freeze mechanism as the T&C
+// legal-doc-versioning ADR. The FK to HandoverTemplate is Restrict (never
+// lose the pin), while children cascade-delete from Handover.
+
+enum HandoverStatus {
+  draft
+  finalised
+}
+
+enum HandoverOrigin {
+  suggested
+  manual
+}
+
+enum HandoverResponsibleParty {
+  us
+  client
+}
+
+model Handover {
+  id                String          @id @default(cuid())
+  contractId        String          @map("contract_id")
+  tenderId          String          @map("tender_id")
+  // templateVersionId pins to the HandoverTemplate version active at creation.
+  // Restrict: a handover must always know its template version.
+  templateVersionId String          @map("template_version_id")
+  status            HandoverStatus  @default(draft)
+  completionPct     Int             @default(0) @map("completion_pct")
+  createdById       String          @map("created_by_id")
+  finalisedAt       DateTime?       @map("finalised_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  contract        Contract                  @relation("HandoverContract", fields: [contractId], references: [id], onDelete: Cascade)
+  tender          Tender                    @relation("HandoverTender", fields: [tenderId], references: [id], onDelete: Cascade)
+  templateVersion HandoverTemplate          @relation("HandoverTemplateVersion", fields: [templateVersionId], references: [id], onDelete: Restrict)
+  createdBy       User                      @relation("HandoverCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  values          HandoverValue[]
+  complianceItems HandoverComplianceItem[]
+  subcontractors  HandoverSubcontractor[]
+  attachments     HandoverAttachment[]
+
+  @@index([contractId])
+  @@index([tenderId])
+  @@index([status])
+  @@map("handovers")
+}
+
+model HandoverValue {
+  id           String   @id @default(cuid())
+  handoverId   String   @map("handover_id")
+  fieldKey     String   @map("field_key")
+  // value stores the (possibly overridden) field value as JSON.
+  value        Json
+  // sourceValue stores the original auto-prefilled value so the UI can show
+  // "edited — differs from source" and offer a reset-to-source action.
+  sourceValue  Json?    @map("source_value")
+  isOverridden Boolean  @default(false) @map("is_overridden")
+  sectionDone  Boolean  @default(false) @map("section_done")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  handover Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+
+  @@unique([handoverId, fieldKey])
+  @@map("handover_values")
+}
+
+model HandoverComplianceItem {
+  id                String                   @id @default(cuid())
+  handoverId        String                   @map("handover_id")
+  type              String
+  origin            HandoverOrigin
+  responsibleParty  HandoverResponsibleParty @map("responsible_party")
+  status            String
+  docRef            String?                  @map("doc_ref")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  handover Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+
+  @@index([handoverId])
+  @@map("handover_compliance_items")
+}
+
+model HandoverSubcontractor {
+  id         String   @id @default(cuid())
+  handoverId String   @map("handover_id")
+  name       String
+  quoteRef   String?  @map("quote_ref")
+  poRef      String?  @map("po_ref")
+  folderSlot String   @map("folder_slot")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  handover Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+
+  @@index([handoverId])
+  @@map("handover_subcontractors")
+}
+
+model HandoverAttachment {
+  id         String   @id @default(cuid())
+  handoverId String   @map("handover_id")
+  // fieldKey and category are both nullable; exactly one is expected by the
+  // API layer. No DB CHECK constraint — validation is enforced in the service.
+  fieldKey   String?  @map("field_key")
+  category   String?
+  docRef     String   @map("doc_ref")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  handover Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+
+  @@index([handoverId])
+  @@map("handover_attachments")
 }
 
 // ── Schedule of Rates (SoR S1) ───────────────────────────────────────────────

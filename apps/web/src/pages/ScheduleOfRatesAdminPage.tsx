@@ -16,6 +16,39 @@ import { useConfirm } from "../hooks/useConfirm";
 import { can } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
 
+// ─── S3 API Types ─────────────────────────────────────────────────────────────
+
+type ClientSummary = {
+  id: string;
+  name: string;
+  code: string | null;
+};
+
+type SorClientRateCard = {
+  id: string;
+  clientId: string;
+  sorPeriodId: string;
+  status: string;
+  client: ClientSummary;
+  _count: { entries: number };
+};
+
+type RowKind = "master" | "override" | "added" | "removed";
+
+type MergedRateRow = {
+  id: string;
+  sorRateId: string | null;
+  entryId: string | null;
+  category: SorCategory;
+  position: string;
+  class: string | null;
+  unit: string | null;
+  ordinary: string | null;
+  oneAndHalf: string | null;
+  double: string | null;
+  rowKind: RowKind;
+};
+
 // ─── API Types ────────────────────────────────────────────────────────────────
 
 type SorPeriodHalf = "H1" | "H2";
@@ -150,7 +183,7 @@ type SorClientPdfHeaderInput = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type Tab = "labour" | "plant" | "waste" | "subcontractor" | "changelog";
+type Tab = "labour" | "plant" | "waste" | "subcontractor" | "changelog" | "client-cards";
 
 export function ScheduleOfRatesAdminPage() {
   const { authFetch, user } = useAuth();
@@ -613,7 +646,8 @@ export function ScheduleOfRatesAdminPage() {
                 { key: "plant" as Tab, label: `Plant & Equipment (${countFor("PLANT")})` },
                 { key: "waste" as Tab, label: `Waste (${countFor("WASTE")})` },
                 { key: "subcontractor" as Tab, label: `Subcontractors (${countFor("SUBCONTRACTOR")})` },
-                { key: "changelog" as Tab, label: `Change log (${changeLog.length})` }
+                { key: "changelog" as Tab, label: `Change log (${changeLog.length})` },
+                { key: "client-cards" as Tab, label: "Client rate cards" }
               ] as Array<{ key: Tab; label: string }>
             ).map((t) => (
               <button
@@ -684,6 +718,13 @@ export function ScheduleOfRatesAdminPage() {
                 />
               )}
               {tab === "changelog" && <ChangeLogPanel entries={changeLog} />}
+              {tab === "client-cards" && (
+                <ClientRateCardPanel
+                  periodId={selectedPeriodId}
+                  canManage={canManage}
+                  authFetch={authFetch}
+                />
+              )}
             </section>
           )}
         </>
@@ -1632,6 +1673,821 @@ function ChangeLogPanel({ entries }: { entries: SorChangeLogEntry[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+// ─── S3: Client Rate Card Panel ───────────────────────────────────────────────
+
+type AuthFetch = (path: string, init?: RequestInit) => Promise<Response>;
+
+type ClientRateCardPanelProps = {
+  periodId: string;
+  canManage: boolean;
+  authFetch: AuthFetch;
+};
+
+/**
+ * The per-client rate card section within the SoR admin page.
+ *
+ * Lets the operator pick a client, get-or-create their card for the current
+ * period, then view the merged master+override table with add/edit/remove and
+ * a "Reset to default" action.
+ */
+function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardPanelProps) {
+  const confirm = useConfirm();
+
+  // Client list + picker
+  const [clients, setClients] = useState<ClientSummary[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [loadingClients, setLoadingClients] = useState(true);
+
+  // Cards list for this period
+  const [cards, setCards] = useState<SorClientRateCard[]>([]);
+
+  // Active card + merged rows
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [mergedRows, setMergedRows] = useState<MergedRateRow[]>([]);
+  const [loadingRows, setLoadingRows] = useState(false);
+
+  // Add entry form
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDraft, setAddDraft] = useState({
+    category: "LABOUR" as SorCategory,
+    position: "",
+    class: "",
+    unit: "",
+    ordinary: "",
+    oneAndHalf: "",
+    double: ""
+  });
+
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Load clients
+  useEffect(() => {
+    void (async () => {
+      setLoadingClients(true);
+      try {
+        const res = await authFetch("/master-data/clients?limit=500&status=ACTIVE");
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as { data?: ClientSummary[]; items?: ClientSummary[] } | ClientSummary[];
+        // Handle both paginated and flat responses
+        const list: ClientSummary[] = Array.isArray(data)
+          ? data
+          : (data as { data?: ClientSummary[]; items?: ClientSummary[] }).data ??
+            (data as { data?: ClientSummary[]; items?: ClientSummary[] }).items ??
+            [];
+        setClients(list.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoadingClients(false);
+      }
+    })();
+  }, [authFetch]);
+
+  // Load cards for period
+  const loadCards = useCallback(async () => {
+    try {
+      const res = await authFetch(`/schedule-of-rates/client-cards/by-period/${periodId}`);
+      if (!res.ok) throw new Error(await res.text());
+      setCards((await res.json()) as SorClientRateCard[]);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [authFetch, periodId]);
+
+  useEffect(() => {
+    void loadCards();
+  }, [loadCards]);
+
+  // Load merged rows for active card
+  const loadRows = useCallback(async (cardId: string) => {
+    setLoadingRows(true);
+    setError(null);
+    try {
+      const res = await authFetch(`/schedule-of-rates/client-cards/${cardId}/entries`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { rows: MergedRateRow[] };
+      setMergedRows(data.rows ?? []);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoadingRows(false);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    if (activeCardId) void loadRows(activeCardId);
+  }, [activeCardId, loadRows]);
+
+  // Get or create card for selected client
+  const openCard = async () => {
+    if (!selectedClientId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await authFetch(
+        `/schedule-of-rates/client-cards/clients/${selectedClientId}/periods/${periodId}`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { card: SorClientRateCard };
+      setActiveCardId(data.card.id);
+      await loadCards();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Reset to default
+  const handleReset = () => {
+    if (!activeCardId) return;
+    void (async () => {
+      const ok = await confirm({
+        title: "Reset to master defaults",
+        message:
+          "This will remove all overrides, additions, and removals on this client card. The card reverts to the master rate book for this period. This action is logged but cannot be undone.",
+        confirmLabel: "Reset",
+        variant: "danger"
+      });
+      if (!ok) return;
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await authFetch(
+          `/schedule-of-rates/client-cards/${activeCardId}/reset`,
+          { method: "POST" }
+        );
+        if (!res.ok) throw new Error(await res.text());
+        await loadRows(activeCardId);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSaving(false);
+      }
+    })();
+  };
+
+  // Add entry
+  const handleAddEntry = async () => {
+    if (!activeCardId || !addDraft.position.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await authFetch(`/schedule-of-rates/client-cards/${activeCardId}/entries`, {
+        method: "POST",
+        body: JSON.stringify({
+          category: addDraft.category,
+          position: addDraft.position.trim(),
+          class: addDraft.class.trim() || null,
+          unit: addDraft.unit.trim() || null,
+          ordinary: addDraft.ordinary !== "" ? Number(addDraft.ordinary) : null,
+          oneAndHalf: addDraft.oneAndHalf !== "" ? Number(addDraft.oneAndHalf) : null,
+          double: addDraft.double !== "" ? Number(addDraft.double) : null
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setShowAdd(false);
+      setAddDraft({ category: "LABOUR", position: "", class: "", unit: "", ordinary: "", oneAndHalf: "", double: "" });
+      await loadRows(activeCardId);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Remove master rate from card
+  const handleRemoveMasterRate = (sorRateId: string, position: string) => {
+    if (!activeCardId) return;
+    void (async () => {
+      const ok = await confirm({
+        title: "Remove rate from client card",
+        message: `Remove "${position}" from this client's rate card? The rate remains in the master catalog; it is only hidden for this client.`,
+        confirmLabel: "Remove",
+        variant: "danger"
+      });
+      if (!ok) return;
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await authFetch(
+          `/schedule-of-rates/client-cards/${activeCardId}/entries/by-rate/${sorRateId}`,
+          { method: "DELETE" }
+        );
+        if (!res.ok) throw new Error(await res.text());
+        await loadRows(activeCardId);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSaving(false);
+      }
+    })();
+  };
+
+  // Delete fresh addition
+  const handleDeleteFreshEntry = (entryId: string, position: string) => {
+    if (!activeCardId) return;
+    void (async () => {
+      const ok = await confirm({
+        title: "Delete client addition",
+        message: `Delete "${position}" from this client's rate card?`,
+        confirmLabel: "Delete",
+        variant: "danger"
+      });
+      if (!ok) return;
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await authFetch(
+          `/schedule-of-rates/client-cards/entries/${entryId}`,
+          { method: "DELETE" }
+        );
+        if (!res.ok) throw new Error(await res.text());
+        await loadRows(activeCardId);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSaving(false);
+      }
+    })();
+  };
+
+  // Edit entry inline callback
+  const handleEditEntry = useCallback(async (entryId: string, patch: Record<string, unknown>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await authFetch(
+        `/schedule-of-rates/client-cards/entries/${entryId}`,
+        { method: "PATCH", body: JSON.stringify(patch) }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      if (activeCardId) await loadRows(activeCardId);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }, [authFetch, activeCardId, loadRows]);
+
+  const rowKindBadge = (kind: RowKind): ReactNode => {
+    if (kind === "master") return null;
+    const cfg: Record<Exclude<RowKind, "master">, { label: string; color: string }> = {
+      override: { label: "Override", color: "var(--status-warning, #f59e0b)" },
+      added: { label: "Added", color: "var(--status-info, #3b82f6)" },
+      removed: { label: "Removed", color: "var(--status-danger, #ef4444)" }
+    };
+    const { label, color } = cfg[kind];
+    return (
+      <span
+        style={{
+          display: "inline-block",
+          padding: "1px 6px",
+          borderRadius: 99,
+          fontSize: 10,
+          fontWeight: 600,
+          background: color,
+          color: "#fff",
+          marginLeft: 4
+        }}
+      >
+        {label}
+      </span>
+    );
+  };
+
+  const activeCard = cards.find((c) => c.id === activeCardId) ?? null;
+
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0, marginBottom: 12 }}>
+        Per-client rate cards let you override, add, or remove rates from the master catalog for a
+        specific client. The card shows the merged view (master + client changes). Use{" "}
+        <strong>Reset to default</strong> to revert all overrides.
+      </p>
+
+      {error ? (
+        <div
+          style={{ color: "var(--status-danger)", fontSize: 13, marginBottom: 10 }}
+          role="alert"
+        >
+          {error}
+        </div>
+      ) : null}
+
+      {/* Existing cards for this period */}
+      {cards.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+            Cards for this period ({cards.length})
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {cards.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                className={activeCardId === card.id ? "s7-btn s7-btn--primary s7-btn--sm" : "s7-btn s7-btn--sm"}
+                onClick={() => { setActiveCardId(card.id); setShowAdd(false); }}
+              >
+                {card.client.name}
+                {card.client.code ? ` (${card.client.code})` : ""}
+                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 11 }}>
+                  {card._count.entries} override{card._count.entries !== 1 ? "s" : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Client picker — open a new/existing card */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          padding: "10px 12px",
+          background: "var(--surface-2, #f9fafb)",
+          borderRadius: "var(--radius-md, 8px)",
+          marginBottom: 16
+        }}
+      >
+        <label style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
+          Open rate card for client:
+        </label>
+        {loadingClients ? (
+          <Skeleton width={240} height={32} />
+        ) : (
+          <select
+            className="s7-input"
+            style={{ maxWidth: 320 }}
+            value={selectedClientId ?? ""}
+            onChange={(e) => setSelectedClientId(e.target.value || null)}
+          >
+            <option value="">Select client…</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.code ? ` (${c.code})` : ""}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className="s7-btn s7-btn--primary s7-btn--sm"
+          disabled={!selectedClientId || saving}
+          onClick={() => void openCard()}
+        >
+          Open / create card
+        </button>
+      </div>
+
+      {/* Merged rate table for active card */}
+      {activeCardId && (
+        <>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+              flexWrap: "wrap",
+              gap: 8
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
+              {activeCard
+                ? `${activeCard.client.name} — ${activeCard._count.entries} override${activeCard._count.entries !== 1 ? "s" : ""}`
+                : "Client rate card"}
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              {canManage && (
+                <>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--sm"
+                    onClick={() => setShowAdd((v) => !v)}
+                    disabled={saving}
+                  >
+                    {showAdd ? "Cancel add" : "+ Add rate"}
+                  </button>
+                  <button
+                    type="button"
+                    className="s7-btn s7-btn--sm"
+                    style={{ color: "var(--status-danger)" }}
+                    onClick={handleReset}
+                    disabled={saving}
+                  >
+                    Reset to default
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Add entry form */}
+          {showAdd && canManage && (
+            <div
+              style={{
+                padding: "10px 12px",
+                background: "var(--surface-2, #f9fafb)",
+                borderRadius: "var(--radius-md, 8px)",
+                marginBottom: 12,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "flex-end"
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Category</label>
+                <select
+                  className="s7-input"
+                  value={addDraft.category}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, category: e.target.value as SorCategory }))}
+                  style={{ width: 130 }}
+                >
+                  <option value="LABOUR">Labour</option>
+                  <option value="PLANT">Plant</option>
+                  <option value="WASTE">Waste</option>
+                  <option value="SUBCONTRACTOR">Subcontractor</option>
+                </select>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Position / Name</label>
+                <input
+                  className="s7-input"
+                  type="text"
+                  value={addDraft.position}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, position: e.target.value }))}
+                  placeholder="Position / Name"
+                  style={{ width: 160 }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Class</label>
+                <input
+                  className="s7-input"
+                  type="text"
+                  value={addDraft.class}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, class: e.target.value }))}
+                  placeholder="Class"
+                  style={{ width: 90 }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Unit</label>
+                <input
+                  className="s7-input"
+                  type="text"
+                  value={addDraft.unit}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, unit: e.target.value }))}
+                  placeholder="Unit"
+                  style={{ width: 70 }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Ordinary ($/hr)</label>
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.01"
+                  value={addDraft.ordinary}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, ordinary: e.target.value }))}
+                  placeholder="0.00"
+                  style={{ width: 90 }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>1.5x</label>
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.01"
+                  value={addDraft.oneAndHalf}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, oneAndHalf: e.target.value }))}
+                  placeholder="0.00"
+                  style={{ width: 80 }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>2x</label>
+                <input
+                  className="s7-input"
+                  type="number"
+                  step="0.01"
+                  value={addDraft.double}
+                  onChange={(e) => setAddDraft((p) => ({ ...p, double: e.target.value }))}
+                  placeholder="0.00"
+                  style={{ width: 80 }}
+                />
+              </div>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                disabled={!addDraft.position.trim() || saving}
+                onClick={() => void handleAddEntry()}
+              >
+                Add
+              </button>
+            </div>
+          )}
+
+          {/* Merged rate table */}
+          {loadingRows ? (
+            <Skeleton width="100%" height={160} />
+          ) : mergedRows.length === 0 ? (
+            <EmptyState
+              heading="No rates yet"
+              subtext="This card mirrors the master catalog. Add overrides or remove rates above."
+            />
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="admin-page__table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "6%" }}>Cat</th>
+                    <th style={{ width: "22%" }}>Position / Name</th>
+                    <th style={{ width: "10%" }}>Class</th>
+                    <th style={{ width: "8%" }}>Unit</th>
+                    <th style={{ width: "12%" }}>Ordinary</th>
+                    <th style={{ width: "12%" }}>1.5x</th>
+                    <th style={{ width: "12%" }}>2x</th>
+                    <th style={{ width: "10%" }}>Status</th>
+                    <th style={{ width: 56 }} aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {mergedRows.map((row) => (
+                    <ClientRateRow
+                      key={row.id}
+                      row={row}
+                      canManage={canManage}
+                      saving={saving}
+                      rowKindBadge={rowKindBadge}
+                      onRemoveMaster={handleRemoveMasterRate}
+                      onDeleteFresh={handleDeleteFreshEntry}
+                      onEdit={handleEditEntry}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Single row in the merged client rate table ───────────────────────────────
+
+type ClientRateRowProps = {
+  row: MergedRateRow;
+  canManage: boolean;
+  saving: boolean;
+  rowKindBadge: (kind: RowKind) => ReactNode;
+  onRemoveMaster: (sorRateId: string, position: string) => void;
+  onDeleteFresh: (entryId: string, position: string) => void;
+  onEdit: (entryId: string, patch: Record<string, unknown>) => Promise<void>;
+};
+
+type ClientRowDraft = {
+  position: string;
+  class: string;
+  unit: string;
+  ordinary: string;
+  oneAndHalf: string;
+  double: string;
+};
+
+function ClientRateRow({
+  row,
+  canManage,
+  saving,
+  rowKindBadge,
+  onRemoveMaster,
+  onDeleteFresh,
+  onEdit
+}: ClientRateRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<ClientRowDraft>({
+    position: row.position,
+    class: row.class ?? "",
+    unit: row.unit ?? "",
+    ordinary: row.ordinary ?? "",
+    oneAndHalf: row.oneAndHalf ?? "",
+    double: row.double ?? ""
+  });
+  const trRef = useRef<HTMLTableRowElement | null>(null);
+
+  useEffect(() => {
+    if (editing) return;
+    setDraft({
+      position: row.position,
+      class: row.class ?? "",
+      unit: row.unit ?? "",
+      ordinary: row.ordinary ?? "",
+      oneAndHalf: row.oneAndHalf ?? "",
+      double: row.double ?? ""
+    });
+  }, [row, editing]);
+
+  const enterEdit = (e: MouseEvent<HTMLTableRowElement>) => {
+    // Can only edit override/added/master rows that have entryId, or create override for master
+    if (!canManage || editing || row.rowKind === "removed") return;
+    void e;
+    setEditing(true);
+  };
+
+  const commit = async () => {
+    if (!row.entryId) {
+      // No entry yet — this is an untouched master row. We need to create an override via addEntry.
+      // Skip editing here; the add-entry form should be used.
+      setEditing(false);
+      return;
+    }
+    await onEdit(row.entryId, {
+      position: draft.position.trim() || row.position,
+      class: draft.class.trim() || null,
+      unit: draft.unit.trim() || null,
+      ordinary: draft.ordinary !== "" ? Number(draft.ordinary) : null,
+      oneAndHalf: draft.oneAndHalf !== "" ? Number(draft.oneAndHalf) : null,
+      double: draft.double !== "" ? Number(draft.double) : null
+    });
+    setEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft({
+      position: row.position,
+      class: row.class ?? "",
+      unit: row.unit ?? "",
+      ordinary: row.ordinary ?? "",
+      oneAndHalf: row.oneAndHalf ?? "",
+      double: row.double ?? ""
+    });
+    setEditing(false);
+  };
+
+  const handleRowBlur = (e: React.FocusEvent<HTMLTableRowElement>) => {
+    if (!editing) return;
+    const next = e.relatedTarget as Node | null;
+    if (next && trRef.current && trRef.current.contains(next)) return;
+    void commit();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTableRowElement>) => {
+    if (!editing) return;
+    if (e.key === "Enter") { e.preventDefault(); void commit(); }
+    if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  };
+
+  const rowStyle: React.CSSProperties =
+    row.rowKind === "removed"
+      ? { opacity: 0.45, background: "var(--surface-2, #f9fafb)" }
+      : row.rowKind === "override"
+        ? { background: "rgba(245,158,11,0.06)" }
+        : row.rowKind === "added"
+          ? { background: "rgba(59,130,246,0.06)" }
+          : {};
+
+  const catLabel: Record<SorCategory, string> = {
+    LABOUR: "Lab",
+    PLANT: "Plant",
+    WASTE: "Waste",
+    SUBCONTRACTOR: "Sub"
+  };
+
+  return (
+    <tr
+      ref={trRef}
+      className={editing ? "rates-row rates-row--editing" : "rates-row"}
+      style={rowStyle}
+      onClick={enterEdit}
+      onBlur={handleRowBlur}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
+      <td style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        {catLabel[row.category] ?? row.category}
+      </td>
+      <td>
+        {editing ? (
+          <input
+            className="s7-input s7-input--sm"
+            type="text"
+            value={draft.position}
+            onChange={(e) => setDraft((p) => ({ ...p, position: e.target.value }))}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        ) : (
+          row.position
+        )}
+      </td>
+      <td>
+        {editing ? (
+          <input
+            className="s7-input s7-input--sm"
+            type="text"
+            value={draft.class}
+            onChange={(e) => setDraft((p) => ({ ...p, class: e.target.value }))}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        ) : (
+          row.class ?? ""
+        )}
+      </td>
+      <td>
+        {editing ? (
+          <input
+            className="s7-input s7-input--sm"
+            type="text"
+            value={draft.unit}
+            onChange={(e) => setDraft((p) => ({ ...p, unit: e.target.value }))}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        ) : (
+          row.unit ?? ""
+        )}
+      </td>
+      <td>
+        {editing ? (
+          <input
+            className="s7-input s7-input--sm"
+            type="number"
+            step="0.01"
+            value={draft.ordinary}
+            onChange={(e) => setDraft((p) => ({ ...p, ordinary: e.target.value }))}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        ) : (
+          currency(row.ordinary)
+        )}
+      </td>
+      <td>
+        {editing ? (
+          <input
+            className="s7-input s7-input--sm"
+            type="number"
+            step="0.01"
+            value={draft.oneAndHalf}
+            onChange={(e) => setDraft((p) => ({ ...p, oneAndHalf: e.target.value }))}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        ) : (
+          currency(row.oneAndHalf)
+        )}
+      </td>
+      <td>
+        {editing ? (
+          <input
+            className="s7-input s7-input--sm"
+            type="number"
+            step="0.01"
+            value={draft.double}
+            onChange={(e) => setDraft((p) => ({ ...p, double: e.target.value }))}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        ) : (
+          currency(row.double)
+        )}
+      </td>
+      <td>{rowKindBadge(row.rowKind)}</td>
+      <td onClick={(e) => e.stopPropagation()}>
+        {canManage && row.rowKind !== "removed" ? (
+          <button
+            type="button"
+            aria-label="Remove rate"
+            disabled={saving}
+            onClick={() => {
+              if (row.rowKind === "added" && row.entryId) {
+                onDeleteFresh(row.entryId, row.position);
+              } else if (row.sorRateId) {
+                onRemoveMaster(row.sorRateId, row.position);
+              }
+            }}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--status-danger, #EF4444)",
+              fontSize: 18,
+              cursor: "pointer",
+              padding: "2px 6px",
+              borderRadius: 4
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+      </td>
+    </tr>
   );
 }
 

@@ -1948,6 +1948,7 @@ model FormField {
   createdAt    DateTime              @default(now()) @map("created_at")
   section      FormSection           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   values       FormSubmissionValue[]
+  pushBindings FormFieldPushBinding[]
 
   @@unique([sectionId, fieldKey])
   @@index([sectionId, fieldOrder])
@@ -2064,16 +2065,45 @@ model FormApproval {
 }
 
 model FormTriggeredRecord {
-  id           String         @id @default(cuid())
-  submissionId String         @map("submission_id")
-  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  recordType   String         @map("record_type")
-  recordId     String         @map("record_id")
-  createdAt    DateTime       @default(now()) @map("created_at")
+  id           String              @id @default(cuid())
+  submissionId String              @map("submission_id")
+  submission   FormSubmission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  recordType   String              @map("record_type")
+  recordId     String              @map("record_id")
+  // F-9a: push engine audit columns. status = "success" | "failed".
+  // Existing rows default to "success" (they all succeeded).
+  // bindingId is null for the three legacy hardcoded triggers.
+  status       String              @default("success")
+  lastError    String?             @map("last_error")
+  attempts     Int                 @default(1)
+  bindingId    String?             @map("binding_id")
+  binding      FormFieldPushBinding? @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+  createdAt    DateTime            @default(now()) @map("created_at")
 
   @@index([submissionId])
   @@index([recordType, recordId])
+  @@index([bindingId])
   @@map("form_triggered_records")
+}
+
+// F-9a: push bindings — each field can have zero or more bindings that
+// write to an owning module's service after the submission commits.
+// fieldId → FormField (Cascade) keeps bindings scoped to template versions.
+model FormFieldPushBinding {
+  id            String                @id @default(cuid())
+  fieldId       String                @map("field_id")
+  field         FormField             @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  targetModule  String                @map("target_module")
+  targetAction  String                @map("target_action")
+  applyOn       String                @default("submit") @map("apply_on")
+  config        Json                  @default("{}")
+  isEnabled     Boolean               @default(true) @map("is_enabled")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  triggeredRecords FormTriggeredRecord[]
+
+  @@index([fieldId])
+  @@map("form_field_push_bindings")
 }
 
 // ─── Forms Engine (PR #611) — corrective-action / CAPA close-out ────────────

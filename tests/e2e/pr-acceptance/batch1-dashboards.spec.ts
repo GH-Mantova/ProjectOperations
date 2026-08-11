@@ -202,7 +202,11 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await expect(page.getByRole("heading", { name: "New dashboard" })).toBeVisible();
     const dashName = `e2e-reporting-${Date.now()}`;
     await page.getByRole("textbox", { name: "Name" }).fill(dashName);
-    // Do NOT select any widgets — leave blank so the canvas starts empty.
+    // Blank-mode creation requires at least one widget selected (NewDashboardModal
+    // createDisabled = ... || (mode === "blank" && selected.size === 0)), so select a
+    // starter category. The reporting widget is added via the gallery below — that
+    // gallery add + row render is the actual SLICE 3 assertion.
+    await page.getByRole("button", { name: "Select all" }).first().click();
     await page.getByRole("button", { name: "Create dashboard" }).click();
     await expect(nav.getByRole("link", { name: dashName })).toBeVisible({ timeout: 10_000 });
 

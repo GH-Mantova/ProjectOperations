@@ -27,9 +27,10 @@ export type ConditionOperator =
   // map of sectionKey → per-entry RuleValueMap) rather than the flat `values`
   // map, so they only fire when the caller passes sectionEntries in.
   //
-  // has_any_entry_where: true when at least one entry in the referenced
-  //   sectionKey satisfies `subCondition` (a nested Condition/ConditionGroup
-  //   evaluated against that entry's own value map).
+  // has_any_entry_where (also referred to as "has-any-entry-where" in docs):
+  //   true when at least one entry in the referenced sectionKey satisfies
+  //   `subCondition` (a nested Condition/ConditionGroup evaluated against that
+  //   entry's own value map).
   // entry_count:         true when the number of entries in the referenced
   //   sectionKey equals `value` (numeric).
   // column_total:        true when the sum of numeric `fieldKey` values across

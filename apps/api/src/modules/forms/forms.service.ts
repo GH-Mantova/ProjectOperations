@@ -347,6 +347,7 @@ export class FormsService {
           create: dto.values.map((value) => ({
             fieldId: fieldByKey.get(value.fieldKey)?.id ?? null,
             fieldKey: value.fieldKey,
+            entryIndex: value.entryIndex ?? 0,
             valueText: value.valueText ?? null,
             valueNumber: value.valueNumber != null ? new Prisma.Decimal(value.valueNumber) : null,
             valueDateTime: value.valueDateTime ? new Date(value.valueDateTime) : null,

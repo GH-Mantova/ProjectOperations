@@ -170,6 +170,12 @@ export class FormSubmissionValueInputDto {
   @IsOptional() @IsDateString() valueDateTime?: string;
   /** Structured value for repeating/choice-array/JSON fields. */
   @IsOptional() valueJson?: unknown;
+  /**
+   * F-3 — Which repeat entry this value belongs to (0-indexed). Defaults to 0
+   * for non-repeating sections so existing callers need no change; repeating
+   * sections submit one element per (fieldKey, entryIndex) pair.
+   */
+  @IsOptional() @IsInt() entryIndex?: number;
 }
 
 /**

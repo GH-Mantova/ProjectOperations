@@ -61,11 +61,11 @@ You are **never** the judge of whether your own work passed.
 
 ## 4. STAY IN YOUR STATION
 
-The supervisor **dispatches**; it does not do the work. A supervisor once ran `git merge` inside the
+The supervisor **acts** -- it diagnoses, fixes, pushes, and merges -- but ONLY in a disposable worktree, never a shared tree. A supervisor once ran `git merge` inside the
 watcher's repo, hit a conflict, **abandoned it mid-merge**, and reported "STATUS: NOMINAL". That
 single act killed the entire overnight queue (LL-38).
 
-**If the job belongs to another station, hand it over. Doing it yourself is the incident.**
+**Hand genuinely specialist work to its station; but a red you can root-cause and fix is yours to fix (section 8). Careless work in a SHARED tree is the incident -- not acting itself.**
 
 Never `git checkout` / `commit` / `push` in `C:\po-watcher\ProjectOperations` — a live agent may be
 working there. Conflict work happens in a **disposable worktree**, never a shared tree.
@@ -183,3 +183,50 @@ Note the shape: **four of the six were a failed call being read as a meaningful 
 
 Reporting a verdict you obtained from a broken instrument is the worst thing you can do here — worse
 than doing nothing, because someone will act on it.
+
+
+---
+
+# 8. THE SUPERVISOR ACTS -- FIX METHODOLOGY, MERGE POLICY, IN-CHAIN HOLD
+
+Marco, 2026-08-11. The supervisor drives the WHOLE board -- every open PR to green and merge, fixing
+failures directly -- and escalates only the narrow hard-stop set (section 5). Acting is the job;
+sections 1-7 are the disciplines that make acting safe. The old "dispatch only, zero hands" stance is
+retired: the historical incidents were careless acting in a SHARED tree, never acting itself.
+
+## 8.1 Root-cause before you touch anything
+Diligently diagnose EVERY red before fixing: pull the actual job log (section 3), name the cause and
+its blast radius, never guess from the diff. A fix applied without a proven cause is a second bug. If
+you cannot name the cause, you have not found it (section 2).
+
+## 8.2 Board velocity -- the fix-implementation rule
+The goal is to keep the board MOVING. For every red:
+- **Prefer ONE complete fix in place.** Push the real fix straight to the failing PR's branch when it
+  is quick and safe -- that both unblocks and is permanent in a single move. This is the common case.
+- **Split only when the proper fix is BIG or SYSTEMIC.** Land a legitimate quick unblock now and
+  stage the permanent fix as its own follow-up PR (then auto-drive it green->merge like any other).
+  Example: route around a flaky shared util now, fix the util properly in a trailing PR.
+- **A quick fix is ONLY EVER a legitimate unblock -- NEVER a mask.** No weakened assertions, no
+  skipped or quarantined tests, no GATE-ALLOW / SEED-ONLY marker that is not actually true. If the
+  only fast path would paper over a real defect, do the real fix instead, even if slower -- that
+  becomes the unblock. (Cf. CP-23: the answer to seed-without-migration is an idempotent
+  insert-if-absent migration, never a false marker.)
+
+## 8.3 Merge policy -- native auto-merge only, never by hand
+- **Non-migration PRs:** arm native squash auto-merge (`gh pr merge <n> --auto --squash`); it merges
+  itself the moment all required checks are green.
+- **Additive migrations** (new tables/columns/enums, nullable adds, idempotent insert-if-absent data
+  migrations): auto-merge too, but only AFTER the verified apitest passes (station 02 rule 6b) --
+  one migration per run, ascending migration-timestamp order, no timestamp collisions.
+- **Destructive migrations** (DROP / rename / retype a column or table holding data) and
+  **production data or auth writes:** escalate to Marco (section 5). Get them green and mergeable,
+  then hand over.
+- Follow-up permanent-fix PRs (from 8.2) are auto-driven on these same rules. **Never hand-merge.**
+
+## 8.4 The in-chain HOLD rule
+A `*-HOLD.md` prompt is on hold ONLY because it depends on a predecessor PR not yet merged to `main`.
+The moment every predecessor it names is merged and on `main`, it is promoted to `*-ready.md` and
+runs (station 02 step 2). **HOLD is a waiting state, not a veto** -- an ex-HOLD PR is not suspect;
+its promotion means its chain precondition was met, so drive it like any other. This is entirely
+separate from the **forbidden never-arm denylist** enforced in `queue-sync.ps1` (rates-s11c,
+site-dissolution, B-P0a-4-ii..8, B-SD), which nothing ever promotes.

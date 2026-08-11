@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChartWidget, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-import type { WidgetProps } from "../types";
+import { resolveEffectiveFilters, type WidgetProps } from "../types";
 
 // ── Shared types (mirrors reporting.service.ts, local to avoid cross-layer
 //   import — see plan §7 "out of scope: rewriting the BI reporting layer")
@@ -73,17 +73,20 @@ type ReportChartState =
 function ReportChart({
   reportKey,
   chartSpec,
-  config
+  config,
+  dashboardFilters
 }: {
   reportKey: string;
   chartSpec: ChartSpec;
   config: WidgetProps["config"];
+  dashboardFilters?: WidgetProps["dashboardFilters"];
 }) {
   const { authFetch } = useAuth();
   const [state, setState] = useState<ReportChartState>({ status: "loading" });
 
-  const filters = config.filters ?? {};
-  const query = buildQuery(filters);
+  // SLICE 5: resolve effective filters — widget overrides dashboard (plan §5).
+  const effectiveFilters = resolveEffectiveFilters(dashboardFilters, config.filters);
+  const query = buildQuery(effectiveFilters);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,9 +197,12 @@ function ReportChart({
  *
  *  Defense in depth: if chartSpec is missing (def.chart was absent), renders a
  *  friendly message rather than crashing. The registry will not call this factory
- *  for definitions without a chart, but the component is defensive anyway. */
+ *  for definitions without a chart, but the component is defensive anyway.
+ *
+ *  SLICE 5: dashboardFilters is forwarded so the widget can resolve
+ *  effectiveFilters = { ...dashboardFilters, ...config.filters } (plan §5). */
 export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | undefined) {
-  const component = ({ config }: WidgetProps) => {
+  const component = ({ config, dashboardFilters }: WidgetProps) => {
     if (!chartSpec) {
       return (
         <p style={{ padding: 14, color: "var(--text-muted, #6b7280)", fontSize: 13 }}>
@@ -206,7 +212,7 @@ export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | 
     }
     return (
       <div style={{ height: "100%", overflow: "auto", padding: 0 }}>
-        <ReportChart reportKey={reportKey} chartSpec={chartSpec} config={config} />
+        <ReportChart reportKey={reportKey} chartSpec={chartSpec} config={config} dashboardFilters={dashboardFilters} />
       </div>
     );
   };

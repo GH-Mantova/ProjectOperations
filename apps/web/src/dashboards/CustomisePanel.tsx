@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { WIDGET_BY_TYPE } from "./widgetRegistry";
-import { PERIOD_LABELS, PERIOD_ORDER, type UserDashboard, type UserDashboardConfig, type WidgetConfigEntry, type WidgetPeriod } from "./types";
+import { PERIOD_LABELS, PERIOD_ORDER, type ConfigField, type UserDashboard, type UserDashboardConfig, type WidgetConfigEntry, type WidgetFilters, type WidgetPeriod } from "./types";
 import { useConfirm } from "../hooks/useConfirm";
 
 type Props = {
@@ -12,6 +12,28 @@ type Props = {
   onSave: (config: UserDashboardConfig, name?: string) => void;
 };
 
+/** Compute the union of configSchema fields across all report widgets present
+ *  on the dashboard. "Report widgets" are identified by type prefix
+ *  `report:table:` or `report:chart:`. Duplicate keys are deduplicated (first
+ *  occurrence wins). Used to drive the "Report filters" section. */
+function collectReportParameters(widgets: WidgetConfigEntry[]): ConfigField[] {
+  const seen = new Set<string>();
+  const fields: ConfigField[] = [];
+  for (const widget of widgets) {
+    if (!widget.type.startsWith("report:table:") && !widget.type.startsWith("report:chart:")) {
+      continue;
+    }
+    const meta = WIDGET_BY_TYPE[widget.type];
+    for (const field of meta?.configSchema ?? []) {
+      if (!seen.has(field.key)) {
+        seen.add(field.key);
+        fields.push(field);
+      }
+    }
+  }
+  return fields;
+}
+
 export function CustomisePanel({ open, onClose, dashboard, canRename, saving, onSave }: Props) {
   const confirm = useConfirm();
   const [draft, setDraft] = useState<UserDashboardConfig>(dashboard.config);
@@ -21,6 +43,14 @@ export function CustomisePanel({ open, onClose, dashboard, canRename, saving, on
     setDraft(dashboard.config);
     setName(dashboard.name);
   }, [dashboard.id, dashboard.config, dashboard.name]);
+
+  const reportParams = collectReportParameters(draft.widgets);
+  const hasReportWidgets = reportParams.length > 0;
+
+  const setDashboardFilter = (key: string, value: string) => {
+    const current: WidgetFilters = draft.dashboardFilters ?? {};
+    setDraft({ ...draft, dashboardFilters: { ...current, [key]: value } });
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -116,6 +146,30 @@ export function CustomisePanel({ open, onClose, dashboard, canRename, saving, on
               ))}
             </select>
           </label>
+
+          {hasReportWidgets ? (
+            <div data-testid="report-filters-section" style={{ marginBottom: 20 }}>
+              <h3 className="s7-type-section-heading" style={{ fontSize: 14, marginTop: 20, marginBottom: 4 }}>
+                Report filters
+              </h3>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0" }}>
+                Applied to all report widgets. Widget-level settings override these.
+              </p>
+              {reportParams.map((field) => (
+                <label key={field.key} className="estimate-editor__field" style={{ marginBottom: 10 }}>
+                  <span>{field.label}</span>
+                  <input
+                    className="s7-input"
+                    type="text"
+                    placeholder={field.placeholder ?? ""}
+                    value={String(draft.dashboardFilters?.[field.key] ?? "")}
+                    onChange={(e) => setDashboardFilter(field.key, e.target.value)}
+                    data-testid={`dashboard-filter-${field.key}`}
+                  />
+                </label>
+              ))}
+            </div>
+          ) : null}
 
           <h3 className="s7-type-section-heading" style={{ fontSize: 14, marginTop: 20, marginBottom: 8 }}>Widgets</h3>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 8px 0" }}>

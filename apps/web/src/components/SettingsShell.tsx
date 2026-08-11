@@ -108,6 +108,8 @@ const SECTIONS: NavSection[] = [
         label: "Reference data & Lists",
         requiresAnyPermission: ["rates.manage", "lists.manage"]
       },
+      // B-HW-3: Handover Template editor — gated on handovertemplate.manage.
+      { to: "/settings/handover-template", label: "Handover template", requiresPermission: "handovertemplate.manage" },
       { to: "/settings/data-model", label: "Data model", superUserOnly: true }
     ]
   },

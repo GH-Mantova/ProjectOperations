@@ -224,6 +224,10 @@ model User {
   // B-HW-1: handover template versions published by this user.
   handoverTemplatesPublished HandoverTemplate[] @relation("HandoverTemplatePublisher")
 
+  // RC-1: subcontractor rate cards created / last-updated by this user.
+  subcontractorRatesCreated SubcontractorRate[] @relation("SubcontractorRateCreatedBy")
+  subcontractorRatesUpdated SubcontractorRate[] @relation("SubcontractorRateUpdatedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -4279,19 +4283,50 @@ model SubcontractorSupplier {
   createdById           String    @map("created_by_id")
   createdBy             User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
 
-  documents          SubcontractorDocument[]
-  licences           EntityLicence[]           @relation("SubLicences")
-  insurances         EntityInsurance[]         @relation("SubInsurances")
-  creditApplications CreditApplication[]       @relation("SubCreditApps")
-  creditEntries      SupplierCreditEntry[]     @relation("SupplierCreditEntries")
-  rateTables         RateTable[]               @relation("RateTableSupplier")
-  commitments        Commitment[]
-  prequalRequests    PrequalificationRequest[]
+  documents             SubcontractorDocument[]
+  licences              EntityLicence[]           @relation("SubLicences")
+  insurances            EntityInsurance[]         @relation("SubInsurances")
+  creditApplications    CreditApplication[]       @relation("SubCreditApps")
+  creditEntries         SupplierCreditEntry[]     @relation("SupplierCreditEntries")
+  rateTables            RateTable[]               @relation("RateTableSupplier")
+  commitments           Commitment[]
+  prequalRequests       PrequalificationRequest[]
+  subcontractorRates    SubcontractorRate[]
 
   @@index([entityType])
   @@index([prequalStatus])
   @@index([isActive])
   @@map("subcontractor_suppliers")
+}
+
+// RC-1 — Subcontractor rate cards (additive, 2026-08-11).
+// Append-only supersede rule applies: never mutate rate/unit/discipline on an
+// existing row. "Editing" means creating a new row + flipping the old row's
+// isActive to false (and optionally closing validTo) in one transaction.
+model SubcontractorRate {
+  id                      String                @id @default(cuid())
+  subcontractorSupplierId String                @map("subcontractor_supplier_id")
+  subcontractorSupplier   SubcontractorSupplier @relation(fields: [subcontractorSupplierId], references: [id], onDelete: Cascade)
+  // Discipline discriminator — must be one of IS_DISCIPLINE_CODES (DEM / CIV / ASB / Other).
+  // Validated at the DTO layer; kept as a plain String column (not a Prisma enum) so new
+  // codes can be added without a schema migration.
+  discipline              String
+  unit                    String
+  rate                    Decimal               @db.Decimal(10, 2)
+  validFrom               DateTime?             @map("valid_from") @db.Date
+  validTo                 DateTime?             @map("valid_to") @db.Date
+  notes                   String?
+  isActive                Boolean               @default(true) @map("is_active")
+  createdAt               DateTime              @default(now()) @map("created_at")
+  updatedAt               DateTime              @updatedAt @map("updated_at")
+  createdById             String?               @map("created_by_id")
+  createdBy               User?                 @relation("SubcontractorRateCreatedBy", fields: [createdById], references: [id])
+  updatedById             String?               @map("updated_by_id")
+  updatedBy               User?                 @relation("SubcontractorRateUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([subcontractorSupplierId])
+  @@index([subcontractorSupplierId, discipline, isActive])
+  @@map("subcontractor_rates")
 }
 
 // NOTE: SubcontractorContact was unified into the polymorphic Contact model in

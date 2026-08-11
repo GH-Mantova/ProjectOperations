@@ -8,6 +8,9 @@ import { can } from "../../auth/permissions";
 import { CrmBoardContent } from "../crm/CrmBoardPage";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
+import { OutcomeCaptureModal, OutcomeCaptureTender } from "./OutcomeCaptureModal";
+import { NeedsOutcomePanel } from "./NeedsOutcomePanel";
+import { OutcomeCapturePayload, recordOutcome } from "./outcomeApi";
 
 type TopTab = "tenders" | "crm";
 
@@ -28,7 +31,21 @@ type TenderListItem = {
     clientId: string;
     client: { id: string; name: string };
   }>;
+  // WL-1b — server returns outcomes on the list (tenderInclude.outcomes);
+  // used by NeedsOutcomePanel to spot closed tenders with no capture.
+  outcomes?: Array<{ id: string; recordedAt?: string | null }>;
 };
+
+// WL-1b — statuses that trigger the outcome-capture modal on kanban drop.
+// CONVERTED is closed too, but the kanban board has no CONVERTED column so
+// it can't be reached by drag-drop; the NeedsOutcomePanel is the safety net
+// for that path (tenders converted to projects).
+const OUTCOME_PROMPT_STAGES = new Set<string>([
+  "AWARDED",
+  "CONTRACT_ISSUED",
+  "LOST",
+  "WITHDRAWN"
+]);
 
 type TenderListResponse = {
   items: TenderListItem[];
@@ -330,6 +347,11 @@ export function TenderingPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [quickEditTarget, setQuickEditTarget] = useState<TenderListItem | null>(null);
+  // WL-1b — target of the outcome-capture modal. Opened optimistically after
+  // a card is dropped in a terminal column, or by the NeedsOutcomePanel row
+  // action for backfill. Independent of the status write — the card never
+  // waits on this to close.
+  const [outcomeTarget, setOutcomeTarget] = useState<OutcomeCaptureTender | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TenderListItem | null>(null);
   const [deletePreflight, setDeletePreflight] = useState<{
     _count: Record<string, number>;
@@ -468,6 +490,10 @@ export function TenderingPage() {
   }, [registerRows, total]);
 
   const moveTender = async (tenderId: string, toStage: Stage) => {
+    // Snapshot the tender BEFORE the optimistic update — we need the
+    // pre-move title/value/status to seed the outcome modal if this drop
+    // triggers capture.
+    const source = tenders.find((t) => t.id === tenderId) ?? null;
     setTenders((current) =>
       current.map((tender) => (tender.id === tenderId ? { ...tender, status: toStage } : tender))
     );
@@ -477,10 +503,33 @@ export function TenderingPage() {
         body: JSON.stringify({ status: toStage })
       });
       if (!response.ok) throw new Error("Could not update tender stage.");
+      // WL-1b — prompted-but-skippable outcome capture. Fires only after
+      // the status write succeeds; the modal open is asynchronous so the
+      // card animation never blocks on the round-trip. Skip is symmetric.
+      if (source && OUTCOME_PROMPT_STAGES.has(toStage)) {
+        setOutcomeTarget({
+          id: source.id,
+          tenderNumber: source.tenderNumber,
+          title: source.title,
+          estimatedValue: source.estimatedValue ?? null,
+          status: toStage
+        });
+      }
     } catch (err) {
       setError((err as Error).message);
       void reload(filters);
     }
+  };
+
+  const saveOutcome = async (payload: OutcomeCapturePayload) => {
+    if (!outcomeTarget) return;
+    // Standalone POST /:id/outcome — decoupled from the status PATCH above
+    // so this modal can also be re-used by NeedsOutcomePanel (backfill).
+    await recordOutcome(authFetch, outcomeTarget.id, payload);
+    setToast(`Outcome recorded for ${outcomeTarget.tenderNumber}`);
+    setOutcomeTarget(null);
+    void reload(filters);
+    window.setTimeout(() => setToast(null), 2400);
   };
 
   const toggleSort = (key: ColumnKey) => {
@@ -709,6 +758,12 @@ export function TenderingPage() {
         </div>
       ) : null}
 
+      <NeedsOutcomePanel
+        tenders={tenders}
+        authFetch={authFetch}
+        onRecorded={() => void reload(filters)}
+      />
+
       {view === "pipeline" ? (
         <div className="tender-kanban">
           {STAGES.map((stage) => {
@@ -797,6 +852,15 @@ export function TenderingPage() {
           users={users}
           onClose={() => setQuickEditTarget(null)}
           onSaved={onQuickEditSaved}
+        />
+      ) : null}
+
+      {outcomeTarget ? (
+        <OutcomeCaptureModal
+          tender={outcomeTarget}
+          contextStatus={outcomeTarget.status ?? null}
+          onSave={saveOutcome}
+          onSkip={() => setOutcomeTarget(null)}
         />
       ) : null}
 

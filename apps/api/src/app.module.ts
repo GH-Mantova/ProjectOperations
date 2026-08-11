@@ -74,6 +74,7 @@ import { MapLocationsModule } from "./modules/map-locations/map-locations.module
 import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
 import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
+import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
 
 @Module({
   imports: [
@@ -154,7 +155,8 @@ import { NotificationPreferencesModule } from "./modules/notification-preference
     MapLocationsModule,
     ReportingModule,
     SitesModule,
-    NotificationPreferencesModule
+    NotificationPreferencesModule,
+    SubcontractorRatesModule
   ]
 })
 export class AppModule {}

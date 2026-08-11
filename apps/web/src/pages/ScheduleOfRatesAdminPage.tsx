@@ -171,6 +171,16 @@ function statusBadge(status: SorPeriodStatus): ReactNode {
   );
 }
 
+// ─── Client PDF header type ───────────────────────────────────────────────────
+
+type SorClientPdfHeaderInput = {
+  docRef: string;
+  clientName: string;
+  contactName: string;
+  projectTitle: string;
+  preparedBy: string;
+};
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type Tab = "labour" | "plant" | "waste" | "subcontractor" | "changelog" | "client-cards";
@@ -188,6 +198,66 @@ export function ScheduleOfRatesAdminPage() {
   const [loadingPeriod, setLoadingPeriod] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // ── Multi-select for client PDF ───────────────────────────────────────────
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
+  const [showPdfForm, setShowPdfForm] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfHeader, setPdfHeader] = useState<SorClientPdfHeaderInput>({
+    docRef: "",
+    clientName: "",
+    contactName: "",
+    projectTitle: "",
+    preparedBy: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim(),
+  });
+
+  const toggleLine = useCallback((id: string) => {
+    setSelectedLineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const generateClientPdf = useCallback(async () => {
+    if (selectedLineIds.size === 0 || !pdfHeader.docRef.trim()) return;
+    setGeneratingPdf(true);
+    setError(null);
+    try {
+      const res = await authFetch("/schedule-of-rates/client-pdf", {
+        method: "POST",
+        body: JSON.stringify({
+          lineIds: Array.from(selectedLineIds),
+          header: {
+            docRef: pdfHeader.docRef.trim(),
+            clientName: pdfHeader.clientName.trim() || null,
+            contactName: pdfHeader.contactName.trim() || null,
+            projectTitle: pdfHeader.projectTitle.trim() || null,
+            preparedBy: pdfHeader.preparedBy.trim() || null,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      const cd = res.headers.get("content-disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(cd);
+      anchor.download = match?.[1] ?? `SoR_Client_${pdfHeader.docRef}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setShowPdfForm(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }, [authFetch, selectedLineIds, pdfHeader]);
 
   // ── Create period form ────────────────────────────────────────────────────
   const [showCreatePeriod, setShowCreatePeriod] = useState(false);
@@ -474,6 +544,98 @@ export function ScheduleOfRatesAdminPage() {
         )}
       </section>
 
+      {/* Client PDF action bar — visible when a period is loaded */}
+      {selectedPeriodId && canManage && (
+        <section
+          className="s7-card"
+          style={{
+            marginBottom: 8,
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap"
+          }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 13 }}>
+            Client PDF
+          </span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {selectedLineIds.size === 0
+              ? "Tick applicable rate lines below, then generate."
+              : `${selectedLineIds.size} line${selectedLineIds.size === 1 ? "" : "s"} selected.`}
+          </span>
+          {selectedLineIds.size > 0 && (
+            <button
+              type="button"
+              className="s7-btn s7-btn--sm"
+              onClick={() => setSelectedLineIds(new Set())}
+            >
+              Clear selection
+            </button>
+          )}
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            disabled={selectedLineIds.size === 0 || generatingPdf}
+            style={{ marginLeft: "auto" }}
+            onClick={() => setShowPdfForm((v) => !v)}
+          >
+            {showPdfForm ? "Cancel" : "Generate client PDF"}
+          </button>
+        </section>
+      )}
+
+      {/* Client PDF header form */}
+      {showPdfForm && selectedPeriodId && (
+        <section
+          className="s7-card"
+          style={{
+            marginBottom: 8,
+            padding: "12px 16px",
+            background: "var(--surface-2, #f9fafb)"
+          }}
+        >
+          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>
+            Document details — these appear on the cover of the client PDF.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+            {(
+              [
+                { key: "docRef" as const, label: "Reference *", placeholder: "e.g. SoR H2-2026", width: 200 },
+                { key: "clientName" as const, label: "Client company", placeholder: "Acme Construction", width: 200 },
+                { key: "contactName" as const, label: "Attention", placeholder: "Jane Doe", width: 160 },
+                { key: "projectTitle" as const, label: "Project", placeholder: "Optional", width: 200 },
+                { key: "preparedBy" as const, label: "Prepared by", placeholder: "Name", width: 160 },
+              ]
+            ).map((col) => (
+              <div key={col.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)" }}>{col.label}</label>
+                <input
+                  className="s7-input"
+                  type="text"
+                  placeholder={col.placeholder}
+                  value={pdfHeader[col.key]}
+                  onChange={(e) => setPdfHeader((prev) => ({ ...prev, [col.key]: e.target.value }))}
+                  style={{ width: col.width }}
+                />
+              </div>
+            ))}
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              disabled={generatingPdf || !pdfHeader.docRef.trim() || selectedLineIds.size === 0}
+              onClick={() => void generateClientPdf()}
+            >
+              {generatingPdf ? "Generating…" : `Download PDF (${selectedLineIds.size} lines)`}
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+            Internal margin, BMI, and cost-plus columns are never included in the client PDF.
+          </p>
+        </section>
+      )}
+
       {/* Category tabs */}
       {selectedPeriodId && (
         <>
@@ -516,6 +678,8 @@ export function ScheduleOfRatesAdminPage() {
                   canManage={canManage}
                   saving={saving}
                   callApi={callApi}
+                  selectedLineIds={selectedLineIds}
+                  onToggleLine={toggleLine}
                 />
               )}
               {tab === "plant" && (
@@ -526,6 +690,8 @@ export function ScheduleOfRatesAdminPage() {
                   canManage={canManage}
                   saving={saving}
                   callApi={callApi}
+                  selectedLineIds={selectedLineIds}
+                  onToggleLine={toggleLine}
                 />
               )}
               {tab === "waste" && (
@@ -536,6 +702,8 @@ export function ScheduleOfRatesAdminPage() {
                   canManage={canManage}
                   saving={saving}
                   callApi={callApi}
+                  selectedLineIds={selectedLineIds}
+                  onToggleLine={toggleLine}
                 />
               )}
               {tab === "subcontractor" && (
@@ -545,6 +713,8 @@ export function ScheduleOfRatesAdminPage() {
                   canManage={canManage}
                   saving={saving}
                   callApi={callApi}
+                  selectedLineIds={selectedLineIds}
+                  onToggleLine={toggleLine}
                 />
               )}
               {tab === "changelog" && <ChangeLogPanel entries={changeLog} />}
@@ -598,6 +768,10 @@ type RateTableProps = {
   canManage: boolean;
   saving: boolean;
   callApi: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
+  /** IDs of rates currently selected for client PDF */
+  selectedLineIds: Set<string>;
+  /** Toggle a rate in/out of the client PDF selection */
+  onToggleLine: (id: string) => void;
 };
 
 function LabourTable({
@@ -605,7 +779,9 @@ function LabourTable({
   periodId,
   canManage,
   saving,
-  callApi
+  callApi,
+  selectedLineIds,
+  onToggleLine
 }: RateTableProps & { rates: SorRate[] }) {
   const [draft, setDraft] = useState<AddRateDraft>(BLANK_ADD_DRAFT);
   const canAdd = canManage && !!draft.name.trim();
@@ -667,12 +843,13 @@ function LabourTable({
         <table className="admin-page__table">
           <thead>
             <tr>
+              <th style={{ width: 36 }} aria-label="Select for PDF" />
               <th style={{ width: "22%" }}>Position</th>
               <th style={{ width: "12%" }}>Class</th>
               <th style={{ width: "12%" }}>Ordinary</th>
               <th style={{ width: "12%" }}>1.5x</th>
               <th style={{ width: "12%" }}>2x</th>
-              <th style={{ width: "20%" }}>Comments</th>
+              <th style={{ width: "18%" }}>Comments</th>
               <th style={{ width: 48 }} aria-label="Actions" />
             </tr>
           </thead>
@@ -683,6 +860,8 @@ function LabourTable({
                 rate={rate}
                 canManage={canManage}
                 callApi={callApi}
+                selected={selectedLineIds.has(rate.id)}
+                onToggle={onToggleLine}
               />
             ))}
           </tbody>
@@ -704,8 +883,16 @@ type LabourRowDraft = {
 function LabourRateRow({
   rate,
   canManage,
-  callApi
-}: { rate: SorRate; canManage: boolean; callApi: RateTableProps["callApi"] }) {
+  callApi,
+  selected,
+  onToggle,
+}: {
+  rate: SorRate;
+  canManage: boolean;
+  callApi: RateTableProps["callApi"];
+  selected: boolean;
+  onToggle: (id: string) => void;
+}) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<LabourRowDraft>({
@@ -808,6 +995,14 @@ function LabourRateRow({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
+      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+        <input
+          type="checkbox"
+          aria-label={`Include ${rate.name} in client PDF`}
+          checked={selected}
+          onChange={() => onToggle(rate.id)}
+        />
+      </td>
       <td>
         {editing ? (
           <input className="s7-input s7-input--sm" type="text" value={draft.name}
@@ -882,7 +1077,9 @@ function UnitRateTable({
   periodId,
   canManage,
   saving,
-  callApi
+  callApi,
+  selectedLineIds,
+  onToggleLine
 }: RateTableProps & { category: "PLANT" | "WASTE"; rates: SorRate[] }) {
   const [draft, setDraft] = useState({ name: "", unit: "", ordinary: "", comments: "" });
   const canAdd = canManage && !!draft.name.trim();
@@ -937,10 +1134,11 @@ function UnitRateTable({
         <table className="admin-page__table">
           <thead>
             <tr>
-              <th style={{ width: "40%" }}>Name / Item</th>
+              <th style={{ width: 36 }} aria-label="Select for PDF" />
+              <th style={{ width: "38%" }}>Name / Item</th>
               <th style={{ width: "12%" }}>Unit</th>
-              <th style={{ width: "18%" }}>Rate</th>
-              <th style={{ width: "24%" }}>Comments</th>
+              <th style={{ width: "16%" }}>Rate</th>
+              <th style={{ width: "22%" }}>Comments</th>
               <th style={{ width: 48 }} aria-label="Actions" />
             </tr>
           </thead>
@@ -951,6 +1149,8 @@ function UnitRateTable({
                 rate={rate}
                 canManage={canManage}
                 callApi={callApi}
+                selected={selectedLineIds.has(rate.id)}
+                onToggle={onToggleLine}
               />
             ))}
           </tbody>
@@ -965,8 +1165,16 @@ type UnitRowDraft = { name: string; unit: string; ordinary: string; comments: st
 function UnitRateRow({
   rate,
   canManage,
-  callApi
-}: { rate: SorRate; canManage: boolean; callApi: RateTableProps["callApi"] }) {
+  callApi,
+  selected,
+  onToggle,
+}: {
+  rate: SorRate;
+  canManage: boolean;
+  callApi: RateTableProps["callApi"];
+  selected: boolean;
+  onToggle: (id: string) => void;
+}) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<UnitRowDraft>({
@@ -1056,6 +1264,14 @@ function UnitRateRow({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
+      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+        <input
+          type="checkbox"
+          aria-label={`Include ${rate.name} in client PDF`}
+          checked={selected}
+          onChange={() => onToggle(rate.id)}
+        />
+      </td>
       {fields.map((col) => (
         <td key={col.key}>
           {editing ? (
@@ -1105,7 +1321,9 @@ function SubcontractorTable({
   periodId,
   canManage,
   saving,
-  callApi
+  callApi,
+  selectedLineIds,
+  onToggleLine
 }: RateTableProps & { rates: SorRate[] }) {
   const [draft, setDraft] = useState({ name: "", ordinary: "", isReference: true, comments: "" });
   const canAdd = canManage && !!draft.name.trim();
@@ -1185,10 +1403,11 @@ function SubcontractorTable({
         <table className="admin-page__table">
           <thead>
             <tr>
-              <th style={{ width: "40%" }}>Name / Trade</th>
-              <th style={{ width: "18%" }}>Rate</th>
+              <th style={{ width: 36 }} aria-label="Select for PDF" />
+              <th style={{ width: "38%" }}>Name / Trade</th>
+              <th style={{ width: "16%" }}>Rate</th>
               <th style={{ width: "12%" }}>Cost+</th>
-              <th style={{ width: "24%" }}>Comments</th>
+              <th style={{ width: "22%" }}>Comments</th>
               <th style={{ width: 48 }} aria-label="Actions" />
             </tr>
           </thead>
@@ -1199,6 +1418,8 @@ function SubcontractorTable({
                 rate={rate}
                 canManage={canManage}
                 callApi={callApi}
+                selected={selectedLineIds.has(rate.id)}
+                onToggle={onToggleLine}
               />
             ))}
           </tbody>
@@ -1213,8 +1434,16 @@ type SubRowDraft = { name: string; ordinary: string; isReference: boolean; comme
 function SubcontractorRateRow({
   rate,
   canManage,
-  callApi
-}: { rate: SorRate; canManage: boolean; callApi: RateTableProps["callApi"] }) {
+  callApi,
+  selected,
+  onToggle,
+}: {
+  rate: SorRate;
+  canManage: boolean;
+  callApi: RateTableProps["callApi"];
+  selected: boolean;
+  onToggle: (id: string) => void;
+}) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<SubRowDraft>({
@@ -1296,6 +1525,14 @@ function SubcontractorRateRow({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
+      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+        <input
+          type="checkbox"
+          aria-label={`Include ${rate.name} in client PDF`}
+          checked={selected}
+          onChange={() => onToggle(rate.id)}
+        />
+      </td>
       <td>
         {editing ? (
           <input

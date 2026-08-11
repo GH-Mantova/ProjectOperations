@@ -75,6 +75,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
 import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
 import { HandoverTemplatesModule } from "./modules/handover-templates/handover-templates.module";
+import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
 
 @Module({
   imports: [
@@ -156,7 +157,8 @@ import { HandoverTemplatesModule } from "./modules/handover-templates/handover-t
     ReportingModule,
     SitesModule,
     NotificationPreferencesModule,
-    HandoverTemplatesModule
+    HandoverTemplatesModule,
+    ScheduleOfRatesModule
   ]
 })
 export class AppModule {}

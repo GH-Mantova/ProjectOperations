@@ -68,11 +68,34 @@ if (Test-Path $Ledger) {
     }
 }
 
-$materialised = 0; $skipShipped = 0; $skipPresent = 0; $skipConsumed = 0; $escalating = 0
+# =============================================================================================
+# FORBIDDEN denylist -- basenames that must NEVER be materialised into the queue, regardless of
+# what is committed as -ready on origin/main. queue-sync is otherwise blind: it arms every
+# committed -ready.md that is not already consumed/shipped, with NO notion of "must not run".
+# On 2026-08 a DRAFT-locked prompt (rates-s11c, a PERMANENT legacy-table DROP) sat committed as
+# -ready and would have been re-materialised on every run. The ledger blocks a single NAMED
+# file; this blocks whole FAMILIES and cannot be defeated by a fresh bulk commit.
+# Each entry carries a REASON + DISCHARGE CONDITION. Only Marco removes an entry.
+$Forbidden = @(
+    'rates-s11c',       # permanent destructive DROP of legacy rate tables. Discharge: Marco, after the legacy read path is retired and he authorises the drop.
+    'site-dissolution', # site-dissolution program -- Marco-present by policy (B-P0a must land first).
+    'b-p0a-4-ii',       # path-unification consolidation -- hand-driven, Marco-present only.
+    'b-p0a-5', 'b-p0a-6', 'b-p0a-7', 'b-p0a-8',
+    'b-sd'              # site-dissolution slices.
+)
+
+$materialised = 0; $skipShipped = 0; $skipPresent = 0; $skipConsumed = 0; $escalating = 0; $skipForbidden = 0
 
 foreach ($path in $armed) {
     $name = Split-Path $path -Leaf
     $dest = Join-Path $PromptDir $name
+
+    $forbiddenHit = $Forbidden | Where-Object { $name -like ('*' + $_ + '*') }
+    if ($forbiddenHit) {
+        $skipForbidden++
+        Say "forbidden" ($name + " -- on the never-arm denylist (" + ($forbiddenHit -join ',') + "); NOT materialised")
+        continue
+    }
 
     if (Test-Path $dest)          { $skipPresent++;  continue }
     if ($ledgerSet[$name])        { $skipConsumed++; continue }
@@ -148,7 +171,7 @@ foreach ($path in $armed) {
 
 Say "summary" ("armed=" + $materialised + "  already-in-queue=" + $skipPresent +
     "  already-consumed=" + $skipConsumed + "  shipped-stale=" + $skipShipped +
-    "  escalating(do-not-merge)=" + $escalating)
+    "  forbidden=" + $skipForbidden + "  escalating(do-not-merge)=" + $escalating)
 if ($escalating -gt 0) {
     Say "ACTION" ([string]$escalating + " armed prompt(s) are escalating: they WILL run and open PRs, " +
         "but the supervisor must NOT merge them without Marco. Merge-time gate, not arm-time.")

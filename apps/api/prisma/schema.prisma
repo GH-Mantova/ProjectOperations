@@ -741,6 +741,8 @@ model Client {
   leads               Lead[]                    @relation("ClientLeads")
   opportunities       Opportunity[]             @relation("ClientOpportunities")
   tenderOutcomes      TenderOutcome[]           @relation("ClientTenderOutcomes")
+  // SoR S3: per-client rate cards
+  sorRateCards        SorClientRateCard[]
 
   @@unique([name])
   @@index([status])
@@ -6944,38 +6946,42 @@ enum SorPeriodHalf {
 }
 
 model SorPeriod {
-  id         String        @id @default(cuid())
-  year       Int
-  half       SorPeriodHalf
-  startDate  DateTime      @map("start_date")
-  expiryDate DateTime      @map("expiry_date")
-  label      String
-  status     String        @default("ACTIVE")
-  createdAt  DateTime      @default(now()) @map("created_at")
-  rates      SorRate[]
-  changes    SorChangeLogEntry[]
+  id          String              @id @default(cuid())
+  year        Int
+  half        SorPeriodHalf
+  startDate   DateTime            @map("start_date")
+  expiryDate  DateTime            @map("expiry_date")
+  label       String
+  status      String              @default("ACTIVE")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  rates       SorRate[]
+  changes     SorChangeLogEntry[]
+  // SoR S3: per-client rate cards for this period
+  clientCards SorClientRateCard[]
 
   @@unique([year, half])
   @@map("sor_periods")
 }
 
 model SorRate {
-  id          String      @id @default(cuid())
-  periodId    String      @map("period_id")
-  period      SorPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  category    SorCategory
-  name        String
-  class       String?
-  unit        String?
-  ordinary    Decimal?    @db.Decimal(12, 2)
-  oneAndHalf  Decimal?    @map("one_and_half") @db.Decimal(12, 2)
-  double      Decimal?    @db.Decimal(12, 2)
-  isReference Boolean     @default(false) @map("is_reference")
-  comments    String?
-  sortOrder   Int         @default(0) @map("sort_order")
-  active      Boolean     @default(true)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id                String               @id @default(cuid())
+  periodId          String               @map("period_id")
+  period            SorPeriod            @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category          SorCategory
+  name              String
+  class             String?
+  unit              String?
+  ordinary          Decimal?             @db.Decimal(12, 2)
+  oneAndHalf        Decimal?             @map("one_and_half") @db.Decimal(12, 2)
+  double            Decimal?             @db.Decimal(12, 2)
+  isReference       Boolean              @default(false) @map("is_reference")
+  comments          String?
+  sortOrder         Int                  @default(0) @map("sort_order")
+  active            Boolean              @default(true)
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  // SoR S3: client rate entries that reference (override) this master rate
+  clientRateEntries SorClientRateEntry[]
 
   @@index([periodId, category])
   @@map("sor_rates")
@@ -6994,4 +7000,53 @@ model SorChangeLogEntry {
 
   @@index([periodId])
   @@map("sor_change_log_entries")
+}
+
+// ── SoR S3 — per-client rate card ────────────────────────────────────────────
+// A client rate card snapshots a SorPeriod for a specific client, allowing
+// per-entry overrides (isOverride), custom additions (sorRateId null), and
+// soft-removals (isRemoved) on top of the master catalog. The merged view
+// (master + overrides + additions, minus removals) is produced by the service.
+// Pattern mirrors TenderRateSet / TenderRateEntry from the tendering module.
+
+model SorClientRateCard {
+  id          String               @id @default(cuid())
+  clientId    String               @map("client_id")
+  client      Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sorPeriodId String               @map("sor_period_id")
+  sorPeriod   SorPeriod            @relation(fields: [sorPeriodId], references: [id], onDelete: Cascade)
+  status      String               @default("ACTIVE")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  entries     SorClientRateEntry[]
+
+  @@unique([clientId, sorPeriodId])
+  @@index([clientId])
+  @@index([sorPeriodId])
+  @@map("sor_client_rate_cards")
+}
+
+model SorClientRateEntry {
+  id         String            @id @default(cuid())
+  cardId     String            @map("card_id")
+  card       SorClientRateCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  // Nullable: null when this is a fresh addition not sourced from master.
+  sorRateId  String?           @map("sor_rate_id")
+  sorRate    SorRate?          @relation(fields: [sorRateId], references: [id], onDelete: SetNull)
+  category   SorCategory
+  // "position" for labour rows; "name" for plant/waste/sub. Matches S1 field naming.
+  position   String
+  class      String?
+  unit       String?
+  ordinary   Decimal?          @db.Decimal(12, 2)
+  oneAndHalf Decimal?          @map("one_and_half") @db.Decimal(12, 2)
+  double     Decimal?          @db.Decimal(12, 2)
+  isOverride Boolean           @default(false) @map("is_override")
+  isRemoved  Boolean           @default(false) @map("is_removed")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  @@index([cardId])
+  @@index([sorRateId])
+  @@map("sor_client_rate_entries")
 }

@@ -7,7 +7,9 @@ You are the PR shepherd for GH-Mantova/ProjectOperations (repo mounted at C:\Pro
 ## â›” STEP ZERO (2026-07-14) â€” READ THE DOCTRINE, THEN USE THE LIBRARY
 
 **Read `C:\ProjectOperations2\docs\pipeline\DOCTRINE.md` in full and obey it.** Read-back rule,
-evidence rule, hard stops, never-exit-silently. It overrides anything below that contradicts it.
+evidence rule, hard stops, never-exit-silently. It overrides anything below that contradicts it. In particular DOCTRINE
+section 8 (fix methodology, merge policy, in-chain HOLD) governs how you fix reds and which PRs
+auto-merge.
 
 **You have a real shell** (Desktop Commander: full filesystem + PowerShell + `gh` authenticated as
 `GH-Mantova`). Text below that says "the sandbox has no git/gh credentials, so stage a prompt

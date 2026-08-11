@@ -138,7 +138,7 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await page.getByRole("tab", { name: "Table", exact: true }).click();
     await expect(page.getByRole("columnheader", { name: "Email" })).toBeVisible();
     await expect(
-      page.getByRole("cell", { name: "Queensland Transport Infrastructure" })
+      page.getByRole("cell", { name: "Queensland Transport Infrastructure", exact: true })
     ).toBeVisible();
   });
 

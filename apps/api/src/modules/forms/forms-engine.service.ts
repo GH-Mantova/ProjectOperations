@@ -19,6 +19,7 @@ import {
   type SectionEntriesMap
 } from "./rules-engine.service";
 import { FormNumberSequenceService } from "./form-number-sequence.service";
+import { PushExecutorService } from "./push-executor.service";
 import { checkCompetencyGate } from "../compliance/competency-gate";
 
 type ValueMap = Record<string, unknown>;
@@ -293,7 +294,8 @@ export class FormsEngineService {
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     private readonly formNumberSequence: FormNumberSequenceService,
-    private readonly weather: WeatherService
+    private readonly weather: WeatherService,
+    private readonly pushExecutor: PushExecutorService
   ) {}
 
   /**
@@ -702,6 +704,18 @@ export class FormsEngineService {
     const sideEffectActions = this.rules.stripGateActions(allOnSubmitActions);
     await this.executeServerActions(sideEffectActions, updated, merged);
 
+    // 5b. F-9a — generic post-commit push executor. Fires only for sealed
+    // submissions (sealedAt guard lives inside PushExecutorService). Failures
+    // are logged on FormTriggeredRecord but never propagate — the submission
+    // save is never rolled back (section 4.4 LOCKED principle).
+    void this.pushExecutor.executePushes(updated.id, "submit").catch((err) => {
+      this.logger.warn(
+        `PushExecutor failed unexpectedly for submission ${updated.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    });
+
     // 6. Approval chain (if configured)
     if (settings.requiresApproval && Array.isArray(settings.approvalChain) && settings.approvalChain.length > 0) {
       await this.createApprovalChain(updated.id, settings.approvalChain);
@@ -800,6 +814,17 @@ export class FormsEngineService {
           )
           .catch(() => undefined);
       }
+
+      // F-9a — fire applyOn="approval" push bindings once the chain is fully
+      // approved (i.e. no remaining pending steps). Identical fire-and-forget
+      // contract as the submit path above.
+      void this.pushExecutor.executePushes(submissionId, "approval").catch((err) => {
+        this.logger.warn(
+          `PushExecutor (approval) failed unexpectedly for submission ${submissionId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      });
     }
 
     return this.getSubmissionDetail(submissionId);

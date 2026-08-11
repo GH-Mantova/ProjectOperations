@@ -33,9 +33,10 @@ export const INTEGRATION_REGISTRY: readonly IntegrationDefinition[] = [
   },
   {
     slug: "fuelpricesqld",
-    label: "fuelpricesqld",
-    envVar: "FUELPRICESQLD_API_KEY",
-    description: "Queensland fuel price feed used by fuel-cost calculations."
+    label: "Fuel Prices QLD",
+    envVar: "FUELPRICE_QLD_TOKEN",
+    description:
+      "Queensland fuel price feed (fuelpricesqld.com.au). Used by the daily Ampol-Diesel price cron (R3 T-2) to refresh OperationsSettings.fuelPricePerLitre."
   }
 ] as const;
 

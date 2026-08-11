@@ -5,6 +5,7 @@ import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { resolveMasterDataTab } from "./master-data-tab-helpers";
+import { DEFAULT_VISIBLE_STATUSES, isArchived, setArchived } from "../directory/directory-archive";
 
 type Client = {
   id: string;
@@ -106,14 +107,17 @@ type AuthFetch = ReturnType<typeof useAuth>["authFetch"];
 
 export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const confirm = useConfirm();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("cards");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("default");
   const [newOpen, setNewOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [archiving, setArchiving] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
@@ -144,7 +148,12 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
 
   const filtered = useMemo(() => {
     return clients.filter((client) => {
-      if (statusFilter && client.status !== statusFilter) return false;
+      if (statusFilter === "default") {
+        // Default view excludes archived records
+        if (!DEFAULT_VISIBLE_STATUSES.has(client.status)) return false;
+      } else if (statusFilter) {
+        if (client.status !== statusFilter) return false;
+      }
       if (search) {
         const needle = search.toLowerCase();
         const hay = [client.name, client.code ?? "", client.email ?? "", client.phone ?? "", client.notes ?? ""]
@@ -155,6 +164,63 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
       return true;
     });
   }, [clients, search, statusFilter]);
+
+  const handleArchive = async (client: Client) => {
+    const willArchive = !isArchived(client.status);
+    const ok = await confirm({
+      title: willArchive ? "Archive this client?" : "Unarchive this client?",
+      message: willArchive
+        ? "Archive this client? It will be hidden from the default list but stays searchable and can be unarchived."
+        : "Restore this client to Active? It will appear in the default list again.",
+      confirmLabel: willArchive ? "Archive" : "Unarchive",
+      variant: willArchive ? "danger" : undefined
+    });
+    if (!ok) return;
+    setArchiving(client.id);
+    try {
+      await setArchived(authFetch, "client", client.id, willArchive);
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setArchiving(null);
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    const ok = await confirm({
+      title: `Archive ${selectedIds.size} client${selectedIds.size === 1 ? "" : "s"}?`,
+      message: "These clients will be hidden from the default list but stay searchable and can be unarchived.",
+      confirmLabel: "Archive selected",
+      variant: "danger"
+    });
+    if (!ok) return;
+    setArchiving("bulk");
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => setArchived(authFetch, "client", id, true))
+      );
+      setSelectedIds(new Set());
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setArchiving(null);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   return (
     <section className="mdata-section">
@@ -168,7 +234,8 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <select className="s7-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <select className="s7-select" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setSelectedIds(new Set()); }}>
+            <option value="default">Active &amp; Inactive</option>
             <option value="">All statuses</option>
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
@@ -176,6 +243,16 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
           </select>
         </div>
         <div className="mdata-toolbar__actions">
+          {selectedIds.size > 0 ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => void handleBulkArchive()}
+              disabled={archiving === "bulk"}
+            >
+              {archiving === "bulk" ? "Archiving…" : `Archive ${selectedIds.size} selected`}
+            </button>
+          ) : null}
           <div className="tender-page__view-toggle" role="tablist">
             <button
               type="button"
@@ -220,17 +297,41 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
       ) : view === "cards" ? (
         <div className="assets-grid">
           {filtered.map((client) => (
-            <button key={client.id} type="button" className="mdata-card" onClick={() => setEditing(client)}>
-              <div className="jobs-card__head">
-                <span className="jobs-card__number">{client.code ?? "—"}</span>
-                <span className={STATUS_CLASS[client.status] ?? "s7-badge s7-badge--neutral"}>{client.status}</span>
+            <div key={client.id} className="mdata-card" style={{ position: "relative" }}>
+              <button
+                type="button"
+                style={{ display: "contents" }}
+                onClick={() => setEditing(client)}
+                aria-label={`Edit ${client.name}`}
+              >
+                <div className="jobs-card__head">
+                  <span className="jobs-card__number">{client.code ?? "—"}</span>
+                  <span className={STATUS_CLASS[client.status] ?? "s7-badge s7-badge--neutral"}>{client.status}</span>
+                </div>
+                <h3 className="jobs-card__title">{client.name}</h3>
+                <p className="jobs-card__meta">
+                  {client.email ?? "No email"}{client.phone ? ` · ${client.phone}` : ""}
+                </p>
+                {client.notes ? <p className="mdata-card__notes">{client.notes}</p> : null}
+              </button>
+              <div style={{ display: "flex", gap: 4, marginTop: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${client.name}`}
+                  checked={selectedIds.has(client.id)}
+                  onChange={() => toggleSelect(client.id)}
+                />
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  data-testid="directory-archive-action"
+                  disabled={archiving === client.id}
+                  onClick={() => void handleArchive(client)}
+                >
+                  {archiving === client.id ? "…" : isArchived(client.status) ? "Unarchive" : "Archive"}
+                </button>
               </div>
-              <h3 className="jobs-card__title">{client.name}</h3>
-              <p className="jobs-card__meta">
-                {client.email ?? "No email"}{client.phone ? ` · ${client.phone}` : ""}
-              </p>
-              {client.notes ? <p className="mdata-card__notes">{client.notes}</p> : null}
-            </button>
+            </div>
           ))}
         </div>
       ) : (
@@ -238,11 +339,13 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
           <table className="s7-table">
             <thead>
               <tr>
+                <th aria-label="Select all" />
                 <th>Code</th>
                 <th>Name</th>
                 <th>Email</th>
                 <th>Phone</th>
                 <th>Status</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -252,11 +355,30 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
                   className="s7-table__row--clickable"
                   onClick={() => setEditing(client)}
                 >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${client.name}`}
+                      checked={selectedIds.has(client.id)}
+                      onChange={() => toggleSelect(client.id)}
+                    />
+                  </td>
                   <td>{client.code ?? "—"}</td>
                   <td><strong>{client.name}</strong></td>
                   <td>{client.email ?? "—"}</td>
                   <td>{client.phone ?? "—"}</td>
                   <td><span className={STATUS_CLASS[client.status] ?? "s7-badge s7-badge--neutral"}>{client.status}</span></td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      data-testid="directory-archive-action"
+                      disabled={archiving === client.id}
+                      onClick={() => void handleArchive(client)}
+                    >
+                      {archiving === client.id ? "…" : isArchived(client.status) ? "Unarchive" : "Archive"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

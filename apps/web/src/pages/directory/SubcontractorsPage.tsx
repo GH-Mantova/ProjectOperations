@@ -7,6 +7,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { SubcontractorRatesTab } from "./SubcontractorRatesTab";
 import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
+import { setArchived } from "./directory-archive";
 
 type Subcontractor = {
   id: string;
@@ -124,6 +125,7 @@ function fmtDate(iso: string | null): string {
 
 export function SubcontractorsPage() {
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const canManage = can(user, "directory.manage");
   const canAdmin = can(user, "directory.admin");
 
@@ -140,6 +142,7 @@ export function SubcontractorsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -179,6 +182,28 @@ export function SubcontractorsPage() {
   useEffect(() => {
     void loadCategories();
   }, [loadCategories]);
+
+  const handleArchive = async (row: Subcontractor) => {
+    const willArchive = row.isActive;
+    const ok = await confirm({
+      title: willArchive ? "Archive this entry?" : "Unarchive this entry?",
+      message: willArchive
+        ? "Archive this entry? It will be hidden from the default list but stays searchable and can be unarchived."
+        : "Restore this entry to active? It will appear in the default list again.",
+      confirmLabel: willArchive ? "Archive" : "Unarchive",
+      variant: willArchive ? "danger" : undefined
+    });
+    if (!ok) return;
+    setArchivingId(row.id);
+    try {
+      await setArchived(authFetch, "subcontractor", row.id, willArchive);
+      await loadList();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setArchivingId(null);
+    }
+  };
 
   return (
     <div style={{ padding: 20 }}>
@@ -273,7 +298,7 @@ export function SubcontractorsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
                 <tr>
-                  {["Name", "Type", "Categories", "Prequal", "Alerts", ""].map((h) => (
+                  {["Name", "Type", "Categories", "Prequal", "Alerts", "", ""].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -341,6 +366,20 @@ export function SubcontractorsPage() {
                       )}
                     </td>
                     <td style={{ padding: "6px 8px", textAlign: "right" }}>›</td>
+                    <td style={{ padding: "6px 4px" }} onClick={(e) => e.stopPropagation()}>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          data-testid="directory-archive-action"
+                          disabled={archivingId === row.id}
+                          onClick={() => void handleArchive(row)}
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          {archivingId === row.id ? "…" : row.isActive ? "Archive" : "Unarchive"}
+                        </button>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

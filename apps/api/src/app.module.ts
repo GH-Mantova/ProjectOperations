@@ -75,6 +75,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
 import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
+import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
 
 @Module({
   imports: [
@@ -156,7 +157,8 @@ import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.mod
     ReportingModule,
     SitesModule,
     NotificationPreferencesModule,
-    WinLikelihoodModule
+    WinLikelihoodModule,
+    ScheduleOfRatesModule
   ]
 })
 export class AppModule {}

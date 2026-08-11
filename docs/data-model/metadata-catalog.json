@@ -18375,6 +18375,240 @@
         }
       }
     },
+    "SorChangeLogEntry": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "periodId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "period": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "rateId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "field": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "oldValue": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "newValue": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "changedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "changedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "SorPeriod": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "year": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "half": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "startDate": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "expiryDate": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "label": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "status": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "rates": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "changes": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "SorRate": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "periodId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "period": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "category": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "name": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "class": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "unit": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "ordinary": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "oneAndHalf": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "double": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "isReference": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "comments": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sortOrder": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "active": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
     "StockCategory": {
       "domain": "Inventory",
       "wizardVisible": true,

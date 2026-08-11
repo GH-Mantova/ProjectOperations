@@ -256,4 +256,74 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
+
+  // ── SLICE 4: Report chart widget — add to dashboard, assert chart title ──
+
+  test("SLICE 4 — add a report chart widget from the gallery and see its chart title", async ({ page }) => {
+    await loginAsAdmin(page);
+    page.on("dialog", (dialog) => void dialog.accept());
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
+
+    // Purge residual scratch dashboards from previous runs.
+    const residue = nav.getByRole("button", { name: /Remove e2e-chart-/ });
+    while ((await residue.count()) > 0) {
+      const before = await residue.count();
+      await residue.first().click();
+      await page.getByTestId("confirm-dialog-confirm").click();
+      await expect(residue).toHaveCount(before - 1);
+    }
+
+    // Create a scratch dashboard (blank start, select one category to enable Create).
+    await nav.getByRole("button", { name: "New dashboard" }).click();
+    await expect(page.getByRole("heading", { name: "New dashboard" })).toBeVisible();
+    const dashName = `e2e-chart-${Date.now()}`;
+    await page.getByRole("textbox", { name: "Name" }).fill(dashName);
+    await page.getByRole("button", { name: "Select all" }).first().click();
+    await page.getByRole("button", { name: "Create dashboard" }).click();
+    await expect(nav.getByRole("link", { name: dashName })).toBeVisible({ timeout: 10_000 });
+
+    // Navigate to the new dashboard (UserDashboardPage hydrates report widgets).
+    await nav.getByRole("link", { name: dashName }).click();
+    await expect(page.getByRole("heading", { name: dashName })).toBeVisible();
+
+    // Open the widget gallery.
+    await page.getByTestId("add-widget-button").click();
+    await expect(page.getByTestId("widget-gallery-modal")).toBeVisible();
+
+    // Search for a chart widget by its chart title. The seeded "tender-pipeline"
+    // report definition includes a chart spec with title "Pipeline value by month".
+    // The gallery emits `report:chart:tender-pipeline` with name = chart title.
+    await page.getByTestId("gallery-search").fill("Pipeline value");
+
+    // Wait for the search result.
+    const chartWidgetOption = page.getByText("Pipeline value by month", { exact: true }).first();
+    await expect(chartWidgetOption).toBeVisible({ timeout: 8_000 });
+    await chartWidgetOption.click();
+
+    // Advance to configure step.
+    await page.getByTestId("gallery-next").click();
+    await expect(page.getByTestId("gallery-preview")).toBeVisible();
+
+    // Add the widget to the dashboard.
+    await page.getByTestId("gallery-add").click();
+    await expect(page.getByTestId("widget-gallery-modal")).not.toBeVisible({ timeout: 5_000 });
+
+    // The chart widget should appear on the canvas. It renders either a skeleton
+    // (loading) or the BarChartWidget which contains the chart title text.
+    // Accommodate placement mode by attempting a click in the canvas area.
+    const canvas = page.locator(".s7-canvas, [data-testid='dashboard-canvas'], main").first();
+    await canvas.click({ position: { x: 400, y: 200 }, timeout: 3_000 }).catch(() => {/* placement already done */});
+
+    // The data-testid is set by the ReportChart inner component.
+    const chartWidget = page.getByTestId("report-chart-tender-pipeline");
+    await expect(chartWidget).toBeVisible({ timeout: 15_000 });
+
+    // Assert the chart title text is visible inside the widget.
+    await expect(page.getByText("Pipeline value by month").first()).toBeVisible({ timeout: 5_000 });
+
+    // Clean up.
+    await nav.getByRole("button", { name: `Remove ${dashName}` }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
+    await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
+  });
 });

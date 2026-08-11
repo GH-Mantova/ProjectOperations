@@ -85,9 +85,9 @@ last-active (`User.lastLoginAt`) + search/filter/sort to the list.
 Premise idea: web still renders a single role — `grep -q "role: { id: string; name: string } | null" apps/web/src/pages/admin/AdminUsersTab.tsx`.
 
 ### SLICE 3 — Role lifecycle: DELETE-with-reassign + clone; cards/slider editor. API + web. size ~8.
-API: add `DELETE /roles/:id` (roles.update or a new roles.delete code; super-user gated) that
-REQUIRES reassignment of members to another role before removal, and BLOCKS deleting an `isSystem`
-role. Optional `POST /roles/:id/clone`. Web: rebuild `AdminRolesPermissionsTab` as the area-cards +
+API: add `DELETE /roles/:id` gated on a NEW `roles.delete` permission code (add it to
+`permission-registry.ts`; super-user gated, `@RequirePermissions` decorator) that REQUIRES
+reassignment of members to another role before removal, and BLOCKS deleting an `isSystem` role. Optional `POST /roles/:id/clone`. Web: rebuild `AdminRolesPermissionsTab` as the area-cards +
 access-slider editor (None/View/Manage/Admin cumulative), grouped into 5 domains, with plain-English
 area descriptions + live "what this grants"; separate verbs (submit/approve/receive) as their own
 toggles; create/clone/rename/delete controls; system roles protected. Reuse existing grant/revoke

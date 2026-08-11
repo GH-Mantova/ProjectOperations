@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
 import { ContactsTab } from "../../components/contacts/ContactsTab";
+import { SubcontractorRatesTab } from "./SubcontractorRatesTab";
 import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
 
 type Subcontractor = {
@@ -395,7 +396,7 @@ function SubcontractorDetail({
   const [detail, setDetail] = useState<SubcontractorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "contacts" | "documents" | "credit">("overview");
+  const [tab, setTab] = useState<"overview" | "contacts" | "documents" | "credit" | "rates">("overview");
   const [docModalOpen, setDocModalOpen] = useState(false);
   const [prequalDraft, setPrequalDraft] = useState<{ status: string; notes: string } | null>(null);
 
@@ -574,6 +575,15 @@ function SubcontractorDetail({
         >
           Credit
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "rates"}
+          className={tab === "rates" ? "tender-detail__tab tender-detail__tab--active" : "tender-detail__tab"}
+          onClick={() => setTab("rates")}
+        >
+          Rates
+        </button>
       </nav>
 
       {tab === "contacts" ? (
@@ -597,6 +607,8 @@ function SubcontractorDetail({
         />
       ) : tab === "credit" ? (
         <CreditLedgerTab subcontractorId={detail.id} canManage={canManage} />
+      ) : tab === "rates" ? (
+        <SubcontractorRatesTab subcontractorSupplierId={detail.id} canManage={canManage} />
       ) : (
         <>
       <Section title="Contact">

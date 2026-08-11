@@ -6751,3 +6751,73 @@ model HandoverTemplateField {
   @@index([retiredAt])
   @@map("handover_template_fields")
 }
+
+// ── Schedule of Rates (SoR S1) ───────────────────────────────────────────────
+// Master rate-book for live jobs. Separate from tender pricing (TenderRateSet /
+// EstimatePlantRate / EstimateWasteRate). Later slices add admin UI, job-attach,
+// VC/AR pricing, PDF, and approval chain.
+
+enum SorCategory {
+  LABOUR
+  PLANT
+  WASTE
+  SUBCONTRACTOR
+}
+
+enum SorPeriodHalf {
+  H1
+  H2
+}
+
+model SorPeriod {
+  id         String        @id @default(cuid())
+  year       Int
+  half       SorPeriodHalf
+  startDate  DateTime      @map("start_date")
+  expiryDate DateTime      @map("expiry_date")
+  label      String
+  status     String        @default("ACTIVE")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  rates      SorRate[]
+  changes    SorChangeLogEntry[]
+
+  @@unique([year, half])
+  @@map("sor_periods")
+}
+
+model SorRate {
+  id          String      @id @default(cuid())
+  periodId    String      @map("period_id")
+  period      SorPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category    SorCategory
+  name        String
+  class       String?
+  unit        String?
+  ordinary    Decimal?    @db.Decimal(12, 2)
+  oneAndHalf  Decimal?    @map("one_and_half") @db.Decimal(12, 2)
+  double      Decimal?    @db.Decimal(12, 2)
+  isReference Boolean     @default(false) @map("is_reference")
+  comments    String?
+  sortOrder   Int         @default(0) @map("sort_order")
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([periodId, category])
+  @@map("sor_rates")
+}
+
+model SorChangeLogEntry {
+  id          String    @id @default(cuid())
+  periodId    String    @map("period_id")
+  period      SorPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  rateId      String?   @map("rate_id")
+  field       String
+  oldValue    String?   @map("old_value")
+  newValue    String?   @map("new_value")
+  changedById String?   @map("changed_by_id")
+  changedAt   DateTime  @default(now()) @map("changed_at")
+
+  @@index([periodId])
+  @@map("sor_change_log_entries")
+}

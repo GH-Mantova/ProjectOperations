@@ -74,6 +74,7 @@ import { MapLocationsModule } from "./modules/map-locations/map-locations.module
 import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
 import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
+import { HandoverTemplatesModule } from "./modules/handover-templates/handover-templates.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
 import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
@@ -158,6 +159,7 @@ import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-r
     ReportingModule,
     SitesModule,
     NotificationPreferencesModule,
+    HandoverTemplatesModule,
     SubcontractorRatesModule,
     WinLikelihoodModule,
     ScheduleOfRatesModule

@@ -415,6 +415,15 @@ export async function seedNotificationTriggerConfigs(prisma: PrismaClient) {
       trigger: "waste_line.rate_variance_escalated",
       label: "Waste line rate variance escalated",
       description: 'Fires when an estimator escalates a waste line whose disposal or fuel rate has moved since the line was priced. The system does not auto-reprice.'
+    },
+    // PC-1 draft-ready reminder — monthly cron on the 28th reminds the
+    // responsible role that no progress claim has been generated yet for the
+    // current month on an ACTIVE contract. Seeded disabled so Marco opts in
+    // via Admin Settings (same precedent as waste_line.rate_variance_escalated).
+    {
+      trigger: "claim.draft_ready_for_review",
+      label: "Draft progress claim ready for review",
+      description: "Sent on the 28th of each month when an ACTIVE contract has no progress claim generated yet for the current month. Prompts the responsible user to generate and issue the claim before the cut-off date."
     }
   ];
   for (const t of triggers) {

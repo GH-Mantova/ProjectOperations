@@ -106,15 +106,6 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await expect(page.getByPlaceholder("Search name, code, address, suburb")).toBeVisible();
   });
 
-  test("Workers tab removed — legacy ?tab=workers falls back to clients", async ({ page }) => {
-    // This PR removes the Directory Workers tab (see directory-tab-helpers:
-    // DIRECTORY_TABS no longer includes Workers; resolveDirectoryTab("workers") -> "clients").
-    // The tab no longer renders, and the legacy deep-link resolves back to clients.
-    await page.goto("/directory?tab=workers");
-    await expect(page).toHaveURL(/\/directory\?tab=clients/);
-    await expect(page.getByRole("tab", { name: "Workers" })).toHaveCount(0);
-  });
-
   test("unknown tab redirects into /directory?tab=clients", async ({ page }) => {
     await page.goto("/master-data?tab=mystery");
     await expect(page).toHaveURL(/\/directory\?tab=clients/);

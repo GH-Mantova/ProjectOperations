@@ -7,6 +7,13 @@ import { chatPanelEmptyHint } from "./chat-helpers";
 import { formatRelativeDate, truncatePreview } from "./date-helpers";
 import { useConfirm } from "../hooks/useConfirm";
 
+/**
+ * An extra tab injected by the host into the ChatPanel toolbar.
+ * Rendered after the built-in New / History tabs.
+ *
+ * Example usage (tendering host):
+ *   { id: "assumptions-exclusions", label: "Assumptions & Exclusions", content: <AssumptionsExclusionsTabContent tenderId={id} /> }
+ */
 export type ExtraTab = {
   id: string;
   label: string;

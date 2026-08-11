@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -10,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { NotificationsService } from "../platform/notifications.service";
+import { WeatherService, type WeatherResponse } from "../platform/weather.service";
 import {
   RulesEngineService,
   type FieldRule,
@@ -17,6 +19,7 @@ import {
   type SectionEntriesMap
 } from "./rules-engine.service";
 import { FormNumberSequenceService } from "./form-number-sequence.service";
+import { checkCompetencyGate } from "../compliance/competency-gate";
 
 type ValueMap = Record<string, unknown>;
 type SectionEntriesPayload = Record<string, Array<Record<string, unknown>>>;
@@ -289,8 +292,27 @@ export class FormsEngineService {
     private readonly rules: RulesEngineService,
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
-    private readonly formNumberSequence: FormNumberSequenceService
+    private readonly formNumberSequence: FormNumberSequenceService,
+    private readonly weather: WeatherService
   ) {}
+
+  /**
+   * F-6 — resolve the current weather for a submission's site so the
+   * `weather_capture` field and any downstream context-auto-fill callers
+   * can share one shape. Returns `null` when the site is unknown or the
+   * upstream weather service can't produce a reading — never throws, so a
+   * weather-fetch failure can't block a submission.
+   */
+  async resolveSiteWeather(siteId: string | null | undefined): Promise<WeatherResponse | null> {
+    if (!siteId) return null;
+    try {
+      const result = await this.weather.getSiteWeather(siteId);
+      if (result.unavailable) return null;
+      return result;
+    } catch {
+      return null;
+    }
+  }
 
   // ── Draft creation ────────────────────────────────────────────────────
 
@@ -336,8 +358,9 @@ export class FormsEngineService {
         clockOffTime: null
       },
       include: {
-        project: { select: { id: true, projectManagerId: true, supervisorId: true } },
-        allocation: { select: { id: true } }
+        project: { select: { id: true, siteId: true, projectManagerId: true, supervisorId: true } },
+        allocation: { select: { id: true } },
+        workerProfile: { select: { id: true } }
       },
       orderBy: { date: "desc" }
     });
@@ -350,6 +373,20 @@ export class FormsEngineService {
       }
       if (activeTimesheet.project?.supervisorId) {
         context.supervisorId = activeTimesheet.project.supervisorId;
+      }
+      // F-5 — expose the filler's own worker profile id so the
+      // `worker_picker` field can pre-select the current user when
+      // `prefillFromAllocation` is on.
+      if (activeTimesheet.workerProfile?.id) {
+        context.workerProfileId = activeTimesheet.workerProfile.id;
+      }
+      // F-6 — snapshot the site's current weather so `weather_capture`
+      // fields have a value even before the client renders. Null when the
+      // site is unknown or the upstream service can't produce a reading.
+      if (activeTimesheet.project?.siteId) {
+        context.siteId = activeTimesheet.project.siteId;
+        const weather = await this.resolveSiteWeather(activeTimesheet.project.siteId);
+        if (weather) context.weather = weather;
       }
     }
 
@@ -388,7 +425,20 @@ export class FormsEngineService {
     sectionEntries?: SectionEntriesPayload
   ) {
     const submission = await this.requireOwnedDraft(submissionId, userId);
+    // F-5 (Signature v2) — a sealing signature freezes the field state at
+    // 409 so downstream approvals can trust what was attested to. The check
+    // is deliberately scoped to PATCH /values only; the submit path is still
+    // permitted to advance a sealed draft to `submitted`.
+    if (submission.sealedAt) {
+      throw new ConflictException(
+        "This submission has been sealed by a signature and can no longer be edited."
+      );
+    }
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
+    // F-5 (Signature v2) — role-gate signature values before persisting.
+    // Runs once per PATCH so a role-mismatched signature 403s immediately
+    // rather than silently landing in valueText.
+    await this.enforceSignatureRoles(template, values, userId);
 
     // Persist each non-empty value as a FormSubmissionValue row, upserting
     // by (submissionId, fieldKey). Keep prior values for fields not in the
@@ -469,6 +519,13 @@ export class FormsEngineService {
         }
       }
     }
+
+    // F-5 (Signature v2) — persist FormSignature rows + apply the seal when
+    // a signature field with `config.sealsForm` was signed in this PATCH.
+    // Runs after value upserts so the signed base64 payload is already saved
+    // as the source of truth; the FormSignature row is the audit-facing
+    // sidecar carrying signer identity + role gate.
+    await this.applySignatureSideEffects(submission.id, template, values, userId);
 
     // After save, evaluate field visibility + required state across ALL stored
     // values so the client can update the form without a page reload.
@@ -1690,5 +1747,198 @@ export class FormsEngineService {
     if (!input) return "low";
     const r = input.toLowerCase();
     return ["low", "medium", "high", "extreme"].includes(r) ? r : "low";
+  }
+
+  // ── F-5 Signature v2 helpers ──────────────────────────────────────────
+
+  /**
+   * F-5 — role-gate signature values. For every incoming value whose field is
+   * a signature configured with `config.requiredRole`, verify the acting
+   * user actually holds that role. Failing the check is a 403; the value is
+   * never persisted. Signature values without a role gate pass through.
+   *
+   * A signature is considered "empty" when the payload is null / empty
+   * string; we don't gate empty signatures so a filler can clear a mistaken
+   * sig without needing the role.
+   */
+  private async enforceSignatureRoles(
+    template: { sections?: Array<{ fields?: Array<{ fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap,
+    userId: string
+  ): Promise<void> {
+    const gatedRoles = new Set<string>();
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "signature") continue;
+        const cfg = (field.config ?? {}) as { requiredRole?: string };
+        const requiredRole = cfg.requiredRole?.trim();
+        if (!requiredRole) continue;
+        const raw = values[field.fieldKey];
+        if (raw === null || raw === undefined || raw === "") continue;
+        gatedRoles.add(requiredRole);
+      }
+    }
+    if (gatedRoles.size === 0) return;
+    const held = await this.prisma.userRole.findMany({
+      where: { userId, role: { name: { in: [...gatedRoles] } } },
+      select: { role: { select: { name: true } } }
+    });
+    const heldNames = new Set(held.map((r) => r.role.name));
+    for (const role of gatedRoles) {
+      if (!heldNames.has(role)) {
+        throw new ForbiddenException(
+          `Only users with the "${role}" role can sign this field.`
+        );
+      }
+    }
+  }
+
+  /**
+   * F-5 — persist a FormSignature row (with requiredRole + signedById) for
+   * every signature field signed in this PATCH, and seal the submission when
+   * any of those fields carries `config.sealsForm`. Idempotent per
+   * (submissionId, fieldKey): re-signing overwrites the prior row.
+   */
+  private async applySignatureSideEffects(
+    submissionId: string,
+    template: { sections?: Array<{ fields?: Array<{ fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap,
+    userId: string
+  ): Promise<void> {
+    let sealFromThisPatch = false;
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "signature") continue;
+        const raw = values[field.fieldKey];
+        if (raw === null || raw === undefined || raw === "") continue;
+        const cfg = (field.config ?? {}) as {
+          requiredRole?: string;
+          sealsForm?: boolean;
+        };
+        const signer = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true, email: true }
+        });
+        const signerName = signer
+          ? `${signer.firstName} ${signer.lastName}`.trim() || signer.email
+          : userId;
+        const existing = await this.prisma.formSignature.findFirst({
+          where: { submissionId, fieldKey: field.fieldKey }
+        });
+        const data = {
+          signerName,
+          signedById: userId,
+          requiredRole: cfg.requiredRole ?? null,
+          signedAt: new Date()
+        };
+        if (existing) {
+          await this.prisma.formSignature.update({
+            where: { id: existing.id },
+            data
+          });
+        } else {
+          await this.prisma.formSignature.create({
+            data: { submissionId, fieldKey: field.fieldKey, ...data }
+          });
+        }
+        if (cfg.sealsForm) sealFromThisPatch = true;
+      }
+    }
+    if (sealFromThisPatch) {
+      await this.prisma.formSubmission.update({
+        where: { id: submissionId },
+        data: { sealedAt: new Date() }
+      });
+    }
+  }
+
+  // ── F-5 WHS picker endpoints ─────────────────────────────────────────
+
+  /**
+   * F-5 — light worker list for the `worker_picker` field. Optionally scores
+   * each row against a required-competency list so the picker can badge
+   * missing/expired quals without a second call. Uses
+   * `checkCompetencyGate` so the verdict matches the compliance module
+   * exactly; nothing is duplicated.
+   */
+  async getWorkerOptions(requiredQuals: string[] = []) {
+    const workers = await this.prisma.workerProfile.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        qualifications: { select: { qualType: true, expiryDate: true } }
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
+    });
+    const cleanQuals = requiredQuals.map((q) => q.trim()).filter((q) => q.length > 0);
+    return workers.map((w) => {
+      const competency =
+        cleanQuals.length > 0
+          ? checkCompetencyGate(w.qualifications, cleanQuals)
+          : null;
+      return {
+        id: w.id,
+        name: `${w.firstName} ${w.lastName}`.trim(),
+        role: w.role,
+        competency
+      };
+    });
+  }
+
+  /**
+   * F-5 — light asset list for the `asset_picker` field. Delegates to the
+   * assets table but only projects the fields the picker needs. Optional
+   * `siteId` narrows to assets currently checked out at that site
+   * (`AssetCheckout` with a null `checkedInAt`) so the picker matches the
+   * "assets on this site" mental model. Each row carries the same
+   * `maintenanceSummary` derivation used elsewhere via a light per-row
+   * computation — no duplication of the assets service's includes tree.
+   */
+  async getAssetOptions(siteId?: string) {
+    const where: Prisma.AssetWhereInput = siteId
+      ? { checkouts: { some: { siteId, checkedInAt: null } } }
+      : {};
+    const assets = await this.prisma.asset.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        assetCode: true,
+        status: true,
+        maintenancePlans: {
+          select: { nextDueAt: true }
+        },
+        maintenanceEvents: {
+          where: { completedAt: { not: null } },
+          orderBy: { completedAt: "desc" },
+          take: 1,
+          select: { completedAt: true }
+        }
+      },
+      orderBy: [{ name: "asc" }],
+      take: 200
+    });
+    const now = Date.now();
+    return assets.map((a) => {
+      const nextDue = a.maintenancePlans
+        .map((p) => p.nextDueAt?.getTime())
+        .filter((t): t is number => typeof t === "number")
+        .sort((x, y) => x - y)[0];
+      const overdue = typeof nextDue === "number" && nextDue < now;
+      return {
+        id: a.id,
+        name: a.name,
+        assetCode: a.assetCode,
+        status: a.status,
+        maintenanceSummary: {
+          nextDueAt: nextDue ? new Date(nextDue).toISOString() : null,
+          overdue,
+          lastServicedAt: a.maintenanceEvents[0]?.completedAt?.toISOString() ?? null
+        }
+      };
+    });
   }
 }

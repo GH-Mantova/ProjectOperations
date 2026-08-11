@@ -34,6 +34,10 @@ export type FieldType =
   | "signature"
   | "image_capture"
   | "existing_site"
+  | "worker_picker"
+  | "asset_picker"
+  | "location_stamp"
+  | "weather_capture"
   // Advanced (F-4)
   | "lookup"
   | "calculation"
@@ -155,7 +159,11 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     entries: [
       { type: "image_capture", label: "Photo", icon: "\u{1F4F7}" },
       { type: "signature", label: "Signature", icon: "✍" },
-      { type: "existing_site", label: "Existing site", icon: "\u{1F3D7}" }
+      { type: "existing_site", label: "Existing site", icon: "\u{1F3D7}" },
+      { type: "worker_picker", label: "Worker", icon: "\u{1F464}" },
+      { type: "asset_picker", label: "Asset", icon: "\u{1F527}" },
+      { type: "location_stamp", label: "Location stamp", icon: "\u{1F4CD}" },
+      { type: "weather_capture", label: "Weather", icon: "\u{1F324}" }
     ]
   },
   {
@@ -261,7 +269,12 @@ const DEFAULT_LABEL: Partial<Record<string, string>> = {
   table: "Table",
   terms: "Terms & conditions",
   unique_id: "Unique ID",
-  existing_site: "Site"
+  existing_site: "Site",
+  worker_picker: "Worker",
+  asset_picker: "Asset",
+  location_stamp: "Location stamp",
+  image_capture: "Photo",
+  weather_capture: "Weather"
 };
 
 function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown> | undefined {
@@ -288,6 +301,25 @@ function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown
   }
   if (fieldType === "unique_id") {
     return { prefix: "", padLength: 4 };
+  }
+  if (fieldType === "worker_picker") {
+    return { prefillFromAllocation: true, checkCompetency: false };
+  }
+  if (fieldType === "asset_picker") {
+    return { siteFiltered: true, showServiceWarnings: true };
+  }
+  if (fieldType === "location_stamp") {
+    return {};
+  }
+  if (fieldType === "image_capture") {
+    return {
+      minCount: 0,
+      maxCount: 5,
+      cameraOnly: false,
+      stampLocation: false,
+      stampTime: false,
+      allowAnnotation: false
+    };
   }
   return undefined;
 }

@@ -57,6 +57,7 @@ model User {
   assignedTenders            Tender[]                    @relation("TenderAssignedEstimator")
   tenderNotes                TenderNote[]                @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]            @relation("TenderFollowUpAssignee")
+  tenderOutcomesRecorded     TenderOutcome[]             @relation("TenderOutcomeRecordedBy")
   tenderEntriesAuthored      TenderEntry[]               @relation("TenderEntryAuthor")
   tenderEntriesAssigned      TenderEntry[]               @relation("TenderEntryAssignee")
   lockedTenderRateSets       TenderRateSet[]             @relation("TenderRateSetLockedBy")
@@ -733,6 +734,7 @@ model Client {
   cases               Case[]                    @relation("CaseClient")
   leads               Lead[]                    @relation("ClientLeads")
   opportunities       Opportunity[]             @relation("ClientOpportunities")
+  tenderOutcomes      TenderOutcome[]           @relation("ClientTenderOutcomes")
 
   @@unique([name])
   @@index([status])
@@ -1323,15 +1325,52 @@ model TenderEntry {
   @@map("tender_entries")
 }
 
+// WL-1a — Structured tender-outcome capture (result/reason enums + ML-feature
+// columns). All new columns are nullable and additive; existing rows stay
+// valid. Prior outcomes are never overwritten — the supersedesId self-relation
+// links a corrected outcome to the row it replaces (append-only).
+enum TenderOutcomeResult {
+  WON
+  LOST
+  NO_BID
+}
+
+enum TenderOutcomeReason {
+  PRICE_TOO_HIGH
+  LOST_ON_RELATIONSHIP
+  SCOPE_MISMATCH
+  TIMING_PROGRAM_CLASH
+  CAPACITY_CONSTRAINT
+  CLIENT_WENT_ANOTHER_DIRECTION
+  PROJECT_CANCELLED
+  NO_RESPONSE_FROM_CLIENT
+  DECLINED_TO_BID
+  OTHER
+}
+
 model TenderOutcome {
-  id          String   @id @default(cuid())
-  tenderId    String   @map("tender_id")
-  outcomeType String   @map("outcome_type")
-  notes       String?
-  recordedAt  DateTime @default(now()) @map("recorded_at")
-  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  id                 String               @id @default(cuid())
+  tenderId           String               @map("tender_id")
+  outcomeType        String               @map("outcome_type")
+  notes              String?
+  recordedAt         DateTime             @default(now()) @map("recorded_at")
+  resultType         TenderOutcomeResult? @map("result_type")
+  reason             TenderOutcomeReason?
+  tenderValue        Decimal?             @map("tender_value") @db.Decimal(14, 2)
+  ourPrice           Decimal?             @map("our_price") @db.Decimal(14, 2)
+  clientId           String?              @map("client_id")
+  scopeSummary       String?              @map("scope_summary")
+  competitorOrWinner String?              @map("competitor_or_winner")
+  recordedById       String?              @map("recorded_by_id")
+  supersedesId       String?              @unique @map("supersedes_id")
+  tender             Tender               @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  client             Client?              @relation("ClientTenderOutcomes", fields: [clientId], references: [id], onDelete: SetNull)
+  recordedBy         User?                @relation("TenderOutcomeRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  supersedes         TenderOutcome?       @relation("TenderOutcomeSupersedes", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy       TenderOutcome?       @relation("TenderOutcomeSupersedes")
 
   @@index([tenderId])
+  @@index([clientId])
   @@map("tender_outcomes")
 }
 
@@ -1974,6 +2013,11 @@ model FormSubmission {
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
   publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
+  // F-5 (Signature v2) — set by the submit path when a signature field
+  // configured to seal the form is signed. Once sealed, PATCH /values is
+  // rejected with 409 so downstream approvals/audits can trust the
+  // submission's field state is frozen.
+  sealedAt          DateTime?             @map("sealed_at")
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -2153,6 +2197,13 @@ model FormSignature {
   signerName   String         @map("signer_name")
   signedAt     DateTime       @default(now()) @map("signed_at")
   createdAt    DateTime       @default(now()) @map("created_at")
+  // F-5 (Signature v2) — role-gated signing. `requiredRole` mirrors the
+  // authored FormField.config.requiredRole at sign-time so the audit trail
+  // shows what the gate was configured to demand even if the template is
+  // republished later. `signedById` records the User that actually signed;
+  // nullable to keep the historical "signerName only" rows valid.
+  requiredRole String?        @map("required_role")
+  signedById   String?        @map("signed_by_id")
   submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
@@ -6699,4 +6750,74 @@ model HandoverTemplateField {
   @@index([sectionId, sortOrder])
   @@index([retiredAt])
   @@map("handover_template_fields")
+}
+
+// ── Schedule of Rates (SoR S1) ───────────────────────────────────────────────
+// Master rate-book for live jobs. Separate from tender pricing (TenderRateSet /
+// EstimatePlantRate / EstimateWasteRate). Later slices add admin UI, job-attach,
+// VC/AR pricing, PDF, and approval chain.
+
+enum SorCategory {
+  LABOUR
+  PLANT
+  WASTE
+  SUBCONTRACTOR
+}
+
+enum SorPeriodHalf {
+  H1
+  H2
+}
+
+model SorPeriod {
+  id         String        @id @default(cuid())
+  year       Int
+  half       SorPeriodHalf
+  startDate  DateTime      @map("start_date")
+  expiryDate DateTime      @map("expiry_date")
+  label      String
+  status     String        @default("ACTIVE")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  rates      SorRate[]
+  changes    SorChangeLogEntry[]
+
+  @@unique([year, half])
+  @@map("sor_periods")
+}
+
+model SorRate {
+  id          String      @id @default(cuid())
+  periodId    String      @map("period_id")
+  period      SorPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category    SorCategory
+  name        String
+  class       String?
+  unit        String?
+  ordinary    Decimal?    @db.Decimal(12, 2)
+  oneAndHalf  Decimal?    @map("one_and_half") @db.Decimal(12, 2)
+  double      Decimal?    @db.Decimal(12, 2)
+  isReference Boolean     @default(false) @map("is_reference")
+  comments    String?
+  sortOrder   Int         @default(0) @map("sort_order")
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([periodId, category])
+  @@map("sor_rates")
+}
+
+model SorChangeLogEntry {
+  id          String    @id @default(cuid())
+  periodId    String    @map("period_id")
+  period      SorPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  rateId      String?   @map("rate_id")
+  field       String
+  oldValue    String?   @map("old_value")
+  newValue    String?   @map("new_value")
+  changedById String?   @map("changed_by_id")
+  changedAt   DateTime  @default(now()) @map("changed_at")
+
+  @@index([periodId])
+  @@map("sor_change_log_entries")
 }

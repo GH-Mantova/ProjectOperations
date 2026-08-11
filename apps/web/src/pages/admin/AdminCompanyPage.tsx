@@ -624,6 +624,32 @@ function OperationsSettingsPanel() {
         <p style={{ color: "var(--text-muted)" }}>Loading…</p>
       ) : (
         <>
+          {/* Live feed readout — populated by the T-2 daily cron (fuelpricesqld:Ampol-Diesel-max). */}
+          {config.fuelPriceSource === "fuelpricesqld:Ampol-Diesel-max" && config.fuelPricePerLitre != null ? (
+            <div
+              style={{
+                padding: "8px 12px",
+                borderRadius: 6,
+                background: "rgba(0,91,97,0.07)",
+                fontSize: 13,
+                color: "var(--brand-primary, #005B61)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8
+              }}
+              aria-label="Live fuel price from feed"
+            >
+              <span style={{ fontWeight: 600 }}>
+                Live feed: ${Number(config.fuelPricePerLitre).toFixed(3)}/L
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>
+                · {config.fuelPriceSource}
+                {config.fuelPriceFetchedAt
+                  ? ` · fetched ${new Date(config.fuelPriceFetchedAt).toLocaleString("en-AU")}`
+                  : ""}
+              </span>
+            </div>
+          ) : null}
           <label className="estimate-editor__field">
             <span>Fuel price (per litre, AUD)</span>
             <input

@@ -32,12 +32,17 @@ class ComputeRecommendationsDto {
   @Min(0.001)
   loadTonnes!: number;
 
-  @IsEnum(["project", "office"])
+  @IsEnum(["project", "office", "tender"])
   originType!: TipOriginType;
 
   @IsOptional()
   @IsString()
   projectId?: string;
+
+  /** Required when originType = "tender" (OPS-M3) */
+  @IsOptional()
+  @IsString()
+  tenderId?: string;
 }
 
 class AcceptRecommendationDto {
@@ -51,12 +56,17 @@ class AcceptRecommendationDto {
   @Min(0.001)
   loadTonnes!: number;
 
-  @IsEnum(["project", "office"])
+  @IsEnum(["project", "office", "tender"])
   originType!: TipOriginType;
 
   @IsOptional()
   @IsString()
   projectId?: string;
+
+  /** Required when originType = "tender" (OPS-M3) */
+  @IsOptional()
+  @IsString()
+  tenderId?: string;
 }
 
 // ── Controller ────────────────────────────────────────────────────────────────
@@ -95,7 +105,8 @@ export class TipRecommendationsController {
       wasteTypeCode: dto.wasteTypeCode,
       loadTonnes: dto.loadTonnes,
       originType: dto.originType,
-      projectId: dto.projectId
+      projectId: dto.projectId,
+      tenderId: dto.tenderId
     });
   }
 
@@ -125,7 +136,8 @@ export class TipRecommendationsController {
         wasteTypeCode: dto.wasteTypeCode,
         loadTonnes: dto.loadTonnes,
         originType: dto.originType,
-        projectId: dto.projectId
+        projectId: dto.projectId,
+        tenderId: dto.tenderId
       },
       actor.sub
     );

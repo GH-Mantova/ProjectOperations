@@ -28,17 +28,23 @@ const OFFICE_LNG = 153.1053;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type TipOriginType = "project" | "office";
+export type TipOriginType = "project" | "office" | "tender";
 
 export type ComputeRecommendationsDto = {
   /** Waste type code — must match a row in EstimateWasteRate.wasteType */
   wasteTypeCode: string;
   /** Load size in tonnes (positive non-zero) */
   loadTonnes: number;
-  /** "project" → use the project site's stored coords; "office" → use OFFICE_LAT/LNG */
+  /**
+   * "project" → use the project site's stored coords
+   * "office"  → use OFFICE_LAT/LNG
+   * "tender"  → use the tender's site.centreLat/centreLng (OPS-M3)
+   */
   originType: TipOriginType;
   /** Required when originType = "project" */
   projectId?: string;
+  /** Required when originType = "tender" */
+  tenderId?: string;
 };
 
 export type AcceptRecommendationDto = {
@@ -48,6 +54,8 @@ export type AcceptRecommendationDto = {
   loadTonnes: number;
   originType: TipOriginType;
   projectId?: string;
+  /** Required when originType = "tender" */
+  tenderId?: string;
 };
 
 export type TipRecommendationCard = {
@@ -112,14 +120,14 @@ export class TipRecommendationsService {
    * Result is sorted: accepted tips by totalCost ascending, then unaccepted tips.
    */
   async computeRecommendations(dto: ComputeRecommendationsDto): Promise<TipRecommendationCard[]> {
-    const { wasteTypeCode, loadTonnes, originType, projectId } = dto;
+    const { wasteTypeCode, loadTonnes, originType, projectId, tenderId } = dto;
 
     if (loadTonnes <= 0) {
       throw new BadRequestException("loadTonnes must be greater than zero.");
     }
 
     // Resolve origin coordinates
-    const { originLat, originLng } = await this.resolveOrigin(originType, projectId);
+    const { originLat, originLng } = await this.resolveOrigin(originType, projectId, tenderId);
 
     // Fetch OperationsSettings for travelRatePerKm
     const settings = await this.prisma.operationsSettings.findUnique({
@@ -240,7 +248,7 @@ export class TipRecommendationsService {
     dto: AcceptRecommendationDto,
     actorId: string
   ): Promise<{ logId: string }> {
-    const { mapLocationId, wasteTypeCode, loadTonnes, originType, projectId } = dto;
+    const { mapLocationId, wasteTypeCode, loadTonnes, originType, projectId, tenderId } = dto;
 
     if (loadTonnes <= 0) {
       throw new BadRequestException("loadTonnes must be greater than zero.");
@@ -260,11 +268,14 @@ export class TipRecommendationsService {
       );
     }
 
-    // Verify project exists when originType = "project"
+    // Verify required context fields per originType
     if (originType === "project" && !projectId) {
       throw new BadRequestException('projectId is required when originType = "project".');
     }
-    const { originLat, originLng } = await this.resolveOrigin(originType, projectId);
+    if (originType === "tender" && !tenderId) {
+      throw new BadRequestException('tenderId is required when originType = "tender".');
+    }
+    const { originLat, originLng } = await this.resolveOrigin(originType, projectId, tenderId);
 
     // Fetch OperationsSettings
     const settings = await this.prisma.operationsSettings.findUnique({
@@ -340,10 +351,38 @@ export class TipRecommendationsService {
 
   private async resolveOrigin(
     originType: TipOriginType,
-    projectId?: string
+    projectId?: string,
+    tenderId?: string
   ): Promise<{ originLat: number; originLng: number }> {
     if (originType === "office") {
       return { originLat: OFFICE_LAT, originLng: OFFICE_LNG };
+    }
+
+    if (originType === "tender") {
+      if (!tenderId) {
+        throw new BadRequestException('tenderId is required when originType = "tender".');
+      }
+      const tender = await this.prisma.tender.findUnique({
+        where: { id: tenderId },
+        select: { siteId: true }
+      });
+      if (!tender) {
+        throw new NotFoundException(`Tender ${tenderId} not found.`);
+      }
+      const tenderSite = await this.prisma.site.findUnique({
+        where: { id: tender.siteId },
+        select: { centreLat: true, centreLng: true, addressLine1: true, suburb: true }
+      });
+      if (!tenderSite?.centreLat || !tenderSite?.centreLng) {
+        throw new BadRequestException(
+          `Tender site has no coordinates stored. ` +
+            `Update the site coordinates in Settings > Map locations to enable distance calculation.`
+        );
+      }
+      return {
+        originLat: Number(tenderSite.centreLat),
+        originLng: Number(tenderSite.centreLng)
+      };
     }
 
     if (!projectId) {

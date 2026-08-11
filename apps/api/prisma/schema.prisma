@@ -1455,11 +1455,19 @@ model JobConversion {
   tenderId         String       @unique @map("tender_id")
   tenderClientId   String       @unique @map("tender_client_id")
   jobId            String       @unique @map("job_id")
+  // B-P0a-4-i — survivor-spine re-point. `projectId` carries the surviving
+  // Project (Job folds into Project per B-P0a). Nullable + kept alongside
+  // `jobId` during the transition; `jobId` is dropped in B-P0a-8. Backfilled
+  // from Project.sourceJobId for existing rows; written going forward by the
+  // conversion path once the Project exists (updateStatus creates it on
+  // CONTRACT_ISSUED, before convert-to-job is reachable).
+  projectId        String?      @unique @map("project_id")
   carriedDocuments Boolean      @default(false) @map("carried_documents")
   createdAt        DateTime     @default(now()) @map("created_at")
   tender           Tender       @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   tenderClient     TenderClient @relation(fields: [tenderClientId], references: [id], onDelete: Cascade)
   job              Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  project          Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("job_conversions")
 }
@@ -2754,6 +2762,7 @@ model Project {
   preStartChecklists      PreStartChecklist[]
   timesheets              Timesheet[]
   contract                Contract?
+  jobConversion           JobConversion?
   safetyIncidents         SafetyIncident[]
   hazardObservations      HazardObservation[]
   ganttTasks              GanttTask[]

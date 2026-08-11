@@ -1274,11 +1274,19 @@ export class JobsService {
         }
       });
 
+      // B-P0a-4-i — carry the surviving Project on the bridge. updateStatus
+      // creates the Project on CONTRACT_ISSUED (before convert-to-job is
+      // reachable), so it normally exists here; null-safe if it doesn't yet.
+      const survivorForConversion = await tx.project.findFirst({
+        where: { sourceTenderId: tenderId },
+        select: { id: true }
+      });
       await tx.jobConversion.create({
         data: {
           tenderId,
           tenderClientId: awardedContractedClient.id,
           jobId: createdJob.id,
+          projectId: survivorForConversion?.id ?? null,
           carriedDocuments: selectedDocuments.length > 0
         }
       });
@@ -1487,17 +1495,24 @@ export class JobsService {
         }
       });
 
+      // B-P0a-4-i — carry the surviving Project on the bridge (see convert path).
+      const survivorForReuse = await tx.project.findFirst({
+        where: { sourceTenderId: tenderId },
+        select: { id: true }
+      });
       await tx.jobConversion.upsert({
         where: { tenderId },
         update: {
           tenderClientId: awardedContractedClient.id,
           jobId: existingJob.id,
+          projectId: survivorForReuse?.id ?? null,
           carriedDocuments: selectedDocuments.length > 0
         },
         create: {
           tenderId,
           tenderClientId: awardedContractedClient.id,
           jobId: existingJob.id,
+          projectId: survivorForReuse?.id ?? null,
           carriedDocuments: selectedDocuments.length > 0
         }
       });

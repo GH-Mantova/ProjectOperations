@@ -1,4 +1,7 @@
+import { useEffect, useRef } from "react";
+import { useAuth } from "../auth/AuthContext";
 import type { WidgetField, WidgetMeta } from "./types";
+import { registerReportWidgets, type ReportDefinitionSummary } from "./widgets/reportRegistry";
 
 const AGGREGATION_FIELD = {
   key: "aggregation",
@@ -891,4 +894,56 @@ export function widgetsByCategory(): Array<{ category: string; items: WidgetMeta
   return order
     .filter((cat) => groups.has(cat))
     .map((cat) => ({ category: cat, items: groups.get(cat)! }));
+}
+
+/**
+ * useReportWidgetsHydration — fetches /reporting/definitions once per
+ * application session and injects the resulting WidgetMeta entries into the
+ * mutable WIDGETS array and WIDGET_BY_TYPE map.
+ *
+ * Timing rationale (plan §6.1): the widget registry is populated at import
+ * time with static widgets. Report widgets depend on a network fetch and
+ * therefore cannot be registered at import time. This hook re-registers them
+ * when the definitions arrive (or after a re-mount if the cache is warm).
+ * WidgetGalleryModal re-renders after the hook writes into WIDGETS because the
+ * hook triggers a component state update via setHydrated, causing the parent
+ * to pick up the extended WIDGETS array on its next render.
+ *
+ * Must be called once near the top of the component tree (e.g. in
+ * DashboardPage or equivalent) so the gallery is hydrated before the user
+ * opens it. A stable ref guards against duplicate registrations on re-renders.
+ */
+export function useReportWidgetsHydration(): { hydrated: boolean } {
+  const { authFetch } = useAuth();
+  // Track whether we have already spliced report widgets into the live arrays.
+  // Using a module-level boolean rather than component state so the effect
+  // does not repeat across route navigations within the same session.
+  const hydratedRef = useRef(false);
+  const hydratedFlag = useRef(false);
+
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    authFetch("/reporting/definitions")
+      .then(async (res) => {
+        if (!res.ok) return; // Silently skip — user may lack reporting.view
+        const defs = (await res.json()) as ReportDefinitionSummary[];
+        const newMetas = registerReportWidgets(defs);
+        for (const meta of newMetas) {
+          // Guard: skip if this type was already injected (e.g. hot-reload)
+          if (!WIDGET_BY_TYPE[meta.type]) {
+            WIDGETS.push(meta);
+            WIDGET_BY_TYPE[meta.type] = meta;
+          }
+        }
+        hydratedFlag.current = true;
+      })
+      .catch(() => {
+        // Non-fatal: if /reporting/definitions fails, report widgets simply
+        // won't appear in the gallery this session.
+      });
+  }, []);
+
+  return { hydrated: hydratedFlag.current };
 }

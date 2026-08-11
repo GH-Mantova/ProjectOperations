@@ -41,8 +41,7 @@ const TABS = [
   { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "integrations", label: "Integrations / API keys" },
-  { id: "geofences", label: "Site geofences" },
-  { id: "operations", label: "Operations" }
+  { id: "geofences", label: "Site geofences" }
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -95,7 +94,6 @@ export function AdminSettingsPage() {
           )}
           {tab === "integrations" && <IntegrationsKeysTab />}
           {tab === "geofences" && <SiteGeofencesTab />}
-          {tab === "operations" && <OperationsFuelTab />}
         </div>
       </div>
     </div>
@@ -1033,101 +1031,3 @@ function SiteGeofencesTab() {
   );
 }
 
-// ── Operations / Fuel tab ────────────────────────────────────────────────
-// Read-only readout of the live diesel fuel-price feed (R3 T-2).
-// The T-0 manual override field lives in Admin › Company profile; this tab
-// surfaces the live feed status so staleness is visible without navigating away.
-type OperationsSettingsReadonly = {
-  fuelPricePerLitre: string | number | null;
-  fuelPriceSource: string | null;
-  fuelPriceFetchedAt: string | null;
-  travelRatePerKm: string | number | null;
-  updatedAt: string;
-};
-
-function OperationsFuelTab() {
-  const { authFetch } = useAuth();
-  const [config, setConfig] = useState<OperationsSettingsReadonly | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await authFetch("/admin/settings/operations");
-      if (!response.ok) throw new Error(await response.text());
-      setConfig((await response.json()) as OperationsSettingsReadonly);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return (
-    <section className="s7-card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 0 }}>
-        Operations / Fuel price feed
-      </h2>
-      <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13 }}>
-        Live diesel price from fuelpricesqld.com.au (Ampol QLD maximum). Updated daily at 02:00 UTC
-        by the scheduled feed. The manual override field is under{" "}
-        <strong>Admin › Company profile › Operations / Fuel</strong>.
-      </p>
-
-      {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
-      ) : error ? (
-        <p style={{ color: "var(--status-danger)" }}>{error}</p>
-      ) : config ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div
-            style={{
-              padding: "12px 14px",
-              borderRadius: 8,
-              background:
-                config.fuelPriceSource === "fuelpricesqld:Ampol-Diesel-max"
-                  ? "rgba(0,91,97,0.07)"
-                  : "var(--surface-muted, #F6F6F6)",
-              border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))"
-            }}
-          >
-            {config.fuelPricePerLitre != null ? (
-              <>
-                <div style={{ fontWeight: 600, fontSize: 18 }}>
-                  ${Number(config.fuelPricePerLitre).toFixed(3)}/L
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                  {config.fuelPriceSource ?? "Manual entry"}
-                  {config.fuelPriceFetchedAt
-                    ? ` · fetched ${new Date(config.fuelPriceFetchedAt).toLocaleString("en-AU")}`
-                    : ""}
-                </div>
-              </>
-            ) : (
-              <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                No fuel price set yet. The daily feed will populate this automatically once the
-                fuelpricesqld API key is configured under <strong>Integrations / API keys</strong>.
-              </div>
-            )}
-          </div>
-
-          {config.travelRatePerKm != null ? (
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Travel rate: ${Number(config.travelRatePerKm).toFixed(2)}/km (interim flat rate)
-            </div>
-          ) : null}
-
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            Settings last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
-          </div>
-        </div>
-      ) : null}
-    </section>
-  );
-}

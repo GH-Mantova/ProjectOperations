@@ -1,43 +1,54 @@
-# SLICE-0 plan — WL-3 Tender win/loss: win-likelihood (baseline now, model later)
+# Tender Win/Loss ML Program — Plan
 
-**Status:** PLAN. Design LOCKED by Marco 2026-08-11 (brainstorm + mockup `wl3-win-likelihood-mockup`;
-memory `project_tender_winloss_program`). Builds on WL-1 (outcome capture, merged) + WL-2 (reports, merged).
+**Status:** WL3-S1 in progress (2026-08-11).
 
-## Goal & principle
-Give estimators a **win-likelihood** on a tender that is **honest about its own accuracy**. The model is a
-year away; the value NOW is (a) capturing every bid-time feature so the future dataset is complete, and
-(b) a transparent baseline that works with thin data and shows its confidence. Real ML swaps in later
-behind the same interface. **Advisory only — never auto-prices.**
+## Background
 
-## How the number works
-- **Baseline (now):** conditional historical win-rate over the cohort of similar closed tenders
-  (client / work-type / value-band) = wins / total, with a **Wilson confidence interval** from sample size.
-  Thin cohort -> wide interval -> UI shows "low confidence". Bid-time features only (known before outcome).
-- **Model (later):** logistic-regression / GBM across all features, calibrated probability. Same card.
-- **Accuracy is measured, not asserted:** confidence/sample-size on every prediction; a **calibration**
-  view (predicted band vs actual win-rate) + **backtest** (predicted vs actual, hit-rate/Brier) so the
-  team relies on it only where it's earned trust. Decision-support, not a guarantee.
+WL-1 (TenderOutcome capture, append-only) and WL-2 (win/loss descriptive reports) are merged.
+This document governs the WL-3 program: bid-time feature extraction, baseline win-likelihood
+API, and the future trained model (deferred until enough outcome history exists).
 
-## Slices
-- **WL3-S1 — feature view + baseline win-likelihood API + capture-gap audit** (`feat/wl3-baseline`).
-  API-only (no schema change). A feature-extraction service that derives bid-time features from EXISTING
-  data — Tender (client, value->band, discipline/work-type, issue/due dates->lead-time & season) + WL-1
-  `TenderOutcome` (result, competitorOrWinner->competitorPresent) + client historical win-rate. A baseline
-  service computing cohort win-rate + Wilson interval + top "why" factors, exposed at
-  `GET /tenders/:id/win-likelihood`. It also EMITS a **capture-gap report** listing any desired bid-time
-  feature not reliably present, so we can add capture deliberately (no blind migration). escalates:false.
-- **WL3-S1b — capture-completeness (only if S1's gap report shows real gaps)** (`feat/wl3-capture-fields`).
-  Additive fields on Tender/TenderOutcome for whatever S1 flagged as missing (escalates: migration).
-  Authored AFTER S1's gap report, targeted — not speculative.
-- **WL3-S2 — win-likelihood card on the tender** (`feat/wl3-tender-card`). The UI: point estimate +
-  confidence band + why factors + honest low-confidence state, per the mockup. Depends S1.
-- **WL3-S3 — calibration + backtest view** (`feat/wl3-accuracy`). Extends the WL-2 reporting engine with
-  calibration (predicted vs actual bands) + backtest hit-rate/Brier. Depends S1 + accrued outcomes.
+## Sub-slices
 
-## LATER (separate, data-hungry)
-- Trained model swap (behind the same API). Price-to-win guidance with a **margin floor** (needs competitor
-  price data — weakest early). No-bid / likely-loss triage flag.
+### WL3-S1 — Bid-time feature view + baseline win-likelihood API + capture-gap audit (THIS SLICE)
 
-## Start
-Arm **WL3-S1** now (baseline + gap audit; no schema, safe). It starts producing win-likelihood immediately
-(low-confidence honestly) and tells us exactly what capture to add via S1b. Separate from tender PRICING.
+**API-only, read-only, no schema change.**
+
+Produces:
+- `GET /tenders/:id/win-likelihood` — baseline win-likelihood (point estimate + Wilson CI +
+  confidence label + top "why" factors + per-tender capture gaps).
+- `GET /tenders/win-likelihood/capture-gaps` — aggregate capture-gap audit across recent tenders
+  (coverage % per desired feature + why it matters).
+
+New module: `apps/api/src/modules/win-likelihood/`
+- `win-likelihood-features.service.ts` — feature extraction (client, valueBand, leadTimeDays,
+  season/month, clientHistoryWinRate). No new DB columns — works from existing rows.
+- `win-likelihood.service.ts` — baseline computation: cohort matching, Wilson CI, why-factors,
+  capture-gap collection.
+
+Wired onto `tendering.controller.ts` (existing `tenders.view` permission). No UI.
+
+**Capture gaps identified in WL3-S1 (record here, act in WL3-S1b):**
+- `discipline/work-type` — no column on Tender; cohort cannot match on this dimension today.
+- `estimatedValue` — present on some tenders only; missing → UNKNOWN band.
+
+### WL3-S1b — Targeted capture additions (FUTURE)
+
+Act on the WL3-S1 capture-gap report. Add columns or pick-lists identified by the audit.
+Do NOT start until WL3-S1 is merged and the gap report has been reviewed by Marco.
+
+### WL3-S2 — Web UI for bid-time likelihood (FUTURE, dep: WL3-S1 merged)
+
+Display the win-likelihood panel on the tender detail page. Read-only advisory widget.
+
+### WL3-S3 — Trained model swap-in (FUTURE, dep: 12+ months outcome history)
+
+Replace the cohort-frequency baseline with a trained model behind the same `TenderFeatures`
+interface. Model selection deferred.
+
+## Guardrails (all slices)
+
+- Win-likelihood is ADVISORY ONLY. It MUST NEVER feed pricing, auto-accept, or auto-reject.
+- Do NOT add stats/ML library dependencies — Wilson CI is a few lines of arithmetic.
+- Reuse existing `tenders.view` permission — do not invent new permissions.
+- Do NOT change schema until WL3-S1b gap report is reviewed.

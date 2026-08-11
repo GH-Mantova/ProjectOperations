@@ -1335,3 +1335,6 @@ Standing guard: before staging a READY item confirm (1) no open decision in BACK
 (2) no staged/ prompt already exists for it, (3) no escalates / production / Azure hard-stop.
 Absence-gates on big items read READY until the whole workstream ships -- treat them as "not done",
 never as "stage me now".
+
+**LL-58 | 2026-08-04 | Smart Wizard 503'd in production ("repo root not found from API process"): MetadataService resolved docs/data-model/metadata-catalog.json only by walking parent dirs for a repo root, but the deployed App Service artifact ships only apps/api/ (no docs/, no scripts/), so the walk always returned null. A green CI build proved nothing about the deployed filesystem shape.**
+Standing guard: a runtime disk read in a deployed service MUST resolve via a __dirname-relative **metadata-catalog bundled asset** (nest build copies it into dist), in order env override -> bundle -> repo-root walk (dev-only fallback). Never rely on a repo-root walk in production; bundle the file into the build artifact and add a unit test that proves the production shape (bundle present, no repo tree). Fixed via docs/plans/smart-wizard-catalog-deploy-plan.md (#874) + PRs #896 (bundle) / #904 (resolver+test) / #910 (runbook+log). Verified live 2026-08-04.

@@ -5,10 +5,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
 import { isAdminUser } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
-import { AdminUsersTab } from "./admin/AdminUsersTab";
-import { AdminRolesPermissionsTab } from "./admin/AdminRolesPermissionsTab";
-import { AdminClientVersionsTab } from "./admin/AdminClientVersionsTab";
-import { MapLocationsTab } from "./admin/MapLocationsTab";
 
 type Trigger = {
   id: string;
@@ -42,17 +38,11 @@ type EmailConfig = {
 const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
-  { id: "operations", label: "Operations" },
-  { id: "users", label: "Users" },
   { id: "access-requests", label: "Access requests" },
   { id: "ai", label: "AI & Integrations" },
   { id: "integrations", label: "Integrations / API keys" },
-  { id: "platform", label: "Platform" },
   { id: "geofences", label: "Site geofences" },
-  { id: "permissions", label: "Permissions" },
-  { id: "client-versions", label: "Client versions" },
-  { id: "map-locations", label: "Map locations" },
-  { id: "audit", label: "Audit log" }
+  { id: "operations", label: "Operations" }
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -95,8 +85,6 @@ export function AdminSettingsPage() {
         <div className="admin-settings__panel">
           {tab === "notifications" && <NotificationsTab />}
           {tab === "email" && <EmailTab />}
-          {tab === "operations" && <OperationsTab />}
-          {tab === "users" && <AdminUsersTab />}
           {tab === "access-requests" && <AdminAccessRequestsTab />}
           {tab === "ai" && (
             <IntegrationTab
@@ -106,23 +94,8 @@ export function AdminSettingsPage() {
             />
           )}
           {tab === "integrations" && <IntegrationsKeysTab />}
-          {tab === "platform" && (
-            <>
-              <IntegrationTab
-                href="/settings/administration/platform"
-                label="Platform integrations — SharePoint"
-                body="SharePoint tenant, site, and library bindings plus the root folder tree used by Project Operations. SHAREPOINT_MODE is set by environment."
-              />
-              <SharePointTestPanel />
-              <SharePointFolderMappingsPanel />
-              <XeroPanel />
-            </>
-          )}
           {tab === "geofences" && <SiteGeofencesTab />}
-          {tab === "permissions" && <AdminRolesPermissionsTab />}
-          {tab === "client-versions" && <AdminClientVersionsTab />}
-          {tab === "map-locations" && <MapLocationsTab />}
-          {tab === "audit" && <StubCard title="System audit log" body="Coming soon. All admin actions are recorded." />}
+          {tab === "operations" && <OperationsFuelTab />}
         </div>
       </div>
     </div>
@@ -135,15 +108,6 @@ function IntegrationTab({ href, label, body }: { href: string; label: string; bo
       <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>{label}</h2>
       <p style={{ color: "var(--text-muted)" }}>{body}</p>
       <Link to={href} className="s7-btn s7-btn--primary">Open settings</Link>
-    </section>
-  );
-}
-
-function StubCard({ title, body }: { title: string; body: string }) {
-  return (
-    <section className="s7-card">
-      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>{title}</h2>
-      <p style={{ color: "var(--text-muted)" }}>{body}</p>
     </section>
   );
 }
@@ -570,392 +534,6 @@ function EmailTab() {
   );
 }
 
-// ── Operations tab (fuel price + travel rate) ───────────────────────
-// Backs OperationsSettings singleton. Waste-transport cost engine R3 T-0
-// (2026-07-15): first slice — Marco enters the fuel price manually here;
-// T-2 will refresh it from a feed. travelRatePerKm is an interim flat
-// rate used by the SoW line until T-1 wires fuel × consumption × distance.
-type OperationsSettings = {
-  id: string;
-  fuelPricePerLitre: string | number | null;
-  fuelPriceSource: string | null;
-  fuelPriceFetchedAt: string | null;
-  travelRatePerKm: string | number | null;
-  updatedAt: string;
-  updatedById: string | null;
-};
-
-function OperationsTab() {
-  const { authFetch } = useAuth();
-  const [config, setConfig] = useState<OperationsSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedFlash, setSavedFlash] = useState(false);
-  const [fuelPrice, setFuelPrice] = useState("");
-  const [fuelSource, setFuelSource] = useState("");
-  const [travelRate, setTravelRate] = useState("");
-  const loadedRef = useRef(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await authFetch("/admin/settings/operations");
-      if (!response.ok) throw new Error(await response.text());
-      const body = (await response.json()) as OperationsSettings;
-      setConfig(body);
-      if (!loadedRef.current) {
-        setFuelPrice(body.fuelPricePerLitre != null ? String(body.fuelPricePerLitre) : "");
-        setFuelSource(body.fuelPriceSource ?? "");
-        setTravelRate(body.travelRatePerKm != null ? String(body.travelRatePerKm) : "");
-        loadedRef.current = true;
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      // Blank → null (clear the value). Non-blank → number for the two
-      // decimals. Empty string stays undefined so the server leaves it alone.
-      const patch: Record<string, unknown> = {};
-      patch.fuelPricePerLitre = fuelPrice.trim() === "" ? null : Number(fuelPrice);
-      patch.fuelPriceSource = fuelSource.trim() === "" ? null : fuelSource.trim();
-      patch.travelRatePerKm = travelRate.trim() === "" ? null : Number(travelRate);
-      const response = await authFetch("/admin/settings/operations", {
-        method: "PATCH",
-        body: JSON.stringify(patch)
-      });
-      if (!response.ok) throw new Error(await response.text());
-      setConfig((await response.json()) as OperationsSettings);
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 1500);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading || !config) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
-
-  return (
-    <section className="s7-card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 4 }}>
-          Operations / Fuel
-        </h2>
-        <p style={{ color: "var(--text-muted)", marginTop: 0, fontSize: 13 }}>
-          Fuel price and interim travel rate used by the waste-transport cost engine (R3). Per-truck
-          fuel consumption lives on each Asset; per-material load capacity lives in the Transport
-          capacity reference table under Rates &amp; Lists.
-        </p>
-      </div>
-      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
-
-      <label className="estimate-editor__field">
-        <span>Fuel price (per litre, AUD)</span>
-        <input
-          className="s7-input"
-          type="number"
-          step="0.001"
-          min="0"
-          value={fuelPrice}
-          onChange={(e) => setFuelPrice(e.target.value)}
-          placeholder="e.g. 2.150"
-        />
-      </label>
-      <label className="estimate-editor__field">
-        <span>Fuel price source</span>
-        <input
-          className="s7-input"
-          value={fuelSource}
-          onChange={(e) => setFuelSource(e.target.value)}
-          placeholder="Manual entry / feed name (T-2 will populate this automatically)"
-        />
-      </label>
-      <label className="estimate-editor__field">
-        <span>Travel rate (per km, AUD) — interim</span>
-        <input
-          className="s7-input"
-          type="number"
-          step="0.01"
-          min="0"
-          value={travelRate}
-          onChange={(e) => setTravelRate(e.target.value)}
-          placeholder="Interim flat rate — replaced by fuel × consumption × distance in T-1"
-        />
-      </label>
-
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button
-          type="button"
-          className="s7-btn s7-btn--primary"
-          onClick={() => void save()}
-          disabled={saving}
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-        {savedFlash ? <span style={{ fontSize: 12, color: "#16A34A" }}>✓ Saved</span> : null}
-      </div>
-
-      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-        Last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
-        {config.fuelPriceFetchedAt
-          ? ` · fuel price fetched ${new Date(config.fuelPriceFetchedAt).toLocaleString("en-AU")}`
-          : ""}
-      </div>
-    </section>
-  );
-}
-
-function SharePointTestPanel() {
-  const { authFetch } = useAuth();
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ connected: boolean; mode: string; message?: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    setResult(null);
-    try {
-      const response = await authFetch("/sharepoint/test");
-      if (!response.ok) throw new Error(await response.text());
-      setResult(await response.json());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="s7-card" style={{ marginTop: 12 }}>
-      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>SharePoint connection</h2>
-      <p style={{ color: "var(--text-muted)", margin: "0 0 10px" }}>
-        Probes the configured adapter. Mock mode always returns OK. Live mode performs a benign
-        ensureFolder call against the configured root.
-      </p>
-      <button type="button" className="s7-btn s7-btn--secondary" onClick={() => void run()} disabled={busy}>
-        {busy ? "Testing…" : "Test connection"}
-      </button>
-      {error ? (
-        <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p>
-      ) : null}
-      {result ? (
-        <div
-          style={{
-            marginTop: 10,
-            padding: 10,
-            borderRadius: 6,
-            background: result.connected ? "rgba(22, 163, 74, 0.10)" : "rgba(245, 158, 11, 0.10)",
-            borderLeft: `4px solid ${result.connected ? "#16a34a" : "#f59e0b"}`,
-            fontSize: 13
-          }}
-        >
-          <strong>{result.connected ? "Connected" : "Unavailable"}</strong> — mode: <code>{result.mode}</code>
-          {result.message ? <div style={{ marginTop: 4 }}>{result.message}</div> : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-// SharePoint folder mappings — DB-backed, super-user-only. Same idea as
-// the Rates admin: which folder each entity's documents live in is a
-// business decision, not a deployment setting. Server enforces
-// super-user; this hides the panel from everyone else so it doesn't
-// look editable when it isn't.
-type FolderMapping = {
-  id: string;
-  entityType: "TENDER" | "JOB";
-  folderPath: string;
-  isActive: boolean;
-  updatedAt: string;
-};
-
-const ENTITY_LABELS: Record<FolderMapping["entityType"], string> = {
-  TENDER: "Tender",
-  JOB: "Job"
-};
-
-function SharePointFolderMappingsPanel() {
-  const { authFetch, user } = useAuth();
-  const isSuperUser = user?.isSuperUser === true;
-  const [mappings, setMappings] = useState<FolderMapping[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ entityType: FolderMapping["entityType"]; path: string } | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!isSuperUser) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await authFetch("/admin/sharepoint-folder-mappings");
-      if (!response.ok) throw new Error(await response.text());
-      setMappings((await response.json()) as FolderMapping[]);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, isSuperUser]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (!isSuperUser) return null;
-
-  const save = async () => {
-    if (!editing) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const response = await authFetch(
-        `/admin/sharepoint-folder-mappings/${editing.entityType}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ folderPath: editing.path })
-        }
-      );
-      if (!response.ok) {
-        // Server rejects an invalid path with a specific message naming
-        // the folder that wasn't found — surface it verbatim so the
-        // admin can see what's wrong instead of a generic error.
-        const message = await response.text();
-        throw new Error(message);
-      }
-      setFlash(`Updated ${ENTITY_LABELS[editing.entityType]} folder path.`);
-      setEditing(null);
-      await load();
-    } catch (err) {
-      setSaveError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <section className="s7-card" style={{ marginTop: 12 }}>
-      <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>SharePoint folder mappings</h2>
-      <p style={{ color: "var(--text-muted)", margin: "0 0 10px" }}>
-        Which folder each entity's documents live in. Edit the path and Save — the change is
-        validated against SharePoint and takes effect immediately. No redeploy.
-      </p>
-      {loading ? <p style={{ color: "var(--text-muted)" }}>Loading…</p> : null}
-      {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
-      {flash ? <p style={{ color: "#16a34a", margin: "0 0 10px" }}>{flash}</p> : null}
-      {!loading && mappings.length > 0 ? (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)" }}>Entity</th>
-              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)" }}>Folder path</th>
-              <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--divider)", width: 100 }}>Status</th>
-              <th style={{ padding: "6px 8px", borderBottom: "1px solid var(--divider)", width: 80 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {mappings.map((m) => {
-              const isEditing = editing?.entityType === m.entityType;
-              return (
-                <tr key={m.id}>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>{ENTITY_LABELS[m.entityType]}</td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={editing!.path}
-                        onChange={(e) => setEditing({ entityType: m.entityType, path: e.target.value })}
-                        style={{ width: "100%", padding: 4, fontFamily: "monospace", fontSize: 12 }}
-                        disabled={saving}
-                      />
-                    ) : (
-                      <code style={{ fontSize: 12 }}>{m.folderPath}</code>
-                    )}
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)" }}>
-                    {m.isActive ? (
-                      <span style={{ color: "#16a34a" }}>Active</span>
-                    ) : (
-                      <span style={{ color: "var(--text-muted)" }}>Inactive</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "8px", borderBottom: "1px solid var(--divider)", textAlign: "right" }}>
-                    {isEditing ? (
-                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                        <button
-                          type="button"
-                          className="s7-btn s7-btn--primary"
-                          onClick={() => void save()}
-                          disabled={saving}
-                          style={{ padding: "4px 10px", fontSize: 12 }}
-                        >
-                          {saving ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          className="s7-btn s7-btn--ghost"
-                          onClick={() => {
-                            setEditing(null);
-                            setSaveError(null);
-                          }}
-                          disabled={saving}
-                          style={{ padding: "4px 10px", fontSize: 12 }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="s7-btn s7-btn--ghost"
-                        onClick={() => {
-                          setEditing({ entityType: m.entityType, path: m.folderPath });
-                          setFlash(null);
-                          setSaveError(null);
-                        }}
-                        style={{ padding: "4px 10px", fontSize: 12 }}
-                      >
-                        Edit
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ) : null}
-      {saveError ? (
-        <p style={{ color: "var(--status-danger)", marginTop: 10, fontSize: 12 }}>{saveError}</p>
-      ) : null}
-      <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-        Paths are relative to the SharePoint library. A path that doesn't exist in the library will
-        be rejected — create the folder in SharePoint first.
-      </p>
-    </section>
-  );
-}
-
 // ── Integrations / API keys tab ─────────────────────────────────────────
 // Third-party integration keys (Geoapify, fuelpricesqld, future). Same
 // UX as ProviderKeyManager for AI keys: the browser only ever sees
@@ -1158,155 +736,6 @@ function IntegrationsKeysTab() {
           </div>
         </div>
       ) : null}
-    </section>
-  );
-}
-
-function XeroPanel() {
-  const { authFetch } = useAuth();
-  const confirm = useConfirm();
-  const [status, setStatus] = useState<{
-    connected: boolean;
-    tenantName?: string | null;
-    expiresAt?: string;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-
-  const refresh = async () => {
-    try {
-      const r = await authFetch("/xero/status");
-      if (r.ok) setStatus(await r.json());
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  const connect = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await authFetch("/xero/connect");
-      if (!r.ok) throw new Error(await r.text());
-      const body = (await r.json()) as { url: string };
-      window.open(body.url, "_blank", "noopener");
-      setInfo("Consent window opened — finish the flow in the new tab.");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const disconnect = async () => {
-    const ok = await confirm({
-      title: "Disconnect Xero",
-      message: "Disconnect Xero? You'll need to re-consent next time.",
-      confirmLabel: "Disconnect",
-      variant: "danger"
-    });
-    if (!ok) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await authFetch("/xero/disconnect", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
-      setInfo("Disconnected.");
-      await refresh();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const syncAll = async () => {
-    const ok = await confirm({
-      title: "Sync all clients to Xero",
-      message: "Push all active clients to Xero now?",
-      confirmLabel: "Sync"
-    });
-    if (!ok) return;
-    setBusy(true);
-    setError(null);
-    setInfo(null);
-    try {
-      const r = await authFetch("/xero/contacts/sync-all", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
-      const body = (await r.json()) as {
-        total: number;
-        results: Array<{ clientId: string; status: string }>;
-      };
-      const ok = body.results.filter((x) => x.status === "success").length;
-      setInfo(`Synced ${ok}/${body.total} clients.`);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="s7-card" style={{ marginTop: 16, padding: 16 }}>
-      <h3 className="s7-type-section-heading" style={{ margin: "0 0 8px" }}>
-        Xero integration
-      </h3>
-      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 12px" }}>
-        Push clients into Xero as contacts, and create draft invoices from approved progress claims.
-        Set <code>XERO_CLIENT_ID</code>, <code>XERO_CLIENT_SECRET</code>, <code>XERO_REDIRECT_URI</code> in
-        the API environment first.
-      </p>
-
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {status?.connected ? (
-          <>
-            <span
-              style={{
-                fontSize: 12,
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: "rgba(22, 163, 74, 0.15)",
-                color: "#16a34a"
-              }}
-            >
-              Connected{status.tenantName ? ` — ${status.tenantName}` : ""}
-            </span>
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost"
-              onClick={() => void syncAll()}
-              disabled={busy}
-            >
-              Sync all clients
-            </button>
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost"
-              onClick={() => void disconnect()}
-              disabled={busy}
-            >
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="s7-btn s7-btn--primary"
-            onClick={() => void connect()}
-            disabled={busy}
-          >
-            {busy ? "Working…" : "Connect Xero"}
-          </button>
-        )}
-      </div>
-
-      {info ? <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 10 }}>{info}</p> : null}
-      {error ? <p style={{ color: "var(--status-danger)", marginTop: 10 }}>{error}</p> : null}
     </section>
   );
 }
@@ -1600,6 +1029,105 @@ function SiteGeofencesTab() {
           </table>
         )}
       </div>
+    </section>
+  );
+}
+
+// ── Operations / Fuel tab ────────────────────────────────────────────────
+// Read-only readout of the live diesel fuel-price feed (R3 T-2).
+// The T-0 manual override field lives in Admin › Company profile; this tab
+// surfaces the live feed status so staleness is visible without navigating away.
+type OperationsSettingsReadonly = {
+  fuelPricePerLitre: string | number | null;
+  fuelPriceSource: string | null;
+  fuelPriceFetchedAt: string | null;
+  travelRatePerKm: string | number | null;
+  updatedAt: string;
+};
+
+function OperationsFuelTab() {
+  const { authFetch } = useAuth();
+  const [config, setConfig] = useState<OperationsSettingsReadonly | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await authFetch("/admin/settings/operations");
+      if (!response.ok) throw new Error(await response.text());
+      setConfig((await response.json()) as OperationsSettingsReadonly);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <section className="s7-card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <h2 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 0 }}>
+        Operations / Fuel price feed
+      </h2>
+      <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13 }}>
+        Live diesel price from fuelpricesqld.com.au (Ampol QLD maximum). Updated daily at 02:00 UTC
+        by the scheduled feed. The manual override field is under{" "}
+        <strong>Admin › Company profile › Operations / Fuel</strong>.
+      </p>
+
+      {loading ? (
+        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+      ) : error ? (
+        <p style={{ color: "var(--status-danger)" }}>{error}</p>
+      ) : config ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 8,
+              background:
+                config.fuelPriceSource === "fuelpricesqld:Ampol-Diesel-max"
+                  ? "rgba(0,91,97,0.07)"
+                  : "var(--surface-muted, #F6F6F6)",
+              border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))"
+            }}
+          >
+            {config.fuelPricePerLitre != null ? (
+              <>
+                <div style={{ fontWeight: 600, fontSize: 18 }}>
+                  ${Number(config.fuelPricePerLitre).toFixed(3)}/L
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  {config.fuelPriceSource ?? "Manual entry"}
+                  {config.fuelPriceFetchedAt
+                    ? ` · fetched ${new Date(config.fuelPriceFetchedAt).toLocaleString("en-AU")}`
+                    : ""}
+                </div>
+              </>
+            ) : (
+              <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                No fuel price set yet. The daily feed will populate this automatically once the
+                fuelpricesqld API key is configured under <strong>Integrations / API keys</strong>.
+              </div>
+            )}
+          </div>
+
+          {config.travelRatePerKm != null ? (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Travel rate: ${Number(config.travelRatePerKm).toFixed(2)}/km (interim flat rate)
+            </div>
+          ) : null}
+
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            Settings last updated: {new Date(config.updatedAt).toLocaleString("en-AU")}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

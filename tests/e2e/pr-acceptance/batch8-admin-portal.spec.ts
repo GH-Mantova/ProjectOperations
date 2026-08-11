@@ -143,20 +143,50 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     for (const label of [
       "Notifications",
       "Email",
-      "Users",
-      "AI & Integrations",
-      "Platform",
-      "Permissions",
-      "Audit log"
+      "AI & Integrations"
     ]) {
       await expect(sections.getByRole("button", { name: label })).toBeVisible();
     }
+  });
 
-    // Tab switch renders the section content: the role → permission matrix
-    // shipped in PR #429 replaced the prior "Coming soon." placeholder.
-    await sections.getByRole("button", { name: "Permissions" }).click();
+  test("Roles & Permissions renders at /settings/administration/roles (SLICE 8)", async ({
+    page
+  }) => {
+    // SLICE 8: Roles and Permissions were two separate Settings pages; they
+    // now render as one editable surface (AdminRolesPermissionsTab) hosted
+    // at /settings/administration/roles. The old /permissions URL redirects
+    // here so bookmarks keep working.
+    await loginAsAdmin(page);
+    await page.goto("/settings/administration/roles");
     await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
     await expect(page.getByTestId("roles-permissions-matrix")).toBeVisible();
+
+    await page.goto("/settings/administration/permissions");
+    await expect(page).toHaveURL(/\/settings\/administration\/roles$/);
+    await expect(page.getByRole("heading", { name: "Roles & permissions" })).toBeVisible();
+  });
+
+  test("Administration landing hub renders at /settings/administration (SLICE 16)", async ({
+    page
+  }) => {
+    // SLICE 16: a direct visit to /settings/administration used to 404 because
+    // only administration/* children were registered. AdministrationLandingPage
+    // is now mounted at the bare path and lists the accessible sub-pages.
+    await loginAsAdmin(page);
+    await page.goto("/settings/administration");
+    await expect(page).toHaveURL(/\/settings\/administration$/);
+    const hub = page.getByTestId("administration-landing");
+    await expect(hub).toBeVisible();
+    for (const label of ["Admin settings", "Users", "Roles & Permissions", "Audit", "Platform", "Automations", "Client versions", "Map locations"]) {
+      await expect(hub.getByRole("link", { name: label })).toBeVisible();
+    }
+  });
+
+  test("Users admin surface renders at /settings/administration/users (SLICE 7)", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto("/settings/administration/users");
+    // AdminUsersTab renders the admin users table with an Add button.
+    await expect(page.getByRole("button", { name: /Add user/i })).toBeVisible();
   });
 
   test("viewer sees NoAccess on admin settings, not a silent redirect (#544)", async ({ page }) => {

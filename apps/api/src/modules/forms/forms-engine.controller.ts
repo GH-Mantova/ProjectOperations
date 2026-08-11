@@ -79,7 +79,7 @@ export class FormsEngineController {
     @Body() body: UpdateSubmissionValuesDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.engine.updateValues(id, user.sub, body.values);
+    return this.engine.updateValues(id, user.sub, body.values, body.sectionEntries);
   }
 
   /**
@@ -105,7 +105,13 @@ export class FormsEngineController {
     @Body() body: SubmitSubmissionDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.engine.submitForm(id, user.sub, body.gpsLat, body.gpsLng);
+    return this.engine.submitForm(
+      id,
+      user.sub,
+      body.gpsLat,
+      body.gpsLng,
+      body.acknowledgedWarnings
+    );
   }
 
   /**
@@ -261,6 +267,51 @@ export class FormsEngineController {
   @ApiResponse({ status: 200, description: "Array of { id, name } ordered by name." })
   siteOptions() {
     return this.engine.getSiteOptions();
+  }
+
+  /**
+   * F-5 — light worker list for the `worker_picker` field. Optional
+   * `requiredQuals` (comma-separated qualType codes) attaches a
+   * per-worker competency verdict so the picker can badge missing quals.
+   */
+  @Get("worker-options")
+  @RequirePermissions("forms.submit")
+  @ApiOperation({
+    summary:
+      "List active workers for the worker_picker form field. Optionally score against required qualifications."
+  })
+  @ApiQuery({
+    name: "requiredQuals",
+    required: false,
+    description: "Comma-separated qualType codes, e.g. 'asbestos_b,working_at_heights'."
+  })
+  @ApiResponse({ status: 200, description: "Array of { id, name, role, competency }." })
+  workerOptions(@Query("requiredQuals") requiredQuals?: string) {
+    const quals = (requiredQuals ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    return this.engine.getWorkerOptions(quals);
+  }
+
+  /**
+   * F-5 — light asset list for the `asset_picker` field. Optional
+   * `siteId` narrows to assets checked out at that site (open checkouts).
+   * Each row carries a per-asset maintenanceSummary so the picker can
+   * surface service warnings without a second call.
+   */
+  @Get("asset-options")
+  @RequirePermissions("forms.submit")
+  @ApiOperation({
+    summary: "List assets for the asset_picker form field, optionally filtered to a site."
+  })
+  @ApiQuery({ name: "siteId", required: false, type: String })
+  @ApiResponse({
+    status: 200,
+    description: "Array of { id, name, assetCode, status, maintenanceSummary }."
+  })
+  assetOptions(@Query("siteId") siteId?: string) {
+    return this.engine.getAssetOptions(siteId);
   }
 
   /**

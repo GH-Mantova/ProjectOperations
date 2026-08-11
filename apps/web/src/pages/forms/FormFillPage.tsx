@@ -5,26 +5,11 @@ import { FormDraftStore } from "../../drafts";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
 import { readTemplateLayout, resolveEffectiveLayout, type FormLayout } from "./formLayoutResolver";
-
-// ── Types matching the engine response shape ─────────────────────────────
-
-type FieldRule = {
-  trigger: "on_change" | "on_load" | "on_submit";
-  conditionGroup: ConditionGroup;
-  actions: Array<{ type: string; target?: string; value?: unknown }>;
-};
-
-type Condition = {
-  fieldKey: string;
-  operator: string;
-  value?: unknown;
-  value2?: unknown;
-};
-
-type ConditionGroup = {
-  logic: "AND" | "OR";
-  conditions: Array<Condition | ConditionGroup>;
-};
+import { RepeatingSectionEntries } from "./RepeatingSectionEntries";
+import {
+  evaluateConditionGroup,
+  type FieldRule
+} from "@project-ops/config/forms-rule-definition";
 
 type Field = {
   id: string;
@@ -63,6 +48,10 @@ type Section = {
   title: string;
   description?: string | null;
   sectionOrder: number;
+  // F-3 — repeating section metadata.
+  isRepeating?: boolean;
+  minRepeat?: number | null;
+  maxRepeat?: number | null;
   fields: Field[];
 };
 
@@ -70,7 +59,13 @@ type Submission = {
   id: string;
   status: string;
   submittedById?: string | null;
-  context?: { jobId?: string; projectId?: string; supervisorId?: string } | null;
+  siteId?: string | null;
+  context?: {
+    jobId?: string;
+    projectId?: string;
+    supervisorId?: string;
+    allocationId?: string;
+  } | null;
   values: Array<{
     fieldKey: string;
     valueText: string | null;
@@ -79,6 +74,7 @@ type Submission = {
     valueDateTime: string | null;
     valueJson: unknown;
     filePath: string | null;
+    entryIndex?: number;
   }>;
   templateVersion: {
     id: string;
@@ -98,17 +94,10 @@ type ValueMap = Record<string, unknown>;
 
 // ── Local rules eval (mirrors RulesEngineService for live UI updates) ─────
 // Server is still authoritative — this just keeps the form responsive while
-// the user types so we don't roundtrip on every keystroke.
-
-function isGroup(node: Condition | ConditionGroup): node is ConditionGroup {
-  return (node as ConditionGroup).conditions !== undefined;
-}
-
-function toNumber(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+// the user types so we don't roundtrip on every keystroke. Condition/group
+// evaluation now lives in @project-ops/config/forms-rule-definition so client
+// and server share ONE evaluator (F-2b). The formRulesContract test proves
+// this consumer and RulesEngineService return identical results.
 
 function isEmpty(v: unknown): boolean {
   if (v === null || v === undefined) return true;
@@ -117,56 +106,11 @@ function isEmpty(v: unknown): boolean {
   return false;
 }
 
-function evalCondition(c: Condition, values: ValueMap): boolean {
-  const actual = values[c.fieldKey];
-  const expected = c.value;
-  switch (c.operator) {
-    case "equals":
-      return actual == expected;
-    case "not_equals":
-      return actual != expected;
-    case "contains":
-      if (Array.isArray(actual)) return actual.includes(expected as never);
-      return String(actual ?? "").includes(String(expected ?? ""));
-    case "not_contains":
-      if (Array.isArray(actual)) return !actual.includes(expected as never);
-      return !String(actual ?? "").includes(String(expected ?? ""));
-    case "greater_than": {
-      const a = toNumber(actual), b = toNumber(expected);
-      return a !== null && b !== null && a > b;
-    }
-    case "less_than": {
-      const a = toNumber(actual), b = toNumber(expected);
-      return a !== null && b !== null && a < b;
-    }
-    case "between": {
-      const a = toNumber(actual), lo = toNumber(expected), hi = toNumber(c.value2);
-      return a !== null && lo !== null && hi !== null && a >= lo && a <= hi;
-    }
-    case "is_empty":
-      return isEmpty(actual);
-    case "is_not_empty":
-      return !isEmpty(actual);
-    case "is_one_of":
-      return Array.isArray(expected) && expected.includes(actual as never);
-    case "is_not_one_of":
-      return Array.isArray(expected) && !expected.includes(actual as never);
-    default:
-      return false;
-  }
-}
-
-function evalGroup(g: ConditionGroup, values: ValueMap): boolean {
-  if (!g || !Array.isArray(g.conditions) || g.conditions.length === 0) return true;
-  const evals = g.conditions.map((n) => (isGroup(n) ? evalGroup(n, values) : evalCondition(n, values)));
-  return g.logic === "OR" ? evals.some(Boolean) : evals.every(Boolean);
-}
-
 function fieldVisible(field: Field, values: ValueMap): boolean {
   const rules = field.conditions ?? [];
   if (rules.length === 0) return true;
   for (const rule of rules) {
-    if (!evalGroup(rule.conditionGroup, values)) continue;
+    if (!evaluateConditionGroup(rule.conditionGroup, values)) continue;
     for (const action of rule.actions) {
       if (action.type === "hide") return false;
       if (action.type === "show") return true;
@@ -180,7 +124,7 @@ function fieldRequired(field: Field, values: ValueMap): boolean {
   if (rules.length === 0) return field.isRequired;
   let required = field.isRequired;
   for (const rule of rules) {
-    if (!evalGroup(rule.conditionGroup, values)) continue;
+    if (!evaluateConditionGroup(rule.conditionGroup, values)) continue;
     for (const action of rule.actions) {
       if (action.type === "require") required = true;
       else if (action.type === "unrequire") required = false;
@@ -254,13 +198,55 @@ function computeLiveScore(
 
 function buildInitialValues(submission: Submission): ValueMap {
   const out: ValueMap = {};
+  // F-3: the flat map only carries entryIndex 0. Repeating-section entries at
+  // higher indices live in the sectionEntries map built below.
   for (const v of submission.values) {
+    if ((v.entryIndex ?? 0) !== 0) continue;
     if (v.valueText !== null) out[v.fieldKey] = v.valueText;
     else if (v.valueNumber !== null) out[v.fieldKey] = Number(v.valueNumber);
     else if (v.valueBoolean !== null) out[v.fieldKey] = v.valueBoolean;
     else if (v.valueDateTime !== null) out[v.fieldKey] = v.valueDateTime;
     else if (v.valueJson !== null) out[v.fieldKey] = v.valueJson;
     else if (v.filePath !== null) out[v.fieldKey] = v.filePath;
+  }
+  return out;
+}
+
+type SectionEntriesState = Record<string, Array<Record<string, unknown>>>;
+
+/**
+ * F-3 — reconstruct `{ sectionId: [entry-0 fields, entry-1 fields, …] }` from
+ * the persisted submission rows so a returning submitter picks up their
+ * in-flight entries. Only repeating sections are considered; non-repeating
+ * sections stay in the flat value map.
+ */
+function buildInitialSectionEntries(submission: Submission): SectionEntriesState {
+  const out: SectionEntriesState = {};
+  const sections = submission.templateVersion.sections ?? [];
+  for (const section of sections) {
+    if (!section.isRepeating) continue;
+    const fieldKeys = new Set((section.fields ?? []).map((f) => f.fieldKey));
+    let maxIdx = -1;
+    const byIndex = new Map<number, Record<string, unknown>>();
+    for (const v of submission.values) {
+      if (!fieldKeys.has(v.fieldKey)) continue;
+      const idx = v.entryIndex ?? 0;
+      maxIdx = Math.max(maxIdx, idx);
+      const bucket = byIndex.get(idx) ?? {};
+      if (v.valueText !== null) bucket[v.fieldKey] = v.valueText;
+      else if (v.valueNumber !== null) bucket[v.fieldKey] = Number(v.valueNumber);
+      else if (v.valueBoolean !== null) bucket[v.fieldKey] = v.valueBoolean;
+      else if (v.valueDateTime !== null) bucket[v.fieldKey] = v.valueDateTime;
+      else if (v.valueJson !== null) bucket[v.fieldKey] = v.valueJson;
+      else if (v.filePath !== null) bucket[v.fieldKey] = v.filePath;
+      byIndex.set(idx, bucket);
+    }
+    const arr: Array<Record<string, unknown>> = [];
+    for (let i = 0; i <= maxIdx; i++) arr.push(byIndex.get(i) ?? {});
+    // Ensure at least minRepeat entries so the section renders correctly.
+    const min = Math.max(0, section.minRepeat ?? 0);
+    while (arr.length < min) arr.push({});
+    out[section.id] = arr;
   }
   return out;
 }
@@ -283,6 +269,7 @@ export function FormFillPage() {
 
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [values, setValues] = useState<ValueMap>({});
+  const [sectionEntries, setSectionEntries] = useState<SectionEntriesState>({});
   const [sectionIndex, setSectionIndex] = useState(0);
   const [cardFieldIndex, setCardFieldIndex] = useState(0);
   const [viewportWidth, setViewportWidth] = useState<number>(
@@ -293,6 +280,14 @@ export function FormFillPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ ref: string; created: { type: string; id: string }[] } | null>(null);
+  // F-2c — WARN gate: when the server returns 422 with `warnings`, the
+  // submitter must acknowledge each entry before the resubmit carries the
+  // keys back. BLOCK gates return 422 with `blocks` and are surfaced as a
+  // plain error — the user has to change form values to clear them.
+  const [pendingWarnings, setPendingWarnings] = useState<
+    Array<{ key: string; message: string }>
+  >([]);
+  const [ackKeys, setAckKeys] = useState<Set<string>>(new Set());
   const [gps, setGps] = useState<{ lat?: number; lng?: number; status: "idle" | "loading" | "ok" | "error"; message?: string }>({ status: "idle" });
   const [online, setOnline] = useState<boolean>(typeof navigator === "undefined" ? true : navigator.onLine);
   const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
@@ -357,19 +352,27 @@ export function FormFillPage() {
         // is IndexedDB (PR #111) — see FormDraftStore. Pre-#111 localStorage
         // drafts were migrated by the one-shot draftPurgeJob on app boot.
         const initial = buildInitialValues(body);
+        const initialEntries = buildInitialSectionEntries(body);
         try {
           const draft = user?.id
             ? await FormDraftStore.get(user.id, FORM_FILL_FORM_TYPE)
             : null;
           if (draft && draft.contextKey === body.id) {
-            const payload = draft.data as { values: ValueMap; sectionIndex?: number };
+            const payload = draft.data as {
+              values: ValueMap;
+              sectionIndex?: number;
+              sectionEntries?: SectionEntriesState;
+            };
             setValues({ ...initial, ...(payload.values ?? {}) });
+            setSectionEntries(payload.sectionEntries ?? initialEntries);
             if (typeof payload.sectionIndex === "number") setSectionIndex(payload.sectionIndex);
           } else {
             setValues(initial);
+            setSectionEntries(initialEntries);
           }
         } catch {
           setValues(initial);
+          setSectionEntries(initialEntries);
         }
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -393,7 +396,7 @@ export function FormFillPage() {
   // that accidentally includes a "password" field would surface a
   // SensitiveFieldError instead of silently caching it.
   const persistDraft = useCallback(
-    async (next: ValueMap, idx: number) => {
+    async (next: ValueMap, idx: number, entries: SectionEntriesState) => {
       if (!submission) return;
       if (user?.id) {
         try {
@@ -401,7 +404,7 @@ export function FormFillPage() {
             user.id,
             FORM_FILL_FORM_TYPE,
             submission.id,
-            { values: next, sectionIndex: idx },
+            { values: next, sectionIndex: idx, sectionEntries: entries },
             FORM_FILL_SCHEMA_VERSION
           );
         } catch {
@@ -417,7 +420,7 @@ export function FormFillPage() {
       try {
         const res = await authFetch(`/forms/submissions/${submission.id}/values`, {
           method: "PATCH",
-          body: JSON.stringify({ values: next })
+          body: JSON.stringify({ values: next, sectionEntries: entries })
         });
         if (!res.ok) throw new Error(await res.text());
         setSaveStatus("saved");
@@ -429,10 +432,10 @@ export function FormFillPage() {
   );
 
   const scheduleSave = useCallback(
-    (next: ValueMap, idx: number) => {
+    (next: ValueMap, idx: number, entries: SectionEntriesState) => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
-        void persistDraft(next, idx);
+        void persistDraft(next, idx, entries);
       }, 700);
     },
     [persistDraft]
@@ -462,9 +465,9 @@ export function FormFillPage() {
   // Reconnect: flush local draft to server
   useEffect(() => {
     if (online && submission && saveStatus === "error") {
-      void persistDraft(values, sectionIndex);
+      void persistDraft(values, sectionIndex, sectionEntries);
     }
-  }, [online, submission, saveStatus, persistDraft, values, sectionIndex]);
+  }, [online, submission, saveStatus, persistDraft, values, sectionIndex, sectionEntries]);
 
   const setValue = (fieldKey: string, value: unknown) => {
     const next = { ...values, [fieldKey]: value };
@@ -476,11 +479,22 @@ export function FormFillPage() {
         return out;
       });
     }
-    scheduleSave(next, sectionIndex);
+    scheduleSave(next, sectionIndex, sectionEntries);
+  };
+
+  // F-3 — set the full entries list for one repeating section, then autosave.
+  const setSectionEntriesFor = (sectionId: string, entries: Array<Record<string, unknown>>) => {
+    const nextEntries = { ...sectionEntries, [sectionId]: entries };
+    setSectionEntries(nextEntries);
+    scheduleSave(values, sectionIndex, nextEntries);
   };
 
   const visibleFields = useMemo(() => {
     if (!currentSection) return [] as Field[];
+    // Repeating sections render their fields per-entry via RepeatingSectionEntries
+    // and are not part of the flat visibleFields flow (validation, card
+    // progression). See F-3 scope note.
+    if (currentSection.isRepeating) return [] as Field[];
     return currentSection.fields
       .slice()
       .sort((a, b) => a.fieldOrder - b.fieldOrder)
@@ -515,7 +529,7 @@ export function FormFillPage() {
         const next = sectionIndex + 1;
         setSectionIndex(next);
         setCardFieldIndex(0);
-        scheduleSave(values, next);
+        scheduleSave(values, next, sectionEntries);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
       return;
@@ -523,7 +537,7 @@ export function FormFillPage() {
     if (sectionIndex < sections.length - 1) {
       const next = sectionIndex + 1;
       setSectionIndex(next);
-      scheduleSave(values, next);
+      scheduleSave(values, next, sectionEntries);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -562,6 +576,9 @@ export function FormFillPage() {
     const allErrors: Record<string, string> = {};
     let firstErrorSection = -1;
     for (let i = 0; i < sections.length; i++) {
+      // F-3: skip per-entry required checks for repeating sections at the
+      // top level — that check belongs per-entry and is deferred.
+      if (sections[i].isRepeating) continue;
       for (const f of sections[i].fields ?? []) {
         if (!fieldVisible(f, values)) continue;
         if (fieldRequired(f, values) && isEmpty(values[f.fieldKey])) {
@@ -579,7 +596,7 @@ export function FormFillPage() {
     setError(null);
     try {
       // Flush any pending values first
-      await persistDraft(values, sectionIndex);
+      await persistDraft(values, sectionIndex, sectionEntries);
 
       // GPS-A3: when the template requires geolocation, authenticated
       // submitters MUST include a fix. The mount-time capture is best-effort
@@ -604,7 +621,13 @@ export function FormFillPage() {
 
       const res = await authFetch(`/forms/submissions/${submission.id}/submit`, {
         method: "POST",
-        body: JSON.stringify({ gpsLat: submitLat, gpsLng: submitLng })
+        body: JSON.stringify({
+          gpsLat: submitLat,
+          gpsLng: submitLng,
+          // F-2c — echo prior acknowledgements. First submit sends empty;
+          // subsequent submits after the WARN modal add the OK'd keys.
+          acknowledgedWarnings: Array.from(ackKeys)
+        })
       });
       if (res.status === 422) {
         const body = await res.json();
@@ -612,6 +635,14 @@ export function FormFillPage() {
           setErrors(body.errors as Record<string, string>);
         } else if (Array.isArray(body?.complianceFailures)) {
           setError(body.complianceFailures.join(" "));
+        } else if (Array.isArray(body?.blocks)) {
+          // F-2c BLOCK — hard-stop; no acknowledgement path.
+          setError(body.blocks.join(" "));
+        } else if (Array.isArray(body?.warnings)) {
+          // F-2c WARN — surface an acknowledgement banner. When the user
+          // OKs it, the ack keys land in ackKeys and the resubmit clears
+          // the gate.
+          setPendingWarnings(body.warnings as Array<{ key: string; message: string }>);
         } else {
           setError("Validation failed.");
         }
@@ -689,7 +720,10 @@ export function FormFillPage() {
   const isLastCardField = isCard ? cardStep >= visibleFields.length - 1 : true;
   const isLastStep = isCard ? isLastSection && isLastCardField : isLastSection;
   const isFirstStep = isCard ? sectionIndex === 0 && cardStep === 0 : sectionIndex === 0;
-  const ctx = submission.context ?? {};
+  const ctx: Record<string, string | undefined> = {
+    ...((submission.context ?? {}) as Record<string, string | undefined>),
+    ...(submission.siteId ? { siteId: submission.siteId } : {})
+  };
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 16px 96px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -790,28 +824,105 @@ export function FormFillPage() {
           <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>{currentSection.description}</p>
         ) : null}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {cardFieldsRendered.map((field) => {
-            const required = fieldRequired(field, values);
-            const errorMsg = errors[field.fieldKey];
-            return (
+        {currentSection.isRepeating ? (
+          <RepeatingSectionEntries
+            section={{
+              id: currentSection.id,
+              title: currentSection.title,
+              minRepeat: currentSection.minRepeat ?? null,
+              maxRepeat: currentSection.maxRepeat ?? null,
+              fields: currentSection.fields
+            }}
+            entries={sectionEntries[currentSection.id] ?? []}
+            onChange={(entries) => setSectionEntriesFor(currentSection.id, entries)}
+            renderField={({ field, value, onChange }) => (
               <FieldRender
                 key={field.id}
-                field={field}
-                required={required}
-                value={values[field.fieldKey]}
-                onChange={(v) => setValue(field.fieldKey, v)}
-                error={errorMsg}
+                field={field as Field}
+                required={field.isRequired}
+                value={value}
+                onChange={onChange}
                 context={ctx as Record<string, string | undefined>}
                 gps={gps}
-                responseSet={resolveResponseSet(field, templateSettings)}
+                responseSet={resolveResponseSet(field as Field, templateSettings)}
               />
-            );
-          })}
-        </div>
+            )}
+          />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {cardFieldsRendered.map((field) => {
+              const required = fieldRequired(field, values);
+              const errorMsg = errors[field.fieldKey];
+              return (
+                <FieldRender
+                  key={field.id}
+                  field={field}
+                  required={required}
+                  value={values[field.fieldKey]}
+                  onChange={(v) => setValue(field.fieldKey, v)}
+                  error={errorMsg}
+                  context={ctx as Record<string, string | undefined>}
+                  gps={gps}
+                  responseSet={resolveResponseSet(field, templateSettings)}
+                  values={values}
+                />
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {error ? <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</p> : null}
+
+      {/* F-2c — WARN acknowledgement banner. Shown when the server returned
+          `warnings` on the last submit; the submitter must OK each warning
+          before the resubmit clears the gate. */}
+      {pendingWarnings.length > 0 ? (
+        <div
+          role="alertdialog"
+          aria-labelledby="warn-ack-heading"
+          data-testid="warn-ack-banner"
+          style={{
+            border: "1px solid var(--status-warning, #f59e0b)",
+            background: "rgba(245, 158, 11, 0.08)",
+            padding: 12,
+            borderRadius: 4
+          }}
+        >
+          <h3 id="warn-ack-heading" style={{ margin: "0 0 8px", fontSize: 14 }}>
+            Please review before submitting
+          </h3>
+          <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>
+            {pendingWarnings.map((w) => (
+              <li key={w.key}>{w.message}</li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary"
+              onClick={() => {
+                setAckKeys(
+                  (prev) =>
+                    new Set<string>([...prev, ...pendingWarnings.map((w) => w.key)])
+                );
+                setPendingWarnings([]);
+                void submit();
+              }}
+              data-testid="warn-ack-confirm"
+            >
+              I understand — submit anyway
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost"
+              onClick={() => setPendingWarnings([])}
+            >
+              Go back
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {submission.templateVersion.template.geolocationEnabled === true &&
       locationConsent === false ? (
@@ -887,7 +998,8 @@ function FieldRender({
   error,
   context,
   gps,
-  responseSet
+  responseSet,
+  values
 }: {
   field: Field;
   required: boolean;
@@ -897,6 +1009,7 @@ function FieldRender({
   context: Record<string, string | undefined>;
   gps: { lat?: number; lng?: number; status: string; message?: string };
   responseSet: ResponseSet | null;
+  values?: ValueMap;
 }) {
   const config = (field.config ?? {}) as Record<string, unknown>;
   const options = (config.options ?? []) as string[];
@@ -977,6 +1090,7 @@ function FieldRender({
         context={context}
         gps={gps}
         responseSet={responseSet}
+        values={values}
       />
       {error ? <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p> : null}
     </div>
@@ -990,7 +1104,8 @@ function FieldInput({
   options,
   context,
   gps,
-  responseSet
+  responseSet,
+  values
 }: {
   field: Field;
   value: unknown;
@@ -999,6 +1114,7 @@ function FieldInput({
   context: Record<string, string | undefined>;
   gps: { lat?: number; lng?: number; status: string; message?: string };
   responseSet: ResponseSet | null;
+  values?: ValueMap;
 }) {
   const t = field.fieldType;
   const config = (field.config ?? {}) as Record<string, unknown>;
@@ -1390,14 +1506,37 @@ function FieldInput({
     case "signature":
       return <SignaturePad value={value as string | null} onChange={onChange} />;
     case "photo":
+    case "image_capture":
     case "file":
-      return <PhotoInput value={value as string[] | null} onChange={onChange} maxCount={Number(config.maxCount ?? 5)} />;
+      return (
+        <PhotoInput
+          value={value as string[] | null}
+          onChange={onChange}
+          minCount={Number(config.minCount ?? 0)}
+          maxCount={Number(config.maxCount ?? 5)}
+          cameraOnly={Boolean(config.cameraOnly)}
+          stampLocation={Boolean(config.stampLocation)}
+          stampTime={Boolean(config.stampTime)}
+          allowAnnotation={Boolean(config.allowAnnotation)}
+          gps={gps}
+        />
+      );
     case "lookup":
-      return <LookupInput field={field} value={value} onChange={onChange} />;
+      return <LookupInput field={field} value={value} onChange={onChange} values={values} />;
     case "existing_site":
       return <ExistingSiteInput field={field} value={value} onChange={onChange} />;
+    case "worker_picker":
+      return <WorkerPicker field={field} value={value as string | null} onChange={onChange} context={context} />;
+    case "asset_picker":
+      return <AssetPicker field={field} value={value as string | null} onChange={onChange} context={context} />;
+    case "location_stamp":
+      return <LocationStamp value={value as { lat: number; lng: number; capturedAt: string } | null} onChange={onChange} gps={gps} />;
+    case "weather_capture":
+      return <WeatherCapture value={value as WeatherCaptureValue | null} onChange={onChange} siteId={context.siteId ?? null} />;
     case "calculation":
-      return <CalculationDisplay field={field} />;
+      return <CalculationDisplay field={field} values={values ?? {}} />;
+    case "unique_id":
+      return <UniqueIdDisplay value={value} />;
     case "table":
       return <TableInput field={field} value={value} onChange={onChange} />;
     case "terms":
@@ -1514,31 +1653,90 @@ function SignaturePad({ value, onChange }: { value: string | null; onChange: (v:
 }
 
 // ── Photo / file input — stores as base64 strings in valueJson ───────────
+//
+// F-5 config keys:
+//   minCount:        block submit until at least N photos are attached
+//   maxCount:        hard cap on attachments
+//   cameraOnly:      omit the file-picker fallback (capture=environment only)
+//   stampLocation:   burn the current GPS reading onto the image as a caption
+//   stampTime:       burn the capture timestamp onto the image as a caption
+//   allowAnnotation: expose a simple freehand annotate overlay for each photo
 
 function PhotoInput({
   value,
   onChange,
-  maxCount
+  minCount,
+  maxCount,
+  cameraOnly,
+  stampLocation,
+  stampTime,
+  allowAnnotation,
+  gps
 }: {
   value: string[] | null;
   onChange: (v: string[] | null) => void;
+  minCount: number;
   maxCount: number;
+  cameraOnly: boolean;
+  stampLocation: boolean;
+  stampTime: boolean;
+  allowAnnotation: boolean;
+  gps: { lat?: number; lng?: number; status: string; message?: string };
 }) {
   const photos = Array.isArray(value) ? value : [];
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [annotateIdx, setAnnotateIdx] = useState<number | null>(null);
+
+  const stampImage = (src: string): Promise<string> =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(src);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const captions: string[] = [];
+        if (stampTime) captions.push(new Date().toLocaleString());
+        if (stampLocation && typeof gps.lat === "number" && typeof gps.lng === "number") {
+          captions.push(`${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}`);
+        }
+        if (captions.length > 0) {
+          const fontSize = Math.max(14, Math.round(canvas.height / 30));
+          ctx.font = `${fontSize}px sans-serif`;
+          const text = captions.join(" | ");
+          const padding = 6;
+          const textWidth = ctx.measureText(text).width;
+          const bandHeight = fontSize + padding * 2;
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, canvas.height - bandHeight, textWidth + padding * 2, bandHeight);
+          ctx.fillStyle = "#fff";
+          ctx.textBaseline = "bottom";
+          ctx.fillText(text, padding, canvas.height - padding);
+        }
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    });
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
     const next = [...photos];
     for (const file of Array.from(files)) {
       if (next.length >= maxCount) break;
-      const data = await new Promise<string>((resolve, reject) => {
+      const raw = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result));
         reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
       });
-      next.push(data);
+      const stamped = stampLocation || stampTime ? await stampImage(raw) : raw;
+      next.push(stamped);
     }
     onChange(next.length > 0 ? next : null);
   };
@@ -1548,14 +1746,21 @@ function PhotoInput({
     onChange(next.length > 0 ? next : null);
   };
 
+  const replaceAt = (idx: number, dataUrl: string) => {
+    const next = [...photos];
+    next[idx] = dataUrl;
+    onChange(next);
+  };
+
+  const belowMin = minCount > 0 && photos.length < minCount;
+
   return (
     <div>
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"
-        multiple
+        {...(cameraOnly ? { capture: "environment" as const } : { capture: "environment" as const, multiple: true })}
         style={{ display: "none" }}
         onChange={(e) => void onFiles(e.target.files)}
       />
@@ -1568,6 +1773,11 @@ function PhotoInput({
       >
         📷 {photos.length === 0 ? "Take photo / attach" : `Add another (${photos.length}/${maxCount})`}
       </button>
+      {belowMin ? (
+        <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>
+          At least {minCount} {minCount === 1 ? "photo" : "photos"} required.
+        </p>
+      ) : null}
       {photos.length > 0 ? (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {photos.map((src, i) => (
@@ -1577,6 +1787,28 @@ function PhotoInput({
                 alt={`Attachment ${i + 1}`}
                 style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))" }}
               />
+              {allowAnnotation ? (
+                <button
+                  type="button"
+                  onClick={() => setAnnotateIdx(i)}
+                  aria-label="Annotate"
+                  style={{
+                    position: "absolute",
+                    bottom: -6,
+                    right: -6,
+                    width: 22,
+                    height: 22,
+                    background: "#005B61",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "50%",
+                    fontSize: 11,
+                    cursor: "pointer"
+                  }}
+                >
+                  ✎
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => remove(i)}
@@ -1601,6 +1833,573 @@ function PhotoInput({
           ))}
         </div>
       ) : null}
+      {annotateIdx !== null && photos[annotateIdx] ? (
+        <PhotoAnnotator
+          src={photos[annotateIdx]}
+          onClose={() => setAnnotateIdx(null)}
+          onSave={(dataUrl) => {
+            replaceAt(annotateIdx, dataUrl);
+            setAnnotateIdx(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// F-5 — minimal freehand annotator. Draws the source image into a canvas
+// and lets the user scribble on top; on Save we export a fresh data URL so
+// the annotation is baked into the persisted attachment.
+function PhotoAnnotator({
+  src,
+  onClose,
+  onSave
+}: {
+  src: string;
+  onClose: () => void;
+  onSave: (dataUrl: string) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = src;
+  }, [src]);
+
+  const getPos = (e: React.PointerEvent): { x: number; y: number } => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) * canvas.width) / rect.width,
+      y: ((e.clientY - rect.top) * canvas.height) / rect.height
+    };
+  };
+  const onPointerDown = (e: React.PointerEvent) => {
+    drawingRef.current = true;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!drawingRef.current) return;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.strokeStyle = "#DC2626";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+  const onPointerUp = () => {
+    drawingRef.current = false;
+  };
+
+  const save = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    onSave(canvas.toDataURL("image/jpeg", 0.85));
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Annotate photo"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        display: "flex",
+        flexDirection: "column",
+        padding: 12,
+        zIndex: 1000
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+        style={{ flex: 1, background: "#fff", touchAction: "none", maxWidth: "100%", objectFit: "contain" }}
+      />
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose} style={{ flex: 1 }}>
+          Cancel
+        </button>
+        <button type="button" className="s7-btn s7-btn--primary" onClick={save} style={{ flex: 1 }}>
+          Save annotation
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── F-5 WHS pickers ──────────────────────────────────────────────────────
+
+type WorkerOption = {
+  id: string;
+  name: string;
+  role: string;
+  competency: {
+    allowed: boolean;
+    missing: string[];
+    expired: string[];
+    expiringSoon: string[];
+  } | null;
+};
+
+function WorkerPicker({
+  field,
+  value,
+  onChange,
+  context
+}: {
+  field: Field;
+  value: string | null;
+  onChange: (v: unknown) => void;
+  context: Record<string, string | undefined>;
+}) {
+  const { authFetch } = useAuth();
+  const [workers, setWorkers] = useState<WorkerOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cfg = (field.config ?? {}) as {
+    prefillFromAllocation?: boolean;
+    checkCompetency?: boolean;
+    requiredQuals?: string[];
+  };
+  const requiredQuals = Array.isArray(cfg.requiredQuals) ? cfg.requiredQuals : [];
+  const shouldCheck = Boolean(cfg.checkCompetency) && requiredQuals.length > 0;
+  const prefilledRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const qs = shouldCheck ? `?requiredQuals=${encodeURIComponent(requiredQuals.join(","))}` : "";
+    (async () => {
+      try {
+        const res = await authFetch(`/forms/worker-options${qs}`);
+        if (!res.ok) throw new Error("Could not load workers");
+        const body = (await res.json()) as WorkerOption[];
+        if (!cancelled) setWorkers(body);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, shouldCheck, requiredQuals.join(",")]);
+
+  // F-5 — prefillFromAllocation: use the filler's own allocationId from
+  // context to pre-select their worker profile if the picker is currently
+  // empty. Only fires once per mount so a user can still clear the field.
+  useEffect(() => {
+    if (prefilledRef.current) return;
+    if (!cfg.prefillFromAllocation) return;
+    if (value) return;
+    if (workers.length === 0) return;
+    prefilledRef.current = true;
+    // If the caller passed a workerId hint through context.workerId (set by
+    // FormsEngineService.createDraft when the filler has an active timesheet
+    // linked to a worker profile), honour it.
+    const hint = context.workerId ?? context.workerProfileId;
+    if (hint && workers.some((w) => w.id === hint)) onChange(hint);
+  }, [workers, cfg.prefillFromAllocation, value, context.workerId, context.workerProfileId, onChange]);
+
+  const selected = workers.find((w) => w.id === value) ?? null;
+  const showWarning =
+    shouldCheck && selected?.competency && !selected.competency.allowed;
+
+  return (
+    <>
+      <select
+        className="s7-input"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        disabled={loading}
+        style={{ width: "100%", fontSize: 14, padding: 10 }}
+        aria-label={field.label}
+      >
+        <option value="">{loading ? "Loading…" : "Select a worker…"}</option>
+        {workers.map((w) => (
+          <option key={w.id} value={w.id}>
+            {w.name}
+            {w.role ? ` — ${w.role}` : ""}
+          </option>
+        ))}
+      </select>
+      {error ? (
+        <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p>
+      ) : null}
+      {showWarning && selected?.competency ? (
+        <div
+          role="alert"
+          style={{
+            marginTop: 6,
+            padding: 8,
+            background: "#FEF3C7",
+            color: "#92400E",
+            borderRadius: 6,
+            fontSize: 12
+          }}
+        >
+          Competency warning:{" "}
+          {selected.competency.missing.length > 0
+            ? `missing ${selected.competency.missing.join(", ")}`
+            : ""}
+          {selected.competency.expired.length > 0
+            ? ` expired ${selected.competency.expired.join(", ")}`
+            : ""}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+type AssetOption = {
+  id: string;
+  name: string;
+  assetCode: string;
+  status: string;
+  maintenanceSummary: {
+    nextDueAt: string | null;
+    overdue: boolean;
+    lastServicedAt: string | null;
+  };
+};
+
+function AssetPicker({
+  field,
+  value,
+  onChange,
+  context
+}: {
+  field: Field;
+  value: string | null;
+  onChange: (v: unknown) => void;
+  context: Record<string, string | undefined>;
+}) {
+  const { authFetch } = useAuth();
+  const [assets, setAssets] = useState<AssetOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cfg = (field.config ?? {}) as {
+    siteFiltered?: boolean;
+    showServiceWarnings?: boolean;
+  };
+  const siteFiltered = cfg.siteFiltered !== false;
+  const showWarnings = cfg.showServiceWarnings !== false;
+  const siteId = siteFiltered ? context.siteId : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const qs = siteId ? `?siteId=${encodeURIComponent(siteId)}` : "";
+    (async () => {
+      try {
+        const res = await authFetch(`/forms/asset-options${qs}`);
+        if (!res.ok) throw new Error("Could not load assets");
+        const body = (await res.json()) as AssetOption[];
+        if (!cancelled) setAssets(body);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, siteId]);
+
+  const selected = assets.find((a) => a.id === value) ?? null;
+
+  return (
+    <>
+      <select
+        className="s7-input"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        disabled={loading}
+        style={{ width: "100%", fontSize: 14, padding: 10 }}
+        aria-label={field.label}
+      >
+        <option value="">{loading ? "Loading…" : "Select an asset…"}</option>
+        {assets.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name} ({a.assetCode})
+          </option>
+        ))}
+      </select>
+      {error ? (
+        <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{error}</p>
+      ) : null}
+      {showWarnings && selected?.maintenanceSummary.overdue ? (
+        <div
+          role="alert"
+          style={{
+            marginTop: 6,
+            padding: 8,
+            background: "#FEE2E2",
+            color: "#991B1B",
+            borderRadius: 6,
+            fontSize: 12
+          }}
+        >
+          Service overdue — next due{" "}
+          {selected.maintenanceSummary.nextDueAt
+            ? new Date(selected.maintenanceSummary.nextDueAt).toLocaleDateString()
+            : "unknown"}
+          .
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+// LocationStamp — captures navigator.geolocation at fill time and stores
+// { lat, lng, capturedAt } in valueJson. The mount-time submission GPS
+// reading (submission.gpsLat/lng) is the source of truth for scanning /
+// reporting; the LocationStamp field is a per-field record of where the
+// filler said they were when this section was completed.
+function LocationStamp({
+  value,
+  onChange,
+  gps
+}: {
+  value: { lat: number; lng: number; capturedAt: string } | null;
+  onChange: (v: unknown) => void;
+  gps: { lat?: number; lng?: number; status: string; message?: string };
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const capture = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setErr("Geolocation not supported on this device.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onChange({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          capturedAt: new Date().toISOString()
+        });
+        setBusy(false);
+      },
+      (e) => {
+        setErr(e.message);
+        setBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  };
+
+  // If the outer GPS auto-capture has a fix and we don't have a value yet,
+  // seed with that reading so a field marked required doesn't nag the user
+  // twice for the same permission.
+  useEffect(() => {
+    if (value) return;
+    if (typeof gps.lat !== "number" || typeof gps.lng !== "number") return;
+    onChange({ lat: gps.lat, lng: gps.lng, capturedAt: new Date().toISOString() });
+  }, [gps.lat, gps.lng, value, onChange]);
+
+  return (
+    <div>
+      <button
+        type="button"
+        className="s7-btn s7-btn--secondary"
+        onClick={capture}
+        disabled={busy}
+        style={{ width: "100%", padding: 12 }}
+      >
+        {busy ? "Capturing…" : value ? "Recapture location" : "Capture location"}
+      </button>
+      {value ? (
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+          {value.lat.toFixed(5)}, {value.lng.toFixed(5)} · {new Date(value.capturedAt).toLocaleString()}
+        </p>
+      ) : null}
+      {err ? (
+        <p style={{ fontSize: 11, color: "var(--status-danger, #DC2626)", marginTop: 4 }}>{err}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// F-6 — Weather auto-capture. Reads the submission's `siteId` from context,
+// calls the same `/dashboards/weather/site/:siteId` endpoint the dashboard
+// widget uses, renders the current conditions read-only, and writes the
+// resolved summary into the FormSubmissionValue via onChange so downstream
+// audit / PDF export can show what the weather was at fill time.
+type WeatherCaptureValue = {
+  siteId: string;
+  temperatureC: number | null;
+  windKph: number | null;
+  weatherCode: number | null;
+  observedAt: string | null;
+  source: string;
+  capturedAt: string;
+};
+
+type WeatherApiResponse =
+  | {
+      unavailable: false;
+      site: { id: string; name: string };
+      current: {
+        temperatureC: number;
+        windKph: number | null;
+        weatherCode: number | null;
+        observedAt: string;
+      } | null;
+      source: string;
+    }
+  | { unavailable: true; site: { id: string; name: string }; reason: string };
+
+function WeatherCapture({
+  value,
+  onChange,
+  siteId
+}: {
+  value: WeatherCaptureValue | null;
+  onChange: (v: unknown) => void;
+  siteId: string | null;
+}) {
+  const { authFetch } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [current, setCurrent] = useState<WeatherApiResponse | null>(null);
+  const capturedForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!siteId) return;
+    // Only capture once per siteId per mount — the value belongs on the
+    // submission, not on every re-render.
+    if (capturedForRef.current === siteId && value) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await authFetch(`/dashboards/weather/site/${encodeURIComponent(siteId)}`);
+        if (!res.ok) throw new Error(`weather ${res.status}`);
+        const body = (await res.json()) as WeatherApiResponse;
+        if (cancelled) return;
+        setCurrent(body);
+        capturedForRef.current = siteId;
+        if (body.unavailable) {
+          // Persist a "captured but unavailable" marker so the audit trail
+          // shows we tried, without failing the field.
+          onChange({
+            siteId,
+            temperatureC: null,
+            windKph: null,
+            weatherCode: null,
+            observedAt: null,
+            source: "unavailable",
+            capturedAt: new Date().toISOString()
+          } satisfies WeatherCaptureValue);
+        } else {
+          onChange({
+            siteId,
+            temperatureC: body.current?.temperatureC ?? null,
+            windKph: body.current?.windKph ?? null,
+            weatherCode: body.current?.weatherCode ?? null,
+            observedAt: body.current?.observedAt ?? null,
+            source: body.source,
+            capturedAt: new Date().toISOString()
+          } satisfies WeatherCaptureValue);
+        }
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, siteId, value, onChange]);
+
+  if (!siteId) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13 }}>
+        No site linked to this submission — weather will be captured on submit if a site is set.
+      </div>
+    );
+  }
+  if (loading && !value) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13 }}>
+        Fetching current weather…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
+        Weather unavailable right now — the submission will save without a reading.
+      </div>
+    );
+  }
+  if (current?.unavailable) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13 }}>
+        Weather unavailable: {current.reason}.
+      </div>
+    );
+  }
+  const display = value ?? {
+    temperatureC: current && !current.unavailable ? (current.current?.temperatureC ?? null) : null,
+    windKph: current && !current.unavailable ? (current.current?.windKph ?? null) : null,
+    observedAt: current && !current.unavailable ? (current.current?.observedAt ?? null) : null
+  };
+  return (
+    <div
+      style={{
+        padding: 12,
+        background: "var(--surface-muted, #F6F6F6)",
+        borderRadius: 6,
+        fontSize: 13,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>
+          {display.temperatureC !== null ? `${Math.round(display.temperatureC)}°C` : "—"}
+        </div>
+        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+          {display.windKph !== null && display.windKph !== undefined
+            ? `Wind ${Math.round(display.windKph)} km/h`
+            : "Wind —"}
+          {display.observedAt ? ` · ${new Date(display.observedAt).toLocaleString()}` : ""}
+        </div>
+      </div>
+      <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>auto</span>
     </div>
   );
 }
@@ -1667,31 +2466,55 @@ function SubmittedSuccess({
  * The list of sources is authored on the template (`config.listSlug`), never
  * hardcoded here; this component just fetches whichever slug the designer
  * chose. Renders as a dropdown so it degrades gracefully on mobile.
+ *
+ * Nested lookup: when `config.dependsOnFieldKey` is set, the current value of
+ * that sibling field is appended as `?parentValue=<value>` on the fetch so the
+ * API can filter items by parent. The full items list is fetched whenever the
+ * parent value changes; if the parent field is blank the fetch is skipped and
+ * the dropdown shows "Select a parent value first".
+ *
+ * Note: the current global-lists API (`GET /lists/:slug/items`) does not yet
+ * filter by parentValue server-side. When a `dependsOnFieldKey` is configured
+ * the component appends the query param so a future API enhancement can act on
+ * it without a client change. Until then, the full list is returned and all
+ * items are shown (no client-side filtering — the designer must structure the
+ * list data to be inherently scoped or wait for the API enhancement).
  */
 function LookupInput({
   field,
   value,
-  onChange
+  onChange,
+  values
 }: {
   field: Field;
   value: unknown;
   onChange: (v: unknown) => void;
+  values?: ValueMap;
 }) {
   const { authFetch } = useAuth();
   const config = (field.config ?? {}) as Record<string, unknown>;
   const slug = String(config.listSlug ?? "").trim();
+  const dependsOnFieldKey = String(config.parentFieldKey ?? "").trim();
+  const parentValue = dependsOnFieldKey && values ? String(values[dependsOnFieldKey] ?? "") : "";
   const [items, setItems] = useState<Array<{ id: string; value: string; label: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) return;
+    // When a parent dependency is configured but no parent value is selected yet,
+    // clear the list and wait — avoids a spurious full-list fetch.
+    if (dependsOnFieldKey && !parentValue) {
+      setItems([]);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
     (async () => {
       try {
-        const res = await authFetch(`/lists/${encodeURIComponent(slug)}/items`);
+        const qs = parentValue ? `?parentValue=${encodeURIComponent(parentValue)}` : "";
+        const res = await authFetch(`/lists/${encodeURIComponent(slug)}/items${qs}`);
         if (!res.ok) throw new Error(`Could not load list "${slug}"`);
         const body = (await res.json()) as Array<{ id: string; value?: string; label: string }>;
         if (!cancelled) {
@@ -1708,12 +2531,19 @@ function LookupInput({
     return () => {
       cancelled = true;
     };
-  }, [authFetch, slug]);
+  }, [authFetch, slug, dependsOnFieldKey, parentValue]);
 
   if (!slug) {
     return (
       <div style={{ padding: 10, background: "#FEF3C7", color: "#92400E", borderRadius: 6, fontSize: 12 }}>
         Lookup source not configured — set a list slug on the template.
+      </div>
+    );
+  }
+  if (dependsOnFieldKey && !parentValue) {
+    return (
+      <div style={{ padding: 10, background: "var(--surface-muted, #F6F6F6)", borderRadius: 6, fontSize: 13, color: "var(--text-muted)" }}>
+        Select a value in the parent field first.
       </div>
     );
   }
@@ -1807,13 +2637,62 @@ function ExistingSiteInput({
 }
 
 /**
- * Calculation — read-only display. The server always recomputes on submit,
- * so the client-side number is presentational only; do NOT call onChange.
+ * Compute a calculation result client-side from the live value map.
+ * Mirrors the server's `computeCalculation` in forms-engine.service.ts so the
+ * displayed number stays in sync as the user edits operand fields. The server
+ * always recomputes on submit — this is presentational only.
  */
-function CalculationDisplay({ field }: { field: Field }) {
+function clientComputeCalculation(
+  operation: string,
+  operands: number[],
+  decimals: number
+): number | null {
+  if (operands.length === 0) return null;
+  let raw: number;
+  switch (operation) {
+    case "sum":
+      raw = operands.reduce((a, b) => a + b, 0);
+      break;
+    case "difference":
+      raw = operands.slice(1).reduce((a, b) => a - b, operands[0]);
+      break;
+    case "product":
+      raw = operands.reduce((a, b) => a * b, 1);
+      break;
+    case "average":
+      raw = operands.reduce((a, b) => a + b, 0) / operands.length;
+      break;
+    case "min":
+      raw = Math.min(...operands);
+      break;
+    case "max":
+      raw = Math.max(...operands);
+      break;
+    default:
+      return null;
+  }
+  const factor = Math.pow(10, Math.max(0, Math.min(6, decimals)));
+  return Math.round(raw * factor) / factor;
+}
+
+/**
+ * Calculation — read-only display. Computes the live result from `values` so
+ * the number updates as the user fills operand fields. The server always
+ * recomputes on submit and the authoritative value is what the server returns;
+ * this is presentational only — do NOT call onChange.
+ */
+function CalculationDisplay({ field, values }: { field: Field; values: ValueMap }) {
   const config = (field.config ?? {}) as Record<string, unknown>;
   const operation = String(config.operation ?? "sum");
   const operandKeys = Array.isArray(config.operandKeys) ? (config.operandKeys as string[]) : [];
+  const decimals = typeof config.decimals === "number" ? config.decimals : 2;
+
+  const operands = operandKeys
+    .map((key) => values[key])
+    .map((v) => (typeof v === "number" ? v : Number(v)))
+    .filter((n) => Number.isFinite(n));
+  const result = clientComputeCalculation(operation, operands, decimals);
+
   return (
     <div
       style={{
@@ -1827,11 +2706,41 @@ function CalculationDisplay({ field }: { field: Field }) {
       }}
     >
       <span>
-        Auto-calculated ({operation} of {operandKeys.length || "no"} field
-        {operandKeys.length === 1 ? "" : "s"})
+        {result !== null ? result.toLocaleString() : "—"}
       </span>
       <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
-        computed
+        {operation}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Unique ID — read-only display. The server generates the ID atomically on
+ * submit from the FormNumberSequence row-locked counter. Before submission the
+ * field shows a placeholder; after submission the assigned ID is returned in
+ * the submission values and is displayed here. The client never generates or
+ * modifies this value.
+ */
+function UniqueIdDisplay({ value }: { value: unknown }) {
+  const assigned = value !== null && value !== undefined && String(value).trim() !== "";
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--surface-muted, #F6F6F6)",
+        borderRadius: 6,
+        fontSize: 13,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}
+    >
+      <span style={{ fontFamily: "monospace", fontWeight: 600 }}>
+        {assigned ? String(value) : "(will be assigned on submit)"}
+      </span>
+      <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
+        auto
       </span>
     </div>
   );

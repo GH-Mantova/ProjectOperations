@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsNumber, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsArray, IsNumber, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 
 /**
  * Payload for `POST /forms/submissions` — creates a draft against the
@@ -21,6 +21,21 @@ export class UpdateSubmissionValuesDto {
   @ApiProperty({ description: "fieldKey → value map. Only fields included are updated." })
   @IsObject()
   values!: Record<string, unknown>;
+
+  /**
+   * F-3 — Per-repeating-section entries: `{ [sectionKey]: [{ fieldKey: value }, ...] }`.
+   * Each array element becomes one entry (entryIndex = array position). Sending
+   * an empty array for a section clears that section's entries; omitting a
+   * section key leaves its stored entries untouched. Non-repeating sections'
+   * values continue to go through the flat `values` map above.
+   */
+  @ApiPropertyOptional({
+    description:
+      "Per-repeating-section entries. Object keyed by sectionKey; each value is an array of per-entry {fieldKey: value} maps."
+  })
+  @IsOptional()
+  @IsObject()
+  sectionEntries?: Record<string, Array<Record<string, unknown>>>;
 }
 
 /**
@@ -39,6 +54,18 @@ export class SubmitSubmissionDto {
   @IsOptional()
   @IsNumber()
   gpsLng?: number;
+
+  /**
+   * F-2c — keys of WARN-typed on_submit rule actions the submitter has
+   * acknowledged. Empty/omitted when no warnings match; the engine bounces
+   * the submit with a 422 whose body lists the missing acknowledgements so
+   * the client can prompt and re-submit.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  acknowledgedWarnings?: string[];
 }
 
 /**

@@ -72,9 +72,13 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     });
   });
 
-  it("Settings is the only role-gated group", () => {
+  it("no sidebar group is role-gated at the group level (SLICE 3: settings-restructure)", () => {
+    // SLICE 3 drops adminOnly on the Settings group. Every group now
+    // renders for all authenticated users; per-item requiresPermission
+    // decides which entries surface inside a group. The SettingsShell
+    // then does the same for its own sub-nav (Company/Administration).
     const adminOnly = NAV_GROUPS.filter((group) => group.adminOnly);
-    expect(adminOnly.map((g) => g.id)).toEqual(["settings"]);
+    expect(adminOnly).toEqual([]);
   });
 
   it("Settings surfaces a single entry that opens the Settings shell", () => {
@@ -88,13 +92,12 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Estimating carries Tenders, Contracts, Directory, Rates & Lists, Reports (in order)", () => {
+  it("Estimating carries Tenders, Contracts, Directory, Reports (in order) — Rates & Lists moved to Settings", () => {
     const estimating = NAV_GROUPS.find((g) => g.id === "estimating");
     expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
       ["Tenders", "/tenders"],
       ["Contracts", "/contracts"],
       ["Directory", "/directory"],
-      ["Rates & Lists", "/admin/rates-lists"],
       ["Reports", "/reports"]
     ]);
   });
@@ -123,11 +126,13 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("HR carries Workers, Leave Approvals, Payroll Export, Timesheet Approval, Dockets, Expenses (in order)", () => {
+  it("HR carries Workers, Leave Approvals, Job roles, Payroll Export, Timesheet Approval, Dockets, Expenses (in order)", () => {
+    // SLICE 15 (settings-restructure §3) folds Job roles into the Workers area.
     const hr = NAV_GROUPS.find((g) => g.id === "hr");
     expect(hr?.items.map((i) => [i.label, i.to])).toEqual([
       ["Workers", "/workers"],
       ["Leave Approvals", "/workers/leave-approvals"],
+      ["Job roles", "/workers/job-roles"],
       ["Payroll Export", "/timesheets/payroll-export"],
       ["Timesheet Approval", "/timesheets/approval"],
       ["Dockets", "/dockets"],
@@ -194,6 +199,9 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // Leave Approvals hits /workers/leave-requests/pending + /decide which
     // require workers.manage (leave-request.controller.ts:124,135,160).
     { label: "Leave Approvals", permission: "workers.manage" },
+    // SLICE 15: Job roles is a scheduler competency bundle; the closest
+    // existing code (also used by the old Settings item) is resources.manage.
+    { label: "Job roles", permission: "resources.manage" },
     { label: "Payroll Export", permission: "field.manage" },
     { label: "Timesheet Approval", permission: "field.manage" },
     // Back-office dockets register — GET /field/dockets is field.view.

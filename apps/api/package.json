@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "postinstall": "node scripts/ensure-puppeteer-chrome.mjs",
+    "prebuild": "node scripts/copy-metadata-catalog.mjs && tsc -p ../../packages/config/tsconfig.build.json",
     "build": "nest build",
     "start": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.ts\"",
@@ -36,6 +37,7 @@
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "6.19.3",
+    "@project-ops/config": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "exceljs": "^4.4.0",

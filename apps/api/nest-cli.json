@@ -6,6 +6,10 @@
       {
         "include": "modules/pdf-rendering/templates/**/*",
         "outDir": "dist/src"
+      },
+      {
+        "include": "modules/metadata/assets/**/*",
+        "outDir": "dist/src"
       }
     ]
   }

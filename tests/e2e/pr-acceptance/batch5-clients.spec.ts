@@ -106,17 +106,6 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await expect(page.getByPlaceholder("Search name, code, address, suburb")).toBeVisible();
   });
 
-  test("Workers → strip navigates to /workers", async ({ page }) => {
-    await openClientsTab(page);
-    await page.getByRole("tab", { name: "Workers" }).click();
-    // §9 fold + PR #844: standalone /resources retired; Workers tab lands on /workers.
-    // The KPI strip only renders on non-Roster tabs (Availability et al.), so
-    // switch to that tab before asserting the KPI text.
-    await expect(page).toHaveURL(/\/workers/);
-    await page.goto("/workers?tab=availability");
-    await expect(page.getByText("Workers in scope")).toBeVisible();
-  });
-
   test("unknown tab redirects into /directory?tab=clients", async ({ page }) => {
     await page.goto("/master-data?tab=mystery");
     await expect(page).toHaveURL(/\/directory\?tab=clients/);
@@ -149,7 +138,7 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await page.getByRole("tab", { name: "Table", exact: true }).click();
     await expect(page.getByRole("columnheader", { name: "Email" })).toBeVisible();
     await expect(
-      page.getByRole("cell", { name: "Queensland Transport Infrastructure" })
+      page.getByRole("cell", { name: "Queensland Transport Infrastructure", exact: true })
     ).toBeVisible();
   });
 

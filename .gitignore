@@ -107,6 +107,12 @@ docs/qa/qa-test-data-registry.md
 docs/qa/.qa-run.lock
 docs/qa/qa-run-*.md
 
+# SLICE-1 (smart-wizard-catalog-deploy-plan.md) — prebuild-staged copy of the catalog.
+# The copy-metadata-catalog.mjs prebuild script writes this from the canonical
+# docs/data-model/metadata-catalog.json; it must never be committed to prevent drift.
+# nest-cli.json picks it up and places it in dist/src/modules/metadata/assets/.
+apps/api/src/modules/metadata/assets/metadata-catalog.json
+
 # Data-model artefacts — all fully regenerated from apps/api/prisma/schema.prisma
 # on every schema change. Committing them churns every open feature PR because
 # GitHub's "merge main into <branch>" then re-conflicts these files on the other

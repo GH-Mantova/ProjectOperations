@@ -248,36 +248,14 @@ items:
   #     mock (msw v2) would break the run. Slice 1 therefore adds ZERO deps and does NO wire mocking.
   # The remaining two surfaces are re-registered below, gated on that slice landing on main. One place.
 
-  - id: synthetic-fixtures-graph-mail
-    title: "Synthetic fixtures slice 2: Graph-mail surface + idempotency/degrade spec"
-    priority: P3
-    why: >
-      Follow-on to the Xero synthetic-fixtures slice. Model the Graph-mail send surface the audit's
-      M-rows touch (sendNotificationEmail M1, PO email M2, quote send M3, access-request M4, tender
-      task-assign M5) as a synthetic provider under apps/api/testing/synthetic-fixtures/graph-mail/,
-      reusing the Case A/Case B/degrade reference from slice 1, plus a green jest spec exercising the
-      no-dedupe M1 double-send and the graceful-degrade posture. NOTE: pick a jest-compatible approach
-      for any wire-level mocking (msw v2 needs transformIgnorePatterns; nock is CJS but is NOT installed)
-      -- or stay in-memory like slice 1. Not a Marco decision, but flag the tool choice in the PR body.
-    gate: 'test -f apps/api/testing/synthetic-fixtures/xero/synthetic-xero.ts && ! test -d apps/api/testing/synthetic-fixtures/graph-mail'
-    gate_means: 'READY once the slice-1 Xero harness is on main AND the graph-mail fixtures do not exist yet. Dies as a blocker the moment the graph-mail fixtures ship.'
-    needs_marco: false
-    order: 11
-
-  - id: synthetic-fixtures-forms-ingestion
-    title: "Synthetic fixtures slice 3: native forms-ingestion surface + idempotency spec"
-    priority: P3
-    why: >
-      Follow-on to the Xero synthetic-fixtures slice. The audit found NO live Jotform code; the honest
-      in-repo analogue is the native forms-ingestion surface (F1 public/kiosk submit, F3 legacy raw
-      submit -- both have NO idempotency; F2 engine submit is already covered). Model those submit
-      surfaces as a synthetic ingest fixture under apps/api/testing/synthetic-fixtures/forms/, reusing
-      the slice-1 reference, plus a green jest spec exercising the F1 duplicate-submit (clientSubmissionId
-      replay) and the partial-write posture. Stays test-only; no production forms code, no migration.
-    gate: 'test -f apps/api/testing/synthetic-fixtures/xero/synthetic-xero.ts && ! test -d apps/api/testing/synthetic-fixtures/forms'
-    gate_means: 'READY once the slice-1 Xero harness is on main AND the forms fixtures do not exist yet. Dies as a blocker the moment the forms fixtures ship.'
-    needs_marco: false
-    order: 12
+  # DISCHARGED 2026-08-04 (04-scanner): both follow-on synthetic-fixtures surfaces had RELEASED gates
+  # (slice-1 xero harness on main; neither target dir exists) and were STAGED + ARMED (lint: ADMIT,
+  # size 3 each) in this docs-only PR:
+  #   * synthetic-fixtures-graph-mail    -> pr-synthetic-fixtures-graph-mail-slice2-ready.md
+  #   * synthetic-fixtures-forms-ingestion -> pr-synthetic-fixtures-forms-ingestion-slice3-ready.md
+  # Both are in-memory, zero-dependency, test-only (no src, no schema, no migration), mirroring slice 1
+  # and requires_file_on_main the slice-1 harness. Removed per "when an item IS staged, delete it here;
+  # one place, never two." Positive+negative control verified: XERO_PRESENT, GRAPHMAIL_ABSENT, FORMS_ABSENT.
 
   - id: gps-native-wrapper-app
     title: "Native wrapper app (Capacitor or similar) for true background GPS - TSheets parity"
@@ -303,3 +281,59 @@ items:
       sub-decisions. Option C (React Native / full native rewrite) rejected - two frontends, not worth
       it over Capacitor. Item kept registered (valid gate, legitimate future option); not deleted.
     order: 13
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-04 (00-supervisor + Marco): product decision surfaced while fixing the brittle
+  # timeline count assertion. The TEST fix (drop count>before; assert the entry by title) shipped
+  # separately as fix/timeline-system-entry-assertion-robust. THIS item is the distinct product
+  # question the cap exposed -- deliberately NOT bundled with the test fix.
+  # -------------------------------------------------------------------------------------------
+  - id: timeline-history-pagination
+    title: "Decide + (if wanted) implement pagination/filtering for job timelines beyond the 50-item cap"
+    priority: P3
+    why: >
+      apps/api/src/modules/platform/timeline.service.ts returns a single capped, newest-first window
+      (DEFAULT_LIMIT=50, MAX_LIMIT=200, filtered.slice(0, limit)) with NO cursor/offset pagination. On a
+      long-running job, timeline activity older than the most recent 50 events is simply not viewable --
+      no "load more", date range, or paging in the panel. Surfaced 2026-08-04 (it is what made the
+      batch7 "raising an issue writes a system entry" acceptance test brittle: at >=50 seed items a new
+      entry cannot raise the visible count). NOT required for CI/merge -- the test was fixed to assert
+      presence-by-title instead. This is purely the UX/product call.
+    gate: 'grep -q "DEFAULT_LIMIT = 50" apps/api/src/modules/platform/timeline.service.ts'
+    gate_means: 'Still relevant while the un-paginated 50 default stands; discharges once the cap/pagination is reworked in timeline.service.ts.'
+    needs_marco: true
+    marco_note: >
+      DECISION NEEDED (Marco): do users need to see MORE than the last 50 timeline events per entity,
+      and if so via (a) pagination / infinite-scroll, (b) a date-range filter, or (c) just raising the
+      default toward MAX_LIMIT=200? Only implement across API + timeline panel once you choose. If the
+      answer is "50 is fine", say so and this can be deleted. Parked here, not auto-staged.
+    order: 14
+
+  # ADDED 2026-08-06 (PR Master + Marco): the settings-restructure IA moves (SLICE 11 rates
+  # retire, SLICE 14 tab dissolve, SLICE 17 guard unification) drift the source-of-truth nav/IA
+  # docs. SLICE 20 is the sot/01 s9 nav-IA doc-reconcile that squares /sot/ back up. It cannot
+  # run until those slices actually land on main, and it is STATION 05 SoT-KEEPER work only.
+  # -------------------------------------------------------------------------------------------
+  - id: settings-restructure-sot-nav-reconcile
+    title: "SLICE 20 - sot/01 s9 nav-IA doc-reconcile after the settings-restructure moves land"
+    priority: P2
+    why: >
+      The settings-restructure changed the live nav/IA (Client versions + Map locations moved to
+      /settings/administration in SLICE 14; AdminOnly route guards replaced by per-screen
+      permissions incl. the new system.manage code in SLICE 17; /admin/estimate-rates retired in
+      SLICE 11b). sot/01 s9 (nav authority) and sot/04 (data-model, incl. the dropped Estimate*Rate
+      tables at SLICE 11c) will be stale once these land. This is the deliberate doc-reconcile step.
+      NOTE also: SLICE 14 was narrowed this session to Client versions + Map locations only -
+      geofences was carved out to the site-dissolution plan (SiteGeofence -> JobGeofence, B-SD-6),
+      so the reconcile must reflect the narrowed scope, not the plan's original broad SLICE 14.
+    gate: 'test -f apps/web/src/pages/administration/MapLocationsPage.tsx && ! test -f docs/audits/settings-restructure-sot-reconcile.md'
+    gate_means: >
+      READY once SLICE 14 has landed (MapLocationsPage exists on main) AND the reconcile has not yet
+      shipped. Discharges when the reconcile lands its marker docs/audits/settings-restructure-sot-reconcile.md.
+      Hidden (not-ready) before SLICE 14 lands.
+    needs_marco: false
+    marco_note: >
+      STATION 05 SoT-KEEPER ONLY. Do NOT stage this as an ordinary watcher prompt and do NOT let a
+      non-sot-keeper agent touch /sot/. Run the sot-keeper reconcile once the settings + rates slices
+      are on main; it lands via a doc-reconcile PR and drops the marker doc named in the gate.
+    order: 15

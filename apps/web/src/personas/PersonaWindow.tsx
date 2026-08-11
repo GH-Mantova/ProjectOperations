@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
-import { ChatPanel } from "./ChatPanel";
+import { ChatPanel, type ExtraTab } from "./ChatPanel";
 import { useActivePersona } from "./PersonaContext";
 import {
   activePersonaKey,
@@ -128,7 +128,11 @@ function writeStoredMinimised(key: string, value: boolean): void {
   }
 }
 
-export function PersonaWindow() {
+type PersonaWindowProps = {
+  extraTabs?: ExtraTab[];
+};
+
+export function PersonaWindow({ extraTabs = [] }: PersonaWindowProps) {
   const { activePersona } = useActivePersona();
   const [isOpen, setIsOpen] = useState(false);
   const key = activePersonaKey(activePersona);
@@ -401,7 +405,7 @@ export function PersonaWindow() {
             </div>
           </header>
           <div className="persona-window__panel-body">
-            <ChatPanel />
+            <ChatPanel extraTabs={extraTabs} />
           </div>
           <footer className="persona-window__panel-footer">
             <Link

@@ -794,6 +794,96 @@ export class ContractsService {
   }
 
   /**
+   * Append a line item to a DRAFT claim. Rejects when the claim is not
+   * DRAFT so an already-issued claim can never be silently rewritten.
+   *
+   * @throws NotFoundException when the claim is missing or on another contract
+   * @throws BadRequestException when the claim is not in DRAFT status
+   */
+  async addClaimItem(
+    contractId: string,
+    claimId: string,
+    dto: { description: string; discipline?: string; contractValue: number; thisClaimAmount?: number }
+  ) {
+    const claim = await this.prisma.progressClaim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.contractId !== contractId) throw new NotFoundException("Claim not found.");
+    if (claim.status !== ClaimStatus.DRAFT) {
+      throw new BadRequestException("Only DRAFT claims can be edited.");
+    }
+    const maxSort = await this.prisma.claimLineItem.findFirst({
+      where: { claimId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true }
+    });
+    await this.prisma.claimLineItem.create({
+      data: {
+        claimId,
+        description: dto.description,
+        discipline: dto.discipline ?? null,
+        contractValue: new Prisma.Decimal(dto.contractValue),
+        previouslyClaimed: new Prisma.Decimal(0),
+        thisClaimAmount: new Prisma.Decimal(dto.thisClaimAmount ?? 0),
+        sortOrder: (maxSort?.sortOrder ?? -1) + 1
+      }
+    });
+    const allItems = await this.prisma.claimLineItem.findMany({ where: { claimId } });
+    const total = allItems.reduce((s, li) => s + Number(li.thisClaimAmount), 0);
+    await this.prisma.progressClaim.update({
+      where: { id: claimId },
+      data: { totalClaimed: new Prisma.Decimal(total.toFixed(2)) }
+    });
+    return this.getClaim(contractId, claimId);
+  }
+
+  /**
+   * Remove a line item from a DRAFT claim. Rejects when the claim is not
+   * DRAFT — an issued claim's line-item shape is fixed.
+   *
+   * @throws NotFoundException when the line item is missing or not on this claim/contract
+   * @throws BadRequestException when the claim is not in DRAFT status
+   */
+  async removeClaimItem(contractId: string, claimId: string, itemId: string) {
+    const item = await this.prisma.claimLineItem.findUnique({
+      where: { id: itemId },
+      include: { claim: true }
+    });
+    if (!item || item.claim.contractId !== contractId || item.claim.id !== claimId) {
+      throw new NotFoundException("Line item not found.");
+    }
+    if (item.claim.status !== ClaimStatus.DRAFT) {
+      throw new BadRequestException("Only DRAFT claims can be edited.");
+    }
+    await this.prisma.claimLineItem.delete({ where: { id: itemId } });
+    const allItems = await this.prisma.claimLineItem.findMany({ where: { claimId } });
+    const total = allItems.reduce((s, li) => s + Number(li.thisClaimAmount), 0);
+    await this.prisma.progressClaim.update({
+      where: { id: claimId },
+      data: { totalClaimed: new Prisma.Decimal(total.toFixed(2)) }
+    });
+    return this.getClaim(contractId, claimId);
+  }
+
+  /**
+   * Update the notes on a DRAFT claim. Kept narrow — only `notes` — so
+   * an issued claim's numbers cannot be reached via this endpoint.
+   *
+   * @throws NotFoundException when the claim is missing or on another contract
+   * @throws BadRequestException when the claim is not in DRAFT status
+   */
+  async updateClaimNotes(contractId: string, claimId: string, dto: { notes: string | null }) {
+    const claim = await this.prisma.progressClaim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.contractId !== contractId) throw new NotFoundException("Claim not found.");
+    if (claim.status !== ClaimStatus.DRAFT) {
+      throw new BadRequestException("Only DRAFT claims can be edited.");
+    }
+    await this.prisma.progressClaim.update({
+      where: { id: claimId },
+      data: { notes: dto.notes }
+    });
+    return this.getClaim(contractId, claimId);
+  }
+
+  /**
    * Submit a DRAFT claim: sets status=SUBMITTED with submissionDate=now.
    *
    * Side effect: fires a claim.submitted notification email

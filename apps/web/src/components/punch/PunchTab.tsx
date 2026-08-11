@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { usePrompt } from "../../hooks/useConfirm";
 
 type PunchStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
 
@@ -45,6 +46,7 @@ type Props = { jobId: string };
 
 export function PunchTab({ jobId }: Props) {
   const { authFetch } = useAuth();
+  const prompt = usePrompt();
   const [items, setItems] = useState<PunchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +126,12 @@ export function PunchTab({ jobId }: Props) {
   };
 
   const closeItem = async (id: string) => {
-    const note = window.prompt("Closure note (optional):", "") ?? undefined;
+    const result = await prompt({
+      title: "Closure note",
+      message: "Optional",
+      defaultValue: ""
+    });
+    const note = result ?? undefined;
     setBusyId(id);
     try {
       const res = await authFetch(`/punch-items/${id}/close`, {

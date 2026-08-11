@@ -103,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   web:
-    name: Web — lint, logic tests, build
+    name: Web — lint, logic tests, vitest, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -113,6 +113,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @project-ops/web lint
       - run: pnpm test:web:logic
+      # Full vitest suite — 69 files, 868 tests. Kept as a separate step from
+      # test:web:logic (Tendering smoke) so failures point at the right suite.
+      - run: pnpm --filter @project-ops/web test
       - run: pnpm --filter @project-ops/web build
         env:
           VITE_API_BASE_URL: http://localhost:3000/api/v1

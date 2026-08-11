@@ -60,30 +60,83 @@ export function Timeline({ entityType, entityId, enabled = true }: Props) {
   const { authFetch } = useAuth();
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | TimelineKind>("all");
   const [noteBody, setNoteBody] = useState("");
   const [posting, setPosting] = useState(false);
+  // Server-side cursor for pagination (opaque string from server)
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // Date range filter — changing either resets to page 1
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const buildUrl = useCallback(
+    (cursor?: string, from?: string, to?: string) => {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      if (cursor) params.set("cursor", cursor);
+      const qs = params.toString();
+      return `/timeline/${entityType}/${entityId}${qs ? `?${qs}` : ""}`;
+    },
+    [entityType, entityId]
+  );
 
   const load = useCallback(async () => {
     if (!enabled || !entityId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch(`/timeline/${entityType}/${entityId}`);
+      const url = buildUrl(undefined, fromDate || undefined, toDate || undefined);
+      const res = await authFetch(url);
       if (!res.ok) throw new Error(await res.text());
-      const payload = (await res.json()) as { items: TimelineItem[] };
+      const payload = (await res.json()) as { items: TimelineItem[]; nextCursor: string | null };
       setItems(payload.items ?? []);
+      setNextCursor(payload.nextCursor ?? null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [authFetch, entityType, entityId, enabled]);
+  }, [authFetch, entityType, entityId, enabled, fromDate, toDate, buildUrl]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadOlder = useCallback(async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const url = buildUrl(nextCursor, fromDate || undefined, toDate || undefined);
+      const res = await authFetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      const payload = (await res.json()) as { items: TimelineItem[]; nextCursor: string | null };
+      // Append older items (server returns newest-first, so appending keeps order)
+      setItems((prev) => [...prev, ...(payload.items ?? [])]);
+      setNextCursor(payload.nextCursor ?? null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [authFetch, nextCursor, fromDate, toDate, buildUrl]);
+
+  const handleFromChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFromDate(e.target.value);
+    // Reset to page 1 — load() will be re-triggered via useEffect on fromDate change
+    setItems([]);
+    setNextCursor(null);
+  }, []);
+
+  const handleToChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setToDate(e.target.value);
+    // Reset to page 1 — load() will be re-triggered via useEffect on toDate change
+    setItems([]);
+    setNextCursor(null);
+  }, []);
 
   const visible = useMemo(
     () => (filter === "all" ? items : items.filter((it) => it.kind === filter)),
@@ -147,6 +200,32 @@ export function Timeline({ entityType, entityId, enabled = true }: Props) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Date range filter — changing either input resets to page 1 and refetches */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+          From
+          <input
+            type="date"
+            value={fromDate}
+            onChange={handleFromChange}
+            data-testid="timeline-from"
+            className="s7-input"
+            style={{ marginLeft: 4, fontSize: 12, padding: "2px 6px" }}
+          />
+        </label>
+        <label style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+          To
+          <input
+            type="date"
+            value={toDate}
+            onChange={handleToChange}
+            data-testid="timeline-to"
+            className="s7-input"
+            style={{ marginLeft: 4, fontSize: 12, padding: "2px 6px" }}
+          />
+        </label>
       </div>
 
       <div
@@ -243,6 +322,28 @@ export function Timeline({ entityType, entityId, enabled = true }: Props) {
           </li>
         ))}
       </ol>
+
+      {/* "Load older" button — visible only when the server indicates a further page exists.
+          Visibility is based on server's nextCursor, not the client-filtered view. */}
+      {nextCursor !== null ? (
+        <div style={{ textAlign: "center", marginTop: 12 }}>
+          <button
+            type="button"
+            className="s7-btn"
+            onClick={loadOlder}
+            disabled={loadingMore}
+            data-testid="timeline-load-older"
+            style={{
+              padding: "6px 16px",
+              border: "1px solid var(--surface-border, #e5e5e5)",
+              borderRadius: 6,
+              cursor: loadingMore ? "not-allowed" : "pointer"
+            }}
+          >
+            {loadingMore ? "Loading…" : "Load older"}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

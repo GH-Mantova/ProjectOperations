@@ -11,8 +11,9 @@ import { FeedbackButton } from "./FeedbackButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { NewDashboardModal } from "../dashboards/NewDashboardModal";
 import { useUserDashboards, useUserDashboardsActions } from "../dashboards/userDashboards";
-import { PersonaProvider } from "../personas/PersonaContext";
+import { PersonaProvider, useActivePersona } from "../personas/PersonaContext";
 import { PersonaWindow } from "../personas/PersonaWindow";
+import { AssumptionsExclusionsTabContent } from "../pages/tendering/AssumptionsExclusionsFloatingEditor";
 import { useConfirm } from "../hooks/useConfirm";
 import {
   COMPLIANCE_BADGE_TOOLTIP,
@@ -199,7 +200,6 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) => path === "/directory" || path.startsWith("/directory/") || path.startsWith("/master-data"),
         requiresPermission: "directory.view"
       },
-      { to: "/admin/rates-lists", label: "Rates & Lists", icon: ICON_TENDERING },
       {
         to: "/reports",
         label: "Reports",
@@ -272,6 +272,16 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_WORKERS,
         match: (path) => path.startsWith("/workers/leave-approvals"),
         requiresPermission: "workers.manage"
+      },
+      {
+        // SLICE 15 (settings-restructure §3): Job roles moved out of Settings
+        // Administration into the Workers area. Scheduler competency bundles
+        // are gated on resources.manage — same code the old Settings item used.
+        to: "/workers/job-roles",
+        label: "Job roles",
+        icon: ICON_WORKERS,
+        match: (path) => path.startsWith("/workers/job-roles"),
+        requiresPermission: "resources.manage"
       },
       {
         // §7 payroll export: dedicated page over the existing CSV endpoint.
@@ -353,11 +363,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     // Single entry that opens the unified Settings shell (#739). The old
     // scattered /admin/* and /account/* pages redirect into /settings/*.
-    // Administration items are surfaced inside the shell and remain
-    // admin/super-only via this group-level gate.
+    // SLICE 3 (settings-restructure): the group is visible to every
+    // authenticated user — the shell then hides per-item entries the
+    // caller lacks the permission code for. Self-service items (Account,
+    // Notifications, Calendar sync) remain reachable by everyone.
     id: "settings",
     label: "Settings",
-    adminOnly: true,
     items: [
       {
         to: "/settings",
@@ -416,6 +427,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/workers": "Workers",
   "/workers/leave-approvals": "Leave Approvals",
   "/workers/live-crew": "Live crew map",
+  "/workers/job-roles": "Job roles",
   "/assets": "Assets",
   "/inventory": "Inventory",
   "/procurement": "Procurement",
@@ -443,6 +455,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/dashboards": "Dashboards",
   "/settings": "Settings",
   "/settings/account": "Settings",
+  "/inbox": "Inbox",
   "/settings/notifications": "Settings",
   "/settings/calendar-sync": "Settings",
   "/settings/company": "Settings",
@@ -450,9 +463,14 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/data-model": "Settings",
   "/settings/administration": "Settings",
   "/admin/estimate-rates": "Legacy estimate rates",
-  "/admin/rates-lists": "Rates & Lists",
-  "/admin/automations": "Automations",
   "/admin/ai-settings": "AI Settings",
+  // /admin/automations redirects to /settings/administration/automations;
+  // explicit entry keeps the breadcrumb meaningful for users with bookmarks.
+  "/admin/automations": "Automations",
+  // Customer-voice survey pages — routes planned, not yet in App.tsx.
+  // Entries pre-registered so the breadcrumb resolves once the routes ship.
+  "/surveys/capture": "Surveys",
+  "/surveys/satisfaction": "Surveys",
   "/contracts": "Contracts"
 };
 
@@ -792,10 +810,37 @@ export function ShellLayout() {
           onCreated={() => setNewDashboardOpen(false)}
         />
       ) : null}
-      <PersonaWindow />
+      <TenderingPersonaWindow />
     </div>
     </PersonaProvider>
   );
+}
+
+// Rendered inside PersonaProvider so it can read contextKey (= tender id
+// when on a tender-scoped route). Passes the Assumptions & Exclusions
+// tab to PersonaWindow only when on a tender; other pages get nothing.
+function TenderingPersonaWindow() {
+  const { contextKey } = useActivePersona();
+  const { user } = useAuth();
+  const canManage = can(user, "tenders.manage");
+
+  const extraTabs = useMemo(() => {
+    if (!contextKey) return [];
+    return [
+      {
+        id: "assumptions-exclusions",
+        label: "A & E",
+        content: (
+          <AssumptionsExclusionsTabContent
+            tenderId={contextKey}
+            readOnly={!canManage}
+          />
+        )
+      }
+    ];
+  }, [contextKey, canManage]);
+
+  return <PersonaWindow extraTabs={extraTabs} />;
 }
 
 function isItemActive(item: NavItem, pathname: string): boolean {

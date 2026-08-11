@@ -416,3 +416,42 @@ keeps SLICE 3 tiny to make revert cheap.
       in §4 (keep / move / merge / delete / redirect).
 - [x] Every audit finding in §1 is pinned to a file:line seen on origin/main 2026-07-31.
 - [ ] `pnpm lint` (run at PR-open time).
+
+
+---
+
+## Amendments (2026-08-06, PR Master session with Marco) — SUPERSEDE conflicting text above
+
+These record live decisions taken while staging the remaining slices; the plan body above
+predates them. SLICE 20's reconcile must reflect THIS state, not the original text.
+
+- **SLICE 14 narrowed.** Originally "dissolve remaining AdminSettingsPage tabs into homes."
+  Marco scoped it down to **Client versions + Map locations only** → moved to
+  `/settings/administration`. `email`, `ai` (AI & Integrations), `integrations` (API keys),
+  `access-requests`, and `notifications` **stay first-class** on AdminSettingsPage. Staged as
+  `pr-settings-s14-dissolve-admin-tabs-ready.md` (arming PR #967, merged).
+
+- **Geofences carved OUT of SLICE 14.** The `Site geofences` tab is NOT part of the settings
+  restructure. Per Marco, geofences become **per-job** and are handled entirely by the
+  **site-dissolution plan** (`docs/plans/site-dissolution-plan.md`): B-SD-6 renames
+  `SiteGeofence` → `JobGeofence` (`jobId` FK) and the geofence editor lands on the `/jobs/:id`
+  Worksite tab; the global Sites/geofences admin surface is retired there. No separate
+  settings-restructure geofence slice exists — building one would collide with B-SD-6.
+
+- **SLICE 11 (rates) = a 3-step chain, escalates.** `docs/plans/rates-migration-plan.md`:
+  11a build+migrate enclosure/other-rates/material-densities into RateTable (densities as a
+  reference table) + parity proof; 11b retire `/admin/estimate-rates`; 11c drop the legacy
+  tables/API/fallback (permanent — opens as a **DRAFT**, hard-locked for Marco + DB backup).
+  Prod runs `RATES_CANONICAL_SOURCE=ratetable`. Staged via arming PR #970 (+ #974 draft-lock).
+
+- **SLICE 17 = per-screen permissions.** `AdminOnly` route guards → specific codes:
+  users.view, roles.view, audit.view, sharepoint.view, automations.view; new **`system.manage`**
+  for the system page; the Administration hub drops its outer guard (internal filter suffices).
+  Escalates. Gated on SLICE 14 (App.tsx serialisation). Staged as
+  `pr-settings-s17-per-screen-permissions-ready.md` (arming PR #972).
+
+- **SLICE 18a–e / 19a–e (re-skins)** — deliberately NOT chained here; left to the Scanner's
+  worst-first drip-feed per Marco's 2026-07-31 decision.
+
+- **SLICE 20 (this reconcile)** — tracked in `BACKLOG.yaml` (id
+  `settings-restructure-sot-nav-reconcile`), sot-keeper-only, gated on SLICE 14 landing.

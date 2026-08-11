@@ -62,6 +62,7 @@ import { ListBindingsModule } from "./modules/list-bindings/list-bindings.module
 import { CommsApprovalsModule } from "./modules/comms-approvals/comms-approvals.module";
 import { ProcurementModule } from "./modules/procurement/procurement.module";
 import { ClientVersionsModule } from "./modules/client-versions/client-versions.module";
+import { ApiKeysModule } from "./modules/api-keys/api-keys.module";
 import { IntegrationKeysModule } from "./common/integrations/integration-keys.module";
 import { GeocodingModule } from "./modules/geocoding/geocoding.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
@@ -72,6 +73,11 @@ import { CrmModule } from "./modules/crm/crm.module";
 import { MapLocationsModule } from "./modules/map-locations/map-locations.module";
 import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
+import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
+import { HandoverTemplatesModule } from "./modules/handover-templates/handover-templates.module";
+import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
+import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
+import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
 
 @Module({
   imports: [
@@ -84,6 +90,7 @@ import { SitesModule } from "./modules/sites/sites.module";
     SecurityModule,
     PrismaModule,
     IntegrationKeysModule,
+    ApiKeysModule,
     HealthModule,
     EmailModule,
     AccessRequestsModule,
@@ -150,7 +157,12 @@ import { SitesModule } from "./modules/sites/sites.module";
     CrmModule,
     MapLocationsModule,
     ReportingModule,
-    SitesModule
+    SitesModule,
+    NotificationPreferencesModule,
+    HandoverTemplatesModule,
+    SubcontractorRatesModule,
+    WinLikelihoodModule,
+    ScheduleOfRatesModule
   ]
 })
 export class AppModule {}

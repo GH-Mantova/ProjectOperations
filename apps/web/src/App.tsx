@@ -5,14 +5,19 @@ import { can, canAny } from "./auth/permissions";
 import { runDraftPurgeJob } from "./drafts";
 import { LoginPage } from "./pages/LoginPage";
 import { ShellLayout } from "./components/ShellLayout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardPlaceholderPage } from "./pages/DashboardPlaceholderPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { UsersPage } from "./pages/UsersPage";
-import { RolesPage } from "./pages/RolesPage";
-import { PermissionsPage } from "./pages/PermissionsPage";
+import { AdminUsersTab } from "./pages/admin/AdminUsersTab";
+import { RolesPermissionsPage } from "./pages/administration/RolesPermissionsPage";
+import { AdministrationLandingPage } from "./pages/administration/AdministrationLandingPage";
+import { AdminClientVersionsPage } from "./pages/administration/AdminClientVersionsPage";
+import { MapLocationsPage } from "./pages/administration/MapLocationsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { PlatformPage } from "./pages/PlatformPage";
-import { NotificationsPage } from "./pages/NotificationsPage";
+import { InboxPage } from "./pages/InboxPage";
+import { NotificationPreferencesPage } from "./pages/settings/NotificationPreferencesPage";
+import { HandoverTemplatePage } from "./pages/settings/HandoverTemplatePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -37,6 +42,7 @@ import { MaintenancePage as MaintenanceDashboardPage } from "./pages/maintenance
 import { PlantUtilisationReportPage } from "./pages/maintenance/PlantUtilisationReportPage";
 import { FormsListPage } from "./pages/forms/FormsListPage";
 import { FormDesignerPage } from "./pages/forms/FormDesignerPage";
+import { FormRulesBuilderPage } from "./pages/forms/FormRulesBuilderPage";
 import { FormFillPage } from "./pages/forms/FormFillPage";
 import { FormSubmissionDetailPage } from "./pages/forms/FormSubmissionDetailPage";
 import { PublicFormFillPage } from "./pages/forms/PublicFormFillPage";
@@ -243,11 +249,44 @@ export function App() {
             path="/field"
             element={
               <FieldOnlyGuard>
-                <OfflineProvider>
-                  <OfflineIndicator />
-                  <InstallPrompt />
-                  <FieldLayout />
-                </OfflineProvider>
+                <ErrorBoundary
+                  sectionName="Field offline layer"
+                  fallback={
+                    <div
+                      role="alert"
+                      style={{
+                        padding: 24,
+                        margin: 16,
+                        borderRadius: 8,
+                        background: "var(--surface-2, #fff4e5)",
+                        color: "var(--text, #1f1f1f)",
+                        border: "1px solid var(--border, #f0c674)",
+                      }}
+                    >
+                      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
+                        Offline mode unavailable
+                      </p>
+                      <p style={{ margin: "0 0 12px" }}>
+                        We couldn't start the offline queue on this device, so this session
+                        will work online only. Any pending offline data was not lost — reload
+                        once you have signal to try again.
+                      </p>
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--primary s7-btn--sm"
+                        onClick={() => window.location.reload()}
+                      >
+                        Reload
+                      </button>
+                    </div>
+                  }
+                >
+                  <OfflineProvider>
+                    <OfflineIndicator />
+                    <InstallPrompt />
+                    <FieldLayout />
+                  </OfflineProvider>
+                </ErrorBoundary>
               </FieldOnlyGuard>
             }
           >
@@ -306,6 +345,10 @@ export function App() {
             <Route path="/workers" element={<WorkersListPage />} />
             <Route path="/workers/live-crew" element={<LiveCrewMapPage />} />
             <Route path="/workers/leave-approvals" element={<WorkerLeaveApprovalsPage />} />
+            {/* SLICE 15 (settings-restructure §3): Job roles moves out of
+                Settings/Administration into the Workers area. Registered
+                BEFORE /workers/:id so "job-roles" is not captured as an id. */}
+            <Route path="/workers/job-roles" element={<JobRolesPage />} />
             <Route path="/workers/:id" element={<WorkerDetailPage />} />
             <Route path="/assets" element={<AssetsListPage />} />
             <Route path="/assets/:id" element={<AssetDetailPage />} />
@@ -316,6 +359,7 @@ export function App() {
             <Route path="/maintenance/utilisation" element={<PlantUtilisationReportPage />} />
             <Route path="/forms" element={<FormsListPage />} />
             <Route path="/forms/designer/:templateId" element={<FormDesignerPage />} />
+            <Route path="/forms/designer/:templateId/rules" element={<FormRulesBuilderPage />} />
             <Route path="/forms/fill/:submissionId" element={<FormFillPage />} />
             <Route path="/forms/submissions/:id" element={<FormSubmissionDetailPage />} />
             <Route path="/forms/corrective-actions" element={<CorrectiveActionsPage />} />
@@ -328,16 +372,47 @@ export function App() {
             <Route path="/settings" element={<SettingsShell />}>
               <Route index element={<Navigate to="account" replace />} />
               <Route path="account" element={<UserProfilePage />} />
-              <Route path="notifications" element={<NotificationsPage />} />
+              {/* SLICE 5 (settings-restructure §3): Notification preferences
+                  screen. Replaced the SLICE-4 /inbox redirect with the actual
+                  per-user channel-preference page. */}
+              <Route path="notifications" element={<NotificationPreferencesPage />} />
               <Route path="calendar-sync" element={<CalendarSyncPage />} />
-              <Route path="company" element={<AdminCompanyPage />} />
+              <Route
+                path="company"
+                element={
+                  <AdminOnly>
+                    <AdminCompanyPage />
+                  </AdminOnly>
+                }
+              />
               <Route path="ai" element={<AiSettingsPage />} />
+              {/* SLICE 6: Reference data & Lists — single Company home for the
+                  rates/lists surface previously mounted on UserProfilePage
+                  (GlobalListsSection) and reachable at /admin/rates-lists.
+                  Renders the existing RatesListsAdminPage unchanged; that
+                  page gates internally on rates.manage || lists.manage
+                  (settings-restructure-plan §3, §4 redirect map). */}
+              <Route path="reference-data" element={<RatesListsAdminPage />} />
+              {/* B-HW-3: Handover Template editor — gated on handovertemplate.manage */}
+              <Route path="handover-template" element={<HandoverTemplatePage />} />
               <Route
                 path="data-model"
                 element={
                   <SuperUserOnly>
                     <DataModelMapPage />
                   </SuperUserOnly>
+                }
+              />
+              {/* SLICE 16 (settings-restructure §3): fix direct-hit 404 on
+                  /settings/administration by mounting a landing hub that lists
+                  the accessible Administration sub-pages. Wrapped with the same
+                  AdminOnly guard as its siblings. */}
+              <Route
+                path="administration"
+                element={
+                  <AdminOnly>
+                    <AdministrationLandingPage />
+                  </AdminOnly>
                 }
               />
               <Route
@@ -352,7 +427,7 @@ export function App() {
                 path="administration/users"
                 element={
                   <AdminOnly>
-                    <UsersPage />
+                    <AdminUsersTab />
                   </AdminOnly>
                 }
               />
@@ -360,17 +435,17 @@ export function App() {
                 path="administration/roles"
                 element={
                   <AdminOnly>
-                    <RolesPage />
+                    <RolesPermissionsPage />
                   </AdminOnly>
                 }
               />
+              {/* SLICE 8: Permissions folded into the Roles & Permissions page.
+                  The in-Settings /administration/permissions URL now redirects
+                  to the merged surface so bookmarks + the /admin/permissions
+                  legacy hop below still resolve. */}
               <Route
                 path="administration/permissions"
-                element={
-                  <AdminOnly>
-                    <PermissionsPage />
-                  </AdminOnly>
-                }
+                element={<Navigate to="/settings/administration/roles" replace />}
               />
               <Route
                 path="administration/audit"
@@ -388,11 +463,41 @@ export function App() {
                   </AdminOnly>
                 }
               />
+              {/* SLICE 15 (settings-restructure §3, §4 redirect map): Job
+                  roles moved to /workers/job-roles. Keep the old Settings URL
+                  reachable as a redirect so bookmarks resolve. */}
               <Route
                 path="administration/job-roles"
+                element={<Navigate to="/workers/job-roles" replace />}
+              />
+              {/* SLICE 10 (settings-restructure §3): Automations moves
+                  under Administration. AutomationsPage self-gates on
+                  automations.view; AdminOnly matches the sibling
+                  administration/* wrappers. */}
+              <Route
+                path="administration/automations"
                 element={
                   <AdminOnly>
-                    <JobRolesPage />
+                    <AutomationsPage />
+                  </AdminOnly>
+                }
+              />
+              {/* SLICE 14 (settings-restructure §3): Client versions and Map
+                  locations dissolved from AdminSettingsPage inline tabs into
+                  standalone Administration pages. */}
+              <Route
+                path="administration/client-versions"
+                element={
+                  <AdminOnly>
+                    <AdminClientVersionsPage />
+                  </AdminOnly>
+                }
+              />
+              <Route
+                path="administration/map-locations"
+                element={
+                  <AdminOnly>
+                    <MapLocationsPage />
                   </AdminOnly>
                 }
               />
@@ -413,11 +518,17 @@ export function App() {
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
-            <Route path="/admin/rates-lists" element={<RatesListsAdminPage />} />
-            <Route path="/admin/automations" element={<AutomationsPage />} />
-            <Route path="/admin/job-roles" element={<Navigate to="/settings/administration/job-roles" replace />} />
+            <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
+            <Route path="/admin/automations" element={<Navigate to="/settings/administration/automations" replace />} />
+            {/* SLICE 15: /admin/job-roles retargets to the new Workers URL
+                directly (was previously chained through /settings). */}
+            <Route path="/admin/job-roles" element={<Navigate to="/workers/job-roles" replace />} />
             <Route path="/account" element={<Navigate to="/settings/account" replace />} />
-            <Route path="/notifications" element={<Navigate to="/settings/notifications" replace />} />
+            {/* SLICE 4: /inbox is the new top-level route for the follow-up
+                inbox. Legacy /notifications now redirects here (settings-
+                restructure-plan §4 redirect map). */}
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/notifications" element={<Navigate to="/inbox" replace />} />
             {/* /dashboards now redirects to the user's first custom dashboard
                 (or to / if they have none). /dashboards/:id still serves the
                 user-owned dashboard system built on DashboardCanvas. */}

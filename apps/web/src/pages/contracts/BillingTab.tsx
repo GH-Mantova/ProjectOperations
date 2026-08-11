@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { useConfirm } from "../../hooks/useConfirm";
+import { useConfirm, usePrompt } from "../../hooks/useConfirm";
+import { ClaimDraftEditor } from "./ClaimDraftEditor";
 
 type MilestoneTrigger = "DATE" | "PERCENT_COMPLETE" | "EVENT";
 type MilestoneAmountType = "FIXED" | "PERCENT_OF_CONTRACT";
@@ -55,6 +56,35 @@ type ProFormaPreview = {
   totalPreviouslyClaimed: number;
 };
 
+type ClaimDraft = {
+  id: string;
+  claimNumber: string;
+  claimMonth: string;
+  status: string;
+  totalClaimed: string;
+  notes: string | null;
+  isProForma: boolean;
+  lineItems: Array<{
+    id: string;
+    discipline: string | null;
+    description: string;
+    contractValue: string;
+    previouslyClaimed: string;
+    thisClaimPct: string | null;
+    thisClaimAmount: string;
+    variationId: string | null;
+    sortOrder: number;
+  }>;
+};
+
+function startOfMonthIso(month: string): string {
+  return `${month}-01`;
+}
+
+function isSameMonth(iso: string, month: string): boolean {
+  return iso.slice(0, 7) === month;
+}
+
 function fmtCurrency(n: number): string {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 2 }).format(n);
 }
@@ -76,11 +106,13 @@ export function BillingTab({
 }) {
   const { authFetch } = useAuth();
   const confirm = useConfirm();
+  const prompt = usePrompt();
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [revRec, setRevRec] = useState<RevRec | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [preview, setPreview] = useState<ProFormaPreview | null>(null);
+  const [editingDraft, setEditingDraft] = useState<ClaimDraft | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -158,8 +190,47 @@ export function BillingTab({
     }
   };
 
+  const generateThisMonthsClaim = async () => {
+    const month = await prompt({
+      title: "Claim month",
+      message: "YYYY-MM",
+      defaultValue: new Date().toISOString().slice(0, 7)
+    });
+    if (!month) return;
+    const createUrl = `/contracts/${contractId}/` + "claims/pro-forma";
+    try {
+      const response = await authFetch(createUrl, {
+        method: "POST",
+        body: JSON.stringify({ claimMonth: startOfMonthIso(month) })
+      });
+      if (response.ok) {
+        setEditingDraft((await response.json()) as ClaimDraft);
+        return;
+      }
+      if (response.status === 409) {
+        // Already drafted this month — open the existing draft instead of erroring.
+        const list = await authFetch(`/contracts/${contractId}/claims`);
+        if (!list.ok) throw new Error(await list.text());
+        const claims = (await list.json()) as ClaimDraft[];
+        const existing = claims.find((c) => isSameMonth(c.claimMonth, month));
+        if (!existing) throw new Error("Claim already exists for this month but could not be located.");
+        const detail = await authFetch(`/contracts/${contractId}/claims/${existing.id}`);
+        if (!detail.ok) throw new Error(await detail.text());
+        setEditingDraft((await detail.json()) as ClaimDraft);
+        return;
+      }
+      throw new Error(await response.text());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const previewProForma = async () => {
-    const month = window.prompt("Preview month (YYYY-MM):", new Date().toISOString().slice(0, 7));
+    const month = await prompt({
+      title: "Preview month",
+      message: "YYYY-MM",
+      defaultValue: new Date().toISOString().slice(0, 7)
+    });
     if (!month) return;
     try {
       const response = await authFetch(`/contracts/${contractId}/claims/pro-forma/preview`, {
@@ -186,6 +257,11 @@ export function BillingTab({
             {canManage ? (
               <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => void previewProForma()}>
                 Preview pro-forma
+              </button>
+            ) : null}
+            {canManage ? (
+              <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => void generateThisMonthsClaim()}>
+                Generate this month's claim
               </button>
             ) : null}
             {canManage ? (
@@ -245,6 +321,18 @@ export function BillingTab({
       </section>
 
       {preview ? <ProFormaPreviewCard preview={preview} onClose={() => setPreview(null)} /> : null}
+
+      {editingDraft ? (
+        <ClaimDraftEditor
+          contractId={contractId}
+          claim={editingDraft}
+          onClose={() => {
+            setEditingDraft(null);
+            void load();
+            void onRefresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

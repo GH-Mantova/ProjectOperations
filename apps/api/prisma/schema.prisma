@@ -57,6 +57,7 @@ model User {
   assignedTenders            Tender[]                    @relation("TenderAssignedEstimator")
   tenderNotes                TenderNote[]                @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]            @relation("TenderFollowUpAssignee")
+  tenderOutcomesRecorded     TenderOutcome[]             @relation("TenderOutcomeRecordedBy")
   tenderEntriesAuthored      TenderEntry[]               @relation("TenderEntryAuthor")
   tenderEntriesAssigned      TenderEntry[]               @relation("TenderEntryAssignee")
   lockedTenderRateSets       TenderRateSet[]             @relation("TenderRateSetLockedBy")
@@ -214,6 +215,18 @@ model User {
 
   // Tip Finder recommendation log entries created by this user.
   tipRecommendationLogs TipRecommendationLog[] @relation("TipRecommendationLogCreatedBy")
+
+  // SLICE 5 (settings-restructure): per-user notification channel preferences.
+  // A missing row means "inherit admin default". onDelete: Cascade so removing
+  // a user deletes their preferences automatically.
+  notificationPreferences NotificationPreference[]
+
+  // B-HW-1: handover template versions published by this user.
+  handoverTemplatesPublished HandoverTemplate[] @relation("HandoverTemplatePublisher")
+
+  // RC-1: subcontractor rate cards created / last-updated by this user.
+  subcontractorRatesCreated SubcontractorRate[] @relation("SubcontractorRateCreatedBy")
+  subcontractorRatesUpdated SubcontractorRate[] @relation("SubcontractorRateUpdatedBy")
 
   @@index([isActive])
   @@index([managerId])
@@ -725,6 +738,7 @@ model Client {
   cases               Case[]                    @relation("CaseClient")
   leads               Lead[]                    @relation("ClientLeads")
   opportunities       Opportunity[]             @relation("ClientOpportunities")
+  tenderOutcomes      TenderOutcome[]           @relation("ClientTenderOutcomes")
 
   @@unique([name])
   @@index([status])
@@ -1315,15 +1329,52 @@ model TenderEntry {
   @@map("tender_entries")
 }
 
+// WL-1a — Structured tender-outcome capture (result/reason enums + ML-feature
+// columns). All new columns are nullable and additive; existing rows stay
+// valid. Prior outcomes are never overwritten — the supersedesId self-relation
+// links a corrected outcome to the row it replaces (append-only).
+enum TenderOutcomeResult {
+  WON
+  LOST
+  NO_BID
+}
+
+enum TenderOutcomeReason {
+  PRICE_TOO_HIGH
+  LOST_ON_RELATIONSHIP
+  SCOPE_MISMATCH
+  TIMING_PROGRAM_CLASH
+  CAPACITY_CONSTRAINT
+  CLIENT_WENT_ANOTHER_DIRECTION
+  PROJECT_CANCELLED
+  NO_RESPONSE_FROM_CLIENT
+  DECLINED_TO_BID
+  OTHER
+}
+
 model TenderOutcome {
-  id          String   @id @default(cuid())
-  tenderId    String   @map("tender_id")
-  outcomeType String   @map("outcome_type")
-  notes       String?
-  recordedAt  DateTime @default(now()) @map("recorded_at")
-  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  id                 String               @id @default(cuid())
+  tenderId           String               @map("tender_id")
+  outcomeType        String               @map("outcome_type")
+  notes              String?
+  recordedAt         DateTime             @default(now()) @map("recorded_at")
+  resultType         TenderOutcomeResult? @map("result_type")
+  reason             TenderOutcomeReason?
+  tenderValue        Decimal?             @map("tender_value") @db.Decimal(14, 2)
+  ourPrice           Decimal?             @map("our_price") @db.Decimal(14, 2)
+  clientId           String?              @map("client_id")
+  scopeSummary       String?              @map("scope_summary")
+  competitorOrWinner String?              @map("competitor_or_winner")
+  recordedById       String?              @map("recorded_by_id")
+  supersedesId       String?              @unique @map("supersedes_id")
+  tender             Tender               @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  client             Client?              @relation("ClientTenderOutcomes", fields: [clientId], references: [id], onDelete: SetNull)
+  recordedBy         User?                @relation("TenderOutcomeRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  supersedes         TenderOutcome?       @relation("TenderOutcomeSupersedes", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy       TenderOutcome?       @relation("TenderOutcomeSupersedes")
 
   @@index([tenderId])
+  @@index([clientId])
   @@map("tender_outcomes")
 }
 
@@ -1404,11 +1455,19 @@ model JobConversion {
   tenderId         String       @unique @map("tender_id")
   tenderClientId   String       @unique @map("tender_client_id")
   jobId            String       @unique @map("job_id")
+  // B-P0a-4-i — survivor-spine re-point. `projectId` carries the surviving
+  // Project (Job folds into Project per B-P0a). Nullable + kept alongside
+  // `jobId` during the transition; `jobId` is dropped in B-P0a-8. Backfilled
+  // from Project.sourceJobId for existing rows; written going forward by the
+  // conversion path once the Project exists (updateStatus creates it on
+  // CONTRACT_ISSUED, before convert-to-job is reachable).
+  projectId        String?      @unique @map("project_id")
   carriedDocuments Boolean      @default(false) @map("carried_documents")
   createdAt        DateTime     @default(now()) @map("created_at")
   tender           Tender       @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   tenderClient     TenderClient @relation(fields: [tenderClientId], references: [id], onDelete: Cascade)
   job              Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  project          Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("job_conversions")
 }
@@ -1787,6 +1846,18 @@ model AssetStatusHistory {
   @@map("asset_status_history")
 }
 
+// Atomic sequential counter for "Unique ID" form fields (F-4 wave 1).
+// Mirrors SafetyIncidentNumberSequence / HazardNumberSequence — a single row
+// (id = 1) is upserted on first use; subsequent increments are serialised via
+// Prisma's transaction. Prefix and zero-padding are driven by the individual
+// FormField.config, not this table (the table only stores the counter).
+model FormNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("form_number_sequences")
+}
+
 model FormTemplate {
   id                 String                @id @default(cuid())
   name               String
@@ -1892,6 +1963,11 @@ model FormRule {
   operator        String
   comparisonValue String?             @map("comparison_value")
   effect          String              @default("SHOW")
+  // F-2a: rich rule-definition in the canonical FieldRule JSON contract shape.
+  // Nullable so existing rows are not broken; backfilled by migration.
+  // Legacy columns (source/target/operator/comparisonValue/effect) are kept
+  // per the soak-before-drop rule — do not remove until F-2c.
+  definition      Json?
   createdAt       DateTime            @default(now()) @map("created_at")
   version         FormTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
@@ -1949,6 +2025,11 @@ model FormSubmission {
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
   publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
+  // F-5 (Signature v2) — set by the submit path when a signature field
+  // configured to seal the form is signed. Once sealed, PATCH /values is
+  // rejected with 409 so downstream approvals/audits can trust the
+  // submission's field state is frozen.
+  sealedAt          DateTime?             @map("sealed_at")
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -2096,6 +2177,9 @@ model FormSubmissionValue {
   // straight at a SharePoint or filesystem path without spawning rows there)
   valueBoolean  Boolean?       @map("value_boolean")
   filePath      String?        @map("file_path")
+  // F-3: which repeat "entry" of a repeating FormSection this value belongs to.
+  // Default 0 preserves the implicit single-entry semantics of existing rows.
+  entryIndex    Int            @default(0) @map("entry_index")
   createdAt     DateTime       @default(now()) @map("created_at")
   submission    FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   field         FormField?     @relation(fields: [fieldId], references: [id], onDelete: SetNull)
@@ -2125,6 +2209,13 @@ model FormSignature {
   signerName   String         @map("signer_name")
   signedAt     DateTime       @default(now()) @map("signed_at")
   createdAt    DateTime       @default(now()) @map("created_at")
+  // F-5 (Signature v2) — role-gated signing. `requiredRole` mirrors the
+  // authored FormField.config.requiredRole at sign-time so the audit trail
+  // shows what the gate was configured to demand even if the template is
+  // republished later. `signedById` records the User that actually signed;
+  // nullable to keep the historical "signerName only" rows valid.
+  requiredRole String?        @map("required_role")
+  signedById   String?        @map("signed_by_id")
   submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
@@ -2544,6 +2635,40 @@ model IntegrationCredential {
   @@map("integration_credentials")
 }
 
+model ApiKeyType {
+  id          String          @id @default(uuid())
+  name        String          @unique
+  description String?
+  systemKind  String?         @map("system_kind")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  credentials ApiCredential[]
+
+  @@map("api_key_type")
+}
+
+model ApiCredential {
+  id             String     @id @default(uuid())
+  name           String
+  typeId         String     @map("type_id")
+  type           ApiKeyType @relation(fields: [typeId], references: [id])
+  adapter        String?
+  scope          String     @default("company")
+  userId         String?    @map("user_id")
+  valueEncrypted String?    @map("value_encrypted")
+  validatedAt    DateTime?  @map("validated_at")
+  enabled        Boolean    @default(true)
+  order          Int?
+  config         Json?
+  updatedById    String?    @map("updated_by_id")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  @@index([typeId])
+  @@index([scope, userId])
+  @@map("api_credential")
+}
+
 // UserAiProvider and UserAiPreference models were removed in Â§5A.1 PR 8
 // (PR #132) â€" provider selection moved to persona settings. Tables dropped
 // via migration 20260502_chore_remove_legacy_ai_provider_tables.
@@ -2637,6 +2762,7 @@ model Project {
   preStartChecklists      PreStartChecklist[]
   timesheets              Timesheet[]
   contract                Contract?
+  jobConversion           JobConversion?
   safetyIncidents         SafetyIncident[]
   hazardObservations      HazardObservation[]
   ganttTasks              GanttTask[]
@@ -3625,6 +3751,28 @@ model NotificationTriggerConfig {
   @@map("notification_trigger_configs")
 }
 
+// SLICE 5 (settings-restructure): per-user notification channel preference.
+// Granularity: one row per (user, trigger). A missing row means the user
+// inherits the admin-configured deliveryMethod for that trigger — no write
+// needed for the default case. The stored `channel` can only NARROW the
+// admin's choice (mute-only semantics); effective channel = admin ∩ user.
+// `channel` mirrors the NotificationTriggerConfig.deliveryMethod vocabulary
+// plus "off" (the empty-set / full mute).
+model NotificationPreference {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  trigger   String
+  channel   String   // one of: both | email | inapp | off
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trigger])
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
 // Singleton row (id="singleton") holding the active email provider + sender
 // identity. Provider credentials themselves continue to live in env vars
 // (SHAREPOINT_* doubles as Graph Mail credentials in practice), so this
@@ -4144,19 +4292,50 @@ model SubcontractorSupplier {
   createdById           String    @map("created_by_id")
   createdBy             User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
 
-  documents          SubcontractorDocument[]
-  licences           EntityLicence[]           @relation("SubLicences")
-  insurances         EntityInsurance[]         @relation("SubInsurances")
-  creditApplications CreditApplication[]       @relation("SubCreditApps")
-  creditEntries      SupplierCreditEntry[]     @relation("SupplierCreditEntries")
-  rateTables         RateTable[]               @relation("RateTableSupplier")
-  commitments        Commitment[]
-  prequalRequests    PrequalificationRequest[]
+  documents             SubcontractorDocument[]
+  licences              EntityLicence[]           @relation("SubLicences")
+  insurances            EntityInsurance[]         @relation("SubInsurances")
+  creditApplications    CreditApplication[]       @relation("SubCreditApps")
+  creditEntries         SupplierCreditEntry[]     @relation("SupplierCreditEntries")
+  rateTables            RateTable[]               @relation("RateTableSupplier")
+  commitments           Commitment[]
+  prequalRequests       PrequalificationRequest[]
+  subcontractorRates    SubcontractorRate[]
 
   @@index([entityType])
   @@index([prequalStatus])
   @@index([isActive])
   @@map("subcontractor_suppliers")
+}
+
+// RC-1 — Subcontractor rate cards (additive, 2026-08-11).
+// Append-only supersede rule applies: never mutate rate/unit/discipline on an
+// existing row. "Editing" means creating a new row + flipping the old row's
+// isActive to false (and optionally closing validTo) in one transaction.
+model SubcontractorRate {
+  id                      String                @id @default(cuid())
+  subcontractorSupplierId String                @map("subcontractor_supplier_id")
+  subcontractorSupplier   SubcontractorSupplier @relation(fields: [subcontractorSupplierId], references: [id], onDelete: Cascade)
+  // Discipline discriminator — must be one of IS_DISCIPLINE_CODES (DEM / CIV / ASB / Other).
+  // Validated at the DTO layer; kept as a plain String column (not a Prisma enum) so new
+  // codes can be added without a schema migration.
+  discipline              String
+  unit                    String
+  rate                    Decimal               @db.Decimal(10, 2)
+  validFrom               DateTime?             @map("valid_from") @db.Date
+  validTo                 DateTime?             @map("valid_to") @db.Date
+  notes                   String?
+  isActive                Boolean               @default(true) @map("is_active")
+  createdAt               DateTime              @default(now()) @map("created_at")
+  updatedAt               DateTime              @updatedAt @map("updated_at")
+  createdById             String?               @map("created_by_id")
+  createdBy               User?                 @relation("SubcontractorRateCreatedBy", fields: [createdById], references: [id])
+  updatedById             String?               @map("updated_by_id")
+  updatedBy               User?                 @relation("SubcontractorRateUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([subcontractorSupplierId])
+  @@index([subcontractorSupplierId, discipline, isActive])
+  @@map("subcontractor_rates")
 }
 
 // NOTE: SubcontractorContact was unified into the polymorphic Contact model in
@@ -6527,4 +6706,162 @@ model SwmsTemplateControlRow {
   @@unique([controlId, code])
   @@index([controlId, order])
   @@map("swms_template_control_rows")
+}
+
+// ─── Contract Handover Template (B-HW-1) ────────────────────────────────────
+// Versioned, configurable template that drives the handover wizard.
+// Each explicit Publish creates a new version row (isActive = true, previous
+// deactivated). Every Handover record pins the templateVersion it was created
+// on so it is frozen to that field map (legal-doc-versioning pattern).
+//
+// Fields use stable `key` values (immutable identifiers) so that rename /
+// retire operations are non-destructive to saved HandoverValue data.
+// B-HW-1 is schema + seed only. API + UI ship in B-HW-2 and B-HW-3.
+
+enum HandoverFieldType {
+  text
+  money
+  date
+  list
+  attachment
+  contact
+}
+
+enum HandoverFieldSourceType {
+  auto
+  capture
+  attach
+  derived
+}
+
+model HandoverTemplate {
+  id            String    @id @default(cuid())
+  version       Int
+  isActive      Boolean   @default(false) @map("is_active")
+  publishedAt   DateTime? @map("published_at")
+  publishedById String?   @map("published_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  publishedBy User?                    @relation("HandoverTemplatePublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+  sections    HandoverTemplateSection[]
+
+  @@index([isActive])
+  @@index([version])
+  @@map("handover_templates")
+}
+
+model HandoverTemplateSection {
+  id         String   @id @default(cuid())
+  templateId String   @map("template_id")
+  key        String
+  label      String
+  sortOrder  Int      @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  template HandoverTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fields   HandoverTemplateField[]
+
+  @@unique([templateId, key])
+  @@index([templateId, sortOrder])
+  @@map("handover_template_sections")
+}
+
+model HandoverTemplateField {
+  id          String                  @id @default(cuid())
+  sectionId   String                  @map("section_id")
+  // key is the stable/immutable identity clients bind to. Never change after creation;
+  // use retiredAt to retire a field instead of deleting or re-keying it.
+  key         String
+  label       String
+  type        HandoverFieldType
+  sourceType  HandoverFieldSourceType  @map("source_type")
+  // autoBinding is a dot-path expression referencing the tender/quote/contract
+  // source field for auto-prefill (e.g. "contract.contractValue").
+  autoBinding String?                  @map("auto_binding")
+  // listId links to a GlobalList for list-type fields.
+  listId      String?                  @map("list_id")
+  required    Boolean                  @default(false)
+  sortOrder   Int                      @map("sort_order")
+  retiredAt   DateTime?                @map("retired_at")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  section HandoverTemplateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, key])
+  @@index([sectionId, sortOrder])
+  @@index([retiredAt])
+  @@map("handover_template_fields")
+}
+
+// ── Schedule of Rates (SoR S1) ───────────────────────────────────────────────
+// Master rate-book for live jobs. Separate from tender pricing (TenderRateSet /
+// EstimatePlantRate / EstimateWasteRate). Later slices add admin UI, job-attach,
+// VC/AR pricing, PDF, and approval chain.
+
+enum SorCategory {
+  LABOUR
+  PLANT
+  WASTE
+  SUBCONTRACTOR
+}
+
+enum SorPeriodHalf {
+  H1
+  H2
+}
+
+model SorPeriod {
+  id         String        @id @default(cuid())
+  year       Int
+  half       SorPeriodHalf
+  startDate  DateTime      @map("start_date")
+  expiryDate DateTime      @map("expiry_date")
+  label      String
+  status     String        @default("ACTIVE")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  rates      SorRate[]
+  changes    SorChangeLogEntry[]
+
+  @@unique([year, half])
+  @@map("sor_periods")
+}
+
+model SorRate {
+  id          String      @id @default(cuid())
+  periodId    String      @map("period_id")
+  period      SorPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category    SorCategory
+  name        String
+  class       String?
+  unit        String?
+  ordinary    Decimal?    @db.Decimal(12, 2)
+  oneAndHalf  Decimal?    @map("one_and_half") @db.Decimal(12, 2)
+  double      Decimal?    @db.Decimal(12, 2)
+  isReference Boolean     @default(false) @map("is_reference")
+  comments    String?
+  sortOrder   Int         @default(0) @map("sort_order")
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([periodId, category])
+  @@map("sor_rates")
+}
+
+model SorChangeLogEntry {
+  id          String    @id @default(cuid())
+  periodId    String    @map("period_id")
+  period      SorPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  rateId      String?   @map("rate_id")
+  field       String
+  oldValue    String?   @map("old_value")
+  newValue    String?   @map("new_value")
+  changedById String?   @map("changed_by_id")
+  changedAt   DateTime  @default(now()) @map("changed_at")
+
+  @@index([periodId])
+  @@map("sor_change_log_entries")
 }

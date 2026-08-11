@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -10,9 +11,18 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { NotificationsService } from "../platform/notifications.service";
-import { RulesEngineService, type FieldRule, type RuleAction } from "./rules-engine.service";
+import { WeatherService, type WeatherResponse } from "../platform/weather.service";
+import {
+  RulesEngineService,
+  type FieldRule,
+  type RuleAction,
+  type SectionEntriesMap
+} from "./rules-engine.service";
+import { FormNumberSequenceService } from "./form-number-sequence.service";
+import { checkCompetencyGate } from "../compliance/competency-gate";
 
 type ValueMap = Record<string, unknown>;
+type SectionEntriesPayload = Record<string, Array<Record<string, unknown>>>;
 
 /**
  * Reduce a list of numeric operands using the named operation. Returns
@@ -281,8 +291,28 @@ export class FormsEngineService {
     private readonly prisma: PrismaService,
     private readonly rules: RulesEngineService,
     private readonly notifications: NotificationsService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly formNumberSequence: FormNumberSequenceService,
+    private readonly weather: WeatherService
   ) {}
+
+  /**
+   * F-6 — resolve the current weather for a submission's site so the
+   * `weather_capture` field and any downstream context-auto-fill callers
+   * can share one shape. Returns `null` when the site is unknown or the
+   * upstream weather service can't produce a reading — never throws, so a
+   * weather-fetch failure can't block a submission.
+   */
+  async resolveSiteWeather(siteId: string | null | undefined): Promise<WeatherResponse | null> {
+    if (!siteId) return null;
+    try {
+      const result = await this.weather.getSiteWeather(siteId);
+      if (result.unavailable) return null;
+      return result;
+    } catch {
+      return null;
+    }
+  }
 
   // ── Draft creation ────────────────────────────────────────────────────
 
@@ -328,8 +358,9 @@ export class FormsEngineService {
         clockOffTime: null
       },
       include: {
-        project: { select: { id: true, projectManagerId: true, supervisorId: true } },
-        allocation: { select: { id: true } }
+        project: { select: { id: true, siteId: true, projectManagerId: true, supervisorId: true } },
+        allocation: { select: { id: true } },
+        workerProfile: { select: { id: true } }
       },
       orderBy: { date: "desc" }
     });
@@ -342,6 +373,20 @@ export class FormsEngineService {
       }
       if (activeTimesheet.project?.supervisorId) {
         context.supervisorId = activeTimesheet.project.supervisorId;
+      }
+      // F-5 — expose the filler's own worker profile id so the
+      // `worker_picker` field can pre-select the current user when
+      // `prefillFromAllocation` is on.
+      if (activeTimesheet.workerProfile?.id) {
+        context.workerProfileId = activeTimesheet.workerProfile.id;
+      }
+      // F-6 — snapshot the site's current weather so `weather_capture`
+      // fields have a value even before the client renders. Null when the
+      // site is unknown or the upstream service can't produce a reading.
+      if (activeTimesheet.project?.siteId) {
+        context.siteId = activeTimesheet.project.siteId;
+        const weather = await this.resolveSiteWeather(activeTimesheet.project.siteId);
+        if (weather) context.weather = weather;
       }
     }
 
@@ -373,21 +418,53 @@ export class FormsEngineService {
    * @throws ForbiddenException when the draft belongs to another user
    * @throws BadRequestException when the submission is not in draft status
    */
-  async updateValues(submissionId: string, userId: string, values: ValueMap) {
+  async updateValues(
+    submissionId: string,
+    userId: string,
+    values: ValueMap,
+    sectionEntries?: SectionEntriesPayload
+  ) {
     const submission = await this.requireOwnedDraft(submissionId, userId);
+    // F-5 (Signature v2) — a sealing signature freezes the field state at
+    // 409 so downstream approvals can trust what was attested to. The check
+    // is deliberately scoped to PATCH /values only; the submit path is still
+    // permitted to advance a sealed draft to `submitted`.
+    if (submission.sealedAt) {
+      throw new ConflictException(
+        "This submission has been sealed by a signature and can no longer be edited."
+      );
+    }
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
+    // F-5 (Signature v2) — role-gate signature values before persisting.
+    // Runs once per PATCH so a role-mismatched signature 403s immediately
+    // rather than silently landing in valueText.
+    await this.enforceSignatureRoles(template, values, userId);
 
     // Persist each non-empty value as a FormSubmissionValue row, upserting
     // by (submissionId, fieldKey). Keep prior values for fields not in the
     // current payload — a partial PATCH should not blow them away.
     const allFields = (template.sections ?? []).flatMap((s) => s.fields ?? []);
     const fieldByKey = new Map(allFields.map((f) => [f.fieldKey, f]));
+    // F-3: keys that live inside a repeating section — persisted per entry, so
+    // they must skip the flat (entryIndex=0) upsert path below.
+    const repeatingFieldKeys = new Set<string>();
+    const repeatingSectionByKey = new Map<
+      string,
+      { section: (typeof template.sections)[number]; fieldKeysInSection: string[] }
+    >();
+    for (const section of template.sections ?? []) {
+      if (!section.isRepeating) continue;
+      const fieldKeysInSection = (section.fields ?? []).map((f) => f.fieldKey);
+      for (const k of fieldKeysInSection) repeatingFieldKeys.add(k);
+      repeatingSectionByKey.set(section.id, { section, fieldKeysInSection });
+    }
 
     for (const [fieldKey, raw] of Object.entries(values)) {
       const field = fieldByKey.get(fieldKey);
       if (!field) continue;
+      if (repeatingFieldKeys.has(fieldKey)) continue;
       const existing = await this.prisma.formSubmissionValue.findFirst({
-        where: { submissionId: submission.id, fieldKey }
+        where: { submissionId: submission.id, fieldKey, entryIndex: 0 }
       });
       const data = this.shapeValue(field.fieldType, raw);
       if (existing) {
@@ -397,23 +474,77 @@ export class FormsEngineService {
         });
       } else {
         await this.prisma.formSubmissionValue.create({
-          data: { submissionId: submission.id, fieldKey, fieldId: field.id, ...data }
+          data: {
+            submissionId: submission.id,
+            fieldKey,
+            fieldId: field.id,
+            entryIndex: 0,
+            ...data
+          }
         });
       }
     }
 
+    // F-3: persist repeating-section entries. Replace-all semantics per
+    // section: if the caller included a sectionKey in sectionEntries, we
+    // delete that section's existing rows and rewrite them in array order.
+    // Sections not present in the payload keep their stored entries.
+    if (sectionEntries) {
+      for (const [sectionId, entries] of Object.entries(sectionEntries)) {
+        const meta = repeatingSectionByKey.get(sectionId);
+        if (!meta) continue; // unknown or non-repeating section — ignore
+        await this.prisma.formSubmissionValue.deleteMany({
+          where: {
+            submissionId: submission.id,
+            fieldKey: { in: meta.fieldKeysInSection }
+          }
+        });
+        if (!Array.isArray(entries)) continue;
+        for (let entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+          const entry = entries[entryIndex] ?? {};
+          for (const field of meta.section.fields ?? []) {
+            const raw = (entry as Record<string, unknown>)[field.fieldKey];
+            if (raw === undefined) continue;
+            const data = this.shapeValue(field.fieldType, raw);
+            await this.prisma.formSubmissionValue.create({
+              data: {
+                submissionId: submission.id,
+                fieldKey: field.fieldKey,
+                fieldId: field.id,
+                entryIndex,
+                ...data
+              }
+            });
+          }
+        }
+      }
+    }
+
+    // F-5 (Signature v2) — persist FormSignature rows + apply the seal when
+    // a signature field with `config.sealsForm` was signed in this PATCH.
+    // Runs after value upserts so the signed base64 payload is already saved
+    // as the source of truth; the FormSignature row is the audit-facing
+    // sidecar carrying signer identity + role gate.
+    await this.applySignatureSideEffects(submission.id, template, values, userId);
+
     // After save, evaluate field visibility + required state across ALL stored
     // values so the client can update the form without a page reload.
     const merged = await this.collectValues(submission.id);
+    const collectedEntries = await this.collectSectionEntries(submission.id, template);
     const fieldVisibility: Record<string, boolean> = {};
     const fieldRequired: Record<string, boolean> = {};
     for (const field of allFields) {
       const conditions = (field.conditions ?? []) as unknown as FieldRule[];
-      fieldVisibility[field.fieldKey] = this.rules.evaluateFieldVisibility(conditions, merged);
+      fieldVisibility[field.fieldKey] = this.rules.evaluateFieldVisibility(
+        conditions,
+        merged,
+        collectedEntries
+      );
       fieldRequired[field.fieldKey] = this.rules.evaluateFieldRequired(
         field.isRequired,
         conditions,
-        merged
+        merged,
+        collectedEntries
       );
     }
     return { fieldVisibility, fieldRequired };
@@ -440,7 +571,8 @@ export class FormsEngineService {
     submissionId: string,
     userId: string,
     gpsLat?: number,
-    gpsLng?: number
+    gpsLng?: number,
+    acknowledgedWarnings: string[] = []
   ) {
     const submission = await this.requireOwnedDraft(submissionId, userId);
     const template = await this.loadTemplateForVersion(submission.templateVersionId);
@@ -466,12 +598,13 @@ export class FormsEngineService {
     }
 
     const collected = await this.collectValues(submission.id);
+    const collectedEntries = await this.collectSectionEntries(submission.id, template);
     // Recompute calculation fields server-side — the client value is never
     // trusted. The updated map feeds validation and every downstream step.
     const merged = await this.recomputeCalculations(submission.id, template, collected);
 
     // 1. Validate
-    const validation = this.rules.validateValues(template, merged);
+    const validation = this.rules.validateValues(template, merged, collectedEntries);
     if (!validation.valid) {
       throw new UnprocessableEntityException({ errors: validation.errors });
     }
@@ -494,11 +627,60 @@ export class FormsEngineService {
       throw new UnprocessableEntityException({ complianceFailures: gateResult.failures });
     }
 
+    // 2b. F-2c submit-time rule gates. Evaluate every on_submit rule now so
+    // BLOCK actions hard-stop and unacknowledged WARN actions bounce back to
+    // the client with the message copy — the client re-submits with the
+    // matching keys in `acknowledgedWarnings` once the user OKs them. The
+    // remaining (non-gate) actions are handled in step 5 below.
+    const allOnSubmitActions = this.rules.collectOnSubmitActions(template, merged, collectedEntries);
+    const blockingActions = this.rules.collectBlockingActions(allOnSubmitActions);
+    if (blockingActions.length > 0) {
+      throw new UnprocessableEntityException({
+        blocks: blockingActions.map(
+          (a) => a.blockMessage ?? "This submission is blocked by a form rule."
+        )
+      });
+    }
+    const warningActions = this.rules.collectWarningActions(allOnSubmitActions);
+    const ackSet = new Set(acknowledgedWarnings);
+    const unacknowledged = warningActions.filter(
+      (a) => !ackSet.has(this.rules.warnActionKey(a))
+    );
+    if (unacknowledged.length > 0) {
+      throw new UnprocessableEntityException({
+        warnings: unacknowledged.map((a) => ({
+          key: this.rules.warnActionKey(a),
+          message: a.warnMessage ?? "Please review before submitting."
+        }))
+      });
+    }
+
+    // 2c. Assign unique_id values (server-generated, not user-entered).
+    // Any field with fieldType === "unique_id" that hasn't been assigned yet
+    // gets an atomic sequential ID from FormNumberSequenceService and is
+    // persisted into the submission values so it round-trips back on the
+    // final getSubmissionDetail response.
+    await this.assignUniqueIds(submission.id, template, merged);
+
     // 3. Compute inspection score + outcome (null when template has no
     // scoreConfig anywhere — the field is just a data-collection form).
     const scoring = computeScoring(template, merged);
 
-    // 4. Mark submitted, capture GPS + scoring result
+    // 4. Mark submitted, capture GPS + scoring result. Acknowledged WARN
+    // keys are persisted alongside the existing context blob so the audit
+    // trail can show which warnings the submitter OK'd — no schema change
+    // required (F-2c is a non-schema slice).
+    const contextWithAcks =
+      warningActions.length > 0
+        ? {
+            ...((submission.context ?? {}) as Record<string, unknown>),
+            acknowledgedWarnings: warningActions.map((a) => ({
+              key: this.rules.warnActionKey(a),
+              message: a.warnMessage ?? null,
+              acknowledgedAt: new Date().toISOString()
+            }))
+          }
+        : ((submission.context ?? {}) as Record<string, unknown>);
     const updated = await this.prisma.formSubmission.update({
       where: { id: submission.id },
       data: {
@@ -509,13 +691,16 @@ export class FormsEngineService {
         score: scoring.score !== null ? new Prisma.Decimal(scoring.score) : null,
         maxScore: scoring.maxScore !== null ? new Prisma.Decimal(scoring.maxScore) : null,
         scorePct: scoring.scorePct !== null ? new Prisma.Decimal(scoring.scorePct) : null,
-        outcome: scoring.outcome
+        outcome: scoring.outcome,
+        context: contextWithAcks as Prisma.InputJsonValue
       }
     });
 
-    // 5. Run on_submit actions — create records, send notifications
-    const actions = this.rules.collectOnSubmitActions(template, merged);
-    await this.executeServerActions(actions, updated, merged);
+    // 5. Run on_submit side-effect actions — create records, send
+    // notifications. The WARN/BLOCK gate actions are stripped here because
+    // they were already handled in step 2b.
+    const sideEffectActions = this.rules.stripGateActions(allOnSubmitActions);
+    await this.executeServerActions(sideEffectActions, updated, merged);
 
     // 6. Approval chain (if configured)
     if (settings.requiresApproval && Array.isArray(settings.approvalChain) && settings.approvalChain.length > 0) {
@@ -1235,7 +1420,13 @@ export class FormsEngineService {
   }
 
   private async collectValues(submissionId: string): Promise<ValueMap> {
-    const rows = await this.prisma.formSubmissionValue.findMany({ where: { submissionId } });
+    // F-3: the flat value map only carries entry 0 (the implicit single-entry
+    // slot every non-repeating field lives in, and the first entry of a
+    // repeating section). Repeating-section entries beyond index 0 live in the
+    // SectionEntriesMap built by collectSectionEntries.
+    const rows = await this.prisma.formSubmissionValue.findMany({
+      where: { submissionId, entryIndex: 0 }
+    });
     const out: ValueMap = {};
     for (const r of rows) {
       if (r.valueText !== null) out[r.fieldKey] = r.valueText;
@@ -1243,6 +1434,49 @@ export class FormsEngineService {
       else if (r.valueBoolean !== null) out[r.fieldKey] = r.valueBoolean;
       else if (r.valueDateTime !== null) out[r.fieldKey] = r.valueDateTime;
       else if (r.valueJson !== null) out[r.fieldKey] = r.valueJson;
+    }
+    return out;
+  }
+
+  /**
+   * F-3 — build `{ sectionId: [entry-0 values, entry-1 values, …] }` for
+   * every repeating section on the template so rules using repeating-section
+   * operators (has_any_entry_where, entry_count, column_total) can evaluate.
+   * Non-repeating sections are omitted; a repeating section with no submitted
+   * values yet resolves to an empty array.
+   */
+  private async collectSectionEntries(
+    submissionId: string,
+    template: { sections?: Array<{ id: string; isRepeating: boolean; fields?: Array<{ fieldKey: string }> }> }
+  ): Promise<SectionEntriesMap> {
+    const out: SectionEntriesMap = {};
+    for (const section of template.sections ?? []) {
+      if (!section.isRepeating) continue;
+      const fieldKeysInSection = (section.fields ?? []).map((f) => f.fieldKey);
+      if (fieldKeysInSection.length === 0) {
+        out[section.id] = [];
+        continue;
+      }
+      const rows = await this.prisma.formSubmissionValue.findMany({
+        where: { submissionId, fieldKey: { in: fieldKeysInSection } },
+        orderBy: [{ entryIndex: "asc" }, { fieldKey: "asc" }]
+      });
+      const byIndex = new Map<number, ValueMap>();
+      let maxIdx = -1;
+      for (const r of rows) {
+        const idx = r.entryIndex;
+        maxIdx = Math.max(maxIdx, idx);
+        const bucket = byIndex.get(idx) ?? {};
+        if (r.valueText !== null) bucket[r.fieldKey] = r.valueText;
+        else if (r.valueNumber !== null) bucket[r.fieldKey] = Number(r.valueNumber);
+        else if (r.valueBoolean !== null) bucket[r.fieldKey] = r.valueBoolean;
+        else if (r.valueDateTime !== null) bucket[r.fieldKey] = r.valueDateTime;
+        else if (r.valueJson !== null) bucket[r.fieldKey] = r.valueJson;
+        byIndex.set(idx, bucket);
+      }
+      const arr: ValueMap[] = [];
+      for (let i = 0; i <= maxIdx; i++) arr.push(byIndex.get(i) ?? {});
+      out[section.id] = arr;
     }
     return out;
   }
@@ -1414,6 +1648,62 @@ export class FormsEngineService {
     return merged;
   }
 
+  /**
+   * For every `unique_id` field in the template that doesn't yet have a
+   * persisted value, claim the next number from FormNumberSequenceService
+   * (atomically row-locked) and write it to the submission's value row.
+   *
+   * Config shape: `{ prefix?: string, padLength?: number }` — both optional.
+   * The generated string is stored as `valueText` so it can be read back
+   * like any other text field.
+   *
+   * Called on the submit path only — drafts show the placeholder instead.
+   */
+  private async assignUniqueIds(
+    submissionId: string,
+    template: { sections?: Array<{ fields?: Array<{ id: string; fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap
+  ): Promise<void> {
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "unique_id") continue;
+        // Skip if already assigned (e.g. on a resubmit path).
+        if (values[field.fieldKey] !== undefined && values[field.fieldKey] !== null) continue;
+        const config = (field.config ?? {}) as { prefix?: string; padLength?: number };
+        const prefix = String(config.prefix ?? "");
+        const padLength = typeof config.padLength === "number" ? config.padLength : 4;
+        const generated = await this.formNumberSequence.next(prefix, padLength);
+        // Persist as valueText.
+        const existing = await this.prisma.formSubmissionValue.findFirst({
+          where: { submissionId, fieldKey: field.fieldKey, entryIndex: 0 }
+        });
+        if (existing) {
+          await this.prisma.formSubmissionValue.update({
+            where: { id: existing.id },
+            data: { valueText: generated, fieldId: field.id }
+          });
+        } else {
+          await this.prisma.formSubmissionValue.create({
+            data: {
+              submissionId,
+              fieldKey: field.fieldKey,
+              fieldId: field.id,
+              entryIndex: 0,
+              valueText: generated,
+              valueNumber: null,
+              valueBoolean: null,
+              valueDateTime: null,
+              valueJson: Prisma.JsonNull as Prisma.NullableJsonNullValueInput
+            }
+          });
+        }
+        // Update the in-memory merged map so downstream steps (scoring, etc.)
+        // see the assigned value.
+        values[field.fieldKey] = generated;
+      }
+    }
+  }
+
   private stringValue(values: ValueMap, key: string): string | null {
     const v = values[key];
     if (v === undefined || v === null) return null;
@@ -1428,7 +1718,7 @@ export class FormsEngineService {
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  private async nextSeq(table: "safety_incident_number_sequences" | "hazard_number_sequences") {
+  private async nextSeq(table: "safety_incident_number_sequences" | "hazard_number_sequences" | "form_number_sequences") {
     // Row-locked sequence — same pattern used by SafetyService.
     const result = await this.prisma.$queryRawUnsafe<Array<{ last_number: number }>>(
       `UPDATE "${table}" SET "last_number" = "last_number" + 1 WHERE "id" = 1 RETURNING "last_number"`
@@ -1457,5 +1747,198 @@ export class FormsEngineService {
     if (!input) return "low";
     const r = input.toLowerCase();
     return ["low", "medium", "high", "extreme"].includes(r) ? r : "low";
+  }
+
+  // ── F-5 Signature v2 helpers ──────────────────────────────────────────
+
+  /**
+   * F-5 — role-gate signature values. For every incoming value whose field is
+   * a signature configured with `config.requiredRole`, verify the acting
+   * user actually holds that role. Failing the check is a 403; the value is
+   * never persisted. Signature values without a role gate pass through.
+   *
+   * A signature is considered "empty" when the payload is null / empty
+   * string; we don't gate empty signatures so a filler can clear a mistaken
+   * sig without needing the role.
+   */
+  private async enforceSignatureRoles(
+    template: { sections?: Array<{ fields?: Array<{ fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap,
+    userId: string
+  ): Promise<void> {
+    const gatedRoles = new Set<string>();
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "signature") continue;
+        const cfg = (field.config ?? {}) as { requiredRole?: string };
+        const requiredRole = cfg.requiredRole?.trim();
+        if (!requiredRole) continue;
+        const raw = values[field.fieldKey];
+        if (raw === null || raw === undefined || raw === "") continue;
+        gatedRoles.add(requiredRole);
+      }
+    }
+    if (gatedRoles.size === 0) return;
+    const held = await this.prisma.userRole.findMany({
+      where: { userId, role: { name: { in: [...gatedRoles] } } },
+      select: { role: { select: { name: true } } }
+    });
+    const heldNames = new Set(held.map((r) => r.role.name));
+    for (const role of gatedRoles) {
+      if (!heldNames.has(role)) {
+        throw new ForbiddenException(
+          `Only users with the "${role}" role can sign this field.`
+        );
+      }
+    }
+  }
+
+  /**
+   * F-5 — persist a FormSignature row (with requiredRole + signedById) for
+   * every signature field signed in this PATCH, and seal the submission when
+   * any of those fields carries `config.sealsForm`. Idempotent per
+   * (submissionId, fieldKey): re-signing overwrites the prior row.
+   */
+  private async applySignatureSideEffects(
+    submissionId: string,
+    template: { sections?: Array<{ fields?: Array<{ fieldKey: string; fieldType: string; config?: unknown }> }> },
+    values: ValueMap,
+    userId: string
+  ): Promise<void> {
+    let sealFromThisPatch = false;
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.fieldType !== "signature") continue;
+        const raw = values[field.fieldKey];
+        if (raw === null || raw === undefined || raw === "") continue;
+        const cfg = (field.config ?? {}) as {
+          requiredRole?: string;
+          sealsForm?: boolean;
+        };
+        const signer = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true, email: true }
+        });
+        const signerName = signer
+          ? `${signer.firstName} ${signer.lastName}`.trim() || signer.email
+          : userId;
+        const existing = await this.prisma.formSignature.findFirst({
+          where: { submissionId, fieldKey: field.fieldKey }
+        });
+        const data = {
+          signerName,
+          signedById: userId,
+          requiredRole: cfg.requiredRole ?? null,
+          signedAt: new Date()
+        };
+        if (existing) {
+          await this.prisma.formSignature.update({
+            where: { id: existing.id },
+            data
+          });
+        } else {
+          await this.prisma.formSignature.create({
+            data: { submissionId, fieldKey: field.fieldKey, ...data }
+          });
+        }
+        if (cfg.sealsForm) sealFromThisPatch = true;
+      }
+    }
+    if (sealFromThisPatch) {
+      await this.prisma.formSubmission.update({
+        where: { id: submissionId },
+        data: { sealedAt: new Date() }
+      });
+    }
+  }
+
+  // ── F-5 WHS picker endpoints ─────────────────────────────────────────
+
+  /**
+   * F-5 — light worker list for the `worker_picker` field. Optionally scores
+   * each row against a required-competency list so the picker can badge
+   * missing/expired quals without a second call. Uses
+   * `checkCompetencyGate` so the verdict matches the compliance module
+   * exactly; nothing is duplicated.
+   */
+  async getWorkerOptions(requiredQuals: string[] = []) {
+    const workers = await this.prisma.workerProfile.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        qualifications: { select: { qualType: true, expiryDate: true } }
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }]
+    });
+    const cleanQuals = requiredQuals.map((q) => q.trim()).filter((q) => q.length > 0);
+    return workers.map((w) => {
+      const competency =
+        cleanQuals.length > 0
+          ? checkCompetencyGate(w.qualifications, cleanQuals)
+          : null;
+      return {
+        id: w.id,
+        name: `${w.firstName} ${w.lastName}`.trim(),
+        role: w.role,
+        competency
+      };
+    });
+  }
+
+  /**
+   * F-5 — light asset list for the `asset_picker` field. Delegates to the
+   * assets table but only projects the fields the picker needs. Optional
+   * `siteId` narrows to assets currently checked out at that site
+   * (`AssetCheckout` with a null `checkedInAt`) so the picker matches the
+   * "assets on this site" mental model. Each row carries the same
+   * `maintenanceSummary` derivation used elsewhere via a light per-row
+   * computation — no duplication of the assets service's includes tree.
+   */
+  async getAssetOptions(siteId?: string) {
+    const where: Prisma.AssetWhereInput = siteId
+      ? { checkouts: { some: { siteId, checkedInAt: null } } }
+      : {};
+    const assets = await this.prisma.asset.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        assetCode: true,
+        status: true,
+        maintenancePlans: {
+          select: { nextDueAt: true }
+        },
+        maintenanceEvents: {
+          where: { completedAt: { not: null } },
+          orderBy: { completedAt: "desc" },
+          take: 1,
+          select: { completedAt: true }
+        }
+      },
+      orderBy: [{ name: "asc" }],
+      take: 200
+    });
+    const now = Date.now();
+    return assets.map((a) => {
+      const nextDue = a.maintenancePlans
+        .map((p) => p.nextDueAt?.getTime())
+        .filter((t): t is number => typeof t === "number")
+        .sort((x, y) => x - y)[0];
+      const overdue = typeof nextDue === "number" && nextDue < now;
+      return {
+        id: a.id,
+        name: a.name,
+        assetCode: a.assetCode,
+        status: a.status,
+        maintenanceSummary: {
+          nextDueAt: nextDue ? new Date(nextDue).toISOString() : null,
+          overdue,
+          lastServicedAt: a.maintenanceEvents[0]?.completedAt?.toISOString() ?? null
+        }
+      };
+    });
   }
 }

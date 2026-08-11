@@ -347,6 +347,7 @@ export class FormsService {
           create: dto.values.map((value) => ({
             fieldId: fieldByKey.get(value.fieldKey)?.id ?? null,
             fieldKey: value.fieldKey,
+            entryIndex: value.entryIndex ?? 0,
             valueText: value.valueText ?? null,
             valueNumber: value.valueNumber != null ? new Prisma.Decimal(value.valueNumber) : null,
             valueDateTime: value.valueDateTime ? new Date(value.valueDateTime) : null,
@@ -626,8 +627,26 @@ export class FormsService {
 
     const latestVersion = await tx.formTemplateVersion.findFirst({
       where: { templateId: template.id },
-      orderBy: { versionNumber: "desc" }
+      orderBy: { versionNumber: "desc" },
+      include: {
+        sections: { include: { fields: true } }
+      }
     });
+
+    // F-2c — preserve FieldRule[] arrays across republishes when the client
+    // didn't send them. FormDesignerPage doesn't carry rules in its payload
+    // (rules live in FormRulesBuilderPage); without this preserve step, a
+    // designer publish would wipe every rule the author set up. Keyed by
+    // fieldKey to survive field reordering.
+    const priorRulesByKey = new Map<string, { conditions: unknown; actions: unknown }>();
+    for (const section of latestVersion?.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        priorRulesByKey.set(field.fieldKey, {
+          conditions: field.conditions,
+          actions: field.actions
+        });
+      }
+    }
 
     const version = await tx.formTemplateVersion.create({
       data: {
@@ -643,25 +662,39 @@ export class FormsService {
           versionId: version.id,
           title: sectionInput.title,
           description: sectionInput.description ?? null,
-          sectionOrder: sectionInput.sectionOrder
+          sectionOrder: sectionInput.sectionOrder,
+          isRepeating: sectionInput.isRepeating ?? false,
+          minRepeat: sectionInput.minRepeat ?? null,
+          maxRepeat: sectionInput.maxRepeat ?? null
         }
       });
 
       if (sectionInput.fields.length > 0) {
         await tx.formField.createMany({
-          data: sectionInput.fields.map((field) => ({
-            sectionId: section.id,
-            fieldKey: field.fieldKey,
-            label: field.label,
-            fieldType: field.fieldType,
-            fieldOrder: field.fieldOrder,
-            isRequired: field.isRequired ?? false,
-            placeholder: field.placeholder ?? null,
-            helpText: field.helpText ?? null,
-            optionsJson: field.optionsJson ?? Prisma.JsonNull,
-            config: (field.config ?? {}) as Prisma.InputJsonValue,
-            snippetCode: field.snippetCode ?? null
-          }))
+          data: sectionInput.fields.map((field) => {
+            const prior = priorRulesByKey.get(field.fieldKey);
+            return {
+              sectionId: section.id,
+              fieldKey: field.fieldKey,
+              label: field.label,
+              fieldType: field.fieldType,
+              fieldOrder: field.fieldOrder,
+              isRequired: field.isRequired ?? false,
+              placeholder: field.placeholder ?? null,
+              helpText: field.helpText ?? null,
+              optionsJson: field.optionsJson ?? Prisma.JsonNull,
+              config: (field.config ?? {}) as Prisma.InputJsonValue,
+              snippetCode: field.snippetCode ?? null,
+              // F-2c — undefined means "preserve prior rules" (designer
+              // publish), explicit array means "replace" (rules builder).
+              conditions: (field.conditions !== undefined
+                ? field.conditions
+                : (prior?.conditions ?? [])) as Prisma.InputJsonValue,
+              actions: (field.actions !== undefined
+                ? field.actions
+                : (prior?.actions ?? [])) as Prisma.InputJsonValue
+            };
+          })
         });
       }
     }

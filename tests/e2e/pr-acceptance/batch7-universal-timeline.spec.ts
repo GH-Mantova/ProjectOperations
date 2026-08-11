@@ -200,7 +200,6 @@ test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
 
     const jobId = await openSeedJob(page);
     await timelineSettled(page);
-    const before = await page.getByTestId("timeline-item").count();
 
     const token = await apiToken(request);
     await apiFetch(request, token, "POST", `/jobs/${jobId}/issues`, {
@@ -212,11 +211,12 @@ test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
     await expect(page.getByTestId("timeline-panel")).toBeVisible({ timeout: 15_000 });
     await timelineSettled(page);
 
-    // Greater-than rather than exactly before+1: the projection may emit more
-    // than one row for a single issue, and this test is about the system entry
-    // appearing, not about the projection's cardinality.
-    expect(await page.getByTestId("timeline-item").count()).toBeGreaterThan(before);
-
+    // Assert the system entry APPEARS, not that the visible count grew. The timeline
+    // endpoint returns a capped, newest-first window (DEFAULT_LIMIT=50 in timeline.service.ts),
+    // so once a job has >=50 items a newly-created entry cannot push the visible count above
+    // the cap even though it exists -- a count>before precondition is structurally
+    // unsatisfiable at the cap. The new entry is the newest, so it is inside the window:
+    // verify it by kind + unique title instead.
     await page.getByTestId("timeline-filter-system").click();
     const systemItems = page.getByTestId("timeline-item");
     await expect(systemItems.first()).toHaveAttribute("data-kind", "system");
@@ -252,5 +252,101 @@ test.describe("Batch 7 — Universal activity Timeline (PR #672)", () => {
       // trail is for — but this run does not change the job's own status.
       await apiFetch(request, token, "PATCH", `/jobs/${jobId}/status`, { status: originalStatus });
     }
+  });
+
+  test("cursor pagination — Load older button reveals items beyond the first page", async ({
+    page,
+    request
+  }) => {
+    // Seed >50 notes so the first page (DEFAULT_LIMIT=50) does NOT contain the
+    // oldest note posted in this batch. The oldest note is the FIRST one we POST.
+    // We use a unique run-id prefix so we can identify this run's notes by title.
+    const prefix = `E2E-TL-CURSOR-${runId()}`;
+    const TOTAL_NOTES = 52;
+
+    const jobId = await openSeedJob(page);
+    const token = await apiToken(request);
+
+    // The first note we post is the OLDEST in this batch (smallest createdAt among ours).
+    const oldestBody = `${prefix}-note-001`;
+    await apiFetch(request, token, "POST", `/timeline/Job/${jobId}/notes`, { body: oldestBody });
+
+    // Post the remaining 51 notes (002..052). Each POST returns after the previous resolves,
+    // so the oldest note stays at the bottom of the batch.
+    for (let idx = 2; idx <= TOTAL_NOTES; idx++) {
+      const noteNum = String(idx).padStart(3, "0");
+      await apiFetch(request, token, "POST", `/timeline/Job/${jobId}/notes`, {
+        body: `${prefix}-note-${noteNum}`
+      });
+    }
+
+    await page.reload();
+    await expect(page.getByTestId("timeline-panel")).toBeVisible({ timeout: 15_000 });
+    await timelineSettled(page);
+
+    // The oldest note in THIS batch is note-001 — it is NOT visible in the first page
+    // because 51 newer notes from this run (plus any pre-existing timeline items) push
+    // it beyond the default page size of 50.
+    await expect(
+      page.getByTestId("timeline-list").getByText(oldestBody, { exact: false })
+    ).not.toBeVisible();
+
+    // "Load older" button must be visible — the server found a further page.
+    const loadOlderBtn = page.getByTestId("timeline-load-older");
+    await expect(loadOlderBtn).toBeVisible();
+
+    // Click "Load older" — the next page is appended and our oldest note becomes visible.
+    await loadOlderBtn.click();
+    await expect(
+      page.getByTestId("timeline-list").getByText(oldestBody, { exact: false })
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("date-range filter — narrowing from/to reduces the visible set", async ({
+    page,
+    request
+  }) => {
+    // Seed a note with a distinguishable title for tomorrow's date so we can
+    // confirm it disappears when we set the "to" filter to yesterday.
+    const prefix = `E2E-TL-DATERANGE-${runId()}`;
+    const uniqueBody = `${prefix}-today-note`;
+
+    const jobId = await openSeedJob(page);
+    const token = await apiToken(request);
+
+    await apiFetch(request, token, "POST", `/timeline/Job/${jobId}/notes`, { body: uniqueBody });
+
+    await page.reload();
+    await expect(page.getByTestId("timeline-panel")).toBeVisible({ timeout: 15_000 });
+    await timelineSettled(page);
+
+    // Confirm the note is visible before any date filter is applied.
+    await expect(
+      page.getByTestId("timeline-list").getByText(uniqueBody, { exact: false })
+    ).toBeVisible();
+
+    // Set "to" to yesterday — the note we just created (today) must disappear.
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // Filling the "to" input resets to page 1 and refetches with the date filter.
+    await page.getByTestId("timeline-to").fill(yesterdayStr);
+
+    // Wait for the timeline to settle after the refetch triggered by the date change.
+    await expect
+      .poll(
+        async () => {
+          const loading = await page.getByText("Loading…").count();
+          return loading === 0;
+        },
+        { timeout: 10_000, message: "timeline never finished reloading after date filter" }
+      )
+      .toBe(true);
+
+    // Our note (created today) must NOT be visible any more.
+    await expect(
+      page.getByTestId("timeline-list").getByText(uniqueBody, { exact: false })
+    ).not.toBeVisible();
   });
 });

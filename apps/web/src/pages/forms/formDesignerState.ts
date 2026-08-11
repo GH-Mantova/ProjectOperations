@@ -34,11 +34,16 @@ export type FieldType =
   | "signature"
   | "image_capture"
   | "existing_site"
+  | "worker_picker"
+  | "asset_picker"
+  | "location_stamp"
+  | "weather_capture"
   // Advanced (F-4)
   | "lookup"
   | "calculation"
   | "table"
   | "terms"
+  | "unique_id"
   // Content library (forms-content-library)
   | "content_block";
 
@@ -80,7 +85,8 @@ export const ADVANCED_TYPES: ReadonlySet<string> = new Set<string>([
   "lookup",
   "calculation",
   "table",
-  "terms"
+  "terms",
+  "unique_id"
 ]);
 
 export type DraftField = {
@@ -104,6 +110,13 @@ export type DraftSection = {
   description?: string;
   sectionOrder: number;
   fields: DraftField[];
+  // F-3 — repeating sections. `isRepeating: true` renders the section as N
+  // add/removable entries at fill time; `minRepeat`/`maxRepeat` clamp the
+  // count. The Add-button label is derived from the section title (no new
+  // column in this slice per the F-3 scope note).
+  isRepeating?: boolean;
+  minRepeat?: number;
+  maxRepeat?: number;
 };
 
 export type DraftRule = {
@@ -146,7 +159,11 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     entries: [
       { type: "image_capture", label: "Photo", icon: "\u{1F4F7}" },
       { type: "signature", label: "Signature", icon: "✍" },
-      { type: "existing_site", label: "Existing site", icon: "\u{1F3D7}" }
+      { type: "existing_site", label: "Existing site", icon: "\u{1F3D7}" },
+      { type: "worker_picker", label: "Worker", icon: "\u{1F464}" },
+      { type: "asset_picker", label: "Asset", icon: "\u{1F527}" },
+      { type: "location_stamp", label: "Location stamp", icon: "\u{1F4CD}" },
+      { type: "weather_capture", label: "Weather", icon: "\u{1F324}" }
     ]
   },
   {
@@ -199,7 +216,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { type: "lookup", label: "Lookup", icon: "\u{1F50D}" },
       { type: "calculation", label: "Calculation", icon: "\u{1F9EE}" },
       { type: "table", label: "Table", icon: "\u{1F4CB}" },
-      { type: "terms", label: "Terms", icon: "\u{1F4DC}" }
+      { type: "terms", label: "Terms", icon: "\u{1F4DC}" },
+      { type: "unique_id", label: "Unique ID", icon: "#" }
     ]
   }
 ];
@@ -250,7 +268,13 @@ const DEFAULT_LABEL: Partial<Record<string, string>> = {
   calculation: "Calculated total",
   table: "Table",
   terms: "Terms & conditions",
-  existing_site: "Site"
+  unique_id: "Unique ID",
+  existing_site: "Site",
+  worker_picker: "Worker",
+  asset_picker: "Asset",
+  location_stamp: "Location stamp",
+  image_capture: "Photo",
+  weather_capture: "Weather"
 };
 
 function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown> | undefined {
@@ -273,6 +297,28 @@ function defaultConfigFor(fieldType: FieldType | string): Record<string, unknown
     return {
       termsText: "I agree to the terms and conditions.",
       termsVersion: "1"
+    };
+  }
+  if (fieldType === "unique_id") {
+    return { prefix: "", padLength: 4 };
+  }
+  if (fieldType === "worker_picker") {
+    return { prefillFromAllocation: true, checkCompetency: false };
+  }
+  if (fieldType === "asset_picker") {
+    return { siteFiltered: true, showServiceWarnings: true };
+  }
+  if (fieldType === "location_stamp") {
+    return {};
+  }
+  if (fieldType === "image_capture") {
+    return {
+      minCount: 0,
+      maxCount: 5,
+      cameraOnly: false,
+      stampLocation: false,
+      stampTime: false,
+      allowAnnotation: false
     };
   }
   return undefined;

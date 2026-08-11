@@ -1,90 +1,30 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import {
+  evaluateCondition as sharedEvaluateCondition,
+  evaluateConditionGroup as sharedEvaluateConditionGroup
+} from "@project-ops/config/forms-rule-definition";
+import type {
+  Condition,
+  ConditionGroup,
+  ConditionOperator,
+  FieldRule,
+  RuleAction,
+  RuleActionType,
+  SectionEntriesMap
+} from "@project-ops/config/forms-rule-definition";
 
-// ── Types ────────────────────────────────────────────────────────────────
-// These mirror the JSON shapes stored in FormField.conditions / .actions /
-// .validations, FormSection.conditions, and FormTemplate.settings. The engine
-// is shape-agnostic at evaluation time; consumers can layer DTO-validation on
-// top if they want stricter input checking.
-
-/** Comparison operators a single Condition may use against a field value. */
-export type ConditionOperator =
-  | "equals"
-  | "not_equals"
-  | "contains"
-  | "not_contains"
-  | "greater_than"
-  | "less_than"
-  | "between"
-  | "is_empty"
-  | "is_not_empty"
-  | "is_one_of"
-  | "is_not_one_of";
-
-/**
- * A single comparison: the stored value at `fieldKey` is tested with
- * `operator` against `value` (and `value2` for the "between" operator).
- */
-export interface Condition {
-  id?: string;
-  fieldKey: string;
-  operator: ConditionOperator;
-  value?: unknown;
-  value2?: unknown;
-}
-
-/** Recursive AND/OR grouping of Conditions and nested ConditionGroups. */
-export interface ConditionGroup {
-  logic: "AND" | "OR";
-  conditions: Array<Condition | ConditionGroup>;
-}
-
-/** Action kinds a matched rule may emit (UI effects plus server-side record creation/notifications). */
-export type RuleActionType =
-  | "show"
-  | "hide"
-  | "require"
-  | "unrequire"
-  | "set_value"
-  | "clear_value"
-  | "lock"
-  | "unlock"
-  | "jump_to_section"
-  | "submit_form"
-  | "send_notification"
-  | "create_record"
-  | "add_repeating_row"
-  | "remove_repeating_row";
-
-/**
- * One effect emitted by a matched rule. UI action types are interpreted by
- * the client; `create_record` and `send_notification` are executed
- * server-side by FormsEngineService after submit.
- */
-export interface RuleAction {
-  type: RuleActionType;
-  target?: string;
-  value?: unknown;
-  recordType?: "safety_incident" | "hazard_observation" | "maintenance_job" | "corrective_action";
-  correctiveActionTitle?: string;
-  correctiveActionDescription?: string;
-  correctiveActionPriority?: "low" | "medium" | "high" | "critical";
-  correctiveActionAssignToRole?: string;
-  notificationTarget?: string; // role or userId
-  notificationMessage?: string;
-}
-
-/**
- * The rule shape stored on FormField.conditions / .actions: when
- * `conditionGroup` evaluates true for the given trigger, every action in
- * `actions` applies.
- */
-export interface FieldRule {
-  id?: string;
-  trigger: "on_change" | "on_load" | "on_submit";
-  conditionGroup: ConditionGroup;
-  actions: RuleAction[];
-}
+// Re-export the shared types so existing imports from this module still work
+// (e.g. the spec file: `import type { Condition, ConditionGroup } from "./rules-engine.service"`).
+export type {
+  Condition,
+  ConditionGroup,
+  ConditionOperator,
+  FieldRule,
+  RuleAction,
+  RuleActionType,
+  SectionEntriesMap
+} from "@project-ops/config/forms-rule-definition";
 
 /** Per-field validation constraint stored in FormField.validations. */
 export interface ValidationRule {
@@ -95,9 +35,8 @@ export interface ValidationRule {
 
 type ValueMap = Record<string, unknown>;
 
-function isGroup(node: Condition | ConditionGroup): node is ConditionGroup {
-  return (node as ConditionGroup).conditions !== undefined;
-}
+// Local helpers used by validateValues; the condition/group evaluators live in
+// @project-ops/config/forms-rule-definition so server and client cannot drift.
 
 function toNumber(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -134,78 +73,53 @@ export class RulesEngineService {
   /**
    * Evaluate one Condition against the current value map.
    *
-   * Equality is loose (==) by design; numeric operators coerce both sides
-   * and return false when either side is not a finite number.
-   *
-   * @param condition - the comparison to run
-   * @param values - fieldKey to current value map
-   * @returns true when the condition holds; false for unknown operators (with a warning log)
+   * Thin wrapper over the shared pure evaluator in
+   * `@project-ops/config/forms-rule-definition` — keeps the public method
+   * signature stable while adding the server-only warning for unknown
+   * operators (the shared evaluator returns false silently).
    */
-  evaluateCondition(condition: Condition, values: ValueMap): boolean {
-    const actual = values[condition.fieldKey];
-    const expected = condition.value;
-    switch (condition.operator) {
-      case "equals":
-        // Loose equality so "5" == 5 holds — submission values come from
-        // text inputs and still need to match number rules.
-        return actual == expected;
-      case "not_equals":
-        return actual != expected;
-      case "contains":
-        if (Array.isArray(actual)) return actual.includes(expected as never);
-        return String(actual ?? "").includes(String(expected ?? ""));
-      case "not_contains":
-        if (Array.isArray(actual)) return !actual.includes(expected as never);
-        return !String(actual ?? "").includes(String(expected ?? ""));
-      case "greater_than": {
-        const a = toNumber(actual);
-        const b = toNumber(expected);
-        return a !== null && b !== null && a > b;
-      }
-      case "less_than": {
-        const a = toNumber(actual);
-        const b = toNumber(expected);
-        return a !== null && b !== null && a < b;
-      }
-      case "between": {
-        const a = toNumber(actual);
-        const lo = toNumber(expected);
-        const hi = toNumber(condition.value2);
-        return a !== null && lo !== null && hi !== null && a >= lo && a <= hi;
-      }
-      case "is_empty":
-        return isEmpty(actual);
-      case "is_not_empty":
-        return !isEmpty(actual);
-      case "is_one_of":
-        return Array.isArray(expected) && expected.includes(actual as never);
-      case "is_not_one_of":
-        return Array.isArray(expected) && !expected.includes(actual as never);
-      default:
-        this.logger.warn(`Unknown operator: ${condition.operator as string}`);
-        return false;
+  evaluateCondition(
+    condition: Condition,
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
+  ): boolean {
+    const result = sharedEvaluateCondition(condition, values, sectionEntries);
+    // The shared evaluator returns false for unknown operators without logging;
+    // keep the server-side warning so misconfigured templates surface in logs.
+    const known: ConditionOperator[] = [
+      "equals",
+      "not_equals",
+      "contains",
+      "not_contains",
+      "greater_than",
+      "less_than",
+      "between",
+      "is_empty",
+      "is_not_empty",
+      "is_one_of",
+      "is_not_one_of",
+      "has_any_entry_where",
+      "entry_count",
+      "column_total"
+    ];
+    if (!known.includes(condition.operator)) {
+      this.logger.warn(`Unknown operator: ${condition.operator as string}`);
     }
+    return result;
   }
 
   /**
    * Recursively evaluate a ConditionGroup.
    *
-   * AND requires every child to pass, OR requires at least one. All
-   * children are evaluated eagerly (no short-circuit). An empty or
-   * missing group means "no constraint" and returns true.
-   *
-   * @returns the boolean result of the group
+   * Delegates to the shared pure evaluator; kept as an instance method so
+   * existing NestJS callers (FormsEngineService) don't need to change.
    */
-  evaluateConditionGroup(group: ConditionGroup, values: ValueMap): boolean {
-    if (!group || !Array.isArray(group.conditions) || group.conditions.length === 0) {
-      // Empty group ≡ no constraint ≡ true. This matches the natural reading
-      // of "show this field if [no conditions]" — the field stays shown.
-      return true;
-    }
-    const evals = group.conditions.map((node) =>
-      isGroup(node) ? this.evaluateConditionGroup(node, values) : this.evaluateCondition(node, values)
-    );
-    return group.logic === "OR" ? evals.some(Boolean) : evals.every(Boolean);
+  evaluateConditionGroup(
+    group: ConditionGroup,
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
+  ): boolean {
+    return sharedEvaluateConditionGroup(group, values, sectionEntries);
   }
 
   /**
@@ -220,14 +134,15 @@ export class RulesEngineService {
    */
   evaluateFieldVisibility(
     fieldConditions: FieldRule[] | undefined,
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): boolean {
     if (!Array.isArray(fieldConditions) || fieldConditions.length === 0) return true;
     // A visibility rule is one whose actions include show/hide. If any matching
     // rule says "hide", the field is hidden; "show" rules pass through. Default
     // is visible.
     for (const rule of fieldConditions) {
-      const matched = this.evaluateConditionGroup(rule.conditionGroup, values);
+      const matched = this.evaluateConditionGroup(rule.conditionGroup, values, sectionEntries);
       if (!matched) continue;
       for (const action of rule.actions) {
         if (action.type === "hide") return false;
@@ -251,12 +166,13 @@ export class RulesEngineService {
   evaluateFieldRequired(
     isRequiredBase: boolean,
     fieldConditions: FieldRule[] | undefined,
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): boolean {
     if (!Array.isArray(fieldConditions) || fieldConditions.length === 0) return isRequiredBase;
     let required = isRequiredBase;
     for (const rule of fieldConditions) {
-      if (!this.evaluateConditionGroup(rule.conditionGroup, values)) continue;
+      if (!this.evaluateConditionGroup(rule.conditionGroup, values, sectionEntries)) continue;
       for (const action of rule.actions) {
         if (action.type === "require") required = true;
         else if (action.type === "unrequire") required = false;
@@ -276,7 +192,8 @@ export class RulesEngineService {
    */
   collectOnSubmitActions(
     template: { sections?: Array<{ fields?: Array<{ actions?: unknown }> }> },
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): RuleAction[] {
     const actions: RuleAction[] = [];
     const sections = template.sections ?? [];
@@ -286,7 +203,7 @@ export class RulesEngineService {
         if (!Array.isArray(rules)) continue;
         for (const rule of rules) {
           if (rule.trigger !== "on_submit") continue;
-          if (!this.evaluateConditionGroup(rule.conditionGroup, values)) continue;
+          if (!this.evaluateConditionGroup(rule.conditionGroup, values, sectionEntries)) continue;
           for (const action of rule.actions ?? []) {
             actions.push(action);
           }
@@ -294,6 +211,52 @@ export class RulesEngineService {
       }
     }
     return actions;
+  }
+
+  // F-2c — submit-time gate splitters. Given the on_submit action list
+  // produced by collectOnSubmitActions, partition it into the three
+  // categories the engine cares about at submit time:
+  //   BLOCK  → hard-stop; return a validation-style 422 with the message list
+  //   WARN   → soft-stop; the submitter must acknowledge each warning before
+  //            the submit proceeds. Each warning is identified by a stable
+  //            hash of its message so client-side ACKs can be matched back.
+  //   OTHER  → the existing side-effect actions (create_record,
+  //            send_notification, …) — passed through to executeServerActions.
+
+  /** Extract every `block` action from an on_submit action list. */
+  collectBlockingActions(actions: RuleAction[]): RuleAction[] {
+    return actions.filter((a) => a.type === "block");
+  }
+
+  /** Extract every `warn` action from an on_submit action list. */
+  collectWarningActions(actions: RuleAction[]): RuleAction[] {
+    return actions.filter((a) => a.type === "warn");
+  }
+
+  /**
+   * Discard the WARN/BLOCK gate actions so the remainder can be passed to
+   * the server-side executor (create_record, send_notification, …). Keeps
+   * F-2c gate logic separate from the pre-existing side-effect pipeline.
+   */
+  stripGateActions(actions: RuleAction[]): RuleAction[] {
+    return actions.filter((a) => a.type !== "warn" && a.type !== "block");
+  }
+
+  /**
+   * Stable key for a WARN action — clients acknowledge warnings by echoing
+   * this key back on submit. Uses the message text (or a fallback) so a
+   * template author can reword copy without invalidating any in-flight
+   * drafts. Two warnings with identical copy share one ACK by design.
+   */
+  warnActionKey(action: RuleAction): string {
+    const msg = action.warnMessage ?? "";
+    // Simple, deterministic hash — good enough for a form-scoped ACK map.
+    let hash = 0;
+    for (let i = 0; i < msg.length; i++) {
+      hash = (hash << 5) - hash + msg.charCodeAt(i);
+      hash |= 0;
+    }
+    return `warn:${Math.abs(hash).toString(36)}`;
   }
 
   // ── Validation ─────────────────────────────────────────────────────────
@@ -311,6 +274,7 @@ export class RulesEngineService {
   validateValues(
     template: {
       sections?: Array<{
+        isRepeating?: boolean;
         fields?: Array<{
           fieldKey: string;
           label: string;
@@ -321,20 +285,27 @@ export class RulesEngineService {
         }>;
       }>;
     },
-    values: ValueMap
+    values: ValueMap,
+    sectionEntries?: SectionEntriesMap
   ): { valid: boolean; errors: Record<string, string> } {
     const errors: Record<string, string> = {};
     for (const section of template.sections ?? []) {
+      // F-3: fields inside a repeating section are validated per-entry, not
+      // against the top-level `values` map. Per-entry validation is deferred
+      // to a later slice — this one just ships the storage + UI plumbing.
+      if (section.isRepeating) continue;
       for (const field of section.fields ?? []) {
         const visible = this.evaluateFieldVisibility(
           (field.conditions as FieldRule[]) ?? [],
-          values
+          values,
+          sectionEntries
         );
         if (!visible) continue;
         const required = this.evaluateFieldRequired(
           field.isRequired,
           (field.conditions as FieldRule[]) ?? [],
-          values
+          values,
+          sectionEntries
         );
         const value = values[field.fieldKey];
         if (required && isEmpty(value)) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useActivePersona } from "./PersonaContext";
 import { MessageInput } from "./MessageInput";
 import { MessageList } from "./MessageList";
@@ -6,6 +6,19 @@ import { useStreamingChat, type ConversationSummary } from "./use-streaming-chat
 import { chatPanelEmptyHint } from "./chat-helpers";
 import { formatRelativeDate, truncatePreview } from "./date-helpers";
 import { useConfirm } from "../hooks/useConfirm";
+
+/**
+ * An extra tab injected by the host into the ChatPanel toolbar.
+ * Rendered after the built-in New / History tabs.
+ *
+ * Example usage (tendering host):
+ *   { id: "assumptions-exclusions", label: "Assumptions & Exclusions", content: <AssumptionsExclusionsTabContent tenderId={id} /> }
+ */
+export type ExtraTab = {
+  id: string;
+  label: string;
+  content: ReactNode;
+};
 
 const ICON_NEW = (
   <svg
@@ -76,9 +89,13 @@ const ICON_BACK = (
   </svg>
 );
 
-type View = "chat" | "history";
+type View = string; // "chat" | "history" | any extraTab id
 
-export function ChatPanel() {
+type ChatPanelProps = {
+  extraTabs?: ExtraTab[];
+};
+
+export function ChatPanel({ extraTabs = [] }: ChatPanelProps) {
   const { activePersona, contextKey } = useActivePersona();
   const confirm = useConfirm();
   const slug = activePersona?.persona.slug ?? null;
@@ -132,6 +149,8 @@ export function ChatPanel() {
     setView("chat");
   };
 
+  const activeExtraTab = extraTabs.find((t) => t.id === view) ?? null;
+
   return (
     <div className="persona-window__chat">
       <div className="persona-window__chat-toolbar">
@@ -155,6 +174,17 @@ export function ChatPanel() {
               {ICON_HISTORY}
               <span>History</span>
             </button>
+            {extraTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className="persona-window__chat-toolbar-btn"
+                onClick={() => setView(tab.id)}
+                title={tab.label}
+              >
+                <span>{tab.label}</span>
+              </button>
+            ))}
           </>
         ) : (
           <button
@@ -204,7 +234,7 @@ export function ChatPanel() {
           ) : null}
           <MessageInput status={status} onSend={(text) => void sendMessage(text, { subMode })} />
         </>
-      ) : (
+      ) : view === "history" ? (
         <ConversationHistoryList
           listConversations={listConversations}
           loadConversation={async (id) => {
@@ -213,7 +243,11 @@ export function ChatPanel() {
           }}
           deleteConversation={deleteConversation}
         />
-      )}
+      ) : activeExtraTab ? (
+        <div className="persona-window__extra-tab-content">
+          {activeExtraTab.content}
+        </div>
+      ) : null}
     </div>
   );
 }

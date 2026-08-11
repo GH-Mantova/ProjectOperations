@@ -21,6 +21,8 @@ import {
 import { seedFormTemplates } from "./seed-form-templates";
 import { seedCompanyProfile } from "./seed-company-profile";
 import { seedBusinessProcessFlows } from "./seed-business-process-flows";
+import { seedHandoverDefaultTemplate } from "./seeds/handover-default-template";
+import { seedScheduleOfRates } from "./seed-schedule-of-rates";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
 const databaseUrl =
@@ -3720,6 +3722,10 @@ async function main() {
   await seedBusinessProcessFlows(prisma);
   // Customer Voice — one default post-job survey (idempotent by name).
   await seedDefaultSurvey(prisma);
+  // B-HW-1: default handover template v1. Idempotent — skips if version 1 exists.
+  await seedHandoverDefaultTemplate(prisma);
+  // SoR S1: Schedule of Rates H1 2026 period + representative rates. Idempotent.
+  await seedScheduleOfRates(prisma);
 }
 
 async function seedDefaultSurvey(prisma: PrismaClient) {

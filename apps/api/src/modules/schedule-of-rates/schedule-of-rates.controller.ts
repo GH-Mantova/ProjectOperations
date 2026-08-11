@@ -1,0 +1,176 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards
+} from "@nestjs/common";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags
+} from "@nestjs/swagger";
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString
+} from "class-validator";
+import { Type } from "class-transformer";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { PermissionsGuard } from "../../common/auth/permissions.guard";
+import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { ScheduleOfRatesService } from "./schedule-of-rates.service";
+import { SorCategory, SorPeriodHalf } from "@prisma/client";
+
+// ─── DTOs ─────────────────────────────────────────────────────────────────────
+
+class CreatePeriodDto {
+  @Type(() => Number) @IsNumber() year!: number;
+  @IsEnum(SorPeriodHalf) half!: SorPeriodHalf;
+  @IsString() startDate!: string;
+  @IsString() expiryDate!: string;
+  @IsString() label!: string;
+  @IsOptional() @IsString() status?: string;
+}
+
+class CreateRateDto {
+  @IsEnum(SorCategory) category!: SorCategory;
+  @IsString() name!: string;
+  @IsOptional() @IsString() class?: string | null;
+  @IsOptional() @IsString() unit?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() ordinary?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() oneAndHalf?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() double?: number | null;
+  @IsOptional() @IsBoolean() isReference?: boolean;
+  @IsOptional() @IsString() comments?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() sortOrder?: number;
+}
+
+class UpdateRateDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() class?: string | null;
+  @IsOptional() @IsString() unit?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() ordinary?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() oneAndHalf?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() double?: number | null;
+  @IsOptional() @IsBoolean() isReference?: boolean;
+  @IsOptional() @IsString() comments?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() sortOrder?: number;
+  @IsOptional() @IsBoolean() active?: boolean;
+}
+
+// ─── Controller ───────────────────────────────────────────────────────────────
+
+/**
+ * Schedule of Rates (SoR S1) — master rate-book REST surface.
+ *
+ * Read endpoints require `rates.manage` (same as the existing Rates R0 module).
+ * All write endpoints also require `rates.manage`.
+ *
+ * This is the live-job rate catalog, separate from the tender estimate engine.
+ */
+@ApiTags("Schedule of Rates")
+@ApiBearerAuth()
+@Controller("schedule-of-rates")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class ScheduleOfRatesController {
+  constructor(private readonly service: ScheduleOfRatesService) {}
+
+  // ── Periods ───────────────────────────────────────────────────────────────
+
+  /** List all SorPeriods. */
+  @Get("periods")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "List all SoR periods." })
+  @ApiResponse({ status: 200, description: "List of SoR periods." })
+  listPeriods() {
+    return this.service.listPeriods();
+  }
+
+  /** Get a period with its rates grouped by category. */
+  @Get("periods/:id")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Get a SoR period with rates grouped by category." })
+  @ApiParam({ name: "id", description: "SorPeriod id" })
+  @ApiResponse({ status: 200, description: "Period found with rates by category." })
+  @ApiResponse({ status: 404, description: "Period not found." })
+  getPeriodWithRates(@Param("id") id: string) {
+    return this.service.getPeriodWithRates(id);
+  }
+
+  /** Create a new SoR period. Year+half must be unique. */
+  @Post("periods")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Create a new SoR period (year + H1/H2)." })
+  @ApiResponse({ status: 201, description: "Period created." })
+  createPeriod(@Body() dto: CreatePeriodDto) {
+    return this.service.createPeriod(dto as never);
+  }
+
+  // ── Rates ─────────────────────────────────────────────────────────────────
+
+  /** Create a rate in a period. Appends a SorChangeLogEntry. */
+  @Post("periods/:id/rates")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Add a rate to a SoR period." })
+  @ApiParam({ name: "id", description: "SorPeriod id" })
+  @ApiResponse({ status: 201, description: "Rate created." })
+  @ApiResponse({ status: 404, description: "Period not found." })
+  createRate(
+    @Param("id") periodId: string,
+    @Body() dto: CreateRateDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.createRate(periodId, dto as never, actor.sub);
+  }
+
+  /** Update a rate. Appends SorChangeLogEntry entries for changed fields. */
+  @Patch("rates/:id")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Update a SoR rate. Changed fields are logged." })
+  @ApiParam({ name: "id", description: "SorRate id" })
+  @ApiResponse({ status: 200, description: "Rate updated." })
+  @ApiResponse({ status: 404, description: "Rate not found." })
+  updateRate(
+    @Param("id") rateId: string,
+    @Body() dto: UpdateRateDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateRate(rateId, dto as never, actor.sub);
+  }
+
+  /** Deactivate a rate (soft-delete). Logs the change. */
+  @Delete("rates/:id")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Deactivate a SoR rate (soft-delete; active=false)." })
+  @ApiParam({ name: "id", description: "SorRate id" })
+  @ApiResponse({ status: 200, description: "Rate deactivated." })
+  @ApiResponse({ status: 404, description: "Rate not found." })
+  deactivateRate(
+    @Param("id") rateId: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.deactivateRate(rateId, actor.sub);
+  }
+
+  // ── Change log ────────────────────────────────────────────────────────────
+
+  /** List the change log for a period in chronological order. */
+  @Get("periods/:id/change-log")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "List the append-only change log for a SoR period." })
+  @ApiParam({ name: "id", description: "SorPeriod id" })
+  @ApiResponse({ status: 200, description: "Change log entries." })
+  @ApiResponse({ status: 404, description: "Period not found." })
+  listChangeLog(@Param("id") periodId: string) {
+    return this.service.listChangeLog(periodId);
+  }
+}

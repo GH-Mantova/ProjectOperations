@@ -62,7 +62,7 @@ type TipCard = {
   accepted: boolean;
 };
 
-type OriginType = "office" | "project";
+type OriginType = "office" | "project" | "tender";
 
 // ── Format helpers ─────────────────────────────────────────────────────────────
 
@@ -212,7 +212,39 @@ function TipCardView({
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export function TipFinderPanel() {
+export type TipFinderPanelProps = {
+  /**
+   * Optional pre-fill values. When provided, the form fields are seeded on
+   * first render (not controlled — the user can still change them).
+   * OPS-M3: used when opening the finder from a waste row.
+   */
+  initialWasteType?: string;
+  initialLoadTonnes?: number;
+  initialOriginType?: OriginType;
+  /** Required when initialOriginType = "tender" */
+  initialTenderId?: string;
+  /**
+   * Called when the user presses "Use this facility".
+   * If provided, the default "decision saved" message is suppressed and the
+   * caller controls what happens next (e.g. writing the facility to a waste row).
+   * The accept POST is still fired first.
+   * distanceKm is the one-way haversine from the response card — use it for
+   * auto-filling dailyKm (round trip = round(distanceKm × 2, 1)).
+   */
+  onFacilityChosen?: (
+    facilityName: string,
+    mapLocationId: string,
+    distanceKm: number
+  ) => void;
+};
+
+export function TipFinderPanel({
+  initialWasteType,
+  initialLoadTonnes,
+  initialOriginType,
+  initialTenderId,
+  onFacilityChosen
+}: TipFinderPanelProps = {}) {
   const { authFetch } = useAuth();
 
   // Options
@@ -220,11 +252,13 @@ export function TipFinderPanel() {
   const [loadOptions, setLoadOptions] = useState<{ label: string; tonnes: number }[]>([]);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
 
-  // Inputs
-  const [wasteType, setWasteType] = useState("");
-  const [loadTonnes, setLoadTonnes] = useState<number | "">("");
-  const [originType, setOriginType] = useState<OriginType>("office");
+  // Inputs — seeded from props on first render
+  const [wasteType, setWasteType] = useState(initialWasteType ?? "");
+  const [loadTonnes, setLoadTonnes] = useState<number | "">(initialLoadTonnes ?? "");
+  const [originType, setOriginType] = useState<OriginType>(initialOriginType ?? "office");
   const [projectId, setProjectId] = useState("");
+  // tenderId is used when originType = "tender" (OPS-M3: opened from waste row)
+  const tenderId = initialOriginType === "tender" ? (initialTenderId ?? "") : "";
 
   // Results
   const [cards, setCards] = useState<TipCard[] | null>(null);
@@ -291,6 +325,7 @@ export function TipFinderPanel() {
     if (!wasteType) { setComputeError("Select a waste type."); return; }
     if (!loadTonnes || Number(loadTonnes) <= 0) { setComputeError("Enter a load size."); return; }
     if (originType === "project" && !projectId) { setComputeError("Select a project."); return; }
+    if (originType === "tender" && !tenderId) { setComputeError("No tender context available."); return; }
 
     setComputing(true);
     setComputeError(null);
@@ -304,6 +339,7 @@ export function TipFinderPanel() {
         originType
       };
       if (originType === "project") body.projectId = projectId;
+      if (originType === "tender") body.tenderId = tenderId;
 
       const res = await authFetch("/waste/recommendations", {
         method: "POST",
@@ -316,7 +352,7 @@ export function TipFinderPanel() {
     } finally {
       setComputing(false);
     }
-  }, [authFetch, wasteType, loadTonnes, originType, projectId]);
+  }, [authFetch, wasteType, loadTonnes, originType, projectId, tenderId]);
 
   const handleAccept = useCallback(async (mapLocationId: string) => {
     if (!wasteType || !loadTonnes) return;
@@ -330,6 +366,7 @@ export function TipFinderPanel() {
         originType
       };
       if (originType === "project") body.projectId = projectId;
+      if (originType === "tender") body.tenderId = tenderId;
 
       const res = await authFetch("/waste/recommendations/accept", {
         method: "POST",
@@ -337,13 +374,18 @@ export function TipFinderPanel() {
       });
       if (!res.ok) throw new Error(await res.text());
       const found = cards?.find((c) => c.mapLocationId === mapLocationId);
-      setAcceptedMsg(`Logged: ${found?.facilityName ?? "tip"} — decision saved.`);
+      if (onFacilityChosen && found) {
+        // Caller handles the UX (writing to waste row, closing drawer, etc.)
+        onFacilityChosen(found.facilityName, mapLocationId, found.distanceKm);
+      } else {
+        setAcceptedMsg(`Logged: ${found?.facilityName ?? "tip"} — decision saved.`);
+      }
     } catch (err) {
       setComputeError((err as Error).message);
     } finally {
       setAcceptingId(null);
     }
-  }, [authFetch, wasteType, loadTonnes, originType, projectId, cards]);
+  }, [authFetch, wasteType, loadTonnes, originType, projectId, tenderId, cards, onFacilityChosen]);
 
   return (
     <div
@@ -409,26 +451,42 @@ export function TipFinderPanel() {
         {/* Origin */}
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Coming from</span>
-          <select
-            className="s7-input"
-            value={originType === "office" ? "office" : projectId}
-            onChange={(e) => {
-              if (e.target.value === "office") {
-                setOriginType("office");
-                setProjectId("");
-              } else {
-                setOriginType("project");
-                setProjectId(e.target.value);
-              }
-            }}
-          >
-            <option value="office">Office</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.projectNumber} — {p.name}
-              </option>
-            ))}
-          </select>
+          {/* When opened from a tender row, origin is locked to the tender site */}
+          {originType === "tender" ? (
+            <div
+              className="s7-input"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                fontSize: 13,
+                color: "var(--text-muted)",
+                background: "var(--surface-muted, #F6F6F6)"
+              }}
+            >
+              Tender site
+            </div>
+          ) : (
+            <select
+              className="s7-input"
+              value={originType === "office" ? "office" : projectId}
+              onChange={(e) => {
+                if (e.target.value === "office") {
+                  setOriginType("office");
+                  setProjectId("");
+                } else {
+                  setOriginType("project");
+                  setProjectId(e.target.value);
+                }
+              }}
+            >
+              <option value="office">Office</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.projectNumber} — {p.name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
       </div>
 

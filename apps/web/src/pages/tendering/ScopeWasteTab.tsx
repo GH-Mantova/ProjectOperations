@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField } from "../../components";
 import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
+import { TipFinderDrawer } from "../../components/TipFinderDrawer";
 
 // Waste disposal rows for a tender × discipline. truckDays and lineTotal
 // are derived server-side — the UI only submits raw inputs (tonnes, loads,
@@ -150,6 +151,23 @@ export function ScopeWasteTab({
   const [variance, setVariance] = useState<Record<string, VarianceResult>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // OPS-M3 — Tip Finder drawer state.
+  // mode "find": opened via "Find a tip" next to FACILITY (any row).
+  // mode "map": opened via "Map" next to dailyKm (row must have a current facility set).
+  const [tipDrawer, setTipDrawer] = useState<{
+    rowId: string;
+    mode: "find" | "map";
+  } | null>(null);
+
+  // OPS-M3 — per-row dailyKm suggestion (shown as click-to-apply when user
+  // has already typed a value). Keyed by rowId, value is the round-trip km
+  // rounded to 1dp (= round(distanceKm × 2, 1)).
+  const [kmSuggest, setKmSuggest] = useState<Record<string, number>>({});
+
+  // Ref map for dailyKm inputs so we can imperatively update the uncontrolled
+  // input after auto-fill (avoids a full remount / defaultValue stale issue).
+  const dailyKmRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -354,6 +372,59 @@ export function ScopeWasteTab({
     }
     await load();
   };
+
+  // OPS-M3 — Called when the user presses "Use this facility" inside the
+  // TipFinderDrawer. Writes the facility name to the row, fires the accept
+  // POST (already done inside TipFinderPanel), and handles dailyKm auto-fill.
+  //
+  // distanceKm is the one-way haversine from m2's response; round trip =
+  // round(distanceKm × 2, 1). We do NOT recompute — we use exactly what m2
+  // returned.
+  const handleTipChosen = useCallback(
+    async (
+      facilityName: string,
+      _mapLocationId: string,
+      distanceKm: number
+    ) => {
+      if (!tipDrawer) return;
+      const { rowId } = tipDrawer;
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) {
+        setTipDrawer(null);
+        return;
+      }
+
+      // 1. Write facility to the waste row (triggers rate-resolver reprice).
+      //    DO NOT write any rate / $/unit / $/load — r3-t1 owns that.
+      await patchRow(rowId, { wasteFacility: facilityName });
+
+      // 2. dailyKm auto-fill logic.
+      if (distanceKm > 0) {
+        const roundTrip = Math.round(distanceKm * 2 * 10) / 10; // 1dp
+        const existingKm = row.dailyKm ? Number(row.dailyKm) : null;
+
+        if (existingKm !== null && existingKm !== roundTrip) {
+          // User has a manually-typed value — show suggestion, don't overwrite.
+          setKmSuggest((prev) => ({ ...prev, [rowId]: roundTrip }));
+        } else {
+          // Empty or same value — auto-fill directly.
+          await patchRow(rowId, { dailyKm: roundTrip });
+          // Update the uncontrolled input's displayed value.
+          const inputEl = dailyKmRefs.current[rowId];
+          if (inputEl) inputEl.value = String(roundTrip);
+          setKmSuggest((prev) => {
+            const next = { ...prev };
+            delete next[rowId];
+            return next;
+          });
+        }
+      }
+
+      // 3. Close drawer.
+      setTipDrawer(null);
+    },
+    [tipDrawer, rows, patchRow]
+  );
 
   const subtotal = useMemo(
     () => rows.reduce((sum, r) => sum + (r.lineTotal ? Number(r.lineTotal) : 0), 0),
@@ -602,40 +673,57 @@ export function ScopeWasteTab({
                     {/* PR B4a — facility filter relaxed: (group, type)
                         only. Picking a facility writes the facility's
                         rate.unit forward to row.unit so the line total
-                        bills against the right side. */}
-                    <select
-                      className="s7-select s7-input--sm"
-                      value={row.wasteFacility ?? ""}
-                      disabled={!canManage || !row.wasteType || noFacility}
-                      onChange={(e) => {
-                        const next = e.target.value || null;
-                        const rate = rateFor(row.wasteType, next);
-                        void patchRow(row.id, {
-                          wasteFacility: next,
-                          unit: rate?.unit ?? null,
-                          ratePerTonne: rate ? Number(rate.tonRate) : null,
-                          ratePerLoad: rate ? Number(rate.loadRate) : null
-                        });
-                      }}
-                      style={{ width: 140, fontSize: 12, padding: 2 }}
-                      title={
-                        noFacility
-                          ? "No facility for this group/type"
-                          : row.wasteFacility ?? "Pick a facility"
-                      }
-                    >
-                      {noFacility ? (
-                        <option value="">— no facility —</option>
-                      ) : (
-                        <option value="">—</option>
-                      )}
-                      {row.wasteFacility && !facilityOptions.includes(row.wasteFacility) ? (
-                        <option value={row.wasteFacility}>{row.wasteFacility}</option>
+                        bills against the right side.
+                        OPS-M3 — "Find a tip" button opens the tip finder
+                        drawer pre-filled for this row. */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <select
+                        className="s7-select s7-input--sm"
+                        value={row.wasteFacility ?? ""}
+                        disabled={!canManage || !row.wasteType || noFacility}
+                        onChange={(e) => {
+                          const next = e.target.value || null;
+                          const rate = rateFor(row.wasteType, next);
+                          void patchRow(row.id, {
+                            wasteFacility: next,
+                            unit: rate?.unit ?? null,
+                            ratePerTonne: rate ? Number(rate.tonRate) : null,
+                            ratePerLoad: rate ? Number(rate.loadRate) : null
+                          });
+                        }}
+                        style={{ width: 130, fontSize: 12, padding: 2 }}
+                        title={
+                          noFacility
+                            ? "No facility for this group/type"
+                            : row.wasteFacility ?? "Pick a facility"
+                        }
+                      >
+                        {noFacility ? (
+                          <option value="">— no facility —</option>
+                        ) : (
+                          <option value="">—</option>
+                        )}
+                        {row.wasteFacility && !facilityOptions.includes(row.wasteFacility) ? (
+                          <option value={row.wasteFacility}>{row.wasteFacility}</option>
+                        ) : null}
+                        {facilityOptions.map((f) => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          title="Find a tip — ranked by cost from the tender site"
+                          onClick={() =>
+                            setTipDrawer({ rowId: row.id, mode: "find" })
+                          }
+                          style={{ fontSize: 10, padding: "1px 5px", whiteSpace: "nowrap" }}
+                        >
+                          Find tip
+                        </button>
                       ) : null}
-                      {facilityOptions.map((f) => (
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
+                    </div>
                   </td>
                   <td style={{ padding: 2, fontSize: 11, color: "var(--text-muted)" }}>
                     {/* PR B4a — read-only "Billed by" badge mirrors the
@@ -851,20 +939,86 @@ export function ScopeWasteTab({
                       </label>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Daily km (per truck)
-                        <input
-                          className="s7-input s7-input--sm"
-                          type="number"
-                          step="0.1"
-                          defaultValue={row.dailyKm ?? ""}
-                          disabled={!canManage}
-                          onBlur={(e) => {
-                            const n = e.target.value === "" ? null : Number(e.target.value);
-                            if (String(n) !== String(row.dailyKm))
-                              void patchRow(row.id, { dailyKm: n });
-                          }}
-                          style={{ width: 80, textAlign: "right" }}
-                          title="Manual until T-2/T-3 wire live fuel price + map distance. Leave blank to set fuel term = 0."
-                        />
+                        {/* OPS-M3 — suggest affordance when user already typed a value
+                            but the tip finder computed a different round-trip distance */}
+                        {kmSuggest[row.id] !== undefined ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                            <span style={{ color: "#0369a1", fontSize: 10 }}>
+                              Map: {kmSuggest[row.id]} km
+                            </span>
+                            {canManage ? (
+                              <button
+                                type="button"
+                                className="s7-btn s7-btn--ghost s7-btn--sm"
+                                style={{ fontSize: 10, padding: "0 4px" }}
+                                onClick={() => {
+                                  const val = kmSuggest[row.id];
+                                  void patchRow(row.id, { dailyKm: val });
+                                  const inputEl = dailyKmRefs.current[row.id];
+                                  if (inputEl) inputEl.value = String(val);
+                                  setKmSuggest((prev) => {
+                                    const next = { ...prev };
+                                    delete next[row.id];
+                                    return next;
+                                  });
+                                }}
+                                title="Apply the map-derived distance"
+                              >
+                                Apply
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="s7-btn s7-btn--ghost s7-btn--sm"
+                              style={{ fontSize: 10, padding: "0 4px" }}
+                              onClick={() =>
+                                setKmSuggest((prev) => {
+                                  const next = { ...prev };
+                                  delete next[row.id];
+                                  return next;
+                                })
+                              }
+                              title="Dismiss suggestion"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        ) : null}
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <input
+                            ref={(el) => { dailyKmRefs.current[row.id] = el; }}
+                            className="s7-input s7-input--sm"
+                            type="number"
+                            step="0.1"
+                            defaultValue={row.dailyKm ?? ""}
+                            disabled={!canManage}
+                            onBlur={(e) => {
+                              const n = e.target.value === "" ? null : Number(e.target.value);
+                              if (String(n) !== String(row.dailyKm))
+                                void patchRow(row.id, { dailyKm: n });
+                            }}
+                            style={{ width: 70, textAlign: "right" }}
+                            title="Round-trip km to the tip (auto-filled from tip finder)."
+                          />
+                          {canManage ? (
+                            <button
+                              type="button"
+                              className="s7-btn s7-btn--ghost s7-btn--sm"
+                              title={
+                                row.wasteFacility
+                                  ? "Open tip map — find the current facility and update km"
+                                  : "Set a facility first to use the map"
+                              }
+                              disabled={!row.wasteFacility}
+                              onClick={() =>
+                                setTipDrawer({ rowId: row.id, mode: "map" })
+                              }
+                              style={{ fontSize: 10, padding: "1px 5px" }}
+                            >
+                              Map
+                            </button>
+                          ) : null}
+                        </div>
                       </label>
                     </div>
                     <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, flexWrap: "wrap" }}>
@@ -948,6 +1102,46 @@ export function ScopeWasteTab({
           />
         </div>
       ) : null}
+
+      {/* OPS-M3 — Tip Finder drawer: opens from "Find tip" (beside FACILITY)
+          or "Map" (beside dailyKm). Pre-fills from the active row.
+          If wasteType or tonnes are blank, the panel opens with those empty
+          and the user can fill them — never blocks opening. */}
+      {(() => {
+        if (!tipDrawer) return null;
+        const activeRow = rows.find((r) => r.id === tipDrawer.rowId);
+        if (!activeRow) return null;
+
+        // For "map" mode, seed the current facility as the initial waste type
+        // context so the finder pre-filters — but wasteType drives ranking, not
+        // facility. We seed wasteType from the row regardless of mode.
+        const initWasteType = activeRow.wasteType ?? undefined;
+        // Prefer qty (tonnes) as the load size; ignore m3 here (m2 API is
+        // tonne-based for the log). Leave empty if qty is blank.
+        const initLoadTonnes =
+          activeRow.qty && Number(activeRow.qty) > 0
+            ? Number(activeRow.qty)
+            : undefined;
+
+        const rowLabel = [
+          activeRow.description,
+          activeRow.wasteType ? `(${activeRow.wasteType})` : null
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        return (
+          <TipFinderDrawer
+            open
+            onClose={() => setTipDrawer(null)}
+            initialWasteType={initWasteType}
+            initialLoadTonnes={initLoadTonnes}
+            tenderId={tenderId}
+            onFacilityChosen={handleTipChosen}
+            rowLabel={rowLabel || undefined}
+          />
+        );
+      })()}
     </section>
   );
 }

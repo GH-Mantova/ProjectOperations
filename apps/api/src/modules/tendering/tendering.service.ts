@@ -39,7 +39,10 @@ const tenderInclude = {
       addressLine1: true,
       suburb: true,
       state: true,
-      postcode: true
+      postcode: true,
+      // OPS-M3 — tip finder uses site coords for origin pre-fill
+      centreLat: true,
+      centreLng: true
     }
   },
   tenderClients: {

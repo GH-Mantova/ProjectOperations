@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions";
 
 // Cross-module BI reporting layer (slice 1).
 //
@@ -93,7 +94,7 @@ function parseToDate(raw?: string): Date | undefined {
   return d;
 }
 
-function dateRangeFilter(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
+export function dateRangeFilter(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
   const gte = parseFromDate(from);
   const lte = parseToDate(to);
   if (!gte && !lte) return undefined;
@@ -103,7 +104,7 @@ function dateRangeFilter(from?: string, to?: string): Prisma.DateTimeFilter | un
   return filter;
 }
 
-function decimalToNumber(value: Prisma.Decimal | number | null | undefined): number {
+export function decimalToNumber(value: Prisma.Decimal | number | null | undefined): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === "number") return value;
   return Number(value.toString());
@@ -367,7 +368,8 @@ const REPORT_DEFS: ReportDefinition[] = [
       const totals = { count: rows.reduce((sum, row) => sum + Number(row.count), 0) };
       return { rows, totals };
     }
-  }
+  },
+  ...TENDER_WINLOSS_REPORT_DEFS
 ];
 
 function toSummary(def: ReportDefinition): ReportDefinitionSummary {

@@ -1,49 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { ClientsTab } from "../master-data/MasterDataWorkspacePage";
 import { SubcontractorsPage } from "./SubcontractorsPage";
 import { ContactsPage } from "./ContactsPage";
-
-type Tab = "clients" | "subcontractors" | "contacts";
-
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "clients", label: "Clients" },
-  { id: "subcontractors", label: "Subcontractors & Suppliers" },
-  { id: "contacts", label: "Contacts" }
-];
-
-const VALID: ReadonlySet<Tab> = new Set(TABS.map((t) => t.id));
-
-function resolveTab(raw: string | null): Tab {
-  return raw && (VALID as Set<string>).has(raw) ? (raw as Tab) : "clients";
-}
+import {
+  DIRECTORY_TABS,
+  type DirectoryTab,
+  resolveDirectoryTab,
+  withDirectoryTab
+} from "./directory-tab-helpers";
 
 /**
  * Unified Directory surface — one page, three tabs (Clients, Subcontractors &
- * Suppliers, Contacts). Replaces the five scattered people/company screens.
- * Each tab reuses the existing component so no data-model or API changes are
- * required. Deep-link via `?tab=clients|subcontractors|contacts`.
+ * Suppliers, Contacts). The URL `?tab=` is the single source of truth for the
+ * active tab, so deep-links and browser back/forward stay in sync and the
+ * button click never loses to a competing effect.
  */
 export function DirectoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { authFetch } = useAuth();
-  const [tab, setTab] = useState<Tab>(resolveTab(searchParams.get("tab")));
+  const tab = resolveDirectoryTab(searchParams.get("tab"));
 
-  useEffect(() => {
-    const current = searchParams.get("tab");
-    if (current !== tab) {
-      const next = new URLSearchParams(searchParams);
-      next.set("tab", tab);
-      setSearchParams(next, { replace: true });
-    }
-  }, [tab, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    const fromUrl = resolveTab(searchParams.get("tab"));
-    if (fromUrl !== tab) setTab(fromUrl);
-  }, [searchParams, tab]);
+  const selectTab = (next: DirectoryTab) => {
+    if (next === tab) return;
+    setSearchParams(withDirectoryTab(searchParams, next), { replace: true });
+  };
 
   const body = useMemo(() => {
     if (tab === "clients") return <ClientsTab authFetch={authFetch} />;
@@ -59,7 +41,7 @@ export function DirectoryPage() {
           <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Directory</h1>
         </div>
         <div className="tender-page__view-toggle" role="tablist" aria-label="Directory tabs">
-          {TABS.map((entry) => (
+          {DIRECTORY_TABS.map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -70,21 +52,11 @@ export function DirectoryPage() {
                   ? "tender-page__view-btn tender-page__view-btn--active"
                   : "tender-page__view-btn"
               }
-              onClick={() => setTab(entry.id)}
+              onClick={() => selectTab(entry.id)}
             >
               {entry.label}
             </button>
           ))}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={false}
-            className="tender-page__view-btn"
-            title="Workers live in the Workers workspace"
-            onClick={() => navigate("/workers")}
-          >
-            Workers
-          </button>
         </div>
       </header>
 

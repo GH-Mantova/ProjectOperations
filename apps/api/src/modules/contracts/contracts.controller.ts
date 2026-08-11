@@ -136,6 +136,24 @@ class UpdateClaimItemDto {
 }
 
 /**
+ * Body for `POST /contracts/:id/claims/:claimId/items` — append a line to a DRAFT claim.
+ */
+class AddClaimItemDto {
+  @IsString() description!: string;
+  @IsOptional() @IsString() discipline?: string;
+  @Type(() => Number) @IsNumber() contractValue!: number;
+  @IsOptional() @Type(() => Number) @IsNumber() thisClaimAmount?: number;
+}
+
+/**
+ * Body for `PATCH /contracts/:id/claims/:claimId` — update only the notes
+ * on a DRAFT claim.
+ */
+class UpdateClaimDto {
+  @IsOptional() @IsString() notes?: string | null;
+}
+
+/**
  * Body for `PUT /contracts/:id/claims/:claimId/payment-schedule` — record
  * the AU Security of Payment payment-schedule response for a claim.
  *
@@ -487,6 +505,45 @@ export class ContractsController {
     @Body() dto: UpdateClaimItemDto
   ) {
     return this.service.updateClaimItem(id, claimId, itemId, dto);
+  }
+
+  @Post(":id/claims/:claimId/items")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Append a line item to a DRAFT claim. Rejects when the claim is not DRAFT." })
+  @ApiResponse({ status: 201, description: "Line item appended; claim total recomputed." })
+  @ApiResponse({ status: 400, description: "Claim is not in DRAFT status." })
+  addClaimItem(
+    @Param("id") id: string,
+    @Param("claimId") claimId: string,
+    @Body() dto: AddClaimItemDto
+  ) {
+    return this.service.addClaimItem(id, claimId, dto);
+  }
+
+  @Delete(":id/claims/:claimId/items/:itemId")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Remove a line item from a DRAFT claim. Rejects when the claim is not DRAFT." })
+  @ApiResponse({ status: 200, description: "Line item removed; claim total recomputed." })
+  @ApiResponse({ status: 400, description: "Claim is not in DRAFT status." })
+  removeClaimItem(
+    @Param("id") id: string,
+    @Param("claimId") claimId: string,
+    @Param("itemId") itemId: string
+  ) {
+    return this.service.removeClaimItem(id, claimId, itemId);
+  }
+
+  @Patch(":id/claims/:claimId")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Update the notes on a DRAFT claim. Rejects when the claim is not DRAFT." })
+  @ApiResponse({ status: 200, description: "Claim notes updated." })
+  @ApiResponse({ status: 400, description: "Claim is not in DRAFT status." })
+  updateClaim(
+    @Param("id") id: string,
+    @Param("claimId") claimId: string,
+    @Body() dto: UpdateClaimDto
+  ) {
+    return this.service.updateClaimNotes(id, claimId, { notes: dto.notes ?? null });
   }
 
   @Post(":id/claims/:claimId/submit")

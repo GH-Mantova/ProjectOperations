@@ -95,6 +95,7 @@ class BumpTenderRevisionDto {
   reason?: string;
 }
 import { TenderingService } from "./tendering.service";
+import { WinLikelihoodService } from "../win-likelihood/win-likelihood.service";
 
 /**
  * REST controller for the core tender CRUD + lifecycle surface under /tenders.
@@ -109,7 +110,10 @@ import { TenderingService } from "./tendering.service";
 @Controller("tenders")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TenderingController {
-  constructor(private readonly service: TenderingService) {}
+  constructor(
+    private readonly service: TenderingService,
+    private readonly winLikelihood: WinLikelihoodService
+  ) {}
 
   /**
    * List tenders with filters, search, and sort.
@@ -209,6 +213,46 @@ export class TenderingController {
   @ApiResponse({ status: 200, description: "Delete a saved filter preset." })
   deletePreset(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteFilterPreset(actor.sub, id);
+  }
+
+  // ─── WL3-S1: Win-likelihood routes ─────────────────────────────────────────
+  // IMPORTANT: the capture-gaps static path must be declared BEFORE the greedy
+  // /:id route to prevent Nest routing it to getById("win-likelihood/...").
+
+  /**
+   * WL3-S1 — Aggregate capture-gap audit for win-likelihood feature extraction.
+   *
+   * Scans recent tenders and reports coverage % for each desired bid-time
+   * feature, plus a one-line explanation of why the feature matters.
+   * Use this to decide what data to add in WL3-S1b.
+   *
+   * @returns { tendersScanned, gaps: [{ feature, coverageFraction, whyItMatters }] }
+   */
+  @Get("win-likelihood/capture-gaps")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "WL3-S1 — Aggregate capture-gap audit for win-likelihood features" })
+  @ApiResponse({ status: 200, description: "Capture-gap report with coverage fractions." })
+  getWinLikelihoodCaptureGaps() {
+    return this.winLikelihood.aggregateCaptureGaps();
+  }
+
+  /**
+   * WL3-S1 — Baseline win-likelihood for a single tender.
+   *
+   * Returns a point estimate, Wilson-score 95% confidence interval,
+   * confidence label (LOW/MEDIUM/HIGH), top "why" factors, and per-tender
+   * capture gaps. Advisory only — MUST NOT feed pricing.
+   *
+   * @param id - tender id
+   * @returns WinLikelihoodResult
+   */
+  @Get(":id/win-likelihood")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "WL3-S1 — Baseline win-likelihood for a tender (advisory only)" })
+  @ApiResponse({ status: 200, description: "Win-likelihood estimate with confidence interval and why-factors." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  getWinLikelihood(@Param("id") id: string) {
+    return this.winLikelihood.computeForTender(id);
   }
 
   /**

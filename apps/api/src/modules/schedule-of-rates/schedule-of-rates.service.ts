@@ -1,6 +1,17 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { Prisma, SorCategory, SorPeriodHalf } from "@prisma/client";
+import {
+  buildSorClientPdfHtml,
+  type SorClientPdfHeader,
+  type SorClientPdfLine,
+} from "../pdf-rendering/builders/sor-client-pdf.builder";
+import {
+  headerTemplate,
+  footerTemplate,
+} from "../pdf-rendering/builders/quote-html.builder";
+import { resolvePdfCompanyContext } from "../pdf-rendering/company-context.helper";
+import { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
 
 // ─── Input types ─────────────────────────────────────────────────────────────
 
@@ -39,6 +50,14 @@ export type UpdateRateInput = {
   active?: boolean;
 };
 
+// ─── PDF input types ──────────────────────────────────────────────────────────
+
+export type GenerateSorClientPdfInput = {
+  /** IDs of the SorRate rows to include in the PDF */
+  lineIds: string[];
+  header: SorClientPdfHeader;
+};
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 /**
@@ -53,7 +72,10 @@ export type UpdateRateInput = {
  */
 @Injectable()
 export class ScheduleOfRatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfRenderer: PdfRendererService,
+  ) {}
 
   // ── Periods ───────────────────────────────────────────────────────────────
 
@@ -244,5 +266,65 @@ export class ScheduleOfRatesService {
       where: { periodId },
       orderBy: { changedAt: "asc" }
     });
+  }
+
+  // ── Client PDF (S5) ────────────────────────────────────────────────────────
+
+  /**
+   * Generate a client-facing SoR PDF for a subset of selected rate lines.
+   *
+   * IMPORTANT: the internal `oneAndHalf` / `double` OT columns are only
+   * rendered for Labour rows. BMI, cost-plus percentages, and margin data
+   * are NEVER included — `SorClientPdfLine` has no field for them.
+   *
+   * @param input.lineIds  IDs of SorRate rows to include.
+   * @param input.header   Document metadata for the cover section.
+   * @returns              PDF buffer and a suggested filename.
+   */
+  async generateClientPdf(
+    input: GenerateSorClientPdfInput,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    if (!input.lineIds.length) {
+      throw new Error("At least one line ID is required to generate a SoR client PDF.");
+    }
+
+    // Fetch the requested rates in one query.
+    // Only active rates are included; caller selects the IDs.
+    const rates = await this.prisma.sorRate.findMany({
+      where: { id: { in: input.lineIds }, active: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+
+    // Map DB rows -> PDF lines, deliberately excluding any internal/margin fields.
+    // `isReference` (cost-plus flag) is an internal concept and is NOT surfaced.
+    const pdfLines: SorClientPdfLine[] = rates.map((r) => ({
+      id: r.id,
+      category: r.category as SorClientPdfLine["category"],
+      name: r.name,
+      class: r.class,
+      unit: r.unit,
+      ordinary: r.ordinary?.toString() ?? null,
+      // OT columns are only meaningful for Labour; pass null for other categories
+      // to keep the builder's per-category table logic clean.
+      oneAndHalf:
+        r.category === SorCategory.LABOUR ? (r.oneAndHalf?.toString() ?? null) : null,
+      double:
+        r.category === SorCategory.LABOUR ? (r.double?.toString() ?? null) : null,
+      comments: r.comments,
+    }));
+
+    const html = buildSorClientPdfHtml(input.header, pdfLines);
+
+    const ctx = await resolvePdfCompanyContext(this.prisma);
+    const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
+      displayHeaderFooter: true,
+      headerHtml: headerTemplate(input.header.docRef, ctx),
+      footerHtml: footerTemplate(ctx),
+      margin: { top: "35mm", bottom: "22mm" },
+    });
+
+    const safeRef = input.header.docRef.replace(/[^A-Za-z0-9_-]/g, "_");
+    const filename = `IS_SoR_Client_${safeRef}.pdf`;
+    return { buffer, filename };
   }
 }

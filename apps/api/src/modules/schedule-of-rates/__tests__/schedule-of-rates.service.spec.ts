@@ -49,7 +49,9 @@ function makePrisma(): MockPrisma {
 }
 
 function makeService(prisma: MockPrisma) {
-  return new ScheduleOfRatesService(prisma as never);
+  // Existing period/rate tests do not exercise the PDF path (S5); a stub renderer
+  // satisfies the constructor without pulling in the pdf-rendering dependency.
+  return new ScheduleOfRatesService(prisma as never, {} as never);
 }
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────

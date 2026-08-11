@@ -6,8 +6,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards
 } from "@nestjs/common";
+import type { Response } from "express";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -16,11 +18,13 @@ import {
   ApiTags
 } from "@nestjs/swagger";
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsNumber,
   IsOptional,
-  IsString
+  IsString,
+  ValidateNested
 } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -65,6 +69,21 @@ class UpdateRateDto {
   @IsOptional() @IsString() comments?: string | null;
   @IsOptional() @Type(() => Number) @IsNumber() sortOrder?: number;
   @IsOptional() @IsBoolean() active?: boolean;
+}
+
+class SorClientPdfHeaderDto {
+  @IsString() docRef!: string;
+  @IsOptional() @IsString() clientName?: string | null;
+  @IsOptional() @IsString() contactName?: string | null;
+  @IsOptional() @IsString() projectTitle?: string | null;
+  @IsOptional() @IsString() siteAddress?: string | null;
+  @IsOptional() @IsString() preparedBy?: string | null;
+  @IsOptional() @IsString() preparedByEmail?: string | null;
+}
+
+class GenerateSorClientPdfDto {
+  @IsArray() @IsString({ each: true }) lineIds!: string[];
+  @ValidateNested() @Type(() => SorClientPdfHeaderDto) header!: SorClientPdfHeaderDto;
 }
 
 // ─── Controller ───────────────────────────────────────────────────────────────
@@ -172,5 +191,35 @@ export class ScheduleOfRatesController {
   @ApiResponse({ status: 404, description: "Period not found." })
   listChangeLog(@Param("id") periodId: string) {
     return this.service.listChangeLog(periodId);
+  }
+
+  // ── Client PDF (S5) ────────────────────────────────────────────────────────
+
+  /**
+   * Generate a client-facing SoR PDF from a selection of applicable rate lines.
+   *
+   * POST body: { lineIds: string[], header: { docRef, clientName?, ... } }
+   *
+   * IMPORTANT: internal margin / BMI / cost-plus columns are NEVER included
+   * in the generated PDF — this is enforced in the builder layer.
+   */
+  @Post("client-pdf")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Generate a client-facing SoR PDF (selected applicable lines)." })
+  @ApiResponse({ status: 200, description: "PDF stream (application/pdf)." })
+  async generateClientPdf(
+    @Body() dto: GenerateSorClientPdfDto,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.generateClientPdf({
+      lineIds: dto.lineIds,
+      header: dto.header,
+    });
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": buffer.length,
+    });
+    res.end(buffer);
   }
 }

@@ -191,7 +191,6 @@ function ReportTable({
     <div style={{ overflowX: "auto" }}>
       <table
         className="s7-table"
-        data-testid={`report-table-${reportKey}`}
         style={{ width: "100%", borderCollapse: "collapse" }}
       >
         <thead>
@@ -263,6 +262,7 @@ function ReportTable({
 export function makeReportTableWidget(reportKey: string) {
   const component = ({ config, dashboardFilters }: WidgetProps) => (
     <div
+      data-testid={`report-table-${reportKey}`}
       style={{
         height: "100%",
         overflow: "auto",

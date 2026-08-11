@@ -168,7 +168,6 @@ function ReportChart({
   return (
     <div
       style={{ padding: 14 }}
-      data-testid={`report-chart-${reportKey}`}
     >
       <BarChartWidget
         title={chartSpec.title}
@@ -211,7 +210,7 @@ export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | 
       );
     }
     return (
-      <div style={{ height: "100%", overflow: "auto", padding: 0 }}>
+      <div style={{ height: "100%", overflow: "auto", padding: 0 }} data-testid={`report-chart-${reportKey}`}>
         <ReportChart reportKey={reportKey} chartSpec={chartSpec} config={config} dashboardFilters={dashboardFilters} />
       </div>
     );

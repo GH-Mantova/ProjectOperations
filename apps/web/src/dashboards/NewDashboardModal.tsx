@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { widgetsByCategory } from "./widgetRegistry";
 import { copySourceDashboards, type UserDashboard, type UserDashboardConfig, type WidgetPeriod } from "./types";
 import { useUserDashboardsActions } from "./userDashboards";
+import { reportingTemplate } from "./reportingTemplate";
+import type { ReportDefinitionSummary } from "./widgets/reportRegistry";
 
 type Props = {
   slug: string;
@@ -12,7 +14,7 @@ type Props = {
   onCreated: () => void;
 };
 
-type StartMode = "blank" | "copy";
+type StartMode = "blank" | "copy" | "template";
 
 export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated }: Props) {
   const { authFetch } = useAuth();
@@ -26,6 +28,29 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Reporting template: fetch definitions lazily when the template option is selected.
+  const [reportDefs, setReportDefs] = useState<ReportDefinitionSummary[] | null>(null);
+  const [defsLoading, setDefsLoading] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "template" || reportDefs !== null || defsLoading) return;
+    setDefsLoading(true);
+    authFetch("/reporting/definitions")
+      .then(async (res) => {
+        if (!res.ok) {
+          setReportDefs([]);
+          return;
+        }
+        const defs = (await res.json()) as ReportDefinitionSummary[];
+        setReportDefs(defs);
+      })
+      .catch(() => {
+        setReportDefs([]);
+      })
+      .finally(() => {
+        setDefsLoading(false);
+      });
+  }, [mode, reportDefs, defsLoading, authFetch]);
 
   const toggle = (type: string) => {
     setSelected((prev) => {
@@ -52,7 +77,11 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
     });
   };
 
-  const createDisabled = busy || !name.trim() || (mode === "blank" && selected.size === 0);
+  const createDisabled =
+    busy ||
+    !name.trim() ||
+    (mode === "blank" && selected.size === 0) ||
+    (mode === "template" && defsLoading);
 
   const submit = async () => {
     if (createDisabled) return;
@@ -66,6 +95,9 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
         // Deep-clone the source config — the copy is always a fully editable
         // custom dashboard (the API creates with isSystem: false).
         config = JSON.parse(JSON.stringify(source.config));
+      } else if (mode === "template") {
+        // Reporting dashboard template: seed one report:table widget per definition.
+        config = reportingTemplate(reportDefs ?? []);
       } else {
         const widgetTypes = Array.from(selected);
         config = {
@@ -114,6 +146,52 @@ export function NewDashboardModal({ slug, existingDashboards, onClose, onCreated
             <input className="s7-input" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
 
+          {/* ── Templates strip (SLICE 7) ─────────────────────────────── */}
+          <fieldset style={{ border: "none", padding: 0, marginTop: 16 }}>
+            <legend style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+              Templates
+            </legend>
+            <label
+              data-testid="template-reporting-option"
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                padding: 10,
+                border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+                borderRadius: 6,
+                cursor: "pointer",
+                background: mode === "template"
+                  ? "color-mix(in srgb, #FEAA6D 8%, transparent)"
+                  : "transparent"
+              }}
+            >
+              <input
+                type="radio"
+                checked={mode === "template"}
+                onChange={() => setMode("template")}
+                style={{ marginTop: 2 }}
+              />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Reporting dashboard</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  Pre-populate with one report table per available BI report. Tune filters from the canvas.
+                </div>
+                {mode === "template" && defsLoading ? (
+                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>Loading report definitions…</div>
+                ) : null}
+                {mode === "template" && !defsLoading && reportDefs !== null ? (
+                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+                    {reportDefs.length === 0
+                      ? "No report definitions available (check reporting.view permission)."
+                      : `${reportDefs.length} report${reportDefs.length === 1 ? "" : "s"} will be added as widgets.`}
+                  </div>
+                ) : null}
+              </div>
+            </label>
+          </fieldset>
+
+          {/* ── Start (blank / copy) ──────────────────────────────────── */}
           <fieldset style={{ border: "none", padding: 0, marginTop: 16 }}>
             <legend style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
               Start

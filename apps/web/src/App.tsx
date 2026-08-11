@@ -57,6 +57,7 @@ import { MusterPage } from "./pages/sites/MusterPage";
 import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
 import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
+import { ScheduleOfRatesAdminPage } from "./pages/ScheduleOfRatesAdminPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
 import { RatesListsAdminPage } from "./pages/admin/RatesListsAdminPage";
 import { AutomationsPage } from "./pages/admin/AutomationsPage";
@@ -518,6 +519,7 @@ export function App() {
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
+            <Route path="/admin/schedule-of-rates" element={<ScheduleOfRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/automations" element={<Navigate to="/settings/administration/automations" replace />} />
             {/* SLICE 15: /admin/job-roles retargets to the new Workers URL

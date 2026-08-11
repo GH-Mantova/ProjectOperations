@@ -5,6 +5,7 @@ import { MasterDataModule } from "../master-data/master-data.module";
 import { PlatformModule } from "../platform/platform.module";
 import { ProjectsModule } from "../projects/projects.module";
 import { RatesModule } from "../rates/rates.module";
+import { WinLikelihoodModule } from "../win-likelihood/win-likelihood.module";
 import { TenderRateSetController } from "./tender-rate-set.controller";
 import { TenderRateSetService } from "./tender-rate-set.service";
 import { TenderingController } from "./tendering.controller";
@@ -34,7 +35,7 @@ import { ClarificationProposalsController } from "./scope/clarification-proposal
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
 
 @Module({
-  imports: [AuditModule, ContractsModule, MasterDataModule, PlatformModule, RatesModule, forwardRef(() => ProjectsModule)],
+  imports: [AuditModule, ContractsModule, MasterDataModule, PlatformModule, RatesModule, WinLikelihoodModule, forwardRef(() => ProjectsModule)],
   controllers: [
     // TenderLabelsController must be registered BEFORE TenderingController so
     // GET /tenders/labels hits the static-path handler here, not the greedy

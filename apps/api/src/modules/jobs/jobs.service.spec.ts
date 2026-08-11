@@ -257,6 +257,7 @@ describe("JobsService", () => {
             jobStage: { create: jobStageCreate },
             jobConversion: { upsert: jobConversionUpsert },
             documentLink: { createMany: jest.fn() },
+            project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
             tender: { update: tenderUpdate }
           })
         )
@@ -351,6 +352,7 @@ describe("JobsService", () => {
             jobStage: { create: jobStageCreate },
             jobConversion: { upsert: jobConversionUpsert },
             documentLink: { createMany: jest.fn() },
+            project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
             tender: { update: tenderUpdate }
           })
         )
@@ -556,6 +558,7 @@ describe("JobsService", () => {
         sharePointFolderLink: { update: jest.fn() },
         documentLink: { createMany: jest.fn() },
         searchEntry: { create: jest.fn() },
+        project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
         tender: { update: jest.fn() }
       })
     );

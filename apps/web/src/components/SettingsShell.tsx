@@ -110,7 +110,9 @@ const SECTIONS: NavSection[] = [
       },
       // B-HW-3: Handover Template editor — gated on handovertemplate.manage.
       { to: "/settings/handover-template", label: "Handover template", requiresPermission: "handovertemplate.manage" },
-      { to: "/settings/data-model", label: "Data model", superUserOnly: true }
+      { to: "/settings/data-model", label: "Data model", superUserOnly: true },
+      // CFX-2: Field definition admin screen — super-user only.
+      { to: "/settings/field-definitions", label: "Field definitions", superUserOnly: true }
     ]
   },
   {

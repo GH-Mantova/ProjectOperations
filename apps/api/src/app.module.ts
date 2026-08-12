@@ -71,6 +71,7 @@ import { CasesModule } from "./modules/cases/cases.module";
 import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
 import { CrmModule } from "./modules/crm/crm.module";
 import { LeadIntakeModule } from "./modules/crm/lead-intake/lead-intake.module";
+import { CommsModule } from "./modules/crm/comms/comms.module";
 import { MapLocationsModule } from "./modules/map-locations/map-locations.module";
 import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
@@ -158,6 +159,7 @@ import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-r
     KnowledgeModule,
     CrmModule,
     LeadIntakeModule,
+    CommsModule,
     MapLocationsModule,
     ReportingModule,
     SitesModule,

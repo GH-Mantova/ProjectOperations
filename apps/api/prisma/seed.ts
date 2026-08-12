@@ -23,6 +23,7 @@ import { seedCompanyProfile } from "./seed-company-profile";
 import { seedBusinessProcessFlows } from "./seed-business-process-flows";
 import { seedHandoverDefaultTemplate } from "./seeds/handover-default-template";
 import { seedCrmDropReasons } from "./seeds/crm-drop-reasons";
+import { seedFieldDefinitionsBuiltin } from "./seeds/field-definitions-builtin";
 import { seedScheduleOfRates } from "./seed-schedule-of-rates";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
@@ -3729,6 +3730,8 @@ async function main() {
   await seedScheduleOfRates(prisma);
   // CRM S1: Default drop reasons for the not-pursued pipeline. Idempotent — upsert on label.
   await seedCrmDropReasons(prisma);
+  // CFX-1: BUILTIN field definitions for Client and SubcontractorSupplier. Idempotent — upsert on [appliesTo, key].
+  await seedFieldDefinitionsBuiltin(prisma);
 }
 
 async function seedDefaultSurvey(prisma: PrismaClient) {

@@ -137,6 +137,7 @@ model User {
   scopeWasteItemsCreated     ScopeWasteItem[]            @relation("ScopeWasteItemCreatedBy")
   scopeCardsCreated          ScopeCard[]                 @relation("ScopeCardCreatedBy")
   subcontractorsCreated      SubcontractorSupplier[]     @relation("SubcontractorCreatedBy")
+  subcontractorsArchived     SubcontractorSupplier[]     @relation("SubcontractorArchivedBy")
   subcontractorDocsUploaded  SubcontractorDocument[]     @relation("SubDocUploadedBy")
   creditAppsCreated          CreditApplication[]         @relation("CreditAppCreator")
   creditAppsReviewed         CreditApplication[]         @relation("CreditAppReviewer")
@@ -4400,6 +4401,13 @@ model SubcontractorSupplier {
   // Nullable: existing records default to no type (rendered in the "Untyped" group on hub).
   vendorTypeId          String?        @map("vendor_type_id")
   vendorType            GlobalListItem? @relation("SubcontractorVendorType", fields: [vendorTypeId], references: [id], onDelete: SetNull)
+  // S2 — vendor delete safeguard (rate-hub-sor-integration-plan.md).
+  // Mirrors the Contract.archivedAt / archivedById pattern from PR #1042.
+  // Nullable + additive; the SubcontractorArchiveService (rates module)
+  // stamps these on soft-archive and clears them on unarchive.
+  archivedAt            DateTime?      @map("archived_at")
+  archivedById          String?        @map("archived_by_id")
+  archivedBy            User?          @relation("SubcontractorArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
   createdById           String         @map("created_by_id")
@@ -4419,6 +4427,7 @@ model SubcontractorSupplier {
   @@index([prequalStatus])
   @@index([isActive])
   @@index([vendorTypeId])
+  @@index([archivedAt])
   @@map("subcontractor_suppliers")
 }
 

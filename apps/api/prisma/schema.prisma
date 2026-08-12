@@ -711,6 +711,10 @@ model Client {
   bankAccountNumber   String?                   @map("bank_account_number")
   xeroContactId       String?                   @map("xero_contact_id")
   myobCardId          String?                   @map("myob_card_id")
+  salesAccountCode    String?                   @map("sales_account_code")
+  purchaseAccountCode String?                   @map("purchase_account_code")
+  discount            Decimal?                  @db.Decimal(5, 2)
+  customFields        Json?                     @map("custom_fields")
   isActive            Boolean                   @default(true) @map("is_active")
   onHold              Boolean                   @default(false) @map("on_hold")
   onHoldReason        String?                   @map("on_hold_reason")
@@ -4327,6 +4331,10 @@ model SubcontractorSupplier {
   bankAccountNumber     String?   @map("bank_account_number")
   xeroContactId         String?   @map("xero_contact_id")
   myobCardId            String?   @map("myob_card_id")
+  salesAccountCode      String?   @map("sales_account_code")
+  purchaseAccountCode   String?   @map("purchase_account_code")
+  discount              Decimal?  @db.Decimal(5, 2)
+  customFields          Json?     @map("custom_fields")
   isActive              Boolean   @default(true) @map("is_active")
   onHold                Boolean   @default(false) @map("on_hold")
   onHoldReason          String?   @map("on_hold_reason")
@@ -7150,4 +7158,35 @@ model Account {
   @@index([archivedAt])
   @@index([ownerId])
   @@map("accounts")
+}
+
+// CFX-1: Configurable field registry ─────────────────────────────────────────
+
+enum FieldAppliesTo {
+  CLIENT
+  VENDOR
+  BOTH
+}
+
+enum FieldSource {
+  BUILTIN
+  CUSTOM
+}
+
+model FieldDefinition {
+  id         String         @id @default(cuid())
+  key        String
+  label      String
+  group      String         @default("General")
+  sortOrder  Int            @default(0) @map("sort_order")
+  visible    Boolean        @default(true)
+  required   Boolean        @default(false)
+  appliesTo  FieldAppliesTo @map("applies_to")
+  source     FieldSource    @default(CUSTOM)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  @@unique([appliesTo, key])
+  @@index([appliesTo, visible])
+  @@map("field_definitions")
 }

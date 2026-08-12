@@ -10,6 +10,7 @@ import {
   evaluateConditionGroup,
   type FieldRule
 } from "@project-ops/config/forms-rule-definition";
+import { FillAssistPanel, shouldShowFillAssist } from "./FillAssistPanel";
 
 type Field = {
   id: string;
@@ -390,6 +391,30 @@ export function FormFillPage() {
 
   const currentSection = sections[sectionIndex];
 
+  // ── Fill-assist gate (suggest-never-decide, AI order 3) ────────────────────
+  // These useMemo hooks must live before any early return so the hook order
+  // is stable across renders. Gate uses existing template data — no new flag.
+  const allFieldKeys = useMemo(
+    () => sections.flatMap((s) => (s.fields ?? []).map((f) => f.fieldKey)),
+    [sections]
+  );
+
+  // Build { label: value } answers for the AI assist panel (non-empty only).
+  const fillAssistAnswers = useMemo(() => {
+    const out: Record<string, unknown> = {};
+    for (const section of sections) {
+      for (const field of section.fields ?? []) {
+        const val = values[field.fieldKey];
+        if (val !== null && val !== undefined && val !== "") {
+          out[field.label] = val;
+        }
+      }
+    }
+    return out;
+  }, [sections, values]);
+
+  const hasFillAssistAnswers = Object.keys(fillAssistAnswers).length > 0;
+
   // Auto-save (debounced) — local IndexedDB first, server when online.
   // PR #111: FormDraftStore replaces the previous localStorage cache.
   // Sensitive-field guard inside save() means a forms engine template
@@ -725,6 +750,12 @@ export function FormFillPage() {
     ...(submission.siteId ? { siteId: submission.siteId } : {})
   };
 
+  // Compute fill-assist gate signal using the template data now available.
+  const showFillAssist = shouldShowFillAssist(
+    submission.templateVersion.template.category,
+    allFieldKeys
+  );
+
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 16px 96px", display: "flex", flexDirection: "column", gap: 12 }}>
       {/* Sticky header */}
@@ -816,6 +847,18 @@ export function FormFillPage() {
             {ctx.supervisorId ? <div>Supervisor ID: {ctx.supervisorId}</div> : null}
           </div>
         </details>
+      ) : null}
+
+      {/* Fill-time AI assist panel — suggest-never-decide (AI order 3, LOCKED).
+          Only rendered for hazard/incident-bearing forms (category or field-key
+          signal). All suggestions are labelled "AI" and require explicit accept
+          or dismiss — nothing auto-applies. */}
+      {showFillAssist ? (
+        <FillAssistPanel
+          submissionId={submission.id}
+          answers={fillAssistAnswers}
+          hasAnswers={hasFillAssistAnswers}
+        />
       ) : null}
 
       <section>

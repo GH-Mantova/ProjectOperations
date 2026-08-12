@@ -6417,6 +6417,9 @@ model Opportunity {
   nextActionAt      DateTime? @map("next_action_at")
   nextActionNote    String?   @map("next_action_note")
 
+  // Free-text notes carried over from a folded-in Lead record.
+  notes String? @map("notes")
+
   wonAt  DateTime? @map("won_at")
   lostAt DateTime? @map("lost_at")
 

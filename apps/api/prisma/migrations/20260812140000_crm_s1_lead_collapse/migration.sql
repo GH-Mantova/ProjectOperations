@@ -35,7 +35,8 @@ CREATE UNIQUE INDEX "drop_reasons_label_key" ON "drop_reasons"("label");
 ALTER TABLE "opportunities"
     ADD COLUMN "is_lead"            BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN "drop_reason_id"     TEXT,
-    ADD COLUMN "drop_reason_detail" TEXT;
+    ADD COLUMN "drop_reason_detail" TEXT,
+    ADD COLUMN "notes"              TEXT;
 
 ALTER TABLE "opportunities"
     ADD CONSTRAINT "opportunities_drop_reason_id_fkey"

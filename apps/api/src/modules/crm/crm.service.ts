@@ -6,6 +6,9 @@ import {
 } from "@nestjs/common";
 import { CreateDropReasonDto } from "./dto/create-drop-reason.dto";
 import { UpdateDropReasonDto } from "./dto/update-drop-reason.dto";
+import { CreateEntryDto } from "./dto/create-entry.dto";
+import { UpdateEntryDto } from "./dto/update-entry.dto";
+import { DontPursueDto } from "./dto/dont-pursue.dto";
 import {
   OpportunitySource,
   OpportunityStage,
@@ -520,6 +523,128 @@ export class CrmService {
     });
 
     return updated;
+  }
+
+  // ── Unified entry CRUD (S3) ──────────────────────────────────────────────
+
+  /**
+   * The unified stage set for new entries (legacy stages are not valid for new
+   * records or stage transitions via the unified API).
+   */
+  private static readonly VALID_ENTRY_STAGES: OpportunityStage[] = [
+    "open",
+    "not_pursued",
+    "archived"
+  ];
+
+  /**
+   * Create a unified CRM entry (lead or opportunity) in the new stage model.
+   * Always sets stage to "open". Never writes legacy stages.
+   */
+  async createEntry(dto: CreateEntryDto, actorId: string) {
+    if (!dto.title?.trim()) {
+      throw new BadRequestException("title is required.");
+    }
+    if (dto.clientId) await this.requireClient(dto.clientId);
+    if (dto.contactId) await this.requireContact(dto.contactId);
+    if (dto.ownerId) await this.requireUser(dto.ownerId);
+
+    return this.prisma.opportunity.create({
+      data: {
+        title: dto.title.trim(),
+        stage: "open",
+        isLead: dto.isLead,
+        source: (dto.source as OpportunitySource | undefined) ?? "other",
+        estimatedValue: this.toDecimalOrNull(dto.estimatedValue ?? null),
+        clientId: dto.clientId ?? null,
+        contactId: dto.contactId ?? null,
+        ownerId: dto.ownerId ?? null,
+        description: dto.notes ?? null,
+        nextActionAt: dto.nextActionAt ? new Date(dto.nextActionAt) : null,
+        nextActionNote: dto.nextActionNote ?? null
+      },
+      include: this.opportunityInclude()
+    });
+  }
+
+  /**
+   * Update a unified CRM entry. If `stage` is provided it must be one of the
+   * new stage values (open | not_pursued | archived). Passing a legacy stage
+   * (new | qualified | quoting | won | lost) throws BadRequestException.
+   */
+  async updateEntry(id: string, dto: UpdateEntryDto, actorId: string) {
+    const existing = await this.prisma.opportunity.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Entry ${id} not found.`);
+
+    if (dto.stage !== undefined) {
+      const validStages = CrmService.VALID_ENTRY_STAGES as string[];
+      if (!validStages.includes(dto.stage)) {
+        throw new BadRequestException(
+          `Invalid stage "${dto.stage}". Allowed values: ${CrmService.VALID_ENTRY_STAGES.join(", ")}.`
+        );
+      }
+    }
+
+    if (dto.clientId) await this.requireClient(dto.clientId);
+    if (dto.contactId) await this.requireContact(dto.contactId);
+    if (dto.ownerId) await this.requireUser(dto.ownerId);
+
+    const data: Prisma.OpportunityUpdateInput = {};
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.isLead !== undefined) data.isLead = dto.isLead;
+    if (dto.source !== undefined) data.source = dto.source as OpportunitySource;
+    if (dto.stage !== undefined) data.stage = dto.stage as OpportunityStage;
+    if (dto.estimatedValue !== undefined) {
+      data.estimatedValue = this.toDecimalOrNull(dto.estimatedValue);
+    }
+    if (dto.clientId !== undefined) {
+      data.client = dto.clientId ? { connect: { id: dto.clientId } } : undefined;
+    }
+    if (dto.contactId !== undefined) {
+      data.contact = dto.contactId ? { connect: { id: dto.contactId } } : { disconnect: true };
+    }
+    if (dto.ownerId !== undefined) {
+      data.owner = dto.ownerId ? { connect: { id: dto.ownerId } } : { disconnect: true };
+    }
+    if (dto.notes !== undefined) data.description = dto.notes ?? null;
+    if (dto.nextActionAt !== undefined) {
+      data.nextActionAt = dto.nextActionAt ? new Date(dto.nextActionAt) : null;
+    }
+    if (dto.nextActionNote !== undefined) data.nextActionNote = dto.nextActionNote ?? null;
+
+    return this.prisma.opportunity.update({
+      where: { id },
+      data,
+      include: this.opportunityInclude()
+    });
+  }
+
+  /**
+   * Mark a CRM entry as "don't pursue": sets stage to "not_pursued", links a
+   * DropReason, and stores optional free-text detail.
+   *
+   * @throws NotFoundException  If the entry does not exist.
+   * @throws BadRequestException If the entry is already "archived".
+   */
+  async dontPursue(id: string, dto: DontPursueDto, actorId: string) {
+    const existing = await this.prisma.opportunity.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Entry ${id} not found.`);
+    if (existing.stage === "archived") {
+      throw new BadRequestException(
+        `Entry ${id} is archived and cannot be marked as not-pursued.`
+      );
+    }
+
+    return this.prisma.opportunity.update({
+      where: { id },
+      data: {
+        stage: "not_pursued",
+        dropReason: { connect: { id: dto.dropReasonId } },
+        dropReasonDetail: dto.detail ?? null,
+        lostAt: existing.lostAt ?? new Date()
+      },
+      include: this.opportunityInclude()
+    });
   }
 
   // ── Forecast ─────────────────────────────────────────────────────────────

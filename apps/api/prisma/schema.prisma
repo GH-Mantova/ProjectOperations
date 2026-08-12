@@ -230,6 +230,10 @@ model User {
   subcontractorRatesCreated SubcontractorRate[] @relation("SubcontractorRateCreatedBy")
   subcontractorRatesUpdated SubcontractorRate[] @relation("SubcontractorRateUpdatedBy")
 
+  // CRM-1: Account ownership + archive audit
+  accountsOwned    Account[] @relation("AccountOwner")
+  accountsArchived Account[] @relation("AccountArchivedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -742,6 +746,8 @@ model Client {
   tenderOutcomes      TenderOutcome[]           @relation("ClientTenderOutcomes")
   // SoR S3: per-client rate cards
   sorRateCards        SorClientRateCard[]
+  // CRM-1: Account wraps Client 1:1 (optional; set when Client is backfilled)
+  account             Account?                  @relation("AccountClient")
 
   @@unique([name])
   @@index([status])
@@ -7058,4 +7064,67 @@ model SorClientRateEntry {
   @@index([cardId])
   @@index([sorRateId])
   @@map("sor_client_rate_entries")
+}
+
+// ── CRM-1: Account foundation ────────────────────────────────────────────────
+
+enum AccountLifecycleStatus {
+  PROSPECT
+  ACTIVE
+  PAST
+}
+
+enum AccountType {
+  CLIENT
+  PROSPECT
+  HEAD_CONTRACTOR
+  SUBCONTRACTOR
+  PARTNER
+  OTHER
+}
+
+enum AccountSource {
+  REFERRAL
+  DIRECT
+  TENDER_PORTAL
+  COLD_OUTREACH
+  REPEAT_BUSINESS
+  OTHER
+}
+
+/**
+ * CRM-1: Account spine — the CRM's organising entity for any organisation
+ * across its full lifecycle (PROSPECT → ACTIVE → PAST).
+ *
+ * Wraps `Client` 1:1 via an optional `clientId` FK (`@unique`, `onDelete: SetNull`).
+ * `Client` remains the identity record (name/ABN/ACN); Account is the CRM
+ * relationship layer layered over it.
+ *
+ * Archive pattern mirrors Contract.archivedAt (schema.prisma:3898).
+ */
+model Account {
+  id              String                 @id @default(cuid())
+  /// Optional 1:1 link to the Client identity record. Null for pure prospects
+  /// that have not yet become a Client in the directory.
+  clientId        String?                @unique @map("client_id")
+  client          Client?                @relation("AccountClient", fields: [clientId], references: [id], onDelete: SetNull)
+  lifecycleStatus AccountLifecycleStatus @default(PROSPECT) @map("lifecycle_status")
+  accountType     AccountType            @default(CLIENT) @map("account_type")
+  source          AccountSource          @default(OTHER) @map("source")
+  /// The internal user responsible for this account relationship.
+  ownerId         String?                @map("owner_id")
+  owner           User?                  @relation("AccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  notes           String?
+  // Soft-archive pattern: null = active, non-null = archived.
+  // Mirrors Contract.archivedAt (schema.prisma:3898).
+  archivedAt      DateTime?              @map("archived_at")
+  archivedById    String?                @map("archived_by_id")
+  archivedBy      User?                  @relation("AccountArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  @@index([lifecycleStatus])
+  @@index([archivedAt])
+  @@index([ownerId])
+  @@map("accounts")
 }

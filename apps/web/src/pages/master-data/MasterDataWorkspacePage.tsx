@@ -172,8 +172,7 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
       message: willArchive
         ? "Archive this client? It will be hidden from the default list but stays searchable and can be unarchived."
         : "Restore this client to Active? It will appear in the default list again.",
-      confirmLabel: willArchive ? "Archive" : "Unarchive",
-      variant: willArchive ? "danger" : undefined
+      confirmLabel: willArchive ? "Archive" : "Unarchive"
     });
     if (!ok) return;
     setArchiving(client.id);
@@ -192,8 +191,7 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
     const ok = await confirm({
       title: `Archive ${selectedIds.size} client${selectedIds.size === 1 ? "" : "s"}?`,
       message: "These clients will be hidden from the default list but stay searchable and can be unarchived.",
-      confirmLabel: "Archive selected",
-      variant: "danger"
+      confirmLabel: "Archive selected"
     });
     if (!ok) return;
     setArchiving("bulk");
@@ -246,10 +244,16 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
           {selectedIds.size > 0 ? (
             <button
               type="button"
-              className="s7-btn s7-btn--ghost"
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              style={{ borderColor: "#cbd5e1", color: "#334155", display: "inline-flex", alignItems: "center", gap: 4 }}
               onClick={() => void handleBulkArchive()}
               disabled={archiving === "bulk"}
             >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+                <rect x="1" y="1" width="14" height="3" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                <path d="M2.5 4.5V14a1 1 0 001 1h9a1 1 0 001-1V4.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                <path d="M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
               {archiving === "bulk" ? "Archiving…" : `Archive ${selectedIds.size} selected`}
             </button>
           ) : null}
@@ -320,6 +324,7 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
                   aria-label={`Select ${client.name}`}
                   checked={selectedIds.has(client.id)}
                   onChange={() => toggleSelect(client.id)}
+                  style={{ accentColor: "var(--brand-accent)" }}
                 />
                 <button
                   type="button"
@@ -361,6 +366,7 @@ export function ClientsTab({ authFetch }: { authFetch: AuthFetch }) {
                       aria-label={`Select ${client.name}`}
                       checked={selectedIds.has(client.id)}
                       onChange={() => toggleSelect(client.id)}
+                      style={{ accentColor: "var(--brand-accent)" }}
                     />
                   </td>
                   <td>{client.code ?? "—"}</td>

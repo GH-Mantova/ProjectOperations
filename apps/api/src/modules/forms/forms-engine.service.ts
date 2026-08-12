@@ -11,15 +11,19 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { NotificationsService } from "../platform/notifications.service";
+import { EmailService } from "../email/email.service";
 import { WeatherService, type WeatherResponse } from "../platform/weather.service";
 import {
   RulesEngineService,
   type FieldRule,
   type RuleAction,
-  type SectionEntriesMap
+  type SectionEntriesMap,
+  type SystemAction
 } from "./rules-engine.service";
+import { SystemContextResolverService } from "./system-context-resolver.service";
 import { FormNumberSequenceService } from "./form-number-sequence.service";
 import { PushExecutorService } from "./push-executor.service";
+import { ComplianceService } from "../compliance/compliance.service";
 import { checkCompetencyGate } from "../compliance/competency-gate";
 
 type ValueMap = Record<string, unknown>;
@@ -292,10 +296,13 @@ export class FormsEngineService {
     private readonly prisma: PrismaService,
     private readonly rules: RulesEngineService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
     private readonly audit: AuditService,
     private readonly formNumberSequence: FormNumberSequenceService,
     private readonly weather: WeatherService,
-    private readonly pushExecutor: PushExecutorService
+    private readonly pushExecutor: PushExecutorService,
+    private readonly systemContextResolver: SystemContextResolverService,
+    private readonly compliance: ComplianceService
   ) {}
 
   /**
@@ -716,6 +723,18 @@ export class FormsEngineService {
       );
     });
 
+    // 5c. System-context rule pass — re-resolve context fresh (never trust
+    // client snapshot for server decisions) then execute any system-action
+    // nodes in the template's FormRule.definition fields. Failures are logged
+    // and swallowed per the same LOCKED principle.
+    void this.runSystemActionPass(updated, template, merged, "submit").catch((err) => {
+      this.logger.warn(
+        `System action pass failed for submission ${updated.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    });
+
     // 6. Approval chain (if configured)
     if (settings.requiresApproval && Array.isArray(settings.approvalChain) && settings.approvalChain.length > 0) {
       await this.createApprovalChain(updated.id, settings.approvalChain);
@@ -825,6 +844,26 @@ export class FormsEngineService {
           }`
         );
       });
+
+      // System-context rule pass on final approval.
+      void (async () => {
+        try {
+          const sub = await this.prisma.formSubmission.findUnique({
+            where: { id: submissionId },
+            select: { id: true, submittedById: true, context: true, templateVersionId: true }
+          });
+          if (!sub) return;
+          const tpl = await this.loadTemplateForVersion(sub.templateVersionId);
+          const vals = await this.collectValues(submissionId);
+          await this.runSystemActionPass(sub, tpl, vals, "approval");
+        } catch (err) {
+          this.logger.warn(
+            `System action pass (approval) failed for ${submissionId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+        }
+      })();
     }
 
     return this.getSubmissionDetail(submissionId);
@@ -1379,6 +1418,89 @@ export class FormsEngineService {
         )
         .catch(() => undefined);
     }
+  }
+
+  /**
+   * Re-resolve system context fresh (server-side, never trusts client snapshot)
+   * and execute any SystemAction nodes stored in the template's FormRule
+   * definition fields for the given trigger stage.
+   *
+   * FormRule.definition is a freeform JSON blob on FormTemplateVersion; any
+   * array element whose `type` matches a ServerActionType is dispatched to
+   * RulesEngineService.executeSystemActions. Elements with unknown types are
+   * ignored so adding new types in a future slice doesn't break old templates.
+   *
+   * @param submission - the committed submission
+   * @param template - version with sections/fields
+   * @param values - flat field-value map at submission time
+   * @param stage - "submit" or "approval"
+   */
+  private async runSystemActionPass(
+    submission: { id: string; submittedById: string | null; context: unknown },
+    template: { template: { id: string }; sections?: Array<{ fields?: Array<{ actions?: unknown }> }> },
+    values: Record<string, unknown>,
+    stage: "submit" | "approval"
+  ): Promise<void> {
+    // Collect SystemAction nodes from FormRule.definition across all fields.
+    const SERVER_ACTION_TYPES = new Set([
+      "alert",
+      "approval_chain_modify",
+      "push",
+      "deadline_task"
+    ]);
+
+    const systemActions: SystemAction[] = [];
+    for (const section of template.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        const rules = (field.actions ?? []) as Array<{
+          trigger?: string;
+          definition?: unknown;
+        }>;
+        if (!Array.isArray(rules)) continue;
+        for (const rule of rules) {
+          const triggerMatches =
+            (stage === "submit" && rule.trigger === "on_submit") ||
+            (stage === "approval" && rule.trigger === "on_approval");
+          if (!triggerMatches) continue;
+          const defs = Array.isArray(rule.definition) ? rule.definition : [];
+          for (const def of defs) {
+            if (
+              typeof def === "object" &&
+              def !== null &&
+              typeof (def as { type?: string }).type === "string" &&
+              SERVER_ACTION_TYPES.has((def as { type: string }).type)
+            ) {
+              systemActions.push(def as SystemAction);
+            }
+          }
+        }
+      }
+    }
+
+    if (systemActions.length === 0) return;
+
+    // Re-resolve context fresh — the client snapshot is never trusted for
+    // server-side decisions (BLOCK and deadline tasks must reflect DB state).
+    const ctx = (submission.context ?? {}) as Record<string, string | undefined>;
+    const siteId = ctx.siteId ?? null;
+    const snapshot = await this.systemContextResolver.resolveContext(
+      template.template.id,
+      submission.submittedById ?? "",
+      siteId
+    );
+
+    await this.rules.executeSystemActions(
+      systemActions,
+      submission,
+      values,
+      snapshot,
+      {
+        notifications: this.notifications,
+        email: this.email,
+        compliance: this.compliance,
+        pushExecutor: this.pushExecutor
+      }
+    );
   }
 
   private async createApprovalChain(submissionId: string, chain: ApprovalChainStep[]) {

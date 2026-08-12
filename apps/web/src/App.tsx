@@ -83,6 +83,7 @@ import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { SettingsShell, AdminOnly, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
+import { HandoverWizardPage } from "./pages/handover/HandoverWizardPage";
 import { PortalAuthProvider } from "./portal/PortalAuthContext";
 import { PortalLayout } from "./portal/PortalLayout";
 import { PortalProtectedRoute } from "./portal/PortalProtectedRoute";
@@ -518,6 +519,8 @@ export function App() {
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
+            {/* B-HW-7: Handover wizard — launched from contract detail page */}
+            <Route path="/handover/:id" element={<HandoverWizardPage />} />
             <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
             <Route path="/admin/schedule-of-rates" element={<ScheduleOfRatesAdminPage />} />
             <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />

@@ -23,6 +23,24 @@ export class FormsQueryDto extends PaginationQueryDto {
 }
 
 /**
+ * F-9b — one FormFieldPushBinding attached to a field on publish.
+ * Kept intentionally loose (`config` is arbitrary JSON) so the same DTO
+ * carries every handler's config shape without a bespoke union.
+ */
+export class FormFieldPushBindingInputDto {
+  /** Handler group (e.g. "assets", "maintenance"). */
+  @IsString() targetModule!: string;
+  /** Handler action within the module (e.g. "record_usage_reading", "create_defect"). */
+  @IsString() targetAction!: string;
+  /** When the push fires: "submit" (default) or "approval" (once chain approved). */
+  @IsOptional() @IsString() applyOn?: string;
+  /** Handler-specific config blob (e.g. `{ assetFromFieldKey, unit }`). */
+  @IsOptional() config?: unknown;
+  /** Disable without deleting; defaults to true when omitted. */
+  @IsOptional() @IsBoolean() isEnabled?: boolean;
+}
+
+/**
  * One field definition inside a FormSectionInputDto when creating or
  * appending a template version.
  */
@@ -73,6 +91,17 @@ export class FormFieldInputDto {
    * Persisted to FormField.actions when supplied.
    */
   @IsOptional() actions?: unknown;
+  /**
+   * F-9b — optional post-commit push bindings. Each entry becomes a
+   * FormFieldPushBinding row scoped to this field on publish. Existing
+   * bindings on prior versions are copied field-by-fieldKey when this is
+   * omitted; supplying an empty array clears bindings for the new version.
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FormFieldPushBindingInputDto)
+  pushBindings?: FormFieldPushBindingInputDto[];
 }
 
 /**

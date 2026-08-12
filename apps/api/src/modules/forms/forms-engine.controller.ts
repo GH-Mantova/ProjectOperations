@@ -15,6 +15,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { FormsEngineService } from "./forms-engine.service";
+import { PushExecutorService } from "./push-executor.service";
 import {
   CreateDraftDto,
   RejectSubmissionDto,
@@ -36,7 +37,10 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("forms")
 export class FormsEngineController {
-  constructor(private readonly engine: FormsEngineService) {}
+  constructor(
+    private readonly engine: FormsEngineService,
+    private readonly pushExecutor: PushExecutorService
+  ) {}
 
   /**
    * Create a draft submission for a template. Auto-populates context from the user's active timesheet.
@@ -175,6 +179,30 @@ export class FormsEngineController {
   @ApiResponse({ status: 201, description: "Move a rejected submission back to draft so the worker can fix and resubmit." })
   resubmit(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.engine.resubmit(id, user.sub);
+  }
+
+  /**
+   * F-9b — retry failed push bindings for a submission. Deletes any
+   * FormTriggeredRecord rows with `status="failed"` scoped to a
+   * bindingId, then re-runs the executor for the given applyOn stage
+   * (defaults to "submit"). Fire-and-forget; the caller polls the
+   * submission detail to observe outcomes.
+   *
+   * Gated on `forms.approve` — same audience that can drive the
+   * submission's approval chain.
+   */
+  @Post("submissions/:id/retry-pushes")
+  @RequirePermissions("forms.approve")
+  @ApiOperation({ summary: "Re-run failed push bindings for a submission." })
+  @ApiResponse({ status: 202, description: "Retry accepted; poll submission for results." })
+  @ApiQuery({ name: "applyOn", required: false, enum: ["submit", "approval"] })
+  async retryPushes(
+    @Param("id") id: string,
+    @Query("applyOn") applyOn?: string
+  ) {
+    const stage: "submit" | "approval" = applyOn === "approval" ? "approval" : "submit";
+    await this.pushExecutor.retryFailedPushes(id, stage);
+    return { ok: true };
   }
 
   /**

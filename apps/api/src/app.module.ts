@@ -81,6 +81,7 @@ import { HandoversModule } from "./modules/handovers/handovers.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
 import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
+import { VariationsModule } from "./modules/variations/variations.module";
 import { FieldDefinitionsModule } from "./modules/field-definitions/field-definitions.module";
 
 @Module({
@@ -170,6 +171,7 @@ import { FieldDefinitionsModule } from "./modules/field-definitions/field-defini
     SubcontractorRatesModule,
     WinLikelihoodModule,
     ScheduleOfRatesModule,
+    VariationsModule,
     FieldDefinitionsModule
   ]
 })

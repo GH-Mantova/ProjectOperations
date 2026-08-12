@@ -100,6 +100,7 @@ import { CaseDetailPage } from "./pages/cases/CaseDetailPage";
 import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
+import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -561,8 +562,9 @@ export function App() {
             <Route path="/knowledge/:id" element={<KbArticlePage />} />
             {/* CRM lives ONLY as a tab on the Tenders page (Marco 2026-07-31);
                 /crm is dead and falls through to NotFoundPage. The opportunity
-                detail page stays standalone. */}
+                detail page stays standalone. CRM-1 adds the Account 360 page. */}
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
+            <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

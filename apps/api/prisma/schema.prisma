@@ -1225,7 +1225,7 @@ model Tender {
 model TenderClient {
   id               String                @id @default(cuid())
   tenderId         String                @map("tender_id")
-  clientId         String                @map("client_id")
+  clientId         String?                @map("client_id")
   contactId        String?               @map("contact_id")
   isAwarded        Boolean               @default(false) @map("is_awarded")
   contractIssued   Boolean               @default(false) @map("contract_issued")
@@ -6492,7 +6492,7 @@ model Opportunity {
   captureDetail  String?             @map("capture_detail")
 
   clientId  String   @map("client_id")
-  client    Client   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
+  client    Client?   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
   contactId String?  @map("contact_id")
   contact   Contact? @relation("ContactOpportunities", fields: [contactId], references: [id], onDelete: SetNull)
 

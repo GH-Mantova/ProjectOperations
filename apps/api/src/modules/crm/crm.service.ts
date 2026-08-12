@@ -556,7 +556,7 @@ export class CrmService {
         isLead: dto.isLead,
         source: (dto.source as OpportunitySource | undefined) ?? "other",
         estimatedValue: this.toDecimalOrNull(dto.estimatedValue ?? null),
-        clientId: dto.clientId ?? undefined,
+        clientId: dto.clientId ?? null,
         contactId: dto.contactId ?? null,
         ownerId: dto.ownerId ?? null,
         description: dto.notes ?? null,

@@ -27,6 +27,7 @@ import {
   type PropertyTab
 } from "./formDesignerState";
 import { readTemplateLayout, type FormLayout } from "./formLayoutResolver";
+import { PushBindingsPanel } from "./PushBindingsPanel";
 import "./FormBuilder.css";
 
 type TemplateVersion = {
@@ -53,6 +54,14 @@ type TemplateVersion = {
       optionsJson?: unknown;
       config?: Record<string, unknown> | null;
       snippetCode?: string | null;
+      pushBindings?: Array<{
+        id: string;
+        targetModule: string;
+        targetAction: string;
+        applyOn: string;
+        isEnabled: boolean;
+        config?: Record<string, unknown> | null;
+      }>;
     }>;
   }>;
   rules: Array<{
@@ -137,7 +146,15 @@ export function FormDesignerPage() {
               helpText: field.helpText ?? undefined,
               options: Array.isArray(field.optionsJson) ? (field.optionsJson as string[]) : undefined,
               config: (field.config ?? undefined) as Record<string, unknown> | undefined,
-              snippetCode: field.snippetCode ?? undefined
+              snippetCode: field.snippetCode ?? undefined,
+              pushBindings: field.pushBindings?.map((b) => ({
+                tempId: uid(),
+                targetModule: b.targetModule,
+                targetAction: b.targetAction,
+                applyOn: b.applyOn === "approval" ? "approval" : "submit",
+                isEnabled: b.isEnabled,
+                config: (b.config ?? {}) as Record<string, unknown>
+              }))
             }))
           })),
           rules: latest.rules.map((rule) => ({
@@ -837,6 +854,10 @@ function FieldTabBody({
         No options to configure for this field type.
       </div>
     );
+  }
+
+  if (tab === "push") {
+    return <PushBindingsPanel field={field} draft={draft} onChange={onChange} />;
   }
 
   return (

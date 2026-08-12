@@ -131,9 +131,9 @@ describe("layout / choice / survey type sets", () => {
 });
 
 describe("tabsForFieldType", () => {
-  it("shows General/Options/Logic for every choice-bearing type", () => {
+  it("shows General/Options/Logic/Push for every choice-bearing type (push-eligible per F-9b)", () => {
     for (const t of ["multiple_choice", "checkbox", "radio"]) {
-      expect(tabsForFieldType(t)).toEqual(["general", "options", "logic"]);
+      expect(tabsForFieldType(t)).toEqual(["general", "options", "logic", "push"]);
     }
   });
 
@@ -155,9 +155,15 @@ describe("tabsForFieldType", () => {
     }
   });
 
-  it("shows General/Logic for the remaining input types", () => {
-    for (const t of ["text", "email", "phone", "address", "time", "signature"]) {
+  it("shows General/Logic for non-push input types", () => {
+    for (const t of ["email", "phone", "address", "time", "signature"]) {
       expect(tabsForFieldType(t)).toEqual(["general", "logic"]);
+    }
+  });
+
+  it("adds a Push tab for push-eligible plain input types (F-9b)", () => {
+    for (const t of ["text", "textarea", "number"]) {
+      expect(tabsForFieldType(t)).toEqual(["general", "logic", "push"]);
     }
   });
 });

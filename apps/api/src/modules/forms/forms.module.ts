@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { AiProvidersModule } from "../ai-providers/ai-providers.module";
 import { AuditModule } from "../audit/audit.module";
+import { MaintenanceModule } from "../maintenance/maintenance.module";
 import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
 import { PlatformModule } from "../platform/platform.module";
 import { FormsController } from "./forms.controller";
@@ -20,6 +21,7 @@ import { SubmissionPdfService } from "./submission-pdf.service";
 import { PublicLinkController } from "./public-link.controller";
 import { PublicLinkService } from "./public-link.service";
 import { PushExecutorService } from "./push-executor.service";
+import { PushHandlersService } from "./push-handlers.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
@@ -40,7 +42,14 @@ import { PushExecutorService } from "./push-executor.service";
  * second copy of the contracts.
  */
 @Module({
-  imports: [PrismaModule, AiProvidersModule, AuditModule, PlatformModule, PdfRenderingModule],
+  imports: [
+    PrismaModule,
+    AiProvidersModule,
+    AuditModule,
+    PlatformModule,
+    PdfRenderingModule,
+    MaintenanceModule
+  ],
   controllers: [
     FormsController,
     FormsEngineController,
@@ -59,7 +68,8 @@ import { PushExecutorService } from "./push-executor.service";
     InspectionBuilderService,
     SubmissionPdfService,
     PublicLinkService,
-    PushExecutorService
+    PushExecutorService,
+    PushHandlersService
   ],
   exports: [RulesEngineService, FormsEngineService, FormsSnippetsService, PushExecutorService]
 })

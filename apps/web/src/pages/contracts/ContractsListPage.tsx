@@ -173,7 +173,7 @@ export function ContractsListPage() {
       {newOpen ? <NewContractModal onClose={() => setNewOpen(false)} /> : null}
 
       {/* Archive view filter */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+      <div data-testid="contract-archive-filter" style={{ display: "flex", gap: 4, marginBottom: 8 }}>
         {(["active", "archived", "all"] as ArchiveView[]).map((view) => {
           const active = view === archiveView;
           const label = view === "active" ? "Active" : view === "archived" ? "Archived" : "All";
@@ -198,7 +198,7 @@ export function ContractsListPage() {
       </div>
 
       {/* Contract status filter */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+      <div data-testid="contract-status-filter" style={{ display: "flex", gap: 4, marginBottom: 12 }}>
         {(["ALL", "ACTIVE", "PRACTICAL_COMPLETION", "DEFECTS", "CLOSED"] as const).map((s) => {
           const active = s === statusFilter;
           return (
@@ -215,7 +215,7 @@ export function ContractsListPage() {
                 cursor: "pointer"
               }}
             >
-              {s === "ALL" ? "All statuses" : STATUS_LABEL[s]}
+              {s === "ALL" ? "All" : STATUS_LABEL[s]}
             </button>
           );
         })}

@@ -237,11 +237,11 @@ export class RateResolverService {
    * Returns `null` on any miss so callers can pick a fallback without
    * wrapping in try/catch.
    *
-   * Legacy-first — the `estimate_material_density` row is the source of
-   * truth for this PR. If the legacy row is missing we fall through to
-   * the RateTable projection (seeded by the migration + seed) so a
-   * caller written against the new seam still gets an answer during
-   * the deprecate-in-place window.
+   * SLICE 11a: when RATES_CANONICAL_SOURCE=ratetable, RateTable is queried
+   * first so density lookups resolve from the canonical store without
+   * touching the legacy table. Legacy remains the fallback for the
+   * deprecate-in-place window. When canonical=legacy (default), legacy is
+   * tried first with RateTable as fallback — preserving pre-11a behaviour.
    *
    * Density is returned as `Number(row.density)` — the same conversion
    * every existing consumer uses — so numbers are byte-identical to
@@ -250,6 +250,25 @@ export class RateResolverService {
   async resolveMaterialDensity(
     materialName: string
   ): Promise<{ density: number; unit: string; kind: string; category: string | null } | null> {
+    const source = this.getCanonicalSource();
+
+    if (source === "ratetable") {
+      // Canonical path: RateTable first, legacy fallback.
+      const fromTable = await this.resolveMaterialDensityFromRateTable(materialName);
+      if (fromTable) return fromTable;
+      const legacyFallback = await this.prisma.estimateMaterialDensity.findUnique({
+        where: { materialName }
+      });
+      if (!legacyFallback) return null;
+      return {
+        density: Number(legacyFallback.density),
+        unit: legacyFallback.unit,
+        kind: String(legacyFallback.kind),
+        category: legacyFallback.category
+      };
+    }
+
+    // Legacy-first (default) — byte-identical to pre-11a behaviour.
     const legacy = await this.prisma.estimateMaterialDensity.findUnique({
       where: { materialName }
     });
@@ -261,7 +280,16 @@ export class RateResolverService {
         category: legacy.category
       };
     }
+    return this.resolveMaterialDensityFromRateTable(materialName);
+  }
 
+  /**
+   * Internal: resolve a density from the material-densities RateTable.
+   * Shared by both canonical paths of resolveMaterialDensity.
+   */
+  private async resolveMaterialDensityFromRateTable(
+    materialName: string
+  ): Promise<{ density: number; unit: string; kind: string; category: string | null } | null> {
     const table = await this.prisma.rateTable.findUnique({
       where: { slug: "material-densities" },
       include: { columns: true }
@@ -317,9 +345,22 @@ export class RateResolverService {
     const rows = await this.prisma.rateRow.findMany({
       where: { rateTableId: table.id, isActive: true }
     });
+    // Build a normalised-key index of the caller's keys so column name
+    // matching is case-insensitive (e.g. column "Role" matches key "role").
+    // Callers use camelCase or snake_case field names from the legacy schema;
+    // column names in the DB use title-case display names. We check all three
+    // variants in priority order: exact name, lowercase name, column id.
+    const keysLower: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(keys)) {
+      keysLower[k.trim().toLowerCase()] = v;
+    }
     const match = rows.find((r) => {
       const cells = (r.cells as Record<string, unknown> | null) ?? {};
-      return keyCols.every((c) => norm(cells[c.id]) === norm(keys[c.name] ?? keys[c.id]));
+      return keyCols.every((c) => {
+        const colNameLower = c.name.trim().toLowerCase();
+        const callerVal = keys[c.name] ?? keysLower[colNameLower] ?? keys[c.id];
+        return norm(cells[c.id]) === norm(callerVal);
+      });
     });
     if (!match) return null;
     const value = Number(((match.cells as Record<string, unknown>) ?? {})[valueCols[0].id]);
@@ -379,6 +420,29 @@ export class RateResolverService {
       case "fuel": {
         const item = String(keys.item ?? "");
         const row = await this.prisma.estimateFuelRate.findUnique({ where: { item } });
+        if (!row) return null;
+        return { rowId: row.id, value: Number(row.rate), unit: row.unit, source: "legacy" };
+      }
+      case "enclosure": {
+        // SLICE 11a: enclosure is now registered in the resolver so the
+        // fallback-audit can route it through resolveRate. Previously it
+        // was accessed directly via prisma.estimateEnclosureRate in
+        // lookup-rate.handler.ts and had no resolver slug.
+        const enclosureType = String(keys.enclosureType ?? "");
+        const row = await this.prisma.estimateEnclosureRate.findFirst({
+          where: { enclosureType, isActive: true }
+        });
+        if (!row) return null;
+        return { rowId: row.id, value: Number(row.rate), unit: row.unit, source: "legacy" };
+      }
+      case "other-rates": {
+        // SLICE 11a: other-rates maps to CuttingOtherRate. Key = description
+        // (unique enough for the small admin catalogue). Returns the first
+        // active matching row.
+        const description = String(keys.description ?? "");
+        const row = await this.prisma.cuttingOtherRate.findFirst({
+          where: { description, isActive: true }
+        });
         if (!row) return null;
         return { rowId: row.id, value: Number(row.rate), unit: row.unit, source: "legacy" };
       }

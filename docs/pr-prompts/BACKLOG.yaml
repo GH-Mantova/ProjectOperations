@@ -273,16 +273,17 @@ items:
     gate_means: 'READY to consider once the A2 breadcrumb slice is on main and no native wrapper exists yet. Dies the moment an apps/mobile wrapper ships.'
     needs_marco: true
     marco_note: >
-      DECIDED 2026-08-03 (Marco): Option A (track-while-open, honest gaps) stood; the wrapper was
-      PARKED. SUPERSEDED 2026-08-12 (Marco): a client requirement reactivated Option B. First
-      sub-decisions now LOCKED - device model = BYOD (personal phones; public App Store + Play; no
-      MDM); governance = MANDATED for field roles WITH an explicit in-app disclosure + acknowledgement
-      audit record (HR/legal to sign off the wording). Option C (React Native / full rewrite) remains
-      rejected. Build plan: docs/architecture/drafts/gps-native-wrapper-plan.md. The capture layer
-      (clock GPS, breadcrumb ingest, locationConsent, geofences) already ships on main; the wrapper
-      only adds background execution. STILL needs_marco for Apple/Google store accounts + signing
-      certs (real identity/secrets) and the final disclosure wording. First build slice = apps/mobile
-      Capacitor scaffold (M-1), which retires this gate by creating apps/mobile.
+      DECIDED 2026-08-03 (Marco): Option A (track-while-open) stood; wrapper PARKED. 2026-08-12 (Marco):
+      briefly reactivated Option B, then RE-SCOPED to WEB-FIRST. Near-term plan = a fieldworker WEB
+      version of the ERP (responsive/PWA); NO native app, NO Apple/Google store spend now. The native
+      wrapper stays PARKED but DE-RISKED: the web app bakes in wrapper-ready seams (LocationProvider
+      abstraction, on-shift lifecycle, consent/disclosure gate) so a future Capacitor wrap is a thin
+      step. CAVEAT: web CANNOT do gapless background GPS (browser suspends when backgrounded); if a
+      client contractually needs gapless, only the native wrapper delivers it (Apple $99/yr floor for
+      iPhones; mixed fleet confirmed). Locked: on-shift-only tracking (clock-on..off); mandated +
+      explicit disclosure (placeholder wording now, HR later). Plan:
+      docs/architecture/drafts/gps-native-wrapper-plan.md. STILL needs_marco to approve store spend +
+      final wording IF/WHEN the native step is taken.
     order: 13
 
   # -------------------------------------------------------------------------------------------

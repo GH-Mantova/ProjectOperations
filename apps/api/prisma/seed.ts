@@ -22,6 +22,7 @@ import { seedFormTemplates } from "./seed-form-templates";
 import { seedCompanyProfile } from "./seed-company-profile";
 import { seedBusinessProcessFlows } from "./seed-business-process-flows";
 import { seedHandoverDefaultTemplate } from "./seeds/handover-default-template";
+import { seedCrmDropReasons } from "./seeds/crm-drop-reasons";
 import { seedScheduleOfRates } from "./seed-schedule-of-rates";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
 
@@ -3726,6 +3727,8 @@ async function main() {
   await seedHandoverDefaultTemplate(prisma);
   // SoR S1: Schedule of Rates H1 2026 period + representative rates. Idempotent.
   await seedScheduleOfRates(prisma);
+  // CRM S1: Default drop reasons for the not-pursued pipeline. Idempotent — upsert on label.
+  await seedCrmDropReasons(prisma);
 }
 
 async function seedDefaultSurvey(prisma: PrismaClient) {

@@ -2859,12 +2859,6 @@
           "filterable": false,
           "aggregations": []
         },
-        "leads": {
-          "role": "system",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
         "opportunities": {
           "role": "system",
           "label": null,
@@ -4342,12 +4336,6 @@
           "aggregations": []
         },
         "tenderClients": {
-          "role": "system",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "leads": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -6331,6 +6319,56 @@
           "role": "dimension",
           "label": null,
           "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
+    "DropReason": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "label": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "isActive": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sortOrder": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "opportunities": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
           "aggregations": []
         }
       }
@@ -11875,140 +11913,6 @@
         }
       }
     },
-    "Lead": {
-      "domain": "Unclassified",
-      "wizardVisible": false,
-      "label": null,
-      "reviewed": false,
-      "fields": {
-        "id": {
-          "role": "system",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "title": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "status": {
-          "role": "dimension",
-          "label": null,
-          "filterable": true,
-          "aggregations": []
-        },
-        "source": {
-          "role": "dimension",
-          "label": null,
-          "filterable": true,
-          "aggregations": []
-        },
-        "companyName": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "contactName": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "contactEmail": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "contactPhone": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "clientId": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "client": {
-          "role": "dimension",
-          "label": null,
-          "filterable": true,
-          "aggregations": []
-        },
-        "contactId": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "contact": {
-          "role": "dimension",
-          "label": null,
-          "filterable": true,
-          "aggregations": []
-        },
-        "ownerId": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "owner": {
-          "role": "dimension",
-          "label": null,
-          "filterable": true,
-          "aggregations": []
-        },
-        "notes": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "nextActionAt": {
-          "role": "time",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "nextActionNote": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "convertedOpportunityId": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "convertedOpportunity": {
-          "role": "dimension",
-          "label": null,
-          "filterable": true,
-          "aggregations": []
-        },
-        "createdAt": {
-          "role": "system",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "updatedAt": {
-          "role": "system",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        }
-      }
-    },
     "LeaveRequest": {
       "domain": "Scheduler",
       "wizardVisible": true,
@@ -12821,6 +12725,12 @@
           "filterable": true,
           "aggregations": []
         },
+        "isLead": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "clientId": {
           "role": "attribute",
           "label": null,
@@ -12887,14 +12797,20 @@
           "filterable": false,
           "aggregations": []
         },
-        "lostReason": {
+        "dropReasonId": {
           "role": "attribute",
           "label": null,
           "filterable": false,
           "aggregations": []
         },
-        "sourceLead": {
-          "role": "system",
+        "dropReason": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "dropReasonDetail": {
+          "role": "attribute",
           "label": null,
           "filterable": false,
           "aggregations": []
@@ -23876,12 +23792,6 @@
           "aggregations": []
         },
         "caseCommentsAuthored": {
-          "role": "system",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "leadsOwned": {
           "role": "system",
           "label": null,
           "filterable": false,

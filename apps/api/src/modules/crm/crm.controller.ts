@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -31,6 +32,8 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CrmService } from "./crm.service";
+import { CreateDropReasonDto } from "./dto/create-drop-reason.dto";
+import { UpdateDropReasonDto } from "./dto/update-drop-reason.dto";
 
 const LEAD_STATUSES = ["new", "contacted", "qualified", "disqualified", "converted"] as const;
 const OPPORTUNITY_STAGES = ["new", "qualified", "quoting", "won", "lost"] as const;
@@ -311,5 +314,47 @@ export class CrmController {
   @ApiResponse({ status: 200, description: "Forecast buckets + totals." })
   forecast(@Query() query: ForecastQueryDto) {
     return this.service.forecast(query as never);
+  }
+
+  // ── DropReasons ──────────────────────────────────────────────────────────
+
+  @Get("drop-reasons")
+  @RequirePermissions("crm.view")
+  @ApiOperation({ summary: "List all DropReason lookup values, ordered by sortOrder then label." })
+  @ApiResponse({ status: 200, description: "List of drop reasons." })
+  listDropReasons() {
+    return this.service.listDropReasons();
+  }
+
+  @Post("drop-reasons")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({ summary: "Create a new DropReason lookup value." })
+  @ApiResponse({ status: 201, description: "DropReason created." })
+  @ApiResponse({ status: 409, description: "Label already exists." })
+  createDropReason(@Body() dto: CreateDropReasonDto) {
+    return this.service.createDropReason(dto);
+  }
+
+  @Patch("drop-reasons/:id")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({ summary: "Update a DropReason (label, sortOrder, isActive)." })
+  @ApiParam({ name: "id", description: "DropReason id" })
+  @ApiResponse({ status: 200, description: "Updated drop reason." })
+  @ApiResponse({ status: 404, description: "DropReason not found." })
+  updateDropReason(@Param("id") id: string, @Body() dto: UpdateDropReasonDto) {
+    return this.service.updateDropReason(id, dto);
+  }
+
+  @Delete("drop-reasons/:id")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary: "Delete a DropReason. Blocked (409) if any Opportunity references it."
+  })
+  @ApiParam({ name: "id", description: "DropReason id" })
+  @ApiResponse({ status: 200, description: "DropReason deleted." })
+  @ApiResponse({ status: 404, description: "DropReason not found." })
+  @ApiResponse({ status: 409, description: "DropReason is in use by one or more opportunities." })
+  deleteDropReason(@Param("id") id: string) {
+    return this.service.deleteDropReason(id);
   }
 }

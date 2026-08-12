@@ -8,6 +8,7 @@ import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { SubcontractorRatesTab } from "./SubcontractorRatesTab";
 import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
 import { setArchived } from "./directory-archive";
+import { DynamicFieldSection } from "../../components/DynamicFieldSection";
 
 type Subcontractor = {
   id: string;
@@ -1280,7 +1281,19 @@ function CreateSubcontractorModal({
   onCreated: (id: string) => void;
 }) {
   const { authFetch } = useAuth();
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    tradingName: string;
+    businessType: string;
+    entityType: string;
+    abn: string;
+    email: string;
+    phone: string;
+    physicalSuburb: string;
+    physicalState: string;
+    categories: string[];
+    customFields: Record<string, unknown>;
+  }>({
     name: "",
     tradingName: "",
     businessType: "company",
@@ -1290,7 +1303,8 @@ function CreateSubcontractorModal({
     phone: "",
     physicalSuburb: "",
     physicalState: "QLD",
-    categories: [] as string[]
+    categories: [],
+    customFields: {}
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1312,7 +1326,8 @@ function CreateSubcontractorModal({
           abn: form.abn || null,
           email: form.email || null,
           phone: form.phone || null,
-          physicalSuburb: form.physicalSuburb || null
+          physicalSuburb: form.physicalSuburb || null,
+          customFields: Object.keys(form.customFields).length > 0 ? form.customFields : undefined
         })
       });
       if (!response.ok) {
@@ -1450,6 +1465,15 @@ function CreateSubcontractorModal({
               ))}
             </select>
           </label>
+        </div>
+
+        {/* Custom fields from the VENDOR field registry */}
+        <div style={{ marginTop: 12 }}>
+          <DynamicFieldSection
+            appliesTo="VENDOR"
+            record={form}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          />
         </div>
 
         <DuplicateWarning

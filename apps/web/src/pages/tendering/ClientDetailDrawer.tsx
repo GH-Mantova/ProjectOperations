@@ -1,6 +1,7 @@
 import { CenteredModal } from "@project-ops/ui";
 import { ClientStarRating } from "../../components/ClientStarRating";
 import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
+import { DynamicFieldSection } from "../../components/DynamicFieldSection";
 
 export type ActivityClient = {
   tenderClientId: string;
@@ -14,6 +15,7 @@ export type ActivityClient = {
   tenderCount: number;
   winRate: string | null;
   contact: { id: string; firstName: string; lastName: string; email?: string | null } | null;
+  customFields?: Record<string, unknown>;
 };
 
 export function isPrimaryClient(client: Pick<ActivityClient, "relationshipType">): boolean {
@@ -60,6 +62,15 @@ export function ClientDetailDrawer({
   onRemove: () => void;
 }) {
   const winRate = client.winRate !== null && client.winRate !== undefined ? Number(client.winRate) : null;
+
+  // Build a record shape for DynamicFieldSection from the ActivityClient.
+  // The ActivityClient carries the fields that were loaded from the API;
+  // DynamicFieldSection renders only visible BUILTIN/CUSTOM definitions.
+  const clientRecord: Record<string, unknown> & { customFields?: Record<string, unknown> } = {
+    name: client.name,
+    customFields: client.customFields
+  };
+
   return (
     <CenteredModal
       title={client.name}
@@ -129,6 +140,18 @@ export function ClientDetailDrawer({
           ) : (
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>No contact on file</p>
           )}
+        </div>
+
+        {/* Dynamic field definitions — read-only view of BUILTIN/CUSTOM fields */}
+        <div>
+          <DynamicFieldSection
+            appliesTo="CLIENT"
+            record={clientRecord}
+            onChange={() => {
+              // This panel is read-only in the drawer. Edit flows are handled
+              // by the dedicated client edit surface.
+            }}
+          />
         </div>
 
         {canManage ? (

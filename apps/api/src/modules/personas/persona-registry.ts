@@ -1,7 +1,8 @@
 import type { PersonaDefinition, PersonaRouteMatch, PersonaSubMode } from "./personas.types";
 import { tenderingPersona } from "./definitions/tendering.persona";
+import { formsPersona } from "./definitions/forms.persona";
 
-const PERSONAS: readonly PersonaDefinition[] = Object.freeze([tenderingPersona]);
+const PERSONAS: readonly PersonaDefinition[] = Object.freeze([tenderingPersona, formsPersona]);
 
 export function getAllPersonas(): readonly PersonaDefinition[] {
   return PERSONAS;

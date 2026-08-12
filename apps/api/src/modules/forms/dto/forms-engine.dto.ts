@@ -93,3 +93,34 @@ export class RejectSubmissionDto {
   @MaxLength(2000)
   comment!: string;
 }
+
+/**
+ * Payload for `POST /forms/submissions/:id/fill-assist` — request hazard
+ * control suggestions and a notifiable-incident flag for in-progress answers.
+ *
+ * The caller supplies `answers` as a `{ fieldLabel: value }` map of the
+ * hazard/incident-related fields already answered in the draft. The service
+ * does NOT read the submission itself — the client is responsible for
+ * filtering to the relevant fields before sending this request.
+ *
+ * All returned suggestions are advisory only and carry no authority over
+ * the submission's outcome (suggest-never-decide, LOCKED).
+ */
+export class FillAssistDto {
+  /**
+   * A map of field labels to their current in-progress values.
+   *
+   * Key: the field label as displayed to the worker (e.g. "Hazards identified").
+   * Value: the worker's current answer (string, number, boolean, or null).
+   *
+   * Only include fields that are relevant to hazard/incident analysis.
+   * Empty maps are rejected with 400.
+   */
+  @ApiProperty({
+    description:
+      "Map of { fieldLabel: value } for the hazard/incident-related answers to analyse. Must be non-empty.",
+    example: { "Hazards identified": "Working at height on scaffold", "Task type": "Demolition" }
+  })
+  @IsObject()
+  answers!: Record<string, unknown>;
+}

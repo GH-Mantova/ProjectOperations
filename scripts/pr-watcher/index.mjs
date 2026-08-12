@@ -74,6 +74,23 @@ const BLOCKED_DIR = path.join(PROMPT_DIR, "blocked");
 const PAUSED_DIR = path.join(PROMPT_DIR, "paused");
 const NO_PR_DIR = path.join(PROMPT_DIR, "no-pr-opened");
 
+// --- Multi-lane routing (additive; DEFAULT-OFF) --------------------------
+// When PR_WATCHER_LANE is set (0-based), this watcher only enqueues prompts
+// that laneFor() assigns to its lane, so a second clone can run a parallel
+// build lane without ever picking the same prompt. Fix/review jobs and any
+// prompt whose build touches the SHARED test Postgres (:5432) or the fixed
+// e2e ports pin to lane 0, so DB/e2e builds never run concurrently. Unset =>
+// no filtering (legacy single-lane behaviour, byte-for-byte unchanged).
+const _paneEnv = process.env.PR_WATCHER_LANE;
+const WATCHER_LANE =
+  _paneEnv != null && _paneEnv !== "" && Number.isInteger(Number(_paneEnv))
+    ? Number(_paneEnv)
+    : null;
+const WATCHER_LANES = (() => {
+  const n = Number(process.env.PR_WATCHER_LANES);
+  return Number.isInteger(n) && n >= 1 ? n : 2;
+})();
+
 const READY_PATTERN = /^(pr|rev)-.*-ready\.md$/i;
 const DEBOUNCE_MS = 800;
 
@@ -392,6 +409,86 @@ export function computeQueueInsertIndex(queueMeta, incoming) {
   return i;
 }
 
+// --- Lane routing helpers (pure, exported for unit tests) ----------------
+// Stable non-negative hash of a prompt name (djb2). Deterministic across
+// processes so every lane computes identical ownership for a given name.
+export function laneHash(name) {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) {
+    h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
+  }
+  return h >>> 0;
+}
+
+// True when a build would touch a SHARED fixed resource: the test Postgres on
+// :5432 (any prisma migrate / psql / serial DB test) or a fixed e2e server
+// port. Such builds must never run concurrently, so they pin to lane 0.
+// Conservative by design ??? a mere mention pins to lane 0 (costs parallelism,
+// never risks a collision). Empty/unreadable body => pin to lane 0.
+export function bodyNeedsSerialLane(text) {
+  if (!text) return true; // no readable done_when => fail safe (pin lane 0)
+  return /prisma\s+migrate|migrate\s+(deploy|dev|reset)|prisma:migrate|:migrate\b|\bpnpm\b[^&|]*\bmigrate\b|\bpsql\b|\bpg_dump\b|\bpg_restore\b|test:serial|test:api\b|\bapitest\b|\bjest\b|\bvitest\b|\bpnpm\b[^&|]*?\btest\b(?!\s*-)|\bnpm\s+test\b|\byarn\s+test\b|\bplaywright\b|\be2e\b|:5432|:4173|:5173|:3000|docker\s*compose/i.test(
+    text,
+  );
+}
+
+// Extract the done_when contract from a prompt's YAML front matter. Handles
+// inline scalars (`done_when: pnpm build && ...`), folded/literal block
+// scalars (`done_when: >-` / `|`), and simple list forms. Returns "" when no
+// done_when is found ??? which bodyNeedsSerialLane treats as pin-to-lane-0.
+export function extractDoneWhen(body) {
+  if (!body) return "";
+  // Linear frontmatter split (no backtracking regex — avoids ReDoS on
+  // input like '---' + newline + many '<nl><space>' repetitions; CodeQL js/polynomial-redos).
+  let fm = body;
+  if (body.startsWith("---")) {
+    const nl = body.indexOf("\n");
+    const end = nl === -1 ? -1 : body.indexOf("\n---", nl);
+    if (nl !== -1 && end !== -1) fm = body.slice(nl + 1, end);
+  }
+  const lines = fm.split(/\r?\n/);
+  const i = lines.findIndex((l) => /^done_when\s*:/.test(l));
+  if (i === -1) return "";
+  const first = lines[i].replace(/^done_when\s*:/, "").trim();
+  const isKey = (l) => /^[A-Za-z0-9_]+\s*:/.test(l);
+  if (first && !/^[|>]/.test(first)) {
+    let out = first;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (/^\s+\S/.test(lines[j]) && !isKey(lines[j].trim())) out += " " + lines[j].trim();
+      else break;
+    }
+    return out;
+  }
+  const out = [];
+  for (let j = i + 1; j < lines.length; j++) {
+    if (lines[j].trim() === "") continue;
+    if (/^\s+\S/.test(lines[j]) && !isKey(lines[j].trim())) out.push(lines[j].trim());
+    else break;
+  }
+  return out.join(" ").trim();
+}
+
+// Assign a prompt to a lane. Coordination-sensitive jobs (fix/review) and
+// shared-resource builds pin to lane 0; everything else shards by name hash.
+export function laneFor(
+  name,
+  { isFix = false, isReview = false, body = "", lanes = 2 } = {},
+) {
+  if (isFix || isReview) return 0;
+  if (bodyNeedsSerialLane(body)) return 0;
+  return laneHash(name) % lanes;
+}
+
+// Read a prompt file's full body for lane classification. Sync to fit the
+// sync enqueue path; any failure returns "" (treated as pin-to-lane-0).
+export function readPromptBody(filePath, { readFileSyncImpl = readFileSync } = {}) {
+  try {
+    return readFileSyncImpl(filePath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
 // Pull the PR number out of a review-job filename. Supports both the
 // rev-NNN-ready.md convention and the legacy pr-NNN-auto-review-ready.md.
 function reviewJobPrNumber(name) {
@@ -562,10 +659,19 @@ function enqueue(name, { source = "watch" } = {}) {
   const filePath = path.join(PROMPT_DIR, name);
   if (!existsSync(filePath)) return;
   if (seen.has(name)) return;
-  seen.add(name);
   const isReview = isReviewJob(name);
   const fixesPr = isReview ? null : readFixesPr(filePath);
   const isFix = fixesPr !== null;
+  // Multi-lane routing (default-off): if this watcher runs a specific lane,
+  // skip prompts another lane owns ??? WITHOUT marking them seen, so the owning
+  // lane still picks them up. Unset PR_WATCHER_LANE => WATCHER_LANE null => no
+  // filtering, identical to legacy behaviour.
+  if (WATCHER_LANE !== null) {
+    const doneWhen = isFix || isReview ? "" : extractDoneWhen(readPromptBody(filePath));
+    const owner = laneFor(name, { isFix, isReview, body: doneWhen, lanes: WATCHER_LANES });
+    if (owner !== WATCHER_LANE) return;
+  }
+  seen.add(name);
   if (isFix) fixLanePaths.add(filePath);
   const queueMeta = queue.map((p) => ({
     name: path.basename(p),

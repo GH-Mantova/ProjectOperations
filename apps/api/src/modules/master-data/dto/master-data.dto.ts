@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import {
   IsArray,
   IsBoolean,
@@ -79,6 +79,16 @@ export class UpsertClientDto {
   @ApiPropertyOptional({ enum: PAYMENT_TERMS_TYPES, description: "Vocabulary that mirrors Xero's contact payment-terms. Must be supplied with `paymentTermsDay`." })
   @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
 }
+
+/**
+ * Payload for updating (PATCH) an existing Client. Extends {@link UpsertClientDto}
+ * with all fields made optional, so a status-only PATCH such as
+ * `{ status: "ARCHIVED" }` is accepted without requiring `name`.
+ *
+ * POST /master-data/clients still uses the strict {@link UpsertClientDto} where
+ * `name` is required.
+ */
+export class UpdateClientDto extends PartialType(UpsertClientDto) {}
 
 /**
  * Payload for creating or updating a Contact attached to a Client.

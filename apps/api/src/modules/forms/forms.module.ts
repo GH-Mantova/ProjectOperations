@@ -25,6 +25,7 @@ import { PublicLinkController } from "./public-link.controller";
 import { PublicLinkService } from "./public-link.service";
 import { PushExecutorService } from "./push-executor.service";
 import { PushHandlersService } from "./push-handlers.service";
+import { AiFormFillAssistService } from "./ai-form-fill-assist.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
@@ -75,7 +76,8 @@ import { PushHandlersService } from "./push-handlers.service";
     SubmissionPdfService,
     PublicLinkService,
     PushExecutorService,
-    PushHandlersService
+    PushHandlersService,
+    AiFormFillAssistService
   ],
   exports: [
     RulesEngineService,

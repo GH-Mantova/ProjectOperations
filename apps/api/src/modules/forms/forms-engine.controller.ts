@@ -17,8 +17,10 @@ import type { AuthenticatedUser } from "../../common/auth/authenticated-request.
 import { FormsEngineService } from "./forms-engine.service";
 import { SystemContextResolverService } from "./system-context-resolver.service";
 import { PushExecutorService } from "./push-executor.service";
+import { AiFormFillAssistService } from "./ai-form-fill-assist.service";
 import {
   CreateDraftDto,
+  FillAssistDto,
   RejectSubmissionDto,
   SubmitSubmissionDto,
   UpdateSubmissionValuesDto,
@@ -41,7 +43,8 @@ export class FormsEngineController {
   constructor(
     private readonly engine: FormsEngineService,
     private readonly systemContext: SystemContextResolverService,
-    private readonly pushExecutor: PushExecutorService
+    private readonly pushExecutor: PushExecutorService,
+    private readonly fillAssist: AiFormFillAssistService
   ) {}
 
   /**
@@ -392,5 +395,46 @@ export class FormsEngineController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.systemContext.resolveContext(templateId, user.sub, siteId);
+  }
+
+  /**
+   * Fill-time AI assist — suggest-never-decide (AI order 3, LOCKED).
+   *
+   * Accepts in-progress hazard/incident field answers and returns hazard
+   * control suggestions plus a notifiable-incident flag. All output is
+   * advisory: nothing here triggers a BLOCK, WARN, push action, or
+   * approval-chain change. Those remain exclusively rules-engine-driven.
+   *
+   * The client is responsible for:
+   *  1. Gating the panel on a hazard/incident signal (category = "safety" /
+   *     "environmental" / "plant", or field keys matching hazard/incident).
+   *  2. Filtering the submission values to relevant fields before calling.
+   *  3. Labelling every returned item as "AI suggestion" with accept/dismiss
+   *     controls — nothing auto-applies.
+   *
+   * @param id - the in-progress submission id (used in logging only; the
+   *   service does not read or write the submission)
+   * @param body - `{ answers: { fieldLabel: value } }` map of relevant fields
+   * @returns FillAssistSuggestion payload (advisory only)
+   * @throws BadRequestException when `answers` is empty
+   * @throws ServiceUnavailableException when the AI provider is unreachable
+   */
+  @Post("submissions/:id/fill-assist")
+  @RequirePermissions("forms.submit")
+  @ApiOperation({
+    summary:
+      "Fill-time AI assist (suggest-never-decide): given in-progress hazard/incident answers, returns control suggestions and a notifiable-incident flag. Advisory only — no BLOCK, WARN, or push actions."
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      "FillAssistSuggestion: { controlSuggestions, notifiableIncidentFlag, summary, provider }. All fields advisory only."
+  })
+  fillAssistSuggest(
+    @Param("id") id: string,
+    @Body() body: FillAssistDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.fillAssist.suggest(user.sub, id, body.answers);
   }
 }

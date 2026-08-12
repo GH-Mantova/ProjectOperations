@@ -63,6 +63,19 @@ if ($env:PR_WATCHER_MAX_SAME_FAIL) { $maxSameFail = [int]$env:PR_WATCHER_MAX_SAM
 $adoptPollSec = 60
 if ($env:PR_WATCHER_ADOPT_POLL_SEC) { $adoptPollSec = [int]$env:PR_WATCHER_ADOPT_POLL_SEC }
 
+# 2026-08-12: heartbeat watchdog for the ALIVE-BUT-HUNG case. The watcher is an
+# fs.watch daemon that never exits on its own, so the main loop below (which only
+# reacts to the child EXITING) blocked forever on 2026-08-11 when the node hung
+# with its heartbeat frozen ~40 min while 16 prompts sat armed -- the whole
+# in-chain queue stopped draining and nothing restarted it. Threshold is well
+# above the legit inter-tick gap (heartbeat ticks every 60s during a build; the
+# gap between prompts is a couple of minutes), so this only fires on a real hang.
+$wdHungMin = 15
+if ($env:PR_WATCHER_HUNG_MIN) { $wdHungMin = [int]$env:PR_WATCHER_HUNG_MIN }
+$wdPollSec = 120
+if ($env:PR_WATCHER_WD_POLL_SEC) { $wdPollSec = [int]$env:PR_WATCHER_WD_POLL_SEC }
+$wdHeartbeat = Join-Path $env:PR_WATCHER_REPO_ROOT "scripts\pr-watcher\heartbeat.log"
+
 $supLog = Join-Path $here "logs\supervisor.log"
 New-Item -ItemType Directory -Path (Split-Path $supLog) -Force | Out-Null
 
@@ -174,6 +187,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\script
 }
 
 Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail."
+Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while armed>0 and 0 in-progress (poll ${wdPollSec}s)."
+
+# HEARTBEAT WATCHDOG (2026-08-12) -- additive; the restart-on-exit loop below is
+# UNCHANGED. Runs concurrently for the life of the supervisor. When the node is
+# alive but HUNG (heartbeat frozen while buildable prompts wait) it kills the
+# node so the main loop's exit handling relaunches it fresh (which resets the
+# clone). ASCII only.
+$null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
+    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog)
+    function WD-Log([string]$m) {
+        try { Add-Content -Path $SupLog -Value ("[{0}] WATCHDOG {1}" -f (Get-Date -Format o), $m) -Encoding UTF8 } catch {}
+    }
+    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat)"
+    while ($true) {
+        Start-Sleep -Seconds $PollSec
+        try {
+            $node = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+                      Where-Object { $_.CommandLine -match 'pr-watcher[\\/]index\.mjs' })
+            if ($node.Count -eq 0) { continue }                       # no node: the main loop is (re)starting it
+            $armed = @(Get-ChildItem (Join-Path $PromptDir '*-ready.md') -File -ErrorAction SilentlyContinue)
+            if ($armed.Count -eq 0) { continue }                      # empty queue: a stale heartbeat is legitimate idle
+            $inProg = @(Get-ChildItem (Join-Path $PromptDir 'in-progress\*.md') -File -ErrorAction SilentlyContinue)
+            if ($inProg.Count -gt 0) { continue }                     # a build is running: not hung
+            $ageMin = if (Test-Path $Heartbeat) { ((Get-Date).ToUniversalTime() - (Get-Item $Heartbeat).LastWriteTimeUtc).TotalMinutes } else { $HungMin + 1 }
+            if ($ageMin -gt $HungMin) {
+                WD-Log ("heartbeat stale {0} min with {1} armed and 0 in-progress -> node HUNG. Killing pid {2}; the supervisor will relaunch it." -f [int]$ageMin, $armed.Count, $node[0].ProcessId)
+                foreach ($p in $node) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+                Start-Sleep -Seconds 150                              # let the supervisor relaunch; avoid a double-kill
+            }
+        } catch { WD-Log ("poll error: " + $_.Exception.Message) }
+    }
+} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog
 
 $lastReasonKey = ""
 $sameCount     = 0

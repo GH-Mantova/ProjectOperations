@@ -6,6 +6,7 @@ import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
 import { BillingTab } from "./BillingTab";
 import { RecordHistory } from "../../components/RecordHistory";
+import { hwCreate } from "../handover/handoverApi";
 
 type ContractStatus = "ACTIVE" | "PRACTICAL_COMPLETION" | "DEFECTS" | "CLOSED";
 type VariationStatus = "RECEIVED" | "PRICED" | "SUBMITTED" | "APPROVED";
@@ -102,6 +103,11 @@ export function ContractDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // B-HW-7: handover wizard launch state
+  const [handoverId, setHandoverId] = useState<string | null>(null);
+  const [handoverPct, setHandoverPct] = useState<number | null>(null);
+  const [handoverStarting, setHandoverStarting] = useState(false);
+  const [handoverError, setHandoverError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -172,6 +178,29 @@ export function ContractDetailPage() {
     }
   };
 
+  // B-HW-7: Create or navigate to the handover wizard for this contract.
+  const handleOpenHandover = async () => {
+    if (!contract) return;
+    if (handoverId) {
+      navigate(`/handover/${handoverId}`);
+      return;
+    }
+    setHandoverStarting(true);
+    setHandoverError(null);
+    try {
+      const created = await hwCreate(authFetch, { contractId: contract.id });
+      setHandoverId(created.id);
+      setHandoverPct(created.completionPct);
+      navigate(`/handover/${created.id}`);
+    } catch (err) {
+      setHandoverError(
+        err instanceof Error ? err.message : "Failed to start handover wizard."
+      );
+    } finally {
+      setHandoverStarting(false);
+    }
+  };
+
   if (!contract) return <div style={{ padding: 24 }}>{error ?? "Loading…"}</div>;
 
   const approvedVarsTotal = contract.variations
@@ -219,7 +248,34 @@ export function ContractDetailPage() {
               {contract.project.client ? ` · ${contract.project.client.name}` : ""}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+            {/* B-HW-7: Handover wizard launch button */}
+            {canManage ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--primary s7-btn--sm"
+                  disabled={handoverStarting}
+                  onClick={() => void handleOpenHandover()}
+                >
+                  {handoverStarting
+                    ? "Starting…"
+                    : handoverId
+                      ? "Continue handover wizard"
+                      : "Start handover wizard"}
+                </button>
+                {handoverPct !== null && !handoverId && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {handoverPct}% complete
+                  </span>
+                )}
+                {handoverError ? (
+                  <span style={{ fontSize: 11, color: "var(--colour-danger, #dc2626)" }}>
+                    {handoverError}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             {canManage ? (
               <button
                 type="button"
@@ -283,6 +339,10 @@ export function ContractDetailPage() {
           approvedTotal={approvedTotal}
           paidTotal={paidTotal}
           approvedVarsTotal={approvedVarsTotal}
+          handoverId={handoverId}
+          handoverPct={handoverPct}
+          onOpenHandover={() => void handleOpenHandover()}
+          handoverStarting={handoverStarting}
         />
       ) : tab === "variations" ? (
         <VariationsTab contract={contract} canManage={canManage} onRefresh={load} />
@@ -297,18 +357,59 @@ export function ContractDetailPage() {
   );
 }
 
+// ── B-HW-7: Completion bar component for contract detail ──────────────────────
+function HandoverCompletionBar({ pct }: { pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const colour =
+    clamped >= 100 ? "#22C55E" : clamped >= 60 ? "#005B61" : clamped >= 30 ? "#FEAA6D" : "#9CA3AF";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        style={{
+          flex: 1,
+          height: 8,
+          borderRadius: 4,
+          background: "var(--border-default, #e5e7eb)",
+          overflow: "hidden"
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${clamped}%`,
+            background: colour,
+            borderRadius: 4,
+            transition: "width 0.3s ease"
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 600, color: colour, minWidth: 32 }}>
+        {clamped}%
+      </span>
+    </div>
+  );
+}
+
 function OverviewTab({
   contract,
   claimedTotal,
   approvedTotal,
   paidTotal,
-  approvedVarsTotal
+  approvedVarsTotal,
+  handoverId,
+  handoverPct,
+  onOpenHandover,
+  handoverStarting
 }: {
   contract: Contract;
   claimedTotal: number;
   approvedTotal: number;
   paidTotal: number;
   approvedVarsTotal: number;
+  handoverId: string | null;
+  handoverPct: number | null;
+  onOpenHandover: () => void;
+  handoverStarting: boolean;
 }) {
   const value = Number(contract.contractValue);
   const revised = value + approvedVarsTotal;
@@ -316,30 +417,66 @@ function OverviewTab({
   const retentionHeld = contract.progressClaims.reduce((s, c) => s + Number((c as unknown as { retentionHeld?: string }).retentionHeld ?? 0), 0);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      <section className="s7-card">
-        <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Contract details</h3>
-        <dl style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8, margin: 0, fontSize: 13 }}>
-          <dt style={{ color: "var(--text-muted)" }}>Contract value</dt><dd>{fmt(contract.contractValue)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Retention %</dt><dd>{Number(contract.retentionPct).toFixed(2)}%</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Start date</dt><dd>{fmtDate(contract.startDate)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>End date</dt><dd>{fmtDate(contract.endDate)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Notes</dt><dd style={{ whiteSpace: "pre-wrap" }}>{contract.notes ?? "—"}</dd>
-        </dl>
-      </section>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <section className="s7-card">
+          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Contract details</h3>
+          <dl style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8, margin: 0, fontSize: 13 }}>
+            <dt style={{ color: "var(--text-muted)" }}>Contract value</dt><dd>{fmt(contract.contractValue)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Retention %</dt><dd>{Number(contract.retentionPct).toFixed(2)}%</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Start date</dt><dd>{fmtDate(contract.startDate)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>End date</dt><dd>{fmtDate(contract.endDate)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Notes</dt><dd style={{ whiteSpace: "pre-wrap" }}>{contract.notes ?? "—"}</dd>
+          </dl>
+        </section>
 
+        <section className="s7-card">
+          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Financial summary</h3>
+          <dl style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 6, margin: 0, fontSize: 13 }}>
+            <dt style={{ color: "var(--text-muted)" }}>Original value</dt><dd>{fmt(contract.contractValue)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Approved variations</dt><dd>{fmt(approvedVarsTotal)}</dd>
+            <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Revised value</dt><dd style={{ fontWeight: 600 }}>{fmt(revised)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Total claimed</dt><dd>{fmt(claimedTotal)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Total approved</dt><dd>{fmt(approvedTotal)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Total paid</dt><dd>{fmt(paidTotal)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Outstanding</dt><dd>{fmt(outstanding)}</dd>
+            <dt style={{ color: "var(--text-muted)" }}>Retention held</dt><dd>{fmt(retentionHeld)}</dd>
+          </dl>
+        </section>
+      </div>
+
+      {/* B-HW-7: Handover wizard status panel */}
       <section className="s7-card">
-        <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Financial summary</h3>
-        <dl style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 6, margin: 0, fontSize: 13 }}>
-          <dt style={{ color: "var(--text-muted)" }}>Original value</dt><dd>{fmt(contract.contractValue)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Approved variations</dt><dd>{fmt(approvedVarsTotal)}</dd>
-          <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Revised value</dt><dd style={{ fontWeight: 600 }}>{fmt(revised)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Total claimed</dt><dd>{fmt(claimedTotal)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Total approved</dt><dd>{fmt(approvedTotal)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Total paid</dt><dd>{fmt(paidTotal)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Outstanding</dt><dd>{fmt(outstanding)}</dd>
-          <dt style={{ color: "var(--text-muted)" }}>Retention held</dt><dd>{fmt(retentionHeld)}</dd>
-        </dl>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h3 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 0 }}>
+            Handover wizard
+          </h3>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            disabled={handoverStarting}
+            onClick={onOpenHandover}
+          >
+            {handoverStarting
+              ? "Starting…"
+              : handoverId
+                ? "Continue handover wizard"
+                : "Start handover wizard"}
+          </button>
+        </div>
+        {handoverPct !== null ? (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 12, color: "var(--text-muted)" }}>
+              Completion
+            </p>
+            <HandoverCompletionBar pct={handoverPct} />
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
+            No handover started yet. Click to begin the wizard and capture handover details
+            before creating the job.
+          </p>
+        )}
       </section>
     </div>
   );

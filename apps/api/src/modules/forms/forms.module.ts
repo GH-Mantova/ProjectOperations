@@ -5,12 +5,15 @@ import { AuditModule } from "../audit/audit.module";
 import { MaintenanceModule } from "../maintenance/maintenance.module";
 import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
 import { PlatformModule } from "../platform/platform.module";
+import { ComplianceModule } from "../compliance/compliance.module";
+import { EmailModule } from "../email/email.module";
 import { FormsController } from "./forms.controller";
 import { FormsService } from "./forms.service";
 import { FormNumberSequenceService } from "./form-number-sequence.service";
 import { FormsEngineController } from "./forms-engine.controller";
 import { FormsEngineService } from "./forms-engine.service";
 import { RulesEngineService } from "./rules-engine.service";
+import { SystemContextResolverService } from "./system-context-resolver.service";
 import { FormsSnippetsController } from "./forms-snippets.controller";
 import { FormsSnippetsService } from "./forms-snippets.service";
 import { CorrectiveActionsController } from "./corrective-actions.controller";
@@ -48,6 +51,8 @@ import { PushHandlersService } from "./push-handlers.service";
     AuditModule,
     PlatformModule,
     PdfRenderingModule,
+    ComplianceModule,
+    EmailModule,
     MaintenanceModule
   ],
   controllers: [
@@ -63,6 +68,7 @@ import { PushHandlersService } from "./push-handlers.service";
     FormNumberSequenceService,
     FormsEngineService,
     RulesEngineService,
+    SystemContextResolverService,
     FormsSnippetsService,
     CorrectiveActionsService,
     InspectionBuilderService,
@@ -71,6 +77,12 @@ import { PushHandlersService } from "./push-handlers.service";
     PushExecutorService,
     PushHandlersService
   ],
-  exports: [RulesEngineService, FormsEngineService, FormsSnippetsService, PushExecutorService]
+  exports: [
+    RulesEngineService,
+    FormsEngineService,
+    FormsSnippetsService,
+    PushExecutorService,
+    SystemContextResolverService
+  ]
 })
 export class FormsModule {}

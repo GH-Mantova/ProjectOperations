@@ -15,6 +15,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { FormsEngineService } from "./forms-engine.service";
+import { SystemContextResolverService } from "./system-context-resolver.service";
 import { PushExecutorService } from "./push-executor.service";
 import {
   CreateDraftDto,
@@ -39,6 +40,7 @@ import {
 export class FormsEngineController {
   constructor(
     private readonly engine: FormsEngineService,
+    private readonly systemContext: SystemContextResolverService,
     private readonly pushExecutor: PushExecutorService
   ) {}
 
@@ -355,5 +357,40 @@ export class FormsEngineController {
   @ApiResponse({ status: 200, description: "{ count, latestSubmittedAt }" })
   preStartsToday() {
     return this.engine.getPreStartsToday();
+  }
+
+  /**
+   * Resolve a one-shot system-context snapshot for a template + caller.
+   *
+   * Returns asset readings, caller's competency expiries, site attributes,
+   * site weather, 7-day timesheet hours, and the caller's role — all in one
+   * batched call (§5.3 "one batched call, not N"). The client caches this
+   * snapshot for local rule evaluation; the server re-resolves fresh at
+   * submit time for any BLOCK decision.
+   *
+   * Optional `siteId` query param narrows the site/weather section.
+   *
+   * @param templateId - the template the filler is about to fill
+   * @param siteId - optional site id for site/weather context
+   * @returns SystemContextSnapshot
+   */
+  @Get("templates/:templateId/system-context")
+  @RequirePermissions("forms.submit")
+  @ApiOperation({
+    summary:
+      "Resolve system context (asset readings, competencies, site, weather, timesheet hours, role) for a template fill session."
+  })
+  @ApiQuery({ name: "siteId", required: false, type: String })
+  @ApiResponse({
+    status: 200,
+    description:
+      "SystemContextSnapshot: { resolvedAt, assetReadings, competencies, site, weather, timesheetHours7d, fillerRole }"
+  })
+  resolveSystemContext(
+    @Param("templateId") templateId: string,
+    @Query("siteId") siteId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.systemContext.resolveContext(templateId, user.sub, siteId);
   }
 }

@@ -33,7 +33,7 @@ describe("computeCalculation (F-4 calculation reducer)", () => {
 });
 
 describe("RulesEngineService.validateValues — terms (F-4)", () => {
-  const svc = new RulesEngineService({} as PrismaService);
+  const svc = new RulesEngineService({} as PrismaService, {} as never, {} as never);
 
   const tpl = {
     sections: [

@@ -1,9 +1,17 @@
-import { RulesEngineService, type Condition, type ConditionGroup } from "./rules-engine.service";
+import {
+  RulesEngineService,
+  type Condition,
+  type ConditionGroup,
+  type SystemCondition,
+  type SystemAction,
+  type SystemActionDeps
+} from "./rules-engine.service";
 import type { PrismaService } from "../../prisma/prisma.service";
+import type { SystemContextSnapshot } from "./system-context-resolver.service";
 
-// PrismaService is only consumed by checkComplianceGates; the rest of the
-// engine is pure. We stub Prisma with a thin mock that lets us exercise the
-// asbestos-qualification gate and otherwise stays out of the way.
+// PrismaService is only consumed by checkComplianceGates and system-action
+// helpers. We stub it with a thin mock so the pure evaluation paths can run
+// without a real DB connection.
 
 function makeService(qualifications: Array<{ qualType: string; expiryDate: Date | null }> = []) {
   const prismaMock = {
@@ -13,9 +21,54 @@ function makeService(qualifications: Array<{ qualType: string; expiryDate: Date 
         internalUserId: "user-1",
         qualifications
       })
+    },
+    user: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null)
+    },
+    formApproval: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: "approval-1" }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
     }
   } as unknown as PrismaService;
-  return new RulesEngineService(prismaMock);
+  const notifMock = {
+    create: jest.fn().mockResolvedValue(undefined)
+  };
+  const emailMock = {
+    sendNotificationEmail: jest.fn().mockResolvedValue(undefined)
+  };
+  return new RulesEngineService(
+    prismaMock,
+    notifMock as never,
+    emailMock as never
+  );
+}
+
+/** Minimal snapshot fixture for system-context condition tests. */
+function makeSnapshot(overrides?: Partial<SystemContextSnapshot>): SystemContextSnapshot {
+  return {
+    resolvedAt: new Date().toISOString(),
+    assetReadings: [],
+    competencies: [],
+    site: null,
+    weather: null,
+    timesheetHours7d: null,
+    fillerRole: null,
+    ...overrides
+  };
+}
+
+/** Minimal deps stub for executeSystemActions. */
+function makeDeps(overrides?: Partial<SystemActionDeps>): SystemActionDeps {
+  return {
+    notifications: { create: jest.fn().mockResolvedValue(undefined) } as never,
+    email: { sendNotificationEmail: jest.fn().mockResolvedValue(undefined) } as never,
+    compliance: { createDeadlineTask: jest.fn().mockResolvedValue("task-1") } as never,
+    pushExecutor: { executePushes: jest.fn().mockResolvedValue(undefined) } as never,
+    ...overrides
+  };
 }
 
 describe("RulesEngineService — evaluateConditionGroup", () => {
@@ -290,5 +343,294 @@ describe("RulesEngineService — collectOnSubmitActions", () => {
 
     const noMatch = svc.collectOnSubmitActions(tpl, { severity: "low" });
     expect(noMatch).toHaveLength(0);
+  });
+});
+
+// ── System-context condition evaluation ────────────────────────────────────
+
+describe("RulesEngineService — evaluateSystemCondition", () => {
+  const svc = makeService();
+
+  it("role_equals: matches when fillerRole equals value", () => {
+    const snapshot = makeSnapshot({ fillerRole: "supervisor" });
+    const cond: SystemCondition = { systemType: "role_equals", value: "supervisor" };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(true);
+  });
+
+  it("role_equals: no match on different role", () => {
+    const snapshot = makeSnapshot({ fillerRole: "worker" });
+    const cond: SystemCondition = { systemType: "role_equals", value: "supervisor" };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("role_equals: null fillerRole returns false", () => {
+    const snapshot = makeSnapshot({ fillerRole: null });
+    const cond: SystemCondition = { systemType: "role_equals", value: "supervisor" };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("timesheet_hours_7d_above: fires when hours exceed threshold", () => {
+    const snapshot = makeSnapshot({ timesheetHours7d: 50 });
+    const cond: SystemCondition = { systemType: "timesheet_hours_7d_above", value: 40 };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(true);
+  });
+
+  it("timesheet_hours_7d_above: false when hours below threshold", () => {
+    const snapshot = makeSnapshot({ timesheetHours7d: 30 });
+    const cond: SystemCondition = { systemType: "timesheet_hours_7d_above", value: 40 };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("timesheet_hours_7d_above: false when timesheetHours7d is null", () => {
+    const snapshot = makeSnapshot({ timesheetHours7d: null });
+    const cond: SystemCondition = { systemType: "timesheet_hours_7d_above", value: 40 };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("competency_expired: true when any competency is expired", () => {
+    const snapshot = makeSnapshot({
+      competencies: [
+        {
+          competencyId: "c1",
+          competencyName: "First Aid",
+          competencyCode: null,
+          achievedAt: null,
+          expiresAt: new Date("2000-01-01"),
+          isExpired: true
+        }
+      ]
+    });
+    const cond: SystemCondition = { systemType: "competency_expired" };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(true);
+  });
+
+  it("competency_expired: false when no competencies are expired", () => {
+    const snapshot = makeSnapshot({
+      competencies: [
+        {
+          competencyId: "c1",
+          competencyName: "First Aid",
+          competencyCode: null,
+          achievedAt: null,
+          expiresAt: new Date("2099-01-01"),
+          isExpired: false
+        }
+      ]
+    });
+    const cond: SystemCondition = { systemType: "competency_expired" };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("competency_expiring_within_days: fires for a competency expiring inside window", () => {
+    const soon = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000); // 5 days from now
+    const snapshot = makeSnapshot({
+      competencies: [
+        {
+          competencyId: "c1",
+          competencyName: "First Aid",
+          competencyCode: null,
+          achievedAt: null,
+          expiresAt: soon,
+          isExpired: false
+        }
+      ]
+    });
+    const cond: SystemCondition = {
+      systemType: "competency_expiring_within_days",
+      value: 7
+    };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(true);
+  });
+
+  it("competency_expiring_within_days: false when outside window", () => {
+    const distant = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // 60 days out
+    const snapshot = makeSnapshot({
+      competencies: [
+        {
+          competencyId: "c1",
+          competencyName: "First Aid",
+          competencyCode: null,
+          achievedAt: null,
+          expiresAt: distant,
+          isExpired: false
+        }
+      ]
+    });
+    const cond: SystemCondition = {
+      systemType: "competency_expiring_within_days",
+      value: 7
+    };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("weather_temperature_above: fires when temp exceeds threshold", () => {
+    const snapshot = makeSnapshot({
+      weather: {
+        unavailable: false,
+        site: { id: "s1", name: "Site", postcode: null, suburb: null, state: null },
+        current: { temperatureC: 38, windKph: null, weatherCode: null, observedAt: new Date().toISOString() },
+        forecast: [],
+        cachedAt: new Date().toISOString(),
+        source: "open-meteo"
+      }
+    });
+    const cond: SystemCondition = { systemType: "weather_temperature_above", value: 35 };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(true);
+  });
+
+  it("weather_temperature_above: false when weather unavailable", () => {
+    const snapshot = makeSnapshot({
+      weather: {
+        unavailable: true,
+        site: { id: "s1", name: "Site", postcode: null, suburb: null, state: null },
+        reason: "no address"
+      }
+    });
+    const cond: SystemCondition = { systemType: "weather_temperature_above", value: 35 };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("asset_reading_km_above: false when currentKm is null (schema gap)", () => {
+    const snapshot = makeSnapshot({
+      assetReadings: [
+        { assetId: "a1", assetCode: "T-001", assetName: "Truck", currentKm: null, currentHours: null }
+      ]
+    });
+    const cond: SystemCondition = { systemType: "asset_reading_km_above", assetId: "a1", value: 100 };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+
+  it("site_attribute_equals: matches state", () => {
+    const snapshot = makeSnapshot({
+      site: {
+        siteId: "s1",
+        name: "Site A",
+        suburb: "Brisbane",
+        state: "QLD",
+        postcode: "4000",
+        centreLat: null,
+        centreLng: null
+      }
+    });
+    const cond: SystemCondition = { systemType: "site_attribute_equals", attributeKey: "state", value: "QLD" };
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(true);
+  });
+
+  it("unknown system condition type returns false without throwing", () => {
+    const snapshot = makeSnapshot();
+    const cond = { systemType: "unknown_type" } as unknown as SystemCondition;
+    expect(() => svc.evaluateSystemCondition(cond, snapshot)).not.toThrow();
+    expect(svc.evaluateSystemCondition(cond, snapshot)).toBe(false);
+  });
+});
+
+// ── System action execution ────────────────────────────────────────────────
+
+describe("RulesEngineService — executeSystemActions", () => {
+  const svc = makeService();
+  const submission = {
+    id: "sub-1",
+    submittedById: "user-1",
+    context: { supervisorId: "user-sup" }
+  };
+
+  it("alert action: calls notifications.create for resolved recipients", async () => {
+    const deps = makeDeps();
+    const actions: SystemAction[] = [
+      {
+        type: "alert",
+        alertTargets: ["supervisor"],
+        alertMessage: "Alert for {field_a}",
+        alertSubject: "Test alert"
+      }
+    ];
+    const snapshot = makeSnapshot();
+    await svc.executeSystemActions(actions, submission, { field_a: "value-X" }, snapshot, deps);
+    // Supervisor id is in context; notification should fire
+    expect((deps.notifications.create as jest.Mock)).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-sup" }),
+      "user-1"
+    );
+  });
+
+  it("alert action with no targets: skips without error", async () => {
+    const deps = makeDeps();
+    const actions: SystemAction[] = [{ type: "alert", alertTargets: [] }];
+    const snapshot = makeSnapshot();
+    await expect(
+      svc.executeSystemActions(actions, submission, {}, snapshot, deps)
+    ).resolves.not.toThrow();
+    expect((deps.notifications.create as jest.Mock)).not.toHaveBeenCalled();
+  });
+
+  it("deadline_task action: calls compliance.createDeadlineTask", async () => {
+    const deps = makeDeps();
+    const actions: SystemAction[] = [
+      {
+        type: "deadline_task",
+        deadlineTaskTitle: "WorkSafe 24h report",
+        deadlineHours: 24,
+        deadlineAssignToRole: "supervisor"
+      }
+    ];
+    const snapshot = makeSnapshot();
+    await svc.executeSystemActions(actions, submission, {}, snapshot, deps);
+    expect((deps.compliance.createDeadlineTask as jest.Mock)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        submissionId: "sub-1",
+        title: "WorkSafe 24h report",
+        deadlineHours: 24,
+        assignedToId: "user-sup"
+      })
+    );
+  });
+
+  it("push action: calls pushExecutor.executePushes", async () => {
+    const deps = makeDeps();
+    const actions: SystemAction[] = [
+      { type: "push", pushBindingId: "binding-1" }
+    ];
+    const snapshot = makeSnapshot();
+    await svc.executeSystemActions(actions, submission, {}, snapshot, deps);
+    expect((deps.pushExecutor.executePushes as jest.Mock)).toHaveBeenCalledWith("sub-1", "submit");
+  });
+
+  it("approval_chain_modify insert: calls formApproval.create", async () => {
+    const prismaMock = {
+      workerProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+      user: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null) },
+      formApproval: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "approval-new" }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
+    } as unknown as import("../../prisma/prisma.service").PrismaService;
+    const notifMock = { create: jest.fn().mockResolvedValue(undefined) };
+    const emailMock = { sendNotificationEmail: jest.fn().mockResolvedValue(undefined) };
+    const localSvc = new RulesEngineService(prismaMock, notifMock as never, emailMock as never);
+
+    const deps = makeDeps();
+    const actions: SystemAction[] = [
+      {
+        type: "approval_chain_modify",
+        approvalStep: { op: "insert", stepNumber: 2, assignToRole: "manager", dueHours: 48 }
+      }
+    ];
+    await localSvc.executeSystemActions(actions, submission, {}, makeSnapshot(), deps);
+    expect(prismaMock.formApproval.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ submissionId: "sub-1", stepNumber: 2 })
+      })
+    );
+  });
+
+  it("unknown action type is logged and does not throw", async () => {
+    const deps = makeDeps();
+    const actions = [{ type: "unknown_action" }] as unknown as SystemAction[];
+    const snapshot = makeSnapshot();
+    await expect(
+      svc.executeSystemActions(actions, submission, {}, snapshot, deps)
+    ).resolves.not.toThrow();
   });
 });

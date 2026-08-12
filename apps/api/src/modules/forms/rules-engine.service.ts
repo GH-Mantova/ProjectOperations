@@ -1,5 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { NotificationsService } from "../platform/notifications.service";
+import { EmailService } from "../email/email.service";
 import {
   evaluateCondition as sharedEvaluateCondition,
   evaluateConditionGroup as sharedEvaluateConditionGroup
@@ -13,6 +15,9 @@ import type {
   RuleActionType,
   SectionEntriesMap
 } from "@project-ops/config/forms-rule-definition";
+import type { SystemContextSnapshot } from "./system-context-resolver.service";
+import type { ComplianceService } from "../compliance/compliance.service";
+import type { PushExecutorService } from "./push-executor.service";
 
 // Re-export the shared types so existing imports from this module still work
 // (e.g. the spec file: `import type { Condition, ConditionGroup } from "./rules-engine.service"`).
@@ -34,6 +39,92 @@ export interface ValidationRule {
 }
 
 type ValueMap = Record<string, unknown>;
+
+// ── System-context condition / action extensions (server-only) ─────────────
+//
+// The shared @project-ops/config/forms-rule-definition package defines the
+// core condition operators and action types used by both server and client.
+// The following types extend the contract for server-only system-context
+// evaluation — they are evaluated against the SystemContextSnapshot resolved
+// at submit time and are never sent to the client for local evaluation.
+
+/**
+ * System-context condition types evaluated server-side from the snapshot.
+ * These are stored in FormRule.definition alongside the standard field
+ * conditions and are only evaluated by the server.
+ */
+export type SystemConditionType =
+  | "asset_reading_km_above"
+  | "asset_reading_hours_above"
+  | "competency_expiring_within_days"
+  | "competency_expired"
+  | "site_attribute_equals"
+  | "weather_temperature_above"
+  | "weather_temperature_below"
+  | "timesheet_hours_7d_above"
+  | "role_equals";
+
+/** A system-context condition node stored as part of a FormRule definition. */
+export interface SystemCondition {
+  systemType: SystemConditionType;
+  /** asset id for asset reading conditions. */
+  assetId?: string;
+  /** competency id or code for competency conditions. */
+  competencyId?: string;
+  /** site attribute key for site_attribute_equals. */
+  attributeKey?: string;
+  /** comparison value (numeric threshold, string value, etc.). */
+  value?: unknown;
+}
+
+/**
+ * Server-only action types extending the shared RuleActionType.
+ * These are dispatched by executeSystemActions in FormsEngineService.
+ */
+export type ServerActionType =
+  | "alert"           // in-app + email notification with answer tokens
+  | "approval_chain_modify"  // mutate FormApproval chain
+  | "push"            // passthrough into PushExecutorService
+  | "deadline_task";  // WorkSafe-clock corrective action via ComplianceService
+
+/**
+ * Extended server-only action for system-context rules.
+ * Stored in FormRule.definition as a JSON blob.
+ */
+export interface SystemAction {
+  type: ServerActionType;
+  // --- alert ---
+  /** Recipients for alert: role names or user ids. */
+  alertTargets?: string[];
+  /** Message template; {fieldKey} tokens are replaced with the submitted value. */
+  alertMessage?: string;
+  alertSubject?: string;
+  // --- approval_chain_modify ---
+  /** Step to insert/remove/reassign (by stepNumber). */
+  approvalStep?: {
+    op: "insert" | "remove" | "reassign";
+    stepNumber: number;
+    assignToUserId?: string;
+    assignToRole?: string;
+    dueHours?: number;
+  };
+  // --- push ---
+  /** Binding id to execute (delegates to PushExecutorService). */
+  pushBindingId?: string;
+  // --- deadline_task ---
+  deadlineTaskTitle?: string;
+  deadlineTaskDescription?: string;
+  deadlineHours?: number;
+  deadlineAssignToRole?: string;
+}
+
+/** Dependencies injected into RulesEngineService by FormsEngineService for system actions. */
+export interface SystemActionDeps {
+  notifications: NotificationsService;
+  email: EmailService;
+  compliance: ComplianceService;
+  pushExecutor: PushExecutorService;
+}
 
 // Local helpers used by validateValues; the condition/group evaluators live in
 // @project-ops/config/forms-rule-definition so server and client cannot drift.
@@ -66,7 +157,11 @@ function isEmpty(v: unknown): boolean {
 export class RulesEngineService {
   private readonly logger = new Logger(RulesEngineService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly email: EmailService
+  ) {}
 
   // ── Evaluation ─────────────────────────────────────────────────────────
 
@@ -372,6 +467,318 @@ export class RulesEngineService {
       }
     }
     return { valid: Object.keys(errors).length === 0, errors };
+  }
+
+  // ── System-context condition evaluation ────────────────────────────────
+
+  /**
+   * Evaluate a SystemCondition against a resolved SystemContextSnapshot.
+   *
+   * Called server-side at submit time (re-resolved fresh — never trusts the
+   * client snapshot for BLOCK decisions). Returns false for unknown condition
+   * types so misconfigured rules fail safe.
+   */
+  evaluateSystemCondition(
+    cond: SystemCondition,
+    snapshot: SystemContextSnapshot
+  ): boolean {
+    switch (cond.systemType) {
+      case "asset_reading_km_above": {
+        const threshold = typeof cond.value === "number" ? cond.value : Number(cond.value);
+        if (!Number.isFinite(threshold)) return false;
+        const asset = cond.assetId
+          ? snapshot.assetReadings.find((a) => a.assetId === cond.assetId)
+          : null;
+        if (!asset || asset.currentKm == null) return false;
+        return asset.currentKm > threshold;
+      }
+      case "asset_reading_hours_above": {
+        const threshold = typeof cond.value === "number" ? cond.value : Number(cond.value);
+        if (!Number.isFinite(threshold)) return false;
+        const asset = cond.assetId
+          ? snapshot.assetReadings.find((a) => a.assetId === cond.assetId)
+          : null;
+        if (!asset || asset.currentHours == null) return false;
+        return asset.currentHours > threshold;
+      }
+      case "competency_expiring_within_days": {
+        const days = typeof cond.value === "number" ? cond.value : Number(cond.value);
+        if (!Number.isFinite(days)) return false;
+        const cutoff = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        return snapshot.competencies.some((c) => {
+          if (cond.competencyId && c.competencyId !== cond.competencyId) return false;
+          if (!c.expiresAt) return false;
+          return new Date(c.expiresAt) <= cutoff;
+        });
+      }
+      case "competency_expired": {
+        return snapshot.competencies.some((c) => {
+          if (cond.competencyId && c.competencyId !== cond.competencyId) return false;
+          return c.isExpired;
+        });
+      }
+      case "site_attribute_equals": {
+        if (!cond.attributeKey || !snapshot.site) return false;
+        const siteAttr = (snapshot.site as Record<string, unknown>)[cond.attributeKey];
+        return String(siteAttr ?? "") === String(cond.value ?? "");
+      }
+      case "weather_temperature_above": {
+        if (!snapshot.weather || snapshot.weather.unavailable) return false;
+        const temp = snapshot.weather.current?.temperatureC;
+        if (temp == null) return false;
+        const threshold = typeof cond.value === "number" ? cond.value : Number(cond.value);
+        return Number.isFinite(threshold) && temp > threshold;
+      }
+      case "weather_temperature_below": {
+        if (!snapshot.weather || snapshot.weather.unavailable) return false;
+        const temp = snapshot.weather.current?.temperatureC;
+        if (temp == null) return false;
+        const threshold = typeof cond.value === "number" ? cond.value : Number(cond.value);
+        return Number.isFinite(threshold) && temp < threshold;
+      }
+      case "timesheet_hours_7d_above": {
+        if (snapshot.timesheetHours7d == null) return false;
+        const threshold = typeof cond.value === "number" ? cond.value : Number(cond.value);
+        return Number.isFinite(threshold) && snapshot.timesheetHours7d > threshold;
+      }
+      case "role_equals": {
+        if (!snapshot.fillerRole) return false;
+        return snapshot.fillerRole === String(cond.value ?? "");
+      }
+      default:
+        this.logger.warn(`Unknown system condition type: ${(cond as SystemCondition).systemType}`);
+        return false;
+    }
+  }
+
+  // ── System action executors ────────────────────────────────────────────
+
+  /**
+   * Execute a list of server-only system actions produced by matching
+   * FormRule.definition nodes.
+   *
+   * Called by FormsEngineService after submit/approval. Failures are logged
+   * and swallowed — the submission save is never rolled back.
+   *
+   * @param actions - system action nodes from FormRule.definition
+   * @param submission - the committed submission (id + context + submittedById)
+   * @param values - flat field-value map for token substitution
+   * @param snapshot - freshly re-resolved server snapshot (BLOCK-safe)
+   * @param deps - services injected by FormsEngineService (avoids circular DI)
+   */
+  async executeSystemActions(
+    actions: SystemAction[],
+    submission: {
+      id: string;
+      submittedById: string | null;
+      context: unknown;
+    },
+    values: ValueMap,
+    snapshot: SystemContextSnapshot,
+    deps: SystemActionDeps
+  ): Promise<void> {
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case "alert":
+            await this.executeAlertAction(action, submission, values, deps);
+            break;
+          case "approval_chain_modify":
+            await this.executeApprovalChainModify(action, submission.id);
+            break;
+          case "push":
+            await this.executePushAction(action, submission.id, deps);
+            break;
+          case "deadline_task":
+            await this.executeDeadlineTask(action, submission, snapshot, deps);
+            break;
+          default:
+            this.logger.warn(
+              `Unknown system action type: ${(action as SystemAction).type}`
+            );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `System action ${action.type} failed for submission ${submission.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+
+  private resolveTokens(template: string, values: ValueMap): string {
+    return template.replace(/\{(\w+)\}/g, (_, key: string) => {
+      const val = values[key];
+      return val != null ? String(val) : "";
+    });
+  }
+
+  private async executeAlertAction(
+    action: SystemAction,
+    submission: { id: string; submittedById: string | null },
+    values: ValueMap,
+    deps: SystemActionDeps
+  ): Promise<void> {
+    const message = action.alertMessage
+      ? this.resolveTokens(action.alertMessage, values)
+      : "A form rule alert was triggered.";
+    const subject = action.alertSubject
+      ? this.resolveTokens(action.alertSubject, values)
+      : "Form alert";
+
+    const targets = action.alertTargets ?? [];
+    if (targets.length === 0) {
+      this.logger.debug(`alert action on ${submission.id} has no targets — skipped`);
+      return;
+    }
+
+    const recipientIds: string[] = [];
+    for (const target of targets) {
+      if (target === "supervisor" || target === "project_manager" || target === "safety_admin") {
+        // Resolve from submission context
+        const ctx = (submission as { id: string; submittedById: string | null; context?: unknown })
+          .context as Record<string, string | undefined> | undefined ?? {};
+        if (target === "supervisor" && ctx.supervisorId) recipientIds.push(ctx.supervisorId);
+        else if (target === "project_manager" && ctx.projectManagerId)
+          recipientIds.push(ctx.projectManagerId);
+        else if (target === "safety_admin") {
+          const admins = await this.prisma.user.findMany({
+            where: {
+              userRoles: {
+                some: {
+                  role: { rolePermissions: { some: { permission: { code: "safety.admin" } } } }
+                }
+              }
+            },
+            select: { id: true }
+          });
+          recipientIds.push(...admins.map((u) => u.id));
+        }
+      } else {
+        // Treat as a literal user id
+        const user = await this.prisma.user.findUnique({
+          where: { id: target },
+          select: { id: true }
+        });
+        if (user) recipientIds.push(user.id);
+      }
+    }
+
+    const unique = Array.from(new Set(recipientIds));
+    for (const userId of unique) {
+      void deps.notifications
+        .create(
+          {
+            userId,
+            title: subject,
+            body: message,
+            severity: "warning",
+            linkUrl: `/forms/submissions/${submission.id}`
+          },
+          submission.submittedById ?? undefined
+        )
+        .catch(() => undefined);
+    }
+
+    // Email alert (fire-and-forget — email failures must never block a submission)
+    void deps.email
+      .sendNotificationEmail({
+        trigger: "forms.rule.alert",
+        subject,
+        html: `<p>${message}</p><p><a href="/forms/submissions/${submission.id}">View submission</a></p>`,
+        text: `${message}\n\nView at /forms/submissions/${submission.id}`
+      })
+      .catch(() => undefined);
+  }
+
+  private async executeApprovalChainModify(
+    action: SystemAction,
+    submissionId: string
+  ): Promise<void> {
+    const step = action.approvalStep;
+    if (!step) {
+      this.logger.debug(
+        `approval_chain_modify on ${submissionId} has no step config — skipped`
+      );
+      return;
+    }
+    if (step.op === "insert") {
+      const existing = await this.prisma.formApproval.findFirst({
+        where: { submissionId, stepNumber: step.stepNumber }
+      });
+      if (!existing) {
+        await this.prisma.formApproval.create({
+          data: {
+            submissionId,
+            stepNumber: step.stepNumber,
+            assignedToId: step.assignToUserId ?? null,
+            assignedToRole: step.assignToRole ?? null,
+            status: "pending",
+            dueAt: step.dueHours
+              ? new Date(Date.now() + step.dueHours * 60 * 60 * 1000)
+              : null
+          }
+        });
+      }
+    } else if (step.op === "remove") {
+      await this.prisma.formApproval.deleteMany({
+        where: { submissionId, stepNumber: step.stepNumber, status: "pending" }
+      });
+    } else if (step.op === "reassign") {
+      await this.prisma.formApproval.updateMany({
+        where: { submissionId, stepNumber: step.stepNumber, status: "pending" },
+        data: {
+          assignedToId: step.assignToUserId ?? null,
+          assignedToRole: step.assignToRole ?? null
+        }
+      });
+    }
+  }
+
+  private async executePushAction(
+    action: SystemAction,
+    submissionId: string,
+    deps: SystemActionDeps
+  ): Promise<void> {
+    if (!action.pushBindingId) {
+      this.logger.debug(`push action on ${submissionId} has no pushBindingId — skipped`);
+      return;
+    }
+    // Delegate to the existing PushExecutorService; use "submit" as the applyOn
+    // stage so it picks up the binding if enabled. The executor is idempotent —
+    // a FormTriggeredRecord dedup guard prevents double-writes.
+    await deps.pushExecutor.executePushes(submissionId, "submit");
+  }
+
+  private async executeDeadlineTask(
+    action: SystemAction,
+    submission: { id: string; submittedById: string | null; context: unknown },
+    snapshot: SystemContextSnapshot,
+    deps: SystemActionDeps
+  ): Promise<void> {
+    const ctx = (submission.context ?? {}) as Record<string, string | undefined>;
+    const title = action.deadlineTaskTitle ?? "WorkSafe deadline task";
+    const deadlineHours = action.deadlineHours ?? 24;
+
+    // Resolve assignee: prefer explicit role mapping from context
+    let assignedToId: string | null = null;
+    if (action.deadlineAssignToRole === "supervisor" && ctx.supervisorId) {
+      assignedToId = ctx.supervisorId;
+    } else if (action.deadlineAssignToRole === "project_manager" && ctx.projectManagerId) {
+      assignedToId = ctx.projectManagerId;
+    }
+
+    await deps.compliance.createDeadlineTask({
+      submissionId: submission.id,
+      title,
+      description: action.deadlineTaskDescription ?? null,
+      deadlineHours,
+      assignedToId
+    });
+
+    // Suppress unused snapshot lint — kept for future condition-driven assignment
+    void snapshot;
   }
 
   // ── Compliance gates ───────────────────────────────────────────────────

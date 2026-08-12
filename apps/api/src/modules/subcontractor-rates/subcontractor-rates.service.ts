@@ -163,4 +163,91 @@ export class SubcontractorRatesService {
       data: { isActive: false, updatedById: actorId }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Hub view — all vendors grouped by vendor type (S1)
+  // ---------------------------------------------------------------------------
+  //
+  // Returns an array of vendor-type groups, each containing their vendors and
+  // each vendor's SubcontractorRate rows. Vendors with no vendorTypeId fall into
+  // a trailing "Untyped" group.
+  //
+  // entityType filter: "subcontractor" | "supplier" | undefined (all).
+
+  async hubView(entityType?: string) {
+    const where =
+      entityType ? { entityType, isActive: true } : { isActive: true };
+
+    const vendors = await this.prisma.subcontractorSupplier.findMany({
+      where,
+      include: {
+        vendorType: { select: { id: true, label: true } },
+        subcontractorRates: {
+          orderBy: [{ discipline: "asc" }, { createdAt: "desc" }]
+        }
+      },
+      orderBy: { name: "asc" }
+    });
+
+    // Group by type, collecting typed vendors first, untyped last.
+    const typeMap = new Map<
+      string,
+      { typeId: string; typeLabel: string; vendors: (typeof vendors) }
+    >();
+    const untyped: (typeof vendors) = [];
+
+    for (const vendor of vendors) {
+      if (vendor.vendorType) {
+        const existing = typeMap.get(vendor.vendorType.id);
+        if (existing) {
+          existing.vendors.push(vendor);
+        } else {
+          typeMap.set(vendor.vendorType.id, {
+            typeId: vendor.vendorType.id,
+            typeLabel: vendor.vendorType.label,
+            vendors: [vendor]
+          });
+        }
+      } else {
+        untyped.push(vendor);
+      }
+    }
+
+    const mapVendor = (vendor: (typeof vendors)[number]) => ({
+      id: vendor.id,
+      name: vendor.name,
+      entityType: vendor.entityType,
+      rates: vendor.subcontractorRates.map((r) => ({
+        id: r.id,
+        discipline: r.discipline,
+        unit: r.unit,
+        rate: r.rate.toString(),
+        validFrom: r.validFrom ? r.validFrom.toISOString().slice(0, 10) : null,
+        validTo: r.validTo ? r.validTo.toISOString().slice(0, 10) : null,
+        isActive: r.isActive
+      }))
+    });
+
+    type HubGroup = {
+      typeId: string | null;
+      typeLabel: string;
+      vendors: ReturnType<typeof mapVendor>[];
+    };
+
+    const groups: HubGroup[] = Array.from(typeMap.values()).map((group) => ({
+      typeId: group.typeId,
+      typeLabel: group.typeLabel,
+      vendors: group.vendors.map(mapVendor)
+    }));
+
+    if (untyped.length > 0) {
+      groups.push({
+        typeId: null,
+        typeLabel: "Untyped",
+        vendors: untyped.map(mapVendor)
+      });
+    }
+
+    return groups;
+  }
 }

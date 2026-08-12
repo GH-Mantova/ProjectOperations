@@ -4113,6 +4113,24 @@ export async function seedBusinessDirectoryDemos(prisma: PrismaClient): Promise<
     });
   }
 
+  // ─── S1: Link Cutrite to concrete-cutters vendor type ─────────────────
+  // vendor-types GlobalList is seeded in seedGlobalLists (seed-reference.ts).
+  // We look it up here and attach it to Cutrite so the hub tab has data out-of-the-box.
+  const vendorTypesItem = await prisma.globalListItem.findFirst({
+    where: {
+      list: { slug: "vendor-types" },
+      value: "concrete-cutters",
+      isArchived: false
+    },
+    select: { id: true }
+  });
+  if (vendorTypesItem) {
+    await prisma.subcontractorSupplier.update({
+      where: { id: "sub-cutrite" },
+      data: { vendorTypeId: vendorTypesItem.id }
+    });
+  }
+
   // ─── Demo compliance data (PR #79) ────────────────────────────────────
   // Relative dates so the demo always looks current. All upserts → idempotent.
   const today = new Date();

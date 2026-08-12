@@ -10401,6 +10401,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "subcontractorVendors": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -20957,6 +20963,18 @@
           "role": "time",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "vendorTypeId": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "vendorType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         },
         "createdAt": {

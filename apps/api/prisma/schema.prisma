@@ -6375,6 +6375,16 @@ enum OpportunityStage {
   archived
 }
 
+// CRM-3: how the lead arrived at the front door.
+enum LeadCaptureChannel {
+  email
+  phone
+  portal
+  referral
+  cold_outreach
+  other
+}
+
 enum OpportunitySource {
   referral
   direct
@@ -6411,6 +6421,11 @@ model Opportunity {
   // true for records that entered the pipeline via the Leads surface.
   isLead Boolean @default(false) @map("is_lead")
 
+  // CRM-3: multi-source capture channel (how the lead arrived).
+  captureChannel LeadCaptureChannel? @map("capture_channel")
+  // Free-text detail for the capture event (e.g. email subject, referrer name).
+  captureDetail  String?             @map("capture_detail")
+
   clientId  String   @map("client_id")
   client    Client   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
   contactId String?  @map("contact_id")
@@ -6418,6 +6433,10 @@ model Opportunity {
 
   ownerId String? @map("owner_id")
   owner   User?   @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // CRM-3: optional Account link. Auto-created as PROSPECT on lead capture if absent.
+  accountId String?  @map("account_id")
+  account   Account? @relation("OpportunityAccount", fields: [accountId], references: [id], onDelete: SetNull)
 
   expectedCloseDate DateTime? @map("expected_close_date")
   nextActionAt      DateTime? @map("next_action_at")
@@ -6445,6 +6464,7 @@ model Opportunity {
   @@index([stage])
   @@index([ownerId])
   @@index([clientId])
+  @@index([accountId])
   @@index([expectedCloseDate])
   @@index([nextActionAt])
   @@map("opportunities")
@@ -7122,6 +7142,9 @@ model Account {
   archivedBy      User?                  @relation("AccountArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  // CRM-3: leads and opportunities linked to this account.
+  opportunities   Opportunity[]          @relation("OpportunityAccount")
 
   @@index([lifecycleStatus])
   @@index([archivedAt])

@@ -204,7 +204,7 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
         Start-Sleep -Seconds $PollSec
         try {
             $node = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-                      Where-Object { $_.CommandLine -match 'pr-watcher[\\/]index\.mjs' })
+                      Where-Object { $_.CommandLine -match ([regex]::Escape((Join-Path (Split-Path $Heartbeat) 'index.mjs'))) })
             if ($node.Count -eq 0) { continue }                       # no node: the main loop is (re)starting it
             $armed = @(Get-ChildItem (Join-Path $PromptDir '*-ready.md') -File -ErrorAction SilentlyContinue)
             if ($armed.Count -eq 0) { continue }                      # empty queue: a stale heartbeat is legitimate idle
@@ -293,7 +293,7 @@ while ($true) {
             while ($true) {
                 Start-Sleep -Seconds $adoptPollSec
                 $alive = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-                           Where-Object { $_.CommandLine -match "pr-watcher[\\/]index\.mjs" })
+                           Where-Object { $_.CommandLine -match ([regex]::Escape((Join-Path $env:PR_WATCHER_REPO_ROOT "scripts\pr-watcher\index.mjs"))) })
                 if ($alive.Count -eq 0) {
                     Sup-Log "ADOPT: the adopted watcher has exited. Starting a fresh one."
                     break

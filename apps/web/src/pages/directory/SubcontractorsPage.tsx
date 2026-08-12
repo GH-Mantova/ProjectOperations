@@ -74,6 +74,8 @@ type SubcontractorDetail = Subcontractor & {
   prequalNotes: string | null;
   swmsOnFile: boolean;
   internalNotes: string | null;
+  // S2 vendor delete safeguard — populated by the API when set.
+  archivedAt: string | null;
 };
 
 const DOCUMENT_TYPES: Array<{ value: string; label: string }> = [
@@ -128,6 +130,8 @@ export function SubcontractorsPage() {
   const confirm = useConfirm();
   const canManage = can(user, "directory.manage");
   const canAdmin = can(user, "directory.admin");
+  const canManageRates = can(user, "rates.manage");
+  const isSuperUser = user?.isSuperUser === true;
 
   const [items, setItems] = useState<Subcontractor[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -391,6 +395,8 @@ export function SubcontractorsPage() {
                 id={selectedId}
                 canManage={canManage}
                 canAdmin={canAdmin}
+                canManageRates={canManageRates}
+                isSuperUser={isSuperUser}
                 onClose={() => setSelectedId(null)}
                 onChanged={() => {
                   void loadList();
@@ -420,12 +426,16 @@ function SubcontractorDetail({
   id,
   canManage,
   canAdmin,
+  canManageRates,
+  isSuperUser,
   onClose,
   onChanged
 }: {
   id: string;
   canManage: boolean;
   canAdmin: boolean;
+  canManageRates: boolean;
+  isSuperUser: boolean;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -532,6 +542,50 @@ function SubcontractorDetail({
     });
     if (!ok) return;
     const response = await authFetch(`/directory/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError(await readApiErrorMessage(response));
+      return;
+    }
+    onChanged();
+    onClose();
+  };
+
+  const archiveVendor = async () => {
+    const ok = await confirm({
+      title: "Archive vendor?",
+      message: "Archive this vendor from the rate hub? It stays searchable and can be restored later.",
+      confirmLabel: "Archive"
+    });
+    if (!ok) return;
+    const response = await authFetch(`/subcontractors/${id}/archive`, { method: "PATCH" });
+    if (!response.ok) {
+      setError(await readApiErrorMessage(response));
+      return;
+    }
+    await load();
+    onChanged();
+  };
+
+  const unarchiveVendor = async () => {
+    const response = await authFetch(`/subcontractors/${id}/unarchive`, { method: "PATCH" });
+    if (!response.ok) {
+      setError(await readApiErrorMessage(response));
+      return;
+    }
+    await load();
+    onChanged();
+  };
+
+  const hardDeleteVendor = async () => {
+    const ok = await confirm({
+      title: "Permanently delete vendor?",
+      message:
+        "This is IRREVERSIBLE. All rate rows will be deleted. If any active commitments still reference this vendor, the delete will be blocked — archive instead.",
+      confirmLabel: "Delete permanently",
+      variant: "danger"
+    });
+    if (!ok) return;
+    const response = await authFetch(`/subcontractors/${id}`, { method: "DELETE" });
     if (!response.ok) {
       setError(await readApiErrorMessage(response));
       return;
@@ -774,6 +828,56 @@ function SubcontractorDetail({
           </>
         ) : null}
       </div>
+
+      {canManageRates ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: "1px solid var(--border, #e5e7eb)"
+          }}
+        >
+          {detail.archivedAt ? (
+            <>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "center" }}>
+                Archived {fmtDate(detail.archivedAt)}
+              </span>
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                data-testid="vendor-restore"
+                onClick={() => void unarchiveVendor()}
+              >
+                Restore
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              data-testid="vendor-archive"
+              onClick={() => void archiveVendor()}
+            >
+              Archive vendor
+            </button>
+          )}
+          {isSuperUser ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              data-testid="vendor-hard-delete"
+              onClick={() => void hardDeleteVendor()}
+              style={{ marginLeft: "auto", color: "var(--status-danger)" }}
+              title="Blocked while any active commitment still references this vendor."
+            >
+              Permanently delete
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {docModalOpen ? (
         <DocumentUploadModal

@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import { CreateDropReasonDto } from "./dto/create-drop-reason.dto";
+import { UpdateDropReasonDto } from "./dto/update-drop-reason.dto";
 import {
   OpportunitySource,
   OpportunityStage,
@@ -568,6 +570,56 @@ export class CrmService {
         weightedValue: totalWeighted
       }
     };
+  }
+
+  // ── DropReason CRUD ──────────────────────────────────────────────────────
+
+  async listDropReasons() {
+    return this.prisma.dropReason.findMany({
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }]
+    });
+  }
+
+  async createDropReason(dto: CreateDropReasonDto) {
+    const existing = await this.prisma.dropReason.findUnique({
+      where: { label: dto.label },
+      select: { id: true }
+    });
+    if (existing) {
+      throw new ConflictException(`A drop reason with label "${dto.label}" already exists.`);
+    }
+    return this.prisma.dropReason.create({
+      data: {
+        label: dto.label,
+        sortOrder: dto.sortOrder ?? 0
+      }
+    });
+  }
+
+  async updateDropReason(id: string, dto: UpdateDropReasonDto) {
+    const existing = await this.prisma.dropReason.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`DropReason ${id} not found.`);
+
+    const data: Record<string, unknown> = {};
+    if (dto.label !== undefined) data["label"] = dto.label;
+    if (dto.sortOrder !== undefined) data["sortOrder"] = dto.sortOrder;
+    if (dto.isActive !== undefined) data["isActive"] = dto.isActive;
+
+    return this.prisma.dropReason.update({ where: { id }, data });
+  }
+
+  async deleteDropReason(id: string) {
+    const existing = await this.prisma.dropReason.findUnique({
+      where: { id },
+      include: { _count: { select: { opportunities: true } } }
+    });
+    if (!existing) throw new NotFoundException(`DropReason ${id} not found.`);
+    if (existing._count.opportunities > 0) {
+      throw new ConflictException(
+        `DropReason ${id} is referenced by ${existing._count.opportunities} opportunity(s) and cannot be deleted.`
+      );
+    }
+    await this.prisma.dropReason.delete({ where: { id } });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

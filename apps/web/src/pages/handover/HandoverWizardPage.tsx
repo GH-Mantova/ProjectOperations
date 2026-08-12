@@ -11,16 +11,28 @@
  * - Field rendering dispatches on field.type (text, money, date, list, attachment, contact).
  * - Auto-prefilled fields (sourceType="auto") show their value pre-filled.
  *
- * Deferred to B-HW-8+: auto-field edited badge / reset-to-source, variance derivation.
+ * B-HW-8 adds: "edited — differs from source" badge + reset-to-source on auto
+ * fields, a pre-finalise "quote updated — re-sync?" prompt driven by a
+ * source-refresh check, a derived quoted-vs-contracted variance panel, and a
+ * hard lock on derived / completion-% fields.
+ *
  * Deferred to B-HW-9+: compliance derivation.
  * Deferred to B-HW-10+: subcontractors.
  * Deferred to B-HW-11+: finalise → create job.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { hwGet, hwPatchValues } from "./handoverApi";
 import type { Handover, HandoverField, HandoverSection, HandoverValue } from "./handoverApi";
+import {
+  computeQuotedVsContractedVariance,
+  detectSourceDrift,
+  isReadOnlyField,
+  resetPatch,
+  type QuotedVsContractedVariance,
+  type SourceDrift
+} from "./autoFieldSafeguards";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -233,6 +245,7 @@ type SectionStepProps = {
   sectionDone: boolean;
   saving: boolean;
   onFieldChange: (fieldKey: string, val: string) => void;
+  onResetField: (fieldKey: string) => Promise<void>;
   onSave: () => Promise<void>;
   onToggleSectionDone: () => Promise<void>;
   onNext: () => void;
@@ -248,6 +261,7 @@ function SectionStep({
   sectionDone,
   saving,
   onFieldChange,
+  onResetField,
   onSave,
   onToggleSectionDone,
   onNext,
@@ -308,6 +322,9 @@ function SectionStep({
             const displayVal =
               draftVal !== undefined ? draftVal : coerceToString(saved?.value ?? "");
             const isAutoField = field.sourceType === "auto";
+            const readOnly = isReadOnlyField(field);
+            const showEditedBadge =
+              isAutoField && saved?.isOverridden === true && saved.sourceValue !== null;
 
             return (
               <div key={field.id}>
@@ -352,12 +369,62 @@ function SectionStep({
                       auto-filled
                     </span>
                   )}
+                  {readOnly && (
+                    <span
+                      style={{
+                        marginLeft: 4,
+                        fontSize: 10,
+                        fontWeight: 400,
+                        background: "var(--surface-muted, #F6F6F6)",
+                        color: "var(--text-muted)",
+                        padding: "1px 5px",
+                        borderRadius: 3
+                      }}
+                      title="Derived — computed from other fields; not editable."
+                    >
+                      derived
+                    </span>
+                  )}
+                  {showEditedBadge && (
+                    <span style={{ marginLeft: 6, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 500,
+                          background: "#fee2e2",
+                          color: "#991b1b",
+                          padding: "1px 5px",
+                          borderRadius: 3
+                        }}
+                        title={`Original source value: ${coerceToString(saved.sourceValue)}`}
+                      >
+                        edited — differs from source
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void onResetField(field.key)}
+                        disabled={saving || sectionDone}
+                        style={{
+                          fontSize: 10,
+                          padding: "1px 6px",
+                          border: "1px solid var(--border-default, #e5e7eb)",
+                          borderRadius: 3,
+                          background: "var(--surface-base, #fff)",
+                          color: "var(--text)",
+                          cursor: saving || sectionDone ? "not-allowed" : "pointer"
+                        }}
+                        title="Restore this field to the value prefilled from the awarded quote."
+                      >
+                        Reset to source
+                      </button>
+                    </span>
+                  )}
                 </label>
                 <FieldRenderer
                   field={field}
                   currentValue={displayVal}
                   onChange={(val) => onFieldChange(field.key, val)}
-                  disabled={sectionDone}
+                  disabled={sectionDone || readOnly}
                 />
               </div>
             );
@@ -470,6 +537,182 @@ function StepNav({ sections, currentStep, valueMap, onStepClick }: StepNavProps)
   );
 }
 
+// ─── Variance panel ───────────────────────────────────────────────────────────
+
+function fmtMoney(n: number): string {
+  return n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0
+  });
+}
+
+function VariancePanel({ variance }: { variance: QuotedVsContractedVariance }) {
+  const { quotedTotal, contractedValue, variance: delta, variancePct } = variance;
+  const positive = delta >= 0;
+  const colour = delta === 0 ? "var(--text-muted)" : positive ? "#005B61" : "#dc2626";
+
+  return (
+    <section
+      aria-label="Quoted vs contracted variance"
+      style={{
+        marginBottom: 16,
+        padding: "10px 14px",
+        border: "1px solid var(--border-default, #e5e7eb)",
+        borderRadius: "var(--radius-md, 6px)",
+        background: "var(--surface-muted, #F6F6F6)",
+        display: "flex",
+        gap: 24,
+        flexWrap: "wrap",
+        alignItems: "center"
+      }}
+    >
+      <div>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Awarded quote
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 600 }}>{fmtMoney(quotedTotal)}</p>
+      </div>
+      <div>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Contract value
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 600 }}>{fmtMoney(contractedValue)}</p>
+      </div>
+      <div style={{ marginLeft: "auto" }}>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Variance (derived)
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 600, color: colour }}>
+          {positive ? "+" : ""}{fmtMoney(delta)}
+          {variancePct !== null && (
+            <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 500 }}>
+              ({positive ? "+" : ""}{variancePct.toFixed(1)}%)
+            </span>
+          )}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ─── Re-sync banner ───────────────────────────────────────────────────────────
+
+type ResyncBannerProps = {
+  drift: SourceDrift[] | null;
+  checking: boolean;
+  saving: boolean;
+  onCheck: () => void;
+  onAccept: () => void;
+  onDismiss: () => void;
+};
+
+function ResyncBanner({ drift, checking, saving, onCheck, onAccept, onDismiss }: ResyncBannerProps) {
+  // No check has been run yet — show the "Check for updates" trigger.
+  if (drift === null) {
+    return (
+      <div
+        style={{
+          marginBottom: 16,
+          padding: "8px 12px",
+          fontSize: 12,
+          color: "var(--text-muted)",
+          border: "1px dashed var(--border-default, #e5e7eb)",
+          borderRadius: "var(--radius-sm, 4px)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}
+      >
+        <span>Prefill was one-way from the awarded quote at handover creation.</span>
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          disabled={checking || saving}
+          onClick={onCheck}
+        >
+          {checking ? "Checking…" : "Check for quote updates"}
+        </button>
+      </div>
+    );
+  }
+
+  if (drift.length === 0) {
+    return (
+      <div
+        role="status"
+        style={{
+          marginBottom: 16,
+          padding: "8px 12px",
+          fontSize: 13,
+          color: "#065f46",
+          background: "#d1fae5",
+          borderRadius: "var(--radius-sm, 4px)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}
+      >
+        <span>Awarded quote is unchanged since prefill.</span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          style={{ background: "transparent", border: "none", cursor: "pointer", color: "#065f46", fontSize: 12 }}
+        >
+          Dismiss
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="alert"
+      style={{
+        marginBottom: 16,
+        padding: "10px 14px",
+        border: "1px solid #f59e0b",
+        background: "#fef3c7",
+        color: "#92400e",
+        borderRadius: "var(--radius-sm, 4px)"
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
+            Quote updated — re-sync?
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: 12 }}>
+            The awarded quote has changed since this handover was prefilled.
+            {" "}
+            {drift.length} auto-field{drift.length === 1 ? "" : "s"} would be updated:
+            {" "}
+            <em>{drift.map((d) => d.fieldKey).join(", ")}</em>.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            disabled={saving}
+            onClick={onDismiss}
+          >
+            Keep current
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            disabled={saving}
+            onClick={onAccept}
+          >
+            Re-sync
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function HandoverWizardPage() {
@@ -483,6 +726,8 @@ export function HandoverWizardPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [drift, setDrift] = useState<SourceDrift[] | null>(null);
+  const [checkingDrift, setCheckingDrift] = useState(false);
 
   // Local draft: fieldKey → string value (pending save)
   const localDraftRef = useRef<Map<string, string>>(new Map());
@@ -515,6 +760,15 @@ export function HandoverWizardPage() {
 
   const valueMap = handover ? buildValueMap(handover.values) : new Map<string, HandoverValue>();
 
+  const allFields: HandoverField[] = sections.flatMap((s) =>
+    s.fields.filter((f) => !f.retiredAt)
+  );
+
+  const variance: QuotedVsContractedVariance | null = useMemo(() => {
+    if (!handover) return null;
+    return computeQuotedVsContractedVariance(allFields, handover.values);
+  }, [handover, allFields]);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   function handleFieldChange(fieldKey: string, val: string) {
@@ -541,6 +795,78 @@ export function HandoverWizardPage() {
       setLocalDraftVersion((v) => v + 1);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save draft.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * Reset a single auto-field back to its prefilled `sourceValue`. Persists
+   * immediately so the "edited" badge clears without waiting for a Save.
+   */
+  async function handleResetField(fieldKey: string) {
+    if (!handover) return;
+    const saved = valueMap.get(fieldKey);
+    if (!saved) return;
+    const patch = resetPatch(saved);
+    if (!patch) return;
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await hwPatchValues(authFetch, handover.id, [patch]);
+      setHandover(updated);
+      localDraftRef.current.delete(fieldKey);
+      setLocalDraftVersion((v) => v + 1);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to reset field.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * Re-fetch the handover and diff its stored `sourceValue`s against the
+   * currently-loaded snapshot. Any drift on quote-sourced auto-fields is the
+   * "quote updated — re-sync?" prompt (plan §1.7).
+   */
+  async function handleCheckForUpdates() {
+    if (!handover) return;
+    setCheckingDrift(true);
+    setSaveError(null);
+    try {
+      const fresh = await hwGet(authFetch, handover.id);
+      const found = detectSourceDrift(handover.values, fresh.values, allFields);
+      setDrift(found);
+      setHandover(fresh);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to check for source updates.");
+    } finally {
+      setCheckingDrift(false);
+    }
+  }
+
+  /**
+   * User accepted the re-sync prompt: overwrite the local value for each
+   * drifted field with its fresh `sourceValue`. Clears the drift banner.
+   */
+  async function handleAcceptResync() {
+    if (!handover || !drift || drift.length === 0) return;
+    const patches = drift
+      .map((d) => ({ fieldKey: d.fieldKey, value: d.currentSource }))
+      .filter((p) => p.value !== null && p.value !== undefined);
+    if (patches.length === 0) {
+      setDrift(null);
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await hwPatchValues(authFetch, handover.id, patches);
+      setHandover(updated);
+      setDrift(null);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to re-sync source values.");
     } finally {
       setSaving(false);
     }
@@ -691,6 +1017,22 @@ export function HandoverWizardPage() {
         </p>
       )}
 
+      {/* Derived variance panel (read-only): awarded quote vs contract value. */}
+      {variance && <VariancePanel variance={variance} />}
+
+      {/* Pre-finalise re-sync prompt. Shown after a "Check for updates" that
+          found drift on quote-sourced auto-fields. */}
+      {handover.status === "draft" && (
+        <ResyncBanner
+          drift={drift}
+          checking={checkingDrift}
+          saving={saving}
+          onCheck={() => void handleCheckForUpdates()}
+          onAccept={() => void handleAcceptResync()}
+          onDismiss={() => setDrift(null)}
+        />
+      )}
+
       {/* Layout: sidebar + main */}
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
         {/* Left nav */}
@@ -737,6 +1079,7 @@ export function HandoverWizardPage() {
               sectionDone={sectionIsDone}
               saving={saving}
               onFieldChange={handleFieldChange}
+              onResetField={handleResetField}
               onSave={handleSave}
               onToggleSectionDone={handleToggleSectionDone}
               onNext={() => setCurrentStep((s) => Math.min(s + 1, sections.length - 1))}

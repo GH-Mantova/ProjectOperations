@@ -75,6 +75,7 @@ import { ReportingModule } from "./modules/reporting/reporting.module";
 import { SitesModule } from "./modules/sites/sites.module";
 import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
 import { HandoverTemplatesModule } from "./modules/handover-templates/handover-templates.module";
+import { HandoversModule } from "./modules/handovers/handovers.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
 import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
@@ -160,6 +161,7 @@ import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-r
     SitesModule,
     NotificationPreferencesModule,
     HandoverTemplatesModule,
+    HandoversModule,
     SubcontractorRatesModule,
     WinLikelihoodModule,
     ScheduleOfRatesModule

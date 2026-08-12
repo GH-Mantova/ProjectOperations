@@ -101,6 +101,7 @@ import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
+import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -565,6 +566,8 @@ export function App() {
                 detail page stays standalone. CRM-1 adds the Account 360 page. */}
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
             <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
+            {/* CRM-6: pipeline + win/loss dashboard (read-only). */}
+            <Route path="/crm/pipeline" element={<PipelineDashboardPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

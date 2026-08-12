@@ -163,6 +163,29 @@ The pipeline will **build the PR but never merge it** — it goes to Marco.
 
 **`escalates: true` DOES NOT STOP THE PROMPT FROM RUNNING. It gates the MERGE, not the RUN.**
 
+#### Destructive / backfill / NOT-NULL / DROP / DELETE / TRUNCATE slices MUST set `escalates: true`
+
+The linter enforces this via the `DESTRUCTIVE_MUST_ESCALATE` rule (OPS-6, 2026-08-12). Any prompt
+whose `premise`, `premise_means`, `done_when`, or Markdown body contains one of the following
+signals will be **rejected** unless `escalates: true` is set:
+
+- `backfill` or `destructive` (intent words, checked in prose fields and body only)
+- `NOT NULL`, `NOT-NULL`, or `SET NOT NULL`
+- `DROP TABLE`, `DROP COLUMN`, `DROP CONSTRAINT`, or `DROP TYPE`
+- `DELETE FROM`
+- `TRUNCATE`
+- `drop-legacy` or `drop_legacy`
+
+**Why:** arming a `*-ready.md` prompt IS the decision to run it. `escalates: true` gates only the
+MERGE — so a green build of a destructive prompt with `escalates: false` would auto-merge a
+destructive migration with no human in the loop. `siteid-notnull-backfill` (OPS-6) was caught by
+hand review only. The linter now makes this mechanical: **if your slice is destructive, you MUST
+set `escalates: true`, or it never reaches an agent.**
+
+If you have a false-positive (e.g., the word "backfill" appears in a non-destructive context),
+set `escalates: true` anyway — the merge gate is cheap and the cost of a false-negative is
+a destructive auto-merge.
+
 Ruled by Marco, 2026-07-20 — *"run, open PR, block merge only"*:
 
 * The flag is **advisory metadata about the work**, not an instruction to the watcher. Nothing in
@@ -311,3 +334,4 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `FIX_TARGET_SETTLED` | `fixes_pr: N` points at a PR that has MERGED or CLOSED — the fix diagnosis is stale. |
 | `FIX_TARGET_UNKNOWN` | `fixes_pr` state check failed (bad number, network, gh auth). Fix the pointer. |
 | `FIX_TARGET_INVALID` | `fixes_pr` is not a positive integer. |
+| `DESTRUCTIVE_MUST_ESCALATE` | Destructive signal detected (`backfill`, `NOT NULL`, `DROP TABLE/COLUMN/CONSTRAINT/TYPE`, `DELETE FROM`, `TRUNCATE`, `drop-legacy`, or `destructive`) but `escalates` is not `true`. Set `escalates: true`. (OPS-6 2026-08-12) |

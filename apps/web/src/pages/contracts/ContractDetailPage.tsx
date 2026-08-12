@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -57,6 +57,7 @@ type Contract = {
   endDate: string | null;
   status: ContractStatus;
   notes: string | null;
+  archivedAt: string | null;
   project: { id: string; projectNumber: string; name: string; client: { id: string; name: string } | null };
   variations: Variation[];
   progressClaims: ClaimHeader[];
@@ -90,12 +91,17 @@ type Tab = "overview" | "variations" | "claims" | "billing" | "history";
 
 export function ContractDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { authFetch, user } = useAuth();
+  const confirm = useConfirm();
   const canManage = can(user, "finance.manage");
   const canAdmin = can(user, "finance.admin");
+  const isSuperUser = user?.isSuperUser === true;
   const [contract, setContract] = useState<Contract | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -112,6 +118,60 @@ export function ContractDetailPage() {
     void load();
   }, [load]);
 
+  const handleArchive = async () => {
+    if (!contract) return;
+    const willArchive = contract.archivedAt === null;
+    const ok = await confirm({
+      title: willArchive ? "Archive this contract?" : "Unarchive this contract?",
+      message: willArchive
+        ? `Archive contract ${contract.contractNumber}? It will be hidden from the default list but can be found via the Archived filter and unarchived at any time.`
+        : `Restore contract ${contract.contractNumber} to the active list?`,
+      confirmLabel: willArchive ? "Archive" : "Unarchive",
+      variant: willArchive ? "danger" : undefined
+    });
+    if (!ok) return;
+    setArchiving(true);
+    try {
+      const endpoint = willArchive
+        ? `/contracts/${contract.id}/archive`
+        : `/contracts/${contract.id}/unarchive`;
+      const response = await authFetch(endpoint, { method: "POST" });
+      if (!response.ok) throw new Error(await response.text());
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!contract) return;
+    const varCount = contract.variations.length;
+    const claimCount = contract.progressClaims.length;
+    const linkedSummary =
+      varCount > 0 || claimCount > 0
+        ? `This contract has ${varCount} variation${varCount === 1 ? "" : "s"} and ${claimCount} progress claim${claimCount === 1 ? "" : "s"} that will also be permanently deleted.`
+        : "All child records (variations, progress claims, billing milestones) will also be permanently deleted.";
+
+    const ok = await confirm({
+      title: `Permanently delete ${contract.contractNumber}?`,
+      message: `${linkedSummary}\n\nThis action is irreversible and cannot be undone.`,
+      confirmLabel: "Delete permanently",
+      variant: "danger"
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      const response = await authFetch(`/contracts/${contract.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await response.text());
+      navigate("/contracts");
+    } catch (err) {
+      setError((err as Error).message);
+      setDeleting(false);
+    }
+  };
+
   if (!contract) return <div style={{ padding: 24 }}>{error ?? "Loading…"}</div>;
 
   const approvedVarsTotal = contract.variations
@@ -125,24 +185,64 @@ export function ContractDetailPage() {
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <header style={{ marginBottom: 16 }}>
         <Link to="/contracts" style={{ fontSize: 12, color: "var(--text-muted)" }}>← Back to contracts</Link>
-        <h1 className="s7-type-page-heading" style={{ marginTop: 8 }}>
-          {contract.contractNumber}
-          <span style={{
-            marginLeft: 12,
-            padding: "2px 10px",
-            borderRadius: 999,
-            fontSize: 12,
-            background: contract.status === "ACTIVE" ? "#005B61" : "#9CA3AF",
-            color: "#fff",
-            verticalAlign: "middle"
-          }}>
-            {contract.status.replace("_", " ")}
-          </span>
-        </h1>
-        <p style={{ color: "var(--text-muted)", margin: 0 }}>
-          <Link to={`/projects/${contract.project.id}`}>{contract.project.projectNumber} — {contract.project.name}</Link>
-          {contract.project.client ? ` · ${contract.project.client.name}` : ""}
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginTop: 8 }}>
+          <div>
+            <h1 className="s7-type-page-heading" style={{ margin: 0 }}>
+              {contract.contractNumber}
+              <span style={{
+                marginLeft: 12,
+                padding: "2px 10px",
+                borderRadius: 999,
+                fontSize: 12,
+                background: contract.status === "ACTIVE" ? "#005B61" : "#9CA3AF",
+                color: "#fff",
+                verticalAlign: "middle"
+              }}>
+                {contract.status.replace("_", " ")}
+              </span>
+              {contract.archivedAt !== null ? (
+                <span style={{
+                  marginLeft: 8,
+                  padding: "2px 10px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  background: "#9CA3AF",
+                  color: "#fff",
+                  verticalAlign: "middle"
+                }}>
+                  ARCHIVED
+                </span>
+              ) : null}
+            </h1>
+            <p style={{ color: "var(--text-muted)", margin: "4px 0 0" }}>
+              <Link to={`/projects/${contract.project.id}`}>{contract.project.projectNumber} — {contract.project.name}</Link>
+              {contract.project.client ? ` · ${contract.project.client.name}` : ""}
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {canManage ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                disabled={archiving}
+                onClick={() => void handleArchive()}
+              >
+                {archiving ? "…" : contract.archivedAt !== null ? "Unarchive" : "Archive"}
+              </button>
+            ) : null}
+            {isSuperUser ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+                style={{ color: "var(--status-danger)" }}
+              >
+                {deleting ? "…" : "Delete"}
+              </button>
+            ) : null}
+          </div>
+        </div>
       </header>
 
       <nav role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border, #e5e7eb)", marginBottom: 16 }}>

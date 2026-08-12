@@ -231,6 +231,68 @@ export function lint(file, opts) {
     }
   }
 
+  // OPS-6 (2026-08-12): a destructive/backfill/NOT-NULL/DROP/DELETE/TRUNCATE slice MUST have
+  // escalates: true so a human reviews before the merge queue processes it. Without this guard,
+  // a green prompt build auto-merges a destructive migration with no human in the loop —
+  // exactly what happened with siteid-notnull-backfill, caught only by hand review.
+  //
+  // Corpus split: scope file-paths are intentionally EXCLUDED for intent-words ("backfill",
+  // "destructive") because a test file named "backfill.spec.ts" is a name, not an instruction.
+  // Unambiguous SQL operations (DROP TABLE, DELETE FROM, etc.) also check scope descriptions.
+  // Body = Markdown text after the closing --- of the front-matter (not the raw YAML).
+  // Prefer a false-positive that a human clears by setting the flag over a false-negative.
+  {
+    const DESTRUCTIVE_PATTERNS_ALL = [
+      { re: /\bNOT[\s-]NULL\b|\bSET\s+NOT\s+NULL\b/i, label: "NOT NULL / SET NOT NULL" },
+      { re: /\bDROP\s+(TABLE|COLUMN|CONSTRAINT|TYPE)\b/i, label: "DROP TABLE/COLUMN/CONSTRAINT/TYPE" },
+      { re: /\bDELETE\s+FROM\b/i, label: "DELETE FROM" },
+      { re: /\bTRUNCATE\b/i, label: "TRUNCATE" },
+      { re: /\bdrop[-_]legacy\b/i, label: "drop-legacy / drop_legacy" },
+    ];
+    // Intent words: only match in prose fields and Markdown body — NOT in scope file-paths.
+    const DESTRUCTIVE_PATTERNS_PROSE = [
+      { re: /\bbackfill\b/i, label: "backfill" },
+      { re: /\bdestructive\b/i, label: "destructive" },
+    ];
+
+    // Extract the Markdown body (text after the second ---).
+    const fileText = readFileSync(file, "utf8");
+    const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
+    const body = bodyMatch ? bodyMatch[1] : "";
+
+    const scopeList = Array.isArray(fm.scope) ? fm.scope : [String(fm.scope || "")];
+    const corpusAll = [
+      String(fm.premise || ""),
+      String(fm.premise_means || ""),
+      ...scopeList,
+      String(fm.done_when || ""),
+      body,
+    ].join("\n");
+
+    const corpusProse = [
+      String(fm.premise || ""),
+      String(fm.premise_means || ""),
+      String(fm.done_when || ""),
+      body,
+    ].join("\n");
+
+    const matched =
+      DESTRUCTIVE_PATTERNS_ALL.find(({ re }) => re.test(corpusAll)) ||
+      DESTRUCTIVE_PATTERNS_PROSE.find(({ re }) => re.test(corpusProse));
+
+    if (matched) {
+      const escalatesTrue = String(fm.escalates || "").trim().toLowerCase() === "true";
+      if (!escalatesTrue) {
+        return fail("DESTRUCTIVE_MUST_ESCALATE",
+          "Destructive signal detected (\"" + matched.label + "\") but `escalates` is not `true`.\n" +
+          "        A backfill / NOT-NULL / DROP / DELETE / TRUNCATE / destructive slice auto-merges if\n" +
+          "        escalates is false — a human MUST review before the merge queue processes it.\n" +
+          "        Set `escalates: true` in front-matter, OR narrow the scope/wording to remove the\n" +
+          "        destructive signal if the term matched in a non-destructive context. (OPS-6 2026-08-12)");
+      }
+    }
+  }
+
   // Gate A / pipeline-correctness-gates §2 (closes the #923 class): a migration-scoped prompt must
   // EITHER also name a test file in `scope`, OR declare `backfill: false` to assert the migration
   // does no data backfill. #923 was a backfill migration whose SQL wrote invalid enum tokens; CI

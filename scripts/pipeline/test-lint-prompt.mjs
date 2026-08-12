@@ -12,9 +12,13 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const LINT = "C:\\ProjectOperations2\\scripts\\pipeline\\lint-prompt.mjs";
+// Resolve lint-prompt.mjs relative to this file so the tests run against whichever
+// checkout (worktree or main) this test file lives in. The old hardcoded path broke
+// when run from a worktree — it would test the main-tree lint instead of the local one.
+const LINT = join(dirname(fileURLToPath(import.meta.url)), "lint-prompt.mjs");
 const REPO = "C:\\po-watcher\\ProjectOperations";
 const dir = mkdtempSync(join(tmpdir(), "lint-test-"));
 
@@ -41,10 +45,13 @@ function run(name, frontMatter, expectedExit) {
 }
 
 // 0 = admit, 1 = reject, 3 = stale
-console.log("=== exit 0 ADMIT: premise true (the test-id really is absent from main)");
+// Use `true` so the premise is always satisfied (work is always "needed") regardless of the
+// live-file state. The original premise used a hardcoded path that later became stale when
+// sidebar-collapse-toggle was added to ShellLayout.tsx, turning a green test red.
+console.log("=== exit 0 ADMIT: premise always-true (well-formed prompt is admitted)");
 run("admit",
-  "premise: '! grep -q \"sidebar-collapse-toggle\" apps/web/src/components/ShellLayout.tsx'\n" +
-  "premise_means: testid absent\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\n" +
+  "premise_means: always-true sentinel\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
 console.log("\n=== exit 3 STALE: premise false (shell__collapse-toggle DOES exist -> work done)");
@@ -118,6 +125,44 @@ run("migration-with-test-ts",
   "  - apps/api/test/foo.test.ts\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
   "rollback_strategy: 'additive; safe to leave'", 0);
+
+console.log("\n=== exit 1 REJECT: destructive signal (backfill) with escalates: false (DESTRUCTIVE_MUST_ESCALATE)");
+run("destructive-backfill-no-escalate",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/backfill.spec.ts\n" +
+  "done_when: pnpm build && run backfill script\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: 'revert migration'\nescalates: false", 1);
+
+console.log("\n=== exit 0 ADMIT: same destructive prompt with escalates: true (gate satisfied)");
+run("destructive-backfill-with-escalate",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/backfill.spec.ts\n" +
+  "done_when: pnpm build && run backfill script\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: 'revert migration'\nescalates: true", 0);
+
+console.log("\n=== exit 0 ADMIT: NOT NULL signal with escalates: true (gate satisfied)");
+run("not-null-with-escalate",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/notnull.spec.ts\n" +
+  "done_when: pnpm build && enforce SET NOT NULL\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: 'revert migration'\nescalates: true", 0);
+
+console.log("\n=== exit 1 REJECT: NOT NULL signal with escalates: false (DESTRUCTIVE_MUST_ESCALATE)");
+run("not-null-no-escalate",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/notnull.spec.ts\n" +
+  "done_when: pnpm build && enforce SET NOT NULL\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: 'revert migration'\nescalates: false", 1);
+
+console.log("\n=== exit 0 ADMIT: ordinary non-destructive prompt (no destructive signal, no escalation needed)");
+run("ordinary-prompt-no-destructive",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/components/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nescalates: false", 0);
+
+console.log("\n=== exit 0 ADMIT: prompt containing 'delete' inside a longer identifier (no false-positive)");
+run("delete-in-identifier-no-false-positive",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/pages/SoftDeletePage.tsx\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nescalates: false", 0);
 
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");

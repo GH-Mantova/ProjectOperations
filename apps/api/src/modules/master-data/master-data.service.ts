@@ -3,6 +3,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { MasterDataQueryDto } from "./dto/master-data-query.dto";
 import {
+  UpdateClientDto,
   UpsertAssetDto,
   UpsertClientDto,
   UpsertCompetencyDto,
@@ -75,22 +76,46 @@ export class MasterDataService {
   /**
    * Create a client (when `id` is undefined) or update one in place.
    *
-   * Enforces unique client `name` and the Xero `paymentTermsDay` / `paymentTermsType`
-   * pair invariant (see {@link assertPaymentTermsPair}). Writes an audit entry on success.
+   * On CREATE, `dto` must be a full {@link UpsertClientDto} with `name` present.
+   * On UPDATE, `dto` may be a partial {@link UpdateClientDto} — a status-only
+   * PATCH such as `{ status: "ARCHIVED" }` is accepted without requiring `name`.
+   * Only fields that are explicitly present in the payload are written; absent
+   * fields (including `name`) are never overwritten with `undefined`.
+   *
+   * Enforces unique client `name` (only when `name` is present in the payload) and
+   * the Xero `paymentTermsDay` / `paymentTermsType` pair invariant. Writes an
+   * audit entry on success.
    *
    * @param id Client id to update, or `undefined` to create a new client.
-   * @param dto Full or partial client payload (PATCH semantics on update).
+   * @param dto Full or partial client payload.
    * @param actorId User id recorded against the audit entry.
    * @throws ConflictException When another client already uses `dto.name`.
    * @throws BadRequestException When the payment-terms pair is partially specified.
    */
-  async upsertClient(id: string | undefined, dto: UpsertClientDto, actorId?: string) {
-    await this.ensureUniqueName("client", dto.name, id);
+  async upsertClient(id: string | undefined, dto: UpsertClientDto | UpdateClientDto, actorId?: string) {
+    // Only enforce name uniqueness when name is present in the payload (PATCH may omit it).
+    if (dto.name !== undefined) {
+      await this.ensureUniqueName("client", dto.name, id);
+    }
     this.assertPaymentTermsPair(dto);
-    const record = id
-      ? await this.prisma.client.update({ where: { id }, data: dto })
-      : await this.prisma.client.create({ data: dto });
-    await this.audit(actorId, id ? "masterdata.client.update" : "masterdata.client.create", "Client", record.id);
+
+    if (id) {
+      // Build the update data object from only the keys that are explicitly
+      // present in the DTO. This prevents undefined values from accidentally
+      // clearing stored fields — particularly `name` on a status-only PATCH.
+      const data: Record<string, unknown> = {};
+      for (const key of Object.keys(dto) as Array<keyof typeof dto>) {
+        if ((dto as Record<string, unknown>)[key as string] !== undefined) {
+          data[key as string] = (dto as Record<string, unknown>)[key as string];
+        }
+      }
+      const record = await this.prisma.client.update({ where: { id }, data });
+      await this.audit(actorId, "masterdata.client.update", "Client", record.id);
+      return record;
+    }
+
+    const record = await this.prisma.client.create({ data: dto as UpsertClientDto });
+    await this.audit(actorId, "masterdata.client.create", "Client", record.id);
     return record;
   }
 

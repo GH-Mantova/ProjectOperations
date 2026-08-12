@@ -190,8 +190,7 @@ export function SubcontractorsPage() {
       message: willArchive
         ? "Archive this entry? It will be hidden from the default list but stays searchable and can be unarchived."
         : "Restore this entry to active? It will appear in the default list again.",
-      confirmLabel: willArchive ? "Archive" : "Unarchive",
-      variant: willArchive ? "danger" : undefined
+      confirmLabel: willArchive ? "Archive" : "Unarchive"
     });
     if (!ok) return;
     setArchivingId(row.id);

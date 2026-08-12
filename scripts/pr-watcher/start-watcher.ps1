@@ -135,7 +135,7 @@ if ($dirty -or $branch -ne "main") {
 
 # --- Single-instance guard ---
 $existing = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-    Where-Object { $_.CommandLine -match "pr-watcher[\\/]index\.mjs" }
+    Where-Object { $_.CommandLine -match ([regex]::Escape((Join-Path $RepoRoot "scripts\pr-watcher\index.mjs"))) }
 if ($existing) {
     $msg = "[$(Get-Date -Format o)] SINGLE-INSTANCE: watcher already running (PID $($existing.ProcessId)). Not starting another."
     Write-Log $msg

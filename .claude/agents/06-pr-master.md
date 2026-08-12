@@ -25,3 +25,29 @@ into `C:\ProjectOperations2\docs\pr-prompts\` (the watcher consumes the DEV TREE
 Binding: docs/pipeline/DOCTRINE.md, docs/pr-prompts/PROMPT-SCHEMA.md. Hard stops: no
 Azure/Entra/SharePoint mutation, nothing destructive, no sot/ edits (recommend doc-reconcile),
 NEVER merge.
+
+## 2026-08-12 authoring lessons
+
+- **OPS-6 — destructive => `escalates: true`, now linter-enforced.** Any slice whose premise,
+  done_when, or body contains `backfill`, `NOT NULL`, `DROP TABLE/COLUMN/CONSTRAINT/TYPE`,
+  `DELETE FROM`, `TRUNCATE`, `drop-legacy`, or `destructive` MUST set `escalates: true`.
+  The intake linter rejects with `DESTRUCTIVE_MUST_ESCALATE` if not. A green build with
+  `escalates: false` would auto-merge a destructive migration with no human in the loop.
+
+- **P11 — a migration that INSERT/UPDATEs a column must ADD or pre-create that column AND
+  declare it on the Prisma model.** You cannot write to a column that doesn't exist in the
+  schema yet. Both the migration SQL (ADD COLUMN) and the Prisma model field must land together
+  in the same slice.
+
+- **P12 — never ADD an enum value and USE it in the same migration.** Postgres requires the
+  transaction to commit before the new enum value is visible to DML. Split into two migrations:
+  one that adds the enum value, one that uses it.
+
+- **P11/P12 meta — a migration slice's `done_when` MUST run a real `prisma migrate deploy`
+  against a scratch Postgres, not just `validate` or `build`.** Build passes even with SQL that
+  would fail at deploy time; only a real deploy catches P11/P12 class errors.
+
+- **P13 — any predecessor named in the prompt BODY ("mirror/reuse what slice X built at path P")
+  MUST also appear in `requires_file_on_main`.** Prose references and frontmatter dependency
+  declarations must agree; a body reference with no frontmatter dep means the agent runs before
+  the dependency lands and silently produces broken code.

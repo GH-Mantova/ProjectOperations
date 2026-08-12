@@ -5,6 +5,8 @@ import { ScheduleOfRatesController } from "./schedule-of-rates.controller";
 import { ScheduleOfRatesService } from "./schedule-of-rates.service";
 import { SorClientRateCardController } from "./sor-client-rate-card.controller";
 import { SorClientRateCardService } from "./sor-client-rate-card.service";
+import { SorSourceMarkupController } from "./sor-source-markup.controller";
+import { SorSourceMarkupService } from "./sor-source-markup.service";
 
 /**
  * Schedule of Rates module (SoR S1 + S3 + S5) — master rate-book for live jobs.
@@ -25,8 +27,12 @@ import { SorClientRateCardService } from "./sor-client-rate-card.service";
  */
 @Module({
   imports: [PrismaModule, PdfRenderingModule],
-  controllers: [ScheduleOfRatesController, SorClientRateCardController],
-  providers: [ScheduleOfRatesService, SorClientRateCardService],
-  exports: [ScheduleOfRatesService, SorClientRateCardService]
+  controllers: [
+    ScheduleOfRatesController,
+    SorClientRateCardController,
+    SorSourceMarkupController
+  ],
+  providers: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService],
+  exports: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService]
 })
 export class ScheduleOfRatesModule {}

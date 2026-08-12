@@ -79,6 +79,7 @@ import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
+import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { SettingsShell, AdminOnly, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
@@ -408,6 +409,15 @@ export function App() {
                   </SuperUserOnly>
                 }
               />
+              {/* CFX-2: Field definition admin screen — super-user only. */}
+              <Route
+                path="field-definitions"
+                element={
+                  <SuperUserOnly>
+                    <FieldDefinitionAdminPage />
+                  </SuperUserOnly>
+                }
+              />
               {/* SLICE 16 (settings-restructure §3): fix direct-hit 404 on
                   /settings/administration by mounting a landing hub that lists
                   the accessible Administration sub-pages. Wrapped with the same
@@ -519,6 +529,7 @@ export function App() {
             <Route path="/admin/settings" element={<AdminOnly><Navigate to="/settings/administration/system" replace /></AdminOnly>} />
             <Route path="/admin/company" element={<Navigate to="/settings/company" replace />} />
             <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
+            <Route path="/admin/field-definitions" element={<Navigate to="/settings/field-definitions" replace />} />
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />

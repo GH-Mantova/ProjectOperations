@@ -648,10 +648,10 @@ async function main() {
   });
 
   await prisma.site.upsert({
-    where: { name: "Gateway Depot" },
+    where: { code: "GATEWAY" },
     update: {
+      name: "Gateway Depot",
       clientId: clientA.id,
-      code: "GATEWAY",
       suburb: "Brisbane",
       state: "QLD",
       postcode: "4000"

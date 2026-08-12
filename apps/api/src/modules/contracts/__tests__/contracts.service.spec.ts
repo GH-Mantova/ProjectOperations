@@ -214,6 +214,24 @@ describe("ContractsService.listContracts", () => {
     const result = await service.listContracts({});
     expect(result).toMatchObject({ page: 1, pageSize: 20 });
   });
+
+  it("excludes archived contracts by default (archivedAt: null filter)", async () => {
+    const { service, prisma } = buildService();
+    await service.listContracts({});
+    const findManyArgs = (prisma.contract as { findMany: jest.Mock }).findMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where).toMatchObject({ archivedAt: null });
+  });
+
+  it("omits the archivedAt filter when includeArchived=true", async () => {
+    const { service, prisma } = buildService();
+    await service.listContracts({ includeArchived: true });
+    const findManyArgs = (prisma.contract as { findMany: jest.Mock }).findMany.mock.calls[0]?.[0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where).not.toHaveProperty("archivedAt");
+  });
 });
 
 // ─── getContract ───────────────────────────────────────────────────────────

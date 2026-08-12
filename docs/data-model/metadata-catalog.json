@@ -2980,6 +2980,18 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "tenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
         }
       }
     },
@@ -4689,6 +4701,18 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "tenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }
@@ -11463,6 +11487,18 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "tenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }
@@ -21149,6 +21185,80 @@
         }
       }
     },
+    "Tenant": {
+      "domain": "Unclassified",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "name": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "code": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "isActive": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "updatedAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clients": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "workers": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "contacts": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenders": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "jobs": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
     "Tender": {
       "domain": "Tendering",
       "wizardVisible": true,
@@ -21525,6 +21635,18 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "tenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }
@@ -25135,6 +25257,18 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "tenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }

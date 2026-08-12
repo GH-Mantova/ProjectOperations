@@ -596,6 +596,17 @@ export async function seedGlobalLists(prisma: PrismaClient, adminUserId: string)
         { value: "depot", label: "Depot" },
         { value: "other", label: "Other" }
       ]
+    },
+    // S1 — vendor hub tab grouping. Users add/archive items here; no migration per new type.
+    // Seed ships ONLY concrete-cutters; additional types are added via the GlobalList admin UI.
+    {
+      slug: "vendor-types",
+      name: "Vendor Types",
+      description:
+        "Type groupings for subcontractors and suppliers on the Rate Hub tab. Managed by users via the Lists admin — no migration per new type.",
+      items: [
+        { value: "concrete-cutters", label: "Concrete Cutters" }
+      ]
     }
   ];
 

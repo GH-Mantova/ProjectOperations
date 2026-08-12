@@ -3613,9 +3613,10 @@ model GlobalListItem {
   isArchived     Boolean         @default(false) @map("is_archived")
   createdById    String          @map("created_by_id")
   createdBy      User            @relation("GlobalListItemCreatedBy", fields: [createdById], references: [id])
-  tenderPackages TenderPackage[] @relation("TenderPackageDiscipline")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  tenderPackages       TenderPackage[]         @relation("TenderPackageDiscipline")
+  subcontractorVendors SubcontractorSupplier[] @relation("SubcontractorVendorType")
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
 
   @@unique([listId, value])
   @@index([listId, isArchived])
@@ -4352,13 +4353,17 @@ model SubcontractorSupplier {
   onHoldReason          String?   @map("on_hold_reason")
   internalNotes         String?   @map("internal_notes")
   performanceRating     Int?      @map("performance_rating")
-  complianceBlocked     Boolean   @default(false) @map("compliance_blocked")
-  complianceBlockReason String?   @map("compliance_block_reason")
-  complianceBlockedAt   DateTime? @map("compliance_blocked_at")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  createdById           String    @map("created_by_id")
-  createdBy             User      @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
+  complianceBlocked     Boolean        @default(false) @map("compliance_blocked")
+  complianceBlockReason String?        @map("compliance_block_reason")
+  complianceBlockedAt   DateTime?      @map("compliance_blocked_at")
+  // S1 — vendor type grouping: FK to GlobalListItem from list slug "vendor-types".
+  // Nullable: existing records default to no type (rendered in the "Untyped" group on hub).
+  vendorTypeId          String?        @map("vendor_type_id")
+  vendorType            GlobalListItem? @relation("SubcontractorVendorType", fields: [vendorTypeId], references: [id], onDelete: SetNull)
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  createdById           String         @map("created_by_id")
+  createdBy             User           @relation("SubcontractorCreatedBy", fields: [createdById], references: [id])
 
   documents             SubcontractorDocument[]
   licences              EntityLicence[]           @relation("SubLicences")
@@ -4373,6 +4378,7 @@ model SubcontractorSupplier {
   @@index([entityType])
   @@index([prequalStatus])
   @@index([isActive])
+  @@index([vendorTypeId])
   @@map("subcontractor_suppliers")
 }
 

@@ -21,6 +21,7 @@ import {
   type RateColumnRole,
   type RateRow
 } from "./ratesListsHelpers";
+import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
 
 // ── Types coming off the API ─────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ type WhereUsed = {
 
 // ── Top-level page ───────────────────────────────────────────────────────
 
-type TopTab = "rates" | "lists";
+type TopTab = "rates" | "subcontractors" | "suppliers" | "lists";
 
 export function RatesListsAdminPage() {
   const { user } = useAuth();
@@ -106,6 +107,16 @@ export function RatesListsAdminPage() {
             Rate tables
           </TopTabButton>
         ) : null}
+        {canManageRates ? (
+          <TopTabButton active={tab === "subcontractors"} onClick={() => setTab("subcontractors")}>
+            Subcontractors
+          </TopTabButton>
+        ) : null}
+        {canManageRates ? (
+          <TopTabButton active={tab === "suppliers"} onClick={() => setTab("suppliers")}>
+            Suppliers
+          </TopTabButton>
+        ) : null}
         {canManageLists ? (
           <TopTabButton active={tab === "lists"} onClick={() => setTab("lists")}>
             Lists
@@ -115,6 +126,12 @@ export function RatesListsAdminPage() {
 
       <div style={{ marginTop: 20 }}>
         {tab === "rates" && canManageRates ? <RateTablesPanel /> : null}
+        {tab === "subcontractors" && canManageRates ? (
+          <VendorRatesTab entityType="subcontractor" />
+        ) : null}
+        {tab === "suppliers" && canManageRates ? (
+          <VendorRatesTab entityType="supplier" />
+        ) : null}
         {tab === "lists" && canManageLists ? <ListsPanel /> : null}
       </div>
     </div>

@@ -9,7 +9,8 @@
 -- Execution order:
 --   1. Create drop_reasons lookup table.
 --   2. Add new columns to opportunities.
---   3. Extend OpportunityStage enum with open / not_pursued / archived.
+--   3. (enum values open / not_pursued / archived are added by the prior
+--       migration 20260812139000_opportunitystage_add_values; only USED here).
 --   4. Copy leads rows into opportunities.
 --   5. Remap existing Opportunity stages to unified stage set.
 --   6. Carry lostReason text into dropReasonDetail.
@@ -43,11 +44,10 @@ ALTER TABLE "opportunities"
     FOREIGN KEY ("drop_reason_id") REFERENCES "drop_reasons"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
 
--- Step 3: Extend OpportunityStage enum (Postgres does not allow value removal
--- in the same transaction as usage — new values only in this slice)
-ALTER TYPE "OpportunityStage" ADD VALUE IF NOT EXISTS 'open';
-ALTER TYPE "OpportunityStage" ADD VALUE IF NOT EXISTS 'not_pursued';
-ALTER TYPE "OpportunityStage" ADD VALUE IF NOT EXISTS 'archived';
+-- Step 3: OpportunityStage enum values (open / not_pursued / archived) are
+-- added by the prior migration 20260812139000_opportunitystage_add_values.
+-- Postgres forbids referencing a new enum value in the same transaction that
+-- adds it, so they are committed there before being USED below.
 
 -- Step 4: Copy leads rows into opportunities.
 -- Leads have free-text company/contact fields that Opportunity does not; those

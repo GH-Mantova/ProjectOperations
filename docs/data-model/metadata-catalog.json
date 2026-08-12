@@ -8546,12 +8546,6 @@
           "label": null,
           "filterable": false,
           "aggregations": []
-        },
-        "enum": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
         }
       }
     },

@@ -227,7 +227,7 @@ describe("TenderTrackerImportService", () => {
 
         const report = await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
 
-        const createCall = prismaMock.tender.create.mock.calls[0]?.[0];
+        const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
         expect(createCall?.data?.status).toBe(expectedStatus);
         expect(report.tendersCreated).toBe(1);
       });
@@ -251,7 +251,7 @@ describe("TenderTrackerImportService", () => {
 
       await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
 
-      const createCall = prismaMock.tender.create.mock.calls[0]?.[0];
+      const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
       expect(createCall?.data?.status).toBe("WON");
     });
   });
@@ -283,8 +283,8 @@ describe("TenderTrackerImportService", () => {
   describe("commit: T-number idempotency", () => {
     it("calls tender.update when an existing tender with the same T-number is found", async () => {
       prismaMock = makePrismaMock();
-      prismaMock.tender.findFirst.mockResolvedValueOnce({ id: "existing-tender-id", tenderNumber: "T6001" } as never);
-      prismaMock.site.findFirst.mockResolvedValueOnce({ id: "existing-site-id" } as never);
+      (prismaMock.tender.findFirst as unknown as jest.Mock).mockResolvedValueOnce({ id: "existing-tender-id", tenderNumber: "T6001" } as never);
+      (prismaMock.site.findFirst as unknown as jest.Mock).mockResolvedValueOnce({ id: "existing-site-id" } as never);
       await buildService(prismaMock);
 
       const csv = HEADER
@@ -310,7 +310,7 @@ describe("TenderTrackerImportService", () => {
 
       await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
 
-      const createCall = prismaMock.tender.create.mock.calls[0]?.[0];
+      const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
       expect(createCall?.data?.estimatorUserId).toBe("u3"); // Marco's mocked id
     });
   });
@@ -326,7 +326,7 @@ describe("TenderTrackerImportService", () => {
 
       const report = await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
 
-      const createCall = prismaMock.tender.create.mock.calls[0]?.[0];
+      const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
       expect(createCall?.data?.estimatorUserId).toBeUndefined();
       expect(report.unmatchedEstimators).toContain("Jane Nobody");
       // No user creation
@@ -345,7 +345,7 @@ describe("TenderTrackerImportService", () => {
 
       await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
 
-      const siteCreateCall = prismaMock.site.create.mock.calls[0]?.[0];
+      const siteCreateCall = (prismaMock.site.create as unknown as jest.Mock).mock.calls[0]?.[0];
       expect(siteCreateCall?.data?.notes).toBe("IMPORTED — address to be completed");
       // No address fields should be set
       expect(siteCreateCall?.data?.addressLine1).toBeUndefined();

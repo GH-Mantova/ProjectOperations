@@ -1,12 +1,17 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { CrmService } from "../crm.service";
 
+// CRM S1: Lead model is removed; all lead rows are now Opportunity rows with
+// isLead=true. The MockPrisma type no longer includes a `lead` table — all
+// mocks go through `opportunity`.
+
 type MockPrisma = {
-  lead: { findUnique: jest.Mock; update: jest.Mock };
   opportunity: {
     create: jest.Mock;
     findUnique: jest.Mock;
     update: jest.Mock;
+    count: jest.Mock;
+    findMany: jest.Mock;
   };
   client: { findUnique: jest.Mock };
   contact: { findUnique: jest.Mock };
@@ -17,8 +22,13 @@ type MockPrisma = {
 
 function makePrisma(): MockPrisma {
   const prisma: MockPrisma = {
-    lead: { findUnique: jest.fn(), update: jest.fn() },
-    opportunity: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    opportunity: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      count: jest.fn(),
+      findMany: jest.fn()
+    },
     client: { findUnique: jest.fn() },
     contact: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
@@ -45,12 +55,15 @@ describe("CrmService.generateDraftTender", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("returns 409 when the lead's opportunity already has a converted tender", async () => {
+  it("returns 409 when the lead opportunity already has a converted tender", async () => {
     const prisma = makePrisma();
-    prisma.lead.findUnique.mockResolvedValue({
+    // In the unified model: findUnique on opportunity returns isLead=true,
+    // convertedTenderId already set → 409 before any conversion attempt.
+    prisma.opportunity.findUnique.mockResolvedValue({
       id: "lead-1",
-      convertedOpportunityId: "opp-1",
-      convertedOpportunity: { id: "opp-1", convertedTenderId: "tender-9" }
+      isLead: true,
+      clientId: "client-1",
+      convertedTenderId: "tender-9"
     });
     const service = makeService(prisma, jest.fn());
     await expect(
@@ -58,13 +71,25 @@ describe("CrmService.generateDraftTender", () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it("converts an unconverted lead → opportunity → draft tender in one call", async () => {
+  it("promotes an isLead opportunity then creates a draft tender", async () => {
     const prisma = makePrisma();
-    prisma.lead.findUnique
+
+    // generateDraftTender: first findUnique to check convertedTenderId
+    // convertLeadToOpportunity: second findUnique to load the lead row
+    // convertOpportunityToTender: third findUnique to load the opp with client
+    prisma.opportunity.findUnique
       .mockResolvedValueOnce({
         id: "lead-1",
-        convertedOpportunityId: null,
-        convertedOpportunity: null
+        isLead: true,
+        clientId: "client-1",
+        convertedTenderId: null
+      })
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        isLead: true,
+        clientId: "client-1",
+        contactId: null,
+        ownerId: null
       })
       .mockResolvedValueOnce({
         id: "lead-1",
@@ -72,49 +97,39 @@ describe("CrmService.generateDraftTender", () => {
         clientId: "client-1",
         contactId: null,
         ownerId: null,
-        source: "referral",
-        convertedOpportunityId: null,
-        notes: null
+        description: null,
+        probability: 40,
+        estimatedValue: null,
+        stage: "open",
+        convertedTenderId: null,
+        wonAt: null,
+        client: { id: "client-1", name: "Acme" }
       });
+
     prisma.client.findUnique.mockResolvedValue({ id: "client-1" });
-    prisma.opportunity.create.mockResolvedValue({
-      id: "opp-1",
-      title: "Warehouse fit-out",
-      clientId: "client-1",
-      contactId: null,
-      ownerId: null,
-      description: null,
-      probability: 40,
-      estimatedValue: null,
-      stage: "qualified",
-      convertedTenderId: null,
-      wonAt: null
-    });
-    prisma.lead.update.mockResolvedValue({});
-    prisma.opportunity.findUnique.mockResolvedValue({
-      id: "opp-1",
-      title: "Warehouse fit-out",
-      clientId: "client-1",
-      contactId: null,
-      ownerId: null,
-      description: null,
-      probability: 40,
-      estimatedValue: null,
-      stage: "qualified",
-      convertedTenderId: null,
-      wonAt: null,
-      client: { id: "client-1", name: "Acme" }
-    });
     prisma.site.findUnique.mockResolvedValue({ id: "site-1" });
+
+    // convertLeadToOpportunity update (promote lead → opp)
+    prisma.opportunity.update
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        isLead: false,
+        stage: "open",
+        clientId: "client-1",
+        probability: 40,
+        estimatedValue: null
+      })
+      // convertOpportunityToTender update (mark won + link tender)
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        stage: "won",
+        convertedTenderId: "tender-1",
+        convertedTender: { id: "tender-1", tenderNumber: "T-001", title: "Warehouse fit-out", status: "DRAFT" }
+      });
+
     const tenderCreate = jest
       .fn()
       .mockResolvedValue({ id: "tender-1", tenderNumber: "T-001", title: "Warehouse fit-out", status: "DRAFT" });
-    prisma.opportunity.update.mockResolvedValue({
-      id: "opp-1",
-      stage: "won",
-      convertedTenderId: "tender-1",
-      convertedTender: { id: "tender-1", tenderNumber: "T-001", title: "Warehouse fit-out", status: "DRAFT" }
-    });
 
     const service = makeService(prisma, tenderCreate);
     const result = await service.generateDraftTender(
@@ -130,34 +145,40 @@ describe("CrmService.generateDraftTender", () => {
     expect(tenderInput.siteId).toBe("site-1");
     expect(prisma.opportunity.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "opp-1" },
+        where: { id: "lead-1" },
         data: expect.objectContaining({ stage: "won", convertedTenderId: "tender-1" })
       })
     );
     expect(result.convertedTenderId).toBe("tender-1");
   });
 
-  it("reuses the existing opportunity if the lead was already qualified", async () => {
+  it("skips lead promotion if isLead=false and converts to tender directly", async () => {
     const prisma = makePrisma();
-    prisma.lead.findUnique.mockResolvedValue({
-      id: "lead-1",
-      convertedOpportunityId: "opp-existing",
-      convertedOpportunity: { id: "opp-existing", convertedTenderId: null }
-    });
-    prisma.opportunity.findUnique.mockResolvedValue({
-      id: "opp-existing",
-      title: "From lead",
-      clientId: "client-1",
-      contactId: null,
-      ownerId: null,
-      description: null,
-      probability: 50,
-      estimatedValue: null,
-      stage: "quoting",
-      convertedTenderId: null,
-      wonAt: null,
-      client: { id: "client-1", name: "Acme" }
-    });
+
+    // generateDraftTender: findUnique — already isLead=false, no convertedTenderId
+    prisma.opportunity.findUnique
+      .mockResolvedValueOnce({
+        id: "opp-existing",
+        isLead: false,
+        clientId: "client-1",
+        convertedTenderId: null
+      })
+      // convertOpportunityToTender: findUnique with client include
+      .mockResolvedValueOnce({
+        id: "opp-existing",
+        title: "From lead",
+        clientId: "client-1",
+        contactId: null,
+        ownerId: null,
+        description: null,
+        probability: 50,
+        estimatedValue: null,
+        stage: "open",
+        convertedTenderId: null,
+        wonAt: null,
+        client: { id: "client-1", name: "Acme" }
+      });
+
     prisma.site.findUnique.mockResolvedValue({ id: "site-1" });
     const tenderCreate = jest
       .fn()
@@ -170,9 +191,16 @@ describe("CrmService.generateDraftTender", () => {
     });
 
     const service = makeService(prisma, tenderCreate);
-    const result = await service.generateDraftTender("lead-1", { siteId: "site-1" });
+    const result = await service.generateDraftTender("opp-existing", { siteId: "site-1" });
 
-    expect(prisma.opportunity.create).not.toHaveBeenCalled();
+    // No isLead=true update — only the won update
+    expect(prisma.opportunity.update).toHaveBeenCalledTimes(1);
+    expect(prisma.opportunity.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "opp-existing" },
+        data: expect.objectContaining({ stage: "won", convertedTenderId: "tender-2" })
+      })
+    );
     expect(tenderCreate).toHaveBeenCalledTimes(1);
     expect(result.convertedTenderId).toBe("tender-2");
   });

@@ -5,7 +5,6 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import {
-  LeadStatus,
   OpportunitySource,
   OpportunityStage,
   Prisma
@@ -14,11 +13,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { TenderingService } from "../tendering/tendering.service";
 
 // Terminal stages block further stage transitions (except via a fresh record).
-const TERMINAL_STAGES: OpportunityStage[] = ["won", "lost"];
+const TERMINAL_STAGES: OpportunityStage[] = ["archived", "not_pursued", "won", "lost"];
 
-// Weighted forecast pipeline stages (won/lost are excluded from the open
-// forecast — won records surface separately as booked; lost as historical).
-const OPEN_STAGES: OpportunityStage[] = ["new", "qualified", "quoting"];
+// Weighted forecast pipeline stages (archived/not_pursued/won/lost are excluded
+// from the open forecast — won records surface separately as booked; others as historical).
+const OPEN_STAGES: OpportunityStage[] = ["open", "new", "qualified", "quoting"];
 
 export type CreateLeadInput = {
   title: string;
@@ -35,9 +34,7 @@ export type CreateLeadInput = {
   nextActionNote?: string | null;
 };
 
-export type UpdateLeadInput = Partial<CreateLeadInput> & {
-  status?: LeadStatus;
-};
+export type UpdateLeadInput = Partial<CreateLeadInput>;
 
 export type CreateOpportunityInput = {
   title: string;
@@ -56,7 +53,8 @@ export type CreateOpportunityInput = {
 
 export type UpdateOpportunityInput = Partial<Omit<CreateOpportunityInput, "clientId">> & {
   clientId?: string;
-  lostReason?: string | null;
+  dropReasonId?: string | null;
+  dropReasonDetail?: string | null;
 };
 
 export type ConvertToTenderInput = {
@@ -73,14 +71,16 @@ export type GenerateDraftTenderInput = {
 };
 
 /**
- * Service for CRM Lead + Opportunity pipeline.
+ * Service for the unified CRM pipeline (Leads + Opportunities).
  *
- * A Lead is early, untriaged interest. Once qualified it converts to an
- * Opportunity (via `convertLeadToOpportunity`). An Opportunity is a
- * qualified pipeline record with stage/probability/estimated value; when
- * it firms up, `convertOpportunityToTender` calls TenderingService.create
- * so the resulting Tender inherits title, client, estimator, estimated
- * value, and probability without re-keying.
+ * After CRM S1, "Leads" are Opportunity rows with isLead=true and stage=open.
+ * The Lead surface CRUD methods delegate to the same prisma.opportunity table.
+ * An Opportunity is a pipeline record with stage/probability/estimated value;
+ * when it firms up, `convertOpportunityToTender` calls TenderingService.create
+ * so the resulting Tender inherits title, client, estimator, estimated value,
+ * and probability without re-keying.
+ *
+ * The `generateDraftTender` business logic is preserved unchanged (CRM S1 constraint).
  */
 @Injectable()
 export class CrmService {
@@ -89,38 +89,39 @@ export class CrmService {
     private readonly tendering: TenderingService
   ) {}
 
-  // ── Leads ────────────────────────────────────────────────────────────────
+  // ── Leads (isLead=true Opportunity rows) ─────────────────────────────────
 
   async createLead(input: CreateLeadInput) {
     if (!input.title?.trim()) {
       throw new BadRequestException("title is required.");
     }
-    if (input.clientId) await this.requireClient(input.clientId);
+    if (!input.clientId) {
+      throw new BadRequestException(
+        "clientId is required to create a lead in the unified pipeline."
+      );
+    }
+    await this.requireClient(input.clientId);
     if (input.contactId) await this.requireContact(input.contactId);
     if (input.ownerId) await this.requireUser(input.ownerId);
 
-    return this.prisma.lead.create({
+    return this.prisma.opportunity.create({
       data: {
         title: input.title.trim(),
         source: input.source ?? "other",
-        status: "new",
-        companyName: input.companyName ?? null,
-        contactName: input.contactName ?? null,
-        contactEmail: input.contactEmail ?? null,
-        contactPhone: input.contactPhone ?? null,
-        clientId: input.clientId ?? null,
+        stage: "open",
+        isLead: true,
+        clientId: input.clientId,
         contactId: input.contactId ?? null,
         ownerId: input.ownerId ?? null,
-        notes: input.notes ?? null,
+        description: input.notes ?? null,
         nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
         nextActionNote: input.nextActionNote ?? null
       },
-      include: this.leadInclude()
+      include: this.opportunityInclude()
     });
   }
 
   async listLeads(query: {
-    status?: LeadStatus;
     ownerId?: string;
     search?: string;
     page?: number;
@@ -129,39 +130,36 @@ export class CrmService {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 25));
 
-    const where: Prisma.LeadWhereInput = {};
-    if (query.status) where.status = query.status;
+    const where: Prisma.OpportunityWhereInput = { isLead: true };
     if (query.ownerId) where.ownerId = query.ownerId;
     if (query.search?.trim()) {
       const term = query.search.trim();
       where.OR = [
         { title: { contains: term, mode: "insensitive" } },
-        { companyName: { contains: term, mode: "insensitive" } },
-        { contactName: { contains: term, mode: "insensitive" } },
-        { contactEmail: { contains: term, mode: "insensitive" } }
+        { description: { contains: term, mode: "insensitive" } }
       ];
     }
 
     const [items, total] = await this.prisma.$transaction([
-      this.prisma.lead.findMany({
+      this.prisma.opportunity.findMany({
         where,
         orderBy: [{ nextActionAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
         skip: (page - 1) * limit,
         take: limit,
-        include: this.leadInclude()
+        include: this.opportunityInclude()
       }),
-      this.prisma.lead.count({ where })
+      this.prisma.opportunity.count({ where })
     ]);
 
     return { items, total, page, limit };
   }
 
   async getLead(id: string) {
-    const row = await this.prisma.lead.findUnique({
+    const row = await this.prisma.opportunity.findUnique({
       where: { id },
       include: {
-        ...this.leadInclude(),
-        convertedOpportunity: { select: { id: true, title: true, stage: true } }
+        ...this.opportunityInclude(),
+        convertedTender: { select: { id: true, tenderNumber: true, title: true, status: true } }
       }
     });
     if (!row) throw new NotFoundException(`Lead ${id} not found.`);
@@ -169,23 +167,19 @@ export class CrmService {
   }
 
   async updateLead(id: string, input: UpdateLeadInput) {
-    const existing = await this.prisma.lead.findUnique({ where: { id } });
+    const existing = await this.prisma.opportunity.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException(`Lead ${id} not found.`);
 
     if (input.clientId) await this.requireClient(input.clientId);
     if (input.contactId) await this.requireContact(input.contactId);
     if (input.ownerId) await this.requireUser(input.ownerId);
 
-    const data: Prisma.LeadUpdateInput = {};
+    const data: Prisma.OpportunityUpdateInput = {};
     if (input.title !== undefined) data.title = input.title;
-    if (input.status !== undefined) data.status = input.status;
     if (input.source !== undefined) data.source = input.source;
-    if (input.companyName !== undefined) data.companyName = input.companyName ?? null;
-    if (input.contactName !== undefined) data.contactName = input.contactName ?? null;
-    if (input.contactEmail !== undefined) data.contactEmail = input.contactEmail ?? null;
-    if (input.contactPhone !== undefined) data.contactPhone = input.contactPhone ?? null;
+    if (input.notes !== undefined) data.description = input.notes ?? null;
     if (input.clientId !== undefined) {
-      data.client = input.clientId ? { connect: { id: input.clientId } } : { disconnect: true };
+      data.client = input.clientId ? { connect: { id: input.clientId } } : undefined;
     }
     if (input.contactId !== undefined) {
       data.contact = input.contactId ? { connect: { id: input.contactId } } : { disconnect: true };
@@ -193,31 +187,31 @@ export class CrmService {
     if (input.ownerId !== undefined) {
       data.owner = input.ownerId ? { connect: { id: input.ownerId } } : { disconnect: true };
     }
-    if (input.notes !== undefined) data.notes = input.notes ?? null;
     if (input.nextActionAt !== undefined) {
       data.nextActionAt = input.nextActionAt ? new Date(input.nextActionAt) : null;
     }
     if (input.nextActionNote !== undefined) data.nextActionNote = input.nextActionNote ?? null;
 
-    return this.prisma.lead.update({
+    return this.prisma.opportunity.update({
       where: { id },
       data,
-      include: this.leadInclude()
+      include: this.opportunityInclude()
     });
   }
 
   /**
-   * Qualify a lead → create an Opportunity linked back to the lead.
-   * The lead's status becomes `converted`. Idempotent-ish: throws 409 if
-   * this lead has already been converted.
+   * "Convert" a lead to a qualified opportunity in the unified model.
+   * Since both live in the same table, this updates the stage and clears
+   * the isLead flag (the record becomes a standard opportunity).
+   * Idempotent: if already converted (isLead=false) throws 409.
    */
   async convertLeadToOpportunity(
     leadId: string,
     input: { clientId?: string; estimatedValue?: string | number | null; probability?: number }
   ) {
-    const lead = await this.prisma.lead.findUnique({ where: { id: leadId } });
+    const lead = await this.prisma.opportunity.findUnique({ where: { id: leadId } });
     if (!lead) throw new NotFoundException(`Lead ${leadId} not found.`);
-    if (lead.convertedOpportunityId) {
+    if (!lead.isLead) {
       throw new ConflictException(`Lead ${leadId} has already been converted.`);
     }
 
@@ -229,39 +223,25 @@ export class CrmService {
     }
     await this.requireClient(clientId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const opp = await tx.opportunity.create({
-        data: {
-          title: lead.title,
-          clientId,
-          contactId: lead.contactId ?? null,
-          ownerId: lead.ownerId ?? null,
-          source: lead.source,
-          stage: "qualified",
-          probability: this.clampProbability(input.probability ?? 40),
-          estimatedValue: this.toDecimalOrNull(input.estimatedValue ?? null),
-          description: lead.notes ?? null
-        },
-        include: this.opportunityInclude()
-      });
-      await tx.lead.update({
-        where: { id: leadId },
-        data: {
-          status: "converted",
-          convertedOpportunityId: opp.id
-        }
-      });
-      return opp;
+    return this.prisma.opportunity.update({
+      where: { id: leadId },
+      data: {
+        isLead: false,
+        stage: "open",
+        clientId,
+        probability: this.clampProbability(input.probability ?? 40),
+        estimatedValue: this.toDecimalOrNull(input.estimatedValue ?? null)
+      },
+      include: this.opportunityInclude()
     });
   }
 
   /**
-   * One-click "Generate draft tender" from a lead. Composes the two existing
-   * conversion steps (`convertLeadToOpportunity` → `convertOpportunityToTender`)
-   * so a CRM lead lands as a DRAFT Tender without the user round-tripping
-   * through the opportunity board.
+   * One-click "Generate draft tender" from a lead. Composes the conversion
+   * steps (promote lead → convertOpportunityToTender) so a CRM lead lands
+   * as a DRAFT Tender without the user round-tripping through the board.
    *
-   * Idempotent: if the lead's opportunity already has a `convertedTenderId`,
+   * Idempotent: if the opportunity already has a `convertedTenderId`,
    * returns 409 with that tender id.
    *
    * @throws BadRequestException When siteId is missing, or the lead has no
@@ -280,32 +260,32 @@ export class CrmService {
       );
     }
 
-    const lead = await this.prisma.lead.findUnique({
+    const lead = await this.prisma.opportunity.findUnique({
       where: { id: leadId },
-      include: {
-        convertedOpportunity: {
-          select: { id: true, convertedTenderId: true }
-        }
+      select: {
+        id: true,
+        clientId: true,
+        isLead: true,
+        convertedTenderId: true
       }
     });
     if (!lead) throw new NotFoundException(`Lead ${leadId} not found.`);
 
-    if (lead.convertedOpportunity?.convertedTenderId) {
+    if (lead.convertedTenderId) {
       throw new ConflictException(
-        `Lead ${leadId} already has a draft tender ${lead.convertedOpportunity.convertedTenderId}.`
+        `Lead ${leadId} already has a draft tender ${lead.convertedTenderId}.`
       );
     }
 
-    let opportunityId = lead.convertedOpportunityId;
-    if (!opportunityId) {
-      const opp = await this.convertLeadToOpportunity(leadId, {
+    // If still flagged as a lead, promote it to a full opportunity first.
+    if (lead.isLead) {
+      await this.convertLeadToOpportunity(leadId, {
         clientId: input.clientId
       });
-      opportunityId = opp.id;
     }
 
     return this.convertOpportunityToTender(
-      opportunityId,
+      leadId,
       { siteId: input.siteId, title: input.title },
       actorId
     );
@@ -388,7 +368,7 @@ export class CrmService {
       where: { id },
       include: {
         ...this.opportunityInclude(),
-        sourceLead: { select: { id: true, title: true, status: true } },
+        dropReason: { select: { id: true, label: true } },
         convertedTender: { select: { id: true, tenderNumber: true, title: true, status: true } }
       }
     });
@@ -420,6 +400,8 @@ export class CrmService {
       data.stage = input.stage;
       if (input.stage === "won" && !existing.wonAt) data.wonAt = new Date();
       if (input.stage === "lost" && !existing.lostAt) data.lostAt = new Date();
+      if (input.stage === "not_pursued" && !existing.lostAt) data.lostAt = new Date();
+      if (input.stage === "archived" && !existing.wonAt) data.wonAt = new Date();
     }
     if (input.probability !== undefined) {
       data.probability = this.clampProbability(input.probability);
@@ -442,7 +424,12 @@ export class CrmService {
       data.nextActionAt = input.nextActionAt ? new Date(input.nextActionAt) : null;
     }
     if (input.nextActionNote !== undefined) data.nextActionNote = input.nextActionNote ?? null;
-    if (input.lostReason !== undefined) data.lostReason = input.lostReason ?? null;
+    if (input.dropReasonId !== undefined) {
+      data.dropReason = input.dropReasonId
+        ? { connect: { id: input.dropReasonId } }
+        : { disconnect: true };
+    }
+    if (input.dropReasonDetail !== undefined) data.dropReasonDetail = input.dropReasonDetail ?? null;
 
     return this.prisma.opportunity.update({
       where: { id },
@@ -476,8 +463,8 @@ export class CrmService {
         `Opportunity ${opportunityId} has already been converted to tender ${opp.convertedTenderId}.`
       );
     }
-    if (opp.stage === "lost") {
-      throw new ConflictException("Cannot convert a lost opportunity to a tender.");
+    if (opp.stage === "lost" || opp.stage === "not_pursued") {
+      throw new ConflictException("Cannot convert a lost/not-pursued opportunity to a tender.");
     }
     if (!input.siteId?.trim()) {
       throw new BadRequestException(
@@ -584,14 +571,6 @@ export class CrmService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-
-  private leadInclude() {
-    return {
-      client: { select: { id: true, name: true } },
-      contact: { select: { id: true, firstName: true, lastName: true, email: true } },
-      owner: { select: { id: true, firstName: true, lastName: true } }
-    } satisfies Prisma.LeadInclude;
-  }
 
   private opportunityInclude() {
     return {

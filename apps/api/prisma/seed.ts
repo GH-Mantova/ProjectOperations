@@ -26,6 +26,7 @@ import { seedCrmDropReasons } from "./seeds/crm-drop-reasons";
 import { seedFieldDefinitionsBuiltin } from "./seeds/field-definitions-builtin";
 import { seedScheduleOfRates } from "./seed-schedule-of-rates";
 import { SCOPE_CARD_DEFAULTS } from "../src/modules/tendering/scope/card-defaults";
+import { SEEDED_DEFAULT_TENANT_ID } from "../src/common/tenancy/tenant.constants";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -3716,6 +3717,9 @@ async function main() {
   await seedNotificationTriggerConfigs(prisma);
   await seedPersonaRegistry(prisma);
   await seedPublicHolidays(prisma);
+  // MT-0: default Tenant row. Idempotent upsert on SEEDED_DEFAULT_TENANT_ID
+  // so re-seeds are safe and MT-3's backfill has a stable FK target.
+  await seedDefaultTenant(prisma);
   // CompanyProfile singleton + v1 legal documents. Insert-if-absent so a
   // manual admin edit survives re-seed (CP-08 discipline).
   await seedCompanyProfile(prisma);
@@ -3732,6 +3736,21 @@ async function main() {
   await seedCrmDropReasons(prisma);
   // CFX-1: BUILTIN field definitions for Client and SubcontractorSupplier. Idempotent — upsert on [appliesTo, key].
   await seedFieldDefinitionsBuiltin(prisma);
+}
+
+// MT-0: seed the one default Tenant row for the existing company. Upsert by
+// fixed id so this stays idempotent across re-seeds (verify step runs seed x2).
+async function seedDefaultTenant(prisma: PrismaClient) {
+  await prisma.tenant.upsert({
+    where: { id: SEEDED_DEFAULT_TENANT_ID },
+    update: {},
+    create: {
+      id: SEEDED_DEFAULT_TENANT_ID,
+      name: "Initial Services",
+      code: "INITIAL",
+      isActive: true
+    }
+  });
 }
 
 async function seedDefaultSurvey(prisma: PrismaClient) {

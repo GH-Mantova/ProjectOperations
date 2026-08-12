@@ -1171,4 +1171,47 @@ export class ComplianceService {
     if (Number.isNaN(d.getTime())) throw new BadRequestException("Invalid date format.");
     return d;
   }
+
+  // ─── Deadline task (forms rule-engine integration) ──────────────────────
+
+  /**
+   * Start a WorkSafe-clock deadline task from a form rule action.
+   *
+   * Creates a CorrectiveAction with `priority: "critical"` and a WorkSafe
+   * deadline window — the submission's context/supervisor id is used as the
+   * assignee when no explicit `assignedToId` is provided. Call this only from
+   * the forms rule engine (RulesEngineService.executeDeadlineTask); never
+   * reach into the CorrectiveAction table from another module directly.
+   *
+   * @param params.submissionId - source FormSubmission id (audit link)
+   * @param params.title - human-readable task title (template tokens already resolved by caller)
+   * @param params.description - optional detail text
+   * @param params.deadlineHours - WorkSafe clock window in hours (e.g. 24 for a 24h notifiable incident)
+   * @param params.assignedToId - optional User.id of the assigned case handler
+   * @returns the created CorrectiveAction id
+   */
+  async createDeadlineTask(params: {
+    submissionId: string;
+    title: string;
+    description?: string | null;
+    deadlineHours: number;
+    assignedToId?: string | null;
+  }): Promise<string> {
+    const dueAt = new Date(Date.now() + params.deadlineHours * 60 * 60 * 1000);
+    const ca = await this.prisma.correctiveAction.create({
+      data: {
+        submissionId: params.submissionId,
+        title: params.title,
+        description: params.description ?? null,
+        assignedToId: params.assignedToId ?? null,
+        dueAt,
+        priority: "critical",
+        status: "open"
+      }
+    });
+    this.logger.log(
+      `Deadline task created: id=${ca.id} due=${dueAt.toISOString()} submission=${params.submissionId}`
+    );
+    return ca.id;
+  }
 }

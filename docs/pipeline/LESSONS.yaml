@@ -77,6 +77,17 @@ lessons:
     regressed_when: '! test -f scripts/pipeline/check-escalations.mjs'
     fix_ref: this PR
 
+  - id: destructive-slice-not-forced-to-escalate
+    title: A destructive / backfill / NOT-NULL migration must set escalates true or the linter rejects it
+    learned: 2026-08-12
+    cost: >
+      siteid-notnull-backfill (OPS-6) was staged with escalates: false. Because arming a
+      *-ready.md prompt IS the decision to run it and escalates gates only the merge, a green
+      build would have auto-merged a destructive NOT-NULL backfill migration with no human in
+      the loop. Caught by hand review only.
+    regressed_when: '! grep -q "DESTRUCTIVE_MUST_ESCALATE" scripts/pipeline/lint-prompt.mjs'
+    fix_ref: this PR
+
 # DELIBERATELY NOT YET LISTED - flaky-plant-pills-unquarantined.
 # The quarantine (pr-quarantine-tendering-e2e-plant-pills) is armed but has not landed on main, so
 # a regression test for it would fire permanently and train everyone to ignore this file. That PR

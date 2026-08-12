@@ -16,6 +16,26 @@ model HealthcheckSeedMarker {
   @@map("healthcheck_seed_markers")
 }
 
+// MT-0 — multi-tenant foundation (additive only). Row-level tenantId scoping
+// (model A) is the locked decision (2026-08-04). Enforcement lands in MT-1/MT-3;
+// this slice only introduces the table, nullable FKs on the pilot models, and
+// the one seeded default Tenant. No behaviour changes here.
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?  @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  clients   Client[]
+  workers   Worker[]
+  contacts  Contact[]
+  tenders   Tender[]
+  jobs      Job[]
+
+  @@map("tenants")
+}
+
 model User {
   id                         String                      @id @default(cuid())
   email                      String                      @unique
@@ -764,11 +784,15 @@ model Client {
   sorRateCards        SorClientRateCard[]
   // CRM-1: Account wraps Client 1:1 (optional; set when Client is backfilled)
   account             Account?                  @relation("AccountClient")
+  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
+  tenantId            String?                   @map("tenant_id")
+  tenant              Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([name])
   @@index([status])
   @@index([isActive])
   @@index([onHold])
+  @@index([tenantId])
   @@map("clients")
 }
 
@@ -794,11 +818,15 @@ model Contact {
   updatedAt              DateTime       @updatedAt @map("updated_at")
   tenderClients          TenderClient[]
   opportunities          Opportunity[]  @relation("ContactOpportunities")
+  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
+  tenantId               String?        @map("tenant_id")
+  tenant                 Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([organisationType, organisationId])
   @@index([email])
   @@index([isActive])
   @@index([lastName, firstName])
+  @@index([tenantId])
   @@map("contacts")
 }
 
@@ -965,10 +993,14 @@ model Worker {
   formSubmissions     FormSubmission[]
   dockets             Docket[]
   assetCheckouts      AssetCheckout[]         @relation("AssetCheckoutHolderWorker")
+  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
+  tenantId            String?                 @map("tenant_id")
+  tenant              Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([resourceTypeId])
   @@index([lastName, firstName])
+  @@index([tenantId])
   @@map("workers")
 }
 
@@ -1179,11 +1211,15 @@ model Tender {
   opportunity         Opportunity?              @relation("OpportunityConvertedTender")
   // B-HW-5: handover instances initiated from this tender.
   handovers           Handover[]                @relation("HandoverTender")
+  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
+  tenantId            String?                   @map("tenant_id")
+  tenant              Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([estimatorUserId])
   @@index([assignedEstimatorId])
   @@index([siteId])
+  @@index([tenantId])
   @@map("tenders")
 }
 
@@ -1467,12 +1503,16 @@ model Job {
   surveyResponses    SurveyResponse[]       @relation("JobSurveyResponses")
   cases              Case[]                 @relation("CaseJob")
   siteAttendances    SiteAttendance[]
+  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
+  tenantId           String?                @map("tenant_id")
+  tenant             Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([status])
   @@index([projectManagerId])
   @@index([supervisorId])
   @@index([survivingProjectId])
+  @@index([tenantId])
   @@map("jobs")
 }
 

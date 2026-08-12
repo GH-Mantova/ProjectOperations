@@ -246,6 +246,9 @@ model User {
   // delta sync with no acting user) survive without a fake actor row.
   emailLogsLogged      EmailLog[]    @relation("EmailLogLoggedBy")
 
+  // SoR S4: Job/tender rate-book snapshots locked by this user.
+  lockedSorSnapshots   JobSorSnapshot[] @relation("SorSnapshotLockedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -762,6 +765,8 @@ model Client {
   tenderOutcomes      TenderOutcome[]           @relation("ClientTenderOutcomes")
   // SoR S3: per-client rate cards
   sorRateCards        SorClientRateCard[]
+  // SoR S4: per-job/tender rate-book snapshots attached to this client.
+  sorSnapshots        JobSorSnapshot[]          @relation("ClientSorSnapshots")
   // CRM-1: Account wraps Client 1:1 (optional; set when Client is backfilled)
   account             Account?                  @relation("AccountClient")
 
@@ -1179,6 +1184,8 @@ model Tender {
   opportunity         Opportunity?              @relation("OpportunityConvertedTender")
   // B-HW-5: handover instances initiated from this tender.
   handovers           Handover[]                @relation("HandoverTender")
+  // SoR S4: locked rate-book snapshots for this tender.
+  sorSnapshots        JobSorSnapshot[]          @relation("TenderSorSnapshots")
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1467,6 +1474,8 @@ model Job {
   surveyResponses    SurveyResponse[]       @relation("JobSurveyResponses")
   cases              Case[]                 @relation("CaseJob")
   siteAttendances    SiteAttendance[]
+  // SoR S4: locked rate-book snapshots for this job.
+  sorSnapshots       JobSorSnapshot[]       @relation("JobSorSnapshots")
 
   @@index([clientId])
   @@index([status])
@@ -7013,6 +7022,8 @@ model SorPeriod {
   changes     SorChangeLogEntry[]
   // SoR S3: per-client rate cards for this period
   clientCards SorClientRateCard[]
+  // SoR S4: job/tender snapshots locked against this period.
+  snapshots   JobSorSnapshot[]
 
   @@unique([year, half])
   @@map("sor_periods")
@@ -7037,6 +7048,8 @@ model SorRate {
   updatedAt         DateTime             @updatedAt @map("updated_at")
   // SoR S3: client rate entries that reference (override) this master rate
   clientRateEntries SorClientRateEntry[]
+  // SoR S4: snapshot rate rows sourced from this master (null on client-only adds).
+  snapshotRates     JobSorSnapshotRate[] @relation("SorRateSnapshotRates")
 
   @@index([periodId, category])
   @@map("sor_rates")
@@ -7074,6 +7087,8 @@ model SorClientRateCard {
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
   entries     SorClientRateEntry[]
+  // SoR S4: snapshots that referenced this card at lock time.
+  snapshots   JobSorSnapshot[]
 
   @@unique([clientId, sorPeriodId])
   @@index([clientId])
@@ -7104,6 +7119,73 @@ model SorClientRateEntry {
   @@index([cardId])
   @@index([sorRateId])
   @@map("sor_client_rate_entries")
+}
+
+// ── SoR S4 — Job SoR snapshot + per-record version lock ─────────────────────
+// A JobSorSnapshot freezes the merged (master + client card) rate view for a
+// specific job OR tender the first time a VC/AR is created against it. Once
+// locked, later slices (S6 VC pricing, S7 AR pricing) always read from the
+// snapshot — never from live SorRate — so historical records survive rate
+// changes, period expiry, and card resets. On period expiry a NEW snapshot
+// is issued (reissue endpoint) and the old one's `supersededById` points at
+// the successor; its rows are never mutated.
+
+model JobSorSnapshot {
+  id                  String                @id @default(cuid())
+  // Exactly one of jobId / tenderId is non-null; enforced in service.
+  jobId               String?               @map("job_id")
+  job                 Job?                  @relation("JobSorSnapshots", fields: [jobId], references: [id], onDelete: Cascade)
+  tenderId            String?               @map("tender_id")
+  tender              Tender?               @relation("TenderSorSnapshots", fields: [tenderId], references: [id], onDelete: Cascade)
+  clientId            String                @map("client_id")
+  client              Client                @relation("ClientSorSnapshots", fields: [clientId], references: [id], onDelete: Restrict)
+  sorPeriodId         String                @map("sor_period_id")
+  sorPeriod           SorPeriod             @relation(fields: [sorPeriodId], references: [id], onDelete: Restrict)
+  sorClientRateCardId String?               @map("sor_client_rate_card_id")
+  sorClientRateCard   SorClientRateCard?    @relation(fields: [sorClientRateCardId], references: [id], onDelete: SetNull)
+  // Denormalised so the label survives period rename/expiry.
+  sorPeriodLabel      String                @map("sor_period_label")
+  // Append-only version stamp, format "<year>-<half>-<createdAt-iso>".
+  sorVersion          String                @map("sor_version")
+  lockedAt            DateTime              @default(now()) @map("locked_at")
+  lockedById          String?               @map("locked_by_id")
+  lockedBy            User?                 @relation("SorSnapshotLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  status              String                @default("ACTIVE")
+  // Self-referential — set to the successor snapshot once this one is reissued.
+  supersededById      String?               @unique @map("superseded_by_id")
+  supersededBy        JobSorSnapshot?       @relation("SorSnapshotSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes          JobSorSnapshot?       @relation("SorSnapshotSupersede")
+  rates               JobSorSnapshotRate[]
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  @@unique([jobId, sorVersion])
+  @@unique([tenderId, sorVersion])
+  @@index([clientId])
+  @@index([sorPeriodId])
+  @@map("job_sor_snapshots")
+}
+
+model JobSorSnapshotRate {
+  id            String         @id @default(cuid())
+  snapshotId    String         @map("snapshot_id")
+  snapshot      JobSorSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  // Nullable: fresh client-added lines have no master row.
+  sourceRateId  String?        @map("source_rate_id")
+  sourceRate    SorRate?       @relation("SorRateSnapshotRates", fields: [sourceRateId], references: [id], onDelete: SetNull)
+  category      SorCategory
+  name          String
+  class         String?
+  unit          String?
+  ordinary      Decimal?       @db.Decimal(12, 2)
+  oneAndHalf    Decimal?       @map("one_and_half") @db.Decimal(12, 2)
+  double        Decimal?       @db.Decimal(12, 2)
+  isReference   Boolean        @default(false) @map("is_reference")
+  comments      String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  @@index([snapshotId, category])
+  @@index([sourceRateId])
+  @@map("job_sor_snapshot_rates")
 }
 
 // â”€â”€ CRM-1: Account foundation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -4451,6 +4451,24 @@
           "filterable": false,
           "aggregations": []
         },
+        "archivedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdById": {
           "role": "system",
           "label": null,
@@ -23498,6 +23516,12 @@
           "aggregations": []
         },
         "contractsCreated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "contractsArchived": {
           "role": "system",
           "label": null,
           "filterable": false,

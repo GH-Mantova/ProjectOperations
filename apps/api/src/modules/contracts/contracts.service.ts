@@ -72,10 +72,14 @@ export class ContractsService {
     page?: number;
     pageSize?: number;
     limit?: number;
+    /** When false (default), excludes archived contracts (archivedAt != null). */
+    includeArchived?: boolean;
   }) {
+    const archivedFilter = filter.includeArchived ? undefined : { archivedAt: null };
     const where = {
       status: filter.status,
-      projectId: filter.projectId
+      projectId: filter.projectId,
+      ...archivedFilter
     };
     const page = Math.max(1, filter.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filter.limit ?? filter.pageSize ?? 20));

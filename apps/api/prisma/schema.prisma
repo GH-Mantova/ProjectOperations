@@ -104,6 +104,7 @@ model User {
   emailProviderConfigUpdates EmailProviderConfig[]
   operationsSettingsUpdates  OperationsSettings[]        @relation("OperationsSettingsUpdatedBy")
   contractsCreated           Contract[]                  @relation("ContractCreatedBy")
+  contractsArchived          Contract[]                  @relation("ContractArchivedBy")
   variationsCreated          Variation[]                 @relation("VariationCreatedBy")
   progressClaimsCreated      ProgressClaim[]             @relation("ProgressClaimCreatedBy")
   paymentSchedulesCreated    PaymentSchedule[]           @relation("PaymentScheduleCreatedBy")
@@ -3892,10 +3893,15 @@ model Contract {
   endDate               DateTime?             @map("end_date")
   status                ContractStatus        @default(ACTIVE)
   notes                 String?
+  // S1 — soft-archive: nullable timestamp; null means active, non-null means archived.
+  // Pattern reuses JobCloseout.archivedAt (schema.prisma:1639).
+  archivedAt            DateTime?             @map("archived_at")
+  archivedById          String?               @map("archived_by_id")
+  archivedBy            User?                 @relation("ContractArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   createdById           String                @map("created_by_id")
   createdBy             User                  @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   // Effective-dated T&C version pinned at contract creation. Same rationale
-  // as ClientQuote.issuedTermsDocumentId â€" the executed contract must
+  // as ClientQuote.issuedTermsDocumentId — the executed contract must
   // forever render the T&Cs that were in force when it was signed.
   issuedTermsDocumentId String?               @map("issued_terms_document_id")
   issuedTerms           CompanyLegalDocument? @relation("ContractIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
@@ -3908,6 +3914,7 @@ model Contract {
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
   @@index([status])
+  @@index([archivedAt])
   @@map("contracts")
 }
 

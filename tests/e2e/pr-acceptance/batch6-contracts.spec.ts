@@ -33,8 +33,13 @@ test.describe("Batch 6 — Contracts (PRs #58, #59)", () => {
     await expect(
       page.getByText("One contract per project. Tracks variations, progress claims, retention,")
     ).toBeVisible();
+    const statusFilter = page.getByTestId("contract-status-filter");
     for (const chip of ["All", "Active", "Practical completion", "Defects liability", "Closed"]) {
-      await expect(page.getByRole("button", { name: chip, exact: true })).toBeVisible();
+      await expect(statusFilter.getByRole("button", { name: chip, exact: true })).toBeVisible();
+    }
+    const archiveFilter = page.getByTestId("contract-archive-filter");
+    for (const chip of ["Active", "Archived", "All"]) {
+      await expect(archiveFilter.getByRole("button", { name: chip, exact: true })).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "+ New contract" })).toBeVisible();
   });

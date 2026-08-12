@@ -291,26 +291,17 @@ items:
   # separately as fix/timeline-system-entry-assertion-robust. THIS item is the distinct product
   # question the cap exposed -- deliberately NOT bundled with the test fix.
   # -------------------------------------------------------------------------------------------
-  - id: timeline-history-pagination
-    title: "Decide + (if wanted) implement pagination/filtering for job timelines beyond the 50-item cap"
-    priority: P3
-    why: >
-      apps/api/src/modules/platform/timeline.service.ts returns a single capped, newest-first window
-      (DEFAULT_LIMIT=50, MAX_LIMIT=200, filtered.slice(0, limit)) with NO cursor/offset pagination. On a
-      long-running job, timeline activity older than the most recent 50 events is simply not viewable --
-      no "load more", date range, or paging in the panel. Surfaced 2026-08-04 (it is what made the
-      batch7 "raising an issue writes a system entry" acceptance test brittle: at >=50 seed items a new
-      entry cannot raise the visible count). NOT required for CI/merge -- the test was fixed to assert
-      presence-by-title instead. This is purely the UX/product call.
-    gate: 'grep -q "DEFAULT_LIMIT = 50" apps/api/src/modules/platform/timeline.service.ts'
-    gate_means: 'Still relevant while the un-paginated 50 default stands; discharges once the cap/pagination is reworked in timeline.service.ts.'
-    needs_marco: true
-    marco_note: >
-      DECISION NEEDED (Marco): do users need to see MORE than the last 50 timeline events per entity,
-      and if so via (a) pagination / infinite-scroll, (b) a date-range filter, or (c) just raising the
-      default toward MAX_LIMIT=200? Only implement across API + timeline panel once you choose. If the
-      answer is "50 is fine", say so and this can be deleted. Parked here, not auto-staged.
-    order: 14
+  # -------------------------------------------------------------------------------------------
+  # DISCHARGED 2026-08-12 (Cowork + Marco): SHIPPED. Full cursor pagination + date-range filter +
+  # kind filtering landed as PR #997 (merged 2026-08-06) across BOTH layers:
+  #   * API  apps/api/src/modules/platform/timeline.{service,controller}.ts -- opaque base64 cursor,
+  #          from/to date range, kinds filter; returns nextCursor (limit default 50, max 200).
+  #   * Web  apps/web/src/components/timeline/Timeline.tsx -- "Load older" (server cursor), From/To
+  #          date pickers, kind-filter chips.
+  # The registered gate ('grep "DEFAULT_LIMIT = 50"') can never fire done: 50 was deliberately kept
+  # as the PAGE SIZE, not a hard cap. Marco confirmed 2026-08-12 the decision is satisfied by #997.
+  # Removed per "when an item IS staged/shipped, delete it here; one place, never two."
+  # -------------------------------------------------------------------------------------------
 
   # ADDED 2026-08-06 (PR Master + Marco): the settings-restructure IA moves (SLICE 11 rates
   # retire, SLICE 14 tab dissolve, SLICE 17 guard unification) drift the source-of-truth nav/IA

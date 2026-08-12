@@ -33,7 +33,7 @@ model User {
   updatedById                String?                     @map("updated_by_id")
   managerId                  String?                     @map("manager_id")
   // Per-user override of the global "Home" default dashboard. NULL means
-  // the user has not chosen one — the resolver falls back to the seeded
+  // the user has not chosen one â€” the resolver falls back to the seeded
   // "Home" dashboard. onDelete: SetNull so deleting a dashboard reverts
   // its owners to the global default rather than orphaning the FK.
   defaultDashboardId         String?                     @map("default_dashboard_id")
@@ -138,14 +138,14 @@ model User {
   pilotFeedback              PilotFeedback[]             @relation("PilotFeedbackUser")
   authoredDailyDiaries       DailyDiary[]                @relation("DailyDiaryAuthor")
 
-  // Comms + Approvals Phase 2 slice 1 â€" record-anchored internal messages
+  // Comms + Approvals Phase 2 slice 1 Ã¢â‚¬" record-anchored internal messages
   // and approval-decision audit. Overrule paths resolve through the
   // managerId chain above and the authority seam; these are the storage side.
   sentInternalMessages     InternalMessage[]  @relation("InternalMessageSender")
   receivedInternalMessages InternalMessage[]  @relation("InternalMessageRecipient")
   approvalDecisions        ApprovalDecision[] @relation("ApprovalDecidedBy")
 
-  // Â§5A.1 PR 9 â€" per-user encrypted AI provider keys (BYOK). Storage format
+  // Ã‚Â§5A.1 PR 9 Ã¢â‚¬" per-user encrypted AI provider keys (BYOK). Storage format
   // is "<iv-base64>:<authTag-base64>:<ciphertext-base64>" produced by
   // KeyEncryptionService (AES-256-GCM, BYOK_ENCRYPTION_KEY master). Presence
   // of an encrypted column is the source of truth for "this user has a key
@@ -159,21 +159,21 @@ model User {
   groqKeyEncrypted        String?   @map("groq_key_encrypted")
   groqKeyValidatedAt      DateTime? @map("groq_key_validated_at")
 
-  // Â§5A.1 PR 10 â€" persona conversation history. Cascade delete on user
+  // Ã‚Â§5A.1 PR 10 Ã¢â‚¬" persona conversation history. Cascade delete on user
   // removal so we don't leave orphan chats behind.
   conversations Conversation[]
 
-  // PR-216 â€" calendar sync (mock-mode) records the events the adapter
+  // PR-216 Ã¢â‚¬" calendar sync (mock-mode) records the events the adapter
   // has "pushed" to the user's calendar so re-runs can update or
   // cancel them deterministically.
   calendarSyncedEvents CalendarSyncedEvent[] @relation("CalendarSyncedEventUser")
 
-  // Client-version telemetry â€" admin can nudge a specific user to reload.
+  // Client-version telemetry Ã¢â‚¬" admin can nudge a specific user to reload.
   // Cleared automatically once the client reports the current server SHA.
   updateRequestedAt DateTime?       @map("update_requested_at")
   clientSessions    ClientSession[]
 
-  // Company profile â€" one row identifies who "we" are. Reverse relations:
+  // Company profile Ã¢â‚¬" one row identifies who "we" are. Reverse relations:
   // a user can be the assigned WHS officer, and can create legal-document
   // versions. Both are SetNull on delete so removing a user never orphans
   // company records.
@@ -181,7 +181,7 @@ model User {
   companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
   assetCheckouts          AssetCheckout[]        @relation("AssetCheckoutHolderUser")
 
-  // Commitments (ERP gap A — cost control)
+  // Commitments (ERP gap A â€” cost control)
   commitmentsCreated        Commitment[]       @relation("CommitmentCreatedBy")
   commitmentChangesCreated  CommitmentChange[] @relation("CommitmentChangeCreatedBy")
   commitmentChangesApproved CommitmentChange[] @relation("CommitmentChangeApprovedBy")
@@ -198,12 +198,12 @@ model User {
   casesAssigned        Case[]        @relation("CaseAssignedTo")
   caseCommentsAuthored CaseComment[] @relation("CaseCommentAuthor")
 
-  // CRM — Opportunities (unified leads + opportunities pipeline).
+  // CRM â€” Opportunities (unified leads + opportunities pipeline).
   opportunitiesOwned Opportunity[] @relation("OpportunityOwner")
-  // Knowledge Base / SOP library (slice 2 — KB articles authored by this user).
+  // Knowledge Base / SOP library (slice 2 â€” KB articles authored by this user).
   kbArticlesAuthored KbArticle[]   @relation("KbArticleAuthor")
 
-  // Universal activity Timeline — every note/system entry a user authors.
+  // Universal activity Timeline â€” every note/system entry a user authors.
   activityEntriesAuthored ActivityEntry[] @relation("ActivityEntryAuthor")
 
   // Muster / evacuation roll-call
@@ -234,7 +234,7 @@ model User {
   accountsOwned    Account[] @relation("AccountOwner")
   accountsArchived Account[] @relation("AccountArchivedBy")
 
-  // CRM-4: Comms hub — thread/message/task authorship + assignment.
+  // CRM-4: Comms hub â€” thread/message/task authorship + assignment.
   // Sub-module boundary: comms owns its own records; users only appear as
   // authors/assignees via SetNull-safe relations (soft-decouple).
   commThreadsCreated   CommThread[]  @relation("CommThreadCreatedBy")
@@ -292,7 +292,7 @@ model Permission {
   label           String           @default("")
   // Marks permissions that grant an override, bypass, or elevated write
   // (e.g. compliance.admin, platform.admin). Frontend uses this to add a
-  // confirm step on grant. Data-driven â€" no hardcoded list.
+  // confirm step on grant. Data-driven Ã¢â‚¬" no hardcoded list.
   isHighRisk      Boolean          @default(false) @map("is_high_risk")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -372,7 +372,7 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// Gated Entra SSO â€" a valid Entra token whose email has no active internal
+// Gated Entra SSO Ã¢â‚¬" a valid Entra token whose email has no active internal
 // user does NOT get auto-provisioned; the user submits an access request
 // which lands here for an admin to Approve (creates the user) or Deny.
 // `kind` is the discriminator that lets a future field-worker email
@@ -412,10 +412,10 @@ model OtpChallenge {
   @@map("otp_challenges")
 }
 
-// PR-sharepoint-folder-mappings â€" Which SharePoint folder each business
+// PR-sharepoint-folder-mappings Ã¢â‚¬" Which SharePoint folder each business
 // entity's documents land in. Data, not code: a super-user edits the
 // folderPath in the admin UI without a redeploy. entityType is a Prisma
-// enum (not free text) because it drives module lookup â€" a rename here
+// enum (not free text) because it drives module lookup Ã¢â‚¬" a rename here
 // must break the build, not silently break document filing.
 enum SharePointMappingEntityType {
   TENDER
@@ -570,7 +570,7 @@ model Notification {
   @@map("notifications")
 }
 
-// â"€â"€â"€ Comms + Approvals Phase 2 slice 1 â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Comms + Approvals Phase 2 slice 1 Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Record-anchored internal message. `entityType`/`entityId` name the
 // business record the message is about (e.g. Tender/tender-123). Reads are
 // gated on the caller (either sender or recipient); writes on ownership
@@ -723,6 +723,10 @@ model Client {
   bankAccountNumber   String?                   @map("bank_account_number")
   xeroContactId       String?                   @map("xero_contact_id")
   myobCardId          String?                   @map("myob_card_id")
+  salesAccountCode    String?                   @map("sales_account_code")
+  purchaseAccountCode String?                   @map("purchase_account_code")
+  discount            Decimal?                  @db.Decimal(5, 2)
+  customFields        Json?                     @map("custom_fields")
   isActive            Boolean                   @default(true) @map("is_active")
   onHold              Boolean                   @default(false) @map("on_hold")
   onHoldReason        String?                   @map("on_hold_reason")
@@ -807,7 +811,7 @@ model Site {
   suburb          String?
   state           String?
   postcode        String?
-  // ERP gap C — canonical site coordinates. Populated by admin when a
+  // ERP gap C â€” canonical site coordinates. Populated by admin when a
   // geofence is drawn; the SiteGeofence rows carry their own centres, so a
   // site can host multiple named geofences (e.g. main gate + laydown yard).
   centreLat       Decimal?         @map("centre_lat") @db.Decimal(9, 6)
@@ -831,12 +835,12 @@ model Site {
   @@map("sites")
 }
 
-// ERP gap C — geofenced clock-in/out (QuickBooks Time parity). Timesheet GPS
+// ERP gap C â€” geofenced clock-in/out (QuickBooks Time parity). Timesheet GPS
 // capture already existed (clockOnLat/Lng, clockOffLat/Lng); this record adds
 // the second half: a circular boundary attached to a Site so we can (a) flag
 // clock events as in/out-of-geofence for audit, and (b) tell the field app
 // which job's geofence the worker is currently standing in so it can auto-
-// select the correct allocation. No continuous tracking — evaluation runs on
+// select the correct allocation. No continuous tracking â€” evaluation runs on
 // clock-event submissions and on explicit on-demand lookups only.
 model SiteGeofence {
   id             String      @id @default(cuid())
@@ -878,9 +882,9 @@ model AssetCategory {
   code                            String?  @unique
   description                     String?
   isActive                        Boolean  @default(true) @map("is_active")
-  // Waste transport cost engine R3 T-0 — category-level fallbacks. An Asset
-  // resolves fuel/capacity in the order: specific Asset field → its
-  // AssetCategory default → null. Fuel consumption is per-truck (Marco
+  // Waste transport cost engine R3 T-0 â€” category-level fallbacks. An Asset
+  // resolves fuel/capacity in the order: specific Asset field â†’ its
+  // AssetCategory default â†’ null. Fuel consumption is per-truck (Marco
   // 2026-07-15) so category defaults are a convenience for bulk-seeding a
   // fleet, not a business rule.
   defaultFuelConsumptionLPer100km Decimal? @map("default_fuel_consumption_l_per_100km") @db.Decimal(6, 2)
@@ -1004,8 +1008,8 @@ model Asset {
   assetCode                String                  @unique @map("asset_code")
   serialNumber             String?                 @unique @map("serial_number")
   // Barcode / QR tag support (AssetTiger parity). Both nullable and additive.
-  // barcode — 1D barcode value (e.g. Code128, QR string scanned as plain text).
-  // qrValue — canonical QR payload; if set, the web UI renders a QR image.
+  // barcode â€” 1D barcode value (e.g. Code128, QR string scanned as plain text).
+  // qrValue â€” canonical QR payload; if set, the web UI renders a QR image.
   // Scan lookup endpoint matches barcode OR qrValue OR assetCode (fallback).
   barcode                  String?                 @unique @map("barcode")
   qrValue                  String?                 @unique @map("qr_value")
@@ -1014,11 +1018,11 @@ model Asset {
   currentLocation          String?                 @map("current_location")
   notes                    String?
   // Waste transport cost engine R3 T-0 (2026-07-15).
-  // fuelConsumptionLPer100km — per-truck rate (Marco: fuel burn is a truck
+  // fuelConsumptionLPer100km â€” per-truck rate (Marco: fuel burn is a truck
   // property, not a material property). nominalLoadTonnes is a fallback used
   // only when the per-material Transport Capacity reference table has no row
-  // for this asset's transport type × the SoW line's material class.
-  // Both nullable → additive. Resolver falls back to AssetCategory defaults.
+  // for this asset's transport type Ã— the SoW line's material class.
+  // Both nullable â†’ additive. Resolver falls back to AssetCategory defaults.
   fuelConsumptionLPer100km Decimal?                @map("fuel_consumption_l_per_100km") @db.Decimal(6, 2)
   nominalLoadTonnes        Decimal?                @map("nominal_load_tonnes") @db.Decimal(8, 2)
   createdAt                DateTime                @default(now()) @map("created_at")
@@ -1037,7 +1041,7 @@ model Asset {
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
   dockets                  Docket[]
   checkouts                AssetCheckout[]
-  // R3 T-1 — waste transport lines that reference this asset for its
+  // R3 T-1 â€” waste transport lines that reference this asset for its
   // fuelConsumptionLPer100km / nominalLoadTonnes fallback.
   wasteTransportItems      ScopeWasteItem[]        @relation("ScopeWasteItemAsset")
 
@@ -1047,7 +1051,7 @@ model Asset {
   @@map("assets")
 }
 
-// AssetCheckout — custody chain record. Retires the Jotform "Grice Office Key Checkout"
+// AssetCheckout â€” custody chain record. Retires the Jotform "Grice Office Key Checkout"
 // form: every check-out and check-in is now tracked here instead of Jotform.
 // Service-layer guard enforces "at most one open checkout per asset" (checkedInAt IS NULL).
 // Prisma cannot enforce partial uniqueness portably, so the check is in AssetsService.checkoutAsset.
@@ -1114,7 +1118,7 @@ model LookupValue {
 model Tender {
   id                  String                    @id @default(cuid())
   tenderNumber        String                    @unique @map("tender_number")
-  // G5 â€" canonical T{YYMMDD}-{SLUG}-Rev{N}: revision counter + slug frozen
+  // G5 Ã¢â‚¬" canonical T{YYMMDD}-{SLUG}-Rev{N}: revision counter + slug frozen
   // at creation (nullable for rows older than the backfill migration).
   revisionNumber      Int                       @default(1) @map("revision_number")
   clientSlugSnapshot  String?                   @map("client_slug_snapshot")
@@ -1171,7 +1175,7 @@ model Tender {
   hazardObservations  HazardObservation[]
   correspondences     CorrespondenceThread[]    @relation("TenderCorrespondence")
   rateSet             TenderRateSet?
-  // CRM — a Tender may have been converted from an Opportunity (unique).
+  // CRM â€” a Tender may have been converted from an Opportunity (unique).
   opportunity         Opportunity?              @relation("OpportunityConvertedTender")
   // B-HW-5: handover instances initiated from this tender.
   handovers           Handover[]                @relation("HandoverTender")
@@ -1216,7 +1220,7 @@ enum TenderPricingBasis {
 
 // A tender-scope package (e.g. Asbestos, Demolition, Concrete Cutting, Civil).
 // disciplineItemId points at a GlobalListItem in the `tender-package-disciplines`
-// list â€" Director-configurable, not a hardcoded enum.
+// list Ã¢â‚¬" Director-configurable, not a hardcoded enum.
 model TenderPackage {
   id               String                @id @default(cuid())
   tenderId         String                @map("tender_id")
@@ -1233,7 +1237,7 @@ model TenderPackage {
   @@map("tender_packages")
 }
 
-// Builder Ã— package matrix cell â€" which client is pricing which package,
+// Builder Ãƒâ€” package matrix cell Ã¢â‚¬" which client is pricing which package,
 // on what basis, with optional note (e.g. what document/request/risk drove it).
 model TenderClientPackage {
   id              String             @id @default(cuid())
@@ -1313,7 +1317,7 @@ model TenderFollowUp {
 // Org-wide display-label overrides for the Tendering surface. Rows exist only
 // for keys that have been RENAMED away from their in-code default; deleting a
 // row restores the default. `key` is a stable machine identifier (e.g.
-// "field.tenderNumber") owned by apps/web/src/tendering-labels.ts — never a
+// "field.tenderNumber") owned by apps/web/src/tendering-labels.ts â€” never a
 // database column, enum value, route, or permission code.
 model TenderingLabel {
   key         String   @id
@@ -1326,7 +1330,7 @@ model TenderingLabel {
   @@map("tendering_labels")
 }
 
-// PR #18 â€" unified communications panel. One table replaces the three
+// PR #18 Ã¢â‚¬" unified communications panel. One table replaces the three
 // legacy Overview-tab feeds (Activity timeline / Clarifications &
 // Communications / Follow-ups). Legacy tables stay one release cycle
 // for safety; a follow-up PR drops them.
@@ -1351,9 +1355,9 @@ model TenderEntry {
   @@map("tender_entries")
 }
 
-// WL-1a — Structured tender-outcome capture (result/reason enums + ML-feature
+// WL-1a â€” Structured tender-outcome capture (result/reason enums + ML-feature
 // columns). All new columns are nullable and additive; existing rows stay
-// valid. Prior outcomes are never overwritten — the supersedesId self-relation
+// valid. Prior outcomes are never overwritten â€” the supersedesId self-relation
 // links a corrected outcome to the row it replaces (append-only).
 enum TenderOutcomeResult {
   WON
@@ -1424,7 +1428,7 @@ model TenderDocumentLink {
 model Job {
   id                 String                 @id @default(cuid())
   jobNumber          String                 @unique @map("job_number")
-  // G5 â€" canonical J{YYMMDD}-{SLUG}-{NNN}: slug frozen at creation.
+  // G5 Ã¢â‚¬" canonical J{YYMMDD}-{SLUG}-{NNN}: slug frozen at creation.
   clientSlugSnapshot String?                @map("client_slug_snapshot")
   name               String
   description        String?
@@ -1477,7 +1481,7 @@ model JobConversion {
   tenderId         String       @unique @map("tender_id")
   tenderClientId   String       @unique @map("tender_client_id")
   jobId            String       @unique @map("job_id")
-  // B-P0a-4-i — survivor-spine re-point. `projectId` carries the surviving
+  // B-P0a-4-i â€” survivor-spine re-point. `projectId` carries the surviving
   // Project (Job folds into Project per B-P0a). Nullable + kept alongside
   // `jobId` during the transition; `jobId` is dropped in B-P0a-8. Backfilled
   // from Project.sourceJobId for existing rows; written going forward by the
@@ -1558,11 +1562,11 @@ model JobIssue {
   @@map("job_issues")
 }
 
-// ─── ERP gap A/commercial — punch / snag / defect list ───────────────
+// â”€â”€â”€ ERP gap A/commercial â€” punch / snag / defect list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Job-scoped handover / make-good close-out list (Procore parity).
 // Raised from ad-hoc inspections OR linked back to a FormSubmission /
 // corrective action row when the item was generated from a checklist.
-// Status graph: OPEN → IN_PROGRESS → CLOSED. Cascade delete on job.
+// Status graph: OPEN â†’ IN_PROGRESS â†’ CLOSED. Cascade delete on job.
 model PunchItem {
   id           String          @id @default(cuid())
   jobId        String          @map("job_id")
@@ -1869,7 +1873,7 @@ model AssetStatusHistory {
 }
 
 // Atomic sequential counter for "Unique ID" form fields (F-4 wave 1).
-// Mirrors SafetyIncidentNumberSequence / HazardNumberSequence — a single row
+// Mirrors SafetyIncidentNumberSequence / HazardNumberSequence â€” a single row
 // (id = 1) is upserted on first use; subsequent increments are serialised via
 // Prisma's transaction. Prefix and zero-padding are driven by the individual
 // FormField.config, not this table (the table only stores the counter).
@@ -1888,7 +1892,7 @@ model FormTemplate {
   status             String                @default("DRAFT")
   geolocationEnabled Boolean               @default(false) @map("geolocation_enabled")
   associationScopes  Json?                 @map("association_scopes")
-  // PR #97 Forms Engine â€" category + system flag + settings blob.
+  // PR #97 Forms Engine Ã¢â‚¬" category + system flag + settings blob.
   // category: safety|asbestos|plant|induction|environmental|permits|quality|daily|custom
   // settings: { requiresApproval, approvalChain[], geofenceEnabled, allowOffline,
   //             pdfExport, complianceGate{} }
@@ -1928,7 +1932,7 @@ model FormSection {
   title        String
   description  String?
   sectionOrder Int                 @map("section_order")
-  // PR #97 â€" repeating sections + section-level visibility conditions
+  // PR #97 Ã¢â‚¬" repeating sections + section-level visibility conditions
   isRepeating  Boolean             @default(false) @map("is_repeating")
   minRepeat    Int?                @map("min_repeat")
   maxRepeat    Int?                @map("max_repeat")
@@ -1952,7 +1956,7 @@ model FormField {
   placeholder  String?
   helpText     String?               @map("help_text")
   optionsJson  Json?                 @map("options_json")
-  // PR #97 â€" generic field config + per-field rule attachments
+  // PR #97 Ã¢â‚¬" generic field config + per-field rule attachments
   // config: field-type-specific settings (min/max/step, formula, lookup spec, etc.)
   // conditions: array of FieldRule objects evaluated by RulesEngineService
   // validations: extra validation rules beyond isRequired
@@ -1989,7 +1993,7 @@ model FormRule {
   // F-2a: rich rule-definition in the canonical FieldRule JSON contract shape.
   // Nullable so existing rows are not broken; backfilled by migration.
   // Legacy columns (source/target/operator/comparisonValue/effect) are kept
-  // per the soak-before-drop rule — do not remove until F-2c.
+  // per the soak-before-drop rule â€” do not remove until F-2c.
   definition      Json?
   createdAt       DateTime            @default(now()) @map("created_at")
   version         FormTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
@@ -2048,7 +2052,7 @@ model FormSubmission {
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
   publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
-  // F-5 (Signature v2) — set by the submit path when a signature field
+  // F-5 (Signature v2) â€” set by the submit path when a signature field
   // configured to seal the form is signed. Once sealed, PATCH /values is
   // rejected with 409 so downstream approvals/audits can trust the
   // submission's field state is frozen.
@@ -2064,7 +2068,7 @@ model FormSubmission {
   @@map("form_submissions")
 }
 
-// â"€â"€â"€ Forms Engine (PR #97) â€" approvals, triggered records, schedules â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Forms Engine (PR #97) Ã¢â‚¬" approvals, triggered records, schedules Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 model FormApproval {
   id             String         @id @default(cuid())
@@ -2108,9 +2112,9 @@ model FormTriggeredRecord {
   @@map("form_triggered_records")
 }
 
-// F-9a: push bindings — each field can have zero or more bindings that
+// F-9a: push bindings â€” each field can have zero or more bindings that
 // write to an owning module's service after the submission commits.
-// fieldId → FormField (Cascade) keeps bindings scoped to template versions.
+// fieldId â†’ FormField (Cascade) keeps bindings scoped to template versions.
 model FormFieldPushBinding {
   id            String                @id @default(cuid())
   fieldId       String                @map("field_id")
@@ -2128,13 +2132,13 @@ model FormFieldPushBinding {
   @@map("form_field_push_bindings")
 }
 
-// ─── Forms Engine (PR #611) — corrective-action / CAPA close-out ────────────
+// â”€â”€â”€ Forms Engine (PR #611) â€” corrective-action / CAPA close-out â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // A CorrectiveAction is raised when a form submission triggers a
 // `create_corrective_action` on_submit action (e.g. a Fail answer on an
 // inspection). It is linked back to the submission via FormTriggeredRecord
-// (recordType = "corrective_action") and tracked through open →
-// in_progress → closed. The optional submissionId foreign-key enables
+// (recordType = "corrective_action") and tracked through open â†’
+// in_progress â†’ closed. The optional submissionId foreign-key enables
 // the submission detail page to list all actions the form raised.
 
 model CorrectiveAction {
@@ -2224,7 +2228,7 @@ model FormSubmissionValue {
   valueNumber   Decimal?       @map("value_number") @db.Decimal(14, 2)
   valueDateTime DateTime?      @map("value_date_time")
   valueJson     Json?          @map("value_json")
-  // PR #97 â€" boolean answer + per-value file pointer (photos, signatures live
+  // PR #97 Ã¢â‚¬" boolean answer + per-value file pointer (photos, signatures live
   // on FormAttachment / FormSignature; this lets simple file fields point
   // straight at a SharePoint or filesystem path without spawning rows there)
   valueBoolean  Boolean?       @map("value_boolean")
@@ -2261,7 +2265,7 @@ model FormSignature {
   signerName   String         @map("signer_name")
   signedAt     DateTime       @default(now()) @map("signed_at")
   createdAt    DateTime       @default(now()) @map("created_at")
-  // F-5 (Signature v2) — role-gated signing. `requiredRole` mirrors the
+  // F-5 (Signature v2) â€” role-gated signing. `requiredRole` mirrors the
   // authored FormField.config.requiredRole at sign-time so the audit trail
   // shows what the gate was configured to demand even if the template is
   // republished later. `signedById` records the User that actually signed;
@@ -2274,7 +2278,7 @@ model FormSignature {
   @@map("form_signatures")
 }
 
-// ─── Forms Content Snippet Library (PR forms-content-library) ──────────────
+// â”€â”€â”€ Forms Content Snippet Library (PR forms-content-library) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Stores reusable HTML blocks (legal text, T&Cs, privacy notices, etc.) that
 // can be referenced from FormField rows via snippetCode. Authoring happens
 // once; every form field with fieldType="content_block" that carries a
@@ -2321,7 +2325,7 @@ model EstimatePlantRate {
   sortOrder           Int              @default(0) @map("sort_order")
   createdAt           DateTime         @default(now()) @map("created_at")
   updatedAt           DateTime         @updatedAt @map("updated_at")
-  // R3 T-1 — waste transport lines reference a Transport Fees row here.
+  // R3 T-1 â€” waste transport lines reference a Transport Fees row here.
   wasteTransportItems ScopeWasteItem[] @relation("ScopeWasteItemTransportRate")
 
   @@map("estimate_plant_rates")
@@ -2408,7 +2412,7 @@ model EstimateMaterialDensity {
   id                String       @id @default(cuid())
   materialName      String       @unique @map("material_name")
   density           Decimal      @db.Decimal(8, 3)
-  unit              String // "kg/mÂ³" or "kg/mÂ²"
+  unit              String // "kg/mÃ‚Â³" or "kg/mÃ‚Â²"
   kind              MaterialKind @default(VOLUME)
   category          String? // "concrete" | "masonry" | "soil" | "sheet" | "metal" | "timber"
   notes             String?
@@ -2416,7 +2420,7 @@ model EstimateMaterialDensity {
   // material is picked. Values are plain strings matching
   // EstimateWasteRate.wasteGroup / wasteType so the scope-waste
   // aggregator's (wasteGroup, wasteItem) grouping keeps working.
-  // Nullable — legacy rows have no mapping until an admin sets one.
+  // Nullable â€” legacy rows have no mapping until an admin sets one.
   defaultWasteGroup String?      @map("default_waste_group")
   defaultWasteItem  String?      @map("default_waste_item")
   isActive          Boolean      @default(true) @map("is_active")
@@ -2638,7 +2642,7 @@ model TenderClientNote {
 
 model PlatformConfig {
   id                String   @id
-  // Per-provider model overrides â€" live feature.
+  // Per-provider model overrides Ã¢â‚¬" live feature.
   // Read by PlatformConfigService.getModel / providerStatus, written
   // by setModel. Currently NULL across all providers in dev.
   // Decision pending in PHASE 6: keep, replace with per-user setting
@@ -2651,7 +2655,7 @@ model PlatformConfig {
   updatedAt         DateTime @updatedAt @map("updated_at")
   updatedById       String?  @map("updated_by_id")
 
-  // Â§5A.1 PR 9 â€" BYOK encrypted company keys. AES-256-GCM via
+  // Ã‚Â§5A.1 PR 9 Ã¢â‚¬" BYOK encrypted company keys. AES-256-GCM via
   // KeyEncryptionService, BYOK_ENCRYPTION_KEY master, format
   // "<iv-base64>:<authTag-base64>:<ciphertext-base64>". validatedAt is set
   // by KeyValidationService on successful live test against the provider.
@@ -2674,7 +2678,7 @@ model PlatformConfig {
 // AI provider keys. Presence of valueEncrypted = "configured".
 // resolveIntegrationKey(slug) falls back to matching env var when the DB row
 // has no value, so keys already set in Azure keep working during transition.
-// This store is for THIRD-PARTY keys only — never for infra/managed-identity
+// This store is for THIRD-PARTY keys only â€” never for infra/managed-identity
 // secrets or the BYOK master itself.
 model IntegrationCredential {
   slug           String   @id
@@ -2721,13 +2725,13 @@ model ApiCredential {
   @@map("api_credential")
 }
 
-// UserAiProvider and UserAiPreference models were removed in Â§5A.1 PR 8
-// (PR #132) â€" provider selection moved to persona settings. Tables dropped
+// UserAiProvider and UserAiPreference models were removed in Ã‚Â§5A.1 PR 8
+// (PR #132) Ã¢â‚¬" provider selection moved to persona settings. Tables dropped
 // via migration 20260502_chore_remove_legacy_ai_provider_tables.
 
-// â"€â"€ Projects module (PR #39) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Projects module (PR #39) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Project records live alongside Job (delivery-side) and are produced by the
-// tenderâ†'project conversion flow. IS-P### numbers are issued from a locked
+// tenderÃ¢â€ 'project conversion flow. IS-P### numbers are issued from a locked
 // sequence row at conversion time.
 
 enum ProjectStatus {
@@ -2834,8 +2838,8 @@ model Project {
   @@map("projects")
 }
 
-// ── Daily Site Diary (ERP gap A) ──────────────────────────────────────────
-// One diary per Project per calendar date — evidentiary spine for delay /
+// â”€â”€ Daily Site Diary (ERP gap A) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// One diary per Project per calendar date â€” evidentiary spine for delay /
 // variation / dispute defence. `lineItems` is a JSON array of loose entries
 // (mixed categories such as delivery / visitor / event) so the site team can
 // scale the form without a schema change; the top-level narrative fields
@@ -2915,11 +2919,11 @@ model ProjectActivityLog {
   @@map("project_activity_logs")
 }
 
-// â"€â"€ Resource Allocation module (PR #40) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Resource Allocation module (PR #40) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // WorkerProfile is the HR/compliance-facing staff record. It is separate from
 // the scheduler-facing Worker model (which carries crew/shift/availability
 // wiring). A WorkerProfile becomes an internal login once Mobile Access is
-// provisioned (internalUserId â†' User).
+// provisioned (internalUserId Ã¢â€ ' User).
 //
 // ProjectAllocation joins either a WorkerProfile OR an Asset onto a Project
 // over a date range. Type constraints are enforced in the service layer so
@@ -2992,11 +2996,11 @@ model ProjectAllocation {
   @@map("project_allocations")
 }
 
-// â"€â"€ PR-452 Â§9 Day-grain ScheduleAllocation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ PR-452 Ã‚Â§9 Day-grain ScheduleAllocation Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Canonical day-grain allocation alongside the existing range-based
 // `ProjectAllocation` (which stays wired to timesheets / pre-starts /
 // competency-gate). The scheduler grid consumes this table. Eligibility
-// and conflict flags are COMPUTED on read â€" never denormalised here.
+// and conflict flags are COMPUTED on read Ã¢â‚¬" never denormalised here.
 //
 // `overrideReason` is populated when a `scheduler.manage` user allocates
 // an ineligible worker via the showAll path; the matching AuditLog row
@@ -3035,12 +3039,12 @@ model ScheduleAllocation {
   @@map("schedule_allocations")
 }
 
-// â"€â"€ Competency gate override (PR-279 enforcement) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// When the gate would block a workerâ†'project allocation (worker missing or
+// Ã¢"â‚¬Ã¢"â‚¬ Competency gate override (PR-279 enforcement) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// When the gate would block a workerÃ¢â€ 'project allocation (worker missing or
 // holding only expired copies of a required qualType on Project.requiredQualifications),
 // an authorised allocator (Admin/SuperUser or holder of resources.manage) can
 // proceed by supplying an override payload with a mandatory reason. Each row
-// here is the authoritative record of one such override â€" keyed to the
+// here is the authoritative record of one such override Ã¢â‚¬" keyed to the
 // allocation it unblocked, listing the qual codes that were missing/expired
 // at decision time. An AuditLog row of action `allocation.unqualified_override`
 // is written in parallel to keep the org-wide audit trail intact.
@@ -3069,7 +3073,7 @@ model CompetencyOverride {
   @@map("competency_overrides")
 }
 
-// â"€â"€ Field Worker Experience (PR #41) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Field Worker Experience (PR #41) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // PreStartChecklist + Timesheet are field-submitted records keyed to a worker
 // (WorkerProfile) + their allocation on a project. DRAFT records are editable
 // by the worker; SUBMITTED locks the record and fires a notification + a
@@ -3156,7 +3160,7 @@ model Timesheet {
   clockOffLat        Decimal?          @map("clock_off_lat") @db.Decimal(9, 6)
   clockOffLng        Decimal?          @map("clock_off_lng") @db.Decimal(9, 6)
   clockOffAccuracy   Decimal?          @map("clock_off_accuracy") @db.Decimal(8, 2)
-  // ERP gap C — geofence audit flags. Boolean is nullable so pre-geofence
+  // ERP gap C â€” geofence audit flags. Boolean is nullable so pre-geofence
   // rows (and rows without GPS) stay distinguishable from a genuine "outside
   // the geofence" reading. clockOnGeofenceId is set only when the point fell
   // inside an active geofence at the time of evaluation; if the site has no
@@ -3186,7 +3190,7 @@ model Timesheet {
   @@map("timesheets")
 }
 
-// â"€â"€ Scope cards (PR A2, 2026-05-16) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Scope cards (PR A2, 2026-05-16) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // User-named groupings of scope items. Replaces the legacy fixed-discipline
 // card UI (5 hardcoded cards: SO/Str/Asb/Civ/Prv) with arbitrary user-named
 // cards tagged with the 4-code discipline system (DEM/CIV/ASB/Other). Each
@@ -3204,23 +3208,23 @@ model ScopeCard {
   tender                Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   name                  String
   discipline            String
-  // PR B1 â€" stable integer identifier per (tenderId, discipline). Never
+  // PR B1 Ã¢â‚¬" stable integer identifier per (tenderId, discipline). Never
   // reused (deleted card numbers stay burned). Combined with discipline
   // to form the card "code" (DEM1, DEM2, CIV1...). Items inside use
   // dotted codes (DEM1.1, DEM1.2...) derived from this.
   cardNumber            Int      @map("card_number")
-  // PR B1.6 â€" per-card Plant column count. Plant 1 always visible
+  // PR B1.6 Ã¢â‚¬" per-card Plant column count. Plant 1 always visible
   // (never removable); Plant 2+ added via the "+" button on the Plant N
   // header. Each scope item's plantItems JSON array uses columnIndex
   // matching this column count (dense with explicit columnIndex).
   plantColumnCount      Int      @default(1) @map("plant_column_count")
-  // PR B1.7 â€" shared notes blocks at the bottom of the Cutting and Waste
+  // PR B1.7 Ã¢â‚¬" shared notes blocks at the bottom of the Cutting and Waste
   // subtables. Replace the previous per-row notes column / NotesRow.
   cuttingNotes          String?  @map("cutting_notes")
   wasteNotes            String?  @map("waste_notes")
-  // PR B2 â€" per-card markup override. null = inherit TenderEstimate.markup;
+  // PR B2 Ã¢â‚¬" per-card markup override. null = inherit TenderEstimate.markup;
   // any non-null value overrides for this card only. Percent expressed as
-  // a decimal (e.g. 30.00 means 30%). Reset via Ã— button on the input or
+  // a decimal (e.g. 30.00 means 30%). Reset via Ãƒâ€” button on the input or
   // bulk POST /scope/markup/reset-all.
   markupOverride        Decimal? @map("markup_override") @db.Decimal(5, 2)
   // Per-section markup overrides. null = inherit TenderEstimate.markup;
@@ -3248,8 +3252,8 @@ model ScopeCard {
   @@map("scope_cards")
 }
 
-// â"€â"€ Scope of Works (PR #44) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// Interactive QS sheet â€" sits between the tender documents and the
+// Ã¢"â‚¬Ã¢"â‚¬ Scope of Works (PR #44) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Interactive QS sheet Ã¢â‚¬" sits between the tender documents and the
 // estimate. Rows are discipline-typed and carry row-type-specific fields
 // (demolition sqm, cutting lm, asbestos ACM, excavation m3, waste tonnes,
 // plant days). AI-drafted rows start as status="draft", aiProposed=true;
@@ -3258,7 +3262,7 @@ model ScopeOfWorksItem {
   id           String     @id @default(uuid())
   tenderId     String     @map("tender_id")
   tender       Tender     @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  // PR A2 â€" parent card. Nullable retained for ON DELETE SET NULL semantics
+  // PR A2 Ã¢â‚¬" parent card. Nullable retained for ON DELETE SET NULL semantics
   // (deleting a card preserves child rows). PR A2.5 dropped the legacy
   // `discipline` String column from this model; card.discipline is now
   // the authoritative source.
@@ -3280,40 +3284,40 @@ model ScopeOfWorksItem {
   days  Decimal? @db.Decimal(8, 2)
   shift String?
 
-  // PR B1.6 â€" canonical items table columns. `wasteGroup` (below) +
+  // PR B1.6 Ã¢â‚¬" canonical items table columns. `wasteGroup` (below) +
   // `wasteItem` form the group/item dropdown pair. `wasteIncluded` flags
   // whether this row contributes to the auto-generated waste summary.
   //
-  // @deprecated PR B4a â€" `unit` + `value` superseded by the L/H/D + sqm/
+  // @deprecated PR B4a Ã¢â‚¬" `unit` + `value` superseded by the L/H/D + sqm/
   // m3/density/tonnes + chargeBy dimension fields below. Retained for
-  // backward compat with rows written by B1.6â€"B3; no longer read or
+  // backward compat with rows written by B1.6Ã¢â‚¬"B3; no longer read or
   // written by new code. Cleanup PR drops the columns.
   unit          String?  @map("unit")
   value         Decimal? @map("value") @db.Decimal(12, 3)
   wasteItem     String?  @map("waste_item")
   wasteIncluded Boolean  @default(false) @map("waste_included")
 
-  // PR B4a â€" dimension/quantification fields. Raw inputs (length, height,
+  // PR B4a Ã¢â‚¬" dimension/quantification fields. Raw inputs (length, height,
   // depth, density) drive auto-derivation of sqm/m3/tonnes; any derived
   // value can be overridden by the user typing directly. `chargeBy` is
-  // the user's preferred billing unit ("t" | "mÂ³") for the waste
+  // the user's preferred billing unit ("t" | "mÃ‚Â³") for the waste
   // aggregator; null = fall back to the facility's rate.unit.
   // `cuttingIncluded` mirrors `wasteIncluded` for the cutting subtable
   // (aggregator wired in B4b).
   length          Decimal? @db.Decimal(10, 3)
   height          Decimal? @db.Decimal(10, 3)
   depth           Decimal? @db.Decimal(10, 3)
-  // PR B4a.6 â€" widened from Decimal(5,3) to Decimal(8,3) so users can
-  // enter kg/mÂ³ values (e.g. concrete ~2400) without a numeric overflow
+  // PR B4a.6 Ã¢â‚¬" widened from Decimal(5,3) to Decimal(8,3) so users can
+  // enter kg/mÃ‚Â³ values (e.g. concrete ~2400) without a numeric overflow
   // crash. Existing rows are safe (widening only; no data loss).
   density         Decimal? @db.Decimal(8, 3)
   tonnes          Decimal? @db.Decimal(10, 2)
   chargeBy        String?  @map("charge_by")
   cuttingIncluded Boolean  @default(false) @map("cutting_included")
 
-  // PR B4a â€" sqm + m3 promoted from demolition-bucket to canonical
-  // all-discipline dimension fields. Derived from lengthÃ—height /
-  // sqmÃ—depth or supplied directly as an override.
+  // PR B4a Ã¢â‚¬" sqm + m3 promoted from demolition-bucket to canonical
+  // all-discipline dimension fields. Derived from lengthÃƒâ€”height /
+  // sqmÃƒâ€”depth or supplied directly as an override.
   sqm          Decimal? @db.Decimal(10, 2)
   m3           Decimal? @db.Decimal(10, 2)
   materialType String?  @map("material_type")
@@ -3343,12 +3347,12 @@ model ScopeOfWorksItem {
   wasteFacility String?  @map("waste_facility")
   wasteTonnes   Decimal? @map("waste_tonnes") @db.Decimal(10, 3)
   wasteLoads    Int?     @map("waste_loads")
-  // @deprecated PR B4a â€" legacy demolition-bucket field. Superseded by
+  // @deprecated PR B4a Ã¢â‚¬" legacy demolition-bucket field. Superseded by
   // the all-discipline `m3` on ScopeOfWorksItem above. Retained for
   // backward compat; no longer read or written by new code.
   wasteM3       Decimal? @map("waste_m3") @db.Decimal(10, 2)
 
-  // Redesign additions â€" generic measurement + material + plant FK.
+  // Redesign additions Ã¢â‚¬" generic measurement + material + plant FK.
   // The legacy sqm/m3/materialType/assetId columns are kept so old rows
   // render unchanged; new UI writes to these.
   measurementQty  Decimal? @map("measurement_qty") @db.Decimal(12, 3)
@@ -3357,14 +3361,14 @@ model ScopeOfWorksItem {
   plantAssetId    String?  @map("plant_asset_id")
   plantAsset      Asset?   @relation("ScopeItemPlant", fields: [plantAssetId], references: [id], onDelete: SetNull)
 
-  // Scope redesign v2 (PR #71) â€" multi-plant and multi-measurement rows.
+  // Scope redesign v2 (PR #71) Ã¢â‚¬" multi-plant and multi-measurement rows.
   // JSON so we can append/remove without a separate table per row.
   //   plantItems:   [{ plantRateId?, description, qty, days, unit }]
   //   measurements: [{ qty, unit }]
   plantItems   Json? @map("plant_items")
   measurements Json?
 
-  // PR feat/scope-multi-material — additional material rows on this
+  // PR feat/scope-multi-material â€” additional material rows on this
   // item. Row 1 remains stored on the flat materialType + length/height/
   // depth/density/sqm/m3/tonnes columns above; rows 2..N live here as
   // JSON so we can append/remove without a per-material table. Each
@@ -3376,12 +3380,12 @@ model ScopeOfWorksItem {
   // The item's total tonnes/m3 is the SUM across row 1 + every element.
   materials Json?
 
-  // PR feat/scope-each-factor — row-1 kind/quantity/factor scalars.
+  // PR feat/scope-each-factor â€” row-1 kind/quantity/factor scalars.
   // materialKind mirrors EstimateMaterialDensity.kind for row 1:
-  //   null/"VOLUME" → m³×density, null/"AREA" → sqm×density/1000,
-  //   "EACH" → qty×(density/1000), "FACTOR" → sqm×factor.
-  // quantity is the per-item count for EACH (tonnes = qty × perItemWeightKg/1000).
-  // factor is the user-supplied multiplier for FACTOR (tonnes = sqm × factor).
+  //   null/"VOLUME" â†’ mÂ³Ã—density, null/"AREA" â†’ sqmÃ—density/1000,
+  //   "EACH" â†’ qtyÃ—(density/1000), "FACTOR" â†’ sqmÃ—factor.
+  // quantity is the per-item count for EACH (tonnes = qty Ã— perItemWeightKg/1000).
+  // factor is the user-supplied multiplier for FACTOR (tonnes = sqm Ã— factor).
   // All nullable; existing rows leave them null and keep VOLUME behaviour.
   materialKind String?  @map("material_kind")
   quantity     Decimal? @db.Decimal(12, 3)
@@ -3421,10 +3425,10 @@ model ScopeWasteItem {
   id                      String             @id @default(cuid())
   tenderId                String             @map("tender_id")
   tender                  Tender             @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  // PR A2 â€" parent card. PR B-followup â€" promoted from nullable to
+  // PR A2 Ã¢â‚¬" parent card. PR B-followup Ã¢â‚¬" promoted from nullable to
   // required. Per-card subtable became canonical in B3; zero orphan
   // rows existed at promotion time. onDelete changed from SetNull
-  // (would violate NOT NULL) to Cascade â€" deleting a scope card
+  // (would violate NOT NULL) to Cascade Ã¢â‚¬" deleting a scope card
   // removes its waste rows.
   cardId                  String             @map("card_id")
   card                    ScopeCard          @relation(fields: [cardId], references: [id], onDelete: Cascade)
@@ -3434,25 +3438,25 @@ model ScopeWasteItem {
   wasteGroup              String?            @map("waste_group")
   wasteType               String?            @map("waste_type")
   wasteFacility           String?            @map("waste_facility")
-  // PR B4a â€" this column carried the aggregated waste quantity in
-  // tonnes; PR B4a made it billable against either tonnes or mÂ³
+  // PR B4a Ã¢â‚¬" this column carried the aggregated waste quantity in
+  // tonnes; PR B4a made it billable against either tonnes or mÃ‚Â³
   // depending on the facility's rate unit. The name became a lie once
   // it no longer meant "tonnes" universally, so the Prisma field is
   // now `qty` (chore/schema-hygiene-waste). The `waste_tonnes` DB
-  // column was renamed to `qty` in the same PR â€" see migration
+  // column was renamed to `qty` in the same PR Ã¢â‚¬" see migration
   // `20260701_chore_schema_hygiene_waste_rename_qty`.
   qty                     Decimal?           @db.Decimal(10, 3)
-  // PR B4a â€" mÂ³ companion to `qty` (previously wasteTonnes). Aggregator
+  // PR B4a Ã¢â‚¬" mÃ‚Â³ companion to `qty` (previously wasteTonnes). Aggregator
   // writes both; facility's rate.unit decides which side the line
   // total bills against.
   m3                      Decimal?           @db.Decimal(10, 2)
   wasteLoads              Int?               @map("waste_loads")
-  // PR B3 â€" unit drives the facility filter on the summary subtable.
-  // PR B4a â€" facility filter on the subtable no longer narrows by
+  // PR B3 Ã¢â‚¬" unit drives the facility filter on the summary subtable.
+  // PR B4a Ã¢â‚¬" facility filter on the subtable no longer narrows by
   // unit; this column now carries the facility's rate unit forward
   // for display (read-only badge on the row).
   unit                    String?
-  // PR B3 â€" true when this row was created by "Sum from above" and
+  // PR B3 Ã¢â‚¬" true when this row was created by "Sum from above" and
   // can be replaced on regeneration. Manual rows (default false) are
   // preserved across regenerations.
   autoSummed              Boolean            @default(false) @map("auto_summed")
@@ -3510,7 +3514,7 @@ model ScopeWasteItem {
   @@map("scope_waste_items")
 }
 
-// Client-facing scope table on a ClientQuote â€" editable independently of
+// Client-facing scope table on a ClientQuote Ã¢â‚¬" editable independently of
 // the shared ScopeOfWorksItem source so different clients can see different
 // levels of detail, different labels, different descriptions, or have items
 // hidden entirely on a per-quote basis.
@@ -3551,7 +3555,7 @@ model ScopeOfWorksHeader {
   @@map("scope_of_works_headers")
 }
 
-// â"€â"€ Estimate export audit trail (PR #45) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Estimate export audit trail (PR #45) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // One row per PDF / Excel export. Server-side recalc runs on every export;
 // nothing about the stored lines changes, we just keep a log of who
 // generated what and when so the audit view can surface it.
@@ -3570,10 +3574,10 @@ model EstimateExport {
   @@map("estimate_exports")
 }
 
-// â"€â"€ Global Lists â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Global Lists Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // User-manageable reference data (materials, measurement units, row types,
 // etc.) plus dynamic lists that proxy to other modules (assets, workers).
-// Items are archived, never hard-deleted â€" the `value` string is stored
+// Items are archived, never hard-deleted Ã¢â‚¬" the `value` string is stored
 // verbatim on the consuming record, so archived items still render on
 // existing rows but drop out of dropdowns for new entries.
 enum GlobalListType {
@@ -3618,8 +3622,8 @@ model GlobalListItem {
   @@map("global_list_items")
 }
 
-// â"€â"€ Tender Clarification Notes â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// Simple sent/received communication log for a tender â€" the existing
+// Ã¢"â‚¬Ã¢"â‚¬ Tender Clarification Notes Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Simple sent/received communication log for a tender Ã¢â‚¬" the existing
 // TenderClarification model is a different shape (Q&A with status/dueDate)
 // used by the follow-up queue, so this is a parallel model for the
 // Overview-tab clarifications log.
@@ -3628,7 +3632,7 @@ model TenderClarificationNote {
   tenderId    String   @map("tender_id")
   tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   direction   String
-  // PR #72 â€" note type (call | email | meeting | note | response). RFI
+  // PR #72 Ã¢â‚¬" note type (call | email | meeting | note | response). RFI
   // remains a separate model (TenderClarification). Existing rows default
   // to "note" via the column default below.
   noteType    String   @default("note") @map("note_type")
@@ -3636,7 +3640,7 @@ model TenderClarificationNote {
   occurredAt  DateTime @default(now()) @map("occurred_at")
   createdById String   @map("created_by_id")
   createdBy   User     @relation("TenderClarificationNoteAuthor", fields: [createdById], references: [id])
-  // Â§5A.3 â€" optional client link so the Activity sidebar can filter
+  // Ã‚Â§5A.3 Ã¢â‚¬" optional client link so the Activity sidebar can filter
   // entries to a single client. Nullable for backward compatibility with
   // pre-existing rows.
   clientId    String?  @map("client_id")
@@ -3648,9 +3652,9 @@ model TenderClarificationNote {
   @@map("tender_clarification_notes")
 }
 
-// â"€â"€ Scope redesign â€" view config + cutting sheet â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Scope redesign Ã¢â‚¬" view config + cutting sheet Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // ScopeViewConfig persists which optional columns the user has enabled
-// for a given (tender Ã— discipline) combination. The server owns the set
+// for a given (tender Ãƒâ€” discipline) combination. The server owns the set
 // of available columns per row type; this model only remembers the
 // user's current selection so the UI can restore it after reload.
 model ScopeViewConfig {
@@ -3675,13 +3679,13 @@ model CuttingSheetItem {
   id           String            @id @default(cuid())
   tenderId     String            @map("tender_id")
   tender       Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  // PR A2 â€" parent card. PR B-followup â€" promoted from nullable to
+  // PR A2 Ã¢â‚¬" parent card. PR B-followup Ã¢â‚¬" promoted from nullable to
   // required. Per-card subtable became canonical in B4b; the
   // transition window is closed. createCuttingItem now rejects
   // missing cardId at the service layer; the migration deleted the
   // 2 known pre-B4b orphan rows on T260512-BRIS-Rev1 before applying the
   // NOT NULL constraint. onDelete behaviour changed from SetNull
-  // (which would now violate the NOT NULL constraint) to Cascade â€"
+  // (which would now violate the NOT NULL constraint) to Cascade Ã¢â‚¬"
   // deleting a scope card removes its cutting rows.
   cardId       String            @map("card_id")
   card         ScopeCard         @relation(fields: [cardId], references: [id], onDelete: Cascade)
@@ -3700,14 +3704,14 @@ model CuttingSheetItem {
   lineTotal    Decimal?          @map("line_total") @db.Decimal(12, 2)
   shift        String?
   shiftLoading Decimal?          @map("shift_loading") @db.Decimal(10, 2)
-  method       String? // High-Freq | Low-emission | Fuel | N/A â€" applied as Ã—1.25 for High-Freq / Low-emission
+  method       String? // High-Freq | Low-emission | Fuel | N/A Ã¢â‚¬" applied as Ãƒâ€”1.25 for High-Freq / Low-emission
   // Other-rate line items reference the CuttingOtherRate row so the rate
-  // stays live â€" admin edits propagate to all tenders on next load.
+  // stays live Ã¢â‚¬" admin edits propagate to all tenders on next load.
   otherRateId  String?           @map("other_rate_id")
   otherRate    CuttingOtherRate? @relation(fields: [otherRateId], references: [id], onDelete: SetNull)
   notes        String?
   sortOrder    Int               @default(0) @map("sort_order")
-  // PR B4b â€" marks rows created by the per-card "Copy from above"
+  // PR B4b Ã¢â‚¬" marks rows created by the per-card "Copy from above"
   // aggregator. Replace semantics: re-running Copy from above deletes
   // autoCopied=true saw-cut rows on the card before regenerating, so
   // manual rows (autoCopied=false) and all core-hole/other-rate rows
@@ -3723,7 +3727,7 @@ model CuttingSheetItem {
   @@map("cutting_sheet_items")
 }
 
-// â"€â"€ Cutting â€" other rates â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Cutting Ã¢â‚¬" other rates Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Admin-managed flat-rate catalogue (establishment fees, wet-vac hire,
 // stand-down time etc). Line items on the cutting sheet reference these
 // rows so a rate change propagates to all tenders on next load.
@@ -3742,7 +3746,7 @@ model CuttingOtherRate {
   @@map("cutting_other_rates")
 }
 
-// â"€â"€ Quote tab â€" T&C, Assumptions, Exclusions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Quote tab Ã¢â‚¬" T&C, Assumptions, Exclusions Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Per-tender editable copies. T&Cs seed from tc-text.const.ts on first read.
 // Assumptions/exclusions pre-populate from IS standards on first list load
 // (handled in the service) if the tender has none yet.
@@ -3783,9 +3787,9 @@ model TenderExclusion {
   @@map("tender_exclusions")
 }
 
-// â"€â"€ Admin Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Admin Settings Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // One row per notification trigger. isEnabled=false means "system-wide off"
-// â€" even if an individual user opts in via their /account page they still
+// Ã¢â‚¬" even if an individual user opts in via their /account page they still
 // won't receive it. Recipients are a union of role-based (roleNames) and
 // user-id-based (recipientUserIds) addressees.
 model NotificationTriggerConfig {
@@ -3805,9 +3809,9 @@ model NotificationTriggerConfig {
 
 // SLICE 5 (settings-restructure): per-user notification channel preference.
 // Granularity: one row per (user, trigger). A missing row means the user
-// inherits the admin-configured deliveryMethod for that trigger — no write
+// inherits the admin-configured deliveryMethod for that trigger â€” no write
 // needed for the default case. The stored `channel` can only NARROW the
-// admin's choice (mute-only semantics); effective channel = admin ∩ user.
+// admin's choice (mute-only semantics); effective channel = admin âˆ© user.
 // `channel` mirrors the NotificationTriggerConfig.deliveryMethod vocabulary
 // plus "off" (the empty-set / full mute).
 model NotificationPreference {
@@ -3843,21 +3847,21 @@ model EmailProviderConfig {
 }
 
 // Waste transport cost engine R3 T-0 (2026-07-15). Singleton pattern of
-// EmailProviderConfig — one row keyed "singleton". Holds tenant-wide
+// EmailProviderConfig â€” one row keyed "singleton". Holds tenant-wide
 // operations values that are not per-asset and not per-rate-table:
-//   fuelPricePerLitre    — most recent fuel price (litre). T-2 will refresh
+//   fuelPricePerLitre    â€” most recent fuel price (litre). T-2 will refresh
 //                          it from an external feed; T-0 lets Marco set it
 //                          manually via the Operations tab.
-//   travelRatePerKm      — interim flat travel rate used until T-1 wires
-//                          fuel × consumption × distance into the SoW line.
-// All fields nullable → additive; nothing downstream currently reads them.
+//   travelRatePerKm      â€” interim flat travel rate used until T-1 wires
+//                          fuel Ã— consumption Ã— distance into the SoW line.
+// All fields nullable â†’ additive; nothing downstream currently reads them.
 model OperationsSettings {
   id                 String    @id @default("singleton")
   fuelPricePerLitre  Decimal?  @map("fuel_price_per_litre") @db.Decimal(6, 3)
   fuelPriceSource    String?   @map("fuel_price_source")
   fuelPriceFetchedAt DateTime? @map("fuel_price_fetched_at")
   travelRatePerKm    Decimal?  @map("travel_rate_per_km") @db.Decimal(6, 2)
-  // AU Security of Payment Act — statutory window (business days) in which
+  // AU Security of Payment Act â€” statutory window (business days) in which
   // a respondent must issue a payment schedule after receiving a payment
   // claim. Varies by state (NSW 10, QLD 15, VIC 10, etc.); Marco sets the
   // value for the jurisdiction the tenant operates in. NULL = fall back to
@@ -3870,7 +3874,7 @@ model OperationsSettings {
   @@map("operations_settings")
 }
 
-// â"€â"€ Contracts module â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Contracts module Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // One Contract per Project. Variations and ProgressClaim roll up into the
 // Contract; numbering is globally sequential (IS-C###, IS-V###, IS-PC###)
 // via ContractNumberSequence row-lock, matching the IS-P### pattern for
@@ -3908,7 +3912,7 @@ model Contract {
   endDate               DateTime?             @map("end_date")
   status                ContractStatus        @default(ACTIVE)
   notes                 String?
-  // S1 — soft-archive: nullable timestamp; null means active, non-null means archived.
+  // S1 â€” soft-archive: nullable timestamp; null means active, non-null means archived.
   // Pattern reuses JobCloseout.archivedAt (schema.prisma:1639).
   archivedAt            DateTime?             @map("archived_at")
   archivedById          String?               @map("archived_by_id")
@@ -3916,7 +3920,7 @@ model Contract {
   createdById           String                @map("created_by_id")
   createdBy             User                  @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   // Effective-dated T&C version pinned at contract creation. Same rationale
-  // as ClientQuote.issuedTermsDocumentId — the executed contract must
+  // as ClientQuote.issuedTermsDocumentId â€” the executed contract must
   // forever render the T&Cs that were in force when it was signed.
   issuedTermsDocumentId String?               @map("issued_terms_document_id")
   issuedTerms           CompanyLegalDocument? @relation("ContractIssuedTerms", fields: [issuedTermsDocumentId], references: [id], onDelete: SetNull)
@@ -3989,7 +3993,7 @@ model ProgressClaim {
 // AU Security of Payment Act response ("payment schedule") to a
 // ProgressClaim. Statutory: if the respondent fails to issue a schedule
 // within the state-defined window, the FULL claimed amount becomes
-// payable — that is the risk this record is designed to surface.
+// payable â€” that is the risk this record is designed to surface.
 // dueBy is computed at record-creation time from the claim's submission
 // date + OperationsSettings.sopaResponseDays (business days, adjusted to
 // the preceding QLD work day) and STORED so later setting changes do not
@@ -4035,9 +4039,9 @@ model ClaimLineItem {
   @@map("claim_line_items")
 }
 
-// ── Billing milestones (D365-parity Tier 3) ─────────────────────────────
-// Named milestones on a contract — a trigger (date / % complete / event)
-// flips the milestone from PENDING → DUE; raising a claim from a DUE
+// â”€â”€ Billing milestones (D365-parity Tier 3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Named milestones on a contract â€” a trigger (date / % complete / event)
+// flips the milestone from PENDING â†’ DUE; raising a claim from a DUE
 // milestone links it here and marks it CLAIMED. Sits ALONGSIDE the
 // existing monthly progress-claim flow (which stays the spine for AU
 // construction); milestones are additive, not a replacement. Amount is
@@ -4066,7 +4070,7 @@ model BillingMilestone {
   name           String
   description    String?
   triggerType    BillingMilestoneTrigger    @map("trigger_type")
-  // Only one of the trigger fields is meaningful — enforced in the service
+  // Only one of the trigger fields is meaningful â€” enforced in the service
   // to keep the model shape flat and easy to query.
   triggerDate    DateTime?                  @map("trigger_date")
   triggerPercent Decimal?                   @map("trigger_percent") @db.Decimal(5, 2)
@@ -4094,10 +4098,10 @@ model ContractNumberSequence {
   @@map("contract_number_sequences")
 }
 
-// LEGACY (PR B05) â€" per-year sequence behind the retired J-YYYY-NNN
+// LEGACY (PR B05) Ã¢â‚¬" per-year sequence behind the retired J-YYYY-NNN
 // format. G5 numbers (J{YYMMDD}-{SLUG}-{NNN}) compute the per-client
 // sequence from the jobs table on demand; this table is no longer read
-// or incremented. Kept so nothing breaks on import â€" drop in a
+// or incremented. Kept so nothing breaks on import Ã¢â‚¬" drop in a
 // follow-up cleanup PR.
 model JobNumberSequence {
   year       Int @id
@@ -4120,7 +4124,7 @@ model ClaimNumberSequence {
   @@map("claim_number_sequences")
 }
 
-// â"€â"€ Client quotes (per-client, per-revision) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Client quotes (per-client, per-revision) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // PR #62 split the PDF builder's data source away from the raw scope
 // summary. A ClientQuote holds the estimator's curated cost lines (A, B,
 // C...) that actually appear on the client PDF; the discipline totals
@@ -4138,7 +4142,7 @@ model ClientQuote {
   clientId               String                 @map("client_id")
   client                 Client                 @relation(fields: [clientId], references: [id])
   // Traceability pointer back to the internal TenderEstimate this quote was
-  // derived from. Nullable â€" pre-existing quotes and quotes authored without
+  // derived from. Nullable Ã¢â‚¬" pre-existing quotes and quotes authored without
   // a source estimate stay NULL. SetNull so deleting the estimate leaves the
   // quote intact but unlinked. No pricing behaviour is derived from this.
   sourceTenderEstimateId String?                @map("source_tender_estimate_id")
@@ -4161,7 +4165,7 @@ model ClientQuote {
   sentBy                 User?                  @relation("QuoteSentBy", fields: [sentById], references: [id])
   generatedPdfPath       String?                @map("generated_pdf_path")
   // Effective-dated T&C version pinned at issue time. NULL until the quote
-  // is sent â€" at send-time we resolve the currently-active TERMS_AND_CONDITIONS
+  // is sent Ã¢â‚¬" at send-time we resolve the currently-active TERMS_AND_CONDITIONS
   // and stamp its id here. Editing T&Cs later creates a new version; this
   // FK still points at the old one, so the historical PDF renders the
   // legal terms actually agreed to. See ADR: legal-doc-versioning.
@@ -4202,7 +4206,7 @@ model QuoteCostLine {
   // Traceability pointer back to the internal estimate line this quote line
   // was derived from. Polymorphic because the source can be any Estimate*Line
   // variant (labour / plant / equip / waste / cutting), which have no shared
-  // parent table to FK to â€" same shape used by AuditLog.entityType/entityId.
+  // parent table to FK to Ã¢â‚¬" same shape used by AuditLog.entityType/entityId.
   // Both nullable; both set together or both NULL.
   sourceEstimateLineType String?           @map("source_estimate_line_type")
   sourceEstimateLineId   String?           @map("source_estimate_line_id")
@@ -4295,7 +4299,7 @@ model TenderFilterPreset {
   @@map("tender_filter_presets")
 }
 
-// â"€â"€â"€ Business Directory (PR #73) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Business Directory (PR #73) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 model SubcontractorSupplier {
   id                    String    @id @default(cuid())
@@ -4339,6 +4343,10 @@ model SubcontractorSupplier {
   bankAccountNumber     String?   @map("bank_account_number")
   xeroContactId         String?   @map("xero_contact_id")
   myobCardId            String?   @map("myob_card_id")
+  salesAccountCode      String?   @map("sales_account_code")
+  purchaseAccountCode   String?   @map("purchase_account_code")
+  discount              Decimal?  @db.Decimal(5, 2)
+  customFields          Json?     @map("custom_fields")
   isActive              Boolean   @default(true) @map("is_active")
   onHold                Boolean   @default(false) @map("on_hold")
   onHoldReason          String?   @map("on_hold_reason")
@@ -4368,7 +4376,7 @@ model SubcontractorSupplier {
   @@map("subcontractor_suppliers")
 }
 
-// RC-1 — Subcontractor rate cards (additive, 2026-08-11).
+// RC-1 â€” Subcontractor rate cards (additive, 2026-08-11).
 // Append-only supersede rule applies: never mutate rate/unit/discipline on an
 // existing row. "Editing" means creating a new row + flipping the old row's
 // isActive to false (and optionally closing validTo) in one transaction.
@@ -4376,7 +4384,7 @@ model SubcontractorRate {
   id                      String                @id @default(cuid())
   subcontractorSupplierId String                @map("subcontractor_supplier_id")
   subcontractorSupplier   SubcontractorSupplier @relation(fields: [subcontractorSupplierId], references: [id], onDelete: Cascade)
-  // Discipline discriminator — must be one of IS_DISCIPLINE_CODES (DEM / CIV / ASB / Other).
+  // Discipline discriminator â€” must be one of IS_DISCIPLINE_CODES (DEM / CIV / ASB / Other).
   // Validated at the DTO layer; kept as a plain String column (not a Prisma enum) so new
   // codes can be added without a schema migration.
   discipline              String
@@ -4399,7 +4407,7 @@ model SubcontractorRate {
 }
 
 // NOTE: SubcontractorContact was unified into the polymorphic Contact model in
-// PR #75 â€" rows were copied into `contacts` then. The legacy
+// PR #75 Ã¢â‚¬" rows were copied into `contacts` then. The legacy
 // `subcontractor_contacts` table was dropped in PR #78
 // (migration 20260426_feat_drop_deprecated_tables).
 
@@ -4417,7 +4425,7 @@ model EntityLicence {
   client           Client?                @relation("ClientLicences", fields: [clientId], references: [id], onDelete: Cascade)
   subcontractorId  String?                @map("subcontractor_id")
   subcontractor    SubcontractorSupplier? @relation("SubLicences", fields: [subcontractorId], references: [id], onDelete: Cascade)
-  // Company profile ownership â€" polymorphic reuse for OUR own licences
+  // Company profile ownership Ã¢â‚¬" polymorphic reuse for OUR own licences
   // (demolition, asbestos, QBCC). Alerted through the same compliance cron
   // as subcontractors; never triggers auto-block (a company cannot block
   // itself). Exactly one of client/subcontractor/companyProfile is set.
@@ -4447,7 +4455,7 @@ model EntityInsurance {
   client           Client?                @relation("ClientInsurances", fields: [clientId], references: [id], onDelete: Cascade)
   subcontractorId  String?                @map("subcontractor_id")
   subcontractor    SubcontractorSupplier? @relation("SubInsurances", fields: [subcontractorId], references: [id], onDelete: Cascade)
-  // Company profile ownership â€" polymorphic reuse for OUR own insurances
+  // Company profile ownership Ã¢â‚¬" polymorphic reuse for OUR own insurances
   // (public liability, workers comp, professional indemnity). Same alert
   // path as subcontractors; no auto-block.
   companyProfileId String?                @map("company_profile_id")
@@ -4493,7 +4501,7 @@ model CreditApplication {
 
 // Transactional ledger of charges / payments against a supplier's credit
 // account. The headline limit (`creditLimit`) and approval flag
-// (`creditApproved`) live on SubcontractorSupplier â€" this table records the
+// (`creditApproved`) live on SubcontractorSupplier Ã¢â‚¬" this table records the
 // movements that determine the *current balance* and *remaining credit*.
 // Amounts are stored unsigned; `entryType` carries the sign (charge = owed
 // to supplier, payment = paid).
@@ -4540,7 +4548,7 @@ model SubcontractorDocument {
 //
 // The `snapshot` JSON field captures a point-in-time list of the
 // EntityInsurance / EntityLicence / SubcontractorDocument IDs that were on
-// file at verification, plus their expiry dates and types — this is the
+// file at verification, plus their expiry dates and types â€” this is the
 // authoritative record of "what did we verify" and survives later edits to
 // those underlying rows.
 model PrequalificationRequest {
@@ -4553,10 +4561,10 @@ model PrequalificationRequest {
   verifiedById    String?               @map("verified_by_id")
   verifiedBy      User?                 @relation("PrequalRequestVerifier", fields: [verifiedById], references: [id])
   verifiedAt      DateTime?             @map("verified_at")
-  // low | medium | high — set at verification time.
+  // low | medium | high â€” set at verification time.
   riskRating      String?               @map("risk_rating")
   // Expiry of the prequal itself (typically 12 months after verifiedAt).
-  // Populated by the daily compliance cron flipping status → "expired".
+  // Populated by the daily compliance cron flipping status â†’ "expired".
   expiresAt       DateTime?             @map("expires_at")
   notes           String?
   rejectionReason String?               @map("rejection_reason")
@@ -4575,7 +4583,7 @@ model PrequalificationRequest {
   @@map("prequalification_requests")
 }
 
-// â"€â"€â"€ Compliance tracking (PR #79) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Compliance tracking (PR #79) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 model WorkerQualification {
   id               String        @id @default(cuid())
@@ -4599,7 +4607,7 @@ model WorkerQualification {
 }
 
 // Tracks alerts already sent for an item so the daily cron doesn't spam users.
-// `@@unique([itemId, alertType])` is the dedup guard â€" one record per item +
+// `@@unique([itemId, alertType])` is the dedup guard Ã¢â‚¬" one record per item +
 // alert tier (expiring_30 / expiring_7 / expired).
 model ComplianceAlert {
   id           String   @id @default(cuid())
@@ -4617,7 +4625,7 @@ model ComplianceAlert {
   @@map("compliance_alerts")
 }
 
-// â"€â"€â"€ Safety forms (PR #81) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Safety forms (PR #81) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 model SafetyIncident {
   id              String    @id @default(cuid())
@@ -4762,12 +4770,12 @@ model DocketAttachment {
   @@map("docket_attachments")
 }
 
-// â”€â”€â”€ Worker availability (PR #85) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Worker availability (PR #85) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 //
-// â"€â"€â"€ Worker availability (PR #85) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Worker availability (PR #85) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Two distinct concepts:
-//   WorkerLeave         â€" approved time off with type (annual/sick/personal/...)
-//   WorkerUnavailability â€" soft holds for recurring or ad-hoc days the worker
+//   WorkerLeave         Ã¢â‚¬" approved time off with type (annual/sick/personal/...)
+//   WorkerUnavailability Ã¢â‚¬" soft holds for recurring or ad-hoc days the worker
 //                          cannot be allocated (e.g. RDO, training, ticket renewal)
 // Scheduler reads both and overlays them on the calendar; create-shift flow
 // surfaces conflicts so the planner can re-pick a worker without committing.
@@ -4856,10 +4864,10 @@ enum LeaveRequestStatus {
   REJECTED
 }
 
-// â"€â"€â"€ GPS clock-on (PR #84) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ GPS clock-on (PR #84) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // One row per geolocation reading associated with a clock-on or clock-off
 // event. We log raw points (separate from the timesheet snapshot) so audits
-// can show how location was sampled â€" e.g. multiple reads for accuracy.
+// can show how location was sampled Ã¢â‚¬" e.g. multiple reads for accuracy.
 
 model WorkerLocationLog {
   id              String        @id @default(cuid())
@@ -4877,7 +4885,7 @@ model WorkerLocationLog {
   @@map("worker_location_logs")
 }
 
-// â"€â"€â"€ Client Portal (PR #83) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Client Portal (PR #83) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 model ClientPortalUser {
   id                 String          @id @default(cuid())
@@ -4934,7 +4942,7 @@ model PortalInvite {
   @@map("portal_invites")
 }
 
-// â"€â"€â"€ Gantt scheduling (PR #82) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Gantt scheduling (PR #82) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 
 model GanttTask {
   id           String         @id @default(cuid())
@@ -4958,7 +4966,7 @@ model GanttTask {
   @@map("gantt_tasks")
 }
 
-// â"€â"€â"€ Xero integration (PR #86) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Xero integration (PR #86) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Singleton connection record holds the active OAuth token set. xeroSyncLog
 // records each push/pull for audit. Client.xeroContactId already existed in
 // the schema and is now actively populated by the contact-sync service.
@@ -5047,7 +5055,7 @@ model GlobalAISettings {
   @@map("global_ai_settings")
 }
 
-// Â§5A.1 PR 10 â€" persona chat history. One Conversation = one continuous
+// Ã‚Â§5A.1 PR 10 Ã¢â‚¬" persona chat history. One Conversation = one continuous
 // thread within a (user, personaSlug, subMode, contextKey) scope.
 // contextKey is null for global sub-modes (pipeline/register) and the
 // tender id for tender-detail/scope/estimate/quote/clarifications. The
@@ -5073,19 +5081,19 @@ model ConversationMessage {
   id             String   @id @default(cuid())
   conversationId String   @map("conversation_id")
   // role: 'user' | 'assistant' | 'tool_call' | 'tool_result' (string for
-  // forward compat â€" TS types narrow at the application boundary).
+  // forward compat Ã¢â‚¬" TS types narrow at the application boundary).
   role           String
   content        String
   model          String?
   providerSource String?  @map("provider_source")
-  // Â§5A.1 PR 11 â€" structured payload for tool-related messages. Null for
+  // Ã‚Â§5A.1 PR 11 Ã¢â‚¬" structured payload for tool-related messages. Null for
   // plain text messages. For tool_call: { toolUseId, name, arguments }.
   // For tool_result: { toolUseId, proposals: [{...status, acceptedScopeItemId?...}] }.
   // Multi-turn loop also stores tool_use_id + tool name + result content
   // here so an assistant turn with tool_use blocks and a synthesised user
   // turn with tool_result blocks can be replayed accurately.
   metadata       Json?    @db.JsonB
-  // Â§5A.1 multi-turn loop: USER messages are visible in the UI replay;
+  // Ã‚Â§5A.1 multi-turn loop: USER messages are visible in the UI replay;
   // INTERNAL messages (assistant turns whose only purpose was emitting
   // tool_use blocks, plus synthesised user turns carrying tool_result
   // blocks) are kept for model context but hidden from UI replay so the
@@ -5101,7 +5109,7 @@ model ConversationMessage {
   @@map("conversation_messages")
 }
 
-// â"€â"€â"€ Correspondence Hub (PR #215) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬ Correspondence Hub (PR #215) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Email threads attached to records (clients, tenders, jobs). Mock-mode first;
 // live Microsoft Graph adapter is a follow-up (requires Mail.Read scopes).
 
@@ -5146,7 +5154,7 @@ model CorrespondenceMessage {
   bodyText    String    @map("body_text")
   bodyHtml    String?   @map("body_html")
   // Provider message id (mock generates a stable cuid; live Graph supplies its
-  // immutable id) â€" used for de-duplication when inbound mail is re-polled.
+  // immutable id) Ã¢â‚¬" used for de-duplication when inbound mail is re-polled.
   externalId  String?   @unique @map("external_id")
   sentAt      DateTime? @map("sent_at")
   receivedAt  DateTime? @map("received_at")
@@ -5160,7 +5168,7 @@ model CorrespondenceMessage {
   @@map("correspondence_messages")
 }
 
-// Universal activity Timeline (D365 parity). Polymorphic — one row per
+// Universal activity Timeline (D365 parity). Polymorphic â€” one row per
 // note/status-change/attachment/system event on any host record. The
 // timeline endpoint MERGES these rows with existing signals (correspondence
 // messages, job status history, progress entries, document links) rather
@@ -5177,7 +5185,7 @@ model ActivityEntry {
   // note | status | attachment | system
   kind       String
   body       String
-  // Optional structured payload — e.g. { fromStatus, toStatus } for a
+  // Optional structured payload â€” e.g. { fromStatus, toStatus } for a
   // status entry, or { fileName, url } for an attachment entry.
   metadata   Json?
   authorId   String?  @map("author_id")
@@ -5191,7 +5199,7 @@ model ActivityEntry {
   @@map("activity_entries")
 }
 
-// PR-216 â€" Calendar Sync (mock-mode). One row per (user, source item)
+// PR-216 Ã¢â‚¬" Calendar Sync (mock-mode). One row per (user, source item)
 // recording the "external" event the adapter would have written to
 // the user's calendar. Mock adapter stores everything here so the
 // flow can be tested end-to-end without Microsoft Graph. The live
@@ -5214,7 +5222,7 @@ model CalendarSyncedEvent {
   location        String?
   // 'active' | 'cancelled'. Cancelled means the source item no longer
   // matches the sync filter (shift deleted, status moved away from
-  // PLANNED/IN_PROGRESS, etc.) â€" the row is kept so the live adapter
+  // PLANNED/IN_PROGRESS, etc.) Ã¢â‚¬" the row is kept so the live adapter
   // can emit a Graph cancellation against externalEventId.
   status          String   @default("active")
   lastSyncedAt    DateTime @default(now()) @map("last_synced_at")
@@ -5228,15 +5236,15 @@ model CalendarSyncedEvent {
   @@map("calendar_synced_events")
 }
 
-// PR-193b â€" In-app pilot feedback capture. Any logged-in user can submit a
+// PR-193b Ã¢â‚¬" In-app pilot feedback capture. Any logged-in user can submit a
 // short note tied to the route they were on; admins read/triage the list.
-// Intentionally light â€" no notifications, no attachments (follow-up).
+// Intentionally light Ã¢â‚¬" no notifications, no attachments (follow-up).
 model PilotFeedback {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
   user      User     @relation("PilotFeedbackUser", fields: [userId], references: [id], onDelete: Cascade)
   route     String
-  // 'bug' | 'idea' | 'question' | 'other' â€" validated at the API boundary.
+  // 'bug' | 'idea' | 'question' | 'other' Ã¢â‚¬" validated at the API boundary.
   category  String
   message   String
   // 'new' | 'triaged' | 'done'.
@@ -5248,7 +5256,7 @@ model PilotFeedback {
   @@map("pilot_feedback")
 }
 
-// PR-451 â€" Public holidays lookup. Region-aware, multi-year. Replaces hardcoded
+// PR-451 Ã¢â‚¬" Public holidays lookup. Region-aware, multi-year. Replaces hardcoded
 // holiday maps in the Resource Allocator / Scheduler. Region defaults to "QLD";
 // state-wide holidays use "QLD" and Brisbane-only days (e.g. Royal Queensland
 // Show) use "BRISBANE" so callers can filter accordingly.
@@ -5265,8 +5273,8 @@ model PublicHoliday {
   @@map("public_holidays")
 }
 
-// PR-486 â€" Native inventory / stock layer (slice 1).
-// Purpose-built for consumable stock (bolts, PPE, concrete, small parts) â€"
+// PR-486 Ã¢â‚¬" Native inventory / stock layer (slice 1).
+// Purpose-built for consumable stock (bolts, PPE, concrete, small parts) Ã¢â‚¬"
 // intentionally SEPARATE from Asset/AssetCategory (which tracks unique,
 // serialised, maintained plant). StockCategory does not overload
 // AssetCategory: an "off-hire" from Assets is not the same domain as a
@@ -5405,13 +5413,13 @@ model AuthorityRule {
   @@map("authority_rules")
 }
 
-// â"€â"€ Rates & Lists R0 (PR-487) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Ã¢"â‚¬Ã¢"â‚¬ Rates & Lists R0 (PR-487) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 // Additive-only flexible rate model + list-binding registry per
-// docs/specs/rates-lists-tidyup-spec.md Â§3. The eight legacy rate tables
-// (EstimateLabourRateâ€¦CuttingOtherRate) remain the pricing source of truth;
+// docs/specs/rates-lists-tidyup-spec.md Ã‚Â§3. The eight legacy rate tables
+// (EstimateLabourRateÃ¢â‚¬Â¦CuttingOtherRate) remain the pricing source of truth;
 // nothing consumer-facing changes in R0. The resolver seam
 // (RateResolverService) reads legacy tables by default. Later phases
-// (R1â€¦Rn) route consumers through the seam and migrate one legacy table
+// (R1Ã¢â‚¬Â¦Rn) route consumers through the seam and migrate one legacy table
 // at a time.
 
 enum RateTableCategory {
@@ -5554,13 +5562,13 @@ model ListBinding {
   @@map("list_bindings")
 }
 
-// â"€â"€ Procurement (PR-488 slice 1) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// Request â†' approval â†' PO/subcontract spine per POL 1.2.14 / PRO 23.
+// Ã¢"â‚¬Ã¢"â‚¬ Procurement (PR-488 slice 1) Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Request Ã¢â€ ' approval Ã¢â€ ' PO/subcontract spine per POL 1.2.14 / PRO 23.
 // - Approval routing consults AuthorityService.check; empty ruleset = open
 //   ceiling (matches the seam's default posture).
 // - Sourcing gate thresholds live on ProcurementConfig (seed data), not
 //   hardcoded in service code.
-// - Out-of-allowance / job-budget escalation (Estimator â†' Director) is
+// - Out-of-allowance / job-budget escalation (Estimator Ã¢â€ ' Director) is
 //   DEFERRED until job budget is modelled. ProcurementService.submitRequest
 //   carries a clearly-marked hook where that branch will slot in.
 // - Supplier / stock-item / job FKs are stored as scalar columns (no
@@ -5666,9 +5674,9 @@ model PurchaseOrder {
 
 enum InvoiceMatchStatus {
   PENDING // posted but match not yet run
-  MATCHED // all lines within tolerance → ready to pay
-  HELD // variance above tolerance → requires approval
-  APPROVED // variance approved (authority seam) → ready to pay
+  MATCHED // all lines within tolerance â†’ ready to pay
+  HELD // variance above tolerance â†’ requires approval
+  APPROVED // variance approved (authority seam) â†’ ready to pay
   REJECTED // invoice rejected after review
 }
 
@@ -5684,7 +5692,7 @@ model VendorInvoice {
   // Total as stated on the supplier invoice (before our match verdict).
   invoicedTotal   Decimal            @map("invoiced_total") @db.Decimal(14, 2)
   matchStatus     InvoiceMatchStatus @default(PENDING) @map("match_status")
-  // Variance approval — populated when matchStatus moves to APPROVED.
+  // Variance approval â€” populated when matchStatus moves to APPROVED.
   approvedById    String?            @map("approved_by_id")
   approvedAt      DateTime?          @map("approved_at")
   // Authority-seam rule that authorised the variance, if any.
@@ -5704,9 +5712,9 @@ model VendorInvoice {
   @@map("vendor_invoices")
 }
 
-// Per-line breakdown of a VendorInvoice — the "billed" column in the 3-way match.
+// Per-line breakdown of a VendorInvoice â€” the "billed" column in the 3-way match.
 // orderedQty and orderedUnitPrice come from the matched ProcurementLine (the PO side).
-// receivedQty comes from the GoodsReceipt (receipt side — currently the request line
+// receivedQty comes from the GoodsReceipt (receipt side â€” currently the request line
 // quantity as recorded at RECEIVED status; a future GoodsReceipt model can refine this).
 model VendorInvoiceLine {
   id                String   @id @default(cuid())
@@ -5736,7 +5744,7 @@ model VendorInvoiceLine {
   @@map("vendor_invoice_lines")
 }
 
-// Reconcile / close audit record for a PurchaseOrder — one per PO, written
+// Reconcile / close audit record for a PurchaseOrder â€” one per PO, written
 // when the PO is fully matched and signed-off. Feeds the project-close audit.
 model PoReconcileAudit {
   id              String   @id @default(cuid())
@@ -5756,8 +5764,8 @@ model PoReconcileAudit {
   @@map("po_reconcile_audits")
 }
 
-// Singleton (id="singleton") â€" sourcing-gate value bands per POL 1.2.14.
-// Under `minQuoteThreshold` â†' no quote evidence required. At or above â†' the
+// Singleton (id="singleton") Ã¢â‚¬" sourcing-gate value bands per POL 1.2.14.
+// Under `minQuoteThreshold` Ã¢â€ ' no quote evidence required. At or above Ã¢â€ ' the
 // operator must record `quoteEvidenceRef` on the request. At or above
 // `rfqThreshold` a formal RFQ is expected. Numbers seeded, not hardcoded.
 model ProcurementConfig {
@@ -5773,13 +5781,13 @@ model ProcurementConfig {
   @@map("procurement_config")
 }
 
-// â"€â"€ Company Profile â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// SINGLETON identifying who "we" are â€" the one home for legalName, ABN,
+// Ã¢"â‚¬Ã¢"â‚¬ Company Profile Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// SINGLETON identifying who "we" are Ã¢â‚¬" the one home for legalName, ABN,
 // commercial defaults, document numbering prefixes, and branding. Read by
 // every document builder (PDF, Excel, ICS), email sender, and AI prompt
 // prefix. Enforced singleton: `id` is always the sentinel string
 // "singleton" (application layer) plus a CHECK constraint at DB level for
-// defense-in-depth (same pattern as `PlatformConfig`, but hardened â€" if
+// defense-in-depth (same pattern as `PlatformConfig`, but hardened Ã¢â‚¬" if
 // you find yourself wanting a second row you want multi-tenancy, which is
 // deliberately out of scope).
 //
@@ -5788,7 +5796,7 @@ model ProcurementConfig {
 // what users see in UI and emails. In Australian business practice they
 // often differ (e.g. "Initial Services Group Pty Ltd" trading as
 // "Initial Services"). Retrofitting the split later means auditing every
-// document surface â€" do not collapse.
+// document surface Ã¢â‚¬" do not collapse.
 //
 // Commercial defaults (gstRate, paymentTerms, markup, quote validity) are
 // SEEDS for forms only. An explicit user choice on a tender/quote/job
@@ -5805,14 +5813,14 @@ enum CompanyEntityType {
 model CompanyProfile {
   id String @id // must always be "singleton" (enforced by CHECK constraint)
 
-  // â"€ Identity â"€
+  // Ã¢"â‚¬ Identity Ã¢"â‚¬
   legalName   String            @map("legal_name")
   tradingName String            @map("trading_name")
   abn         String?
   acn         String?
   entityType  CompanyEntityType @default(PTY_LTD) @map("entity_type")
 
-  // â"€ Contact â"€
+  // Ã¢"â‚¬ Contact Ã¢"â‚¬
   primaryEmail           String? @map("primary_email")
   primaryPhone           String? @map("primary_phone")
   website                String?
@@ -5836,7 +5844,7 @@ model CompanyProfile {
   emergencyContactName  String? @map("emergency_contact_name")
   emergencyContactPhone String? @map("emergency_contact_phone")
 
-  // â"€ Commercial defaults (SEED forms; explicit user choice always wins) â"€
+  // Ã¢"â‚¬ Commercial defaults (SEED forms; explicit user choice always wins) Ã¢"â‚¬
   gstRate                  Decimal @default(10) @map("gst_rate") @db.Decimal(5, 2)
   currency                 String  @default("AUD")
   financialYearStartMonth  Int     @default(7) @map("financial_year_start_month")
@@ -5845,7 +5853,7 @@ model CompanyProfile {
   defaultQuoteValidityDays Int     @default(30) @map("default_quote_validity_days")
   defaultMarkupPercent     Decimal @default(15) @map("default_markup_percent") @db.Decimal(5, 2)
 
-  // â"€ Document numbering (format/prefix; counters live in *NumberSequence) â"€
+  // Ã¢"â‚¬ Document numbering (format/prefix; counters live in *NumberSequence) Ã¢"â‚¬
   tenderNumberPrefix    String @default("T") @map("tender_number_prefix")
   quoteNumberPrefix     String @default("Q") @map("quote_number_prefix")
   jobNumberPrefix       String @default("J") @map("job_number_prefix")
@@ -5854,11 +5862,11 @@ model CompanyProfile {
   claimNumberPrefix     String @default("PC") @map("claim_number_prefix")
   incidentNumberPrefix  String @default("INC") @map("incident_number_prefix")
 
-  // â"€ Branding â"€
+  // Ã¢"â‚¬ Branding Ã¢"â‚¬
   // TODO: when BrandColorScheme + BrandAsset land (staged in pr-branding-manager),
   // replace these string fields with FKs. Until then, plain strings so the
   // profile is usable without a second migration.
-  // â”€ Branding â”€
+  // Ã¢â€â‚¬ Branding Ã¢â€â‚¬
   // Legacy string columns kept as fallback while callers migrate to the
   // BrandColorScheme + BrandAsset relations below. A later contract PR
   // will drop these once every reader has been repointed.
@@ -5869,12 +5877,12 @@ model CompanyProfile {
   faviconUrl        String? @map("favicon_url")
   pdfLetterheadUrl  String? @map("pdf_letterhead_url")
 
-  // â"€ Audit trail â"€
+  // Ã¢"â‚¬ Audit trail Ã¢"â‚¬
   activeColorSchemeId String?           @map("active_color_scheme_id")
   activeColorScheme   BrandColorScheme? @relation("CompanyProfileActiveColorScheme", fields: [activeColorSchemeId], references: [id], onDelete: SetNull)
   brandAssets         BrandAsset[]      @relation("CompanyProfileBrandAssets")
 
-  // â”€ Audit trail â”€
+  // Ã¢â€â‚¬ Audit trail Ã¢â€â‚¬
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   updatedById String?  @map("updated_by_id")
@@ -5887,7 +5895,7 @@ model CompanyProfile {
 }
 
 // Named palette of brand colours. Additive to CompanyProfile.primaryColorHex /
-// secondaryColorHex — the singleton points at a scheme via activeColorSchemeId
+// secondaryColorHex â€” the singleton points at a scheme via activeColorSchemeId
 // while the string fallbacks stay in place until a later contract PR removes
 // them. Only super-users mutate these (BrandingController enforces).
 model BrandColorScheme {
@@ -5934,7 +5942,7 @@ model BrandAsset {
 //
 // Rationale: for a demolition contractor a quote/contract is a binding
 // agreement. Silently rewriting the terms attached to historical quotes
-// is not a cosmetic bug â€" it is a contractual and evidentiary problem.
+// is not a cosmetic bug Ã¢â‚¬" it is a contractual and evidentiary problem.
 enum CompanyLegalDocumentType {
   TERMS_AND_CONDITIONS
   COVER_LETTER
@@ -5968,14 +5976,14 @@ model CompanyLegalDocument {
   @@map("company_legal_documents")
 }
 
-// ── Commitments (ERP gap A — cost control) ─────────────────────────────────
+// â”€â”€ Commitments (ERP gap A â€” cost control) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Committed costs (subcontracts, purchase orders to tip sites / haulage /
 // plant hire / subbies) tracked against a Job budget. Distinct from
 // ProcurementRequest (an internal purchase-requisition workflow); a
 // Commitment is the budget-facing record of a contracted spend obligation.
 //
 // Budget view equation: budget vs committed vs actual (actuals posted by
-// Accounts outside this system for now — a separate PR will wire them).
+// Accounts outside this system for now â€” a separate PR will wire them).
 //
 // CommitmentChange captures scope variations / VO to the original value.
 
@@ -6062,7 +6070,7 @@ model CommitmentChange {
   @@map("commitment_changes")
 }
 
-// ── Expense management — slice 1 (capture + approval) ────────────────────────
+// â”€â”€ Expense management â€” slice 1 (capture + approval) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // D365-parity Tier 1. Field/PWA capture (slice 2), receipt OCR (slice 3),
 // and Xero push (Xero-deepening) are separate future slices.
 
@@ -6089,7 +6097,7 @@ model Expense {
   number            String        @unique
   submittedById     String        @map("submitted_by_id")
   submittedBy       User          @relation("ExpenseSubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
-  // Optional cost allocation — at most one of these is set
+  // Optional cost allocation â€” at most one of these is set
   projectId         String?       @map("project_id")
   project           Project?      @relation("ExpenseProject", fields: [projectId], references: [id], onDelete: SetNull)
   jobId             String?       @map("job_id")
@@ -6168,7 +6176,7 @@ model SurveyResponse {
   @@map("survey_responses")
 }
 
-// ── Case management (slice 1) ────────────────────────────────────────────────
+// â”€â”€ Case management (slice 1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // D365 Customer Service parity for construction: defects, warranty items,
 // RFIs and complaints tracked through to resolution.
 
@@ -6262,11 +6270,11 @@ model CaseComment {
   @@map("case_comments")
 }
 
-// ── Business Process Flow (D365 stage-bar parity, MVP slice 1) ────────
+// â”€â”€ Business Process Flow (D365 stage-bar parity, MVP slice 1) â”€â”€â”€â”€â”€â”€â”€â”€
 // Config-driven stage bar pinned to a record. A BusinessProcessFlow is
 // the definition (which entity + ordered stages + required-field keys per
 // stage); a BusinessProcessInstance is one record's live position on it.
-// Stages are NOT hardcoded — they live in the DB so admins can reshape
+// Stages are NOT hardcoded â€” they live in the DB so admins can reshape
 // the flow without a code change. Slice 1 wires this to Tender only.
 model BusinessProcessFlow {
   id         String                    @id @default(cuid())
@@ -6307,7 +6315,7 @@ model BusinessProcessInstance {
   flowId         String               @map("flow_id")
   flow           BusinessProcessFlow  @relation(fields: [flowId], references: [id], onDelete: Cascade)
   entityType     String               @map("entity_type")
-  // Free-text FK — not a hard relation because the target table varies
+  // Free-text FK â€” not a hard relation because the target table varies
   // by entityType. The service resolves the row against the correct
   // Prisma model and enforces existence.
   entityId       String               @map("entity_id")
@@ -6325,11 +6333,11 @@ model BusinessProcessInstance {
   @@map("business_process_instances")
 }
 
-// ─── Automation engine (MVP slice 1) ────────────────────────────────────────
+// â”€â”€â”€ Automation engine (MVP slice 1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Admin-configurable "when X, do Y" rules that sit alongside (not inside) the
 // forms rules engine. `trigger` = { entity, event }. `conditions` = a small
 // JSON expression evaluated against the event payload. `actions` = a WHITELISTED
-// array — the engine refuses anything not in AutomationEngineService.ACTION_HANDLERS,
+// array â€” the engine refuses anything not in AutomationEngineService.ACTION_HANDLERS,
 // so a rule can never invoke arbitrary code.
 model AutomationRule {
   id            String              @id @default(cuid())
@@ -6350,7 +6358,7 @@ model AutomationRule {
   @@map("automation_rules")
 }
 
-// Immutable run log — one row per (rule, event) evaluation. `matched` says the
+// Immutable run log â€” one row per (rule, event) evaluation. `matched` says the
 // conditions passed; `succeeded` says every action executed cleanly. Kept small:
 // no result payload, just the action types that ran and the first error string.
 model AutomationRuleRun {
@@ -6371,7 +6379,7 @@ model AutomationRuleRun {
   @@map("automation_rule_runs")
 }
 
-// ── CRM (Leads + Opportunities unified) ─────────────────────────────────
+// â”€â”€ CRM (Leads + Opportunities unified) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Single-entity sales pipeline. A record starts as a "lead" (isLead=true,
 // stage=open) and progresses to a priced opportunity or is not-pursued.
 // When it firms up it converts into a Tender (no data re-keying).
@@ -6466,7 +6474,7 @@ model Opportunity {
   dropReasonDetail String?     @map("drop_reason_detail")
 
   // Convert-to-Tender: unique 1:1 back-link once fired. Cascade-null when the
-  // tender is deleted so the opportunity survives (marked won → tender removed).
+  // tender is deleted so the opportunity survives (marked won â†’ tender removed).
   convertedTenderId String? @unique @map("converted_tender_id")
   convertedTender   Tender? @relation("OpportunityConvertedTender", fields: [convertedTenderId], references: [id], onDelete: SetNull)
 
@@ -6482,7 +6490,7 @@ model Opportunity {
   @@map("opportunities")
 }
 
-// ── Knowledge Base / SOP Library (case management slice 2) ──────────────────
+// â”€â”€ Knowledge Base / SOP Library (case management slice 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Internal-only library of asbestos procedures, safe work methods, common
 // defect fixes, and how-tos. Not portal-facing. Authors draft articles;
 // knowledge.manage holders can publish them.
@@ -6512,10 +6520,10 @@ model KbArticle {
   @@map("kb_articles")
 }
 
-// ── Map Locations register (ops-m1) ─────────────────────────────────────────
+// â”€â”€ Map Locations register (ops-m1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Tip sites and Points of Interest used by the operations map and the waste
 // transport cost engine. TIPs carry a `facility` string that matches
-// EstimateWasteRate.facility (plain string join — not an FK); ratesStatus is
+// EstimateWasteRate.facility (plain string join â€” not an FK); ratesStatus is
 // derived at query time, never stored.
 // POI categories come from the "poi-categories" GlobalList.
 
@@ -6548,17 +6556,17 @@ model MapLocation {
   @@map("map_locations")
 }
 
-// Tip Recommendation Log — append-only. Written when an operator chooses
+// Tip Recommendation Log â€” append-only. Written when an operator chooses
 // "use this facility" from the Tip Finder panel. Prices are snapshotted at
 // decision time so the log is not affected by later rate changes.
 // originType: "project" when a project site is selected, "office" when the
 // office fallback coordinates are used.
 model TipRecommendationLog {
   id                String      @id @default(cuid())
-  // Facility reference (MapLocation FK — soft-delete safe; log row survives)
+  // Facility reference (MapLocation FK â€” soft-delete safe; log row survives)
   mapLocationId     String      @map("map_location_id")
   mapLocation       MapLocation @relation(fields: [mapLocationId], references: [id], onDelete: Restrict)
-  // Denormalised snapshot — prices change, log must not recompute
+  // Denormalised snapshot â€” prices change, log must not recompute
   facilityName      String      @map("facility_name")
   facilityLat       Decimal     @map("facility_lat") @db.Decimal(10, 7)
   facilityLng       Decimal     @map("facility_lng") @db.Decimal(10, 7)
@@ -6587,9 +6595,9 @@ model TipRecommendationLog {
   @@map("tip_recommendation_logs")
 }
 
-// Site sign-in / sign-out — the WHS spine for "who is on site right now".
+// Site sign-in / sign-out â€” the WHS spine for "who is on site right now".
 // One row per worker-visit: `signedInAt` set on arrival, `signedOutAt` null while
-// the worker is still on site. This is a fact (attendance), not an intention —
+// the worker is still on site. This is a fact (attendance), not an intention â€”
 // deliberately separate from Shift/ScheduleAllocation to keep the muster roll
 // honest. Idempotency lives in the service: signing in twice without signing
 // out returns the existing open row rather than creating a duplicate.
@@ -6616,7 +6624,7 @@ model SiteAttendance {
   @@map("site_attendances")
 }
 
-// ─── Muster / evacuation roll-call ──────────────────────────────────────────
+// â”€â”€â”€ Muster / evacuation roll-call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // A MusterEvent is initiated by a WHS officer during an evacuation drill or
 // emergency. Starting the event snapshots all currently-signed-in attendees
 // (SiteAttendance rows with signedOutAt IS NULL) into MusterAttendee rows
@@ -6660,7 +6668,7 @@ model MusterEvent {
 model MusterAttendee {
   id               String               @id @default(cuid())
   musterEventId    String               @map("muster_event_id")
-  // siteAttendanceId links back to the snapshot source — the open SiteAttendance
+  // siteAttendanceId links back to the snapshot source â€” the open SiteAttendance
   // row that was active when the muster started. Nullable because a manually-
   // added person (e.g. visitor not yet in attendance) may not have a row.
   siteAttendanceId String?              @map("site_attendance_id")
@@ -6682,14 +6690,14 @@ model MusterAttendee {
   @@map("muster_attendees")
 }
 
-// ─── Interactive SWMS — template catalog (SLICE A1) ─────────────────────────
+// â”€â”€â”€ Interactive SWMS â€” template catalog (SLICE A1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Static, versioned catalog of SWMS templates. A template (e.g. Rev 5) has
 // ordered sections; each section groups controls; each control expands into
 // one or more control rows carrying hazard / risk / PPE detail.
 //
 // Natural keys drive seed idempotency: the A2 seed upserts on template.code,
 // section.number (within template), control.code (within section), and
-// row.code (within control) — never on the autoincrement id, so re-runs
+// row.code (within control) â€” never on the autoincrement id, so re-runs
 // converge and future Rev revisions can extend without id drift.
 //
 // A1 is schema-only. Triggers, SOP catalog, document instances, and any
@@ -6763,7 +6771,7 @@ model SwmsTemplateControlRow {
   @@map("swms_template_control_rows")
 }
 
-// ─── Contract Handover Template (B-HW-1) ────────────────────────────────────
+// â”€â”€â”€ Contract Handover Template (B-HW-1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Versioned, configurable template that drives the handover wizard.
 // Each explicit Publish creates a new version row (isActive = true, previous
 // deactivated). Every Handover record pins the templateVersion it was created
@@ -6853,11 +6861,11 @@ model HandoverTemplateField {
   @@map("handover_template_fields")
 }
 
-// ─── Handover instances (B-HW-5) ────────────────────────────────────────────
+// â”€â”€â”€ Handover instances (B-HW-5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // One Handover is created per contract at the moment of contract issuance and
 // drives the handover wizard. The handover pins the template version it was
 // created on (templateVersionId) so subsequent template edits never affect
-// in-flight or finalised handovers — same freeze mechanism as the T&C
+// in-flight or finalised handovers â€” same freeze mechanism as the T&C
 // legal-doc-versioning ADR. The FK to HandoverTemplate is Restrict (never
 // lose the pin), while children cascade-delete from Handover.
 
@@ -6912,7 +6920,7 @@ model HandoverValue {
   // value stores the (possibly overridden) field value as JSON.
   value        Json
   // sourceValue stores the original auto-prefilled value so the UI can show
-  // "edited — differs from source" and offer a reset-to-source action.
+  // "edited â€” differs from source" and offer a reset-to-source action.
   sourceValue  Json?    @map("source_value")
   isOverridden Boolean  @default(false) @map("is_overridden")
   sectionDone  Boolean  @default(false) @map("section_done")
@@ -6962,7 +6970,7 @@ model HandoverAttachment {
   id         String   @id @default(cuid())
   handoverId String   @map("handover_id")
   // fieldKey and category are both nullable; exactly one is expected by the
-  // API layer. No DB CHECK constraint — validation is enforced in the service.
+  // API layer. No DB CHECK constraint â€” validation is enforced in the service.
   fieldKey   String?  @map("field_key")
   category   String?
   docRef     String   @map("doc_ref")
@@ -6975,7 +6983,7 @@ model HandoverAttachment {
   @@map("handover_attachments")
 }
 
-// ── Schedule of Rates (SoR S1) ───────────────────────────────────────────────
+// â”€â”€ Schedule of Rates (SoR S1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Master rate-book for live jobs. Separate from tender pricing (TenderRateSet /
 // EstimatePlantRate / EstimateWasteRate). Later slices add admin UI, job-attach,
 // VC/AR pricing, PDF, and approval chain.
@@ -7049,7 +7057,7 @@ model SorChangeLogEntry {
   @@map("sor_change_log_entries")
 }
 
-// ── SoR S3 — per-client rate card ────────────────────────────────────────────
+// â”€â”€ SoR S3 â€” per-client rate card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // A client rate card snapshots a SorPeriod for a specific client, allowing
 // per-entry overrides (isOverride), custom additions (sorRateId null), and
 // soft-removals (isRemoved) on top of the master catalog. The merged view
@@ -7098,7 +7106,7 @@ model SorClientRateEntry {
   @@map("sor_client_rate_entries")
 }
 
-// ── CRM-1: Account foundation ────────────────────────────────────────────────
+// â”€â”€ CRM-1: Account foundation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 enum AccountLifecycleStatus {
   PROSPECT
@@ -7125,8 +7133,8 @@ enum AccountSource {
 }
 
 /**
- * CRM-1: Account spine — the CRM's organising entity for any organisation
- * across its full lifecycle (PROSPECT → ACTIVE → PAST).
+ * CRM-1: Account spine â€” the CRM's organising entity for any organisation
+ * across its full lifecycle (PROSPECT â†’ ACTIVE â†’ PAST).
  *
  * Wraps `Client` 1:1 via an optional `clientId` FK (`@unique`, `onDelete: SetNull`).
  * `Client` remains the identity record (name/ABN/ACN); Account is the CRM
@@ -7164,14 +7172,44 @@ model Account {
   @@map("accounts")
 }
 
-// ── CRM-4: Comms hub — internal threads + To-Do ─────────────────────────────
+// CFX-1: Configurable field registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+enum FieldAppliesTo {
+  CLIENT
+  VENDOR
+  BOTH
+}
+
+enum FieldSource {
+  BUILTIN
+  CUSTOM
+}
+
+model FieldDefinition {
+  id         String         @id @default(cuid())
+  key        String
+  label      String
+  group      String         @default("General")
+  sortOrder  Int            @default(0) @map("sort_order")
+  visible    Boolean        @default(true)
+  required   Boolean        @default(false)
+  appliesTo  FieldAppliesTo @map("applies_to")
+  source     FieldSource    @default(CUSTOM)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  @@unique([appliesTo, key])
+  @@index([appliesTo, visible])
+  @@map("field_definitions")
+}
+// â”€â”€ CRM-4: Comms hub â€” internal threads + To-Do â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Decoupled sub-module: own models + service boundary so it can branch into
 // its own product later. Polymorphic entity link (entityType/entityId) points
 // at Account | Tender | Job | Contract; no hard FK to those tables keeps the
 // sub-module free of cross-module joins and matches the InternalMessage /
 // ApprovalDecision / SearchEntry polymorphism already in use in this schema.
 //
-// This slice ships WITHOUT Azure — internal threads + tasks only. CRM-5
+// This slice ships WITHOUT Azure â€” internal threads + tasks only. CRM-5
 // layers email-log integration on top via `apps/api/src/modules/crm/comms/
 // email-log.service.ts`.
 
@@ -7206,7 +7244,7 @@ model CommThread {
 }
 
 /// CRM-4: A message inside a thread. `mentions` is a JSON array of user ids
-/// extracted from @-mentions in the body at write time — kept as JSON so the
+/// extracted from @-mentions in the body at write time â€” kept as JSON so the
 /// sub-module owns its own mention resolution without a join table.
 model CommMessage {
   id        String     @id @default(cuid())

@@ -81,6 +81,7 @@ import { HandoversModule } from "./modules/handovers/handovers.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
 import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
+import { FieldDefinitionsModule } from "./modules/field-definitions/field-definitions.module";
 
 @Module({
   imports: [
@@ -168,7 +169,8 @@ import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-r
     HandoversModule,
     SubcontractorRatesModule,
     WinLikelihoodModule,
-    ScheduleOfRatesModule
+    ScheduleOfRatesModule,
+    FieldDefinitionsModule
   ]
 })
 export class AppModule {}

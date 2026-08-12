@@ -20745,6 +20745,24 @@
           "filterable": true,
           "aggregations": []
         },
+        "archivedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -24256,6 +24274,12 @@
           "aggregations": []
         },
         "subcontractorsCreated": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "subcontractorsArchived": {
           "role": "system",
           "label": null,
           "filterable": false,

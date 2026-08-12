@@ -234,6 +234,14 @@ model User {
   accountsOwned    Account[] @relation("AccountOwner")
   accountsArchived Account[] @relation("AccountArchivedBy")
 
+  // CRM-4: Comms hub — thread/message/task authorship + assignment.
+  // Sub-module boundary: comms owns its own records; users only appear as
+  // authors/assignees via SetNull-safe relations (soft-decouple).
+  commThreadsCreated   CommThread[]  @relation("CommThreadCreatedBy")
+  commMessagesAuthored CommMessage[] @relation("CommMessageAuthor")
+  commTasksCreated     CommTask[]    @relation("CommTaskCreatedBy")
+  commTasksAssigned    CommTask[]    @relation("CommTaskAssignee")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -7150,4 +7158,92 @@ model Account {
   @@index([archivedAt])
   @@index([ownerId])
   @@map("accounts")
+}
+
+// ── CRM-4: Comms hub — internal threads + To-Do ─────────────────────────────
+// Decoupled sub-module: own models + service boundary so it can branch into
+// its own product later. Polymorphic entity link (entityType/entityId) points
+// at Account | Tender | Job | Contract; no hard FK to those tables keeps the
+// sub-module free of cross-module joins and matches the InternalMessage /
+// ApprovalDecision / SearchEntry polymorphism already in use in this schema.
+//
+// This slice ships WITHOUT Azure — internal threads + tasks only. CRM-5
+// layers email-log integration on top via `apps/api/src/modules/crm/comms/
+// email-log.service.ts`.
+
+enum CommTaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+/// CRM-4: A conversation thread anchored to any CRM record via a polymorphic
+/// (entityType, entityId) pair. Threads are soft-archivable (archivedAt).
+model CommThread {
+  id          String        @id @default(cuid())
+  /// Entity kind the thread is anchored to. Validated at the DTO layer;
+  /// stored as a String for sub-module decoupling.
+  entityType  String        @map("entity_type")
+  entityId    String        @map("entity_id")
+  subject     String?
+  createdById String        @map("created_by_id")
+  createdBy   User          @relation("CommThreadCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  archivedAt  DateTime?     @map("archived_at")
+  messages    CommMessage[] @relation("CommMessageThread")
+  tasks       CommTask[]    @relation("CommTaskThread")
+
+  @@index([entityType, entityId])
+  @@index([createdById])
+  @@index([archivedAt])
+  @@map("comm_threads")
+}
+
+/// CRM-4: A message inside a thread. `mentions` is a JSON array of user ids
+/// extracted from @-mentions in the body at write time — kept as JSON so the
+/// sub-module owns its own mention resolution without a join table.
+model CommMessage {
+  id        String     @id @default(cuid())
+  threadId  String     @map("thread_id")
+  thread    CommThread @relation("CommMessageThread", fields: [threadId], references: [id], onDelete: Cascade)
+  authorId  String     @map("author_id")
+  author    User       @relation("CommMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  mentions  Json?
+  createdAt DateTime   @default(now()) @map("created_at")
+  editedAt  DateTime?  @map("edited_at")
+
+  @@index([threadId, createdAt])
+  @@index([authorId])
+  @@map("comm_messages")
+}
+
+/// CRM-4: A to-do item. Optional thread link (task can stand alone against
+/// a record without a discussion) plus its own polymorphic (entityType,
+/// entityId) so tasks are queryable per-record without joining threads.
+model CommTask {
+  id          String         @id @default(cuid())
+  threadId    String?        @map("thread_id")
+  thread      CommThread?    @relation("CommTaskThread", fields: [threadId], references: [id], onDelete: SetNull)
+  entityType  String         @map("entity_type")
+  entityId    String         @map("entity_id")
+  title       String
+  description String?
+  status      CommTaskStatus @default(OPEN)
+  assigneeId  String?        @map("assignee_id")
+  assignee    User?          @relation("CommTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdById String         @map("created_by_id")
+  createdBy   User           @relation("CommTaskCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  dueAt       DateTime?      @map("due_at")
+  completedAt DateTime?      @map("completed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@index([entityType, entityId])
+  @@index([assigneeId, status])
+  @@index([threadId])
+  @@index([dueAt])
+  @@map("comm_tasks")
 }

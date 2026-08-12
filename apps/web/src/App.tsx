@@ -101,6 +101,7 @@ import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
+import { CommsHubPage } from "./pages/crm/CommsHubPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -565,6 +566,10 @@ export function App() {
                 detail page stays standalone. CRM-1 adds the Account 360 page. */}
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
             <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
+            {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored
+                via ?entityType=…&entityId=… so any record page can link in
+                without the sub-module knowing about their models. */}
+            <Route path="/crm/comms" element={<CommsHubPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

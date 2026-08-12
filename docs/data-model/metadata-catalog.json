@@ -190,6 +190,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "opportunities": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -12829,6 +12835,18 @@
           "filterable": true,
           "aggregations": []
         },
+        "captureChannel": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "captureDetail": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "clientId": {
           "role": "attribute",
           "label": null,
@@ -12865,6 +12883,18 @@
           "filterable": true,
           "aggregations": []
         },
+        "accountId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "account": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "expectedCloseDate": {
           "role": "time",
           "label": null,
@@ -12878,6 +12908,12 @@
           "aggregations": []
         },
         "nextActionNote": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "notes": {
           "role": "attribute",
           "label": null,
           "filterable": false,

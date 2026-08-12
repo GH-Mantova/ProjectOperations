@@ -37,6 +37,12 @@ type TriggeredRecord = {
   recordType: string;
   recordId: string;
   createdAt: string;
+  // F-9a — audit spine columns for the push executor. Legacy rows default
+  // status="success" (they all succeeded) and carry no lastError/bindingId.
+  status?: "success" | "failed" | string;
+  lastError?: string | null;
+  attempts?: number;
+  bindingId?: string | null;
 };
 
 type CorrectiveActionSummary = {
@@ -409,20 +415,30 @@ export function FormSubmissionDetailPage() {
         </section>
       ))}
 
-      {/* Triggered records */}
-      {submission.triggeredRecords.length > 0 ? (
-        <section className="s7-card" style={{ padding: 14 }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>This submission created</h3>
-          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
-            {submission.triggeredRecords.map((r) => (
-              <li key={r.id}>
-                <strong>{r.recordType.replace(/_/g, " ")}</strong> · {r.recordId.slice(0, 8)}… ·{" "}
-                {fmt(r.createdAt)}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {/* Triggered records — successes and failed pushes (F-9b) */}
+      <TriggeredRecordsSection
+        submission={submission}
+        onRetry={async () => {
+          if (busy || !submission) return;
+          setBusy(true);
+          setError(null);
+          try {
+            const res = await authFetch(`/forms/submissions/${submission.id}/retry-pushes`, {
+              method: "POST",
+              body: JSON.stringify({})
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await load();
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        canRetry={Boolean(user?.permissions?.includes("forms.approve") || user?.isSuperUser)}
+        busy={busy}
+      />
+
 
       {/* Corrective actions panel */}
       {submission.correctiveActions.length > 0 ? (
@@ -631,6 +647,92 @@ function FieldRow({
     <>
       <dt style={{ color: "var(--text-muted)", fontSize: 12 }}>{field.label}</dt>
       <dd style={{ margin: 0, fontSize: 13 }}>{renderValue(field, value, siteNames)}</dd>
+    </>
+  );
+}
+
+/**
+ * F-9b — renders the "This submission created" panel plus a separate
+ * "Push failures" panel with a retry action. Failures are audit-spine
+ * rows written by PushExecutorService with status="failed"; retry deletes
+ * them and re-runs the executor for the same applyOn stage.
+ */
+function TriggeredRecordsSection({
+  submission,
+  onRetry,
+  canRetry,
+  busy
+}: {
+  submission: Submission;
+  onRetry: () => Promise<void> | void;
+  canRetry: boolean;
+  busy: boolean;
+}) {
+  const records = submission.triggeredRecords ?? [];
+  const successes = records.filter((r) => (r.status ?? "success") !== "failed");
+  const failures = records.filter((r) => r.status === "failed");
+  if (successes.length === 0 && failures.length === 0) return null;
+  return (
+    <>
+      {successes.length > 0 ? (
+        <section className="s7-card" style={{ padding: 14 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>This submission created</h3>
+          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+            {successes.map((r) => (
+              <li key={r.id}>
+                <strong>{r.recordType.replace(/_/g, " ")}</strong>
+                {r.recordId ? <> · {r.recordId.slice(0, 8)}…</> : null} · {fmt(r.createdAt)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {failures.length > 0 ? (
+        <section
+          className="s7-card"
+          style={{ padding: 14, borderLeft: "3px solid #DC2626" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 14, color: "#B91C1C" }}>
+              Push failures ({failures.length})
+            </h3>
+            {canRetry ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary"
+                onClick={() => void onRetry()}
+                disabled={busy}
+              >
+                {busy ? "Retrying…" : "Retry failed pushes"}
+              </button>
+            ) : null}
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+            {failures.map((r) => (
+              <li key={r.id} style={{ marginBottom: 6 }}>
+                <strong>{r.recordType.replace(/_/g, " ")}</strong>
+                {typeof r.attempts === "number" ? (
+                  <> · {r.attempts} attempt{r.attempts === 1 ? "" : "s"}</>
+                ) : null}
+                {" · "}
+                {fmt(r.createdAt)}
+                {r.lastError ? (
+                  <div style={{ color: "var(--text-muted)", marginTop: 2, fontSize: 12 }}>
+                    {r.lastError}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

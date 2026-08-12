@@ -18,7 +18,12 @@ const templateInclude = {
         orderBy: { sectionOrder: "asc" },
         include: {
           fields: {
-            orderBy: { fieldOrder: "asc" }
+            orderBy: { fieldOrder: "asc" },
+            include: {
+              // F-9b — designer needs to reload existing push bindings so
+              // authors can edit them across versions.
+              pushBindings: true
+            }
           }
         }
       },
@@ -639,12 +644,46 @@ export class FormsService {
     // designer publish would wipe every rule the author set up. Keyed by
     // fieldKey to survive field reordering.
     const priorRulesByKey = new Map<string, { conditions: unknown; actions: unknown }>();
+    // F-9b — carry push bindings across versions when the DTO omits them
+    // (designer publish of a section that never touched the Push tab).
+    // An explicit empty array in the DTO means "clear".
+    const priorPushBindingsByKey = new Map<
+      string,
+      Array<{
+        targetModule: string;
+        targetAction: string;
+        applyOn: string;
+        config: unknown;
+        isEnabled: boolean;
+      }>
+    >();
     for (const section of latestVersion?.sections ?? []) {
       for (const field of section.fields ?? []) {
         priorRulesByKey.set(field.fieldKey, {
           conditions: field.conditions,
           actions: field.actions
         });
+        const fieldWithBindings = field as typeof field & {
+          pushBindings?: Array<{
+            targetModule: string;
+            targetAction: string;
+            applyOn: string;
+            config: unknown;
+            isEnabled: boolean;
+          }>;
+        };
+        if (fieldWithBindings.pushBindings && fieldWithBindings.pushBindings.length > 0) {
+          priorPushBindingsByKey.set(
+            field.fieldKey,
+            fieldWithBindings.pushBindings.map((b) => ({
+              targetModule: b.targetModule,
+              targetAction: b.targetAction,
+              applyOn: b.applyOn,
+              config: b.config,
+              isEnabled: b.isEnabled
+            }))
+          );
+        }
       }
     }
 
@@ -696,6 +735,42 @@ export class FormsService {
             };
           })
         });
+
+        // F-9b — createMany doesn't return ids; re-read fields for this
+        // section, index by fieldKey, then materialise push bindings.
+        // undefined pushBindings means "carry over prior"; explicit []
+        // clears. This matches the F-2c "undefined preserves" convention.
+        const bindingsToInsert = sectionInput.fields.flatMap((field) => {
+          const explicit = field.pushBindings;
+          const rows =
+            explicit === undefined
+              ? (priorPushBindingsByKey.get(field.fieldKey) ?? [])
+              : explicit;
+          return rows.map((binding) => ({ fieldKey: field.fieldKey, binding }));
+        });
+        if (bindingsToInsert.length > 0) {
+          const createdFields = await tx.formField.findMany({
+            where: { sectionId: section.id },
+            select: { id: true, fieldKey: true }
+          });
+          const fieldIdByKey = new Map(createdFields.map((f) => [f.fieldKey, f.id]));
+          await tx.formFieldPushBinding.createMany({
+            data: bindingsToInsert
+              .map(({ fieldKey, binding }) => {
+                const fieldId = fieldIdByKey.get(fieldKey);
+                if (!fieldId) return null;
+                return {
+                  fieldId,
+                  targetModule: binding.targetModule,
+                  targetAction: binding.targetAction,
+                  applyOn: binding.applyOn ?? "submit",
+                  config: (binding.config ?? {}) as Prisma.InputJsonValue,
+                  isEnabled: binding.isEnabled ?? true
+                };
+              })
+              .filter((v): v is Exclude<typeof v, null> => v !== null)
+          });
+        }
       }
     }
 

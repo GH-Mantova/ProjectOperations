@@ -7,14 +7,16 @@ import {
   ContractStatus,
   VariationStatus
 } from "@prisma/client";
-import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
-import { Type } from "class-transformer";
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { Transform, Type } from "class-transformer";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
+import { SuperUserGuard } from "../../common/auth/super-user.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
+import { ContractArchiveService } from "./contract-archive.service";
 import { ContractsService } from "./contracts.service";
 
 /**
@@ -200,12 +202,23 @@ class PayClaimDto {
  * Inherits standard `page` / `pageSize` / `limit` semantics from
  * PaginationQueryDto (limit takes precedence over pageSize; effective
  * page size is clamped 1–100, default 20).
+ *
+ * By default only non-archived contracts are returned. Pass
+ * `includeArchived=true` to include archived rows in the result set.
  */
 class ListContractsQuery extends PaginationQueryDto {
   /** Filter to a single contract status. */
   @IsOptional() @IsIn(Object.values(ContractStatus)) status?: ContractStatus;
   /** Filter to contracts on a single project. */
   @IsOptional() @IsString() projectId?: string;
+  /**
+   * When true, archived contracts (archivedAt != null) are included.
+   * Defaults to false — the list returns only active contracts.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => value === "true" || value === true)
+  @IsBoolean()
+  includeArchived?: boolean;
 }
 
 /**
@@ -277,13 +290,22 @@ function actor(user: AuthenticatedUser) {
  * `finance.manage`, and approve/pay actions need `finance.admin`.
  * Contract-value changes additionally require `finance.admin`, enforced
  * in the service via the actor's permission set.
+ *
+ * Archive routes (S1):
+ *   POST /contracts/:id/archive   — gated finance.manage
+ *   POST /contracts/:id/unarchive — gated finance.manage
+ *   DELETE /contracts/:id         — gated super-user only (SuperUserGuard,
+ *     reusing apps/api/src/common/auth/super-user.guard.ts)
  */
 @ApiTags("Contracts")
 @ApiBearerAuth()
 @Controller("contracts")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ContractsController {
-  constructor(private readonly service: ContractsService) {}
+  constructor(
+    private readonly service: ContractsService,
+    private readonly archiveService: ContractArchiveService
+  ) {}
 
   /**
    * List contracts with project + client info, filterable by status / projectId.
@@ -293,7 +315,7 @@ export class ContractsController {
    */
   @Get()
   @RequirePermissions("finance.view")
-  @ApiOperation({ summary: "List contracts with project + client info, filterable by status / projectId." })
+  @ApiOperation({ summary: "List contracts with project + client info, filterable by status / projectId. Archived contracts are excluded by default; pass includeArchived=true to include them." })
   @ApiResponse({ status: 200, description: "List contracts with project + client info, filterable by status / projectId." })
   list(@Query() q: ListContractsQuery) {
     return this.service.listContracts({
@@ -301,7 +323,8 @@ export class ContractsController {
       projectId: q.projectId,
       page: q.page,
       pageSize: q.pageSize,
-      limit: q.limit
+      limit: q.limit,
+      includeArchived: q.includeArchived
     });
   }
 
@@ -351,6 +374,67 @@ export class ContractsController {
   @ApiResponse({ status: 200, description: "Update contract. contractValue changes require finance.admin." })
   update(@Param("id") id: string, @Body() dto: UpdateContractDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.updateContract(id, actor(user), dto);
+  }
+
+  // ── Archive (S1) ─────────────────────────────────────────────────────
+  /**
+   * Soft-archive a contract. Sets archivedAt = now and archivedById = actor.
+   * Archived contracts are excluded from the default list. Gated finance.manage.
+   *
+   * @param id   - contract id
+   * @param user - authenticated actor
+   * @returns the updated contract with archivedAt set
+   * @throws NotFoundException when the contract does not exist
+   */
+  @Post(":id/archive")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Soft-archive a contract. Sets archivedAt = now; excluded from default list." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiResponse({ status: 201, description: "Contract archived." })
+  @ApiResponse({ status: 404, description: "Contract not found." })
+  archive(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.archiveService.archive(id, user.sub);
+  }
+
+  /**
+   * Unarchive a contract. Clears archivedAt and archivedById. Gated finance.manage.
+   *
+   * @param id   - contract id
+   * @param user - authenticated actor
+   * @returns the updated contract with archivedAt cleared
+   * @throws NotFoundException when the contract does not exist
+   */
+  @Post(":id/unarchive")
+  @RequirePermissions("finance.manage")
+  @ApiOperation({ summary: "Unarchive a contract. Clears archivedAt so it re-appears in the default list." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiResponse({ status: 201, description: "Contract unarchived." })
+  @ApiResponse({ status: 404, description: "Contract not found." })
+  unarchive(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.archiveService.unarchive(id, user.sub);
+  }
+
+  /**
+   * Hard-delete a contract and all child rows. Irreversible. Super-user only.
+   *
+   * Cascade: Variation, ProgressClaim, BillingMilestone all carry
+   * onDelete: Cascade — a single delete removes everything.
+   * Guard: SuperUserGuard (apps/api/src/common/auth/super-user.guard.ts).
+   *
+   * @param id   - contract id
+   * @param user - authenticated actor (must be super-user)
+   * @throws NotFoundException when the contract does not exist
+   * @throws ForbiddenException (403) when not a super-user
+   */
+  @Delete(":id")
+  @UseGuards(SuperUserGuard)
+  @ApiOperation({ summary: "Permanently delete a contract and all children. Super-user only. Irreversible." })
+  @ApiParam({ name: "id", description: "Contract id." })
+  @ApiResponse({ status: 200, description: "Contract permanently deleted." })
+  @ApiResponse({ status: 403, description: "Super-user required." })
+  @ApiResponse({ status: 404, description: "Contract not found." })
+  hardDelete(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.archiveService.hardDelete(id, user.sub, user.isSuperUser ?? false);
   }
 
   // ── Variations ───────────────────────────────────────────────────────

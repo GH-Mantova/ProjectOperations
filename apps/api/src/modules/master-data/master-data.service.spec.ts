@@ -189,6 +189,48 @@ describe("MasterDataService — Xero alignment (PR-40)", () => {
         })
       });
     });
+
+    // AR-1 regression: archive PATCH sends only { status: "ARCHIVED" } —
+    // must succeed without requiring `name` and must NOT overwrite `name`
+    // with undefined.
+    it("status-only PATCH (archive) succeeds without name and does not overwrite name", async () => {
+      const { service, mocks } = makeService();
+      await service.upsertClient("client-1", { status: "ARCHIVED" } as never);
+      expect(mocks.clientUpdate).toHaveBeenCalledWith({
+        where: { id: "client-1" },
+        data: { status: "ARCHIVED" }
+      });
+      // name must NOT appear in the update data (would clear the stored value)
+      const passedData = (mocks.clientUpdate.mock.calls[0]?.[0] as { data: AnyDto }).data;
+      expect("name" in passedData).toBe(false);
+    });
+
+    it("status-only PATCH does not call ensureUniqueName (name absent from payload)", async () => {
+      // If ensureUniqueName is called with undefined it would error; the
+      // client.findFirst mock returns null, so if the guard fires the test
+      // would pass for the wrong reason — confirmed by asserting findFirst
+      // was NOT called at all.
+      const clientFindFirst = jest.fn().mockResolvedValue(null);
+      const { service } = makeService({ clientFindFirst });
+      await service.upsertClient("client-1", { status: "ARCHIVED" } as never);
+      expect(clientFindFirst).not.toHaveBeenCalled();
+    });
+
+    // POST without name must still be rejected at the service level when
+    // name is explicitly undefined (PartialType makes it optional in TS, but
+    // the CREATE branch still casts to UpsertClientDto — Prisma / DB will
+    // enforce the NOT NULL, and the controller-level class-validator gate
+    // also rejects missing name before reaching the service).
+    // This test confirms the service does NOT add a name guard itself
+    // (that job belongs to class-validator at the controller boundary), so
+    // a plain { status: "ACTIVE" } passed as a CREATE still reaches Prisma
+    // (i.e. the service does not throw BadRequestException itself).
+    it("CREATE with no name forwards to Prisma.create — validation is the controller's job", async () => {
+      const { service, mocks } = makeService();
+      // No name in the DTO: service should not throw, just call create
+      await service.upsertClient(undefined, { status: "ACTIVE" } as never);
+      expect(mocks.clientCreate).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("upsertContact", () => {

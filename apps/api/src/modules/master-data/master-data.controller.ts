@@ -6,6 +6,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { MasterDataQueryDto } from "./dto/master-data-query.dto";
 import {
+  UpdateClientDto,
   UpsertAssetDto,
   UpsertClientDto,
   UpsertCompetencyDto,
@@ -48,13 +49,13 @@ export class MasterDataController {
   @ApiOperation({ summary: "Create a client." })
   @ApiResponse({ status: 201, description: "Client created." })
   createClient(@Body() dto: UpsertClientDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertClient(undefined, dto, actor.sub); }
-  /** Patch an existing client by id; same invariants as create. */
+  /** Patch an existing client by id; all fields optional so a status-only PATCH (e.g. archive) is valid. */
   @Patch("clients/:id")
   @RequirePermissions("masterdata.manage")
   @ApiOperation({ summary: "Update a client." })
   @ApiResponse({ status: 200, description: "Updated client." })
   @ApiResponse({ status: 404, description: "Client not found." })
-  updateClient(@Param("id") id: string, @Body() dto: UpsertClientDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertClient(id, dto, actor.sub); }
+  updateClient(@Param("id") id: string, @Body() dto: UpdateClientDto, @CurrentUser() actor: { sub: string }) { return this.service.upsertClient(id, dto, actor.sub); }
 
   /** Paginated list of CLIENT-owned contacts (optionally filtered by `clientId`). */
   @Get("contacts")

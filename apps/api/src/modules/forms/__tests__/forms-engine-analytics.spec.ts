@@ -21,6 +21,9 @@ describe("FormsEngineService.getAnalytics — status casing fold (S3-006)", () =
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
     {} as never
   );
 

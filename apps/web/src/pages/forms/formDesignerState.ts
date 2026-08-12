@@ -89,6 +89,20 @@ export const ADVANCED_TYPES: ReadonlySet<string> = new Set<string>([
   "unique_id"
 ]);
 
+/**
+ * F-9b — a single FormFieldPushBinding as authored in the designer.
+ * Config is left open (any handler-specific keys); the presenter panel
+ * knows how to render the shape for each targetAction.
+ */
+export type DraftPushBinding = {
+  tempId: string;
+  targetModule: string;
+  targetAction: string;
+  applyOn: "submit" | "approval";
+  isEnabled: boolean;
+  config: Record<string, unknown>;
+};
+
 export type DraftField = {
   tempId: string;
   fieldKey: string;
@@ -102,6 +116,8 @@ export type DraftField = {
   config?: Record<string, unknown>;
   /** For content_block fields — the code of the referenced FormContentSnippet. */
   snippetCode?: string;
+  /** F-9b — post-commit push bindings authored for this field. */
+  pushBindings?: DraftPushBinding[];
 };
 
 export type DraftSection = {
@@ -222,7 +238,25 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
   }
 ];
 
-export type PropertyTab = "general" | "options" | "logic";
+export type PropertyTab = "general" | "options" | "logic" | "push";
+
+/**
+ * F-9b — field types eligible for a Push tab. These are fields whose
+ * value naturally identifies the target of a push (an asset, worker,
+ * meter reading value) or repeating sections that carry defect entries.
+ * Extending this set is a matter of adding a handler and listing the
+ * type below.
+ */
+export const PUSH_ELIGIBLE_TYPES: ReadonlySet<string> = new Set<string>([
+  "asset_picker",
+  "worker_picker",
+  "number",
+  "multiple_choice",
+  "checkbox",
+  "radio",
+  "text",
+  "textarea"
+]);
 
 /**
  * Right-panel tabs per field type. Choice + survey types earn an Options tab
@@ -230,18 +264,19 @@ export type PropertyTab = "general" | "options" | "logic";
  * they carry no logic target of their own, and F-2 handles conditional
  * visibility at the section level.
  *
- * The Push tab arrives with F-9; not surfaced here.
+ * F-9b — push-eligible fields also earn a Push tab that authors
+ * FormFieldPushBinding rows (post-commit dispatch to other modules).
  */
 export function tabsForFieldType(fieldType: string): PropertyTab[] {
   if (isLayoutOnlyType(fieldType)) return ["general"];
-  if (
+  const base: PropertyTab[] =
     CHOICE_TYPES.has(fieldType) ||
     SURVEY_TYPES.has(fieldType) ||
     ADVANCED_TYPES.has(fieldType)
-  ) {
-    return ["general", "options", "logic"];
-  }
-  return ["general", "logic"];
+      ? ["general", "options", "logic"]
+      : ["general", "logic"];
+  if (PUSH_ELIGIBLE_TYPES.has(fieldType)) base.push("push");
+  return base;
 }
 
 let uidCounter = 0;
@@ -517,6 +552,18 @@ export type FieldPublishPayload = {
   config: Record<string, unknown>;
   /** Populated for content_block fields — the snippet code to resolve at fill time. */
   snippetCode?: string;
+  /**
+   * F-9b — post-commit push bindings serialised for the publish endpoint.
+   * Omitted (undefined) means "carry over prior version's bindings" (per
+   * FormsService.createTemplateVersion); explicit `[]` clears them.
+   */
+  pushBindings?: Array<{
+    targetModule: string;
+    targetAction: string;
+    applyOn: string;
+    isEnabled: boolean;
+    config: Record<string, unknown>;
+  }>;
 };
 
 /**
@@ -546,6 +593,20 @@ export function fieldToPublishPayload(field: DraftField): FieldPublishPayload {
     helpText: field.helpText,
     optionsJson: field.options,
     config: mergedConfig,
-    ...(field.snippetCode ? { snippetCode: field.snippetCode } : {})
+    ...(field.snippetCode ? { snippetCode: field.snippetCode } : {}),
+    // Send bindings only when the author touched the Push tab. Undefined
+    // preserves prior-version bindings (F-2c/F-9b "undefined = keep"
+    // convention).
+    ...(field.pushBindings !== undefined
+      ? {
+          pushBindings: field.pushBindings.map((b) => ({
+            targetModule: b.targetModule,
+            targetAction: b.targetAction,
+            applyOn: b.applyOn,
+            isEnabled: b.isEnabled,
+            config: b.config
+          }))
+        }
+      : {})
   };
 }

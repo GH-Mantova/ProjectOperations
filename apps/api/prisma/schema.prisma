@@ -242,6 +242,10 @@ model User {
   commTasksCreated     CommTask[]    @relation("CommTaskCreatedBy")
   commTasksAssigned    CommTask[]    @relation("CommTaskAssignee")
 
+  // CRM-5: EmailLog attribution — nullable so auto-captured emails (webhook /
+  // delta sync with no acting user) survive without a fake actor row.
+  emailLogsLogged      EmailLog[]    @relation("EmailLogLoggedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -7246,4 +7250,55 @@ model CommTask {
   @@index([threadId])
   @@index([dueAt])
   @@map("comm_tasks")
+}
+
+// ── CRM-5: Comms hub — email integration ────────────────────────────────────
+// Layers Outlook / Microsoft Graph email logging on top of the CRM-4 comms
+// sub-module. Reuses the existing M365 seam in
+// `apps/api/src/modules/email/**` — no Azure / Entra / SharePoint config lives
+// here. Polymorphic entity link matches CommThread/CommTask; the plan
+// scopes anchoring to Account | Tender (email doesn't hang off Job/Contract
+// directly today), but the string column keeps the sub-module boundary open.
+
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+/// CRM-5: An Outlook/Graph email captured against an Account or Tender.
+/// One row per Graph message id — the unique constraint on graphMessageId
+/// makes the auto-log path safely idempotent when the same message is seen
+/// twice (e.g. by both a webhook and a delta sync).
+model EmailLog {
+  id             String         @id @default(cuid())
+  /// Entity kind the email is logged against. Validated at the service
+  /// layer (ACCOUNT | TENDER); stored as a String to keep the sub-module
+  /// decoupled from the transactional owners.
+  entityType     String         @map("entity_type")
+  entityId       String         @map("entity_id")
+  direction      EmailDirection
+  /// The Microsoft Graph message id — provider-issued and unique. Empty
+  /// string is not permitted (validated at the service layer).
+  graphMessageId String         @unique @map("graph_message_id")
+  subject        String
+  fromAddress    String         @map("from_address")
+  /// JSON array of recipient email addresses.
+  toAddresses    Json           @map("to_addresses")
+  ccAddresses    Json?          @map("cc_addresses")
+  /// Short preview of the message body. Null when the Graph payload gave us
+  /// nothing usable — the full body is not copied here to keep this table
+  /// index-friendly and avoid duplicating Outlook as an archive.
+  snippet        String?
+  sentAt         DateTime       @map("sent_at")
+  /// User who triggered the log (nullable when auto-captured via a Graph
+  /// webhook / delta sync where there is no acting user).
+  loggedById     String?        @map("logged_by_id")
+  loggedBy       User?          @relation("EmailLogLoggedBy", fields: [loggedById], references: [id], onDelete: SetNull)
+  loggedAt       DateTime       @default(now()) @map("logged_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, sentAt])
+  @@index([loggedById])
+  @@index([sentAt])
+  @@map("email_logs")
 }

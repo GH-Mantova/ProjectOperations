@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../../prisma/prisma.module";
+import { EmailModule } from "../../email/email.module";
 import { CommsController } from "./comms.controller";
 import { CommsService } from "./comms.service";
+import { EmailLogService } from "./email-log.service";
 
 /**
  * CRM-4: CommsModule — decoupled sub-module for internal threads + To-Do.
@@ -12,13 +14,14 @@ import { CommsService } from "./comms.service";
  * whole tree can later be lifted out into its own product without a schema
  * divorce.
  *
- * CRM-5 (email-log.service.ts) will extend this module with the Outlook /
- * Graph email logging seam.
+ * CRM-5: EmailLogService is registered here so the email integration lives
+ * inside the same sub-module boundary. It imports EmailModule to reuse the
+ * existing M365 / Graph seam without re-implementing the provider.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EmailModule],
   controllers: [CommsController],
-  providers: [CommsService],
-  exports: [CommsService]
+  providers: [CommsService, EmailLogService],
+  exports: [CommsService, EmailLogService]
 })
 export class CommsModule {}

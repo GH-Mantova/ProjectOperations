@@ -364,7 +364,7 @@ export class TenderTrackerImportService {
 
     const report: TenderTrackerImportReport = {
       dryRun,
-      rowsRead: parsedRows.length + badRows.length,
+      rowsRead: rawRows.length,
       clientsToCreateOrExisting: clientNormSet.size,
       clientsCreated: 0,
       tendersToCreateOrUpdate: parsedRows.length,

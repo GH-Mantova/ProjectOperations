@@ -327,7 +327,7 @@ describe("TenderTrackerImportService", () => {
       const report = await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
 
       const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
-      expect(createCall?.data?.estimatorUserId).toBeUndefined();
+      expect(createCall?.data?.estimatorUserId).toBeNull();
       expect(report.unmatchedEstimators).toContain("Jane Nobody");
       // No user creation
       expect((prismaMock.user as unknown as Record<string, jest.Mock>)["create"]).toBeUndefined();

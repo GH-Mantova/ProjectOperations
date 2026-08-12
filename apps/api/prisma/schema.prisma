@@ -859,7 +859,6 @@ model Site {
   attendances     SiteAttendance[]
   musterEvents    MusterEvent[]
 
-  @@unique([name])
   @@index([clientId])
   @@map("sites")
 }

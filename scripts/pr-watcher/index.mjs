@@ -438,8 +438,14 @@ export function bodyNeedsSerialLane(text) {
 // done_when is found ??? which bodyNeedsSerialLane treats as pin-to-lane-0.
 export function extractDoneWhen(body) {
   if (!body) return "";
-  const fmMatch = body.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
-  const fm = fmMatch ? fmMatch[1] : body;
+  // Linear frontmatter split (no backtracking regex — avoids ReDoS on
+  // input like '---' + newline + many '<nl><space>' repetitions; CodeQL js/polynomial-redos).
+  let fm = body;
+  if (body.startsWith("---")) {
+    const nl = body.indexOf("\n");
+    const end = nl === -1 ? -1 : body.indexOf("\n---", nl);
+    if (nl !== -1 && end !== -1) fm = body.slice(nl + 1, end);
+  }
   const lines = fm.split(/\r?\n/);
   const i = lines.findIndex((l) => /^done_when\s*:/.test(l));
   if (i === -1) return "";

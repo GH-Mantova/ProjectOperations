@@ -4,12 +4,15 @@ import { AiProvidersModule } from "../ai-providers/ai-providers.module";
 import { AuditModule } from "../audit/audit.module";
 import { PdfRenderingModule } from "../pdf-rendering/pdf-rendering.module";
 import { PlatformModule } from "../platform/platform.module";
+import { ComplianceModule } from "../compliance/compliance.module";
+import { EmailModule } from "../email/email.module";
 import { FormsController } from "./forms.controller";
 import { FormsService } from "./forms.service";
 import { FormNumberSequenceService } from "./form-number-sequence.service";
 import { FormsEngineController } from "./forms-engine.controller";
 import { FormsEngineService } from "./forms-engine.service";
 import { RulesEngineService } from "./rules-engine.service";
+import { SystemContextResolverService } from "./system-context-resolver.service";
 import { FormsSnippetsController } from "./forms-snippets.controller";
 import { FormsSnippetsService } from "./forms-snippets.service";
 import { CorrectiveActionsController } from "./corrective-actions.controller";
@@ -40,7 +43,15 @@ import { PushExecutorService } from "./push-executor.service";
  * second copy of the contracts.
  */
 @Module({
-  imports: [PrismaModule, AiProvidersModule, AuditModule, PlatformModule, PdfRenderingModule],
+  imports: [
+    PrismaModule,
+    AiProvidersModule,
+    AuditModule,
+    PlatformModule,
+    PdfRenderingModule,
+    ComplianceModule,
+    EmailModule
+  ],
   controllers: [
     FormsController,
     FormsEngineController,
@@ -54,6 +65,7 @@ import { PushExecutorService } from "./push-executor.service";
     FormNumberSequenceService,
     FormsEngineService,
     RulesEngineService,
+    SystemContextResolverService,
     FormsSnippetsService,
     CorrectiveActionsService,
     InspectionBuilderService,
@@ -61,6 +73,12 @@ import { PushExecutorService } from "./push-executor.service";
     PublicLinkService,
     PushExecutorService
   ],
-  exports: [RulesEngineService, FormsEngineService, FormsSnippetsService, PushExecutorService]
+  exports: [
+    RulesEngineService,
+    FormsEngineService,
+    FormsSnippetsService,
+    PushExecutorService,
+    SystemContextResolverService
+  ]
 })
 export class FormsModule {}

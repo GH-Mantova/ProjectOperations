@@ -8,6 +8,17 @@ export type DynamicFieldSectionProps = {
   record: Record<string, unknown> & { customFields?: Record<string, unknown> };
   onChange: (patch: Record<string, unknown>) => void;
   errors?: Record<string, string>;
+  /**
+   * Keys the host form already renders itself. DynamicFieldSection MUST NOT
+   * render a second copy — dialogs would then contain duplicate labels and
+   * `getByText(<key>)` becomes ambiguous.
+   *
+   * Callers should include here any BUILTIN field they have their own input
+   * for (e.g. `["abn", "email", "phone"]` when the host form owns those),
+   * and any field their business rules currently hide (e.g. `"abn"` when
+   * the selected businessType is `"private_person"`).
+   */
+  excludeKeys?: string[];
 };
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────────
@@ -15,6 +26,20 @@ export type DynamicFieldSectionProps = {
 /** Returns only the definitions with `visible: true`. */
 export function filterVisible(fields: FieldDefinition[]): FieldDefinition[] {
   return fields.filter((fd) => fd.visible);
+}
+
+/**
+ * Filters out definitions whose `key` is in the caller-supplied exclude list.
+ * Used to prevent duplication of fields the host form already renders and to
+ * honour host-only business rules (e.g. "ABN hidden for private persons").
+ */
+export function filterExcluded(
+  fields: FieldDefinition[],
+  excludeKeys: string[] | undefined
+): FieldDefinition[] {
+  if (!excludeKeys || excludeKeys.length === 0) return fields;
+  const excluded = new Set(excludeKeys);
+  return fields.filter((fd) => !excluded.has(fd.key));
 }
 
 /**
@@ -106,7 +131,13 @@ export function buildCustomPatch(
  *    widgets are deferred). The `source` and `key` are passed as data attrs
  *    so a future slice can swap in a typed widget without a prop change.
  */
-export function DynamicFieldSection({ appliesTo, record, onChange, errors = {} }: DynamicFieldSectionProps) {
+export function DynamicFieldSection({
+  appliesTo,
+  record,
+  onChange,
+  errors = {},
+  excludeKeys
+}: DynamicFieldSectionProps) {
   const { definitions, loading, error } = useFieldDefinitions(appliesTo);
 
   if (loading) {
@@ -116,8 +147,9 @@ export function DynamicFieldSection({ appliesTo, record, onChange, errors = {} }
     return <p style={{ fontSize: 12, color: "var(--status-danger)" }}>Could not load fields: {error}</p>;
   }
 
-  // Filter visible fields.
-  const visible = filterVisible(definitions);
+  // Filter visible fields, then drop any key the host form already renders
+  // (or that its business rules currently hide).
+  const visible = filterExcluded(filterVisible(definitions), excludeKeys);
 
   // Group by `group`, preserving first-appearance order from the already-sorted list.
   const { groupOrder, grouped } = buildGroupOrder(visible);

@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterVisible,
+  filterExcluded,
   buildGroupOrder,
   resolveValue,
   buildBuiltinPatch,
@@ -69,6 +70,49 @@ describe("filterVisible", () => {
       makeField({ key: "fax", visible: false })
     ];
     expect(filterVisible(fields)).toHaveLength(0);
+  });
+});
+
+// ── 1b. filterExcluded — host-form key exclusion ─────────────────────────────
+
+describe("filterExcluded", () => {
+  it("returns fields unchanged when excludeKeys is undefined", () => {
+    const fields: FieldDefinition[] = [
+      makeField({ key: "name" }),
+      makeField({ key: "abn" })
+    ];
+    expect(filterExcluded(fields, undefined)).toEqual(fields);
+  });
+
+  it("returns fields unchanged when excludeKeys is empty", () => {
+    const fields: FieldDefinition[] = [makeField({ key: "name" })];
+    expect(filterExcluded(fields, [])).toEqual(fields);
+  });
+
+  it("removes any field whose key is in the exclude list (host-form dedup)", () => {
+    // The subcontractor host form renders its own ABN, email, phone; the
+    // BUILTIN VENDOR definitions include them. Without exclusion the modal
+    // shows two ABN fields and getByText('ABN', {exact:true}) matches twice.
+    const fields: FieldDefinition[] = [
+      makeField({ key: "name" }),
+      makeField({ key: "abn" }),
+      makeField({ key: "email" }),
+      makeField({ key: "phone" }),
+      makeField({ key: "prequalStatus" })
+    ];
+    const kept = filterExcluded(fields, ["abn", "email", "phone"]);
+    expect(kept.map((f) => f.key)).toEqual(["name", "prequalStatus"]);
+  });
+
+  it("honours the 'ABN hidden for private persons' host rule", () => {
+    // When businessType === 'private_person' the host form both drops its
+    // own ABN input AND passes 'abn' in excludeKeys so DynamicFieldSection
+    // does not silently re-introduce it via the BOTH-scoped BUILTIN def.
+    const fields: FieldDefinition[] = [
+      makeField({ key: "name" }),
+      makeField({ key: "abn" })
+    ];
+    expect(filterExcluded(fields, ["abn"]).map((f) => f.key)).toEqual(["name"]);
   });
 });
 

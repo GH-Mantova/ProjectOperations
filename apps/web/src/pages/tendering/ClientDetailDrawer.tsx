@@ -97,7 +97,29 @@ export function ClientDetailDrawer({
         </>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 12 }}>
+      {/*
+        The drawer body scrolls internally so its footer (Remove / Close in
+        the CenteredModal footer slot) stays reachable and every interactive
+        element inside (e.g. the preference-score radios asserted by
+        batch2-tendering.spec.ts:332) can be auto-scrolled into view by
+        Playwright. Without this cap the DynamicFieldSection stretches the
+        card past viewport and clicks time out with "element is outside of
+        the viewport".
+      */}
+      <div
+        data-testid="client-detail-drawer-body"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          marginTop: 12,
+          maxHeight: "calc(80vh - 96px)",
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: 4,
+          marginRight: -4
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {isPrimaryClient(client) ? <PrimaryTag /> : null}
           {client.relationshipType && !isPrimaryClient(client) ? (

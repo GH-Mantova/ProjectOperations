@@ -157,7 +157,20 @@ export function AddClientModal({
       </ul>
 
       {previewClient ? (
-        <div style={{ marginTop: 12, padding: 12, background: "var(--surface-subtle, rgba(0,0,0,0.02))", borderRadius: 6 }}>
+        // Preview panel scrolls internally so a tenant with many CLIENT
+        // custom field definitions does not stretch the "Add client" modal
+        // past viewport — the "Close" footer must stay reachable.
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+            borderRadius: 6,
+            maxHeight: 260,
+            overflowY: "auto",
+            overflowX: "hidden"
+          }}
+        >
           <p style={{ margin: "0 0 8px", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
             Custom fields — {previewClient.name}
           </p>

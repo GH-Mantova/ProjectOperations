@@ -499,12 +499,14 @@ export class CrmService {
         probability: opp.probability,
         estimatedValue,
         notes: opp.description ?? undefined,
-        tenderClients: [
-          {
-            clientId: opp.clientId,
-            contactId: opp.contactId ?? undefined
-          }
-        ]
+        tenderClients: opp.clientId
+          ? [
+              {
+                clientId: opp.clientId,
+                contactId: opp.contactId ?? undefined
+              }
+            ]
+          : []
       },
       actorId
     );

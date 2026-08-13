@@ -12,10 +12,11 @@
  *   dashboard-level filters — that is SLICE 5's job.
  */
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { resolveEffectiveFilters, type WidgetProps } from "../types";
+import { ReportWidgetChrome } from "./reportWidgetChrome";
 
 // ── Shared types (mirrors reporting.service.ts, local to avoid cross-layer
 //   import — see plan §7 "out of scope: rewriting the BI reporting layer")
@@ -115,11 +116,14 @@ type ReportTableState =
 function ReportTable({
   reportKey,
   config,
-  dashboardFilters
+  dashboardFilters,
+  onLoadingChange
 }: {
   reportKey: string;
   config: WidgetProps["config"];
   dashboardFilters?: WidgetProps["dashboardFilters"];
+  /** Notifies the parent wrapper when loading state changes (SLICE 6). */
+  onLoadingChange?: (loading: boolean) => void;
 }) {
   const { authFetch } = useAuth();
   const [state, setState] = useState<ReportTableState>({ status: "loading" });
@@ -131,12 +135,14 @@ function ReportTable({
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
+    onLoadingChange?.(true);
     authFetch(`/reporting/${reportKey}${query}`)
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) {
           const text = await res.text().catch(() => "Unknown error");
           setState({ status: "error", message: text });
+          onLoadingChange?.(false);
           return;
         }
         const data = (await res.json()) as ReportRunResponse;
@@ -146,15 +152,17 @@ function ReportTable({
             ? { status: "empty" }
             : { status: "ok", data }
         );
+        onLoadingChange?.(false);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setState({ status: "error", message: (err as Error).message });
+        onLoadingChange?.(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [authFetch, reportKey, query]);
+  }, [authFetch, reportKey, query, onLoadingChange]);
 
   if (state.status === "loading") {
     return (
@@ -258,22 +266,46 @@ function ReportTable({
  *  component instance with the key closed over.
  *
  *  SLICE 5: dashboardFilters is forwarded from WidgetProps so the widget can
- *  resolve effectiveFilters = { ...dashboardFilters, ...config.filters }. */
+ *  resolve effectiveFilters = { ...dashboardFilters, ...config.filters }.
+ *  SLICE 6: mounts ReportWidgetChrome (export buttons) below the table;
+ *  disabled while the table is loading. */
 export function makeReportTableWidget(reportKey: string) {
-  const component = ({ config, dashboardFilters }: WidgetProps) => (
-    <div
-      data-testid={`report-table-${reportKey}`}
-      style={{
-        height: "100%",
-        overflow: "auto",
-        padding: 0
-      }}
-    >
-      <ReportTable reportKey={reportKey} config={config} dashboardFilters={dashboardFilters} />
-    </div>
-  );
-  component.displayName = `ReportTableWidget(${reportKey})`;
-  return component;
+  // Named component (uppercase) so react-hooks/rules-of-hooks recognises it.
+  function ReportTableWithChrome({ config, dashboardFilters }: WidgetProps) {
+    const [loading, setLoading] = useState(true);
+    // Stable callback so the child's useEffect dependency array stays stable.
+    const handleLoadingChange = useRef((v: boolean) => setLoading(v)).current;
+
+    const effectiveFilters = resolveEffectiveFilters(dashboardFilters, config.filters);
+
+    return (
+      <div
+        data-testid={`report-table-${reportKey}`}
+        style={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden"
+        }}
+      >
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ReportTable
+            reportKey={reportKey}
+            config={config}
+            dashboardFilters={dashboardFilters}
+            onLoadingChange={handleLoadingChange}
+          />
+        </div>
+        <ReportWidgetChrome
+          reportKey={reportKey}
+          filters={effectiveFilters}
+          disabled={loading}
+        />
+      </div>
+    );
+  }
+  ReportTableWithChrome.displayName = `ReportTableWidget(${reportKey})`;
+  return ReportTableWithChrome;
 }
 
 /** Re-exported for tests that need to poke the formatting logic directly. */

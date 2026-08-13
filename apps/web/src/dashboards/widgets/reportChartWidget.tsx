@@ -15,10 +15,11 @@
  *   but the component handles that case too for defense in depth.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChartWidget, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { resolveEffectiveFilters, type WidgetProps } from "../types";
+import { ReportWidgetChrome } from "./reportWidgetChrome";
 
 // ── Shared types (mirrors reporting.service.ts, local to avoid cross-layer
 //   import — see plan §7 "out of scope: rewriting the BI reporting layer")
@@ -74,12 +75,15 @@ function ReportChart({
   reportKey,
   chartSpec,
   config,
-  dashboardFilters
+  dashboardFilters,
+  onLoadingChange
 }: {
   reportKey: string;
   chartSpec: ChartSpec;
   config: WidgetProps["config"];
   dashboardFilters?: WidgetProps["dashboardFilters"];
+  /** Notifies the parent wrapper when loading state changes (SLICE 6). */
+  onLoadingChange?: (loading: boolean) => void;
 }) {
   const { authFetch } = useAuth();
   const [state, setState] = useState<ReportChartState>({ status: "loading" });
@@ -91,12 +95,14 @@ function ReportChart({
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
+    onLoadingChange?.(true);
     authFetch(`/reporting/${reportKey}${query}`)
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) {
           const text = await res.text().catch(() => "Unknown error");
           setState({ status: "error", message: text });
+          onLoadingChange?.(false);
           return;
         }
         const data = (await res.json()) as ReportRunResponse;
@@ -106,15 +112,17 @@ function ReportChart({
             ? { status: "empty" }
             : { status: "ok", data }
         );
+        onLoadingChange?.(false);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setState({ status: "error", message: (err as Error).message });
+        onLoadingChange?.(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [authFetch, reportKey, query]);
+  }, [authFetch, reportKey, query, onLoadingChange]);
 
   const chartData = useMemo(() => {
     if (state.status !== "ok") return [];
@@ -199,9 +207,18 @@ function ReportChart({
  *  for definitions without a chart, but the component is defensive anyway.
  *
  *  SLICE 5: dashboardFilters is forwarded so the widget can resolve
- *  effectiveFilters = { ...dashboardFilters, ...config.filters } (plan §5). */
+ *  effectiveFilters = { ...dashboardFilters, ...config.filters } (plan §5).
+ *  SLICE 6: mounts ReportWidgetChrome (export buttons) below the chart;
+ *  disabled while the chart is loading. */
 export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | undefined) {
-  const component = ({ config, dashboardFilters }: WidgetProps) => {
+  // Named component (uppercase) so react-hooks/rules-of-hooks recognises it.
+  function ReportChartWithChrome({ config, dashboardFilters }: WidgetProps) {
+    const [loading, setLoading] = useState(true);
+    // Stable callback so the child's useEffect dependency array stays stable.
+    const handleLoadingChange = useRef((v: boolean) => setLoading(v)).current;
+
+    const effectiveFilters = resolveEffectiveFilters(dashboardFilters, config.filters);
+
     if (!chartSpec) {
       return (
         <p style={{ padding: 14, color: "var(--text-muted, #6b7280)", fontSize: 13 }}>
@@ -210,11 +227,32 @@ export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | 
       );
     }
     return (
-      <div style={{ height: "100%", overflow: "auto", padding: 0 }} data-testid={`report-chart-${reportKey}`}>
-        <ReportChart reportKey={reportKey} chartSpec={chartSpec} config={config} dashboardFilters={dashboardFilters} />
+      <div
+        data-testid={`report-chart-${reportKey}`}
+        style={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden"
+        }}
+      >
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ReportChart
+            reportKey={reportKey}
+            chartSpec={chartSpec}
+            config={config}
+            dashboardFilters={dashboardFilters}
+            onLoadingChange={handleLoadingChange}
+          />
+        </div>
+        <ReportWidgetChrome
+          reportKey={reportKey}
+          filters={effectiveFilters}
+          disabled={loading}
+        />
       </div>
     );
-  };
-  component.displayName = `ReportChartWidget(${reportKey})`;
-  return component;
+  }
+  ReportChartWithChrome.displayName = `ReportChartWidget(${reportKey})`;
+  return ReportChartWithChrome;
 }

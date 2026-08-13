@@ -1479,7 +1479,8 @@ function CreateSubcontractorModal({
     "entityType",
     "categories",
     "prequalStatus",
-    "prequalNotes"
+    "prequalNotes",
+    "businessType"
   ];
   // isPrivate currently does not add any additional excludes (abn is
   // already covered above) — kept as a hook so future business rules can

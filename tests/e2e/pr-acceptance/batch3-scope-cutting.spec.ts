@@ -258,16 +258,13 @@ test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
     }
   });
 
-  test("rates admin exposes the Cutrite Saw Cutting and Core holes libraries (PR #37, read-only)", async ({
+  // SLICE 11b: /admin/estimate-rates now redirects to /settings/reference-data.
+  // The Saw Cutting and Core-holes libraries are seeded into the canonical
+  // RateTable model (SLICE 11a) and are visible on the reference-data screen.
+  test("rates admin redirect — /admin/estimate-rates → /settings/reference-data (PR #37, SLICE 11b)", async ({
     page
   }) => {
     await page.goto("/admin/estimate-rates");
-    // Non-zero row counts in the tab labels prove the libraries seeded.
-    await page.getByText(/Saw Cutting \([1-9]\d*\)/).click();
-    await expect(page.getByText("Roadsaw").first()).toBeVisible();
-    await page.getByText(/Core holes \([1-9]\d*\)/).click();
-    await expect(page.getByText("650", { exact: true }).first()).toBeVisible();
-    // Inline click-edit is intentionally NOT exercised — mutating shared
-    // rate-library rows would skew every other pricing assertion.
+    await expect(page).toHaveURL(/\/settings\/reference-data$/);
   });
 });

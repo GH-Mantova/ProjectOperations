@@ -19,17 +19,6 @@
 import { expect, test } from "@playwright/test";
 import { loginAsAdmin, loginAsFieldWorker, loginAsViewer } from "./helpers";
 
-const RATE_TABS = [
-  /^Labour \(\d+\)$/,
-  /^Plant \(\d+\)$/,
-  /^Disposal \(\d+\)$/,
-  /^Saw Cutting \(\d+\)$/,
-  /^Core holes \(\d+\)$/,
-  /^Fuel \(\d+\)$/,
-  /^Enclosures \(\d+\)$/,
-  /^Other rates \(\d+\)$/,
-  /^Densities \(\d+\)$/
-];
 
 test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
   test("AI Settings page renders without stale placeholder text (PR #219)", async ({ page }) => {
@@ -45,91 +34,25 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     await expect(page.getByRole("button", { name: "My Settings" })).toBeVisible();
   });
 
-  test("rates admin renders 9 tabs with seeded counts; row click-to-edit cancels on Esc (PR #29)", async ({
+  // SLICE 11b: /admin/estimate-rates now redirects to /settings/reference-data.
+  // The old page (EstimateRatesAdminPage) has been deleted. The two tests
+  // below that previously exercised the legacy page now assert the redirect;
+  // inline-edit coverage for the canonical reference-data screen lives in its
+  // own spec suite (rates-lists-admin.spec.ts added in SLICE 11b).
+  test("rates admin redirect — /admin/estimate-rates → /settings/reference-data (PR #29, SLICE 11b)", async ({
     page
   }) => {
     await loginAsAdmin(page);
     await page.goto("/admin/estimate-rates");
-
-    await expect(page.getByRole("heading", { name: "Estimate rate library" })).toBeVisible();
-
-    // 9 tabs, every count non-zero (203 entries seeded across the library).
-    await expect(page.getByRole("tab")).toHaveCount(9);
-    for (const name of RATE_TABS) {
-      await expect(page.getByRole("tab", { name })).toBeVisible();
-    }
-
-    // Spot rows: a seeded labour rate on the default tab, and a seeded
-    // Other-rates entry after switching tabs.
-    const labourRow = page.getByRole("row", { name: /Demolition labourer/ });
-    await expect(labourRow).toBeVisible();
-    await expect(labourRow).toContainText("$600.00");
-
-    await page.getByRole("tab", { name: /^Other rates/ }).click();
-    const otherRow = page.getByRole("row", { name: /Jack hammer labour/ });
-    await expect(otherRow).toBeVisible();
-    await expect(otherRow).toContainText("$150.00");
-
-    // Click row → whole row becomes inputs; Escape discards the draft.
-    // Re-locating by "the row holding inputs" is required: a row's
-    // accessible name derives from its cell text, so the name-based
-    // locator stops resolving the moment the draft is edited.
-    await otherRow.click();
-    const editingRow = page.getByRole("row").filter({ has: page.getByRole("textbox") });
-    await expect(editingRow).toHaveCount(1);
-    const descriptionInput = editingRow.getByRole("textbox").first();
-    await descriptionInput.fill("e2e-b8-discarded");
-    await descriptionInput.press("Escape");
-    await expect(editingRow).toHaveCount(0);
-    await expect(page.getByRole("row", { name: /Jack hammer labour/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/reference-data$/);
   });
 
-  test("labour rate inline edit persists across reload, then restores (PR #26)", async ({
+  test("labour rate redirect — /admin/estimate-rates → /settings/reference-data (PR #26, SLICE 11b)", async ({
     page
   }) => {
     await loginAsAdmin(page);
     await page.goto("/admin/estimate-rates");
-
-    const row = page.getByRole("row", { name: /Machine operator/ });
-    await expect(row).toBeVisible();
-
-    // First $ amount in the row is the Day rate.
-    const before = /\$([\d,]+\.\d{2})/.exec((await row.textContent()) ?? "");
-    expect(before, "Machine operator row should show a Day rate").toBeTruthy();
-    const original = Number(before![1].replace(/,/g, ""));
-    const bumped = original + 1;
-
-    const fmt = (n: number) =>
-      new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
-
-    // Editing changes the row's accessible name, so the editing row is
-    // re-located as "the row holding spinbuttons" (only one row edits at
-    // a time; the add-row inputs sit outside the table).
-    const editingRow = page.getByRole("row").filter({ has: page.getByRole("spinbutton") });
-
-    const setDayRate = async (target: number) => {
-      // Click the Day cell specifically — focus must land in that cell's
-      // input (LL-27: the old code focused the Role input regardless).
-      await page.getByRole("row", { name: /Machine operator/ }).getByRole("cell").nth(1).click();
-      await expect(editingRow).toHaveCount(1);
-      await editingRow.getByRole("spinbutton").first().fill(String(target));
-      await editingRow.getByRole("spinbutton").first().press("Enter");
-      // The row must leave edit mode BEFORE the formatted value is asserted
-      // (LL-27: the missing guard in the original failure).
-      await expect(editingRow).toHaveCount(0);
-      await expect(page.getByRole("row", { name: /Machine operator/ })).toContainText(fmt(target));
-    };
-
-    try {
-      await setDayRate(bumped);
-      await page.reload();
-      await expect(page.getByRole("row", { name: /Machine operator/ })).toContainText(fmt(bumped));
-    } finally {
-      // Restore the value read at the start of the test even if an assertion
-      // above failed mid-edit; reload first to clear any wedged edit state.
-      await page.reload();
-      await setDayRate(original);
-    }
+    await expect(page).toHaveURL(/\/settings\/reference-data$/);
   });
 
   test("admin settings page renders all section tabs for an admin (prompt-directed)", async ({

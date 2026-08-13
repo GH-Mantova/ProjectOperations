@@ -270,6 +270,11 @@ model User {
   // SoR S4: Job/tender rate-book snapshots locked by this user.
   lockedSorSnapshots   JobSorSnapshot[] @relation("SorSnapshotLockedBy")
 
+  // SoR S7: Agreed Records (dayworks) created / signed by this user.
+  agreedRecordsCreated       AgreedRecord[]           @relation("AgreedRecordCreatedBy")
+  agreedRecordsWorkerSigned  AgreedRecord[]           @relation("AgreedRecordWorkerSigner")
+  agreedRecordAttachments    AgreedRecordAttachment[] @relation("AgreedRecordAttachmentUploader")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -1512,6 +1517,8 @@ model Job {
   siteAttendances    SiteAttendance[]
   // SoR S4: locked rate-book snapshots for this job.
   sorSnapshots       JobSorSnapshot[]       @relation("JobSorSnapshots")
+  // SoR S7: agreed records (dayworks) captured against this job.
+  agreedRecords      AgreedRecord[]
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
   tenantId           String?                @map("tenant_id")
   tenant             Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -7246,6 +7253,8 @@ model JobSorSnapshot {
   supersededBy        JobSorSnapshot?       @relation("SorSnapshotSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
   supersedes          JobSorSnapshot?       @relation("SorSnapshotSupersede")
   rates               JobSorSnapshotRate[]
+  // SoR S7: Agreed Records that locked their rate-book from this snapshot.
+  agreedRecords       AgreedRecord[]        @relation("AgreedRecordSnapshot")
   createdAt           DateTime              @default(now()) @map("created_at")
 
   @@unique([jobId, sorVersion])
@@ -7511,4 +7520,85 @@ model EmailLog {
   @@index([loggedById])
   @@index([sentAt])
   @@map("email_logs")
+}
+
+// ── SoR S7: Agreed Record (AR / dayworks) ────────────────────────────────────
+
+/// Single-row sequence table that issues AR-XXXXXX numbers for AgreedRecord.
+model AgreedRecordNumberSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0) @map("last_number")
+
+  @@map("agreed_record_number_sequences")
+}
+
+enum AgreedRecordStatus {
+  DRAFT         // worker started but not yet submitted
+  SUBMITTED     // worker submitted with both signatures + photos
+  OFFICE_REVIEW // WHS & CC picked it up (S8 transitions this)
+  PRICED        // priced from locked SoR (S8)
+  APPROVED      // Ops signed off (S8)
+  SENT_BACK     // office rejected — back to worker (S8)
+  VOID
+}
+
+model AgreedRecord {
+  id                     String              @id @default(cuid())
+  jobId                  String              @map("job_id")
+  job                    Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  recordNumber           String              @unique @map("record_number")
+  description            String
+  workDate               DateTime            @map("work_date")
+  status                 AgreedRecordStatus  @default(DRAFT)
+  jobSorSnapshotId       String?             @map("job_sor_snapshot_id")
+  jobSorSnapshot         JobSorSnapshot?     @relation("AgreedRecordSnapshot", fields: [jobSorSnapshotId], references: [id], onDelete: SetNull)
+  sorVersion             String?             @map("sor_version")
+  workerSignaturePath    String?             @map("worker_signature_path")
+  workerSignedById       String?             @map("worker_signed_by_id")
+  workerSignedBy         User?               @relation("AgreedRecordWorkerSigner", fields: [workerSignedById], references: [id], onDelete: SetNull)
+  workerSignedAt         DateTime?           @map("worker_signed_at")
+  clientRepName          String?             @map("client_rep_name")
+  clientRepSignaturePath String?             @map("client_rep_signature_path")
+  clientRepSignedAt      DateTime?           @map("client_rep_signed_at")
+  submittedAt            DateTime?           @map("submitted_at")
+  createdById            String              @map("created_by_id")
+  createdBy              User                @relation("AgreedRecordCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt              DateTime            @default(now()) @map("created_at")
+  updatedAt              DateTime            @updatedAt @map("updated_at")
+  lines                  AgreedRecordLine[]
+  attachments            AgreedRecordAttachment[]
+
+  @@index([jobId, status])
+  @@map("agreed_records")
+}
+
+model AgreedRecordLine {
+  id             String       @id @default(cuid())
+  agreedRecordId String       @map("agreed_record_id")
+  agreedRecord   AgreedRecord @relation(fields: [agreedRecordId], references: [id], onDelete: Cascade)
+  category       SorCategory
+  resourceName   String       @map("resource_name")
+  class          String?
+  unit           String?
+  quantity       Decimal      @db.Decimal(12, 2)
+  tier           String       @default("ORDINARY")
+  notes          String?
+  sortOrder      Int          @default(0) @map("sort_order")
+
+  @@index([agreedRecordId])
+  @@map("agreed_record_lines")
+}
+
+model AgreedRecordAttachment {
+  id             String       @id @default(cuid())
+  agreedRecordId String       @map("agreed_record_id")
+  agreedRecord   AgreedRecord @relation(fields: [agreedRecordId], references: [id], onDelete: Cascade)
+  kind           String       @default("PHOTO")
+  filePath       String       @map("file_path")
+  uploadedById   String?      @map("uploaded_by_id")
+  uploadedBy     User?        @relation("AgreedRecordAttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt     DateTime     @default(now()) @map("uploaded_at")
+
+  @@index([agreedRecordId])
+  @@map("agreed_record_attachments")
 }

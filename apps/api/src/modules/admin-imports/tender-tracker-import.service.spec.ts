@@ -8,6 +8,15 @@ import * as fs from "fs";
 import * as path from "path";
 import { TenderTrackerImportService } from "./tender-tracker-import.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { TenderNumberService } from "../tendering/tender-number.service";
+
+const tenderNumbersMock = {
+  generate: jest.fn().mockResolvedValue({
+    tenderNumber: "T240101-TEST-Rev1",
+    clientSlugSnapshot: "TEST",
+    revisionNumber: 1,
+  }),
+};
 
 function makePrismaMock(overrides: Record<string, unknown> = {}): jest.Mocked<PrismaService> {
   const base = {
@@ -82,6 +91,7 @@ describe("TenderTrackerImportService", () => {
       providers: [
         TenderTrackerImportService,
         { provide: PrismaService, useValue: prismaMock },
+        { provide: TenderNumberService, useValue: tenderNumbersMock },
       ],
     }).compile();
     service = module.get(TenderTrackerImportService);
@@ -251,7 +261,7 @@ describe("TenderTrackerImportService", () => {
       const csv = HEADER + makeRow({ tenderNo: "T1234", projectName: "50 Ann St Building upgrade", clientName: "Buildcorp", probability: "Lost", decision: "Submitted" });
       await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
       const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
-      expect(createCall?.data?.tenderNumber).toBe("T1234");
+      expect(createCall?.data?.tenderNumber).toBe("T240101-TEST-Rev1");
       expect(createCall?.data?.title).toBe("T1234 — 50 Ann St Building upgrade");
     });
 
@@ -260,7 +270,19 @@ describe("TenderTrackerImportService", () => {
       await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
       const createCall = (prismaMock.tender.create as unknown as jest.Mock).mock.calls[0]?.[0];
       expect(createCall?.data?.title).toBe("T1234 — 50 Ann St");
-      expect(createCall?.data?.tenderNumber).toBe("T1234");
+      expect(createCall?.data?.tenderNumber).toBe("T240101-TEST-Rev1");
+    });
+
+    it("keeps an already-canonical tender number on re-run (idempotent)", async () => {
+      prismaMock = makePrismaMock();
+      (prismaMock.tender.findFirst as unknown as jest.Mock).mockResolvedValueOnce({ id: "t-existing", tenderNumber: "T240101-TEST-Rev1", siteId: "s-existing" } as never);
+      await buildService(prismaMock);
+      tenderNumbersMock.generate.mockClear();
+      const csv = HEADER + makeRow({ tenderNo: "T1234", projectName: "50 Ann St", clientName: "Buildcorp" });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+      expect(tenderNumbersMock.generate).not.toHaveBeenCalled();
+      const updateCall = (prismaMock.tender.update as unknown as jest.Mock).mock.calls[0]?.[0];
+      expect(updateCall?.data?.tenderNumber).toBeUndefined();
     });
   });
 });

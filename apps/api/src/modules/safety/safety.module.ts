@@ -3,6 +3,9 @@ import { EmailModule } from "../email/email.module";
 import { PlatformModule } from "../platform/platform.module";
 import { MusterController } from "./muster.controller";
 import { MusterService } from "./muster.service";
+import { SafetyRealtimeController } from "./realtime/safety-realtime.controller";
+import { SafetyRealtimeEmitter } from "./realtime/safety-realtime.emitter";
+import { SafetyRealtimeAuthGuard } from "./realtime/safety-realtime.guard";
 import { SafetyController } from "./safety.controller";
 import { SafetyService } from "./safety.service";
 
@@ -20,8 +23,8 @@ import { SafetyService } from "./safety.service";
  */
 @Module({
   imports: [PlatformModule, EmailModule],
-  controllers: [SafetyController, MusterController],
-  providers: [SafetyService, MusterService],
+  controllers: [SafetyController, MusterController, SafetyRealtimeController],
+  providers: [SafetyService, MusterService, SafetyRealtimeEmitter, SafetyRealtimeAuthGuard],
   exports: [SafetyService, MusterService]
 })
 export class SafetyModule {}

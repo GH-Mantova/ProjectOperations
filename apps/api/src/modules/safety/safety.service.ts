@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { EmailService } from "../email/email.service";
+import { SafetyRealtimeEmitter } from "./realtime/safety-realtime.emitter";
 
 const INCIDENT_TYPES = [
   "near_miss",
@@ -94,7 +95,8 @@ export class SafetyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly email: EmailService
+    private readonly email: EmailService,
+    private readonly realtime: SafetyRealtimeEmitter
   ) {}
 
   // ─── Incidents ──────────────────────────────────────────────────────────
@@ -208,6 +210,7 @@ export class SafetyService {
     });
 
     void this.notifyIncident(created.id, incidentNumber, input.severity, input.description.trim());
+    this.realtime.emit({ type: "safety.incident.changed" });
     return created;
   }
 
@@ -253,7 +256,9 @@ export class SafetyService {
       if (input[k] !== undefined) data[k] = input[k];
     }
     if (input.incidentDate) data.incidentDate = new Date(input.incidentDate);
-    return this.prisma.safetyIncident.update({ where: { id }, data });
+    const updated = await this.prisma.safetyIncident.update({ where: { id }, data });
+    this.realtime.emit({ type: "safety.incident.changed" });
+    return updated;
   }
 
   /**
@@ -272,10 +277,12 @@ export class SafetyService {
    */
   async closeIncident(id: string, actorId: string) {
     await this.requireIncident(id);
-    return this.prisma.safetyIncident.update({
+    const updated = await this.prisma.safetyIncident.update({
       where: { id },
       data: { status: "closed", closedAt: new Date(), closedById: actorId }
     });
+    this.realtime.emit({ type: "safety.incident.changed" });
+    return updated;
   }
 
   // ─── Hazards ────────────────────────────────────────────────────────────
@@ -398,6 +405,7 @@ export class SafetyService {
       input.description.trim(),
       input.assignedToId ?? null
     );
+    this.realtime.emit({ type: "safety.hazard.changed" });
     return created;
   }
 
@@ -443,7 +451,9 @@ export class SafetyService {
     }
     if (input.observationDate) data.observationDate = new Date(input.observationDate);
     if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
-    return this.prisma.hazardObservation.update({ where: { id }, data });
+    const updated = await this.prisma.hazardObservation.update({ where: { id }, data });
+    this.realtime.emit({ type: "safety.hazard.changed" });
+    return updated;
   }
 
   /**
@@ -461,10 +471,12 @@ export class SafetyService {
    */
   async closeHazard(id: string) {
     await this.requireHazard(id);
-    return this.prisma.hazardObservation.update({
+    const updated = await this.prisma.hazardObservation.update({
       where: { id },
       data: { status: "closed", closedAt: new Date() }
     });
+    this.realtime.emit({ type: "safety.hazard.changed" });
+    return updated;
   }
 
   // ─── Dashboard ──────────────────────────────────────────────────────────

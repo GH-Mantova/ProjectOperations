@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { useSchedulerPresence, type AllocationChangedPayload } from "./useSchedulerPresence";
 import {
   addDaysUtc,
   emptyCellAmber,
@@ -90,7 +91,22 @@ export function SchedulerGridPage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideBusy, setOverrideBusy] = useState(false);
 
+  // RT-3 — presence/soft edit-conflict nudge state.
+  const [changeNudge, setChangeNudge] = useState<AllocationChangedPayload | null>(null);
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { from, to, days } = useMemo(() => visibleRange(view, cursor), [view, cursor]);
+
+  // RT-3 — presence hook: single SSE connection for the scheduler channel.
+  // onAllocationChanged is declared after `load` because it calls `load()`.
+  // We forward it via a ref to avoid re-opening the SSE connection on every
+  // render (the hook already does this internally, but being explicit here).
+  const onAllocationChangedRef = useRef<((p: AllocationChangedPayload) => void) | null>(null);
+  const { viewerCount, viewers } = useSchedulerPresence({
+    onAllocationChanged: useCallback((payload: AllocationChangedPayload) => {
+      onAllocationChangedRef.current?.(payload);
+    }, [])
+  });
 
   const load = useCallback(async () => {
     setCells(null);
@@ -128,6 +144,19 @@ export function SchedulerGridPage() {
       setError((err as Error).message);
     }
   }, [authFetch, from, to, orientation]);
+
+  // Wire the allocation-changed handler once `load` is stable.
+  // This runs after every render but only updates a ref — no hook deps needed.
+  useEffect(() => {
+    onAllocationChangedRef.current = (payload: AllocationChangedPayload) => {
+      // Refetch so the grid shows the latest data.
+      void load();
+      // Show a transient nudge for 5 s then auto-dismiss.
+      setChangeNudge(payload);
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+      nudgeTimerRef.current = setTimeout(() => setChangeNudge(null), 5_000);
+    };
+  });
 
   useEffect(() => {
     void load();
@@ -466,11 +495,61 @@ export function SchedulerGridPage() {
     return () => window.removeEventListener("pointerup", onPointerUp);
   }, [onPointerUp]);
 
+  // Clean up nudge timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    };
+  }, []);
+
   const loading = cells === null;
 
   return (
     <div className="sched-grid-page">
-      <h1 className="s7-type-page-title" style={{ margin: "0 0 8px" }}>Scheduler grid</h1>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, margin: "0 0 8px" }}>
+        <h1 className="s7-type-page-title" style={{ margin: 0 }}>Scheduler grid</h1>
+        {viewerCount > 1 ? (
+          <span
+            className="s7-badge"
+            title={viewers.map((v) => v.name).join(", ")}
+            data-testid="presence-indicator"
+            style={{ fontSize: 11 }}
+          >
+            {viewerCount} viewing
+          </span>
+        ) : null}
+      </div>
+      {changeNudge ? (
+        <div
+          className="sched-grid__change-nudge"
+          role="status"
+          aria-live="polite"
+          data-testid="change-nudge"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 12px",
+            marginBottom: 8,
+            background: "var(--amber-50, #fffbeb)",
+            border: "1px solid var(--amber-200, #fde68a)",
+            borderRadius: 6,
+            fontSize: 13,
+            color: "var(--text-primary, #111827)"
+          }}
+        >
+          <span aria-hidden style={{ fontSize: 16 }}>&#9888;</span>
+          Someone edited this schedule — data has been refreshed.
+          <button
+            type="button"
+            style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 16, lineHeight: 1 }}
+            aria-label="Dismiss"
+            onClick={() => setChangeNudge(null)}
+          >
+            &times;
+          </button>
+        </div>
+      ) : null}
       <header className="sched-grid__head">
         <div className="sched-grid__nav">
           <button

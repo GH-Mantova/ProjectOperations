@@ -8,13 +8,16 @@ import { AvailabilityReportController } from "./availability-report.controller";
 import { AvailabilityReportService } from "./availability-report.service";
 import { SchedulerSuggestionController } from "./suggestion.controller";
 import { SchedulerSuggestionService } from "./suggestion.service";
+import { SchedulerRealtimeController } from "./realtime/scheduler-realtime.controller";
+import { SchedulerPresenceRegistry } from "./realtime/scheduler-presence.registry";
 
 /**
  * §9 Scheduler and Work Planning module.
  *
  * Wires the existing shift workspace, the PR-452 day-grain allocation grid,
- * the PR-454 month availability heatmap report, and the D365 RSO-parity
- * suggest engine (phase 1, assistive).
+ * the PR-454 month availability heatmap report, the D365 RSO-parity
+ * suggest engine (phase 1, assistive), and the RT-3 presence/soft
+ * edit-conflict indicator (SSE realtime channel).
  */
 @Module({
   imports: [PlatformModule],
@@ -22,13 +25,15 @@ import { SchedulerSuggestionService } from "./suggestion.service";
     SchedulerController,
     ScheduleAllocationController,
     AvailabilityReportController,
-    SchedulerSuggestionController
+    SchedulerSuggestionController,
+    SchedulerRealtimeController
   ],
   providers: [
     SchedulerService,
     ScheduleAllocationService,
     AvailabilityReportService,
-    SchedulerSuggestionService
+    SchedulerSuggestionService,
+    SchedulerPresenceRegistry
   ]
 })
 export class SchedulerModule {}

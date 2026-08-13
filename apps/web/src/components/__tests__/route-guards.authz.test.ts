@@ -45,12 +45,6 @@ const SELF_GUARDED_ROUTES: ReadonlyArray<{ path: string; reason: string }> = [
       "Self-gated in-component via canAny('rates.manage','lists.manage') → <NoAccess/>"
   },
   {
-    // EstimateRatesAdminPage self-gates via can(user, 'estimates.admin').
-    // Same NoAccess pattern as the other admin-named pages that self-gate.
-    path: "/admin/estimate-rates",
-    reason: "Self-gated in-component via can('estimates.admin') → <NoAccess/>"
-  },
-  {
     // JobRolesPage lives in the Workers area (SLICE 15 moved it out of
     // Administration). The sidebar entry is gated on resources.manage and
     // the underlying /job-roles + /competencies API endpoints enforce the

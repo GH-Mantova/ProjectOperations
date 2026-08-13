@@ -3,7 +3,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -13,6 +14,7 @@ import {
   ScheduleAllocationQueryDto,
   UpsertScheduleAllocationDto
 } from "./dto/schedule-allocation.dto";
+import { SchedulerPresenceRegistry } from "./realtime/scheduler-presence.registry";
 
 /**
  * Acting principal context — mirrors {@link AllocationsService}. `permissions`
@@ -80,7 +82,10 @@ function* daysInRange(from: Date, to: Date): Generator<Date> {
  */
 @Injectable()
 export class ScheduleAllocationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly presence: SchedulerPresenceRegistry | null = null
+  ) {}
 
   // ─── Eligibility ────────────────────────────────────────────────────────
 
@@ -371,6 +376,14 @@ export class ScheduleAllocationService {
       });
     }
 
+    this.presence?.broadcastAllocationChanged({
+      changedBy: { userId: actor.userId, name: actor.userId },
+      projectId: dto.projectId,
+      date: day.toISOString().slice(0, 10),
+      targetType: dto.targetType,
+      action: "upsert"
+    });
+
     return { allocation };
   }
 
@@ -392,6 +405,13 @@ export class ScheduleAllocationService {
             : { assetId: dto.assetId! })
         }
       });
+      this.presence?.broadcastAllocationChanged({
+        changedBy: { userId: actor.userId, name: actor.userId },
+        projectId: dto.projectId,
+        date: from.toISOString().slice(0, 10),
+        targetType: dto.targetType,
+        action: "range"
+      });
       return { cleared: result.count };
     }
 
@@ -412,15 +432,33 @@ export class ScheduleAllocationService {
       );
       created.push(out.allocation.id);
     }
+
+    if (created.length > 0) {
+      this.presence?.broadcastAllocationChanged({
+        changedBy: { userId: actor.userId, name: actor.userId },
+        projectId: dto.projectId,
+        date: from.toISOString().slice(0, 10),
+        targetType: dto.targetType,
+        action: "range"
+      });
+    }
+
     return { upserted: created.length, ids: created };
   }
 
   // ─── Delete one ─────────────────────────────────────────────────────────
 
-  async remove(id: string) {
+  async remove(id: string, actor?: { userId: string }) {
     const existing = await this.prisma.scheduleAllocation.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException("Schedule allocation not found.");
     await this.prisma.scheduleAllocation.delete({ where: { id } });
+    this.presence?.broadcastAllocationChanged({
+      changedBy: { userId: actor?.userId ?? "unknown", name: actor?.userId ?? "unknown" },
+      projectId: existing.projectId,
+      date: existing.date.toISOString().slice(0, 10),
+      targetType: existing.targetType as "WORKER" | "ASSET",
+      action: "delete"
+    });
     return { deleted: true };
   }
 

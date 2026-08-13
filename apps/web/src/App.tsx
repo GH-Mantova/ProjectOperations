@@ -58,6 +58,7 @@ import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
 import { ScheduleOfRatesAdminPage } from "./pages/ScheduleOfRatesAdminPage";
 import { JobSorAttachWizardPage } from "./pages/JobSorAttachWizardPage";
+import { VariationPricingPage } from "./pages/VariationPricingPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
 import { RatesListsAdminPage } from "./pages/admin/RatesListsAdminPage";
 import { AutomationsPage } from "./pages/admin/AutomationsPage";
@@ -540,6 +541,8 @@ export function App() {
             <Route path="/admin/schedule-of-rates" element={<ScheduleOfRatesAdminPage />} />
             {/* SoR S4: attach a rate-book snapshot to a job or tender. */}
             <Route path="/schedule-of-rates/attach" element={<JobSorAttachWizardPage />} />
+            {/* SoR S6: desktop-price a Variation from the locked Job SoR snapshot. */}
+            <Route path="/variations/:id/pricing" element={<VariationPricingPage />} />
             <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/automations" element={<Navigate to="/settings/administration/automations" replace />} />
             {/* SLICE 15: /admin/job-roles retargets to the new Workers URL

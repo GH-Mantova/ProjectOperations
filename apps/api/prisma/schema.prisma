@@ -4005,11 +4005,47 @@ model Variation {
   createdById     String          @map("created_by_id")
   createdBy       User            @relation("VariationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   claimLineItems  ClaimLineItem[]
+  // SoR S6 — desktop-priced VC lines pinned to a locked Job SoR snapshot.
+  sorLines        VariationSorLine[]
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
   @@index([contractId])
   @@map("variations")
+}
+
+// SoR S6 — Variation Contract (VC) lines priced against a locked Job SoR
+// snapshot. Every line freezes its own rate at create time so historical
+// pricing survives snapshot reissue, period expiry, or client-card resets.
+// A line can be catalog-backed (snapshotRateId is set) or manual
+// (snapshotRateId is null; caller supplies name/category/rate directly).
+model VariationSorLine {
+  id                String    @id @default(cuid())
+  variationId       String    @map("variation_id")
+  variation         Variation @relation(fields: [variationId], references: [id], onDelete: Cascade)
+  // Rate lock — snapshot + version stamp + the copied rate row.
+  jobSorSnapshotId  String    @map("job_sor_snapshot_id")
+  sorVersion        String    @map("sor_version")
+  // Null when the line is a manual add (no matching snapshot rate row).
+  snapshotRateId    String?   @map("snapshot_rate_id")
+  category          SorCategory
+  name              String
+  class             String?
+  unit              String?
+  // ORDINARY | ONE_AND_HALF | DOUBLE — matches JobSorSnapshotRate columns.
+  tier              String    @default("ORDINARY")
+  // FROZEN at line create; never re-read from live SorRate on edit.
+  rate              Decimal   @db.Decimal(12, 2)
+  quantity          Decimal   @db.Decimal(12, 2)
+  lineAmount        Decimal   @map("line_amount") @db.Decimal(12, 2)
+  notes             String?
+  sortOrder         Int       @default(0) @map("sort_order")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([variationId])
+  @@index([jobSorSnapshotId])
+  @@map("variation_sor_lines")
 }
 
 model ProgressClaim {

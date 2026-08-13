@@ -6549,8 +6549,8 @@ model Opportunity {
   // Free-text detail for the capture event (e.g. email subject, referrer name).
   captureDetail  String?             @map("capture_detail")
 
-  clientId  String   @map("client_id")
-  client    Client   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
+  clientId  String?   @map("client_id")
+  client    Client?   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
   contactId String?  @map("contact_id")
   contact   Contact? @relation("ContactOpportunities", fields: [contactId], references: [id], onDelete: SetNull)
 

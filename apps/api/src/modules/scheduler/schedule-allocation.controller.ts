@@ -93,8 +93,8 @@ export class ScheduleAllocationController {
   @ApiParam({ name: "id", description: "Schedule allocation id" })
   @ApiResponse({ status: 200, description: "Deleted." })
   @ApiResponse({ status: 404, description: "Not found." })
-  remove(@Param("id") id: string) {
-    return this.service.remove(id);
+  remove(@Param("id") id: string, @CurrentUser() actor: AuthedUser) {
+    return this.service.remove(id, { userId: actor.sub });
   }
 
   @Get("eligible-workers")

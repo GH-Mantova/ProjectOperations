@@ -17,7 +17,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { loginAsAdmin, loginAsFieldWorker, loginAsViewer } from "./helpers";
+import { loginAsAdmin, loginAsFieldWorker, loginAsScopedAdmin, loginAsViewer } from "./helpers";
 
 
 test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
@@ -124,6 +124,48 @@ test.describe("Batch 8 — Admin & portal (PRs #219, #26, #29)", () => {
     // NOTE: the "Admin settings" page heading REMAINS. <NoAccess/> renders in place and the
     // ShellLayout chrome is kept deliberately, so the user still knows where they are.
     // Asserting the heading is absent was a leftover from the redirect era.
+  });
+
+  // SLICE 17 — per-screen permission guard tests.
+  test("SLICE 17: scoped user (users.view, no roles.view) reaches /administration/users, blocked at /administration/roles", async ({
+    page
+  }) => {
+    await loginAsScopedAdmin(page);
+
+    // Can reach the Users admin screen (has users.view).
+    await page.goto("/settings/administration/users");
+    await expect(page.getByTestId("no-access")).not.toBeVisible();
+    await expect(page.getByRole("button", { name: /Add user/i })).toBeVisible();
+
+    // Blocked at the Roles & Permissions screen (lacks roles.view).
+    await page.goto("/settings/administration/roles");
+    await expect(page.getByTestId("no-access")).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/administration\/roles$/);
+  });
+
+  test("SLICE 17: admin (all codes) reaches all seven Administration screens", async ({ page }) => {
+    await loginAsAdmin(page);
+
+    // All seven screens from the SLICE 17 mapping.
+    const routes = [
+      "/settings/administration/system",
+      "/settings/administration/users",
+      "/settings/administration/roles",
+      "/settings/administration/audit",
+      "/settings/administration/platform",
+      "/settings/administration/automations"
+    ];
+
+    for (const route of routes) {
+      await page.goto(route);
+      // Fail-closed: if RequirePermissions blocks, no-access is shown.
+      // Admin must see NO no-access on any of these routes.
+      await expect(page.getByTestId("no-access")).not.toBeVisible({ timeout: 5000 });
+    }
+
+    // Landing hub also reachable (no outer guard after SLICE 17).
+    await page.goto("/settings/administration");
+    await expect(page.getByTestId("administration-landing")).toBeVisible();
   });
 
   test("client portal login screen renders standalone (prompt-directed)", async ({ page }) => {

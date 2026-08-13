@@ -82,7 +82,7 @@ import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
-import { SettingsShell, AdminOnly, SuperUserOnly } from "./components/SettingsShell";
+import { SettingsShell, AdminOnly, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
 import { HandoverWizardPage } from "./pages/handover/HandoverWizardPage";
@@ -419,40 +419,39 @@ export function App() {
                   </SuperUserOnly>
                 }
               />
-              {/* SLICE 16 (settings-restructure §3): fix direct-hit 404 on
-                  /settings/administration by mounting a landing hub that lists
-                  the accessible Administration sub-pages. Wrapped with the same
-                  AdminOnly guard as its siblings. */}
+              {/* SLICE 17: administration hub — outer AdminOnly guard removed.
+                  The landing page already calls filterSettingsNavItems and
+                  renders <NoAccess/> when no items are visible, so it is
+                  self-gating (fail-closed) for users who lack every child perm. */}
               <Route
                 path="administration"
-                element={
-                  <AdminOnly>
-                    <AdministrationLandingPage />
-                  </AdminOnly>
-                }
+                element={<AdministrationLandingPage />}
               />
+              {/* SLICE 17: system.manage gates the aggregate Admin Settings page. */}
               <Route
                 path="administration/system"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["system.manage"]}>
                     <AdminSettingsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
+              {/* SLICE 17: users.view gates the Users admin page. */}
               <Route
                 path="administration/users"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["users.view"]}>
                     <AdminUsersTab />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
+              {/* SLICE 17: roles.view gates the Roles & Permissions page. */}
               <Route
                 path="administration/roles"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["roles.view"]}>
                     <RolesPermissionsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               {/* SLICE 8: Permissions folded into the Roles & Permissions page.
@@ -463,20 +462,22 @@ export function App() {
                 path="administration/permissions"
                 element={<Navigate to="/settings/administration/roles" replace />}
               />
+              {/* SLICE 17: audit.view gates the Audit Logs page. */}
               <Route
                 path="administration/audit"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["audit.view"]}>
                     <AuditLogsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
+              {/* SLICE 17: sharepoint.view gates the Platform (SharePoint config) page. */}
               <Route
                 path="administration/platform"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["sharepoint.view"]}>
                     <PlatformPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               {/* SLICE 15 (settings-restructure §3, §4 redirect map): Job
@@ -487,34 +488,35 @@ export function App() {
                 element={<Navigate to="/workers/job-roles" replace />}
               />
               {/* SLICE 10 (settings-restructure §3): Automations moves
-                  under Administration. AutomationsPage self-gates on
-                  automations.view; AdminOnly matches the sibling
-                  administration/* wrappers. */}
+                  under Administration. SLICE 17: automations.view gates
+                  the route (AutomationsPage self-gates on the same code). */}
               <Route
                 path="administration/automations"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["automations.view"]}>
                     <AutomationsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               {/* SLICE 14 (settings-restructure §3): Client versions and Map
                   locations dissolved from AdminSettingsPage inline tabs into
-                  standalone Administration pages. */}
+                  standalone Administration pages.
+                  SLICE 17: system.manage gates both — same audience as the
+                  sibling /system (Admin Settings) page. */}
               <Route
                 path="administration/client-versions"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["system.manage"]}>
                     <AdminClientVersionsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               <Route
                 path="administration/map-locations"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["system.manage"]}>
                     <MapLocationsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
             </Route>
@@ -525,9 +527,9 @@ export function App() {
             <Route path="/admin/audit" element={<Navigate to="/settings/administration/audit" replace />} />
             <Route path="/admin/platform" element={<Navigate to="/settings/administration/platform" replace />} />
             {/* #544 (sot/01 §6): non-admins must see NoAccess AT /admin/settings,
-                not a silent redirect. AdminOnly redirects admins to the shell and
-                renders <NoAccess/> in place for everyone else. */}
-            <Route path="/admin/settings" element={<AdminOnly><Navigate to="/settings/administration/system" replace /></AdminOnly>} />
+                not a silent redirect.
+                SLICE 17: guards on system.manage (replaces AdminOnly). */}
+            <Route path="/admin/settings" element={<RequirePermissions perms={["system.manage"]}><Navigate to="/settings/administration/system" replace /></RequirePermissions>} />
             <Route path="/admin/company" element={<Navigate to="/settings/company" replace />} />
             <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
             <Route path="/admin/field-definitions" element={<Navigate to="/settings/field-definitions" replace />} />

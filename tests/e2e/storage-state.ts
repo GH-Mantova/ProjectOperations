@@ -7,3 +7,5 @@ const AUTH_DIR = path.resolve(__dirname, "..", "..", "playwright", ".auth");
 export const ADMIN_STORAGE_STATE = path.join(AUTH_DIR, "admin.json");
 export const FIELD_WORKER_STORAGE_STATE = path.join(AUTH_DIR, "field-worker.json");
 export const VIEWER_STORAGE_STATE = path.join(AUTH_DIR, "viewer.json");
+// SLICE 17: scoped admin — users.view only, no roles.view.
+export const SCOPED_ADMIN_STORAGE_STATE = path.join(AUTH_DIR, "scoped-admin.json");

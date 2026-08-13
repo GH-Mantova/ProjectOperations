@@ -15,7 +15,7 @@ type Opportunity = {
   id: string;
   title: string;
   description: string | null;
-  stage: "new" | "qualified" | "quoting" | "won" | "lost";
+  stage: "new" | "qualified" | "quoting" | "won" | "lost" | "open" | "not_pursued" | "archived";
   probability: number;
   estimatedValue: string | null;
   source: string;
@@ -28,6 +28,8 @@ type Opportunity = {
   wonAt: string | null;
   lostAt: string | null;
   lostReason: string | null;
+  dropReason: { id: string; label: string } | null;
+  dropReasonDetail: string | null;
   createdAt: string;
   convertedTender: {
     id: string; tenderNumber: string; title: string; status: string;
@@ -168,7 +170,11 @@ export function OpportunityDetailPage() {
 
   const value = opp.estimatedValue ? Number(opp.estimatedValue) : 0;
   const weighted = (value * opp.probability) / 100;
-  const terminal = opp.stage === "won" || opp.stage === "lost";
+  const terminal =
+    opp.stage === "won" ||
+    opp.stage === "lost" ||
+    opp.stage === "not_pursued" ||
+    opp.stage === "archived";
   const converted = Boolean(opp.convertedTender);
 
   return (
@@ -218,6 +224,20 @@ export function OpportunityDetailPage() {
       {opp.sourceLead && (
         <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: 10, marginBottom: 16, fontSize: 13 }}>
           Qualified from lead: <strong>{opp.sourceLead.title}</strong>
+        </div>
+      )}
+
+      {opp.stage === "not_pursued" && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted, #666)", marginBottom: 4 }}>Not pursued</div>
+          <div style={{ fontWeight: 600, color: "#991b1b" }}>
+            {opp.dropReason?.label ?? "No reason recorded"}
+          </div>
+          {opp.dropReasonDetail && (
+            <div style={{ marginTop: 6, fontSize: 13, color: "#4b5563", whiteSpace: "pre-wrap" }}>
+              {opp.dropReasonDetail}
+            </div>
+          )}
         </div>
       )}
 

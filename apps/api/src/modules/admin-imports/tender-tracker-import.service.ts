@@ -26,6 +26,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { PrismaService } from "../../prisma/prisma.service";
+import { TenderNumberService } from "../tendering/tender-number.service";
 
 export interface TenderTrackerImportReport {
   dryRun: boolean;
@@ -315,7 +316,10 @@ function mapRow(
 export class TenderTrackerImportService {
   private readonly logger = new Logger(TenderTrackerImportService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenderNumbers: TenderNumberService
+  ) {}
 
   async import(
     buffer: Buffer,
@@ -475,10 +479,28 @@ export class TenderTrackerImportService {
             siteId = site.id;
           }
 
+          // Assign a canonical ERP number only if the existing one is not
+          // already canonical (idempotent: re-runs keep a good number).
+          let numberPatch: {
+            tenderNumber?: string;
+            clientSlugSnapshot?: string;
+            revisionNumber?: number;
+          } = {};
+          if (!TenderNumberService.TENDER_NUMBER_REGEX.test(existingTender.tenderNumber ?? "")) {
+            const gen = await this.tenderNumbers.generate(
+              row.clientNameRaw,
+              row.dateSubmitted ?? row.quoteDueDate ?? new Date()
+            );
+            numberPatch = {
+              tenderNumber: gen.tenderNumber,
+              clientSlugSnapshot: gen.clientSlugSnapshot,
+              revisionNumber: gen.revisionNumber,
+            };
+          }
           await this.prisma.tender.update({
             where: { id: existingTender.id },
             data: {
-              tenderNumber: row.tNumber,
+              ...numberPatch,
               title,
               status,
               probability: row.probabilityNum ?? undefined,
@@ -501,9 +523,15 @@ export class TenderTrackerImportService {
           });
           siteId = site.id;
 
+          const gen = await this.tenderNumbers.generate(
+            row.clientNameRaw,
+            row.dateSubmitted ?? row.quoteDueDate ?? new Date()
+          );
           const newTender = await this.prisma.tender.create({
             data: {
-              tenderNumber: row.tNumber,
+              tenderNumber: gen.tenderNumber,
+              clientSlugSnapshot: gen.clientSlugSnapshot,
+              revisionNumber: gen.revisionNumber,
               title,
               status,
               probability: row.probabilityNum ?? undefined,

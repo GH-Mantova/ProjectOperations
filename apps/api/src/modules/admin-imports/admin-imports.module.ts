@@ -26,6 +26,7 @@ import {
   type UploadFileResult,
 } from "./sharepoint-legacy-copy.service";
 import { SharePointService } from "../platform/sharepoint.service";
+import { TenderNumberService } from "../tendering/tender-number.service";
 
 /**
  * Bridge adapter that satisfies ISharePointCopySeam using SharePointService.
@@ -74,6 +75,7 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
   controllers: [TenderTrackerImportController],
   providers: [
     TenderTrackerImportService,
+    TenderNumberService,
     SharepointLegacyCopyService,
     {
       provide: SHAREPOINT_COPY_SEAM,

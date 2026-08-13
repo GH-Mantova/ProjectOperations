@@ -1,28 +1,31 @@
 /**
- * MIG-2 — Tender-tracker import service.
+ * MIG-2 -- Tender-tracker import service.
  *
- * Parses an uploaded CSV or XLSX file (ExcelJS, already in package.json) and
- * either performs a dry-run analysis or idempotently commits the rows as
- * Tender / Client / Site / TenderClient / TenderClientNote records.
+ * Parses an uploaded CSV or XLSX file (ExcelJS) and either performs a dry-run
+ * analysis or idempotently commits the rows as Tender / Client / Site /
+ * TenderClient / TenderClientNote records.
  *
- * Decision references (from docs/plans/tender-tracker-migration-plan.md):
- *   D1  Client set = tracker clients only; dedupe on normalised name.
- *   D2  Status/outcome mapping (Probability + Decision columns).
- *   D3  Legacy T-number lives in title; format: "T#### — <Project Name>".
- *   D4  Stub Site per tender (name = title, all address fields NULL).
- *   D5  Follow Up Notes → TenderClientNote (noteType = "note").
- *   D6  Estimator matched by name against existing User rows; never created.
- *   D7  Field mapping: Tender Price → estimatedValue, Lead time → leadTimeDays, etc.
- *   D9  No real tracker data in fixtures.
+ * Status/probability mapping refined 2026-08-13 with Marco against the real
+ * tracker columns:
+ *   - T-number comes from the dedicated "Tender No." column (fallback: name).
+ *   - Title is built once as "T#### - <Project Name>" (no doubled number).
+ *   - Tender number = the clean T-number.
+ *   - Probability="Won"  -> CONTRACT_ISSUED   (we won  => contract)
+ *   - Probability="Lost" -> LOST
+ *   - Client Project Status="Won"/"In Progress" -> AWARDED (client awarded)
+ *   - Client Project Status="Lost" -> LOST
+ *   - Decision="Not quoting" -> WITHDRAWN
+ *   - Decision="Submitted"   -> SUBMITTED
+ *   - Decision="Quoting" or "Started quoting" populated -> IN_PROGRESS
+ *   - otherwise -> DRAFT
+ *   - Probability rating words (Hot/Warm/Cold/Chasing/Tendering/Not Started)
+ *     map to the numeric Tender.probability (%).
+ *   - Estimator "Russel/Russell Cummings" -> Sean Lattin (not an ERP user).
  */
 
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { PrismaService } from "../../prisma/prisma.service";
-
-// ---------------------------------------------------------------------------
-// Public response type
-// ---------------------------------------------------------------------------
 
 export interface TenderTrackerImportReport {
   dryRun: boolean;
@@ -37,10 +40,6 @@ export interface TenderTrackerImportReport {
   badRows: Array<{ row: number; reason: string }>;
 }
 
-// ---------------------------------------------------------------------------
-// Internal parsed-row shape
-// ---------------------------------------------------------------------------
-
 interface ParsedRow {
   rowIndex: number;
   projectName: string;
@@ -52,32 +51,36 @@ interface ParsedRow {
   dateSubmitted: Date | null;
   leadTime: number | null;
   probability: string | null;
+  probabilityNum: number | null;
   decision: string | null;
+  clientProjectStatus: string | null;
+  startedQuoting: boolean;
   followUpNotes: string | null;
-  tNumber: string; // e.g. "T1001"
+  tNumber: string;
 }
 
-// ---------------------------------------------------------------------------
-// Known estimator alias map (D6)
-// ---------------------------------------------------------------------------
-
-// Normalise: lowercase, collapse whitespace.
+// Token-level spelling fixes (normalise: lowercase, collapse whitespace).
 const ESTIMATOR_ALIASES: Record<string, string> = {
-  "mantovaninni": "mantovanini", // tracker misspelling → canonical
+  "mantovaninni": "mantovanini",
+};
+
+// Whole-name reassignment to a DIFFERENT existing user (not a spelling fix).
+// Russel Cummings is not an ERP user; his tenders are assigned to Sean Lattin.
+const ESTIMATOR_REASSIGN: Record<string, string> = {
+  "russel cummings": "sean lattin",
+  "russell cummings": "sean lattin",
 };
 
 function normaliseEstimatorName(raw: string): string {
   let norm = raw.toLowerCase().replace(/\s+/g, " ").trim();
-  // Apply token-level alias substitution
   for (const [alias, canonical] of Object.entries(ESTIMATOR_ALIASES)) {
     norm = norm.replace(new RegExp(alias, "g"), canonical);
   }
+  if (ESTIMATOR_REASSIGN[norm]) {
+    norm = ESTIMATOR_REASSIGN[norm];
+  }
   return norm;
 }
-
-// ---------------------------------------------------------------------------
-// Status mapping (D2)
-// ---------------------------------------------------------------------------
 
 interface StatusResult {
   status: string;
@@ -85,45 +88,41 @@ interface StatusResult {
   lostAt: Date | null;
 }
 
-function mapStatus(probability: string | null, decision: string | null, submittedAt: Date | null, rowWarnings: string[]): StatusResult {
-  // Decision overrides when terminal
-  const decisionNorm = (decision ?? "").trim().toLowerCase();
-  const probNorm = (probability ?? "").trim().toLowerCase();
+function mapStatus(
+  probability: string | null,
+  decision: string | null,
+  clientProjectStatus: string | null,
+  startedQuoting: boolean,
+  submittedAt: Date | null
+): StatusResult {
+  const prob = (probability ?? "").trim().toLowerCase();
+  const dec = (decision ?? "").trim().toLowerCase();
+  const cps = (clientProjectStatus ?? "").trim().toLowerCase();
+  const stamp = submittedAt ?? new Date();
 
-  if (decisionNorm === "won") {
-    return { status: "WON", wonAt: submittedAt ?? new Date(), lostAt: null };
-  }
-  if (decisionNorm === "lost") {
-    return { status: "LOST", wonAt: null, lostAt: submittedAt ?? new Date() };
-  }
-
-  // Fall through to Probability
-  switch (probNorm) {
-    case "won":
-      return { status: "WON", wonAt: submittedAt ?? new Date(), lostAt: null };
-    case "lost":
-      return { status: "LOST", wonAt: null, lostAt: submittedAt ?? new Date() };
-    case "not quoting":
-      return { status: "WITHDRAWN", wonAt: null, lostAt: null };
-    case "submitted":
-      return { status: "SUBMITTED", wonAt: null, lostAt: null };
-    case "quoting":
-    case "chasing":
-    case "hot":
-    case "warm":
-    case "cold":
-      return { status: "DRAFT", wonAt: null, lostAt: null };
-    default:
-      if (probNorm) {
-        rowWarnings.push(`Unknown Probability value "${probability}" — defaulting to DRAFT`);
-      }
-      return { status: "DRAFT", wonAt: null, lostAt: null };
-  }
+  if (prob === "won") return { status: "CONTRACT_ISSUED", wonAt: stamp, lostAt: null };
+  if (prob === "lost") return { status: "LOST", wonAt: null, lostAt: stamp };
+  if (cps === "won" || cps === "in progress") return { status: "AWARDED", wonAt: null, lostAt: null };
+  if (cps === "lost") return { status: "LOST", wonAt: null, lostAt: stamp };
+  if (dec === "not quoting") return { status: "WITHDRAWN", wonAt: null, lostAt: null };
+  if (dec === "submitted") return { status: "SUBMITTED", wonAt: null, lostAt: null };
+  if (dec === "quoting" || startedQuoting) return { status: "IN_PROGRESS", wonAt: null, lostAt: null };
+  return { status: "DRAFT", wonAt: null, lostAt: null };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// Tracker "Probability" holds outcome words (Won/Lost) AND likelihood ratings.
+// Only the ratings map to the numeric Tender.probability (%).
+function probabilityRating(probability: string | null): number | null {
+  switch ((probability ?? "").trim().toLowerCase()) {
+    case "hot": return 80;
+    case "warm": return 50;
+    case "chasing": return 40;
+    case "tendering": return 30;
+    case "cold": return 20;
+    case "not started": return 10;
+    default: return null;
+  }
+}
 
 function normaliseClientName(raw: string): string {
   return raw.toLowerCase().replace(/\s+/g, " ").trim();
@@ -144,13 +143,6 @@ function parseDateCell(raw: unknown): Date | null {
   return null;
 }
 
-function parseDecimalCell(raw: unknown): number | null {
-  if (raw === null || raw === undefined || raw === "") return null;
-  const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[,$]/g, ""));
-  return isNaN(num) ? "BAD_VALUE" as unknown as null : num;
-}
-
-// Marker sentinel for parse failure
 const BAD_DECIMAL = Symbol("BAD_DECIMAL");
 
 function parseDecimalOrSentinel(raw: unknown): number | typeof BAD_DECIMAL | null {
@@ -160,13 +152,14 @@ function parseDecimalOrSentinel(raw: unknown): number | typeof BAD_DECIMAL | nul
   return num;
 }
 
-// ---------------------------------------------------------------------------
-// Column header matching (case-insensitive, trim)
-// ---------------------------------------------------------------------------
-
 const HEADER_MAP: Record<string, string> = {
+  "tender no.": "tenderNo",
+  "tender no": "tenderNo",
+  "tender number": "tenderNo",
   "project name": "projectName",
   "client company name": "clientCompanyName",
+  "client project status": "clientProjectStatus",
+  "started quoting": "startedQuoting",
   "estimator": "estimator",
   "tender price": "tenderPrice",
   "quote due date": "quoteDueDate",
@@ -179,17 +172,12 @@ const HEADER_MAP: Record<string, string> = {
 
 type RowMap = Record<string, ExcelJS.CellValue>;
 
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
-
 async function parseWorkbook(
   buffer: Buffer,
   mimeType: string,
   originalName: string
 ): Promise<{ rows: RowMap[]; error?: string }> {
   const wb = new ExcelJS.Workbook();
-
   const lowerName = originalName.toLowerCase();
   const isXlsx = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")
     || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -202,12 +190,10 @@ async function parseWorkbook(
 
   try {
     if (isXlsx) {
-      // ExcelJS needs an ArrayBuffer
       const ab = new ArrayBuffer(buffer.byteLength);
       new Uint8Array(ab).set(buffer);
       await wb.xlsx.load(ab);
     } else {
-      // CSV — use ExcelJS csv reader from a readable stream created from the buffer
       const { Readable } = await import("stream");
       const stream = Readable.from(buffer);
       await wb.csv.read(stream);
@@ -221,7 +207,6 @@ async function parseWorkbook(
     return { rows: [], error: "File contains no worksheets." };
   }
 
-  // Build header index from first row
   const headerRow = sheet.getRow(1);
   const headerIndex: Record<number, string> = {};
   headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -232,14 +217,11 @@ async function parseWorkbook(
 
   const rows: RowMap[] = [];
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    if (rowNumber === 1) return; // skip header
+    if (rowNumber === 1) return;
     const obj: RowMap = {};
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const field = headerIndex[colNumber];
-      if (field) {
-        // For CSV, cell.value may be a string; for XLSX it may be typed
-        obj[field] = cell.value;
-      }
+      if (field) obj[field] = cell.value;
     });
     rows.push(obj);
   });
@@ -247,19 +229,15 @@ async function parseWorkbook(
   return { rows };
 }
 
-// ---------------------------------------------------------------------------
-// Row mapper
-// ---------------------------------------------------------------------------
-
 function mapRow(
   raw: RowMap,
   rowIndex: number,
   badRows: Array<{ row: number; reason: string }>
 ): ParsedRow | null {
-  const projectName = typeof raw["projectName"] === "string" ? raw["projectName"].trim() : "";
+  const projectNameRaw = typeof raw["projectName"] === "string" ? raw["projectName"].trim() : "";
   const clientNameRaw = typeof raw["clientCompanyName"] === "string" ? raw["clientCompanyName"].trim() : "";
 
-  if (!projectName) {
+  if (!projectNameRaw) {
     badRows.push({ row: rowIndex, reason: "Missing or empty Project Name" });
     return null;
   }
@@ -268,22 +246,29 @@ function mapRow(
     return null;
   }
 
-  const tNumber = extractTNumber(projectName);
+  // Prefer the dedicated "Tender No." column; fall back to the Project Name.
+  const tenderNoRaw = raw["tenderNo"] != null ? String(raw["tenderNo"]).trim() : "";
+  const tNumber = /^T\d{3,5}$/i.test(tenderNoRaw)
+    ? tenderNoRaw.toUpperCase()
+    : extractTNumber(projectNameRaw);
   if (!tNumber) {
-    badRows.push({ row: rowIndex, reason: `No T-number found in Project Name: "${projectName}"` });
+    badRows.push({ row: rowIndex, reason: `No T-number found in Tender No. or Project Name: "${projectNameRaw}"` });
     return null;
   }
 
+  // Strip any leading "T#### - " already embedded so the title is built once.
+  let projectName = projectNameRaw.replace(/^\s*T\d{3,5}\s*[—–-]\s*/i, "").trim();
+  if (!projectName) projectName = projectNameRaw;
+
   const estimatorRaw = raw["estimator"] ? String(raw["estimator"]).trim() || null : null;
 
-  // Tender Price — flag bad parse but don't skip row
   const priceRaw = raw["tenderPrice"];
   const priceSentinel = priceRaw !== undefined && priceRaw !== null && priceRaw !== ""
     ? parseDecimalOrSentinel(priceRaw)
     : null;
   let tenderPrice: number | null = null;
   if (priceSentinel === BAD_DECIMAL) {
-    badRows.push({ row: rowIndex, reason: `Unparseable Tender Price: "${priceRaw}" — field set to null` });
+    badRows.push({ row: rowIndex, reason: `Unparseable Tender Price: "${priceRaw}" -- field set to null` });
     tenderPrice = null;
   } else {
     tenderPrice = priceSentinel as number | null;
@@ -292,7 +277,6 @@ function mapRow(
   const quoteDueDate = parseDateCell(raw["quoteDueDate"]);
   const dateSubmitted = parseDateCell(raw["dateSubmitted"]);
 
-  // Lead time
   let leadTime: number | null = null;
   if (raw["leadTime"] !== undefined && raw["leadTime"] !== null && raw["leadTime"] !== "") {
     const lt = parseInt(String(raw["leadTime"]), 10);
@@ -301,6 +285,10 @@ function mapRow(
 
   const probability = raw["probability"] ? String(raw["probability"]).trim() || null : null;
   const decision = raw["decision"] ? String(raw["decision"]).trim() || null : null;
+  const clientProjectStatus = raw["clientProjectStatus"] ? String(raw["clientProjectStatus"]).trim() || null : null;
+  const startedQuoting = raw["startedQuoting"] !== undefined
+    && raw["startedQuoting"] !== null
+    && String(raw["startedQuoting"]).trim() !== "";
   const followUpNotes = raw["followUpNotes"] ? String(raw["followUpNotes"]).trim() || null : null;
 
   return {
@@ -314,15 +302,14 @@ function mapRow(
     dateSubmitted,
     leadTime,
     probability,
+    probabilityNum: probabilityRating(probability),
     decision,
+    clientProjectStatus,
+    startedQuoting,
     followUpNotes,
     tNumber,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Service
-// ---------------------------------------------------------------------------
 
 @Injectable()
 export class TenderTrackerImportService {
@@ -337,7 +324,6 @@ export class TenderTrackerImportService {
     dryRun: boolean,
     actorId: string
   ): Promise<TenderTrackerImportReport> {
-    // --- Parse ---
     const { rows: rawRows, error: parseError } = await parseWorkbook(buffer, mimeType, originalName);
     if (parseError) {
       throw new BadRequestException(parseError);
@@ -347,19 +333,15 @@ export class TenderTrackerImportService {
     const parsedRows: ParsedRow[] = [];
 
     rawRows.forEach((raw, idx) => {
-      const row = mapRow(raw, idx + 2, badRows); // +2 because row 1 = header
+      const row = mapRow(raw, idx + 2, badRows);
       if (row) parsedRows.push(row);
     });
 
-    // --- Dry-run analysis ---
-
-    // Unique clients (normalised name dedupe)
     const clientNormSet = new Set<string>();
     for (const row of parsedRows) {
       clientNormSet.add(row.clientNameNorm);
     }
 
-    // Estimator matching (dry-run: just surface unmatched names)
     const unmatchedEstimators: string[] = await this.findUnmatchedEstimators(parsedRows);
 
     const report: TenderTrackerImportReport = {
@@ -379,13 +361,8 @@ export class TenderTrackerImportService {
       return report;
     }
 
-    // --- Commit ---
     return await this.commitRows(parsedRows, actorId, report);
   }
-
-  // -------------------------------------------------------------------------
-  // Estimator matching
-  // -------------------------------------------------------------------------
 
   private async findUnmatchedEstimators(rows: ParsedRow[]): Promise<string[]> {
     const rawNames = new Set<string>();
@@ -394,13 +371,12 @@ export class TenderTrackerImportService {
     }
     if (rawNames.size === 0) return [];
 
-    // Load all users with firstName + lastName
     const users = await this.prisma.user.findMany({
       where: { isActive: true },
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const userNormMap = new Map<string, string>(); // normName → userId
+    const userNormMap = new Map<string, string>();
     for (const user of users) {
       const norm = normaliseEstimatorName(`${user.firstName} ${user.lastName}`);
       userNormMap.set(norm, user.id);
@@ -431,26 +407,16 @@ export class TenderTrackerImportService {
     return null;
   }
 
-  // -------------------------------------------------------------------------
-  // Commit
-  // -------------------------------------------------------------------------
-
   private async commitRows(
     rows: ParsedRow[],
     actorId: string,
     report: TenderTrackerImportReport
   ): Promise<TenderTrackerImportReport> {
-    // Cache for estimator lookups across rows (avoid N+1)
     const estimatorCache = new Map<string, string | null>();
-
-    // Cache for Client id lookups by normalised name
-    const clientCache = new Map<string, string>(); // normName → clientId
+    const clientCache = new Map<string, string>();
 
     for (const row of rows) {
-      const rowWarnings: string[] = [];
-
       try {
-        // --- Client upsert (D1) ---
         let clientId: string;
         if (clientCache.has(row.clientNameNorm)) {
           clientId = clientCache.get(row.clientNameNorm)!;
@@ -461,14 +427,11 @@ export class TenderTrackerImportService {
             update: {},
             select: { id: true },
           });
-          // Also try finding by normalised name if exact match fails — handles
-          // whitespace variants like "  ACME  " vs "Acme".
           clientId = upserted.id;
           clientCache.set(row.clientNameNorm, clientId);
-          report.clientsCreated++; // Will be overestimated if existing; corrected below
+          report.clientsCreated++;
         }
 
-        // --- Estimator resolution (D6) ---
         let estimatorUserId: string | null = null;
         if (row.estimatorRaw) {
           if (estimatorCache.has(row.estimatorRaw)) {
@@ -479,39 +442,34 @@ export class TenderTrackerImportService {
           }
         }
 
-        // --- Status mapping (D2) ---
-        const { status, wonAt, lostAt } = mapStatus(row.probability, row.decision, row.dateSubmitted, rowWarnings);
+        const { status, wonAt, lostAt } = mapStatus(
+          row.probability,
+          row.decision,
+          row.clientProjectStatus,
+          row.startedQuoting,
+          row.dateSubmitted
+        );
 
-        // --- Title (D3) ---
         const title = `${row.tNumber} — ${row.projectName}`;
 
-        // --- Tender find-or-create (D3) ---
         const existingTender = await this.prisma.tender.findFirst({
-          where: { title: { contains: row.tNumber } },
-          select: { id: true, tenderNumber: true },
+          where: { title: { startsWith: `${row.tNumber} ` } },
+          select: { id: true, tenderNumber: true, siteId: true },
         });
 
         let tenderId: string;
         let siteId: string;
 
         if (existingTender) {
-          // --- Update ---
-          // Look up existing stub site for this tender
-          const existingSite = await this.prisma.site.findFirst({
-            where: { clientId, name: title },
-            select: { id: true },
-          });
-
-          if (existingSite) {
-            siteId = existingSite.id;
+          if (existingTender.siteId) {
+            siteId = existingTender.siteId;
+            await this.prisma.site.update({
+              where: { id: siteId },
+              data: { name: title },
+            });
           } else {
-            // Create stub site (D4)
             const site = await this.prisma.site.create({
-              data: {
-                name: title,
-                clientId,
-                notes: "IMPORTED — address to be completed",
-              },
+              data: { name: title, clientId, notes: "IMPORTED — address to be completed" },
               select: { id: true },
             });
             siteId = site.id;
@@ -520,8 +478,10 @@ export class TenderTrackerImportService {
           await this.prisma.tender.update({
             where: { id: existingTender.id },
             data: {
+              tenderNumber: row.tNumber,
               title,
               status,
+              probability: row.probabilityNum ?? undefined,
               estimatorUserId,
               siteId,
               dueDate: row.quoteDueDate,
@@ -535,25 +495,18 @@ export class TenderTrackerImportService {
           tenderId = existingTender.id;
           report.tendersUpdated++;
         } else {
-          // --- Create ---
-          // Create stub site (D4)
           const site = await this.prisma.site.create({
-            data: {
-              name: title,
-              clientId,
-              notes: "IMPORTED — address to be completed",
-            },
+            data: { name: title, clientId, notes: "IMPORTED — address to be completed" },
             select: { id: true },
           });
           siteId = site.id;
 
-          const syntheticTenderNumber = `IMPORT-${row.tNumber}-${row.rowIndex}`;
-
           const newTender = await this.prisma.tender.create({
             data: {
-              tenderNumber: syntheticTenderNumber,
+              tenderNumber: row.tNumber,
               title,
               status,
+              probability: row.probabilityNum ?? undefined,
               estimatorUserId,
               siteId,
               dueDate: row.quoteDueDate,
@@ -569,43 +522,24 @@ export class TenderTrackerImportService {
           report.tendersCreated++;
         }
 
-        // --- TenderClient upsert (D1 + schema @@unique([tenderId, clientId])) ---
         await this.prisma.tenderClient.upsert({
           where: { tenderId_clientId: { tenderId, clientId } },
           create: { tenderId, clientId },
           update: {},
         });
 
-        // --- TenderClientNote (D5) ---
         if (row.followUpNotes) {
-          // Keep as single note (real tracker cells are typically single blobs;
-          // the plan allows this choice — documented in PR body).
           const body = row.followUpNotes.trim();
           const occurredAt = row.dateSubmitted ?? new Date();
-
           const existing = await this.prisma.tenderClientNote.findFirst({
             where: { tenderId, clientId, body, occurredAt },
             select: { id: true },
           });
-
           if (!existing) {
             await this.prisma.tenderClientNote.create({
-              data: {
-                tenderId,
-                clientId,
-                noteType: "note",
-                body,
-                occurredAt,
-                createdById: actorId,
-              },
+              data: { tenderId, clientId, noteType: "note", body, occurredAt, createdById: actorId },
             });
             report.notesCreated++;
-          }
-        }
-
-        if (rowWarnings.length > 0) {
-          for (const w of rowWarnings) {
-            report.badRows.push({ row: row.rowIndex, reason: w });
           }
         }
       } catch (err) {
@@ -614,14 +548,6 @@ export class TenderTrackerImportService {
         report.badRows.push({ row: row.rowIndex, reason: `Commit error: ${msg}` });
       }
     }
-
-    // clientsCreated is overestimated above (counted on each first-seen row, not
-    // distinguishing create-vs-found). Recount from cache size is also wrong.
-    // Accept the limitation: the count equals unique normalised client names seen
-    // (some may already exist). Both dry-run and commit report the same field as
-    // "clientsToCreateOrExisting" — clientsCreated in commit counts upserts that
-    // resulted in new rows, but Prisma upsert does not distinguish create vs update.
-    // We accept the count as "client upserts executed" for the first-seen name.
 
     return report;
   }

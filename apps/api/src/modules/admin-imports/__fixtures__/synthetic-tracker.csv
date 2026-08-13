@@ -1,0 +1,12 @@
+Project Name,Client Company Name,Estimator,Tender Price,Quote Due Date,Date Submitted,Lead time,Probability,Decision,Follow Up Notes
+T1001 — Roofing Works at Acme HQ,Acme Construction Pty Ltd,Sean Lattin,125000.00,2024-03-15,2024-03-10,14,Won,Won,Client happy with price. Follow up re contract signing.
+T1002 — Concrete Slab Demo,  ACME CONSTRUCTION PTY LTD  ,Raj Pudasaini,48500.50,2024-04-01,,7,Lost,Lost,
+T1003 — Steel Frame Erection,BuildRight Solutions,Marco Mantovaninni,320000.00,2024-05-20,2024-05-18,21,Quoting,,Waiting on structural drawings from client.
+T1004 — Site Drainage Install,BuildRight Solutions,Russel Cummings,75000.00,2024-06-10,,10,Cold,,
+T1005 — Interior Fitout Level 3,Unknown Client Corp,Unknown Estimator,210000.00,2024-07-01,2024-06-28,30,Submitted,Submitted,
+T1006 — Carpark Resurfacing,Metro Paving Co,Sean Lattin,,2024-08-15,,5,Not quoting,,Scope too small for our team.
+T1007 — Electrical Upgrade,Apex Industries,Raj Pudasaini,not-a-number,2024-09-01,,14,Hot,,This row has a bad Tender Price value.
+T1008 — Fire Suppression System,Apex Industries,Marco Mantovaninni,450000.00,2024-10-15,2024-10-12,45,Won,Won,PO received. Start date TBC.
+No T-number here,SomeCorp,,50000,,,,Chasing,,This row has no T-number and should be a bad row.
+T1009 — Demolition Works,Metro Paving Co,Russel Cummings,95000.00,2024-11-01,,10,Warm,,Multiple notes here.
+Second note for T1009 follow-up.

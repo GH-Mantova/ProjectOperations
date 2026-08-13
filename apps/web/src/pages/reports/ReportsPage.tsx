@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { BarChartWidget, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { downloadReportExport } from "../../dashboards/widgets/reportExport";
 
 type ReportParamName = "from" | "to" | "projectId" | "clientId";
 
@@ -43,6 +44,7 @@ type ReportRunResponse = ReportDefinition & {
   generatedAt: string;
 };
 
+/** Re-export the canonical ExportFormat from reportExport.ts for local use. */
 type ExportFormat = "xlsx" | "csv" | "pdf";
 
 function buildQuery(params: Partial<Record<ReportParamName, string>>): string {
@@ -159,25 +161,7 @@ export function ReportsPage() {
       setExporting(format);
       setError(null);
       try {
-        const query = new URLSearchParams();
-        query.set("format", format);
-        (Object.entries(params) as Array<[ReportParamName, string | undefined]>).forEach(([k, v]) => {
-          if (v) query.set(k, v);
-        });
-        const response = await authFetch(`/reporting/${selectedKey}/export?${query.toString()}`);
-        if (!response.ok) throw new Error("Export failed.");
-        const blob = await response.blob();
-        const disposition = response.headers.get("Content-Disposition") ?? "";
-        const match = /filename="?([^";]+)"?/i.exec(disposition);
-        const filename = match?.[1] ?? `${selectedKey}.${format}`;
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
+        await downloadReportExport(authFetch, { reportKey: selectedKey, format, filters: params });
       } catch (err) {
         setError((err as Error).message);
       } finally {

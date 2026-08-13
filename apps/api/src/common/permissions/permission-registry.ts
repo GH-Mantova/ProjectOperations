@@ -135,7 +135,12 @@ export const permissionRegistry = [
   // RC-1 — Subcontractor rate cards (2026-08-11). No role→permission assignment seeded;
   // Admin role picks them up automatically via the permission-sync on API startup.
   { code: "subcontractors.rates.view", module: "directory", label: "View subcontractor rate cards", description: "View a subcontractor's own agreed rates" },
-  { code: "subcontractors.rates.manage", module: "directory", label: "Manage subcontractor rate cards", description: "Create and supersede a subcontractor's own agreed rates" }
+  { code: "subcontractors.rates.manage", module: "directory", label: "Manage subcontractor rate cards", description: "Create and supersede a subcontractor's own agreed rates" },
+  // SLICE 17 — per-screen Administration route guards. system.manage gates the
+  // aggregate Admin Settings page (notifications, email, AI, integrations tabs).
+  // The Admin role receives this code automatically via the all-permissions grant
+  // in seed-reference.ts (every entry is upserted then granted to Admin).
+  { code: "system.manage", module: "platform", label: "Manage system settings", description: "Access and edit the aggregate system settings (notifications, email, AI, integrations)" }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

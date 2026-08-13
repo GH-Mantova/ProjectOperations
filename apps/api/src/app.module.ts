@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AccessRequestsModule } from "./modules/access-requests/access-requests.module";
+import { AdminImportsModule } from "./modules/admin-imports/admin-imports.module";
 import { AdminSettingsModule } from "./modules/admin-settings/admin-settings.module";
 import { AdminUsersModule } from "./modules/admin-users/admin-users.module";
 import { AiSettingsModule } from "./modules/ai-settings/ai-settings.module";
@@ -81,7 +82,9 @@ import { HandoversModule } from "./modules/handovers/handovers.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
 import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
+import { VariationsModule } from "./modules/variations/variations.module";
 import { FieldDefinitionsModule } from "./modules/field-definitions/field-definitions.module";
+import { AgreedRecordsModule } from "./modules/agreed-records/agreed-records.module";
 
 @Module({
   imports: [
@@ -98,6 +101,7 @@ import { FieldDefinitionsModule } from "./modules/field-definitions/field-defini
     HealthModule,
     EmailModule,
     AccessRequestsModule,
+    AdminImportsModule,
     AdminSettingsModule,
     AdminUsersModule,
     AiSettingsModule,
@@ -170,7 +174,9 @@ import { FieldDefinitionsModule } from "./modules/field-definitions/field-defini
     SubcontractorRatesModule,
     WinLikelihoodModule,
     ScheduleOfRatesModule,
-    FieldDefinitionsModule
+    VariationsModule,
+    FieldDefinitionsModule,
+    AgreedRecordsModule
   ]
 })
 export class AppModule {}

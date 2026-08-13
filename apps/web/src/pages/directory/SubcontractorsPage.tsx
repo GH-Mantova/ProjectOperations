@@ -8,6 +8,7 @@ import { ContactsTab } from "../../components/contacts/ContactsTab";
 import { SubcontractorRatesTab } from "./SubcontractorRatesTab";
 import { DuplicateWarning } from "../../components/directory/DuplicateWarning";
 import { setArchived } from "./directory-archive";
+import { DynamicFieldSection } from "../../components/DynamicFieldSection";
 
 type Subcontractor = {
   id: string;
@@ -1384,7 +1385,19 @@ function CreateSubcontractorModal({
   onCreated: (id: string) => void;
 }) {
   const { authFetch } = useAuth();
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    tradingName: string;
+    businessType: string;
+    entityType: string;
+    abn: string;
+    email: string;
+    phone: string;
+    physicalSuburb: string;
+    physicalState: string;
+    categories: string[];
+    customFields: Record<string, unknown>;
+  }>({
     name: "",
     tradingName: "",
     businessType: "company",
@@ -1394,7 +1407,8 @@ function CreateSubcontractorModal({
     phone: "",
     physicalSuburb: "",
     physicalState: "QLD",
-    categories: [] as string[]
+    categories: [],
+    customFields: {}
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1416,7 +1430,8 @@ function CreateSubcontractorModal({
           abn: form.abn || null,
           email: form.email || null,
           phone: form.phone || null,
-          physicalSuburb: form.physicalSuburb || null
+          physicalSuburb: form.physicalSuburb || null,
+          customFields: Object.keys(form.customFields).length > 0 ? form.customFields : undefined
         })
       });
       if (!response.ok) {
@@ -1442,6 +1457,36 @@ function CreateSubcontractorModal({
 
   const isPrivate = form.businessType === "private_person";
 
+  // BUILTIN VENDOR field definitions include several keys that this host
+  // form already renders itself (name, tradingName, abn, email, phone,
+  // entityType, categories, prequalStatus, prequalNotes). Without
+  // exclusion DynamicFieldSection would render a *second* input for each,
+  // causing duplicate labels in the dialog — e.g. two "ABN" spans →
+  // strict-mode violation in tests (batch5-directory.spec.ts:124).
+  //
+  // ABN is also *conditionally hidden* by the host form when businessType
+  // is 'private_person'. It stays in the exclude list in every branch
+  // because DynamicFieldSection has no view of that business rule — the
+  // BUILTIN 'abn' row is shipped with visible:true regardless of
+  // businessType, so leaving it in would silently re-introduce the ABN
+  // field for private persons and re-fail the "ABN hidden" assertion.
+  const HOST_OWNED_KEYS = [
+    "name",
+    "tradingName",
+    "abn",
+    "email",
+    "phone",
+    "entityType",
+    "categories",
+    "prequalStatus",
+    "prequalNotes",
+    "businessType"
+  ];
+  // isPrivate currently does not add any additional excludes (abn is
+  // already covered above) — kept as a hook so future business rules can
+  // extend the exclusion set conditionally without another refactor.
+  const dynamicExcludeKeys = isPrivate ? HOST_OWNED_KEYS : HOST_OWNED_KEYS;
+
   return (
     <CenteredModal
       title="New directory entry"
@@ -1449,7 +1494,25 @@ function CreateSubcontractorModal({
       busy={submitting}
       maxWidth={560}
     >
-      <form onSubmit={submit}>
+      <form
+        onSubmit={submit}
+        // Card can grow taller than the viewport when custom fields expand
+        // the body; make the body scroll internally so the Create/Cancel
+        // footer stays pinned and Playwright's auto-scroll can always
+        // bring it into view (fixes batch5-directory.spec.ts:212 timeout).
+        style={{ display: "flex", flexDirection: "column", maxHeight: "calc(90vh - 96px)" }}
+      >
+        <div
+          data-testid="create-subcontractor-modal-body"
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: 4,
+            marginRight: -4
+          }}
+        >
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2, gridColumn: "1 / -1" }}>
             <span>{isPrivate ? "Full name" : "Legal name"} *</span>
@@ -1556,6 +1619,17 @@ function CreateSubcontractorModal({
           </label>
         </div>
 
+        {/* Custom fields from the VENDOR field registry (BUILTIN dupes and
+            the private-person-hidden ABN are dropped via excludeKeys). */}
+        <div style={{ marginTop: 12 }}>
+          <DynamicFieldSection
+            appliesTo="VENDOR"
+            record={form}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            excludeKeys={dynamicExcludeKeys}
+          />
+        </div>
+
         <DuplicateWarning
           input={{
             scope: form.entityType === "supplier" ? "supplier" : "subcontractor",
@@ -1571,8 +1645,20 @@ function CreateSubcontractorModal({
         />
 
         {err ? <p style={{ color: "var(--status-danger)", marginTop: 8 }}>{err}</p> : null}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+        </div>
+        {/* Pinned footer — stays visible while the body above scrolls. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+            paddingTop: 12,
+            marginTop: 4,
+            borderTop: "1px solid var(--border, #e5e7eb)",
+            flex: "0 0 auto",
+            background: "var(--surface-card, #fff)"
+          }}
+        >
           <button type="button" className="s7-btn s7-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="s7-btn s7-btn--primary" disabled={submitting}>
             {submitting ? "Saving…" : "Create"}

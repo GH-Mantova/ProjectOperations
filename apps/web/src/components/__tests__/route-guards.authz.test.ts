@@ -45,12 +45,6 @@ const SELF_GUARDED_ROUTES: ReadonlyArray<{ path: string; reason: string }> = [
       "Self-gated in-component via canAny('rates.manage','lists.manage') → <NoAccess/>"
   },
   {
-    // EstimateRatesAdminPage self-gates via can(user, 'estimates.admin').
-    // Same NoAccess pattern as the other admin-named pages that self-gate.
-    path: "/admin/estimate-rates",
-    reason: "Self-gated in-component via can('estimates.admin') → <NoAccess/>"
-  },
-  {
     // JobRolesPage lives in the Workers area (SLICE 15 moved it out of
     // Administration). The sidebar entry is gated on resources.manage and
     // the underlying /job-roles + /competencies API endpoints enforce the
@@ -61,6 +55,16 @@ const SELF_GUARDED_ROUTES: ReadonlyArray<{ path: string; reason: string }> = [
     path: "/workers/job-roles",
     reason:
       "Sidebar-gated on resources.manage; API-level permission enforcement on all mutations"
+  },
+  {
+    // AdministrationLandingPage self-gates: filterSettingsNavItems(ADMINISTRATION_ITEMS,
+    // user) returns only the destinations the caller can access, and renders <NoAccess/>
+    // (fail-closed) when none are visible. SLICE 17 removed the outer AdminOnly in favour
+    // of this in-component gate, so a role-less user sees the NoAccess panel in-place
+    // instead of a redirect, and role-holders see only their permitted destinations.
+    path: "/settings/administration",
+    reason:
+      "Self-gated in-component: filterSettingsNavItems -> <NoAccess/> when no child perms held"
   }
 ];
 

@@ -471,7 +471,6 @@ const BREADCRUMBS: Record<string, string> = {
   "/settings/ai": "Settings",
   "/settings/data-model": "Settings",
   "/settings/administration": "Settings",
-  "/admin/estimate-rates": "Legacy estimate rates",
   "/admin/schedule-of-rates": "Schedule of Rates",
   "/admin/ai-settings": "AI Settings",
   // /admin/automations redirects to /settings/administration/automations;

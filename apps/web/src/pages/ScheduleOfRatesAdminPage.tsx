@@ -66,6 +66,8 @@ type SorPeriodSummary = {
   _count: { rates: number };
 };
 
+type SorRateSourceType = "INTERNAL" | "SUBBIE" | "SUPPLIER" | "MANUAL";
+
 type SorRate = {
   id: string;
   periodId: string;
@@ -80,10 +82,19 @@ type SorRate = {
   comments: string | null;
   sortOrder: number;
   active: boolean;
+  // SoR S3 (rate-hub): source discriminator + markup override.
+  sourceType?: SorRateSourceType;
+  sourceRateRowId?: string | null;
+  sourceSubRateId?: string | null;
+  markupPct?: string | null;
 };
 
+type PeriodCategoryMarkups = Partial<Record<SorCategory, number>>;
+
 type SorPeriodWithRates = {
-  period: Omit<SorPeriodSummary, "_count">;
+  period: Omit<SorPeriodSummary, "_count"> & {
+    categoryMarkups?: PeriodCategoryMarkups | null;
+  };
   ratesByCategory: Partial<Record<SorCategory, SorRate[]>>;
 };
 
@@ -143,6 +154,123 @@ function fmtDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+// SoR S3 (rate-hub): where a SoR line's base rate came from.
+const SOURCE_BADGE_COLOR: Record<SorRateSourceType, string> = {
+  INTERNAL: "#3b82f6",
+  SUBBIE: "#f59e0b",
+  SUPPLIER: "#10b981",
+  MANUAL: "#6b7280",
+};
+const SOURCE_BADGE_LABEL: Record<SorRateSourceType, string> = {
+  INTERNAL: "Hub",
+  SUBBIE: "Subbie",
+  SUPPLIER: "Supplier",
+  MANUAL: "Manual",
+};
+
+function sourceBadge(source: SorRateSourceType | undefined): ReactNode {
+  const value = source ?? "MANUAL";
+  return (
+    <span
+      title={`Source: ${value}`}
+      style={{
+        display: "inline-block",
+        padding: "1px 6px",
+        borderRadius: 99,
+        fontSize: 10,
+        fontWeight: 700,
+        background: SOURCE_BADGE_COLOR[value],
+        color: "#fff"
+      }}
+    >
+      {SOURCE_BADGE_LABEL[value]}
+    </span>
+  );
+}
+
+/**
+ * SoR S3 (rate-hub): inline editor for a SoR line's per-line markup % override.
+ * Blank/cleared → null (falls back to the period's category default markup).
+ * Uncontrolled input; commits on blur/Enter to keep the click-to-edit row flow.
+ */
+function MarkupCell({
+  rate,
+  canManage,
+  callApi
+}: {
+  rate: SorRate;
+  canManage: boolean;
+  callApi: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
+}) {
+  const [value, setValue] = useState<string>(rate.markupPct ?? "");
+  useEffect(() => {
+    setValue(rate.markupPct ?? "");
+  }, [rate.markupPct]);
+
+  const commit = () => {
+    const trimmed = value.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    const prev = rate.markupPct != null ? Number(rate.markupPct) : null;
+    if (next === prev) return;
+    if (next != null && !Number.isFinite(next)) return;
+    void callApi(`/schedule-of-rates/rates/${rate.id}/markup`, "PATCH", {
+      markupPct: next
+    });
+  };
+
+  if (!canManage) {
+    return <span>{rate.markupPct != null ? `${rate.markupPct}%` : ""}</span>;
+  }
+  return (
+    <input
+      className="s7-input s7-input--sm"
+      type="number"
+      step="0.5"
+      placeholder="—"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      style={{ width: 64, textAlign: "right" }}
+    />
+  );
+}
+
+/**
+ * SoR S3 (rate-hub): promote a MANUAL SoR line into the rate hub. Only shown
+ * for MANUAL rows in categories that can live in the internal hub (i.e. not
+ * SUBCONTRACTOR — those belong on the vendor hub via a link-vendor action,
+ * which S4 will wire up in the picker).
+ */
+function PromoteButton({
+  rate,
+  callApi
+}: {
+  rate: SorRate;
+  callApi: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
+}) {
+  if ((rate.sourceType ?? "MANUAL") !== "MANUAL") return null;
+  if (rate.category === "SUBCONTRACTOR") return null;
+  return (
+    <button
+      type="button"
+      className="s7-btn s7-btn--sm"
+      title="Promote this manual line into the rate hub"
+      onClick={() =>
+        void callApi(`/schedule-of-rates/rates/${rate.id}/promote-to-hub`, "POST")
+      }
+      style={{ padding: "1px 6px", fontSize: 10 }}
+    >
+      Promote
+    </button>
+  );
 }
 
 function statusBadge(status: SorPeriodStatus): ReactNode {
@@ -636,6 +764,16 @@ export function ScheduleOfRatesAdminPage() {
         </section>
       )}
 
+      {/* Period-level category default markups (SoR S3 rate-hub). */}
+      {selectedPeriodId && periodData?.period && (
+        <CategoryMarkupsEditor
+          periodId={selectedPeriodId}
+          initial={periodData.period.categoryMarkups ?? {}}
+          canManage={canManage}
+          callApi={callApi}
+        />
+      )}
+
       {/* Category tabs */}
       {selectedPeriodId && (
         <>
@@ -844,12 +982,13 @@ function LabourTable({
           <thead>
             <tr>
               <th style={{ width: 36 }} aria-label="Select for PDF" />
-              <th style={{ width: "22%" }}>Position</th>
-              <th style={{ width: "12%" }}>Class</th>
-              <th style={{ width: "12%" }}>Ordinary</th>
-              <th style={{ width: "12%" }}>1.5x</th>
-              <th style={{ width: "12%" }}>2x</th>
-              <th style={{ width: "18%" }}>Comments</th>
+              <th style={{ width: "20%" }}>Position</th>
+              <th style={{ width: "10%" }}>Class</th>
+              <th style={{ width: "10%" }}>Ordinary</th>
+              <th style={{ width: "10%" }}>1.5x</th>
+              <th style={{ width: "10%" }}>2x</th>
+              <th style={{ width: "16%" }}>Comments</th>
+              <th style={{ width: "14%" }}>Source / markup</th>
               <th style={{ width: 48 }} aria-label="Actions" />
             </tr>
           </thead>
@@ -1046,6 +1185,13 @@ function LabourRateRow({
         ) : (rate.comments ?? "")}
       </td>
       <td onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {sourceBadge(rate.sourceType)}
+          <MarkupCell rate={rate} canManage={canManage} callApi={callApi} />
+          <PromoteButton rate={rate} callApi={callApi} />
+        </div>
+      </td>
+      <td onClick={(e) => e.stopPropagation()}>
         {canManage ? (
           <button
             type="button"
@@ -1135,10 +1281,11 @@ function UnitRateTable({
           <thead>
             <tr>
               <th style={{ width: 36 }} aria-label="Select for PDF" />
-              <th style={{ width: "38%" }}>Name / Item</th>
-              <th style={{ width: "12%" }}>Unit</th>
-              <th style={{ width: "16%" }}>Rate</th>
-              <th style={{ width: "22%" }}>Comments</th>
+              <th style={{ width: "30%" }}>Name / Item</th>
+              <th style={{ width: "10%" }}>Unit</th>
+              <th style={{ width: "14%" }}>Rate</th>
+              <th style={{ width: "18%" }}>Comments</th>
+              <th style={{ width: "16%" }}>Source / markup</th>
               <th style={{ width: 48 }} aria-label="Actions" />
             </tr>
           </thead>
@@ -1291,6 +1438,13 @@ function UnitRateRow({
         </td>
       ))}
       <td onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {sourceBadge(rate.sourceType)}
+          <MarkupCell rate={rate} canManage={canManage} callApi={callApi} />
+          <PromoteButton rate={rate} callApi={callApi} />
+        </div>
+      </td>
+      <td onClick={(e) => e.stopPropagation()}>
         {canManage ? (
           <button
             type="button"
@@ -1404,10 +1558,11 @@ function SubcontractorTable({
           <thead>
             <tr>
               <th style={{ width: 36 }} aria-label="Select for PDF" />
-              <th style={{ width: "38%" }}>Name / Trade</th>
-              <th style={{ width: "16%" }}>Rate</th>
-              <th style={{ width: "12%" }}>Cost+</th>
-              <th style={{ width: "22%" }}>Comments</th>
+              <th style={{ width: "30%" }}>Name / Trade</th>
+              <th style={{ width: "14%" }}>Rate</th>
+              <th style={{ width: "8%" }}>Cost+</th>
+              <th style={{ width: "18%" }}>Comments</th>
+              <th style={{ width: "16%" }}>Source / markup</th>
               <th style={{ width: 48 }} aria-label="Actions" />
             </tr>
           </thead>
@@ -1587,6 +1742,13 @@ function SubcontractorRateRow({
         )}
       </td>
       <td onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {sourceBadge(rate.sourceType)}
+          <MarkupCell rate={rate} canManage={canManage} callApi={callApi} />
+          <PromoteButton rate={rate} callApi={callApi} />
+        </div>
+      </td>
+      <td onClick={(e) => e.stopPropagation()}>
         {canManage ? (
           <button
             type="button"
@@ -1607,6 +1769,95 @@ function SubcontractorRateRow({
         ) : null}
       </td>
     </tr>
+  );
+}
+
+// ─── Category markup defaults (SoR S3 rate-hub) ───────────────────────────────
+
+/**
+ * Compact editor for the period's default markup % per SorCategory. Values
+ * are applied to every SoR line whose own `markupPct` is null. Empty input
+ * means "no default" (line falls back to 0% unless it has its own override).
+ */
+function CategoryMarkupsEditor({
+  periodId,
+  initial,
+  canManage,
+  callApi
+}: {
+  periodId: string;
+  initial: PeriodCategoryMarkups;
+  canManage: boolean;
+  callApi: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
+}) {
+  const categories: SorCategory[] = ["LABOUR", "PLANT", "WASTE", "SUBCONTRACTOR"];
+  const [draft, setDraft] = useState<Record<SorCategory, string>>(() => ({
+    LABOUR: initial.LABOUR != null ? String(initial.LABOUR) : "",
+    PLANT: initial.PLANT != null ? String(initial.PLANT) : "",
+    WASTE: initial.WASTE != null ? String(initial.WASTE) : "",
+    SUBCONTRACTOR: initial.SUBCONTRACTOR != null ? String(initial.SUBCONTRACTOR) : ""
+  }));
+
+  useEffect(() => {
+    setDraft({
+      LABOUR: initial.LABOUR != null ? String(initial.LABOUR) : "",
+      PLANT: initial.PLANT != null ? String(initial.PLANT) : "",
+      WASTE: initial.WASTE != null ? String(initial.WASTE) : "",
+      SUBCONTRACTOR: initial.SUBCONTRACTOR != null ? String(initial.SUBCONTRACTOR) : ""
+    });
+    // Reset when the period changes.
+  }, [periodId, initial.LABOUR, initial.PLANT, initial.WASTE, initial.SUBCONTRACTOR]);
+
+  const save = () => {
+    const out: Record<string, number> = {};
+    for (const cat of categories) {
+      const trimmed = draft[cat].trim();
+      if (trimmed === "") continue;
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) out[cat] = num;
+    }
+    void callApi(`/schedule-of-rates/periods/${periodId}/category-markups`, "PATCH", {
+      categoryMarkups: out
+    });
+  };
+
+  return (
+    <section
+      className="s7-card"
+      style={{ marginBottom: 8, padding: "10px 16px" }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 600, fontSize: 13 }}>Default markup %</span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          Applied to any line without its own markup override.
+        </span>
+        {categories.map((cat) => (
+          <label key={cat} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--text-muted)" }}>{cat[0] + cat.slice(1).toLowerCase()}</span>
+            <input
+              className="s7-input s7-input--sm"
+              type="number"
+              step="0.5"
+              placeholder="—"
+              value={draft[cat]}
+              disabled={!canManage}
+              onChange={(e) => setDraft((prev) => ({ ...prev, [cat]: e.target.value }))}
+              style={{ width: 64, textAlign: "right" }}
+            />
+          </label>
+        ))}
+        {canManage && (
+          <button
+            type="button"
+            className="s7-btn s7-btn--sm"
+            onClick={save}
+            style={{ marginLeft: "auto" }}
+          >
+            Save markups
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 

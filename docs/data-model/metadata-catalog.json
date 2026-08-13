@@ -16794,6 +16794,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "sorRateSources": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -19981,6 +19987,12 @@
           "filterable": true,
           "aggregations": []
         },
+        "categoryMarkups": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -20102,6 +20114,48 @@
           "label": null,
           "filterable": true,
           "aggregations": []
+        },
+        "sourceType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sourceRateRowId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sourceRateRow": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sourceSubRateId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sourceSubRate": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "markupPct": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
         },
         "createdAt": {
           "role": "system",
@@ -20661,6 +20715,12 @@
           "role": "dimension",
           "label": null,
           "filterable": true,
+          "aggregations": []
+        },
+        "sorRateSources": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
           "aggregations": []
         }
       }

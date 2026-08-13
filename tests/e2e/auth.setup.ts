@@ -1,10 +1,11 @@
 import { test as setup } from "@playwright/test";
 
-import { ADMIN, FIELD_WORKER, VIEWER, loginViaForm } from "./pr-acceptance/helpers";
+import { ADMIN, FIELD_WORKER, VIEWER, SCOPED_ADMIN, loginViaForm } from "./pr-acceptance/helpers";
 import {
   ADMIN_STORAGE_STATE,
   FIELD_WORKER_STORAGE_STATE,
-  VIEWER_STORAGE_STATE
+  VIEWER_STORAGE_STATE,
+  SCOPED_ADMIN_STORAGE_STATE
 } from "./storage-state";
 
 // Logs in once per seeded persona and saves the resulting localStorage-backed
@@ -25,4 +26,10 @@ setup("authenticate field worker", async ({ page }) => {
 setup("authenticate viewer", async ({ page }) => {
   await loginViaForm(page, VIEWER.email, VIEWER.password);
   await page.context().storageState({ path: VIEWER_STORAGE_STATE });
+});
+
+// SLICE 17: scoped admin — users.view only, no roles.view.
+setup("authenticate scoped admin", async ({ page }) => {
+  await loginViaForm(page, SCOPED_ADMIN.email, SCOPED_ADMIN.password);
+  await page.context().storageState({ path: SCOPED_ADMIN_STORAGE_STATE });
 });

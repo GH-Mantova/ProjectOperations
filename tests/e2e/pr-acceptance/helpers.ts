@@ -5,7 +5,8 @@ import type { Page } from "@playwright/test";
 import {
   ADMIN_STORAGE_STATE,
   FIELD_WORKER_STORAGE_STATE,
-  VIEWER_STORAGE_STATE
+  VIEWER_STORAGE_STATE,
+  SCOPED_ADMIN_STORAGE_STATE
 } from "../storage-state";
 
 export const ADMIN = {
@@ -15,6 +16,17 @@ export const ADMIN = {
 
 export const VIEWER = {
   email: "viewer@projectops.local",
+  password: "Password123!"
+};
+
+/**
+ * SLICE 17: scoped admin (id `scoped-admin@projectops.local`).
+ * Holds users.view + dashboards.view but NOT roles.view — used to assert
+ * that /settings/administration/users is reachable while
+ * /settings/administration/roles renders <NoAccess/>.
+ */
+export const SCOPED_ADMIN = {
+  email: "scoped-admin@projectops.local",
   password: "Password123!"
 };
 
@@ -89,4 +101,9 @@ export async function loginAsFieldWorker(page: Page): Promise<void> {
 // Viewer lands on the same Operations dashboard.
 export async function loginAsViewer(page: Page): Promise<void> {
   await loginWithStoredState(page, VIEWER_STORAGE_STATE, VIEWER);
+}
+
+// SLICE 17: scoped admin — users.view only, no roles.view.
+export async function loginAsScopedAdmin(page: Page): Promise<void> {
+  await loginWithStoredState(page, SCOPED_ADMIN_STORAGE_STATE, SCOPED_ADMIN);
 }

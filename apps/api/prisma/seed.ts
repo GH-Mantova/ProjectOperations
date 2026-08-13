@@ -349,6 +349,36 @@ async function main() {
   await prisma.userRole.deleteMany({ where: { userId: viewerUser.id } });
   await prisma.userRole.create({ data: { userId: viewerUser.id, roleId: viewerRole.id } });
 
+  // SLICE 17 — scoped test user for per-screen permission e2e tests.
+  // Holds users.view + dashboards.view but NOT roles.view, so the test can
+  // assert that /settings/administration/users is reachable and
+  // /settings/administration/roles shows <NoAccess/>.
+  const scopedAdminRole = await prisma.role.upsert({
+    where: { name: "ScopedAdminTest" },
+    update: { description: "SLICE 17 e2e test role — users.view only, no roles.view", isSystem: true },
+    create: { name: "ScopedAdminTest", description: "SLICE 17 e2e test role — users.view only, no roles.view", isSystem: true }
+  });
+  const scopedAdminPermissions = await prisma.permission.findMany({
+    where: { code: { in: ["users.view", "dashboards.view"] } }
+  });
+  await prisma.rolePermission.createMany({
+    skipDuplicates: true,
+    data: scopedAdminPermissions.map((p) => ({ roleId: scopedAdminRole.id, permissionId: p.id }))
+  });
+  const scopedAdminUser = await prisma.user.upsert({
+    where: { email: "scoped-admin@projectops.local" },
+    update: { firstName: "Sam", lastName: "Scoped", isActive: true },
+    create: {
+      email: "scoped-admin@projectops.local",
+      firstName: "Sam",
+      lastName: "Scoped",
+      isActive: true,
+      passwordHash: hashPassword("Password123!")
+    }
+  });
+  await prisma.userRole.deleteMany({ where: { userId: scopedAdminUser.id } });
+  await prisma.userRole.create({ data: { userId: scopedAdminUser.id, roleId: scopedAdminRole.id } });
+
   // Global "Home" dashboard — the fallback default all users land on
   // when they have not set their own default_dashboard_id. Also seeded
   // by migration 20260716120000_user_default_dashboard; kept in sync

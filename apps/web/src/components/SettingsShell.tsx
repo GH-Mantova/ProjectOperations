@@ -39,17 +39,17 @@ type NavSection = {
 // hub (/settings/administration) lists exactly the same destinations the shell
 // sub-nav shows, gated on the exact same codes.
 export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
-  // AdminSettingsPage aggregates the AI/notifications/email/integrations
-  // tabs; gate on the umbrella platform.admin code that already governs
-  // those write paths (registry:19). SLICE 14 dissolves the mega-page.
-  { to: "/settings/administration/system", label: "Admin settings", requiresPermission: "platform.admin" },
+  // SLICE 17: AdminSettingsPage (notifications/email/AI/integrations) now
+  // gates on system.manage — a dedicated code that is less broad than
+  // platform.admin. Admin role receives it automatically.
+  { to: "/settings/administration/system", label: "Admin settings", requiresPermission: "system.manage" },
   { to: "/settings/administration/users", label: "Users", requiresPermission: "users.view" },
   { to: "/settings/administration/roles", label: "Roles & Permissions", requiresPermission: "roles.view" },
   { to: "/settings/administration/audit", label: "Audit", requiresPermission: "audit.view" },
-  // platform.manage is the SLICE-1 target code; it does not exist yet.
-  // Fall back to the existing platform.admin (registry:19) — same
-  // audience today. SLICE 12 tightens once platform.manage lands.
-  { to: "/settings/administration/platform", label: "Platform", requiresPermission: "platform.admin" },
+  // SLICE 17: Platform (SharePoint config) gates on sharepoint.view — the
+  // closest existing code for viewing platform configuration. Admin role
+  // already holds sharepoint.view.
+  { to: "/settings/administration/platform", label: "Platform", requiresPermission: "sharepoint.view" },
   // SLICE 10 (settings-restructure §3): Automations adopted from the
   // top-level /admin/automations into the Administration nav. Page
   // self-gates on automations.view; declare the same code here so the
@@ -57,10 +57,10 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
   { to: "/settings/administration/automations", label: "Automations", requiresPermission: "automations.view" },
   // SLICE 14 (settings-restructure §3): Client versions and Map locations
   // dissolved from AdminSettingsPage tabs into standalone Administration
-  // pages. Both are admin-config surfaces; gate on platform.admin (registry:19),
-  // same code used by the sibling Administration entries.
-  { to: "/settings/administration/client-versions", label: "Client versions", requiresPermission: "platform.admin" },
-  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "platform.admin" }
+  // pages. Both are admin-config surfaces; gate on system.manage (same
+  // as the sibling /system page — they are configuration surfaces).
+  { to: "/settings/administration/client-versions", label: "Client versions", requiresPermission: "system.manage" },
+  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "system.manage" }
 ];
 
 export function filterSettingsNavItems(items: SettingsNavItem[], user: SafeUser | null): SettingsNavItem[] {

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
+import { useSafetyRealtime, type SafetyMusterPayload } from "./useSafetyRealtime";
 
 type MusterAttendee = {
   id: string;
@@ -113,6 +114,19 @@ export function MusterPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // RT-2: refetch the roll-call whenever another officer touches this
+  // muster event so a second admin's check-off (or a complete/cancel from
+  // elsewhere) appears live. Filter by the loaded event's siteId to avoid
+  // reload storms on unrelated site events.
+  const onMusterChanged = useCallback(
+    (payload: SafetyMusterPayload) => {
+      if (!event) return;
+      if (payload.siteId === event.siteId) void load();
+    },
+    [event, load]
+  );
+  useSafetyRealtime({ onMusterChanged });
 
   const checkAttendee = useCallback(
     async (attendeeId: string, status: "ACCOUNTED" | "MISSING") => {

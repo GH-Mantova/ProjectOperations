@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useSafetyRealtime, type SafetyMusterPayload } from "./useSafetyRealtime";
 
 type HeadcountData = {
   siteId: string;
@@ -10,25 +11,31 @@ type HeadcountData = {
 
 type Props = {
   siteId: string;
-  /** Refresh interval in milliseconds. Default 60000 (1 minute). */
+  /**
+   * Fallback poll interval in milliseconds. Default 300000 (5 minutes).
+   * With RT-2 SSE, the push does the real-time work — polling is only a
+   * safety-net if the stream drops (proxy timeout, sleep, network blip).
+   */
   refreshInterval?: number;
 };
 
 /**
  * SiteHeadcountWidget
  *
- * Displays the live on-site headcount for a given site. Polls the
- * `/safety/muster/headcount/:siteId` endpoint on mount and at the given
- * interval. Shows a "Start muster" button when no active muster event
- * exists. If an active muster event is running, shows a "View roll call"
- * link instead.
+ * Displays the live on-site headcount for a given site. Refetches
+ * `/safety/muster/headcount/:siteId`:
  *
- * Requires the current user to hold `safety.view` to see the count and
- * `safety.manage` to start a muster (the API enforces this; the button is
- * always rendered here and the server will 403 if the user lacks the
- * permission).
+ *   1. On a `safety.muster.changed` SSE push (RT-2) for this widget's
+ *      `siteId` — the primary path.
+ *   2. On a coarse 5-minute fallback poll — the safety-net when SSE drops.
+ *
+ * Shows a "Start muster" button when no active muster event exists, or a
+ * "View roll call" link when one is running.
+ *
+ * Requires `safety.view` to see the count and `safety.manage` to start a
+ * muster (server-enforced).
  */
-export function SiteHeadcountWidget({ siteId, refreshInterval = 60_000 }: Props) {
+export function SiteHeadcountWidget({ siteId, refreshInterval = 300_000 }: Props) {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
 
@@ -63,6 +70,14 @@ export function SiteHeadcountWidget({ siteId, refreshInterval = 60_000 }: Props)
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
   }, [fetchHeadcount, refreshInterval]);
+
+  const onMusterChanged = useCallback(
+    (payload: SafetyMusterPayload) => {
+      if (payload.siteId === siteId) void fetchHeadcount();
+    },
+    [fetchHeadcount, siteId]
+  );
+  useSafetyRealtime({ onMusterChanged });
 
   const startMuster = useCallback(async () => {
     setStarting(true);

@@ -2,10 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { MusterAttendeeStatus, MusterEventStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { SafetyRealtimeEmitter } from "./realtime/safety-realtime.emitter";
 
 /**
  * Service for evacuation muster / roll-call events.
@@ -23,7 +25,10 @@ import { PrismaService } from "../../prisma/prisma.service";
  */
 @Injectable()
 export class MusterService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly realtime: SafetyRealtimeEmitter | null = null
+  ) {}
 
   // ─── Events ─────────────────────────────────────────────────────────────
 
@@ -87,6 +92,7 @@ export class MusterService {
       return created;
     });
 
+    this.realtime?.musterChanged({ siteId, eventId: event.id, action: "start" });
     return { ...event, snapshotCount: onSite.length };
   }
 
@@ -175,7 +181,7 @@ export class MusterService {
 
     const attendee = await this.prisma.musterAttendee.findUnique({
       where: { id: attendeeId },
-      include: { musterEvent: { select: { status: true } } }
+      include: { musterEvent: { select: { status: true, siteId: true } } }
     });
     if (!attendee) throw new NotFoundException("Muster attendee not found.");
     if (attendee.musterEvent.status !== MusterEventStatus.ACTIVE) {
@@ -197,10 +203,17 @@ export class MusterService {
       }
     });
 
-    return this.prisma.musterAttendee.update({
+    const updated = await this.prisma.musterAttendee.update({
       where: { id: attendeeId },
       data: { status, checkedAt: new Date(), checkedById: actorId }
     });
+
+    this.realtime?.musterChanged({
+      siteId: attendee.musterEvent.siteId,
+      eventId: attendee.musterEventId,
+      action: "check"
+    });
+    return updated;
   }
 
   /**
@@ -219,7 +232,7 @@ export class MusterService {
     void actorId; // retained for future audit-log use
     const event = await this.prisma.musterEvent.findUnique({
       where: { id: eventId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, siteId: true }
     });
     if (!event) throw new NotFoundException("Muster event not found.");
     if (event.status !== MusterEventStatus.ACTIVE) {
@@ -228,10 +241,12 @@ export class MusterService {
       );
     }
 
-    return this.prisma.musterEvent.update({
+    const updated = await this.prisma.musterEvent.update({
       where: { id: eventId },
       data: { status: MusterEventStatus.COMPLETED, completedAt: new Date() }
     });
+    this.realtime?.musterChanged({ siteId: event.siteId, eventId, action: "complete" });
+    return updated;
   }
 
   /**
@@ -249,7 +264,7 @@ export class MusterService {
     void actorId;
     const event = await this.prisma.musterEvent.findUnique({
       where: { id: eventId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, siteId: true }
     });
     if (!event) throw new NotFoundException("Muster event not found.");
     if (event.status !== MusterEventStatus.ACTIVE) {
@@ -258,10 +273,12 @@ export class MusterService {
       );
     }
 
-    return this.prisma.musterEvent.update({
+    const updated = await this.prisma.musterEvent.update({
       where: { id: eventId },
       data: { status: MusterEventStatus.CANCELLED, completedAt: new Date() }
     });
+    this.realtime?.musterChanged({ siteId: event.siteId, eventId, action: "cancel" });
+    return updated;
   }
 
   // ─── Headcount ──────────────────────────────────────────────────────────

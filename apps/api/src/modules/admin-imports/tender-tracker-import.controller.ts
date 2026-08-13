@@ -40,6 +40,8 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { PrismaService } from "../../prisma/prisma.service";
 import { TenderTrackerImportService } from "./tender-tracker-import.service";
 import { SharepointLegacyCopyService } from "./sharepoint-legacy-copy.service";
+import { TenderFolderBackfillService } from "./tender-folder-backfill.service";
+import { TenderFolderBackfillDto } from "./tender-folder-backfill.dto";
 
 @ApiTags("Admin Imports")
 @ApiBearerAuth()
@@ -49,6 +51,7 @@ export class TenderTrackerImportController {
   constructor(
     private readonly service: TenderTrackerImportService,
     private readonly legacyCopy: SharepointLegacyCopyService,
+    private readonly folderBackfill: TenderFolderBackfillService,
     private readonly prisma: PrismaService
   ) {}
 
@@ -133,6 +136,28 @@ export class TenderTrackerImportController {
   ) {
     await this.assertSuperUser(actor.sub);
     return this.legacyCopy.execute();
+  }
+
+  // ---------------------------------------------------------------------------
+  // MIG-3.1: Backfill ERP tender folders for a list of legacy T-numbers
+  // ---------------------------------------------------------------------------
+
+  @Post("tender-folders/backfill")
+  @RequirePermissions("users.create") // super-user gate - same as tender-tracker import
+  @ApiOperation({
+    summary:
+      "MIG-3.1: provision ERP tender folders (ensureTenderFolderStructure) for the supplied legacy T-numbers. dryRun=true (default) resolves the legacy->canonical mapping only; dryRun=false creates + DB-registers the folders.",
+  })
+  @ApiResponse({ status: 201, description: "TenderFolderBackfillReport returned." })
+  @ApiResponse({ status: 400, description: "No valid T-numbers supplied." })
+  @ApiResponse({ status: 403, description: "Super-user access required." })
+  async backfillTenderFolders(
+    @Body() body: TenderFolderBackfillDto,
+    @CurrentUser() actor: { sub: string; isSuperUser?: boolean }
+  ) {
+    await this.assertSuperUser(actor.sub);
+    const dryRun = body.dryRun !== false; // default to dry-run for safety
+    return this.folderBackfill.backfill(body.tNumbers, actor.sub, dryRun);
   }
 
   // ---------------------------------------------------------------------------

@@ -462,4 +462,71 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
+
+  // ── SLICE 6: Per-widget export — Export button triggers download ──────────
+
+  test("SLICE 6 — Export button on a report widget triggers a download (Content-Disposition)", async ({ page }) => {
+    await loginAsAdmin(page);
+    page.on("dialog", (dialog) => void dialog.accept());
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
+
+    // Purge residual scratch dashboards from previous runs.
+    const residue = nav.getByRole("button", { name: /Remove e2e-export-/ });
+    while ((await residue.count()) > 0) {
+      const before = await residue.count();
+      await residue.first().click();
+      await page.getByTestId("confirm-dialog-confirm").click();
+      await expect(residue).toHaveCount(before - 1);
+    }
+
+    // Create a scratch dashboard.
+    await nav.getByRole("button", { name: "New dashboard" }).click();
+    await expect(page.getByRole("heading", { name: "New dashboard" })).toBeVisible();
+    const dashName = `e2e-export-${Date.now()}`;
+    await page.getByRole("textbox", { name: "Name" }).fill(dashName);
+    await page.getByRole("button", { name: "Select all" }).first().click();
+    await page.getByRole("button", { name: "Create dashboard" }).click();
+    await expect(nav.getByRole("link", { name: dashName })).toBeVisible({ timeout: 10_000 });
+
+    // Navigate to the new dashboard.
+    await nav.getByRole("link", { name: dashName }).click();
+    await expect(page.getByRole("heading", { name: dashName })).toBeVisible();
+
+    // Add a report TABLE widget (tender-pipeline).
+    await page.getByTestId("add-widget-button").click();
+    await expect(page.getByTestId("widget-gallery-modal")).toBeVisible();
+    await page.getByTestId("gallery-search").fill("Tender pipeline");
+    await expect(page.getByText("Tender pipeline", { exact: true }).first()).toBeVisible({ timeout: 8_000 });
+    await page.getByText("Tender pipeline", { exact: true }).first().click();
+    await page.getByTestId("gallery-next").click();
+    await expect(page.getByTestId("gallery-preview")).toBeVisible();
+    await page.getByTestId("gallery-add").click();
+    await expect(page.getByTestId("widget-gallery-modal")).not.toBeVisible({ timeout: 5_000 });
+    const canvas = page.locator(".s7-canvas, [data-testid='dashboard-canvas'], main").first();
+    await canvas.click({ position: { x: 400, y: 200 }, timeout: 3_000 }).catch(() => {/* placement done */});
+
+    // Wait for the widget to appear and finish loading.
+    const widgetChrome = page.getByTestId("report-widget-chrome-tender-pipeline");
+    await expect(widgetChrome).toBeVisible({ timeout: 15_000 });
+
+    // Wait until the Export buttons become enabled (loading = false).
+    const excelBtn = page.getByTestId("export-xlsx-tender-pipeline");
+    await expect(excelBtn).toBeEnabled({ timeout: 15_000 });
+
+    // Set up a download listener BEFORE clicking to capture the download event.
+    const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+    await excelBtn.click();
+    const download = await downloadPromise;
+
+    // Verify the download was initiated — suggested filename must be non-empty
+    // and end with .xlsx (derived from Content-Disposition or fallback).
+    const suggestedFilename = download.suggestedFilename();
+    expect(suggestedFilename.length).toBeGreaterThan(0);
+    expect(suggestedFilename).toMatch(/\.(xlsx|xls)$/i);
+
+    // Clean up.
+    await nav.getByRole("button", { name: `Remove ${dashName}` }).click();
+    await page.getByTestId("confirm-dialog-confirm").click();
+    await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
+  });
 });

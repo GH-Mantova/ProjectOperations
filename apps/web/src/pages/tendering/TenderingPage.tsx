@@ -12,7 +12,7 @@ import { OutcomeCaptureModal, OutcomeCaptureTender } from "./OutcomeCaptureModal
 import { NeedsOutcomePanel } from "./NeedsOutcomePanel";
 import { OutcomeCapturePayload, recordOutcome } from "./outcomeApi";
 
-type TopTab = "tenders" | "crm";
+type TopTab = "tenders" | "leads-opportunities";
 
 type TenderListItem = {
   id: string;
@@ -307,13 +307,24 @@ export function TenderingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   // CRM parity with the old sidebar CRM entry (gated on crm.view). Users
   // without the permission cannot see the tab and cannot land on it via
-  // ?tab=crm — they fall through to the tenders view.
+  // ?tab=leads-opportunities — they fall through to the tenders view.
   const canViewCrm = can(user, "crm.view");
+  const rawTab = searchParams.get("tab");
   const activeTab: TopTab =
-    searchParams.get("tab") === "crm" && canViewCrm ? "crm" : "tenders";
+    (rawTab === "leads-opportunities" || rawTab === "crm") && canViewCrm
+      ? "leads-opportunities"
+      : "tenders";
+  // Redirect legacy ?tab=crm bookmarks to the new key so URL and state agree.
+  useEffect(() => {
+    if (rawTab === "crm" && canViewCrm) {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", "leads-opportunities");
+      setSearchParams(next, { replace: true });
+    }
+  }, [rawTab, canViewCrm, searchParams, setSearchParams]);
   const setActiveTab = (next: TopTab) => {
     const nextParams = new URLSearchParams(searchParams);
-    if (next === "crm") nextParams.set("tab", "crm");
+    if (next === "leads-opportunities") nextParams.set("tab", "leads-opportunities");
     else nextParams.delete("tab");
     setSearchParams(nextParams, { replace: true });
   };
@@ -733,7 +744,7 @@ export function TenderingPage() {
         ) : null}
       </header>
 
-      {activeTab === "crm" ? (
+      {activeTab === "leads-opportunities" ? (
         <CrmBoardContent />
       ) : (
       <>
@@ -892,7 +903,7 @@ function TopTabStrip({
 }) {
   const tabs: { key: TopTab; label: string }[] = [
     { key: "tenders", label: "Tenders" },
-    ...(showCrm ? ([{ key: "crm", label: "CRM" }] as const) : [])
+    ...(showCrm ? ([{ key: "leads-opportunities", label: "Leads & opportunities" }] as const) : [])
   ];
   return (
     <div

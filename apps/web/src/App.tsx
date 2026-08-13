@@ -56,7 +56,6 @@ import { SiteDetailPage } from "./pages/sites/SiteDetailPage";
 import { MusterPage } from "./pages/sites/MusterPage";
 import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
-import { EstimateRatesAdminPage } from "./pages/EstimateRatesAdminPage";
 import { ScheduleOfRatesAdminPage } from "./pages/ScheduleOfRatesAdminPage";
 import { JobSorAttachWizardPage } from "./pages/JobSorAttachWizardPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
@@ -536,7 +535,8 @@ export function App() {
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             {/* B-HW-7: Handover wizard — launched from contract detail page */}
             <Route path="/handover/:id" element={<HandoverWizardPage />} />
-            <Route path="/admin/estimate-rates" element={<EstimateRatesAdminPage />} />
+            {/* SLICE 11b: legacy estimate-rates admin page retired; redirect to canonical reference-data screen. */}
+            <Route path="/admin/estimate-rates" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/schedule-of-rates" element={<ScheduleOfRatesAdminPage />} />
             {/* SoR S4: attach a rate-book snapshot to a job or tender. */}
             <Route path="/schedule-of-rates/attach" element={<JobSorAttachWizardPage />} />

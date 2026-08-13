@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { FieldAppliesTo, FieldSource } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   findDuplicates,
@@ -86,7 +87,46 @@ function stripBankFromInput<T extends Record<string, unknown>>(data: T, canEditB
  */
 @Injectable()
 export class DirectoryService {
+  private readonly logger = new Logger(DirectoryService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Validates and sanitises `customFields` from an update DTO against the
+   * registered CUSTOM FieldDefinition rows. Any key that does not exist in
+   * the registry is dropped and a warning is logged so operators can spot
+   * stale or rogue keys without a hard 400.
+   *
+   * @param rawCustomFields - The untrusted `customFields` map from the caller.
+   * @param appliesTo - Which entity side to load definitions for.
+   * @returns A sanitised `customFields` object containing only whitelisted keys,
+   *          or `undefined` when the input was absent.
+   */
+  private async sanitizeCustomFields(
+    rawCustomFields: Record<string, unknown> | null | undefined,
+    appliesTo: FieldAppliesTo
+  ): Promise<Record<string, unknown> | undefined> {
+    if (rawCustomFields === null || rawCustomFields === undefined) return undefined;
+
+    const allowedDefs = await this.prisma.fieldDefinition.findMany({
+      where: {
+        source: FieldSource.CUSTOM,
+        OR: [{ appliesTo }, { appliesTo: FieldAppliesTo.BOTH }]
+      },
+      select: { key: true }
+    });
+    const allowedKeys = new Set(allowedDefs.map((d) => d.key));
+
+    const clean: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rawCustomFields)) {
+      if (allowedKeys.has(key)) {
+        clean[key] = value;
+      } else {
+        this.logger.warn(`Dropping unknown custom field key "${key}" for appliesTo=${appliesTo}`);
+      }
+    }
+    return clean;
+  }
 
   // ─── Subcontractor CRUD ─────────────────────────────────────────────────
   /**
@@ -272,6 +312,19 @@ export class DirectoryService {
     // categories is a non-nullable String[] — a null in the PATCH body would
     // violate the null constraint (500). Treat explicit null as "clear".
     if (data.categories === null) data.categories = [];
+
+    // Validate and sanitise custom fields — drop any key not in the CUSTOM
+    // FieldDefinition registry for VENDOR. Do NOT touch typed-column updates.
+    if ("customFields" in data) {
+      const rawCf = data.customFields as Record<string, unknown> | null | undefined;
+      const sanitised = await this.sanitizeCustomFields(rawCf, FieldAppliesTo.VENDOR);
+      if (sanitised !== undefined) {
+        data.customFields = sanitised;
+      } else {
+        delete data.customFields;
+      }
+    }
+
     return this.prisma.subcontractorSupplier.update({ where: { id }, data: data as never });
   }
 

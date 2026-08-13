@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { FieldAppliesTo, FieldSource } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { MasterDataQueryDto } from "./dto/master-data-query.dto";
@@ -27,10 +28,43 @@ import {
  */
 @Injectable()
 export class MasterDataService {
+  private readonly logger = new Logger(MasterDataService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService
   ) {}
+
+  /**
+   * Validates and sanitises `customFields` from an update DTO against the
+   * registered CUSTOM FieldDefinition rows. Any key not in the registry is
+   * dropped and a warning is logged. Returns `undefined` when input is absent.
+   */
+  private async sanitizeCustomFields(
+    rawCustomFields: Record<string, unknown> | null | undefined,
+    appliesTo: FieldAppliesTo
+  ): Promise<Record<string, unknown> | undefined> {
+    if (rawCustomFields === null || rawCustomFields === undefined) return undefined;
+
+    const allowedDefs = await this.prisma.fieldDefinition.findMany({
+      where: {
+        source: FieldSource.CUSTOM,
+        OR: [{ appliesTo }, { appliesTo: FieldAppliesTo.BOTH }]
+      },
+      select: { key: true }
+    });
+    const allowedKeys = new Set(allowedDefs.map((d) => d.key));
+
+    const clean: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rawCustomFields)) {
+      if (allowedKeys.has(key)) {
+        clean[key] = value;
+      } else {
+        this.logger.warn(`Dropping unknown custom field key "${key}" for appliesTo=${appliesTo}`);
+      }
+    }
+    return clean;
+  }
 
   /**
    * Paginated list of clients, with each client's sites and claim-reminder user included.
@@ -109,12 +143,37 @@ export class MasterDataService {
           data[key as string] = (dto as Record<string, unknown>)[key as string];
         }
       }
+
+      // Validate and sanitise custom fields — drop any key not in the CUSTOM
+      // FieldDefinition registry for CLIENT. Do NOT touch typed-column updates.
+      if ("customFields" in data) {
+        const rawCf = data.customFields as Record<string, unknown> | null | undefined;
+        const sanitised = await this.sanitizeCustomFields(rawCf, FieldAppliesTo.CLIENT);
+        if (sanitised !== undefined) {
+          data.customFields = sanitised;
+        } else {
+          delete data.customFields;
+        }
+      }
+
       const record = await this.prisma.client.update({ where: { id }, data });
       await this.audit(actorId, "masterdata.client.update", "Client", record.id);
       return record;
     }
 
-    const record = await this.prisma.client.create({ data: dto as UpsertClientDto });
+    // On CREATE: sanitise customFields if present in the DTO.
+    const createData = { ...(dto as UpsertClientDto) } as Record<string, unknown>;
+    if ("customFields" in createData) {
+      const rawCf = createData.customFields as Record<string, unknown> | null | undefined;
+      const sanitised = await this.sanitizeCustomFields(rawCf, FieldAppliesTo.CLIENT);
+      if (sanitised !== undefined) {
+        createData.customFields = sanitised;
+      } else {
+        delete createData.customFields;
+      }
+    }
+
+    const record = await this.prisma.client.create({ data: createData as never });
     await this.audit(actorId, "masterdata.client.create", "Client", record.id);
     return record;
   }

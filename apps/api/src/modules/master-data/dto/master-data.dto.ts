@@ -78,6 +78,11 @@ export class UpsertClientDto {
 
   @ApiPropertyOptional({ enum: PAYMENT_TERMS_TYPES, description: "Vocabulary that mirrors Xero's contact payment-terms. Must be supplied with `paymentTermsDay`." })
   @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
+
+  // CFX-3 — custom fields bag. Keys are validated against the FieldDefinition
+  // registry in the service layer; unknown keys are silently dropped.
+  @ApiPropertyOptional({ description: "Arbitrary custom fields registered via the field-definition engine. Unknown keys are dropped server-side." })
+  @IsOptional() customFields?: Record<string, unknown> | null;
 }
 
 /**

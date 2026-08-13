@@ -39,7 +39,7 @@ export type StalledOpportunityRow = {
   id: string;
   title: string;
   stage: OpportunityStage;
-  clientId: string;
+  clientId: string | null;
   clientName: string | null;
   ownerId: string | null;
   ownerName: string | null;

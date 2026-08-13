@@ -34,6 +34,9 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CrmService } from "./crm.service";
 import { CreateDropReasonDto } from "./dto/create-drop-reason.dto";
 import { UpdateDropReasonDto } from "./dto/update-drop-reason.dto";
+import { CreateEntryDto } from "./dto/create-entry.dto";
+import { UpdateEntryDto } from "./dto/update-entry.dto";
+import { DontPursueDto } from "./dto/dont-pursue.dto";
 
 const LEAD_STATUSES = ["new", "contacted", "qualified", "disqualified", "converted"] as const;
 const OPPORTUNITY_STAGES = ["new", "qualified", "quoting", "won", "lost"] as const;
@@ -314,6 +317,58 @@ export class CrmController {
   @ApiResponse({ status: 200, description: "Forecast buckets + totals." })
   forecast(@Query() query: ForecastQueryDto) {
     return this.service.forecast(query as never);
+  }
+
+  // ── Unified entries (S3) ─────────────────────────────────────────────────
+
+  @Post("entries")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary: "Create a unified CRM entry (lead or opportunity). Always sets stage to 'open'."
+  })
+  @ApiResponse({ status: 201, description: "Entry created." })
+  @ApiResponse({ status: 400, description: "Validation error." })
+  createEntry(
+    @Body() dto: CreateEntryDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.createEntry(dto, actor.sub);
+  }
+
+  @Patch("entries/:id")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "Update a CRM entry. If 'stage' is supplied it must be one of: open, not_pursued, archived. Legacy stages are rejected (400)."
+  })
+  @ApiParam({ name: "id", description: "Entry id" })
+  @ApiResponse({ status: 200, description: "Updated entry." })
+  @ApiResponse({ status: 400, description: "Invalid stage or validation error." })
+  @ApiResponse({ status: 404, description: "Entry not found." })
+  updateEntry(
+    @Param("id") id: string,
+    @Body() dto: UpdateEntryDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.updateEntry(id, dto, actor.sub);
+  }
+
+  @Post("entries/:id/dont-pursue")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "Mark a CRM entry as 'don't pursue': sets stage to not_pursued, links a DropReason and optional free-text detail."
+  })
+  @ApiParam({ name: "id", description: "Entry id" })
+  @ApiResponse({ status: 201, description: "Entry marked as not-pursued." })
+  @ApiResponse({ status: 400, description: "Entry is archived." })
+  @ApiResponse({ status: 404, description: "Entry not found." })
+  dontPursue(
+    @Param("id") id: string,
+    @Body() dto: DontPursueDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.dontPursue(id, dto, actor.sub);
   }
 
   // ── DropReasons ──────────────────────────────────────────────────────────

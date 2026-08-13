@@ -27,6 +27,7 @@ import {
 } from "./sharepoint-legacy-copy.service";
 import { SharePointService } from "../platform/sharepoint.service";
 import { TenderNumberService } from "../tendering/tender-number.service";
+import { TenderFolderBackfillService } from "./tender-folder-backfill.service";
 
 /**
  * Bridge adapter that satisfies ISharePointCopySeam using SharePointService.
@@ -77,6 +78,7 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
     TenderTrackerImportService,
     TenderNumberService,
     SharepointLegacyCopyService,
+    TenderFolderBackfillService,
     {
       provide: SHAREPOINT_COPY_SEAM,
       inject: [SharePointService],
@@ -84,6 +86,6 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
         new SharePointCopySeamBridge(svc),
     },
   ],
-  exports: [TenderTrackerImportService, SharepointLegacyCopyService],
+  exports: [TenderTrackerImportService, SharepointLegacyCopyService, TenderFolderBackfillService],
 })
 export class AdminImportsModule {}

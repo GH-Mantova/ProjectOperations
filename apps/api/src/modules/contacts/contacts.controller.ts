@@ -56,6 +56,10 @@ class CreateContactDto {
 
   @ApiPropertyOptional({ description: "CC this contact on invoice/quote emails sent to their organisation." })
   @IsOptional() @IsBoolean() includeInInvoiceEmails?: boolean;
+
+  // MT-4 — mixed-classification tenant assignment.
+  @ApiPropertyOptional({ description: "MT-4: Tenant scope. null = shared across group; supply a Tenant id to restrict to one company. Validated against active Tenant rows." })
+  @IsOptional() @IsString() tenantId?: string | null;
 }
 
 /**
@@ -83,6 +87,10 @@ class UpdateContactDto {
   // must be supplied together for the move to take effect.
   @IsOptional() @IsString() @IsIn(ORG_TYPES as unknown as string[]) organisationType?: string;
   @IsOptional() @IsString() organisationId?: string;
+
+  // MT-4 — mixed-classification tenant assignment.
+  @ApiPropertyOptional({ description: "MT-4: Tenant scope. null = shared across group; supply a Tenant id to restrict to one company. Validated against active Tenant rows." })
+  @IsOptional() @IsString() tenantId?: string | null;
 }
 
 /**

@@ -2,6 +2,7 @@ import { CenteredModal } from "@project-ops/ui";
 import { ClientStarRating } from "../../components/ClientStarRating";
 import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
 import { DynamicFieldSection } from "../../components/DynamicFieldSection";
+import { TenantAssignmentField } from "../../components/tenancy/TenantAssignmentField";
 
 export type ActivityClient = {
   tenderClientId: string;
@@ -16,6 +17,8 @@ export type ActivityClient = {
   winRate: string | null;
   contact: { id: string; firstName: string; lastName: string; email?: string | null } | null;
   customFields?: Record<string, unknown>;
+  /** MT-4: tenant scope of this client. null = shared across the group. */
+  tenantId?: string | null;
 };
 
 export function isPrimaryClient(client: Pick<ActivityClient, "relationshipType">): boolean {
@@ -51,7 +54,8 @@ export function ClientDetailDrawer({
   onClose,
   onScoreChange,
   onLogInteraction,
-  onRemove
+  onRemove,
+  onTenantChange
 }: {
   client: ActivityClient;
   canManage: boolean;
@@ -60,6 +64,13 @@ export function ClientDetailDrawer({
   onScoreChange: (score: number) => void;
   onLogInteraction: () => void;
   onRemove: () => void;
+  /**
+   * MT-4: called when the user changes the tenant assignment of this client.
+   * The caller is responsible for sending `PATCH /master-data/clients/:id { tenantId }`.
+   * Omit this prop to hide the TenantAssignmentField (e.g. when the caller
+   * does not yet support MT-4 tenant updates).
+   */
+  onTenantChange?: (tenantId: string | null) => void;
 }) {
   const winRate = client.winRate !== null && client.winRate !== undefined ? Number(client.winRate) : null;
 
@@ -175,6 +186,19 @@ export function ClientDetailDrawer({
             }}
           />
         </div>
+
+        {/* MT-4: Tenant assignment — only rendered when canManage and the caller
+            supplies onTenantChange (super-user edit surfaces). */}
+        {canManage && onTenantChange ? (
+          <div>
+            <p className="s7-type-label" style={{ margin: "0 0 6px" }}>Company scope</p>
+            <TenantAssignmentField
+              value={client.tenantId ?? null}
+              onChange={onTenantChange}
+              disabled={!canManage}
+            />
+          </div>
+        ) : null}
 
         {canManage ? (
           <div>

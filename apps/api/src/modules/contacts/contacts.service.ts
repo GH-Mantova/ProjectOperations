@@ -56,6 +56,8 @@ export type UpsertContactInput = {
   hasPortalAccess?: boolean;
   notes?: string | null;
   includeInInvoiceEmails?: boolean;
+  /** MT-4: Tenant scope. null = shared across group; non-null = validated Tenant id. */
+  tenantId?: string | null;
 };
 
 /**
@@ -148,6 +150,8 @@ export class ContactsService {
       throw new BadRequestException("firstName and lastName are required.");
     }
     await this.requireOrganisation(organisationType, organisationId);
+    // MT-4: validate tenantId when explicitly supplied and non-null.
+    if ("tenantId" in input) await this.validateTenantId(input.tenantId);
 
     const created = await this.prisma.$transaction(async (tx) => {
       if (input.isPrimary) {
@@ -172,7 +176,8 @@ export class ContactsService {
           hasPortalAccess: Boolean(input.hasPortalAccess),
           notes: input.notes ?? null,
           includeInInvoiceEmails: Boolean(input.includeInInvoiceEmails),
-          createdById: actorId ?? null
+          createdById: actorId ?? null,
+          ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {})
         }
       });
     });
@@ -218,6 +223,8 @@ export class ContactsService {
       this.assertOrgType(input.organisationType!);
       await this.requireOrganisation(input.organisationType!, input.organisationId!);
     }
+    // MT-4: validate tenantId when explicitly supplied and non-null.
+    if ("tenantId" in input) await this.validateTenantId(input.tenantId);
 
     return this.prisma.$transaction(async (tx) => {
       // After-move org used for primary uniqueness — primary is per-org so
@@ -249,7 +256,8 @@ export class ContactsService {
         "isActive",
         "hasPortalAccess",
         "notes",
-        "includeInInvoiceEmails"
+        "includeInInvoiceEmails",
+        "tenantId"
       ] as const) {
         if (input[key] !== undefined) data[key] = input[key];
       }
@@ -303,5 +311,21 @@ export class ContactsService {
     // SUBCONTRACTOR + SUPPLIER both live in subcontractor_suppliers with different entityType values.
     const row = await this.prisma.subcontractorSupplier.findUnique({ where: { id }, select: { id: true } });
     if (!row) throw new NotFoundException(`Directory entry ${id} not found.`);
+  }
+
+  /**
+   * MT-4: Validate that `tenantId` (when provided and non-null) references an
+   * active Tenant row. Throws BadRequestException if the tenant is unknown or
+   * inactive. A null value is always valid (means "shared across the group").
+   */
+  private async validateTenantId(tenantId: string | null | undefined): Promise<void> {
+    if (tenantId === undefined || tenantId === null) return;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, isActive: true }
+    });
+    if (!tenant || !tenant.isActive) {
+      throw new BadRequestException(`tenantId '${tenantId}' does not reference an active Tenant.`);
+    }
   }
 }

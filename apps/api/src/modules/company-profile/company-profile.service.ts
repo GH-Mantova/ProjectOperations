@@ -541,4 +541,17 @@ export class CompanyProfileService {
       );
     }
   }
+
+  /**
+   * MT-4: flat list of active tenants for the tenant-assignment control.
+   * Returns id, name, and code only — enough for a dropdown. Ordered by name.
+   * Super-user only (same gate as company switch).
+   */
+  listTenants() {
+    return this.prisma.tenant.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, code: true },
+      orderBy: { name: "asc" }
+    });
+  }
 }

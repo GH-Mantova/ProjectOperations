@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useSafetyRealtime } from "../../hooks/useSafetyRealtime";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
+
+const MUSTER_EVENT_TYPES = ["safety.muster.changed"] as const;
 
 type MusterAttendee = {
   id: string;
@@ -113,6 +116,18 @@ export function MusterPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // RT-2: a second admin checking someone off (or completing / cancelling the
+  // muster) publishes a `safety.muster.changed` event scoped to the event's
+  // site. Refetch on receipt so this screen never drifts from server truth.
+  // `event?.siteId ?? siteId` handles the brief window before the first load
+  // resolves — we can still filter by the route's siteId.
+  useSafetyRealtime({
+    types: [...MUSTER_EVENT_TYPES],
+    siteId: event?.siteId ?? siteId ?? null,
+    enabled: Boolean(eventId),
+    onEvent: () => void load()
+  });
 
   const checkAttendee = useCallback(
     async (attendeeId: string, status: "ACCOUNTED" | "MISSING") => {

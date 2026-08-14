@@ -83,10 +83,16 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
 
   const notifications = { create: jest.fn().mockResolvedValue({ id: "notif-1" }) };
   const email = { sendNotificationEmail: jest.fn().mockResolvedValue(undefined) };
+  const realtime = { emit: jest.fn() };
 
-  const service = new SafetyService(prisma as never, notifications as never, email as never);
+  const service = new SafetyService(
+    prisma as never,
+    notifications as never,
+    email as never,
+    realtime as never
+  );
 
-  return { service, prisma, notifications, email };
+  return { service, prisma, notifications, email, realtime };
 }
 
 // ─── Incident numbering ────────────────────────────────────────────────────

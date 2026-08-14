@@ -60,7 +60,11 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
   // pages. Both are admin-config surfaces; gate on system.manage (same
   // as the sibling /system page — they are configuration surfaces).
   { to: "/settings/administration/client-versions", label: "Client versions", requiresPermission: "system.manage" },
-  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "system.manage" }
+  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "system.manage" },
+  // CFX-4: Xero file exchange — CSV export of Client + SubcontractorSupplier
+  // records into Xero's contact-import format. Gated on platform.admin — the
+  // same code the API export routes gate on.
+  { to: "/settings/administration/xero-exchange", label: "Xero file exchange", requiresPermission: "platform.admin" }
 ];
 
 export function filterSettingsNavItems(items: SettingsNavItem[], user: SafeUser | null): SettingsNavItem[] {

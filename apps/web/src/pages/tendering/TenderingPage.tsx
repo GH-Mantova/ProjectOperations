@@ -17,6 +17,10 @@ type TenderListItem = {
   title: string;
   description?: string | null;
   status: string;
+  // Withdrawn-review sub-state. NULL for every non-withdrawn tender and for
+  // any WITHDRAWN row created before the withdrawn-review lifecycle slice
+  // (pre-migration data — treated as pending review by the Pipeline filter).
+  withdrawalState?: string | null;
   dueDate?: string | null;
   estimatedValue?: string | null;
   probability?: number | null;
@@ -496,13 +500,31 @@ export function TenderingPage() {
     // triggers capture.
     const source = tenders.find((t) => t.id === tenderId) ?? null;
     setTenders((current) =>
-      current.map((tender) => (tender.id === tenderId ? { ...tender, status: toStage } : tender))
+      current.map((tender) =>
+        tender.id === tenderId
+          ? {
+              ...tender,
+              status: toStage,
+              // Dragging into the WITHDRAWN column always creates a
+              // pending-review — reviewer decides reopen vs confirm from
+              // the tender detail page.
+              withdrawalState: toStage === "WITHDRAWN" ? "PENDING_REVIEW" : null
+            }
+          : tender
+      )
     );
     try {
-      const response = await authFetch(`/tenders/${tenderId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: toStage })
-      });
+      // Route WITHDRAWN drops through the withdraw endpoint so the
+      // withdrawn-review lane sees them (status + pending-review flag +
+      // ledger row in one call). Everything else uses the generic
+      // status-patch path that already existed.
+      const url = toStage === "WITHDRAWN"
+        ? `/tenders/${tenderId}/withdraw`
+        : `/tenders/${tenderId}/status`;
+      const init: RequestInit = toStage === "WITHDRAWN"
+        ? { method: "POST", body: JSON.stringify({}) }
+        : { method: "PATCH", body: JSON.stringify({ status: toStage }) };
+      const response = await authFetch(url, init);
       if (!response.ok) throw new Error("Could not update tender stage.");
       // WL-1b — prompted-but-skippable outcome capture. Fires only after
       // the status write succeeds; the modal open is asynchronous so the

@@ -260,3 +260,24 @@ export class CompanyProfileController {
     return { ok: true };
   }
 }
+
+/**
+ * MT-4: Thin controller exposing GET /admin/tenants so the
+ * TenantAssignmentField UI control can populate its dropdown.
+ * Super-user only — same permission tier as company switch.
+ */
+@ApiTags("Company Profile")
+@ApiBearerAuth()
+@Controller("admin/tenants")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class AdminTenantsController {
+  constructor(private readonly service: CompanyProfileService) {}
+
+  @Get()
+  @RequirePermissions("platform.admin")
+  @ApiOperation({ summary: "MT-4: List active tenants (id, name, code) for the tenant-assignment dropdown. Super-user only." })
+  list(@Req() req: AuthenticatedRequest) {
+    this.service.assertSuperUser(req.user);
+    return this.service.listTenants();
+  }
+}

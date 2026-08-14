@@ -11,6 +11,7 @@ function buildPrismaMock(overrides: {
   updateManyFn?: jest.Mock;
   createFn?: jest.Mock;
   updateFn?: jest.Mock;
+  tenantExists?: boolean;
 }) {
   const updateMany = overrides.updateManyFn ?? jest.fn().mockResolvedValue({ count: 0 });
   const create =
@@ -35,6 +36,9 @@ function buildPrismaMock(overrides: {
   const count = jest.fn().mockResolvedValue(overrides.contactList?.length ?? 0);
 
   const contact = { create, update, updateMany, findUnique, findMany, count };
+  const tenantFindUnique = jest.fn(async () =>
+    overrides.tenantExists === false ? null : { id: "tenant-1", isActive: true }
+  );
   const prisma = {
     contact,
     client: {
@@ -45,12 +49,13 @@ function buildPrismaMock(overrides: {
         overrides.subcontractorExists === false ? null : { id: "sub-1" }
       )
     },
+    tenant: { findUnique: tenantFindUnique },
     $transaction: (fnOrOps: unknown) => {
       if (typeof fnOrOps === "function") return (fnOrOps as TxFn)(prisma as never);
       return Promise.all(fnOrOps as Promise<unknown>[]);
     }
   } as never;
-  return { prisma, mocks: { create, update, updateMany } };
+  return { prisma, mocks: { create, update, updateMany, tenantFindUnique } };
 }
 
 describe("ContactsService", () => {
@@ -179,5 +184,82 @@ describe("ContactsService", () => {
     expect(mocks.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ includeInInvoiceEmails: false })
     });
+  });
+
+  // MT-4 — tenant assignment on Contact
+  it("MT-4: persists tenantId when a valid tenant is supplied on create", async () => {
+    const { prisma, mocks } = buildPrismaMock({ clientExists: true, tenantExists: true });
+    const service = new ContactsService(prisma);
+    await service.create(
+      {
+        organisationType: "CLIENT",
+        organisationId: "client-1",
+        firstName: "Alice",
+        lastName: "Smith",
+        tenantId: "tenant-1"
+      },
+      "actor-1"
+    );
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tenantId: "tenant-1" })
+    });
+  });
+
+  it("MT-4: persists tenantId=null (shared) on create", async () => {
+    const { prisma, mocks } = buildPrismaMock({ clientExists: true });
+    const service = new ContactsService(prisma);
+    await service.create(
+      {
+        organisationType: "CLIENT",
+        organisationId: "client-1",
+        firstName: "Alice",
+        lastName: "Smith",
+        tenantId: null
+      },
+      "actor-1"
+    );
+    // null means shared — validateTenantId is a no-op, create proceeds
+    expect(mocks.create).toHaveBeenCalled();
+  });
+
+  it("MT-4: rejects an unknown tenantId on create", async () => {
+    const { prisma } = buildPrismaMock({ clientExists: true, tenantExists: false });
+    const service = new ContactsService(prisma);
+    await expect(
+      service.create(
+        {
+          organisationType: "CLIENT",
+          organisationId: "client-1",
+          firstName: "A",
+          lastName: "B",
+          tenantId: "bad-tenant"
+        },
+        "actor-1"
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("MT-4: persists tenantId when a valid tenant is supplied on update", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      existingContact: { organisationType: "CLIENT", organisationId: "client-1", isPrimary: false },
+      tenantExists: true
+    });
+    const service = new ContactsService(prisma);
+    await service.update("contact-1", { tenantId: "tenant-1" });
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: "contact-1" },
+      data: expect.objectContaining({ tenantId: "tenant-1" })
+    });
+  });
+
+  it("MT-4: rejects an unknown tenantId on update", async () => {
+    const { prisma } = buildPrismaMock({
+      existingContact: { organisationType: "CLIENT", organisationId: "client-1", isPrimary: false },
+      tenantExists: false
+    });
+    const service = new ContactsService(prisma);
+    await expect(
+      service.update("contact-1", { tenantId: "bad-tenant" })
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

@@ -83,6 +83,7 @@ import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { AdminCompaniesPage } from "./pages/admin/AdminCompaniesPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
+import { XeroExchangePage } from "./pages/admin/XeroExchangePage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { SettingsShell, AdminOnly, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
@@ -542,6 +543,15 @@ export function App() {
                   </RequirePermissions>
                 }
               />
+              {/* CFX-4: Xero file exchange — platform.admin (same code the API export routes gate on). */}
+              <Route
+                path="administration/xero-exchange"
+                element={
+                  <RequirePermissions perms={["platform.admin"]}>
+                    <XeroExchangePage />
+                  </RequirePermissions>
+                }
+              />
             </Route>
             {/* Legacy path redirects — keep bookmarks working. */}
             <Route path="/admin/users" element={<Navigate to="/settings/administration/users" replace />} />
@@ -556,6 +566,7 @@ export function App() {
             <Route path="/admin/company" element={<Navigate to="/settings/company" replace />} />
             <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
             <Route path="/admin/field-definitions" element={<Navigate to="/settings/field-definitions" replace />} />
+            <Route path="/admin/xero-exchange" element={<Navigate to="/settings/administration/xero-exchange" replace />} />
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
             {/* SLICE-4c: AI-keys entry surface retired. The ProviderKeyManager
                 sections that lived inside /settings/ai (CompanySettingsTab +

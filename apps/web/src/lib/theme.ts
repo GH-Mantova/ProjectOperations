@@ -8,12 +8,6 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export const THEME_STORAGE_KEY = "projectops.theme";
 
-export const THEMES: { id: ThemePreference; label: string }[] = [
-  { id: "system", label: "System" },
-  { id: "light", label: "Light" },
-  { id: "dark", label: "Dark" },
-];
-
 function readStoredPreference(): ThemePreference {
   if (typeof window === "undefined") return "system";
   const value = window.localStorage.getItem(THEME_STORAGE_KEY);

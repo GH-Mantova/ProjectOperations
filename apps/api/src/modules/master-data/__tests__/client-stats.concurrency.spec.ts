@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 import { ClientStatsService } from "../client-stats.service";
 
 // OWN-1 concurrency proof: two simultaneous outcome recordings must both land.
@@ -41,7 +42,7 @@ describe("OWN-1 ClientStatsService — atomic increment under concurrency", () =
     // two "first-count" outcome flips racing each other.
     for (let i = 0; i < 2; i++) {
       const tender = await prisma.tender.create({
-        data: {
+        data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
           tenderNumber: `OWN1-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
           title: `OWN-1 concurrency ${i}`,
           status: "DRAFT",

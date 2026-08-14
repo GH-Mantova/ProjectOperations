@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 import { join } from "node:path";
 import { PrismaClient, ProjectStatus } from "@prisma/client";
 
@@ -92,13 +93,13 @@ describe("B-P0a-2b — Project shells for unmapped Jobs", () => {
     siteId = site.id;
 
     const tenderX = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2B-T1", title: "ZZTEST-BP0A2B tender X", siteId: site.id }
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: "ZZTEST-BP0A2B-T1", title: "ZZTEST-BP0A2B tender X", siteId: site.id }
     });
     tenderXId = tenderX.id;
 
     // Job X — unmapped, tendered, sited, ACTIVE -> must gain a shell.
     jobX = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-BP0A2B-J1",
         name: "ZZTEST-BP0A2B Job X",
         clientId: client.id,
@@ -114,7 +115,7 @@ describe("B-P0a-2b — Project shells for unmapped Jobs", () => {
     // Site now. The originally "site-less" Jobs Y and Z point at the local
     // fixture site to satisfy the schema (nothing else in the assertions cares).
     jobY = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-BP0A2B-J2",
         name: "ZZTEST-BP0A2B Job Y",
         clientId: client.id,
@@ -142,7 +143,7 @@ describe("B-P0a-2b — Project shells for unmapped Jobs", () => {
     // Job Z — unmapped, tender-less, PLANNING -> shell with empty address
     // strings and the MOBILISING default mapping. (siteId required post-NOT-NULL.)
     jobZ = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-BP0A2B-J3",
         name: "ZZTEST-BP0A2B Job Z",
         clientId: client.id,

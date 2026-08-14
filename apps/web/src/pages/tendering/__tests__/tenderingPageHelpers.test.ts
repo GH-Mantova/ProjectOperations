@@ -31,23 +31,47 @@ describe("groupByPipelineStage", () => {
     const result = groupByPipelineStage(items);
     expect(result.DRAFT).toHaveLength(2);
     expect(result.IN_PROGRESS).toHaveLength(0);
-    expect(result.SUBMITTED).toHaveLength(0);
     expect(result.WITHDRAWN).toHaveLength(0);
   });
 
-  it("buckets items into all four pipeline stages correctly", () => {
+  it("buckets items into the three in-flight pipeline stages correctly", () => {
+    // Pipeline is DRAFT / IN_PROGRESS / WITHDRAWN (pending review) only.
+    // SUBMITTED and confirmed-WITHDRAWN are Register-only and must be
+    // dropped from the board.
     const items: StagedItem[] = [
       { status: "DRAFT" },
       { status: "IN_PROGRESS" },
       { status: "IN_PROGRESS" },
       { status: "SUBMITTED" },
-      { status: "WITHDRAWN" }
+      { status: "WITHDRAWN" },
+      { status: "WITHDRAWN", withdrawalState: "CONFIRMED" }
     ];
     const result = groupByPipelineStage(items);
     expect(result.DRAFT).toHaveLength(1);
     expect(result.IN_PROGRESS).toHaveLength(2);
-    expect(result.SUBMITTED).toHaveLength(1);
+    // WITHDRAWN with no withdrawalState (pre-migration/legacy) is treated as
+    // pending-review — it stays on the board so nothing silently disappears.
+    // The CONFIRMED row is dropped.
     expect(result.WITHDRAWN).toHaveLength(1);
+    // SUBMITTED must NOT appear as a pipeline key
+    expect("SUBMITTED" in result).toBe(false);
+  });
+
+  it("drops confirmed-withdrawn from the board (exits to Register)", () => {
+    const items: StagedItem[] = [
+      { status: "WITHDRAWN", withdrawalState: "PENDING_REVIEW" },
+      { status: "WITHDRAWN", withdrawalState: "CONFIRMED" }
+    ];
+    const result = groupByPipelineStage(items);
+    expect(result.WITHDRAWN).toHaveLength(1);
+    expect(result.WITHDRAWN[0].withdrawalState).toBe("PENDING_REVIEW");
+  });
+
+  it("excludes SUBMITTED — moved to Register-only in the lifecycle slice", () => {
+    const items: StagedItem[] = [{ status: "SUBMITTED" }, { status: "DRAFT" }];
+    const result = groupByPipelineStage(items);
+    expect("SUBMITTED" in result).toBe(false);
+    expect(result.DRAFT).toHaveLength(1);
   });
 
   it("excludes AWARDED — outcome status, not a board column", () => {
@@ -64,7 +88,7 @@ describe("groupByPipelineStage", () => {
     const result = groupByPipelineStage(items);
     expect("CONTRACT_ISSUED" in result).toBe(false);
     expect(result.DRAFT).toHaveLength(0);
-    expect(result.SUBMITTED).toHaveLength(0);
+    expect(result.WITHDRAWN).toHaveLength(0);
   });
 
   it("excludes LOST — outcome status", () => {
@@ -80,7 +104,7 @@ describe("groupByPipelineStage", () => {
     expect("CONVERTED" in result).toBe(false);
   });
 
-  it("all four pipeline stage keys are always present even with zero items", () => {
+  it("all in-flight pipeline stage keys are always present even with zero items", () => {
     const result = groupByPipelineStage([]);
     for (const stage of PIPELINE_STAGES) {
       expect(result[stage]).toEqual([]);
@@ -298,13 +322,15 @@ describe("independent per-view filter defaults", () => {
     expect(pipelineFilters.search).toBe("");
   });
 
-  it("PIPELINE_STAGES contains exactly the four expected stages", () => {
-    expect([...PIPELINE_STAGES]).toEqual(["DRAFT", "IN_PROGRESS", "SUBMITTED", "WITHDRAWN"]);
+  it("PIPELINE_STAGES contains exactly the three in-flight stages", () => {
+    // SUBMITTED exited the board with the withdrawn-review lifecycle slice —
+    // it now lives on the CRM Tenders Register alongside confirmed-WITHDRAWN.
+    expect([...PIPELINE_STAGES]).toEqual(["DRAFT", "IN_PROGRESS", "WITHDRAWN"]);
   });
 
-  it("PIPELINE_STAGES does NOT include outcome statuses", () => {
-    const outcomeStatuses = ["AWARDED", "CONTRACT_ISSUED", "LOST", "CONVERTED"];
-    for (const status of outcomeStatuses) {
+  it("PIPELINE_STAGES does NOT include outcome or Register-only statuses", () => {
+    const nonBoardStatuses = ["SUBMITTED", "AWARDED", "CONTRACT_ISSUED", "LOST", "CONVERTED"];
+    for (const status of nonBoardStatuses) {
       expect((PIPELINE_STAGES as readonly string[]).includes(status)).toBe(false);
     }
   });

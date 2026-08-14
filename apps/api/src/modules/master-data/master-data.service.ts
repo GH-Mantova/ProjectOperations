@@ -132,6 +132,8 @@ export class MasterDataService {
       await this.ensureUniqueName("client", dto.name, id);
     }
     this.assertPaymentTermsPair(dto);
+    // MT-4: validate tenantId when it is explicitly supplied and non-null.
+    if ("tenantId" in dto) await this.validateTenantId(dto.tenantId);
 
     if (id) {
       // Build the update data object from only the keys that are explicitly
@@ -485,6 +487,8 @@ export class MasterDataService {
    * @param id Worker id to update, or `undefined` to create.
    */
   async upsertWorker(id: string | undefined, dto: UpsertWorkerDto, actorId?: string) {
+    // MT-4: validate tenantId when it is explicitly supplied and non-null.
+    if ("tenantId" in dto) await this.validateTenantId(dto.tenantId);
     const record = id
       ? await this.prisma.worker.update({ where: { id }, data: dto })
       : await this.prisma.worker.create({ data: dto });
@@ -749,6 +753,24 @@ export class MasterDataService {
   // to be paired with `paymentTermsType: null` — otherwise Prisma writes the
   // single null and leaves the other half of the pair behind, violating the
   // invariant. Per Codex review on PR #277.
+  /**
+   * MT-4: Validate that `tenantId` (when provided and non-null) references an
+   * active Tenant row. Throws BadRequestException if the tenant is unknown or
+   * inactive. A null value is always valid (means "shared across the group").
+   *
+   * @param tenantId — value to validate; undefined means "not supplied in DTO" (no-op).
+   */
+  private async validateTenantId(tenantId: string | null | undefined): Promise<void> {
+    if (tenantId === undefined || tenantId === null) return;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, isActive: true }
+    });
+    if (!tenant || !tenant.isActive) {
+      throw new BadRequestException(`tenantId '${tenantId}' does not reference an active Tenant.`);
+    }
+  }
+
   private assertPaymentTermsPair(dto: {
     paymentTermsDay?: number | null;
     paymentTermsType?: string | null;

@@ -32,6 +32,43 @@ export type ListAccountsQuery = {
   limit?: number;
 };
 
+// NAV-2: summary DTO for the Accounts index page.
+export type AccountSummary = {
+  id: string;
+  name: string;
+  type: string;
+  lifecycle: "PROSPECT" | "ACTIVE" | "PAST";
+  winRate: number | null;
+  openOpportunitiesCount: number;
+  lastContactedAt: Date | null;
+  goingCold: boolean;
+};
+
+// Opportunity stages that count as "open" for the summary.
+const OPEN_OPPORTUNITY_STAGES = ["new", "qualified", "quoting", "open"] as const;
+
+// Days of silence before an account is considered "going cold".
+const GOING_COLD_THRESHOLD_DAYS = 14;
+
+/**
+ * Derives the "going cold" flag for an account.
+ * An account is going cold when:
+ *   - its lifecycle is not PAST
+ *   - lastContactedAt is a real date (not null)
+ *   - that date is more than GOING_COLD_THRESHOLD_DAYS ago
+ * Null lastContactedAt is NOT cold (we have no evidence either way).
+ */
+export function deriveGoingCold(
+  lifecycle: string,
+  lastContactedAt: Date | null
+): boolean {
+  if (lifecycle === "PAST") return false;
+  if (!lastContactedAt) return false;
+  const diffMs = Date.now() - lastContactedAt.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays > GOING_COLD_THRESHOLD_DAYS;
+}
+
 // ── Service ──────────────────────────────────────────────────────────────────
 
 /**
@@ -278,6 +315,91 @@ export class AccountsService {
         jobs
       }
     };
+  }
+
+  // ── NAV-2: Accounts index summary list ──────────────────────────────────────
+
+  /**
+   * Returns a flat summary list for the Accounts index page (NAV-2).
+   * Each row carries: id, name (from linked client or "Unnamed"), type,
+   * lifecycle, winRate (from Client.winRate cached field), open opportunity
+   * count, lastContactedAt (max of Contact.lastContactedAt + RelationshipNote
+   * createdAt for the account), and goingCold flag.
+   *
+   * Read-only. No schema change.
+   */
+  async listAccountSummaries(): Promise<AccountSummary[]> {
+    // Fetch all non-archived accounts with the fields needed to compute summaries.
+    const accounts = await this.prisma.account.findMany({
+      where: { archivedAt: null },
+      orderBy: [{ createdAt: "desc" }],
+      select: {
+        id: true,
+        lifecycleStatus: true,
+        accountType: true,
+        client: {
+          select: {
+            name: true,
+            winRate: true
+          }
+        },
+        // Count open opportunities directly on the account.
+        _count: {
+          select: {
+            opportunities: {
+              where: { stage: { in: [...OPEN_OPPORTUNITY_STAGES] } }
+            }
+          }
+        },
+        // Contacts linked to this account — we need the max lastContactedAt.
+        contacts: {
+          select: { lastContactedAt: true },
+          where: { lastContactedAt: { not: null } }
+        },
+        // Relationship notes filed against this account — we need the max createdAt.
+        relationshipNotes: {
+          select: { createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 1
+        }
+      }
+    });
+
+    return accounts.map((acct) => {
+      // winRate from the Client model's cached numeric field.
+      let winRate: number | null = null;
+      if (acct.client?.winRate != null) {
+        // Prisma returns Decimal as an object; coerce to number.
+        const raw = acct.client.winRate;
+        const num = typeof raw === "object" && raw !== null && "toNumber" in raw
+          ? (raw as { toNumber(): number }).toNumber()
+          : Number(raw);
+        winRate = Number.isFinite(num) ? num : null;
+      }
+
+      // Compute lastContactedAt = max(contact.lastContactedAt, latestNote.createdAt).
+      let lastContactedAt: Date | null = null;
+      for (const c of acct.contacts) {
+        if (c.lastContactedAt && (!lastContactedAt || c.lastContactedAt > lastContactedAt)) {
+          lastContactedAt = c.lastContactedAt;
+        }
+      }
+      const latestNote = acct.relationshipNotes[0];
+      if (latestNote && (!lastContactedAt || latestNote.createdAt > lastContactedAt)) {
+        lastContactedAt = latestNote.createdAt;
+      }
+
+      return {
+        id: acct.id,
+        name: acct.client?.name ?? "Unnamed",
+        type: acct.accountType,
+        lifecycle: acct.lifecycleStatus as "PROSPECT" | "ACTIVE" | "PAST",
+        winRate,
+        openOpportunitiesCount: acct._count.opportunities,
+        lastContactedAt,
+        goingCold: deriveGoingCold(acct.lifecycleStatus, lastContactedAt)
+      };
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────

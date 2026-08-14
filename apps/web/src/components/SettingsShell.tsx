@@ -116,7 +116,9 @@ const SECTIONS: NavSection[] = [
       { to: "/settings/handover-template", label: "Handover template", requiresPermission: "handovertemplate.manage" },
       { to: "/settings/data-model", label: "Data model", superUserOnly: true },
       // CFX-2: Field definition admin screen — super-user only.
-      { to: "/settings/field-definitions", label: "Field definitions", superUserOnly: true }
+      { to: "/settings/field-definitions", label: "Field definitions", superUserOnly: true },
+      // MT-5: Company admin UI — create/manage Tenant rows + assign users.
+      { to: "/settings/companies", label: "Companies", superUserOnly: true }
     ]
   },
   {

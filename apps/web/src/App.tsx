@@ -80,6 +80,7 @@ import { DocketsRegisterPage } from "./pages/dockets/DocketsRegisterPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
+import { AdminCompaniesPage } from "./pages/admin/AdminCompaniesPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
 import { XeroExchangePage } from "./pages/admin/XeroExchangePage";
@@ -105,8 +106,14 @@ import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
+import { AccountsListPage } from "./pages/crm/AccountsListPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
+import { CrmIndex } from "./pages/crm/CrmIndex";
+import { CrmCatchAllRedirect, ClientsEntryRedirect } from "./pages/crm/CrmRedirects";
+import { TendersRegisterPage } from "./pages/crm/TendersRegisterPage";
+import { CrmBoardContent } from "./pages/crm/CrmBoardPage";
+import { RelationshipsPage } from "./pages/crm/RelationshipsPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -326,6 +333,11 @@ export function App() {
             <Route path="/scheduler/:legacyView" element={<SchedulerHomePage />} />
             <Route path="/account/calendar-sync" element={<QueryPreservingRedirect to="/settings/calendar-sync" />} />
             <Route path="/tenders" element={<TenderingPage />} />
+            {/* NAV-3: Leads & Opportunities lives standalone under Tendering
+                (the old TenderingPage ?tab=leads-opportunities tab is retired).
+                CrmBoardContent renders the triage list + forecast; the Tenders
+                page now stays focused on draft entry + pricing + Pipeline. */}
+            <Route path="/tenders/leads" element={<CrmBoardContent />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were
                 retired in PR #78 alongside the Playwright spec rewrite. The
                 routes redirect to the redesigned register so older bookmarks
@@ -419,6 +431,15 @@ export function App() {
                 element={
                   <SuperUserOnly>
                     <FieldDefinitionAdminPage />
+                  </SuperUserOnly>
+                }
+              />
+              {/* MT-5: Company admin UI — create/manage Tenant rows + assign users. Super-user only. */}
+              <Route
+                path="companies"
+                element={
+                  <SuperUserOnly>
+                    <AdminCompaniesPage />
                   </SuperUserOnly>
                 }
               />
@@ -547,6 +568,22 @@ export function App() {
             <Route path="/admin/field-definitions" element={<Navigate to="/settings/field-definitions" replace />} />
             <Route path="/admin/xero-exchange" element={<Navigate to="/settings/administration/xero-exchange" replace />} />
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
+            {/* SLICE-4c: AI-keys entry surface retired. The ProviderKeyManager
+                sections that lived inside /settings/ai (CompanySettingsTab +
+                MySettingsTab) have been replaced with pointer banners to the
+                unified vault panel. Any bookmark that targeted the old key-entry
+                area is redirected to AdminSettings → Integrations / API keys.
+                Six-month retirement window per unified-api-key-vault-and-
+                geocoding-failover.md §4d (retire + redirect). No expiry timer
+                is implemented — remove these routes after 2027-02. */}
+            <Route
+              path="/settings/ai/keys"
+              element={<Navigate to="/settings/administration/system?tab=integrations" replace />}
+            />
+            <Route
+              path="/admin/ai-keys"
+              element={<Navigate to="/settings/administration/system?tab=integrations" replace />}
+            />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             {/* B-HW-7: Handover wizard — launched from contract detail page */}
@@ -594,17 +631,31 @@ export function App() {
             <Route path="/cases/:id" element={<CaseDetailPage />} />
             <Route path="/knowledge" element={<KbListPage />} />
             <Route path="/knowledge/:id" element={<KbArticlePage />} />
-            {/* CRM lives ONLY as a tab on the Tenders page (Marco 2026-07-31);
-                /crm is dead and falls through to NotFoundPage. The opportunity
-                detail page stays standalone. CRM-1 adds the Account 360 page. */}
+            {/* NAV-1: /crm index now redirects to /crm/accounts via CrmIndex. */}
+            <Route index path="/crm" element={<CrmIndex />} />
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
+            {/* NAV-2: Accounts index page — Client-360 landing. */}
+            <Route path="/crm/accounts" element={<AccountsListPage />} />
             <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
+            {/* NAV-3: /crm/register — read-only view of every tender across
+                all statuses, with CLIENT + STATUS columns and filters. */}
+            <Route path="/crm/register" element={<TendersRegisterPage />} />
             {/* CRM-6: pipeline + win/loss dashboard (read-only). */}
             <Route path="/crm/pipeline" element={<PipelineDashboardPage />} />
             {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored
                 via ?entityType=…&entityId=… so any record page can link in
                 without the sub-module knowing about their models. */}
             <Route path="/crm/comms" element={<CommsHubPage />} />
+            {/* CRM-2: Relationship intelligence — notes log + going-cold nudge
+                + repeat-business surfacing. */}
+            <Route path="/crm/relationships" element={<RelationshipsPage />} />
+            {/* NAV-4: Catch-all for dead /crm/* paths → /crm/accounts.
+                Must sit AFTER all named /crm/** routes so real routes still
+                resolve first (React Router v6 most-specific-first matching). */}
+            <Route path="/crm/*" element={<CrmCatchAllRedirect />} />
+            {/* NAV-4: Light bookmark alias /clients → /crm/accounts.
+                Deep Directory decommission deferred to site-dissolution-plan. */}
+            <Route path="/clients" element={<ClientsEntryRedirect />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

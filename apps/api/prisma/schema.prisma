@@ -80,6 +80,7 @@ model User {
   tenderNotes                TenderNote[]                @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]            @relation("TenderFollowUpAssignee")
   tenderOutcomesRecorded     TenderOutcome[]             @relation("TenderOutcomeRecordedBy")
+  tenderWithdrawalReviews    TenderWithdrawalReview[]    @relation("TenderWithdrawalReviewer")
   tenderEntriesAuthored      TenderEntry[]               @relation("TenderEntryAuthor")
   tenderEntriesAssigned      TenderEntry[]               @relation("TenderEntryAssignee")
   lockedTenderRateSets       TenderRateSet[]             @relation("TenderRateSetLockedBy")
@@ -256,6 +257,9 @@ model User {
   // CRM-1: Account ownership + archive audit
   accountsOwned    Account[] @relation("AccountOwner")
   accountsArchived Account[] @relation("AccountArchivedBy")
+
+  // CRM-2: relationship notes authored by this user.
+  relationshipNotesAuthored RelationshipNote[] @relation("RelationshipNoteAuthor")
 
   // CRM-4: Comms hub â€” thread/message/task authorship + assignment.
   // Sub-module boundary: comms owns its own records; users only appear as
@@ -839,12 +843,24 @@ model Contact {
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
   tenantId               String?        @map("tenant_id")
   tenant                 Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // CRM-2: optional link to the Account that owns this contact; populated for
+  // all contacts whose organisationType = 'CLIENT' once their Client has an
+  // Account. Null = not yet linked (backward-compatible; no orphan risk).
+  accountId              String?        @map("account_id")
+  account                Account?       @relation("AccountContacts", fields: [accountId], references: [id], onDelete: SetNull)
+  // CRM-2: last time someone logged a RelationshipNote against this contact.
+  // Drives the "going cold" nudge. Null = never contacted / pre-CRM-2.
+  lastContactedAt        DateTime?      @map("last_contacted_at")
+  // CRM-2: relationship notes authored about this contact.
+  relationshipNotes      RelationshipNote[] @relation("RelationshipNoteContact")
 
   @@index([organisationType, organisationId])
   @@index([email])
   @@index([isActive])
   @@index([lastName, firstName])
   @@index([tenantId])
+  @@index([accountId])
+  @@index([lastContactedAt])
   @@map("contacts")
 }
 
@@ -1188,6 +1204,13 @@ model Tender {
   tenderScoreCounted  Boolean                   @default(false) @map("tender_score_counted")
   wonAt               DateTime?                 @map("won_at")
   lostAt              DateTime?                 @map("lost_at")
+  // Withdrawn-review lane. Set only when status = WITHDRAWN.
+  //   PENDING_REVIEW: shown on the Pipeline board, awaiting reviewer action.
+  //   CONFIRMED:      reviewer accepted the withdrawal; tender exits the
+  //                   Pipeline and appears only on the CRM Tenders Register.
+  // NULL for every tender not currently in the withdrawn-review workflow
+  // (all historical rows; every non-WITHDRAWN status).
+  withdrawalState     String?                   @map("withdrawal_state")
   createdAt           DateTime                  @default(now()) @map("created_at")
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   estimator           User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
@@ -1215,6 +1238,7 @@ model Tender {
   cuttingSheetItems   CuttingSheetItem[]
   scopeViewConfigs    ScopeViewConfig[]
   tandC               TenderTandC?
+  withdrawalReviews   TenderWithdrawalReview[]
   assumptions         TenderAssumption[]
   exclusions          TenderExclusion[]
   clientQuotes        ClientQuote[]
@@ -1230,9 +1254,9 @@ model Tender {
   handovers           Handover[]                @relation("HandoverTender")
   // SoR S4: locked rate-book snapshots for this tender.
   sorSnapshots        JobSorSnapshot[]          @relation("TenderSorSnapshots")
-  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
-  tenantId            String?                   @map("tenant_id")
-  tenant              Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // MT-3: required tenant scope (backfilled + enforced NOT NULL by MT-3 migration).
+  tenantId            String                    @map("tenant_id")
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1459,6 +1483,28 @@ model TenderOutcome {
   @@map("tender_outcomes")
 }
 
+// Append-only record of each reviewer decision on a WITHDRAWN tender.
+// Companion to Tender.withdrawalState. Rows are inserted for both the
+// original Withdraw action (decision = "WITHDRAWN") and each reviewer
+// action (REOPENED / CONFIRMED); the current withdrawalState reflects the
+// latest row for the tender. Never deleted or mutated.
+model TenderWithdrawalReview {
+  id           String   @id @default(cuid())
+  tenderId     String   @map("tender_id")
+  // WITHDRAWN | REOPENED | CONFIRMED. Enforced as a string (no enum) to
+  // stay consistent with the platform's other lifecycle statuses.
+  decision     String
+  reviewerId   String?  @map("reviewer_id")
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  reviewer     User?    @relation("TenderWithdrawalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([tenderId])
+  @@index([reviewerId])
+  @@map("tender_withdrawal_reviews")
+}
+
 model TenderDocumentLink {
   id           String                @id @default(cuid())
   tenderId     String                @map("tender_id")
@@ -1526,9 +1572,9 @@ model Job {
   sorSnapshots       JobSorSnapshot[]       @relation("JobSorSnapshots")
   // SoR S7: agreed records (dayworks) captured against this job.
   agreedRecords      AgreedRecord[]
-  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
-  tenantId           String?                @map("tenant_id")
-  tenant             Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // MT-3: required tenant scope (backfilled + enforced NOT NULL by MT-3 migration).
+  tenantId           String                 @map("tenant_id")
+  tenant             Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([clientId])
   @@index([status])
@@ -7384,6 +7430,11 @@ model Account {
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
 
+  // CRM-2: contacts directly linked to this account.
+  contacts Contact[] @relation("AccountContacts")
+  // CRM-2: relationship notes (history entries) against this account.
+  relationshipNotes RelationshipNote[] @relation("RelationshipNoteAccount")
+
   // CRM-3: leads and opportunities linked to this account.
   opportunities Opportunity[] @relation("OpportunityAccount")
 
@@ -7391,6 +7442,35 @@ model Account {
   @@index([archivedAt])
   @@index([ownerId])
   @@map("accounts")
+}
+
+// CRM-2: Relationship notes ───────────────────────────────────────────────────
+// Stores free-text relationship history entries (calls, meetings, emails, etc.)
+// that an internal user logs against an Account and/or a Contact.  Either FK
+// may be null so that notes can be filed at account level only (no contact
+// selected), or at contact level only (no account context).
+
+model RelationshipNote {
+  id        String   @id @default(cuid())
+  /// The account this note is filed against. Null = contact-only note.
+  accountId String?  @map("account_id")
+  account   Account? @relation("RelationshipNoteAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  /// The contact this note is filed against. Null = account-only note.
+  contactId String?  @map("contact_id")
+  contact   Contact? @relation("RelationshipNoteContact", fields: [contactId], references: [id], onDelete: SetNull)
+  /// The internal user who authored the note.
+  authorId  String   @map("author_id")
+  author    User     @relation("RelationshipNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  /// Free-text body of the note (call summary, meeting minutes, etc.).
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([accountId])
+  @@index([contactId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("relationship_notes")
 }
 
 // CFX-1: Configurable field registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

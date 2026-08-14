@@ -53,6 +53,12 @@ export const permissionRegistry = [
   { code: "documents.manage", module: "documents", label: "Manage document links and access", description: "Create document links, versions, and document access rules" },
   { code: "tenders.view", module: "tendering", label: "View tenders", description: "View tenders" },
   { code: "tenders.manage", module: "tendering", label: "Create and edit tenders", description: "Create and update tenders" },
+  // Withdrawn-review lane. Reviewer/estimating-manager gate for the
+  // withdrawn-pending-review workflow: reopen a withdrawn tender back to
+  // Estimating, or confirm the withdrawal so it exits the Pipeline board
+  // and lands on the CRM Tenders register. Modeled on the leave-approval
+  // pattern — role-assignable, not hardcoded to a user.
+  { code: "tenders.review", module: "tendering", label: "Review withdrawn tenders (reopen or confirm)", description: "Reviewer authority to reopen a withdrawn tender to Estimating, or confirm the withdrawal (exits the Pipeline)", isHighRisk: true },
   { code: "tenderdocuments.view", module: "tendering", label: "View tender documents", description: "View tender documents" },
   { code: "tenderdocuments.manage", module: "tendering", label: "Upload and manage tender documents", description: "Manage tender documents" },
   { code: "jobs.view", module: "jobs", label: "View jobs", description: "View jobs" },

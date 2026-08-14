@@ -9,11 +9,46 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Cancel a PR's in-flight run when a newer commit is pushed to the same PR.
+# Pushes to main are never cancelled — every trunk commit gets a full run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Decide whether this PR touches any build/test-relevant path. Docs-, prompt-
+  # and sot-only PRs yield code=false and let the browser smoke below skip. A
+  # required job skipped via a job-level `if:` still satisfies branch protection.
+  # Pushes to main always yield code=true (full trunk coverage).
+  changes:
+    name: Changed-path filter
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: Detect build/test-relevant changes
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          printf 'Changed files:\n%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq '^(apps/|packages/|prisma/|tests/|scripts/|\.github/workflows/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig)'; then
+            echo "code=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   tendering-e2e:
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
     services:

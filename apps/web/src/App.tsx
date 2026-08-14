@@ -104,6 +104,7 @@ import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
+import { AccountsListPage } from "./pages/crm/AccountsListPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
 import { CrmIndex } from "./pages/crm/CrmIndex";
@@ -612,6 +613,8 @@ export function App() {
             {/* NAV-1: /crm index now redirects to /crm/accounts via CrmIndex. */}
             <Route index path="/crm" element={<CrmIndex />} />
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
+            {/* NAV-2: Accounts index page — Client-360 landing. */}
+            <Route path="/crm/accounts" element={<AccountsListPage />} />
             <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
             {/* NAV-3: /crm/register — read-only view of every tender across
                 all statuses, with CLIENT + STATUS columns and filters. */}

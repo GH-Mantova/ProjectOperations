@@ -173,9 +173,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Tendering",
     items: [
       {
-        // NAV-1 placeholder: real Leads & Opportunities route lands in NAV-3.
-        // Pointing at /tenders (existing Tenders page) as placeholder.
-        to: "/tenders",
+        // NAV-3: Leads & Opportunities relocated to its own /tenders/leads
+        // route (was a tab on the Tenders page). Renders CrmBoardContent.
+        to: "/tenders/leads",
         label: "Leads & opportunities",
         icon: ICON_CLIENTS,
         match: (path) => path === "/tenders/leads" || path.startsWith("/tenders/leads/"),
@@ -187,7 +187,9 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ICON_TENDERING,
         match: (path) =>
           path === "/tenders" ||
-          (path.startsWith("/tenders/") && !path.startsWith("/tenders/contacts")),
+          (path.startsWith("/tenders/") &&
+            !path.startsWith("/tenders/contacts") &&
+            !path.startsWith("/tenders/leads")),
         requiresPermission: "tenders.view"
       },
       {
@@ -477,6 +479,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/scheduler": "Scheduler",
   "/forms": "Forms",
   "/tenders": "Tendering",
+  // NAV-3: standalone Leads & Opportunities route (was a tab on /tenders).
+  "/tenders/leads": "Leads & opportunities",
   "/workers": "Workers",
   "/workers/leave-approvals": "Leave Approvals",
   "/workers/live-crew": "Live crew map",

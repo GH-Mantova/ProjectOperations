@@ -258,6 +258,9 @@ model User {
   accountsOwned    Account[] @relation("AccountOwner")
   accountsArchived Account[] @relation("AccountArchivedBy")
 
+  // CRM-2: relationship notes authored by this user.
+  relationshipNotesAuthored RelationshipNote[] @relation("RelationshipNoteAuthor")
+
   // CRM-4: Comms hub â€” thread/message/task authorship + assignment.
   // Sub-module boundary: comms owns its own records; users only appear as
   // authors/assignees via SetNull-safe relations (soft-decouple).
@@ -840,12 +843,24 @@ model Contact {
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
   tenantId               String?        @map("tenant_id")
   tenant                 Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // CRM-2: optional link to the Account that owns this contact; populated for
+  // all contacts whose organisationType = 'CLIENT' once their Client has an
+  // Account. Null = not yet linked (backward-compatible; no orphan risk).
+  accountId              String?        @map("account_id")
+  account                Account?       @relation("AccountContacts", fields: [accountId], references: [id], onDelete: SetNull)
+  // CRM-2: last time someone logged a RelationshipNote against this contact.
+  // Drives the "going cold" nudge. Null = never contacted / pre-CRM-2.
+  lastContactedAt        DateTime?      @map("last_contacted_at")
+  // CRM-2: relationship notes authored about this contact.
+  relationshipNotes      RelationshipNote[] @relation("RelationshipNoteContact")
 
   @@index([organisationType, organisationId])
   @@index([email])
   @@index([isActive])
   @@index([lastName, firstName])
   @@index([tenantId])
+  @@index([accountId])
+  @@index([lastContactedAt])
   @@map("contacts")
 }
 
@@ -7415,6 +7430,11 @@ model Account {
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
 
+  // CRM-2: contacts directly linked to this account.
+  contacts Contact[] @relation("AccountContacts")
+  // CRM-2: relationship notes (history entries) against this account.
+  relationshipNotes RelationshipNote[] @relation("RelationshipNoteAccount")
+
   // CRM-3: leads and opportunities linked to this account.
   opportunities Opportunity[] @relation("OpportunityAccount")
 
@@ -7422,6 +7442,35 @@ model Account {
   @@index([archivedAt])
   @@index([ownerId])
   @@map("accounts")
+}
+
+// CRM-2: Relationship notes ───────────────────────────────────────────────────
+// Stores free-text relationship history entries (calls, meetings, emails, etc.)
+// that an internal user logs against an Account and/or a Contact.  Either FK
+// may be null so that notes can be filed at account level only (no contact
+// selected), or at contact level only (no account context).
+
+model RelationshipNote {
+  id        String   @id @default(cuid())
+  /// The account this note is filed against. Null = contact-only note.
+  accountId String?  @map("account_id")
+  account   Account? @relation("RelationshipNoteAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  /// The contact this note is filed against. Null = account-only note.
+  contactId String?  @map("contact_id")
+  contact   Contact? @relation("RelationshipNoteContact", fields: [contactId], references: [id], onDelete: SetNull)
+  /// The internal user who authored the note.
+  authorId  String   @map("author_id")
+  author    User     @relation("RelationshipNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  /// Free-text body of the note (call summary, meeting minutes, etc.).
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([accountId])
+  @@index([contactId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("relationship_notes")
 }
 
 // CFX-1: Configurable field registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

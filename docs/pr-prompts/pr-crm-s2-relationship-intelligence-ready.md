@@ -13,11 +13,16 @@ done_when: pnpm build && pnpm lint && test -f apps/api/src/modules/crm/relations
 size: 8
 gate_allow: migrations
 seed_only: false
-escalates: true
+escalates: false
 rollback_strategy: 'Additive only - new relationship_notes table + nullable Contact.accountId + Contact.lastContactedAt columns. Safe to leave on main, re-run drops nothing. If the run dies mid-flight, drop the new table/columns or re-apply after code lands; no existing row is destructively mutated.'
 ---
 
 # CRM-2 (S2) - Relationship intelligence
+
+> **RE-ARMED 2026-08-14 (PR Master + Marco).** CRM-1 (Account foundation, #1055) is on main, so this slice's
+> `requires_file_on_main` precondition is now satisfied — it previously NO-OP'd on 2026-08-12 only because it
+> lost a race and ran ~18 min before CRM-1 landed. Marco authorised auto-merge for the CRM chain, so this is
+> now `escalates: false` (additive migration; rollback strategy above); it auto-merges when green.
 
 PR title MUST start with `[CRM-PRIORITY]`. First line of the PR body MUST be:
 `PRIORITY: CRM program (Marco 2026-08-12) - drive ahead of other open PRs.`
@@ -44,13 +49,11 @@ PR title MUST start with `[CRM-PRIORITY]`. First line of the PR body MUST be:
 
 ## STANDING AUTHORITY
 > **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
-> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
-> approval before starting", and it does **not** mean "do the work then ask permission to push".
-> There is no human in this run. **Finishing the work and then asking for permission is
-> indistinguishable from failing** - the work is discarded either way.
+> This slice is `escalates: false`: once CI is green it AUTO-MERGES — do not leave it unmerged, do not wait
+> for approval, and do not ask permission after doing the work.
 
 ## Guardrails
 - One attempt. Never exit silently - if this is already on main, say `NO-OP: <reason>`.
 - Never ask a question or "stand by" for a go/no-go. The go was given when this prompt was armed.
 - Read the CI job log before diagnosing a failure. `pnpm build` and `pnpm lint` must pass.
-- This slice `escalates: true` (schema/migration): open the PR and LEAVE IT UNMERGED for Marco.
+- `escalates: false` — auto-merges on green (Marco authorised CRM-chain auto-merge 2026-08-14). Additive migration only.

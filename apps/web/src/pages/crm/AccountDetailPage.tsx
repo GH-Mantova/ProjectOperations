@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
-// CRM-1: Client-360 / Account detail page.
-// Shows the Account with its linked Client identity, contacts, and
-// read-only roll-ups of tenders and jobs. Never edits the transactional
-// owners — roll-ups are display-only surfaces.
+// CRM-1/CRM-2: Client-360 / Account detail page.
+// Shows the Account with its linked Client identity, contacts, going-cold
+// nudge, relationship notes, and read-only roll-ups of tenders and jobs.
+// Never edits the transactional owners — roll-ups are display-only surfaces.
 
 type OwnerLite = { id: string; firstName: string; lastName: string };
 
@@ -45,6 +45,27 @@ type ContactRow = {
   isPrimary: boolean;
   isAccountsContact: boolean;
   isActive: boolean;
+  // CRM-2: lastContactedAt surfaced in the relationship panel
+  lastContactedAt?: string | null;
+};
+
+// CRM-2: Relationship intelligence types
+type GoingColdStatus = "warm" | "cooling" | "cold" | "never_contacted";
+
+type GoingColdSignal = {
+  accountId: string;
+  status: GoingColdStatus;
+  daysSinceLastContact: number | null;
+  lastContactedAt: string | null;
+};
+
+type NoteAuthor = { id: string; firstName: string; lastName: string };
+
+type RelationshipNote = {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: NoteAuthor;
 };
 
 type TenderRow = {
@@ -178,6 +199,15 @@ const s: Record<string, React.CSSProperties> = {
   }
 };
 
+// ── Going-cold badge helper ───────────────────────────────────────────────────
+
+const COLD_BADGE: Record<GoingColdStatus, { label: string; colour: string }> = {
+  warm: { label: "Warm", colour: "#16a34a" },
+  cooling: { label: "Cooling", colour: "#d97706" },
+  cold: { label: "Cold", colour: "#dc2626" },
+  never_contacted: { label: "Never contacted", colour: "#9ca3af" }
+};
+
 export function AccountDetailPage() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
@@ -186,7 +216,14 @@ export function AccountDetailPage() {
   const [account, setAccount] = useState<Account360 | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"contacts" | "tenders" | "jobs">("contacts");
+  const [activeTab, setActiveTab] = useState<"contacts" | "tenders" | "jobs" | "relationships">("contacts");
+
+  // CRM-2: relationship panel state
+  const [goingCold, setGoingCold] = useState<GoingColdSignal | null>(null);
+  const [notes, setNotes] = useState<RelationshipNote[]>([]);
+  const [noteBody, setNoteBody] = useState("");
+  const [notePosting, setNotePosting] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -203,7 +240,49 @@ export function AccountDetailPage() {
     }
   }, [authFetch, id]);
 
+  const loadRelationshipData = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [coldRes, notesRes] = await Promise.all([
+        authFetch(`/crm/relationships/accounts/${id}/going-cold`),
+        authFetch(`/crm/relationships/notes?accountId=${id}&limit=50`)
+      ]);
+      if (coldRes.ok) setGoingCold(await coldRes.json() as GoingColdSignal);
+      if (notesRes.ok) {
+        const data = await notesRes.json() as { items: RelationshipNote[] };
+        setNotes(data.items);
+      }
+    } catch {
+      // Non-critical — panel degrades gracefully
+    }
+  }, [authFetch, id]);
+
   useEffect(() => { void load(); }, [load]);
+
+  // Load relationship data when that tab is first opened
+  useEffect(() => {
+    if (activeTab === "relationships") void loadRelationshipData();
+  }, [activeTab, loadRelationshipData]);
+
+  const handlePostNote = useCallback(async () => {
+    if (!id || !noteBody.trim()) return;
+    setNotePosting(true);
+    setNoteError(null);
+    try {
+      const res = await authFetch("/crm/relationships/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: id, body: noteBody.trim() })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setNoteBody("");
+      void loadRelationshipData();
+    } catch (err) {
+      setNoteError(err instanceof Error ? err.message : "Failed to post note.");
+    } finally {
+      setNotePosting(false);
+    }
+  }, [authFetch, id, noteBody, loadRelationshipData]);
 
   if (loading) return <div style={s.page}>Loading…</div>;
   if (error) return <div style={s.page}><div style={{ color: "#dc2626" }}>{error}</div></div>;
@@ -375,27 +454,30 @@ export function AccountDetailPage() {
 
       {/* Roll-up tabs */}
       <div style={s.card}>
-        <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
-          {(["contacts", "tenders", "jobs"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: "6px 16px",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontWeight: activeTab === tab ? 700 : 400,
-                background: activeTab === tab ? "#6366f1" : "#f3f4f6",
-                color: activeTab === tab ? "#fff" : "#374151",
-                fontSize: 13
-              }}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              {" "}
-              <span style={{ opacity: 0.7 }}>({rollUps[tab].length})</span>
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
+          {(["contacts", "tenders", "jobs", "relationships"] as const).map((tab) => {
+            const count = tab === "relationships" ? notes.length : rollUps[tab as keyof typeof rollUps]?.length ?? 0;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: "6px 16px",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontWeight: activeTab === tab ? 700 : 400,
+                  background: activeTab === tab ? "#6366f1" : "#f3f4f6",
+                  color: activeTab === tab ? "#fff" : "#374151",
+                  fontSize: 13
+                }}
+              >
+                {tab === "relationships" ? "Relationships" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {" "}
+                <span style={{ opacity: 0.7 }}>({count})</span>
+              </button>
+            );
+          })}
         </div>
 
         {activeTab === "contacts" && (
@@ -481,6 +563,124 @@ export function AccountDetailPage() {
                 </tbody>
               </table>
             )
+        )}
+
+        {/* CRM-2: Relationship panel */}
+        {activeTab === "relationships" && (
+          <div>
+            {/* Going-cold badge */}
+            {goingCold && (
+              <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={s.label}>Relationship health:</span>
+                <span
+                  style={{
+                    ...s.badge,
+                    background: COLD_BADGE[goingCold.status].colour
+                  }}
+                >
+                  {COLD_BADGE[goingCold.status].label}
+                </span>
+                {goingCold.daysSinceLastContact !== null && (
+                  <span style={{ fontSize: 12, color: "#6b7280" }}>
+                    Last contact {goingCold.daysSinceLastContact} day{goingCold.daysSinceLastContact === 1 ? "" : "s"} ago
+                    {goingCold.lastContactedAt ? ` (${fmtDate(goingCold.lastContactedAt)})` : ""}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Contacts with lastContactedAt (CRM-2: linked contacts) */}
+            <div style={{ ...s.cardTitle, marginBottom: 8 }}>Linked contacts</div>
+            {rollUps.contacts.length === 0 ? (
+              <div style={s.empty}>No contacts linked to this account.</div>
+            ) : (
+              <table style={{ ...s.table, marginBottom: 20 }}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Name</th>
+                    <th style={s.th}>Role</th>
+                    <th style={s.th}>Email</th>
+                    <th style={s.th}>Last contacted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rollUps.contacts.map((c) => (
+                    <tr key={c.id}>
+                      <td style={s.td}>{c.firstName} {c.lastName}{c.isPrimary ? " *" : ""}</td>
+                      <td style={s.td}>{c.role ?? "—"}</td>
+                      <td style={s.td}>{c.email ?? "—"}</td>
+                      <td style={s.td}>{c.lastContactedAt ? fmtDate(c.lastContactedAt) : "Never"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Note timeline */}
+            <div style={{ ...s.cardTitle, marginBottom: 8 }}>Notes</div>
+            <div style={{ marginBottom: 12 }}>
+              <textarea
+                value={noteBody}
+                onChange={(e) => setNoteBody(e.target.value)}
+                placeholder="Add a relationship note..."
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  fontSize: 13,
+                  resize: "vertical",
+                  boxSizing: "border-box"
+                }}
+              />
+              {noteError && (
+                <div style={{ color: "#dc2626", fontSize: 12, marginTop: 4 }}>{noteError}</div>
+              )}
+              <button
+                onClick={() => void handlePostNote()}
+                disabled={notePosting || !noteBody.trim()}
+                style={{
+                  marginTop: 6,
+                  padding: "6px 16px",
+                  background: "#6366f1",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: notePosting || !noteBody.trim() ? "not-allowed" : "pointer",
+                  opacity: notePosting || !noteBody.trim() ? 0.6 : 1,
+                  fontSize: 13
+                }}
+              >
+                {notePosting ? "Posting…" : "Post note"}
+              </button>
+            </div>
+
+            {notes.length === 0 ? (
+              <div style={s.empty}>No notes yet. Add the first one above.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {notes.map((note) => (
+                  <div
+                    key={note.id}
+                    style={{
+                      padding: "10px 14px",
+                      background: "#f9fafb",
+                      borderRadius: 6,
+                      border: "1px solid #e5e7eb"
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                      {note.author.firstName} {note.author.lastName} — {fmtDate(note.createdAt)}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#111827", whiteSpace: "pre-wrap" }}>
+                      {note.body}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

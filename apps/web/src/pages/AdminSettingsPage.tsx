@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
@@ -49,7 +49,17 @@ type TabId = (typeof TABS)[number]["id"];
 export function AdminSettingsPage() {
   const { user } = useAuth();
   const isAdmin = isAdminUser(user);
-  const [tab, setTab] = useState<TabId>("notifications");
+  // SLICE-4c: support ?tab=<id> so deep-links (e.g. from the retired AI-keys
+  // pointer banner) can land on a specific tab. Six-month retirement window per
+  // unified-api-key-vault-and-geocoding-failover.md §4d (retire + redirect).
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab") as TabId | null;
+  const validTabs = TABS.map((t) => t.id);
+  const initialTab: TabId =
+    tabParam !== null && (validTabs as string[]).includes(tabParam)
+      ? tabParam
+      : "notifications";
+  const [tab, setTab] = useState<TabId>(initialTab);
 
   if (!user) return null;
   if (!isAdmin) return <NoAccess required="role:Admin" title="Admin settings requires the Admin role" />;

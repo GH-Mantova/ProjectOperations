@@ -3,20 +3,27 @@
  * be unit-tested without React or the full component tree.
  */
 
-// S1 — four submission stages shown on the kanban board.
-export const PIPELINE_STAGES = ["DRAFT", "IN_PROGRESS", "SUBMITTED", "WITHDRAWN"] as const;
+// Pipeline board = in-flight tenders only.
+//   DRAFT · IN_PROGRESS (Estimating) · WITHDRAWN (pending review)
+// SUBMITTED and confirmed-WITHDRAWN leave the board and appear on the CRM
+// Tenders Register (read-only). A WITHDRAWN tender only shows on the board
+// while withdrawalState = PENDING_REVIEW — once a reviewer confirms it, it
+// exits to the register.
+export const PIPELINE_STAGES = ["DRAFT", "IN_PROGRESS", "WITHDRAWN"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 export const MAX_PAGES = 50; // safety ceiling — 50 × 100 = 5 000 rows
 
-// Minimal shape required by the helpers below — enough for testing without
-// importing the full TenderListItem type.
-export type StagedItem = { status: string };
+// Minimal shape required by the helpers below. Includes withdrawalState so
+// the Pipeline filter can drop confirmed-WITHDRAWN rows (they belong on the
+// Register, not the board).
+export type StagedItem = { status: string; withdrawalState?: string | null };
 
 /**
  * Group items by their pipeline stage. Items whose status is NOT one of the
- * four submission stages (DRAFT / IN_PROGRESS / SUBMITTED / WITHDRAWN) are
- * intentionally excluded — outcome statuses live outside the board.
+ * three in-flight stages (DRAFT / IN_PROGRESS / WITHDRAWN) are intentionally
+ * excluded — outcome statuses and confirmed-withdrawn tenders live on the
+ * Register, not the board.
  */
 export function groupByPipelineStage<T extends StagedItem>(
   items: T[]
@@ -24,13 +31,13 @@ export function groupByPipelineStage<T extends StagedItem>(
   const groups: Record<PipelineStage, T[]> = {
     DRAFT: [],
     IN_PROGRESS: [],
-    SUBMITTED: [],
     WITHDRAWN: []
   };
   for (const item of items) {
-    if ((PIPELINE_STAGES as readonly string[]).includes(item.status)) {
-      groups[item.status as PipelineStage].push(item);
-    }
+    if (!(PIPELINE_STAGES as readonly string[]).includes(item.status)) continue;
+    // Confirmed withdrawals have exited the Pipeline board.
+    if (item.status === "WITHDRAWN" && item.withdrawalState === "CONFIRMED") continue;
+    groups[item.status as PipelineStage].push(item);
   }
   return groups;
 }

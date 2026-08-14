@@ -48,6 +48,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "users.view",
     "roles.view",
     "permissions.view",
+    "crm.view",
     "dashboards.view",
     "masterdata.view",
     "resources.view",

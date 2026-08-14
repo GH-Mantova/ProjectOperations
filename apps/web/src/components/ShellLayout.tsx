@@ -160,15 +160,27 @@ const ICON_EXPAND = (
   </svg>
 );
 
-// Sidebar structure — 7 approved groups (Marco 2026-07-17). The Dashboards
-// group is rendered separately in ShellLayout (it owns the "+ new dashboard"
-// affordance and the dynamic list of user-created dashboards); NAV_GROUPS
-// carries the other six.
+// Sidebar structure — NAV-1 (2026-08-14): 8 groups total (Dashboards is
+// rendered inline in ShellLayout and is not in NAV_GROUPS). The "Estimating"
+// group has been renamed "Tendering"; a new top-level "CRM" group has been
+// inserted between Tendering and Projects.
 export const NAV_GROUPS: NavGroup[] = [
   {
-    id: "estimating",
-    label: "Estimating",
+    // NAV-1: renamed from "Estimating" to "Tendering" (Marco 2026-08-14).
+    // Children reordered: Leads & opportunities → Tenders → Pipeline →
+    // Schedule of Rates → Contracts → Reports (left-to-right funnel).
+    id: "tendering",
+    label: "Tendering",
     items: [
+      {
+        // NAV-1 placeholder: real Leads & Opportunities route lands in NAV-3.
+        // Pointing at /tenders (existing Tenders page) as placeholder.
+        to: "/tenders",
+        label: "Leads & opportunities",
+        icon: ICON_CLIENTS,
+        match: (path) => path === "/tenders/leads" || path.startsWith("/tenders/leads/"),
+        requiresPermission: "tenders.view"
+      },
       {
         to: "/tenders",
         label: "Tenders",
@@ -177,6 +189,23 @@ export const NAV_GROUPS: NavGroup[] = [
           path === "/tenders" ||
           (path.startsWith("/tenders/") && !path.startsWith("/tenders/contacts")),
         requiresPermission: "tenders.view"
+      },
+      {
+        // CRM pipeline dashboard (crm.view — same gate as accounts/comms).
+        to: "/crm/pipeline",
+        label: "Pipeline",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/crm/pipeline"),
+        requiresPermission: "crm.view"
+      },
+      {
+        // SoR S2 — master rate-book for live-job variations (VC) and agreed
+        // records (AR). Gated on rates.manage (same as the API controller).
+        to: "/admin/schedule-of-rates",
+        label: "Schedule of Rates",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/admin/schedule-of-rates"),
+        requiresPermission: "rates.manage"
       },
       {
         // Contracts API (contracts.controller.ts) gates reads on finance.view,
@@ -189,32 +218,47 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "finance.view"
       },
       {
-        // Unified Directory (Clients / Subcontractors & Suppliers / Contacts).
-        // Gated on directory.view — the primary gate on directory.controller.ts.
-        // The legacy /master-data URL now redirects into /directory?tab=clients
-        // (App.tsx MasterDataOrRedirect), so the match rule covers both so an
-        // in-flight user landing on the old URL still highlights this entry.
-        to: "/directory",
-        label: "Directory",
-        icon: ICON_CLIENTS,
-        match: (path) => path === "/directory" || path.startsWith("/directory/") || path.startsWith("/master-data"),
-        requiresPermission: "directory.view"
-      },
-      {
-        // SoR S2 — master rate-book for live-job variations (VC) and agreed
-        // records (AR). Gated on rates.manage (same as the API controller).
-        to: "/admin/schedule-of-rates",
-        label: "Schedule of Rates",
-        icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/admin/schedule-of-rates"),
-        requiresPermission: "rates.manage"
-      },
-      {
         to: "/reports",
         label: "Reports",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/reports"),
         requiresPermission: "reporting.view"
+      }
+    ]
+  },
+  {
+    // NAV-1: new CRM group inserted between Tendering and Projects (Marco 2026-08-14).
+    // All three items gate on crm.view — the permission code used by every
+    // CRM API controller (accounts.controller.ts, comms.controller.ts,
+    // pipeline-dashboard.controller.ts). There is no separate CRM sub-permission;
+    // crm.view is the single read gate across the module.
+    id: "crm",
+    label: "CRM",
+    items: [
+      {
+        // CRM-1 Accounts — client 360. GET /crm/accounts gates on crm.view.
+        to: "/crm/accounts",
+        label: "Accounts",
+        icon: ICON_CLIENTS,
+        match: (path) => path === "/crm/accounts" || path.startsWith("/crm/accounts/"),
+        requiresPermission: "crm.view"
+      },
+      {
+        // NAV-3 will surface the real Tenders register view. Placeholder route
+        // registered in App.tsx (TendersRegisterPlaceholderPage).
+        to: "/crm/register",
+        label: "Tenders register",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/crm/register"),
+        requiresPermission: "crm.view"
+      },
+      {
+        // CRM-4 Comms hub (comms.controller.ts). Gate: crm.view.
+        to: "/crm/comms",
+        label: "Comms hub",
+        icon: ICON_FORMS,
+        match: (path) => path.startsWith("/crm/comms"),
+        requiresPermission: "crm.view"
       }
     ]
   },
@@ -443,8 +487,13 @@ const BREADCRUMBS: Record<string, string> = {
   "/expenses": "Expenses",
   "/cases": "Cases",
   "/knowledge": "Knowledge Base",
-  // /crm route is dead (404) after PR #841; only /crm/opportunities/:id renders,
-  // so keep the deeper prefix so the breadcrumb resolves for the detail page.
+  // NAV-1: /crm now routes to CrmIndex (redirects to /crm/accounts).
+  // Keep prefixes for all CRM surfaces so the topbar breadcrumb resolves.
+  "/crm": "CRM",
+  "/crm/accounts": "Accounts",
+  "/crm/register": "Tenders register",
+  "/crm/comms": "Comms hub",
+  "/crm/pipeline": "Pipeline",
   "/crm/opportunities": "CRM",
   "/maintenance": "Maintenance",
   // /master-data now only serves the Sites sub-view (fallback route until the

@@ -108,6 +108,7 @@ import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
 import { CrmIndex } from "./pages/crm/CrmIndex";
 import { TendersRegisterPlaceholderPage } from "./pages/crm/TendersRegisterPlaceholderPage";
+import { RelationshipsPage } from "./pages/crm/RelationshipsPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -613,6 +614,9 @@ export function App() {
                 via ?entityType=…&entityId=… so any record page can link in
                 without the sub-module knowing about their models. */}
             <Route path="/crm/comms" element={<CommsHubPage />} />
+            {/* CRM-2: Relationship intelligence — notes log + going-cold nudge
+                + repeat-business surfacing. */}
+            <Route path="/crm/relationships" element={<RelationshipsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

@@ -193,6 +193,21 @@ test.describe("Batch 5 — Clients workspace (PRs #23, #335, #337)", () => {
     await expect(page.getByRole("heading", { name })).toBeVisible();
   });
 
+  test("NAV-4: /crm redirects to /crm/accounts", async ({ page }) => {
+    await page.goto("/crm");
+    await expect(page).toHaveURL(/\/crm\/accounts/);
+  });
+
+  test("NAV-4: dead /crm/* path redirects to /crm/accounts", async ({ page }) => {
+    await page.goto("/crm/nonexistent-path");
+    await expect(page).toHaveURL(/\/crm\/accounts/);
+  });
+
+  test("NAV-4: /clients alias redirects to /crm/accounts", async ({ page }) => {
+    await page.goto("/clients");
+    await expect(page).toHaveURL(/\/crm\/accounts/);
+  });
+
   test("contact add and delete on an e2e-created client", async ({ page }) => {
     // Accept the contact-delete window.confirm.
     page.on("dialog", (dialog) => void dialog.accept());

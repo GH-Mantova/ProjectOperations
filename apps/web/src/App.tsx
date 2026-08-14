@@ -106,6 +106,9 @@ import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
+import { CrmIndex } from "./pages/crm/CrmIndex";
+import { TendersRegisterPage } from "./pages/crm/TendersRegisterPage";
+import { CrmBoardContent } from "./pages/crm/CrmBoardPage";
 import { RelationshipsPage } from "./pages/crm/RelationshipsPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
@@ -326,6 +329,11 @@ export function App() {
             <Route path="/scheduler/:legacyView" element={<SchedulerHomePage />} />
             <Route path="/account/calendar-sync" element={<QueryPreservingRedirect to="/settings/calendar-sync" />} />
             <Route path="/tenders" element={<TenderingPage />} />
+            {/* NAV-3: Leads & Opportunities lives standalone under Tendering
+                (the old TenderingPage ?tab=leads-opportunities tab is retired).
+                CrmBoardContent renders the triage list + forecast; the Tenders
+                page now stays focused on draft entry + pricing + Pipeline. */}
+            <Route path="/tenders/leads" element={<CrmBoardContent />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were
                 retired in PR #78 alongside the Playwright spec rewrite. The
                 routes redirect to the redesigned register so older bookmarks
@@ -600,11 +608,13 @@ export function App() {
             <Route path="/cases/:id" element={<CaseDetailPage />} />
             <Route path="/knowledge" element={<KbListPage />} />
             <Route path="/knowledge/:id" element={<KbArticlePage />} />
-            {/* CRM lives ONLY as a tab on the Tenders page (Marco 2026-07-31);
-                /crm is dead and falls through to NotFoundPage. The opportunity
-                detail page stays standalone. CRM-1 adds the Account 360 page. */}
+            {/* NAV-1: /crm index now redirects to /crm/accounts via CrmIndex. */}
+            <Route index path="/crm" element={<CrmIndex />} />
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
             <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
+            {/* NAV-3: /crm/register — read-only view of every tender across
+                all statuses, with CLIENT + STATUS columns and filters. */}
+            <Route path="/crm/register" element={<TendersRegisterPage />} />
             {/* CRM-6: pipeline + win/loss dashboard (read-only). */}
             <Route path="/crm/pipeline" element={<PipelineDashboardPage />} />
             {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored

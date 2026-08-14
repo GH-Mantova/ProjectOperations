@@ -5,14 +5,11 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
-import { CrmBoardContent } from "../crm/CrmBoardPage";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
 import { OutcomeCaptureModal, OutcomeCaptureTender } from "./OutcomeCaptureModal";
 import { NeedsOutcomePanel } from "./NeedsOutcomePanel";
 import { OutcomeCapturePayload, recordOutcome } from "./outcomeApi";
-
-type TopTab = "tenders" | "leads-opportunities";
 
 type TenderListItem = {
   id: string;
@@ -319,29 +316,18 @@ export function TenderingPage() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  // CRM parity with the old sidebar CRM entry (gated on crm.view). Users
-  // without the permission cannot see the tab and cannot land on it via
-  // ?tab=leads-opportunities — they fall through to the tenders view.
-  const canViewCrm = can(user, "crm.view");
+  // NAV-3: Leads & Opportunities moved to its own /tenders/leads route.
+  // Old ?tab=leads-opportunities and ?tab=crm bookmarks redirect there so
+  // shared links keep working.
   const rawTab = searchParams.get("tab");
-  const activeTab: TopTab =
-    (rawTab === "leads-opportunities" || rawTab === "crm") && canViewCrm
-      ? "leads-opportunities"
-      : "tenders";
-  // Redirect legacy ?tab=crm bookmarks to the new key so URL and state agree.
   useEffect(() => {
-    if (rawTab === "crm" && canViewCrm) {
+    if (rawTab === "leads-opportunities" || rawTab === "crm") {
       const next = new URLSearchParams(searchParams);
-      next.set("tab", "leads-opportunities");
-      setSearchParams(next, { replace: true });
+      next.delete("tab");
+      const qs = next.toString();
+      navigate(qs ? `/tenders/leads?${qs}` : "/tenders/leads", { replace: true });
     }
-  }, [rawTab, canViewCrm, searchParams, setSearchParams]);
-  const setActiveTab = (next: TopTab) => {
-    const nextParams = new URLSearchParams(searchParams);
-    if (next === "leads-opportunities") nextParams.set("tab", "leads-opportunities");
-    else nextParams.delete("tab");
-    setSearchParams(nextParams, { replace: true });
-  };
+  }, [rawTab, searchParams, navigate]);
   const [view, setView] = useState<View>("pipeline");
   const [tenders, setTenders] = useState<TenderListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -724,12 +710,8 @@ export function TenderingPage() {
     <div className="tender-page">
       <header className="tender-page__header">
         <div>
-          <TopTabStrip active={activeTab} onChange={setActiveTab} showCrm={canViewCrm} />
-          {activeTab === "tenders" ? (
-            <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
-          ) : null}
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
         </div>
-        {activeTab === "tenders" ? (
         <div className="tender-page__header-actions">
           <div className="tender-page__view-toggle" role="tablist" aria-label="View">
             <button
@@ -767,13 +749,8 @@ export function TenderingPage() {
             + New tender
           </button>
         </div>
-        ) : null}
       </header>
 
-      {activeTab === "leads-opportunities" ? (
-        <CrmBoardContent />
-      ) : (
-      <>
       {error ? <div className="tender-page__error" role="alert">{error}</div> : null}
       {toast ? (
         <div
@@ -931,60 +908,6 @@ export function TenderingPage() {
           onCancel={() => { setDeleteTarget(null); setDeletePreflight(null); }}
         />
       ) : null}
-      </>
-      )}
-    </div>
-  );
-}
-
-function TopTabStrip({
-  active,
-  onChange,
-  showCrm
-}: {
-  active: TopTab;
-  onChange: (next: TopTab) => void;
-  showCrm: boolean;
-}) {
-  const tabs: { key: TopTab; label: string }[] = [
-    { key: "tenders", label: "Tenders" },
-    ...(showCrm ? ([{ key: "leads-opportunities", label: "Leads & opportunities" }] as const) : [])
-  ];
-  return (
-    <div
-      role="tablist"
-      aria-label="Tendering sections"
-      style={{
-        display: "flex",
-        gap: 4,
-        borderBottom: "1px solid #e5e7eb"
-      }}
-    >
-      {tabs.map((t) => {
-        const isActive = active === t.key;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(t.key)}
-            style={{
-              padding: "10px 16px",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: isActive ? 600 : 400,
-              borderBottom: isActive
-                ? "2px solid var(--color-orange, #FEAA6D)"
-                : "2px solid transparent",
-              minHeight: 44
-            }}
-          >
-            {t.label}
-          </button>
-        );
-      })}
     </div>
   );
 }

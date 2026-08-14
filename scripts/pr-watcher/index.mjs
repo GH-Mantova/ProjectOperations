@@ -251,7 +251,13 @@ async function sweepOrphanWorktrees() {
   const paths = parseWorktreePaths(listing, REPO_ROOT);
   for (const p of paths) {
     try {
-      await runGit(["worktree", "remove", "--force", p]);
+      // Double --force overrides a STALE worktree lock. This sweep runs only
+      // when no watcher child is running (startup / between jobs), so any lock
+      // present belongs to a dead/crashed agent and is safe to override. Single
+      // --force leaves stale-locked worktrees behind: they accumulate and
+      // re-wedge the lane (they loop-restarted the watcher twice on 2026-08-14 —
+      // a single stale lock was enough). Removal failure is still caught below.
+      await runGit(["worktree", "remove", "--force", "--force", p]);
       log("worktree", `reclaimed orphan worktree ${p}`);
     } catch (err) {
       log("worktree", `could not remove ${p}: ${err.message}`);

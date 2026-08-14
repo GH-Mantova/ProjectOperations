@@ -39,18 +39,34 @@ const UNIQUE_WHERE_OPERATIONS = new Set([
 const PILOT_MODEL_SET = new Set<string>(PILOT_TENANT_AWARE_MODELS);
 
 /**
+ * Models whose tenantId column is NOT NULL (MT-3 backfill + enforce). These have
+ * NO shared (tenantId IS NULL) rows, and Prisma REJECTS a `{ tenantId: null }`
+ * filter against a non-nullable column ("Argument `tenantId` is missing" -> the
+ * query throws -> HTTP 500 on tender/job reads). So for these models the tenant
+ * filter must omit the null branch, and when there is no tenant context it must
+ * fail closed with a VALID never-match filter rather than an invalid null filter.
+ * Promote models here as later MT slices make their tenantId NOT NULL.
+ */
+const TENANT_ID_ENFORCED_MODELS = new Set<string>(["Tender", "Job"]);
+
+/**
  * Build the tenant filter clause for the given tenantId.
  *
- * Fail-closed: when tenantId is undefined or null (no context established or
- * explicit null), only shared rows (tenantId IS NULL) are visible. When tenantId
- * is a real string, shared rows AND that company's rows are visible.
+ * Non-enforced (nullable) models: shared rows (tenantId IS NULL) are always
+ * visible; a real tenantId additionally sees that company's rows.
+ * Enforced (NOT NULL) models: no shared rows exist, so the null branch is
+ * dropped; a real tenantId scopes to that company, and no context fails closed
+ * with a valid never-match filter (`{ tenantId: { in: [] } }`).
  */
-export function buildTenantFilter(tenantId: string | null | undefined): object {
+export function buildTenantFilter(
+  tenantId: string | null | undefined,
+  enforced = false
+): object {
   if (tenantId === undefined || tenantId === null) {
-    // Fail-closed: no context or explicit null -> only shared rows
-    return { tenantId: null };
+    // Fail-closed: no context or explicit null.
+    return enforced ? { tenantId: { in: [] } } : { tenantId: null };
   }
-  return { OR: [{ tenantId: null }, { tenantId }] };
+  return enforced ? { tenantId } : { OR: [{ tenantId: null }, { tenantId }] };
 }
 
 /**
@@ -103,7 +119,10 @@ export async function tenantQueryInterceptor(
   }
 
   const currentTenantId = ctx.getCurrentTenantId();
-  const tenantFilter = buildTenantFilter(currentTenantId);
+  const tenantFilter = buildTenantFilter(
+    currentTenantId,
+    TENANT_ID_ENFORCED_MODELS.has(model)
+  );
 
   const scopedArgs = {
     ...args,

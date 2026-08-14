@@ -40,9 +40,10 @@ describe("tenant-scoping - unique-where operations keep a top-level unique field
     await svc.run("tenant-a", async () => {
       captured = await runInterceptor(svc, "Tender", "findUnique", { id: "tender-1" });
     });
+    // Tender has NOT-NULL tenantId (MT-3): no shared/null branch.
     expect(captured.where).toEqual({
       id: "tender-1",
-      AND: [{ OR: [{ tenantId: null }, { tenantId: "tenant-a" }] }],
+      AND: [{ tenantId: "tenant-a" }],
     });
   });
 
@@ -59,9 +60,10 @@ describe("tenant-scoping - unique-where operations keep a top-level unique field
     await svc.run("tenant-b", async () => {
       captured = await runInterceptor(svc, "Job", "update", { id: "j1" });
     });
+    // Job has NOT-NULL tenantId (MT-3): no shared/null branch.
     expect(captured.where).toEqual({
       id: "j1",
-      AND: [{ OR: [{ tenantId: null }, { tenantId: "tenant-b" }] }],
+      AND: [{ tenantId: "tenant-b" }],
     });
   });
 

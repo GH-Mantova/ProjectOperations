@@ -1254,9 +1254,9 @@ model Tender {
   handovers           Handover[]                @relation("HandoverTender")
   // SoR S4: locked rate-book snapshots for this tender.
   sorSnapshots        JobSorSnapshot[]          @relation("TenderSorSnapshots")
-  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
-  tenantId            String?                   @map("tenant_id")
-  tenant              Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // MT-3: required tenant scope (backfilled + enforced NOT NULL by MT-3 migration).
+  tenantId            String                    @map("tenant_id")
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1572,9 +1572,9 @@ model Job {
   sorSnapshots       JobSorSnapshot[]       @relation("JobSorSnapshots")
   // SoR S7: agreed records (dayworks) captured against this job.
   agreedRecords      AgreedRecord[]
-  // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
-  tenantId           String?                @map("tenant_id")
-  tenant             Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // MT-3: required tenant scope (backfilled + enforced NOT NULL by MT-3 migration).
+  tenantId           String                 @map("tenant_id")
+  tenant             Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([clientId])
   @@index([status])

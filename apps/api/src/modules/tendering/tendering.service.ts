@@ -10,6 +10,7 @@ import { ProjectsService } from "../projects/projects.service";
 import { TenderNumberService } from "./tender-number.service";
 import { RecordTenderOutcomeInput, TenderOutcomeCaptureService } from "./tender-outcome-capture.service";
 import { clientSlug, FALLBACK_SLUG } from "../../common/id-format/client-slug";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../common/tenancy/tenant.constants";
 import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
 import {
   CreateTenderActivityDto,
@@ -816,7 +817,8 @@ export class TenderingService {
                 notes: item.notes
               }))
             }
-          : undefined
+          : undefined,
+        tenant: { connect: { id: SEEDED_DEFAULT_TENANT_ID } }
       },
       include: tenderInclude
     });
@@ -1775,6 +1777,7 @@ export class TenderingService {
             }))
           }
         : undefined,
+      tenant: { connect: { id: SEEDED_DEFAULT_TENANT_ID } },
     };
   }
 

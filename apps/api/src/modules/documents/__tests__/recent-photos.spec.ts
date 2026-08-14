@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 import { DocumentsService } from "../documents.service";
 import type { AuthenticatedUser } from "../../../common/auth/authenticated-request.interface";
 
@@ -68,7 +69,7 @@ describe("DocumentsService.getRecentPhotos — batch 2 widget", () => {
     });
     siteId = site.id;
     const job = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-B2-RP-J",
         name: "ZZTEST B2 RP Job",
         clientId,

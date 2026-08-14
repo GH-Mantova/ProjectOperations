@@ -27,6 +27,7 @@ import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { PrismaService } from "../../prisma/prisma.service";
 import { TenderNumberService } from "../tendering/tender-number.service";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../common/tenancy/tenant.constants";
 
 export interface TenderTrackerImportReport {
   dryRun: boolean;
@@ -543,6 +544,7 @@ export class TenderTrackerImportService {
               estimatedValue: row.tenderPrice !== null ? row.tenderPrice.toString() : undefined,
               wonAt: wonAt ?? undefined,
               lostAt: lostAt ?? undefined,
+              tenantId: SEEDED_DEFAULT_TENANT_ID,
             },
             select: { id: true },
           });

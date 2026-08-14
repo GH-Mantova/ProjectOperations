@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 import { join } from "node:path";
 import { PrismaClient, ProjectStatus } from "@prisma/client";
 
@@ -92,15 +93,15 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     siteId = site.id;
 
     const tenderA = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2-T1", title: "ZZTEST-BP0A2 tender A", siteId: site.id }
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: "ZZTEST-BP0A2-T1", title: "ZZTEST-BP0A2 tender A", siteId: site.id }
     });
     const tenderC = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-BP0A2-T2", title: "ZZTEST-BP0A2 tender C", siteId: site.id }
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: "ZZTEST-BP0A2-T2", title: "ZZTEST-BP0A2 tender C", siteId: site.id }
     });
 
     // Pair A — mapped via shared sourceTenderId; carries a Site; ACTIVE status.
     jobA = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-BP0A2-J1",
         name: "ZZTEST-BP0A2 Job A",
         clientId: client.id,
@@ -133,7 +134,7 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     // NULL-column path exercised is now unrepresentable; the assertion below
     // just checks the Site pointer survives when the mapper has no better one.
     jobB = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-BP0A2-J2",
         name: "ZZTEST-BP0A2 Name Match",
         clientId: client.id,
@@ -160,7 +161,7 @@ describe("B-P0a-2 backfill — Job attributes onto Project", () => {
     // Pair C — mapped via tender, but the Project has already progressed to
     // ACTIVE. Its status must never be clobbered by the COMPLETE -> CLOSED map.
     jobC = await prisma.job.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         jobNumber: "ZZTEST-BP0A2-J3",
         name: "ZZTEST-BP0A2 Job C",
         clientId: client.id,

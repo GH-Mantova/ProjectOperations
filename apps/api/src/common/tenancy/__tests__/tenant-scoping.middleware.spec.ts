@@ -65,6 +65,15 @@ describe("tenantScopingExtension — contract tests", () => {
         OR: [{ tenantId: null }, { tenantId: "tenant-a" }],
       });
     });
+
+    it("enforced model: real tenantId -> plain { tenantId } (no shared/null branch)", () => {
+      expect(buildTenantFilter("tenant-a", true)).toEqual({ tenantId: "tenant-a" });
+    });
+
+    it("enforced model: fail-closed uses a valid never-match, not an invalid null filter", () => {
+      expect(buildTenantFilter(undefined, true)).toEqual({ tenantId: { in: [] } });
+      expect(buildTenantFilter(null, true)).toEqual({ tenantId: { in: [] } });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -93,10 +102,11 @@ describe("tenantScopingExtension — contract tests", () => {
         capturedArgs = await runInterceptor(svc, "Tender", "findFirst", { name: "My Tender" });
       });
 
+      // Tender has NOT-NULL tenantId (MT-3): tenant clause is a plain { tenantId }.
       expect(capturedArgs.where).toEqual({
         AND: [
           { name: "My Tender" },
-          { OR: [{ tenantId: null }, { tenantId: "tenant-a" }] },
+          { tenantId: "tenant-a" },
         ],
       });
     });
@@ -143,14 +153,16 @@ describe("tenantScopingExtension — contract tests", () => {
       });
     });
 
-    it("restricts to tenantId: null only when run() was called with explicit null", async () => {
+    it("enforced model (Job): explicit-null context fails closed with a valid never-match", async () => {
       let capturedArgs!: { where?: object };
       await svc.run(null, async () => {
         capturedArgs = await runInterceptor(svc, "Job", "findMany", undefined);
       });
 
+      // Job has NOT-NULL tenantId (MT-3): no shared rows, so fail-closed is a
+      // valid never-match filter, NOT an invalid { tenantId: null }.
       expect(capturedArgs.where).toEqual({
-        AND: [{}, { tenantId: null }],
+        AND: [{}, { tenantId: { in: [] } }],
       });
     });
   });
@@ -196,6 +208,7 @@ describe("tenantScopingExtension — contract tests", () => {
   describe("pilot model coverage", () => {
     const pilotModels = ["Client", "Worker", "Contact", "Tender", "Job"] as const;
 
+    const enforcedModels = new Set(["Tender", "Job"]);
     for (const model of pilotModels) {
       it(`injects tenant filter for ${model}`, async () => {
         let capturedArgs!: { where?: object };
@@ -203,11 +216,12 @@ describe("tenantScopingExtension — contract tests", () => {
           capturedArgs = await runInterceptor(svc, model, "findMany", undefined);
         });
 
+        // Enforced (NOT NULL) models drop the shared/null branch.
+        const expectedTenantClause = enforcedModels.has(model)
+          ? { tenantId: "tenant-x" }
+          : { OR: [{ tenantId: null }, { tenantId: "tenant-x" }] };
         expect(capturedArgs.where).toEqual({
-          AND: [
-            {},
-            { OR: [{ tenantId: null }, { tenantId: "tenant-x" }] },
-          ],
+          AND: [{}, expectedTenantClause],
         });
       });
     }

@@ -3773,6 +3773,17 @@ async function main() {
   await seedCrmDropReasons(prisma);
   // CFX-1: BUILTIN field definitions for Client and SubcontractorSupplier. Idempotent — upsert on [appliesTo, key].
   await seedFieldDefinitionsBuiltin(prisma);
+
+  // MT-3 enablement: every seeded user belongs to the single pilot tenant.
+  // Without a homeTenantId the JWT carries no tenant claim, so the tenant
+  // interceptor establishes NO context and NOT-NULL tender/job access fails
+  // closed (compliance smoke POST /tenders -> 404, empty reads). Backfill any
+  // user still missing a home tenant to the default tenant. Idempotent; runs
+  // after seedDefaultTenant so the FK target exists.
+  await prisma.user.updateMany({
+    where: { homeTenantId: null },
+    data: { homeTenantId: SEEDED_DEFAULT_TENANT_ID }
+  });
 }
 
 // MT-0: seed the one default Tenant row for the existing company. Upsert by

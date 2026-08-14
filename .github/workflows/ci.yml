@@ -21,6 +21,11 @@ jobs:
   api:
     name: API — lint, test, compliance smoke
     runs-on: ubuntu-latest
+    # test:canonical / test:api:serial run jest --runInBand (single process) and
+    # peak near Node's default ~4 GB heap; a random OOM (exit 134) flakes PRs
+    # (e.g. #1113 on a docs-only diff). Raise the ceiling for every step here.
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
     services:
       postgres:
         image: postgres:16

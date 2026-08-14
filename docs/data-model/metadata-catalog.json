@@ -22080,6 +22080,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "homeUsers": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -25363,6 +25369,18 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "homeTenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "homeTenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }

@@ -32,6 +32,8 @@ model Tenant {
   contacts  Contact[]
   tenders   Tender[]
   jobs      Job[]
+  // MT-2: users whose home company is this tenant
+  homeUsers User[]
 
   @@map("tenants")
 }
@@ -274,6 +276,11 @@ model User {
   agreedRecordsCreated       AgreedRecord[]           @relation("AgreedRecordCreatedBy")
   agreedRecordsWorkerSigned  AgreedRecord[]           @relation("AgreedRecordWorkerSigner")
   agreedRecordAttachments    AgreedRecordAttachment[] @relation("AgreedRecordAttachmentUploader")
+
+  // MT-2: home-tenant assignment. Nullable — unassigned users / Super Users with
+  // no active tenant see only shared rows (fail-closed per MT-1 rule).
+  homeTenantId String? @map("home_tenant_id")
+  homeTenant   Tenant? @relation(fields: [homeTenantId], references: [id], onDelete: SetNull)
 
   @@index([isActive])
   @@index([managerId])

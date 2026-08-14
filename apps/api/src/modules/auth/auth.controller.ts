@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagg
 import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { SuperUserGuard } from "../../common/auth/super-user.guard";
 import { authThrottleRefreshLimit, authThrottleTtlMs } from "./auth-throttle.config";
 import { AuthService } from "./auth.service";
 import { EntraLoginDto } from "./dto/entra-login.dto";
@@ -10,6 +11,7 @@ import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { SsoLoginDto } from "./dto/sso-login.dto";
+import { SwitchCompanyDto } from "./dto/switch-company.dto";
 import { RequestOtpDto, VerifyOtpDto } from "./dto/otp-login.dto";
 
 const THROTTLED_RESPONSE = {
@@ -119,5 +121,21 @@ export class AuthController {
   @ApiResponse({ status: 200, description: "Get current authenticated user." })
   me(@CurrentUser() user: { sub: string }) {
     return this.authService.me(user.sub);
+  }
+
+  /**
+   * MT-2: Super-user company switch.
+   * Issues a fresh access/refresh token pair with the requested tenantId embedded.
+   * Only Super Users may call this endpoint.
+   */
+  @Post("switch-company")
+  @UseGuards(JwtAuthGuard, SuperUserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Super-user: switch the active company context and re-issue tokens with the new tenantId" })
+  @ApiResponse({ status: 201, description: "Tokens re-issued with the requested tenantId." })
+  @ApiResponse({ status: 403, description: "Caller is not a Super User." })
+  @ApiResponse({ status: 404, description: "Tenant does not exist or is inactive." })
+  switchCompany(@CurrentUser() user: { sub: string }, @Body() dto: SwitchCompanyDto) {
+    return this.authService.switchCompany(user.sub, dto.tenantId);
   }
 }

@@ -73,12 +73,12 @@ test.describe("Tendering — redesigned register + pipeline", () => {
   test("Pipeline view shows the IS kanban stage columns", async ({ page }) => {
     await page.goto("/tenders");
     await page.getByRole("tab", { name: "Pipeline", exact: true }).click();
-    // S1: the Pipeline is a four-stage submission board (DRAFT / IN_PROGRESS /
-    // SUBMITTED / WITHDRAWN). Outcome statuses (Awarded / Contract / Lost) are
-    // intentionally NOT board columns - see pr-tender-lifecycle-s1 and
-    // docs/architecture/drafts/tender-pipeline-register-plan.md. They remain in
-    // TENDER_STATUSES and the tender-detail status dropdown, just not the kanban.
-    for (const stage of ["Draft", "Estimating", "Submitted", "Withdrawn"]) {
+    // The Pipeline is an in-flight board with three stages (DRAFT / IN_PROGRESS
+    // = "Estimating" / WITHDRAWN pending review). SUBMITTED and confirmed-WITHDRAWN
+    // tenders leave the board for the CRM Tenders Register (withdrawn-review
+    // workflow) - see withdrawal-review + tenderingPage.helpers.ts PIPELINE_STAGES.
+    // Outcome statuses (Awarded / Contract / Lost) are likewise not board columns.
+    for (const stage of ["Draft", "Estimating", "Withdrawn"]) {
       await expect(page.getByText(stage, { exact: true }).first()).toBeVisible();
     }
   });

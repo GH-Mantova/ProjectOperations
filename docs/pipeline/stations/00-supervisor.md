@@ -59,6 +59,23 @@ LIVE (not from a note):
    - every `requires_file_on_main` path is present on `origin/main`.
 Never arm a HOLD with an unmet gate. Never-arm list still stands: `pr-fv2-formrule-contract`,
 `pr-siteid-notnull-backfill`, and any prod-data prompt (MT-3/MT-5) - those are Marco-run.
+Before arming, ALSO check the prompt is not already SHIPPED: a queue-arm chore or a slice prompt
+whose feature already merged under a different PR is a DUPLICATE. Grep the MERGED board (`gh pr list
+--state merged`), not just open PRs, and the code on `origin/main` - a premise like `! test -f X` or
+`! grep -q "class Foo"` that is now FALSE means it already shipped. Close/bin the superseded prompt
+with a one-line reason; never arm it. (LL 2026-08-14: #1123 arm-chore closed as superseded by #1125;
+`vault-slice2` superseded because `ApiKeysService` already exists on main.)
+
+**4b. Merge ORDER - land producers before consumers.** When several green sibling PRs are mergeable
+at once, merge them in DEPENDENCY order, not ready-order. A CONSUMER PR - one that references another
+PR's output (a route it redirects to, a file/component it imports, a model or column it reads) - must
+merge AFTER the PRODUCER PR that creates that output. Real incident (2026-08-14): NAV-4 (redirects
+`/crm/*` -> `/crm/accounts`) auto-merged BEFORE NAV-2 (which creates the `/crm/accounts` page), so for
+a window `main` redirected to a route that did not exist. CI stayed green (the redirect's own test did
+not need the target page), so native auto-merge ALONE will not enforce order - YOU sequence it: enable
+auto-merge on the producer first and hold the consumer until the producer is on `origin/main`. When a
+prompt's front-matter encodes this via `requires_merged`, trust it; otherwise reason about which PR
+consumes which before enabling auto-merge on the consumer.
 
 **5. Transient CI - re-run before you diagnose a defect.** A failure that is a known flake - Node
 OOM / heap (exit 134), a setup/network flake, or a CODE check failing on a docs-only or unrelated

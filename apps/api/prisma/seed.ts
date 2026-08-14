@@ -888,7 +888,8 @@ async function main() {
         leadTimeDays: 21,
         probability: 60,
         estimatedValue: new Prisma.Decimal("185000.00"),
-        notes: "Seed tender with multiple linked clients."
+        notes: "Seed tender with multiple linked clients.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1087,7 +1088,8 @@ async function main() {
         leadTimeDays: 14,
         probability: 100,
         estimatedValue: new Prisma.Decimal("246500.00"),
-        notes: "Seed tender that has progressed through award, contract, and job conversion."
+        notes: "Seed tender that has progressed through award, contract, and job conversion.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1247,7 +1249,8 @@ async function main() {
           leadTimeDays: seedTender.leadTimeDays,
           probability: seedTender.probability,
           estimatedValue: seedTender.estimatedValue,
-          notes: seedTender.notes
+          notes: seedTender.notes,
+          tenantId: SEEDED_DEFAULT_TENANT_ID
         }
       });
 
@@ -1398,7 +1401,8 @@ async function main() {
         leadTimeDays: 28,
         probability: 65,
         estimatedValue: new Prisma.Decimal("428000.00"),
-        notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through."
+        notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1974,7 +1978,8 @@ async function main() {
         siteId: "site-unassigned",
         probability: 0,
         estimatedValue: new Prisma.Decimal("0"),
-        notes: "Template tender — do not submit. Copy this tender to start a new quote with all sections pre-populated."
+        notes: "Template tender — do not submit. Copy this tender to start a new quote with all sections pre-populated.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -2652,7 +2657,8 @@ async function main() {
         sourceTenderId: convertedTender.id,
         status: "PLANNING",
         projectManagerId: pmUser?.id,
-        supervisorId: supervisorUser?.id
+        supervisorId: supervisorUser?.id,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -3675,7 +3681,8 @@ async function main() {
         siteId: gatewaySite?.id ?? "site-unassigned",
         status: "COMPLETE",
         projectManagerId: pmUser?.id ?? null,
-        supervisorId: supervisorUser?.id ?? null
+        supervisorId: supervisorUser?.id ?? null,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 

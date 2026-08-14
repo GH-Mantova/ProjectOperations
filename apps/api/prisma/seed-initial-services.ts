@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
+import { SEEDED_DEFAULT_TENANT_ID } from "../src/common/tenancy/tenant.constants";
 
 const BASE_DATE = new Date("2026-04-20T00:00:00.000Z");
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1487,7 +1488,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         leadTimeDays: 21,
         probability: seed.probability,
         estimatedValue: new Prisma.Decimal(seed.estimatedValue),
-        notes: seed.note
+        notes: seed.note,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       },
       create: {
         id: seed.id,
@@ -1504,7 +1506,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         leadTimeDays: 21,
         probability: seed.probability,
         estimatedValue: new Prisma.Decimal(seed.estimatedValue),
-        notes: seed.note
+        notes: seed.note,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1819,7 +1822,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         sourceTenderId: job.tenderId,
         status: "ACTIVE",
         projectManagerId: job.projectManagerUserId,
-        supervisorId: job.supervisorUserId
+        supervisorId: job.supervisorUserId,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       },
       create: {
         id: job.id,
@@ -1832,7 +1836,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         sourceTenderId: job.tenderId,
         status: "ACTIVE",
         projectManagerId: job.projectManagerUserId,
-        supervisorId: job.supervisorUserId
+        supervisorId: job.supervisorUserId,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 

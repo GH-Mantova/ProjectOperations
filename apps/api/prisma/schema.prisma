@@ -80,6 +80,7 @@ model User {
   tenderNotes                TenderNote[]                @relation("TenderNoteAuthor")
   tenderFollowUps            TenderFollowUp[]            @relation("TenderFollowUpAssignee")
   tenderOutcomesRecorded     TenderOutcome[]             @relation("TenderOutcomeRecordedBy")
+  tenderWithdrawalReviews    TenderWithdrawalReview[]    @relation("TenderWithdrawalReviewer")
   tenderEntriesAuthored      TenderEntry[]               @relation("TenderEntryAuthor")
   tenderEntriesAssigned      TenderEntry[]               @relation("TenderEntryAssignee")
   lockedTenderRateSets       TenderRateSet[]             @relation("TenderRateSetLockedBy")
@@ -1203,6 +1204,13 @@ model Tender {
   tenderScoreCounted  Boolean                   @default(false) @map("tender_score_counted")
   wonAt               DateTime?                 @map("won_at")
   lostAt              DateTime?                 @map("lost_at")
+  // Withdrawn-review lane. Set only when status = WITHDRAWN.
+  //   PENDING_REVIEW: shown on the Pipeline board, awaiting reviewer action.
+  //   CONFIRMED:      reviewer accepted the withdrawal; tender exits the
+  //                   Pipeline and appears only on the CRM Tenders Register.
+  // NULL for every tender not currently in the withdrawn-review workflow
+  // (all historical rows; every non-WITHDRAWN status).
+  withdrawalState     String?                   @map("withdrawal_state")
   createdAt           DateTime                  @default(now()) @map("created_at")
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   estimator           User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
@@ -1230,6 +1238,7 @@ model Tender {
   cuttingSheetItems   CuttingSheetItem[]
   scopeViewConfigs    ScopeViewConfig[]
   tandC               TenderTandC?
+  withdrawalReviews   TenderWithdrawalReview[]
   assumptions         TenderAssumption[]
   exclusions          TenderExclusion[]
   clientQuotes        ClientQuote[]
@@ -1472,6 +1481,28 @@ model TenderOutcome {
   @@index([tenderId])
   @@index([clientId])
   @@map("tender_outcomes")
+}
+
+// Append-only record of each reviewer decision on a WITHDRAWN tender.
+// Companion to Tender.withdrawalState. Rows are inserted for both the
+// original Withdraw action (decision = "WITHDRAWN") and each reviewer
+// action (REOPENED / CONFIRMED); the current withdrawalState reflects the
+// latest row for the tender. Never deleted or mutated.
+model TenderWithdrawalReview {
+  id           String   @id @default(cuid())
+  tenderId     String   @map("tender_id")
+  // WITHDRAWN | REOPENED | CONFIRMED. Enforced as a string (no enum) to
+  // stay consistent with the platform's other lifecycle statuses.
+  decision     String
+  reviewerId   String?  @map("reviewer_id")
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  reviewer     User?    @relation("TenderWithdrawalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([tenderId])
+  @@index([reviewerId])
+  @@map("tender_withdrawal_reviews")
 }
 
 model TenderDocumentLink {

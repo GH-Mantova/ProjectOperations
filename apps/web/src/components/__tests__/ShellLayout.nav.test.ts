@@ -1,9 +1,11 @@
-// Sidebar restructure (Marco 2026-07-17): the desktop nav is organised into
-// the 7 approved groups. The Dashboards group is rendered inline in
-// ShellLayout (it owns the "+ new dashboard" affordance and the dynamic list
-// of user-created dashboards), so NAV_GROUPS carries the other six. These
-// tests lock the group ids/labels/ordering, the role gate on the Settings
-// group, and the "Tenders" active-match rule.
+// Sidebar restructure (Marco 2026-07-17, updated NAV-1 2026-08-14):
+// The desktop nav is organised into groups. The Dashboards group is rendered
+// inline in ShellLayout (it owns the "+ new dashboard" affordance and the
+// dynamic list of user-created dashboards), so NAV_GROUPS carries the rest.
+// NAV-1 changes: "Estimating" renamed to "Tendering"; new top-level "CRM"
+// group inserted between Tendering and Projects; Tendering children reordered
+// to the funnel: Leads & opportunities → Tenders → Pipeline → SoR →
+// Contracts → Reports. These tests lock the updated structure.
 
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
@@ -45,12 +47,14 @@ describe("ShellLayout admin gate", () => {
   });
 });
 
-describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () => {
-  it("carries the six non-dashboard groups in the approved order", () => {
+describe("ShellLayout nav — NAV-1 restructure (2026-08-14)", () => {
+  it("carries the seven non-dashboard groups in the approved order (NAV-1 adds CRM between Tendering and Projects)", () => {
     // Dashboards is rendered inline in ShellLayout (Home + custom user
     // dashboards + the "+" affordance) and is not in NAV_GROUPS.
+    // NAV-1: "estimating" renamed to "tendering"; new "crm" group added.
     expect(NAV_GROUPS.map((g) => g.id)).toEqual([
-      "estimating",
+      "tendering",
+      "crm",
       "projects",
       "operations",
       "hr",
@@ -59,11 +63,12 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     ]);
   });
 
-  it("uses the approved group labels", () => {
+  it("uses the approved group labels (NAV-1: Estimating → Tendering, new CRM)", () => {
     const labels: Record<string, string> = {};
     for (const g of NAV_GROUPS) labels[g.id] = g.label;
     expect(labels).toEqual({
-      estimating: "Estimating",
+      tendering: "Tendering",
+      crm: "CRM",
       projects: "Projects",
       operations: "Operations",
       hr: "HR",
@@ -92,14 +97,32 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Estimating carries Tenders, Contracts, Directory, Schedule of Rates, Reports (in order) — Rates & Lists moved to Settings", () => {
-    const estimating = NAV_GROUPS.find((g) => g.id === "estimating");
-    expect(estimating?.items.map((i) => [i.label, i.to])).toEqual([
-      ["Tenders", "/tenders"],
-      ["Contracts", "/contracts"],
-      ["Directory", "/directory"],
-      ["Schedule of Rates", "/admin/schedule-of-rates"],
-      ["Reports", "/reports"]
+  it("Tendering carries the 6-item funnel in order: Leads & opportunities, Tenders, Pipeline, Schedule of Rates, Contracts, Reports (NAV-1)", () => {
+    const tendering = NAV_GROUPS.find((g) => g.id === "tendering");
+    expect(tendering?.items.map((i) => i.label)).toEqual([
+      "Leads & opportunities",
+      "Tenders",
+      "Pipeline",
+      "Schedule of Rates",
+      "Contracts",
+      "Reports"
+    ]);
+  });
+
+  it("CRM group (NAV-1) is between Tendering and Projects with Accounts, Tenders register, Comms hub", () => {
+    const groupIds = NAV_GROUPS.map((g) => g.id);
+    const tenderingIdx = groupIds.indexOf("tendering");
+    const crmIdx = groupIds.indexOf("crm");
+    const projectsIdx = groupIds.indexOf("projects");
+    // CRM must be between Tendering and Projects
+    expect(crmIdx).toBeGreaterThan(tenderingIdx);
+    expect(crmIdx).toBeLessThan(projectsIdx);
+
+    const crm = NAV_GROUPS.find((g) => g.id === "crm");
+    expect(crm?.items.map((i) => [i.label, i.to])).toEqual([
+      ["Accounts", "/crm/accounts"],
+      ["Tenders register", "/crm/register"],
+      ["Comms hub", "/crm/comms"]
     ]);
   });
 
@@ -171,23 +194,30 @@ describe("ShellLayout nav — 7 approved groups (2026-07-17 restructure)", () =>
   });
 });
 
-// Per-item permission gates (sidebar sanity — audit 2026-07-31). Every entry
-// whose backing API requires a *.view or *.manage permission is hidden from
-// users who lack it, so non-holders don't see a menu full of items that 403.
-// The mapping below mirrors the actual API decorator on each page's primary
-// controller (verified by grepping RequirePermissions per module).
+// Per-item permission gates (sidebar sanity — audit 2026-07-31, updated NAV-1 2026-08-14).
+// Every entry whose backing API requires a *.view or *.manage permission is
+// hidden from users who lack it, so non-holders don't see a menu full of items
+// that 403. The mapping below mirrors the actual API decorator on each page's
+// primary controller (verified by grepping RequirePermissions per module).
 describe("ShellLayout nav — per-item permission gates", () => {
   const EXPECTED_GATES: Array<{ label: string; permission: string }> = [
-    // CRM sidebar entry deleted by PR #841 — CRM now lives only as a tab on
-    // the Tenders page, so there's no top-level nav item to gate.
+    // Tendering group (NAV-1 renamed from Estimating).
+    // Leads & opportunities placeholder points at /tenders — tenders.view gate.
+    { label: "Leads & opportunities", permission: "tenders.view" },
     { label: "Tenders", permission: "tenders.view" },
+    // Pipeline hits /crm/pipeline — crm.view (pipeline-dashboard.controller.ts).
+    { label: "Pipeline", permission: "crm.view" },
+    { label: "Schedule of Rates", permission: "rates.manage" },
     // Contracts API gates on finance.view (legacy naming from when contracts
     // lived under the finance module), NOT contracts.view.
     { label: "Contracts", permission: "finance.view" },
-    // Unified Directory (/directory) — clients, subcontractors & suppliers,
-    // contacts. Primary API is directory.controller.ts (directory.view).
-    { label: "Directory", permission: "directory.view" },
     { label: "Reports", permission: "reporting.view" },
+    // CRM group (NAV-1). All three items gate on crm.view — the single read
+    // gate across accounts.controller.ts, comms.controller.ts, and
+    // pipeline-dashboard.controller.ts.
+    { label: "Accounts", permission: "crm.view" },
+    { label: "Tenders register", permission: "crm.view" },
+    { label: "Comms hub", permission: "crm.view" },
     { label: "Jobs", permission: "jobs.view" },
     // Sites list hits /master-data/sites — masterdata.view, not sites.view.
     { label: "Sites", permission: "masterdata.view" },

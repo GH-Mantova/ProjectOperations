@@ -22343,6 +22343,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "withdrawalState": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -22500,6 +22506,12 @@
           "aggregations": []
         },
         "tandC": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "withdrawalReviews": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -24047,6 +24059,62 @@
         }
       }
     },
+    "TenderWithdrawalReview": {
+      "domain": "Tendering",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenderId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "decision": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "reviewerId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "reason": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "createdAt": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tender": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "reviewer": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
     "TenderingLabel": {
       "domain": "Tendering",
       "wizardVisible": true,
@@ -24690,6 +24758,12 @@
           "aggregations": []
         },
         "tenderOutcomesRecorded": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tenderWithdrawalReviews": {
           "role": "system",
           "label": null,
           "filterable": false,

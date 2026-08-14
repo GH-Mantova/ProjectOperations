@@ -66,18 +66,20 @@ test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, 
   // ── Sidebar visible to admin ──────────────────────────────────────────────
 
   test("admin sees all sidebar section groups including Admin", async ({ page }) => {
+    // NAV-1: "Estimating" renamed to "Tendering"; new "CRM" group added.
     await loginAsAdmin(page);
     const nav = page.getByRole("navigation", { name: "Main navigation" });
-    for (const label of ["Dashboards", "Estimating", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
+    for (const label of ["Dashboards", "Tendering", "CRM", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
       await expect(nav.getByText(label, { exact: true }).first()).toBeVisible();
     }
   });
 
-  test("admin sidebar contains the six §9 section groups (Estimating…Settings)", async ({ page }) => {
+  test("admin sidebar contains the NAV-1 section groups (Tendering, CRM, Projects…Settings)", async ({ page }) => {
+    // NAV-1: group was "Estimating"; now "Tendering". New "CRM" group between Tendering and Projects.
     await loginAsAdmin(page);
     const nav = page.getByRole("navigation", { name: "Main navigation" });
-    // Group labels are rendered as <p class="shell__nav-group-label"> — assert the six NAV_GROUPS sections.
-    for (const section of ["Estimating", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
+    // Group labels are rendered as <p class="shell__nav-group-label"> — assert the NAV_GROUPS sections.
+    for (const section of ["Tendering", "CRM", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
       await expect(nav.getByText(section, { exact: true }).first()).toBeVisible();
     }
   });
@@ -92,7 +94,8 @@ test.describe("Batch 1 — Auth, Shell & Sidebar Navigation (PRs #12, #13, #29, 
     // Notification preferences, Calendar sync); the SettingsShell hides
     // Administration entries via per-item permission-code gates. So the
     // sidebar Settings label MUST be visible to a non-admin viewer.
-    for (const section of ["Estimating", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
+    // NAV-1: "Estimating" → "Tendering"; new "CRM" group added.
+    for (const section of ["Tendering", "CRM", "Projects", "Operations", "HR", "Safety & Compliance", "Settings"]) {
       await expect(nav.getByText(section, { exact: true }).first()).toBeVisible();
     }
   });

@@ -80,6 +80,7 @@ import { DocketsRegisterPage } from "./pages/dockets/DocketsRegisterPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
+import { AdminCompaniesPage } from "./pages/admin/AdminCompaniesPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
@@ -429,6 +430,15 @@ export function App() {
                 element={
                   <SuperUserOnly>
                     <FieldDefinitionAdminPage />
+                  </SuperUserOnly>
+                }
+              />
+              {/* MT-5: Company admin UI — create/manage Tenant rows + assign users. Super-user only. */}
+              <Route
+                path="companies"
+                element={
+                  <SuperUserOnly>
+                    <AdminCompaniesPage />
                   </SuperUserOnly>
                 }
               />

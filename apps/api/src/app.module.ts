@@ -87,6 +87,7 @@ import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-r
 import { VariationsModule } from "./modules/variations/variations.module";
 import { FieldDefinitionsModule } from "./modules/field-definitions/field-definitions.module";
 import { AgreedRecordsModule } from "./modules/agreed-records/agreed-records.module";
+import { TenantsModule } from "./modules/tenants/tenants.module";
 
 @Module({
   providers: [
@@ -188,7 +189,8 @@ import { AgreedRecordsModule } from "./modules/agreed-records/agreed-records.mod
     ScheduleOfRatesModule,
     VariationsModule,
     FieldDefinitionsModule,
-    AgreedRecordsModule
+    AgreedRecordsModule,
+    TenantsModule
   ]
 })
 export class AppModule {}

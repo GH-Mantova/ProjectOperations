@@ -108,6 +108,7 @@ import { AccountsListPage } from "./pages/crm/AccountsListPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
 import { CrmIndex } from "./pages/crm/CrmIndex";
+import { CrmCatchAllRedirect, ClientsEntryRedirect } from "./pages/crm/CrmRedirects";
 import { TendersRegisterPage } from "./pages/crm/TendersRegisterPage";
 import { CrmBoardContent } from "./pages/crm/CrmBoardPage";
 import { RelationshipsPage } from "./pages/crm/RelationshipsPage";
@@ -627,6 +628,13 @@ export function App() {
             {/* CRM-2: Relationship intelligence — notes log + going-cold nudge
                 + repeat-business surfacing. */}
             <Route path="/crm/relationships" element={<RelationshipsPage />} />
+            {/* NAV-4: Catch-all for dead /crm/* paths → /crm/accounts.
+                Must sit AFTER all named /crm/** routes so real routes still
+                resolve first (React Router v6 most-specific-first matching). */}
+            <Route path="/crm/*" element={<CrmCatchAllRedirect />} />
+            {/* NAV-4: Light bookmark alias /clients → /crm/accounts.
+                Deep Directory decommission deferred to site-dissolution-plan. */}
+            <Route path="/clients" element={<ClientsEntryRedirect />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

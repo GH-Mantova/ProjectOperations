@@ -1,9 +1,4 @@
 // NAV-1: CRM index redirect. /crm → /crm/accounts (the Accounts landing).
-// The Accounts list page (AccountsListPage) ships in NAV-2; for now
-// /crm/accounts routes to the AccountDetailPage index or NotFoundPage until
-// NAV-2 lands. This redirect keeps the nav group wired correctly.
-import { Navigate } from "react-router-dom";
-
-export function CrmIndex() {
-  return <Navigate to="/crm/accounts" replace />;
-}
+// NAV-4: Implementation moved to CrmRedirects.tsx (centralised redirect module).
+// This file is kept as a thin re-export shim to avoid churn in App.tsx (line 109).
+export { CrmRootRedirect as CrmIndex } from "./CrmRedirects";

@@ -537,6 +537,22 @@ export function App() {
             <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
             <Route path="/admin/field-definitions" element={<Navigate to="/settings/field-definitions" replace />} />
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
+            {/* SLICE-4c: AI-keys entry surface retired. The ProviderKeyManager
+                sections that lived inside /settings/ai (CompanySettingsTab +
+                MySettingsTab) have been replaced with pointer banners to the
+                unified vault panel. Any bookmark that targeted the old key-entry
+                area is redirected to AdminSettings → Integrations / API keys.
+                Six-month retirement window per unified-api-key-vault-and-
+                geocoding-failover.md §4d (retire + redirect). No expiry timer
+                is implemented — remove these routes after 2027-02. */}
+            <Route
+              path="/settings/ai/keys"
+              element={<Navigate to="/settings/administration/system?tab=integrations" replace />}
+            />
+            <Route
+              path="/admin/ai-keys"
+              element={<Navigate to="/settings/administration/system?tab=integrations" replace />}
+            />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             {/* B-HW-7: Handover wizard — launched from contract detail page */}

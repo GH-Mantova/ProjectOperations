@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { JpmService } from "../jpm.service";
 
@@ -60,9 +61,9 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
     const siteId = site.id;
 
     const [tA, tB, tC] = await Promise.all([
-      prisma.tender.create({ data: { tenderNumber: TENDER_A, title: "ZZTEST-JPMA A", siteId: "site-unassigned" } }),
-      prisma.tender.create({ data: { tenderNumber: TENDER_B, title: "ZZTEST-JPMA B", siteId: "site-unassigned" } }),
-      prisma.tender.create({ data: { tenderNumber: TENDER_C, title: "ZZTEST-JPMA C", siteId: "site-unassigned" } })
+      prisma.tender.create({ data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: TENDER_A, title: "ZZTEST-JPMA A", siteId: "site-unassigned" } }),
+      prisma.tender.create({ data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: TENDER_B, title: "ZZTEST-JPMA B", siteId: "site-unassigned" } }),
+      prisma.tender.create({ data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: TENDER_C, title: "ZZTEST-JPMA C", siteId: "site-unassigned" } })
     ]);
     tenderAId = tA.id;
     tenderBId = tB.id;
@@ -70,7 +71,7 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
 
     // Pair: Job + Project both from tender A -> should link.
     await prisma.job.create({
-      data: { jobNumber: "ZZTEST-JPMA-J1", name: "J1", clientId, siteId, sourceTenderId: tenderAId }
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID, jobNumber: "ZZTEST-JPMA-J1", name: "J1", clientId, siteId, sourceTenderId: tenderAId }
     });
     await prisma.project.create({
       data: {
@@ -90,7 +91,7 @@ describe("Job/Project merge Phase A — backfill + reconciliation", () => {
 
     // Orphan job (tender B has a job but no project) -> stays NULL.
     await prisma.job.create({
-      data: { jobNumber: "ZZTEST-JPMA-J2", name: "J2", clientId, siteId, sourceTenderId: tenderBId }
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID, jobNumber: "ZZTEST-JPMA-J2", name: "J2", clientId, siteId, sourceTenderId: tenderBId }
     });
 
     // Orphan project (tender C has a project but no job) -> stays NULL.

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 import { ClientQuotesService } from "../client-quotes.service";
 
 /**
@@ -50,7 +51,7 @@ describe("ClientQuotesService.getDraftsSummary — batch 2 widget", () => {
     const client = await prisma.client.create({ data: { name: "ZZTEST-B2-DS Client" } });
     clientId = client.id;
     const tender = await prisma.tender.create({
-      data: {
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID,
         tenderNumber: "ZZTEST-B2-DS-T",
         title: "ZZTEST B2 DS Tender",
         status: "DRAFT",

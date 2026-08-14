@@ -89,6 +89,14 @@ export class AccountsController {
     return this.service.listAccounts(query as never);
   }
 
+  @Get("summary")
+  @RequirePermissions("crm.view")
+  @ApiOperation({ summary: "NAV-2: Summary list for the Accounts index page." })
+  @ApiResponse({ status: 200, description: "Array of account summaries." })
+  listAccountSummaries() {
+    return this.service.listAccountSummaries();
+  }
+
   @Get(":id")
   @RequirePermissions("crm.view")
   @ApiOperation({ summary: "Get an account by id." })

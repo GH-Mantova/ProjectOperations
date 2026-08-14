@@ -622,6 +622,39 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
     });
   }
 
+  // NAV-2: Account spine (Client-360). Seed one Account per seeded Client so the
+  // Accounts index (/crm/accounts) has data. Idempotent upsert keyed by the
+  // unique clientId link. lastContactedAt is a derived roll-up, not stored here.
+  const accountSeeds: Array<{
+    id: string;
+    clientId: string;
+    lifecycleStatus: "PROSPECT" | "ACTIVE" | "PAST";
+  }> = [
+    { id: "account-001", clientId: "client-001", lifecycleStatus: "ACTIVE" },
+    { id: "account-002", clientId: "client-002", lifecycleStatus: "ACTIVE" },
+    { id: "account-003", clientId: "client-003", lifecycleStatus: "ACTIVE" },
+    { id: "account-004", clientId: "client-004", lifecycleStatus: "PROSPECT" },
+    { id: "account-005", clientId: "client-005", lifecycleStatus: "PAST" }
+  ];
+  for (const seed of accountSeeds) {
+    await prisma.account.upsert({
+      where: { clientId: seed.clientId },
+      update: {
+        lifecycleStatus: seed.lifecycleStatus,
+        accountType: "CLIENT",
+        source: "REPEAT_BUSINESS",
+        archivedAt: null
+      },
+      create: {
+        id: seed.id,
+        clientId: seed.clientId,
+        lifecycleStatus: seed.lifecycleStatus,
+        accountType: "CLIENT",
+        source: "REPEAT_BUSINESS"
+      }
+    });
+  }
+
   type ContactSeed = {
     id: string;
     clientId: string;

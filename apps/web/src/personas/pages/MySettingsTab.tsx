@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import {
   dropdownOptionsFromEnabledProviders,
@@ -9,7 +10,6 @@ import {
   type ProviderOption,
   type UserPersonaSettings
 } from "./ai-settings-helpers";
-import { ProviderKeyManager } from "./ProviderKeyManager";
 
 type PersonaSummary = {
   slug: string;
@@ -83,32 +83,42 @@ export function MySettingsTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {showBYOK ? (
-        <ProviderKeyManager
-          scope="me"
-          title="Personal API Keys (Bring Your Own Key)"
-          description="When set, your personal key is used in place of the company key for the matching provider. Keys are validated live before being stored and are encrypted at rest (AES-256-GCM)."
-        />
-      ) : (
-        <section>
-          <h2 style={{ margin: 0, fontFamily: "'Syne', 'Outfit', sans-serif", fontSize: 18 }}>
-            Personal API Keys (Bring Your Own Key)
-          </h2>
-          <div
-            style={{
-              background: "var(--surface-card, #FFFFFF)",
-              border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
-              borderRadius: 8,
-              padding: 16,
-              fontSize: 13,
-              color: "var(--text-muted)",
-              marginTop: 12
-            }}
-          >
-            Personal AI keys are disabled by your administrator.
-          </div>
-        </section>
-      )}
+      {/* SLICE-4c: Personal BYOK key entry has moved to the unified vault panel.
+          Redirect note: six-month retirement window per §4d of
+          unified-api-key-vault-and-geocoding-failover.md. */}
+      <section>
+        <h2 style={{ margin: 0, fontFamily: "'Syne', 'Outfit', sans-serif", fontSize: 18 }}>
+          Personal API Keys (Bring Your Own Key)
+        </h2>
+        <div
+          style={{
+            background: "var(--surface-card, #FFFFFF)",
+            border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+            borderRadius: 8,
+            padding: 16,
+            fontSize: 14,
+            color: "var(--text-muted)",
+            marginTop: 12
+          }}
+        >
+          {showBYOK ? (
+            <>
+              <strong style={{ color: "var(--text-primary, #000)", display: "block", marginBottom: 6 }}>
+                Personal API keys have moved
+              </strong>
+              Personal API keys (Bring Your Own Key) are now managed in the unified key vault.{" "}
+              <Link
+                to="/settings/administration/system?tab=integrations"
+                style={{ color: "#005B61", fontWeight: 600 }}
+              >
+                Admin Settings &rarr; Integrations / API keys
+              </Link>
+            </>
+          ) : (
+            "Personal AI keys are disabled by your administrator."
+          )}
+        </div>
+      </section>
 
       {personas.length === 0 ? (
         <div style={{ color: "var(--text-muted)", fontSize: 14 }}>

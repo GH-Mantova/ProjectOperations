@@ -4,6 +4,8 @@ import {
   parseCsv,
   validateAbn,
   validateBsb,
+  pickWritableKeys,
+  CLIENT_WRITABLE_KEYS,
   type ImportPreview
 } from "../xero-contact-import.service";
 
@@ -338,7 +340,7 @@ describe("XeroContactImportService.commitImport", () => {
       appliesTo?: "CLIENT" | "VENDOR";
       confirmedOverwriteBankRecordIds?: string[];
     }
-  ): Promise<{ preview: ImportPreview; result: { inserted: number; updated: number; skipped: number } }> {
+  ): Promise<{ preview: ImportPreview; result: { inserted: number; updated: number; skipped: number; droppedFields: Record<string, number> } }> {
     const service = makeService(prisma);
 
     // Wire $transaction so it executes the callback immediately with the tx delegate.
@@ -446,6 +448,61 @@ describe("XeroContactImportService.commitImport", () => {
       // This is also acceptable behaviour.
       expect(prisma.client.update).not.toHaveBeenCalled();
     }
+  });
+
+  // ── Allow-list / droppedFields tests ─────────────────────────────────────
+
+  describe("pickWritableKeys unit", () => {
+    it("passes allowed keys through and drops unknown keys", () => {
+      const data = { name: "Acme", email: "a@b.com", someArbitraryKey: "injected" };
+      const allowed: ReadonlySet<string> = new Set(["name", "email"]);
+      const { picked, dropped } = pickWritableKeys(data, allowed);
+      expect(picked).toEqual({ name: "Acme", email: "a@b.com" });
+      expect(dropped).toEqual(["someArbitraryKey"]);
+    });
+
+    it("returns empty dropped array when all keys are allowed", () => {
+      const data = { name: "Acme" };
+      const { dropped } = pickWritableKeys(data, CLIENT_WRITABLE_KEYS);
+      expect(dropped).toHaveLength(0);
+    });
+  });
+
+  it("non-allow-listed key ('code') is dropped for VENDOR inserts and counted in droppedFields", async () => {
+    // 'code' is in BUILTIN_FIELD_KEYS but NOT in SUBCONTRACTOR_WRITABLE_KEYS
+    // (SubcontractorSupplier has no 'code' column).
+    const prisma = makePrisma();
+    prisma.subcontractorSupplier.findMany.mockResolvedValue([]);
+
+    const csv = makeCsv(["name", "code"], [["Vendor A", "V001"]]);
+    const { result } = await previewThenCommit(prisma, {
+      csvBuffer: csv,
+      columnMap: { name: "name", code: "code" },
+      appliesTo: "VENDOR"
+    });
+
+    expect(result.inserted).toBe(1);
+    // droppedFields must record 'code' was dropped for 1 row.
+    expect(result.droppedFields["code"]).toBe(1);
+    // The Prisma create must NOT have received a 'code' key.
+    const createArgs = prisma.subcontractorSupplier.create.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createArgs?.data).not.toHaveProperty("code");
+  });
+
+  it("droppedFields is empty when all written keys are allow-listed", async () => {
+    const prisma = makePrisma();
+    prisma.client.findMany.mockResolvedValue([]);
+
+    const csv = makeCsv(["name", "email"], [["Fresh Client", "fresh@client.com"]]);
+    const { result } = await previewThenCommit(prisma, {
+      csvBuffer: csv,
+      columnMap: { name: "name", email: "email" }
+    });
+
+    expect(result.inserted).toBe(1);
+    expect(result.droppedFields).toEqual({});
   });
 
   it("commit DOES write bank fields when record id is in confirmedOverwriteBankRecordIds", async () => {

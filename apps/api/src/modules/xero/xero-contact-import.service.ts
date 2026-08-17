@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 
 // CFX-5 — File-based Xero contact import (dry-run preview → confirm).
@@ -46,6 +47,86 @@ export const BUILTIN_FIELD_KEYS = new Set([
   "purchaseAccountCode",
   "discount"
 ]);
+
+/**
+ * Scalar fields on the Client model that may be written from an import.
+ * xeroContactId is excluded (matching only). FK ids and relations are excluded.
+ */
+export const CLIENT_WRITABLE_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "email",
+  "phone",
+  "website",
+  "abn",
+  "code",
+  "country",
+  "physicalAddress",
+  "physicalSuburb",
+  "physicalState",
+  "physicalPostcode",
+  "postalAddress",
+  "postalSuburb",
+  "postalState",
+  "postalPostcode",
+  "bankName",
+  "bankAccountName",
+  "bankBsb",
+  "bankAccountNumber",
+  "salesAccountCode",
+  "purchaseAccountCode",
+  "discount"
+]);
+
+/**
+ * Scalar fields on the SubcontractorSupplier model that may be written from an import.
+ * xeroContactId is excluded (matching only). `code` is absent — SubcontractorSupplier
+ * has no `code` column. FK ids and relations are excluded.
+ */
+export const SUBCONTRACTOR_WRITABLE_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "email",
+  "phone",
+  "website",
+  "abn",
+  "country",
+  "physicalAddress",
+  "physicalSuburb",
+  "physicalState",
+  "physicalPostcode",
+  "postalAddress",
+  "postalSuburb",
+  "postalState",
+  "postalPostcode",
+  "bankName",
+  "bankAccountName",
+  "bankBsb",
+  "bankAccountNumber",
+  "salesAccountCode",
+  "purchaseAccountCode",
+  "discount"
+]);
+
+/**
+ * Filter `data` to only the keys present in `allowed`.
+ *
+ * Returns the picked subset and a list of keys that were dropped so callers
+ * can surface the information without throwing.
+ */
+export function pickWritableKeys(
+  data: Record<string, unknown>,
+  allowed: ReadonlySet<string>
+): { picked: Record<string, unknown>; dropped: string[] } {
+  const picked: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (allowed.has(key)) {
+      picked[key] = value;
+    } else {
+      dropped.push(key);
+    }
+  }
+  return { picked, dropped };
+}
 
 /** Bank-related field keys — subject to overwrite-protection logic. */
 const BANK_FIELD_KEYS = new Set([
@@ -554,7 +635,12 @@ export class XeroContactImportService {
     previewId: string;
     actorUserId: string;
     confirmedOverwriteBankRecordIds?: string[];
-  }): Promise<{ inserted: number; updated: number; skipped: number }> {
+  }): Promise<{
+    inserted: number;
+    updated: number;
+    skipped: number;
+    droppedFields: Record<string, number>;
+  }> {
     const { previewId, actorUserId, confirmedOverwriteBankRecordIds = [] } = input;
     const confirmedSet = new Set(confirmedOverwriteBankRecordIds);
 
@@ -570,6 +656,10 @@ export class XeroContactImportService {
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
+    const droppedFields: Record<string, number> = {};
+
+    const allowedKeys =
+      appliesTo === "CLIENT" ? CLIENT_WRITABLE_KEYS : SUBCONTRACTOR_WRITABLE_KEYS;
 
     await this.prisma.$transaction(async (tx) => {
       for (const payload of payloads) {
@@ -598,7 +688,13 @@ export class XeroContactImportService {
           }
         }
 
-        if (Object.keys(finalData).length === 0 && payload.action !== "new") {
+        // Filter to only allow-listed keys before writing.
+        const { picked: writeData, dropped } = pickWritableKeys(finalData, allowedKeys);
+        for (const key of dropped) {
+          droppedFields[key] = (droppedFields[key] ?? 0) + 1;
+        }
+
+        if (Object.keys(writeData).length === 0 && payload.action !== "new") {
           // Nothing to update for this matched row.
           skipped++;
           continue;
@@ -606,27 +702,30 @@ export class XeroContactImportService {
 
         if (appliesTo === "CLIENT") {
           if (payload.action === "new") {
-            await (tx.client.create as (args: { data: Record<string, unknown> }) => Promise<unknown>)({
-              data: finalData
+            await tx.client.create({
+              data: writeData as Prisma.ClientUncheckedCreateInput
             });
             inserted++;
           } else if (payload.matchedRecordId) {
-            await (tx.client.update as (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>)({
+            await tx.client.update({
               where: { id: payload.matchedRecordId },
-              data: finalData
+              data: writeData as Prisma.ClientUncheckedUpdateInput
             });
             updated++;
           }
         } else {
           if (payload.action === "new") {
-            await (tx.subcontractorSupplier.create as (args: { data: Record<string, unknown> }) => Promise<unknown>)({
-              data: { ...finalData, createdById: actorUserId }
+            await tx.subcontractorSupplier.create({
+              data: {
+                ...writeData,
+                createdById: actorUserId
+              } as Prisma.SubcontractorSupplierUncheckedCreateInput
             });
             inserted++;
           } else if (payload.matchedRecordId) {
-            await (tx.subcontractorSupplier.update as (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>)({
+            await tx.subcontractorSupplier.update({
               where: { id: payload.matchedRecordId },
-              data: finalData
+              data: writeData as Prisma.SubcontractorSupplierUncheckedUpdateInput
             });
             updated++;
           }
@@ -637,6 +736,6 @@ export class XeroContactImportService {
     // Remove from cache after successful commit.
     previewCache.delete(previewId);
 
-    return { inserted, updated, skipped };
+    return { inserted, updated, skipped, droppedFields };
   }
 }

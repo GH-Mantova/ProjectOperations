@@ -163,6 +163,30 @@ The pipeline will **build the PR but never merge it** — it goes to Marco.
 
 **`escalates: true` DOES NOT STOP THE PROMPT FROM RUNNING. It gates the MERGE, not the RUN.**
 
+#### How the merge gate is actually enforced (2026-08-17)
+
+Until 2026-08-17 the sentence above was aspirational: **nothing enforced it.** The watcher ran
+`gh pr merge --auto --squash` on every PR it opened, the string `escalates` appeared nowhere in
+`scripts/pr-watcher/index.mjs`, and no CI gate looked at the `do-not-merge` label — which already
+existed, described as *"escalates:true - Marco merges this, not automation (DOCTRINE 5b)"*, and was
+never applied or checked by anything. A destructive prompt was one green build from merging itself;
+OPS-6 was caught by hand.
+
+Two mechanisms now enforce it, deliberately in different places:
+
+1. **The watcher withholds auto-merge.** `parseWatcherFrontMatter` reads `escalates`. When it is
+   true the watcher takes neither merge path regardless of `AUTO_MERGE_POLICY`; it applies the
+   `do-not-merge` label, comments on the PR explaining the hold, and leaves it open. If the label
+   cannot be applied it says so LOUDLY in the merge report rather than proceeding quietly.
+2. **CP-26 fails while the label is present** (`scripts/pr-gates/pr-gates.mjs`). This is the part
+   with teeth: enforcement sits at the gate, not in the watcher's decision, because a filter is one
+   quirk away from being a silent no-op — which is how #552, the production-data PR, was once
+   selected for merge. CP-26 also fails **closed** if the labels cannot be read.
+
+**Removing the label is the human's act of approval.** Review the PR, remove `do-not-merge`, CI
+re-runs, CP-26 passes, and the PR becomes mergeable. Nothing else is required, and nothing can
+merge it while the label is on.
+
 #### Destructive / backfill / NOT-NULL / DROP / DELETE / TRUNCATE slices MUST set `escalates: true`
 
 The linter enforces this via the `DESTRUCTIVE_MUST_ESCALATE` rule (OPS-6, 2026-08-12). Any prompt

@@ -12,6 +12,130 @@
 export const PIPELINE_STAGES = ["DRAFT", "IN_PROGRESS", "WITHDRAWN"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
+// ---------------------------------------------------------------------------
+// TenderListItem — minimal shape required by buildRegisterCsv.
+// The full type lives in TenderingPage.tsx; this subset covers every cell
+// the CSV builder reads so it can be tested without the component tree.
+// ---------------------------------------------------------------------------
+export type TenderListItem = {
+  tenderNumber: string;
+  title: string;
+  status: string;
+  withdrawalState?: string | null;
+  dueDate?: string | null;
+  estimatedValue?: string | null;
+  probability?: number | null;
+  createdAt: string;
+  estimator?: { firstName: string; lastName: string } | null;
+  tenderClients: Array<{ client: { name: string } }>;
+};
+
+// ---------------------------------------------------------------------------
+// daysUntil — exported so TenderingPage.tsx can import it rather than
+// maintaining a duplicate. The em-dash is the sentinel for "no due date".
+// buildRegisterCsv maps it to an empty cell so spreadsheet tools don't get
+// a typographic character.
+// ---------------------------------------------------------------------------
+export function daysUntil(iso?: string | null): string {
+  if (!iso) return "—"; // em-dash placeholder
+  const then = new Date(iso).getTime();
+  const diff = Math.ceil((then - Date.now()) / (24 * 60 * 60 * 1000));
+  if (diff < 0) return `${Math.abs(diff)}d overdue`;
+  if (diff === 0) return "today";
+  if (diff === 1) return "1 day";
+  return `${diff} days`;
+}
+
+// ---------------------------------------------------------------------------
+// buildRegisterCsv — write all ten columns, all loaded rows, CRLF endings.
+// ---------------------------------------------------------------------------
+
+/** Headers in ALL_COLUMNS order (screen order). */
+const CSV_HEADERS = [
+  "Tender #",
+  "Name",
+  "Client",
+  "Estimator",
+  "Status",
+  "Probability",
+  "Value",
+  "Due date",
+  "Days until due",
+  "Created"
+];
+
+/**
+ * Format a date string (ISO or date-only) as dd/mm/yyyy (AU locale).
+ * Returns "" when the input is null/undefined/empty.
+ */
+function formatDateAU(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/** Escape a single cell value: double internal quotes, then wrap in quotes. */
+function csvCell(raw: string | number | null | undefined): string {
+  const s = raw === null || raw === undefined ? "" : String(raw);
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Build a CSV string from the supplied rows.
+ *
+ * Column contract (ALL_COLUMNS order):
+ *   Tender # | Name | Client | Estimator | Status | Probability | Value |
+ *   Due date | Days until due | Created
+ *
+ * - Value: bare number (no $ or thousands separator), empty when null.
+ * - Dates:  dd/mm/yyyy, empty when null.
+ * - Days until due: the display string (e.g. "14 days", "1019d overdue",
+ *   "today") — empty cell where daysUntil() returns the em-dash.
+ * - Probability: raw number, empty when null.
+ * - Client: names joined with "; ".
+ * - CRLF line endings throughout.
+ */
+export function buildRegisterCsv(rows: TenderListItem[]): string {
+  const lines: string[] = [CSV_HEADERS.map(csvCell).join(",")];
+  for (const t of rows) {
+    const clientNames = t.tenderClients.map((tc) => tc.client.name).join("; ");
+    const estimatorName = t.estimator
+      ? `${t.estimator.firstName} ${t.estimator.lastName}`
+      : "";
+    const probabilityCell =
+      t.probability !== null && t.probability !== undefined ? String(t.probability) : "";
+    const valueCell =
+      t.estimatedValue !== null && t.estimatedValue !== undefined && t.estimatedValue !== ""
+        ? String(Number(t.estimatedValue))
+        : "";
+    const dueDateCell = formatDateAU(t.dueDate);
+    const rawDaysUntil = daysUntil(t.dueDate);
+    // Map the em-dash sentinel to an empty cell.
+    const daysUntilCell = rawDaysUntil === "—" ? "" : rawDaysUntil;
+    const createdCell = formatDateAU(t.createdAt);
+
+    lines.push(
+      [
+        csvCell(t.tenderNumber),
+        csvCell(t.title),
+        csvCell(clientNames),
+        csvCell(estimatorName),
+        csvCell(t.status),
+        csvCell(probabilityCell),
+        csvCell(valueCell),
+        csvCell(dueDateCell),
+        csvCell(daysUntilCell),
+        csvCell(createdCell)
+      ].join(",")
+    );
+  }
+  return lines.join("\r\n");
+}
+
 export const MAX_PAGES = 50; // safety ceiling — 50 × 100 = 5 000 rows
 
 // Minimal shape required by the helpers below. Includes withdrawalState so

@@ -178,7 +178,7 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     await expect(page.getByRole("button", { name: `Delete preset ${presetName}` })).toHaveCount(0);
   });
 
-  test("bulk select shows action bar with Change status stages and Export CSV", async ({ page }) => {
+  test("bulk select shows action bar with Change status stages", async ({ page }) => {
     await openRegister(page);
     await page.getByRole("checkbox", { name: "Select tender T260414-SUNC-Rev1" }).check();
     await page.getByRole("checkbox", { name: "Select tender T260428-BRIS-Rev1" }).check();
@@ -190,9 +190,19 @@ test.describe("Batch 2 — Tendering pipeline + register (PRs #16, #28-#30, #43,
     for (const stage of ["Submitted", "Awarded", "Lost"]) {
       await expect(page.getByRole("listbox").getByRole("button", { name: stage, exact: true })).toBeVisible();
     }
-    await expect(page.getByRole("button", { name: "Export CSV", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Clear selection", exact: true }).click();
     await expect(page.getByText("2 tenders selected")).not.toBeVisible();
+  });
+
+  // Export CSV moved out of the bulk-selection bar into the register toolbar
+  // (all ten columns, all loaded rows). It no longer depends on selection, and
+  // its accessible name comes from aria-label, not the visible button text.
+  test("Export CSV lives in the toolbar and needs no selection", async ({ page }) => {
+    await openRegister(page);
+    await expect(
+      page.getByRole("button", { name: "Export current filtered register as CSV", exact: true })
+    ).toBeVisible();
+    await expect(page.getByText("tenders selected")).not.toBeVisible();
   });
 
   test("quick edit slide-over opens from row hover and saves a due date", async ({ page }) => {

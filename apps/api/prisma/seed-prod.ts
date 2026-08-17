@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { seedCrmDropReasons } from "./seeds/crm-drop-reasons";
 import { seedOperationalRoles } from "./seed-initial-services";
 import { seedPermissionsAndCoreRoles, seedReferenceData } from "./seed-reference";
 import { assertNoDevSeedUsers, seedProdUsers } from "./seed-users-prod";
@@ -24,6 +25,11 @@ async function main() {
   await seedProdUsers(prisma);
   await seedReferenceData(prisma, { listsOwnerId: "user-admin" });
   console.log("  ✓ reference data (rates, densities, lookups, lists, form templates, configs)");
+  // CRM drop reasons are reference data, not demo data: without them the
+  // "Don't pursue" action is unusable on a production database (the modal
+  // hard-blocks with "No drop reasons configured"). Idempotent upsert.
+  await seedCrmDropReasons(prisma);
+  console.log("  ✓ CRM drop reasons");
   console.log("seed:prod complete.");
 }
 

@@ -60,7 +60,11 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
   // pages. Both are admin-config surfaces; gate on platform.admin (registry:19),
   // same code used by the sibling Administration entries.
   { to: "/settings/administration/client-versions", label: "Client versions", requiresPermission: "platform.admin" },
-  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "platform.admin" }
+  { to: "/settings/administration/map-locations", label: "Map locations", requiresPermission: "platform.admin" },
+  // CRM SLICE 6: drop-reason admin screen. Gated on crm.manage — the existing
+  // manage-level CRM permission (permission-registry.ts:114). Editing the
+  // managed list is a write operation; crm.view would be too permissive.
+  { to: "/settings/administration/crm-drop-reasons", label: "CRM drop reasons", requiresPermission: "crm.manage" }
 ];
 
 export function filterSettingsNavItems(items: SettingsNavItem[], user: SafeUser | null): SettingsNavItem[] {

@@ -83,7 +83,7 @@ import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
-import { SettingsShell, AdminOnly, SuperUserOnly } from "./components/SettingsShell";
+import { SettingsShell, AdminOnly, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
 import { HandoverWizardPage } from "./pages/handover/HandoverWizardPage";
@@ -103,6 +103,7 @@ import { CaseDetailPage } from "./pages/cases/CaseDetailPage";
 import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
+import { DropReasonAdminPage } from "./pages/crm/DropReasonAdminPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
@@ -517,6 +518,18 @@ export function App() {
                   <AdminOnly>
                     <MapLocationsPage />
                   </AdminOnly>
+                }
+              />
+              {/* CRM SLICE 6: drop-reason admin screen — gated on crm.manage
+                  (the existing manage-level CRM permission; see permission-registry.ts:114).
+                  Chosen over crm.view because editing the managed list is a write operation
+                  matching the "manage" semantic. */}
+              <Route
+                path="administration/crm-drop-reasons"
+                element={
+                  <RequirePermissions perms={["crm.manage"]}>
+                    <DropReasonAdminPage />
+                  </RequirePermissions>
                 }
               />
             </Route>

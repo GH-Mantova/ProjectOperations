@@ -7,7 +7,7 @@ done_when: bash -c '! grep -q "Password123" apps/api/prisma/seed-initial-service
 size: 1
 gate_allow: none
 seed_only: true
-escalates: false
+escalates: true
 ---
 
 # fix(seed): stop seeding real staff with the public Password123! local password
@@ -50,3 +50,9 @@ indistinguishable from failing** -- the work is discarded either way.
 - Never ask a question or "stand by" for approval; there is no human in a headless run.
 - Read the job log before diagnosing any CI failure.
 - Completion test: is there a PR number in your output? If not, say `NO-OP: <reason>`.
+
+## Escalation
+
+`escalates: true` (set 2026-08-17, Marco's decision D-3 in the pre-restart queue review). This
+prompt changes seeded staff credentials, which is production auth - doctrine escalation category.
+It still RUNS; only the merge waits. Label the resulting PR `do-not-merge` for Marco.

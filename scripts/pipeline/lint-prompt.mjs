@@ -240,19 +240,39 @@ export function lint(file, opts) {
   // "destructive") because a test file named "backfill.spec.ts" is a name, not an instruction.
   // Unambiguous SQL operations (DROP TABLE, DELETE FROM, etc.) also check scope descriptions.
   // Body = Markdown text after the closing --- of the front-matter (not the raw YAML).
-  // Prefer a false-positive that a human clears by setting the flag over a false-negative.
+  // Two tiers (see below): literal SQL fires always; INTENT words fire only when `scope` can reach
+  // apps/api/prisma. The old "prefer a false positive, a human clears it" stance was retired on
+  // 2026-08-17 — the remedy it assumed (set escalates:true) turns a harmless prompt into one that
+  // waits for a manual merge, so every false positive became an idle PR.
   {
+    // TIER 1 — literal SQL statements. A prompt whose text contains one of these is describing an
+    // operation, not a topic, so it fires regardless of scope.
     const DESTRUCTIVE_PATTERNS_ALL = [
-      { re: /\bNOT[\s-]NULL\b|\bSET\s+NOT\s+NULL\b/i, label: "NOT NULL / SET NOT NULL" },
+      { re: /\bSET\s+NOT\s+NULL\b/i, label: "SET NOT NULL" },
       { re: /\bDROP\s+(TABLE|COLUMN|CONSTRAINT|TYPE)\b/i, label: "DROP TABLE/COLUMN/CONSTRAINT/TYPE" },
       { re: /\bDELETE\s+FROM\b/i, label: "DELETE FROM" },
       { re: /\bTRUNCATE\b/i, label: "TRUNCATE" },
       { re: /\bdrop[-_]legacy\b/i, label: "drop-legacy / drop_legacy" },
     ];
-    // Intent words: only match in prose fields and Markdown body — NOT in scope file-paths.
+    // TIER 2 — INTENT words. These are topic words, not operations: they appear in prompt file
+    // NAMES, in prose describing OTHER prompts, and in text that merely explains this very rule.
+    // They only mean anything if the prompt can actually reach the database, so they fire ONLY when
+    // `scope` touches apps/api/prisma/** (migrations, schema, seeds). A docs-only or scripts-only
+    // prompt cannot run a migration no matter which words it contains.
+    //
+    // WHY THIS IS NARROWER THAN IT WAS (2026-08-17): the original comment reasoned "prefer a
+    // false-positive that a human clears by setting the flag over a false-negative". But the
+    // remedy is wrong for a false positive — setting `escalates: true` on a harmless prompt makes
+    // it wait for a human merge for no reason, so every false positive became an idle PR. Three
+    // real prompts were rejected on the same day, all harmless: two sat armed in the queue where
+    // nobody noticed they could never dequeue, and the third was rejected for QUOTING this rule's
+    // own wording. Scope-gating keeps every genuine case (the OPS-6 prompt that caused this rule,
+    // siteid-notnull-backfill, is migration-scoped and is still caught) while removing the class of
+    // false positive that was quietly rotting the queue.
     const DESTRUCTIVE_PATTERNS_PROSE = [
       { re: /\bbackfill\b/i, label: "backfill" },
       { re: /\bdestructive\b/i, label: "destructive" },
+      { re: /\bNOT[\s-]NULL\b/i, label: "NOT NULL" },
     ];
 
     // Extract the Markdown body (text after the second ---).
@@ -276,9 +296,15 @@ export function lint(file, opts) {
       body,
     ].join("\n");
 
+    // Can this prompt reach the database at all? Only a scope entry under apps/api/prisma/**
+    // (migrations, schema.prisma, seeds) can apply a migration or rewrite rows.
+    const scopeTouchesDb = scopeList.some((s) => /apps[\\/]api[\\/]prisma/i.test(String(s)));
+
     const matched =
       DESTRUCTIVE_PATTERNS_ALL.find(({ re }) => re.test(corpusAll)) ||
-      DESTRUCTIVE_PATTERNS_PROSE.find(({ re }) => re.test(corpusProse));
+      (scopeTouchesDb
+        ? DESTRUCTIVE_PATTERNS_PROSE.find(({ re }) => re.test(corpusProse))
+        : undefined);
 
     if (matched) {
       const escalatesTrue = String(fm.escalates || "").trim().toLowerCase() === "true";

@@ -14,7 +14,7 @@ done_when: pnpm build && pnpm lint && test -f apps/api/src/modules/xero/xero-con
 size: 9
 gate_allow: none
 seed_only: false
-escalates: false
+escalates: true
 ---
 
 # feat(api+web): CFX-5 — Xero-format file IMPORT (dry-run → confirm; never overwrites bank details)
@@ -176,3 +176,10 @@ service accepts arbitrary strings, no code change is needed here; drop the file 
 - Do NOT add a new permission code.
 - Do NOT touch `/sot/`, Azure/Entra/SharePoint.
 - Do NOT exceed 10 files.
+
+## Escalation
+
+`escalates: true` (set 2026-08-17, Marco's pre-restart queue review). This slice writes an
+IMPORT path into the Xero integration and the audit service. Xero is the ledger boundary - a
+wrong import is a finance problem, not a UI problem. It still RUNS; only the merge waits.
+Label the resulting PR `do-not-merge` for Marco.

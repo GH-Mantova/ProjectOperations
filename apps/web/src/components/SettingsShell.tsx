@@ -64,7 +64,11 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
   // CFX-4: Xero file exchange — CSV export of Client + SubcontractorSupplier
   // records into Xero's contact-import format. Gated on platform.admin — the
   // same code the API export routes gate on.
-  { to: "/settings/administration/xero-exchange", label: "Xero file exchange", requiresPermission: "platform.admin" }
+  { to: "/settings/administration/xero-exchange", label: "Xero file exchange", requiresPermission: "platform.admin" },
+  // CRM SLICE 6: drop-reason admin screen. Gated on crm.manage — the existing
+  // manage-level CRM permission (permission-registry.ts:114). Editing the
+  // managed list is a write operation; crm.view would be too permissive.
+  { to: "/settings/administration/crm-drop-reasons", label: "CRM drop reasons", requiresPermission: "crm.manage" }
 ];
 
 export function filterSettingsNavItems(items: SettingsNavItem[], user: SafeUser | null): SettingsNavItem[] {

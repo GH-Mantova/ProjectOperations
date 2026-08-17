@@ -1,4 +1,4 @@
-﻿-- Data migration: seed the six default CRM drop reasons.
+-- Data migration: seed the six default CRM drop reasons.
 --
 -- Production runs "prisma migrate deploy" and NOT the TypeScript seed, so without
 -- this migration the drop_reasons table stays empty in production and the

@@ -164,6 +164,34 @@ run("delete-in-identifier-no-false-positive",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/pages/SoftDeletePage.tsx\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nescalates: false", 0);
 
+// ── Tier 2 scope-gating (2026-08-17) ────────────────────────────────────────
+// Intent words are TOPIC words. They appear in prompt file names, in prose about other prompts,
+// and in text explaining this rule. A prompt that cannot reach apps/api/prisma cannot perform the
+// hazard, so the intent words must not reject it. Three real prompts were rejected on one day for
+// exactly this — two of them sat armed in the queue, unable to ever dequeue, and nobody noticed.
+
+console.log("\n=== exit 0 ADMIT: docs-only prompt mentioning 'backfill' (topic word, cannot reach the DB)");
+run("docs-only-mentions-backfill",
+  "premise: 'true'\npremise_means: names another prompt whose filename contains backfill\n" +
+  "scope:\n  - docs/plans/**\ndone_when: pnpm lint\nsize: 1\ngate_allow: none\nescalates: false", 0);
+
+console.log("\n=== exit 0 ADMIT: scripts-only prompt explaining the rule (says 'destructive' and 'NOT NULL')");
+run("scripts-only-explains-the-rule",
+  "premise: 'true'\npremise_means: describes the destructive NOT NULL signal this rule matches\n" +
+  "scope:\n  - scripts/pipeline/**\ndone_when: node scripts/pipeline/test-lint-prompt.mjs\n" +
+  "size: 2\ngate_allow: none\nescalates: false", 0);
+
+console.log("\n=== exit 1 REJECT: tier-1 literal SQL still fires with NO prisma scope (safety net intact)");
+run("docs-only-with-literal-drop-table",
+  "premise: 'true'\npremise_means: always\nscope:\n  - docs/plans/**\n" +
+  "done_when: DROP TABLE legacy_rates\nsize: 1\ngate_allow: none\nescalates: false", 1);
+
+console.log("\n=== exit 1 REJECT: migration-scoped 'backfill' still caught (the OPS-6 case)");
+run("migration-scoped-backfill-still-caught",
+  "premise: 'true'\npremise_means: backfill site ids then enforce\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/site.spec.ts\ndone_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: 'revert migration'\nescalates: false", 1);
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

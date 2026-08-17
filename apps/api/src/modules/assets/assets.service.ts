@@ -1,8 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { AssetsQueryDto, CheckinAssetDto, CheckoutAssetDto, UpsertAssetCategoryDto, UpsertAssetDto } from "./dto/assets.dto";
+import { AssetsQueryDto, CheckinAssetDto, CheckoutAssetDto, RecordUsageReadingDto, UpsertAssetCategoryDto, UpsertAssetDto, UsageReadingsQueryDto } from "./dto/assets.dto";
 
 const assetInclude = {
   category: true,
@@ -449,6 +449,163 @@ export class AssetsService {
     }
 
     return this.getAsset(asset.id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Usage readings (F-7)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Record a usage reading (hours or km) for an asset.
+   *
+   * Business rules:
+   * - The reading must be >= the last recorded value for the same unit,
+   *   unless isMeterReplacement=true (meter was physically replaced/reset).
+   * - isMeterReplacement may only be set by callers with Warehouse Manager
+   *   or Admin role. All other callers get 403 if they set the flag.
+   * - On success: inserts an AssetUsageReading row (snapshotting previousReading)
+   *   and updates Asset.currentHoursReading / currentKmReading + lastReadingAt
+   *   in a single Prisma transaction (mirrors MaintenanceService.updateAssetStatus).
+   * - Writes an `assets.usage-reading.create` audit entry.
+   *
+   * @param assetId - asset to record the reading against
+   * @param dto - unit, reading value, and optional flags
+   * @param actorId - acting user id (from JWT)
+   * @returns the created AssetUsageReading record
+   * @throws NotFoundException when the asset does not exist
+   * @throws ForbiddenException when isMeterReplacement is set by an unpermitted actor
+   * @throws ConflictException when the reading is below the last recorded value
+   */
+  async recordUsageReading(assetId: string, dto: RecordUsageReadingDto, actorId?: string) {
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!asset) throw new NotFoundException("Asset not found.");
+
+    // Role-gate on isMeterReplacement: only Warehouse Manager or Admin may set this flag.
+    if (dto.isMeterReplacement) {
+      if (!actorId) {
+        throw new ForbiddenException("isMeterReplacement requires authentication.");
+      }
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actorId },
+        include: {
+          userRoles: {
+            include: { role: { select: { name: true } } }
+          }
+        }
+      });
+      const privilegedRoles = ["Admin", "Warehouse Manager"];
+      const hasPrivilege =
+        actor?.isSuperUser ||
+        actor?.userRoles.some((ur) => privilegedRoles.includes(ur.role.name));
+      if (!hasPrivilege) {
+        throw new ForbiddenException("Only Warehouse Manager or Admin may flag a meter replacement.");
+      }
+    }
+
+    // Fetch the most recent reading for this unit to validate the new value.
+    const lastReading = await this.prisma.assetUsageReading.findFirst({
+      where: { assetId, unit: dto.unit },
+      orderBy: { recordedAt: "desc" },
+      select: { reading: true }
+    });
+
+    const previousReading = lastReading?.reading ?? null;
+
+    // Reject if the new reading is below the previous one (and this is not a replacement).
+    if (previousReading !== null && !dto.isMeterReplacement) {
+      const prev = Number(previousReading);
+      if (dto.reading < prev) {
+        throw new ConflictException(
+          `Reading ${dto.reading} is below the last recorded value of ${prev} for unit "${dto.unit}". ` +
+            "Set isMeterReplacement=true if the meter was physically replaced."
+        );
+      }
+    }
+
+    const reading = dto.reading;
+    const unit = dto.unit;
+    const now = new Date();
+
+    // Build the Asset denorm update: hours or km column, always update lastReadingAt.
+    const assetDenormData: Prisma.AssetUpdateInput = {
+      lastReadingAt: now
+    };
+    if (unit === "hours") {
+      assetDenormData.currentHoursReading = reading;
+    } else if (unit === "km") {
+      assetDenormData.currentKmReading = reading;
+    }
+
+    let usageReading: Awaited<ReturnType<typeof this.prisma.assetUsageReading.create>>;
+
+    await this.prisma.$transaction(async (tx) => {
+      usageReading = await tx.assetUsageReading.create({
+        data: {
+          assetId,
+          unit,
+          reading,
+          previousReading: previousReading !== null ? Number(previousReading) : null,
+          recordedAt: now,
+          recordedById: actorId ?? null,
+          sourceSubmissionId: dto.sourceSubmissionId ?? null,
+          isMeterReplacement: dto.isMeterReplacement ?? false,
+          note: dto.note ?? null
+        }
+      });
+
+      await tx.asset.update({
+        where: { id: assetId },
+        data: assetDenormData
+      });
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "assets.usage-reading.create",
+      entityType: "AssetUsageReading",
+      entityId: usageReading!.id,
+      metadata: { assetId, unit, reading, isMeterReplacement: dto.isMeterReplacement ?? false }
+    });
+
+    return usageReading!;
+  }
+
+  /**
+   * List usage readings for an asset, newest first.
+   *
+   * Includes the recording user's name for display. Optionally filtered by unit.
+   *
+   * @param assetId - asset id
+   * @param query - optional unit filter and pagination
+   * @returns paginated { items, total, page, pageSize }
+   * @throws NotFoundException when the asset does not exist
+   */
+  async listUsageReadings(assetId: string, query: UsageReadingsQueryDto) {
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!asset) throw new NotFoundException("Asset not found.");
+
+    const where: Prisma.AssetUsageReadingWhereInput = {
+      assetId,
+      ...(query.unit ? { unit: query.unit } : {})
+    };
+
+    const skip = (query.page - 1) * query.pageSize;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.assetUsageReading.findMany({
+        where,
+        include: {
+          recordedBy: {
+            select: { id: true, firstName: true, lastName: true }
+          }
+        },
+        orderBy: { recordedAt: "desc" },
+        skip,
+        take: query.pageSize
+      }),
+      this.prisma.assetUsageReading.count({ where })
+    ]);
+
+    return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
   private buildMaintenanceSummary(asset: {

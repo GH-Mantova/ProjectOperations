@@ -49,8 +49,26 @@ a repeat Stage A dry-run reported `notesCreated: 0`, `notesSkippedDuplicate: 127
 `apps/api/src/modules/admin-imports/export-tender-client-notes.ts` — a standalone, **read-only**
 script that writes every `tender_client_notes` row to JSON: `id`, `tenderId`, `clientId`,
 `noteType`, `subject`, `body`, `occurredAt`, `createdById`, `createdAt`, plus the tender title and
-client name resolved for human readability. It must print the row count it exported and exit
-non-zero if the count is zero (an empty export would silently make the drop unrecoverable).
+client name resolved for human readability.
+
+**Row-count guard — the script must exit non-zero unless it exported EXACTLY 127 rows.** Print the
+expected count, the actual count, and which direction the mismatch runs:
+
+- **More than 127** — rows were written to `tender_client_notes` AFTER the 2026-08-17 migration, so
+  their content is **NOT** mirrored in `tender_clarification_notes` and the drop would destroy the
+  only copy. This is a live possibility until Slice 1 merges: the REST surface
+  `POST /tenders/:tenderId/clients/:clientId/notes` is still reachable today
+  (`tender-client-notes.service.ts:65`). Nothing in `apps/web/src` calls it — verified, zero
+  references — but a script, an integration or a manual API call could. **Stop and re-migrate the
+  new rows before dropping anything.**
+- **Fewer than 127** — rows have already been removed by something. Stop and find out what, because
+  the 2026-08-17 read-back is no longer a valid description of the table.
+- **Zero** — an empty export would silently make the drop unrecoverable. Stop.
+
+Hard-code 127 as a named constant with a comment pointing at the 2026-08-17 migration, so the number
+is auditable rather than magic. If Marco has consciously changed the row count he can update the
+constant in the same PR that explains why — the guard exists to force that conversation, not to be
+edited away quietly.
 
 Marco runs this and keeps the file **before** the migration is applied. Document the exact command
 in the runbook.
@@ -81,7 +99,15 @@ Remove `model TenderClientNote` (~line 2734) and all three back-relations:
 ### 5. Tests
 
 `__tests__/export-tender-client-notes.spec.ts` must prove the export includes every field named
-above and that a zero-row export exits non-zero.
+above, and must cover all four row-count outcomes:
+
+- exactly 127 → exit 0, export written
+- more than 127 → exit non-zero, message names the after-migration-write risk
+- fewer than 127 → exit non-zero
+- zero → exit non-zero
+
+A guard with no test for its failing branches is a guard nobody has proven works, and this one is
+the last thing standing between a mistake and unrecoverable production data.
 
 ## Explicitly out of scope
 

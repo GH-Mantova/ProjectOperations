@@ -2,7 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 
-const DIRECTIONS = ["sent", "received"] as const;
+// "internal" covers team-authored commentary that was never sent to or
+// received from a client — e.g. the estimating tracker's "Follow Up Notes"
+// migrated into this feed. The DB column is a free String, so widening the
+// allow-list needs no migration. Without it, editing a migrated note through
+// the UI returns 400.
+const DIRECTIONS = ["sent", "received", "internal"] as const;
 type Direction = (typeof DIRECTIONS)[number];
 
 @Injectable()

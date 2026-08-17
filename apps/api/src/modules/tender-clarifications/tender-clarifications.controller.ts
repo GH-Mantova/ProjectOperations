@@ -9,8 +9,14 @@ import { TenderClarificationsService } from "./tender-clarifications.service";
 
 const NOTE_TYPES = ["call", "email", "meeting", "note", "response"] as const;
 
+// Kept in lockstep with DIRECTIONS in tender-clarifications.service.ts.
+// "internal" is team-authored commentary neither sent to nor received from a
+// client — e.g. estimating-tracker follow-up notes migrated into this feed.
+const DIRECTIONS = ["sent", "received", "internal"] as const;
+type ClarificationDirection = (typeof DIRECTIONS)[number];
+
 class CreateClarificationDto {
-  @IsString() @IsIn(["sent", "received"]) direction!: "sent" | "received";
+  @IsString() @IsIn(DIRECTIONS as unknown as string[]) direction!: ClarificationDirection;
   @IsString() text!: string;
   @IsOptional() @IsDateString() date?: string;
   @IsOptional() @IsString() @IsIn(NOTE_TYPES as unknown as string[]) noteType?: string;
@@ -18,7 +24,7 @@ class CreateClarificationDto {
 }
 
 class UpdateClarificationDto {
-  @IsOptional() @IsString() @IsIn(["sent", "received"]) direction?: "sent" | "received";
+  @IsOptional() @IsString() @IsIn(DIRECTIONS as unknown as string[]) direction?: ClarificationDirection;
   @IsOptional() @IsString() text?: string;
   @IsOptional() @IsDateString() date?: string;
   @IsOptional() @IsString() @IsIn(NOTE_TYPES as unknown as string[]) noteType?: string;

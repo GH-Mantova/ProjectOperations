@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  UseGuards
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
@@ -6,7 +16,9 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { HandoversService } from "./handovers.service";
+import { HandoverComplianceService } from "./handover-compliance.service";
 import { CreateHandoverBodyDto, PatchHandoverValuesDto } from "./dto/handover.dto";
+import { AddManualComplianceItemDto, UpdateComplianceItemDto } from "./dto/handover-compliance.dto";
 
 const PERM = "tenderconversion.manage";
 
@@ -24,7 +36,10 @@ const PERM = "tenderconversion.manage";
 @Controller("handovers")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class HandoversController {
-  constructor(private readonly service: HandoversService) {}
+  constructor(
+    private readonly service: HandoversService,
+    private readonly complianceService: HandoverComplianceService
+  ) {}
 
   /**
    * Create a handover for a contract.
@@ -96,5 +111,117 @@ export class HandoversController {
     @Body() dto: PatchHandoverValuesDto
   ) {
     return this.service.patchValues(id, dto.values);
+  }
+
+  // ── Compliance items (B-HW-9) ───────────────────────────────────────────────
+
+  /**
+   * List all compliance-obligation rows for a handover.
+   *
+   * @param id - handover id
+   * @returns Array of HandoverComplianceItem rows ordered by createdAt asc.
+   * @throws NotFoundException when the handover does not exist.
+   */
+  @Get(":id/compliance-items")
+  @RequirePermissions(PERM)
+  @ApiOperation({ summary: "List compliance-obligation items for a handover." })
+  @ApiParam({ name: "id", description: "Handover id." })
+  @ApiResponse({ status: 200, description: "Compliance items." })
+  @ApiResponse({ status: 404, description: "Handover not found." })
+  listComplianceItems(@Param("id") id: string) {
+    return this.complianceService.list(id);
+  }
+
+  /**
+   * Derive compliance-obligation suggestions from the handover's scope-of-works
+   * and persist them.  Existing suggested rows are not overwritten.
+   *
+   * @param id - handover id
+   * @returns The full list of compliance items after the derive run.
+   * @throws BadRequestException when the handover is finalised.
+   * @throws NotFoundException when the handover does not exist.
+   */
+  @Post(":id/compliance-items/derive")
+  @RequirePermissions(PERM)
+  @ApiOperation({ summary: "Derive and persist compliance-obligation suggestions from scope items." })
+  @ApiParam({ name: "id", description: "Handover id." })
+  @ApiResponse({ status: 201, description: "Suggestions derived; returns fresh list." })
+  @ApiResponse({ status: 400, description: "Handover is finalised." })
+  @ApiResponse({ status: 404, description: "Handover not found." })
+  deriveComplianceSuggestions(@Param("id") id: string) {
+    return this.complianceService.deriveSuggestions(id);
+  }
+
+  /**
+   * Add a manual compliance-obligation row to a handover.
+   *
+   * @param id  - handover id
+   * @param dto - obligation details (type, responsibleParty, optional status/docRef)
+   * @returns The created HandoverComplianceItem row.
+   * @throws BadRequestException when the handover is finalised or type is empty.
+   * @throws NotFoundException when the handover does not exist.
+   */
+  @Post(":id/compliance-items")
+  @RequirePermissions(PERM)
+  @ApiOperation({ summary: "Add a manual compliance-obligation item to a handover." })
+  @ApiParam({ name: "id", description: "Handover id." })
+  @ApiResponse({ status: 201, description: "Compliance item created." })
+  @ApiResponse({ status: 400, description: "Handover is finalised or type is empty." })
+  @ApiResponse({ status: 404, description: "Handover not found." })
+  addManualComplianceItem(
+    @Param("id") id: string,
+    @Body() dto: AddManualComplianceItemDto
+  ) {
+    return this.complianceService.addManual(id, dto);
+  }
+
+  /**
+   * Patch a compliance-obligation row.  Only supplied fields are changed.
+   *
+   * @param id     - handover id (used for routing; ownership validated via item)
+   * @param itemId - compliance item id
+   * @param dto    - fields to patch
+   * @returns The updated row.
+   * @throws BadRequestException when the handover is finalised.
+   * @throws NotFoundException when the item does not exist.
+   */
+  @Patch(":id/compliance-items/:itemId")
+  @RequirePermissions(PERM)
+  @ApiOperation({ summary: "Patch a compliance-obligation item." })
+  @ApiParam({ name: "id", description: "Handover id." })
+  @ApiParam({ name: "itemId", description: "Compliance item id." })
+  @ApiResponse({ status: 200, description: "Compliance item updated." })
+  @ApiResponse({ status: 400, description: "Handover is finalised or type is empty." })
+  @ApiResponse({ status: 404, description: "Compliance item not found." })
+  updateComplianceItem(
+    @Param("id") _id: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: UpdateComplianceItemDto
+  ) {
+    return this.complianceService.update(itemId, dto);
+  }
+
+  /**
+   * Delete a compliance-obligation row.
+   *
+   * @param id     - handover id (routing; ownership validated via item)
+   * @param itemId - compliance item id
+   * @throws BadRequestException when the handover is finalised.
+   * @throws NotFoundException when the item does not exist.
+   */
+  @Delete(":id/compliance-items/:itemId")
+  @HttpCode(204)
+  @RequirePermissions(PERM)
+  @ApiOperation({ summary: "Delete a compliance-obligation item." })
+  @ApiParam({ name: "id", description: "Handover id." })
+  @ApiParam({ name: "itemId", description: "Compliance item id." })
+  @ApiResponse({ status: 204, description: "Compliance item deleted." })
+  @ApiResponse({ status: 400, description: "Handover is finalised." })
+  @ApiResponse({ status: 404, description: "Compliance item not found." })
+  removeComplianceItem(
+    @Param("id") _id: string,
+    @Param("itemId") itemId: string
+  ) {
+    return this.complianceService.remove(itemId);
   }
 }

@@ -6,22 +6,43 @@ import {
   Post,
   Query,
   Redirect,
+  Res,
   UseGuards
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import type { Response } from "express";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
+import { AuditService } from "../audit/audit.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { XeroContactExportService } from "./xero-contact-export.service";
 import { XeroService } from "./xero.service";
 import { XeroCallbackDto } from "./dto/xero.dto";
+
+// CFX-4: coerce the querystring ?includeBankDetails=... flag. Anything other
+// than the exact string "true" is false — the export defaults to WITHOUT bank
+// details (decision 6 in the plan, and Risk 7.5).
+function parseIncludeBankDetails(value: string | undefined): boolean {
+  return value === "true";
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 @ApiTags("Xero")
 @ApiBearerAuth()
 @Controller("xero")
 export class XeroController {
-  constructor(private readonly service: XeroService) {}
+  constructor(
+    private readonly service: XeroService,
+    private readonly exportService: XeroContactExportService,
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService
+  ) {}
 
   @Get("connect")
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -221,5 +242,77 @@ export class XeroController {
   @ApiQuery({ name: "limit", required: false, type: String, description: "Max rows to return (default 50)" })
   syncLogs(@Query("limit") limit?: string) {
     return this.service.listSyncLogs(limit ? Number(limit) : undefined);
+  }
+
+  // ── CFX-4: file-based contact export (parallel to the dormant API push) ──
+
+  @Get("export/clients.csv")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("platform.admin")
+  @ApiOperation({
+    summary:
+      "Download active clients as a Xero-format contact-import CSV. Custom fields are never included. " +
+      "Bank details (BSB + account) are excluded unless includeBankDetails=true — every export is audited."
+  })
+  @ApiQuery({
+    name: "includeBankDetails",
+    required: false,
+    type: String,
+    description: "Set to 'true' to include BankAccountName and BankAccountNumber columns. Defaults to false."
+  })
+  @ApiResponse({ status: 200, description: "CSV file attachment." })
+  async exportClientsCsv(
+    @Query("includeBankDetails") includeBankDetails: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: false }) res: Response
+  ): Promise<void> {
+    const withBank = parseIncludeBankDetails(includeBankDetails);
+    const clients = await this.prisma.client.findMany({ where: { isActive: true } });
+    const csv = this.exportService.buildClientsCsv(clients, { includeBankDetails: withBank });
+    await this.audit.write({
+      actorId: user.sub,
+      action: "XERO_CONTACT_EXPORT",
+      entityType: "CLIENT",
+      metadata: { rowCount: clients.length, includeBankDetails: withBank }
+    });
+    const filename = `xero-clients-${todayIsoDate()}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.end(csv);
+  }
+
+  @Get("export/vendors.csv")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("platform.admin")
+  @ApiOperation({
+    summary:
+      "Download active subcontractors/suppliers as a Xero-format contact-import CSV. Custom fields are never included. " +
+      "Bank details (BSB + account) are excluded unless includeBankDetails=true — every export is audited."
+  })
+  @ApiQuery({
+    name: "includeBankDetails",
+    required: false,
+    type: String,
+    description: "Set to 'true' to include BankAccountName and BankAccountNumber columns. Defaults to false."
+  })
+  @ApiResponse({ status: 200, description: "CSV file attachment." })
+  async exportVendorsCsv(
+    @Query("includeBankDetails") includeBankDetails: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: false }) res: Response
+  ): Promise<void> {
+    const withBank = parseIncludeBankDetails(includeBankDetails);
+    const vendors = await this.prisma.subcontractorSupplier.findMany({ where: { isActive: true } });
+    const csv = this.exportService.buildVendorsCsv(vendors, { includeBankDetails: withBank });
+    await this.audit.write({
+      actorId: user.sub,
+      action: "XERO_CONTACT_EXPORT",
+      entityType: "VENDOR",
+      metadata: { rowCount: vendors.length, includeBankDetails: withBank }
+    });
+    const filename = `xero-vendors-${todayIsoDate()}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.end(csv);
   }
 }

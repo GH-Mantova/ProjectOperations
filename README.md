@@ -134,11 +134,6 @@ Details:
 - `pnpm seed:prod` — production provisioning: reference data (rates, densities, lookups, global lists, form templates, permissions/roles) + the three SSO-only pilot staff accounts. Creates zero demo entities, requires an explicit `DATABASE_URL`, and refuses to run against a database that contains dev seed users.
 - `pnpm seed:reference` / `pnpm seed:users:prod` / `pnpm seed:demo` — the individual layers.
 
-## Seed login (dev only)
-
-- Email: `admin@projectops.local`
-- Password: `Password123!`
-
 ## Documentation
 
 **Source of truth lives in [`/sot/`](./sot/README.md)** — charter & architecture, roadmap, progress log, data model, decisions & lessons, and active specs.

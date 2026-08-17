@@ -7,7 +7,9 @@ describe("AuthService", () => {
   const prisma = {
     $transaction: jest.fn().mockResolvedValue([]),
     user: {
-      update: jest.fn()
+      update: jest.fn(),
+      // MT-2: finishLogin and refresh now fetch homeTenantId via findUnique.
+      findUnique: jest.fn().mockResolvedValue({ homeTenantId: null })
     },
     refreshToken: {
       create: jest.fn(),

@@ -17,7 +17,7 @@ function buildService(overrides: Record<string, unknown> = {}) {
       findUnique: jest.fn().mockResolvedValue({
         id: ATTENDEE_ID,
         workerProfileId: WORKER_ID,
-        musterEvent: { status: MusterEventStatus.ACTIVE }
+        musterEvent: { status: MusterEventStatus.ACTIVE, siteId: "site-x" }
       }),
       update: jest.fn().mockImplementation((args: { where: { id: string }; data: Record<string, unknown> }) =>
         Promise.resolve({ id: args.where.id, ...args.data })
@@ -28,8 +28,9 @@ function buildService(overrides: Record<string, unknown> = {}) {
     },
     ...overrides
   };
-  const service = new MusterService(prisma as never);
-  return { service, prisma };
+  const realtime = { emit: jest.fn() };
+  const service = new MusterService(prisma as never, realtime as never);
+  return { service, prisma, realtime };
 }
 
 describe("MusterService.checkAttendee — GPS-A3", () => {
@@ -69,7 +70,7 @@ describe("MusterService.checkAttendee — GPS-A3", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: ATTENDEE_ID,
           workerProfileId: WORKER_ID,
-          musterEvent: { status: MusterEventStatus.COMPLETED }
+          musterEvent: { status: MusterEventStatus.COMPLETED, siteId: "site-x" }
         }),
         update: jest.fn()
       }

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useSafetyRealtime } from "../../hooks/useSafetyRealtime";
+
+const MUSTER_EVENT_TYPES = ["safety.muster.changed"] as const;
 
 type HeadcountData = {
   siteId: string;
@@ -10,25 +13,35 @@ type HeadcountData = {
 
 type Props = {
   siteId: string;
-  /** Refresh interval in milliseconds. Default 60000 (1 minute). */
+  /**
+   * Refresh interval in milliseconds for the safety-net poll. Default is
+   * 300000 (5 minutes) — RT-2 wired SSE push as the primary refresh trigger
+   * (see `useSafetyRealtime` below), so this poll only exists to recover
+   * from a lost stream that `EventSource` failed to reconnect. Pre-RT-2 the
+   * default was 60s; do NOT restore that without also disabling the SSE
+   * path or you'll double-fetch on every muster mutation.
+   */
   refreshInterval?: number;
 };
 
 /**
  * SiteHeadcountWidget
  *
- * Displays the live on-site headcount for a given site. Polls the
- * `/safety/muster/headcount/:siteId` endpoint on mount and at the given
- * interval. Shows a "Start muster" button when no active muster event
- * exists. If an active muster event is running, shows a "View roll call"
- * link instead.
+ * Displays the live on-site headcount for a given site. RT-2 (2026-08-14):
+ * refetches immediately on a `safety.muster.changed` SSE event scoped to
+ * this widget's `siteId`, so a start / attendee check / close in another
+ * tab (or on another user's device) reflects here without waiting for the
+ * next poll. A wide-interval poll remains as a safety net if the SSE stream
+ * can't be held. Shows a "Start muster" button when no active muster event
+ * exists; if an active muster is running, shows a "View roll call" link
+ * instead.
  *
  * Requires the current user to hold `safety.view` to see the count and
  * `safety.manage` to start a muster (the API enforces this; the button is
  * always rendered here and the server will 403 if the user lacks the
  * permission).
  */
-export function SiteHeadcountWidget({ siteId, refreshInterval = 60_000 }: Props) {
+export function SiteHeadcountWidget({ siteId, refreshInterval = 300_000 }: Props) {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
 
@@ -63,6 +76,12 @@ export function SiteHeadcountWidget({ siteId, refreshInterval = 60_000 }: Props)
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
   }, [fetchHeadcount, refreshInterval]);
+
+  useSafetyRealtime({
+    types: [...MUSTER_EVENT_TYPES],
+    siteId,
+    onEvent: () => void fetchHeadcount()
+  });
 
   const startMuster = useCallback(async () => {
     setStarting(true);

@@ -9,6 +9,12 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel a PR's in-flight run when a newer commit is pushed to the same PR.
+# Pushes to main are never cancelled — every trunk commit gets a full run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # Deterministic 32-byte hex key used solely for CI tests. Real
   # production keys live in Azure Key Vault and are never committed.
@@ -18,9 +24,44 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Decide whether this PR touches any build/test-relevant path. Docs-, prompt-
+  # and sot-only PRs (docs/**, sot/**, *.md) yield code=false, letting the heavy
+  # jobs below skip. A required job skipped via a job-level `if:` still satisfies
+  # branch protection (unlike a workflow-level paths filter, which would leave the
+  # required check pending forever). Pushes to main always yield code=true.
+  changes:
+    name: Changed-path filter
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: Detect build/test-relevant changes
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          printf 'Changed files:\n%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq '^(apps/|packages/|prisma/|tests/|scripts/|\.github/workflows/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig)'; then
+            echo "code=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   api:
     name: API — lint, test, compliance smoke
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
+    # test:canonical / test:api:serial run jest --runInBand (single process) and
+    # peak near Node's default ~4 GB heap; a random OOM (exit 134) flakes PRs
+    # (e.g. #1113 on a docs-only diff). Raise the ceiling for every step here.
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
     services:
       postgres:
         image: postgres:16
@@ -76,6 +117,8 @@ jobs:
 
   data-model-drift:
     name: Data model — generator sanity (schema.prisma parses cleanly)
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -104,6 +147,8 @@ jobs:
 
   web:
     name: Web — lint, logic tests, vitest, build
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2

@@ -53,6 +53,12 @@ export const permissionRegistry = [
   { code: "documents.manage", module: "documents", label: "Manage document links and access", description: "Create document links, versions, and document access rules" },
   { code: "tenders.view", module: "tendering", label: "View tenders", description: "View tenders" },
   { code: "tenders.manage", module: "tendering", label: "Create and edit tenders", description: "Create and update tenders" },
+  // Withdrawn-review lane. Reviewer/estimating-manager gate for the
+  // withdrawn-pending-review workflow: reopen a withdrawn tender back to
+  // Estimating, or confirm the withdrawal so it exits the Pipeline board
+  // and lands on the CRM Tenders register. Modeled on the leave-approval
+  // pattern — role-assignable, not hardcoded to a user.
+  { code: "tenders.review", module: "tendering", label: "Review withdrawn tenders (reopen or confirm)", description: "Reviewer authority to reopen a withdrawn tender to Estimating, or confirm the withdrawal (exits the Pipeline)", isHighRisk: true },
   { code: "tenderdocuments.view", module: "tendering", label: "View tender documents", description: "View tender documents" },
   { code: "tenderdocuments.manage", module: "tendering", label: "Upload and manage tender documents", description: "Manage tender documents" },
   { code: "jobs.view", module: "jobs", label: "View jobs", description: "View jobs" },
@@ -135,7 +141,12 @@ export const permissionRegistry = [
   // RC-1 — Subcontractor rate cards (2026-08-11). No role→permission assignment seeded;
   // Admin role picks them up automatically via the permission-sync on API startup.
   { code: "subcontractors.rates.view", module: "directory", label: "View subcontractor rate cards", description: "View a subcontractor's own agreed rates" },
-  { code: "subcontractors.rates.manage", module: "directory", label: "Manage subcontractor rate cards", description: "Create and supersede a subcontractor's own agreed rates" }
+  { code: "subcontractors.rates.manage", module: "directory", label: "Manage subcontractor rate cards", description: "Create and supersede a subcontractor's own agreed rates" },
+  // SLICE 17 — per-screen Administration route guards. system.manage gates the
+  // aggregate Admin Settings page (notifications, email, AI, integrations tabs).
+  // The Admin role receives this code automatically via the all-permissions grant
+  // in seed-reference.ts (every entry is upserted then granted to Admin).
+  { code: "system.manage", module: "platform", label: "Manage system settings", description: "Access and edit the aggregate system settings (notifications, email, AI, integrations)" }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

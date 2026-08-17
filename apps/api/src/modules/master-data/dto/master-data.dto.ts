@@ -78,6 +78,16 @@ export class UpsertClientDto {
 
   @ApiPropertyOptional({ enum: PAYMENT_TERMS_TYPES, description: "Vocabulary that mirrors Xero's contact payment-terms. Must be supplied with `paymentTermsDay`." })
   @IsOptional() @IsIn(PAYMENT_TERMS_TYPES as unknown as string[]) paymentTermsType?: PaymentTermsType | null;
+
+  // CFX-3 — custom fields bag. Keys are validated against the FieldDefinition
+  // registry in the service layer; unknown keys are silently dropped.
+  @ApiPropertyOptional({ description: "Arbitrary custom fields registered via the field-definition engine. Unknown keys are dropped server-side." })
+  @IsOptional() customFields?: Record<string, unknown> | null;
+
+  // MT-4 — mixed-classification tenant assignment.
+  // null = shared across the group; a valid Tenant id = scoped to that company.
+  @ApiPropertyOptional({ description: "MT-4: Tenant scope. null = shared across group; supply a Tenant id to restrict to one company. Validated against active Tenant rows." })
+  @IsOptional() @IsString() tenantId?: string | null;
 }
 
 /**
@@ -179,6 +189,10 @@ export class UpsertWorkerDto {
   @IsOptional() @IsString() employmentType?: string;
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsString() notes?: string;
+
+  // MT-4 — mixed-classification tenant assignment.
+  @ApiPropertyOptional({ description: "MT-4: Tenant scope. null = shared across group; supply a Tenant id to restrict to one company. Validated against active Tenant rows." })
+  @IsOptional() @IsString() tenantId?: string | null;
 }
 
 /**

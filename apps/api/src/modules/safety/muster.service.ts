@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { MusterAttendeeStatus, MusterEventStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { SafetyRealtimeEmitter } from "./realtime/safety-realtime.emitter";
 
 /**
  * Service for evacuation muster / roll-call events.
@@ -23,7 +24,10 @@ import { PrismaService } from "../../prisma/prisma.service";
  */
 @Injectable()
 export class MusterService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: SafetyRealtimeEmitter
+  ) {}
 
   // ─── Events ─────────────────────────────────────────────────────────────
 
@@ -87,6 +91,7 @@ export class MusterService {
       return created;
     });
 
+    this.realtime.emit({ type: "safety.muster.changed", siteId });
     return { ...event, snapshotCount: onSite.length };
   }
 
@@ -175,7 +180,7 @@ export class MusterService {
 
     const attendee = await this.prisma.musterAttendee.findUnique({
       where: { id: attendeeId },
-      include: { musterEvent: { select: { status: true } } }
+      include: { musterEvent: { select: { status: true, siteId: true } } }
     });
     if (!attendee) throw new NotFoundException("Muster attendee not found.");
     if (attendee.musterEvent.status !== MusterEventStatus.ACTIVE) {
@@ -197,10 +202,15 @@ export class MusterService {
       }
     });
 
-    return this.prisma.musterAttendee.update({
+    const updated = await this.prisma.musterAttendee.update({
       where: { id: attendeeId },
       data: { status, checkedAt: new Date(), checkedById: actorId }
     });
+    this.realtime.emit({
+      type: "safety.muster.changed",
+      siteId: attendee.musterEvent.siteId ?? null
+    });
+    return updated;
   }
 
   /**
@@ -219,7 +229,7 @@ export class MusterService {
     void actorId; // retained for future audit-log use
     const event = await this.prisma.musterEvent.findUnique({
       where: { id: eventId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, siteId: true }
     });
     if (!event) throw new NotFoundException("Muster event not found.");
     if (event.status !== MusterEventStatus.ACTIVE) {
@@ -228,10 +238,12 @@ export class MusterService {
       );
     }
 
-    return this.prisma.musterEvent.update({
+    const updated = await this.prisma.musterEvent.update({
       where: { id: eventId },
       data: { status: MusterEventStatus.COMPLETED, completedAt: new Date() }
     });
+    this.realtime.emit({ type: "safety.muster.changed", siteId: event.siteId });
+    return updated;
   }
 
   /**
@@ -249,7 +261,7 @@ export class MusterService {
     void actorId;
     const event = await this.prisma.musterEvent.findUnique({
       where: { id: eventId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, siteId: true }
     });
     if (!event) throw new NotFoundException("Muster event not found.");
     if (event.status !== MusterEventStatus.ACTIVE) {
@@ -258,10 +270,12 @@ export class MusterService {
       );
     }
 
-    return this.prisma.musterEvent.update({
+    const updated = await this.prisma.musterEvent.update({
       where: { id: eventId },
       data: { status: MusterEventStatus.CANCELLED, completedAt: new Date() }
     });
+    this.realtime.emit({ type: "safety.muster.changed", siteId: event.siteId });
+    return updated;
   }
 
   // ─── Headcount ──────────────────────────────────────────────────────────

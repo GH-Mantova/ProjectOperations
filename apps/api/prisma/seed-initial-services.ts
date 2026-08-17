@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
+import { SEEDED_DEFAULT_TENANT_ID } from "../src/common/tenancy/tenant.constants";
 
 const BASE_DATE = new Date("2026-04-20T00:00:00.000Z");
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -47,6 +48,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     "users.view",
     "roles.view",
     "permissions.view",
+    "crm.view",
     "dashboards.view",
     "masterdata.view",
     "resources.view",
@@ -616,6 +618,39 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         status: "ACTIVE",
         email: `contact@${seed.domain}`,
         notes: `ABN ${seed.abn} · ${seed.type} · ${seed.industry}`
+      }
+    });
+  }
+
+  // NAV-2: Account spine (Client-360). Seed one Account per seeded Client so the
+  // Accounts index (/crm/accounts) has data. Idempotent upsert keyed by the
+  // unique clientId link. lastContactedAt is a derived roll-up, not stored here.
+  const accountSeeds: Array<{
+    id: string;
+    clientId: string;
+    lifecycleStatus: "PROSPECT" | "ACTIVE" | "PAST";
+  }> = [
+    { id: "account-001", clientId: "client-001", lifecycleStatus: "ACTIVE" },
+    { id: "account-002", clientId: "client-002", lifecycleStatus: "ACTIVE" },
+    { id: "account-003", clientId: "client-003", lifecycleStatus: "ACTIVE" },
+    { id: "account-004", clientId: "client-004", lifecycleStatus: "PROSPECT" },
+    { id: "account-005", clientId: "client-005", lifecycleStatus: "PAST" }
+  ];
+  for (const seed of accountSeeds) {
+    await prisma.account.upsert({
+      where: { clientId: seed.clientId },
+      update: {
+        lifecycleStatus: seed.lifecycleStatus,
+        accountType: "CLIENT",
+        source: "REPEAT_BUSINESS",
+        archivedAt: null
+      },
+      create: {
+        id: seed.id,
+        clientId: seed.clientId,
+        lifecycleStatus: seed.lifecycleStatus,
+        accountType: "CLIENT",
+        source: "REPEAT_BUSINESS"
       }
     });
   }
@@ -1487,7 +1522,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         leadTimeDays: 21,
         probability: seed.probability,
         estimatedValue: new Prisma.Decimal(seed.estimatedValue),
-        notes: seed.note
+        notes: seed.note,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       },
       create: {
         id: seed.id,
@@ -1504,7 +1540,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         leadTimeDays: 21,
         probability: seed.probability,
         estimatedValue: new Prisma.Decimal(seed.estimatedValue),
-        notes: seed.note
+        notes: seed.note,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1819,7 +1856,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         sourceTenderId: job.tenderId,
         status: "ACTIVE",
         projectManagerId: job.projectManagerUserId,
-        supervisorId: job.supervisorUserId
+        supervisorId: job.supervisorUserId,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       },
       create: {
         id: job.id,
@@ -1832,7 +1870,8 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         sourceTenderId: job.tenderId,
         status: "ACTIVE",
         projectManagerId: job.projectManagerUserId,
-        supervisorId: job.supervisorUserId
+        supervisorId: job.supervisorUserId,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 

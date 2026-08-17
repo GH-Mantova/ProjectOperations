@@ -1,6 +1,8 @@
 import { CenteredModal } from "@project-ops/ui";
 import { ClientStarRating } from "../../components/ClientStarRating";
 import { CorrespondencePanel } from "../../components/correspondence/CorrespondencePanel";
+import { DynamicFieldSection } from "../../components/DynamicFieldSection";
+import { TenantAssignmentField } from "../../components/tenancy/TenantAssignmentField";
 
 export type ActivityClient = {
   tenderClientId: string;
@@ -14,6 +16,9 @@ export type ActivityClient = {
   tenderCount: number;
   winRate: string | null;
   contact: { id: string; firstName: string; lastName: string; email?: string | null } | null;
+  customFields?: Record<string, unknown>;
+  /** MT-4: tenant scope of this client. null = shared across the group. */
+  tenantId?: string | null;
 };
 
 export function isPrimaryClient(client: Pick<ActivityClient, "relationshipType">): boolean {
@@ -49,7 +54,8 @@ export function ClientDetailDrawer({
   onClose,
   onScoreChange,
   onLogInteraction,
-  onRemove
+  onRemove,
+  onTenantChange
 }: {
   client: ActivityClient;
   canManage: boolean;
@@ -58,8 +64,24 @@ export function ClientDetailDrawer({
   onScoreChange: (score: number) => void;
   onLogInteraction: () => void;
   onRemove: () => void;
+  /**
+   * MT-4: called when the user changes the tenant assignment of this client.
+   * The caller is responsible for sending `PATCH /master-data/clients/:id { tenantId }`.
+   * Omit this prop to hide the TenantAssignmentField (e.g. when the caller
+   * does not yet support MT-4 tenant updates).
+   */
+  onTenantChange?: (tenantId: string | null) => void;
 }) {
   const winRate = client.winRate !== null && client.winRate !== undefined ? Number(client.winRate) : null;
+
+  // Build a record shape for DynamicFieldSection from the ActivityClient.
+  // The ActivityClient carries the fields that were loaded from the API;
+  // DynamicFieldSection renders only visible BUILTIN/CUSTOM definitions.
+  const clientRecord: Record<string, unknown> & { customFields?: Record<string, unknown> } = {
+    name: client.name,
+    customFields: client.customFields
+  };
+
   return (
     <CenteredModal
       title={client.name}
@@ -86,7 +108,29 @@ export function ClientDetailDrawer({
         </>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 12 }}>
+      {/*
+        The drawer body scrolls internally so its footer (Remove / Close in
+        the CenteredModal footer slot) stays reachable and every interactive
+        element inside (e.g. the preference-score radios asserted by
+        batch2-tendering.spec.ts:332) can be auto-scrolled into view by
+        Playwright. Without this cap the DynamicFieldSection stretches the
+        card past viewport and clicks time out with "element is outside of
+        the viewport".
+      */}
+      <div
+        data-testid="client-detail-drawer-body"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          marginTop: 12,
+          maxHeight: "calc(80vh - 96px)",
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: 4,
+          marginRight: -4
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {isPrimaryClient(client) ? <PrimaryTag /> : null}
           {client.relationshipType && !isPrimaryClient(client) ? (
@@ -130,6 +174,31 @@ export function ClientDetailDrawer({
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>No contact on file</p>
           )}
         </div>
+
+        {/* Dynamic field definitions — read-only view of BUILTIN/CUSTOM fields */}
+        <div>
+          <DynamicFieldSection
+            appliesTo="CLIENT"
+            record={clientRecord}
+            onChange={() => {
+              // This panel is read-only in the drawer. Edit flows are handled
+              // by the dedicated client edit surface.
+            }}
+          />
+        </div>
+
+        {/* MT-4: Tenant assignment — only rendered when canManage and the caller
+            supplies onTenantChange (super-user edit surfaces). */}
+        {canManage && onTenantChange ? (
+          <div>
+            <p className="s7-type-label" style={{ margin: "0 0 6px" }}>Company scope</p>
+            <TenantAssignmentField
+              value={client.tenantId ?? null}
+              onChange={onTenantChange}
+              disabled={!canManage}
+            />
+          </div>
+        ) : null}
 
         {canManage ? (
           <div>

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../../common/tenancy/tenant.constants";
 
 /**
  * feat/quote-estimate-traceability — round-trip test for the new
@@ -50,7 +51,7 @@ describe("Quote → Estimate traceability round-trip", () => {
     });
     const client = await prisma.client.create({ data: { name: "ZZTEST-TRACE Client" } });
     const tender = await prisma.tender.create({
-      data: { tenderNumber: "ZZTEST-TRACE-T", title: "Trace", status: "DRAFT", siteId: "site-unassigned" }
+      data: { tenantId: SEEDED_DEFAULT_TENANT_ID, tenderNumber: "ZZTEST-TRACE-T", title: "Trace", status: "DRAFT", siteId: "site-unassigned" }
     });
     const estimate = await prisma.tenderEstimate.create({
       data: {

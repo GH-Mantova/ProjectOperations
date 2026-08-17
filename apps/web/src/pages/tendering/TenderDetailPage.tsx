@@ -25,6 +25,10 @@ type TenderDetail = {
   title: string;
   description?: string | null;
   status: string;
+  // Withdrawn-review sub-state. NULL for every non-withdrawn tender, and for
+  // any WITHDRAWN row that predates the lifecycle slice (treated as
+  // pending-review by the UI so nothing silently exits the Pipeline).
+  withdrawalState?: string | null;
   dueDate?: string | null;
   proposedStartDate?: string | null;
   estimatedValue?: string | null;
@@ -145,6 +149,9 @@ export function TenderDetailPage() {
   }, [location.pathname]);
 
   const canManageTenders = useMemo(() => can(user, "tenders.manage"), [user]);
+  // Withdrawn-review reviewer gate — separate from the general tenders.manage
+  // grant so reopening/confirming a withdrawal is a role-assignable action.
+  const canReviewTenders = useMemo(() => can(user, "tenders.review"), [user]);
   const canManageEstimates = useMemo(() => can(user, "estimates.manage"), [user]);
   const canAdminEstimates = useMemo(() => can(user, "estimates.admin"), [user]);
   const canConvertTender = useMemo(() => can(user, "tenderconversion.manage"), [user]);
@@ -278,6 +285,36 @@ export function TenderDetailPage() {
       setStatusUpdating(false);
     }
   };
+
+  // Withdrawn-review actions. All three route through their dedicated endpoints
+  // (POST /withdraw, /withdrawal/reopen, /withdrawal/confirm) so the service
+  // layer can enforce the source-status guard, append the ledger row, and
+  // check the reviewer permission in one seam.
+  const withdrawalAction = async (kind: "withdraw" | "reopen" | "confirm") => {
+    if (!tender) return;
+    const suffix = kind === "withdraw" ? "withdraw" : `withdrawal/${kind}`;
+    setStatusUpdating(true);
+    try {
+      const response = await authFetch(`/tenders/${tender.id}/${suffix}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const canWithdraw =
+    canManageTenders &&
+    tender !== null &&
+    (tender.status === "DRAFT" || tender.status === "IN_PROGRESS");
+  const isPendingReview =
+    tender?.status === "WITHDRAWN" && tender.withdrawalState !== "CONFIRMED";
 
   const startDeleteTender = async () => {
     if (!tender) return;
@@ -414,6 +451,50 @@ export function TenderDetailPage() {
                   </option>
                 ))}
               </select>
+            ) : null}
+            {isPendingReview ? (
+              <span
+                className="s7-badge"
+                style={{
+                  background: "color-mix(in srgb, var(--status-warning, #F59E0B) 15%, transparent)",
+                  color: "var(--status-warning, #F59E0B)"
+                }}
+              >
+                Pending review
+              </span>
+            ) : null}
+            {canWithdraw ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--secondary s7-btn--sm"
+                onClick={() => void withdrawalAction("withdraw")}
+                disabled={statusUpdating}
+                title="Move this tender to Withdrawn (pending reviewer decision)."
+              >
+                Withdraw
+              </button>
+            ) : null}
+            {isPendingReview && canReviewTenders ? (
+              <>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--secondary s7-btn--sm"
+                  onClick={() => void withdrawalAction("reopen")}
+                  disabled={statusUpdating}
+                  title="Reopen this withdrawn tender back to Estimating."
+                >
+                  Reopen
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--sm"
+                  onClick={() => void withdrawalAction("confirm")}
+                  disabled={statusUpdating}
+                  title="Confirm withdrawal — tender exits the Pipeline and moves to the Register."
+                >
+                  Confirm withdrawal
+                </button>
+              </>
             ) : null}
             {canManageTenders ? (
               <button

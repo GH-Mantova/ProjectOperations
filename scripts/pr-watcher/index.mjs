@@ -251,7 +251,13 @@ async function sweepOrphanWorktrees() {
   const paths = parseWorktreePaths(listing, REPO_ROOT);
   for (const p of paths) {
     try {
-      await runGit(["worktree", "remove", "--force", p]);
+      // Double --force overrides a STALE worktree lock. This sweep runs only
+      // when no watcher child is running (startup / between jobs), so any lock
+      // present belongs to a dead/crashed agent and is safe to override. Single
+      // --force leaves stale-locked worktrees behind: they accumulate and
+      // re-wedge the lane (they loop-restarted the watcher twice on 2026-08-14 —
+      // a single stale lock was enough). Removal failure is still caught below.
+      await runGit(["worktree", "remove", "--force", "--force", p]);
       log("worktree", `reclaimed orphan worktree ${p}`);
     } catch (err) {
       log("worktree", `could not remove ${p}: ${err.message}`);
@@ -876,13 +882,17 @@ function readYamlFrontMatterDeps(body, deps) {
     } else if (currentKey === "fixes_pr") {
       const n = Number(inline);
       if (Number.isInteger(n) && n > 0) deps.fixesPr = n;
+    } else if (currentKey === "escalates") {
+      // escalates:true means a human decides the merge. Until 2026-08-17 the watcher did not
+      // know this word existed and enabled auto-merge on every PR it opened.
+      deps.escalates = /^true$/i.test(inline);
     }
     currentKey = null;
   }
 }
 
 export function parseWatcherFrontMatter(body) {
-  const deps = { requiresMerged: [], requiresFilesOnMain: [], fixesPr: null };
+  const deps = { requiresMerged: [], requiresFilesOnMain: [], fixesPr: null, escalates: false };
   for (const line of body.split("\n")) {
     const t = line.trim();
     if (t === "") continue;
@@ -1076,6 +1086,42 @@ function extractPrNumber(text) {
   const hashMatch = text.match(/(?:PR|pr|pull request)\s*#(\d+)/);
   if (hashMatch) return Number(hashMatch[1]);
   return null;
+}
+
+// escalates:true — a human decides this merge, so the watcher must NOT enable auto-merge.
+// It labels the PR `do-not-merge` (the label already existed, described as "escalates:true -
+// Marco merges this, not automation (DOCTRINE 5b)" — it was simply never applied by anything)
+// and leaves the PR open. CP-26 in scripts/pr-gates/pr-gates.mjs fails while that label is
+// present, so the hold is enforced at the gate and not only by this decision. Removing the
+// label IS the human's act of approval: CI re-runs, CP-26 passes, and the PR becomes mergeable.
+//
+// Before 2026-08-17 none of this existed: the string "escalates" appeared nowhere in the
+// watcher and `gh pr merge --auto --squash` ran on every PR it opened. This is the OPS-6
+// near-miss mechanism (a destructive migration one green build away from auto-merging).
+async function holdForMarco(prNumber, promptName) {
+  log("merge", `PR #${prNumber}: escalates:true — NOT enabling auto-merge; labelling do-not-merge`);
+  try {
+    await runGh(["pr", "edit", String(prNumber), "--add-label", "do-not-merge"]);
+  } catch (err) {
+    // Fail LOUD, never silently: an unlabelled escalates PR is exactly the hazard this closes.
+    log("merge", `PR #${prNumber}: FAILED to apply do-not-merge label: ${err.message}`);
+    return {
+      ok: false,
+      marco: true,
+      reason: `escalates:true — auto-merge withheld, but the do-not-merge label could NOT be applied (${err.message}). Apply it by hand before anyone merges.`,
+    };
+  }
+  try {
+    await runGh([
+      "pr", "comment", String(prNumber), "--body",
+      "Held for Marco: this prompt declared `escalates: true`, so the watcher did not enable " +
+      "auto-merge and applied the `do-not-merge` label. CP-26 fails while the label is present. " +
+      "Remove the label once you have reviewed it — that is what releases the merge.",
+    ]);
+  } catch (err) {
+    log("merge", `PR #${prNumber}: comment failed (non-fatal): ${err.message}`);
+  }
+  return { ok: false, marco: true, reason: "escalates:true — held for Marco, labelled do-not-merge" };
 }
 
 // Enable auto-merge, then poll until merged or failure.
@@ -1853,8 +1899,11 @@ async function drain() {
         return;
       } else {
         log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
-        const result =
-          AUTO_MERGE_POLICY === "tests-docs"
+        // escalates:true short-circuits BOTH merge paths — the flag means a human decides, so
+        // auto-merge is never enabled regardless of AUTO_MERGE_POLICY.
+        const result = deps.escalates
+          ? await holdForMarco(prNumber, name)
+          : AUTO_MERGE_POLICY === "tests-docs"
             ? await waitForPolicyMerge(prNumber)
             : await waitForMerge(prNumber, name);
         mergeReport = `\n\n---\n[watcher] merge result for PR #${prNumber}: ${JSON.stringify(result)}\n`;

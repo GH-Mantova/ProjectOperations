@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { FieldAppliesTo, FieldSource } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { MasterDataQueryDto } from "./dto/master-data-query.dto";
@@ -27,10 +28,43 @@ import {
  */
 @Injectable()
 export class MasterDataService {
+  private readonly logger = new Logger(MasterDataService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService
   ) {}
+
+  /**
+   * Validates and sanitises `customFields` from an update DTO against the
+   * registered CUSTOM FieldDefinition rows. Any key not in the registry is
+   * dropped and a warning is logged. Returns `undefined` when input is absent.
+   */
+  private async sanitizeCustomFields(
+    rawCustomFields: Record<string, unknown> | null | undefined,
+    appliesTo: FieldAppliesTo
+  ): Promise<Record<string, unknown> | undefined> {
+    if (rawCustomFields === null || rawCustomFields === undefined) return undefined;
+
+    const allowedDefs = await this.prisma.fieldDefinition.findMany({
+      where: {
+        source: FieldSource.CUSTOM,
+        OR: [{ appliesTo }, { appliesTo: FieldAppliesTo.BOTH }]
+      },
+      select: { key: true }
+    });
+    const allowedKeys = new Set(allowedDefs.map((d) => d.key));
+
+    const clean: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rawCustomFields)) {
+      if (allowedKeys.has(key)) {
+        clean[key] = value;
+      } else {
+        this.logger.warn(`Dropping unknown custom field key "${key}" for appliesTo=${appliesTo}`);
+      }
+    }
+    return clean;
+  }
 
   /**
    * Paginated list of clients, with each client's sites and claim-reminder user included.
@@ -98,6 +132,8 @@ export class MasterDataService {
       await this.ensureUniqueName("client", dto.name, id);
     }
     this.assertPaymentTermsPair(dto);
+    // MT-4: validate tenantId when it is explicitly supplied and non-null.
+    if ("tenantId" in dto) await this.validateTenantId(dto.tenantId);
 
     if (id) {
       // Build the update data object from only the keys that are explicitly
@@ -109,12 +145,37 @@ export class MasterDataService {
           data[key as string] = (dto as Record<string, unknown>)[key as string];
         }
       }
+
+      // Validate and sanitise custom fields — drop any key not in the CUSTOM
+      // FieldDefinition registry for CLIENT. Do NOT touch typed-column updates.
+      if ("customFields" in data) {
+        const rawCf = data.customFields as Record<string, unknown> | null | undefined;
+        const sanitised = await this.sanitizeCustomFields(rawCf, FieldAppliesTo.CLIENT);
+        if (sanitised !== undefined) {
+          data.customFields = sanitised;
+        } else {
+          delete data.customFields;
+        }
+      }
+
       const record = await this.prisma.client.update({ where: { id }, data });
       await this.audit(actorId, "masterdata.client.update", "Client", record.id);
       return record;
     }
 
-    const record = await this.prisma.client.create({ data: dto as UpsertClientDto });
+    // On CREATE: sanitise customFields if present in the DTO.
+    const createData = { ...(dto as UpsertClientDto) } as Record<string, unknown>;
+    if ("customFields" in createData) {
+      const rawCf = createData.customFields as Record<string, unknown> | null | undefined;
+      const sanitised = await this.sanitizeCustomFields(rawCf, FieldAppliesTo.CLIENT);
+      if (sanitised !== undefined) {
+        createData.customFields = sanitised;
+      } else {
+        delete createData.customFields;
+      }
+    }
+
+    const record = await this.prisma.client.create({ data: createData as never });
     await this.audit(actorId, "masterdata.client.create", "Client", record.id);
     return record;
   }
@@ -426,6 +487,8 @@ export class MasterDataService {
    * @param id Worker id to update, or `undefined` to create.
    */
   async upsertWorker(id: string | undefined, dto: UpsertWorkerDto, actorId?: string) {
+    // MT-4: validate tenantId when it is explicitly supplied and non-null.
+    if ("tenantId" in dto) await this.validateTenantId(dto.tenantId);
     const record = id
       ? await this.prisma.worker.update({ where: { id }, data: dto })
       : await this.prisma.worker.create({ data: dto });
@@ -690,6 +753,24 @@ export class MasterDataService {
   // to be paired with `paymentTermsType: null` — otherwise Prisma writes the
   // single null and leaves the other half of the pair behind, violating the
   // invariant. Per Codex review on PR #277.
+  /**
+   * MT-4: Validate that `tenantId` (when provided and non-null) references an
+   * active Tenant row. Throws BadRequestException if the tenant is unknown or
+   * inactive. A null value is always valid (means "shared across the group").
+   *
+   * @param tenantId — value to validate; undefined means "not supplied in DTO" (no-op).
+   */
+  private async validateTenantId(tenantId: string | null | undefined): Promise<void> {
+    if (tenantId === undefined || tenantId === null) return;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, isActive: true }
+    });
+    if (!tenant || !tenant.isActive) {
+      throw new BadRequestException(`tenantId '${tenantId}' does not reference an active Tenant.`);
+    }
+  }
+
   private assertPaymentTermsPair(dto: {
     paymentTermsDay?: number | null;
     paymentTermsType?: string | null;

@@ -1,4 +1,6 @@
+import { APP_INTERCEPTOR } from "@nestjs/core";
 import { Module } from "@nestjs/common";
+import { TenantContextInterceptor } from "./common/tenancy/tenant-context.interceptor";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AccessRequestsModule } from "./modules/access-requests/access-requests.module";
@@ -85,8 +87,19 @@ import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-r
 import { VariationsModule } from "./modules/variations/variations.module";
 import { FieldDefinitionsModule } from "./modules/field-definitions/field-definitions.module";
 import { AgreedRecordsModule } from "./modules/agreed-records/agreed-records.module";
+import { TenantsModule } from "./modules/tenants/tenants.module";
 
 @Module({
+  providers: [
+    // MT-2: wire the tenant-context interceptor globally so every request
+    // establishes an AsyncLocalStorage context from request.user.tenantId.
+    // TenantContextService is provided by PrismaModule (@Global) so NestJS
+    // can inject it here without a separate import.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor
+    }
+  ],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
@@ -176,7 +189,8 @@ import { AgreedRecordsModule } from "./modules/agreed-records/agreed-records.mod
     ScheduleOfRatesModule,
     VariationsModule,
     FieldDefinitionsModule,
-    AgreedRecordsModule
+    AgreedRecordsModule,
+    TenantsModule
   ]
 })
 export class AppModule {}

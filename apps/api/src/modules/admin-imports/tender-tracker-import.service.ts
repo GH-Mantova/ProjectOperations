@@ -1,28 +1,33 @@
 /**
- * MIG-2 — Tender-tracker import service.
+ * MIG-2 -- Tender-tracker import service.
  *
- * Parses an uploaded CSV or XLSX file (ExcelJS, already in package.json) and
- * either performs a dry-run analysis or idempotently commits the rows as
- * Tender / Client / Site / TenderClient / TenderClientNote records.
+ * Parses an uploaded CSV or XLSX file (ExcelJS) and either performs a dry-run
+ * analysis or idempotently commits the rows as Tender / Client / Site /
+ * TenderClient / TenderClientNote records.
  *
- * Decision references (from docs/plans/tender-tracker-migration-plan.md):
- *   D1  Client set = tracker clients only; dedupe on normalised name.
- *   D2  Status/outcome mapping (Probability + Decision columns).
- *   D3  Legacy T-number lives in title; format: "T#### — <Project Name>".
- *   D4  Stub Site per tender (name = title, all address fields NULL).
- *   D5  Follow Up Notes → TenderClientNote (noteType = "note").
- *   D6  Estimator matched by name against existing User rows; never created.
- *   D7  Field mapping: Tender Price → estimatedValue, Lead time → leadTimeDays, etc.
- *   D9  No real tracker data in fixtures.
+ * Status/probability mapping refined 2026-08-13 with Marco against the real
+ * tracker columns:
+ *   - T-number comes from the dedicated "Tender No." column (fallback: name).
+ *   - Title is built once as "T#### - <Project Name>" (no doubled number).
+ *   - Tender number = the clean T-number.
+ *   - Probability="Won"  -> CONTRACT_ISSUED   (we won  => contract)
+ *   - Probability="Lost" -> LOST
+ *   - Client Project Status="Won"/"In Progress" -> AWARDED (client awarded)
+ *   - Client Project Status="Lost" -> LOST
+ *   - Decision="Not quoting" -> WITHDRAWN
+ *   - Decision="Submitted"   -> SUBMITTED
+ *   - Decision="Quoting" or "Started quoting" populated -> IN_PROGRESS
+ *   - otherwise -> DRAFT
+ *   - Probability rating words (Hot/Warm/Cold/Chasing/Tendering/Not Started)
+ *     map to the numeric Tender.probability (%).
+ *   - Estimator "Russel/Russell Cummings" -> Sean Lattin (not an ERP user).
  */
 
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { PrismaService } from "../../prisma/prisma.service";
-
-// ---------------------------------------------------------------------------
-// Public response type
-// ---------------------------------------------------------------------------
+import { TenderNumberService } from "../tendering/tender-number.service";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../common/tenancy/tenant.constants";
 
 export interface TenderTrackerImportReport {
   dryRun: boolean;
@@ -37,9 +42,106 @@ export interface TenderTrackerImportReport {
   badRows: Array<{ row: number; reason: string }>;
 }
 
-// ---------------------------------------------------------------------------
-// Internal parsed-row shape
-// ---------------------------------------------------------------------------
+/** One line of the dry-run preview, so a human can eyeball before committing. */
+export interface FollowUpNoteSample {
+  tenderTitle: string;
+  clientName: string | null;
+  author: string | null;
+  occurredAt: string;
+  textPreview: string;
+}
+
+/**
+ * Report for both follow-up-note recovery paths:
+ *   mode "migrate"   -- existing TenderClientNote rows -> TenderClarificationNote
+ *   mode "notesOnly" -- spreadsheet Column O top-up, writing notes and NOTHING else
+ */
+export interface FollowUpNotesReport {
+  dryRun: boolean;
+  mode: "migrate" | "notesOnly";
+  rowsRead: number;
+  notesCreated: number;
+  notesSkippedDuplicate: number;
+  notesSkippedNoTenderMatch: number;
+  notesWithoutClient: number;
+  notesWithoutEstimator: number;
+  sample: FollowUpNoteSample[];
+  badRows: Array<{ row: number; reason: string }>;
+}
+
+/** Preview lines returned by a dry run. */
+const SAMPLE_LIMIT = 10;
+
+/** Longest text fragment shown in a dry-run sample line. */
+const SAMPLE_TEXT_CHARS = 80;
+
+/**
+ * The Activity & communications panel renders TenderEntry and
+ * TenderClarificationNote. TenderClarificationNote accepts only these note
+ * types -- anything else is stored but never rendered, which is the exact bug
+ * this recovery exists to fix. TenderClientNote additionally allows
+ * "site_visit", so it is folded into the closest renderable type.
+ */
+const CLARIFICATION_NOTE_TYPES = new Set(["call", "email", "meeting", "note", "response"]);
+
+function toClarificationNoteType(sourceType: string | null | undefined): string {
+  const candidate = (sourceType ?? "").trim().toLowerCase();
+  return CLARIFICATION_NOTE_TYPES.has(candidate) ? candidate : "note";
+}
+
+/**
+ * Imported follow-up notes are the team's own commentary about a tender --
+ * neither sent to nor received from the client -- so they are logged as
+ * "internal". See DIRECTIONS in tender-clarifications.service.ts.
+ */
+const IMPORTED_NOTE_DIRECTION = "internal";
+
+/** Fold an optional subject into the single text field the feed renders. */
+function composeNoteText(subject: string | null | undefined, body: string): string {
+  const cleanBody = body.trim();
+  const cleanSubject = (subject ?? "").trim();
+  return cleanSubject ? `${cleanSubject} — ${cleanBody}` : cleanBody;
+}
+
+function personName(
+  person: { firstName?: string | null; lastName?: string | null } | null | undefined
+): string | null {
+  if (!person) return null;
+  const name = [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
+  return name || null;
+}
+
+/**
+ * Date for a follow-up note, in descending order of truthfulness:
+ * submitted -> quote due -> started quoting -> the tender's own createdAt.
+ * Deliberately never `new Date()`.
+ */
+function resolveNoteDate(row: ParsedRow, tenderCreatedAt: Date): Date {
+  return row.dateSubmitted ?? row.quoteDueDate ?? row.startedQuotingDate ?? tenderCreatedAt;
+}
+
+/**
+ * Pick which of a tender's EXISTING client links owns this note, by matching
+ * the tracker's Client Company Name under the importer's own normalisation.
+ *
+ * Returns null when the tender has no links, or several and none match, or the
+ * spreadsheet's client cell is blank. Null is a valid outcome, not a failure:
+ * TenderClarificationNote.clientId is nullable and an unassigned note still
+ * renders under "All clients". Notes-only mode must NEVER create a Client, a
+ * Site or a TenderClient link to force a match.
+ */
+function pickLinkedClientId(
+  links: ReadonlyArray<{ clientId: string; client: { name: string } | null }>,
+  clientNameNorm: string
+): string | null {
+  if (!clientNameNorm) return null;
+  for (const link of links) {
+    if (link.client && normaliseClientName(link.client.name) === clientNameNorm) {
+      return link.clientId;
+    }
+  }
+  return null;
+}
 
 interface ParsedRow {
   rowIndex: number;
@@ -52,32 +154,43 @@ interface ParsedRow {
   dateSubmitted: Date | null;
   leadTime: number | null;
   probability: string | null;
+  probabilityNum: number | null;
   decision: string | null;
+  clientProjectStatus: string | null;
+  startedQuoting: boolean;
+  /**
+   * The "Started quoting" cell parsed as a DATE. `startedQuoting` above stays a
+   * presence flag because status mapping only asks "did quoting start?", but the
+   * follow-up-note date chain needs the actual date as its last real-date
+   * fallback before giving up and using the tender's own createdAt.
+   */
+  startedQuotingDate: Date | null;
   followUpNotes: string | null;
-  tNumber: string; // e.g. "T1001"
+  tNumber: string;
 }
 
-// ---------------------------------------------------------------------------
-// Known estimator alias map (D6)
-// ---------------------------------------------------------------------------
-
-// Normalise: lowercase, collapse whitespace.
+// Token-level spelling fixes (normalise: lowercase, collapse whitespace).
 const ESTIMATOR_ALIASES: Record<string, string> = {
-  "mantovaninni": "mantovanini", // tracker misspelling → canonical
+  "mantovaninni": "mantovanini",
+};
+
+// Whole-name reassignment to a DIFFERENT existing user (not a spelling fix).
+// Russel Cummings is not an ERP user; his tenders are assigned to Sean Lattin.
+const ESTIMATOR_REASSIGN: Record<string, string> = {
+  "russel cummings": "sean lattin",
+  "russell cummings": "sean lattin",
 };
 
 function normaliseEstimatorName(raw: string): string {
   let norm = raw.toLowerCase().replace(/\s+/g, " ").trim();
-  // Apply token-level alias substitution
   for (const [alias, canonical] of Object.entries(ESTIMATOR_ALIASES)) {
     norm = norm.replace(new RegExp(alias, "g"), canonical);
   }
+  if (ESTIMATOR_REASSIGN[norm]) {
+    norm = ESTIMATOR_REASSIGN[norm];
+  }
   return norm;
 }
-
-// ---------------------------------------------------------------------------
-// Status mapping (D2)
-// ---------------------------------------------------------------------------
 
 interface StatusResult {
   status: string;
@@ -85,45 +198,41 @@ interface StatusResult {
   lostAt: Date | null;
 }
 
-function mapStatus(probability: string | null, decision: string | null, submittedAt: Date | null, rowWarnings: string[]): StatusResult {
-  // Decision overrides when terminal
-  const decisionNorm = (decision ?? "").trim().toLowerCase();
-  const probNorm = (probability ?? "").trim().toLowerCase();
+function mapStatus(
+  probability: string | null,
+  decision: string | null,
+  clientProjectStatus: string | null,
+  startedQuoting: boolean,
+  submittedAt: Date | null
+): StatusResult {
+  const prob = (probability ?? "").trim().toLowerCase();
+  const dec = (decision ?? "").trim().toLowerCase();
+  const cps = (clientProjectStatus ?? "").trim().toLowerCase();
+  const stamp = submittedAt ?? new Date();
 
-  if (decisionNorm === "won") {
-    return { status: "WON", wonAt: submittedAt ?? new Date(), lostAt: null };
-  }
-  if (decisionNorm === "lost") {
-    return { status: "LOST", wonAt: null, lostAt: submittedAt ?? new Date() };
-  }
-
-  // Fall through to Probability
-  switch (probNorm) {
-    case "won":
-      return { status: "WON", wonAt: submittedAt ?? new Date(), lostAt: null };
-    case "lost":
-      return { status: "LOST", wonAt: null, lostAt: submittedAt ?? new Date() };
-    case "not quoting":
-      return { status: "WITHDRAWN", wonAt: null, lostAt: null };
-    case "submitted":
-      return { status: "SUBMITTED", wonAt: null, lostAt: null };
-    case "quoting":
-    case "chasing":
-    case "hot":
-    case "warm":
-    case "cold":
-      return { status: "DRAFT", wonAt: null, lostAt: null };
-    default:
-      if (probNorm) {
-        rowWarnings.push(`Unknown Probability value "${probability}" — defaulting to DRAFT`);
-      }
-      return { status: "DRAFT", wonAt: null, lostAt: null };
-  }
+  if (prob === "won") return { status: "CONTRACT_ISSUED", wonAt: stamp, lostAt: null };
+  if (prob === "lost") return { status: "LOST", wonAt: null, lostAt: stamp };
+  if (cps === "won" || cps === "in progress") return { status: "AWARDED", wonAt: null, lostAt: null };
+  if (cps === "lost") return { status: "LOST", wonAt: null, lostAt: stamp };
+  if (dec === "not quoting") return { status: "WITHDRAWN", wonAt: null, lostAt: null };
+  if (dec === "submitted") return { status: "SUBMITTED", wonAt: null, lostAt: null };
+  if (dec === "quoting" || startedQuoting) return { status: "IN_PROGRESS", wonAt: null, lostAt: null };
+  return { status: "DRAFT", wonAt: null, lostAt: null };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// Tracker "Probability" holds outcome words (Won/Lost) AND likelihood ratings.
+// Only the ratings map to the numeric Tender.probability (%).
+function probabilityRating(probability: string | null): number | null {
+  switch ((probability ?? "").trim().toLowerCase()) {
+    case "hot": return 80;
+    case "warm": return 50;
+    case "chasing": return 40;
+    case "tendering": return 30;
+    case "cold": return 20;
+    case "not started": return 10;
+    default: return null;
+  }
+}
 
 function normaliseClientName(raw: string): string {
   return raw.toLowerCase().replace(/\s+/g, " ").trim();
@@ -144,13 +253,6 @@ function parseDateCell(raw: unknown): Date | null {
   return null;
 }
 
-function parseDecimalCell(raw: unknown): number | null {
-  if (raw === null || raw === undefined || raw === "") return null;
-  const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[,$]/g, ""));
-  return isNaN(num) ? "BAD_VALUE" as unknown as null : num;
-}
-
-// Marker sentinel for parse failure
 const BAD_DECIMAL = Symbol("BAD_DECIMAL");
 
 function parseDecimalOrSentinel(raw: unknown): number | typeof BAD_DECIMAL | null {
@@ -160,13 +262,14 @@ function parseDecimalOrSentinel(raw: unknown): number | typeof BAD_DECIMAL | nul
   return num;
 }
 
-// ---------------------------------------------------------------------------
-// Column header matching (case-insensitive, trim)
-// ---------------------------------------------------------------------------
-
 const HEADER_MAP: Record<string, string> = {
+  "tender no.": "tenderNo",
+  "tender no": "tenderNo",
+  "tender number": "tenderNo",
   "project name": "projectName",
   "client company name": "clientCompanyName",
+  "client project status": "clientProjectStatus",
+  "started quoting": "startedQuoting",
   "estimator": "estimator",
   "tender price": "tenderPrice",
   "quote due date": "quoteDueDate",
@@ -179,17 +282,12 @@ const HEADER_MAP: Record<string, string> = {
 
 type RowMap = Record<string, ExcelJS.CellValue>;
 
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
-
 async function parseWorkbook(
   buffer: Buffer,
   mimeType: string,
   originalName: string
 ): Promise<{ rows: RowMap[]; error?: string }> {
   const wb = new ExcelJS.Workbook();
-
   const lowerName = originalName.toLowerCase();
   const isXlsx = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")
     || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -202,12 +300,10 @@ async function parseWorkbook(
 
   try {
     if (isXlsx) {
-      // ExcelJS needs an ArrayBuffer
       const ab = new ArrayBuffer(buffer.byteLength);
       new Uint8Array(ab).set(buffer);
       await wb.xlsx.load(ab);
     } else {
-      // CSV — use ExcelJS csv reader from a readable stream created from the buffer
       const { Readable } = await import("stream");
       const stream = Readable.from(buffer);
       await wb.csv.read(stream);
@@ -221,7 +317,6 @@ async function parseWorkbook(
     return { rows: [], error: "File contains no worksheets." };
   }
 
-  // Build header index from first row
   const headerRow = sheet.getRow(1);
   const headerIndex: Record<number, string> = {};
   headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -232,14 +327,11 @@ async function parseWorkbook(
 
   const rows: RowMap[] = [];
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    if (rowNumber === 1) return; // skip header
+    if (rowNumber === 1) return;
     const obj: RowMap = {};
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const field = headerIndex[colNumber];
-      if (field) {
-        // For CSV, cell.value may be a string; for XLSX it may be typed
-        obj[field] = cell.value;
-      }
+      if (field) obj[field] = cell.value;
     });
     rows.push(obj);
   });
@@ -247,19 +339,15 @@ async function parseWorkbook(
   return { rows };
 }
 
-// ---------------------------------------------------------------------------
-// Row mapper
-// ---------------------------------------------------------------------------
-
 function mapRow(
   raw: RowMap,
   rowIndex: number,
   badRows: Array<{ row: number; reason: string }>
 ): ParsedRow | null {
-  const projectName = typeof raw["projectName"] === "string" ? raw["projectName"].trim() : "";
+  const projectNameRaw = typeof raw["projectName"] === "string" ? raw["projectName"].trim() : "";
   const clientNameRaw = typeof raw["clientCompanyName"] === "string" ? raw["clientCompanyName"].trim() : "";
 
-  if (!projectName) {
+  if (!projectNameRaw) {
     badRows.push({ row: rowIndex, reason: "Missing or empty Project Name" });
     return null;
   }
@@ -268,22 +356,29 @@ function mapRow(
     return null;
   }
 
-  const tNumber = extractTNumber(projectName);
+  // Prefer the dedicated "Tender No." column; fall back to the Project Name.
+  const tenderNoRaw = raw["tenderNo"] != null ? String(raw["tenderNo"]).trim() : "";
+  const tNumber = /^T\d{3,5}$/i.test(tenderNoRaw)
+    ? tenderNoRaw.toUpperCase()
+    : extractTNumber(projectNameRaw);
   if (!tNumber) {
-    badRows.push({ row: rowIndex, reason: `No T-number found in Project Name: "${projectName}"` });
+    badRows.push({ row: rowIndex, reason: `No T-number found in Tender No. or Project Name: "${projectNameRaw}"` });
     return null;
   }
 
+  // Strip any leading "T#### - " already embedded so the title is built once.
+  let projectName = projectNameRaw.replace(/^\s*T\d{3,5}\s*[—–-]\s*/i, "").trim();
+  if (!projectName) projectName = projectNameRaw;
+
   const estimatorRaw = raw["estimator"] ? String(raw["estimator"]).trim() || null : null;
 
-  // Tender Price — flag bad parse but don't skip row
   const priceRaw = raw["tenderPrice"];
   const priceSentinel = priceRaw !== undefined && priceRaw !== null && priceRaw !== ""
     ? parseDecimalOrSentinel(priceRaw)
     : null;
   let tenderPrice: number | null = null;
   if (priceSentinel === BAD_DECIMAL) {
-    badRows.push({ row: rowIndex, reason: `Unparseable Tender Price: "${priceRaw}" — field set to null` });
+    badRows.push({ row: rowIndex, reason: `Unparseable Tender Price: "${priceRaw}" -- field set to null` });
     tenderPrice = null;
   } else {
     tenderPrice = priceSentinel as number | null;
@@ -292,7 +387,6 @@ function mapRow(
   const quoteDueDate = parseDateCell(raw["quoteDueDate"]);
   const dateSubmitted = parseDateCell(raw["dateSubmitted"]);
 
-  // Lead time
   let leadTime: number | null = null;
   if (raw["leadTime"] !== undefined && raw["leadTime"] !== null && raw["leadTime"] !== "") {
     const lt = parseInt(String(raw["leadTime"]), 10);
@@ -301,6 +395,10 @@ function mapRow(
 
   const probability = raw["probability"] ? String(raw["probability"]).trim() || null : null;
   const decision = raw["decision"] ? String(raw["decision"]).trim() || null : null;
+  const clientProjectStatus = raw["clientProjectStatus"] ? String(raw["clientProjectStatus"]).trim() || null : null;
+  const startedQuoting = raw["startedQuoting"] !== undefined
+    && raw["startedQuoting"] !== null
+    && String(raw["startedQuoting"]).trim() !== "";
   const followUpNotes = raw["followUpNotes"] ? String(raw["followUpNotes"]).trim() || null : null;
 
   return {
@@ -314,21 +412,24 @@ function mapRow(
     dateSubmitted,
     leadTime,
     probability,
+    probabilityNum: probabilityRating(probability),
     decision,
+    clientProjectStatus,
+    startedQuoting,
+    startedQuotingDate: parseDateCell(raw["startedQuoting"]),
     followUpNotes,
     tNumber,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Service
-// ---------------------------------------------------------------------------
-
 @Injectable()
 export class TenderTrackerImportService {
   private readonly logger = new Logger(TenderTrackerImportService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenderNumbers: TenderNumberService
+  ) {}
 
   async import(
     buffer: Buffer,
@@ -337,7 +438,6 @@ export class TenderTrackerImportService {
     dryRun: boolean,
     actorId: string
   ): Promise<TenderTrackerImportReport> {
-    // --- Parse ---
     const { rows: rawRows, error: parseError } = await parseWorkbook(buffer, mimeType, originalName);
     if (parseError) {
       throw new BadRequestException(parseError);
@@ -347,19 +447,15 @@ export class TenderTrackerImportService {
     const parsedRows: ParsedRow[] = [];
 
     rawRows.forEach((raw, idx) => {
-      const row = mapRow(raw, idx + 2, badRows); // +2 because row 1 = header
+      const row = mapRow(raw, idx + 2, badRows);
       if (row) parsedRows.push(row);
     });
 
-    // --- Dry-run analysis ---
-
-    // Unique clients (normalised name dedupe)
     const clientNormSet = new Set<string>();
     for (const row of parsedRows) {
       clientNormSet.add(row.clientNameNorm);
     }
 
-    // Estimator matching (dry-run: just surface unmatched names)
     const unmatchedEstimators: string[] = await this.findUnmatchedEstimators(parsedRows);
 
     const report: TenderTrackerImportReport = {
@@ -379,13 +475,8 @@ export class TenderTrackerImportService {
       return report;
     }
 
-    // --- Commit ---
     return await this.commitRows(parsedRows, actorId, report);
   }
-
-  // -------------------------------------------------------------------------
-  // Estimator matching
-  // -------------------------------------------------------------------------
 
   private async findUnmatchedEstimators(rows: ParsedRow[]): Promise<string[]> {
     const rawNames = new Set<string>();
@@ -394,13 +485,12 @@ export class TenderTrackerImportService {
     }
     if (rawNames.size === 0) return [];
 
-    // Load all users with firstName + lastName
     const users = await this.prisma.user.findMany({
       where: { isActive: true },
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const userNormMap = new Map<string, string>(); // normName → userId
+    const userNormMap = new Map<string, string>();
     for (const user of users) {
       const norm = normaliseEstimatorName(`${user.firstName} ${user.lastName}`);
       userNormMap.set(norm, user.id);
@@ -431,26 +521,16 @@ export class TenderTrackerImportService {
     return null;
   }
 
-  // -------------------------------------------------------------------------
-  // Commit
-  // -------------------------------------------------------------------------
-
   private async commitRows(
     rows: ParsedRow[],
     actorId: string,
     report: TenderTrackerImportReport
   ): Promise<TenderTrackerImportReport> {
-    // Cache for estimator lookups across rows (avoid N+1)
     const estimatorCache = new Map<string, string | null>();
-
-    // Cache for Client id lookups by normalised name
-    const clientCache = new Map<string, string>(); // normName → clientId
+    const clientCache = new Map<string, string>();
 
     for (const row of rows) {
-      const rowWarnings: string[] = [];
-
       try {
-        // --- Client upsert (D1) ---
         let clientId: string;
         if (clientCache.has(row.clientNameNorm)) {
           clientId = clientCache.get(row.clientNameNorm)!;
@@ -461,14 +541,11 @@ export class TenderTrackerImportService {
             update: {},
             select: { id: true },
           });
-          // Also try finding by normalised name if exact match fails — handles
-          // whitespace variants like "  ACME  " vs "Acme".
           clientId = upserted.id;
           clientCache.set(row.clientNameNorm, clientId);
-          report.clientsCreated++; // Will be overestimated if existing; corrected below
+          report.clientsCreated++;
         }
 
-        // --- Estimator resolution (D6) ---
         let estimatorUserId: string | null = null;
         if (row.estimatorRaw) {
           if (estimatorCache.has(row.estimatorRaw)) {
@@ -479,49 +556,69 @@ export class TenderTrackerImportService {
           }
         }
 
-        // --- Status mapping (D2) ---
-        const { status, wonAt, lostAt } = mapStatus(row.probability, row.decision, row.dateSubmitted, rowWarnings);
+        const { status, wonAt, lostAt } = mapStatus(
+          row.probability,
+          row.decision,
+          row.clientProjectStatus,
+          row.startedQuoting,
+          row.dateSubmitted
+        );
 
-        // --- Title (D3) ---
         const title = `${row.tNumber} — ${row.projectName}`;
 
-        // --- Tender find-or-create (D3) ---
         const existingTender = await this.prisma.tender.findFirst({
-          where: { title: { contains: row.tNumber } },
-          select: { id: true, tenderNumber: true },
+          where: { title: { startsWith: `${row.tNumber} ` } },
+          select: { id: true, tenderNumber: true, siteId: true, createdAt: true },
         });
 
         let tenderId: string;
         let siteId: string;
+        // Last-resort date for a follow-up note whose row carries no dates at
+        // all. Using the tender's own createdAt keeps the feed in true
+        // chronological order; `new Date()` would sort undated notes above
+        // genuinely recent activity on every tender.
+        let tenderCreatedAt: Date;
 
         if (existingTender) {
-          // --- Update ---
-          // Look up existing stub site for this tender
-          const existingSite = await this.prisma.site.findFirst({
-            where: { clientId, name: title },
-            select: { id: true },
-          });
-
-          if (existingSite) {
-            siteId = existingSite.id;
+          if (existingTender.siteId) {
+            siteId = existingTender.siteId;
+            await this.prisma.site.update({
+              where: { id: siteId },
+              data: { name: title },
+            });
           } else {
-            // Create stub site (D4)
             const site = await this.prisma.site.create({
-              data: {
-                name: title,
-                clientId,
-                notes: "IMPORTED — address to be completed",
-              },
+              data: { name: title, clientId, notes: "IMPORTED — address to be completed" },
               select: { id: true },
             });
             siteId = site.id;
           }
 
+          // Assign a canonical ERP number only if the existing one is not
+          // already canonical (idempotent: re-runs keep a good number).
+          let numberPatch: {
+            tenderNumber?: string;
+            clientSlugSnapshot?: string;
+            revisionNumber?: number;
+          } = {};
+          if (!TenderNumberService.TENDER_NUMBER_REGEX.test(existingTender.tenderNumber ?? "")) {
+            const gen = await this.tenderNumbers.generate(
+              row.clientNameRaw,
+              row.dateSubmitted ?? row.quoteDueDate ?? new Date()
+            );
+            numberPatch = {
+              tenderNumber: gen.tenderNumber,
+              clientSlugSnapshot: gen.clientSlugSnapshot,
+              revisionNumber: gen.revisionNumber,
+            };
+          }
           await this.prisma.tender.update({
             where: { id: existingTender.id },
             data: {
+              ...numberPatch,
               title,
               status,
+              probability: row.probabilityNum ?? undefined,
               estimatorUserId,
               siteId,
               dueDate: row.quoteDueDate,
@@ -533,27 +630,27 @@ export class TenderTrackerImportService {
             },
           });
           tenderId = existingTender.id;
+          tenderCreatedAt = existingTender.createdAt;
           report.tendersUpdated++;
         } else {
-          // --- Create ---
-          // Create stub site (D4)
           const site = await this.prisma.site.create({
-            data: {
-              name: title,
-              clientId,
-              notes: "IMPORTED — address to be completed",
-            },
+            data: { name: title, clientId, notes: "IMPORTED — address to be completed" },
             select: { id: true },
           });
           siteId = site.id;
 
-          const syntheticTenderNumber = `IMPORT-${row.tNumber}-${row.rowIndex}`;
-
+          const gen = await this.tenderNumbers.generate(
+            row.clientNameRaw,
+            row.dateSubmitted ?? row.quoteDueDate ?? new Date()
+          );
           const newTender = await this.prisma.tender.create({
             data: {
-              tenderNumber: syntheticTenderNumber,
+              tenderNumber: gen.tenderNumber,
+              clientSlugSnapshot: gen.clientSlugSnapshot,
+              revisionNumber: gen.revisionNumber,
               title,
               status,
+              probability: row.probabilityNum ?? undefined,
               estimatorUserId,
               siteId,
               dueDate: row.quoteDueDate,
@@ -562,51 +659,37 @@ export class TenderTrackerImportService {
               estimatedValue: row.tenderPrice !== null ? row.tenderPrice.toString() : undefined,
               wonAt: wonAt ?? undefined,
               lostAt: lostAt ?? undefined,
+              tenantId: SEEDED_DEFAULT_TENANT_ID,
             },
-            select: { id: true },
+            select: { id: true, createdAt: true },
           });
           tenderId = newTender.id;
+          tenderCreatedAt = newTender.createdAt;
           report.tendersCreated++;
         }
 
-        // --- TenderClient upsert (D1 + schema @@unique([tenderId, clientId])) ---
         await this.prisma.tenderClient.upsert({
           where: { tenderId_clientId: { tenderId, clientId } },
           create: { tenderId, clientId },
           update: {},
         });
 
-        // --- TenderClientNote (D5) ---
+        // Follow Up Notes -> TenderClarificationNote, NOT TenderClientNote.
+        //
+        // This previously wrote TenderClientNote, which the Activity &
+        // communications panel never reads (it renders TenderEntry via
+        // /entries and TenderClarificationNote via /clarification-notes --
+        // see apps/web/src/pages/tendering/activityClientFilter.ts). Every
+        // imported note was therefore stored and invisible.
         if (row.followUpNotes) {
-          // Keep as single note (real tracker cells are typically single blobs;
-          // the plan allows this choice — documented in PR body).
-          const body = row.followUpNotes.trim();
-          const occurredAt = row.dateSubmitted ?? new Date();
-
-          const existing = await this.prisma.tenderClientNote.findFirst({
-            where: { tenderId, clientId, body, occurredAt },
-            select: { id: true },
+          const written = await this.writeFollowUpNote({
+            tenderId,
+            clientId,
+            text: row.followUpNotes,
+            occurredAt: resolveNoteDate(row, tenderCreatedAt),
+            authorId: estimatorUserId ?? actorId,
           });
-
-          if (!existing) {
-            await this.prisma.tenderClientNote.create({
-              data: {
-                tenderId,
-                clientId,
-                noteType: "note",
-                body,
-                occurredAt,
-                createdById: actorId,
-              },
-            });
-            report.notesCreated++;
-          }
-        }
-
-        if (rowWarnings.length > 0) {
-          for (const w of rowWarnings) {
-            report.badRows.push({ row: row.rowIndex, reason: w });
-          }
+          if (written) report.notesCreated++;
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -615,13 +698,300 @@ export class TenderTrackerImportService {
       }
     }
 
-    // clientsCreated is overestimated above (counted on each first-seen row, not
-    // distinguishing create-vs-found). Recount from cache size is also wrong.
-    // Accept the limitation: the count equals unique normalised client names seen
-    // (some may already exist). Both dry-run and commit report the same field as
-    // "clientsToCreateOrExisting" — clientsCreated in commit counts upserts that
-    // resulted in new rows, but Prisma upsert does not distinguish create vs update.
-    // We accept the count as "client upserts executed" for the first-seen name.
+    return report;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Follow-up-note recovery
+  //
+  // Stage A (migrateFollowUpNotes): existing TenderClientNote rows -> the feed.
+  // Stage B (importFollowUpNotes):  spreadsheet Column O top-up, notes ONLY.
+  //
+  // Neither stage reads, updates or deletes a TenderClientNote row beyond
+  // copying from it. Retiring that model is a separate, uncommissioned slice.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Write one follow-up note into the Activity & communications feed.
+   *
+   * Idempotent by trimmed text within a tender, which is what lets Stage B top
+   * Stage A up without duplicating it, and lets either stage be re-run safely.
+   *
+   * @returns true when a row was created, false when skipped as a duplicate or
+   *          because the text was empty.
+   */
+  private async writeFollowUpNote(input: {
+    tenderId: string;
+    clientId: string | null;
+    text: string;
+    subject?: string | null;
+    noteType?: string | null;
+    occurredAt: Date;
+    authorId: string;
+  }): Promise<boolean> {
+    const text = composeNoteText(input.subject ?? null, input.text);
+    if (!text) return false;
+
+    const existing = await this.prisma.tenderClarificationNote.findFirst({
+      where: { tenderId: input.tenderId, text },
+      select: { id: true },
+    });
+    if (existing) return false;
+
+    await this.prisma.tenderClarificationNote.create({
+      data: {
+        tenderId: input.tenderId,
+        clientId: input.clientId,
+        direction: IMPORTED_NOTE_DIRECTION,
+        noteType: toClarificationNoteType(input.noteType),
+        text,
+        occurredAt: input.occurredAt,
+        createdById: input.authorId,
+      },
+    });
+    return true;
+  }
+
+  /** Resolve a display name for the dry-run sample, cached per run. */
+  private async describeUser(
+    userId: string | null,
+    cache: Map<string, string | null>
+  ): Promise<string | null> {
+    if (!userId) return null;
+    if (cache.has(userId)) return cache.get(userId) ?? null;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    const name = personName(user);
+    cache.set(userId, name);
+    return name;
+  }
+
+  /**
+   * STAGE A -- copy every existing TenderClientNote row into
+   * TenderClarificationNote so it renders in Activity & communications.
+   *
+   * Non-destructive: the source rows are read and left exactly as they are.
+   */
+  async migrateFollowUpNotes(actorId: string, dryRun: boolean): Promise<FollowUpNotesReport> {
+    const sourceNotes = await this.prisma.tenderClientNote.findMany({
+      select: {
+        id: true,
+        tenderId: true,
+        clientId: true,
+        noteType: true,
+        subject: true,
+        body: true,
+        occurredAt: true,
+        createdById: true,
+        tender: { select: { title: true, estimatorUserId: true } },
+        client: { select: { name: true } },
+      },
+      orderBy: { occurredAt: "asc" },
+    });
+
+    const report: FollowUpNotesReport = {
+      dryRun,
+      mode: "migrate",
+      rowsRead: sourceNotes.length,
+      notesCreated: 0,
+      notesSkippedDuplicate: 0,
+      notesSkippedNoTenderMatch: 0,
+      notesWithoutClient: 0,
+      notesWithoutEstimator: 0,
+      sample: [],
+      badRows: [],
+    };
+
+    const userNameCache = new Map<string, string | null>();
+    let index = 0;
+
+    for (const note of sourceNotes) {
+      index += 1;
+      try {
+        const text = composeNoteText(note.subject, note.body);
+        if (!text) {
+          report.badRows.push({ row: index, reason: `TenderClientNote ${note.id} has an empty body -- skipped` });
+          continue;
+        }
+
+        const estimatorId = note.tender?.estimatorUserId ?? null;
+        if (!estimatorId) report.notesWithoutEstimator++;
+        if (!note.clientId) report.notesWithoutClient++;
+        const authorId = estimatorId ?? note.createdById ?? actorId;
+
+        const duplicate = await this.prisma.tenderClarificationNote.findFirst({
+          where: { tenderId: note.tenderId, text },
+          select: { id: true },
+        });
+        if (duplicate) {
+          report.notesSkippedDuplicate++;
+          continue;
+        }
+
+        if (report.sample.length < SAMPLE_LIMIT) {
+          report.sample.push({
+            tenderTitle: note.tender?.title ?? note.tenderId,
+            clientName: note.client?.name ?? null,
+            author: await this.describeUser(authorId, userNameCache),
+            occurredAt: note.occurredAt.toISOString(),
+            textPreview: text.slice(0, SAMPLE_TEXT_CHARS),
+          });
+        }
+
+        if (dryRun) {
+          report.notesCreated++;
+          continue;
+        }
+
+        const written = await this.writeFollowUpNote({
+          tenderId: note.tenderId,
+          clientId: note.clientId,
+          text: note.body,
+          subject: note.subject,
+          noteType: note.noteType,
+          occurredAt: note.occurredAt,
+          authorId,
+        });
+        if (written) report.notesCreated++;
+        else report.notesSkippedDuplicate++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Follow-up note migrate failed for ${note.id}: ${msg}`);
+        report.badRows.push({ row: index, reason: `Migrate error on ${note.id}: ${msg}` });
+      }
+    }
+
+    return report;
+  }
+
+  /**
+   * STAGE B -- notes-only spreadsheet import ("notesOnly" mode).
+   *
+   * Writes follow-up notes and NOTHING else: no tender create/update, no
+   * status, no tender numbers, no dates, no Client upsert, no Site create, no
+   * TenderClient link. Re-running the FULL import in commit mode re-asserts the
+   * spreadsheet's status over user-set status, which is why this path exists.
+   */
+  async importFollowUpNotes(
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    dryRun: boolean,
+    actorId: string
+  ): Promise<FollowUpNotesReport> {
+    const { rows: rawRows, error: parseError } = await parseWorkbook(buffer, mimeType, originalName);
+    if (parseError) {
+      throw new BadRequestException(parseError);
+    }
+
+    const badRows: Array<{ row: number; reason: string }> = [];
+    const parsedRows: ParsedRow[] = [];
+    rawRows.forEach((raw, idx) => {
+      const row = mapRow(raw, idx + 2, badRows);
+      if (row) parsedRows.push(row);
+    });
+
+    const report: FollowUpNotesReport = {
+      dryRun,
+      mode: "notesOnly",
+      rowsRead: rawRows.length,
+      notesCreated: 0,
+      notesSkippedDuplicate: 0,
+      notesSkippedNoTenderMatch: 0,
+      notesWithoutClient: 0,
+      notesWithoutEstimator: 0,
+      sample: [],
+      badRows,
+    };
+
+    const estimatorCache = new Map<string, string | null>();
+    const userNameCache = new Map<string, string | null>();
+
+    for (const row of parsedRows) {
+      if (!row.followUpNotes) continue;
+      try {
+        const tender = await this.prisma.tender.findFirst({
+          where: { title: { startsWith: `${row.tNumber} ` } },
+          select: {
+            id: true,
+            title: true,
+            estimatorUserId: true,
+            createdAt: true,
+            tenderClients: { select: { clientId: true, client: { select: { name: true } } } },
+          },
+        });
+
+        if (!tender) {
+          report.notesSkippedNoTenderMatch++;
+          report.badRows.push({
+            row: row.rowIndex,
+            reason: `No tender matches "${row.tNumber}" -- note not written (nothing was created to hold it)`,
+          });
+          continue;
+        }
+
+        const clientId = pickLinkedClientId(tender.tenderClients, row.clientNameNorm);
+        if (!clientId) report.notesWithoutClient++;
+
+        let estimatorUserId: string | null = tender.estimatorUserId;
+        if (!estimatorUserId && row.estimatorRaw) {
+          if (estimatorCache.has(row.estimatorRaw)) {
+            estimatorUserId = estimatorCache.get(row.estimatorRaw) ?? null;
+          } else {
+            estimatorUserId = await this.resolveEstimatorId(row.estimatorRaw);
+            estimatorCache.set(row.estimatorRaw, estimatorUserId);
+          }
+        }
+        if (!estimatorUserId) report.notesWithoutEstimator++;
+
+        const authorId = estimatorUserId ?? actorId;
+        const occurredAt = resolveNoteDate(row, tender.createdAt);
+        const text = composeNoteText(null, row.followUpNotes);
+        if (!text) continue;
+
+        const duplicate = await this.prisma.tenderClarificationNote.findFirst({
+          where: { tenderId: tender.id, text },
+          select: { id: true },
+        });
+        if (duplicate) {
+          report.notesSkippedDuplicate++;
+          continue;
+        }
+
+        if (report.sample.length < SAMPLE_LIMIT) {
+          report.sample.push({
+            tenderTitle: tender.title,
+            clientName: clientId
+              ? tender.tenderClients.find((link) => link.clientId === clientId)?.client?.name ?? null
+              : null,
+            author: await this.describeUser(authorId, userNameCache),
+            occurredAt: occurredAt.toISOString(),
+            textPreview: text.slice(0, SAMPLE_TEXT_CHARS),
+          });
+        }
+
+        if (dryRun) {
+          report.notesCreated++;
+          continue;
+        }
+
+        const written = await this.writeFollowUpNote({
+          tenderId: tender.id,
+          clientId,
+          text: row.followUpNotes,
+          occurredAt,
+          authorId,
+        });
+        if (written) report.notesCreated++;
+        else report.notesSkippedDuplicate++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Follow-up note row ${row.rowIndex} failed: ${msg}`);
+        report.badRows.push({ row: row.rowIndex, reason: `Notes-only error: ${msg}` });
+      }
+    }
 
     return report;
   }

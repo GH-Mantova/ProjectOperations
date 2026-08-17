@@ -349,6 +349,36 @@ async function main() {
   await prisma.userRole.deleteMany({ where: { userId: viewerUser.id } });
   await prisma.userRole.create({ data: { userId: viewerUser.id, roleId: viewerRole.id } });
 
+  // SLICE 17 — scoped test user for per-screen permission e2e tests.
+  // Holds users.view + dashboards.view but NOT roles.view, so the test can
+  // assert that /settings/administration/users is reachable and
+  // /settings/administration/roles shows <NoAccess/>.
+  const scopedAdminRole = await prisma.role.upsert({
+    where: { name: "ScopedAdminTest" },
+    update: { description: "SLICE 17 e2e test role — users.view only, no roles.view", isSystem: true },
+    create: { name: "ScopedAdminTest", description: "SLICE 17 e2e test role — users.view only, no roles.view", isSystem: true }
+  });
+  const scopedAdminPermissions = await prisma.permission.findMany({
+    where: { code: { in: ["users.view", "dashboards.view"] } }
+  });
+  await prisma.rolePermission.createMany({
+    skipDuplicates: true,
+    data: scopedAdminPermissions.map((p) => ({ roleId: scopedAdminRole.id, permissionId: p.id }))
+  });
+  const scopedAdminUser = await prisma.user.upsert({
+    where: { email: "scoped-admin@projectops.local" },
+    update: { firstName: "Sam", lastName: "Scoped", isActive: true },
+    create: {
+      email: "scoped-admin@projectops.local",
+      firstName: "Sam",
+      lastName: "Scoped",
+      isActive: true,
+      passwordHash: hashPassword("Password123!")
+    }
+  });
+  await prisma.userRole.deleteMany({ where: { userId: scopedAdminUser.id } });
+  await prisma.userRole.create({ data: { userId: scopedAdminUser.id, roleId: scopedAdminRole.id } });
+
   // Global "Home" dashboard — the fallback default all users land on
   // when they have not set their own default_dashboard_id. Also seeded
   // by migration 20260716120000_user_default_dashboard; kept in sync
@@ -858,7 +888,8 @@ async function main() {
         leadTimeDays: 21,
         probability: 60,
         estimatedValue: new Prisma.Decimal("185000.00"),
-        notes: "Seed tender with multiple linked clients."
+        notes: "Seed tender with multiple linked clients.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1057,7 +1088,8 @@ async function main() {
         leadTimeDays: 14,
         probability: 100,
         estimatedValue: new Prisma.Decimal("246500.00"),
-        notes: "Seed tender that has progressed through award, contract, and job conversion."
+        notes: "Seed tender that has progressed through award, contract, and job conversion.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1217,7 +1249,8 @@ async function main() {
           leadTimeDays: seedTender.leadTimeDays,
           probability: seedTender.probability,
           estimatedValue: seedTender.estimatedValue,
-          notes: seedTender.notes
+          notes: seedTender.notes,
+          tenantId: SEEDED_DEFAULT_TENANT_ID
         }
       });
 
@@ -1368,7 +1401,8 @@ async function main() {
         leadTimeDays: 28,
         probability: 65,
         estimatedValue: new Prisma.Decimal("428000.00"),
-        notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through."
+        notes: "Internal strip-out + asbestos removal + civil works for new science wing. Demo tender for Raj walk-through.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -1944,7 +1978,8 @@ async function main() {
         siteId: "site-unassigned",
         probability: 0,
         estimatedValue: new Prisma.Decimal("0"),
-        notes: "Template tender — do not submit. Copy this tender to start a new quote with all sections pre-populated."
+        notes: "Template tender — do not submit. Copy this tender to start a new quote with all sections pre-populated.",
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -2622,7 +2657,8 @@ async function main() {
         sourceTenderId: convertedTender.id,
         status: "PLANNING",
         projectManagerId: pmUser?.id,
-        supervisorId: supervisorUser?.id
+        supervisorId: supervisorUser?.id,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -3645,7 +3681,8 @@ async function main() {
         siteId: gatewaySite?.id ?? "site-unassigned",
         status: "COMPLETE",
         projectManagerId: pmUser?.id ?? null,
-        supervisorId: supervisorUser?.id ?? null
+        supervisorId: supervisorUser?.id ?? null,
+        tenantId: SEEDED_DEFAULT_TENANT_ID
       }
     });
 
@@ -3736,6 +3773,17 @@ async function main() {
   await seedCrmDropReasons(prisma);
   // CFX-1: BUILTIN field definitions for Client and SubcontractorSupplier. Idempotent — upsert on [appliesTo, key].
   await seedFieldDefinitionsBuiltin(prisma);
+
+  // MT-3 enablement: every seeded user belongs to the single pilot tenant.
+  // Without a homeTenantId the JWT carries no tenant claim, so the tenant
+  // interceptor establishes NO context and NOT-NULL tender/job access fails
+  // closed (compliance smoke POST /tenders -> 404, empty reads). Backfill any
+  // user still missing a home tenant to the default tenant. Idempotent; runs
+  // after seedDefaultTenant so the FK target exists.
+  await prisma.user.updateMany({
+    where: { homeTenantId: null },
+    data: { homeTenantId: SEEDED_DEFAULT_TENANT_ID }
+  });
 }
 
 // MT-0: seed the one default Tenant row for the existing company. Upsert by

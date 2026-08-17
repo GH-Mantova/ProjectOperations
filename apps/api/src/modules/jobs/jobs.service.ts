@@ -35,6 +35,7 @@ import {
 } from "./dto/job-conversion.dto";
 import { JobQueryDto } from "./dto/job-query.dto";
 import { JobNumberService } from "./job-number.service";
+import { SEEDED_DEFAULT_TENANT_ID } from "../../common/tenancy/tenant.constants";
 
 // Job.siteId is NOT NULL (see migration 20260716140000_site_id_not_null_backfill).
 // When a caller omits a site we point the row at the seeded "Unassigned" Site so
@@ -497,7 +498,8 @@ export class JobsService {
           siteId: dto.siteId?.trim() || UNASSIGNED_SITE_ID,
           status: dto.status?.trim() || "PLANNING",
           projectManagerId: dto.projectManagerId?.trim() || null,
-          supervisorId: dto.supervisorId?.trim() || null
+          supervisorId: dto.supervisorId?.trim() || null,
+          tenantId: SEEDED_DEFAULT_TENANT_ID
         }
       });
     } catch (err) {
@@ -1270,7 +1272,8 @@ export class JobsService {
           sourceTenderId: tenderId,
           status: "PLANNING",
           projectManagerId: dto.projectManagerId ?? null,
-          supervisorId: dto.supervisorId ?? null
+          supervisorId: dto.supervisorId ?? null,
+          tenantId: SEEDED_DEFAULT_TENANT_ID
         }
       });
 

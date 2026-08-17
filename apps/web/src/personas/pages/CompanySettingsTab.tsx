@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import {
   hasUnsavedChanges,
   type GlobalSettings,
   type ProviderKey
 } from "./ai-settings-helpers";
-import { ProviderKeyManager } from "./ProviderKeyManager";
 
 const PROVIDER_LIST: { key: ProviderKey; label: string; isLocked?: boolean }[] = [
   { key: "anthropic", label: "Anthropic Claude", isLocked: true },
@@ -185,11 +185,33 @@ export function CompanySettingsTab() {
         </div>
       </Section>
 
-      <ProviderKeyManager
-        scope="company"
-        title="API Keys"
-        description="Company-wide API keys for each AI provider. Keys are validated live against the provider before being stored, and are encrypted at rest (AES-256-GCM)."
-      />
+      {/* SLICE-4c: AI provider API keys have moved to the unified vault panel.
+          Redirect note: six-month retirement window per §4d of
+          unified-api-key-vault-and-geocoding-failover.md. */}
+      <Section title="API Keys">
+        <div
+          style={{
+            background: "var(--surface-card, #FFFFFF)",
+            border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+            borderRadius: 8,
+            padding: 16,
+            fontSize: 14,
+            color: "var(--text-muted)"
+          }}
+        >
+          <strong style={{ color: "var(--text-primary, #000)", display: "block", marginBottom: 6 }}>
+            API keys have moved
+          </strong>
+          Company-wide API keys for all providers (Anthropic, OpenAI, Gemini, Groq) are now
+          managed in the unified key vault.{" "}
+          <Link
+            to="/settings/administration/system?tab=integrations"
+            style={{ color: "#005B61", fontWeight: 600 }}
+          >
+            Admin Settings &rarr; Integrations / API keys
+          </Link>
+        </div>
+      </Section>
 
       {toast ? <Toast text={toast} /> : null}
     </div>

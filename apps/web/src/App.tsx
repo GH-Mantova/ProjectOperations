@@ -80,8 +80,10 @@ import { DocketsRegisterPage } from "./pages/dockets/DocketsRegisterPage";
 import { UserProfilePage } from "./pages/account/UserProfilePage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminCompanyPage } from "./pages/admin/AdminCompanyPage";
+import { AdminCompaniesPage } from "./pages/admin/AdminCompaniesPage";
 import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
+import { XeroExchangePage } from "./pages/admin/XeroExchangePage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
 import { SettingsShell, AdminOnly, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
@@ -105,8 +107,14 @@ import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { DropReasonAdminPage } from "./pages/crm/DropReasonAdminPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
+import { AccountsListPage } from "./pages/crm/AccountsListPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
 import { CommsHubPage } from "./pages/crm/CommsHubPage";
+import { CrmIndex } from "./pages/crm/CrmIndex";
+import { CrmCatchAllRedirect, ClientsEntryRedirect } from "./pages/crm/CrmRedirects";
+import { TendersRegisterPage } from "./pages/crm/TendersRegisterPage";
+import { CrmBoardContent } from "./pages/crm/CrmBoardPage";
+import { RelationshipsPage } from "./pages/crm/RelationshipsPage";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -326,6 +334,11 @@ export function App() {
             <Route path="/scheduler/:legacyView" element={<SchedulerHomePage />} />
             <Route path="/account/calendar-sync" element={<QueryPreservingRedirect to="/settings/calendar-sync" />} />
             <Route path="/tenders" element={<TenderingPage />} />
+            {/* NAV-3: Leads & Opportunities lives standalone under Tendering
+                (the old TenderingPage ?tab=leads-opportunities tab is retired).
+                CrmBoardContent renders the triage list + forecast; the Tenders
+                page now stays focused on draft entry + pricing + Pipeline. */}
+            <Route path="/tenders/leads" element={<CrmBoardContent />} />
             {/* Codex-era /pipeline + /workspace + /create wrappers were
                 retired in PR #78 alongside the Playwright spec rewrite. The
                 routes redirect to the redesigned register so older bookmarks
@@ -422,40 +435,48 @@ export function App() {
                   </SuperUserOnly>
                 }
               />
-              {/* SLICE 16 (settings-restructure §3): fix direct-hit 404 on
-                  /settings/administration by mounting a landing hub that lists
-                  the accessible Administration sub-pages. Wrapped with the same
-                  AdminOnly guard as its siblings. */}
+              {/* MT-5: Company admin UI — create/manage Tenant rows + assign users. Super-user only. */}
               <Route
-                path="administration"
+                path="companies"
                 element={
-                  <AdminOnly>
-                    <AdministrationLandingPage />
-                  </AdminOnly>
+                  <SuperUserOnly>
+                    <AdminCompaniesPage />
+                  </SuperUserOnly>
                 }
               />
+              {/* SLICE 17: administration hub — outer AdminOnly guard removed.
+                  The landing page already calls filterSettingsNavItems and
+                  renders <NoAccess/> when no items are visible, so it is
+                  self-gating (fail-closed) for users who lack every child perm. */}
+              <Route
+                path="administration"
+                element={<AdministrationLandingPage />}
+              />
+              {/* SLICE 17: system.manage gates the aggregate Admin Settings page. */}
               <Route
                 path="administration/system"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["system.manage"]}>
                     <AdminSettingsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
+              {/* SLICE 17: users.view gates the Users admin page. */}
               <Route
                 path="administration/users"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["users.view"]}>
                     <AdminUsersTab />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
+              {/* SLICE 17: roles.view gates the Roles & Permissions page. */}
               <Route
                 path="administration/roles"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["roles.view"]}>
                     <RolesPermissionsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               {/* SLICE 8: Permissions folded into the Roles & Permissions page.
@@ -466,20 +487,22 @@ export function App() {
                 path="administration/permissions"
                 element={<Navigate to="/settings/administration/roles" replace />}
               />
+              {/* SLICE 17: audit.view gates the Audit Logs page. */}
               <Route
                 path="administration/audit"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["audit.view"]}>
                     <AuditLogsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
+              {/* SLICE 17: sharepoint.view gates the Platform (SharePoint config) page. */}
               <Route
                 path="administration/platform"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["sharepoint.view"]}>
                     <PlatformPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               {/* SLICE 15 (settings-restructure §3, §4 redirect map): Job
@@ -490,34 +513,44 @@ export function App() {
                 element={<Navigate to="/workers/job-roles" replace />}
               />
               {/* SLICE 10 (settings-restructure §3): Automations moves
-                  under Administration. AutomationsPage self-gates on
-                  automations.view; AdminOnly matches the sibling
-                  administration/* wrappers. */}
+                  under Administration. SLICE 17: automations.view gates
+                  the route (AutomationsPage self-gates on the same code). */}
               <Route
                 path="administration/automations"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["automations.view"]}>
                     <AutomationsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               {/* SLICE 14 (settings-restructure §3): Client versions and Map
                   locations dissolved from AdminSettingsPage inline tabs into
-                  standalone Administration pages. */}
+                  standalone Administration pages.
+                  SLICE 17: system.manage gates both — same audience as the
+                  sibling /system (Admin Settings) page. */}
               <Route
                 path="administration/client-versions"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["system.manage"]}>
                     <AdminClientVersionsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               <Route
                 path="administration/map-locations"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["system.manage"]}>
                     <MapLocationsPage />
-                  </AdminOnly>
+                  </RequirePermissions>
+                }
+              />
+              {/* CFX-4: Xero file exchange — platform.admin (same code the API export routes gate on). */}
+              <Route
+                path="administration/xero-exchange"
+                element={
+                  <RequirePermissions perms={["platform.admin"]}>
+                    <XeroExchangePage />
+                  </RequirePermissions>
                 }
               />
               {/* CRM SLICE 6: drop-reason admin screen — gated on crm.manage
@@ -540,13 +573,30 @@ export function App() {
             <Route path="/admin/audit" element={<Navigate to="/settings/administration/audit" replace />} />
             <Route path="/admin/platform" element={<Navigate to="/settings/administration/platform" replace />} />
             {/* #544 (sot/01 §6): non-admins must see NoAccess AT /admin/settings,
-                not a silent redirect. AdminOnly redirects admins to the shell and
-                renders <NoAccess/> in place for everyone else. */}
-            <Route path="/admin/settings" element={<AdminOnly><Navigate to="/settings/administration/system" replace /></AdminOnly>} />
+                not a silent redirect.
+                SLICE 17: guards on system.manage (replaces AdminOnly). */}
+            <Route path="/admin/settings" element={<RequirePermissions perms={["system.manage"]}><Navigate to="/settings/administration/system" replace /></RequirePermissions>} />
             <Route path="/admin/company" element={<Navigate to="/settings/company" replace />} />
             <Route path="/admin/data-model" element={<Navigate to="/settings/data-model" replace />} />
             <Route path="/admin/field-definitions" element={<Navigate to="/settings/field-definitions" replace />} />
+            <Route path="/admin/xero-exchange" element={<Navigate to="/settings/administration/xero-exchange" replace />} />
             <Route path="/admin/ai-settings" element={<Navigate to="/settings/ai" replace />} />
+            {/* SLICE-4c: AI-keys entry surface retired. The ProviderKeyManager
+                sections that lived inside /settings/ai (CompanySettingsTab +
+                MySettingsTab) have been replaced with pointer banners to the
+                unified vault panel. Any bookmark that targeted the old key-entry
+                area is redirected to AdminSettings → Integrations / API keys.
+                Six-month retirement window per unified-api-key-vault-and-
+                geocoding-failover.md §4d (retire + redirect). No expiry timer
+                is implemented — remove these routes after 2027-02. */}
+            <Route
+              path="/settings/ai/keys"
+              element={<Navigate to="/settings/administration/system?tab=integrations" replace />}
+            />
+            <Route
+              path="/admin/ai-keys"
+              element={<Navigate to="/settings/administration/system?tab=integrations" replace />}
+            />
             <Route path="/contracts" element={<ContractsListPage />} />
             <Route path="/contracts/:id" element={<ContractDetailPage />} />
             {/* B-HW-7: Handover wizard — launched from contract detail page */}
@@ -594,17 +644,31 @@ export function App() {
             <Route path="/cases/:id" element={<CaseDetailPage />} />
             <Route path="/knowledge" element={<KbListPage />} />
             <Route path="/knowledge/:id" element={<KbArticlePage />} />
-            {/* CRM lives ONLY as a tab on the Tenders page (Marco 2026-07-31);
-                /crm is dead and falls through to NotFoundPage. The opportunity
-                detail page stays standalone. CRM-1 adds the Account 360 page. */}
+            {/* NAV-1: /crm index now redirects to /crm/accounts via CrmIndex. */}
+            <Route index path="/crm" element={<CrmIndex />} />
             <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
+            {/* NAV-2: Accounts index page — Client-360 landing. */}
+            <Route path="/crm/accounts" element={<AccountsListPage />} />
             <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
+            {/* NAV-3: /crm/register — read-only view of every tender across
+                all statuses, with CLIENT + STATUS columns and filters. */}
+            <Route path="/crm/register" element={<TendersRegisterPage />} />
             {/* CRM-6: pipeline + win/loss dashboard (read-only). */}
             <Route path="/crm/pipeline" element={<PipelineDashboardPage />} />
             {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored
                 via ?entityType=…&entityId=… so any record page can link in
                 without the sub-module knowing about their models. */}
             <Route path="/crm/comms" element={<CommsHubPage />} />
+            {/* CRM-2: Relationship intelligence — notes log + going-cold nudge
+                + repeat-business surfacing. */}
+            <Route path="/crm/relationships" element={<RelationshipsPage />} />
+            {/* NAV-4: Catch-all for dead /crm/* paths → /crm/accounts.
+                Must sit AFTER all named /crm/** routes so real routes still
+                resolve first (React Router v6 most-specific-first matching). */}
+            <Route path="/crm/*" element={<CrmCatchAllRedirect />} />
+            {/* NAV-4: Light bookmark alias /clients → /crm/accounts.
+                Deep Directory decommission deferred to site-dissolution-plan. */}
+            <Route path="/clients" element={<ClientsEntryRedirect />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

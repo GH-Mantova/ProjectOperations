@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -177,11 +177,18 @@ export class AuthService {
     }
 
     const permissions = this.usersService.flattenPermissions(storedToken.user);
+    // MT-2: re-derive homeTenantId from the DB on every refresh so the claim
+    // stays current if an admin reassigns the user's home tenant.
+    const freshUser = await this.prisma.user.findUnique({
+      where: { id: storedToken.user.id },
+      select: { homeTenantId: true }
+    });
     const tokens = await this.issueTokens(
       storedToken.user.id,
       storedToken.user.email,
       permissions,
-      storedToken.user.isSuperUser
+      storedToken.user.isSuperUser,
+      freshUser?.homeTenantId ?? null
     );
 
     await this.prisma.$transaction([
@@ -215,6 +222,81 @@ export class AuthService {
     return this.usersService.toSafeUser(user);
   }
 
+  /**
+   * MT-2: Super-user company switch.
+   * Issues a fresh token pair with the requested tenantId embedded in the access
+   * token. Validates that the target tenant exists and is active. Only Super Users
+   * may call this — the SuperUserGuard on the controller enforces that, but we
+   * double-check here so service-level callers are also guarded.
+   */
+  async switchCompany(userId: string, tenantId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  include: { permission: true }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException("User not found or inactive.");
+    }
+
+    if (!user.isSuperUser) {
+      throw new ForbiddenException("Only Super Users may switch companies.");
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId }
+    });
+
+    if (!tenant || !tenant.isActive) {
+      throw new NotFoundException(`Tenant '${tenantId}' does not exist or is inactive.`);
+    }
+
+    const permissions = this.usersService.flattenPermissions(user);
+    const tokens = await this.issueTokens(
+      user.id,
+      user.email,
+      permissions,
+      user.isSuperUser,
+      tenantId
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: this.passwordService.hashToken(tokens.refreshToken),
+          expiresAt: tokens.refreshTokenExpiresAt
+        }
+      })
+    ]);
+
+    await this.auditService.write({
+      actorId: userId,
+      action: "auth.switch-company",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { tenantId, tenantName: tenant.name }
+    });
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: this.usersService.toSafeUser(user, permissions)
+    };
+  }
+
   private async finishLogin(
     userId: string,
     email: string,
@@ -222,7 +304,16 @@ export class AuthService {
     user: Parameters<UsersService["toSafeUser"]>[0],
     metadata: Record<string, unknown>
   ) {
-    const tokens = await this.issueTokens(userId, email, permissions, Boolean(user.isSuperUser));
+    // MT-2: read the user's homeTenantId so we can embed it in the access token.
+    // The user object passed in from login paths may not include homeTenantId
+    // (various providers return a partial shape), so we fetch it fresh from DB.
+    const userRow = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { homeTenantId: true }
+    });
+    const tenantId = userRow?.homeTenantId ?? null;
+
+    const tokens = await this.issueTokens(userId, email, permissions, Boolean(user.isSuperUser), tenantId);
 
     await this.prisma.$transaction([
       this.prisma.user.update({
@@ -257,15 +348,19 @@ export class AuthService {
     userId: string,
     email: string,
     permissions: string[],
-    isSuperUser = false
+    isSuperUser = false,
+    tenantId: string | null = null
   ) {
     const accessSecret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
     const refreshSecret = this.configService.get<string>("auth.refreshSecret", "replace-me-refresh");
     const accessTtl = this.configService.get<string>("auth.accessTtl", "15m");
     const refreshTtl = this.configService.get<string>("auth.refreshTtl", "7d");
 
+    // MT-2: include tenantId in the access token so JwtAuthGuard decodes it into
+    // request.user, which TenantContextInterceptor then uses to establish the
+    // async-local-storage context for the rest of the request lifecycle.
     const accessToken = await this.jwtService.signAsync(
-      { sub: userId, email, permissions, isSuperUser },
+      { sub: userId, email, permissions, isSuperUser, tenantId },
       { secret: accessSecret, expiresIn: accessTtl as never }
     );
 

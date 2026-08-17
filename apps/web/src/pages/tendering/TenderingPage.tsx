@@ -5,14 +5,11 @@ import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
-import { CrmBoardContent } from "../crm/CrmBoardPage";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { NewTenderWizard } from "./NewTenderWizard";
 import { OutcomeCaptureModal, OutcomeCaptureTender } from "./OutcomeCaptureModal";
 import { NeedsOutcomePanel } from "./NeedsOutcomePanel";
 import { OutcomeCapturePayload, recordOutcome } from "./outcomeApi";
-
-type TopTab = "tenders" | "crm";
 
 type TenderListItem = {
   id: string;
@@ -20,6 +17,10 @@ type TenderListItem = {
   title: string;
   description?: string | null;
   status: string;
+  // Withdrawn-review sub-state. NULL for every non-withdrawn tender and for
+  // any WITHDRAWN row created before the withdrawn-review lifecycle slice
+  // (pre-migration data — treated as pending review by the Pipeline filter).
+  withdrawalState?: string | null;
   dueDate?: string | null;
   estimatedValue?: string | null;
   probability?: number | null;
@@ -102,6 +103,13 @@ import {
   TENDER_STATUS_ACCENT as STAGE_ACCENT,
   type TenderStatus as Stage
 } from "./tenderStatusLabels";
+
+import {
+  PIPELINE_STAGES,
+  type PipelineStage,
+  groupByPipelineStage,
+  fetchAllPages
+} from "./tenderingPage.helpers";
 
 const PROBABILITY_BUCKETS: ProbabilityBucket[] = ["Hot", "Warm", "Cold"];
 const PROBABILITY_COLOR: Record<ProbabilityBucket, string> = {
@@ -246,6 +254,9 @@ function saveColumns(columns: ColumnKey[]): void {
   }
 }
 
+// buildQueryString kept for potential future use (filter URL construction).
+// The component uses fetchAllPages (from tenderingPage.helpers) which handles
+// multi-page accumulation internally.
 function buildQueryString(filters: Filters, pageSize: number): string {
   const params = new URLSearchParams();
   params.set("page", "1");
@@ -305,21 +316,22 @@ export function TenderingPage() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  // CRM parity with the old sidebar CRM entry (gated on crm.view). Users
-  // without the permission cannot see the tab and cannot land on it via
-  // ?tab=crm — they fall through to the tenders view.
-  const canViewCrm = can(user, "crm.view");
-  const activeTab: TopTab =
-    searchParams.get("tab") === "crm" && canViewCrm ? "crm" : "tenders";
-  const setActiveTab = (next: TopTab) => {
-    const nextParams = new URLSearchParams(searchParams);
-    if (next === "crm") nextParams.set("tab", "crm");
-    else nextParams.delete("tab");
-    setSearchParams(nextParams, { replace: true });
-  };
+  // NAV-3: Leads & Opportunities moved to its own /tenders/leads route.
+  // Old ?tab=leads-opportunities and ?tab=crm bookmarks redirect there so
+  // shared links keep working.
+  const rawTab = searchParams.get("tab");
+  useEffect(() => {
+    if (rawTab === "leads-opportunities" || rawTab === "crm") {
+      const next = new URLSearchParams(searchParams);
+      next.delete("tab");
+      const qs = next.toString();
+      navigate(qs ? `/tenders/leads?${qs}` : "/tenders/leads", { replace: true });
+    }
+  }, [rawTab, searchParams, navigate]);
   const [view, setView] = useState<View>("pipeline");
   const [tenders, setTenders] = useState<TenderListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -335,7 +347,10 @@ export function TenderingPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  // S1 — independent per-view filters. Switching views does NOT carry filters
+  // across. Pipeline starts unfiltered; Register gets the default preset.
+  const [pipelineFilters, setPipelineFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [registerFilters, setRegisterFilters] = useState<Filters>(EMPTY_FILTERS);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [presetsLoaded, setPresetsLoaded] = useState(false);
   const defaultAppliedRef = useRef(false);
@@ -376,17 +391,17 @@ export function TenderingPage() {
     }
   }, [authFetch]);
 
+  // S1 — loop-paginate to collect the full dataset, respecting the API's 100
+  // row cap per page. Derives byStage/registerRows/stats from the full set.
   const reload = useCallback(
     async (withFilters: Filters) => {
       setLoading(true);
       setError(null);
       try {
-        const qs = buildQueryString(withFilters, 100);
-        const response = await authFetch(`/tenders?${qs}`);
-        if (!response.ok) throw new Error("Could not load tenders.");
-        const data = (await response.json()) as TenderListResponse;
-        setTenders(data.items);
-        setTotal(data.total);
+        const result = await fetchAllPages<TenderListItem>(authFetch, withFilters);
+        setTenders(result.items);
+        setTotal(result.total);
+        setTruncated(result.truncated);
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -410,10 +425,12 @@ export function TenderingPage() {
         if (presetsResp.ok) {
           const body = (await presetsResp.json()) as FilterPreset[];
           setPresets(body);
+          // S1 — default preset applies to Register only; Pipeline starts
+          // unfiltered so the board shows all submission-stage tenders.
           const defaultPreset = body.find((p) => p.isDefault);
           if (defaultPreset && !defaultAppliedRef.current) {
             defaultAppliedRef.current = true;
-            setFilters({ ...EMPTY_FILTERS, ...defaultPreset.filters });
+            setRegisterFilters({ ...EMPTY_FILTERS, ...defaultPreset.filters });
           }
         }
         setPresetsLoaded(true);
@@ -436,49 +453,37 @@ export function TenderingPage() {
     };
   }, [authFetch]);
 
-  // Reload tenders whenever filters change (and presets have been loaded so
-  // we don't double-load with the default preset).
+  // S1 — reload when the active view's filters change. Switching views also
+  // triggers a reload because `view` is a dependency; each view's filters are
+  // independent so no cross-contamination occurs.
+  const activeFilters = view === "pipeline" ? pipelineFilters : registerFilters;
   useEffect(() => {
     if (!presetsLoaded) return;
-    void reload(filters);
+    void reload(activeFilters);
     setSelectedIds([]);
-  }, [presetsLoaded, filters, reload]);
+  }, [presetsLoaded, view, pipelineFilters, registerFilters, reload]);
 
-  const byStage = useMemo(() => {
-    const groups: Record<Stage, TenderListItem[]> = {
-      DRAFT: [],
-      IN_PROGRESS: [],
-      SUBMITTED: [],
-      AWARDED: [],
-      CONTRACT_ISSUED: [],
-      LOST: [],
-      WITHDRAWN: []
-    };
-    for (const tender of tenders) {
-      if ((STAGES as readonly string[]).includes(tender.status)) {
-        groups[tender.status as Stage].push(tender);
-      }
-    }
-    return groups;
-  }, [tenders]);
+  // S1 — only bucket the four submission stages; outcome statuses are not
+  // rendered as board columns.
+  const byStage = useMemo(() => groupByPipelineStage(tenders), [tenders]);
 
   const registerRows = useMemo(() => {
     // Server-side filters already applied. Client-side: probability bucket
     // multi-select (API only supports one) and discipline multi-select.
     let rows = tenders;
-    if (filters.probability.length > 1) {
+    if (registerFilters.probability.length > 1) {
       rows = rows.filter((t) => {
         const bucket = probabilityToBucket(t.probability);
-        return bucket !== null && filters.probability.includes(bucket);
+        return bucket !== null && registerFilters.probability.includes(bucket);
       });
     }
     // Client-side sort only if <=100 items (otherwise trust server sort).
-    if (rows.length <= 100 && filters.sortBy) {
-      const dir = filters.sortDir === "asc" ? 1 : -1;
-      rows = [...rows].sort((a, b) => sortCompare(a, b, filters.sortBy as ColumnKey) * dir);
+    if (rows.length <= 100 && registerFilters.sortBy) {
+      const dir = registerFilters.sortDir === "asc" ? 1 : -1;
+      rows = [...rows].sort((a, b) => sortCompare(a, b, registerFilters.sortBy as ColumnKey) * dir);
     }
     return rows;
-  }, [tenders, filters.probability, filters.sortBy, filters.sortDir]);
+  }, [tenders, registerFilters.probability, registerFilters.sortBy, registerFilters.sortDir]);
 
   const stats = useMemo(() => {
     const pipeline = registerRows.reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
@@ -495,13 +500,31 @@ export function TenderingPage() {
     // triggers capture.
     const source = tenders.find((t) => t.id === tenderId) ?? null;
     setTenders((current) =>
-      current.map((tender) => (tender.id === tenderId ? { ...tender, status: toStage } : tender))
+      current.map((tender) =>
+        tender.id === tenderId
+          ? {
+              ...tender,
+              status: toStage,
+              // Dragging into the WITHDRAWN column always creates a
+              // pending-review — reviewer decides reopen vs confirm from
+              // the tender detail page.
+              withdrawalState: toStage === "WITHDRAWN" ? "PENDING_REVIEW" : null
+            }
+          : tender
+      )
     );
     try {
-      const response = await authFetch(`/tenders/${tenderId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: toStage })
-      });
+      // Route WITHDRAWN drops through the withdraw endpoint so the
+      // withdrawn-review lane sees them (status + pending-review flag +
+      // ledger row in one call). Everything else uses the generic
+      // status-patch path that already existed.
+      const url = toStage === "WITHDRAWN"
+        ? `/tenders/${tenderId}/withdraw`
+        : `/tenders/${tenderId}/status`;
+      const init: RequestInit = toStage === "WITHDRAWN"
+        ? { method: "POST", body: JSON.stringify({}) }
+        : { method: "PATCH", body: JSON.stringify({ status: toStage }) };
+      const response = await authFetch(url, init);
       if (!response.ok) throw new Error("Could not update tender stage.");
       // WL-1b — prompted-but-skippable outcome capture. Fires only after
       // the status write succeeds; the modal open is asynchronous so the
@@ -517,7 +540,7 @@ export function TenderingPage() {
       }
     } catch (err) {
       setError((err as Error).message);
-      void reload(filters);
+      void reload(activeFilters);
     }
   };
 
@@ -528,13 +551,13 @@ export function TenderingPage() {
     await recordOutcome(authFetch, outcomeTarget.id, payload);
     setToast(`Outcome recorded for ${outcomeTarget.tenderNumber}`);
     setOutcomeTarget(null);
-    void reload(filters);
+    void reload(activeFilters);
     window.setTimeout(() => setToast(null), 2400);
   };
 
   const toggleSort = (key: ColumnKey) => {
     if (!SORTABLE_COLUMNS.includes(key)) return;
-    setFilters((current) => {
+    setRegisterFilters((current) => {
       if (current.sortBy !== key) return { ...current, sortBy: key, sortDir: "asc" };
       if (current.sortDir === "asc") return { ...current, sortDir: "desc" };
       return { ...current, sortBy: null, sortDir: "desc" };
@@ -565,7 +588,7 @@ export function TenderingPage() {
       const body = await response.json();
       setToast(`${body.updated} tenders updated to ${STAGE_LABEL[status]}`);
       setSelectedIds([]);
-      await reload(filters);
+      await reload(activeFilters);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -602,14 +625,14 @@ export function TenderingPage() {
   };
 
   const applyPreset = (preset: FilterPreset) => {
-    setFilters({ ...EMPTY_FILTERS, ...preset.filters });
+    setRegisterFilters({ ...EMPTY_FILTERS, ...preset.filters });
   };
 
   const savePreset = async (name: string, isDefault: boolean) => {
     try {
       const response = await authFetch("/tenders/filter-presets", {
         method: "POST",
-        body: JSON.stringify({ name, filters, isDefault })
+        body: JSON.stringify({ name, filters: registerFilters, isDefault })
       });
       if (!response.ok) throw new Error(await response.text());
       const created = (await response.json()) as FilterPreset;
@@ -657,7 +680,7 @@ export function TenderingPage() {
       setDeleteTarget(null);
       setDeletePreflight(null);
       setToast(`Tender ${deleteTarget.tenderNumber} deleted`);
-      reload(filters);
+      reload(activeFilters);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -687,12 +710,8 @@ export function TenderingPage() {
     <div className="tender-page">
       <header className="tender-page__header">
         <div>
-          <TopTabStrip active={activeTab} onChange={setActiveTab} showCrm={canViewCrm} />
-          {activeTab === "tenders" ? (
-            <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
-          ) : null}
+          <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>Tendering</h1>
         </div>
-        {activeTab === "tenders" ? (
         <div className="tender-page__header-actions">
           <div className="tender-page__view-toggle" role="tablist" aria-label="View">
             <button
@@ -730,13 +749,8 @@ export function TenderingPage() {
             + New tender
           </button>
         </div>
-        ) : null}
       </header>
 
-      {activeTab === "crm" ? (
-        <CrmBoardContent />
-      ) : (
-      <>
       {error ? <div className="tender-page__error" role="alert">{error}</div> : null}
       {toast ? (
         <div
@@ -761,38 +775,57 @@ export function TenderingPage() {
       <NeedsOutcomePanel
         tenders={tenders}
         authFetch={authFetch}
-        onRecorded={() => void reload(filters)}
+        onRecorded={() => void reload(activeFilters)}
       />
 
       {view === "pipeline" ? (
-        <div className="tender-kanban">
-          {STAGES.map((stage) => {
-            const items = byStage[stage];
-            const stageTotal = items.reduce((sum, tender) => sum + Number(tender.estimatedValue ?? 0), 0);
-            return (
-              <KanbanColumn
-                key={stage}
-                stage={stage}
-                items={items}
-                total={stageTotal}
-                loading={loading}
-                onDrop={moveTender}
-                onOpen={(id) => navigate(`/tenders/${id}`)}
-                onDelete={canManage ? startDelete : undefined}
-                canManage={canManage}
-                registerHighlightRef={registerHighlightRef}
-                isHighlighted={isHighlighted}
-              />
-            );
-          })}
-        </div>
+        <>
+          {/* S1 — Pipeline gets its own filter bar wired to pipelineFilters */}
+          <PipelineFilterBar
+            filters={pipelineFilters}
+            onFiltersChange={setPipelineFilters}
+            users={users}
+            clients={clients}
+          />
+          {truncated ? (
+            <p
+              style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}
+              role="status"
+              aria-live="polite"
+            >
+              Showing first {tenders.length} of {total} tenders (safety limit reached)
+            </p>
+          ) : null}
+          <div className="tender-kanban">
+            {/* S1 — 4 submission-stage columns only; outcome statuses are NOT rendered */}
+            {PIPELINE_STAGES.map((stage) => {
+              const items = byStage[stage];
+              const stageTotal = items.reduce((sum, tender) => sum + Number(tender.estimatedValue ?? 0), 0);
+              return (
+                <KanbanColumn
+                  key={stage}
+                  stage={stage as Stage}
+                  items={items}
+                  total={stageTotal}
+                  loading={loading}
+                  onDrop={moveTender}
+                  onOpen={(id) => navigate(`/tenders/${id}`)}
+                  onDelete={canManage ? startDelete : undefined}
+                  canManage={canManage}
+                  registerHighlightRef={registerHighlightRef}
+                  isHighlighted={isHighlighted}
+                />
+              );
+            })}
+          </div>
+        </>
       ) : (
         <RegisterView
           loading={loading}
           tenders={registerRows}
           stats={stats}
-          filters={filters}
-          onFiltersChange={setFilters}
+          filters={registerFilters}
+          onFiltersChange={setRegisterFilters}
           presets={presets}
           onApplyPreset={applyPreset}
           onSavePreset={savePreset}
@@ -824,11 +857,11 @@ export function TenderingPage() {
         clients={clients}
         users={users}
         existingDraftId={resumeDraftId}
-        onClose={() => { setNewOpen(false); setResumeDraftId(null); void reload(filters); }}
+        onClose={() => { setNewOpen(false); setResumeDraftId(null); void reload(activeFilters); }}
         onCreated={(id) => {
           setNewOpen(false);
           setResumeDraftId(null);
-          void reload(filters);
+          void reload(activeFilters);
           navigate(`/tenders/${id}`);
         }}
         onNeedClientsRefetch={() => void reloadClients()}
@@ -875,60 +908,6 @@ export function TenderingPage() {
           onCancel={() => { setDeleteTarget(null); setDeletePreflight(null); }}
         />
       ) : null}
-      </>
-      )}
-    </div>
-  );
-}
-
-function TopTabStrip({
-  active,
-  onChange,
-  showCrm
-}: {
-  active: TopTab;
-  onChange: (next: TopTab) => void;
-  showCrm: boolean;
-}) {
-  const tabs: { key: TopTab; label: string }[] = [
-    { key: "tenders", label: "Tenders" },
-    ...(showCrm ? ([{ key: "crm", label: "CRM" }] as const) : [])
-  ];
-  return (
-    <div
-      role="tablist"
-      aria-label="Tendering sections"
-      style={{
-        display: "flex",
-        gap: 4,
-        borderBottom: "1px solid #e5e7eb"
-      }}
-    >
-      {tabs.map((t) => {
-        const isActive = active === t.key;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(t.key)}
-            style={{
-              padding: "10px 16px",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: isActive ? 600 : 400,
-              borderBottom: isActive
-                ? "2px solid var(--color-orange, #FEAA6D)"
-                : "2px solid transparent",
-              minHeight: 44
-            }}
-          >
-            {t.label}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -1397,6 +1376,179 @@ function FilterBar(props: FilterBarProps) {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// S1 — lightweight filter bar for the Pipeline view. Mirrors the Register
+// filter bar but is wired to pipelineFilters and has no preset controls.
+function PipelineFilterBar({
+  filters,
+  onFiltersChange,
+  users,
+  clients
+}: {
+  filters: Filters;
+  onFiltersChange: (next: Filters) => void;
+  users: UserOption[];
+  clients: ClientOption[];
+}) {
+  const update = (patch: Partial<Filters>) => onFiltersChange({ ...filters, ...patch });
+  const toggleArray = <T extends string>(list: T[], value: T): T[] =>
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <input
+          className="s7-input"
+          placeholder="Search number, title, or client"
+          value={filters.search}
+          onChange={(e) => update({ search: e.target.value })}
+          style={{ flex: "1 1 260px" }}
+        />
+        <select
+          className="s7-select"
+          value={filters.estimatorId ?? ""}
+          onChange={(e) => update({ estimatorId: e.target.value || null })}
+        >
+          <option value="">Any estimator</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+          ))}
+        </select>
+        <div style={{ display: "inline-flex", gap: 4 }}>
+          {PROBABILITY_BUCKETS.map((b) => {
+            const active = filters.probability.includes(b);
+            return (
+              <button
+                key={b}
+                type="button"
+                onClick={() => update({ probability: toggleArray(filters.probability, b) })}
+                className="s7-btn s7-btn--sm"
+                style={{
+                  background: active ? PROBABILITY_COLOR[b] : "transparent",
+                  color: active ? "#3E1C00" : "var(--text-default)",
+                  border: `1px solid ${active ? PROBABILITY_COLOR[b] : "var(--border-default)"}`,
+                  padding: "2px 10px"
+                }}
+                aria-pressed={active}
+              >
+                {b}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          onClick={() => setAdvancedOpen((p) => !p)}
+          aria-expanded={advancedOpen}
+        >
+          {advancedOpen ? "Fewer filters" : "More filters"}
+        </button>
+        {isFilterActive(filters) ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => onFiltersChange(EMPTY_FILTERS)}
+            style={{ marginLeft: "auto" }}
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+      {advancedOpen ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
+            padding: 10,
+            background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+            borderRadius: 8
+          }}
+        >
+          <select
+            className="s7-select"
+            value={filters.clientId ?? ""}
+            onChange={(e) => update({ clientId: e.target.value || null })}
+          >
+            <option value="">Any client</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+            Min $
+            <input
+              className="s7-input s7-input--sm"
+              type="number"
+              min="0"
+              value={filters.valueMin}
+              onChange={(e) => update({ valueMin: e.target.value })}
+              style={{ width: 100 }}
+            />
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+            Max $
+            <input
+              className="s7-input s7-input--sm"
+              type="number"
+              min="0"
+              value={filters.valueMax}
+              onChange={(e) => update({ valueMax: e.target.value })}
+              style={{ width: 100 }}
+            />
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+            Due from
+            <input
+              className="s7-input s7-input--sm"
+              type="date"
+              value={filters.dueDateFrom}
+              onChange={(e) => update({ dueDateFrom: e.target.value })}
+            />
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+            Due to
+            <input
+              className="s7-input s7-input--sm"
+              type="date"
+              value={filters.dueDateTo}
+              onChange={(e) => update({ dueDateTo: e.target.value })}
+            />
+          </label>
+          <div style={{ display: "inline-flex", gap: 4 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", alignSelf: "center", marginRight: 4 }}>Discipline:</span>
+            {DISCIPLINES.map((d) => {
+              const active = filters.discipline.includes(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() =>
+                    update({ discipline: toggleArray(filters.discipline as Discipline[], d) })
+                  }
+                  className="s7-btn s7-btn--sm"
+                  style={{
+                    background: active ? "var(--brand-primary, #005B61)" : "transparent",
+                    color: active ? "white" : "var(--text-default)",
+                    border: `1px solid ${active ? "var(--brand-primary, #005B61)" : "var(--border-default)"}`,
+                    padding: "2px 10px"
+                  }}
+                  aria-pressed={active}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <ActiveFilterPills filters={filters} onFiltersChange={onFiltersChange} users={users} clients={clients} />
     </div>
   );
 }

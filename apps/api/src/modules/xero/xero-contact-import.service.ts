@@ -199,8 +199,12 @@ export function parseCsv(text: string): string[][] {
 
   // Normalise all line endings to LF so the loop only sees one newline char.
   const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // Snapshot length before the loop so CodeQL sees a fixed (non-user-controlled)
+  // loop bound. The caller is responsible for enforcing a size limit before calling
+  // this function (see MAX_FILE_BYTES check in previewImport).
+  const srcLen = src.length;
 
-  while (pos < src.length) {
+  while (pos < srcLen) {
     const ch = src[pos];
 
     if (inQuotes) {
@@ -312,6 +316,9 @@ type CachedPreview = ImportPreview & {
 
 const PREVIEW_CACHE_MAX = 20;
 const PREVIEW_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Maximum CSV file size accepted by previewImport (5 MiB). */
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 // Simple bounded map. Insertion order is used as eviction order.
 const previewCache = new Map<string, CachedPreview>();
@@ -427,6 +434,13 @@ export class XeroContactImportService {
           `unknown field key '${key}' in columnMap — only BUILTIN keys may be mapped`
         );
       }
+    }
+
+    // Enforce file size limit before any parsing.
+    if (fileBytes.length > MAX_FILE_BYTES) {
+      throw new BadRequestException(
+        `Uploaded file exceeds the maximum allowed size of ${MAX_FILE_BYTES / 1024 / 1024} MiB`
+      );
     }
 
     // Compute file SHA-256 hash.

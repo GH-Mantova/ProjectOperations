@@ -326,6 +326,31 @@ describe("XeroContactImportService.previewImport", () => {
 
     expect(preview.rows[0]?.action).toBe("new");
   });
+
+  it("rejects files larger than 5 MiB with BadRequestException", async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+    // Build a buffer just over 5 MiB (5 * 1024 * 1024 + 1 bytes).
+    const oversized = Buffer.alloc(5 * 1024 * 1024 + 1, "a");
+
+    await expect(
+      service.previewImport({
+        fileBytes: oversized,
+        appliesTo: "CLIENT",
+        columnMap: { name: "name" },
+        actorUserId: "user-1"
+      })
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service.previewImport({
+        fileBytes: oversized,
+        appliesTo: "CLIENT",
+        columnMap: { name: "name" },
+        actorUserId: "user-1"
+      })
+    ).rejects.toThrow(/maximum allowed size/);
+  });
 });
 
 // ── Tests: commitImport ────────────────────────────────────────────────────────

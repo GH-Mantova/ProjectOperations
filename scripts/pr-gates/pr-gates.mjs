@@ -469,4 +469,46 @@ function report(level, gate, name, detail) {
 }
 
 
+// CP-26 - do-not-merge label. The `escalates: true` front-matter flag means a human decides the
+// merge. Until 2026-08-17 that was enforced by NOTHING: the watcher ran `gh pr merge --auto` on
+// every PR it opened, the string "escalates" appeared nowhere in it, and no gate anywhere looked
+// at the `do-not-merge` label - which already existed, described as "escalates:true - Marco merges
+// this, not automation (DOCTRINE 5b)", and was simply never applied or checked. That is the OPS-6
+// near-miss mechanism: a destructive migration one green build away from merging itself.
+//
+// The watcher now applies the label; this gate is what gives it teeth. Enforcement lives HERE, at
+// the point of action, not in the watcher's decision - a filter is one quirk away from being a
+// silent no-op, which is exactly how #552 (the production-data PR) was once selected for merge.
+//
+// Removing the label IS the human's approval: CI re-runs, this gate passes, the PR can merge.
+{
+  if (prNumber) {
+    let labels = [];
+    try {
+      const raw = execFileSync(
+        "gh",
+        ["pr", "view", prNumber, "--json", "labels", "-q", ".labels[].name"],
+        { encoding: "utf8" }
+      );
+      labels = raw.split("\n").map((s) => s.trim()).filter(Boolean);
+    } catch (err) {
+      // Fail CLOSED. If we cannot read the labels we cannot prove the PR is releasable.
+      report("FAIL", "CP-26", "do-not-merge", `could not read labels: ${err.message}`);
+    }
+    if (labels.includes("do-not-merge")) {
+      report(
+        "FAIL",
+        "CP-26",
+        "do-not-merge",
+        "PR carries the do-not-merge label (escalates:true). A human must review and REMOVE " +
+          "the label; removing it is what releases the merge."
+      );
+    } else {
+      report("PASS", "CP-26", "do-not-merge", "label absent");
+    }
+  } else {
+    report("SKIP", "CP-26", "do-not-merge", "no PR_NUMBER (local run)");
+  }
+}
+
 process.exit(failed ? 1 : 0);

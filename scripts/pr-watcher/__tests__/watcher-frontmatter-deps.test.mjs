@@ -113,3 +113,27 @@ test("front-matter with no dependency keys returns empty deps", () => {
   assert.deepEqual(deps.requiresMerged, []);
   assert.deepEqual(deps.requiresFilesOnMain, []);
 });
+
+// escalates (2026-08-17). The watcher previously had no concept of this flag and ran
+// `gh pr merge --auto --squash` on every PR it opened. It now withholds auto-merge and labels
+// the PR do-not-merge, which CP-26 fails on. Default MUST be false — a prompt that omits the
+// key must keep the ordinary auto-merge path.
+test("escalates: true is parsed", () => {
+  const body = ["---", "premise: 'true'", "escalates: true", "---", "", "# body"].join("\n");
+  assert.equal(parseWatcherFrontMatter(body).escalates, true);
+});
+
+test("escalates: True is parsed case-insensitively", () => {
+  const body = ["---", "premise: 'true'", "escalates: True", "---", "", "# body"].join("\n");
+  assert.equal(parseWatcherFrontMatter(body).escalates, true);
+});
+
+test("escalates: false stays false", () => {
+  const body = ["---", "premise: 'true'", "escalates: false", "---", "", "# body"].join("\n");
+  assert.equal(parseWatcherFrontMatter(body).escalates, false);
+});
+
+test("a prompt with no escalates key defaults to false", () => {
+  const body = ["---", "premise: 'true'", "size: 3", "---", "", "# body"].join("\n");
+  assert.equal(parseWatcherFrontMatter(body).escalates, false);
+});

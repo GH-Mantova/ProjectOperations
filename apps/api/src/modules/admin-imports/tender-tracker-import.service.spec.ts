@@ -26,7 +26,9 @@ function makePrismaMock(overrides: Record<string, unknown> = {}): jest.Mocked<Pr
         { id: "u2", firstName: "Raj", lastName: "Pudasaini" },
         { id: "u3", firstName: "Marco", lastName: "Mantovanini" },
       ]),
-      findUnique: jest.fn().mockResolvedValue({ isSuperUser: true }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: "u1", firstName: "Sean", lastName: "Lattin", isSuperUser: true,
+      }),
     },
     client: {
       upsert: jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: `client-${create.name}` })),
@@ -38,7 +40,8 @@ function makePrismaMock(overrides: Record<string, unknown> = {}): jest.Mocked<Pr
     },
     tender: {
       findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: `tender-${data.tenderNumber}` })),
+      create: jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({ id: `tender-${data.tenderNumber}`, createdAt: TENDER_CREATED_AT })),
       update: jest.fn().mockResolvedValue({}),
     },
     tenderClient: {
@@ -46,10 +49,28 @@ function makePrismaMock(overrides: Record<string, unknown> = {}): jest.Mocked<Pr
     },
     tenderClientNote: {
       findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    tenderClarificationNote: {
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     },
   };
   return { ...base, ...overrides } as unknown as jest.Mocked<PrismaService>;
+}
+
+/** Fixed so date-fallback assertions are deterministic. */
+const TENDER_CREATED_AT = new Date("2023-01-15T00:00:00.000Z");
+
+/**
+ * Spreadsheet dates are parsed into LOCAL time, so asserting on toISOString()
+ * shifts the day by the machine's UTC offset and the test would pass in UTC and
+ * fail in Brisbane. Compare local calendar parts instead.
+ */
+function localYmd(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function csvToBuffer(csv: string): Buffer {
@@ -283,6 +304,356 @@ describe("TenderTrackerImportService", () => {
       expect(tenderNumbersMock.generate).not.toHaveBeenCalled();
       const updateCall = (prismaMock.tender.update as unknown as jest.Mock).mock.calls[0]?.[0];
       expect(updateCall?.data?.tenderNumber).toBeUndefined();
+    });
+  });
+
+  // ===========================================================================
+  // Follow-up notes -> Activity & communications
+  //
+  // Regression guard: these notes used to be written to TenderClientNote, which
+  // the Activity panel never reads, so every imported note was invisible.
+  // ===========================================================================
+
+  const clarificationCreateCalls = () =>
+    (prismaMock.tenderClarificationNote.create as unknown as jest.Mock).mock.calls;
+
+  describe("commit: Follow Up Notes land in the feed the UI actually reads", () => {
+    it("writes a TenderClarificationNote and never a TenderClientNote", async () => {
+      const csv = HEADER + makeRow({ followUpNotes: "Demex won it" });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(prismaMock.tenderClarificationNote.create).toHaveBeenCalledTimes(1);
+      expect(prismaMock.tenderClientNote.create).not.toHaveBeenCalled();
+    });
+
+    it("logs the note as an internal note carrying the exact text", async () => {
+      const csv = HEADER + makeRow({ followUpNotes: "Demex won it" });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data).toEqual(
+        expect.objectContaining({ noteType: "note", direction: "internal", text: "Demex won it" })
+      );
+    });
+
+    it("attributes the note to the row's estimator, not the import actor", async () => {
+      const csv = HEADER + makeRow({ estimator: "Raj Pudasaini", followUpNotes: "Priced low" });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.createdById).toBe("u2");
+    });
+
+    it("falls back to the import actor when the estimator cannot be resolved", async () => {
+      const csv = HEADER + makeRow({ estimator: "Nobody At All", followUpNotes: "Orphan note" });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.createdById).toBe("actor-1");
+    });
+
+    it("skips a note whose text already exists on the tender", async () => {
+      (prismaMock.tenderClarificationNote.findFirst as unknown as jest.Mock)
+        .mockResolvedValueOnce({ id: "already-there" } as never);
+
+      const csv = HEADER + makeRow({ followUpNotes: "Demex won it" });
+      const report = await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+      expect(report.notesCreated).toBe(0);
+    });
+
+    it("writes nothing at all when the Follow Up Notes cell is empty", async () => {
+      const csv = HEADER + makeRow({ followUpNotes: "" });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("commit: follow-up note date fallback chain", () => {
+    it("prefers Date Submitted", async () => {
+      const csv = HEADER + makeRow({
+        dateSubmitted: "2024-05-06", quoteDueDate: "2024-03-01", followUpNotes: "n",
+      });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      const occurredAt = clarificationCreateCalls()[0]?.[0]?.data?.occurredAt as Date;
+      expect(localYmd(occurredAt)).toBe("2024-05-06");
+    });
+
+    it("falls back to Quote Due Date when Date Submitted is blank", async () => {
+      const csv = HEADER + makeRow({
+        dateSubmitted: "", quoteDueDate: "2024-03-01", followUpNotes: "n",
+      });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      const occurredAt = clarificationCreateCalls()[0]?.[0]?.data?.occurredAt as Date;
+      expect(localYmd(occurredAt)).toBe("2024-03-01");
+    });
+
+    it("falls back to Started quoting when both submitted and due dates are blank", async () => {
+      const csv = HEADER + makeRow({
+        dateSubmitted: "", quoteDueDate: "", startedQuoting: "2024-02-02", followUpNotes: "n",
+      });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      const occurredAt = clarificationCreateCalls()[0]?.[0]?.data?.occurredAt as Date;
+      expect(localYmd(occurredAt)).toBe("2024-02-02");
+    });
+
+    it("uses the tender's createdAt when the row carries no date at all -- never today", async () => {
+      const csv = HEADER + makeRow({
+        dateSubmitted: "", quoteDueDate: "", startedQuoting: "", followUpNotes: "undated note",
+      });
+      await service.import(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      const occurredAt = clarificationCreateCalls()[0]?.[0]?.data?.occurredAt as Date;
+      expect(occurredAt).toEqual(TENDER_CREATED_AT);
+    });
+  });
+
+  describe("importFollowUpNotes -- notes-only mode (Stage B)", () => {
+    function withExistingTender(extra: Record<string, unknown> = {}) {
+      const mock = makePrismaMock();
+      (mock.tender.findFirst as unknown as jest.Mock).mockResolvedValue({
+        id: "t-1",
+        title: "T2001 — Test Project",
+        estimatorUserId: "u1",
+        createdAt: TENDER_CREATED_AT,
+        tenderClients: [{ clientId: "c-1", client: { name: "Test Client Pty Ltd" } }],
+        ...extra,
+      } as never);
+      return mock;
+    }
+
+    it("writes ONLY notes -- no tender, client, site or link writes", async () => {
+      await buildService(withExistingTender());
+      const csv = HEADER + makeRow({ followUpNotes: "Top-up note" });
+
+      const report = await service.importFollowUpNotes(
+        csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1"
+      );
+
+      expect(report.mode).toBe("notesOnly");
+      expect(report.notesCreated).toBe(1);
+      expect(prismaMock.tender.create).not.toHaveBeenCalled();
+      expect(prismaMock.tender.update).not.toHaveBeenCalled();
+      expect(prismaMock.client.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.site.create).not.toHaveBeenCalled();
+      expect(prismaMock.site.update).not.toHaveBeenCalled();
+      expect(prismaMock.tenderClient.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.tenderClientNote.create).not.toHaveBeenCalled();
+    });
+
+    it("attaches the note to the matching linked client", async () => {
+      await buildService(withExistingTender());
+      const csv = HEADER + makeRow({ clientName: "Test Client Pty Ltd", followUpNotes: "n" });
+
+      await service.importFollowUpNotes(csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1");
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.clientId).toBe("c-1");
+    });
+
+    it("leaves clientId null when no linked client matches, and never creates one", async () => {
+      await buildService(withExistingTender({
+        tenderClients: [{ clientId: "c-9", client: { name: "Some Other Builder" } }],
+      }));
+      const csv = HEADER + makeRow({ clientName: "Test Client Pty Ltd", followUpNotes: "n" });
+
+      const report = await service.importFollowUpNotes(
+        csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1"
+      );
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.clientId).toBeNull();
+      expect(report.notesWithoutClient).toBe(1);
+      expect(prismaMock.client.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.tenderClient.upsert).not.toHaveBeenCalled();
+    });
+
+    it("reports a row whose tender does not exist instead of creating one", async () => {
+      const mock = makePrismaMock();
+      (mock.tender.findFirst as unknown as jest.Mock).mockResolvedValue(null as never);
+      await buildService(mock);
+      const csv = HEADER + makeRow({ tenderNo: "T9999", followUpNotes: "orphan" });
+
+      const report = await service.importFollowUpNotes(
+        csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1"
+      );
+
+      expect(report.notesSkippedNoTenderMatch).toBe(1);
+      expect(report.notesCreated).toBe(0);
+      expect(prismaMock.tender.create).not.toHaveBeenCalled();
+      expect(report.badRows.some((b) => b.reason.includes("T9999"))).toBe(true);
+    });
+
+    it("counts duplicates instead of writing them", async () => {
+      const mock = withExistingTender();
+      (mock.tenderClarificationNote.findFirst as unknown as jest.Mock)
+        .mockResolvedValue({ id: "dup" } as never);
+      await buildService(mock);
+      const csv = HEADER + makeRow({ followUpNotes: "already migrated" });
+
+      const report = await service.importFollowUpNotes(
+        csvToBuffer(csv), "test.csv", "text/csv", false, "actor-1"
+      );
+
+      expect(report.notesSkippedDuplicate).toBe(1);
+      expect(report.notesCreated).toBe(0);
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+    });
+
+    it("dry-run previews without writing anything", async () => {
+      await buildService(withExistingTender());
+      const csv = HEADER + makeRow({ followUpNotes: "Preview me please" });
+
+      const report = await service.importFollowUpNotes(
+        csvToBuffer(csv), "test.csv", "text/csv", true, "actor-1"
+      );
+
+      expect(report.dryRun).toBe(true);
+      expect(report.notesCreated).toBe(1);
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+      expect(report.sample).toHaveLength(1);
+      expect(report.sample[0]).toEqual(expect.objectContaining({
+        tenderTitle: "T2001 — Test Project",
+        clientName: "Test Client Pty Ltd",
+        author: "Sean Lattin",
+        textPreview: "Preview me please",
+      }));
+    });
+  });
+
+  describe("migrateFollowUpNotes -- Stage A", () => {
+    const sourceNote = {
+      id: "tcn-1",
+      tenderId: "t-1",
+      clientId: "c-1",
+      noteType: "note",
+      subject: null,
+      body: "  Gave a stupidly high price  ",
+      occurredAt: new Date("2024-01-15T00:00:00.000Z"),
+      createdById: "actor-old",
+      tender: { title: "T1683 — 10 Gretty lane", estimatorUserId: "u2" },
+      client: { name: "Brenacon" },
+    };
+
+    function withSourceNotes(notes: unknown[]) {
+      const mock = makePrismaMock();
+      (mock.tenderClientNote.findMany as unknown as jest.Mock).mockResolvedValue(notes as never);
+      return mock;
+    }
+
+    it("copies a source row into the feed without deleting or updating it", async () => {
+      await buildService(withSourceNotes([sourceNote]));
+
+      const report = await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(report.mode).toBe("migrate");
+      expect(report.notesCreated).toBe(1);
+      expect(clarificationCreateCalls()[0]?.[0]?.data).toEqual(
+        expect.objectContaining({
+          tenderId: "t-1",
+          clientId: "c-1",
+          direction: "internal",
+          noteType: "note",
+          text: "Gave a stupidly high price",
+          createdById: "u2",
+        })
+      );
+      expect((prismaMock.tenderClientNote as unknown as Record<string, unknown>).delete).toBeUndefined();
+      expect(prismaMock.tenderClientNote.create).not.toHaveBeenCalled();
+    });
+
+    it("preserves the original occurredAt", async () => {
+      await buildService(withSourceNotes([sourceNote]));
+
+      await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.occurredAt)
+        .toEqual(new Date("2024-01-15T00:00:00.000Z"));
+    });
+
+    it("folds a subject into the single text field the feed renders", async () => {
+      await buildService(withSourceNotes([{ ...sourceNote, subject: "Site visit" }]));
+
+      await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.text)
+        .toBe("Site visit — Gave a stupidly high price");
+    });
+
+    it("maps site_visit to a renderable note type", async () => {
+      await buildService(withSourceNotes([{ ...sourceNote, noteType: "site_visit" }]));
+
+      await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.noteType).toBe("note");
+    });
+
+    it("passes a renderable note type through unchanged", async () => {
+      await buildService(withSourceNotes([{ ...sourceNote, noteType: "email" }]));
+
+      await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.noteType).toBe("email");
+    });
+
+    it("falls back through source author to actor when the tender has no estimator", async () => {
+      await buildService(withSourceNotes([
+        { ...sourceNote, tender: { title: "T1 — x", estimatorUserId: null } },
+      ]));
+
+      const report = await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.createdById).toBe("actor-old");
+      expect(report.notesWithoutEstimator).toBe(1);
+    });
+
+    it("uses the actor when neither estimator nor source author exists", async () => {
+      await buildService(withSourceNotes([
+        { ...sourceNote, createdById: null, tender: { title: "T1 — x", estimatorUserId: null } },
+      ]));
+
+      await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(clarificationCreateCalls()[0]?.[0]?.data?.createdById).toBe("actor-1");
+    });
+
+    it("skips a row already present in the feed", async () => {
+      const mock = withSourceNotes([sourceNote]);
+      (mock.tenderClarificationNote.findFirst as unknown as jest.Mock)
+        .mockResolvedValue({ id: "dup" } as never);
+      await buildService(mock);
+
+      const report = await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(report.notesSkippedDuplicate).toBe(1);
+      expect(report.notesCreated).toBe(0);
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+    });
+
+    it("dry-run reports what it would write and writes nothing", async () => {
+      await buildService(withSourceNotes([sourceNote]));
+
+      const report = await service.migrateFollowUpNotes("actor-1", true);
+
+      expect(report.dryRun).toBe(true);
+      expect(report.rowsRead).toBe(1);
+      expect(report.notesCreated).toBe(1);
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+      expect(report.sample[0]).toEqual(expect.objectContaining({
+        tenderTitle: "T1683 — 10 Gretty lane",
+        clientName: "Brenacon",
+        textPreview: "Gave a stupidly high price",
+      }));
+    });
+
+    it("reports an empty-bodied source row instead of writing a blank note", async () => {
+      await buildService(withSourceNotes([{ ...sourceNote, body: "   " }]));
+
+      const report = await service.migrateFollowUpNotes("actor-1", false);
+
+      expect(report.notesCreated).toBe(0);
+      expect(prismaMock.tenderClarificationNote.create).not.toHaveBeenCalled();
+      expect(report.badRows).toHaveLength(1);
     });
   });
 });

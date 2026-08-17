@@ -42,6 +42,107 @@ export interface TenderTrackerImportReport {
   badRows: Array<{ row: number; reason: string }>;
 }
 
+/** One line of the dry-run preview, so a human can eyeball before committing. */
+export interface FollowUpNoteSample {
+  tenderTitle: string;
+  clientName: string | null;
+  author: string | null;
+  occurredAt: string;
+  textPreview: string;
+}
+
+/**
+ * Report for both follow-up-note recovery paths:
+ *   mode "migrate"   -- existing TenderClientNote rows -> TenderClarificationNote
+ *   mode "notesOnly" -- spreadsheet Column O top-up, writing notes and NOTHING else
+ */
+export interface FollowUpNotesReport {
+  dryRun: boolean;
+  mode: "migrate" | "notesOnly";
+  rowsRead: number;
+  notesCreated: number;
+  notesSkippedDuplicate: number;
+  notesSkippedNoTenderMatch: number;
+  notesWithoutClient: number;
+  notesWithoutEstimator: number;
+  sample: FollowUpNoteSample[];
+  badRows: Array<{ row: number; reason: string }>;
+}
+
+/** Preview lines returned by a dry run. */
+const SAMPLE_LIMIT = 10;
+
+/** Longest text fragment shown in a dry-run sample line. */
+const SAMPLE_TEXT_CHARS = 80;
+
+/**
+ * The Activity & communications panel renders TenderEntry and
+ * TenderClarificationNote. TenderClarificationNote accepts only these note
+ * types -- anything else is stored but never rendered, which is the exact bug
+ * this recovery exists to fix. TenderClientNote additionally allows
+ * "site_visit", so it is folded into the closest renderable type.
+ */
+const CLARIFICATION_NOTE_TYPES = new Set(["call", "email", "meeting", "note", "response"]);
+
+function toClarificationNoteType(sourceType: string | null | undefined): string {
+  const candidate = (sourceType ?? "").trim().toLowerCase();
+  return CLARIFICATION_NOTE_TYPES.has(candidate) ? candidate : "note";
+}
+
+/**
+ * Imported follow-up notes are the team's own commentary about a tender --
+ * neither sent to nor received from the client -- so they are logged as
+ * "internal". See DIRECTIONS in tender-clarifications.service.ts.
+ */
+const IMPORTED_NOTE_DIRECTION = "internal";
+
+/** Fold an optional subject into the single text field the feed renders. */
+function composeNoteText(subject: string | null | undefined, body: string): string {
+  const cleanBody = body.trim();
+  const cleanSubject = (subject ?? "").trim();
+  return cleanSubject ? `${cleanSubject} — ${cleanBody}` : cleanBody;
+}
+
+function personName(
+  person: { firstName?: string | null; lastName?: string | null } | null | undefined
+): string | null {
+  if (!person) return null;
+  const name = [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
+  return name || null;
+}
+
+/**
+ * Date for a follow-up note, in descending order of truthfulness:
+ * submitted -> quote due -> started quoting -> the tender's own createdAt.
+ * Deliberately never `new Date()`.
+ */
+function resolveNoteDate(row: ParsedRow, tenderCreatedAt: Date): Date {
+  return row.dateSubmitted ?? row.quoteDueDate ?? row.startedQuotingDate ?? tenderCreatedAt;
+}
+
+/**
+ * Pick which of a tender's EXISTING client links owns this note, by matching
+ * the tracker's Client Company Name under the importer's own normalisation.
+ *
+ * Returns null when the tender has no links, or several and none match, or the
+ * spreadsheet's client cell is blank. Null is a valid outcome, not a failure:
+ * TenderClarificationNote.clientId is nullable and an unassigned note still
+ * renders under "All clients". Notes-only mode must NEVER create a Client, a
+ * Site or a TenderClient link to force a match.
+ */
+function pickLinkedClientId(
+  links: ReadonlyArray<{ clientId: string; client: { name: string } | null }>,
+  clientNameNorm: string
+): string | null {
+  if (!clientNameNorm) return null;
+  for (const link of links) {
+    if (link.client && normaliseClientName(link.client.name) === clientNameNorm) {
+      return link.clientId;
+    }
+  }
+  return null;
+}
+
 interface ParsedRow {
   rowIndex: number;
   projectName: string;
@@ -57,6 +158,13 @@ interface ParsedRow {
   decision: string | null;
   clientProjectStatus: string | null;
   startedQuoting: boolean;
+  /**
+   * The "Started quoting" cell parsed as a DATE. `startedQuoting` above stays a
+   * presence flag because status mapping only asks "did quoting start?", but the
+   * follow-up-note date chain needs the actual date as its last real-date
+   * fallback before giving up and using the tender's own createdAt.
+   */
+  startedQuotingDate: Date | null;
   followUpNotes: string | null;
   tNumber: string;
 }
@@ -308,6 +416,7 @@ function mapRow(
     decision,
     clientProjectStatus,
     startedQuoting,
+    startedQuotingDate: parseDateCell(raw["startedQuoting"]),
     followUpNotes,
     tNumber,
   };
@@ -459,11 +568,16 @@ export class TenderTrackerImportService {
 
         const existingTender = await this.prisma.tender.findFirst({
           where: { title: { startsWith: `${row.tNumber} ` } },
-          select: { id: true, tenderNumber: true, siteId: true },
+          select: { id: true, tenderNumber: true, siteId: true, createdAt: true },
         });
 
         let tenderId: string;
         let siteId: string;
+        // Last-resort date for a follow-up note whose row carries no dates at
+        // all. Using the tender's own createdAt keeps the feed in true
+        // chronological order; `new Date()` would sort undated notes above
+        // genuinely recent activity on every tender.
+        let tenderCreatedAt: Date;
 
         if (existingTender) {
           if (existingTender.siteId) {
@@ -516,6 +630,7 @@ export class TenderTrackerImportService {
             },
           });
           tenderId = existingTender.id;
+          tenderCreatedAt = existingTender.createdAt;
           report.tendersUpdated++;
         } else {
           const site = await this.prisma.site.create({
@@ -546,9 +661,10 @@ export class TenderTrackerImportService {
               lostAt: lostAt ?? undefined,
               tenantId: SEEDED_DEFAULT_TENANT_ID,
             },
-            select: { id: true },
+            select: { id: true, createdAt: true },
           });
           tenderId = newTender.id;
+          tenderCreatedAt = newTender.createdAt;
           report.tendersCreated++;
         }
 
@@ -558,24 +674,322 @@ export class TenderTrackerImportService {
           update: {},
         });
 
+        // Follow Up Notes -> TenderClarificationNote, NOT TenderClientNote.
+        //
+        // This previously wrote TenderClientNote, which the Activity &
+        // communications panel never reads (it renders TenderEntry via
+        // /entries and TenderClarificationNote via /clarification-notes --
+        // see apps/web/src/pages/tendering/activityClientFilter.ts). Every
+        // imported note was therefore stored and invisible.
         if (row.followUpNotes) {
-          const body = row.followUpNotes.trim();
-          const occurredAt = row.dateSubmitted ?? new Date();
-          const existing = await this.prisma.tenderClientNote.findFirst({
-            where: { tenderId, clientId, body, occurredAt },
-            select: { id: true },
+          const written = await this.writeFollowUpNote({
+            tenderId,
+            clientId,
+            text: row.followUpNotes,
+            occurredAt: resolveNoteDate(row, tenderCreatedAt),
+            authorId: estimatorUserId ?? actorId,
           });
-          if (!existing) {
-            await this.prisma.tenderClientNote.create({
-              data: { tenderId, clientId, noteType: "note", body, occurredAt, createdById: actorId },
-            });
-            report.notesCreated++;
-          }
+          if (written) report.notesCreated++;
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Row ${row.rowIndex} failed: ${msg}`);
         report.badRows.push({ row: row.rowIndex, reason: `Commit error: ${msg}` });
+      }
+    }
+
+    return report;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Follow-up-note recovery
+  //
+  // Stage A (migrateFollowUpNotes): existing TenderClientNote rows -> the feed.
+  // Stage B (importFollowUpNotes):  spreadsheet Column O top-up, notes ONLY.
+  //
+  // Neither stage reads, updates or deletes a TenderClientNote row beyond
+  // copying from it. Retiring that model is a separate, uncommissioned slice.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Write one follow-up note into the Activity & communications feed.
+   *
+   * Idempotent by trimmed text within a tender, which is what lets Stage B top
+   * Stage A up without duplicating it, and lets either stage be re-run safely.
+   *
+   * @returns true when a row was created, false when skipped as a duplicate or
+   *          because the text was empty.
+   */
+  private async writeFollowUpNote(input: {
+    tenderId: string;
+    clientId: string | null;
+    text: string;
+    subject?: string | null;
+    noteType?: string | null;
+    occurredAt: Date;
+    authorId: string;
+  }): Promise<boolean> {
+    const text = composeNoteText(input.subject ?? null, input.text);
+    if (!text) return false;
+
+    const existing = await this.prisma.tenderClarificationNote.findFirst({
+      where: { tenderId: input.tenderId, text },
+      select: { id: true },
+    });
+    if (existing) return false;
+
+    await this.prisma.tenderClarificationNote.create({
+      data: {
+        tenderId: input.tenderId,
+        clientId: input.clientId,
+        direction: IMPORTED_NOTE_DIRECTION,
+        noteType: toClarificationNoteType(input.noteType),
+        text,
+        occurredAt: input.occurredAt,
+        createdById: input.authorId,
+      },
+    });
+    return true;
+  }
+
+  /** Resolve a display name for the dry-run sample, cached per run. */
+  private async describeUser(
+    userId: string | null,
+    cache: Map<string, string | null>
+  ): Promise<string | null> {
+    if (!userId) return null;
+    if (cache.has(userId)) return cache.get(userId) ?? null;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    const name = personName(user);
+    cache.set(userId, name);
+    return name;
+  }
+
+  /**
+   * STAGE A -- copy every existing TenderClientNote row into
+   * TenderClarificationNote so it renders in Activity & communications.
+   *
+   * Non-destructive: the source rows are read and left exactly as they are.
+   */
+  async migrateFollowUpNotes(actorId: string, dryRun: boolean): Promise<FollowUpNotesReport> {
+    const sourceNotes = await this.prisma.tenderClientNote.findMany({
+      select: {
+        id: true,
+        tenderId: true,
+        clientId: true,
+        noteType: true,
+        subject: true,
+        body: true,
+        occurredAt: true,
+        createdById: true,
+        tender: { select: { title: true, estimatorUserId: true } },
+        client: { select: { name: true } },
+      },
+      orderBy: { occurredAt: "asc" },
+    });
+
+    const report: FollowUpNotesReport = {
+      dryRun,
+      mode: "migrate",
+      rowsRead: sourceNotes.length,
+      notesCreated: 0,
+      notesSkippedDuplicate: 0,
+      notesSkippedNoTenderMatch: 0,
+      notesWithoutClient: 0,
+      notesWithoutEstimator: 0,
+      sample: [],
+      badRows: [],
+    };
+
+    const userNameCache = new Map<string, string | null>();
+    let index = 0;
+
+    for (const note of sourceNotes) {
+      index += 1;
+      try {
+        const text = composeNoteText(note.subject, note.body);
+        if (!text) {
+          report.badRows.push({ row: index, reason: `TenderClientNote ${note.id} has an empty body -- skipped` });
+          continue;
+        }
+
+        const estimatorId = note.tender?.estimatorUserId ?? null;
+        if (!estimatorId) report.notesWithoutEstimator++;
+        if (!note.clientId) report.notesWithoutClient++;
+        const authorId = estimatorId ?? note.createdById ?? actorId;
+
+        const duplicate = await this.prisma.tenderClarificationNote.findFirst({
+          where: { tenderId: note.tenderId, text },
+          select: { id: true },
+        });
+        if (duplicate) {
+          report.notesSkippedDuplicate++;
+          continue;
+        }
+
+        if (report.sample.length < SAMPLE_LIMIT) {
+          report.sample.push({
+            tenderTitle: note.tender?.title ?? note.tenderId,
+            clientName: note.client?.name ?? null,
+            author: await this.describeUser(authorId, userNameCache),
+            occurredAt: note.occurredAt.toISOString(),
+            textPreview: text.slice(0, SAMPLE_TEXT_CHARS),
+          });
+        }
+
+        if (dryRun) {
+          report.notesCreated++;
+          continue;
+        }
+
+        const written = await this.writeFollowUpNote({
+          tenderId: note.tenderId,
+          clientId: note.clientId,
+          text: note.body,
+          subject: note.subject,
+          noteType: note.noteType,
+          occurredAt: note.occurredAt,
+          authorId,
+        });
+        if (written) report.notesCreated++;
+        else report.notesSkippedDuplicate++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Follow-up note migrate failed for ${note.id}: ${msg}`);
+        report.badRows.push({ row: index, reason: `Migrate error on ${note.id}: ${msg}` });
+      }
+    }
+
+    return report;
+  }
+
+  /**
+   * STAGE B -- notes-only spreadsheet import ("notesOnly" mode).
+   *
+   * Writes follow-up notes and NOTHING else: no tender create/update, no
+   * status, no tender numbers, no dates, no Client upsert, no Site create, no
+   * TenderClient link. Re-running the FULL import in commit mode re-asserts the
+   * spreadsheet's status over user-set status, which is why this path exists.
+   */
+  async importFollowUpNotes(
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    dryRun: boolean,
+    actorId: string
+  ): Promise<FollowUpNotesReport> {
+    const { rows: rawRows, error: parseError } = await parseWorkbook(buffer, mimeType, originalName);
+    if (parseError) {
+      throw new BadRequestException(parseError);
+    }
+
+    const badRows: Array<{ row: number; reason: string }> = [];
+    const parsedRows: ParsedRow[] = [];
+    rawRows.forEach((raw, idx) => {
+      const row = mapRow(raw, idx + 2, badRows);
+      if (row) parsedRows.push(row);
+    });
+
+    const report: FollowUpNotesReport = {
+      dryRun,
+      mode: "notesOnly",
+      rowsRead: rawRows.length,
+      notesCreated: 0,
+      notesSkippedDuplicate: 0,
+      notesSkippedNoTenderMatch: 0,
+      notesWithoutClient: 0,
+      notesWithoutEstimator: 0,
+      sample: [],
+      badRows,
+    };
+
+    const estimatorCache = new Map<string, string | null>();
+    const userNameCache = new Map<string, string | null>();
+
+    for (const row of parsedRows) {
+      if (!row.followUpNotes) continue;
+      try {
+        const tender = await this.prisma.tender.findFirst({
+          where: { title: { startsWith: `${row.tNumber} ` } },
+          select: {
+            id: true,
+            title: true,
+            estimatorUserId: true,
+            createdAt: true,
+            tenderClients: { select: { clientId: true, client: { select: { name: true } } } },
+          },
+        });
+
+        if (!tender) {
+          report.notesSkippedNoTenderMatch++;
+          report.badRows.push({
+            row: row.rowIndex,
+            reason: `No tender matches "${row.tNumber}" -- note not written (nothing was created to hold it)`,
+          });
+          continue;
+        }
+
+        const clientId = pickLinkedClientId(tender.tenderClients, row.clientNameNorm);
+        if (!clientId) report.notesWithoutClient++;
+
+        let estimatorUserId: string | null = tender.estimatorUserId;
+        if (!estimatorUserId && row.estimatorRaw) {
+          if (estimatorCache.has(row.estimatorRaw)) {
+            estimatorUserId = estimatorCache.get(row.estimatorRaw) ?? null;
+          } else {
+            estimatorUserId = await this.resolveEstimatorId(row.estimatorRaw);
+            estimatorCache.set(row.estimatorRaw, estimatorUserId);
+          }
+        }
+        if (!estimatorUserId) report.notesWithoutEstimator++;
+
+        const authorId = estimatorUserId ?? actorId;
+        const occurredAt = resolveNoteDate(row, tender.createdAt);
+        const text = composeNoteText(null, row.followUpNotes);
+        if (!text) continue;
+
+        const duplicate = await this.prisma.tenderClarificationNote.findFirst({
+          where: { tenderId: tender.id, text },
+          select: { id: true },
+        });
+        if (duplicate) {
+          report.notesSkippedDuplicate++;
+          continue;
+        }
+
+        if (report.sample.length < SAMPLE_LIMIT) {
+          report.sample.push({
+            tenderTitle: tender.title,
+            clientName: clientId
+              ? tender.tenderClients.find((link) => link.clientId === clientId)?.client?.name ?? null
+              : null,
+            author: await this.describeUser(authorId, userNameCache),
+            occurredAt: occurredAt.toISOString(),
+            textPreview: text.slice(0, SAMPLE_TEXT_CHARS),
+          });
+        }
+
+        if (dryRun) {
+          report.notesCreated++;
+          continue;
+        }
+
+        const written = await this.writeFollowUpNote({
+          tenderId: tender.id,
+          clientId,
+          text: row.followUpNotes,
+          occurredAt,
+          authorId,
+        });
+        if (written) report.notesCreated++;
+        else report.notesSkippedDuplicate++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Follow-up note row ${row.rowIndex} failed: ${msg}`);
+        report.badRows.push({ row: row.rowIndex, reason: `Notes-only error: ${msg}` });
       }
     }
 

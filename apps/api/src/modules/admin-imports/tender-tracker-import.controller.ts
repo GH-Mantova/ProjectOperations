@@ -2,6 +2,8 @@
  * MIG-2 + MIG-3 — Tender-tracker import controller.
  *
  * POST /admin/imports/tender-tracker       — MIG-2: import tracker CSV/XLSX
+ * POST /admin/imports/tender-followup-notes/migrate  — Stage A: TenderClientNote
+ *                                            rows into the Activity feed
  * POST /admin/imports/sharepoint-legacy-copy/plan    — MIG-3: dry-run match report
  * POST /admin/imports/sharepoint-legacy-copy/execute — MIG-3: commit copy job
  *
@@ -12,7 +14,9 @@
  * "users.create" which is already super-user-only in practice.
  *
  * File upload (tender-tracker only): multipart/form-data, field name "file".
- * Body field: dryRun (string "true" | "false").
+ * Body fields: dryRun (string "true" | "false"), and for tender-tracker also
+ * notesOnly (string "true" | "false"). Both default to the safe option —
+ * dryRun defaults to TRUE, notesOnly defaults to FALSE.
  */
 
 import {
@@ -63,7 +67,7 @@ export class TenderTrackerImportController {
   @RequirePermissions("users.create") // super-user gate — same code as admin-users
   @ApiOperation({
     summary:
-      "Import legacy estimating tracker (CSV or XLSX). dryRun=true validates only; dryRun=false commits idempotently.",
+      "Import legacy estimating tracker (CSV or XLSX). dryRun=true validates only; dryRun=false commits idempotently. notesOnly=true writes ONLY the Follow Up Notes column into the Activity & communications feed and touches nothing else.",
   })
   @ApiConsumes("multipart/form-data")
   @ApiResponse({ status: 201, description: "Import report returned." })
@@ -73,6 +77,7 @@ export class TenderTrackerImportController {
   async importTenderTracker(
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body("dryRun") dryRunRaw: string | undefined,
+    @Body("notesOnly") notesOnlyRaw: string | undefined,
     @CurrentUser() actor: { sub: string; isSuperUser?: boolean }
   ) {
     // Extra defence-in-depth: ensure caller is a super-user, since this
@@ -90,6 +95,20 @@ export class TenderTrackerImportController {
     }
 
     const dryRun = dryRunRaw !== "false"; // default to dry-run for safety
+    const notesOnly = notesOnlyRaw === "true"; // default to the FULL import
+
+    // notesOnly writes follow-up notes and nothing else. It exists because a
+    // full commit re-run re-asserts the spreadsheet's status over any status a
+    // user has since set in the ERP.
+    if (notesOnly) {
+      return this.service.importFollowUpNotes(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        dryRun,
+        actor.sub
+      );
+    }
 
     return this.service.import(
       file.buffer,
@@ -98,6 +117,27 @@ export class TenderTrackerImportController {
       dryRun,
       actor.sub
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Follow-up-note recovery (Stage A): TenderClientNote -> the Activity feed
+  // ---------------------------------------------------------------------------
+
+  @Post("tender-followup-notes/migrate")
+  @RequirePermissions("users.create") // super-user gate - same as tender-tracker import
+  @ApiOperation({
+    summary:
+      "Copy existing TenderClientNote rows into TenderClarificationNote so they render in Activity & communications. Non-destructive - source rows are never modified or deleted. dryRun=true (default) reports what would be written; dryRun=false commits.",
+  })
+  @ApiResponse({ status: 201, description: "FollowUpNotesReport returned." })
+  @ApiResponse({ status: 403, description: "Super-user access required." })
+  async migrateFollowUpNotes(
+    @Body("dryRun") dryRunRaw: string | undefined,
+    @CurrentUser() actor: { sub: string; isSuperUser?: boolean }
+  ) {
+    await this.assertSuperUser(actor.sub);
+    const dryRun = dryRunRaw !== "false"; // default to dry-run for safety
+    return this.service.migrateFollowUpNotes(actor.sub, dryRun);
   }
 
   // ---------------------------------------------------------------------------

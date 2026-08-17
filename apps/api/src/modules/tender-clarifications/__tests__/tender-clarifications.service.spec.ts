@@ -162,7 +162,7 @@ describe("TenderClarificationsService.create", () => {
     );
   });
 
-  it.each(["sent", "received"])("accepts direction %s", async (direction) => {
+  it.each(["sent", "received", "internal"])("accepts direction %s", async (direction) => {
     const { service, prisma } = buildService();
     await service.create("tender-1", "user-1", { direction, text: "x" });
     expect(model(prisma, "tenderClarificationNote").create).toHaveBeenCalledWith(
@@ -300,10 +300,22 @@ describe("TenderClarificationsService.update", () => {
     );
   });
 
+  // "internal" was previously rejected here. It is now a first-class direction
+  // so that follow-up notes migrated out of TenderClientNote stay editable —
+  // without it, opening one of those notes and saving returns 400. The
+  // rejection case below keeps its teeth via a value that is still invalid.
+  it("allows setting direction to internal", async () => {
+    const { service, prisma } = buildService();
+    await service.update("tender-1", "note-1", { direction: "internal" });
+    expect(model(prisma, "tenderClarificationNote").update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { direction: "internal" } })
+    );
+  });
+
   it("rejects an unknown direction with BadRequestException", async () => {
     const { service, prisma } = buildService();
     await expect(
-      service.update("tender-1", "note-1", { direction: "internal" })
+      service.update("tender-1", "note-1", { direction: "forwarded" })
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(model(prisma, "tenderClarificationNote").update).not.toHaveBeenCalled();
   });

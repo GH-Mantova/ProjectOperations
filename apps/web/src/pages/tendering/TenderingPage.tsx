@@ -108,7 +108,9 @@ import {
   PIPELINE_STAGES,
   type PipelineStage,
   groupByPipelineStage,
-  fetchAllPages
+  fetchAllPages,
+  daysUntil,
+  buildRegisterCsv
 } from "./tenderingPage.helpers";
 
 const PROBABILITY_BUCKETS: ProbabilityBucket[] = ["Hot", "Warm", "Cold"];
@@ -207,15 +209,6 @@ function daysSince(iso?: string | null): string {
   return `${days} days`;
 }
 
-function daysUntil(iso?: string | null): string {
-  if (!iso) return "—";
-  const then = new Date(iso).getTime();
-  const diff = Math.ceil((then - Date.now()) / (24 * 60 * 60 * 1000));
-  if (diff < 0) return `${Math.abs(diff)}d overdue`;
-  if (diff === 0) return "today";
-  if (diff === 1) return "1 day";
-  return `${diff} days`;
-}
 
 function formatCurrency(raw?: string | number | null): string {
   if (raw === null || raw === undefined || raw === "") return "—";
@@ -467,23 +460,31 @@ export function TenderingPage() {
   // rendered as board columns.
   const byStage = useMemo(() => groupByPipelineStage(tenders), [tenders]);
 
-  const registerRows = useMemo(() => {
-    // Server-side filters already applied. Client-side: probability bucket
-    // multi-select (API only supports one) and discipline multi-select.
-    let rows = tenders;
+  // filteredRows: server-side filters already applied; add client-side
+  // probability multi-select (API only supports one bucket at a time).
+  // Used as the export source — no sort applied so the file always carries
+  // server (default) order, matching the spec.
+  const filteredRows = useMemo(() => {
     if (registerFilters.probability.length > 1) {
-      rows = rows.filter((t) => {
+      return tenders.filter((t) => {
         const bucket = probabilityToBucket(t.probability);
         return bucket !== null && registerFilters.probability.includes(bucket);
       });
     }
+    return tenders;
+  }, [tenders, registerFilters.probability]);
+
+  // registerRows: filteredRows + client-side sort (table display only).
+  const registerRows = useMemo(() => {
     // Client-side sort only if <=100 items (otherwise trust server sort).
-    if (rows.length <= 100 && registerFilters.sortBy) {
+    if (filteredRows.length <= 100 && registerFilters.sortBy) {
       const dir = registerFilters.sortDir === "asc" ? 1 : -1;
-      rows = [...rows].sort((a, b) => sortCompare(a, b, registerFilters.sortBy as ColumnKey) * dir);
+      return [...filteredRows].sort(
+        (a, b) => sortCompare(a, b, registerFilters.sortBy as ColumnKey) * dir
+      );
     }
-    return rows;
-  }, [tenders, registerFilters.probability, registerFilters.sortBy, registerFilters.sortDir]);
+    return filteredRows;
+  }, [filteredRows, registerFilters.sortBy, registerFilters.sortDir]);
 
   const stats = useMemo(() => {
     const pipeline = registerRows.reduce((sum, t) => sum + Number(t.estimatedValue ?? 0), 0);
@@ -596,28 +597,32 @@ export function TenderingPage() {
     }
   };
 
-  const exportSelectedCsv = () => {
-    const selected = registerRows.filter((t) => selectedIds.includes(t.id));
-    if (!selected.length) return;
-    const header = ["Tender #", "Name", "Client", "Status", "Value", "Estimator", "Due date"];
-    const rows = selected.map((t) => [
-      t.tenderNumber,
-      t.title,
-      t.tenderClients.map((tc) => tc.client.name).join("; "),
-      t.status,
-      t.estimatedValue ?? "",
-      t.estimator ? `${t.estimator.firstName} ${t.estimator.lastName}` : "",
-      t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : ""
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\r\n");
+  const exportRegisterCsv = () => {
+    if (!filteredRows.length) {
+      setToast("No tenders to export — adjust your filters.");
+      return;
+    }
+    // Warn the user when the data is partial (safety ceiling was hit).
+    if (
+      truncated &&
+      !window.confirm(
+        `The register is showing ${filteredRows.length} of ${total} tenders ` +
+          `(the 5,000-row safety limit was reached). The export will include ` +
+          `only the loaded rows. Continue?`
+      )
+    ) {
+      return;
+    }
+    const csv = buildRegisterCsv(filteredRows);
     const stamp = new Date().toISOString().slice(0, 10);
+    const filename = truncated
+      ? `IS_Tenders_${stamp}_${filteredRows.length}of${total}.csv`
+      : `IS_Tenders_${stamp}.csv`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `IS_Tenders_${stamp}.csv`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -839,7 +844,7 @@ export function TenderingPage() {
           onToggleAll={toggleAllVisible}
           onClearSelection={() => setSelectedIds([])}
           onBulkStatus={bulkChangeStatus}
-          onExportCsv={exportSelectedCsv}
+          onExportCsv={exportRegisterCsv}
           bulkBusy={bulkBusy}
           canManage={canManage}
           onSort={toggleSort}
@@ -1048,7 +1053,16 @@ function RegisterView(props: RegisterViewProps) {
 
       <ActiveFilterPills filters={filters} onFiltersChange={onFiltersChange} users={users} clients={clients} />
 
-      <div style={{ display: "flex", justifyContent: "flex-end", position: "relative", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, position: "relative", marginBottom: 8 }}>
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          aria-label="Export current filtered register as CSV"
+          title="Export current filtered register as CSV"
+          onClick={onExportCsv}
+        >
+          Export CSV
+        </button>
         <button
           type="button"
           className="s7-btn s7-btn--ghost s7-btn--sm"
@@ -1159,7 +1173,6 @@ function RegisterView(props: RegisterViewProps) {
           count={selectedIds.length}
           onClear={onClearSelection}
           onStatusChange={onBulkStatus}
-          onExportCsv={onExportCsv}
           busy={bulkBusy}
           canManage={canManage}
         />
@@ -1993,14 +2006,12 @@ function BulkActionBar({
   count,
   onClear,
   onStatusChange,
-  onExportCsv,
   busy,
   canManage
 }: {
   count: number;
   onClear: () => void;
   onStatusChange: (status: Stage) => void;
-  onExportCsv: () => void;
   busy: boolean;
   canManage: boolean;
 }) {
@@ -2082,9 +2093,6 @@ function BulkActionBar({
           ) : null}
         </div>
       ) : null}
-      <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={onExportCsv} style={{ color: "white", borderColor: "rgba(255,255,255,0.3)" }}>
-        Export CSV
-      </button>
     </div>
   );
 }

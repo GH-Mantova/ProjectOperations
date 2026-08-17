@@ -13,8 +13,10 @@ import {
   PIPELINE_STAGES,
   groupByPipelineStage,
   fetchAllPages,
+  buildRegisterCsv,
   type StagedItem,
-  type TenderPage
+  type TenderPage,
+  type TenderListItem
 } from "../tenderingPage.helpers";
 
 // ---------------------------------------------------------------------------
@@ -333,5 +335,152 @@ describe("independent per-view filter defaults", () => {
     for (const status of nonBoardStatuses) {
       expect((PIPELINE_STAGES as readonly string[]).includes(status)).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. buildRegisterCsv — all ten columns, all rows, CRLF endings
+// ---------------------------------------------------------------------------
+
+/** Minimal TenderListItem factory for CSV tests. */
+function makeRow(overrides: Partial<TenderListItem> = {}): TenderListItem {
+  return {
+    tenderNumber: "T-001",
+    title: "Test Tender",
+    status: "DRAFT",
+    estimatedValue: null,
+    probability: null,
+    dueDate: null,
+    createdAt: "2024-01-15T00:00:00.000Z",
+    estimator: null,
+    tenderClients: [],
+    ...overrides
+  };
+}
+
+describe("buildRegisterCsv", () => {
+  it("produces all ten headers in ALL_COLUMNS order", () => {
+    const csv = buildRegisterCsv([]);
+    const [headerLine] = csv.split("\r\n");
+    expect(headerLine).toBe(
+      '"Tender #","Name","Client","Estimator","Status","Probability","Value","Due date","Days until due","Created"'
+    );
+  });
+
+  it("maps a fully-populated row to the correct cells", () => {
+    const row = makeRow({
+      tenderNumber: "T-999",
+      title: "Bridge Refurb",
+      status: "IN_PROGRESS",
+      estimatedValue: "3469650",
+      probability: 75,
+      // 2024-06-15 UTC — must appear as 15/06/2024
+      dueDate: "2099-06-15T00:00:00.000Z",
+      createdAt: "2023-11-01T00:00:00.000Z",
+      estimator: { firstName: "Jane", lastName: "Smith" },
+      tenderClients: [
+        { client: { name: "Acme Corp" } },
+        { client: { name: "Widget Co" } }
+      ]
+    });
+    const csv = buildRegisterCsv([row]);
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(2);
+    const cells = lines[1].split('","');
+    // Strip the outer quotes
+    const clean = cells.map((c) => c.replace(/^"|"$/g, ""));
+    expect(clean[0]).toBe("T-999");           // Tender #
+    expect(clean[1]).toBe("Bridge Refurb");   // Name
+    expect(clean[2]).toBe("Acme Corp; Widget Co"); // Client
+    expect(clean[3]).toBe("Jane Smith");      // Estimator
+    expect(clean[4]).toBe("IN_PROGRESS");     // Status
+    expect(clean[5]).toBe("75");              // Probability (raw number)
+    expect(clean[6]).toBe("3469650");         // Value (bare number, no $)
+    expect(clean[7]).toBe("15/06/2099");      // Due date (dd/mm/yyyy)
+    // Days until due is a string — just verify it is non-empty and not em-dash
+    expect(clean[8]).not.toBe("");
+    expect(clean[8]).not.toBe("—");
+    expect(clean[9]).toBe("01/11/2023");      // Created (dd/mm/yyyy)
+  });
+
+  it("emits empty cells for null estimator, value, due date, probability and clients", () => {
+    const row = makeRow();
+    const csv = buildRegisterCsv([row]);
+    const lines = csv.split("\r\n");
+    const cells = lines[1].split(",");
+    const clean = cells.map((c) => c.replace(/^"|"$/g, ""));
+    expect(clean[2]).toBe(""); // Client — empty
+    expect(clean[3]).toBe(""); // Estimator — empty
+    expect(clean[5]).toBe(""); // Probability — empty
+    expect(clean[6]).toBe(""); // Value — empty
+    expect(clean[7]).toBe(""); // Due date — empty
+    expect(clean[8]).toBe(""); // Days until due — empty (no due date -> em-dash -> "")
+  });
+
+  it('never emits the strings "null" or "undefined" in any cell', () => {
+    const row = makeRow();
+    const csv = buildRegisterCsv([row]);
+    expect(csv).not.toContain('"null"');
+    expect(csv).not.toContain('"undefined"');
+    expect(csv).not.toContain(",null,");
+    expect(csv).not.toContain(",undefined,");
+  });
+
+  it("joins multiple clients with \"; \"", () => {
+    const row = makeRow({
+      tenderClients: [
+        { client: { name: "Alpha Ltd" } },
+        { client: { name: "Beta Pty" } },
+        { client: { name: "Gamma Inc" } }
+      ]
+    });
+    const csv = buildRegisterCsv([row]);
+    expect(csv).toContain('"Alpha Ltd; Beta Pty; Gamma Inc"');
+  });
+
+  it("escapes double quotes by doubling them (RFC 4180)", () => {
+    const row = makeRow({ title: 'Say "hello"' });
+    const csv = buildRegisterCsv([row]);
+    expect(csv).toContain('"Say ""hello"""');
+  });
+
+  it("handles a value containing a comma without breaking column alignment", () => {
+    const row = makeRow({ title: "Roads, Bridges & More" });
+    const csv = buildRegisterCsv([row]);
+    const lines = csv.split("\r\n");
+    // Should still have exactly 2 lines
+    expect(lines).toHaveLength(2);
+    // The cell with a comma is quoted
+    expect(lines[1]).toContain('"Roads, Bridges & More"');
+  });
+
+  it("uses CRLF line endings throughout", () => {
+    const rows = [makeRow({ tenderNumber: "T-001" }), makeRow({ tenderNumber: "T-002" })];
+    const csv = buildRegisterCsv(rows);
+    // All line separators must be CRLF
+    const crlfCount = (csv.match(/\r\n/g) ?? []).length;
+    const lfOnlyCount = (csv.replace(/\r\n/g, "").match(/\n/g) ?? []).length;
+    expect(crlfCount).toBe(2); // header + 2 data rows = 2 separators
+    expect(lfOnlyCount).toBe(0);
+  });
+
+  it("Value cell is a bare integer string, not formatted with $ or commas", () => {
+    const row = makeRow({ estimatedValue: "1234567" });
+    const csv = buildRegisterCsv([row]);
+    expect(csv).toContain('"1234567"');
+    expect(csv).not.toContain("$");
+    expect(csv).not.toContain("1,234,567");
+  });
+
+  it("emits days-until-due as the display string, not a signed integer", () => {
+    // Use a far-future date so the test is not date-sensitive
+    const row = makeRow({ dueDate: "2099-12-31T00:00:00.000Z" });
+    const csv = buildRegisterCsv([row]);
+    const lines = csv.split("\r\n");
+    const cells = lines[1].split('","');
+    const clean = cells.map((c) => c.replace(/^"|"$/g, ""));
+    // Should be something like "27474 days" — definitely not a negative integer
+    expect(clean[8]).toMatch(/days/);
+    expect(clean[8]).not.toMatch(/^-\d+$/);
   });
 });

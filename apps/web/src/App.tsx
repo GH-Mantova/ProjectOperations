@@ -106,6 +106,7 @@ import { CaseDetailPage } from "./pages/cases/CaseDetailPage";
 import { KbListPage } from "./pages/knowledge/KbListPage";
 import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
+import { DropReasonAdminPage } from "./pages/crm/DropReasonAdminPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
 import { AccountsListPage } from "./pages/crm/AccountsListPage";
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
@@ -550,6 +551,18 @@ export function App() {
                 element={
                   <RequirePermissions perms={["platform.admin"]}>
                     <XeroExchangePage />
+                  </RequirePermissions>
+                }
+              />
+              {/* CRM SLICE 6: drop-reason admin screen — gated on crm.manage
+                  (the existing manage-level CRM permission; see permission-registry.ts:114).
+                  Chosen over crm.view because editing the managed list is a write operation
+                  matching the "manage" semantic. */}
+              <Route
+                path="administration/crm-drop-reasons"
+                element={
+                  <RequirePermissions perms={["crm.manage"]}>
+                    <DropReasonAdminPage />
                   </RequirePermissions>
                 }
               />

@@ -281,6 +281,11 @@ model User {
   agreedRecordsWorkerSigned  AgreedRecord[]           @relation("AgreedRecordWorkerSigner")
   agreedRecordAttachments    AgreedRecordAttachment[] @relation("AgreedRecordAttachmentUploader")
 
+  // SoR S8: Agreed Record office review / approval by this user.
+  agreedRecordsReviewed      AgreedRecord[]           @relation("AgreedRecordReviewer")
+  agreedRecordsApproved      AgreedRecord[]           @relation("AgreedRecordApprover")
+  agreedRecordPricingLines   AgreedRecordPricingLine[] @relation("AgreedRecordPricingLinesPricedBy")
+
   // MT-2: home-tenant assignment. Nullable — unassigned users / Super Users with
   // no active tenant see only shared rows (fail-closed per MT-1 rule).
   homeTenantId String? @map("home_tenant_id")
@@ -7682,6 +7687,15 @@ model AgreedRecord {
   clientRepSignaturePath String?             @map("client_rep_signature_path")
   clientRepSignedAt      DateTime?           @map("client_rep_signed_at")
   submittedAt            DateTime?           @map("submitted_at")
+  // SoR S8: office review fields (all nullable — populated on state transitions)
+  reviewerId             String?             @map("reviewer_id")
+  reviewer               User?               @relation("AgreedRecordReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewStartedAt        DateTime?           @map("review_started_at")
+  approvedById           String?             @map("approved_by_id")
+  approvedBy             User?               @relation("AgreedRecordApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt             DateTime?           @map("approved_at")
+  totalPricedAmount      Decimal?            @map("total_priced_amount") @db.Decimal(12, 2)
+  sentBackReason         String?             @map("sent_back_reason")
   createdById            String              @map("created_by_id")
   createdBy              User                @relation("AgreedRecordCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt              DateTime            @default(now()) @map("created_at")
@@ -7694,17 +7708,19 @@ model AgreedRecord {
 }
 
 model AgreedRecordLine {
-  id             String       @id @default(cuid())
-  agreedRecordId String       @map("agreed_record_id")
-  agreedRecord   AgreedRecord @relation(fields: [agreedRecordId], references: [id], onDelete: Cascade)
+  id             String                   @id @default(cuid())
+  agreedRecordId String                   @map("agreed_record_id")
+  agreedRecord   AgreedRecord             @relation(fields: [agreedRecordId], references: [id], onDelete: Cascade)
   category       SorCategory
-  resourceName   String       @map("resource_name")
+  resourceName   String                   @map("resource_name")
   class          String?
   unit           String?
-  quantity       Decimal      @db.Decimal(12, 2)
-  tier           String       @default("ORDINARY")
+  quantity       Decimal                  @db.Decimal(12, 2)
+  tier           String                   @default("ORDINARY")
   notes          String?
-  sortOrder      Int          @default(0) @map("sort_order")
+  sortOrder      Int                      @default(0) @map("sort_order")
+  // SoR S8: office pricing (one-to-one, optional until priced)
+  pricing        AgreedRecordPricingLine?
 
   @@index([agreedRecordId])
   @@map("agreed_record_lines")
@@ -7722,4 +7738,22 @@ model AgreedRecordAttachment {
 
   @@index([agreedRecordId])
   @@map("agreed_record_attachments")
+}
+
+// SoR S8: office pricing record — one per AgreedRecordLine, created when WHS&CC
+// prices the line from the frozen Job SoR snapshot (or via manual override).
+model AgreedRecordPricingLine {
+  id                    String            @id @default(cuid())
+  agreedRecordLineId    String            @unique @map("agreed_record_line_id")
+  agreedRecordLine      AgreedRecordLine  @relation(fields: [agreedRecordLineId], references: [id], onDelete: Cascade)
+  snapshotRateId        String?           @map("snapshot_rate_id")  // null = manual/override
+  tier                  String            @default("ORDINARY")
+  rate                  Decimal           @db.Decimal(12, 2)         // FROZEN at price time
+  lineAmount            Decimal           @map("line_amount") @db.Decimal(12, 2)
+  pricedById            String?           @map("priced_by_id")
+  pricedBy              User?             @relation("AgreedRecordPricingLinesPricedBy", fields: [pricedById], references: [id], onDelete: SetNull)
+  pricedAt              DateTime          @default(now()) @map("priced_at")
+
+  @@index([agreedRecordLineId])
+  @@map("agreed_record_pricing_lines")
 }

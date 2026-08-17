@@ -83,8 +83,13 @@ $escalationDir = Join-Path $env:PR_WATCHER_PROMPT_DIR "needs-marco"
 
 function Sup-Log([string]$msg) {
     $line = "[{0}] {1}" -f (Get-Date -Format o), $msg
-    Add-Content -Path $supLog -Value $line -Encoding UTF8
-    Write-Host $line
+    # 2026-08-18 (LL-39): logging must NEVER be able to take the supervisor down.
+    # When the host's transcript stream broke, every Add-Content here threw
+    # "Stream was not readable" and the resulting error spray was mistaken for the
+    # child's own output, corrupting the failure REASON the crash-loop guard keys on.
+    # Both writes are best-effort: an unwritable log is a nuisance, not an outage.
+    try { Add-Content -Path $supLog -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
+    try { Write-Host $line } catch { }
 }
 
 # Work out WHY the child died, from what it printed. Falls back to the clone's
@@ -245,14 +250,24 @@ while ($true) {
         Start-Sleep -Seconds ($softWaitMin * 60)
         continue
     }
-    elseif ($code -eq 1) {
+    elseif ($code -ne 0) {
+        # 2026-08-18 (LL-39): this was `elseif ($code -eq 1)`, which left the final
+        # `else` as a CATCH-ALL for every other exit code. The child can and does exit
+        # with -1 (a broken/poisoned stdout stream kills node on its first log write),
+        # and -1 fell straight through to the "exit 0 == deliberate stop" branch. The
+        # supervisor then logged "Watcher exited cleanly (exit 0)" one line after it had
+        # logged "Watcher exited with code -1", broke out of its loop and exited -- so
+        # the CRASH-LOOP GUARD BELOW NEVER RAN and no escalation was ever written. The
+        # outer launcher restarted the wrapper every 10s for ~2 hours (~4 crashes/min,
+        # 1096 preflight autostashes) while four prompts sat armed and starving.
+        # Any non-zero code is a failure and must route through the guard.
         $reason = Get-ChildFailureReason -OutputLines $childOut.ToArray() -CloneRoot $env:PR_WATCHER_REPO_ROOT
         $key    = Get-ReasonKey $reason
 
         if ($key -eq $lastReasonKey) { $sameCount++ }
         else { $sameCount = 1; $lastReasonKey = $key }
 
-        Sup-Log "Watcher exited with failure (exit 1). REASON: $reason"
+        Sup-Log "Watcher exited with failure (exit $code). REASON: $reason"
         Sup-Log "Identical consecutive failures: $sameCount of $maxSameFail."
 
         if ($sameCount -ge $maxSameFail) {

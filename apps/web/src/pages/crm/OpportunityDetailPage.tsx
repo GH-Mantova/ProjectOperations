@@ -19,7 +19,10 @@ type Opportunity = {
   probability: number;
   estimatedValue: string | null;
   source: string;
-  client: ClientLite;
+  // A CRM entry can be created without a client (leads captured at the front
+  // door often have none yet), so the API returns null here. Declaring it
+  // non-nullable is what let an unguarded read crash the whole page.
+  client: ClientLite | null;
   contact: ContactLite | null;
   owner: Owner | null;
   expectedCloseDate: string | null;
@@ -37,7 +40,12 @@ type Opportunity = {
   sourceLead: { id: string; title: string; status: string } | null;
 };
 
-const STAGES = ["new", "qualified", "quoting", "won", "lost"] as const;
+// The unified stage set (CRM S1 collapse). Legacy stages — new/qualified/
+// quoting/won/lost — still exist in the enum for pre-migration rows, but the
+// unified API rejects them on transition (CrmService.VALID_ENTRY_STAGES), so
+// offering them as buttons produced a save error and never highlighted the
+// current stage.
+const STAGES = ["open", "not_pursued", "archived"] as const;
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "-";
@@ -190,7 +198,7 @@ export function OpportunityDetailPage() {
         <div>
           <h1 style={{ fontFamily: "var(--font-heading, Syne)", fontSize: 24, margin: "0 0 6px" }}>{opp.title}</h1>
           <div style={{ color: "var(--text-muted, #666)", fontSize: 13 }}>
-            {opp.client.name}
+            {opp.client ? opp.client.name : "No client yet"}
             {opp.contact && ` · ${opp.contact.firstName} ${opp.contact.lastName}`}
             {opp.owner && ` · Owner: ${opp.owner.firstName} ${opp.owner.lastName}`}
           </div>

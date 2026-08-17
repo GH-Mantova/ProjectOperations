@@ -7,12 +7,19 @@ scope:
   - apps/api/prisma/seed-initial-services.ts
   - apps/api/src/modules/rates/**
   - apps/api/src/modules/estimates/**
+  - apps/api/test/estimate-density-migration.spec.ts
   - docs/data-model/**
 done_when: pnpm build && pnpm lint && node scripts/data-model/build-relationship-map.mjs --check
 size: 10
 gate_allow: migrations
 seed_only: false
 escalates: true
+rollback_strategy: >-
+  The migration COPIES densities from EstimateMaterialDensity into RateTable and leaves the source
+  table in place, so it is additive-by-copy and forward-only. If the run dies after the migration
+  applies but before the resolver code lands, main is safe: the legacy table and its readers are
+  untouched and the new RateTable rows are simply unused. Fix forward by re-running the prompt. Do
+  NOT drop EstimateMaterialDensity here - that is a separate, deliberately held slice (s11c).
 ---
 
 # Migrate EstimateMaterialDensity into the RateTable system (own reviewable PR)
@@ -21,6 +28,18 @@ Marco's "minimise drift" instruction: this is its OWN self-contained PR (do not 
 regenerates the data-model map IN THIS PR so it cannot leave the generated map stale (that sank #593).
 It is quote-adjacent (density feeds waste weight), so it is `escalates: true` and MUST leave prices
 UNCHANGED — prove it.
+
+## Gate A — the migration test is REQUIRED, not optional (added 2026-08-17)
+
+`apps/api/test/estimate-density-migration.spec.ts` is named in `scope` and you MUST write it. This
+migration moves data, so `backfill: false` would be a lie and the intake lint rejects the prompt
+without a test. The test must seed a legacy `EstimateMaterialDensity` row, run the migration, and
+assert the resulting `RateTable` row is contract-valid — same material, same density value, same
+units. That is the layer that would have caught #923, where a backfill wrote invalid enum tokens
+while CI stayed green.
+
+Also assert the price-invariance this prompt already demands: a scope priced before the migration
+prices identically after it.
 
 ## What to build
 

@@ -92,3 +92,20 @@ flood the board with 102 PRs - it would not have; the real problem was rot, not 
 - pr-timeline-pagination-daterange
 - pr-unified-api-key-vault-slice4b-page
 - pr-wl3-baseline
+
+## Also retired here ÔÇö rejected AND stale (added in the second pass)
+
+These 10 linted REJECT, which fires BEFORE the premise check and therefore MASKED the fact that
+their premises are also dead. Repairing their front-matter would have resurrected finished work.
+Each premise was evaluated directly against origin/main before the move.
+
+- pr-cfx-s1-field-registry ÔÇö `model FieldDefinition` is already in schema.prisma
+- pr-fv2-fields-wave1 ÔÇö `FormNumberSequence` already exists
+- pr-hw-1-template-schema ÔÇö the seed file already exists
+- pr-hw-5-handover-schema ÔÇö handover.types.ts already exists
+- pr-rates-s11a-build-migrate ÔÇö STEP-11A-DONE.md is already on main
+- pr-scope-material-waste-autofill ÔÇö `defaultWasteGroup` already exists
+- pr-subbie-rate-cards-model ÔÇö `model SubcontractorRate` already exists
+- pr-swms-a1-template-catalog ÔÇö `model SwmsTemplate` already exists
+- pr-tenant-mt0-foundation ÔÇö tenant.constants.ts already exists
+- pr-tender-withdrawn-review ÔÇö withdrawal-review.service.ts already exists (shipped in #1122)

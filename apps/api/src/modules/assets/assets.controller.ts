@@ -5,7 +5,7 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { AssetsService } from "./assets.service";
-import { AssetsQueryDto, CheckinAssetDto, CheckoutAssetDto, UpsertAssetCategoryDto, UpsertAssetDto } from "./dto/assets.dto";
+import { AssetsQueryDto, CheckinAssetDto, CheckoutAssetDto, RecordUsageReadingDto, UpsertAssetCategoryDto, UpsertAssetDto, UsageReadingsQueryDto } from "./dto/assets.dto";
 
 /**
  * REST endpoints for asset and asset-category management under /assets.
@@ -199,5 +199,52 @@ export class AssetsController {
   @ApiResponse({ status: 200, description: "Custody history." })
   listCheckouts(@Param("id") id: string) {
     return this.service.listCheckouts(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Usage readings (F-7)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Record a usage reading (hours or km meter) for an asset.
+   *
+   * Reading must be >= the last recorded value for the unit unless
+   * isMeterReplacement=true (requires Warehouse Manager or Admin role).
+   * Updates currentHoursReading / currentKmReading denorm columns atomically.
+   *
+   * @param id - asset id
+   * @param dto - unit, reading value, optional isMeterReplacement flag and note
+   * @returns the created AssetUsageReading record
+   * @throws NotFoundException when the asset does not exist
+   * @throws ForbiddenException when isMeterReplacement is set without the required role
+   * @throws ConflictException when the reading is below the last recorded value
+   */
+  @Post(":id/usage-readings")
+  @RequirePermissions("assets.manage")
+  @ApiOperation({ summary: "Record a usage reading (hours or km) for an asset" })
+  @ApiResponse({ status: 201, description: "Usage reading recorded." })
+  @ApiResponse({ status: 403, description: "isMeterReplacement requires Warehouse Manager or Admin role." })
+  @ApiResponse({ status: 409, description: "Reading is below the last recorded value for this unit." })
+  recordUsageReading(
+    @Param("id") id: string,
+    @Body() dto: RecordUsageReadingDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.recordUsageReading(id, dto, actor.sub);
+  }
+
+  /**
+   * List usage readings for an asset, newest first.
+   *
+   * @param id - asset id
+   * @param query - optional unit filter and pagination
+   * @returns paginated usage readings with recording user
+   */
+  @Get(":id/usage-readings")
+  @RequirePermissions("assets.view")
+  @ApiOperation({ summary: "List usage readings for an asset" })
+  @ApiResponse({ status: 200, description: "Paginated usage readings." })
+  listUsageReadings(@Param("id") id: string, @Query() query: UsageReadingsQueryDto) {
+    return this.service.listUsageReadings(id, query);
   }
 }

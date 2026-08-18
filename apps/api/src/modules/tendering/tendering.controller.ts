@@ -615,4 +615,23 @@ export class TenderingController {
   ) {
     return this.service.quickEdit(id, dto, actor.sub);
   }
+
+  /**
+   * TFM-S5 -- Re-runs SharePoint folder provisioning for a tender.
+   *
+   * Useful when a prior provisioning attempt left the tender in "partial"
+   * or "failed" state due to a transient Graph error. Re-walks the full
+   * folder structure and persists the updated status onto the Tender row.
+   *
+   * @param id - tender id
+   * @returns { status, failures }
+   */
+  @Post(":id/reprovision-folders")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Re-run SharePoint folder provisioning for a tender" })
+  @ApiResponse({ status: 200, description: "Provisioning result with status and per-path failures." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  reprovisionFolders(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
+    return this.service.reprovisionFolders(id, actor.sub);
+  }
 }

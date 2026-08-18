@@ -152,7 +152,17 @@ jobs:
     # pure Node with no external deps, so the job is fast enough to run always.
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 is REQUIRED, not tidiness. The intake linter's
+      # CLUSTER_DEAD_GATE rule probes `git show origin/main:<path>`. A default
+      # shallow checkout (depth 1) has no origin/main ref, so the probe fails,
+      # the linter takes its documented warn-and-skip fail-safe, and the rule
+      # silently NO-OPS. That made test-lint-prompt's `cluster-dead-gate` case
+      # fail (ADMIT where REJECT was wanted) and — worse — made its sibling
+      # `cluster-dead-gate-git-broken` pass vacuously, since both then took the
+      # same code path. A safety rule that quietly does nothing in CI is the
+      # exact failure this cluster exists to prevent.
       - uses: actions/checkout@v4.2.2
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4.1.0
         with: { node-version: '22' }
       # IMPORTANT: the double-quotes around the glob are load-bearing.

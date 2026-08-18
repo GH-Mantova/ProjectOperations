@@ -1,16 +1,19 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Post,
   Query,
   Redirect,
+  Req,
   Res,
   UseGuards
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import type { Response } from "express";
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
+import type { Request, Response } from "express";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -19,6 +22,7 @@ import type { AuthenticatedUser } from "../../common/auth/authenticated-request.
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { XeroContactExportService } from "./xero-contact-export.service";
+import { XeroContactImportService } from "./xero-contact-import.service";
 import { XeroService } from "./xero.service";
 import { XeroCallbackDto } from "./dto/xero.dto";
 
@@ -40,6 +44,7 @@ export class XeroController {
   constructor(
     private readonly service: XeroService,
     private readonly exportService: XeroContactExportService,
+    private readonly importService: XeroContactImportService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService
   ) {}
@@ -314,5 +319,152 @@ export class XeroController {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.end(csv);
+  }
+
+  // ── CFX-5: file-based contact import (dry-run preview → confirm) ─────────
+
+  @Post("import/preview")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("platform.admin")
+  @HttpCode(200)
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    description:
+      "Multipart upload: file (CSV or TXT), appliesTo (CLIENT|VENDOR), columnMap (JSON object mapping BUILTIN field keys to CSV header names).",
+    schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", format: "binary" },
+        appliesTo: { type: "string", enum: ["CLIENT", "VENDOR"] },
+        columnMap: { type: "string", description: "JSON-encoded Record<string,string>" }
+      },
+      required: ["file", "appliesTo", "columnMap"]
+    }
+  })
+  @ApiOperation({
+    summary:
+      "Dry-run import preview. Parses the uploaded CSV, matches rows to existing records, and returns per-row diffs and bank-overwrite warnings. No writes performed. " +
+      "Returns an ImportPreview valid for 5 minutes. Every preview is audited."
+  })
+  @ApiResponse({ status: 200, description: "ImportPreview with per-row action, diffs, and fileSha256." })
+  async importPreview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request
+  ): Promise<unknown> {
+    // NestJS multipart handling: when configured with a file interceptor the
+    // file buffer lands on req.file; when not using an interceptor (raw
+    // multipart) it lands on req.body.file. To avoid a hard dependency on
+    // @nestjs/platform-express file interceptors (which require multer wired
+    // in the module), we read the raw file from the multipart body via the
+    // express `req` object. Both the buffer from multer AND the raw body
+    // object are checked so the controller works with either setup.
+    const multerFile = (req as unknown as { file?: { buffer: Buffer } }).file;
+    const body = req.body as Record<string, unknown>;
+
+    let fileBytes: Buffer;
+    if (multerFile?.buffer) {
+      fileBytes = multerFile.buffer;
+    } else if (Buffer.isBuffer(body["file"])) {
+      fileBytes = body["file"];
+    } else if (typeof body["file"] === "string") {
+      fileBytes = Buffer.from(body["file"], "utf-8");
+    } else {
+      // Fallback: accept raw CSV posted as text/plain or application/octet-stream.
+      const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
+      if (rawBody) {
+        fileBytes = rawBody;
+      } else {
+        fileBytes = Buffer.from("");
+      }
+    }
+
+    const appliesToRaw = String(body["appliesTo"] ?? "").trim().toUpperCase();
+    if (appliesToRaw !== "CLIENT" && appliesToRaw !== "VENDOR") {
+      throw new BadRequestException("appliesTo must be CLIENT or VENDOR");
+    }
+    const appliesTo = appliesToRaw as "CLIENT" | "VENDOR";
+
+    let columnMap: Record<string, string>;
+    try {
+      const raw = body["columnMap"];
+      columnMap =
+        typeof raw === "string"
+          ? (JSON.parse(raw) as Record<string, string>)
+          : (raw as Record<string, string>);
+    } catch {
+      throw new BadRequestException("columnMap must be valid JSON (Record<string,string>)");
+    }
+
+    const preview = await this.importService.previewImport({
+      fileBytes,
+      appliesTo,
+      columnMap,
+      actorUserId: user.sub
+    });
+
+    await this.audit.write({
+      actorId: user.sub,
+      action: "XERO_FILE_IMPORT_PREVIEW",
+      entityType: appliesTo,
+      metadata: {
+        rowCount: preview.rows.length,
+        fileSha256: preview.fileSha256,
+        previewId: preview.previewId
+      }
+    });
+
+    return preview;
+  }
+
+  @Post("import/commit")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions("platform.admin")
+  @ApiOperation({
+    summary:
+      "Commit a previously-previewed import. Requires a valid previewId returned by POST /xero/import/preview (expires after 5 minutes). " +
+      "Optionally accepts confirmedOverwriteBankRecordIds to allow bank-field overwrites for specific records. " +
+      "Wraps all upserts in a transaction. Every commit is audited."
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        previewId: { type: "string" },
+        confirmedOverwriteBankRecordIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Record IDs for which the caller has confirmed bank-field overwrite."
+        }
+      },
+      required: ["previewId"]
+    }
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Commit result: { inserted, updated, skipped }."
+  })
+  async importCommit(
+    @Body() body: { previewId: string; confirmedOverwriteBankRecordIds?: string[] },
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<{ inserted: number; updated: number; skipped: number }> {
+    const result = await this.importService.commitImport({
+      previewId: body.previewId,
+      actorUserId: user.sub,
+      confirmedOverwriteBankRecordIds: body.confirmedOverwriteBankRecordIds
+    });
+
+    await this.audit.write({
+      actorId: user.sub,
+      action: "XERO_FILE_IMPORT_COMMIT",
+      entityType: "IMPORT",
+      metadata: {
+        previewId: body.previewId,
+        inserted: result.inserted,
+        updated: result.updated,
+        skipped: result.skipped
+      }
+    });
+
+    return result;
   }
 }

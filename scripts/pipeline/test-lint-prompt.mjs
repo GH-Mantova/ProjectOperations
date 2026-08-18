@@ -262,6 +262,160 @@ run("dep-none-present",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
+// ── Cluster-chaining SLICE 3: cluster metadata + graph rules ────────────────
+// Each negative test is RED before the rule lands and GREEN after.
+// The final positive is the regression guard: a prompt with none of the
+// cluster keys must behave exactly as it did before.
+
+// Helper: run one prompt in a dedicated tempdir with optional sibling files
+// laid down beforehand. Needed for CLUSTER_CYCLE (two prompts, one directory)
+// and for the fail-safe "malformed sibling" test. Also accepts extra env vars
+// so we can simulate git unavailability for the DEAD_GATE fail-safe test.
+function runIsolated(name, frontMatter, expectedExit, opts) {
+  opts = opts || {};
+  const isoDir = mkdtempSync(join(tmpdir(), "lint-iso-"));
+  const siblings = opts.siblings || {};
+  for (const sibName of Object.keys(siblings)) {
+    writeFileSync(join(isoDir, sibName), siblings[sibName], "utf8");
+  }
+  const file = join(isoDir, name + "-ready.md");
+  writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
+
+  const env = Object.assign({}, process.env, opts.env || {});
+  let code = 0;
+  let out = "";
+  try {
+    out = execFileSync("node", [LINT, file], { cwd: REPO, encoding: "utf8", env });
+  } catch (e) {
+    code = e.status;
+    out = String(e.stdout || "") + String(e.stderr || "");
+  }
+
+  const ok = code === expectedExit;
+  console.log((ok ? "PASS " : "FAIL ") + name + "  (exit " + code + ", wanted " + expectedExit + ")");
+  if (!ok) console.log("      " + out.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+  rmSync(isoDir, { recursive: true, force: true });
+  return out;
+}
+
+console.log("\n=== exit 0 ADMIT: cluster + cluster_order:1, no dep key -> first slice legal");
+run("cluster-first-slice",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: my-cluster\ncluster_order: 1", 0);
+
+console.log("\n=== exit 1 REJECT: cluster_order:2 with NO dep key -> CLUSTER_NO_DEP");
+run("cluster-order-2-no-dep",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: my-cluster\ncluster_order: 2", 1);
+
+console.log("\n=== exit 0 ADMIT: cluster_order:2 with requires_on_main (non-dead) -> legal");
+runIsolated("cluster-order-2-with-dep",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: my-cluster\ncluster_order: 2\n" +
+  "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_XYZ_1234567890", 0);
+
+console.log("\n=== exit 1 REJECT: cluster_order:0 -> CLUSTER_ORDER_INVALID");
+run("cluster-order-zero",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: my-cluster\ncluster_order: 0", 1);
+
+console.log("\n=== exit 1 REJECT: cluster_order:-1 -> CLUSTER_ORDER_INVALID");
+run("cluster-order-negative",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: my-cluster\ncluster_order: -1", 1);
+
+console.log("\n=== exit 1 REJECT: cluster_order:two -> CLUSTER_ORDER_INVALID");
+run("cluster-order-nonnumeric",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: my-cluster\ncluster_order: two", 1);
+
+console.log("\n=== exit 1 REJECT: cluster slug Bad_Slug (uppercase + underscore) -> CLUSTER_BAD_SLUG");
+run("cluster-slug-bad-uppercase",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: Bad_Slug\ncluster_order: 1", 1);
+
+console.log("\n=== exit 1 REJECT: cluster slug 'ab' (too short) -> CLUSTER_BAD_SLUG");
+run("cluster-slug-too-short",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: ab\ncluster_order: 1", 1);
+
+console.log("\n=== exit 1 REJECT: cluster slug 42 chars (over 41-char cap) -> CLUSTER_BAD_SLUG");
+run("cluster-slug-too-long",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: aaaaaaaaaa-aaaaaaaaaa-aaaaaaaaaa-aaaaaaaaaa1\ncluster_order: 1", 1);
+
+console.log("\n=== exit 1 REJECT: cluster_order present, cluster absent -> CLUSTER_ORDER_NO_CLUSTER");
+run("cluster-order-without-cluster",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster_order: 1", 1);
+
+// Cycle: two prompts in the same directory reference each other by file basename
+// via requires_file_on_main. buildClusterGraph resolves prereqs by basename
+// matching against other prompt files in the same directory.
+console.log("\n=== exit 1 REJECT: two-prompt cycle -> CLUSTER_CYCLE names both");
+{
+  const cycleOtherFm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: cycle-test\ncluster_order: 2\n" +
+    "requires_file_on_main: cycle-b-ready.md\n---\n# body\n";
+  const out = runIsolated("cycle-b",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: cycle-test\ncluster_order: 2\n" +
+    "requires_file_on_main: cycle-a-ready.md",
+    1,
+    { siblings: { "cycle-a-ready.md": cycleOtherFm } });
+  if (!/cycle-[ab]-ready\.md.*cycle-[ab]-ready\.md/.test(out)) {
+    console.log("      FAIL cycle path not printed as expected. output was:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++;
+    pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: malformed sibling in same dir -> warning, good prompt still admitted");
+runIsolated("good-with-bad-sibling",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: sibling-test\ncluster_order: 1",
+  0,
+  { siblings: { "malformed-ready.md": "no front-matter here, just garbage text\n" } });
+
+console.log("\n=== exit 1 REJECT: requires_on_main needle already on origin/main -> CLUSTER_DEAD_GATE");
+// UNKNOWN_KEY is on origin/main:scripts/pipeline/lint-prompt.mjs (SLICE 1).
+runIsolated("cluster-dead-gate",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: dead-gate-test\ncluster_order: 2\n" +
+  "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY", 1);
+
+console.log("\n=== exit 0 ADMIT: git unavailable during dead-gate probe -> warning, admitted");
+runIsolated("cluster-dead-gate-git-broken",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: dead-gate-safe\ncluster_order: 2\n" +
+  "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
+  0,
+  { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
+
+console.log("\n=== exit 0 ADMIT: prompt with NONE of the cluster keys -> unchanged behaviour");
+// Regression guard: every existing queue prompt must still pass.
+run("cluster-none-present",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

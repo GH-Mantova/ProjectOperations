@@ -17,8 +17,10 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { HandoversService } from "./handovers.service";
 import { HandoverComplianceService } from "./handover-compliance.service";
+import { HandoverFinaliseService } from "./handover-finalise.service";
 import { CreateHandoverBodyDto, PatchHandoverValuesDto } from "./dto/handover.dto";
 import { AddManualComplianceItemDto, UpdateComplianceItemDto } from "./dto/handover-compliance.dto";
+import { FinaliseHandoverDto } from "./dto/handover-finalise.dto";
 
 const PERM = "tenderconversion.manage";
 
@@ -38,7 +40,8 @@ const PERM = "tenderconversion.manage";
 export class HandoversController {
   constructor(
     private readonly service: HandoversService,
-    private readonly complianceService: HandoverComplianceService
+    private readonly complianceService: HandoverComplianceService,
+    private readonly finaliseService: HandoverFinaliseService
   ) {}
 
   /**
@@ -223,5 +226,46 @@ export class HandoversController {
     @Param("itemId") itemId: string
   ) {
     return this.complianceService.remove(itemId);
+  }
+
+  // ── Finalise (B-HW-11) ──────────────────────────────────────────────────────
+
+  /**
+   * Finalise a handover.
+   *
+   * Runs only when the handover is at 100% completion. On success:
+   *  - Creates a Job (via JobsService.convertTenderToJob) with IS-P### number.
+   *  - Provisions the SharePoint folder tree for the job.
+   *  - Freezes the handover (status=finalised; subsequent writes are rejected).
+   *  - Snapshots the handover + WBS as the job baseline in the audit log.
+   *  - Scaffolds one Subcontractors/{folderSlot} subfolder per engaged subbie.
+   *  - Creates a document-link stub for the handover PDF.
+   *
+   * A second call to this endpoint is a no-op: if the handover is already
+   * finalised the response carries `alreadyFinalised: true` and no further
+   * actions are taken.
+   *
+   * @param id   - Handover id.
+   * @param dto  - Optional job configuration overrides.
+   * @param user - Authenticated actor.
+   * @returns FinaliseHandoverResult (jobId, jobNumber, alreadyFinalised).
+   * @throws NotFoundException when the handover or its contract does not exist.
+   * @throws BadRequestException when the handover is not at 100% completion.
+   */
+  @Post(":id/finalise")
+  @RequirePermissions(PERM)
+  @ApiOperation({
+    summary: "Finalise a handover: create job, freeze handover, snapshot baseline, scaffold folders."
+  })
+  @ApiParam({ name: "id", description: "Handover id." })
+  @ApiResponse({ status: 201, description: "Job created; handover frozen." })
+  @ApiResponse({ status: 400, description: "Handover not at 100% completion." })
+  @ApiResponse({ status: 404, description: "Handover or contract not found." })
+  finalise(
+    @Param("id") id: string,
+    @Body() dto: FinaliseHandoverDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.finaliseService.finalise(id, dto, user.sub);
   }
 }

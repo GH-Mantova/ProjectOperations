@@ -203,6 +203,13 @@ function Show-ReportOnlyHint {
     Write-Output "  powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\restart-watcher-if-wedged.ps1 -Fix"
 }
 
+# Test hook: allow dot-sourcing this script to load Get-RestartChurn (and the
+# other detector functions) without running the health check or exiting. The
+# supervisor deadlock test in scripts/pr-watcher/__tests__/ uses this to verify
+# that a watchdog-kill log line is still counted by Get-RestartChurn -- the two
+# guards must coexist. Not expected to be set in production.
+if ($env:PR_WATCHER_WEDGED_DOTSOURCE_ONLY -eq '1') { return }
+
 Write-Output ("=== " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + "  watcher health check  (Fix=" + $Fix + ")")
 Write-Output ""
 

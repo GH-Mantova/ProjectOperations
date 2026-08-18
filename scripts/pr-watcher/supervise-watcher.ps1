@@ -76,6 +76,23 @@ $wdPollSec = 120
 if ($env:PR_WATCHER_WD_POLL_SEC) { $wdPollSec = [int]$env:PR_WATCHER_WD_POLL_SEC }
 $wdHeartbeat = Join-Path $env:PR_WATCHER_REPO_ROOT "scripts\pr-watcher\heartbeat.log"
 
+# 2026-08-18: sentinel file for the watchdog/supervisor handshake.
+#
+# The watchdog kills a hung node via Stop-Process. Out of `powershell -File`, that
+# kill manifests as exit code 0 -- INDISTINGUISHABLE from a real Ctrl+C at the code
+# alone. Before this file existed, the exit-0 branch below assumed "deliberate stop"
+# and made the supervisor EXIT, which left the watcher down for 65 min on 2026-08-18
+# (7 prompts armed, 0 in-progress) and produced 5 kill/exit cycles in 90s the night
+# before. The lie in the WATCHDOG log line -- "the supervisor will relaunch it" --
+# was false for that entire window.
+#
+# The sentinel decouples intent from exit code: the watchdog writes it BEFORE
+# Stop-Process; the main-loop exit handler checks for it FIRST; then it is deleted.
+# A stuck flag would turn a real Ctrl+C into an unkillable relaunch loop (the
+# opposite failure, and worse), so we ALSO clear it at supervisor start.
+$wdKillFlag = Join-Path (Split-Path $wdHeartbeat) '.watchdog-kill.flag'
+Remove-Item -Path $wdKillFlag -Force -ErrorAction SilentlyContinue
+
 $supLog = Join-Path $here "logs\supervisor.log"
 New-Item -ItemType Directory -Path (Split-Path $supLog) -Force | Out-Null
 
@@ -191,6 +208,98 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\script
     return $path
 }
 
+# Pure function: decide what to do after the watcher exits. Extracted so the
+# BRANCH LOGIC (rather than the whole while-loop-plus-Start-Job) can be tested
+# without booting a live supervisor. Prior to 2026-08-18 the decision was
+# inlined and one of its branches (watchdog kill -> exit 0 -> "deliberate stop")
+# was structurally untestable, which is exactly why the deadlock survived four
+# incidents before being caught. Doctrine 7 -- your instrument lies.
+#
+# LL (doctrine 7.6): every return is a single [pscustomobject]. No Write-Host,
+# no Write-Output, no logging inside this function -- the caller owns log I/O
+# using the LogMessage field. Any stray output would pollute nothing here
+# (structured return) but would corrupt Sup-Log's REASON parsing upstream.
+function Resolve-WatcherExitAction {
+    param(
+        [Parameter(Mandatory=$true)][int]      $ExitCode,
+        [Parameter(Mandatory=$true)][string]   $WatchdogFlagPath,
+        [AllowNull()][string[]]                $ChildOutput,
+        [AllowEmptyString()][string]           $CloneRoot,
+        [AllowEmptyString()][string]           $LastReasonKey,
+        [int]                                  $SameCount,
+        [int]                                  $MaxSameFail
+    )
+
+    # WATCHDOG KILL takes precedence over the exit code.
+    # This branch MUST run first. The kill's exit code is 0 out of `powershell -File`
+    # -- identical to a real Ctrl+C. Only the sentinel distinguishes them. Deleting
+    # the flag here (rather than in the caller) makes the check-and-consume atomic
+    # w.r.t. this function's return, so a caller that ignores our decision does not
+    # leave a stuck flag armed. Reset the crash-loop counters: a hang is a different
+    # failure class from a repeated identical crash, and mixing them would cause a
+    # single hang after 4 unrelated crashes to fire the crash-loop escalation.
+    if ($WatchdogFlagPath -and (Test-Path $WatchdogFlagPath)) {
+        $flagBody = try { (Get-Content -Path $WatchdogFlagPath -Raw -ErrorAction Stop).Trim() } catch { '(flag body unreadable)' }
+        Remove-Item -Path $WatchdogFlagPath -Force -ErrorAction SilentlyContinue
+        return [pscustomobject]@{
+            Action       = 'relaunch-watchdog'
+            LogMessage   = "Watcher exited via watchdog kill (exit $ExitCode). Heartbeat was stale; relaunching. Flag: $flagBody"
+            NewReasonKey = ''
+            NewSameCount = 0
+            Reason       = $flagBody
+        }
+    }
+
+    if ($ExitCode -eq 2) {
+        return [pscustomobject]@{
+            Action       = 'soft-halt'
+            LogMessage   = "Watcher soft-halted (usage/rate limit, exit 2)."
+            NewReasonKey = ''
+            NewSameCount = 0
+            Reason       = ''
+        }
+    }
+
+    if ($ExitCode -ne 0) {
+        $reason  = Get-ChildFailureReason -OutputLines $ChildOutput -CloneRoot $CloneRoot
+        $key     = Get-ReasonKey $reason
+        $newSame = if ($key -eq $LastReasonKey) { $SameCount + 1 } else { 1 }
+        $action  = if ($newSame -ge $MaxSameFail) { 'escalate-crash-loop' } else { 'relaunch-crash' }
+        return [pscustomobject]@{
+            Action       = $action
+            LogMessage   = "Watcher exited with failure (exit $ExitCode). REASON: $reason"
+            NewReasonKey = $key
+            NewSameCount = $newSame
+            Reason       = $reason
+        }
+    }
+
+    # Exit 0: either the single-instance guard (adopt) or a genuine Ctrl+C.
+    $reason = Get-ChildFailureReason -OutputLines $ChildOutput -CloneRoot $CloneRoot
+    if ($reason -match 'SINGLE-INSTANCE') {
+        return [pscustomobject]@{
+            Action       = 'adopt'
+            LogMessage   = "ADOPT: a watcher node is already running and no wrapper was supervising it. Adopting rather than exiting. ($reason)"
+            NewReasonKey = ''
+            NewSameCount = 0
+            Reason       = $reason
+        }
+    }
+
+    return [pscustomobject]@{
+        Action       = 'exit-deliberate'
+        LogMessage   = "Watcher exited cleanly (exit 0). Treating as a deliberate stop. Supervisor exiting."
+        NewReasonKey = $LastReasonKey
+        NewSameCount = $SameCount
+        Reason       = $reason
+    }
+}
+
+# TEST HOOK: allow the test harness to dot-source this file for its functions
+# without spinning up the watchdog job, the main while-loop, or Start-Sleep waits.
+# Nothing else is expected to set this variable in production.
+if ($env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -eq '1') { return }
+
 Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail."
 Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while armed>0 and 0 in-progress (poll ${wdPollSec}s)."
 
@@ -200,11 +309,11 @@ Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdH
 # node so the main loop's exit handling relaunches it fresh (which resets the
 # clone). ASCII only.
 $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
-    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog)
+    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag)
     function WD-Log([string]$m) {
         try { Add-Content -Path $SupLog -Value ("[{0}] WATCHDOG {1}" -f (Get-Date -Format o), $m) -Encoding UTF8 } catch {}
     }
-    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat)"
+    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag)"
     while ($true) {
         Start-Sleep -Seconds $PollSec
         try {
@@ -217,13 +326,27 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
             if ($inProg.Count -gt 0) { continue }                     # a build is running: not hung
             $ageMin = if (Test-Path $Heartbeat) { ((Get-Date).ToUniversalTime() - (Get-Item $Heartbeat).LastWriteTimeUtc).TotalMinutes } else { $HungMin + 1 }
             if ($ageMin -gt $HungMin) {
-                WD-Log ("heartbeat stale {0} min with {1} armed and 0 in-progress -> node HUNG. Killing pid {2}; the supervisor will relaunch it." -f [int]$ageMin, $armed.Count, $node[0].ProcessId)
-                foreach ($p in $node) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
-                Start-Sleep -Seconds 150                              # let the supervisor relaunch; avoid a double-kill
+                # SENTINEL FIRST, THEN KILL. Order is doctrine, not an opinion. If we
+                # kill first and the write fails, the exit handler reads exit 0 and
+                # treats OUR kill as a deliberate stop -- the exact 2026-08-18 outage.
+                # Write is best-effort; if it throws we log and DO NOT kill, so we
+                # never manufacture the ambiguous exit.
+                $flagWritten = $false
+                try {
+                    Set-Content -Path $KillFlag -Value ("[{0}] pid={1} armed={2} ageMin={3}" -f (Get-Date -Format o), $node[0].ProcessId, $armed.Count, [int]$ageMin) -Encoding UTF8 -ErrorAction Stop
+                    $flagWritten = $true
+                } catch {
+                    WD-Log ("FLAG WRITE FAILED (" + $_.Exception.Message + "). Skipping kill this cycle to avoid the ambiguous-exit deadlock.")
+                }
+                if ($flagWritten) {
+                    WD-Log ("heartbeat stale {0} min with {1} armed and 0 in-progress -> node HUNG. Sentinel written; killing pid {2}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, $armed.Count, $node[0].ProcessId)
+                    foreach ($p in $node) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+                    Start-Sleep -Seconds 150                          # let the supervisor relaunch; avoid a double-kill
+                }
             }
         } catch { WD-Log ("poll error: " + $_.Exception.Message) }
     }
-} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog
+} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog, $wdKillFlag
 
 $lastReasonKey = ""
 $sameCount     = 0
@@ -243,68 +366,58 @@ while ($true) {
     }
     $code = $LASTEXITCODE
 
-    if ($code -eq 2) {
-        $sameCount     = 0
-        $lastReasonKey = ""
-        Sup-Log "Watcher soft-halted (usage/rate limit, exit 2). Waiting $softWaitMin min for the quota window, then restarting."
-        Start-Sleep -Seconds ($softWaitMin * 60)
-        continue
-    }
-    elseif ($code -ne 0) {
-        # 2026-08-18 (LL-39): this was `elseif ($code -eq 1)`, which left the final
-        # `else` as a CATCH-ALL for every other exit code. The child can and does exit
-        # with -1 (a broken/poisoned stdout stream kills node on its first log write),
-        # and -1 fell straight through to the "exit 0 == deliberate stop" branch. The
-        # supervisor then logged "Watcher exited cleanly (exit 0)" one line after it had
-        # logged "Watcher exited with code -1", broke out of its loop and exited -- so
-        # the CRASH-LOOP GUARD BELOW NEVER RAN and no escalation was ever written. The
-        # outer launcher restarted the wrapper every 10s for ~2 hours (~4 crashes/min,
-        # 1096 preflight autostashes) while four prompts sat armed and starving.
-        # Any non-zero code is a failure and must route through the guard.
-        $reason = Get-ChildFailureReason -OutputLines $childOut.ToArray() -CloneRoot $env:PR_WATCHER_REPO_ROOT
-        $key    = Get-ReasonKey $reason
+    # SINGLE decision-point. The old inlined if/elseif ladder was where the four
+    # different exit-code interpretations lived, and the watchdog-kill branch had
+    # no way in -- the ambiguity between OUR kill and Ctrl+C was inescapable. All
+    # branch reasoning is now in Resolve-WatcherExitAction (testable in isolation);
+    # this loop is a driver that acts on the returned decision. See #1163's churn
+    # detector: the "Watcher exited via watchdog kill" LogMessage below still
+    # matches its 'Watcher exited' regex, so a repeated hang still trips the
+    # churn halt at 4 kills in 20 min -- the two guards coexist.
+    $decision = Resolve-WatcherExitAction `
+        -ExitCode         $code `
+        -WatchdogFlagPath $wdKillFlag `
+        -ChildOutput      $childOut.ToArray() `
+        -CloneRoot        $env:PR_WATCHER_REPO_ROOT `
+        -LastReasonKey    $lastReasonKey `
+        -SameCount        $sameCount `
+        -MaxSameFail      $maxSameFail
 
-        if ($key -eq $lastReasonKey) { $sameCount++ }
-        else { $sameCount = 1; $lastReasonKey = $key }
+    $lastReasonKey = $decision.NewReasonKey
+    $sameCount     = $decision.NewSameCount
+    Sup-Log $decision.LogMessage
 
-        Sup-Log "Watcher exited with failure (exit $code). REASON: $reason"
-        Sup-Log "Identical consecutive failures: $sameCount of $maxSameFail."
-
-        if ($sameCount -ge $maxSameFail) {
-            $escalationPath = Write-Escalation -Reason $reason -Count $sameCount -Dir $escalationDir
+    switch ($decision.Action) {
+        'soft-halt' {
+            Sup-Log "Waiting $softWaitMin min for the quota window, then restarting."
+            Start-Sleep -Seconds ($softWaitMin * 60)
+        }
+        'relaunch-watchdog' {
+            # Short breather so the killed node is fully reaped before start-watcher's
+            # single-instance guard runs, and so a stubbornly-hanging child does not
+            # get relaunched in a hot loop (the churn detector already caps this at 4
+            # in 20 min, but a 5s pause is cheap insurance either way).
+            Start-Sleep -Seconds 5
+        }
+        'relaunch-crash' {
+            Sup-Log "Identical consecutive failures: $sameCount of $maxSameFail."
+            Sup-Log "Restarting in $crashWaitSec s."
+            Start-Sleep -Seconds $crashWaitSec
+        }
+        'escalate-crash-loop' {
+            Sup-Log "Identical consecutive failures: $sameCount of $maxSameFail."
+            $escalationPath = Write-Escalation -Reason $decision.Reason -Count $sameCount -Dir $escalationDir
             Sup-Log "CRASH-LOOP GUARD TRIPPED: $sameCount identical failures in a row. NOT restarting again."
             Sup-Log "Escalation written to: $escalationPath"
             Sup-Log "Supervisor exiting (exit 1). Fix the cause, then start the supervisor again."
             exit 1
         }
-
-        Sup-Log "Restarting in $crashWaitSec s."
-        Start-Sleep -Seconds $crashWaitSec
-        continue
-    }
-    else {
-        # Exit 0 has TWO very different causes and conflating them is a bug:
-        #
-        #   a) start-watcher.ps1's SINGLE-INSTANCE guard found a watcher node
-        #      ALREADY running, so it declined to start a second one and exit 0'd.
-        #   b) a deliberate stop -- Ctrl+C.
-        #
-        # (a) is the ORPHANED-NODE case: a node is alive but NO wrapper is
-        # supervising it, because a previous wrapper was killed and left it
-        # behind. That state was self-perpetuating (found 2026-07-20): relaunching
-        # the wrapper made start-watcher exit 0 immediately, this branch treated it
-        # as a deliberate stop, and the wrapper died within seconds -- while
-        # logging what looked like a successful restart. The node stayed
-        # unsupervised, so nothing would restart it when it eventually died.
-        #
-        # ADOPT it instead: do not start a second node (the guard is right), just
-        # sit and watch the existing one. When it goes away, loop round and start
-        # a fresh one -- which is exactly what supervising means.
-        $reason = Get-ChildFailureReason -OutputLines $childOut.ToArray() -CloneRoot $env:PR_WATCHER_REPO_ROOT
-        if ($reason -match 'SINGLE-INSTANCE') {
-            Sup-Log "ADOPT: a watcher node is already running and no wrapper was supervising it. Adopting rather than exiting. ($reason)"
-            $sameCount     = 0
-            $lastReasonKey = ""
+        'adopt' {
+            # A node is already running with no wrapper supervising it (orphaned by a
+            # previous killed wrapper). Sit and watch it rather than starting a second
+            # one; when it goes away, loop round and start a fresh one. Discovered
+            # 2026-07-20 -- prior to this the wrapper died within seconds and left the
+            # node unsupervised. See supervise-watcher git history for the incident.
             while ($true) {
                 Start-Sleep -Seconds $adoptPollSec
                 $alive = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
@@ -314,12 +427,13 @@ while ($true) {
                     break
                 }
             }
-            continue
         }
-
-        # Genuine Ctrl+C. Respect it so a manual stop actually stops things.
-        # (The watcher is an fs.watch daemon, so it does NOT exit 0 on an empty queue.)
-        Sup-Log "Watcher exited cleanly (exit 0). Treating as a deliberate stop. Supervisor exiting."
-        break
+        'exit-deliberate' {
+            # Genuine Ctrl+C. Respect it so a manual stop actually stops things.
+            # (The watcher is an fs.watch daemon, so it does NOT exit 0 on an empty queue.)
+            break
+        }
     }
+
+    if ($decision.Action -eq 'exit-deliberate') { break }
 }

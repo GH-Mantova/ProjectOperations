@@ -363,6 +363,8 @@ export class SharepointLegacyCopyService {
 
     // TFM-S7: load folderProvisioningStatus and projectName so
     // assertDestinationExists can use both signals without an extra DB round-trip.
+    // TFM-S10: also load site.name so the guard resolves projectName ?? site.name
+    // (matching what provisioning derives via deriveTenderFolderName).
     const tenders = await this.prisma.tender.findMany({
       select: {
         id: true,
@@ -370,6 +372,7 @@ export class SharepointLegacyCopyService {
         tenderNumber: true,
         folderProvisioningStatus: true,
         projectName: true,
+        site: { select: { name: true } },
       },
     });
 
@@ -550,6 +553,8 @@ export class SharepointLegacyCopyService {
     for (const candidate of legacyPlan.matched) {
       // TFM-S7: re-check destination readiness at execute time — do not trust
       // a stale plan. Load the tender's current provisioning status fresh.
+      // TFM-S10: also fetch site.name so assertDestinationExists can resolve
+      // projectName ?? site.name exactly as provisioning does.
       const tenderRow = await this.prisma.tender.findUnique({
         where: { id: candidate.tenderId },
         select: {
@@ -557,6 +562,7 @@ export class SharepointLegacyCopyService {
           tenderNumber: true,
           folderProvisioningStatus: true,
           projectName: true,
+          site: { select: { name: true } },
         },
       });
 
@@ -626,6 +632,7 @@ export class SharepointLegacyCopyService {
       tenderNumber: string;
       folderProvisioningStatus: string | null;
       projectName: string | null;
+      site?: { name?: string | null } | null;
     },
     siteId: string,
     driveId: string,
@@ -635,9 +642,13 @@ export class SharepointLegacyCopyService {
       return { ready: false, reason: "folder provisioning failed" };
     }
 
+    // TFM-S10: pass site so deriveTenderFolderName resolves projectName ?? site.name,
+    // matching what provisioning derives. Pre-existing tenders have projectName=NULL so
+    // without site the guard probed a bare T-number path and silently excluded them.
     const folderName = deriveTenderFolderName({
       tenderNumber: tender.tenderNumber,
       projectName: tender.projectName,
+      site: tender.site,
     });
     const destinationPath = `${tendersRoot}/${folderName}`;
 

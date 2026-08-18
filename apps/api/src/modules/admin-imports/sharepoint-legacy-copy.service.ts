@@ -4,7 +4,7 @@
  * For every imported Tender whose title matches /T\d{3,5}/ and that has a
  * SharePointFolderLink destination, this service:
  *   - Locates the legacy SharePoint folder whose name matches that T-number
- *     under the configured legacy root.
+ *     under the configured legacy root (see TFM-S6).
  *   - Copies each file in the legacy folder to the ERP-created destination
  *     folder via the existing SharePoint seam (download + re-upload).
  *   - Skips files that are already present at the destination (idempotency).
@@ -14,6 +14,14 @@
  *   D8  Copy via the EXISTING Graph seam — no new Graph/MSAL client.
  *       escalates: true — Azure environment.
  *   D9  No real folder names or client data in fixtures.
+ *
+ * TFM-S6 changes:
+ *   - legacyTendersRoot (from apps/api/src/config/sharepoint.config.ts) is
+ *     separately configurable from the destination tendersRoot.
+ *   - The legacy tree is two levels deep: {legacyRoot}/{month}/{T-number folder}.
+ *   - listLegacyTenderFolders() walks both levels and returns all tender folders
+ *     with their monthFolder label.
+ *   - plan() uses listLegacyTenderFolders() instead of single-level path guessing.
  *
  * -------------------------------------------------------------------------
  * SEAM GAP — ESCALATION REQUIRED BEFORE PRODUCTION USE
@@ -58,6 +66,19 @@ export type FolderChildItem = {
   fileId: string;
   size: number;
   eTag?: string;
+};
+
+/**
+ * A folder item returned by listing a folder's immediate children.
+ * Used by listLegacyTenderFolders() when walking the month-level folders.
+ * id     — drive item ID, used to enumerate children in the next level
+ * name   — folder name (e.g. "8. Aug" for a month, "T2096 - Cornerstone" for a tender)
+ * isFolder — always true for items returned here, but typed for safety
+ */
+export type LegacyFolderItem = {
+  id: string;
+  name: string;
+  isFolder: boolean;
 };
 
 export type ListFolderChildrenInput = {
@@ -105,6 +126,19 @@ export interface ISharePointCopySeam {
    */
   listFolderChildren(input: ListFolderChildrenInput): Promise<FolderChildItem[]>;
   /**
+   * List ALL immediate children (files AND folders) of the folder identified
+   * by its drive item ID. Returns [] when the folder is empty or absent.
+   * Used by listLegacyTenderFolders() to walk month folders and tender folders
+   * one level at a time using stable item IDs rather than constructed paths.
+   */
+  listFolderItemsById(siteId: string, driveId: string, itemId: string): Promise<LegacyFolderItem[]>;
+  /**
+   * Resolve the drive item ID for a folder identified by its path relative to
+   * the drive root. Returns null when the folder does not exist.
+   * Used to resolve legacyTendersRoot once at bootstrap.
+   */
+  resolveItemIdByPath(siteId: string, driveId: string, relativePath: string): Promise<string | null>;
+  /**
    * Download the raw bytes of a file by its drive item ID.
    */
   downloadFileBytes(input: {
@@ -133,6 +167,12 @@ export interface ISharePointCopySeam {
 
 export const SHAREPOINT_COPY_SEAM = Symbol("SHAREPOINT_COPY_SEAM");
 export const InjectSharePointCopySeam = () => Inject(SHAREPOINT_COPY_SEAM);
+
+/**
+ * Injection token for the legacy tenders root path.
+ * Populated in admin-imports.module.ts from legacyTendersRoot config constant.
+ */
+export const LEGACY_TENDERS_ROOT_PATH = Symbol("LEGACY_TENDERS_ROOT_PATH");
 
 // ---------------------------------------------------------------------------
 // Report types
@@ -217,8 +257,65 @@ export class SharepointLegacyCopyService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @InjectSharePointCopySeam() private readonly sharepoint: ISharePointCopySeam
+    @InjectSharePointCopySeam() private readonly sharepoint: ISharePointCopySeam,
+    @Inject(LEGACY_TENDERS_ROOT_PATH) private readonly legacyRootPath: string
   ) {}
+
+  // -------------------------------------------------------------------------
+  // listLegacyTenderFolders() — two-level walk of the legacy tree
+  // -------------------------------------------------------------------------
+
+  /**
+   * Enumerate all tender folders in the legacy tree by walking two levels:
+   *   {legacyRootPath}/{month}/{tender folder}
+   *
+   * Month folders that contain non-folder files are walked without error
+   * and the files are skipped. Returns every discovered tender folder with
+   * its monthFolder label.
+   *
+   * The legacy root's item ID is resolved on first call via
+   * resolveItemIdByPath; subsequent calls reuse the cached ID.
+   */
+  async listLegacyTenderFolders(): Promise<
+    Array<{ id: string; name: string; monthFolder: string }>
+  > {
+    const config = await this.sharepoint.getResolvedConfig();
+
+    // Resolve the legacy root item ID once (first call or after an error).
+    const rootItemId = await this.sharepoint.resolveItemIdByPath(
+      config.siteId,
+      config.driveId,
+      this.legacyRootPath
+    );
+
+    if (!rootItemId) {
+      this.logger.warn(
+        `listLegacyTenderFolders: legacy root "${this.legacyRootPath}" not found — returning empty list`
+      );
+      return [];
+    }
+
+    const monthFolders = await this.sharepoint.listFolderItemsById(
+      config.siteId,
+      config.driveId,
+      rootItemId
+    );
+
+    const tenders: Array<{ id: string; name: string; monthFolder: string }> = [];
+
+    for (const month of monthFolders.filter((m) => m.isFolder)) {
+      const children = await this.sharepoint.listFolderItemsById(
+        config.siteId,
+        config.driveId,
+        month.id
+      );
+      for (const child of children.filter((c) => c.isFolder)) {
+        tenders.push({ id: child.id, name: child.name, monthFolder: month.name });
+      }
+    }
+
+    return tenders;
+  }
 
   // -------------------------------------------------------------------------
   // plan() — dry-run: enumerate matches, no writes
@@ -272,6 +369,26 @@ export class SharepointLegacyCopyService {
       importedTNumbers.set(tNum, tender);
     }
 
+    // Enumerate all legacy tender folders via the two-level walk (TFM-S6).
+    // Build a lookup: T-number → { id, name, monthFolder } for fast matching.
+    let legacyFoldersByTNumber: Map<
+      string,
+      { id: string; name: string; monthFolder: string }
+    >;
+    try {
+      const allLegacyFolders = await this.listLegacyTenderFolders();
+      legacyFoldersByTNumber = new Map();
+      for (const folder of allLegacyFolders) {
+        const tNum = extractTNumber(folder.name);
+        if (tNum) {
+          legacyFoldersByTNumber.set(tNum, folder);
+        }
+      }
+    } catch (err) {
+      if (err instanceof SeamExtensionRequiredError) throw err;
+      throw err;
+    }
+
     // For each T-number-bearing tender, try to find its legacy folder
     for (const [tNum, tender] of importedTNumbers) {
       const destinationLink = folderLinkByTenderId.get(tender.id);
@@ -284,37 +401,34 @@ export class SharepointLegacyCopyService {
         continue;
       }
 
-      // The legacy root is whatever tendersRoot the seam knows about.
-      // We use the configured tendersRoot as the legacy root path, following
-      // the plan's instruction "root path is config the existing seam already
-      // knows — do NOT hardcode".
-      const legacyFolderPath = `${config.tendersRoot}/${tNum}`;
+      const legacyFolder = legacyFoldersByTNumber.get(tNum);
+      if (!legacyFolder) {
+        unmatchedTenders.push({
+          tenderId: tender.id,
+          tNumber: tNum,
+          tenderTitle: tender.title,
+        });
+        continue;
+      }
+
+      // Legacy folder path is two levels deep: root/month/folder
+      const legacyFolderPath = `${this.legacyRootPath}/${legacyFolder.monthFolder}/${legacyFolder.name}`;
 
       let legacyChildren: FolderChildItem[] = [];
-      let folderFound = false;
       try {
         legacyChildren = await this.sharepoint.listFolderChildren({
           siteId: config.siteId,
           driveId: config.driveId,
           relativePath: legacyFolderPath,
         });
-        folderFound = true;
       } catch (err) {
-        // SeamExtensionRequiredError or similar — propagate it; plan() cannot
-        // function without listFolderChildren. Other errors (404-like) indicate
-        // the folder was not found.
         if (err instanceof SeamExtensionRequiredError) {
           throw err;
         }
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("itemNotFound") || msg.includes("404") || msg.includes("not found")) {
-          folderFound = false;
-        } else {
-          throw err;
-        }
-      }
-
-      if (!folderFound) {
+        this.logger.warn(
+          `plan(): failed to list legacy folder ${legacyFolderPath}: ${msg}`
+        );
         unmatchedTenders.push({
           tenderId: tender.id,
           tNumber: tNum,
@@ -334,15 +448,19 @@ export class SharepointLegacyCopyService {
       });
     }
 
-    // Identify legacy folders whose T-number has no imported tender
-    // We cannot enumerate ALL legacy folders without listFolderChildren on the
-    // root — so we report the gap. (Full enumeration requires seam extension.)
-    // For now, unmatchedLegacyFolders is always [] until the seam can list
-    // the root's children.
+    // Build unmatchedLegacyFolders: legacy T-number folders not matched to any imported tender
     const unmatchedLegacyFolders: LegacyCopyPlan["unmatchedLegacyFolders"] = [];
+    for (const [tNum, folder] of legacyFoldersByTNumber) {
+      if (!importedTNumbers.has(tNum)) {
+        unmatchedLegacyFolders.push({
+          tNumber: tNum,
+          legacyFolderPath: `${this.legacyRootPath}/${folder.monthFolder}/${folder.name}`,
+        });
+      }
+    }
 
     this.logger.log(
-      `plan(): matched=${matched.length} unmatchedTenders=${unmatchedTenders.length} noDestination=${noDestination.length} noTNumber=${noTNumberCount}`
+      `plan(): matched=${matched.length} unmatchedTenders=${unmatchedTenders.length} noDestination=${noDestination.length} noTNumber=${noTNumberCount} unmatchedLegacy=${unmatchedLegacyFolders.length}`
     );
 
     return {

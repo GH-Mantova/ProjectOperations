@@ -136,12 +136,18 @@ for (const it of items) {
 
 console.log(BOLD + "=== BACKLOG — " + items.length + " item(s) not yet in the queue" + RESET + "\n");
 
+function noteLine(it) {
+  if (!it.marco_note || !String(it.marco_note).trim()) return null;
+  return DIM + "        NOTE: " + String(it.marco_note).trim().replace(/\s+/g, " ") + RESET;
+}
+
 if (ready.length) {
   console.log(GREEN + BOLD + ">>> READY TO STAGE — the blocker is GONE. Stage these." + RESET);
   for (const it of ready) {
     console.log(GREEN + "  [" + it.priority + "] " + it.id + RESET);
     console.log("        " + it.title);
     console.log(DIM + "        gate passed: " + it.gate_means + RESET);
+    const n = noteLine(it); if (n) console.log(n);
   }
   console.log("");
 }
@@ -152,13 +158,17 @@ if (marco.length) {
     console.log(YELLOW + "  [" + it.priority + "] " + it.id + RESET);
     console.log("        " + it.title);
     if (it.marco_question) console.log(DIM + "        ASK: " + it.marco_question + RESET);
+    const n = noteLine(it); if (n) console.log(n);
   }
   console.log("");
 }
 
 if (blocked.length) {
   console.log(DIM + ">>> still blocked (gate not yet satisfied)" + RESET);
-  for (const it of blocked) console.log(DIM + "  [" + it.priority + "] " + it.id + " - " + it.gate_means + RESET);
+  for (const it of blocked) {
+    console.log(DIM + "  [" + it.priority + "] " + it.id + " - " + it.gate_means + RESET);
+    const n = noteLine(it); if (n) console.log(n);
+  }
   console.log("");
 }
 

@@ -114,11 +114,11 @@ function suggestDepKey(badKeyLower) {
  * Validate the values of the three legal dependency keys.
  * Returns { ok: true } or { ok: false, code, msg }.
  *
- * Mirror the watcher's exact contract (scripts/pr-watcher/index.mjs ~line 860):
+ * Mirror the watcher's exact contract (scripts/pr-watcher/index.mjs):
  *   requires_merged  -> positive integer (list or scalar)
  *   requires_file_on_main -> non-empty path (list or scalar)
  *   requires_on_main -> non-empty path or "path :: fixed-string" (list or scalar)
- *                       WARN only — watcher does not honour it until SLICE 2.
+ *                       honoured by the watcher since cluster-chaining SLICE 2.
  */
 function validateDepKeyValues(fm, file) {
   // requires_merged: must be a positive integer (or list of positive integers)
@@ -176,8 +176,7 @@ function validateDepKeyValues(fm, file) {
   }
 
   // requires_on_main: must be non-empty path or "path :: fixed-string" (list or scalar)
-  // WARN only — watcher does not honour this key until SLICE 2 lands.
-  // TODO: remove this warning when SLICE 2 is on main.
+  // Honoured by the watcher since cluster-chaining SLICE 2.
   if (fm.requires_on_main !== undefined) {
     const vals = Array.isArray(fm.requires_on_main)
       ? fm.requires_on_main
@@ -198,12 +197,6 @@ function validateDepKeyValues(fm, file) {
         };
       }
     }
-    // Emit warning but do NOT change exit code or return failure.
-    const fname = file ? basename(file) : "<file>";
-    process.stderr.write(
-      "WARN  " + fname + "  requires_on_main is accepted by the linter but not yet honoured by the watcher" +
-      " (cluster-chaining SLICE 2). Until SLICE 2 is on main, a prompt relying on it will run UNGATED.\n"
-    );
   }
 
   return { ok: true };

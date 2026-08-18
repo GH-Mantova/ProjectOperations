@@ -862,6 +862,8 @@ function readYamlFrontMatterDeps(body, deps) {
         if (Number.isInteger(n) && n > 0) deps.requiresMerged.push(n);
       } else if (currentKey === "requires_file_on_main") {
         if (listVal !== "") deps.requiresFilesOnMain.push(listVal);
+      } else if (currentKey === "requires_on_main") {
+        if (listVal !== "") deps.requiresOnMain.push(listVal);
       }
       continue;
     }
@@ -879,6 +881,8 @@ function readYamlFrontMatterDeps(body, deps) {
       if (Number.isInteger(n) && n > 0) deps.requiresMerged.push(n);
     } else if (currentKey === "requires_file_on_main") {
       deps.requiresFilesOnMain.push(inline);
+    } else if (currentKey === "requires_on_main") {
+      deps.requiresOnMain.push(inline);
     } else if (currentKey === "fixes_pr") {
       const n = Number(inline);
       if (Number.isInteger(n) && n > 0) deps.fixesPr = n;
@@ -892,7 +896,7 @@ function readYamlFrontMatterDeps(body, deps) {
 }
 
 export function parseWatcherFrontMatter(body) {
-  const deps = { requiresMerged: [], requiresFilesOnMain: [], fixesPr: null, escalates: false };
+  const deps = { requiresMerged: [], requiresFilesOnMain: [], requiresOnMain: [], fixesPr: null, escalates: false };
   for (const line of body.split("\n")) {
     const t = line.trim();
     if (t === "") continue;
@@ -912,7 +916,69 @@ export function parseWatcherFrontMatter(body) {
   readYamlFrontMatterDeps(body, deps);
   deps.requiresMerged = [...new Set(deps.requiresMerged)];
   deps.requiresFilesOnMain = [...new Set(deps.requiresFilesOnMain)];
+  deps.requiresOnMain = [...new Set(deps.requiresOnMain)];
   return deps;
+}
+
+// ---------------------------------------------------------------------------
+// requires_on_main helpers — pure, unit-testable, no git calls.
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a `requires_on_main` value into { path, needle }.
+ *
+ * Accepted forms:
+ *   "<path>"               → { path, needle: null }
+ *   "<path> :: <needle>"   → { path, needle } (needle may contain interior spaces or colons)
+ *
+ * Fails closed: an empty path OR (with separator) an empty needle → { malformed: true, reason }.
+ * Splits on the FIRST occurrence of " :: " so a needle that contains "::" is supported verbatim.
+ */
+export function splitRequiresOnMainValue(raw) {
+  const SEP = " :: ";
+  const sepIdx = raw.indexOf(SEP);
+  if (sepIdx === -1) {
+    // Path-only form.
+    const filePath = raw.trim();
+    if (filePath === "") return { malformed: true, reason: "empty path" };
+    return { filePath, needle: null };
+  }
+  // Content-gate form.
+  const filePath = raw.slice(0, sepIdx).trim();
+  const needle = raw.slice(sepIdx + SEP.length); // do NOT trim — needles may have leading spaces
+  if (filePath === "") return { malformed: true, reason: "empty path before ' :: '" };
+  if (needle === "") return { malformed: true, reason: "empty needle after ' :: '" };
+  return { filePath, needle };
+}
+
+/**
+ * Check a single `requires_on_main` value against the content of a file on origin/main.
+ *
+ * Returns { met: true } or { met: false, reason }.
+ * Never throws — any error is returned as { met: false, reason }.
+ *
+ * `fileContent` is either a string (the file's content from git show) or null (file absent).
+ * This is a pure function; the caller supplies fileContent so git is kept at the edge.
+ *
+ * FIXED-STRING only — uses String.prototype.includes, never new RegExp(needle).
+ */
+export function checkRequiresOnMain(raw, fileContent) {
+  const parsed = splitRequiresOnMainValue(raw);
+  if (parsed.malformed) {
+    return { met: false, reason: "malformed requires_on_main value (" + parsed.reason + "): " + JSON.stringify(raw) };
+  }
+  if (fileContent === null) {
+    return { met: false, reason: "file \"" + parsed.filePath + "\" not on origin/main" };
+  }
+  if (parsed.needle === null) {
+    // Path-only form: file exists → MET.
+    return { met: true };
+  }
+  // Content-gate: fixed-string containment. No RegExp.
+  if (fileContent.includes(parsed.needle)) {
+    return { met: true };
+  }
+  return { met: false, reason: "string " + JSON.stringify(parsed.needle) + " not found in \"" + parsed.filePath + "\" on origin/main" };
 }
 
 // Returns a list of human-readable unmet-dependency reasons (empty = go).
@@ -927,7 +993,7 @@ async function unmetDependencies(deps) {
       unmet.push(`PR #${n} state check failed: ${err.message}`);
     }
   }
-  if (deps.requiresFilesOnMain.length > 0) {
+  if (deps.requiresFilesOnMain.length > 0 || deps.requiresOnMain.length > 0) {
     try {
       await runGit(["fetch", "origin", "main"]);
     } catch (err) {
@@ -938,6 +1004,25 @@ async function unmetDependencies(deps) {
         await runGit(["cat-file", "-e", `origin/main:${file}`]);
       } catch {
         unmet.push(`file "${file}" not on origin/main`);
+      }
+    }
+    for (const raw of deps.requiresOnMain) {
+      const parsed = splitRequiresOnMainValue(raw);
+      if (parsed.malformed) {
+        // Fail closed. Warn so the author sees it in watcher logs.
+        log("deps", `[WARN] malformed requires_on_main value (${parsed.reason}): ${JSON.stringify(raw)}`);
+        unmet.push(`malformed requires_on_main value (${parsed.reason}): ${JSON.stringify(raw)}`);
+        continue;
+      }
+      let fileContent = null;
+      try {
+        fileContent = await runGit(["show", `origin/main:${parsed.filePath}`]);
+      } catch {
+        // File absent or git error — UNMET, fail closed.
+      }
+      const result = checkRequiresOnMain(raw, fileContent);
+      if (!result.met) {
+        unmet.push(result.reason);
       }
     }
   }

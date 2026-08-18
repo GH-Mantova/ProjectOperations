@@ -15,7 +15,7 @@
 
 import { readFileSync, readdirSync, renameSync, existsSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_SIZE = 10;
@@ -209,6 +209,300 @@ function validateDepKeyValues(fm, file) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// Cluster-chaining SLICE 3: cluster metadata and the rules that police it
+// ---------------------------------------------------------------------------
+
+/**
+ * A cluster slug is a short kebab-case identifier that groups a set of prompts
+ * into an ORDERED chain. `cluster_order` is a positive integer position within
+ * the chain. Both keys are OPTIONAL - a prompt with neither is unchanged.
+ *
+ * Rule matrix:
+ *   cluster only                       -> legal (one-slice cluster)
+ *   cluster + cluster_order (>= 1)     -> legal
+ *   cluster_order without cluster      -> REJECT (order without a chain)
+ *   cluster_order <= 0 / non-integer   -> REJECT
+ *   bad slug shape                     -> REJECT (CLUSTER_BAD_SLUG)
+ *   cluster_order > 1 with no dep key  -> REJECT (CLUSTER_NO_DEP)
+ *   cycle across sibling prompts       -> REJECT (CLUSTER_CYCLE)
+ *   requires_on_main needle already
+ *     on origin/main at intake         -> REJECT (CLUSTER_DEAD_GATE)
+ */
+const CLUSTER_SLUG_RE = /^[a-z][a-z0-9-]{2,40}$/;
+
+/**
+ * Validate the shape of the cluster / cluster_order pair, in isolation.
+ * The relational rules (NO_DEP, CYCLE, DEAD_GATE) live in separate helpers.
+ */
+function validateClusterShape(fm) {
+  const hasCluster = fm.cluster !== undefined && fm.cluster !== "" && !(Array.isArray(fm.cluster) && fm.cluster.length === 0);
+  const hasOrder = fm.cluster_order !== undefined && fm.cluster_order !== "" && !(Array.isArray(fm.cluster_order) && fm.cluster_order.length === 0);
+
+  if (!hasCluster && !hasOrder) return { ok: true, hasCluster: false, hasOrder: false };
+
+  if (!hasCluster && hasOrder) {
+    return {
+      ok: false, code: "CLUSTER_ORDER_NO_CLUSTER",
+      msg: "cluster_order is set but cluster is not. A position without a chain has no meaning; declare both or neither.",
+    };
+  }
+
+  const slug = String(fm.cluster).trim();
+  if (!CLUSTER_SLUG_RE.test(slug)) {
+    return {
+      ok: false, code: "CLUSTER_BAD_SLUG",
+      msg:
+        "cluster=" + JSON.stringify(slug) + " does not match ^[a-z][a-z0-9-]{2,40}$.\n" +
+        "        Slugs are lowercase-kebab, 3-41 chars, must start with a letter. Example: cluster-chaining.",
+    };
+  }
+
+  let order = null;
+  if (hasOrder) {
+    const raw = String(fm.cluster_order).trim();
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) {
+      return {
+        ok: false, code: "CLUSTER_ORDER_INVALID",
+        msg:
+          "cluster_order must be a positive integer (got " + JSON.stringify(raw) + "). Reject: 0, negatives, non-numerics.",
+      };
+    }
+    order = n;
+  }
+
+  return { ok: true, hasCluster: true, hasOrder, slug, order };
+}
+
+/**
+ * A prompt has a declared dependency key if any of the three watcher-honoured
+ * keys is present and non-empty. This is what CLUSTER_NO_DEP checks against.
+ */
+function hasAnyDepKey(fm) {
+  for (const k of LEGAL_DEP_KEYS) {
+    const v = fm[k];
+    if (v === undefined || v === "") continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Parse the `requires_on_main` values from a front-matter object into an
+ * array of { path, needle } pairs. Accepts scalar or list form; a value with
+ * no `::` has needle=null (existence gate only).
+ */
+function parseRequiresOnMainEntries(fm) {
+  const raw = fm.requires_on_main;
+  if (raw === undefined || raw === "" || (Array.isArray(raw) && raw.length === 0)) return [];
+  const vals = Array.isArray(raw) ? raw : [raw];
+  const out = [];
+  for (const v of vals) {
+    const s = String(v).trim();
+    if (!s) continue;
+    const idx = s.indexOf("::");
+    if (idx === -1) {
+      out.push({ path: s, needle: null });
+    } else {
+      out.push({ path: s.slice(0, idx).trim(), needle: s.slice(idx + 2).trim() });
+    }
+  }
+  return out;
+}
+
+/**
+ * Read every *-ready.md and *-HOLD.md front-matter in the same directory and
+ * build a graph { slug -> { name -> Set<prereqName> } }.
+ *
+ * Fail SAFE: if the directory cannot be read, or an individual sibling is
+ * malformed, WARN to stderr and SKIP that sibling. Never reject a well-formed
+ * prompt because an unrelated sibling is broken - one bad prompt must not
+ * block the whole queue.
+ *
+ * Prereq resolution is intentionally limited to the two forms whose names
+ * can be resolved from front-matter alone:
+ *   - `requires_file_on_main: <path>`  when <path> is another prompt's file
+ *   - `requires_on_main: <path>[ :: X]` same rule
+ * `requires_merged: N` is a PR-number gate, not a name gate, so it is IGNORED
+ * for cycle detection - the cycle rule only catches file-based back-edges.
+ */
+function buildClusterGraph(promptDir, self) {
+  const graph = new Map();
+  let entries;
+  try {
+    entries = readdirSync(promptDir);
+  } catch (err) {
+    process.stderr.write("WARN  cluster-graph: cannot read " + promptDir + " (" + err.message + "); skipping cycle check.\n");
+    return null;
+  }
+
+  const nameByPath = new Map();
+  const parsed = [];
+  for (const entry of entries) {
+    if (!/-ready\.md$|-HOLD\.md$/.test(entry)) continue;
+    const full = join(promptDir, entry);
+    let text;
+    try {
+      text = readFileSync(full, "utf8");
+    } catch (err) {
+      process.stderr.write("WARN  cluster-graph: cannot read " + entry + "; skipping.\n");
+      continue;
+    }
+    let fm;
+    try {
+      fm = parseFrontMatter(text);
+    } catch (err) {
+      process.stderr.write("WARN  cluster-graph: malformed front-matter in " + entry + "; skipping.\n");
+      continue;
+    }
+    if (!fm || !fm.cluster) continue;
+    parsed.push({ name: entry, fm });
+    nameByPath.set(entry, entry);
+  }
+
+  // If we are validating a prompt not yet on disk (e.g. a synthetic test file),
+  // splice in the caller's own front-matter under its intended name.
+  if (self && self.fm && self.fm.cluster) {
+    const idx = parsed.findIndex((p) => p.name === self.name);
+    if (idx >= 0) parsed[idx] = { name: self.name, fm: self.fm };
+    else parsed.push({ name: self.name, fm: self.fm });
+  }
+
+  for (const { name, fm } of parsed) {
+    const slug = String(fm.cluster).trim();
+    if (!graph.has(slug)) graph.set(slug, new Map());
+    const bucket = graph.get(slug);
+    if (!bucket.has(name)) bucket.set(name, new Set());
+    const prereqNames = bucket.get(name);
+
+    const pathGates = [];
+    if (fm.requires_file_on_main !== undefined) {
+      const vals = Array.isArray(fm.requires_file_on_main) ? fm.requires_file_on_main : [fm.requires_file_on_main];
+      for (const v of vals) {
+        const s = String(v).trim();
+        if (s) pathGates.push(s);
+      }
+    }
+    for (const { path } of parseRequiresOnMainEntries(fm)) {
+      if (path) pathGates.push(path);
+    }
+    for (const p of pathGates) {
+      const base = basename(p);
+      if (nameByPath.has(base) && base !== name) prereqNames.add(base);
+    }
+  }
+  return graph;
+}
+
+/**
+ * DFS cycle detector. Returns the FIRST cycle found as an array of names, or
+ * null if the graph is acyclic. Only walks the bucket for the given slug.
+ */
+function findCycleInCluster(graph, slug) {
+  const bucket = graph.get(slug);
+  if (!bucket) return null;
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map();
+  for (const name of bucket.keys()) color.set(name, WHITE);
+
+  const stack = [];
+  function visit(name) {
+    color.set(name, GRAY);
+    stack.push(name);
+    const prereqs = bucket.get(name) || new Set();
+    for (const next of prereqs) {
+      if (!bucket.has(next)) continue;
+      const c = color.get(next);
+      if (c === GRAY) {
+        const cycleStart = stack.indexOf(next);
+        return stack.slice(cycleStart).concat([next]);
+      }
+      if (c === WHITE) {
+        const found = visit(next);
+        if (found) return found;
+      }
+    }
+    stack.pop();
+    color.set(name, BLACK);
+    return null;
+  }
+
+  for (const name of bucket.keys()) {
+    if (color.get(name) === WHITE) {
+      const cycle = visit(name);
+      if (cycle) return cycle;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch a file's contents from origin/main. Returns null when the file is
+ * absent OR when git itself is unavailable / errors. Callers MUST treat null
+ * as "cannot decide, skip the check" - never as "gate is satisfied".
+ */
+function readFromOriginMain(path, repoRoot) {
+  const gitBin = process.env.LINT_GIT_BIN || "git";
+  try {
+    return execFileSync(gitBin, ["show", "origin/main:" + path], {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf-8",
+      timeout: 10000,
+      shell: process.platform === "win32",
+    });
+  } catch (err) {
+    // Distinguish "file not on main" (path-doesnotexist error) from "git broken".
+    // git returns 128 for both, so peek at stderr - "does not exist" / "unknown
+    // revision" / "exists on disk, but not in" are the file-absent shapes.
+    const stderr = String(err.stderr || "");
+    if (/does not exist|unknown revision|exists on disk|bad revision/i.test(stderr)) {
+      return { absent: true };
+    }
+    return null; // git broken - skip check, fail SAFE
+  }
+}
+
+/**
+ * CLUSTER_DEAD_GATE: a requires_on_main whose fixed string is ALREADY present
+ * on origin/main at intake time. The arming PR would dispatch the slice
+ * instantly with no gate at all, which reads as ordered and is not.
+ *
+ * Applies only when cluster is present (do not extend the non-cluster
+ * queue's lint-time network probe). Existence-only gates (no `::`) are
+ * NOT checked here - that would be a legitimate "wait for the file to
+ * appear" gate; only content gates can be dead on arrival.
+ *
+ * Fail SAFE on git errors: emit a warning, admit the prompt.
+ */
+function checkDeadGate(fm, repoRoot, name) {
+  const entries = parseRequiresOnMainEntries(fm);
+  for (const { path, needle } of entries) {
+    if (!needle) continue; // existence gate, not a content gate
+    const contents = readFromOriginMain(path, repoRoot);
+    if (contents === null) {
+      process.stderr.write(
+        "WARN  " + (name || "<file>") + "  cluster: could not probe origin/main:" + path + " for dead-gate check; skipping.\n"
+      );
+      continue;
+    }
+    if (contents.absent) continue; // file missing = gate legitimately unmet
+    if (typeof contents === "string" && contents.indexOf(needle) !== -1) {
+      return {
+        ok: false, code: "CLUSTER_DEAD_GATE",
+        msg:
+          "requires_on_main: \"" + path + " :: " + needle + "\" is ALREADY on origin/main at intake.\n" +
+          "        This is the CLUSTER_DEAD_GATE case - the arming PR would dispatch this slice\n" +
+          "        with no ordering gate at all. Change the needle to something the predecessor\n" +
+          "        slice actually introduces, or drop the gate if the predecessor is already merged.",
+      };
+    }
+  }
+  return { ok: true };
+}
+
 const RESET = "\x1b[0m";
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -397,6 +691,43 @@ export function lint(file, opts) {
   {
     const depResult = validateDepKeyValues(fm, file);
     if (!depResult.ok) return fail(depResult.code, depResult.msg);
+  }
+
+  // CLUSTER-CHAINING SLICE 3: cluster metadata + graph rules.
+  // Runs AFTER the SLICE 1 dep-key validation (whose codes must not shift) but
+  // BEFORE the REQUIRED-fields check so a broken cluster key surfaces its own
+  // clear error rather than a downstream MISSING_FIELD confusion.
+  {
+    const shape = validateClusterShape(fm);
+    if (!shape.ok) return fail(shape.code, shape.msg);
+
+    if (shape.hasCluster && shape.hasOrder && shape.order > 1 && !hasAnyDepKey(fm)) {
+      return fail("CLUSTER_NO_DEP",
+        "cluster_order=" + shape.order + " declares this slice is not first in the chain,\n" +
+        "        but no dependency key is set (requires_merged / requires_file_on_main / requires_on_main).\n" +
+        "        A later slice with nothing to wait on will dispatch alongside the first one -\n" +
+        "        which is exactly the silently-ungated prompt this cluster exists to eliminate.");
+    }
+
+    if (shape.hasCluster) {
+      const promptDir = opts && opts.promptDir ? opts.promptDir : dirname(file);
+      const graph = buildClusterGraph(promptDir, { name, fm });
+      if (graph) {
+        const cycle = findCycleInCluster(graph, shape.slug);
+        if (cycle) {
+          return fail("CLUSTER_CYCLE",
+            "Cluster \"" + shape.slug + "\" contains a dependency cycle:\n" +
+            "        " + cycle.join(" -> ") + "\n" +
+            "        A cycle means no slice can start - each waits on another.\n" +
+            "        Break the cycle by removing one back-edge dependency.");
+        }
+      }
+
+      // CLUSTER_DEAD_GATE - only meaningful for cluster prompts, and only
+      // when there is a content gate (path :: needle) to probe.
+      const deadRes = checkDeadGate(fm, repoRoot, name);
+      if (!deadRes.ok) return fail(deadRes.code, deadRes.msg);
+    }
   }
 
   const missing = REQUIRED.filter((k) => !fm[k] || (Array.isArray(fm[k]) && fm[k].length === 0));

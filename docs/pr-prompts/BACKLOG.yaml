@@ -1,20 +1,20 @@
 # =============================================================================================
-# THE BACKLOG REGISTER Ã”Ã‡Ã¶ work that is REAL but NOT YET IN THE QUEUE.
+# THE BACKLOG REGISTER ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ work that is REAL but NOT YET IN THE QUEUE.
 #
 # WHY THIS EXISTS
 # ---------------
 # On 2026-07-14 an audit found SEVEN pieces of designed work that had quietly fallen on the floor.
-# They lived in CHAT MEMORIES Ã”Ã‡Ã¶ which no agent can read Ã”Ã‡Ã¶ or in a HOLD file nobody re-evaluated.
+# They lived in CHAT MEMORIES ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ which no agent can read ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ or in a HOLD file nobody re-evaluated.
 #
 # The worst case: the **Branding manager** was HOLD-gated on the quote-PDF fix. That fix MERGED on
 # 2026-07-08. The gate released SIX DAYS EARLIER and nothing noticed, because a HOLD is a passive
-# note Ã”Ã‡Ã¶ something has to come back and ASK "is it unblocked yet?" Nothing ever did.
+# note ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ something has to come back and ASK "is it unblocked yet?" Nothing ever did.
 # Meanwhile `AdminCompanyPage.tsx` still ships a comment promising the tables.
 #
 # Second worst: `pr-524` names `pr-rates-b2-ratetable-canonical-cutover` as its precondition.
 # THAT PROMPT WAS NEVER WRITTEN. An entire workstream was blocked on a step that did not exist.
 #
-# HOW IT WORKS Ã”Ã‡Ã¶ the gate is EXECUTABLE, exactly like the lint's `premise`
+# HOW IT WORKS ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ the gate is EXECUTABLE, exactly like the lint's `premise`
 # -----------------------------------------------------------------------
 #   gate:        a shell command. EXIT 0 => the blocker is GONE and this item is READY TO STAGE.
 #   gate_means:  plain English, so a human can sanity-check the command.
@@ -30,12 +30,12 @@
 # RULES
 # -----
 # * Add an item here THE MOMENT it is discussed and not immediately staged. Chat memory is NOT a
-#   backlog Ã”Ã‡Ã¶ agents cannot read it, and it is where these seven items went to die.
+#   backlog ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ agents cannot read it, and it is where these seven items went to die.
 # * `needs_marco: true` items are NEVER auto-staged. The scanner surfaces them; Marco decides.
 # * When an item IS staged, delete it here. The queue is then its home. One place, never two.
 # * A GATE MUST BE ABLE TO FAIL. The literal word `true` is not a gate; nor is a command that
 #   ends in a `[space][pipe][pipe][space]true` swallow-the-error suffix. Both always exit 0 and
-#   can never notice that the work is done Ã”Ã‡Ã¶ which is the entire job of this file. If you cannot
+#   can never notice that the work is done ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ which is the entire job of this file. If you cannot
 #   express the blocker as a command that EXITS NON-ZERO once the work has shipped, you do not
 #   understand the item well enough to register it. On 2026-07-14 the P0 tender-PATCH item sat
 #   at the top of this register as READY for a full day after PR #577 fixed it, because its
@@ -54,7 +54,7 @@ items:
   # -------------------------------------------------------------------------------------------
 
   # -------------------------------------------------------------------------------------------
-  # P2 Ã”Ã‡Ã¶ gate ALREADY RELEASED and nobody noticed. This is the item that proves the point.
+  # P2 ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ gate ALREADY RELEASED and nobody noticed. This is the item that proves the point.
   # -------------------------------------------------------------------------------------------
   # -------------------------------------------------------------------------------------------
   # DISCHARGED 2026-07-15 (04-scanner): branding-manager STAGED as pr-branding-manager-ready.md.
@@ -88,7 +88,7 @@ items:
   # (its home is now the prompt file.)
 
   # -------------------------------------------------------------------------------------------
-  # P4 Ã”Ã‡Ã¶ real, but genuinely waiting on Marco
+  # P4 ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¶ real, but genuinely waiting on Marco
   # -------------------------------------------------------------------------------------------
   # DISCHARGED 2026-07-16 (Cowork): STAGED + ARMED as pr-qa-workstream-c-audit-ready.md
   # (per BACKLOG-DECISIONS #5: re-review the 2026-07-02 plan against today's suite FIRST, then fill
@@ -271,7 +271,7 @@ items:
       when accepting option A (track-while-open with honest gaps).
     gate: 'grep -rqi "breadcrumb" apps/api/src/modules/field && ! test -d apps/mobile'
     gate_means: 'READY to consider once the A2 breadcrumb slice is on main and no native wrapper exists yet. Dies the moment an apps/mobile wrapper ships.'
-    needs_marco: true
+    needs_marco: false
     marco_note: >
       DECIDED 2026-08-03 (Marco): Option A (track-while-open) stood; wrapper PARKED. 2026-08-12 (Marco):
       briefly reactivated Option B, then RE-SCOPED to WEB-FIRST. Near-term plan = a fieldworker WEB
@@ -284,6 +284,12 @@ items:
       explicit disclosure (placeholder wording now, HR later). Plan:
       docs/architecture/drafts/gps-native-wrapper-plan.md. STILL needs_marco to approve store spend +
       final wording IF/WHEN the native step is taken.
+      RESOLVED 2026-08-18 (Marco): the client that reactivated Option B has CONFIRMED it accepts
+      track-while-open with honest gaps. The open caveat in the plan doc is answered; web-first
+      stands and the wrapper stays parked. needs_marco set to false so this stops surfacing every
+      scanner run. RE-OPENS only if a client contractually requires a GAPLESS trail - at that point
+      it becomes a real project (Apple $99/yr floor, store distribution, worker privacy notice) and
+      Marco must approve the spend and the final disclosure wording.
     order: 13
 
   # -------------------------------------------------------------------------------------------
@@ -332,3 +338,34 @@ items:
       non-sot-keeper agent touch /sot/. Run the sot-keeper reconcile once the settings + rates slices
       are on main; it lands via a doc-reconcile PR and drops the marker doc named in the gate.
     order: 15
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-18 (Marco): the full-tender export, parked after PR Master run 5 and now
+  # deliberately re-prioritised DOWN. The reason it was requested changed underneath it.
+  # -------------------------------------------------------------------------------------------
+  - id: tender-full-export
+    title: "Full-tender export - every field on a tender, not just the register columns"
+    priority: P3
+    why: >
+      Marco asked for this on 2026-08-17 after noticing the Tendering register CSV exports only the
+      register's own columns and nothing from Activity & communications or the rest of the tender.
+      It was originally framed as a SAFETY NET against losing entered notes. That framing is wrong
+      and Marco accepted the correction: the real safety net is Azure PostgreSQL point-in-time
+      restore, which he then hardened - retention raised 7 -> 15 days and a CanNotDelete lock added
+      to the prod server on 2026-08-17. PITR gives a recovery point of roughly 5 minutes with nobody
+      pressing a button; an export can never match that. What survives is a genuine but non-urgent
+      need - PORTABILITY and AUDIT: handing a tender's complete record to somebody outside the
+      system. DECIDED 2026-08-18 (Marco): keep it, drop to P3.
+    gate: 'grep -rq "buildRegisterCsv" apps/web/src/pages/tendering && ! grep -rq "buildTenderFullExport" apps/web/src/pages/tendering'
+    gate_means: >
+      READY once the register CSV fix (buildRegisterCsv, PR #1146 lineage) is on main and no
+      full-tender exporter exists yet. Dies the moment a full-tender exporter ships.
+    needs_marco: true
+    marco_note: >
+      The run-5 interview was PARKED mid-way and its answers are stale, because the justification
+      moved from safety-net to portability/audit. Do NOT stage from the old answers. Re-run the
+      PR Master interview before staging - in particular the permission question (who may export a
+      whole tender, including notes and documents) has to be re-asked now that this is an
+      information-disclosure feature rather than a backup. Q6 from the original run was answered
+      only as "ok" and was never disambiguated.
+    order: 16

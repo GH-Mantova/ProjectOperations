@@ -67,12 +67,29 @@ test.describe("Batch 4 — Tender documents (PRs #22, #341)", () => {
     await expect(page.getByText("Drag & drop files here, or browse")).toBeVisible();
     await expect(page.getByText("PDF, Word, Excel, DWG, PNG, JPG · up to 100 MB")).toBeVisible();
 
-    // PR #64-era category routing selector — switching is local state only.
-    const category = page.getByLabel("Document category");
+    // TFM-S4 — the PR #64-era flat <select> was replaced by a hierarchical
+    // ARIA listbox (UploadCategoryPicker) so nested category paths and the
+    // per-client Quotes/{client}/ folders are selectable. `selectOption` only
+    // drives a real <select>, so this test now drives the listbox the way a
+    // user does. Same intent as before: pick Drawings, confirm it took, then
+    // pick another category. Labels are the LAST path segment (labelFor()),
+    // hence "01. Drawings" rather than "Drawings".
+    const category = page.getByRole("listbox", { name: "Document category" });
     await expect(category).toBeVisible();
-    await category.selectOption({ label: "Drawings" });
-    await expect(category).toHaveValue("Drawings");
-    await category.selectOption({ label: "Other" });
+
+    const drawings = category.getByRole("option", { name: "01. Drawings", exact: true });
+    // The picker auto-expands the parent of the current value, so Drawings may
+    // already be visible. Only expand when it is not — clicking an expanded
+    // parent would collapse it.
+    if (!(await drawings.isVisible())) {
+      await category
+        .getByRole("button", { name: "1. Plans, Scopes & Specs", exact: true })
+        .click();
+    }
+    await drawings.click();
+    await expect(drawings).toHaveAttribute("aria-selected", "true");
+
+    await category.getByRole("option", { name: "7. Other", exact: true }).click();
   });
 
   test("mock SharePoint mode: Open shows the connection-required toast instead of navigating", async ({

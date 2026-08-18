@@ -1098,7 +1098,161 @@ function extractPrNumber(text) {
 // Before 2026-08-17 none of this existed: the string "escalates" appeared nowhere in the
 // watcher and `gh pr merge --auto --squash` ran on every PR it opened. This is the OPS-6
 // near-miss mechanism (a destructive migration one green build away from auto-merging).
-async function holdForMarco(prNumber, promptName) {
+//
+// 2026-08-18 — this function used to unconditionally re-apply `do-not-merge` every time
+// an escalates prompt reached it. When Marco reviewed PR #1158 and removed the label at
+// 00:26:53Z, an armed re-run of the same prompt at 01:45:08Z re-labeled it 78 minutes
+// later, silently reversing his decision. A rule that only guards one direction does not
+// guard the gate. decideEscalationAction below encodes the two-directional rule: a human's
+// removal is respected, and a re-run on a pre-existing PR is a no-op.
+
+// Pure decision function for escalates PRs. Kept side-effect-free so the escalation
+// policy can be unit-tested without spawning gh or writing labels.
+//
+// Inputs:
+//   prCreatedAtMs   — PR createdAt in ms since epoch
+//   runStartedAtMs  — this watcher run's start time in ms
+//   currentLabels   — array of label names currently on the PR
+//   doNotMergeEvents— array of {event: "labeled"|"unlabeled", createdAt: iso} for the
+//                     do-not-merge label ONLY (caller filters). Unsorted OK.
+//
+// Actions:
+//   "spent"          — PR pre-dates this run; prompt was consumed elsewhere already,
+//                      caller must move to processed/ with NO label, NO comment.
+//   "already-labeled"— PR already carries do-not-merge; caller MUST NOT re-add.
+//   "declined"       — the most recent do-not-merge event is `unlabeled`. A human made
+//                      the call; caller MUST NOT re-apply, must log the decline loudly.
+//   "apply"          — apply the label + post the comment.
+export function decideEscalationAction({
+  prCreatedAtMs,
+  runStartedAtMs,
+  currentLabels,
+  doNotMergeEvents,
+}) {
+  if (
+    Number.isFinite(prCreatedAtMs) &&
+    Number.isFinite(runStartedAtMs) &&
+    prCreatedAtMs < runStartedAtMs
+  ) {
+    return {
+      action: "spent",
+      reason: `PR pre-dates this run (created ${new Date(prCreatedAtMs).toISOString()}, run started ${new Date(runStartedAtMs).toISOString()}) — the prompt was already consumed by an earlier run`,
+    };
+  }
+  if ((currentLabels ?? []).includes("do-not-merge")) {
+    return {
+      action: "already-labeled",
+      reason: "PR already carries `do-not-merge` — no duplicate apply",
+    };
+  }
+  const sorted = (doNotMergeEvents ?? [])
+    .slice()
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const mostRecent = sorted[0];
+  if (mostRecent && mostRecent.event === "unlabeled") {
+    return {
+      action: "declined",
+      reason: `most recent \`do-not-merge\` event is \`unlabeled\` at ${mostRecent.createdAt} — a human already released this PR, refusing to re-apply`,
+    };
+  }
+  return { action: "apply", reason: null };
+}
+
+// Fetch the state needed to decide the escalation action. Isolated so holdForMarco stays
+// small and so the transport can be swapped in tests if we ever want an integration one.
+async function fetchEscalationState(prNumber) {
+  const pr = await runGh(
+    ["pr", "view", String(prNumber), "--json", "createdAt,labels"],
+    { json: true },
+  );
+  // `gh api` substitutes {owner}/{repo} from the current git remote, so this works in
+  // both the interactive tree and the watcher clone without hard-coding GH-Mantova/…
+  const events = await runGh(
+    ["api", `repos/{owner}/{repo}/issues/${prNumber}/events`, "--paginate"],
+    { json: true },
+  );
+  const doNotMergeEvents = events
+    .filter(
+      (e) =>
+        (e.event === "labeled" || e.event === "unlabeled") &&
+        e.label?.name === "do-not-merge",
+    )
+    .map((e) => ({ event: e.event, createdAt: e.created_at }));
+  return {
+    prCreatedAtMs: Date.parse(pr.createdAt),
+    currentLabels: (pr.labels ?? []).map((l) => l.name),
+    doNotMergeEvents,
+  };
+}
+
+// Post the "held for Marco" comment via a temp file. The old --body path split
+// the (unquoted) body on shell whitespace and failed with "accepts at most 1 arg(s),
+// received 42" on every escalates PR (#1158, #1165, #1166 all lost their comment).
+async function postHeldForMarcoComment(prNumber) {
+  const body =
+    "Held for Marco: this prompt declared `escalates: true`, so the watcher did not enable " +
+    "auto-merge and applied the `do-not-merge` label. CP-26 fails while the label is present. " +
+    "Remove the label once you have reviewed it — that is what releases the merge.";
+  const tmpFile = path.join(__dirname, `.held-for-marco-${prNumber}.tmp.md`);
+  try {
+    await writeFile(tmpFile, body, "utf-8");
+    await runGh(["pr", "comment", String(prNumber), "--body-file", tmpFile]);
+  } finally {
+    try {
+      unlinkSync(tmpFile);
+    } catch {
+      // best-effort cleanup
+    }
+  }
+}
+
+async function holdForMarco(prNumber, promptName, runStartedAtMs) {
+  let state;
+  try {
+    state = await fetchEscalationState(prNumber);
+  } catch (err) {
+    // If we can't read PR state, fall back to fail-loud: warn and skip label + comment
+    // rather than blindly re-applying (which is exactly the bug being fixed).
+    log(
+      "merge",
+      `PR #${prNumber}: could NOT read escalation state (${err.message}) — refusing to modify label. Verify by hand.`,
+    );
+    return {
+      ok: false,
+      marco: true,
+      reason: `escalates:true — could not read PR state (${err.message}); label NOT touched, verify by hand.`,
+    };
+  }
+
+  const decision = decideEscalationAction({
+    prCreatedAtMs: state.prCreatedAtMs,
+    runStartedAtMs,
+    currentLabels: state.currentLabels,
+    doNotMergeEvents: state.doNotMergeEvents,
+  });
+
+  if (decision.action === "spent") {
+    log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}. Filing prompt as processed, no label/comment.`);
+    return { spent: true, reason: decision.reason };
+  }
+
+  if (decision.action === "already-labeled") {
+    log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}`);
+    return { ok: false, marco: true, reason: `escalates:true — ${decision.reason}` };
+  }
+
+  if (decision.action === "declined") {
+    log(
+      "merge",
+      `PR #${prNumber}: escalates:true — REFUSING to re-apply \`do-not-merge\`: ${decision.reason}`,
+    );
+    return {
+      ok: false,
+      marco: true,
+      reason: `escalates:true — ${decision.reason}`,
+    };
+  }
+
   log("merge", `PR #${prNumber}: escalates:true — NOT enabling auto-merge; labelling do-not-merge`);
   try {
     await runGh(["pr", "edit", String(prNumber), "--add-label", "do-not-merge"]);
@@ -1112,12 +1266,7 @@ async function holdForMarco(prNumber, promptName) {
     };
   }
   try {
-    await runGh([
-      "pr", "comment", String(prNumber), "--body",
-      "Held for Marco: this prompt declared `escalates: true`, so the watcher did not enable " +
-      "auto-merge and applied the `do-not-merge` label. CP-26 fails while the label is present. " +
-      "Remove the label once you have reviewed it — that is what releases the merge.",
-    ]);
+    await postHeldForMarcoComment(prNumber);
   } catch (err) {
     log("merge", `PR #${prNumber}: comment failed (non-fatal): ${err.message}`);
   }
@@ -1701,6 +1850,10 @@ async function drain() {
 
   log("start", `${name} (max-turns=${MAX_TURNS})`);
   const startedAt = ts();
+  // Wall-clock start of THIS run in ms. Used by holdForMarco to detect prompts that
+  // re-fired against a PR that was created by an earlier run — those must NOT
+  // re-apply the do-not-merge label (see decideEscalationAction).
+  const runStartedAtMs = Date.now();
   const chunks = [];
   let lastLine = "";
 
@@ -1902,11 +2055,33 @@ async function drain() {
         // escalates:true short-circuits BOTH merge paths — the flag means a human decides, so
         // auto-merge is never enabled regardless of AUTO_MERGE_POLICY.
         const result = deps.escalates
-          ? await holdForMarco(prNumber, name)
+          ? await holdForMarco(prNumber, name, runStartedAtMs)
           : AUTO_MERGE_POLICY === "tests-docs"
             ? await waitForPolicyMerge(prNumber)
             : await waitForMerge(prNumber, name);
         mergeReport = `\n\n---\n[watcher] merge result for PR #${prNumber}: ${JSON.stringify(result)}\n`;
+
+        if (result.spent) {
+          // PR pre-existed this run — the agent's re-run found the same PR and would
+          // otherwise trip the merge-step side effects (re-label, re-comment). Bail
+          // out cleanly: file the prompt as processed with the "spent" note in the
+          // log, and take no other action on the PR.
+          log("merge", `${name}: PR #${prNumber} spent (${result.reason}) — moving prompt to processed/ with no action`);
+          logBody = logBody + mergeReport;
+          const dest = path.join(PROCESSED_DIR, name);
+          const logDest = path.join(PROCESSED_DIR, `${name}.log`);
+          try {
+            await rename(filePath, dest);
+            await writeFile(logDest, logBody);
+            log("ok", `${name} → processed/ (spent — PR pre-existed this run)`);
+          } catch (err) {
+            log("error", `move ok (spent): ${err.message}`);
+          }
+          seen.delete(name);
+          running = false;
+          drain();
+          return;
+        }
 
         if (!result.ok && result.marco) {
           // tests-docs: PR doesn't qualify for auto-merge — leave it open for

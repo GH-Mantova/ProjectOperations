@@ -271,6 +271,32 @@ The goal is to keep the board MOVING. For every red:
   then hand over.
 - Follow-up permanent-fix PRs (from 8.2) are auto-driven on these same rules. **Never hand-merge.**
 
+### 8.3a JS merge queue (`merge-queue.mjs`) -- guards required before wiring
+
+`scripts/pr-watcher/merge-queue.mjs` is the sequential PR merger used by the supervisor.
+It **must not be wired to any cron, dispatcher, or npm script** until SLICE 7 of the
+cluster-chaining plan is merged -- that slice installs the guards below.
+
+Once SLICE 7 is on `main`, the queue enforces:
+
+1. **NEVER_MERGE list.** Any PR whose number appears in `NEVER_MERGE` is refused before
+   any network call. Default list: empty (PRs #552 and #538 were both discharged; see the
+   NEVER_MERGE comment in `merge-queue.mjs` for history). Override via env
+   `PR_WATCHER_NEVER_MERGE=<comma-separated>` for testing.
+
+2. **Hold labels.** A PR carrying `do-not-merge`, `needs-marco`, or `hold` is refused.
+   Labels are read per-PR with `gh pr view --json labels` -- NOT from a board listing
+   (LL-47). A label-read failure is a REFUSAL, not a pass.
+
+3. **`escalates: true` prompts.** The watcher (`index.mjs`) applies `do-not-merge` to
+   every PR opened for an escalating prompt. Rule 2 above catches that case. There is no
+   separate escalates check -- no reliable PR-to-prompt mapping exists, and a guard that
+   overstates what it verifies is worse than an absent one. This is documented in the
+   source (`merge-queue.mjs` header) so the next reader stops looking.
+
+Merge authority remains with the supervisor and Marco. The queue is a tool; wiring it
+is a separate decision.
+
 ## 8.4 The in-chain HOLD rule
 A `*-HOLD.md` prompt is on hold ONLY because it depends on a predecessor PR not yet merged to `main`.
 The moment every predecessor it names is merged and on `main`, it is promoted to `*-ready.md` and

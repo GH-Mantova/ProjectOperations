@@ -352,12 +352,25 @@ this cluster only adds callers.
 
 ## 9. Open questions (for Marco or a separate brief)
 
-- **`escalates: true` is enforced by nothing.** The watcher auto-merges every PR it opens,
-  has no concept of `escalates`, and CI has no do-not-merge gate. SLICE 7 addresses ONE
-  half (the queue-side refusal) but only if the queue is ever wired. Fixing this end-to-
-  end is a separate brief â€” a CI-side hard-fail on any PR whose originating prompt
-  carries `escalates: true`, or on any PR labelled `escalates`. Recorded here so it is
-  not lost.
+- **`escalates: true` IS enforced end-to-end as of 2026-08-18** (PRs #1142 and #1182,
+  merged after this doc was written 2026-08-17). When the doc was authored, the watcher
+  had no concept of `escalates` and CI had no do-not-merge gate -- that was then true.
+  The enforcement chain now in place: prompt `escalates: true` --> watcher parses the
+  flag (`index.mjs:888`, assignment at line 892) --> watcher short-circuits both merge
+  paths and routes to `holdForMarco()` instead of `waitForMerge()`/`waitForPolicyMerge()`
+  (`index.mjs:2057`) --> `holdForMarco` applies the `do-not-merge` label and posts an
+  explanatory comment (`index.mjs:~1256`) --> CP-26 in `pr-gates.mjs:472-510` fails CI
+  while that label is present, and fails closed if labels cannot be read. When Marco
+  removes the label the watcher does NOT re-apply it (`decideEscalationAction`,
+  `index.mjs:~1123`, added in PR #1182) -- that removal is what releases the PR.
+
+  **Residual:** CP-26 keys on the `do-not-merge` **label**, not on the originating
+  prompt's `escalates` flag. If the watcher fails to apply the label, `index.mjs` logs
+  loudly and returns `marco: true` rather than merging -- so nothing auto-merges -- but
+  the resulting PR carries no label, CP-26 therefore passes, and the PR is green and
+  unguarded. Only the watcher log records the anomaly. Closing this properly means CI
+  deriving `escalates` from the originating prompt rather than trusting the label.
+  Narrow, real, and not yet briefed.
 - **Two-lane fairness.** With SCOPE OVERLAP serialisation across clusters, a very
   broad-scope prompt can effectively hog both lanes. Do we want an explicit
   `max_parallel_per_cluster` knob, or is the DAG's natural fan-out sufficient? Deferred

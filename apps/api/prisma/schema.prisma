@@ -1253,7 +1253,12 @@ model Tender {
   // TFM-S2: human-readable project name, used as the stable SharePoint folder
   // name base. Does NOT change when tenderNumber is bumped on revision, which
   // prevents the pre-revision folder being orphaned (stranding-fix invariant).
-  projectName         String?                   @map("project_name")
+  projectName                String?                   @map("project_name")
+  // TFM-S5: per-tender SharePoint folder provisioning outcome.
+  // "ok" | "partial" | "failed" -- null until first provisioning attempt.
+  // folderProvisioningErrors: [{path, message}] for each subfolder that failed.
+  folderProvisioningStatus   String?                   @map("folder_provisioning_status")
+  folderProvisioningErrors   Json?                     @map("folder_provisioning_errors")
   createdAt           DateTime                  @default(now()) @map("created_at")
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   estimator           User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)

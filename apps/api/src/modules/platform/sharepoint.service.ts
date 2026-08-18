@@ -182,6 +182,9 @@ export class SharePointService {
   // Best-effort: per-category failures are logged and swallowed so a
   // single Graph hiccup does not strand a fresh tender. Uploads later
   // re-ensure the specific category folder they need.
+  //
+  // TFM-S5: returns a provisioning result instead of void. Accumulates
+  // per-path failures so the caller can persist them to the DB.
   async ensureTenderFolderStructure(
     tender: {
       id: string;
@@ -191,12 +194,14 @@ export class SharePointService {
       tenderClients?: Array<{ client: { name: string } }> | null;
     },
     actorId?: string
-  ): Promise<void> {
+  ): Promise<{ status: "ok" | "partial" | "failed"; failures: Array<{ path: string; message: string }> }> {
     const config = await this.getResolvedConfig();
     const rootSegments = config.tendersRoot.split("/").filter(Boolean);
     const folderName = deriveTenderFolderName(tender);
     const tenderRelativePath = `${config.tendersRoot}/${folderName}`;
 
+    // Root parent chain must succeed: a failed parent means nothing else can
+    // proceed, so we return "failed" immediately rather than accumulating.
     let accumulated = "";
     for (const segment of rootSegments) {
       accumulated = accumulated ? `${accumulated}/${segment}` : segment;
@@ -210,12 +215,11 @@ export class SharePointService {
           actorId
         );
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `ensureTenderFolderStructure: failed to ensure parent '${accumulated}' for tender ${tender.tenderNumber}: ${
-            err instanceof Error ? err.message : String(err)
-          }`
+          `ensureTenderFolderStructure: failed to ensure parent '${accumulated}' for tender ${tender.tenderNumber}: ${message}`
         );
-        return;
+        return { status: "failed", failures: [{ path: accumulated, message }] };
       }
     }
 
@@ -231,17 +235,20 @@ export class SharePointService {
         actorId
       );
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `ensureTenderFolderStructure: failed to ensure tender folder '${tenderRelativePath}' for ${tender.tenderNumber}: ${
-          err instanceof Error ? err.message : String(err)
-        }`
+        `ensureTenderFolderStructure: failed to ensure tender folder '${tenderRelativePath}' for ${tender.tenderNumber}: ${message}`
       );
-      return;
+      return { status: "failed", failures: [{ path: tenderRelativePath, message }] };
     }
 
     // TFM-S4: walk the hierarchical TENDER_FOLDER_STRUCTURE rather than the
     // flat DOCUMENT_CATEGORIES list. flattenFolderPaths returns paths in
     // depth-first order so parents are always ensured before children.
+    // TFM-S5: accumulate failures instead of swallowing them.
+    const failures: Array<{ path: string; message: string }> = [];
+    let successCount = 0;
+
     const allPaths = flattenFolderPaths(TENDER_FOLDER_STRUCTURE);
     for (const categoryPath of allPaths) {
       const segments = categoryPath.split("/");
@@ -257,11 +264,12 @@ export class SharePointService {
           },
           actorId
         );
+        successCount++;
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        failures.push({ path: categoryPath, message });
         this.logger.warn(
-          `ensureTenderFolderStructure: failed to ensure category folder '${categoryPath}' for tender ${tender.tenderNumber}: ${
-            err instanceof Error ? err.message : String(err)
-          }`
+          `ensureTenderFolderStructure: failed to create ${categoryPath}: ${message}`
         );
       }
     }
@@ -281,26 +289,36 @@ export class SharePointService {
           },
           actorId
         );
+        successCount++;
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        failures.push({ path: "Quotes", message });
         this.logger.warn(
-          `ensureTenderFolderStructure: failed to ensure Quotes/ folder for tender ${tender.tenderNumber}: ${
-            err instanceof Error ? err.message : String(err)
-          }`
+          `ensureTenderFolderStructure: failed to create Quotes: ${message}`
         );
       }
     } else {
       for (const tc of clients) {
         try {
           await this.ensureTenderQuoteClientFolder(tender.id, tc.client.name, actorId);
+          successCount++;
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          failures.push({ path: `Quotes/${tc.client.name}`, message });
           this.logger.warn(
-            `ensureTenderFolderStructure: failed to ensure Quotes/${tc.client.name} for tender ${tender.tenderNumber}: ${
-              err instanceof Error ? err.message : String(err)
-            }`
+            `ensureTenderFolderStructure: failed to create Quotes/${tc.client.name}: ${message}`
           );
         }
       }
     }
+
+    if (failures.length === 0) {
+      return { status: "ok", failures: [] };
+    }
+    return {
+      status: successCount > 0 ? "partial" : "failed",
+      failures
+    };
   }
 
   // PR-64 — Ensure a specific tender/category subfolder exists and

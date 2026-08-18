@@ -457,6 +457,17 @@ export class SharePointService {
     return this.adapter.listFolderChildrenByPath(siteId, driveId, relativePath);
   }
 
+  // TFM-S7 — Read-only existence probe for the destination-side guard.
+  // Returns false on a legitimate NotFound; rethrows on transport/auth errors.
+  // Thin wrapper over the adapter method of the same name.
+  async folderExists(
+    siteId: string,
+    driveId: string,
+    relativePath: string,
+  ): Promise<boolean> {
+    return this.adapter.folderExists({ siteId, driveId, relativePath });
+  }
+
   listFolders() {
     return this.prisma.sharePointFolderLink.findMany({
       orderBy: [{ module: "asc" }, { relativePath: "asc" }]

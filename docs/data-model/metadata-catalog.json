@@ -941,6 +941,30 @@
             "count"
           ]
         },
+        "currentHoursReading": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "currentKmReading": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "lastReadingAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -1032,6 +1056,12 @@
           "aggregations": []
         },
         "checkouts": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "usageReadings": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -1604,6 +1634,92 @@
           "aggregations": []
         },
         "asset": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
+    "AssetUsageReading": {
+      "domain": "Assets",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "assetId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "unit": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "reading": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "previousReading": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "recordedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "recordedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sourceSubmissionId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "isMeterReplacement": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "note": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "asset": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "recordedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sourceSubmission": {
           "role": "dimension",
           "label": null,
           "filterable": true,
@@ -10133,6 +10249,12 @@
           "role": "dimension",
           "label": null,
           "filterable": true,
+          "aggregations": []
+        },
+        "assetUsageReadings": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
           "aggregations": []
         },
         "sealedAt": {
@@ -25352,6 +25474,12 @@
           "aggregations": []
         },
         "assetCheckouts": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "assetUsageReadingsRecorded": {
           "role": "system",
           "label": null,
           "filterable": false,

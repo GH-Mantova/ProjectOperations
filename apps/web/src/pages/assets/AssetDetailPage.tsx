@@ -94,7 +94,18 @@ type CheckoutRecord = {
   job?: { id: string; jobNumber: string; name: string } | null;
 };
 
-type Tab = "overview" | "custody" | "maintenance" | "shifts" | "documents";
+type UsageReading = {
+  id: string;
+  unit: string;
+  reading: string;
+  previousReading?: string | null;
+  recordedAt: string;
+  isMeterReplacement: boolean;
+  note?: string | null;
+  recordedBy?: { id: string; firstName: string; lastName: string } | null;
+};
+
+type Tab = "overview" | "custody" | "maintenance" | "shifts" | "documents" | "readings";
 
 const STATUS_CLASS: Record<string, string> = {
   AVAILABLE: "s7-badge s7-badge--active",
@@ -296,6 +307,7 @@ export function AssetDetailPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
   const [checkouts, setCheckouts] = useState<CheckoutRecord[] | null>(null);
+  const [usageReadings, setUsageReadings] = useState<UsageReading[] | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkinOpen, setCheckinOpen] = useState(false);
 
@@ -344,6 +356,23 @@ export function AssetDetailPage() {
         return;
       }
       if (!cancelled) setCheckouts(await response.json());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, id, tab]);
+
+  useEffect(() => {
+    if (tab !== "readings" || !id) return;
+    let cancelled = false;
+    (async () => {
+      const response = await authFetch(`/assets/${id}/usage-readings?pageSize=50`);
+      if (!response.ok) {
+        if (!cancelled) setUsageReadings([]);
+        return;
+      }
+      const data = (await response.json()) as { items: UsageReading[] };
+      if (!cancelled) setUsageReadings(data.items ?? []);
     })();
     return () => {
       cancelled = true;
@@ -527,6 +556,7 @@ export function AssetDetailPage() {
         {([
           ["overview", "Overview"],
           ["custody", "Custody"],
+          ["readings", "Readings"],
           ["maintenance", `Maintenance (${asset.maintenanceEvents.length + asset.inspections.length + asset.breakdowns.length})`],
           ["shifts", `Shifts (${asset.shiftAssignments.length})`],
           ["documents", "Documents"]
@@ -739,6 +769,56 @@ export function AssetDetailPage() {
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "readings" ? (
+        <section className="s7-card">
+          <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Usage readings history</h3>
+          {usageReadings === null ? (
+            <Skeleton width="100%" height={80} />
+          ) : usageReadings.length === 0 ? (
+            <EmptyState heading="No readings recorded" subtext="Hours and odometer readings submitted via forms or manually recorded will appear here." />
+          ) : (
+            <div className="s7-table-scroll">
+              <table className="s7-table">
+                <thead>
+                  <tr>
+                    <th>Unit</th>
+                    <th>Reading</th>
+                    <th>Previous</th>
+                    <th>Recorded at</th>
+                    <th>Recorded by</th>
+                    <th>Replacement</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageReadings.map((r) => (
+                    <tr key={r.id}>
+                      <td><span className="s7-badge s7-badge--neutral">{r.unit}</span></td>
+                      <td>{Number(r.reading).toLocaleString()}</td>
+                      <td>{r.previousReading != null ? Number(r.previousReading).toLocaleString() : "—"}</td>
+                      <td>{formatDateTime(r.recordedAt)}</td>
+                      <td>
+                        {r.recordedBy
+                          ? `${r.recordedBy.firstName} ${r.recordedBy.lastName}`
+                          : "—"}
+                      </td>
+                      <td>
+                        {r.isMeterReplacement ? (
+                          <span className="s7-badge s7-badge--warning">Yes</span>
+                        ) : "No"}
+                      </td>
+                      <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {r.note ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       ) : null}

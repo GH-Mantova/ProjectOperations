@@ -10,7 +10,10 @@
 $ErrorActionPreference = "Continue"
 Set-Location "C:\po-watcher\ProjectOperations"
 
-$NEVER = @(552, 538)
+# NEVER-MERGE list. Empty is CORRECT as of 2026-08-18: #552 and #538 were the only
+# two entries and both merged on 2026-07-14. Add a PR number here to hard-block it.
+# A stale entry is worse than an empty list -- see test-evidence-gate.ps1.
+$NEVER = @()
 
 function Assert-Mergeable([int]$n) {
     if ($NEVER -contains $n) { throw ("REFUSING #" + $n + " - NEVER list.") }

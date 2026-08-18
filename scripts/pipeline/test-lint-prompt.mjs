@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 // checkout (worktree or main) this test file lives in. The old hardcoded path broke
 // when run from a worktree — it would test the main-tree lint instead of the local one.
 const LINT = join(dirname(fileURLToPath(import.meta.url)), "lint-prompt.mjs");
-const REPO = "C:\\po-watcher\\ProjectOperations";
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dir = mkdtempSync(join(tmpdir(), "lint-test-"));
 
 let pass = 0;

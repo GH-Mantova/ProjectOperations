@@ -26,7 +26,15 @@ export class TenderDocumentsService {
 
   async create(tenderId: string, dto: CreateTenderDocumentDto, actorId?: string, file?: Express.Multer.File) {
     const tender = await this.prisma.tender.findUnique({
-      where: { id: tenderId }
+      where: { id: tenderId },
+      // TFM-S2: select projectName + site.name so ensureTenderCategoryFolder
+      // can derive the stable folder name (unchanged across revision bumps).
+      select: {
+        id: true,
+        tenderNumber: true,
+        projectName: true,
+        site: { select: { name: true } }
+      }
     });
 
     if (!tender) {
@@ -37,8 +45,9 @@ export class TenderDocumentsService {
     // tender's canonical SharePoint root. ensureTenderCategoryFolder is
     // idempotent and creates the folder lazily for tenders that pre-date
     // PR-64 (or that partially failed at create-time).
+    // TFM-S2: passes projectName + site.name so the path is stable across revision bumps.
     const folder = await this.sharePointService.ensureTenderCategoryFolder(
-      { id: tenderId, tenderNumber: tender.tenderNumber },
+      { id: tenderId, tenderNumber: tender.tenderNumber, projectName: tender.projectName, site: tender.site },
       dto.category,
       actorId
     );

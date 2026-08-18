@@ -22,6 +22,7 @@ import {
   buildProjectStepFlushPayload,
   buildRemoveBuilderRequest,
   deriveDocumentBuckets,
+  deriveFolderPreview,
   detectIncompleteBuilders,
   formatReminderBody,
   goBack,
@@ -143,6 +144,10 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
 
   // Step 1 — Project
   const [title, setTitle] = useState("");
+  // TFM-S2: human-readable project name, prefilled from site.name, estimator can override.
+  const [projectName, setProjectName] = useState("");
+  // resolvedSiteName is set when the site is resolved so the folder preview has a fallback.
+  const [resolvedSiteName, setResolvedSiteName] = useState<string | null>(null);
   // `siteAddress` is the text visible in the input; `resolvedSiteId` is the
   // linked Site.id set once the user picks a suggestion. The wizard cannot
   // advance past Project without a resolved site so every tender gets a real
@@ -180,6 +185,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     setBusy(false);
     setError(null);
     setTitle("");
+    setProjectName("");
+    setResolvedSiteName(null);
     setSiteAddress("");
     setResolvedSiteId(null);
     setResolvingSite(false);
@@ -240,6 +247,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         setServerTenderClients(tender.tenderClients ?? []);
         setTitle((prev) => prev || tender.title || "");
         setEstimatorUserId((prev) => prev || tender.estimatorUserId || "");
+        // TFM-S2: restore projectName from server state on resume.
+        if (tender.projectName) setProjectName((prev) => prev || tender.projectName || "");
         // Resume path: if the tender already has a site link, rehydrate the
         // visible address + the resolved id so the user can advance without
         // re-picking. Formatted-address display prefers the site name.
@@ -255,6 +264,7 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
               .filter(Boolean)
               .join(", ");
             setSiteAddress((prev) => prev || parts || tender.site.name || "");
+            setResolvedSiteName((prev) => prev ?? tender.site.name ?? null);
           }
         }
         // Rebuild builder drafts from server state so resume-flow shows saved builders.
@@ -361,6 +371,9 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     // the real Site record (not just the free-text description) from the
     // first save.
     if (resolvedSiteId) payload.siteId = resolvedSiteId;
+    // TFM-S2: pass projectName so the folder is named correctly from creation.
+    const pName = projectName.trim();
+    if (pName) payload.projectName = pName;
     const res = await authFetch("/tenders", { method: "POST", body: JSON.stringify(payload) });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -441,7 +454,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         title,
         estimatorUserId,
         siteAddress,
-        siteId: resolvedSiteId
+        siteId: resolvedSiteId,
+        projectName
       });
       if (patch) await patchDraft(flow.draftId, patch);
     }
@@ -470,8 +484,14 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.message ?? "Could not link this address to a site.");
       }
-      const data = (await res.json()) as { site: { id: string }; created: boolean };
+      const data = (await res.json()) as { site: { id: string; name?: string | null }; created: boolean };
       setResolvedSiteId(data.site.id);
+      // TFM-S2: prefill project name from site.name if not already set by the user.
+      const siteName = data.site.name ?? null;
+      setResolvedSiteName(siteName);
+      if (siteName && !projectName.trim()) {
+        setProjectName(siteName);
+      }
       // If the draft already exists, patch it immediately so a reload picks
       // up the site link even if the user closes without pressing Next.
       if (flow.draftId) {
@@ -889,6 +909,8 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
       if (resolvedSiteId) patch.siteId = resolvedSiteId;
       const desc = siteAddress.trim() ? `Site: ${siteAddress.trim()}` : "";
       if (desc) patch.description = desc;
+      // TFM-S2: persist projectName so the folder remains stable.
+      patch.projectName = projectName.trim() || null;
       await patchDraft(flow.draftId, patch);
       await fireIncompleteReminders();
       onCreated(flow.draftId);
@@ -988,12 +1010,18 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
               <StepProject
                 title={title}
                 onTitleChange={setTitle}
+                projectName={projectName}
+                onProjectNameChange={setProjectName}
+                resolvedSiteName={resolvedSiteName}
                 siteAddress={siteAddress}
                 onSiteChange={(v) => {
                   setSiteAddress(v);
                   // Editing the address after a pick invalidates the resolved
                   // link — the user has to pick again from the suggestions.
-                  if (resolvedSiteId) setResolvedSiteId(null);
+                  if (resolvedSiteId) {
+                    setResolvedSiteId(null);
+                    setResolvedSiteName(null);
+                  }
                 }}
                 onAddressSelect={handleAddressSelect}
                 resolvedSiteId={resolvedSiteId}
@@ -1215,6 +1243,9 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
 function StepProject(props: {
   title: string;
   onTitleChange: (v: string) => void;
+  projectName: string;
+  onProjectNameChange: (v: string) => void;
+  resolvedSiteName: string | null;
   siteAddress: string;
   onSiteChange: (v: string) => void;
   onAddressSelect: (suggestion: AddressSuggestion) => void;
@@ -1225,10 +1256,13 @@ function StepProject(props: {
   onEstimatorChange: (v: string) => void;
   draftId: string | null;
 }) {
+  // TFM-S2: derive the folder name preview from the current project name + site fallback.
+  const folderPreview = deriveFolderPreview(null, props.projectName, props.resolvedSiteName);
+
   return (
     <div className="new-tender-wizard__step">
       <label className="tender-form__field">
-        <span className="s7-type-label">Project name</span>
+        <span className="s7-type-label">Tender title</span>
         <input
           className="s7-input"
           value={props.title}
@@ -1258,6 +1292,24 @@ function StepProject(props: {
               : "Start typing, then pick a suggestion — required to continue."}
         </span>
       </label>
+      <label className="tender-form__field">
+        <span className="s7-type-label">Project name (SharePoint folder)</span>
+        <input
+          className="s7-input"
+          value={props.projectName}
+          onChange={(e) => props.onProjectNameChange(e.target.value)}
+          placeholder="Northshore civil works"
+          data-testid="new-tender-project-name"
+        />
+        <span className="new-tender-wizard__hint">
+          Prefilled from site name. The estimator can edit this — it becomes the SharePoint folder name and does not change when a revision is marked.
+        </span>
+      </label>
+      {props.resolvedSiteId ? (
+        <div className="new-tender-wizard__notice" role="status" data-testid="new-tender-folder-preview">
+          Folder will be named: <strong>{folderPreview}</strong>
+        </div>
+      ) : null}
       <label className="tender-form__field">
         <span className="s7-type-label">Tender reference</span>
         <input

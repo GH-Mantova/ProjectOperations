@@ -2,6 +2,70 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { brisbaneYYMMDD, clientSlug, FALLBACK_SLUG } from "../../common/id-format/client-slug";
 
+// ---------------------------------------------------------------------------
+// TFM-S2 — Stable SharePoint folder name derivation
+// ---------------------------------------------------------------------------
+
+/**
+ * Characters that Graph API rejects in SharePoint folder names.
+ * Ref: https://support.microsoft.com/en-us/office/restrictions-and-limitations-in-onedrive-and-sharepoint-64883a5d-228e-48f5-b3d2-eb39e07630fa
+ */
+const GRAPH_REJECTED_CHARS = /[~"#%&*:<>?/\\{|}]/g;
+
+/**
+ * Sanitise a string for use as a SharePoint folder name segment:
+ *   1. Strip Graph-rejected characters.
+ *   2. Collapse runs of whitespace to a single space.
+ *   3. Trim leading/trailing whitespace.
+ *   4. Cap at 90 characters.
+ */
+export function sanitiseSharePointName(raw: string): string {
+  return raw
+    .replace(GRAPH_REJECTED_CHARS, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 90);
+}
+
+/**
+ * Derives the SharePoint folder name for a tender.
+ *
+ * Format: `T{YYMMDD} - {projectName}` where:
+ *   - YYMMDD is parsed from tender.number (first 7 chars: "T260817")
+ *   - project name = tender.projectName ?? tender.site?.name ?? ""
+ *
+ * If the sanitised project name is empty, falls back to the raw T-number
+ * (e.g. "T260817").
+ *
+ * Collision handling: if the result already appears in existingNames,
+ * appends " (2)", " (3)", ... until unique.
+ *
+ * @param tender - shape expected from Prisma query (number + optional projectName/site.name)
+ * @param existingNames - sibling folder names in the same parent (optional)
+ */
+export function deriveTenderFolderName(
+  tender: {
+    tenderNumber: string;
+    projectName?: string | null;
+    site?: { name?: string | null } | null;
+  },
+  existingNames?: string[]
+): string {
+  // Extract the date portion: "T260817-XXXX-Rev1" -> "260817" -> "T260817"
+  const tPrefix = tender.tenderNumber.slice(0, 7); // "T260817"
+  const rawProject = tender.projectName ?? tender.site?.name ?? "";
+  const sanitised = sanitiseSharePointName(rawProject);
+  const base = sanitised ? `${tPrefix} - ${sanitised}` : tPrefix;
+
+  if (!existingNames || existingNames.length === 0) return base;
+
+  const taken = new Set(existingNames);
+  if (!taken.has(base)) return base;
+  let counter = 2;
+  while (taken.has(`${base} (${counter})`)) counter++;
+  return `${base} (${counter})`;
+}
+
 /**
  * Generates canonical tender numbers in the format T{YYMMDD}-{SLUG}-Rev{N}
  * (pilot G5 — Marco-confirmed spec; tender numbers are server-generated

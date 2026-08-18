@@ -8,6 +8,7 @@ import type { SharePointAdapter, FolderChildItem } from "./sharepoint.adapter";
 import { DOCUMENT_CATEGORIES } from "../tender-documents/tender-document-categories";
 import type { DocumentCategory } from "../tender-documents/tender-document-categories";
 import { SharePointFolderMappingsService } from "./sharepoint-folder-mappings.service";
+import { deriveTenderFolderName } from "../tendering/tender-number.service";
 
 // PR-64 — Runtime-resolved SharePoint coordinates. `getResolvedConfig`
 // returns these, lazy-resolving siteId/driveId from
@@ -165,21 +166,30 @@ export class SharePointService {
 
   // PR-64 — Ensure the full per-tender folder structure exists. Called
   // from TenderingService.create / .duplicate after the tender row
-  // commits. Creates `{tendersRoot}/{tenderNumber}/` plus one subfolder
+  // commits. Creates `{tendersRoot}/{folderName}/` plus one subfolder
   // per canonical document category, walking the parent chain first
   // because Graph's ensureFolder requires intermediate folders to
   // pre-exist.
+  //
+  // TFM-S2: folder name is derived from projectName (stable across revision
+  // bumps) via deriveTenderFolderName. Pass site.name for the fallback.
   //
   // Best-effort: per-category failures are logged and swallowed so a
   // single Graph hiccup does not strand a fresh tender. Uploads later
   // re-ensure the specific category folder they need.
   async ensureTenderFolderStructure(
-    tender: { id: string; tenderNumber: string },
+    tender: {
+      id: string;
+      tenderNumber: string;
+      projectName?: string | null;
+      site?: { name?: string | null } | null;
+    },
     actorId?: string
   ): Promise<void> {
     const config = await this.getResolvedConfig();
     const rootSegments = config.tendersRoot.split("/").filter(Boolean);
-    const tenderRelativePath = `${config.tendersRoot}/${tender.tenderNumber}`;
+    const folderName = deriveTenderFolderName(tender);
+    const tenderRelativePath = `${config.tendersRoot}/${folderName}`;
 
     let accumulated = "";
     for (const segment of rootSegments) {
@@ -206,7 +216,7 @@ export class SharePointService {
     try {
       await this.ensureFolder(
         {
-          name: tender.tenderNumber,
+          name: folderName,
           relativePath: tenderRelativePath,
           module: "tendering",
           linkedEntityType: "Tender",
@@ -250,13 +260,23 @@ export class SharePointService {
   // files into the matching subfolder, falling back to creating the
   // folder lazily if the tender was created before PR-64 (or if the
   // ensureTenderFolderStructure call partially failed at create time).
+  //
+  // TFM-S2: uses deriveTenderFolderName so the path is stable across
+  // revision bumps — pre-revision uploads continue routing to the same
+  // folder rather than a freshly created stub.
   async ensureTenderCategoryFolder(
-    tender: { id: string; tenderNumber: string },
+    tender: {
+      id: string;
+      tenderNumber: string;
+      projectName?: string | null;
+      site?: { name?: string | null } | null;
+    },
     category: DocumentCategory,
     actorId?: string
   ) {
     const config = await this.getResolvedConfig();
-    const relativePath = `${config.tendersRoot}/${tender.tenderNumber}/${category}`;
+    const folderName = deriveTenderFolderName(tender);
+    const relativePath = `${config.tendersRoot}/${folderName}/${category}`;
     return this.ensureFolder(
       {
         name: category,

@@ -187,6 +187,54 @@ than doing nothing, because someone will act on it.
 
 ---
 
+## 7.1 DECLARE YOUR PROVENANCE - say how you know, or your report is a rumour
+
+Added 2026-08-18 after three separate wrong claims in one morning, from three different
+actors, all with the same shape: **a conclusion drawn from rendered or stale data, written
+down with the same confidence as a measurement.**
+
+- `needs-marco/pr-1156-review-block.md` asserted PR #1156's merge commit deleted
+  `LocationProvider.ts` and two other files and told the reader to re-fire the prompt on a
+  clean branch. The PR's actual file list was **9 files, all added or modified, ZERO
+  deletions**. The block had been true against an older head and was never re-stamped.
+- A CP-11 "undeclared migrations" failure was diagnosed as a malformed `GATE-ALLOW` marker
+  wrapped in backticks. The backticks were **an artefact of how one API client renders JSON**.
+  The raw body was correct. The real cause was that **the gate run itself was stale**.
+- "#1162 is deployed" and "#1162 was never deployed" were both written the same morning.
+  Both were true when sampled. Neither said when, or against which SHA.
+
+### The rule
+
+**Every factual line in a station artifact carries how it was obtained.** Three tags, and there
+is no fourth:
+
+- **`[MEASURED]`** - you ran a probe and are quoting its output. Include the command and enough
+  of the result to re-check. A PID, a byte count, an exit code, a log line.
+- **`[INFERRED]`** - you read something and reasoned. Say what you read. An inference is allowed
+  and often necessary; it is not allowed to be dressed as a measurement.
+- **`[CANNOT MEASURE]`** - the probe you needed was unavailable. **Say so and stop.** Do not
+  substitute an inference and let the reader assume you looked.
+
+Every artifact also carries, at the top: **UTC timestamp** and **the git SHA it was true at**.
+A claim without a SHA cannot be checked later, and a claim that outlives its SHA is how
+`pr-1156-review-block.md` sent its reader to redo finished work.
+
+### Why `[CANNOT MEASURE]` is not optional
+
+Stations run in a Linux sandbox. Several sanctioned probes are PowerShell scripts on the
+Windows host, and the desktop connectors that would reach it are only present while the desktop
+app is running - **so an overnight scheduled run legitimately cannot probe the machine.** That
+is a fact to report, not a gap to paper over. 05-sot-keeper already did this correctly on
+2026-08-17 by stating it had no PowerShell rather than guessing at liveness. That is the
+standard.
+
+### The re-read rule
+
+**Before you act on someone else's artifact - including your own from an earlier run - re-verify
+its central claim against the live system.** If it carries no SHA or the SHA is not current,
+treat it as a lead, not a finding. Anything in `needs-marco/` older than the current head is a
+lead.
+
 # 8. THE SUPERVISOR ACTS -- FIX METHODOLOGY, MERGE POLICY, IN-CHAIN HOLD
 
 Marco, 2026-08-11. The supervisor drives the WHOLE board -- every open PR to green and merge, fixing

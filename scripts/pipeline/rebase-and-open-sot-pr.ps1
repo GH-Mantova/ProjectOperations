@@ -27,12 +27,21 @@ if (Test-Path (Join-Path (git rev-parse --git-dir) "rebase-merge")) {
 Write-Output ("  READBACK: rebased cleanly onto " + (git rev-parse --short origin/main).Trim())
 
 Write-Output ""
-Write-Output "=== files in this branch vs main (must be sot/ only - CP-24)"
+Write-Output "=== files in this branch vs main (must be sot/ and/or docs/ only - CP-24)"
+# CP-24 forbids sot/ + CODE in the same PR; sot/ + docs/ is legitimate for
+# doc-reconcile PRs (audits, runbooks, pr-prompts). Predicate mirrors codeRe
+# in scripts/pr-gates/pr-gates.mjs so this helper cannot disagree with the gate.
 $files = @(git diff --name-only origin/main...HEAD)
 foreach ($f in $files) { Write-Output ("  " + $f) }
-$bad = @($files | Where-Object { $_ -notlike "sot/*" })
-if ($bad.Count -gt 0) { Write-Output "  CP-24 VIOLATION. Aborting."; exit 1 }
-Write-Output "  CP-24 OK"
+$codeRe = '^(?:apps/|scripts/|\.github/|packages/|package\.json$|pnpm-lock\.yaml$)'
+$bad = @($files | Where-Object { $_ -match $codeRe })
+if ($bad.Count -gt 0) {
+    Write-Output "  CP-24 VIOLATION - sot/ mixed with CODE:"
+    foreach ($b in $bad) { Write-Output ("    " + $b) }
+    Write-Output "  Aborting."
+    exit 1
+}
+Write-Output "  CP-24 OK (sot/ and/or docs/ only)"
 
 Write-Output ""
 Write-Output "=== push"

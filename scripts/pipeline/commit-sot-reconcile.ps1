@@ -10,7 +10,12 @@
 # NO PATCH FILE. An earlier attempt wrote the diff with -Encoding ascii, which would have
 # mangled every em-dash in sot/ - manufacturing the exact corruption class that blocked #544.
 #
-# CP-24: sot-purity. This commit must contain sot/** and NOTHING else.
+# CP-24: doc-reconcile purity. This commit must contain sot/** and/or docs/** only -
+# NEVER apps/**, scripts/**, .github/**, packages/**, package.json, or pnpm-lock.yaml.
+# Mirrors codeRe in scripts/pr-gates/pr-gates.mjs. Historically this script rejected
+# ANY non-sot/ file and cited CP-24; that was stricter than the gate itself, and it
+# blocked legitimate doc-reconcile PRs that carry a docs/ marker (runbook, audit,
+# pr-prompt, review artifact) alongside the sot/ edit.
 $ErrorActionPreference = "Continue"
 Set-Location "C:\ProjectOperations2"
 
@@ -35,30 +40,32 @@ if ($now -ne $branch) {
 Write-Output ("  READBACK: on " + $now)
 
 Write-Output ""
-Write-Output "=== stage sot/ ONLY"
-git add sot/
+Write-Output "=== stage sot/ and docs/ ONLY"
+git add sot/ docs/
 $staged = @(git diff --cached --name-only)
 foreach ($s in $staged) { Write-Output ("  staged: " + $s) }
 
-# CP-24 sot-purity: assert nothing outside sot/ crept in.
-$bad = @($staged | Where-Object { $_ -notlike "sot/*" })
+# CP-24: sot/ and docs/ may ride together in a doc-reconcile PR. What CP-24 forbids
+# is sot/ mixed with CODE. Predicate mirrors codeRe in scripts/pr-gates/pr-gates.mjs.
+$codeRe = '^(?:apps/|scripts/|\.github/|packages/|package\.json$|pnpm-lock\.yaml$)'
+$bad = @($staged | Where-Object { $_ -match $codeRe })
 if ($bad.Count -gt 0) {
-    Write-Output "  CP-24 VIOLATION - non-sot files staged:"
+    Write-Output "  CP-24 VIOLATION - sot/ mixed with CODE (apps/, scripts/, .github/, packages/, package.json, pnpm-lock.yaml):"
     foreach ($b in $bad) { Write-Output ("    " + $b) }
     git reset | Out-Null
     git switch main | Out-Null
     exit 1
 }
 if ($staged.Count -eq 0) {
-    Write-Output "  nothing staged - no sot/ changes. Aborting."
+    Write-Output "  nothing staged - no sot/ or docs/ changes. Aborting."
     git switch main | Out-Null
     exit 1
 }
-Write-Output ("  CP-24 OK: " + $staged.Count + " file(s), all under sot/")
+Write-Output ("  CP-24 OK: " + $staged.Count + " file(s), all under sot/ or docs/")
 
 Write-Output ""
 Write-Output "=== commit"
-git commit -q -m "docs(sot): retire chat routing, add boot sequence + concurrency rules, LL-36/37/38" -m "Doc-reconcile PR. sot/ only (CP-24 sot-purity)." 2>&1 | ForEach-Object { Write-Output ("  " + $_) }
+git commit -q -m "docs(sot): retire chat routing, add boot sequence + concurrency rules, LL-36/37/38" -m "Doc-reconcile PR. sot/ and/or docs/ only (CP-24: no code)." 2>&1 | ForEach-Object { Write-Output ("  " + $_) }
 $sha = (git rev-parse --short HEAD).Trim()
 Write-Output ("  READBACK: committed " + $sha)
 

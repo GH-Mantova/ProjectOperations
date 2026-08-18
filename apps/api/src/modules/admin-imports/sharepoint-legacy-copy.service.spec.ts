@@ -24,6 +24,12 @@
  *   - plan() — destination folder missing per adapter probe → unready
  *   - plan() — successful status + folder exists → ready, wouldCopy populated
  *   - execute() — skips unready tender at run time even if plan called it ready
+ *
+ * TFM-S10 additions:
+ *   - plan() — projectName=NULL + site.name set → folderExists called with
+ *     "{tendersRoot}/T260817 - Acme Site" (site.name used as fallback)
+ *   - plan() — projectName populated → site.name ignored (projectName wins)
+ *   - plan() — both projectName and site.name null/empty → bare T-prefix path
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
@@ -169,6 +175,7 @@ function makePrismaMock(
     tenderNumber: string;
     folderProvisioningStatus?: string | null;
     projectName?: string | null;
+    site?: { name?: string | null } | null;
   }>,
   folderLinks: Array<{
     linkedEntityId: string;
@@ -187,10 +194,12 @@ function makePrismaMock(
           tenderNumber: t.tenderNumber,
           folderProvisioningStatus: t.folderProvisioningStatus ?? null,
           projectName: t.projectName ?? null,
+          site: t.site ?? null,
         }))
       ),
       // TFM-S7: execute() re-fetches each tender by id to get a fresh status.
-      // Default implementation: look up by id from the provided tenders array.
+      // TFM-S10: also returns site so assertDestinationExists can resolve
+      // projectName ?? site.name in the execute() re-check path.
       findUnique: jest.fn().mockImplementation(
         (args: { where: { id: string }; select?: unknown }) => {
           const found = tenders.find((t) => t.id === args.where.id);
@@ -200,6 +209,7 @@ function makePrismaMock(
             tenderNumber: found.tenderNumber,
             folderProvisioningStatus: found.folderProvisioningStatus ?? null,
             projectName: found.projectName ?? null,
+            site: found.site ?? null,
           });
         }
       ),
@@ -780,6 +790,179 @@ describe("TFM-S7 — destination precondition", () => {
     const sizes = plan.matched[0].wouldCopy.map((e) => e.sizeBytes);
     expect(sizes).toContain(LEGACY_FILE_A.size);
     expect(sizes).toContain(LEGACY_FILE_B.size);
+  });
+
+  // =========================================================================
+  // TFM-S10 — site.name fallback in assertDestinationExists
+  // =========================================================================
+
+  it("TFM-S10 plan(): projectName=NULL + site.name='Acme Site' → folderExists called with path containing 'T10817 - Acme Site'", async () => {
+    // This is the point of TFM-S10: pre-existing tenders have projectName=NULL.
+    // Before this fix the guard probed "Synthetic Tenders/T10817" (bare prefix).
+    // After this fix it probes "Synthetic Tenders/T10817 - Acme Site".
+    //
+    // T10817 is used here because extractTNumber matches /T(\d{3,5})/ — 5 digits.
+    // tenderNumber "T10817" → slice(0,7) = "T10817" (6 chars, returned as-is).
+    const rootItemId = "synthetic-root-s10-item-id";
+
+    const TENDER_S10_NULL_PROJECT = {
+      id: "tender-t10817",
+      title: "T10817 — Synthetic Site-Name Tender",
+      tenderNumber: "T10817",
+      folderProvisioningStatus: "ok" as string | null,
+      projectName: null as string | null,
+      site: { name: "Acme Site" },
+    };
+
+    const FOLDER_LINK_S10 = {
+      linkedEntityId: "tender-t10817",
+      itemId: "dest-folder-item-s10",
+      relativePath: "Synthetic Tenders/T10817 - Acme Site",
+      siteId: "synthetic-site-id",
+      driveId: "synthetic-drive-id",
+    };
+
+    const LEGACY_FOLDER_S10: LegacyFolderItem = {
+      id: "legacy-t10817-item-id",
+      name: "T10817 - Synthetic Site-Name Tender",
+      isFolder: true,
+    };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([LEGACY_FOLDER_S10]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
+      folderExists: jest.fn().mockResolvedValue(true),
+    });
+
+    const prisma = makePrismaMock([TENDER_S10_NULL_PROJECT], [FOLDER_LINK_S10]);
+    const svc = await buildModule(prisma, seam);
+    await svc.plan();
+
+    // folderExists must have been called with the site-name-derived path, NOT the bare T-prefix
+    expect(seam.folderExists).toHaveBeenCalledWith(
+      SYNTHETIC_CONFIG.siteId,
+      SYNTHETIC_CONFIG.driveId,
+      `${SYNTHETIC_CONFIG.tendersRoot}/T10817 - Acme Site`,
+    );
+    expect(seam.folderExists).not.toHaveBeenCalledWith(
+      SYNTHETIC_CONFIG.siteId,
+      SYNTHETIC_CONFIG.driveId,
+      `${SYNTHETIC_CONFIG.tendersRoot}/T10817`,
+    );
+  });
+
+  it("TFM-S10 plan(): projectName populated → site.name ignored, projectName wins", async () => {
+    const rootItemId = "synthetic-root-s10b-item-id";
+
+    const TENDER_S10_WITH_PROJECT = {
+      id: "tender-t10818",
+      title: "T10818 — Synthetic Project-Name Tender",
+      tenderNumber: "T10818",
+      folderProvisioningStatus: "ok" as string | null,
+      projectName: "My Project Name",
+      site: { name: "Acme Site" },
+    };
+
+    const FOLDER_LINK_S10B = {
+      linkedEntityId: "tender-t10818",
+      itemId: "dest-folder-item-s10b",
+      relativePath: "Synthetic Tenders/T10818 - My Project Name",
+      siteId: "synthetic-site-id",
+      driveId: "synthetic-drive-id",
+    };
+
+    const LEGACY_FOLDER_S10B: LegacyFolderItem = {
+      id: "legacy-t10818-item-id",
+      name: "T10818 - Synthetic Project-Name Tender",
+      isFolder: true,
+    };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([LEGACY_FOLDER_S10B]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
+      folderExists: jest.fn().mockResolvedValue(true),
+    });
+
+    const prisma = makePrismaMock([TENDER_S10_WITH_PROJECT], [FOLDER_LINK_S10B]);
+    const svc = await buildModule(prisma, seam);
+    await svc.plan();
+
+    // projectName wins: path should use "My Project Name", NOT "Acme Site"
+    expect(seam.folderExists).toHaveBeenCalledWith(
+      SYNTHETIC_CONFIG.siteId,
+      SYNTHETIC_CONFIG.driveId,
+      `${SYNTHETIC_CONFIG.tendersRoot}/T10818 - My Project Name`,
+    );
+    expect(seam.folderExists).not.toHaveBeenCalledWith(
+      SYNTHETIC_CONFIG.siteId,
+      SYNTHETIC_CONFIG.driveId,
+      `${SYNTHETIC_CONFIG.tendersRoot}/T10818 - Acme Site`,
+    );
+  });
+
+  it("TFM-S10 plan(): both projectName and site.name null/empty → bare T-prefix path, unchanged from pre-S10", async () => {
+    const rootItemId = "synthetic-root-s10c-item-id";
+
+    const TENDER_S10_ALL_NULL = {
+      id: "tender-t10819",
+      title: "T10819 — Synthetic No-Name Tender",
+      tenderNumber: "T10819",
+      folderProvisioningStatus: "ok" as string | null,
+      projectName: null as string | null,
+      site: null as { name?: string | null } | null,
+    };
+
+    const FOLDER_LINK_S10C = {
+      linkedEntityId: "tender-t10819",
+      itemId: "dest-folder-item-s10c",
+      relativePath: "Synthetic Tenders/T10819",
+      siteId: "synthetic-site-id",
+      driveId: "synthetic-drive-id",
+    };
+
+    const LEGACY_FOLDER_S10C: LegacyFolderItem = {
+      id: "legacy-t10819-item-id",
+      name: "T10819 - Synthetic No-Name Tender",
+      isFolder: true,
+    };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([LEGACY_FOLDER_S10C]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
+      folderExists: jest.fn().mockResolvedValue(true),
+    });
+
+    const prisma = makePrismaMock([TENDER_S10_ALL_NULL], [FOLDER_LINK_S10C]);
+    const svc = await buildModule(prisma, seam);
+    await svc.plan();
+
+    // Both null → bare T-prefix; this is the same behaviour as before TFM-S10
+    expect(seam.folderExists).toHaveBeenCalledWith(
+      SYNTHETIC_CONFIG.siteId,
+      SYNTHETIC_CONFIG.driveId,
+      `${SYNTHETIC_CONFIG.tendersRoot}/T10819`,
+    );
   });
 
   it("execute(): skips unready tender at run time even if plan was called first (adapter re-checked between plan and execute)", async () => {

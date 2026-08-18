@@ -842,7 +842,12 @@ export class TenderingService {
   // row that was already committed. Uploads later re-ensure the specific
   // category folder they need, so missed folders self-heal on first use.
   private async provisionTenderFolders(
-    tender: { id: string; tenderNumber: string },
+    tender: {
+      id: string;
+      tenderNumber: string;
+      projectName?: string | null;
+      site?: { name?: string | null } | null;
+    },
     actorId?: string
   ): Promise<void> {
     try {
@@ -1711,6 +1716,8 @@ export class TenderingService {
     return {
       title: dto.title,
       description: dto.description,
+      // TFM-S2: stable folder name; passed through from wizard.
+      projectName: dto.projectName !== undefined ? (dto.projectName?.trim() || null) : undefined,
       status: dto.status ?? "DRAFT",
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
       proposedStartDate: dto.proposedStartDate ? new Date(dto.proposedStartDate) : undefined,
@@ -1785,6 +1792,8 @@ export class TenderingService {
     return {
       title: dto.title,
       description: dto.description,
+      // TFM-S2: stable folder name; explicit null clears it, undefined leaves it alone.
+      ...(dto.projectName !== undefined ? { projectName: dto.projectName?.trim() || null } : {}),
       status: dto.status ?? "DRAFT",
       dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
       proposedStartDate: dto.proposedStartDate ? new Date(dto.proposedStartDate) : null,

@@ -123,6 +123,9 @@ export class UpsertTenderDto {
   title!: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() estimatorUserId?: string;
+  // TFM-S2: stable project name used as the SharePoint folder name base.
+  // Does not change on revision bump, preventing folder stranding.
+  @IsOptional() @IsString() projectName?: string | null;
   // Site is captured at wizard time (Geoapify autocomplete) and required
   // going forward. Legacy tenders were backfilled to the "Unassigned" Site
   // by the 20260717120000_tender_siteid_not_null migration.

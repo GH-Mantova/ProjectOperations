@@ -1250,6 +1250,10 @@ model Tender {
   // NULL for every tender not currently in the withdrawn-review workflow
   // (all historical rows; every non-WITHDRAWN status).
   withdrawalState     String?                   @map("withdrawal_state")
+  // TFM-S2: human-readable project name, used as the stable SharePoint folder
+  // name base. Does NOT change when tenderNumber is bumped on revision, which
+  // prevents the pre-revision folder being orphaned (stranding-fix invariant).
+  projectName         String?                   @map("project_name")
   createdAt           DateTime                  @default(now()) @map("created_at")
   updatedAt           DateTime                  @updatedAt @map("updated_at")
   estimator           User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)

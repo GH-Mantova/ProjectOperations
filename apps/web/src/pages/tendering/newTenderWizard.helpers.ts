@@ -274,6 +274,7 @@ export function buildProjectStepFlushPayload(input: {
   estimatorUserId: string;
   siteAddress: string;
   siteId?: string | null;
+  projectName?: string | null;
 }): Record<string, unknown> | null {
   if (!input.draftId) return null;
   const trimmedTitle = input.title.trim();
@@ -283,7 +284,50 @@ export function buildProjectStepFlushPayload(input: {
   const site = input.siteAddress.trim();
   if (site) patch.description = `Site: ${site}`;
   if (input.siteId) patch.siteId = input.siteId;
+  if (input.projectName != null) patch.projectName = input.projectName.trim() || null;
   return patch;
+}
+
+// ---------------------------------------------------------------------------
+// TFM-S2: SharePoint folder name sanitiser + preview helper
+// Mirrors the backend sanitiseSharePointName / deriveTenderFolderName so the
+// wizard can show exactly the folder name the API will create.
+// ---------------------------------------------------------------------------
+
+/** Characters Graph API rejects in SharePoint folder/file names. */
+const GRAPH_REJECTED_CHARS = /[~"#%&*:<>?/\\{|}]/g;
+
+/**
+ * Sanitise a string for use as a SharePoint folder name:
+ *   1. Strip Graph-rejected characters.
+ *   2. Collapse whitespace runs to a single space.
+ *   3. Trim.
+ *   4. Cap at 90 characters.
+ */
+export function sanitiseSharePointName(raw: string): string {
+  return raw
+    .replace(GRAPH_REJECTED_CHARS, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 90);
+}
+
+/**
+ * Build the folder name preview shown in the wizard.
+ * Format: `T{YYMMDD} - {projectName}` (fallback to T-prefix when name is empty).
+ *
+ * `tNumber` is the tender number in canonical format "T260817-..." — we read
+ * the first 7 characters.  `projectName` and `siteName` may be null/undefined.
+ */
+export function deriveFolderPreview(
+  tNumber: string | null | undefined,
+  projectName: string | null | undefined,
+  siteName: string | null | undefined
+): string {
+  const tPrefix = tNumber ? tNumber.slice(0, 7) : "T??????";
+  const rawProject = (projectName ?? siteName ?? "").trim();
+  const sanitised = sanitiseSharePointName(rawProject);
+  return sanitised ? `${tPrefix} - ${sanitised}` : tPrefix;
 }
 
 export type DiscardDraftRequest = { path: string; method: "DELETE" };

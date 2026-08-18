@@ -40,7 +40,7 @@ export const SCOPED_ADMIN = {
  */
 export const FIELD_WORKER = {
   email: "field.e2e@projectops.local",
-  password: "Password123!",
+  password: "E2eField2026!",
   workerName: "Sean Lattin"
 };
 

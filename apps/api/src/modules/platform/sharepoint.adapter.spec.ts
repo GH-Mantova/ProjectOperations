@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import {
   MockSharePointAdapter,
-  SharePointFileNotFoundError
+  SharePointFileNotFoundError,
+  type FolderChildItem
 } from "./sharepoint.adapter";
 
 // PR #146 — MockSharePointAdapter now persists bytes locally so
@@ -170,6 +171,73 @@ describe("MockSharePointAdapter", () => {
       });
       expect(url).toContain("some-id");
       expect(url).toMatch(/sharepoint\.local\/mock\/download/);
+    });
+  });
+
+  // TFM-S1 — listFolderChildren tests
+  describe("listFolderChildren", () => {
+    afterEach(() => {
+      MockSharePointAdapter.resetKnownPathsForTests();
+    });
+
+    it("returns seeded children for a known itemId", async () => {
+      const children: FolderChildItem[] = [
+        { id: "file-1", name: "report.pdf", isFolder: false, size: 1024 },
+        { id: "file-2", name: "specs.docx", isFolder: false, size: 2048 },
+      ];
+      MockSharePointAdapter.seedFolderChildrenForTests("folder-abc", children);
+
+      const result = await adapter.listFolderChildren("site-1", "drive-1", "folder-abc");
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("file-1");
+      expect(result[1].id).toBe("file-2");
+    });
+
+    it("returns empty array for an itemId with no seeded children (missing folder)", async () => {
+      const result = await adapter.listFolderChildren("site-1", "drive-1", "nonexistent-id");
+      expect(result).toEqual([]);
+    });
+
+    it("returns empty array when no children are seeded for that itemId", async () => {
+      MockSharePointAdapter.seedFolderChildrenForTests("other-folder", [
+        { id: "file-x", name: "other.pdf", isFolder: false },
+      ]);
+      const result = await adapter.listFolderChildren("site-1", "drive-1", "different-folder");
+      expect(result).toEqual([]);
+    });
+
+    it("children are shared across adapter instances (static map)", async () => {
+      MockSharePointAdapter.seedFolderChildrenForTests("shared-folder", [
+        { id: "file-s", name: "shared.pdf", isFolder: false, size: 500 },
+      ]);
+
+      const adapter2 = new MockSharePointAdapter(buildConfig(storagePath));
+      const result = await adapter2.listFolderChildren("s", "d", "shared-folder");
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("file-s");
+    });
+  });
+
+  // TFM-S1 — listFolderChildrenByPath tests
+  describe("listFolderChildrenByPath", () => {
+    afterEach(() => {
+      MockSharePointAdapter.resetKnownPathsForTests();
+    });
+
+    it("returns seeded children for a known relativePath", async () => {
+      const children: FolderChildItem[] = [
+        { id: "file-p1", name: "plan.pdf", isFolder: false, size: 3000 },
+      ];
+      MockSharePointAdapter.seedFolderChildrenByPathForTests("Legacy Tenders/T1234", children);
+
+      const result = await adapter.listFolderChildrenByPath("site-1", "drive-1", "Legacy Tenders/T1234");
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("plan.pdf");
+    });
+
+    it("returns empty array for an unknown relativePath", async () => {
+      const result = await adapter.listFolderChildrenByPath("site-1", "drive-1", "no/such/path");
+      expect(result).toEqual([]);
     });
   });
 });

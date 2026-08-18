@@ -59,6 +59,15 @@ export type FolderExistsInput = {
   relativePath: string;
 };
 
+// TFM-S1 — shape returned by listFolderChildren.
+export type FolderChildItem = {
+  id: string;
+  name: string;
+  isFolder: boolean;
+  size?: number;
+  webUrl?: string;
+};
+
 export interface SharePointAdapter {
   ensureFolder(input: EnsureFolderInput): Promise<EnsureFolderResult>;
   // Returns true iff the folder at `relativePath` already exists on the
@@ -77,6 +86,23 @@ export interface SharePointAdapter {
   // cached. Throws if the configured site or library can't be found.
   resolveSiteId(input: ResolveSiteInput): Promise<string>;
   resolveDriveId(input: ResolveDriveInput): Promise<string>;
+  // TFM-S1 (MIG-3.5) — Enumerate the immediate children of a folder by
+  // drive item ID. Transparently follows @odata.nextLink so callers receive
+  // ALL children regardless of folder size. Returns [] for an empty or
+  // missing folder (no-throw for 404). Throws on transient/auth failures.
+  listFolderChildren(
+    siteId: string,
+    driveId: string,
+    itemId: string,
+  ): Promise<FolderChildItem[]>;
+  // TFM-S1 — Path-based variant used when callers have a relative path but
+  // not the drive item ID. Behaviour is identical to listFolderChildren;
+  // Graph resolves `root:/{relativePath}:/children`.
+  listFolderChildrenByPath(
+    siteId: string,
+    driveId: string,
+    relativePath: string,
+  ): Promise<FolderChildItem[]>;
 }
 
 // Typed error so callers can distinguish "file legitimately doesn't
@@ -147,12 +173,33 @@ export class MockSharePointAdapter implements SharePointAdapter {
   // fresh adapter can't reuse folders ensured by an earlier setup step.
   private static readonly knownPaths = new Set<string>();
 
+  // TFM-S1 — in-memory maps of itemId → children and relativePath → children,
+  // shared across instances so tests can seed via the seed helpers and read
+  // back via listFolderChildren / listFolderChildrenByPath regardless of
+  // which MockSharePointAdapter instance is in scope.
+  private static readonly folderChildrenByItemId = new Map<string, FolderChildItem[]>();
+  private static readonly folderChildrenByPath = new Map<string, FolderChildItem[]>();
+
   static resetKnownPathsForTests(): void {
     MockSharePointAdapter.knownPaths.clear();
+    MockSharePointAdapter.folderChildrenByItemId.clear();
+    MockSharePointAdapter.folderChildrenByPath.clear();
   }
 
   static seedKnownPathForTests(siteId: string, driveId: string, relativePath: string): void {
     MockSharePointAdapter.knownPaths.add(`${siteId}::${driveId}::${relativePath}`);
+  }
+
+  // TFM-S1 — seed children for a given itemId so tests can control what
+  // listFolderChildren returns without hitting Graph.
+  static seedFolderChildrenForTests(itemId: string, children: FolderChildItem[]): void {
+    MockSharePointAdapter.folderChildrenByItemId.set(itemId, children);
+  }
+
+  // TFM-S1 — seed children for a given relativePath so tests can control what
+  // listFolderChildrenByPath returns.
+  static seedFolderChildrenByPathForTests(relativePath: string, children: FolderChildItem[]): void {
+    MockSharePointAdapter.folderChildrenByPath.set(relativePath, children);
   }
 
   private pathKey(siteId: string, driveId: string, relativePath: string): string {
@@ -199,6 +246,26 @@ export class MockSharePointAdapter implements SharePointAdapter {
       throw new SharePointFileNotFoundError(input.fileId, input.siteId, input.driveId);
     }
     return readFile(targetPath);
+  }
+
+  // TFM-S1 — Return children seeded via seedFolderChildrenForTests, or []
+  // when the itemId is not in the map (models an empty / missing folder).
+  async listFolderChildren(
+    _siteId: string,
+    _driveId: string,
+    itemId: string,
+  ): Promise<FolderChildItem[]> {
+    return MockSharePointAdapter.folderChildrenByItemId.get(itemId) ?? [];
+  }
+
+  // TFM-S1 — Return children seeded via seedFolderChildrenByPathForTests, or
+  // [] when the path is not in the map (models an empty / missing folder).
+  async listFolderChildrenByPath(
+    _siteId: string,
+    _driveId: string,
+    relativePath: string,
+  ): Promise<FolderChildItem[]> {
+    return MockSharePointAdapter.folderChildrenByPath.get(relativePath) ?? [];
   }
 
   // Deterministic synthetic IDs so repeated calls with the same input

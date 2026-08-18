@@ -3,11 +3,10 @@
  * MIG-3 (SharepointLegacyCopyService).
  *
  * MIG-3 injects SharePointService from PlatformModule via a bridge adapter
- * (SharePointCopySeamBridge) that satisfies the ISharePointCopySeam interface
- * using only the methods already present on SharePointService.
- * For listFolderChildren / listDestinationFolderChildren (not yet on the
- * seam), the bridge throws SeamExtensionRequiredError at runtime.
- * See sharepoint-legacy-copy.service.ts for the escalation note.
+ * (SharePointCopySeamBridge) that satisfies the ISharePointCopySeam interface.
+ * TFM-S1 (MIG-3.5) added listFolderChildren / listFolderChildrenByPath to
+ * SharePointService, so the bridge now delegates to those methods and no
+ * longer throws SeamExtensionRequiredError.
  */
 
 import { Module } from "@nestjs/common";
@@ -17,22 +16,34 @@ import { TenderTrackerImportService } from "./tender-tracker-import.service";
 import {
   SharepointLegacyCopyService,
   SHAREPOINT_COPY_SEAM,
-  SeamExtensionRequiredError,
   type ISharePointCopySeam,
   type FolderChildItem,
   type ListFolderChildrenInput,
   type ResolvedConfig,
-  type EnsureFolderResult,
   type UploadFileResult,
 } from "./sharepoint-legacy-copy.service";
 import { SharePointService } from "../platform/sharepoint.service";
+import type { FolderChildItem as AdapterFolderChildItem } from "../platform/sharepoint.adapter";
 import { TenderNumberService } from "../tendering/tender-number.service";
 import { TenderFolderBackfillService } from "./tender-folder-backfill.service";
 
+// Map the adapter's FolderChildItem shape (id/name/isFolder/size/webUrl)
+// to the copy seam's FolderChildItem shape (name/fileId/size/eTag).
+// Only file children (isFolder=false) are relevant for the copy job.
+function mapAdapterChildren(items: AdapterFolderChildItem[]): FolderChildItem[] {
+  return items
+    .filter((item) => !item.isFolder)
+    .map((item) => ({
+      name: item.name,
+      fileId: item.id,
+      size: item.size ?? 0,
+    }));
+}
+
 /**
  * Bridge adapter that satisfies ISharePointCopySeam using SharePointService.
- * Methods that don't exist on SharePointService throw SeamExtensionRequiredError
- * with clear guidance for the follow-up extension PR (MIG-3.5).
+ * TFM-S1 wired listFolderChildren / listFolderChildrenByPath on the service,
+ * so both listing methods now delegate rather than throwing.
  */
 class SharePointCopySeamBridge implements ISharePointCopySeam {
   constructor(private readonly svc: SharePointService) {}
@@ -41,8 +52,13 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
     return this.svc.getResolvedConfig();
   }
 
-  async listFolderChildren(_input: ListFolderChildrenInput): Promise<FolderChildItem[]> {
-    throw new SeamExtensionRequiredError("listFolderChildren");
+  async listFolderChildren(input: ListFolderChildrenInput): Promise<FolderChildItem[]> {
+    const items = await this.svc.listFolderChildrenByPath(
+      input.siteId,
+      input.driveId,
+      input.relativePath,
+    );
+    return mapAdapterChildren(items);
   }
 
   async downloadFileBytes(input: {
@@ -54,9 +70,14 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
   }
 
   async listDestinationFolderChildren(
-    _input: ListFolderChildrenInput
+    input: ListFolderChildrenInput
   ): Promise<FolderChildItem[]> {
-    throw new SeamExtensionRequiredError("listDestinationFolderChildren");
+    const items = await this.svc.listFolderChildrenByPath(
+      input.siteId,
+      input.driveId,
+      input.relativePath,
+    );
+    return mapAdapterChildren(items);
   }
 
   async uploadFile(input: {

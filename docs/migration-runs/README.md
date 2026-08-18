@@ -9,6 +9,8 @@ scrollback. Files here are append-only history -- do not rewrite past migration-
 | File | Description | Status |
 |---|---|---|
 | [tender-folder-copy-2026.md](tender-folder-copy-2026.md) | TFM-S8: 2026 tender folder copy plan. Per-tender copy list captured via `POST /api/v1/admin/imports/sharepoint-legacy-copy/plan`. Marco runs execute by hand after review. | PR open, do-not-merge |
+| [tender-folder-reprovision-2026.md](tender-folder-reprovision-2026.md) | TFM-S9: 2026 tender folder re-provision report. Captured via `POST /api/v1/admin/imports/tender-folders/backfill`. Marco re-runs with live API before acting. | PR open, do-not-merge |
+| [tender-folder-cleanup-list.md](tender-folder-cleanup-list.md) | TFM-S9: Stub folders in `1. Operations/1. Tenders/` to be deleted by Marco via SharePoint UI. Contains known stubs T260814-XXXX-Rev1 and __connection_probe__. | PR open, do-not-merge |
 
 ## How this directory works
 

@@ -128,8 +128,13 @@ describe("TenderNumberService (G5)", () => {
 
 describe("sanitiseSharePointName (TFM-S2)", () => {
   it("strips Graph-rejected characters", () => {
+    // Stripping the rejected characters leaves runs of whitespace behind, and
+    // sanitiseSharePointName collapses them — so the result is a single space,
+    // not the gaps the removed characters used to occupy. The sibling test
+    // below asserts the collapse rule directly; this expectation must agree
+    // with it or the two tests contradict each other.
     expect(sanitiseSharePointName('Hello ~ " # % & * : < > ? / \\ { | } World')).toBe(
-      "Hello   World"
+      "Hello World"
     );
   });
 

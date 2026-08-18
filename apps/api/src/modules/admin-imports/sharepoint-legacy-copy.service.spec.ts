@@ -18,6 +18,12 @@
  *   - listLegacyTenderFolders() — non-folder file inside a month folder is
  *     skipped without error
  *   - plan() — uses two-level walk; legacy root not found → empty result
+ *
+ * TFM-S7 additions:
+ *   - plan() — folderProvisioningStatus === "failed" → unready, empty wouldCopy
+ *   - plan() — destination folder missing per adapter probe → unready
+ *   - plan() — successful status + folder exists → ready, wouldCopy populated
+ *   - execute() — skips unready tender at run time even if plan called it ready
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
@@ -54,24 +60,32 @@ const TENDER_WITH_MATCH = {
   id: "tender-t1001",
   title: "T1001 — Synthetic Bridge Project",
   tenderNumber: "T1001",
+  folderProvisioningStatus: "ok" as string | null,
+  projectName: null as string | null,
 };
 
 const TENDER_NO_T_NUMBER = {
   id: "tender-no-t",
   title: "Some project without a T number",
   tenderNumber: "T0000",
+  folderProvisioningStatus: null as string | null,
+  projectName: null as string | null,
 };
 
 const TENDER_NO_DESTINATION = {
   id: "tender-t1002",
   title: "T1002 — Synthetic Road Project",
   tenderNumber: "T1002",
+  folderProvisioningStatus: null as string | null,
+  projectName: null as string | null,
 };
 
 const TENDER_ANOTHER_MATCH = {
   id: "tender-t1003",
   title: "T1003 — Synthetic Dam Project",
   tenderNumber: "T1003",
+  folderProvisioningStatus: "ok" as string | null,
+  projectName: null as string | null,
 };
 
 const FOLDER_LINK_T1001 = {
@@ -149,7 +163,13 @@ const NON_FOLDER_FILE_IN_MONTH: LegacyFolderItem = {
 // ---------------------------------------------------------------------------
 
 function makePrismaMock(
-  tenders: Array<{ id: string; title: string; tenderNumber: string }>,
+  tenders: Array<{
+    id: string;
+    title: string;
+    tenderNumber: string;
+    folderProvisioningStatus?: string | null;
+    projectName?: string | null;
+  }>,
   folderLinks: Array<{
     linkedEntityId: string;
     itemId: string;
@@ -161,7 +181,27 @@ function makePrismaMock(
   return {
     tender: {
       findMany: jest.fn().mockResolvedValue(
-        tenders.map((t) => ({ id: t.id, title: t.title, tenderNumber: t.tenderNumber }))
+        tenders.map((t) => ({
+          id: t.id,
+          title: t.title,
+          tenderNumber: t.tenderNumber,
+          folderProvisioningStatus: t.folderProvisioningStatus ?? null,
+          projectName: t.projectName ?? null,
+        }))
+      ),
+      // TFM-S7: execute() re-fetches each tender by id to get a fresh status.
+      // Default implementation: look up by id from the provided tenders array.
+      findUnique: jest.fn().mockImplementation(
+        (args: { where: { id: string }; select?: unknown }) => {
+          const found = tenders.find((t) => t.id === args.where.id);
+          if (!found) return Promise.resolve(null);
+          return Promise.resolve({
+            id: found.id,
+            tenderNumber: found.tenderNumber,
+            folderProvisioningStatus: found.folderProvisioningStatus ?? null,
+            projectName: found.projectName ?? null,
+          });
+        }
       ),
     },
     sharePointFolderLink: {
@@ -187,6 +227,8 @@ function makeSeamMock(overrides: Partial<ISharePointCopySeam> = {}): jest.Mocked
       webUrl: "https://sharepoint.local/mock/new-uploaded-id",
       eTag: '"mock-new"',
     }),
+    // TFM-S7: default to true (destination exists) so existing tests pass unchanged.
+    folderExists: jest.fn().mockResolvedValue(true),
     ...overrides,
   } as jest.Mocked<ISharePointCopySeam>;
 }
@@ -415,7 +457,11 @@ describe("SharepointLegacyCopyService.plan()", () => {
     // T1001 matched (legacy folder + destination link found)
     expect(plan.matched).toHaveLength(1);
     expect(plan.matched[0].tNumber).toBe("T1001");
-    expect(plan.matched[0].legacyFileCount).toBe(2);
+    // TFM-S7: destinationReady from folderExists (mocked true by default)
+    expect(plan.matched[0].destinationReady).toBe(true);
+    expect(plan.matched[0].destinationReason).toBeNull();
+    // wouldCopy lists the two legacy files
+    expect(plan.matched[0].wouldCopy).toHaveLength(2);
     // Path encodes the two-level legacy structure
     expect(plan.matched[0].legacyFolderPath).toContain(MONTH_FOLDER_AUG.name);
     expect(plan.matched[0].legacyFolderPath).toContain(TENDER_FOLDER_T1001.name);
@@ -632,5 +678,149 @@ describe("SharepointLegacyCopyService.execute()", () => {
     expect(report.totalCopied).toBe(0);
     expect(report.totalAlreadyPresent).toBe(2);
     expect(seam.uploadFile).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// TFM-S7 — assertDestinationExists (via plan() and execute())
+// ===========================================================================
+
+describe("TFM-S7 — destination precondition", () => {
+  it("plan(): folderProvisioningStatus=failed → unready, reason 'folder provisioning failed', empty wouldCopy", async () => {
+    const rootItemId = "synthetic-root-item-id";
+
+    const failedTender = {
+      ...TENDER_WITH_MATCH,
+      folderProvisioningStatus: "failed" as string | null,
+    };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
+      // folderExists should NOT be called when status is "failed" (short-circuit)
+      folderExists: jest.fn().mockResolvedValue(true),
+    });
+
+    const prisma = makePrismaMock([failedTender], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const plan = await svc.plan();
+
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.matched[0].destinationReady).toBe(false);
+    expect(plan.matched[0].destinationReason).toBe("folder provisioning failed");
+    expect(plan.matched[0].wouldCopy).toHaveLength(0);
+    expect(plan.unreadyCount).toBe(1);
+
+    // Short-circuit: Graph existence check must not be called when status is failed
+    expect(seam.folderExists).not.toHaveBeenCalled();
+  });
+
+  it("plan(): destination folder missing per adapter probe → unready, reason 'destination folder missing'", async () => {
+    const rootItemId = "synthetic-root-item-id";
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
+      // Simulate destination folder not yet provisioned
+      folderExists: jest.fn().mockResolvedValue(false),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const plan = await svc.plan();
+
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.matched[0].destinationReady).toBe(false);
+    expect(plan.matched[0].destinationReason).toBe("destination folder missing");
+    expect(plan.matched[0].wouldCopy).toHaveLength(0);
+    expect(plan.unreadyCount).toBe(1);
+  });
+
+  it("plan(): ok status + folderExists=true → ready, wouldCopy populated with legacy files", async () => {
+    const rootItemId = "synthetic-root-item-id";
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
+      folderExists: jest.fn().mockResolvedValue(true),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const plan = await svc.plan();
+
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.matched[0].destinationReady).toBe(true);
+    expect(plan.matched[0].destinationReason).toBeNull();
+    expect(plan.matched[0].wouldCopy).toHaveLength(2);
+    expect(plan.unreadyCount).toBe(0);
+
+    // Each wouldCopy entry carries sizeBytes from the legacy file
+    const sizes = plan.matched[0].wouldCopy.map((e) => e.sizeBytes);
+    expect(sizes).toContain(LEGACY_FILE_A.size);
+    expect(sizes).toContain(LEGACY_FILE_B.size);
+  });
+
+  it("execute(): skips unready tender at run time even if plan was called first (adapter re-checked between plan and execute)", async () => {
+    const rootItemId = "synthetic-root-item-id";
+
+    // First call (plan phase): folderExists returns true → ready
+    // Second call (execute re-check): folderExists returns false → skip
+    let folderExistsCallCount = 0;
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          return Promise.resolve([]);
+        }),
+      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
+      listDestinationFolderChildren: jest.fn().mockResolvedValue([]),
+      folderExists: jest.fn().mockImplementation(() => {
+        folderExistsCallCount++;
+        // First call is from plan() — return true so it appears in matched.
+        // Second call is from execute() re-check — return false to trigger skip.
+        return Promise.resolve(folderExistsCallCount === 1);
+      }),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const report = await svc.execute();
+
+    // The tender appeared as ready in the plan but was skipped at execute time
+    expect(report.matchesAttempted).toBe(1);
+    expect(report.skippedUnreadyCount).toBe(1);
+    expect(report.totalCopied).toBe(0);
+
+    // No actual copy operations
+    expect(seam.downloadFileBytes).not.toHaveBeenCalled();
+    expect(seam.uploadFile).not.toHaveBeenCalled();
+
+    // folderExists must have been called at least twice (plan + execute re-check)
+    expect(folderExistsCallCount).toBeGreaterThanOrEqual(2);
   });
 });

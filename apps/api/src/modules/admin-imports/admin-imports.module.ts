@@ -149,6 +149,10 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
   }): Promise<UploadFileResult> {
     return this.svc.uploadFile(input);
   }
+
+  async folderExists(siteId: string, driveId: string, relativePath: string): Promise<boolean> {
+    return this.svc.folderExists(siteId, driveId, relativePath);
+  }
 }
 
 @Module({

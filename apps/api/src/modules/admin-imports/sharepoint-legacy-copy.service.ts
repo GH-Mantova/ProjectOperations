@@ -49,6 +49,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Inject } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { deriveTenderFolderName } from "../tendering/tender-number.service";
 
 // ---------------------------------------------------------------------------
 // Seam interface (local to admin-imports)
@@ -163,6 +164,11 @@ export interface ISharePointCopySeam {
     content: Buffer;
     mimeType?: string;
   }): Promise<UploadFileResult>;
+  /**
+   * TFM-S7 — Read-only existence probe for a folder at `relativePath`.
+   * Returns false on a legitimate 404; rethrows on transport/auth errors.
+   */
+  folderExists(siteId: string, driveId: string, relativePath: string): Promise<boolean>;
 }
 
 export const SHAREPOINT_COPY_SEAM = Symbol("SHAREPOINT_COPY_SEAM");
@@ -195,9 +201,38 @@ export interface MatchCandidate {
   legacyFileCount: number;
 }
 
+/** TFM-S7 — one file entry in the plan's wouldCopy list */
+export interface WouldCopyEntry {
+  sourcePath: string;
+  destinationPath: string;
+  sizeBytes: number;
+}
+
+/** TFM-S7 — per-tender plan entry with destination readiness verdict */
+export interface PlanEntry {
+  tenderId: string;
+  tenderTitle: string;
+  tNumber: string;
+  legacyFolderPath: string;
+  destinationFolderPath: string;
+  /** Destination folder drive item ID — needed by execute() for upload */
+  destinationFolderItemId: string;
+  /** true iff the destination folder exists and provisioning did not fail */
+  destinationReady: boolean;
+  /** human-readable reason when destinationReady is false; null when ready */
+  destinationReason: string | null;
+  /**
+   * Files that would be copied if execute() were called now.
+   * Empty when destinationReady is false.
+   */
+  wouldCopy: WouldCopyEntry[];
+}
+
 export interface LegacyCopyPlan {
-  /** Match candidates (legacy folder found, destination folder known) */
-  matched: MatchCandidate[];
+  /** Per-tender plan entries for every matched tender (includes unready ones) */
+  matched: PlanEntry[];
+  /** Number of matched tenders whose destination folder is not ready */
+  unreadyCount: number;
   /** Tenders with a T-number but no matching legacy folder */
   unmatchedTenders: Array<{ tenderId: string; tNumber: string; tenderTitle: string }>;
   /** Legacy T-number folders that do not match any imported tender title */
@@ -233,6 +268,8 @@ export interface LegacyCopyExecutionReport {
   unmatchedTenderCount: number;
   /** Tenders skipped because no SharePointFolderLink destination */
   noDestinationCount: number;
+  /** TFM-S7 — Tenders skipped at execute time because destination was not ready */
+  skippedUnreadyCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,12 +361,15 @@ export class SharepointLegacyCopyService {
   async plan(): Promise<LegacyCopyPlan> {
     const config = await this.sharepoint.getResolvedConfig();
 
-    // Load all tenders
+    // TFM-S7: load folderProvisioningStatus and projectName so
+    // assertDestinationExists can use both signals without an extra DB round-trip.
     const tenders = await this.prisma.tender.findMany({
       select: {
         id: true,
         title: true,
         tenderNumber: true,
+        folderProvisioningStatus: true,
+        projectName: true,
       },
     });
 
@@ -352,12 +392,12 @@ export class SharepointLegacyCopyService {
         .map((fl) => [fl.linkedEntityId as string, fl])
     );
 
-    const matched: MatchCandidate[] = [];
+    const matched: PlanEntry[] = [];
     const unmatchedTenders: LegacyCopyPlan["unmatchedTenders"] = [];
     const noDestination: LegacyCopyPlan["noDestination"] = [];
     let noTNumberCount = 0;
 
-    // Build a set of all T-numbers that have imported tenders (for reverse lookup)
+    // Build a map of T-number → tender for matching
     const importedTNumbers = new Map<string, (typeof tenders)[0]>();
 
     for (const tender of tenders) {
@@ -370,7 +410,6 @@ export class SharepointLegacyCopyService {
     }
 
     // Enumerate all legacy tender folders via the two-level walk (TFM-S6).
-    // Build a lookup: T-number → { id, name, monthFolder } for fast matching.
     let legacyFoldersByTNumber: Map<
       string,
       { id: string; name: string; monthFolder: string }
@@ -437,6 +476,23 @@ export class SharepointLegacyCopyService {
         continue;
       }
 
+      // TFM-S7: check destination readiness before adding to matched list.
+      const readiness = await this.assertDestinationExists(
+        tender,
+        config.siteId,
+        config.driveId,
+        config.tendersRoot,
+      );
+
+      // wouldCopy is populated only when destination is ready.
+      const wouldCopy: WouldCopyEntry[] = readiness.ready
+        ? legacyChildren.map((child) => ({
+            sourcePath: `${legacyFolderPath}/${child.name}`,
+            destinationPath: `${destinationLink.relativePath}/${child.name}`,
+            sizeBytes: child.size,
+          }))
+        : [];
+
       matched.push({
         tenderId: tender.id,
         tenderTitle: tender.title,
@@ -444,7 +500,9 @@ export class SharepointLegacyCopyService {
         legacyFolderPath,
         destinationFolderPath: destinationLink.relativePath,
         destinationFolderItemId: destinationLink.itemId,
-        legacyFileCount: legacyChildren.length,
+        destinationReady: readiness.ready,
+        destinationReason: readiness.reason,
+        wouldCopy,
       });
     }
 
@@ -459,12 +517,15 @@ export class SharepointLegacyCopyService {
       }
     }
 
+    const unreadyCount = matched.filter((m) => !m.destinationReady).length;
+
     this.logger.log(
-      `plan(): matched=${matched.length} unmatchedTenders=${unmatchedTenders.length} noDestination=${noDestination.length} noTNumber=${noTNumberCount} unmatchedLegacy=${unmatchedLegacyFolders.length}`
+      `plan(): matched=${matched.length} unready=${unreadyCount} unmatchedTenders=${unmatchedTenders.length} noDestination=${noDestination.length} noTNumber=${noTNumberCount} unmatchedLegacy=${unmatchedLegacyFolders.length}`
     );
 
     return {
       matched,
+      unreadyCount,
       unmatchedTenders,
       unmatchedLegacyFolders,
       noTNumberCount,
@@ -477,15 +538,51 @@ export class SharepointLegacyCopyService {
   // -------------------------------------------------------------------------
 
   async execute(): Promise<LegacyCopyExecutionReport> {
-    const plan = await this.plan();
+    const legacyPlan = await this.plan();
     const config = await this.sharepoint.getResolvedConfig();
 
     const matchResults: MatchExecutionResult[] = [];
     let totalCopied = 0;
     let totalAlreadyPresent = 0;
     let totalErrors = 0;
+    let skippedUnreadyCount = 0;
 
-    for (const candidate of plan.matched) {
+    for (const candidate of legacyPlan.matched) {
+      // TFM-S7: re-check destination readiness at execute time — do not trust
+      // a stale plan. Load the tender's current provisioning status fresh.
+      const tenderRow = await this.prisma.tender.findUnique({
+        where: { id: candidate.tenderId },
+        select: {
+          id: true,
+          tenderNumber: true,
+          folderProvisioningStatus: true,
+          projectName: true,
+        },
+      });
+
+      if (!tenderRow) {
+        this.logger.warn(
+          `execute(): tender ${candidate.tenderId} not found at execute time — skipping`
+        );
+        skippedUnreadyCount++;
+        continue;
+      }
+
+      const readiness = await this.assertDestinationExists(
+        tenderRow,
+        config.siteId,
+        config.driveId,
+        config.tendersRoot,
+      );
+
+      if (!readiness.ready) {
+        this.logger.warn(
+          `execute(): skipping tender ${candidate.tNumber} — destination not ready: ${readiness.reason}`
+        );
+        skippedUnreadyCount++;
+        continue;
+      }
+
       const result = await this.copyMatchCandidate(candidate, config);
       matchResults.push(result);
       totalCopied += result.copied;
@@ -494,17 +591,18 @@ export class SharepointLegacyCopyService {
     }
 
     this.logger.log(
-      `execute(): matched=${plan.matched.length} copied=${totalCopied} alreadyPresent=${totalAlreadyPresent} errors=${totalErrors}`
+      `execute(): matched=${legacyPlan.matched.length} skippedUnready=${skippedUnreadyCount} copied=${totalCopied} alreadyPresent=${totalAlreadyPresent} errors=${totalErrors}`
     );
 
     return {
-      matchesAttempted: plan.matched.length,
+      matchesAttempted: legacyPlan.matched.length,
       matchResults,
       totalCopied,
       totalAlreadyPresent,
       totalErrors,
-      unmatchedTenderCount: plan.unmatchedTenders.length,
-      noDestinationCount: plan.noDestination.length,
+      unmatchedTenderCount: legacyPlan.unmatchedTenders.length,
+      noDestinationCount: legacyPlan.noDestination.length,
+      skippedUnreadyCount,
     };
   }
 
@@ -512,8 +610,47 @@ export class SharepointLegacyCopyService {
   // Private helpers
   // -------------------------------------------------------------------------
 
+  /**
+   * TFM-S7 — Destination-side guard. Two signals:
+   *   1. folderProvisioningStatus === "failed" → reject immediately (DB check,
+   *      no Graph call needed).
+   *   2. Live Graph existence probe via the seam's folderExists — catches tenders
+   *      that predate TFM-S5 and therefore have a null status.
+   *
+   * Returns { ready: true, reason: null } when the folder is confirmed present,
+   * or { ready: false, reason: "<why>" } otherwise.
+   */
+  private async assertDestinationExists(
+    tender: {
+      id: string;
+      tenderNumber: string;
+      folderProvisioningStatus: string | null;
+      projectName: string | null;
+    },
+    siteId: string,
+    driveId: string,
+    tendersRoot: string,
+  ): Promise<{ ready: boolean; reason: string | null }> {
+    if (tender.folderProvisioningStatus === "failed") {
+      return { ready: false, reason: "folder provisioning failed" };
+    }
+
+    const folderName = deriveTenderFolderName({
+      tenderNumber: tender.tenderNumber,
+      projectName: tender.projectName,
+    });
+    const destinationPath = `${tendersRoot}/${folderName}`;
+
+    const exists = await this.sharepoint.folderExists(siteId, driveId, destinationPath);
+    if (!exists) {
+      return { ready: false, reason: "destination folder missing" };
+    }
+
+    return { ready: true, reason: null };
+  }
+
   private async copyMatchCandidate(
-    candidate: MatchCandidate,
+    candidate: PlanEntry,
     config: ResolvedConfig
   ): Promise<MatchExecutionResult> {
     const files: FileCopyResult[] = [];

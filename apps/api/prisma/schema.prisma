@@ -204,6 +204,7 @@ model User {
   companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
   companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
   assetCheckouts          AssetCheckout[]        @relation("AssetCheckoutHolderUser")
+  assetUsageReadingsRecorded AssetUsageReading[] @relation("AssetUsageReadingRecordedBy")
 
   // Commitments (ERP gap A â€” cost control)
   commitmentsCreated        Commitment[]       @relation("CommitmentCreatedBy")
@@ -1095,6 +1096,11 @@ model Asset {
   // Both nullable â†’ additive. Resolver falls back to AssetCategory defaults.
   fuelConsumptionLPer100km Decimal?                @map("fuel_consumption_l_per_100km") @db.Decimal(6, 2)
   nominalLoadTonnes        Decimal?                @map("nominal_load_tonnes") @db.Decimal(8, 2)
+  // F-7: denormalised current reading state, updated in-transaction with each AssetUsageReading.
+  // Nullable: assets that have never had a reading recorded have null here.
+  currentHoursReading      Decimal?                @map("current_hours_reading") @db.Decimal(12, 1)
+  currentKmReading         Decimal?                @map("current_km_reading") @db.Decimal(12, 1)
+  lastReadingAt            DateTime?               @map("last_reading_at")
   createdAt                DateTime                @default(now()) @map("created_at")
   updatedAt                DateTime                @updatedAt @map("updated_at")
   category                 AssetCategory?          @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
@@ -1111,6 +1117,8 @@ model Asset {
   scopePlantRefs           ScopeOfWorksItem[]      @relation("ScopeItemPlant")
   dockets                  Docket[]
   checkouts                AssetCheckout[]
+  // F-7: reading history (append-only).
+  usageReadings            AssetUsageReading[]
   // R3 T-1 â€” waste transport lines that reference this asset for its
   // fuelConsumptionLPer100km / nominalLoadTonnes fallback.
   wasteTransportItems      ScopeWasteItem[]        @relation("ScopeWasteItemAsset")
@@ -1151,6 +1159,32 @@ model AssetCheckout {
   @@index([holderWorkerId])
   @@index([holderUserId])
   @@map("asset_checkouts")
+}
+
+// F-7: asset usage readings (hours, km, etc.).
+// Append-only: rows are never updated; meter replacements are flagged explicitly
+// (isMeterReplacement=true is the only way to record a reading lower than the
+// previous one). Denormalised state (currentHoursReading / currentKmReading /
+// lastReadingAt on Asset) is updated in-transaction with each row so the latest
+// reading is always available without an extra query. F-9 (push engine) writes
+// here via AssetsService.recordUsageReading.
+model AssetUsageReading {
+  id                 String          @id @default(cuid())
+  assetId            String          @map("asset_id")
+  unit               String
+  reading            Decimal         @db.Decimal(12, 1)
+  previousReading    Decimal?        @map("previous_reading") @db.Decimal(12, 1)
+  recordedAt         DateTime        @default(now()) @map("recorded_at")
+  recordedById       String?         @map("recorded_by_id")
+  sourceSubmissionId String?         @map("source_submission_id")
+  isMeterReplacement Boolean         @default(false) @map("is_meter_replacement")
+  note               String?
+  asset              Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  recordedBy         User?           @relation("AssetUsageReadingRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  sourceSubmission   FormSubmission? @relation("AssetUsageReadingSourceSubmission", fields: [sourceSubmissionId], references: [id], onDelete: SetNull)
+
+  @@index([assetId, unit, recordedAt])
+  @@map("fv2_asset_usage_readings")
 }
 
 model WorkerCompetency {
@@ -2166,6 +2200,8 @@ model FormSubmission {
   // PR #621 -- public/kiosk submissions link back to the originating token
   publicLinkId      String?               @map("public_link_id")
   publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
+  // F-7: usage readings sourced from this submission.
+  assetUsageReadings AssetUsageReading[]  @relation("AssetUsageReadingSourceSubmission")
   // F-5 (Signature v2) â€” set by the submit path when a signature field
   // configured to seal the form is signed. Once sealed, PATCH /values is
   // rejected with 409 so downstream approvals/audits can trust the

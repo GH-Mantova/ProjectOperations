@@ -6,7 +6,7 @@
 // shape as the pre-existing narrow assets.service.spec.ts alongside this file.
 // No production code is modified.
 
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { AssetsService } from "../assets.service";
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
@@ -90,15 +90,58 @@ function tableCRUD() {
   };
 }
 
+function usageReadingRow(overrides: AnyRecord = {}) {
+  return {
+    id: "ur-1",
+    assetId: "asset-1",
+    unit: "hours",
+    reading: 1234.5,
+    previousReading: null,
+    recordedAt: new Date("2026-08-17T10:00:00.000Z"),
+    recordedById: "user-1",
+    sourceSubmissionId: null,
+    isMeterReplacement: false,
+    note: null,
+    ...overrides
+  };
+}
+
 function buildPrismaMock() {
   return {
     assetCategory: tableCRUD(),
     asset: tableCRUD(),
     documentLink: { findMany: jest.fn().mockResolvedValue([]) },
+    assetUsageReading: {
+      ...tableCRUD(),
+      // Override create to return a usageReadingRow by default.
+      create: jest.fn().mockImplementation(async ({ data }: { data: AnyRecord }) => ({
+        id: "ur-new",
+        ...data
+      }))
+    },
+    user: {
+      findUnique: jest.fn().mockResolvedValue(null)
+    },
     $transaction: jest
       .fn()
-      .mockImplementation(async (ops: Array<Promise<unknown>>) =>
-        Promise.all(ops)
+      .mockImplementation(
+        async (opsOrCallback: Array<Promise<unknown>> | ((tx: unknown) => Promise<unknown>)) => {
+          if (typeof opsOrCallback === "function") {
+            // Callback-style: pass a minimal tx proxy that mirrors the mock
+            return opsOrCallback({
+              assetUsageReading: {
+                create: jest.fn().mockImplementation(async ({ data }: { data: AnyRecord }) => ({
+                  id: "ur-new",
+                  ...data
+                }))
+              },
+              asset: {
+                update: jest.fn().mockResolvedValue({ id: "asset-1" })
+              }
+            });
+          }
+          return Promise.all(opsOrCallback);
+        }
       )
   };
 }
@@ -675,5 +718,134 @@ describe("AssetsService.upsertAsset", () => {
     await expect(
       service.upsertAsset(undefined, BASE_DTO as never, "user-1")
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// ─── recordUsageReading ────────────────────────────────────────────────────
+
+describe("AssetsService.recordUsageReading", () => {
+  const BASE_DTO = { unit: "hours", reading: 1500.0 };
+
+  it("inserts a reading, updates the denorm columns, and writes an audit entry when no previous reading exists", async () => {
+    const { service, prisma, audit } = buildService();
+    // Asset exists
+    prisma.asset.findUnique.mockResolvedValueOnce({ id: "asset-1" });
+    // No previous reading for this unit
+    prisma.assetUsageReading.findFirst.mockResolvedValueOnce(null);
+
+    const result = await service.recordUsageReading("asset-1", BASE_DTO as never, "user-1");
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "user-1",
+        action: "assets.usage-reading.create",
+        entityType: "AssetUsageReading",
+        metadata: expect.objectContaining({ assetId: "asset-1", unit: "hours", reading: 1500.0 })
+      })
+    );
+    expect(result).toMatchObject({ unit: "hours", reading: 1500.0 });
+  });
+
+  it("accepts a reading equal to the previous reading without throwing", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce({ id: "asset-1" });
+    prisma.assetUsageReading.findFirst.mockResolvedValueOnce(usageReadingRow({ reading: 1500 }));
+
+    await expect(
+      service.recordUsageReading("asset-1", { unit: "hours", reading: 1500.0 } as never, "user-1")
+    ).resolves.toBeDefined();
+  });
+
+  it("throws ConflictException when reading is below the previous reading", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce({ id: "asset-1" });
+    prisma.assetUsageReading.findFirst.mockResolvedValueOnce(usageReadingRow({ reading: 2000 }));
+
+    await expect(
+      service.recordUsageReading("asset-1", { unit: "hours", reading: 1000 } as never, "user-1")
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("allows reading below previous when isMeterReplacement=true and actor has Warehouse Manager role", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce({ id: "asset-1" });
+    // Role check query
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: "user-wm",
+      isSuperUser: false,
+      userRoles: [{ role: { name: "Warehouse Manager" } }]
+    });
+    prisma.assetUsageReading.findFirst.mockResolvedValueOnce(usageReadingRow({ reading: 2000 }));
+
+    await expect(
+      service.recordUsageReading(
+        "asset-1",
+        { unit: "hours", reading: 100, isMeterReplacement: true } as never,
+        "user-wm"
+      )
+    ).resolves.toBeDefined();
+  });
+
+  it("throws ForbiddenException when isMeterReplacement=true and actor lacks the required role", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce({ id: "asset-1" });
+    // Actor without privilege
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: "user-basic",
+      isSuperUser: false,
+      userRoles: [{ role: { name: "Field Worker" } }]
+    });
+
+    await expect(
+      service.recordUsageReading(
+        "asset-1",
+        { unit: "hours", reading: 100, isMeterReplacement: true } as never,
+        "user-basic"
+      )
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("throws NotFoundException when the asset does not exist", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      service.recordUsageReading("missing", BASE_DTO as never, "user-1")
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// ─── listUsageReadings ────────────────────────────────────────────────────
+
+describe("AssetsService.listUsageReadings", () => {
+  it("throws NotFoundException when the asset does not exist", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      service.listUsageReadings("missing", { page: 1, pageSize: 20 } as never)
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("returns paginated readings ordered newest first", async () => {
+    const { service, prisma } = buildService();
+    prisma.asset.findUnique.mockResolvedValueOnce({ id: "asset-1" });
+    const rows = [usageReadingRow({ id: "ur-1" }), usageReadingRow({ id: "ur-2" })];
+    prisma.assetUsageReading.findMany.mockResolvedValueOnce(rows);
+    prisma.assetUsageReading.count.mockResolvedValueOnce(2);
+
+    const result = await service.listUsageReadings("asset-1", { page: 1, pageSize: 20, unit: "hours" } as never);
+
+    expect(result.total).toBe(2);
+    expect(result.items).toHaveLength(2);
+    expect(prisma.assetUsageReading.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { assetId: "asset-1", unit: "hours" },
+        orderBy: { recordedAt: "desc" },
+        skip: 0,
+        take: 20
+      })
+    );
   });
 });

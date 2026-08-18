@@ -1,19 +1,19 @@
-# Cluster chaining — binding slice plan
+# Cluster chaining â€” binding slice plan
 
 **Status:** authored 2026-08-17 by PR Master with Marco; SLICE 0 (this document) awaiting
 approval. No downstream slice arms until Marco says so.
 **Owner:** Marco / ProjectOperations pipeline (`scripts/pr-watcher/**`,
 `scripts/pipeline/**`, `docs/pr-prompts/PROMPT-SCHEMA.md`, `docs/pipeline/LESSONS.yaml`).
 **Rule:** every downstream slice chains behind this document (`requires_merged`). Slices ship
-independently, each ≤ ~10 files, each CI-green. Merge authority stays with the supervisor.
+independently, each â‰¤ ~10 files, each CI-green. Merge authority stays with the supervisor.
 
 ---
 
 ## 1. Goal
 
 Give the queue a first-class **cluster** concept so an entire multi-slice initiative can be
-staged in one arming PR, and give the watcher enough gates that ordering across a cluster —
-and across clusters — is enforced by DISPATCH rather than by policy. When a chain breaks the
+staged in one arming PR, and give the watcher enough gates that ordering across a cluster â€”
+and across clusters â€” is enforced by DISPATCH rather than by policy. When a chain breaks the
 system self-heals or escalates; it never stalls silently and never leaves an armed prompt
 sitting idle.
 
@@ -24,10 +24,10 @@ sitting idle.
   guards (`NEVER_MERGE`, `escalates: true`, do-not-merge label). Doing so beforehand would
   build an unguarded auto-merger.
 - **No re-litigation of merge-liberty hard-stops.** Cluster chaining is upstream of merge
-  policy — it decides what DISPATCHES, not what merges.
+  policy â€” it decides what DISPATCHES, not what merges.
 - **No fixing the `escalates: true` non-enforcement gap in this plan.** It is real (the
   watcher auto-merges every PR it opens, has no concept of `escalates`, and CI has no
-  do-not-merge gate), and it MUST be recorded in §9 as a separate brief; but fixing it is a
+  do-not-merge gate), and it MUST be recorded in Â§9 as a separate brief; but fixing it is a
   distinct piece of work and would balloon the scope here.
 - **No editing under `sot/` in any slice of this cluster.** CP-24 hard-fails a mixed PR.
 - **No regex quantifiers introduced in the watcher.** `index.mjs` deliberately avoids them
@@ -37,14 +37,14 @@ sitting idle.
 
 ## 2. Verified current state (origin/main; read-only positive control passed 2026-08-17)
 
-### 2.1 What already works — do not rebuild
+### 2.1 What already works â€” do not rebuild
 
 - `scripts/pr-watcher/index.mjs` parses `requires_merged:` and `requires_file_on_main:` from
   YAML front-matter (plus a legacy HTML-comment form). The effective set is the
   de-duplicated union of both forms.
 - `unmetDependencies()` runs `gh pr view <n> --json state` and REQUIRES state `MERGED`; and
   `git cat-file -e origin/main:<file>` for file dependencies. Any `gh` or `git` error counts
-  as UNMET — fail-closed by construction.
+  as UNMET â€” fail-closed by construction.
 - An unmet dependency **defers** the prompt: the prompt file is NOT consumed, it stays in
   `seen`, and the periodic rescan re-checks it. `syncMain()` pulls `main` so the next
   scheduling pass observes the newly-merged commit.
@@ -56,39 +56,39 @@ sitting idle.
 - A fix lane exists: `fixes_pr: <N>` front-inserts a fix-forward prompt ahead of ordinary
   work.
 
-### 2.2 What is missing — the actual work in this cluster
+### 2.2 What is missing â€” the actual work in this cluster
 
 1. **`scripts/pipeline/lint-prompt.mjs` contains ZERO references** to `requires_merged` or
-   `requires_file_on_main`. A mistyped key — `requires-merged` (hyphen), or the plural
-   `requires_files_on_main` (the real key is SINGULAR) — passes lint and the prompt runs
+   `requires_file_on_main`. A mistyped key â€” `requires-merged` (hyphen), or the plural
+   `requires_files_on_main` (the real key is SINGULAR) â€” passes lint and the prompt runs
    COMPLETELY UNGATED. This is the out-of-order mechanism, and it is silent.
 2. **No content gate.** `requires_file_on_main` only expresses "a new file exists at path
    X". Any slice that MODIFIES an existing file cannot be chained and cannot be pre-staged
    in a cluster.
-3. **No cluster concept anywhere** — not in the watcher, not in the pipeline scripts, not
+3. **No cluster concept anywhere** â€” not in the watcher, not in the pipeline scripts, not
    in `PROMPT-SCHEMA.md`. Ordering today is emergent from declared dependencies only; two
    prompts with no declared dependency run in `readdir` order, and with two lanes they run
    CONCURRENTLY.
-4. **A `requires_merged` target that is CLOSED-not-merged defers forever, silently** —
+4. **A `requires_merged` target that is CLOSED-not-merged defers forever, silently** â€”
    violating the DOCTRINE never-exit-silently rule.
 5. **QUEUE ROT, verified 2026-08-17.** Two prompts sit armed in `docs/pr-prompts/` that the
-   CURRENT linter REJECTS, so neither can ever dispatch — they would be binned at dequeue
+   CURRENT linter REJECTS, so neither can ever dispatch â€” they would be binned at dequeue
    and nobody would know. Both edit `scripts/pipeline/lint-prompt.mjs`; neither declares a
    dependency on the other; both fail the OPS-6 escalation heuristic:
-   - `pr-pr-master-hardening-slice0-ready.md` — trips the escalation rule on its OWN prose
+   - `pr-pr-master-hardening-slice0-ready.md` â€” trips the escalation rule on its OWN prose
      describing the nullability signal it introduced.
-   - The Gate-A intake lint-rule prompt — trips the rule on a single ordinary word in its
+   - The Gate-A intake lint-rule prompt â€” trips the rule on a single ordinary word in its
      body.
 
-   Neither prompt is hazardous. The rule matches its trigger words ANYWHERE in the body —
-   inside a file NAME, or inside prose that merely EXPLAINS the rule — so it fires on
+   Neither prompt is hazardous. The rule matches its trigger words ANYWHERE in the body â€”
+   inside a file NAME, or inside prose that merely EXPLAINS the rule â€” so it fires on
    prompts that carry no risk. Demonstrated live while authoring this very prompt: two
    successive drafts were rejected, the second purely for quoting the rule's own wording in
    a description of the problem. This is the plan's worked example: an armed prompt whose
    lint status nobody re-checks is exactly the "sitting idle" failure Marco is trying to
    eliminate, and an over-matching rule is how a safety gate loses its authority. SLICE 1
    must decide whether the two rot-prompts are re-authored, retired, or chained ahead of
-   SLICE 1 — and record the decision in this document before SLICE 1 arms.
+   SLICE 1 â€” and record the decision in this document before SLICE 1 arms.
 
 ---
 
@@ -99,10 +99,10 @@ sitting idle.
   after-the-fact chaining against known PR numbers.
 - **Extend the watcher with a CONTENT gate** so modified files can be chained. New key
   `requires_on_main:` accepts either `<path>` or `<path> :: <fixed-string>`. The string
-  form checks `git show origin/main:<path>` for FIXED-STRING containment — **NOT a regex**.
-  Missing file → UNMET (never throws). Fixed-string only; do not reintroduce quantifiers.
+  form checks `git show origin/main:<path>` for FIXED-STRING containment â€” **NOT a regex**.
+  Missing file â†’ UNMET (never throws). Fixed-string only; do not reintroduce quantifiers.
 - **A cluster is a DAG, not a line.** A slice waits ONLY on the slices it explicitly
-  declares. Independent siblings run IN PARALLEL across both watcher lanes — that is what
+  declares. Independent siblings run IN PARALLEL across both watcher lanes â€” that is what
   two lanes exist for. In the theme cluster, for example, the token-cleanup slices are
   mutually independent once the foundation slice has landed; forcing them through one lane
   would waste a lane on the largest phase of the work. Marco corrected an earlier
@@ -110,22 +110,22 @@ sitting idle.
 - **SCOPE OVERLAP serialises, independently of dependencies.** Two prompts with no
   dependency between them can still edit the same file. Derive this from the `scope` globs
   already present in every prompt: if two ready prompts have overlapping `scope`, dispatch
-  them one at a time even when neither declares a dependency — AND DO THIS ACROSS CLUSTERS
+  them one at a time even when neither declares a dependency â€” AND DO THIS ACROSS CLUSTERS
   TOO. Dependencies express ORDER; scope overlap expresses COLLISION. Both are required;
   only the first exists today.
 - **Ordering comes from DISPATCH gating, not from merge control.** A slice cannot start
   until its declared predecessor's artifact is on `main`, so a dependent pair can never
   have two PRs open at once. Out-of-order merging inside a chain is impossible by
   construction rather than by policy.
-- **`merge-queue.mjs` may be wired ONLY AFTER SLICE 7.** Today it checks NOTHING —
-  no `NEVER_MERGE` list, no `escalates`, no label — so wiring it as-is would build an
+- **`merge-queue.mjs` may be wired ONLY AFTER SLICE 7.** Today it checks NOTHING â€”
+  no `NEVER_MERGE` list, no `escalates`, no label â€” so wiring it as-is would build an
   unguarded automatic merger. With two lanes producing PRs concurrently the supervisor
   genuinely wants it, so the guards are a slice in this plan rather than a prohibition.
   Merge authority stays with the supervisor.
 - **Broken chain**: pause the cluster (existing `paused/` machinery) with a summary naming
   the broken link, AND auto-author a fix-forward prompt (`fixes_pr: <N>`) inside the same
   cluster so the chain can free itself once the fix is on `main`. After TWO failed fix
-  attempts, escalate to Marco — the doctrine's two-honest-attempts rule.
+  attempts, escalate to Marco â€” the doctrine's two-honest-attempts rule.
 - **Visibility ships WITH the gates, not later.** A deferred prompt must be answerable
   with one command: which cluster, which slice, what it is waiting on, since when.
 
@@ -133,10 +133,10 @@ sitting idle.
 
 ## 4. The slices
 
-Each slice ≤ ~10 files. Each ships independently and CI-green. Each has a machine-checkable
+Each slice â‰¤ ~10 files. Each ships independently and CI-green. Each has a machine-checkable
 premise: if the premise is already false when the agent boots, the run exits NO-OP.
 
-### SLICE 1 — Intake linter learns the dependency keys
+### SLICE 1 â€” Intake linter learns the dependency keys
 
 - **Goal:** `scripts/pipeline/lint-prompt.mjs` recognises `requires_merged`,
   `requires_file_on_main`, and `requires_on_main`. ANY unrecognised `requires*` key is
@@ -150,28 +150,50 @@ premise: if the premise is already false when the agent boots, the run exits NO-
 - **Predecessor:** none (this is the foundation).
 - **Acceptance:** negative tests for each typo case are RED before the fix and GREEN after.
   A prompt with `requires-merged: 42` (hyphen) is REJECTED, not silently accepted.
-- **Housekeeping:** the two rot-prompts listed in §2.2(5) both edit this file. Before SLICE
+- **Housekeeping:** the two rot-prompts listed in Â§2.2(5) both edit this file. Before SLICE
   1 arms, Marco decides whether each is (a) re-authored to pass current lint, (b) retired,
   or (c) chained ahead of SLICE 1. Record the decision in an addendum to this section.
 
-### SLICE 2 — Watcher: the `requires_on_main` content gate
+
+#### Addendum 2026-08-18 â€” SLICE 1 housekeeping precondition DISCHARGED
+
+The SLICE 1 housekeeping note above required Marco to decide, before SLICE 1 arms, whether each of
+the two rot-prompts in Â§2.2(5) is (a) re-authored, (b) retired, or (c) chained ahead of SLICE 1.
+
+**Outcome: (b) retired â€” and it had already happened.** Both were cleared by the 2026-08-17 premise
+sweep, before this question was asked. [MEASURED] against `origin/main` @ `9395a4dd`, both now sit
+in `docs/pr-prompts/superseded/cleared-2026-08-17-premise-dead/`:
+
+- `pr-pr-master-hardening-slice0-ready.md`
+- `pr-gate-a-backfill-lint-rule-ready.md`
+
+Neither is armed and neither is on disk in the active queue. A scan of every prompt in
+`docs/pr-prompts/` found **no prompt whose scope touches `scripts/pipeline/lint-prompt.mjs`**, so
+SLICE 1 has no scope collision. The precondition is discharged; SLICE 1 armed on 2026-08-18.
+
+**The OPS-6 over-matching rule that rotted them is NOT fixed.** Retiring the two victims removed
+the blockage, not the cause: the escalation heuristic still matches its trigger words anywhere in a
+prompt body, including inside a filename or inside prose that merely explains the rule. It will rot
+future prompts the same way. That is out of scope for this cluster and belongs in its own brief.
+
+### SLICE 2 â€” Watcher: the `requires_on_main` content gate
 
 - **Goal:** extend `unmetDependencies()` in `scripts/pr-watcher/index.mjs` to honour
   `requires_on_main:`. Value forms:
-  - `<path>` — equivalent to existing `requires_file_on_main` (file must exist on
+  - `<path>` â€” equivalent to existing `requires_file_on_main` (file must exist on
     `origin/main`).
-  - `<path> :: <fixed-string>` — the string must appear (FIXED-STRING containment) in
+  - `<path> :: <fixed-string>` â€” the string must appear (FIXED-STRING containment) in
     `git show origin/main:<path>`. A missing file counts as UNMET, not a throw.
 - **Files expected:** `scripts/pr-watcher/index.mjs`,
   `scripts/pr-watcher/index.test.mjs` (or equivalent), `docs/pr-prompts/PROMPT-SCHEMA.md`.
 - **Premise:** `! grep -q "requires_on_main" scripts/pr-watcher/index.mjs`
-- **Predecessor:** SLICE 1 on `main` — so the linter already accepts the new key.
+- **Predecessor:** SLICE 1 on `main` â€” so the linter already accepts the new key.
   Encoded as `requires_on_main: scripts/pipeline/lint-prompt.mjs :: requires_on_main`.
 - **Acceptance:** unit tests cover: missing file (UNMET), file present + string absent
   (UNMET), file present + string present (MET), malformed value (UNMET + warn), and the
   regex-free implementation (no `new RegExp(...)` on the value).
 
-### SLICE 3 — Cluster metadata + linter rules
+### SLICE 3 â€” Cluster metadata + linter rules
 
 - **Goal:** introduce `cluster: <slug>` and `cluster_order: <n>` front-matter keys, and
   teach the linter to enforce cluster consistency.
@@ -182,19 +204,19 @@ premise: if the premise is already false when the agent boots, the run exits NO-
   Encoded as `requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY`.
 - **Acceptance / rejection rules:**
   - `cluster_order > 1` with NO declared dependency (`requires_merged`,
-    `requires_file_on_main`, or `requires_on_main`) → REJECT (`CLUSTER_NO_DEP`).
+    `requires_file_on_main`, or `requires_on_main`) â†’ REJECT (`CLUSTER_NO_DEP`).
   - A cycle in a cluster's declared-dependency graph, computed across the ready+HOLD
-    prompts staged in `docs/pr-prompts/**` → REJECT (`CLUSTER_CYCLE`).
-  - A **dead gate** — a `requires_on_main` whose fixed string is ALREADY present on
-    `origin/main` at intake time — REJECT (`CLUSTER_DEAD_GATE`), because the arming PR
+    prompts staged in `docs/pr-prompts/**` â†’ REJECT (`CLUSTER_CYCLE`).
+  - A **dead gate** â€” a `requires_on_main` whose fixed string is ALREADY present on
+    `origin/main` at intake time â€” REJECT (`CLUSTER_DEAD_GATE`), because the arming PR
     would dispatch that slice immediately with no gate.
   - Cluster slug must be `^[a-z][a-z0-9-]{2,40}$`.
 
-### SLICE 4 — Watcher dispatch: DAG traversal + scope-overlap serialisation
+### SLICE 4 â€” Watcher dispatch: DAG traversal + scope-overlap serialisation
 
 - **Goal:** teach the watcher to (a) walk each cluster's DAG, running independent siblings
   in PARALLEL across the two lanes; and (b) serialise any two ready prompts that share a
-  declared dependency edge OR whose `scope` globs OVERLAP — across clusters too. Tie-break
+  declared dependency edge OR whose `scope` globs OVERLAP â€” across clusters too. Tie-break
   on `cluster_order` so dispatch is deterministic, not filesystem-ordered.
 - **Files expected:** `scripts/pr-watcher/index.mjs`,
   `scripts/pr-watcher/scope-overlap.mjs` (new small pure module), tests.
@@ -206,11 +228,11 @@ premise: if the premise is already false when the agent boots, the run exits NO-
   overlapping `scope` serialised; tie-break by `cluster_order` deterministic on identical
   wall-clock; DAG walk terminates on the cycle case defined in SLICE 3.
 - **Note on `scope` overlap semantics**: overlap is the intersection of the globs' matched
-  file sets against a snapshot of the working tree — NOT string equality of the glob
+  file sets against a snapshot of the working tree â€” NOT string equality of the glob
   patterns. Two prompts whose globs both match `apps/api/src/foo.ts` collide even if the
   glob strings differ.
 
-### SLICE 5 — Visibility
+### SLICE 5 â€” Visibility
 
 - **Goal:** answer "what is armed and why is it waiting?" in one command, and never let a
   defer loop silently past a threshold.
@@ -227,7 +249,7 @@ premise: if the premise is already false when the agent boots, the run exits NO-
     a configurable threshold (default 6 hours) triggers an escalation ping to Marco via the
     existing `needs-marco/` router.
 
-### SLICE 6 — Broken-chain handling
+### SLICE 6 â€” Broken-chain handling
 
 - **Goal:** when a slice's PR is CLOSED-not-merged, or is red past the two-attempts rule,
   the cluster pauses AND auto-authors a `fixes_pr: <N>` prompt inside the same cluster.
@@ -242,7 +264,7 @@ premise: if the premise is already false when the agent boots, the run exits NO-
   with `fixes_pr:` set correctly; (c) after two consecutive failed fix attempts, an
   escalation lands in `needs-marco/`.
 
-### SLICE 7 — Guard `merge-queue.mjs` (prerequisite for any auto-merge wiring)
+### SLICE 7 â€” Guard `merge-queue.mjs` (prerequisite for any auto-merge wiring)
 
 - **Goal:** before ANYTHING wires the merge queue, it must refuse:
   1. A PR whose head is in the `NEVER_MERGE` list.
@@ -251,19 +273,19 @@ premise: if the premise is already false when the agent boots, the run exits NO-
 - **Files expected:** `scripts/pr-watcher/merge-queue.mjs`,
   `scripts/pr-watcher/merge-queue.test.mjs`, docs.
 - **Premise:** `! grep -q "NEVER_MERGE" scripts/pr-watcher/merge-queue.mjs`
-- **Predecessor:** none of the above slices — this one is standalone and can arm in
+- **Predecessor:** none of the above slices â€” this one is standalone and can arm in
   parallel with any of them, since it doesn't touch dispatch. Recommended `cluster_order`
   early so it lands before the supervisor is tempted to wire the queue.
 - **Acceptance:** each of the three refusal paths has a unit test; refusal exits non-zero
   and prints the reason.
 
-### SLICE 8 — Lesson + worked example
+### SLICE 8 â€” Lesson + worked example
 
 - **Goal:** codify the lesson so it survives beyond this cluster.
 - **Files expected:** `docs/pipeline/LESSONS.yaml` (new entry),
   `docs/pr-prompts/PROMPT-SCHEMA.md` (worked example section).
 - **Premise:** `! grep -q "cluster-chaining" docs/pipeline/LESSONS.yaml`
-- **Predecessor:** SLICES 1–7 all on `main`.
+- **Predecessor:** SLICES 1â€“7 all on `main`.
 - **Acceptance:** a new lesson entry (`id: cluster-chaining`) with a MECHANICAL guard
   pointing at the linter rules and the watcher gates (not a prose reminder); a worked
   example in `PROMPT-SCHEMA.md` showing a two-slice cluster with `cluster:`,
@@ -298,7 +320,7 @@ premise: if the premise is already false when the agent boots, the run exits NO-
 - **Integration test (SLICE 4 acceptance):** a synthetic queue directory of ~6 prompts
   across 2 clusters, with a mix of dependencies and scope overlaps, is fed to the watcher
   in dry-run mode; the emitted dispatch order is asserted deterministic.
-- **Regression:** SLICE 1's typo tests are the guard against the failure mode in §2.2(1).
+- **Regression:** SLICE 1's typo tests are the guard against the failure mode in Â§2.2(1).
 
 ---
 
@@ -312,10 +334,10 @@ premise: if the premise is already false when the agent boots, the run exits NO-
 5. SLICE 4 arms after both SLICE 2 and SLICE 3 are on `main`.
 6. SLICE 5 arms after SLICE 4.
 7. SLICE 6 arms after SLICE 5.
-8. SLICE 8 arms last, after 1–7 are all on `main`.
+8. SLICE 8 arms last, after 1â€“7 are all on `main`.
 
-The `requires_on_main:` gates encode this order literally, so arming SLICES 1–8 all at
-once (in one arming PR) is safe — the watcher will dispatch them in DAG order regardless
+The `requires_on_main:` gates encode this order literally, so arming SLICES 1â€“8 all at
+once (in one arming PR) is safe â€” the watcher will dispatch them in DAG order regardless
 of `readdir`. This IS the cluster mechanism eating its own dogfood.
 
 ---
@@ -333,20 +355,20 @@ this cluster only adds callers.
 - **`escalates: true` is enforced by nothing.** The watcher auto-merges every PR it opens,
   has no concept of `escalates`, and CI has no do-not-merge gate. SLICE 7 addresses ONE
   half (the queue-side refusal) but only if the queue is ever wired. Fixing this end-to-
-  end is a separate brief — a CI-side hard-fail on any PR whose originating prompt
+  end is a separate brief â€” a CI-side hard-fail on any PR whose originating prompt
   carries `escalates: true`, or on any PR labelled `escalates`. Recorded here so it is
   not lost.
 - **Two-lane fairness.** With SCOPE OVERLAP serialisation across clusters, a very
   broad-scope prompt can effectively hog both lanes. Do we want an explicit
   `max_parallel_per_cluster` knob, or is the DAG's natural fan-out sufficient? Deferred
   until we see it happen.
-- **Rot-prompt policy.** The two rot-prompts named in §2.2(5) are a symptom of a broader
+- **Rot-prompt policy.** The two rot-prompts named in Â§2.2(5) are a symptom of a broader
   gap: no periodic re-lint of armed prompts against the CURRENT linter. Worth a small
   standalone script (`scripts/pipeline/relint-queue.mjs`) that runs nightly and posts to
   `needs-marco/` when an armed prompt no longer passes lint. Not in this cluster; noted
   for a follow-up.
 - **OPS-6 escalation heuristic scope.** Marco has flagged that the rule matches trigger
-  words anywhere in the body — inside file names, inside prose that merely EXPLAINS the
+  words anywhere in the body â€” inside file names, inside prose that merely EXPLAINS the
   rule. Tightening the heuristic (e.g. only match outside fenced code blocks, only match
   in imperative sentences, allow explicit `escalates_ok: true` for meta-prompts) is a
   separate brief. If it lands first, several rot-prompts free themselves.

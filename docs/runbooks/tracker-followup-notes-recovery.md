@@ -19,9 +19,9 @@ across.
 | A — migrate | existing `TenderClientNote` rows | `TenderClarificationNote` |
 | B — notes-only import | `Tender Database.xlsx` Column O | `TenderClarificationNote` |
 
-Run **A first, then B.** A recovers what the database already holds; B tops up anything Column O has
-that the database never received. Both are idempotent by trimmed note text, so re-running is safe and
-B cannot duplicate A.
+Stage A was completed 2026-08-17 (118 rows migrated, 9 collapsed). **Only Stage B remains
+runnable.** B tops up anything Column O has that the database never received. Both stages are/were
+idempotent by trimmed note text, so Stage B cannot duplicate what Stage A already wrote.
 
 **Nothing is deleted.** The source `TenderClientNote` rows are read and left exactly as they are.
 
@@ -41,49 +41,16 @@ API=https://<the-api-host>
 TOKEN=<paste a fresh super-user token>
 ```
 
-## Stage A — migrate the existing rows
+## Stage A — migrate the existing rows [COMPLETED AND RETIRED]
 
-Dry run first. This writes nothing.
-
-```bash
-curl -sS --max-time 280 -X POST "$API/admin/imports/tender-followup-notes/migrate" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"dryRun":"true"}'
-```
-
-Read the report before going further:
-
-```jsonc
-{
-  "dryRun": true,
-  "mode": "migrate",
-  "rowsRead": 119,                  // TenderClientNote rows found
-  "notesCreated": 119,              // would be written
-  "notesSkippedDuplicate": 0,       // already in the feed
-  "notesSkippedNoTenderMatch": 0,
-  "notesWithoutClient": 0,
-  "notesWithoutEstimator": 3,       // author falls back to source author, then to you
-  "sample": [ /* up to 10 preview lines */ ],
-  "badRows": []
-}
-```
-
-**What to check:** `rowsRead` tells you how many notes are actually sitting in the invisible model.
-If it comes back much lower than expected, that is not a failure — it means most of Column O never
-reached the database, and Stage B will do the heavy lifting instead. Skim `sample` and confirm the
-tender titles, client names, authors and dates look right.
-
-Then commit:
-
-```bash
-curl -sS --max-time 280 -X POST "$API/admin/imports/tender-followup-notes/migrate" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"dryRun":"false"}'
-```
-
-`notesCreated` on the commit run should match the dry run.
+> **Stage A was completed on 2026-08-17.** 118 `TenderClientNote` rows were migrated to
+> `TenderClarificationNote` (9 rows collapsed as duplicates). The migration endpoint
+> (`POST /admin/imports/tender-followup-notes/migrate`) has been removed from the API as part of
+> the `TenderClientNote` code-surface retirement (slice 1, 2026-08-18). **This route no longer
+> exists and cannot be re-run.**
+>
+> Only Stage B remains runnable. If you need to recover additional notes, use Stage B with the
+> spreadsheet file.
 
 ## Stage B — notes-only spreadsheet top-up
 
@@ -146,6 +113,7 @@ curl -sS --max-time 280 -X POST "$API/admin/imports/tender-tracker" \
 
 ## Not part of this runbook
 
-Retiring `TenderClientNote` (deleting the source rows, dropping the endpoint and the table) is a
-separate, not-yet-commissioned slice. Until it lands, the migrated notes exist in both models by
-design — the copies in `tender_client_notes` are inert and invisible.
+The `TenderClientNote` code surface (the REST endpoints and service) was removed in the
+`feat/retire-tenderclientnote-s1` PR (slice 1, 2026-08-18). The table and its 127 rows remain in
+the database as a rollback copy. Slice 2 will drop the table after Marco confirms the migrated
+notes in `TenderClarificationNote` look correct.

@@ -219,11 +219,26 @@ try {
     $ErrorActionPreference = $prevErrorActionPreference
 }
 
-$footer = "[$(Get-Date -Format o)] Watcher exited with code $exit"
+# 2026-08-18: normalize to the documented protocol before both the footer AND
+# the exit. Node can exit with values outside the {0,1,2} set (e.g. -1 when a
+# Stop-Process kill terminates it, which is what the heartbeat watchdog does),
+# and `powershell -File` does not reliably propagate negatives or large codes
+# to its caller. Without this normalization the child's footer log ("Watcher
+# exited with code -1") disagreed with the supervisor's log ("exit 0") for the
+# same event, 0.2s apart -- the DOCTRINE 7.1 lie the 2026-08-18 incident quote
+# called out. One event, one authoritative code, both places.
+$rawExit = $exit
+if ($exit -ne 0 -and $exit -ne 2) { $exit = 1 }
+
+$footer = if ($exit -eq $rawExit) {
+    "[$(Get-Date -Format o)] Watcher exited with code $exit"
+} else {
+    "[$(Get-Date -Format o)] Watcher exited with code $exit (raw node exit: $rawExit)"
+}
 Write-Log $footer
 
 # Exit codes:
 #   0 = clean (queue empty or SIGINT)
-#   1 = real failure
+#   1 = real failure (also: any non-{0,2} node exit, normalized above)
 #   2 = soft halt (usage / rate limit hit)
 exit $exit

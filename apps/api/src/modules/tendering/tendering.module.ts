@@ -12,8 +12,6 @@ import { TenderingController } from "./tendering.controller";
 import { TenderNumberService } from "./tender-number.service";
 import { TenderOutcomeCaptureService } from "./tender-outcome-capture.service";
 import { TenderingService } from "./tendering.service";
-import { TenderClientNotesController } from "./tender-client-notes.controller";
-import { TenderClientNotesService } from "./tender-client-notes.service";
 import { WithdrawalReviewController } from "./withdrawal-review.controller";
 import { WithdrawalReviewService } from "./withdrawal-review.service";
 import { TenderLabelsController } from "./tender-labels.controller";
@@ -48,7 +46,6 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
     // Registered after TenderingController so its :id-scoped POSTs don't
     // shadow anything; static-path routes are still handled here first.
     WithdrawalReviewController,
-    TenderClientNotesController,
     TenderEntriesController,
     TenderConvertController,
     TenderRateSetController,
@@ -68,7 +65,6 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
     TenderOutcomeCaptureService,
     WithdrawalReviewService,
     TenderLabelsService,
-    TenderClientNotesService,
     TenderEntriesService,
     TenderRateSetService,
     ScopeOfWorksService,

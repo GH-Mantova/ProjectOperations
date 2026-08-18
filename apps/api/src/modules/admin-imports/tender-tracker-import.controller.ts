@@ -2,10 +2,12 @@
  * MIG-2 + MIG-3 — Tender-tracker import controller.
  *
  * POST /admin/imports/tender-tracker       — MIG-2: import tracker CSV/XLSX
- * POST /admin/imports/tender-followup-notes/migrate  — Stage A: TenderClientNote
- *                                            rows into the Activity feed
  * POST /admin/imports/sharepoint-legacy-copy/plan    — MIG-3: dry-run match report
  * POST /admin/imports/sharepoint-legacy-copy/execute — MIG-3: commit copy job
+ *
+ * Note: POST /admin/imports/tender-followup-notes/migrate (Stage A migration)
+ * was retired 2026-08-17 after 118 TenderClientNote rows were migrated to
+ * TenderClarificationNote. The route is no longer registered.
  *
  * Guards: JwtAuthGuard + PermissionsGuard with "users.create" permission
  * reused from admin-users (the existing super-user surface).  No new
@@ -117,27 +119,6 @@ export class TenderTrackerImportController {
       dryRun,
       actor.sub
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Follow-up-note recovery (Stage A): TenderClientNote -> the Activity feed
-  // ---------------------------------------------------------------------------
-
-  @Post("tender-followup-notes/migrate")
-  @RequirePermissions("users.create") // super-user gate - same as tender-tracker import
-  @ApiOperation({
-    summary:
-      "Copy existing TenderClientNote rows into TenderClarificationNote so they render in Activity & communications. Non-destructive - source rows are never modified or deleted. dryRun=true (default) reports what would be written; dryRun=false commits.",
-  })
-  @ApiResponse({ status: 201, description: "FollowUpNotesReport returned." })
-  @ApiResponse({ status: 403, description: "Super-user access required." })
-  async migrateFollowUpNotes(
-    @Body("dryRun") dryRunRaw: string | undefined,
-    @CurrentUser() actor: { sub: string; isSuperUser?: boolean }
-  ) {
-    await this.assertSuperUser(actor.sub);
-    const dryRun = dryRunRaw !== "false"; // default to dry-run for safety
-    return this.service.migrateFollowUpNotes(actor.sub, dryRun);
   }
 
   // ---------------------------------------------------------------------------

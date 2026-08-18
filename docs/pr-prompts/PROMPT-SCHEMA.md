@@ -352,6 +352,77 @@ Rules:
 - A malformed value (empty path, empty needle after ` :: `) is **UNMET** and logs a warning. A malformed gate never passes -- it fails closed.
 - Any `git` error is **UNMET** (consistent with how `requires_merged` treats `gh` errors).
 
+## Optional: cluster chaining (SLICE 3, 2026-08-18)
+
+A **cluster** groups a set of prompts into an ORDERED chain. Two optional front-matter keys:
+
+```yaml
+---
+cluster: my-feature-name          # kebab-case slug, ^[a-z][a-z0-9-]{2,40}$
+cluster_order: 2                  # positive integer position within the chain
+---
+```
+
+Both keys are OPTIONAL - a prompt with neither is unchanged. `cluster_order` without `cluster`
+is a REJECT. `cluster` without `cluster_order` is legal (a one-slice cluster).
+
+### The four cluster rejection codes
+
+| Code | Meaning | Why this rule exists |
+|---|---|---|
+| `CLUSTER_BAD_SLUG` | `cluster` does not match `^[a-z][a-z0-9-]{2,40}$`. | Slugs are how the watcher's future cluster-aware dispatch groups prompts. A malformed slug silently splits one cluster into two. |
+| `CLUSTER_ORDER_INVALID` / `CLUSTER_ORDER_NO_CLUSTER` | `cluster_order` is not a positive integer, or set without `cluster`. | A position without a chain has no meaning; ordering must be well-formed before any other rule applies. |
+| `CLUSTER_NO_DEP` | `cluster_order > 1` but no `requires_merged` / `requires_file_on_main` / `requires_on_main`. | A slice that claims to be second in line but declares nothing to wait on dispatches alongside the first one - exactly the silently-ungated prompt this cluster exists to eliminate. |
+| `CLUSTER_CYCLE` | Two or more prompts in the same cluster reference each other's files via `requires_file_on_main` / `requires_on_main`. | A cycle means no slice can start. The error names the exact path (`a-ready.md -> b-ready.md -> a-ready.md`) so the author can find the back-edge. |
+| `CLUSTER_DEAD_GATE` | A `requires_on_main` needle is ALREADY present on `origin/main` at intake time. | The arming PR would dispatch that slice instantly with no gate at all, which reads as ordered and is not. The predecessor already merged, or the needle is wrong. |
+
+### Worked example - a two-slice cluster
+
+```yaml
+# pr-my-feature-s1-schema-ready.md
+---
+premise: '! grep -q "MyFeatureConfig" apps/api/prisma/schema.prisma'
+premise_means: The MyFeatureConfig model does not exist yet.
+scope:
+  - apps/api/prisma/schema.prisma
+done_when: pnpm build
+size: 2
+gate_allow: migrations
+rollback_strategy: 'additive; safe to leave, re-run drops nothing'
+cluster: my-feature
+cluster_order: 1
+---
+```
+
+```yaml
+# pr-my-feature-s2-service-ready.md
+---
+premise: '! grep -q "myFeatureService" apps/api/src/modules/my-feature/'
+premise_means: The MyFeatureService does not exist yet.
+scope:
+  - apps/api/src/modules/my-feature/**
+done_when: pnpm build
+size: 4
+gate_allow: none
+cluster: my-feature
+cluster_order: 2
+requires_on_main: apps/api/prisma/schema.prisma :: MyFeatureConfig
+---
+```
+
+Slice 2's `requires_on_main` names the exact artifact slice 1 introduces (`MyFeatureConfig`).
+If someone arms slice 2 while `MyFeatureConfig` is already on `main` (slice 1 merged and the
+gate needle stayed unchanged) the linter REJECTs `CLUSTER_DEAD_GATE` - the arming author has
+to either re-point the gate at a fresh predecessor artifact or drop the gate entirely.
+
+### Fail-safe behaviour
+
+Both `CLUSTER_CYCLE` (reads sibling prompt files) and `CLUSTER_DEAD_GATE` (probes
+`origin/main` via `git show`) fail SAFE, not closed. An unreadable directory, a malformed
+sibling, or a broken `git` binary emits a WARN line to stderr and SKIPs that check - it
+never rejects a well-formed prompt because unrelated tooling around it is broken. One bad
+prompt cannot block the whole queue.
+
 ### Typo traps the linter now rejects (SLICE 1, 2026-08-18)
 
 **The linter rejects any unrecognised `requires*` key with `UNKNOWN_KEY` and suggests
@@ -417,6 +488,12 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `UNKNOWN_KEY` | A `requires*` key in front-matter does not match any of the three legal keys (`requires_merged`, `requires_file_on_main`, `requires_on_main`). The rejection message suggests the nearest legal key. Common causes: hyphen instead of underscore (`requires-merged`), plural instead of singular (`requires_files_on_main`). |
 | `REQUIRES_MERGED_INVALID` | `requires_merged` value is not a positive integer. Reject: `0`, negatives, `#123`, `abc`, empty. The watcher silently ignores non-integer values, so the gate would disappear. |
 | `REQUIRES_PATH_EMPTY` | `requires_file_on_main` or `requires_on_main` has an empty value. An empty path gates nothing and the prompt runs ungated. |
+| `CLUSTER_BAD_SLUG` | `cluster` does not match `^[a-z][a-z0-9-]{2,40}$` (lowercase-kebab, 3-41 chars, must start with a letter). |
+| `CLUSTER_ORDER_INVALID` | `cluster_order` is not a positive integer. |
+| `CLUSTER_ORDER_NO_CLUSTER` | `cluster_order` is set but `cluster` is not - a position without a chain has no meaning. |
+| `CLUSTER_NO_DEP` | `cluster_order > 1` but no `requires_merged` / `requires_file_on_main` / `requires_on_main` - a later slice with nothing to wait on dispatches alongside the first one. |
+| `CLUSTER_CYCLE` | Two or more prompts in the same cluster reference each other's files. The error names the cycle path. |
+| `CLUSTER_DEAD_GATE` | A `requires_on_main` needle is already on `origin/main` at intake - the ordering gate is a no-op. Only checked for cluster prompts. |
 
 ---
 

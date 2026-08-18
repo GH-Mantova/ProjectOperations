@@ -4,7 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EnsureSharePointFolderDto } from "./dto/sharepoint-folder.dto";
 import { InjectSharePointAdapter } from "./sharepoint.adapter";
-import type { SharePointAdapter } from "./sharepoint.adapter";
+import type { SharePointAdapter, FolderChildItem } from "./sharepoint.adapter";
 import { DOCUMENT_CATEGORIES } from "../tender-documents/tender-document-categories";
 import type { DocumentCategory } from "../tender-documents/tender-document-categories";
 import { SharePointFolderMappingsService } from "./sharepoint-folder-mappings.service";
@@ -267,6 +267,26 @@ export class SharePointService {
       },
       actorId
     );
+  }
+
+  // TFM-S1 (MIG-3.5) — Pass-through to the adapter's listFolderChildren.
+  // MIG-3's SharepointLegacyCopyService calls this via the seam bridge.
+  async listFolderChildren(
+    siteId: string,
+    driveId: string,
+    itemId: string,
+  ): Promise<FolderChildItem[]> {
+    return this.adapter.listFolderChildren(siteId, driveId, itemId);
+  }
+
+  // TFM-S1 — Path-based variant for callers that have a relative path rather
+  // than a drive item ID (e.g. the MIG-3 legacy copy seam bridge).
+  async listFolderChildrenByPath(
+    siteId: string,
+    driveId: string,
+    relativePath: string,
+  ): Promise<FolderChildItem[]> {
+    return this.adapter.listFolderChildrenByPath(siteId, driveId, relativePath);
   }
 
   listFolders() {

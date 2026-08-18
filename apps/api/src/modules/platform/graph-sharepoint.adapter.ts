@@ -12,6 +12,7 @@ import {
   DownloadFileBytesInput,
   EnsureFolderInput,
   EnsureFolderResult,
+  FolderChildItem,
   FolderExistsInput,
   ResolveDriveInput,
   ResolveSiteInput,
@@ -108,8 +109,15 @@ type GraphDriveItem = {
   name?: string;
   webUrl?: string;
   eTag?: string;
+  size?: number;
+  folder?: Record<string, unknown>;
   parentReference?: { path?: string };
   ["@microsoft.graph.downloadUrl"]?: string;
+};
+
+type GraphChildrenPage = {
+  value?: GraphDriveItem[];
+  "@odata.nextLink"?: string;
 };
 
 @Injectable()
@@ -262,6 +270,95 @@ export class GraphSharePointAdapter implements SharePointAdapter {
     }
     const arrayBuffer = await res.arrayBuffer();
     return Buffer.from(arrayBuffer);
+  }
+
+  // TFM-S1 (MIG-3.5) — List ALL immediate children of a folder by itemId.
+  // Uses $top=200 and follows @odata.nextLink until absent so callers never
+  // receive a truncated list. Returns [] for an empty or missing folder (404
+  // is treated as "not found" rather than an error). Logs a warning on
+  // transient failure and rethrows so the caller decides retry policy.
+  async listFolderChildren(
+    siteId: string,
+    driveId: string,
+    itemId: string,
+  ): Promise<FolderChildItem[]> {
+    try {
+      const client = this.getClient();
+      const allItems: FolderChildItem[] = [];
+      let nextUrl: string | undefined =
+        `/sites/${siteId}/drives/${driveId}/items/${itemId}/children?$top=200`;
+
+      while (nextUrl) {
+        const page = (await client.api(nextUrl).get()) as GraphChildrenPage;
+        const items = page.value ?? [];
+        for (const child of items) {
+          if (!child.id || !child.name) continue;
+          allItems.push({
+            id: child.id,
+            name: child.name,
+            isFolder: !!child.folder,
+            size: child.size,
+            webUrl: child.webUrl,
+          });
+        }
+        nextUrl = page["@odata.nextLink"];
+      }
+
+      return allItems;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("itemNotFound") || message.includes("404")) {
+        return [];
+      }
+      this.logger.warn(
+        `SharePoint Graph listFolderChildren transient failure for itemId=${itemId}: ${message}`
+      );
+      throw new Error(`SharePoint Graph listFolderChildren failed: ${message}`);
+    }
+  }
+
+  // TFM-S1 — Path-based variant: uses root:/{path}:/children?$top=200.
+  // Identical paging behaviour to listFolderChildren. Returns [] for an
+  // empty or missing path (404). Logs warn + rethrows on transient failures.
+  async listFolderChildrenByPath(
+    siteId: string,
+    driveId: string,
+    relativePath: string,
+  ): Promise<FolderChildItem[]> {
+    try {
+      const client = this.getClient();
+      const allItems: FolderChildItem[] = [];
+      const encodedPath = encodeURI(relativePath);
+      let nextUrl: string | undefined =
+        `/sites/${siteId}/drives/${driveId}/root:/${encodedPath}:/children?$top=200`;
+
+      while (nextUrl) {
+        const page = (await client.api(nextUrl).get()) as GraphChildrenPage;
+        const items = page.value ?? [];
+        for (const child of items) {
+          if (!child.id || !child.name) continue;
+          allItems.push({
+            id: child.id,
+            name: child.name,
+            isFolder: !!child.folder,
+            size: child.size,
+            webUrl: child.webUrl,
+          });
+        }
+        nextUrl = page["@odata.nextLink"];
+      }
+
+      return allItems;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("itemNotFound") || message.includes("404")) {
+        return [];
+      }
+      this.logger.warn(
+        `SharePoint Graph listFolderChildrenByPath transient failure for path=${relativePath}: ${message}`
+      );
+      throw new Error(`SharePoint Graph listFolderChildrenByPath failed: ${message}`);
+    }
   }
 
   // PR-64 — Look up the site ID for a SharePoint site via

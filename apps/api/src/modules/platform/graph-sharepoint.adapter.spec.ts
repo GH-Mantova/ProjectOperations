@@ -5,6 +5,7 @@ import {
   ManagedIdentityCredential
 } from "@azure/identity";
 import {
+  GraphSharePointAdapter,
   buildSharePointCredential,
   resetSharePointAuthModeLoggedForTests,
   resolveSharePointAuthMode
@@ -185,5 +186,115 @@ describe("buildSharePointCredential — managed-identity branch", () => {
     } finally {
       ManagedIdentityCredential.prototype.getToken = original;
     }
+  });
+});
+
+// TFM-S1 — GraphSharePointAdapter.listFolderChildren URL shape and mapping tests.
+// The Graph client is stubbed so no real credentials or network are needed.
+
+function buildTestAdapter(): GraphSharePointAdapter {
+  const config = {
+    get: <T = string>(key: string): T | undefined => {
+      const env: Record<string, string> = {
+        SHAREPOINT_AUTH_MODE: "client-secret",
+        AZURE_TENANT_ID: "t",
+        AZURE_CLIENT_ID: "c",
+        AZURE_CLIENT_SECRET: "s",
+      };
+      return env[key] as unknown as T | undefined;
+    },
+  } as import("@nestjs/config").ConfigService;
+  return new GraphSharePointAdapter(config);
+}
+
+describe("GraphSharePointAdapter.listFolderChildren — URL shape and mapping", () => {
+  it("calls the correct itemId-based Graph URL on the first page", async () => {
+    const adapter = buildTestAdapter();
+    const capturedUrls: string[] = [];
+
+    (adapter as unknown as Record<string, unknown>)["getClient"] = () => ({
+      api: (url: string) => {
+        capturedUrls.push(url);
+        return {
+          get: jest.fn().mockResolvedValue({ value: [] }),
+        };
+      },
+    });
+
+    await adapter.listFolderChildren("site-1", "drive-1", "item-abc");
+
+    expect(capturedUrls[0]).toContain("/sites/site-1/drives/drive-1/items/item-abc/children");
+    expect(capturedUrls[0]).toContain("$top=200");
+  });
+
+  it("maps Graph children correctly (id, name, isFolder, size, webUrl)", async () => {
+    const adapter = buildTestAdapter();
+
+    const graphChildren = [
+      { id: "f1", name: "drawing.pdf", size: 4096, webUrl: "https://sp/drawing.pdf" },
+      { id: "d1", name: "Subdir", folder: { childCount: 2 }, webUrl: "https://sp/Subdir" },
+    ];
+
+    (adapter as unknown as Record<string, unknown>)["getClient"] = () => ({
+      api: (_url: string) => ({
+        get: jest.fn().mockResolvedValue({ value: graphChildren }),
+      }),
+    });
+
+    const result = await adapter.listFolderChildren("s", "d", "parent-id");
+
+    expect(result).toHaveLength(2);
+
+    const file = result.find((c) => c.id === "f1")!;
+    expect(file.name).toBe("drawing.pdf");
+    expect(file.isFolder).toBe(false);
+    expect(file.size).toBe(4096);
+    expect(file.webUrl).toBe("https://sp/drawing.pdf");
+
+    const dir = result.find((c) => c.id === "d1")!;
+    expect(dir.name).toBe("Subdir");
+    expect(dir.isFolder).toBe(true);
+  });
+
+  it("skips children with missing id or name", async () => {
+    const adapter = buildTestAdapter();
+
+    (adapter as unknown as Record<string, unknown>)["getClient"] = () => ({
+      api: (_url: string) => ({
+        get: jest.fn().mockResolvedValue({
+          value: [
+            { id: "ok-1", name: "valid.pdf" },
+            { name: "no-id.pdf" },          // missing id
+            { id: "no-name-id" },           // missing name
+          ],
+        }),
+      }),
+    });
+
+    const result = await adapter.listFolderChildren("s", "d", "id");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("ok-1");
+  });
+});
+
+describe("GraphSharePointAdapter.listFolderChildrenByPath — URL shape", () => {
+  it("calls the path-based Graph URL with encoded path", async () => {
+    const adapter = buildTestAdapter();
+    const capturedUrls: string[] = [];
+
+    (adapter as unknown as Record<string, unknown>)["getClient"] = () => ({
+      api: (url: string) => {
+        capturedUrls.push(url);
+        return {
+          get: jest.fn().mockResolvedValue({ value: [] }),
+        };
+      },
+    });
+
+    await adapter.listFolderChildrenByPath("site-1", "drive-1", "Legacy Tenders/T1234");
+
+    expect(capturedUrls[0]).toContain("/sites/site-1/drives/drive-1/root:/");
+    expect(capturedUrls[0]).toContain(":/children");
+    expect(capturedUrls[0]).toContain("$top=200");
   });
 });

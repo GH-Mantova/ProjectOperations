@@ -52,13 +52,12 @@ export interface FollowUpNoteSample {
 }
 
 /**
- * Report for both follow-up-note recovery paths:
- *   mode "migrate"   -- existing TenderClientNote rows -> TenderClarificationNote
- *   mode "notesOnly" -- spreadsheet Column O top-up, writing notes and NOTHING else
+ * Report for the follow-up-note spreadsheet top-up path (Stage B / notesOnly mode).
+ * Stage A (migrate) was retired 2026-08-17 after 118 rows were migrated.
  */
 export interface FollowUpNotesReport {
   dryRun: boolean;
-  mode: "migrate" | "notesOnly";
+  mode: "notesOnly";
   rowsRead: number;
   notesCreated: number;
   notesSkippedDuplicate: number;
@@ -704,11 +703,12 @@ export class TenderTrackerImportService {
   // ---------------------------------------------------------------------------
   // Follow-up-note recovery
   //
-  // Stage A (migrateFollowUpNotes): existing TenderClientNote rows -> the feed.
-  // Stage B (importFollowUpNotes):  spreadsheet Column O top-up, notes ONLY.
+  // Stage A (migrate route) was retired 2026-08-17: 118 TenderClientNote
+  // rows were migrated to TenderClarificationNote. The method and its HTTP route
+  // are removed in this commit (slice 1 of the TenderClientNote retirement).
   //
-  // Neither stage reads, updates or deletes a TenderClientNote row beyond
-  // copying from it. Retiring that model is a separate, uncommissioned slice.
+  // Stage B (importFollowUpNotes): spreadsheet Column O top-up, notes ONLY.
+  // This path remains supported for future spreadsheet top-ups.
   // ---------------------------------------------------------------------------
 
   /**
@@ -766,104 +766,6 @@ export class TenderTrackerImportService {
     const name = personName(user);
     cache.set(userId, name);
     return name;
-  }
-
-  /**
-   * STAGE A -- copy every existing TenderClientNote row into
-   * TenderClarificationNote so it renders in Activity & communications.
-   *
-   * Non-destructive: the source rows are read and left exactly as they are.
-   */
-  async migrateFollowUpNotes(actorId: string, dryRun: boolean): Promise<FollowUpNotesReport> {
-    const sourceNotes = await this.prisma.tenderClientNote.findMany({
-      select: {
-        id: true,
-        tenderId: true,
-        clientId: true,
-        noteType: true,
-        subject: true,
-        body: true,
-        occurredAt: true,
-        createdById: true,
-        tender: { select: { title: true, estimatorUserId: true } },
-        client: { select: { name: true } },
-      },
-      orderBy: { occurredAt: "asc" },
-    });
-
-    const report: FollowUpNotesReport = {
-      dryRun,
-      mode: "migrate",
-      rowsRead: sourceNotes.length,
-      notesCreated: 0,
-      notesSkippedDuplicate: 0,
-      notesSkippedNoTenderMatch: 0,
-      notesWithoutClient: 0,
-      notesWithoutEstimator: 0,
-      sample: [],
-      badRows: [],
-    };
-
-    const userNameCache = new Map<string, string | null>();
-    let index = 0;
-
-    for (const note of sourceNotes) {
-      index += 1;
-      try {
-        const text = composeNoteText(note.subject, note.body);
-        if (!text) {
-          report.badRows.push({ row: index, reason: `TenderClientNote ${note.id} has an empty body -- skipped` });
-          continue;
-        }
-
-        const estimatorId = note.tender?.estimatorUserId ?? null;
-        if (!estimatorId) report.notesWithoutEstimator++;
-        if (!note.clientId) report.notesWithoutClient++;
-        const authorId = estimatorId ?? note.createdById ?? actorId;
-
-        const duplicate = await this.prisma.tenderClarificationNote.findFirst({
-          where: { tenderId: note.tenderId, text },
-          select: { id: true },
-        });
-        if (duplicate) {
-          report.notesSkippedDuplicate++;
-          continue;
-        }
-
-        if (report.sample.length < SAMPLE_LIMIT) {
-          report.sample.push({
-            tenderTitle: note.tender?.title ?? note.tenderId,
-            clientName: note.client?.name ?? null,
-            author: await this.describeUser(authorId, userNameCache),
-            occurredAt: note.occurredAt.toISOString(),
-            textPreview: text.slice(0, SAMPLE_TEXT_CHARS),
-          });
-        }
-
-        if (dryRun) {
-          report.notesCreated++;
-          continue;
-        }
-
-        const written = await this.writeFollowUpNote({
-          tenderId: note.tenderId,
-          clientId: note.clientId,
-          text: note.body,
-          subject: note.subject,
-          noteType: note.noteType,
-          occurredAt: note.occurredAt,
-          authorId,
-        });
-        if (written) report.notesCreated++;
-        else report.notesSkippedDuplicate++;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Follow-up note migrate failed for ${note.id}: ${msg}`);
-        report.badRows.push({ row: index, reason: `Migrate error on ${note.id}: ${msg}` });
-      }
-    }
-
-    return report;
   }
 
   /**

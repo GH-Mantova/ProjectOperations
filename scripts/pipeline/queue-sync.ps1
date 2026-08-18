@@ -84,7 +84,7 @@ $Forbidden = @(
     'b-sd'              # site-dissolution slices.
 )
 
-$materialised = 0; $skipShipped = 0; $skipPresent = 0; $skipConsumed = 0; $escalating = 0; $skipForbidden = 0
+$materialised = 0; $skipShipped = 0; $skipPresent = 0; $skipConsumed = 0; $escalating = 0; $skipForbidden = 0; $skipMalformed = 0
 
 foreach ($path in $armed) {
     $name = Split-Path $path -Leaf
@@ -118,15 +118,21 @@ foreach ($path in $armed) {
         continue
     }
 
-    # Lint gate: a false premise means the work already shipped. Do NOT materialise it.
-    # Note lint exit 0 = ADMIT. Anything else is either shipped or malformed; either way it
-    # does not belong in the queue, but only a CLEAN non-zero means "shipped".
+    # Lint gate: exit 0 = ADMIT, exit 3 = STALE (premise dead -- work already shipped),
+    # exit 1 (or any other non-zero) = MALFORMED (bad prompt -- work has NOT shipped).
+    # Only exit 3 is treated as "shipped" and written to the ledger; a malformed prompt
+    # must NOT be ledgered -- it must be reconsidered next cycle after the prompt is fixed.
     $null = node (Join-Path $GitRepo "scripts\pipeline\lint-prompt.mjs") $tmp 2>&1
     $lintExit = $LASTEXITCODE
-    if ($lintExit -ne 0) {
+    if ($lintExit -eq 3) {
         $skipShipped++
-        Say "shipped" ($name + " -- lint exit " + $lintExit + ", premise no longer true; not armed")
+        Say "shipped" ($name + " -- lint exit 3, premise no longer true; not armed")
         if (-not $DryRun) { Add-Content -Path $Ledger -Value $name -Encoding ASCII }
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        continue
+    } elseif ($lintExit -ne 0) {
+        $skipMalformed++
+        Say "MALFORMED" ($name + " -- lint exit " + $lintExit + ", prompt is malformed; NOT ledgered, will be reconsidered next cycle")
         Remove-Item $tmp -Force -ErrorAction SilentlyContinue
         continue
     }
@@ -171,6 +177,7 @@ foreach ($path in $armed) {
 
 Say "summary" ("armed=" + $materialised + "  already-in-queue=" + $skipPresent +
     "  already-consumed=" + $skipConsumed + "  shipped-stale=" + $skipShipped +
+    "  malformed=" + $skipMalformed +
     "  forbidden=" + $skipForbidden + "  escalating(do-not-merge)=" + $escalating)
 if ($escalating -gt 0) {
     Say "ACTION" ([string]$escalating + " armed prompt(s) are escalating: they WILL run and open PRs, " +

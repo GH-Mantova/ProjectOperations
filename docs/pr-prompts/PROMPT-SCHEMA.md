@@ -293,7 +293,7 @@ Before you finish, ask: **"Is there a PR number in my output?"**
 
 ## Optional: execution-order dependencies
 
-Declare in front-matter — this is the ONLY form the intake lint admits (it REJECTs
+Declare in front-matter -- this is the ONLY form the intake lint admits (it REJECTs
 `NO_FRONT_MATTER` if `---` is not on line 1, which is why the older HTML-comment
 form was mutually exclusive with the lint and never actually usable):
 
@@ -304,6 +304,7 @@ requires_merged:
   - 379
 requires_file_on_main:
   - apps/web/src/hooks/useConfirm.tsx
+requires_on_main: apps/api/src/foo.ts :: some fixed string
 ---
 ```
 
@@ -312,7 +313,52 @@ DEFERS a prompt whose deps are unmet and re-checks it on the next rescan; a
 gh/git error counts as unmet (fail closed).
 
 The legacy `<!-- watcher: requires-... -->` HTML-comment form still parses (for
-back-compat) but cannot pass the intake lint — do not use it in new prompts.
+back-compat) but cannot pass the intake lint -- do not use it in new prompts.
+
+### The three dependency keys
+
+| Key | Value | What the watcher checks |
+|---|---|---|
+| `requires_merged` | Positive integer PR number | `gh pr view N --json state` must be `MERGED` |
+| `requires_file_on_main` | Non-empty file path | `git cat-file -e origin/main:<path>` must succeed (file exists) |
+| `requires_on_main` | `<path>` or `<path> :: <fixed-string>` | File must exist on `origin/main`; with `::`, the fixed string must appear in the file |
+
+Both list form and inline scalar are accepted for all three keys.
+
+#### `requires_on_main` -- content gate (cluster-chaining SLICE 2)
+
+`requires_on_main` lets a later slice chain on a SPECIFIC ARTIFACT inside a file, not
+just on the file's existence. Use it when your predecessor modifies an existing file and
+you need to wait until a particular function, constant, or marker is on `main`:
+
+```yaml
+requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY
+```
+
+This defers the prompt until `lint-prompt.mjs` on `origin/main` contains the string
+`UNKNOWN_KEY` (fixed-string containment, NOT a regex). A missing file counts as UNMET.
+
+**Until cluster-chaining SLICE 2 lands on `main`, the watcher does NOT honour this key.**
+The linter accepts it (so SLICE 2 can declare it on itself), but a prompt relying on
+`requires_on_main` will run UNGATED until SLICE 2 is merged. The linter prints a WARN
+line to stderr when it sees this key.
+
+### Typo traps the linter now rejects (SLICE 1, 2026-08-18)
+
+**The linter rejects any unrecognised `requires*` key with `UNKNOWN_KEY` and suggests
+the nearest legal key.** A mistyped key previously passed lint and the prompt ran
+completely ungated -- silently losing its ordering gate. Common traps:
+
+| Wrong | Right | Error |
+|---|---|---|
+| `requires-merged:` (hyphen) | `requires_merged:` | `UNKNOWN_KEY` |
+| `requires_files_on_main:` (plural) | `requires_file_on_main:` (singular) | `UNKNOWN_KEY` |
+| `require_merged:` (no `s`) | `requires_merged:` | `UNKNOWN_KEY` |
+| `requires_merge:` | `requires_merged:` | `UNKNOWN_KEY` |
+
+**The singular/plural trap is the most common:** `requires_file_on_main` (singular) is
+the real key. `requires_files_on_main` (plural) looks plausible, passes a spell-check,
+but the watcher never sees it and the gate silently disappears. The linter now catches it.
 
 ## Optional: `fixes_pr` — the fix lane
 
@@ -359,6 +405,9 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `FIX_TARGET_UNKNOWN` | `fixes_pr` state check failed (bad number, network, gh auth). Fix the pointer. |
 | `FIX_TARGET_INVALID` | `fixes_pr` is not a positive integer. |
 | `DESTRUCTIVE_MUST_ESCALATE` | Destructive signal detected (`backfill`, `NOT NULL`, `DROP TABLE/COLUMN/CONSTRAINT/TYPE`, `DELETE FROM`, `TRUNCATE`, `drop-legacy`, or `destructive`) but `escalates` is not `true`. Set `escalates: true`. (OPS-6 2026-08-12) |
+| `UNKNOWN_KEY` | A `requires*` key in front-matter does not match any of the three legal keys (`requires_merged`, `requires_file_on_main`, `requires_on_main`). The rejection message suggests the nearest legal key. Common causes: hyphen instead of underscore (`requires-merged`), plural instead of singular (`requires_files_on_main`). |
+| `REQUIRES_MERGED_INVALID` | `requires_merged` value is not a positive integer. Reject: `0`, negatives, `#123`, `abc`, empty. The watcher silently ignores non-integer values, so the gate would disappear. |
+| `REQUIRES_PATH_EMPTY` | `requires_file_on_main` or `requires_on_main` has an empty value. An empty path gates nothing and the prompt runs ungated. |
 
 ---
 

@@ -21,6 +21,194 @@ import { fileURLToPath } from "node:url";
 const MAX_SIZE = 10;
 const REQUIRED = ["premise", "premise_means", "scope", "done_when", "size"];
 
+// ---------------------------------------------------------------------------
+// Cluster-chaining SLICE 1: dependency key recognition and validation
+// ---------------------------------------------------------------------------
+
+/** The three legal dependency keys the watcher honours (or will honour). */
+const LEGAL_DEP_KEYS = ["requires_merged", "requires_file_on_main", "requires_on_main"];
+
+/**
+ * Levenshtein edit distance — small helper so we can suggest the nearest legal
+ * key instead of giving a bare UNKNOWN_KEY rejection.  No new deps; pure JS.
+ */
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = [];
+  for (let i = 0; i <= m; i++) {
+    dp[i] = [i];
+  }
+  for (let j = 0; j <= n; j++) {
+    dp[0][j] = j;
+  }
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+/** Nearest legal dep key by edit distance. */
+function nearestDepKey(bad) {
+  let best = LEGAL_DEP_KEYS[0];
+  let bestDist = levenshtein(bad, best);
+  for (const k of LEGAL_DEP_KEYS.slice(1)) {
+    const d = levenshtein(bad, k);
+    if (d < bestDist) { best = k; bestDist = d; }
+  }
+  return best;
+}
+
+/**
+ * Extract the raw front-matter block (between first and second ---).
+ * Returns null when there is no front-matter.
+ */
+function rawFrontMatterBlock(text) {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Scan the raw front-matter text for any key that looks like a `requires*`
+ * variant (including hyphenated forms that parseFrontMatter never sees because
+ * its key regex only allows underscores).  Returns an array of bad key strings.
+ *
+ * Strategy: flag any key that (a) matches /^requires?[-_]/i and (b) does NOT
+ * exactly match one of the three legal keys (case-insensitively, after lowering).
+ * Hyphen vs. underscore is intentionally NOT normalised here — `requires-merged`
+ * is a distinct bad key even though it is "close" to `requires_merged`.
+ */
+function findUnknownDepKeys(rawFm) {
+  const bad = [];
+  for (const line of rawFm.split(/\r?\n/)) {
+    // Match any line where the key starts with "require" + optional "s" + separator.
+    // Accepts both hyphen and underscore separators to catch the common typos.
+    const m = line.match(/^(requires?[-_]\S*?):\s*/i);
+    if (!m) continue;
+    const rawKey = m[1];
+    const keyLower = rawKey.toLowerCase();
+    if (!LEGAL_DEP_KEYS.includes(keyLower)) {
+      bad.push(rawKey);  // report original casing/punctuation
+    }
+  }
+  return bad;
+}
+
+/**
+ * Given an unknown dep key (already lowered), suggest the nearest legal key
+ * by Levenshtein distance.  Normalise hyphens → underscores first so that
+ * `requires-merged` is close to `requires_merged` (distance 1), not far.
+ */
+function suggestDepKey(badKeyLower) {
+  const normalised = badKeyLower.replace(/-/g, "_");
+  return nearestDepKey(normalised);
+}
+
+/**
+ * Validate the values of the three legal dependency keys.
+ * Returns { ok: true } or { ok: false, code, msg }.
+ *
+ * Mirror the watcher's exact contract (scripts/pr-watcher/index.mjs ~line 860):
+ *   requires_merged  -> positive integer (list or scalar)
+ *   requires_file_on_main -> non-empty path (list or scalar)
+ *   requires_on_main -> non-empty path or "path :: fixed-string" (list or scalar)
+ *                       WARN only — watcher does not honour it until SLICE 2.
+ */
+function validateDepKeyValues(fm, file) {
+  // requires_merged: must be a positive integer (or list of positive integers)
+  if (fm.requires_merged !== undefined) {
+    const vals = Array.isArray(fm.requires_merged) ? fm.requires_merged : [fm.requires_merged];
+    // An empty list means the key was present but had no values — silently drops the gate.
+    if (vals.length === 0) {
+      return {
+        ok: false, code: "REQUIRES_MERGED_INVALID",
+        msg: "requires_merged is empty. Provide at least one positive integer PR number.",
+      };
+    }
+    for (const raw of vals) {
+      const str = String(raw).trim();
+      if (str === "" || str === "[]") {
+        return {
+          ok: false, code: "REQUIRES_MERGED_INVALID",
+          msg: "requires_merged value is empty. Provide a positive integer PR number.",
+        };
+      }
+      const n = Number(str);
+      if (!Number.isInteger(n) || n <= 0) {
+        return {
+          ok: false, code: "REQUIRES_MERGED_INVALID",
+          msg:
+            "requires_merged value must be a positive integer PR number (got " +
+            JSON.stringify(str) + "). " +
+            "Reject: 0, negatives, #123, abc, empty.",
+        };
+      }
+    }
+  }
+
+  // requires_file_on_main: must be non-empty path (list or scalar)
+  if (fm.requires_file_on_main !== undefined) {
+    const vals = Array.isArray(fm.requires_file_on_main)
+      ? fm.requires_file_on_main
+      : [fm.requires_file_on_main];
+    // An empty list means the key was present but had no values — silently drops the gate.
+    if (vals.length === 0) {
+      return {
+        ok: false, code: "REQUIRES_PATH_EMPTY",
+        msg: "requires_file_on_main is empty. Provide at least one file path.",
+      };
+    }
+    for (const raw of vals) {
+      const str = String(raw).trim();
+      if (str === "" || str === "[]") {
+        return {
+          ok: false, code: "REQUIRES_PATH_EMPTY",
+          msg: "requires_file_on_main has an empty value. Provide a non-empty file path.",
+        };
+      }
+    }
+  }
+
+  // requires_on_main: must be non-empty path or "path :: fixed-string" (list or scalar)
+  // WARN only — watcher does not honour this key until SLICE 2 lands.
+  // TODO: remove this warning when SLICE 2 is on main.
+  if (fm.requires_on_main !== undefined) {
+    const vals = Array.isArray(fm.requires_on_main)
+      ? fm.requires_on_main
+      : [fm.requires_on_main];
+    // An empty list means the key was present but had no values — silently drops the gate.
+    if (vals.length === 0) {
+      return {
+        ok: false, code: "REQUIRES_PATH_EMPTY",
+        msg: "requires_on_main is empty. Provide at least one path (or 'path :: fixed-string').",
+      };
+    }
+    for (const raw of vals) {
+      const str = String(raw).trim();
+      if (str === "" || str === "[]") {
+        return {
+          ok: false, code: "REQUIRES_PATH_EMPTY",
+          msg: "requires_on_main has an empty value. Provide a non-empty path (or 'path :: fixed-string').",
+        };
+      }
+    }
+    // Emit warning but do NOT change exit code or return failure.
+    const fname = file ? basename(file) : "<file>";
+    process.stderr.write(
+      "WARN  " + fname + "  requires_on_main is accepted by the linter but not yet honoured by the watcher" +
+      " (cluster-chaining SLICE 2). Until SLICE 2 is on main, a prompt relying on it will run UNGATED.\n"
+    );
+  }
+
+  return { ok: true };
+}
+
 const RESET = "\x1b[0m";
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -177,13 +365,38 @@ export function lint(file, opts) {
   const dequeue = opts && opts.dequeue;
   const repoRoot = (opts && opts.repoRoot) || process.cwd();
   const name = basename(file);
-  const fm = parseFrontMatter(readFileSync(file, "utf8"));
+  const fileText = readFileSync(file, "utf8");
+  const fm = parseFrontMatter(fileText);
   const fail = (code, msg) => ({ ok: false, code, msg, name });
 
   if (!fm) {
     return fail("NO_FRONT_MATTER",
       "No YAML front-matter. See docs/pr-prompts/PROMPT-SCHEMA.md.\n" +
       "        Every prompt needs an EXECUTABLE premise, or nothing can tell whether it is stale.");
+  }
+
+  // CLUSTER-CHAINING SLICE 1: validate dependency keys.
+  // (a) Reject any unrecognised requires* key — catches hyphen vs. underscore, plural vs.
+  //     singular, and other near-misses that parseFrontMatter silently ignores.
+  {
+    const rawFm = rawFrontMatterBlock(fileText);
+    if (rawFm) {
+      const badKeys = findUnknownDepKeys(rawFm);
+      if (badKeys.length > 0) {
+        const bad = badKeys[0];
+        const suggestion = suggestDepKey(bad.toLowerCase());
+        return fail("UNKNOWN_KEY",
+          "Unknown dependency key: " + JSON.stringify(bad) + ".\n" +
+          "        Did you mean " + JSON.stringify(suggestion) + "?\n" +
+          "        Legal keys: " + LEGAL_DEP_KEYS.join(", ") + ".\n" +
+          "        A mistyped key silently loses its gate — the prompt runs UNGATED.");
+      }
+    }
+  }
+  // (b) Validate the values of recognised dependency keys.
+  {
+    const depResult = validateDepKeyValues(fm, file);
+    if (!depResult.ok) return fail(depResult.code, depResult.msg);
   }
 
   const missing = REQUIRED.filter((k) => !fm[k] || (Array.isArray(fm[k]) && fm[k].length === 0));
@@ -276,7 +489,6 @@ export function lint(file, opts) {
     ];
 
     // Extract the Markdown body (text after the second ---).
-    const fileText = readFileSync(file, "utf8");
     const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
     const body = bodyMatch ? bodyMatch[1] : "";
 

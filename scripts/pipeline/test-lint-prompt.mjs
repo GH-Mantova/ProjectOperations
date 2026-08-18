@@ -192,6 +192,76 @@ run("migration-scoped-backfill-still-caught",
   "  - apps/api/test/site.spec.ts\ndone_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
   "rollback_strategy: 'revert migration'\nescalates: false", 1);
 
+// ── Cluster-chaining SLICE 1: dependency key recognition and validation ─────
+// Each negative test was RED before this PR and must be GREEN after.
+// The final positive tests (no dep keys at all, well-formed dep keys) must
+// remain ADMIT — they are the regression guard for existing queue prompts.
+
+console.log("\n=== exit 1 REJECT: requires-merged (hyphen) → UNKNOWN_KEY");
+run("dep-hyphen-merged",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires-merged: 42", 1);
+
+console.log("\n=== exit 1 REJECT: requires_files_on_main (plural) → UNKNOWN_KEY, suggests singular");
+run("dep-plural-files-on-main",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_files_on_main: apps/foo.ts", 1);
+
+console.log("\n=== exit 1 REJECT: requires_merged: 0 → REQUIRES_MERGED_INVALID");
+run("dep-merged-zero",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged: 0", 1);
+
+console.log("\n=== exit 1 REJECT: requires_merged: -1 → REQUIRES_MERGED_INVALID");
+run("dep-merged-negative",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged: -1", 1);
+
+console.log("\n=== exit 1 REJECT: requires_merged: abc → REQUIRES_MERGED_INVALID");
+run("dep-merged-abc",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged: abc", 1);
+
+console.log("\n=== exit 1 REJECT: requires_merged: (empty) → REQUIRES_MERGED_INVALID");
+run("dep-merged-empty",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged:", 1);
+
+console.log("\n=== exit 1 REJECT: requires_file_on_main: (empty) → REQUIRES_PATH_EMPTY");
+run("dep-file-on-main-empty",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_file_on_main:", 1);
+
+console.log("\n=== exit 1 REJECT: requires_on_main: (empty) → REQUIRES_PATH_EMPTY");
+run("dep-on-main-empty",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_on_main:", 1);
+
+console.log("\n=== exit 0 ADMIT: all three keys well-formed (inline scalar form)");
+run("dep-all-keys-well-formed",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_merged: 42\n" +
+  "requires_file_on_main: apps/api/src/foo.ts\n" +
+  "requires_on_main: apps/api/src/bar.ts", 0);
+
+console.log("\n=== exit 0 ADMIT: requires_on_main path-only → admitted, warning on stderr");
+run("dep-on-main-path-only",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_on_main: apps/foo.ts", 0);
+
+console.log("\n=== exit 0 ADMIT: requires_on_main path :: fixed-string → admitted, warning on stderr");
+run("dep-on-main-path-and-string",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_on_main: apps/foo.ts :: some fixed string", 0);
+
+console.log("\n=== exit 0 ADMIT: prompt with NONE of the dep keys → unchanged behaviour (MOST important)");
+run("dep-none-present",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

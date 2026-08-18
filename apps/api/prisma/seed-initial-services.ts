@@ -378,8 +378,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         isActive: true,
         isSuperUser: seed.isSuperUser ?? false,
         // Also set on UPDATE so re-seeding an EXISTING dev database actively
-        // REVOKES any Password123! hash planted by earlier seed versions —
+        // REVOKES any locally-usable hash planted by earlier seed versions —
         // omitting it here would leave old usable hashes behind forever.
+        // See LocalAuthProvider (local-auth.provider.ts): hashes without ":"
+        // are treated as unusable; local login is impossible for these accounts.
         passwordHash: "SSO-ONLY"
       },
       create: {
@@ -421,7 +423,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       lastName: "E2E",
       isActive: true,
       isSuperUser: true,
-      passwordHash: hashPassword("Password123!")
+      // E2E_FIELD_PASSWORD — distinct from the old shared dev password so the
+      // public repo no longer exposes that literal. Must match helpers.ts
+      // FIELD_WORKER.password (tests/e2e/pr-acceptance/helpers.ts).
+      passwordHash: hashPassword("E2eField2026!")
     },
     create: {
       id: "user-field-e2e",
@@ -430,7 +435,10 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       lastName: "E2E",
       isActive: true,
       isSuperUser: true,
-      passwordHash: hashPassword("Password123!")
+      // E2E_FIELD_PASSWORD — distinct from the old shared dev password so the
+      // public repo no longer exposes that literal. Must match helpers.ts
+      // FIELD_WORKER.password (tests/e2e/pr-acceptance/helpers.ts).
+      passwordHash: hashPassword("E2eField2026!")
     }
   });
   await prisma.userRole.deleteMany({ where: { userId: fieldE2eUser.id } });

@@ -17,9 +17,23 @@
 # SAFE BY DEFAULT: reports only. Pass -Fix to actually restart.
 # Pure ASCII (PS 5.1 reads UTF-8-without-BOM as Windows-1252).
 
+#   3. CHURNING: the watcher is crash-looping - dying and being relaunched every few seconds.
+#      Added 2026-08-18 after this script reported HEALTHY for the whole of a two-hour outage
+#      (see docs/pr-prompts/00-supervisor-2026-08-18-0030-crashloop-fixed.md). EVERY signal
+#      below is a SINGLE-INSTANT SAMPLE, and in a ~17-second restart cycle a process is almost
+#      always present at the sampled moment and the heartbeat was just rewritten by the newest
+#      child. So "alive + fresh heartbeat" reads as BUSY and the script exits 0. It is
+#      structurally blind to churn. The only way to see a loop is to look at HISTORY, which is
+#      what Get-RestartChurn does. DOCTRINE 7: your instrument lies.
+#
+#      A crash loop must NOT be answered with another restart - restarting is exactly what is
+#      already failing. On -Fix this HALTS the loop and escalates to needs-marco/.
+
 param(
     [switch]$Fix,
-    [int]$StallMinutes = 90
+    [int]$StallMinutes = 90,
+    [int]$ChurnWindowMinutes = 20,
+    [int]$ChurnThreshold = 4
 )
 
 $ErrorActionPreference = "Continue"
@@ -42,6 +56,110 @@ if (-not (Test-Path $supervise)) {
 function Get-WatcherProcess {
     return Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
            Where-Object { $_.CommandLine -like "*pr-watcher*" }
+}
+
+# --- CHURN DETECTION (history, not an instant) --------------------------------------------
+# Counts supervisor restart events inside a rolling window. supervisor.log is the right
+# source: supervise-watcher.ps1 writes one "Supervisor started." per start and one
+# "Watcher exited ..." per child death, and (since #1162) wraps those writes in try/catch so
+# logging can never take the supervisor down. The launcher transcript is deliberately NOT
+# used - it is the artefact that broke and caused the 2026-08-17 loop in the first place.
+#
+# In steady state this is 0-1. In the 2026-08-17 loop it was ~4/min for two hours.
+function Get-RestartChurn {
+    param([string] $LogPath, [int] $WindowMinutes)
+
+    $result = [pscustomobject]@{ Starts = 0; Exits = 0; Total = 0; Readable = $false; Newest = $null }
+    if (-not (Test-Path $LogPath)) { return $result }
+
+    try { $lines = Get-Content -Path $LogPath -Tail 4000 -ErrorAction Stop }
+    catch { return $result }   # unreadable = fail open; the other signals still run
+
+    $result.Readable = $true
+    $cutoff = (Get-Date).AddMinutes(-$WindowMinutes)
+
+    foreach ($line in $lines) {
+        # Lines look like: [2026-08-18T07:31:30.6116300+10:00] Supervisor started. ...
+        if ($line -notmatch '^\[([^\]]+)\]') { continue }
+        # $ts MUST be pre-typed: in PS 5.1 a [ref] to a $null variable cannot bind the
+        # [datetime]::TryParse(string,[ref]datetime) overload and every line throws.
+        [datetime] $ts = [datetime]::MinValue
+        if (-not [datetime]::TryParse($matches[1], [ref] $ts)) { continue }
+        if ($ts -lt $cutoff) { continue }
+        if ($null -eq $result.Newest -or $ts -gt $result.Newest) { $result.Newest = $ts }
+        if ($line -match 'Supervisor started\.')  { $result.Starts++ }
+        elseif ($line -match 'Watcher exited')    { $result.Exits++ }
+    }
+    # One start + one exit is a single restart, not a loop. Take the larger of the two so a
+    # loop is counted once per cycle rather than twice.
+    $result.Total = [math]::Max($result.Starts, $result.Exits)
+    return $result
+}
+
+# A crash loop is NOT fixed by restarting. Stop the churn and hand it to Marco.
+# Wrappers die FIRST - killing the node alone just makes the supervisor relaunch it.
+function Invoke-ChurnHalt {
+    param($proc, $churn, [string] $Dir)
+
+    Write-Output ""
+    Write-Output "=== HALTING THE CRASH LOOP (not restarting - restarting is what is already failing)"
+
+    $wrappers = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+                  Where-Object { $_.CommandLine -like "*supervise-watcher*" -or $_.CommandLine -like "*watcher-launcher*" })
+    foreach ($w in $wrappers) {
+        Write-Output ("  stopping wrapper pid " + $w.ProcessId)
+        Stop-Process -Id $w.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 3
+    foreach ($p in @($proc)) {
+        if ($p) {
+            Write-Output ("  stopping watcher pid " + $p.ProcessId)
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Start-Sleep -Seconds 3
+
+    $stillW = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -like "*supervise-watcher*" -or $_.CommandLine -like "*watcher-launcher*" })
+    $stillN = @(Get-WatcherProcess)
+    Write-Output ("  after halt: wrappers=" + $stillW.Count + " nodes=" + $stillN.Count)
+
+    New-Item -ItemType Directory -Path $Dir -Force | Out-Null
+    $stamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
+    $path  = Join-Path $Dir ("WATCHER-CHURN-{0}.md" -f $stamp)
+    $body  = @(
+        "# ESCALATION: the PR watcher was CHURNING and has been halted",
+        "",
+        "Written by scripts/restart-watcher-if-wedged.ps1 at $(Get-Date -Format o).",
+        "",
+        "## What was seen",
+        "",
+        "In the last $ChurnWindowMinutes minutes of ``scripts/pr-watcher/logs/supervisor.log``:",
+        "",
+        "- ``Supervisor started.`` lines: $($churn.Starts)",
+        "- ``Watcher exited`` lines:    $($churn.Exits)",
+        "- restart cycles counted:    $($churn.Total)  (threshold $ChurnThreshold)",
+        "",
+        "That is a crash loop, not a slow prompt. The loop has been STOPPED rather than",
+        "restarted - wrappers killed first, then the node, so nothing relaunches it.",
+        "",
+        "## Why this check exists",
+        "",
+        "On 2026-08-17 this script reported HEALTHY for a two-hour outage because every other",
+        "signal it has is a single-instant sample: a process is nearly always alive at the",
+        "sampled moment of a ~17s restart cycle, and the heartbeat had just been rewritten by",
+        "the newest child. Only history shows a loop.",
+        "",
+        "## What to do",
+        "",
+        "1. Read the tail of ``scripts/pr-watcher/logs/supervisor.log`` for the REASON line.",
+        "2. Fix the cause. Do not simply relaunch - it will loop again.",
+        "3. Start the supervisor again once the cause is fixed.",
+        "",
+        "Nothing in the queue was moved, and no git write was performed."
+    ) -join "`r`n"
+    Set-Content -Path $path -Value $body -Encoding UTF8
+    Write-Output ("  escalation written: " + $path)
 }
 
 # Stop any wedged instance, clear the stale single-instance lock, relaunch via the wrapper,
@@ -100,6 +218,31 @@ if ($alive) {
     foreach ($p in $proc) { Write-Output ("watcher process:       ALIVE (pid " + $p.ProcessId + ")") }
 } else {
     Write-Output "watcher process:       *** NOT RUNNING ***"
+}
+
+# --- Signal 2b: restart CHURN. Checked BEFORE everything else, because during a crash loop
+#     every other signal looks fine: the process is alive (a new one every ~17s) and the
+#     heartbeat is fresh (the newest child just wrote it). Order matters here.
+$supervisorLog = Join-Path $watchDir "logs\supervisor.log"
+$churn = Get-RestartChurn -LogPath $supervisorLog -WindowMinutes $ChurnWindowMinutes
+if ($churn.Readable) {
+    Write-Output ("restart churn:         " + $churn.Total + " cycle(s) in " + $ChurnWindowMinutes + " min  (starts=" + $churn.Starts + " exits=" + $churn.Exits + ", threshold " + $ChurnThreshold + ")")
+} else {
+    Write-Output ("restart churn:         supervisor.log unreadable or absent - churn UNKNOWN (" + $supervisorLog + ")")
+}
+
+if ($churn.Total -ge $ChurnThreshold) {
+    Write-Output ""
+    Write-Output ("VERDICT: CHURNING - " + $churn.Total + " watcher restarts in the last " + $ChurnWindowMinutes + " min. This is a crash loop, not a slow prompt.")
+    Write-Output "         Restarting is NOT the remedy - it is what is already failing on a loop."
+    if (-not $Fix) {
+        Write-Output ""
+        Write-Output "REPORT-ONLY MODE. To halt the loop and escalate, re-run with -Fix:"
+        Write-Output "  powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\restart-watcher-if-wedged.ps1 -Fix"
+        exit 3
+    }
+    Invoke-ChurnHalt -proc $proc -churn $churn -Dir (Join-Path $Q "needs-marco")
+    exit 3
 }
 
 # --- Empty queue: an idle watcher is correct ONLY if it is actually running. If it is DOWN,

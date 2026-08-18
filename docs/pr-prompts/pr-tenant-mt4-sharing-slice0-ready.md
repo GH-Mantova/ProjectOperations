@@ -12,7 +12,7 @@ escalates: true
 
 # Multi-company sharing (MT-4/MT-5) - SLICE 0: rewrite the plan for explicit sharing
 
-Brief **§2.1**. This slice rewrites `docs/plans/multi-tenant-plan.md` and NOTHING else. No schema,
+Brief **Â§2.1**. This slice rewrites `docs/plans/multi-tenant-plan.md` and NOTHING else. No schema,
 no middleware, no UI, no migration. The plan is the first PR; the slices chain behind it.
 
 ## The decision this slice records
@@ -91,6 +91,45 @@ detected and reported rather than silently created twice.
 
 Each slice must be <= 10 files including tests, must carry `escalates: true`, and must declare
 `requires_merged` on the slice before it.
+
+
+## MARCO 2026-08-18: THE SLICE 2 -> SLICE 3 ORDER MUST BE A MACHINE GATE, NOT PROSE
+
+Marco's instruction, verbatim: *"ensure the gates are tight so slice 3 never lands before slice 2
+fully on main."*
+
+Prose in a plan does not stop a watcher. The plan you write MUST specify, for the SLICE 3 prompt,
+front-matter that makes the ordering mechanically impossible to violate:
+
+1. **`requires_merged: <SLICE 2 PR number>`** - SLICE 3's prompt does not arm until SLICE 2's PR
+   has actually merged. Not "is open", not "is approved". Merged.
+
+2. **`requires_file_on_main: apps/api/prisma/migrations/<slice2_migration_folder>/migration.sql`** -
+   a second, independent proof that the migration itself is on `main`. `requires_merged` alone
+   trusts a PR number; this checks the artifact. Two different instruments, deliberately.
+
+3. **A premise that is FALSE while any owner is still blank.** SLICE 3's premise must query the
+   real state, not a file. Something equivalent to: the column is still nullable, OR at least one
+   `Client` / `Worker` / `Contact` row still has a null `tenantId`. While that is true, SLICE 3
+   must not run. When SLICE 2 has done its job the premise dies and SLICE 3 becomes eligible.
+   State the exact check in the plan.
+
+4. **SLICE 3's own first step is a re-verification, and it aborts.** Before changing one line of
+   the scoping filter, SLICE 3 must count rows with a null owner across all three tables and
+   **exit NO-OP if the count is anything but zero.** Belt, braces, and a third check at the moment
+   of action - because SLICE 2 is `-HOLD` and run by Marco by hand, so there is a real window in
+   which the queue believes it has landed and the data says otherwise.
+
+**Why four overlapping gates for one ordering rule.** If the filter flips to owner-or-grant while
+rows still carry a blank owner, **every client, worker and contact disappears from the app for
+everyone, including Initial Services.** Not a degraded view - the records become invisible to the
+only company that owns them. That is a production outage of the core master data, caused by two
+PRs merging in the wrong order. The cost of an extra gate is a few lines of front-matter; the cost
+of the wrong order is the app.
+
+Write all four into the plan as a numbered, non-negotiable block under SLICE 3, and state
+explicitly that a SLICE 3 prompt lacking any of them must be rejected at lint time rather than
+armed.
 
 ## The separate doc-reconcile this plan must name
 

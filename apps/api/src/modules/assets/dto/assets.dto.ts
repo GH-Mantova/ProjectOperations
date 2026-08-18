@@ -115,3 +115,38 @@ export class CheckinAssetDto {
   /** Optional notes recorded at return (e.g. condition on return). */
   @IsOptional() @IsString() notes?: string;
 }
+
+/**
+ * Payload for recording a usage reading (hours meter or odometer) on an asset.
+ *
+ * The unit discriminates which denormalised column is updated
+ * (currentHoursReading for "hours", currentKmReading for "km").
+ * Readings must be >= the last recorded reading unless isMeterReplacement=true,
+ * which requires the caller to hold the Warehouse Manager or Admin role.
+ */
+export class RecordUsageReadingDto {
+  /** Measurement unit: "hours" | "km" */
+  @IsString() unit!: string;
+  /** The new reading value (e.g. 1234.5 hours or 45678.0 km). */
+  @Type(() => Number) @IsNumber() @Min(0) reading!: number;
+  /**
+   * When true the reading is treated as a meter replacement (odometer/hours
+   * reset). The value is recorded without checking against the previous reading.
+   * Requires Warehouse Manager or Admin role — the service rejects with 403
+   * when an unpermitted caller sets this flag.
+   */
+  @IsOptional() @Type(() => Boolean) @IsBoolean() isMeterReplacement?: boolean;
+  /** Optional linking to the form submission that generated this reading. */
+  @IsOptional() @IsString() sourceSubmissionId?: string;
+  /** Optional freetext note (e.g. "Meter replaced, reset to 0"). */
+  @IsOptional() @IsString() note?: string;
+}
+
+/**
+ * Query parameters for listing usage readings for an asset.
+ * Currently just pagination — future: filter by unit, date range.
+ */
+export class UsageReadingsQueryDto extends PaginationQueryDto {
+  /** If supplied, narrows results to this unit (e.g. "hours" or "km"). */
+  @IsOptional() @IsString() unit?: string;
+}

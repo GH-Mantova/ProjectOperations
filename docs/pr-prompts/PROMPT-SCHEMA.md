@@ -359,3 +359,35 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `FIX_TARGET_UNKNOWN` | `fixes_pr` state check failed (bad number, network, gh auth). Fix the pointer. |
 | `FIX_TARGET_INVALID` | `fixes_pr` is not a positive integer. |
 | `DESTRUCTIVE_MUST_ESCALATE` | Destructive signal detected (`backfill`, `NOT NULL`, `DROP TABLE/COLUMN/CONSTRAINT/TYPE`, `DELETE FROM`, `TRUNCATE`, `drop-legacy`, or `destructive`) but `escalates` is not `true`. Set `escalates: true`. (OPS-6 2026-08-12) |
+
+---
+
+## Arming a prompt requires `git add -f`
+
+`.gitignore:73` ignores `docs/pr-prompts/*-ready.md`:
+
+```
+docs/pr-prompts/*-ready.md
+```
+
+A plain `git add docs/pr-prompts/pr-<slug>-ready.md` therefore does **nothing** â€” silently. The
+file is not staged, the arming PR contains no prompt, and the prompt never reaches `main`. Use:
+
+```
+git add -f docs/pr-prompts/pr-<slug>-ready.md
+```
+
+Two things make this easy to get wrong, so check for both:
+
+- **`git check-ignore` can return empty for an ignored path.** If the file is *already tracked*,
+  the ignore rule no longer applies to it and `check-ignore` reports nothing. An empty result is
+  therefore not evidence that the pattern does not exist â€” it may only mean this particular file
+  was force-added once before. Read `.gitignore` directly rather than probing one file.
+- **Reaching `main` is not the same as running.** The watcher consumes prompts from the DEV TREE
+  filesystem at `C:\ProjectOperations2\docs\pr-prompts\`, not from `main`. After the arming PR
+  merges, the file must also be materialised into that directory. A committed-but-unmaterialised
+  prompt never runs.
+
+`*-HOLD.md` is not covered by the ignore pattern and stages normally. Only `*-ready.md` needs the
+`-f`.
+

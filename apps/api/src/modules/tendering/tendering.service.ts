@@ -841,6 +841,9 @@ export class TenderingService {
   // Graph outage or misconfigured site can never roll back the tender
   // row that was already committed. Uploads later re-ensure the specific
   // category folder they need, so missed folders self-heal on first use.
+  //
+  // TFM-S5: persists the provisioning outcome (ok/partial/failed) and the
+  // per-path failure list onto the Tender row so the tender page can surface it.
   private async provisionTenderFolders(
     tender: {
       id: string;
@@ -851,13 +854,67 @@ export class TenderingService {
     actorId?: string
   ): Promise<void> {
     try {
-      await this.sharePoint.ensureTenderFolderStructure(tender, actorId);
+      const result = await this.sharePoint.ensureTenderFolderStructure(tender, actorId);
+      await this.prisma.tender.update({
+        where: { id: tender.id },
+        data: {
+          folderProvisioningStatus: result.status,
+          folderProvisioningErrors: result.failures.length > 0 ? result.failures : Prisma.JsonNull
+        }
+      });
     } catch (err) {
       this.logger.warn(
         `Tender folder provisioning failed for ${tender.tenderNumber}: ${
           err instanceof Error ? err.message : String(err)
         }. Folders will be created lazily on first upload.`
       );
+      try {
+        await this.prisma.tender.update({
+          where: { id: tender.id },
+          data: {
+            folderProvisioningStatus: "failed",
+            folderProvisioningErrors: [{ path: "(root)", message: err instanceof Error ? err.message : String(err) }]
+          }
+        });
+      } catch {
+        // Swallow the status-persist failure -- the tender row is more important.
+      }
+    }
+  }
+
+  // TFM-S5 — Re-runs folder provisioning on demand. Called from the
+  // reprovision-folders endpoint so the estimator can retry after a
+  // transient Graph failure.
+  async reprovisionFolders(id: string, actorId?: string): Promise<{ status: string; failures: Array<{ path: string; message: string }> }> {
+    const tender = await this.prisma.tender.findUnique({
+      where: { id },
+      include: {
+        site: { select: { name: true } },
+        tenderClients: { include: { client: { select: { name: true } } } }
+      }
+    });
+    if (!tender) throw new NotFoundException("Tender not found.");
+
+    try {
+      const result = await this.sharePoint.ensureTenderFolderStructure(tender, actorId);
+      await this.prisma.tender.update({
+        where: { id },
+        data: {
+          folderProvisioningStatus: result.status,
+          folderProvisioningErrors: result.failures.length > 0 ? result.failures : Prisma.JsonNull
+        }
+      });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await this.prisma.tender.update({
+        where: { id },
+        data: {
+          folderProvisioningStatus: "failed",
+          folderProvisioningErrors: [{ path: "(root)", message }]
+        }
+      });
+      return { status: "failed", failures: [{ path: "(root)", message }] };
     }
   }
 

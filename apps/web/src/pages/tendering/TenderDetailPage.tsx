@@ -18,6 +18,7 @@ import { AssumptionsExclusionsFloatingEditor } from "./AssumptionsExclusionsFloa
 import { ProcessStageBar } from "../../components/ProcessStageBar";
 import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
 import { RecordHistory } from "../../components/RecordHistory";
+import { TenderFolderStatusPill, type FolderProvisioningFailure } from "./TenderFolderStatusPill";
 
 type TenderDetail = {
   id: string;
@@ -60,6 +61,9 @@ type TenderDetail = {
   followUps: Array<{ id: string; details: string; dueAt: string; status: string; assignedUser?: { firstName: string; lastName: string } | null }>;
   pricingSnapshots: Array<{ id: string; versionLabel: string; estimatedValue?: string | null; marginPercent?: string | null; assumptions?: string | null; createdAt: string }>;
   outcomes: Array<{ id: string; outcomeType: string; notes?: string | null; recordedAt: string }>;
+  // TFM-S5: folder provisioning status persisted after create/duplicate/reprovision.
+  folderProvisioningStatus?: string | null;
+  folderProvisioningErrors?: FolderProvisioningFailure[] | null;
   tenderDocuments: Array<{
     id: string;
     category: string;
@@ -436,6 +440,13 @@ export function TenderDetailPage() {
             >
               {stageLabel}
             </span>
+            <TenderFolderStatusPill
+              tenderId={tender.id}
+              status={tender.folderProvisioningStatus}
+              failures={tender.folderProvisioningErrors}
+              canRetry={canManageTenders}
+              onRetried={() => void reload()}
+            />
             {canManageTenders ? (
               <select
                 aria-label="Change tender status"

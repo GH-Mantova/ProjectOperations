@@ -22617,6 +22617,18 @@
           "filterable": false,
           "aggregations": []
         },
+        "folderProvisioningStatus": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "folderProvisioningErrors": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,

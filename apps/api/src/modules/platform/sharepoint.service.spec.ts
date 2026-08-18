@@ -248,11 +248,56 @@ describe("SharePointService", () => {
           Promise.resolve({ siteId: "site", driveId: "drive", itemId: `i-${relativePath}`, name, relativePath })
       );
 
-      await expect(
-        service.ensureTenderFolderStructure({ id: "t-2", tenderNumber: "T-002", tenderClients: [] })
-      ).resolves.toBeUndefined();
+      // TFM-S5: returns partial (not undefined) because one path failed and others succeeded.
+      const result = await service.ensureTenderFolderStructure({ id: "t-2", tenderNumber: "T-002", tenderClients: [] });
+      expect(result.status).toBe("partial");
+      expect(result.failures.length).toBeGreaterThan(0);
       // Should have attempted calls for prefix + all category paths + Quotes guard.
       expect(adapter.ensureFolder.mock.calls.length).toBeGreaterThan(3);
+    });
+
+    // TFM-S5 -- accumulator tests
+    it("TFM-S5: returns status ok and null failures on full success", async () => {
+      const { service } = buildService();
+      const result = await service.ensureTenderFolderStructure({ id: "t-1", tenderNumber: "T-001", tenderClients: [] });
+      expect(result.status).toBe("ok");
+      expect(result.failures).toHaveLength(0);
+    });
+
+    it("TFM-S5: returns status partial when one nested path fails and others succeed", async () => {
+      const { service, adapter } = buildService();
+      // Allow parent + tender folder creation (3 calls: Org, Org/Tenders, Org/Tenders/T-003)
+      adapter.ensureFolder
+        .mockImplementationOnce(({ relativePath, name }: { relativePath: string; name: string }) =>
+          Promise.resolve({ siteId: "site", driveId: "drive", itemId: "p1", name, relativePath })
+        )
+        .mockImplementationOnce(({ relativePath, name }: { relativePath: string; name: string }) =>
+          Promise.resolve({ siteId: "site", driveId: "drive", itemId: "p2", name, relativePath })
+        )
+        .mockImplementationOnce(({ relativePath, name }: { relativePath: string; name: string }) =>
+          Promise.resolve({ siteId: "site", driveId: "drive", itemId: "t3", name, relativePath })
+        )
+        // One specific category path fails (e.g. "1. Plans, Scopes & Specs")
+        .mockRejectedValueOnce(new Error("Nested create refused"))
+        // All others succeed
+        .mockImplementation(({ relativePath, name }: { relativePath: string; name: string }) =>
+          Promise.resolve({ siteId: "site", driveId: "drive", itemId: `i-${relativePath}`, name, relativePath })
+        );
+
+      const result = await service.ensureTenderFolderStructure({ id: "t-3", tenderNumber: "T-003", tenderClients: [] });
+      expect(result.status).toBe("partial");
+      expect(result.failures.length).toBe(1);
+      expect(result.failures[0].message).toBe("Nested create refused");
+    });
+
+    it("TFM-S5: returns status failed when root parent creation fails", async () => {
+      const { service, adapter } = buildService();
+      adapter.ensureFolder.mockRejectedValueOnce(new Error("Site unreachable"));
+
+      const result = await service.ensureTenderFolderStructure({ id: "t-4", tenderNumber: "T-004", tenderClients: [] });
+      expect(result.status).toBe("failed");
+      expect(result.failures.length).toBe(1);
+      expect(result.failures[0].message).toBe("Site unreachable");
     });
 
     it("ensureTenderCategoryFolder: single-segment path creates one folder at the right path", async () => {

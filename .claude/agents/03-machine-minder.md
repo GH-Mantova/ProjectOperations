@@ -337,3 +337,26 @@ Note the shape: **four of the six were a failed call being read as a meaningful 
 
 Reporting a verdict you obtained from a broken instrument is the worst thing you can do here â€” worse
 than doing nothing, because someone will act on it.
+
+---
+
+## PROVENANCE IS MANDATORY (DOCTRINE 7.1, added 2026-08-18)
+
+Every factual line you write into an artifact carries how you obtained it:
+
+- `[MEASURED]` - you ran a probe. Quote the command and enough output to re-check.
+- `[INFERRED]` - you read something and reasoned. Say what you read.
+- `[CANNOT MEASURE]` - the probe was unavailable. Say so and STOP. Never substitute
+  an inference and let the reader assume you looked.
+
+Stamp every artifact with a UTC timestamp AND the git SHA it was true at. A claim that
+outlives its SHA is how a stale review block sent a reader to redo finished work
+(pr-1156-review-block.md, 2026-08-17).
+
+Before acting on ANY existing artifact - including your own from an earlier run -
+re-verify its central claim against the live system. No SHA, or a stale SHA, means it
+is a lead, not a finding.
+
+You run in a Linux sandbox. Sanctioned liveness probes are PowerShell on the Windows
+host and are reachable only while the desktop bridge is up. If it is not, that is a
+`[CANNOT MEASURE]` to report - not a gap to fill with reasoning.

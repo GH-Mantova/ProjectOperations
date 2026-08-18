@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { SharePointService } from "../platform/sharepoint.service";
 import { CreateTenderDocumentDto } from "./dto/tender-document.dto";
+import { resolveUploadPath } from "./tender-document-categories";
 
 @Injectable()
 export class TenderDocumentsService {
@@ -46,11 +47,30 @@ export class TenderDocumentsService {
     // idempotent and creates the folder lazily for tenders that pre-date
     // PR-64 (or that partially failed at create-time).
     // TFM-S2: passes projectName + site.name so the path is stable across revision bumps.
-    const folder = await this.sharePointService.ensureTenderCategoryFolder(
-      { id: tenderId, tenderNumber: tender.tenderNumber, projectName: tender.projectName, site: tender.site },
-      dto.category,
-      actorId
-    );
+    // TFM-S4: resolveUploadPath maps legacy category values to the new nested
+    // path taxonomy. Quotes/{Client} paths route through ensureTenderQuoteClientFolder
+    // which sanitises the client name and ensures the parent Quotes/ folder.
+    // Any value that does not resolve cleanly falls through to "7. Other".
+    const resolvedPath = resolveUploadPath(dto.category);
+    let folder: Awaited<ReturnType<typeof this.sharePointService.ensureTenderCategoryFolder>>;
+
+    if (resolvedPath.startsWith("Quotes/")) {
+      // Quotes/{ClientName} — delegate to the dedicated per-client helper which
+      // also ensures the parent Quotes/ folder and sanitises the client name.
+      const clientName = resolvedPath.slice("Quotes/".length);
+      const { record } = await this.sharePointService.ensureTenderQuoteClientFolder(
+        tenderId,
+        clientName,
+        actorId
+      );
+      folder = record;
+    } else {
+      folder = await this.sharePointService.ensureTenderCategoryFolder(
+        { id: tenderId, tenderNumber: tender.tenderNumber, projectName: tender.projectName, site: tender.site },
+        resolvedPath,
+        actorId
+      );
+    }
 
     const uploadName = file?.originalname ?? dto.fileName;
     const uploadMime = file?.mimetype ?? dto.mimeType ?? "application/octet-stream";

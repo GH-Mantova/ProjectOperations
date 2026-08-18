@@ -16,7 +16,9 @@ import { NotFoundException } from "@nestjs/common";
 import {
   DOCUMENT_CATEGORIES,
   isDocumentCategory,
-  normaliseDocumentCategory
+  normaliseDocumentCategory,
+  resolveUploadPath,
+  TENDER_FOLDER_STRUCTURE
 } from "./tender-document-categories";
 import { TenderDocumentsService } from "./tender-documents.service";
 
@@ -83,6 +85,11 @@ function buildService(extraPrisma: Record<string, unknown> = {}) {
   const audit = { write: auditWrite };
   const sharepoint = {
     ensureTenderCategoryFolder: jest.fn().mockResolvedValue(folderRow()),
+    ensureTenderQuoteClientFolder: jest.fn().mockResolvedValue({
+      folderId: "client-folder-item",
+      folderPath: "Project Operations/Tenders/TEN-1/Quotes/Client A",
+      record: folderRow({ id: "folder-quotes-client", relativePath: "Project Operations/Tenders/TEN-1/Quotes/Client A" })
+    }),
     uploadFile: jest.fn().mockResolvedValue({
       id: "graph-item-1",
       webUrl: "https://graph.sharepoint.com/drawings/site-plan.pdf",
@@ -138,9 +145,11 @@ describe("TenderDocumentsService.create", () => {
     );
 
     expect(result.id).toBe("doc-1");
+    // TFM-S4: "Drawings" resolves to the nested path "1. Plans, Scopes & Specs/01. Drawings"
+    // via resolveUploadPath before being passed to ensureTenderCategoryFolder.
     expect(sharepoint.ensureTenderCategoryFolder).toHaveBeenCalledWith(
-      { id: "tender-1", tenderNumber: "TEN-1" },
-      "Drawings",
+      expect.objectContaining({ id: "tender-1", tenderNumber: "TEN-1" }),
+      "1. Plans, Scopes & Specs/01. Drawings",
       "user-1"
     );
     // Persisted category matches what the DTO sent — no silent rewrite.
@@ -360,6 +369,95 @@ describe("TenderDocumentsService.remove", () => {
       NotFoundException
     );
     expect((prisma.$transaction as jest.Mock)).not.toHaveBeenCalled();
+  });
+});
+
+// ─── TFM-S4: upload path routing ──────────────────────────────────────────
+
+describe("TenderDocumentsService.create (TFM-S4 routing)", () => {
+  it("legacy category 'Drawings' routes to '1. Plans, Scopes & Specs/01. Drawings' via resolveUploadPath", async () => {
+    const { service, sharepoint } = buildService();
+
+    await service.create(
+      "tender-1",
+      { category: "Drawings", title: "Plan", fileName: "plan.pdf" },
+      "user-1"
+    );
+
+    // resolveUploadPath maps "Drawings" -> "1. Plans, Scopes & Specs/01. Drawings"
+    expect(sharepoint.ensureTenderCategoryFolder).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "tender-1" }),
+      "1. Plans, Scopes & Specs/01. Drawings",
+      "user-1"
+    );
+  });
+
+  it("Quotes/{Client} path routes through ensureTenderQuoteClientFolder", async () => {
+    const { service, sharepoint } = buildService();
+
+    // Cast needed: the DTO type is the legacy DocumentCategory union; at
+    // runtime the API accepts any string and routes via resolveUploadPath.
+    await service.create(
+      "tender-1",
+      { category: "Quotes/Client A" as never, title: "Quote", fileName: "quote.pdf" },
+      "user-1"
+    );
+
+    expect(sharepoint.ensureTenderQuoteClientFolder).toHaveBeenCalledWith(
+      "tender-1",
+      "Client A",
+      "user-1"
+    );
+    expect(sharepoint.ensureTenderCategoryFolder).not.toHaveBeenCalled();
+  });
+
+  it("unknown legacy value falls through to '7. Other'", async () => {
+    const { service, sharepoint } = buildService();
+
+    await service.create(
+      "tender-1",
+      { category: "some-random-value" as never, title: "Doc", fileName: "doc.pdf" },
+      "user-1"
+    );
+
+    expect(sharepoint.ensureTenderCategoryFolder).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "tender-1" }),
+      "7. Other",
+      "user-1"
+    );
+  });
+});
+
+// ─── TFM-S4: resolveUploadPath helper ─────────────────────────────────────
+
+describe("resolveUploadPath (TFM-S4)", () => {
+  it("maps legacy 'Drawings' to nested path", () => {
+    expect(resolveUploadPath("Drawings")).toBe("1. Plans, Scopes & Specs/01. Drawings");
+  });
+
+  it("passes through paths already in TENDER_FOLDER_STRUCTURE", () => {
+    expect(resolveUploadPath("7. Other")).toBe("7. Other");
+    expect(resolveUploadPath("2. Photos")).toBe("2. Photos");
+    expect(resolveUploadPath("1. Plans, Scopes & Specs/01. Drawings")).toBe(
+      "1. Plans, Scopes & Specs/01. Drawings"
+    );
+  });
+
+  it("passes through Quotes/{Client} paths unchanged", () => {
+    expect(resolveUploadPath("Quotes/Acme Corp")).toBe("Quotes/Acme Corp");
+  });
+
+  it("falls back to '7. Other' for null, undefined, and unknown values", () => {
+    expect(resolveUploadPath(null)).toBe("7. Other");
+    expect(resolveUploadPath(undefined)).toBe("7. Other");
+    expect(resolveUploadPath("not-a-category")).toBe("7. Other");
+  });
+
+  it("TENDER_FOLDER_STRUCTURE contains the expected top-level paths including Quotes sentinel", () => {
+    const topPaths = TENDER_FOLDER_STRUCTURE.map((n) => n.path);
+    expect(topPaths).toContain("1. Plans, Scopes & Specs");
+    expect(topPaths).toContain("7. Other");
+    expect(topPaths).toContain("Quotes");
   });
 });
 

@@ -2,10 +2,10 @@ import { useRef, useState, type DragEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import {
-  DEFAULT_DOCUMENT_CATEGORY,
-  DOCUMENT_CATEGORIES,
-  type DocumentCategory
+  DEFAULT_DOCUMENT_CATEGORY
 } from "../../lib/document-categories";
+import { UploadCategoryPicker } from "./UploadCategoryPicker";
+import type { TenderClientRef } from "./UploadCategoryPicker";
 
 const ACCEPTED = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".dwg", ".png", ".jpg", ".jpeg"];
 const MAX_BYTES = 100 * 1024 * 1024;
@@ -40,12 +40,14 @@ export function TenderDocumentsPanel({
   tenderId,
   documents,
   onDocumentsChanged,
-  canManage
+  canManage,
+  tenderClients = []
 }: {
   tenderId: string;
   documents: DocumentRecord[];
   onDocumentsChanged: () => void;
   canManage: boolean;
+  tenderClients?: TenderClientRef[];
 }) {
   const { authFetch } = useAuth();
   const confirm = useConfirm();
@@ -54,10 +56,12 @@ export function TenderDocumentsPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  // PR-64 — the selected category is appended to every file in the
-  // current upload batch. Routing happens server-side: the API drops
-  // each file into the matching SharePoint subfolder under the tender.
-  const [category, setCategory] = useState<DocumentCategory>(DEFAULT_DOCUMENT_CATEGORY);
+  // TFM-S4 — the selected category path is appended to every file in the
+  // current upload batch. Routing happens server-side: the API routes
+  // via resolveUploadPath → ensureTenderCategoryFolder or
+  // ensureTenderQuoteClientFolder. The value can now be a slash-separated
+  // nested path (e.g. "1. Plans, Scopes & Specs/01. Drawings").
+  const [category, setCategory] = useState<string>(DEFAULT_DOCUMENT_CATEGORY);
 
   const uploadFile = async (file: File) => {
     if (file.size > MAX_BYTES) throw new Error(`${file.name} exceeds the 100 MB limit.`);
@@ -133,39 +137,23 @@ export function TenderDocumentsPanel({
       </div>
 
       {canManage ? (
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 8,
-            fontSize: 13,
-            color: "var(--text-muted)"
-          }}
-        >
-          <span>Category</span>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as DocumentCategory)}
-            disabled={uploading}
+        <div style={{ marginBottom: 8 }}>
+          <p
             style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid var(--surface-border)",
-              background: "var(--surface-base)",
-              color: "var(--text-strong)",
               fontSize: 13,
-              minHeight: 32
+              color: "var(--text-muted)",
+              margin: "0 0 4px"
             }}
-            aria-label="Document category"
           >
-            {DOCUMENT_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
+            Category
+          </p>
+          <UploadCategoryPicker
+            value={category}
+            onChange={setCategory}
+            tenderClients={tenderClients}
+            disabled={uploading}
+          />
+        </div>
       ) : null}
 
       {canManage ? (

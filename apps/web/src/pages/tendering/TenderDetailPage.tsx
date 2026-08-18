@@ -741,6 +741,10 @@ export function TenderDetailPage() {
                 documents={tender.tenderDocuments}
                 onDocumentsChanged={() => void reload()}
                 canManage={canManageTenders}
+                tenderClients={tender.tenderClients.map((tc) => ({
+                  id: tc.client.id,
+                  name: tc.client.name
+                }))}
               />
             </section>
 

@@ -245,13 +245,13 @@ run("dep-all-keys-well-formed",
   "requires_file_on_main: apps/api/src/foo.ts\n" +
   "requires_on_main: apps/api/src/bar.ts", 0);
 
-console.log("\n=== exit 0 ADMIT: requires_on_main path-only → admitted, warning on stderr");
+console.log("\n=== exit 0 ADMIT: requires_on_main path-only → admitted (honoured by watcher since SLICE 2)");
 run("dep-on-main-path-only",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_on_main: apps/foo.ts", 0);
 
-console.log("\n=== exit 0 ADMIT: requires_on_main path :: fixed-string → admitted, warning on stderr");
+console.log("\n=== exit 0 ADMIT: requires_on_main path :: fixed-string → admitted (honoured by watcher since SLICE 2)");
 run("dep-on-main-path-and-string",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +

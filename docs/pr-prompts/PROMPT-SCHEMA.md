@@ -338,10 +338,19 @@ requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY
 This defers the prompt until `lint-prompt.mjs` on `origin/main` contains the string
 `UNKNOWN_KEY` (fixed-string containment, NOT a regex). A missing file counts as UNMET.
 
-**Until cluster-chaining SLICE 2 lands on `main`, the watcher does NOT honour this key.**
-The linter accepts it (so SLICE 2 can declare it on itself), but a prompt relying on
-`requires_on_main` will run UNGATED until SLICE 2 is merged. The linter prints a WARN
-line to stderr when it sees this key.
+Two value forms are accepted:
+
+| Form | Example | What the watcher checks |
+|---|---|---|
+| `<path>` | `requires_on_main: scripts/foo.mjs` | File exists on `origin/main` (identical to `requires_file_on_main`) |
+| `<path> :: <fixed-string>` | `requires_on_main: scripts/foo.mjs :: UNKNOWN_KEY` | File exists AND contains the fixed string (fixed-string containment, NOT a regex) |
+
+Rules:
+- The separator is a literal ` :: ` (space-colon-colon-space). Split on the FIRST occurrence; the needle may contain interior colons.
+- **Fixed-string only** -- the needle is matched with `String.prototype.includes`, never with `new RegExp(needle)`. A needle containing regex metacharacters (e.g. `a.*b`, `(((((`) is matched literally.
+- A missing file on `origin/main` is always **UNMET** (never throws, never crashes).
+- A malformed value (empty path, empty needle after ` :: `) is **UNMET** and logs a warning. A malformed gate never passes -- it fails closed.
+- Any `git` error is **UNMET** (consistent with how `requires_merged` treats `gh` errors).
 
 ## Optional: cluster chaining (SLICE 3, 2026-08-18)
 

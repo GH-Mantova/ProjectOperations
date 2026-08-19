@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { NoAccess } from "../../components/NoAccess";
@@ -78,7 +79,7 @@ export function DocketsRegisterPage() {
     try {
       const params = new URLSearchParams({ ...buildQueryParams(), limit: "200" });
       const res = await authFetch(`/field/dockets?${params.toString()}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const body = (await res.json()) as ListResponse;
       setData(body);
     } catch (err) {
@@ -101,7 +102,7 @@ export function DocketsRegisterPage() {
     try {
       const url = buildDocketExportUrl(buildQueryParams());
       const res = await authFetch(url);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const csv = await res.text();
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");

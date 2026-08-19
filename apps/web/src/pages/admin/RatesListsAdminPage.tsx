@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { EmptyState, SkeletonList } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -77,6 +78,7 @@ type TopTab = "rates" | "subcontractors" | "suppliers" | "lists";
 
 export function RatesListsAdminPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canManageRates = can(user, "rates.manage");
   const canManageLists = can(user, "lists.manage");
 
@@ -89,13 +91,37 @@ export function RatesListsAdminPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1400 }}>
-      <h1 className="s7-type-page-heading" style={{ marginTop: 0 }}>
-        Rates &amp; Lists
-      </h1>
-      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        Flexible rate tables (typed columns, KEY / VALUE / INFO roles) and the reference-data lists
-        that feed dropdowns across the ERP.
-      </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 className="s7-type-page-heading" style={{ marginTop: 0 }}>
+            Rates &amp; Lists
+          </h1>
+          <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
+            Flexible rate tables (typed columns, KEY / VALUE / INFO roles) and the reference-data lists
+            that feed dropdowns across the ERP.
+          </p>
+        </div>
+        {canManageRates ? (
+          <button
+            type="button"
+            style={{
+              padding: "9px 18px",
+              background: "var(--brand-primary, #005B61)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 5,
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              marginTop: 4
+            }}
+            onClick={() => navigate("/schedule-of-rates/create")}
+          >
+            + Create SoR
+          </button>
+        ) : null}
+      </div>
 
       <div
         role="tablist"

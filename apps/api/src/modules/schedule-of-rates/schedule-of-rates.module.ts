@@ -9,6 +9,7 @@ import { SorClientRateCardController } from "./sor-client-rate-card.controller";
 import { SorClientRateCardService } from "./sor-client-rate-card.service";
 import { SorSourceMarkupController } from "./sor-source-markup.controller";
 import { SorSourceMarkupService } from "./sor-source-markup.service";
+import { CreateSorService } from "./create-sor.service";
 
 /**
  * Schedule of Rates module (SoR S1 + S3 + S4 + S5) — master rate-book for live jobs.
@@ -37,7 +38,7 @@ import { SorSourceMarkupService } from "./sor-source-markup.service";
     SorSourceMarkupController,
     JobSorSnapshotController
   ],
-  providers: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService, JobSorSnapshotService],
-  exports: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService, JobSorSnapshotService]
+  providers: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService, JobSorSnapshotService, CreateSorService],
+  exports: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService, JobSorSnapshotService, CreateSorService]
 })
 export class ScheduleOfRatesModule {}

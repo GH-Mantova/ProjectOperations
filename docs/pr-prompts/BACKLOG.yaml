@@ -666,6 +666,25 @@ items:
       asserts the guard text the work must change, not merely that the file exists.
     needs_marco: true
     marco_note: >
+      MEASURED 2026-08-19, and it changes the shape of the decision. The backfill IS possible.
+      All EIGHT TIP locations match a waste-rate facility exactly, by name -
+      Alex Fraser, BMI Acacia Ridge, BMI Hendra, BMI Stapylton, Cleanaway, Moreton Bay Recycling,
+      Rowcon (Bells Creek), Sunshine Coast Council. 8 of 8, no near-misses, no manual mapping needed.
+      HOW IT WAS MEASURED, and why this evidence is stronger than a query would have been - the
+      "Rates" column on Settings > Map locations renders the "set" badge from the very string join
+      in question (map-locations.service.ts:82). Every TIP shows "Set", so the join is observed
+      succeeding for all eight through the production code path, not inferred from a script.
+      A script was written first and could not answer this. MapLocation is NEVER seeded - the only
+      creator is map-locations.service.ts:116, a person in Settings - so every non-production
+      database has zero rows and any match percentage from one is a fact about an empty table.
+      That is worth remembering before anyone tries to measure this from dev again.
+      RESIDUAL UNKNOWN, stated plainly - the screen shows every TIP has rates. It does NOT rule out
+      a waste-rate facility string that has no TIP at all, since such a row renders nowhere. Check
+      that before committing to option (a); it is the only gap left in the evidence.
+      CONSEQUENCE - option (a) is no longer the expensive one. With a clean 8 of 8 there is no
+      fuzzy-matching exercise and no human-reviewed mapping table, which was the main argument for
+      preferring (b). Marco has NOT chosen yet.
+
       A DESIGN DECISION, not a refactor. Three options, none obviously right.
       (a) Give TIP facilities a real relation - MapLocation gains an id that waste rates point at,
           and the rename guard becomes an FK. Correct, and the largest change; needs a backfill to

@@ -160,7 +160,7 @@ export function SubcontractorsPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (search.trim()) params.set("q", search.trim());
       const response = await authFetch(`/directory?${params.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setItems((await response.json()) as Subcontractor[]);
     } catch (err) {
       setError((err as Error).message);
@@ -454,7 +454,7 @@ function SubcontractorDetail({
     setError(null);
     try {
       const response = await authFetch(`/directory/${id}`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setDetail((await response.json()) as SubcontractorDetail);
     } catch (err) {
       setError((err as Error).message);
@@ -958,7 +958,7 @@ function CreditLedgerTab({ subcontractorId, canManage }: { subcontractorId: stri
     setError(null);
     try {
       const response = await authFetch(`/directory/${subcontractorId}/credit-ledger`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setLedger((await response.json()) as CreditLedger);
     } catch (err) {
       setError((err as Error).message);
@@ -990,7 +990,7 @@ function CreditLedgerTab({ subcontractorId, canManage }: { subcontractorId: stri
           note: form.note || null
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setShowForm(false);
       setForm({ entryType: "charge", amount: "", entryDate: new Date().toISOString().slice(0, 10), reference: "", note: "" });
       await load();

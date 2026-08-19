@@ -1,4 +1,5 @@
 import { useRef, useState, type DragEvent } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import {
@@ -109,7 +110,7 @@ export function TenderDocumentsPanel({
     if (!ok) return;
     try {
       const response = await authFetch(`/tenders/${tenderId}/documents/${docId}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       onDocumentsChanged();
     } catch (err) {
       setUploadError((err as Error).message);

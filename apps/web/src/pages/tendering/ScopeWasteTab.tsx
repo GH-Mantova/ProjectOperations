@@ -90,6 +90,9 @@ type VarianceResult = {
   currentFuelPricePerLitre: number | null;
   disposalDelta: number | null;
   fuelDelta: number | null;
+  quotedTransportRatePerDay: number | null;
+  currentTransportRatePerDay: number | null;
+  transportDelta: number | null;
   hasVariance: boolean;
 };
 
@@ -1044,6 +1047,11 @@ export function ScopeWasteTab({
                         {rowVariance.fuelDelta != null ? (
                           <span>
                             · fuel ${rowVariance.quotedFuelPricePerLitre ?? "?"}/L → ${rowVariance.currentFuelPricePerLitre ?? "?"}/L
+                          </span>
+                        ) : null}
+                        {rowVariance.transportDelta != null ? (
+                          <span>
+                            · transport ${rowVariance.quotedTransportRatePerDay ?? "?"}/day → ${rowVariance.currentTransportRatePerDay ?? "?"}/day
                           </span>
                         ) : null}
                         {canManage ? (

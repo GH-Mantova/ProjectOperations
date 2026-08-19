@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal, EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { requiresAssignee, requiresDueDate } from "./addEntryFieldVisibility";
@@ -195,8 +196,8 @@ export function TenderEntriesPanel({
         authFetch(`/tenders/${tenderId}/entries`),
         authFetch(commEntriesPath(tenderId))
       ]);
-      if (!entriesRes.ok) throw new Error(await entriesRes.text());
-      if (!commsRes.ok) throw new Error(await commsRes.text());
+      if (!entriesRes.ok) throw new Error(await readApiErrorMessage(entriesRes));
+      if (!commsRes.ok) throw new Error(await readApiErrorMessage(commsRes));
       setEntries((await entriesRes.json()) as TenderEntry[]);
       setComms((await commsRes.json()) as CommEntry[]);
     } catch (err) {
@@ -222,7 +223,7 @@ export function TenderEntriesPanel({
     (async () => {
       try {
         const response = await authFetch(commEntriesPath(tenderId, selectedClientId));
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         const body = (await response.json()) as CommEntry[];
         if (!cancelled) setFilteredComms(body);
       } catch (err) {
@@ -318,7 +319,7 @@ export function TenderEntriesPanel({
             })
           )
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         const created = (await response.json()) as CommEntry;
         setComms((current) => [created, ...current]);
         if (selectedClientId === draft.clientId) {
@@ -377,7 +378,7 @@ export function TenderEntriesPanel({
           assigneeId: draft.assigneeId || undefined
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const created = (await response.json()) as TenderEntry;
       setEntries((current) => current.map((row) => (row.id === optimisticId ? created : row)));
       closeAdd();
@@ -398,7 +399,7 @@ export function TenderEntriesPanel({
           method: "PATCH",
           body: JSON.stringify({ status: nextStatus })
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         const updated = (await response.json()) as TenderEntry;
         setEntries((current) =>
           current.map((row) => (row.id === entry.id ? { ...row, ...updated } : row))

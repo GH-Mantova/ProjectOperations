@@ -186,7 +186,7 @@ export function ScopeWasteTab({
         authFetch(`/estimate-rates/waste`),
         authFetch(`/estimate-rates/plant`)
       ]);
-      if (!rowsResp.ok) throw new Error(await rowsResp.text());
+      if (!rowsResp.ok) throw new Error(await readApiErrorMessage(rowsResp));
       setRows((await rowsResp.json()) as WasteRow[]);
       if (ratesResp.ok) {
         const arr = (await ratesResp.json()) as WasteRate[];

@@ -1,4 +1,5 @@
 import type { TenderRateEntry, TenderRateGroup, TenderRateSet } from "./RatesTab";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 export type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -6,7 +7,7 @@ export type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>
 // `res.json()` with "Unexpected end of JSON input". Callers accept a
 // nullable payload, so treat empty as `null`.
 async function readJsonOrThrow<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiErrorMessage(res));
   const text = await res.text();
   if (!text) return null as unknown as T;
   return JSON.parse(text) as T;
@@ -34,7 +35,7 @@ export async function lockRateSet(
 
 export async function unlockRateSet(authFetch: AuthFetch, tenderId: string) {
   const res = await authFetch(`/tenders/${tenderId}/rate-set`, { method: "DELETE" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiErrorMessage(res));
   const text = await res.text();
   return (text ? JSON.parse(text) : { unlocked: false }) as { unlocked: boolean };
 }

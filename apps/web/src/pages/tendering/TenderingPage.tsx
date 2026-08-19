@@ -10,6 +10,7 @@ import { NewTenderWizard } from "./NewTenderWizard";
 import { OutcomeCaptureModal, OutcomeCaptureTender } from "./OutcomeCaptureModal";
 import { NeedsOutcomePanel } from "./NeedsOutcomePanel";
 import { OutcomeCapturePayload, recordOutcome } from "./outcomeApi";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type TenderListItem = {
   id: string;
@@ -585,7 +586,7 @@ export function TenderingPage() {
         method: "POST",
         body: JSON.stringify({ tenderIds: selectedIds, status })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = await response.json();
       setToast(`${body.updated} tenders updated to ${STAGE_LABEL[status]}`);
       setSelectedIds([]);
@@ -639,7 +640,7 @@ export function TenderingPage() {
         method: "POST",
         body: JSON.stringify({ name, filters: registerFilters, isDefault })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const created = (await response.json()) as FilterPreset;
       setPresets((current) => [...current.map((p) => (isDefault ? { ...p, isDefault: false } : p)), created]);
       setToast(`Preset "${name}" saved`);
@@ -658,7 +659,7 @@ export function TenderingPage() {
     if (!ok) return;
     try {
       const response = await authFetch(`/tenders/filter-presets/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setPresets((current) => current.filter((p) => p.id !== id));
     } catch (err) {
       setError((err as Error).message);
@@ -681,7 +682,7 @@ export function TenderingPage() {
     setDeleteBusy(true);
     try {
       const res = await authFetch(`/tenders/${deleteTarget.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setDeleteTarget(null);
       setDeletePreflight(null);
       setToast(`Tender ${deleteTarget.tenderNumber} deleted`);

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type TenderClientLite = {
   id: string;
@@ -93,7 +94,7 @@ export function SendQuoteModal({
           attachPdf
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const result = (await res.json()) as { success: boolean; error?: string };
       if (!result.success) throw new Error(result.error || "Send failed");
       await onSent();

@@ -50,7 +50,38 @@ type EngineResult = {
   lineTotal: number | null;
   quotedDisposalRate: number | null;
   quotedFuelPricePerLitre: number | null;
+  // Transport-rate snapshot (SLICE 1, 2026-08-19). The $/day rate from
+  // EstimatePlantRate at the moment the line is priced. Returned by
+  // computeCostEngine alongside the other two snapshots.
+  quotedTransportRatePerDay: number | null;
 };
+
+// PRICING_INPUTS — the set of DTO keys whose presence in a PATCH means we
+// must re-run the cost engine and update lineTotal. Keys NOT in this list
+// (description, wbsRef, notes, sortOrder, discipline) are metadata-only
+// and must NOT trigger a reprice.
+//
+// When you add a new pricing column to UpsertWasteDto, add it here too.
+// Failing to do so will cause a notes-only PATCH to silently re-price the
+// line against whatever the plant rate says today (this is the bug this
+// set of constants exists to prevent).
+const PRICING_INPUTS = new Set<keyof UpsertWasteDto>([
+  "qty",
+  "m3",
+  "unit",
+  "wasteLoads",
+  "ratePerTonne",
+  "ratePerLoad",
+  "transportRateId",
+  "assetId",
+  "qtyTrucks",
+  "loadsPerTruckPerDay",
+  "capacityPerLoad",
+  "capacityUnit",
+  "dailyKm",
+  "wasteType",
+  "wasteFacility",
+]);
 
 // Waste disposal rows live on their own table (ScopeWasteItem). Each row's
 // truckDays and lineTotal are derived server-side so the UI only submits
@@ -136,6 +167,7 @@ export class ScopeWasteService {
     // R3 T-1 - engine fires when a transport line is picked (transportRateId set)
     // AND we have qtyTrucks + loadsPerTruckPerDay + capacityPerLoad. If ANY are
     // missing the engine returns nulls and we fall back to the legacy path.
+    // quotedTransportRatePerDay is null on create (no prior snapshot exists).
     const engine = await this.computeCostEngine({
       qty: tonnesN,
       m3: m3N,
@@ -147,7 +179,8 @@ export class ScopeWasteService {
       transportRateId: dto.transportRateId ?? null,
       assetId: dto.assetId ?? null,
       wasteType: dto.wasteType ?? null,
-      wasteFacility: dto.wasteFacility ?? null
+      wasteFacility: dto.wasteFacility ?? null,
+      existingQuotedTransportRatePerDay: null
     });
     const legacy = this.deriveTotals(
       tonnesN,
@@ -191,6 +224,7 @@ export class ScopeWasteService {
         disposalCost: toDecimal(engine.disposalCost),
         quotedDisposalRate: toDecimal(engine.quotedDisposalRate),
         quotedFuelPricePerLitre: toDecimal(engine.quotedFuelPricePerLitre),
+        quotedTransportRatePerDay: toDecimal(engine.quotedTransportRatePerDay),
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
         // PR B3 — manual creates default autoSummed=false. Only
@@ -203,8 +237,13 @@ export class ScopeWasteService {
 
   /**
    * Partially updates a waste row; DTO values win over existing values
-   * when present, and truckDays + lineTotal are always re-derived from
-   * the merged result.
+   * when present. The cost engine (truckDays, lineTotal, snapshot
+   * components) is ONLY re-run when the PATCH touches at least one
+   * pricing input (see PRICING_INPUTS constant). A PATCH that only
+   * changes description / wbsRef / notes / sortOrder / discipline
+   * leaves lineTotal and every cost component exactly as they were —
+   * this prevents the silent-reprice bug where a notes edit would
+   * re-price the line against whatever the plant rate says today.
    *
    * @param dto - partial patch; undefined fields keep their existing values
    * @returns the updated ScopeWasteItem row
@@ -215,6 +254,13 @@ export class ScopeWasteService {
     if (!existing || existing.tenderId !== tenderId) {
       throw new NotFoundException("Waste item not found on this tender.");
     }
+
+    // Determine whether any pricing input was touched. Only when true do
+    // we re-run the cost engine and overwrite lineTotal / cost components.
+    const pricingTouched = (Object.keys(dto) as Array<keyof UpsertWasteDto>).some(
+      (key) => PRICING_INPUTS.has(key)
+    );
+
     // PR B4a.3 — narrow DTO numerics at the call site. The resulting
     // locals are typed `number | null` so CodeQL no longer flags the
     // downstream Prisma.Decimal constructors as tainted sinks.
@@ -230,42 +276,6 @@ export class ScopeWasteService {
     const dtoCapacityPerLoadN = dto.capacityPerLoad === undefined ? undefined : narrowToNumber(dto.capacityPerLoad);
     const dtoDailyKmN = dto.dailyKm === undefined ? undefined : narrowToNumber(dto.dailyKm);
 
-    // Compute effective values for the totals: DTO value (narrowed) wins
-    // when present; otherwise fall back to existing row.
-    const tonnes = dtoTonnesN !== undefined ? dtoTonnesN : existing.qty ? Number(existing.qty) : null;
-    const m3 = dtoM3N !== undefined ? dtoM3N : existing.m3 ? Number(existing.m3) : null;
-    const loads = dtoLoadsN !== undefined ? dtoLoadsN : existing.wasteLoads;
-    const ratePerTonne = dtoRatePerTonneN !== undefined ? dtoRatePerTonneN : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
-    const ratePerLoad = dtoRatePerLoadN !== undefined ? dtoRatePerLoadN : existing.ratePerLoad ? Number(existing.ratePerLoad) : null;
-    const unit = dto.unit !== undefined ? dto.unit : existing.unit;
-    // R3 T-1 effective engine inputs.
-    const eTransportRateId = dto.transportRateId !== undefined ? dto.transportRateId : existing.transportRateId;
-    const eAssetId = dto.assetId !== undefined ? dto.assetId : existing.assetId;
-    const eQtyTrucks = dtoQtyTrucksN !== undefined ? (dtoQtyTrucksN != null ? Math.trunc(dtoQtyTrucksN) : null) : existing.qtyTrucks;
-    const eLoadsPerTruckPerDay = dtoLoadsPerTruckPerDayN !== undefined ? dtoLoadsPerTruckPerDayN : existing.loadsPerTruckPerDay ? Number(existing.loadsPerTruckPerDay) : null;
-    const eCapacityPerLoad = dtoCapacityPerLoadN !== undefined ? dtoCapacityPerLoadN : existing.capacityPerLoad ? Number(existing.capacityPerLoad) : null;
-    const eCapacityUnit = dto.capacityUnit !== undefined ? dto.capacityUnit : existing.capacityUnit;
-    const eDailyKm = dtoDailyKmN !== undefined ? dtoDailyKmN : existing.dailyKm ? Number(existing.dailyKm) : null;
-    const eWasteType = dto.wasteType !== undefined ? dto.wasteType : existing.wasteType;
-    const eWasteFacility = dto.wasteFacility !== undefined ? dto.wasteFacility : existing.wasteFacility;
-
-    const engine = await this.computeCostEngine({
-      qty: tonnes,
-      m3: m3,
-      capacityUnit: eCapacityUnit,
-      capacityPerLoad: eCapacityPerLoad,
-      qtyTrucks: eQtyTrucks,
-      loadsPerTruckPerDay: eLoadsPerTruckPerDay,
-      dailyKm: eDailyKm,
-      transportRateId: eTransportRateId,
-      assetId: eAssetId,
-      wasteType: eWasteType,
-      wasteFacility: eWasteFacility
-    });
-    const legacy = this.deriveTotals(tonnes, m3, loads, ratePerTonne, ratePerLoad, unit);
-    const effectiveLineTotal =
-      engine.lineTotal != null ? engine.lineTotal : legacy.lineTotal;
-
     const data: Prisma.ScopeWasteItemUpdateInput = {};
     if (dto.discipline !== undefined) data.discipline = dto.discipline;
     if (dto.wbsRef !== undefined) data.wbsRef = dto.wbsRef;
@@ -279,13 +289,6 @@ export class ScopeWasteService {
     if (dtoLoadsN !== undefined) data.wasteLoads = dtoLoadsN;
     if (dtoRatePerTonneN !== undefined) data.ratePerTonne = toDecimal(dtoRatePerTonneN);
     if (dtoRatePerLoadN !== undefined) data.ratePerLoad = toDecimal(dtoRatePerLoadN);
-    // Engine result: engine.loads / durationDays override the legacy path
-    // when the engine fires. Otherwise keep the legacy /3 truck-days value.
-    if (engine.loads != null) data.wasteLoads = engine.loads;
-    data.truckDays = toDecimal(
-      engine.durationDays != null ? engine.durationDays : legacy.truckDays
-    );
-    data.lineTotal = toDecimal(effectiveLineTotal);
     // Engine inputs — persist whenever the DTO carried them. Nested
     // relation writes on the update side because Prisma emits the update
     // input via the relation field rather than the scalar FK.
@@ -304,14 +307,77 @@ export class ScopeWasteService {
     if (dtoCapacityPerLoadN !== undefined) data.capacityPerLoad = toDecimal(dtoCapacityPerLoadN);
     if (dto.capacityUnit !== undefined) data.capacityUnit = dto.capacityUnit;
     if (dtoDailyKmN !== undefined) data.dailyKm = toDecimal(dtoDailyKmN);
-    // Engine snapshot components — always re-derived, so always written.
-    data.transportCost = toDecimal(engine.transportCost);
-    data.fuelCost = toDecimal(engine.fuelCost);
-    data.disposalCost = toDecimal(engine.disposalCost);
-    data.quotedDisposalRate = toDecimal(engine.quotedDisposalRate);
-    data.quotedFuelPricePerLitre = toDecimal(engine.quotedFuelPricePerLitre);
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+
+    if (pricingTouched) {
+      // Compute effective values for the totals: DTO value (narrowed) wins
+      // when present; otherwise fall back to existing row.
+      const tonnes = dtoTonnesN !== undefined ? dtoTonnesN : existing.qty ? Number(existing.qty) : null;
+      const m3 = dtoM3N !== undefined ? dtoM3N : existing.m3 ? Number(existing.m3) : null;
+      const loads = dtoLoadsN !== undefined ? dtoLoadsN : existing.wasteLoads;
+      const ratePerTonne = dtoRatePerTonneN !== undefined ? dtoRatePerTonneN : existing.ratePerTonne ? Number(existing.ratePerTonne) : null;
+      const ratePerLoad = dtoRatePerLoadN !== undefined ? dtoRatePerLoadN : existing.ratePerLoad ? Number(existing.ratePerLoad) : null;
+      const unit = dto.unit !== undefined ? dto.unit : existing.unit;
+      // R3 T-1 effective engine inputs.
+      const eTransportRateId = dto.transportRateId !== undefined ? dto.transportRateId : existing.transportRateId;
+      const eAssetId = dto.assetId !== undefined ? dto.assetId : existing.assetId;
+      const eQtyTrucks = dtoQtyTrucksN !== undefined ? (dtoQtyTrucksN != null ? Math.trunc(dtoQtyTrucksN) : null) : existing.qtyTrucks;
+      const eLoadsPerTruckPerDay = dtoLoadsPerTruckPerDayN !== undefined ? dtoLoadsPerTruckPerDayN : existing.loadsPerTruckPerDay ? Number(existing.loadsPerTruckPerDay) : null;
+      const eCapacityPerLoad = dtoCapacityPerLoadN !== undefined ? dtoCapacityPerLoadN : existing.capacityPerLoad ? Number(existing.capacityPerLoad) : null;
+      const eCapacityUnit = dto.capacityUnit !== undefined ? dto.capacityUnit : existing.capacityUnit;
+      const eDailyKm = dtoDailyKmN !== undefined ? dtoDailyKmN : existing.dailyKm ? Number(existing.dailyKm) : null;
+      const eWasteType = dto.wasteType !== undefined ? dto.wasteType : existing.wasteType;
+      const eWasteFacility = dto.wasteFacility !== undefined ? dto.wasteFacility : existing.wasteFacility;
+      // Pass the existing snapshot so the engine can re-use it when the
+      // transport rate hasn't changed (snapshot-present -> use it).
+      // If transportRateId changed in this PATCH, clear the snapshot so
+      // the engine fetches and records the new live rate.
+      const transportRateChanged =
+        dto.transportRateId !== undefined &&
+        dto.transportRateId !== existing.transportRateId;
+      const existingQuotedTransportRatePerDay =
+        !transportRateChanged && existing.quotedTransportRatePerDay != null
+          ? Number(existing.quotedTransportRatePerDay)
+          : null;
+
+      const engine = await this.computeCostEngine({
+        qty: tonnes,
+        m3: m3,
+        capacityUnit: eCapacityUnit,
+        capacityPerLoad: eCapacityPerLoad,
+        qtyTrucks: eQtyTrucks,
+        loadsPerTruckPerDay: eLoadsPerTruckPerDay,
+        dailyKm: eDailyKm,
+        transportRateId: eTransportRateId,
+        assetId: eAssetId,
+        wasteType: eWasteType,
+        wasteFacility: eWasteFacility,
+        existingQuotedTransportRatePerDay
+      });
+      const legacy = this.deriveTotals(tonnes, m3, loads, ratePerTonne, ratePerLoad, unit);
+      const effectiveLineTotal =
+        engine.lineTotal != null ? engine.lineTotal : legacy.lineTotal;
+
+      // Engine result: engine.loads / durationDays override the legacy path
+      // when the engine fires. Otherwise keep the legacy /3 truck-days value.
+      if (engine.loads != null) data.wasteLoads = engine.loads;
+      data.truckDays = toDecimal(
+        engine.durationDays != null ? engine.durationDays : legacy.truckDays
+      );
+      data.lineTotal = toDecimal(effectiveLineTotal);
+      // Engine snapshot components — re-derived on every pricing write.
+      data.transportCost = toDecimal(engine.transportCost);
+      data.fuelCost = toDecimal(engine.fuelCost);
+      data.disposalCost = toDecimal(engine.disposalCost);
+      data.quotedDisposalRate = toDecimal(engine.quotedDisposalRate);
+      data.quotedFuelPricePerLitre = toDecimal(engine.quotedFuelPricePerLitre);
+      data.quotedTransportRatePerDay = toDecimal(engine.quotedTransportRatePerDay);
+    }
+    // When pricingTouched is false: lineTotal, truckDays, transportCost,
+    // fuelCost, disposalCost, and all snapshot columns are NOT written.
+    // The row keeps exactly the values it had before the PATCH.
+
     return this.prisma.scopeWasteItem.update({ where: { id }, data });
   }
 
@@ -390,6 +456,15 @@ export class ScopeWasteService {
     assetId: string | null | undefined;
     wasteType: string | null | undefined;
     wasteFacility: string | null | undefined;
+    // Transport-rate snapshot (SLICE 1). When present, the engine uses it
+    // as transportFeePerDay instead of looking up the live rate. This
+    // means: on the FIRST write (create, or first pricing write after
+    // migration), existingQuotedTransportRatePerDay is null and the live
+    // rate is used and returned for persistence. On subsequent writes the
+    // snapshot is preserved as-is. When the estimator explicitly changes
+    // transportRateId the snapshot is cleared (null) by the caller so the
+    // engine re-fetches and records the new live rate.
+    existingQuotedTransportRatePerDay: number | null;
   }): Promise<EngineResult> {
     const empty: EngineResult = {
       loads: null,
@@ -399,7 +474,8 @@ export class ScopeWasteService {
       disposalCost: null,
       lineTotal: null,
       quotedDisposalRate: null,
-      quotedFuelPricePerLitre: null
+      quotedFuelPricePerLitre: null,
+      quotedTransportRatePerDay: null
     };
     // Engine gate: transport line picked + the three sizing inputs.
     if (
@@ -428,11 +504,23 @@ export class ScopeWasteService {
     const durationDays = Math.ceil(loads / Number(input.qtyTrucks) / Number(input.loadsPerTruckPerDay));
 
     // Transport rate row - $/day fee.
-    const transportRate = await this.prisma.estimatePlantRate.findUnique({
-      where: { id: input.transportRateId }
-    });
-    if (!transportRate) return empty;
-    const transportFeePerDay = Number(transportRate.rate);
+    // Precedence: snapshot present -> use it (price at quote time).
+    // Snapshot absent -> look up live, and the returned
+    // quotedTransportRatePerDay will be persisted as the new snapshot.
+    let transportFeePerDay: number;
+    let quotedTransportRatePerDay: number;
+    if (input.existingQuotedTransportRatePerDay != null) {
+      // Use the existing snapshot — do NOT touch the live rate.
+      transportFeePerDay = input.existingQuotedTransportRatePerDay;
+      quotedTransportRatePerDay = input.existingQuotedTransportRatePerDay;
+    } else {
+      const transportRate = await this.prisma.estimatePlantRate.findUnique({
+        where: { id: input.transportRateId }
+      });
+      if (!transportRate) return empty;
+      transportFeePerDay = Number(transportRate.rate);
+      quotedTransportRatePerDay = transportFeePerDay;
+    }
 
     // Fuel per day - manual this slice. Requires the asset's per-truck
     // consumption + the OperationsSettings fuel price + a dailyKm. Any
@@ -500,16 +588,17 @@ export class ScopeWasteService {
       disposalCost: disposalCost != null ? Math.round(disposalCost * 100) / 100 : null,
       lineTotal,
       quotedDisposalRate,
-      quotedFuelPricePerLitre
+      quotedFuelPricePerLitre,
+      quotedTransportRatePerDay
     };
   }
 
   /**
    * R3 T-1 - variance check for a single waste line. Returns the
-   * current live disposal + fuel rates alongside the snapshots we
-   * recorded at pricing time, and a boolean for the UI to render an
-   * "escalate this line" flag. Nothing here mutates state; the actual
-   * escalation is a separate call (escalateVariance).
+   * current live disposal + fuel + transport rates alongside the
+   * snapshots we recorded at pricing time, and a boolean for the UI to
+   * render an "escalate this line" flag. Nothing here mutates state;
+   * the actual escalation is a separate call (escalateVariance).
    */
   async variance(tenderId: string, itemId: string) {
     const row = await this.prisma.scopeWasteItem.findUnique({ where: { id: itemId } });
@@ -531,10 +620,26 @@ export class ScopeWasteService {
     const ops = await this.prisma.operationsSettings.findUnique({ where: { id: "singleton" } });
     const currentFuelPricePerLitre =
       ops?.fuelPricePerLitre != null ? Number(ops.fuelPricePerLitre) : null;
+
+    // Transport rate: read live from EstimatePlantRate via the row's
+    // transportRateId. Null when the row has no transport rate, or when
+    // the rate row has since been deleted.
+    let currentTransportRatePerDay: number | null = null;
+    if (row.transportRateId) {
+      const transportRate = await this.prisma.estimatePlantRate.findUnique({
+        where: { id: row.transportRateId }
+      });
+      currentTransportRatePerDay =
+        transportRate?.rate != null ? Number(transportRate.rate) : null;
+    }
+
     const quotedDisposalRate =
       row.quotedDisposalRate != null ? Number(row.quotedDisposalRate) : null;
     const quotedFuelPricePerLitre =
       row.quotedFuelPricePerLitre != null ? Number(row.quotedFuelPricePerLitre) : null;
+    const quotedTransportRatePerDay =
+      row.quotedTransportRatePerDay != null ? Number(row.quotedTransportRatePerDay) : null;
+
     const disposalDelta =
       currentDisposalRate != null && quotedDisposalRate != null
         ? currentDisposalRate - quotedDisposalRate
@@ -543,20 +648,32 @@ export class ScopeWasteService {
       currentFuelPricePerLitre != null && quotedFuelPricePerLitre != null
         ? currentFuelPricePerLitre - quotedFuelPricePerLitre
         : null;
+    const transportDelta =
+      currentTransportRatePerDay != null && quotedTransportRatePerDay != null
+        ? currentTransportRatePerDay - quotedTransportRatePerDay
+        : null;
+
     // Rate is "materially different" if the delta is non-trivially non-zero.
-    // Threshold is intentionally strict (>= $0.01 / L or >= $0.50 / t) so
-    // we do not flag rounding noise.
+    // Thresholds are intentionally strict so we do not flag rounding noise:
+    //   >= $0.50 / t   for disposal
+    //   >= $0.01 / L   for fuel
+    //   >= $1.00 / day for transport (larger absolute scale; $/day not $/unit)
     const hasVariance =
       (disposalDelta != null && Math.abs(disposalDelta) >= 0.5) ||
-      (fuelDelta != null && Math.abs(fuelDelta) >= 0.01);
+      (fuelDelta != null && Math.abs(fuelDelta) >= 0.01) ||
+      (transportDelta != null && Math.abs(transportDelta) >= 1.0);
+
     return {
       itemId,
       quotedDisposalRate,
       currentDisposalRate,
       quotedFuelPricePerLitre,
       currentFuelPricePerLitre,
+      quotedTransportRatePerDay,
+      currentTransportRatePerDay,
       disposalDelta,
       fuelDelta,
+      transportDelta,
       hasVariance
     };
   }

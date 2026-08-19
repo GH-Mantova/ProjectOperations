@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 type Worker = { id: string; firstName: string; lastName: string };
@@ -66,7 +67,7 @@ export function FieldDocketPage() {
     setError(null);
     try {
       const res = await authFetch("/field/dockets?limit=50");
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const body = await res.json();
       setRows(body.items ?? []);
     } catch (err) {
@@ -134,7 +135,7 @@ export function FieldDocketPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const created = await res.json();
       setSuccess(`Docket ${created.docketNumber as string} captured.`);
     } catch (err) {

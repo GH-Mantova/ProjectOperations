@@ -14,6 +14,14 @@
 import { Prisma } from "@prisma/client";
 import { ScopeOfWorksService } from "../scope-of-works.service";
 
+// rates-consumers SLICE 2 — ScopeOfWorksService now takes RateResolverService
+// as its second constructor argument. updateItem (non-draft→confirmed path)
+// does not invoke the resolver; provide a stub for compilation.
+const minimalRateResolver = {
+  listRates: jest.fn().mockResolvedValue([]),
+  resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
+} as never;
+
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
 function buildPrismaMock(existingItem: Record<string, unknown>) {
@@ -50,7 +58,7 @@ const baseExistingItem = {
 describe("ScopeOfWorksService.updateItem persists what the DTO sends (PR B4a.5)", () => {
   it("PATCH { notes: 'x' } omits sqm/m3/tonnes from the update payload", async () => {
     const { prisma, mocks } = buildPrismaMock(baseExistingItem);
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.updateItem("tender-1", "item-1", { notes: "updated" } as never, "user-1");
 
     expect(mocks.update).toHaveBeenCalledTimes(1);
@@ -65,7 +73,7 @@ describe("ScopeOfWorksService.updateItem persists what the DTO sends (PR B4a.5)"
 
   it("PATCH { wasteIncluded: true } omits sqm/m3/tonnes from the update payload", async () => {
     const { prisma, mocks } = buildPrismaMock(baseExistingItem);
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.updateItem("tender-1", "item-1", { wasteIncluded: true } as never, "user-1");
 
     const data = (mocks.update.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
@@ -80,7 +88,7 @@ describe("ScopeOfWorksService.updateItem persists what the DTO sends (PR B4a.5)"
     // values. The backend doesn't infer, doesn't recompute — it just
     // stores what arrives.
     const { prisma, mocks } = buildPrismaMock(baseExistingItem);
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.updateItem(
       "tender-1",
       "item-1",
@@ -112,7 +120,7 @@ describe("ScopeOfWorksService.updateItem persists what the DTO sends (PR B4a.5)"
     // dimension change; a length-only DTO leaves the other six
     // fields untouched on the row.
     const { prisma, mocks } = buildPrismaMock(baseExistingItem);
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.updateItem("tender-1", "item-1", { length: 8 } as never, "user-1");
 
     const data = (mocks.update.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;

@@ -6,10 +6,20 @@ import { ScopeRedesignService } from "../scope-redesign.service";
 // summed into tenderPrice. Section overrides fall back to the tender
 // markup when null.
 
+// rates-consumers SLICE 2 — summary() now calls rateResolver.listRates
+// for labour and plant instead of prisma directly. Provide a minimal mock.
+function makeRateResolver(opts: { labour?: unknown[]; plant?: unknown[] } = {}) {
+  return {
+    listRates: jest.fn(async (slug: string) => {
+      if (slug === "labour") return opts.labour ?? [];
+      if (slug === "plant") return opts.plant ?? [];
+      return [];
+    })
+  } as never;
+}
+
 function makePrisma(opts: {
   scopeItems?: unknown[];
-  labour?: unknown[];
-  plant?: unknown[];
   tenderMarkup?: number;
   wasteItems?: unknown[];
   cuttingItems?: unknown[];
@@ -20,12 +30,6 @@ function makePrisma(opts: {
     },
     scopeOfWorksItem: {
       findMany: jest.fn().mockResolvedValue(opts.scopeItems ?? [])
-    },
-    estimateLabourRate: {
-      findMany: jest.fn().mockResolvedValue(opts.labour ?? [])
-    },
-    estimatePlantRate: {
-      findMany: jest.fn().mockResolvedValue(opts.plant ?? [])
     },
     tenderEstimate: {
       findUnique: jest.fn().mockResolvedValue({ markup: opts.tenderMarkup ?? 30 })
@@ -52,7 +56,7 @@ describe("scope-redesign summary() — per-section markup", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma);
+    const svc = new ScopeRedesignService(prisma, makeRateResolver());
     const result = (await svc.summary("t-1")) as {
       waste: { subtotal: number; withMarkup: number };
       cutting: { subtotal: number; withMarkup: number };
@@ -85,7 +89,7 @@ describe("scope-redesign summary() — per-section markup", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma);
+    const svc = new ScopeRedesignService(prisma, makeRateResolver());
     const result = (await svc.summary("t-1")) as {
       waste: { subtotal: number; withMarkup: number };
       cutting: { subtotal: number; withMarkup: number };
@@ -108,7 +112,7 @@ describe("scope-redesign summary() — per-section markup", () => {
         { cardId: "c1", lineTotal: "100", card: { cuttingMarkupOverride: null } }
       ]
     });
-    const svc = new ScopeRedesignService(prisma);
+    const svc = new ScopeRedesignService(prisma, makeRateResolver());
     const result = (await svc.summary("t-1")) as {
       waste: { withMarkup: number };
       cutting: { withMarkup: number };
@@ -132,7 +136,7 @@ describe("scope-redesign summary() — per-section markup", () => {
         { cardId: "c1", lineTotal: "1000", card: { cuttingMarkupOverride: "20" } }
       ]
     });
-    const svc = new ScopeRedesignService(prisma);
+    const svc = new ScopeRedesignService(prisma, makeRateResolver());
     const result = (await svc.summary("t-1")) as { tenderPrice: number };
     // Expected: waste 1000*1.10 + cutting 1000*1.20 = 1100 + 1200 = 2300
     // Wrong (combined-base) result would be (1000+1000)*1.15 = 2300 as a

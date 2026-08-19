@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { readApiErrorMessage } from "../../../lib/api-errors";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../../auth/AuthContext";
 import { useConfirm } from "../../../hooks/useConfirm";
@@ -79,7 +80,7 @@ export function ScopeCardsTab({
       // lineTotalWithMarkup via /scope/items). Whole-tender totals
       // moved to other surfaces.
       const listRes = await authFetch(`/tenders/${tenderId}/scope/items`);
-      if (!listRes.ok) throw new Error(await listRes.text());
+      if (!listRes.ok) throw new Error(await readApiErrorMessage(listRes));
       const body = (await listRes.json()) as ListResponse;
       setItems(body.items);
     } catch (err) {

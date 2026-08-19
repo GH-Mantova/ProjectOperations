@@ -159,7 +159,7 @@ export function ClientQuotesPanel({
     setLoading(true);
     try {
       const res = await authFetch(`/tenders/${tenderId}/quotes`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const list = (await res.json()) as QuoteSummary[];
       setQuotes(list);
     } catch (err) {
@@ -244,7 +244,7 @@ export function ClientQuotesPanel({
         method: "POST",
         body: JSON.stringify({ clientId, copyFromQuoteId })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const created = (await res.json()) as FullQuote;
       await loadList();
       setSelectedId(created.id);
@@ -274,7 +274,7 @@ export function ClientQuotesPanel({
   const downloadPdf = async (quoteId: string, quoteRef: string) => {
     try {
       const res = await authFetch(`/tenders/${tenderId}/quotes/${quoteId}/pdf`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -296,7 +296,7 @@ export function ClientQuotesPanel({
       const res = await authFetch(`/tenders/${tenderId}/quotes/${quoteToDelete.id}`, {
         method: "DELETE"
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setQuoteToDelete(null);
       if (selectedId === quoteToDelete.id) {
         setIsEditing(false);
@@ -691,7 +691,7 @@ function QuoteEditor({
       method: "POST",
       body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await readApiErrorMessage(res));
     await onRefresh();
   };
   const patch = async (path: string, body: unknown) => {
@@ -699,12 +699,12 @@ function QuoteEditor({
       method: "PATCH",
       body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await readApiErrorMessage(res));
     await onRefresh();
   };
   const del = async (path: string) => {
     const res = await authFetch(`/tenders/${tenderId}/quotes/${quote.id}${path}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await readApiErrorMessage(res));
     await onRefresh();
   };
 

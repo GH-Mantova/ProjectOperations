@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
 
@@ -271,7 +272,7 @@ export function FormSubmissionDetailPage() {
     if (!id) return;
     try {
       const res = await authFetch(`/forms/submissions/${id}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setSubmission((await res.json()) as Submission);
     } catch (err) {
       setError((err as Error).message);
@@ -346,7 +347,7 @@ export function FormSubmissionDetailPage() {
         method: "POST",
         body: JSON.stringify({ comment: comment.trim() || undefined })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setOpenComment(null);
       setComment("");
       await load();
@@ -427,7 +428,7 @@ export function FormSubmissionDetailPage() {
               method: "POST",
               body: JSON.stringify({})
             });
-            if (!res.ok) throw new Error(await res.text());
+            await throwIfApiError(res);
             await load();
           } catch (err) {
             setError((err as Error).message);

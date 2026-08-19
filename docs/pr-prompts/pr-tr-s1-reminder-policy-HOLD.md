@@ -18,8 +18,8 @@ seed_only: false
 escalates: false
 backfill: false
 rollback_strategy: Both new models are purely additive (CREATE TABLE only, no existing rows modified, all columns have defaults). Safe to leave on main if the run is capped before the code lands. To revert, remove TenderReminderPolicy and TenderReminderLog from schema.prisma and drop the corresponding migration — no UPDATE ... SET, no NOT NULL backfill on existing rows.
-requires_file_on_main: docs/plans/tender-reminders-plan.md
 ---
+<!-- gate dropped 2026-08-19: docs/plans/tender-reminders-plan.md landed on main; the gate was a no-op. -->
 
 # TR-1: Reminder policy/config + reminder-log (schema, CRUD, idempotency)
 

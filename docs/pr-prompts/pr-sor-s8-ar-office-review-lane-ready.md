@@ -18,7 +18,7 @@ seed_only: false
 escalates: true
 rollback_strategy: Additive migration only — one new table (AgreedRecordPricingLine) attached to the existing AgreedRecord, plus two seeded rows in the existing `notification_trigger_configs` table (id-known seed, idempotent upsert; safe to leave). Nothing existing altered. Down migration drops the new table; the seed rows are harmless if left. Forward-only otherwise.
 backfill: false
-requires_file_on_main: apps/api/src/modules/agreed-records/agreed-records.service.ts
+requires_on_main: apps/api/src/modules/agreed-records/agreed-records.service.ts :: export class AgreedRecordsService
 ---
 
 # SoR S8 — AR office review lane: price · approve · reject-and-send-back + notifications

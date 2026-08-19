@@ -13,8 +13,8 @@ seed_only: false
 escalates: true
 backfill: false
 rollback_strategy: All additions are purely additive (new nullable/defaulted columns and new tables). The allocationState column has a NOT NULL default ("UNALLOCATED") backfilled in the same migration for existing rows — this is a safe one-way default and no code change is required to leave it on main. To revert remove the five new models and the allocationState field from schema.prisma, then drop the corresponding migration. No UPDATE ... SET data transform; existing Tender rows are unaffected beyond the default value.
-requires_file_on_main: docs/plans/estimator-allocation-workload-plan.md
 ---
+<!-- gate dropped 2026-08-19: docs/plans/estimator-allocation-workload-plan.md landed on main; the gate was a no-op. -->
 
 # EW-1: Allocation + capacity schema (additive migration)
 

@@ -9,7 +9,7 @@ scope:
   - apps/web/src/components/CsvColumnMapper.tsx
   - apps/web/src/pages/admin/__tests__/XeroExchangePage.import.test.tsx
   - apps/api/src/modules/audit/audit.service.ts
-requires_file_on_main: apps/api/src/modules/xero/xero-contact-export.service.ts
+requires_on_main: apps/api/src/modules/xero/xero-contact-export.service.ts :: XERO_CONTACT_CSV_COLUMNS
 done_when: pnpm build && pnpm lint && test -f apps/api/src/modules/xero/xero-contact-import.service.ts && grep -q "previewImport" apps/api/src/modules/xero/xero-contact-import.service.ts
 size: 9
 gate_allow: none

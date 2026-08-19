@@ -347,49 +347,6 @@ items:
   # rather than an implementation prompt because model Tender carries 39 relations, 28 of them
   # collections (schema.prisma:1222-1315) - far past size 10. One place, never two.
   # -------------------------------------------------------------------------------------------
-  # ADDED 2026-08-19 (Station 06 PR Master). Found during a gate audit of the whole queue - the
-  # audit itself was only run because the watchdog kill-loop made "which prompts can this node
-  # actually run?" a safety question rather than a curiosity.
-  # -------------------------------------------------------------------------------------------
-  - id: lint-reject-noop-file-gate
-    title: "Intake lint: reject a requires_file_on_main whose path is ALREADY on origin/main"
-    priority: P2
-    why: >
-      A dependency gate that is already satisfied at intake is not a gate. It reads as ordered and
-      is not - the slice dispatches alongside its predecessor instead of after it. SLICE 3 of the
-      cluster-chaining work added CLUSTER_DEAD_GATE for exactly this shape, but only for
-      requires_on_main, which checks whether a NEEDLE is already present. Nothing checks whether a
-      requires_file_on_main PATH is already present. The linter verifies the key exists, not that
-      it discriminates - the same class of hole as gate_allow describing permission rather than
-      likelihood.
-      KNOWN LIVE INSTANCE, verified on main 151cd66f: docs/pr-prompts/pr-ew-s2-alloc-engine-HOLD.md
-      carries 'requires_file_on_main: apps/api/prisma/schema.prisma'. That file has existed since
-      the repo began, so the gate can never fail. s2 would build the allocation engine against a
-      schema with no EstimatorCapacity model (confirmed ABSENT on main, so s1 is genuinely
-      unshipped). Its gate should be a CONTENT gate:
-      'requires_on_main: apps/api/prisma/schema.prisma :: model EstimatorCapacity'.
-      Fixing that one prompt is a one-line change; the rule is what stops the next one. Five other
-      already-satisfied gates in the queue were checked and all discriminate correctly, so this is
-      a hole in the lint, not rot across the queue.
-    gate: '! grep -q "FILE_GATE_DEAD" scripts/pipeline/lint-prompt.mjs'
-    gate_means: >
-      READY while lint-prompt.mjs carries no rule rejecting an already-satisfied
-      requires_file_on_main. Dies the moment that rule ships. Mirror CLUSTER_DEAD_GATE's fail-safe:
-      when origin/main cannot be probed (a shallow CI checkout has no origin/main ref) the rule must
-      warn and skip rather than reject, and the CI job must keep fetch-depth 0.
-    needs_marco: false
-    marco_note: >
-      Raised 2026-08-19 alongside three other items Marco asked not to lose track of. The other
-      three already have prompt files and their home is the queue, not this register (one place,
-      never two): pr-tender-lifecycle-s2a-tenderclient-bidstatus (ungated, ADMIT, D20 says release
-      it, sole blocker on brief 8.2.1), and the three repairable BACKFILL_TEST_REQUIRED prompts
-      pr-fv2-maintenance-usage-intervals / pr-fv2-output-channels / pr-rates-s11c-drop-legacy-tables
-      (each needs a test file named in scope or an explicit backfill: false).
-      pr-fv2-formrule-contract is deliberately excluded - it is on a soak and must not be armed
-      without Marco.
-    order: 17
-
-  # -------------------------------------------------------------------------------------------
   # ADDED 2026-08-19 (Station 06 PR Master), from a defect Marco hit in the Tip Finder. Grounding
   # the one screenshot turned up a migration that was recorded as finished and was not.
   # -------------------------------------------------------------------------------------------
@@ -427,6 +384,16 @@ items:
       useful mid-estimate. Separately: the "Coming from" field on the Tip Finder is a disabled input
       showing the placeholder "Tender site" - if choosing a different departure point is meant to be
       possible, that is a second gap and needs its own item.
+      STAGED 2026-08-19 (Station 04 Scanner), 2 of 7 slices - both ADMIT:
+      pr-apierr-s1-tendering-ready.md (7 files, armed) and pr-apierr-s2-crm-HOLD.md (7 files,
+      held only to keep the armed count low while the watcher runnable-count defect is open;
+      it has no dependency and can be armed by rename). REMAINING SLICES, measured on origin/main
+      3bd53909: pages/forms 5, pages/admin 5, pages root 5, and one mop-up slice of 9 -
+      pages/sites 2, personas/pages 2, pages/workers 1, pages/dockets 1, pages/field 1,
+      components/correspondence 1, components/timeline 1. Then a FINAL slice adding the CI
+      gate, which can only pass once all 38 files are migrated - it must be last.
+      This item deliberately STAYS in the register while the chain runs: its gate counts FILES,
+      so it correctly keeps reporting the work as unfinished until it genuinely is.
     order: 18
 
   # -------------------------------------------------------------------------------------------
@@ -476,3 +443,63 @@ items:
       export named in its pre-flight runbook, and Marco merges it. Nothing about SLICE 2's gate
       opening means it should be armed automatically.
     order: 19
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master) after pr-rates-s11c-drop-legacy-tables RAN and
+  # correctly STOOD DOWN. It opened no PR, created no branch or worktree, and dropped nothing.
+  # The code-writer wrote a full escalation at
+  #   C:\po-watcher\ProjectOperations\docs\pr-prompts\needs-marco\rates-11c-blocked-consumers.md
+  # That directory is GITIGNORED and lives in the WATCHER CLONE, not the dev tree - so the analysis
+  # is invisible to a fresh checkout and to any agent not on that machine. That is the only reason
+  # this item exists: to put it somewhere tracked.
+  # -------------------------------------------------------------------------------------------
+  - id: rates-11c-blocked-consumers
+    title: "SLICE 11c cannot run - 7 services bypass the rate resolver and a live FK blocks the DROP"
+    priority: P2
+    why: >
+      pr-rates-s11c-drop-legacy-tables was armed on 2026-08-19 (D54) because its gate
+      'requires_file_on_main: docs/data-model/rates-migration/STEP-11B-DONE.md' was satisfied. The
+      code-writer ran it, found its precondition false, and stopped per the slice's own
+      "STOP and report - do NOT attempt to refactor them here" rule.
+      VERIFIED INDEPENDENTLY on origin/main:
+      (a) STEP-11B-DONE.md is literally the single line "11b landed". A content-free stub armed a
+          destructive successor.
+      (b) SEVEN services read the legacy models directly, bypassing the resolver:
+          tendering/scope-of-works.service.ts, tendering/scope-waste.service.ts,
+          tendering/scope-redesign.service.ts, personas/tools/handlers/lookup-rate.handler.ts,
+          rates/rates-import.service.ts, rates/rates-export.service.ts,
+          map-locations/map-locations.service.ts.
+          NOTE estimates/estimates.service.ts also calls the legacy models directly but is NOT a
+          blocker - it is the /estimate-rates/* service that SLICE 11c itself deletes (11c step 2).
+          Counting it as an eighth consumer is a mistake; the code-writer was right to exclude it.
+      (c) ScopeWasteItem.transportRate is a LIVE FK: transportRate EstimatePlantRate? @relation(
+          "ScopeWasteItemTransportRate", fields: [transportRateId], references: [id],
+          onDelete: SetNull) at schema.prisma:3649. Dropping estimate_plant_rates fails at
+          PostgreSQL FK-check time regardless of any code change.
+      ROOT CAUSE: step 11a routed only the RESOLVER helpers to RateTable and implicitly assumed every
+      caller went through the resolver. 11b was frontend-only. The seven direct consumers were never
+      migrated by either.
+      NOTHING WAS LOST AND NOTHING WAS DROPPED - every guard worked. But Marco was one merge away from
+      being asked to take a production database backup for a migration that could not have succeeded.
+    gate: 'grep -q "model EstimateLabourRate" apps/api/prisma/schema.prisma && grep -rlq "prisma\.estimatePlantRate" apps/api/src/modules/tendering'
+    gate_means: >
+      READY while the legacy models still exist AND tendering still reaches them directly. Dies once
+      the consumers are migrated and the legacy models are gone.
+    needs_marco: true
+    marco_note: >
+      TWO DECISIONS BLOCK THE WHOLE 11-SERIES. Neither can be guessed. Full write-up (the
+      code-writer's own) is in the watcher clone at
+      docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
+      (1) Prep slice rates-11b2-migrate-consumers - route the 7 consumers THROUGH the resolver
+          (preferred: single source of truth, matches 11a's intent; requires adding the lookup shapes
+          they need to the resolver surface), or refactor them to hit RateTable directly?
+      (2) ScopeWasteItem.transportRateId - repoint at a RateTable row (needs an id-mapping backfill
+          from 11a's seed), or drop the FK and snapshot the rate onto the row? NOTE ScopeWasteItem
+          ALREADY snapshots quotedDisposalRate and quotedFuelPricePerLitre with a variance-flag
+          pattern, so transport is the only price on that row still read live.
+      Once the prep lands, the existing 11c prompt re-fires UNCHANGED and will pass.
+      SEPARATE SYSTEMIC ISSUE: the STEP-*-DONE.md marker convention lets a ONE-LINE STUB arm a
+      destructive successor. Cousin of lint-reject-noop-file-gate - there the gated file always
+      existed; here the file was real but its CONTENT proved nothing. A landed-marker should carry a
+      verify-line the next slice can grep, not just the word "landed".
+    order: 20

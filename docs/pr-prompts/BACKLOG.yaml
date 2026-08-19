@@ -369,3 +369,46 @@ items:
       information-disclosure feature rather than a backup. Q6 from the original run was answered
       only as "ok" and was never disambiguated.
     order: 16
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master). Found during a gate audit of the whole queue - the
+  # audit itself was only run because the watchdog kill-loop made "which prompts can this node
+  # actually run?" a safety question rather than a curiosity.
+  # -------------------------------------------------------------------------------------------
+  - id: lint-reject-noop-file-gate
+    title: "Intake lint: reject a requires_file_on_main whose path is ALREADY on origin/main"
+    priority: P2
+    why: >
+      A dependency gate that is already satisfied at intake is not a gate. It reads as ordered and
+      is not - the slice dispatches alongside its predecessor instead of after it. SLICE 3 of the
+      cluster-chaining work added CLUSTER_DEAD_GATE for exactly this shape, but only for
+      requires_on_main, which checks whether a NEEDLE is already present. Nothing checks whether a
+      requires_file_on_main PATH is already present. The linter verifies the key exists, not that
+      it discriminates - the same class of hole as gate_allow describing permission rather than
+      likelihood.
+      KNOWN LIVE INSTANCE, verified on main 151cd66f: docs/pr-prompts/pr-ew-s2-alloc-engine-HOLD.md
+      carries 'requires_file_on_main: apps/api/prisma/schema.prisma'. That file has existed since
+      the repo began, so the gate can never fail. s2 would build the allocation engine against a
+      schema with no EstimatorCapacity model (confirmed ABSENT on main, so s1 is genuinely
+      unshipped). Its gate should be a CONTENT gate:
+      'requires_on_main: apps/api/prisma/schema.prisma :: model EstimatorCapacity'.
+      Fixing that one prompt is a one-line change; the rule is what stops the next one. Five other
+      already-satisfied gates in the queue were checked and all discriminate correctly, so this is
+      a hole in the lint, not rot across the queue.
+    gate: '! grep -q "FILE_GATE_DEAD" scripts/pipeline/lint-prompt.mjs'
+    gate_means: >
+      READY while lint-prompt.mjs carries no rule rejecting an already-satisfied
+      requires_file_on_main. Dies the moment that rule ships. Mirror CLUSTER_DEAD_GATE's fail-safe:
+      when origin/main cannot be probed (a shallow CI checkout has no origin/main ref) the rule must
+      warn and skip rather than reject, and the CI job must keep fetch-depth 0.
+    needs_marco: false
+    marco_note: >
+      Raised 2026-08-19 alongside three other items Marco asked not to lose track of. The other
+      three already have prompt files and their home is the queue, not this register (one place,
+      never two): pr-tender-lifecycle-s2a-tenderclient-bidstatus (ungated, ADMIT, D20 says release
+      it, sole blocker on brief 8.2.1), and the three repairable BACKFILL_TEST_REQUIRED prompts
+      pr-fv2-maintenance-usage-intervals / pr-fv2-output-channels / pr-rates-s11c-drop-legacy-tables
+      (each needs a test file named in scope or an explicit backfill: false).
+      pr-fv2-formrule-contract is deliberately excluded - it is on a soak and must not be armed
+      without Marco.
+    order: 17

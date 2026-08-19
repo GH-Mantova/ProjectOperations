@@ -74,6 +74,11 @@ $wdHungMin = 15
 if ($env:PR_WATCHER_HUNG_MIN) { $wdHungMin = [int]$env:PR_WATCHER_HUNG_MIN }
 $wdPollSec = 120
 if ($env:PR_WATCHER_WD_POLL_SEC) { $wdPollSec = [int]$env:PR_WATCHER_WD_POLL_SEC }
+# Max age of .queue-state.json before the watchdog falls back to the raw on-disk
+# armed count. 10 min = 2 rescan intervals (healthy node always looks fresh) and
+# below the 15-min hung threshold (stopped node is still caught).
+$wdStateMaxAgeMin = 10
+if ($env:PR_WATCHER_WD_STATE_MAX_MIN) { $wdStateMaxAgeMin = [int]$env:PR_WATCHER_WD_STATE_MAX_MIN }
 $wdHeartbeat = Join-Path $env:PR_WATCHER_REPO_ROOT "scripts\pr-watcher\heartbeat.log"
 
 # 2026-08-18: sentinel file for the watchdog/supervisor handshake.
@@ -301,7 +306,7 @@ function Resolve-WatcherExitAction {
 if ($env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -eq '1') { return }
 
 Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail."
-Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while armed>0 and 0 in-progress (poll ${wdPollSec}s)."
+Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while runnable>0 and 0 in-progress (poll ${wdPollSec}s). Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to raw on-disk armed count if file is missing or stale."
 
 # HEARTBEAT WATCHDOG (2026-08-12) -- additive; the restart-on-exit loop below is
 # UNCHANGED. Runs concurrently for the life of the supervisor. When the node is
@@ -309,11 +314,11 @@ Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdH
 # node so the main loop's exit handling relaunches it fresh (which resets the
 # clone). ASCII only.
 $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
-    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag)
+    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag, $StateMaxAgeMin)
     function WD-Log([string]$m) {
         try { Add-Content -Path $SupLog -Value ("[{0}] WATCHDOG {1}" -f (Get-Date -Format o), $m) -Encoding UTF8 } catch {}
     }
-    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag)"
+    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag stateMaxAgeMin=$StateMaxAgeMin)"
     while ($true) {
         Start-Sleep -Seconds $PollSec
         try {
@@ -321,7 +326,34 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
                       Where-Object { $_.CommandLine -match ([regex]::Escape((Join-Path (Split-Path $Heartbeat) 'index.mjs'))) })
             if ($node.Count -eq 0) { continue }                       # no node: the main loop is (re)starting it
             $armed = @(Get-ChildItem (Join-Path $PromptDir '*-ready.md') -File -ErrorAction SilentlyContinue)
-            if ($armed.Count -eq 0) { continue }                      # empty queue: a stale heartbeat is legitimate idle
+            if ($armed.Count -eq 0) { continue }   # empty queue: a stale heartbeat is legitimate idle
+
+            # The NODE is the only authority on what it can dequeue (lane routing +
+            # dependency gates both live in index.mjs). It publishes that number; we
+            # read it. If the file is missing or stale the node has stopped rescanning,
+            # so fall back to the raw on-disk count -- the pre-2026-08-19 behaviour,
+            # which fails toward restarting.
+            $stateFile = Join-Path (Split-Path $Heartbeat) '.queue-state.json'
+            $runnable  = $armed.Count
+            $howKnown  = 'on-disk count (no fresh .queue-state.json)'
+            try {
+                if (Test-Path $stateFile) {
+                    $stateAgeMin = ((Get-Date).ToUniversalTime() - (Get-Item $stateFile).LastWriteTimeUtc).TotalMinutes
+                    if ($stateAgeMin -le $StateMaxAgeMin) {
+                        $state = Get-Content $stateFile -Raw | ConvertFrom-Json
+                        if ($null -ne $state.runnable) {
+                            $runnable = [int]$state.runnable
+                            $howKnown = ("node-published (state age {0} min)" -f [int]$stateAgeMin)
+                        }
+                    }
+                }
+            } catch { WD-Log ("queue-state read failed (" + $_.Exception.Message + "); using the on-disk count.") }
+
+            if ($runnable -le 0) {
+                WD-Log ("armed={0} runnable=0 -- nothing this node can dequeue; a stale heartbeat is legitimate idle. Source: {1}." -f $armed.Count, $howKnown)
+                continue
+            }
+
             $inProg = @(Get-ChildItem (Join-Path $PromptDir 'in-progress\*.md') -File -ErrorAction SilentlyContinue)
             if ($inProg.Count -gt 0) { continue }                     # a build is running: not hung
             $ageMin = if (Test-Path $Heartbeat) { ((Get-Date).ToUniversalTime() - (Get-Item $Heartbeat).LastWriteTimeUtc).TotalMinutes } else { $HungMin + 1 }
@@ -333,20 +365,20 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
                 # never manufacture the ambiguous exit.
                 $flagWritten = $false
                 try {
-                    Set-Content -Path $KillFlag -Value ("[{0}] pid={1} armed={2} ageMin={3}" -f (Get-Date -Format o), $node[0].ProcessId, $armed.Count, [int]$ageMin) -Encoding UTF8 -ErrorAction Stop
+                    Set-Content -Path $KillFlag -Value ("[{0}] pid={1} armed={2} runnable={3} ageMin={4}" -f (Get-Date -Format o), $node[0].ProcessId, $armed.Count, $runnable, [int]$ageMin) -Encoding UTF8 -ErrorAction Stop
                     $flagWritten = $true
                 } catch {
                     WD-Log ("FLAG WRITE FAILED (" + $_.Exception.Message + "). Skipping kill this cycle to avoid the ambiguous-exit deadlock.")
                 }
                 if ($flagWritten) {
-                    WD-Log ("heartbeat stale {0} min with {1} armed and 0 in-progress -> node HUNG. Sentinel written; killing pid {2}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, $armed.Count, $node[0].ProcessId)
+                    WD-Log ("heartbeat stale {0} min with armed={1} runnable={2} 0 in-progress -> node HUNG. Sentinel written; killing pid {3}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, $armed.Count, $runnable, $node[0].ProcessId)
                     foreach ($p in $node) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
                     Start-Sleep -Seconds 150                          # let the supervisor relaunch; avoid a double-kill
                 }
             }
         } catch { WD-Log ("poll error: " + $_.Exception.Message) }
     }
-} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog, $wdKillFlag
+} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog, $wdKillFlag, $wdStateMaxAgeMin
 
 $lastReasonKey = ""
 $sameCount     = 0

@@ -165,6 +165,7 @@ const DRY_RUN = process.env.PR_WATCHER_DRY_RUN === "true"; // default OFF
 const HEARTBEAT_FILE = path.join(__dirname, "heartbeat.log");
 const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const HEARTBEAT_MAX_LINES = 500;
+const QUEUE_STATE_FILE = path.join(__dirname, ".queue-state.json");
 
 // Transient-failure signatures — a failed run whose output matches one of
 // these gets ONE automatic retry before quarantine. Override the defaults
@@ -484,6 +485,45 @@ export function laneFor(
   if (bodyNeedsSerialLane(body)) return 0;
   return laneHash(name) % lanes;
 }
+
+// Pure function: compute the runnable count from sets of prompt names.
+// The node is the only authority on what it can dequeue (lane routing +
+// dependency gates both live here). This function is exported so unit tests
+// can exercise it without touching the filesystem or starting the daemon.
+//
+// Inputs are arrays of basename strings ("pr-foo-ready.md").
+// Returns { armed, owned, deferred, runnable } as counts.
+//   armed    - every *-ready.md on disk
+//   owned    - the subset this lane owns
+//   deferred - owned prompts whose dep gate is currently unmet
+//   runnable - owned prompts not in deferred (never negative, never > owned)
+//
+// Rules:
+//   - Names compared as plain strings; duplicates counted once.
+//   - A name in deferred but not in owned does not reduce runnable.
+//   - Missing / undefined inputs behave as empty arrays.
+export function computeRunnable({ armed = [], owned = [], deferred = [] } = {}) {
+  const armedSet = new Set(armed);
+  const ownedSet = new Set(owned);
+  const deferredSet = new Set(deferred);
+  // runnable = owned names NOT in deferred
+  let runnableCount = 0;
+  for (const name of ownedSet) {
+    if (!deferredSet.has(name)) runnableCount++;
+  }
+  return {
+    armed: armedSet.size,
+    owned: ownedSet.size,
+    deferred: deferredSet.size,
+    runnable: runnableCount,
+  };
+}
+
+// Track prompts whose dependency gates are currently unmet. Written to
+// .queue-state.json so the watchdog knows not to treat idle-but-blocked
+// nodes as hung. A prompt is removed when its gate opens or when it is
+// consumed / removed from the queue.
+const deferredNames = new Set();
 
 // Read a prompt file's full body for lane classification. Sync to fit the
 // sync enqueue path; any failure returns "" (treated as pin-to-lane-0).
@@ -1053,6 +1093,60 @@ async function appendHeartbeatLine(line) {
     await writeFile(HEARTBEAT_FILE, lines.join("\n") + "\n", "utf-8");
   } catch (err) {
     log("heartbeat", `write failed: ${err.message}`);
+  }
+}
+
+// Write a machine-readable snapshot of what this node can dequeue.
+// Used by the watchdog so it does not flag a correctly-idle node as hung.
+// Best-effort: never throws; a write failure only logs.
+// Mirrors the .reviewed-prs.json.tmp-then-rename pattern for atomicity.
+async function writeQueueState() {
+  try {
+    // Collect every *-ready.md currently on disk.
+    let allArmed = [];
+    try {
+      const entries = await readdir(PROMPT_DIR);
+      allArmed = entries.filter((n) => READY_PATTERN.test(n));
+    } catch {
+      // if we cannot read the dir, armed stays empty — still write the file
+    }
+
+    // Which of those does this lane own?
+    let ownedNames;
+    if (WATCHER_LANE === null) {
+      // No lane filtering: node owns everything.
+      ownedNames = allArmed;
+    } else {
+      ownedNames = allArmed.filter((name) => {
+        const body = readPromptBody(path.join(PROMPT_DIR, name));
+        const isReview = isReviewJob(name);
+        const fixesPr = isReview ? null : readFixesPr(path.join(PROMPT_DIR, name));
+        const isFix = fixesPr !== null;
+        return laneFor(name, { isFix, isReview, body, lanes: WATCHER_LANES }) === WATCHER_LANE;
+      });
+    }
+
+    const result = computeRunnable({
+      armed: allArmed,
+      owned: ownedNames,
+      deferred: [...deferredNames],
+    });
+
+    const payload = {
+      ts: new Date().toISOString(),
+      lane: WATCHER_LANE,
+      lanes: WATCHER_LANES,
+      armed: result.armed,
+      owned: result.owned,
+      deferred: [...deferredNames],
+      runnable: result.runnable,
+    };
+
+    const tmp = QUEUE_STATE_FILE + ".tmp";
+    await writeFile(tmp, JSON.stringify(payload, null, 2) + "\n", "utf-8");
+    await rename(tmp, QUEUE_STATE_FILE);
+  } catch (err) {
+    log("queue-state", `write failed: ${err.message}`);
   }
 }
 
@@ -1897,6 +1991,7 @@ async function drain() {
   const filePath = queue.shift();
   fixLanePaths.delete(filePath);
   const name = path.basename(filePath);
+  deferredNames.delete(name); // no longer deferred: we are processing it now
 
   let promptBody;
   try {
@@ -1917,11 +2012,14 @@ async function drain() {
     const unmet = await unmetDependencies(deps);
     if (unmet.length > 0) {
       log("deps", `${name} deferred: ${unmet.join("; ")} — re-check next rescan`);
+      deferredNames.add(name);
+      writeQueueState(); // publish immediately so the watchdog sees runnable=0 promptly
       seen.delete(name);
       running = false;
       drain();
       return;
     }
+    deferredNames.delete(name); // gate opened — no longer deferred
     log("deps", `${name}: all dependencies met (merged: [${deps.requiresMerged.join(", ")}], files: ${deps.requiresFilesOnMain.length})`);
   }
 
@@ -2330,6 +2428,9 @@ async function rescan() {
   // Idle poll cycle also sweeps settled verdicts so a long-running watcher
   // doesn't accumulate untracked pr-*-review.md files in the clone tree.
   await runArchiveSettledVerdicts();
+  // Publish fresh queue state after every rescan so the watchdog has an
+  // up-to-date view of what this node can actually dequeue.
+  await writeQueueState();
 }
 
 // Informational scan for stray claude.exe processes. We do NOT auto-kill —
@@ -2442,6 +2543,7 @@ async function main() {
   await runArchiveSettledVerdicts();
 
   await scanExisting();
+  await writeQueueState(); // publish initial state after startup scan
 
   const watcher = fsWatch(PROMPT_DIR, { persistent: true }, (event, name) => {
     if (!name) return;

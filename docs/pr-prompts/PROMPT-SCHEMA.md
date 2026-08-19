@@ -325,6 +325,13 @@ back-compat) but cannot pass the intake lint -- do not use it in new prompts.
 
 Both list form and inline scalar are accepted for all three keys.
 
+A `requires_file_on_main` path that ALREADY exists on `origin/main` at intake is a dead
+gate — the path can never be absent, so the check can never fail, and the slice would
+dispatch alongside its predecessor with no ordering at all. The linter REJECTs this as
+`FILE_GATE_DEAD`. Two legal fixes: re-point at a content gate
+(`requires_on_main: <path> :: <fixed string the predecessor introduces>`), or drop the key
+because the dependency is genuinely satisfied.
+
 #### `requires_on_main` -- content gate (cluster-chaining SLICE 2)
 
 `requires_on_main` lets a later slice chain on a SPECIFIC ARTIFACT inside a file, not
@@ -494,6 +501,7 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `CLUSTER_NO_DEP` | `cluster_order > 1` but no `requires_merged` / `requires_file_on_main` / `requires_on_main` - a later slice with nothing to wait on dispatches alongside the first one. |
 | `CLUSTER_CYCLE` | Two or more prompts in the same cluster reference each other's files. The error names the cycle path. |
 | `CLUSTER_DEAD_GATE` | A `requires_on_main` needle is already on `origin/main` at intake - the ordering gate is a no-op. Only checked for cluster prompts. |
+| `FILE_GATE_DEAD` | A `requires_file_on_main` path is already on `origin/main` at intake - the gate can never fail, so the slice would dispatch ungated. Applies to ALL prompts (cluster or not). Fail-safe on git errors: WARN and skip. |
 
 ---
 

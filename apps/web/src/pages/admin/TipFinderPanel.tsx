@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -345,7 +346,7 @@ export function TipFinderPanel({
         method: "POST",
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not load tip recommendations."));
       setCards((await res.json()) as TipCard[]);
     } catch (err) {
       setComputeError((err as Error).message);
@@ -372,7 +373,7 @@ export function TipFinderPanel({
         method: "POST",
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not save tip choice."));
       const found = cards?.find((c) => c.mapLocationId === mapLocationId);
       if (onFacilityChosen && found) {
         // Caller handles the UX (writing to waste row, closing drawer, etc.)

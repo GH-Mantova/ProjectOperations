@@ -339,91 +339,13 @@ items:
       are on main; it lands via a doc-reconcile PR and drops the marker doc named in the gate.
     order: 15
 
-  # -------------------------------------------------------------------------------------------
-  # ADDED 2026-08-18 (Marco): the full-tender export, parked after PR Master run 5 and now
-  # deliberately re-prioritised DOWN. The reason it was requested changed underneath it.
-  # -------------------------------------------------------------------------------------------
-  - id: tender-full-export
-    title: "Full-tender export - every field on a tender, not just the register columns"
-    priority: P3
-    why: >
-      Marco asked for this on 2026-08-17 after noticing the Tendering register CSV exports only the
-      register's own columns and nothing from Activity & communications or the rest of the tender.
-      It was originally framed as a SAFETY NET against losing entered notes. That framing is wrong
-      and Marco accepted the correction: the real safety net is Azure PostgreSQL point-in-time
-      restore, which he then hardened - retention raised 7 -> 15 days and a CanNotDelete lock added
-      to the prod server on 2026-08-17. PITR gives a recovery point of roughly 5 minutes with nobody
-      pressing a button; an export can never match that. What survives is a genuine but non-urgent
-      need - PORTABILITY and AUDIT: handing a tender's complete record to somebody outside the
-      system. DECIDED 2026-08-18 (Marco): keep it, drop to P3.
-    gate: 'grep -rq "buildRegisterCsv" apps/web/src/pages/tendering && ! grep -rq "buildTenderFullExport" apps/web/src/pages/tendering'
-    gate_means: >
-      READY once the register CSV fix (buildRegisterCsv, PR #1146 lineage) is on main and no
-      full-tender exporter exists yet. Dies the moment a full-tender exporter ships.
-    needs_marco: true
-    marco_note: >
-      The run-5 interview was PARKED mid-way and its answers are stale, because the justification
-      moved from safety-net to portability/audit. Do NOT stage from the old answers. Re-run the
-      PR Master interview before staging - in particular the permission question (who may export a
-      whole tender, including notes and documents) has to be re-asked now that this is an
-      information-disclosure feature rather than a backup. Q6 from the original run was answered
-      only as "ok" and was never disambiguated.
-      DECIDED 2026-08-19 (Marco, PR Master re-interview COMPLETE - do not re-ask these):
-      D52 PERMISSION = SUPER-USER ONLY for now. Deliberately NOT the archive jobs.view precedent:
-      that was set when this was framed as a backup, and it is now information disclosure - a whole
-      tender including internal notes and a document index leaving the system. Ship it restricted;
-      widen later once Marco has seen who actually asks.
-      D53 SCOPE = BULK over the filtered register ONLY, mirroring the CSV export fixed in #1146
-      (respects active filter chips, ignores selection). NO single-tender button on TenderDetailPage
-      - one entry point, one code path, one permission check.
-      Still-settled from run 5: JSON snapshot first (renderer later); ALL tender surfaces incl. both
-      Correspondence and Activity & communications (they are different panels); documents as an
-      INDEX ONLY, not the files.
-    order: 16
-
-  # -------------------------------------------------------------------------------------------
-  # ADDED 2026-08-19 (Station 06 PR Master). Found during a gate audit of the whole queue - the
-  # audit itself was only run because the watchdog kill-loop made "which prompts can this node
-  # actually run?" a safety question rather than a curiosity.
-  # -------------------------------------------------------------------------------------------
-  - id: lint-reject-noop-file-gate
-    title: "Intake lint: reject a requires_file_on_main whose path is ALREADY on origin/main"
-    priority: P2
-    why: >
-      A dependency gate that is already satisfied at intake is not a gate. It reads as ordered and
-      is not - the slice dispatches alongside its predecessor instead of after it. SLICE 3 of the
-      cluster-chaining work added CLUSTER_DEAD_GATE for exactly this shape, but only for
-      requires_on_main, which checks whether a NEEDLE is already present. Nothing checks whether a
-      requires_file_on_main PATH is already present. The linter verifies the key exists, not that
-      it discriminates - the same class of hole as gate_allow describing permission rather than
-      likelihood.
-      KNOWN LIVE INSTANCE, verified on main 151cd66f: docs/pr-prompts/pr-ew-s2-alloc-engine-HOLD.md
-      carries 'requires_file_on_main: apps/api/prisma/schema.prisma'. That file has existed since
-      the repo began, so the gate can never fail. s2 would build the allocation engine against a
-      schema with no EstimatorCapacity model (confirmed ABSENT on main, so s1 is genuinely
-      unshipped). Its gate should be a CONTENT gate:
-      'requires_on_main: apps/api/prisma/schema.prisma :: model EstimatorCapacity'.
-      Fixing that one prompt is a one-line change; the rule is what stops the next one. Five other
-      already-satisfied gates in the queue were checked and all discriminate correctly, so this is
-      a hole in the lint, not rot across the queue.
-    gate: '! grep -q "FILE_GATE_DEAD" scripts/pipeline/lint-prompt.mjs'
-    gate_means: >
-      READY while lint-prompt.mjs carries no rule rejecting an already-satisfied
-      requires_file_on_main. Dies the moment that rule ships. Mirror CLUSTER_DEAD_GATE's fail-safe:
-      when origin/main cannot be probed (a shallow CI checkout has no origin/main ref) the rule must
-      warn and skip rather than reject, and the CI job must keep fetch-depth 0.
-    needs_marco: false
-    marco_note: >
-      Raised 2026-08-19 alongside three other items Marco asked not to lose track of. The other
-      three already have prompt files and their home is the queue, not this register (one place,
-      never two): pr-tender-lifecycle-s2a-tenderclient-bidstatus (ungated, ADMIT, D20 says release
-      it, sole blocker on brief 8.2.1), and the three repairable BACKFILL_TEST_REQUIRED prompts
-      pr-fv2-maintenance-usage-intervals / pr-fv2-output-channels / pr-rates-s11c-drop-legacy-tables
-      (each needs a test file named in scope or an explicit backfill: false).
-      pr-fv2-formrule-contract is deliberately excluded - it is on a soak and must not be armed
-      without Marco.
-    order: 17
-
+  # DISCHARGED 2026-08-19 (Station 06 PR Master): STAGED as
+  # docs/pr-prompts/pr-tender-full-export-slice0-ready.md. The PR Master re-interview is COMPLETE -
+  # D52 (permission = SUPER-USER ONLY, deliberately not the archive jobs.view precedent, because the
+  # feature is information disclosure rather than a backup) and D53 (scope = BULK over the filtered
+  # register ONLY, mirroring buildRegisterCsv; no single-tender button). Staged as a SLICE 0 plan
+  # rather than an implementation prompt because model Tender carries 39 relations, 28 of them
+  # collections (schema.prisma:1222-1315) - far past size 10. One place, never two.
   # -------------------------------------------------------------------------------------------
   # ADDED 2026-08-19 (Station 06 PR Master), from a defect Marco hit in the Tip Finder. Grounding
   # the one screenshot turned up a migration that was recorded as finished and was not.
@@ -462,4 +384,122 @@ items:
       useful mid-estimate. Separately: the "Coming from" field on the Tip Finder is a disabled input
       showing the placeholder "Tender site" - if choosing a different departure point is meant to be
       possible, that is a second gap and needs its own item.
+      STAGED 2026-08-19 (Station 04 Scanner), 2 of 7 slices - both ADMIT:
+      pr-apierr-s1-tendering-ready.md (7 files, armed) and pr-apierr-s2-crm-HOLD.md (7 files,
+      held only to keep the armed count low while the watcher runnable-count defect is open;
+      it has no dependency and can be armed by rename). REMAINING SLICES, measured on origin/main
+      3bd53909: pages/forms 5, pages/admin 5, pages root 5, and one mop-up slice of 9 -
+      pages/sites 2, personas/pages 2, pages/workers 1, pages/dockets 1, pages/field 1,
+      components/correspondence 1, components/timeline 1. Then a FINAL slice adding the CI
+      gate, which can only pass once all 38 files are migrated - it must be last.
+      This item deliberately STAYS in the register while the chain runs: its gate counts FILES,
+      so it correctly keeps reporting the work as unfinished until it genuinely is.
     order: 18
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master). SLICES 1 and 2 of the multi-company chain are staged;
+  # 3, 4 and 5 CANNOT be written yet and this records why, so they do not fall on the floor.
+  # -------------------------------------------------------------------------------------------
+  - id: tenant-mt4-slices-3-4-5
+    title: "Write multi-company SLICES 3-5 once SLICE 2 has merged (gates need values that do not exist yet)"
+    priority: P2
+    why: >
+      docs/plans/multi-tenant-plan.md defines five slices. SLICES 1 and 2 are staged
+      (pr-tenant-mt4-s1-share-list armed, pr-tenant-mt4-s2-ownership-migration HOLD). SLICES 3-5 are
+      deliberately NOT staged, because the plan mandates gates whose values only exist after the
+      predecessor lands.
+      The plan's own words for SLICE 3: "a SLICE 3 prompt lacking any of them must be rejected at
+      lint time rather than armed." Marco's instruction was "ensure the gates are tight so slice 3
+      never lands before slice 2 fully on main." Staging a SLICE 3 with placeholder gates would be
+      the exact opposite of that instruction, so it has not been done.
+      THE FOUR MANDATED SLICE 3 GATES AND THEIR STATUS TODAY:
+      (1) requires_merged <SLICE 2 PR number> - CANNOT be written; the PR does not exist yet.
+      (2) requires_file_on_main <SLICE 2 migration folder>/migration.sql - CANNOT be written; the
+          folder is timestamp-named and is created by the SLICE 2 run. Both S1 and S2 prompts
+          instruct their agent to state the exact folder name in the PR body for this reason.
+      (3) a premise that queries the DATABASE for zero blank owners - CANNOT be expressed as a lint
+          premise at all. The intake linter runs premises as shell commands in a git checkout with
+          NO database connection, so a psql premise would error rather than gate. This is a real
+          limitation of the plan as written, not an oversight in the staging.
+      (4) SLICE 3's first action re-runs the blank-owner count and exits NO-OP if it is not zero -
+          THIS ONE IS IMPLEMENTABLE and is strictly better than (3), because it checks at the moment
+          of action rather than at intake. It must be written into the SLICE 3 prompt body.
+      WHY THE ORDERING MATTERS: if the scoping filter flips to owner-or-grant while rows still carry
+      a blank owner, every client, worker and contact becomes invisible to everyone INCLUDING
+      Initial Services. Not a degraded view - the core master data disappears.
+      SLICES 4 (share-management UI on /settings/companies, super-user only, D51) and 5 (Import as an
+      independent copy with duplicate detection, D50) are straightforward by comparison and chain on
+      3 then 4; they are held only because their predecessor does not exist.
+    gate: '! grep -rq "tenant-mt4-s3" docs/pr-prompts && grep -q "model ClientShare" apps/api/prisma/schema.prisma'
+    gate_means: >
+      READY once SLICE 1 has landed (ClientShare on main, proving the chain has started) and no
+      SLICE 3 prompt has been written yet. Dies the moment a SLICE 3 prompt exists in the queue.
+      NOTE this fires after SLICE 1, not SLICE 2 - deliberately, so the prompts can be DRAFTED while
+      SLICE 2 is waiting on Marco, with the two unknown values filled in from SLICE 2's PR when it
+      appears.
+    needs_marco: false
+    marco_note: >
+      SLICE 2 is production data and is staged -HOLD on purpose. Marco arms it, Marco takes the CSV
+      export named in its pre-flight runbook, and Marco merges it. Nothing about SLICE 2's gate
+      opening means it should be armed automatically.
+    order: 19
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master) after pr-rates-s11c-drop-legacy-tables RAN and
+  # correctly STOOD DOWN. It opened no PR, created no branch or worktree, and dropped nothing.
+  # The code-writer wrote a full escalation at
+  #   C:\po-watcher\ProjectOperations\docs\pr-prompts\needs-marco\rates-11c-blocked-consumers.md
+  # That directory is GITIGNORED and lives in the WATCHER CLONE, not the dev tree - so the analysis
+  # is invisible to a fresh checkout and to any agent not on that machine. That is the only reason
+  # this item exists: to put it somewhere tracked.
+  # -------------------------------------------------------------------------------------------
+  - id: rates-11c-blocked-consumers
+    title: "SLICE 11c cannot run - 7 services bypass the rate resolver and a live FK blocks the DROP"
+    priority: P2
+    why: >
+      pr-rates-s11c-drop-legacy-tables was armed on 2026-08-19 (D54) because its gate
+      'requires_file_on_main: docs/data-model/rates-migration/STEP-11B-DONE.md' was satisfied. The
+      code-writer ran it, found its precondition false, and stopped per the slice's own
+      "STOP and report - do NOT attempt to refactor them here" rule.
+      VERIFIED INDEPENDENTLY on origin/main:
+      (a) STEP-11B-DONE.md is literally the single line "11b landed". A content-free stub armed a
+          destructive successor.
+      (b) SEVEN services read the legacy models directly, bypassing the resolver:
+          tendering/scope-of-works.service.ts, tendering/scope-waste.service.ts,
+          tendering/scope-redesign.service.ts, personas/tools/handlers/lookup-rate.handler.ts,
+          rates/rates-import.service.ts, rates/rates-export.service.ts,
+          map-locations/map-locations.service.ts.
+          NOTE estimates/estimates.service.ts also calls the legacy models directly but is NOT a
+          blocker - it is the /estimate-rates/* service that SLICE 11c itself deletes (11c step 2).
+          Counting it as an eighth consumer is a mistake; the code-writer was right to exclude it.
+      (c) ScopeWasteItem.transportRate is a LIVE FK: transportRate EstimatePlantRate? @relation(
+          "ScopeWasteItemTransportRate", fields: [transportRateId], references: [id],
+          onDelete: SetNull) at schema.prisma:3649. Dropping estimate_plant_rates fails at
+          PostgreSQL FK-check time regardless of any code change.
+      ROOT CAUSE: step 11a routed only the RESOLVER helpers to RateTable and implicitly assumed every
+      caller went through the resolver. 11b was frontend-only. The seven direct consumers were never
+      migrated by either.
+      NOTHING WAS LOST AND NOTHING WAS DROPPED - every guard worked. But Marco was one merge away from
+      being asked to take a production database backup for a migration that could not have succeeded.
+    gate: 'grep -q "model EstimateLabourRate" apps/api/prisma/schema.prisma && grep -rlq "prisma\.estimatePlantRate" apps/api/src/modules/tendering'
+    gate_means: >
+      READY while the legacy models still exist AND tendering still reaches them directly. Dies once
+      the consumers are migrated and the legacy models are gone.
+    needs_marco: true
+    marco_note: >
+      TWO DECISIONS BLOCK THE WHOLE 11-SERIES. Neither can be guessed. Full write-up (the
+      code-writer's own) is in the watcher clone at
+      docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
+      (1) Prep slice rates-11b2-migrate-consumers - route the 7 consumers THROUGH the resolver
+          (preferred: single source of truth, matches 11a's intent; requires adding the lookup shapes
+          they need to the resolver surface), or refactor them to hit RateTable directly?
+      (2) ScopeWasteItem.transportRateId - repoint at a RateTable row (needs an id-mapping backfill
+          from 11a's seed), or drop the FK and snapshot the rate onto the row? NOTE ScopeWasteItem
+          ALREADY snapshots quotedDisposalRate and quotedFuelPricePerLitre with a variance-flag
+          pattern, so transport is the only price on that row still read live.
+      Once the prep lands, the existing 11c prompt re-fires UNCHANGED and will pass.
+      SEPARATE SYSTEMIC ISSUE: the STEP-*-DONE.md marker convention lets a ONE-LINE STUB arm a
+      destructive successor. Cousin of lint-reject-noop-file-gate - there the gated file always
+      existed; here the file was real but its CONTENT proved nothing. A landed-marker should carry a
+      verify-line the next slice can grep, not just the word "landed".
+    order: 20

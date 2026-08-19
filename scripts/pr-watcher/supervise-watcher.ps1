@@ -300,6 +300,43 @@ function Resolve-WatcherExitAction {
     }
 }
 
+# Pure function: decide whether a series of watchdog kills constitutes churn
+# that warrants halting the supervisor. Extracted for testability -- the caller
+# passes Now explicitly so the test suite can control it; this function calls
+# Get-Date nowhere and performs no I/O.
+#
+# Returns [pscustomobject] @{
+#   InWindow = <int>          -- kill count inside the window (after pruning)
+#   Halt     = <bool>         -- true when InWindow -ge Threshold
+#   Kept     = [datetime[]]   -- the subset of KillTimes within the window
+# }
+#
+# LL (doctrine 7.6): no Write-Output / Write-Host; the caller owns all logging.
+function Resolve-WatchdogChurn {
+    param(
+        [datetime[]] $KillTimes,
+        [datetime]   $Now,
+        [int]        $WindowMinutes = 20,
+        [int]        $Threshold     = 4
+    )
+
+    if (-not $KillTimes -or $KillTimes.Count -eq 0) {
+        return [pscustomobject]@{ InWindow = 0; Halt = $false; Kept = @() }
+    }
+
+    $cutoff = $Now.AddMinutes(-$WindowMinutes)
+    # Keep times AFTER the cutoff (i.e. within the window). Future timestamps
+    # are also kept -- a clock skew must not hide churn.
+    $kept = @($KillTimes | Where-Object { $_ -gt $cutoff })
+
+    $inWindow = $kept.Count
+    return [pscustomobject]@{
+        InWindow = $inWindow
+        Halt     = ($inWindow -ge $Threshold)
+        Kept     = $kept
+    }
+}
+
 # TEST HOOK: allow the test harness to dot-source this file for its functions
 # without spinning up the watchdog job, the main while-loop, or Start-Sleep waits.
 # Nothing else is expected to set this variable in production.
@@ -380,8 +417,13 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
     }
 } -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog, $wdKillFlag, $wdStateMaxAgeMin
 
-$lastReasonKey = ""
-$sameCount     = 0
+$lastReasonKey     = ""
+$sameCount         = 0
+$watchdogKillTimes = New-Object 'System.Collections.Generic.List[datetime]'
+$wdChurnWindowMin  = 20
+$wdChurnThreshold  = 4
+if ($env:PR_WATCHER_WD_CHURN_WINDOW_MIN) { $wdChurnWindowMin = [int]$env:PR_WATCHER_WD_CHURN_WINDOW_MIN }
+if ($env:PR_WATCHER_WD_CHURN_THRESHOLD)  { $wdChurnThreshold = [int]$env:PR_WATCHER_WD_CHURN_THRESHOLD }
 
 while ($true) {
     # Run one watcher session as a child process so we can read its exit code
@@ -402,10 +444,14 @@ while ($true) {
     # different exit-code interpretations lived, and the watchdog-kill branch had
     # no way in -- the ambiguity between OUR kill and Ctrl+C was inescapable. All
     # branch reasoning is now in Resolve-WatcherExitAction (testable in isolation);
-    # this loop is a driver that acts on the returned decision. See #1163's churn
-    # detector: the "Watcher exited via watchdog kill" LogMessage below still
-    # matches its 'Watcher exited' regex, so a repeated hang still trips the
-    # churn halt at 4 kills in 20 min -- the two guards coexist.
+    # this loop is a driver that acts on the returned decision.
+    #
+    # NOTE on the churn guards: scripts/restart-watcher-if-wedged.ps1 contains
+    # Get-RestartChurn / Invoke-ChurnHalt and uses the same 20 min / 4 kill
+    # parameters, but that script is invoked ONLY on demand (by hand or by a
+    # station agent). It does NOT run on a schedule and is NOT called from here.
+    # Resolve-WatchdogChurn (below, in the 'relaunch-watchdog' branch) is the
+    # automatic in-loop guard that covers the watchdog-kill path.
     $decision = Resolve-WatcherExitAction `
         -ExitCode         $code `
         -WatchdogFlagPath $wdKillFlag `
@@ -425,10 +471,29 @@ while ($true) {
             Start-Sleep -Seconds ($softWaitMin * 60)
         }
         'relaunch-watchdog' {
+            # Record this kill in the in-loop churn counter. Resolve-WatchdogChurn
+            # is the automatic guard for repeated watchdog kills; it mirrors the 20
+            # min / 4 kill parameters of restart-watcher-if-wedged.ps1 so both
+            # guards agree. restart-watcher-if-wedged.ps1 is on-demand only and is
+            # NOT called from here.
+            $watchdogKillTimes.Add((Get-Date))
+            $churn = Resolve-WatchdogChurn -KillTimes $watchdogKillTimes.ToArray() `
+                         -Now (Get-Date) `
+                         -WindowMinutes $wdChurnWindowMin `
+                         -Threshold $wdChurnThreshold
+            $watchdogKillTimes = [System.Collections.Generic.List[datetime]]$churn.Kept
+            Sup-Log ("Watchdog kill {0} of {1} inside a {2} min window." -f $churn.InWindow, $wdChurnThreshold, $wdChurnWindowMin)
+
+            if ($churn.Halt) {
+                $escalationPath = Write-Escalation -Reason "watchdog-kill churn: $($churn.InWindow) kills in $wdChurnWindowMin min" -Count $churn.InWindow -Dir $escalationDir
+                Sup-Log "WATCHDOG-KILL CHURN GUARD TRIPPED: $($churn.InWindow) kills in $wdChurnWindowMin min. NOT restarting again."
+                Sup-Log "Escalation written to: $escalationPath"
+                Sup-Log "Supervisor exiting (exit 1). Fix the cause, then start the supervisor again."
+                exit 1
+            }
+
             # Short breather so the killed node is fully reaped before start-watcher's
-            # single-instance guard runs, and so a stubbornly-hanging child does not
-            # get relaunched in a hot loop (the churn detector already caps this at 4
-            # in 20 min, but a 5s pause is cheap insurance either way).
+            # single-instance guard runs.
             Start-Sleep -Seconds 5
         }
         'relaunch-crash' {

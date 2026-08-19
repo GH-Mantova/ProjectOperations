@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { throwIfApiError } from "../lib/api-errors";
 import type { UserDashboard } from "./types";
 
 const USER_DASHBOARDS_KEY = ["user-dashboards"] as const;
@@ -29,7 +30,7 @@ export function useUserDashboardsActions() {
   const remove = useCallback(
     async (id: string) => {
       const response = await authFetch(`/user-dashboards/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       invalidate();
     },
     [authFetch, invalidate]
@@ -41,7 +42,7 @@ export function useUserDashboardsActions() {
         method: "PATCH",
         body: JSON.stringify({ name })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       invalidate();
     },
     [authFetch, invalidate]
@@ -50,7 +51,7 @@ export function useUserDashboardsActions() {
   const setDefault = useCallback(
     async (id: string) => {
       const response = await authFetch(`/user-dashboards/${id}/default`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       invalidate();
     },
     [authFetch, invalidate]

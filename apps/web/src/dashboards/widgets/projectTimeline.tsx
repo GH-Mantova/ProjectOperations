@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type Row = {
   id: string;
@@ -41,7 +42,7 @@ export function ProjectTimelineWidget() {
       .then(async (r) => {
         if (cancelled) return;
         if (!r.ok) {
-          setError(await r.text());
+          setError(await readApiErrorMessage(r));
           setLoading(false);
           return;
         }

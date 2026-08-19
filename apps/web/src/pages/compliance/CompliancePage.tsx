@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { readApiErrorMessage } from "../../lib/api-errors";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -130,7 +130,7 @@ export function CompliancePage() {
         authFetch(`/compliance/expiring?days=${days}`),
         authFetch("/compliance/blocked-subcontractors")
       ]);
-      if (!r1.ok) throw new Error(await r1.text());
+      await throwIfApiError(r1);
       setData((await r1.json()) as DashboardData);
       if (r2.ok) setBlocked((await r2.json()) as BlockedSub[]);
     } catch (err) {
@@ -147,7 +147,7 @@ export function CompliancePage() {
       const resp = await authFetch(
         `/compliance/worker-competencies/expiring?horizonDays=${competencyHorizon}`
       );
-      if (!resp.ok) throw new Error(await resp.text());
+      await throwIfApiError(resp);
       setWorkerCompetencies((await resp.json()) as WorkerCompetencyRow[]);
     } catch (err) {
       setCompetencyError((err as Error).message);
@@ -160,7 +160,7 @@ export function CompliancePage() {
     setPrequalError(null);
     try {
       const resp = await authFetch("/compliance/prequal/dashboard");
-      if (!resp.ok) throw new Error(await resp.text());
+      await throwIfApiError(resp);
       setPrequal((await resp.json()) as PrequalDashboard);
     } catch (err) {
       setPrequalError((err as Error).message);

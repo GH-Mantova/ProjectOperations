@@ -931,7 +931,19 @@ if (args.length === 0) {
   process.exit(64);
 }
 
-const repoRoot = process.env.LINT_REPO_ROOT || process.cwd();
+// Determine repo root: explicit env pin wins, then auto-detect via git, then cwd fallback.
+// Auto-detect so premises resolve correctly when invoked from a foreign cwd without the pin
+// (e.g., a direct `node lint-prompt.mjs` call without LINT_REPO_ROOT set). cwd fallback only
+// fires when git is unavailable -- existing tests set cwd:REPO so they never hit the fallback.
+let repoRoot = process.env.LINT_REPO_ROOT;
+if (!repoRoot) {
+  try {
+    repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"],
+      { cwd: dirname(fileURLToPath(import.meta.url)), encoding: "utf8", timeout: 5000 }).trim();
+  } catch (_) {
+    repoRoot = process.cwd();
+  }
+}
 let files = [];
 let dequeue = false;
 

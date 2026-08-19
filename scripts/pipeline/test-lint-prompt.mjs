@@ -416,6 +416,50 @@ run("cluster-none-present",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
+// ── Regression: foreign-cwd premise resolution (fix: queue-sync-pin-lint-repo-root) ──────────
+// Before the fix, queue-sync never set LINT_REPO_ROOT and lint-prompt.mjs fell back to
+// process.cwd(). When queue-sync ran from a foreign cwd (e.g. a worktree or a temp dir),
+// repo-relative premise commands resolved against that cwd and 8 of 11 armed prompts flipped
+// verdict. This test verifies that a run from an alien cwd (no LINT_REPO_ROOT set) produces the
+// same verdict as a run with cwd:REPO -- the auto-detect fallback in lint-prompt.mjs makes it so.
+console.log("\n=== exit 0 ADMIT: foreign-cwd, no LINT_REPO_ROOT -> premise auto-resolves from repo (regression guard)");
+{
+  // Pick a needle that IS present in lint-prompt.mjs so the premise is truthy (work still needed).
+  const NEEDLE = "UNKNOWN_KEY";
+  const premiseCmd = "grep -q \"" + NEEDLE + "\" scripts/pipeline/lint-prompt.mjs";
+  const foreignDir = mkdtempSync(join(tmpdir(), "lint-foreign-"));
+  const fixtureFm =
+    "premise: '" + premiseCmd + "'\n" +
+    "premise_means: " + NEEDLE + " is present in lint-prompt.mjs (work still needed)\n" +
+    "scope:\n  - scripts/pipeline/**\n" +
+    "done_when: node scripts/pipeline/test-lint-prompt.mjs\n" +
+    "size: 2\ngate_allow: none";
+
+  // Run from foreign cwd with NO LINT_REPO_ROOT -- should ADMIT (exit 0) via auto-detect.
+  const fileInForeign = join(foreignDir, "foreign-cwd-ready.md");
+  writeFileSync(fileInForeign, "---\n" + fixtureFm + "\n---\n\n# body\n", "utf8");
+
+  const envWithoutPin = Object.assign({}, process.env);
+  delete envWithoutPin.LINT_REPO_ROOT;
+
+  let codeForeign = 0;
+  let outForeign = "";
+  try {
+    outForeign = execFileSync("node", [LINT, fileInForeign],
+      { cwd: foreignDir, encoding: "utf8", env: envWithoutPin });
+  } catch (ef) {
+    codeForeign = ef.status;
+    outForeign = String(ef.stdout || "") + String(ef.stderr || "");
+  }
+
+  const ok = codeForeign === 0;
+  console.log((ok ? "PASS " : "FAIL ") + "foreign-cwd-no-pin  (exit " + codeForeign + ", wanted 0)");
+  if (!ok) console.log("      " + outForeign.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+
+  rmSync(foreignDir, { recursive: true, force: true });
+}
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

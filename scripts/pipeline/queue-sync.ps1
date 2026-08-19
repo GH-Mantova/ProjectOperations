@@ -122,7 +122,16 @@ foreach ($path in $armed) {
     # exit 1 (or any other non-zero) = MALFORMED (bad prompt -- work has NOT shipped).
     # Only exit 3 is treated as "shipped" and written to the ledger; a malformed prompt
     # must NOT be ledgered -- it must be reconsidered next cycle after the prompt is fixed.
-    $null = node (Join-Path $GitRepo "scripts\pipeline\lint-prompt.mjs") $tmp 2>&1
+    #
+    # FIX: pin LINT_REPO_ROOT so lint-prompt.mjs resolves premise cwd from the repo,
+    # not from queue-sync's caller cwd (defect: 8 of 11 armed prompts flip verdict
+    # when invoked from a foreign cwd without this pin). Restored in finally below.
+    $env:LINT_REPO_ROOT = $GitRepo
+    try {
+        $null = node (Join-Path $GitRepo "scripts\pipeline\lint-prompt.mjs") $tmp 2>&1
+    } finally {
+        $env:LINT_REPO_ROOT = $null
+    }
     $lintExit = $LASTEXITCODE
     if ($lintExit -eq 3) {
         $skipShipped++

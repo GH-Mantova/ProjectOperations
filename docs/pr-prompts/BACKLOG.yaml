@@ -351,7 +351,7 @@ items:
   # the one screenshot turned up a migration that was recorded as finished and was not.
   # -------------------------------------------------------------------------------------------
   - id: web-raw-error-envelope-migration
-    title: "Finish the humane API-error migration - 38 web files still render the raw JSON envelope"
+    title: "Finish the humane API-error migration - 82 web files still render the raw JSON envelope"
     priority: P2
     why: >
       apps/web/src/lib/api-errors.ts exists and 22 files use it. But 38 files still do
@@ -367,14 +367,29 @@ items:
       the count can and does grow. A lint rule is arguably worth more than any single batch of edits.
       The two worst-placed instances (TipFinderPanel 2, MapLocationsTab 5) are being fixed
       separately as pr-fix-tipfinder-raw-error-render; this item covers the remaining 36 files.
-      SLICING: 36 files is far over the size-10 limit. Do NOT stage as one prompt. Slice by feature
-      area - crm/, forms/, tendering/, admin/, sites/, personas/ - each its own prompt, plus one
-      final slice adding the CI gate so the pattern cannot come back.
-    gate: 'test $(grep -rl "throw new Error(await res.text())" apps/web/src | wc -l) -gt 0'
+      SLICING: far over the size-10 limit. Do NOT stage as one prompt. Slice by feature area, plus
+      one final slice adding the CI gate so the pattern cannot come back.
+      RE-MEASURED 2026-08-19 on origin/main 15d9b1d3 - THE COUNTS ABOVE WERE WRONG AND ARE KEPT
+      HERE ONLY AS THE RECORD. The real figures are 82 files and 270 occurrences, not 38 and 124.
+      The undercount had a single cause - every premise, gate and count keyed on the literal string
+      "throw new Error(await res.text())", and the response variable is not always called "res".
+      The codebase uses "response" (130 occurrences), "res" (137), "r" (18), "resp" (5) and about
+      forty one-off names, and the same defect also appears as setError(await X.text()).
+      PROOF THIS WAS ABOUT TO CAUSE A FALSE VICTORY - slice 1 (#1224, tendering) MERGED with its
+      done_when green, and 12 files in its own pages/tendering directory were still broken. Its
+      done_when only ever looked for the literal. The register gate had the same flaw and has been
+      corrected in this entry.
+      RESLICED into 10 work slices plus a CI gate, each 10 files or fewer, together covering all 82
+      files exactly once with no overlap and no remainder (verified programmatically before staging).
+    gate: 'grep -rqE "(throw new Error\(await [A-Za-z_][A-Za-z0-9_]*\.text\(\)\)|setError\(await [A-Za-z_][A-Za-z0-9_]*\.text\(\)\))" apps/web/src'
     gate_means: >
-      READY while any web file still throws the raw response body as its error message. Dies when the
-      last one is migrated. NOTE the gate counts FILES, so it stays READY through the whole slice
-      chain and correctly reports the work as unfinished until it genuinely is.
+      READY while any web file still feeds a raw response body into an error message. Dies when the
+      last one is migrated.
+      CORRECTED 2026-08-19 - the previous gate matched only the literal string
+      "throw new Error(await res.text())". That single variable name "res" is why this item
+      under-reported the work by 44 files. The gate now matches the SHAPE for any identifier and
+      both call forms (throw and setError), so it can no longer report the migration finished while
+      files are still broken.
     needs_marco: false
     marco_note: >
       One design question was deliberately NOT decided while fixing the Tip Finder instance, because
@@ -384,15 +399,23 @@ items:
       useful mid-estimate. Separately: the "Coming from" field on the Tip Finder is a disabled input
       showing the placeholder "Tender site" - if choosing a different departure point is meant to be
       possible, that is a second gap and needs its own item.
-      STAGED 2026-08-19 (Station 04 Scanner), 2 of 7 slices - both ADMIT:
-      pr-apierr-s1-tendering-ready.md (7 files, armed) and pr-apierr-s2-crm-HOLD.md (7 files,
-      held only to keep the armed count low while the watcher runnable-count defect is open;
-      it has no dependency and can be armed by rename). REMAINING SLICES, measured on origin/main
-      3bd53909: pages/forms 5, pages/admin 5, pages root 5, and one mop-up slice of 9 -
-      pages/sites 2, personas/pages 2, pages/workers 1, pages/dockets 1, pages/field 1,
-      components/correspondence 1, components/timeline 1. Then a FINAL slice adding the CI
-      gate, which can only pass once all 38 files are migrated - it must be last.
-      This item deliberately STAYS in the register while the chain runs: its gate counts FILES,
+      CHAIN STATE 2026-08-19 (Station 06 PR Master), after the re-measure described in "why".
+      SHIPPED - slice 1, pr-apierr-s1-tendering (#1224). It went green but left 12 files in its own
+      directory unfixed, because its done_when matched only the "res" literal. Those 12 are picked
+      up by s3a and s3b below; this is not a regression, it is unfinished work reported as finished.
+      SUPERSEDED AND DELETED - pr-apierr-s2-crm-HOLD.md. It carried the same narrow literal and
+      would have under-fixed crm the same way. Replaced by s5.
+      STAGED NOW - 10 work slices plus a CI gate, all ADMIT, all premises verified alive against
+      origin/main 15d9b1d3 with positive and negative controls. Only s3a is armed; the rest are
+      HOLD with no dependency between them and can be armed by rename in any order, a few at a
+      time, to keep the armed count sane. s3a 6 files, s3b 6, s4 field/dockets/compliance 9,
+      s5 crm/directory 10, s6 pages-root/account 9, s7 admin/personas/portal 9,
+      s8 contracts/forms 10, s9 workers/timesheets/components 9, s10 sites/projects/dashboards 9,
+      s11 dashboard widgets 5. Total 82, each file in exactly one slice.
+      THE CI GATE SLICE MUST BE LAST and is self-gating - its done_when requires zero matches
+      across all of apps/web/src, so arming it early only burns a run. Arm it when this command
+      prints 0 - grep -rlE for the shape across apps/web/src, piped to wc -l.
+      This item deliberately STAYS in the register while the chain runs: the gate counts FILES,
       so it correctly keeps reporting the work as unfinished until it genuinely is.
     order: 18
 

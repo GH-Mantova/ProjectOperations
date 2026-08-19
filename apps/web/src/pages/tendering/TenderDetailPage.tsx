@@ -19,6 +19,7 @@ import { ProcessStageBar } from "../../components/ProcessStageBar";
 import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
 import { RecordHistory } from "../../components/RecordHistory";
 import { TenderFolderStatusPill, type FolderProvisioningFailure } from "./TenderFolderStatusPill";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type TenderDetail = {
   id: string;
@@ -281,7 +282,7 @@ export function TenderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: next })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -304,7 +305,7 @@ export function TenderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({})
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -337,7 +338,7 @@ export function TenderDetailPage() {
     setDeleteBusy(true);
     try {
       const res = await authFetch(`/tenders/${tender.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       navigate("/tenders");
     } catch (err) {
       setError((err as Error).message);
@@ -713,7 +714,7 @@ export function TenderDetailPage() {
                       method: "PATCH",
                       body: JSON.stringify({ description: next || null })
                     });
-                    if (!response.ok) throw new Error(await response.text());
+                    if (!response.ok) throw new Error(await readApiErrorMessage(response));
                     await reload();
                   }}
                 />
@@ -728,7 +729,7 @@ export function TenderDetailPage() {
                       method: "PATCH",
                       body: JSON.stringify({ notes: next || null })
                     });
-                    if (!response.ok) throw new Error(await response.text());
+                    if (!response.ok) throw new Error(await readApiErrorMessage(response));
                     await reload();
                   }}
                 />
@@ -837,7 +838,7 @@ export function TenderDetailPage() {
                     method: "PATCH",
                     body: JSON.stringify({ name: tc.client.name, preferenceScore: next })
                   });
-                  if (!response.ok) throw new Error(await response.text());
+                  if (!response.ok) throw new Error(await readApiErrorMessage(response));
                   setClientMsg(null);
                   await reload();
                 } catch (err) {
@@ -862,7 +863,7 @@ export function TenderDetailPage() {
                   const response = await authFetch(`/tenders/${tender.id}/clients/${clientId}`, {
                     method: "DELETE"
                   });
-                  if (!response.ok) throw new Error(await response.text());
+                  if (!response.ok) throw new Error(await readApiErrorMessage(response));
                   setClientMsg(null);
                   await reload();
                 } catch (err) {

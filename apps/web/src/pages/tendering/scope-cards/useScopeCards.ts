@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../auth/AuthContext";
+import { readApiErrorMessage } from "../../../lib/api-errors";
 
 // PR B1.5 — card data hook. All 6 endpoints from PR B1 are consumed here.
 
@@ -49,7 +50,7 @@ export function useScopeCards(tenderId: string) {
     setError(null);
     try {
       const res = await authFetch(`/tenders/${tenderId}/scope/cards`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setCards((await res.json()) as ScopeCard[]);
     } catch (err) {
       setError((err as Error).message);
@@ -69,7 +70,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, discipline })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const created = (await res.json()) as ScopeCard;
       await load();
       return created;
@@ -84,7 +85,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     },
     [authFetch, tenderId, load]
@@ -102,7 +103,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plantColumnCount })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     },
     [authFetch, tenderId, load]
@@ -123,7 +124,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch)
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     },
     [authFetch, tenderId, load]
@@ -140,7 +141,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ markupOverride })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     },
     [authFetch, tenderId, load]
@@ -163,7 +164,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: override })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     },
     [authFetch, tenderId, load]
@@ -181,7 +182,7 @@ export function useScopeCards(tenderId: string) {
     const res = await authFetch(`/tenders/${tenderId}/scope/markup/reset-all`, {
       method: "POST"
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await readApiErrorMessage(res));
     const result = (await res.json()) as {
       cardsReset: number;
       wasteSectionsReset: number;
@@ -198,7 +199,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ discipline })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const result = (await res.json()) as ChangeDisciplineResult;
       await load();
       return result;
@@ -221,7 +222,7 @@ export function useScopeCards(tenderId: string) {
             throw new Error("Card has items — cannot delete.");
           }
         }
-        throw new Error(await res.text());
+        throw new Error(await readApiErrorMessage(res));
       }
       await load();
     },
@@ -243,7 +244,7 @@ export function useScopeCards(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(overrides)
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     },
     [authFetch, tenderId, load]
@@ -252,7 +253,7 @@ export function useScopeCards(tenderId: string) {
   const getCardSummary = useCallback(
     async (cardId: string) => {
       const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}/summary`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       return res.json() as Promise<{
         computed: {
           peakCrew: number;
@@ -294,7 +295,7 @@ export function useScopeCards(tenderId: string) {
       });
       if (!res.ok) {
         await load();
-        throw new Error(await res.text());
+        throw new Error(await readApiErrorMessage(res));
       }
     },
     [authFetch, tenderId, load]

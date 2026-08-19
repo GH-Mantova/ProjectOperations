@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../auth/AuthContext";
+import { readApiErrorMessage } from "../../../lib/api-errors";
 
 // PR B2 — minimal hook for the tender-level markup picker. Reads
 // /tenders/:id/estimate on mount (null when no estimate row exists yet
@@ -31,7 +32,7 @@ export function useTenderEstimate(tenderId: string) {
           setMarkup(DEFAULT_TENDER_MARKUP);
           return;
         }
-        throw new Error(await res.text());
+        throw new Error(await readApiErrorMessage(res));
       }
       const body = (await res.json()) as Partial<TenderEstimate> | null;
       if (body && typeof body.markup !== "undefined") {
@@ -57,7 +58,7 @@ export function useTenderEstimate(tenderId: string) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ markup: String(next) })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setMarkup(next);
     },
     [authFetch, tenderId]

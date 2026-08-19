@@ -339,48 +339,13 @@ items:
       are on main; it lands via a doc-reconcile PR and drops the marker doc named in the gate.
     order: 15
 
-  # -------------------------------------------------------------------------------------------
-  # ADDED 2026-08-18 (Marco): the full-tender export, parked after PR Master run 5 and now
-  # deliberately re-prioritised DOWN. The reason it was requested changed underneath it.
-  # -------------------------------------------------------------------------------------------
-  - id: tender-full-export
-    title: "Full-tender export - every field on a tender, not just the register columns"
-    priority: P3
-    why: >
-      Marco asked for this on 2026-08-17 after noticing the Tendering register CSV exports only the
-      register's own columns and nothing from Activity & communications or the rest of the tender.
-      It was originally framed as a SAFETY NET against losing entered notes. That framing is wrong
-      and Marco accepted the correction: the real safety net is Azure PostgreSQL point-in-time
-      restore, which he then hardened - retention raised 7 -> 15 days and a CanNotDelete lock added
-      to the prod server on 2026-08-17. PITR gives a recovery point of roughly 5 minutes with nobody
-      pressing a button; an export can never match that. What survives is a genuine but non-urgent
-      need - PORTABILITY and AUDIT: handing a tender's complete record to somebody outside the
-      system. DECIDED 2026-08-18 (Marco): keep it, drop to P3.
-    gate: 'grep -rq "buildRegisterCsv" apps/web/src/pages/tendering && ! grep -rq "buildTenderFullExport" apps/web/src/pages/tendering'
-    gate_means: >
-      READY once the register CSV fix (buildRegisterCsv, PR #1146 lineage) is on main and no
-      full-tender exporter exists yet. Dies the moment a full-tender exporter ships.
-    needs_marco: true
-    marco_note: >
-      The run-5 interview was PARKED mid-way and its answers are stale, because the justification
-      moved from safety-net to portability/audit. Do NOT stage from the old answers. Re-run the
-      PR Master interview before staging - in particular the permission question (who may export a
-      whole tender, including notes and documents) has to be re-asked now that this is an
-      information-disclosure feature rather than a backup. Q6 from the original run was answered
-      only as "ok" and was never disambiguated.
-      DECIDED 2026-08-19 (Marco, PR Master re-interview COMPLETE - do not re-ask these):
-      D52 PERMISSION = SUPER-USER ONLY for now. Deliberately NOT the archive jobs.view precedent:
-      that was set when this was framed as a backup, and it is now information disclosure - a whole
-      tender including internal notes and a document index leaving the system. Ship it restricted;
-      widen later once Marco has seen who actually asks.
-      D53 SCOPE = BULK over the filtered register ONLY, mirroring the CSV export fixed in #1146
-      (respects active filter chips, ignores selection). NO single-tender button on TenderDetailPage
-      - one entry point, one code path, one permission check.
-      Still-settled from run 5: JSON snapshot first (renderer later); ALL tender surfaces incl. both
-      Correspondence and Activity & communications (they are different panels); documents as an
-      INDEX ONLY, not the files.
-    order: 16
-
+  # DISCHARGED 2026-08-19 (Station 06 PR Master): STAGED as
+  # docs/pr-prompts/pr-tender-full-export-slice0-ready.md. The PR Master re-interview is COMPLETE -
+  # D52 (permission = SUPER-USER ONLY, deliberately not the archive jobs.view precedent, because the
+  # feature is information disclosure rather than a backup) and D53 (scope = BULK over the filtered
+  # register ONLY, mirroring buildRegisterCsv; no single-tender button). Staged as a SLICE 0 plan
+  # rather than an implementation prompt because model Tender carries 39 relations, 28 of them
+  # collections (schema.prisma:1222-1315) - far past size 10. One place, never two.
   # -------------------------------------------------------------------------------------------
   # ADDED 2026-08-19 (Station 06 PR Master). Found during a gate audit of the whole queue - the
   # audit itself was only run because the watchdog kill-loop made "which prompts can this node

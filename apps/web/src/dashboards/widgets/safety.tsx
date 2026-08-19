@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type Dashboard = {
   openIncidents: { total: number; bySeverity: Record<string, number> };
@@ -32,7 +33,7 @@ export function SafetySummaryWidget() {
       .then(async (r) => {
         if (cancelled) return;
         if (!r.ok) {
-          setError(await r.text());
+          setError(await readApiErrorMessage(r));
           return;
         }
         setData((await r.json()) as Dashboard);

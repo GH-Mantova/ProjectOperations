@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import type { WidgetProps } from "../types";
 import { loadColour, type HeatmapDay, type HeatmapWorker } from "./availabilityHeatmap.helpers";
 
@@ -44,7 +45,7 @@ export function AvailabilityHeatmapWidget({ config, rowSpan }: WidgetProps) {
       .then(async (r) => {
         if (cancelled) return;
         if (!r.ok) {
-          setError(await r.text());
+          setError(await readApiErrorMessage(r));
           setLoading(false);
           return;
         }

@@ -8,7 +8,7 @@ size: 7
 gate_allow: none
 seed_only: false
 escalates: false
-requires_file_on_main: apps/api/src/modules/handovers/handovers.service.ts
+requires_on_main: apps/api/src/modules/handovers/handovers.service.ts :: export class HandoversService
 ---
 
 # feat(api): compliance obligation derivation (B-HW-9)

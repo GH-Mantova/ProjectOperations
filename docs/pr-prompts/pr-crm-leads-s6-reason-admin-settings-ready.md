@@ -1,7 +1,6 @@
 ---
 premise: '! test -f apps/web/src/pages/crm/DropReasonAdminPage.tsx'
 premise_means: The admin screen for managing CRM drop reasons has not been built yet (S6 not done).
-requires_file_on_main: apps/web/src/pages/crm/DontPursueModal.tsx
 scope:
   - apps/web/src/pages/crm/**
   - apps/web/src/App.tsx
@@ -12,6 +11,7 @@ gate_allow: none
 seed_only: false
 escalates: false
 ---
+<!-- gate dropped 2026-08-19: apps/web/src/pages/crm/DontPursueModal.tsx landed on main; predecessor S4 satisfied and the gate was a no-op. -->
 
 # feat(web): CRM S6 — admin screen for CRM drop-reason list management
 

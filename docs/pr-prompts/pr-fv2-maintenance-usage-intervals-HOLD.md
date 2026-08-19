@@ -12,6 +12,7 @@ size: 8
 gate_allow: migrations
 seed_only: false
 escalates: true
+backfill: false
 rollback_strategy: Drop the intervalUsage/usageUnit/lastCompletedReading/nextDueReading/usageWarningPct columns on AssetMaintenancePlan (fv2_maintenance_usage_intervals); all are nullable or have a default with no backfill, so the drop is safe.
 ---
 

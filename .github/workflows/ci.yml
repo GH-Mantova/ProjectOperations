@@ -171,6 +171,7 @@ jobs:
       # is actually a non-discovery. The shell-expanded glob passes individual
       # file paths, which Node --test accepts correctly.
       - run: node --test "scripts/pr-watcher/__tests__/*.mjs"
+      - run: node --test "scripts/pipeline/__tests__/*.mjs"
       - run: node scripts/pipeline/test-lint-prompt.mjs
 
   web:

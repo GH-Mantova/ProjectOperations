@@ -19377,6 +19377,18 @@
             "count"
           ]
         },
+        "quotedTransportRatePerDay": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "notes": {
           "role": "attribute",
           "label": null,

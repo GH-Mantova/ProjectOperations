@@ -3659,6 +3659,13 @@ model ScopeWasteItem {
   disposalCost            Decimal?           @map("disposal_cost") @db.Decimal(12, 2)
   quotedDisposalRate      Decimal?           @map("quoted_disposal_rate") @db.Decimal(10, 2)
   quotedFuelPricePerLitre Decimal?           @map("quoted_fuel_price_per_litre") @db.Decimal(6, 3)
+  // Transport-rate snapshot (SLICE 1, 2026-08-19). Added beside the two
+  // existing snapshots so the variance flag can compare the rate at quote
+  // time against the current EstimatePlantRate.rate. NULL means the row
+  // predates this column or was never priced via the transport engine;
+  // NULL behaves exactly like the live-lookup path (no data loss on revert).
+  // backfill: false -- existing rows intentionally left NULL.
+  quotedTransportRatePerDay Decimal?         @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
   notes                   String?
   sortOrder               Int                @default(0) @map("sort_order")
   createdById             String             @map("created_by_id")

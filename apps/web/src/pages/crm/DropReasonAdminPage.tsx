@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { listDropReasons, type DropReason } from "./crm-api";
 
 // ─── pure helpers (also exported for unit tests) ───────────────────────────
@@ -88,7 +89,7 @@ export function DropReasonAdminPage() {
           sortOrder: Number(addSortOrder) || 0
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setAddLabel("");
       setAddSortOrder("0");
       await load();
@@ -125,7 +126,7 @@ export function DropReasonAdminPage() {
           sortOrder: Number(editing.sortOrder) || 0
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setEditing(null);
       await load();
     } catch (err) {
@@ -145,7 +146,7 @@ export function DropReasonAdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildToggleBody(r.isActive))
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       await load();
     } catch (err) {
       setError((err as Error).message);

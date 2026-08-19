@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // NAV-2: Accounts index — Client-360 landing page.
 // Lists all non-archived accounts with summary stats.
@@ -128,7 +129,7 @@ export function AccountsListPage() {
     setError(null);
     try {
       const res = await authFetch("/crm/accounts/summary");
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setRows((await res.json()) as AccountSummaryRow[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load accounts.");

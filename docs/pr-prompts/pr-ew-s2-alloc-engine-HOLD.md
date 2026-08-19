@@ -14,7 +14,7 @@ size: 10
 gate_allow: none
 seed_only: false
 escalates: false
-requires_file_on_main: apps/api/prisma/schema.prisma
+requires_on_main: apps/api/prisma/schema.prisma :: model EstimatorCapacity
 ---
 
 # EW-2: Allocation engine + API + `tenders.allocate` permission

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type ListItem = {
   id: string;
@@ -41,7 +42,7 @@ export function ScopeListDropdown({
     setLoading(true);
     try {
       const response = await authFetch(`/lists/${slug}/items`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = (await response.json()) as ListItem[];
       setItems(body);
     } catch (err) {
@@ -64,7 +65,7 @@ export function ScopeListDropdown({
         method: "POST",
         body: JSON.stringify({ label })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const created = (await response.json()) as ListItem;
       setNewLabel("");
       setAdding(false);

@@ -351,7 +351,7 @@ items:
   # the one screenshot turned up a migration that was recorded as finished and was not.
   # -------------------------------------------------------------------------------------------
   - id: web-raw-error-envelope-migration
-    title: "Finish the humane API-error migration - 38 web files still render the raw JSON envelope"
+    title: "Finish the humane API-error migration - 82 web files still render the raw JSON envelope"
     priority: P2
     why: >
       apps/web/src/lib/api-errors.ts exists and 22 files use it. But 38 files still do
@@ -367,14 +367,29 @@ items:
       the count can and does grow. A lint rule is arguably worth more than any single batch of edits.
       The two worst-placed instances (TipFinderPanel 2, MapLocationsTab 5) are being fixed
       separately as pr-fix-tipfinder-raw-error-render; this item covers the remaining 36 files.
-      SLICING: 36 files is far over the size-10 limit. Do NOT stage as one prompt. Slice by feature
-      area - crm/, forms/, tendering/, admin/, sites/, personas/ - each its own prompt, plus one
-      final slice adding the CI gate so the pattern cannot come back.
-    gate: 'test $(grep -rl "throw new Error(await res.text())" apps/web/src | wc -l) -gt 0'
+      SLICING: far over the size-10 limit. Do NOT stage as one prompt. Slice by feature area, plus
+      one final slice adding the CI gate so the pattern cannot come back.
+      RE-MEASURED 2026-08-19 on origin/main 15d9b1d3 - THE COUNTS ABOVE WERE WRONG AND ARE KEPT
+      HERE ONLY AS THE RECORD. The real figures are 82 files and 270 occurrences, not 38 and 124.
+      The undercount had a single cause - every premise, gate and count keyed on the literal string
+      "throw new Error(await res.text())", and the response variable is not always called "res".
+      The codebase uses "response" (130 occurrences), "res" (137), "r" (18), "resp" (5) and about
+      forty one-off names, and the same defect also appears as setError(await X.text()).
+      PROOF THIS WAS ABOUT TO CAUSE A FALSE VICTORY - slice 1 (#1224, tendering) MERGED with its
+      done_when green, and 12 files in its own pages/tendering directory were still broken. Its
+      done_when only ever looked for the literal. The register gate had the same flaw and has been
+      corrected in this entry.
+      RESLICED into 10 work slices plus a CI gate, each 10 files or fewer, together covering all 82
+      files exactly once with no overlap and no remainder (verified programmatically before staging).
+    gate: 'grep -rqE "(throw new Error\(await [A-Za-z_][A-Za-z0-9_]*\.text\(\)\)|setError\(await [A-Za-z_][A-Za-z0-9_]*\.text\(\)\))" apps/web/src'
     gate_means: >
-      READY while any web file still throws the raw response body as its error message. Dies when the
-      last one is migrated. NOTE the gate counts FILES, so it stays READY through the whole slice
-      chain and correctly reports the work as unfinished until it genuinely is.
+      READY while any web file still feeds a raw response body into an error message. Dies when the
+      last one is migrated.
+      CORRECTED 2026-08-19 - the previous gate matched only the literal string
+      "throw new Error(await res.text())". That single variable name "res" is why this item
+      under-reported the work by 44 files. The gate now matches the SHAPE for any identifier and
+      both call forms (throw and setError), so it can no longer report the migration finished while
+      files are still broken.
     needs_marco: false
     marco_note: >
       One design question was deliberately NOT decided while fixing the Tip Finder instance, because
@@ -384,15 +399,23 @@ items:
       useful mid-estimate. Separately: the "Coming from" field on the Tip Finder is a disabled input
       showing the placeholder "Tender site" - if choosing a different departure point is meant to be
       possible, that is a second gap and needs its own item.
-      STAGED 2026-08-19 (Station 04 Scanner), 2 of 7 slices - both ADMIT:
-      pr-apierr-s1-tendering-ready.md (7 files, armed) and pr-apierr-s2-crm-HOLD.md (7 files,
-      held only to keep the armed count low while the watcher runnable-count defect is open;
-      it has no dependency and can be armed by rename). REMAINING SLICES, measured on origin/main
-      3bd53909: pages/forms 5, pages/admin 5, pages root 5, and one mop-up slice of 9 -
-      pages/sites 2, personas/pages 2, pages/workers 1, pages/dockets 1, pages/field 1,
-      components/correspondence 1, components/timeline 1. Then a FINAL slice adding the CI
-      gate, which can only pass once all 38 files are migrated - it must be last.
-      This item deliberately STAYS in the register while the chain runs: its gate counts FILES,
+      CHAIN STATE 2026-08-19 (Station 06 PR Master), after the re-measure described in "why".
+      SHIPPED - slice 1, pr-apierr-s1-tendering (#1224). It went green but left 12 files in its own
+      directory unfixed, because its done_when matched only the "res" literal. Those 12 are picked
+      up by s3a and s3b below; this is not a regression, it is unfinished work reported as finished.
+      SUPERSEDED AND DELETED - pr-apierr-s2-crm-HOLD.md. It carried the same narrow literal and
+      would have under-fixed crm the same way. Replaced by s5.
+      STAGED NOW - 10 work slices plus a CI gate, all ADMIT, all premises verified alive against
+      origin/main 15d9b1d3 with positive and negative controls. Only s3a is armed; the rest are
+      HOLD with no dependency between them and can be armed by rename in any order, a few at a
+      time, to keep the armed count sane. s3a 6 files, s3b 6, s4 field/dockets/compliance 9,
+      s5 crm/directory 10, s6 pages-root/account 9, s7 admin/personas/portal 9,
+      s8 contracts/forms 10, s9 workers/timesheets/components 9, s10 sites/projects/dashboards 9,
+      s11 dashboard widgets 5. Total 82, each file in exactly one slice.
+      THE CI GATE SLICE MUST BE LAST and is self-gating - its done_when requires zero matches
+      across all of apps/web/src, so arming it early only burns a run. Arm it when this command
+      prints 0 - grep -rlE for the shape across apps/web/src, piped to wc -l.
+      This item deliberately STAYS in the register while the chain runs: the gate counts FILES,
       so it correctly keeps reporting the work as unfinished until it genuinely is.
     order: 18
 
@@ -485,16 +508,28 @@ items:
     gate_means: >
       READY while the legacy models still exist AND tendering still reaches them directly. Dies once
       the consumers are migrated and the legacy models are gone.
-    needs_marco: true
+    needs_marco: false
     marco_note: >
-      ONE DECISION REMAINS (was two). Full write-up (the code-writer's own) is in the watcher clone
-      at docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
+      BOTH DECISIONS ARE NOW SETTLED (2026-08-19). needs_marco flipped to false so this stops
+      surfacing as a question; the item itself STAYS until its gate dies, because the consumers are
+      staged but not yet merged. Full original write-up (the code-writer's own) is in the watcher
+      clone at docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, read it there.
+      A SEPARATE decision was spun out - see backlog item map-locations-waste-rate-coupling. It is
+      NOT a rates-pricing question and must not be folded into the consumer slices.
 
-      STILL OPEN - (1) Prep slice rates-11b2-a-resolver-consumers: route the 7 consumers THROUGH the
-          resolver (preferred: single source of truth, matches 11a's intent; requires adding the
-          lookup shapes they need to the resolver surface), or refactor them to hit RateTable
-          directly? Marco DEFERRED this on 2026-08-19 - "just the parity proof for now" - so neither
-          11b2-a nor 11b2-b has been written. Do NOT write them without asking again.
+      DECIDED 2026-08-19 (Marco) - (1) the consumers are migrated PER CLASS, not all one way. The
+          original binary (all through the resolver, or all direct to RateTable) did not survive
+          measurement - the 7 are three different problems. Staged as four slices, all ADMIT, all
+          premises verified alive on origin/main 9732def7 with controls -
+          s1 adds listRates(slug) to the resolver, additive, nothing else changes.
+          s2 routes scope-of-works + scope-redesign (single-key lookups AND pick-lists), gated on
+          s1 via requires_on_main.
+          s3 routes the persona lookup-rate handler + rates-export, also gated on s1.
+          s4 repoints the rates-import WRITES at the existing RateTablesService. NOT in the cluster
+          and deliberately ungated - it needs nothing from s1-s3. escalates true, it writes rate data.
+          TWO MEASUREMENT CORRECTIONS folded in. scope-of-works has 6 writes but they target
+          estimateItem and the Line tables, NOT rate tables - a phantom blocker. And
+          estimateMaterialDensity stays everywhere it appears; it is not on the drop list.
 
       DECIDED 2026-08-19 (Marco) - (2) ScopeWasteItem.transportRateId: SNAPSHOT the rate onto the
           row. Not a repoint, and NO id-mapping backfill. Staged and merged in #1223 as a 2-slice
@@ -594,3 +629,52 @@ items:
       than it was given is worse than one that refuses to load. Add a fixture test covering both
       failure modes above.
     order: 21
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master). Spun out of rates-11c-blocked-consumers after
+  # measuring what map-locations actually reads waste rates FOR. It is not a pricing consumer.
+  # -------------------------------------------------------------------------------------------
+  - id: map-locations-waste-rate-coupling
+    title: "Dropping EstimateWasteRate silently removes the TIP facility rename guard"
+    priority: P2
+    why: >
+      map-locations.service.ts is listed as one of the seven resolver-bypassing consumers, but it
+      never reads a price. It reads EstimateWasteRate for FACILITY IDENTITY, by string.
+      MEASURED on origin/main 9732def7 -
+      At :82 it asks which tips have any rate configured -
+      findMany where facility in tipFacilities, select facility only, distinct facility. That drives
+      a "set" versus "needed" badge in the UI.
+      At :107 and :149 it COUNTS waste-rate rows for a facility. The second one is the important
+      one - it throws ConflictException and REFUSES to rename a TIP location while any waste-rate
+      row still references the old facility string. Verbatim from the code -
+      "Cannot rename facility from X - N waste rate row(s) reference it by string. Update those
+      rates first or create a new TIP location."
+      THAT IS A REFERENTIAL-INTEGRITY GUARD IMPLEMENTED AS A STRING JOIN. There is no FK between
+      MapLocation.facility and EstimateWasteRate.facility - the coupling is a matching string and a
+      count query.
+      CONSEQUENCE - when SLICE 11c drops estimate_waste_rates, the count becomes zero for every
+      facility, the guard stops firing, and renaming a TIP silently orphans its rates. The rows do
+      not error and nothing surfaces. Neither the migration plan nor the 11c prompt mentions this.
+      This is why it is NOT part of the four consumer slices - those are plumbing, this is
+      correctness, and routing the read through the resolver would not fix it. The resolver would
+      answer from RateTable, whose rows key facility inside a JSON cells bag, so the guard would
+      have to be rewritten rather than repointed.
+    gate: 'grep -q "reference it by string" apps/api/src/modules/map-locations/map-locations.service.ts'
+    gate_means: >
+      READY while the string-join rename guard is still the only thing protecting facility
+      identity. Dies when the guard is either given a real relation or deliberately replaced. It
+      asserts the guard text the work must change, not merely that the file exists.
+    needs_marco: true
+    marco_note: >
+      A DESIGN DECISION, not a refactor. Three options, none obviously right.
+      (a) Give TIP facilities a real relation - MapLocation gains an id that waste rates point at,
+          and the rename guard becomes an FK. Correct, and the largest change; needs a backfill to
+          match existing facility strings to locations, and those strings may not all match.
+      (b) Move the guard to RateTable - keep the string join but count RateTable rows in the waste
+          table instead. Smallest change, preserves current behaviour exactly, keeps the fragility.
+      (c) Drop the guard deliberately and accept that renaming a TIP orphans its rates, with a
+          warning in the UI instead of a hard block. Cheapest, and a real loss of safety.
+      SEQUENCING - this must be settled BEFORE 11c drops estimate_waste_rates, not after. After the
+      drop there is no way to tell which facilities had rates, so option (a)'s backfill is no longer
+      possible. That ordering constraint is the reason this is registered rather than deferred.
+    order: 22

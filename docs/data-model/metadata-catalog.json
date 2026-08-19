@@ -3610,6 +3610,12 @@
           "label": null,
           "filterable": true,
           "aggregations": []
+        },
+        "shares": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -3990,6 +3996,68 @@
           "aggregations": []
         },
         "user": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
+    "ClientShare": {
+      "domain": "Directory",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clientId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "granteeTenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "grantedByUserId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "grantedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "note": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "client": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "granteeTenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "grantedBy": {
           "role": "dimension",
           "label": null,
           "filterable": true,
@@ -5355,6 +5423,74 @@
           "role": "system",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "shares": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "ContactShare": {
+      "domain": "Directory",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "contactId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "granteeTenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "grantedByUserId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "grantedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "note": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "contact": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "granteeTenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "grantedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         }
       }
@@ -19377,6 +19513,18 @@
             "count"
           ]
         },
+        "quotedTransportRatePerDay": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "notes": {
           "role": "attribute",
           "label": null,
@@ -22448,6 +22596,24 @@
           "aggregations": []
         },
         "homeUsers": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "clientSharesGranted": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "workerSharesGranted": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "contactSharesGranted": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -25870,6 +26036,24 @@
           "label": null,
           "filterable": true,
           "aggregations": []
+        },
+        "clientSharesGranted": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "workerSharesGranted": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "contactSharesGranted": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -26776,6 +26960,12 @@
           "label": null,
           "filterable": true,
           "aggregations": []
+        },
+        "shares": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -27354,6 +27544,68 @@
           "aggregations": []
         },
         "worker": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        }
+      }
+    },
+    "WorkerShare": {
+      "domain": "Workers",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "workerId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "granteeTenantId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "grantedByUserId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "grantedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "note": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "worker": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "granteeTenant": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "grantedBy": {
           "role": "dimension",
           "label": null,
           "filterable": true,

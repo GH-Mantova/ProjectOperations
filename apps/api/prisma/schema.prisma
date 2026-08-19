@@ -34,8 +34,71 @@ model Tenant {
   jobs      Job[]
   // MT-2: users whose home company is this tenant
   homeUsers User[]
+  // MT-4 SLICE 1: explicit share grants where this tenant is the grantee
+  clientSharesGranted  ClientShare[]
+  workerSharesGranted  WorkerShare[]
+  contactSharesGranted ContactShare[]
 
   @@map("tenants")
+}
+
+// MT-4 SLICE 1: explicit share-grant tables (D48 — one table per domain, real FKs).
+// A row here means the record identified by clientId/workerId/contactId is
+// explicitly shared with granteeTenant. No row = no access. Purely additive
+// in this slice; no query reads these tables until SLICE 3.
+
+model ClientShare {
+  id              String   @id @default(cuid())
+  clientId        String   @map("client_id")
+  granteeTenantId String   @map("grantee_tenant_id")
+  grantedByUserId String   @map("granted_by_user_id")
+  grantedAt       DateTime @default(now()) @map("granted_at")
+  note            String?
+
+  client       Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  granteeTenant Tenant @relation(fields: [granteeTenantId], references: [id])
+  grantedBy    User   @relation(fields: [grantedByUserId], references: [id])
+
+  @@unique([clientId, granteeTenantId])
+  @@index([granteeTenantId])
+  @@index([grantedByUserId])
+  @@map("client_shares")
+}
+
+model WorkerShare {
+  id              String   @id @default(cuid())
+  workerId        String   @map("worker_id")
+  granteeTenantId String   @map("grantee_tenant_id")
+  grantedByUserId String   @map("granted_by_user_id")
+  grantedAt       DateTime @default(now()) @map("granted_at")
+  note            String?
+
+  worker        Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  granteeTenant Tenant @relation(fields: [granteeTenantId], references: [id])
+  grantedBy     User   @relation(fields: [grantedByUserId], references: [id])
+
+  @@unique([workerId, granteeTenantId])
+  @@index([granteeTenantId])
+  @@index([grantedByUserId])
+  @@map("worker_shares")
+}
+
+model ContactShare {
+  id              String   @id @default(cuid())
+  contactId       String   @map("contact_id")
+  granteeTenantId String   @map("grantee_tenant_id")
+  grantedByUserId String   @map("granted_by_user_id")
+  grantedAt       DateTime @default(now()) @map("granted_at")
+  note            String?
+
+  contact       Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  granteeTenant Tenant  @relation(fields: [granteeTenantId], references: [id])
+  grantedBy     User    @relation(fields: [grantedByUserId], references: [id])
+
+  @@unique([contactId, granteeTenantId])
+  @@index([granteeTenantId])
+  @@index([grantedByUserId])
+  @@map("contact_shares")
 }
 
 model User {
@@ -291,6 +354,10 @@ model User {
   // no active tenant see only shared rows (fail-closed per MT-1 rule).
   homeTenantId String? @map("home_tenant_id")
   homeTenant   Tenant? @relation(fields: [homeTenantId], references: [id], onDelete: SetNull)
+  // MT-4 SLICE 1: share grants recorded by this user
+  clientSharesGranted  ClientShare[]
+  workerSharesGranted  WorkerShare[]
+  contactSharesGranted ContactShare[]
 
   @@index([isActive])
   @@index([managerId])
@@ -815,6 +882,8 @@ model Client {
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
   tenantId            String?                   @map("tenant_id")
   tenant              Tenant?                   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // MT-4 SLICE 1: explicit share grants for this client record
+  shares              ClientShare[]
 
   @@unique([name])
   @@index([status])
@@ -859,6 +928,8 @@ model Contact {
   lastContactedAt        DateTime?      @map("last_contacted_at")
   // CRM-2: relationship notes authored about this contact.
   relationshipNotes      RelationshipNote[] @relation("RelationshipNoteContact")
+  // MT-4 SLICE 1: explicit share grants for this contact record
+  shares                 ContactShare[]
 
   @@index([organisationType, organisationId])
   @@index([email])
@@ -1035,6 +1106,8 @@ model Worker {
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
   tenantId            String?                 @map("tenant_id")
   tenant              Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // MT-4 SLICE 1: explicit share grants for this worker record
+  shares              WorkerShare[]
 
   @@index([status])
   @@index([resourceTypeId])
@@ -3659,6 +3732,13 @@ model ScopeWasteItem {
   disposalCost            Decimal?           @map("disposal_cost") @db.Decimal(12, 2)
   quotedDisposalRate      Decimal?           @map("quoted_disposal_rate") @db.Decimal(10, 2)
   quotedFuelPricePerLitre Decimal?           @map("quoted_fuel_price_per_litre") @db.Decimal(6, 3)
+  // Transport-rate snapshot (SLICE 1, 2026-08-19). Added beside the two
+  // existing snapshots so the variance flag can compare the rate at quote
+  // time against the current EstimatePlantRate.rate. NULL means the row
+  // predates this column or was never priced via the transport engine;
+  // NULL behaves exactly like the live-lookup path (no data loss on revert).
+  // backfill: false -- existing rows intentionally left NULL.
+  quotedTransportRatePerDay Decimal?         @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
   notes                   String?
   sortOrder               Int                @default(0) @map("sort_order")
   createdById             String             @map("created_by_id")

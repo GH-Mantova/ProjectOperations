@@ -19,6 +19,7 @@ seed_only: false
 escalates: true
 backfill: false
 rollback_strategy: "The migration only ADDs the new form_output_delivery_logs table (append-only, no other table's columns or FKs are touched, no data backfill). Rollback is a plain DROP TABLE form_output_delivery_logs — nothing else references it, so reverting loses only delivery-attempt log rows, never submission or template data."
+requires_file_on_main: apps/api/src/modules/forms/form-digests.service.ts
 ---
 
 # Output channels — Settings surface, SharePoint PDF, email copies, webhooks, delivery log + retry

@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { captureGpsReading, type GpsReading } from "./useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "./GpsConsent";
 import { useBreadcrumbTrail } from "./useBreadcrumbTrail";
@@ -54,7 +55,7 @@ export function FieldTimesheetPage() {
   const loadList = useCallback(async () => {
     try {
       const response = await authFetch("/field/timesheets?limit=50");
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = await response.json();
       setRows(body.items ?? []);
     } catch (err) {
@@ -366,10 +367,10 @@ function NewTimesheet({
         setError("You already have a timesheet for this job today.");
         return;
       }
-      if (!createResponse.ok) throw new Error(await createResponse.text());
+      if (!createResponse.ok) throw new Error(await readApiErrorMessage(createResponse));
       const timesheet = await createResponse.json();
       const submitResponse = await authFetch(`/field/timesheets/${timesheet.id}/submit`, { method: "POST" });
-      if (!submitResponse.ok) throw new Error(await submitResponse.text());
+      if (!submitResponse.ok) throw new Error(await readApiErrorMessage(submitResponse));
       onSubmitted(`Timesheet submitted — ${hours} hours on ${allocation?.projectName ?? "your job"} for ${formatDate(date)}`);
     } catch (err) {
       setError((err as Error).message);
@@ -538,7 +539,7 @@ function EditTimesheet({
           authFetch("/field/my-allocations"),
           authFetch("/field/my-allocations")
         ]);
-        if (!tsRes.ok) throw new Error(await tsRes.text());
+        if (!tsRes.ok) throw new Error(await readApiErrorMessage(tsRes));
         const tsBody = (await tsRes.json()) as { items: Array<TimesheetRow & { allocationId?: string }> };
         const row = tsBody.items.find((t) => t.id === timesheetId);
         const listBody = (await listRes.json()) as Allocation[];
@@ -589,7 +590,7 @@ function EditTimesheet({
           description: description.trim() || undefined
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
     } catch (err) {
       setError((err as Error).message);
       throw err;
@@ -613,7 +614,7 @@ function EditTimesheet({
     try {
       await patch();
       const response = await authFetch(`/field/timesheets/${timesheetId}/submit`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       onSubmitted(`Timesheet submitted — ${hoursWorked} hours on ${projectName || "your job"}`);
     } catch (err) {
       setError((err as Error).message);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
 
 type IncidentType =
@@ -292,7 +293,7 @@ function IncidentForm({
             : []
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const created = (await response.json()) as { incidentNumber: string };
       await discardDraft();
       onSaved(created.incidentNumber);
@@ -421,7 +422,7 @@ function HazardForm({
           dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const created = (await response.json()) as { hazardNumber: string };
       await discardDraft();
       onSaved(created.hazardNumber);

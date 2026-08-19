@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useOffline } from "../../offline/OfflineContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // Field / PWA expense capture — slice 2 of the expense workstream.
 // Reuses the existing /expenses API (no schema changes) and the offline
@@ -130,7 +131,7 @@ function ExpenseList({ onNew }: { onNew: () => void }) {
     }
     try {
       const response = await authFetch("/expenses?page=1&pageSize=25");
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = (await response.json()) as { items: ExpenseRow[] };
       setRows(body.items ?? []);
     } catch (err) {
@@ -341,7 +342,7 @@ function NewExpense({
       }
 
       if (submitResult.response && !submitResult.response.ok) {
-        throw new Error(await submitResult.response.text());
+        throw new Error(await readApiErrorMessage(submitResult.response));
       }
 
       onSubmitted(

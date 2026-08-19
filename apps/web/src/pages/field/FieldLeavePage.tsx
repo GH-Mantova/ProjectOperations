@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type LeaveType = "ANNUAL" | "PERSONAL" | "UNPAID" | "OTHER";
 
@@ -53,7 +54,7 @@ export function FieldLeavePage() {
   const loadList = useCallback(async () => {
     try {
       const resp = await authFetch("/workers/leave-requests");
-      if (!resp.ok) throw new Error(await resp.text());
+      if (!resp.ok) throw new Error(await readApiErrorMessage(resp));
       const body = await resp.json();
       const items = Array.isArray(body) ? body : [];
       setRows(items);
@@ -93,7 +94,7 @@ export function FieldLeavePage() {
           reason: reason || undefined
         })
       });
-      if (!resp.ok) throw new Error(await resp.text());
+      if (!resp.ok) throw new Error(await readApiErrorMessage(resp));
       setSuccess("Leave request submitted successfully.");
       setView("list");
       await loadList();

@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type PreStartRow = {
   id: string;
@@ -70,7 +71,7 @@ export function FieldPreStartPage() {
   const loadList = useCallback(async () => {
     try {
       const response = await authFetch("/field/pre-starts?limit=50");
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = await response.json();
       setRows(body.items ?? []);
     } catch (err) {
@@ -198,7 +199,7 @@ async function openRow(
 ) {
   try {
     const response = await authFetch(`/field/pre-starts/${row.id}`);
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await readApiErrorMessage(response));
     const detail = (await response.json()) as PreStartDetail;
     const allocResponse = await authFetch(`/field/my-allocations`);
     const allocList = (await allocResponse.json()) as Allocation[];
@@ -263,7 +264,7 @@ function NewPreStart({
         if (body?.existingId) setDuplicateLink(body.existingId);
         return;
       }
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const checklist = (await response.json()) as PreStartDetail;
       const allocation = (allocations ?? []).find((a) => a.id === allocationId)!;
       onOpenEdit(checklist, allocation);
@@ -353,7 +354,7 @@ function EditPreStart({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(stripReadOnly(form))
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const updated = (await response.json()) as PreStartDetail;
       setForm(updated);
     } catch (err) {
@@ -380,9 +381,9 @@ function EditPreStart({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(stripReadOnly(form))
       });
-      if (!patchResponse.ok) throw new Error(await patchResponse.text());
+      if (!patchResponse.ok) throw new Error(await readApiErrorMessage(patchResponse));
       const submitResponse = await authFetch(`/field/pre-starts/${form.id}/submit`, { method: "POST" });
-      if (!submitResponse.ok) throw new Error(await submitResponse.text());
+      if (!submitResponse.ok) throw new Error(await readApiErrorMessage(submitResponse));
       onSubmitted(`Pre-start submitted for ${allocation.projectName} on ${formatDate(form.date)}`);
     } catch (err) {
       setError((err as Error).message);

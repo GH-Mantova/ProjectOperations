@@ -463,3 +463,51 @@ items:
       showing the placeholder "Tender site" - if choosing a different departure point is meant to be
       possible, that is a second gap and needs its own item.
     order: 18
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master). SLICES 1 and 2 of the multi-company chain are staged;
+  # 3, 4 and 5 CANNOT be written yet and this records why, so they do not fall on the floor.
+  # -------------------------------------------------------------------------------------------
+  - id: tenant-mt4-slices-3-4-5
+    title: "Write multi-company SLICES 3-5 once SLICE 2 has merged (gates need values that do not exist yet)"
+    priority: P2
+    why: >
+      docs/plans/multi-tenant-plan.md defines five slices. SLICES 1 and 2 are staged
+      (pr-tenant-mt4-s1-share-list armed, pr-tenant-mt4-s2-ownership-migration HOLD). SLICES 3-5 are
+      deliberately NOT staged, because the plan mandates gates whose values only exist after the
+      predecessor lands.
+      The plan's own words for SLICE 3: "a SLICE 3 prompt lacking any of them must be rejected at
+      lint time rather than armed." Marco's instruction was "ensure the gates are tight so slice 3
+      never lands before slice 2 fully on main." Staging a SLICE 3 with placeholder gates would be
+      the exact opposite of that instruction, so it has not been done.
+      THE FOUR MANDATED SLICE 3 GATES AND THEIR STATUS TODAY:
+      (1) requires_merged <SLICE 2 PR number> - CANNOT be written; the PR does not exist yet.
+      (2) requires_file_on_main <SLICE 2 migration folder>/migration.sql - CANNOT be written; the
+          folder is timestamp-named and is created by the SLICE 2 run. Both S1 and S2 prompts
+          instruct their agent to state the exact folder name in the PR body for this reason.
+      (3) a premise that queries the DATABASE for zero blank owners - CANNOT be expressed as a lint
+          premise at all. The intake linter runs premises as shell commands in a git checkout with
+          NO database connection, so a psql premise would error rather than gate. This is a real
+          limitation of the plan as written, not an oversight in the staging.
+      (4) SLICE 3's first action re-runs the blank-owner count and exits NO-OP if it is not zero -
+          THIS ONE IS IMPLEMENTABLE and is strictly better than (3), because it checks at the moment
+          of action rather than at intake. It must be written into the SLICE 3 prompt body.
+      WHY THE ORDERING MATTERS: if the scoping filter flips to owner-or-grant while rows still carry
+      a blank owner, every client, worker and contact becomes invisible to everyone INCLUDING
+      Initial Services. Not a degraded view - the core master data disappears.
+      SLICES 4 (share-management UI on /settings/companies, super-user only, D51) and 5 (Import as an
+      independent copy with duplicate detection, D50) are straightforward by comparison and chain on
+      3 then 4; they are held only because their predecessor does not exist.
+    gate: '! grep -rq "tenant-mt4-s3" docs/pr-prompts && grep -q "model ClientShare" apps/api/prisma/schema.prisma'
+    gate_means: >
+      READY once SLICE 1 has landed (ClientShare on main, proving the chain has started) and no
+      SLICE 3 prompt has been written yet. Dies the moment a SLICE 3 prompt exists in the queue.
+      NOTE this fires after SLICE 1, not SLICE 2 - deliberately, so the prompts can be DRAFTED while
+      SLICE 2 is waiting on Marco, with the two unknown values filled in from SLICE 2's PR when it
+      appears.
+    needs_marco: false
+    marco_note: >
+      SLICE 2 is production data and is staged -HOLD on purpose. Marco arms it, Marco takes the CSV
+      export named in its pre-flight runbook, and Marco merges it. Nothing about SLICE 2's gate
+      opening means it should be armed automatically.
+    order: 19

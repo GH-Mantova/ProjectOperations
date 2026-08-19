@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { DynamicFieldSection } from "../../components/DynamicFieldSection";
 
 type ClientSearchResult = {
@@ -41,7 +42,7 @@ export function AddClientModal({
       }
       try {
         const response = await authFetch(`/tendering/clients/search?q=${encodeURIComponent(term.trim())}`);
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         setResults((await response.json()) as ClientSearchResult[]);
       } catch (err) {
         setError((err as Error).message);
@@ -65,8 +66,7 @@ export function AddClientModal({
         body: JSON.stringify({ clientId })
       });
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || "Could not add client.");
+        throw new Error(await readApiErrorMessage(response, "Could not add client."));
       }
       onAdded();
     } catch (err) {

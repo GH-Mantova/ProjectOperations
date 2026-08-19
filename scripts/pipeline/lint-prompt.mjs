@@ -459,6 +459,51 @@ function readFromOriginMain(path, repoRoot) {
 }
 
 /**
+ * FILE_GATE_DEAD: a `requires_file_on_main` path that ALREADY exists on
+ * origin/main at intake. A path that can never be absent can never fail, so
+ * the slice dispatches with no ordering at all — alongside its predecessor
+ * rather than after it. Same class of hole as CLUSTER_DEAD_GATE, one gate
+ * type over.
+ *
+ * Applies to ALL prompts (cluster or not) — a dead file gate is just as dead
+ * on a non-cluster prompt.
+ *
+ * Fail SAFE on git errors: emit a warning, admit the prompt. One broken
+ * `git` binary must not bin the whole queue.
+ */
+function checkFileGateDead(fm, repoRoot, name) {
+  const raw = fm.requires_file_on_main;
+  if (raw === undefined || raw === "" || (Array.isArray(raw) && raw.length === 0)) {
+    return { ok: true };
+  }
+  const vals = Array.isArray(raw) ? raw : [raw];
+  for (const v of vals) {
+    const path = String(v).trim();
+    if (!path) continue;
+    const contents = readFromOriginMain(path, repoRoot);
+    if (contents === null) {
+      process.stderr.write(
+        "WARN  " + (name || "<file>") + "  could not probe origin/main:" + path + " for file-gate-dead check; skipping.\n"
+      );
+      continue;
+    }
+    if (contents.absent) continue; // path missing on main = gate legitimately unmet
+    return {
+      ok: false, code: "FILE_GATE_DEAD",
+      msg:
+        "requires_file_on_main: \"" + path + "\" is ALREADY on origin/main at intake.\n" +
+        "        This is the FILE_GATE_DEAD case — the path can never be absent, so the gate\n" +
+        "        can never fail. The slice would dispatch alongside its predecessor with no\n" +
+        "        ordering at all. Two legal fixes:\n" +
+        "          - re-point at a content gate the predecessor actually introduces:\n" +
+        "                requires_on_main: " + path + " :: <fixed string from the predecessor>\n" +
+        "          - drop the key entirely if the dependency is genuinely satisfied.",
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * CLUSTER_DEAD_GATE: a requires_on_main whose fixed string is ALREADY present
  * on origin/main at intake time. The arming PR would dispatch the slice
  * instantly with no gate at all, which reads as ordered and is not.
@@ -721,6 +766,16 @@ export function lint(file, opts) {
       const deadRes = checkDeadGate(fm, repoRoot, name);
       if (!deadRes.ok) return fail(deadRes.code, deadRes.msg);
     }
+  }
+
+  // FILE_GATE_DEAD applies to ALL prompts (cluster or not). Unlike
+  // CLUSTER_DEAD_GATE it needs no `::` content gate — a bare
+  // `requires_file_on_main: <path>` whose path already exists on origin/main
+  // can never fail, so the slice would dispatch ungated. Fail SAFE on git
+  // errors — one broken probe must not bin the whole queue.
+  {
+    const fileDeadRes = checkFileGateDead(fm, repoRoot, name);
+    if (!fileDeadRes.ok) return fail(fileDeadRes.code, fileDeadRes.msg);
   }
 
   const missing = REQUIRED.filter((k) => !fm[k] || (Array.isArray(fm[k]) && fm[k].length === 0));

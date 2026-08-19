@@ -18,6 +18,7 @@ import { PlatformPage } from "./pages/PlatformPage";
 import { InboxPage } from "./pages/InboxPage";
 import { NotificationPreferencesPage } from "./pages/settings/NotificationPreferencesPage";
 import { HandoverTemplatePage } from "./pages/settings/HandoverTemplatePage";
+import { SettingsHomePage } from "./pages/settings/SettingsHomePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
@@ -394,7 +395,11 @@ export function App() {
                 place with a left sub-nav. Legacy routes redirect in so old
                 bookmarks and inbound links keep working. */}
             <Route path="/settings" element={<SettingsShell />}>
-              <Route index element={<Navigate to="account" replace />} />
+              {/* SLICE 2 (settings-home-plan.md): /settings now renders the
+                  SettingsHomePage card grid instead of redirecting straight to
+                  /settings/account. Ordinary users see 17 of 20 cards greyed
+                  (D45/D46). */}
+              <Route index element={<SettingsHomePage />} />
               <Route path="account" element={<UserProfilePage />} />
               {/* SLICE 5 (settings-restructure §3): Notification preferences
                   screen. Replaced the SLICE-4 /inbox redirect with the actual

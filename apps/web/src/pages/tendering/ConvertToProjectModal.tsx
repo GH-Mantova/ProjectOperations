@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 type TenderSummary = {
   id: string;
@@ -41,7 +42,7 @@ export function ConvertToProjectModal({ tender, onClose, onConverted }: Props) {
     (async () => {
       try {
         const response = await authFetch(`/projects/next-number`);
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         const body = (await response.json()) as { nextNumber: string };
         if (!cancelled) setNextNumber(body.nextNumber);
       } catch (err) {
@@ -70,8 +71,7 @@ export function ConvertToProjectModal({ tender, onClose, onConverted }: Props) {
         return;
       }
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `Request failed (${response.status})`);
+        throw new Error(await readApiErrorMessage(response, `Request failed (${response.status})`));
       }
       const body = (await response.json()) as ConvertResponse;
       onConverted({ projectId: body.id, projectNumber: body.projectNumber });

@@ -416,6 +416,43 @@ run("cluster-none-present",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
+// ── FILE_GATE_DEAD: requires_file_on_main path already on origin/main ────────
+// Same class of hole as CLUSTER_DEAD_GATE, one gate type over. A path that
+// can never be absent can never fail, so the slice would dispatch ungated.
+// Applies to ALL prompts, not just cluster ones.
+
+console.log("\n=== exit 1 REJECT: requires_file_on_main path already on origin/main -> FILE_GATE_DEAD");
+// scripts/pipeline/lint-prompt.mjs has been on origin/main since long before this test file.
+runIsolated("file-gate-dead-scalar",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main: scripts/pipeline/lint-prompt.mjs", 1);
+
+console.log("\n=== exit 0 ADMIT: requires_file_on_main path NOT on origin/main -> gate legitimately unmet");
+runIsolated("file-gate-live",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main: apps/api/src/does-not-exist-abcxyz-1234567890.ts", 0);
+
+console.log("\n=== exit 1 REJECT: list form with one dead entry among live ones -> FILE_GATE_DEAD");
+runIsolated("file-gate-dead-list",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main:\n" +
+  "  - apps/api/src/does-not-exist-abcxyz-1234567890.ts\n" +
+  "  - scripts/pipeline/lint-prompt.mjs\n" +
+  "  - apps/api/src/also-not-there-qqqzzz-0987654321.ts", 1);
+
+console.log("\n=== exit 0 ADMIT: git unavailable during file-gate probe -> warning, admitted (fail-safe)");
+// Mirrors the CLUSTER_DEAD_GATE fail-safe test: an unreachable git binary
+// must WARN and SKIP, never reject. One broken tool must not bin the queue.
+runIsolated("file-gate-dead-git-broken",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
+  0,
+  { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

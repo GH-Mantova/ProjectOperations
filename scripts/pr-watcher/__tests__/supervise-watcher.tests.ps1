@@ -215,6 +215,115 @@ Describe 'Resolve-WatcherExitAction -- the 2026-08-18 deadlock branch' {
     }
 }
 
+Describe 'Resolve-WatchdogChurn -- in-loop watchdog-kill churn guard' {
+
+    # All tests use a fixed $now so results are deterministic.
+    $now = [datetime]'2026-08-20T10:00:00'
+
+    Context 'empty / null input -- must not throw' {
+
+        It 'returns InWindow=0 Halt=false for empty array' {
+            $result = Resolve-WatchdogChurn -KillTimes @() -Now $now
+            $result.InWindow | Should Be 0
+            $result.Halt     | Should Be $false
+        }
+
+        It 'returns InWindow=0 Halt=false for null input' {
+            $result = Resolve-WatchdogChurn -KillTimes $null -Now $now
+            $result.InWindow | Should Be 0
+            $result.Halt     | Should Be $false
+        }
+    }
+
+    Context 'pruning -- kills outside the window are dropped' {
+
+        It 'prunes a kill that is exactly at the window boundary (>= WindowMinutes old)' {
+            # Exactly 20 minutes ago is AT the cutoff; cutoff is Now - 20 min.
+            # -gt $cutoff means 20-min-old is NOT kept (it equals the cutoff).
+            $old = $now.AddMinutes(-20)
+            $result = Resolve-WatchdogChurn -KillTimes @($old) -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow | Should Be 0
+            $result.Halt     | Should Be $false
+        }
+
+        It 'keeps a kill that is one second inside the window' {
+            $recent = $now.AddMinutes(-19).AddSeconds(-59)
+            $result = Resolve-WatchdogChurn -KillTimes @($recent) -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow | Should Be 1
+        }
+
+        It 'prunes old kills and keeps recent ones -- Kept matches InWindow' {
+            $old    = $now.AddMinutes(-25)
+            $recent = $now.AddMinutes(-5)
+            $result = Resolve-WatchdogChurn -KillTimes @($old, $recent) -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow    | Should Be 1
+            $result.Kept.Count  | Should Be 1
+        }
+    }
+
+    Context 'threshold boundary -- halt fires at exactly Threshold' {
+
+        It 'does NOT halt at Threshold - 1 kills in window' {
+            $times = @(
+                $now.AddMinutes(-1),
+                $now.AddMinutes(-2),
+                $now.AddMinutes(-3)
+            )
+            $result = Resolve-WatchdogChurn -KillTimes $times -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow | Should Be 3
+            $result.Halt     | Should Be $false
+        }
+
+        It 'halts at exactly Threshold kills in window' {
+            $times = @(
+                $now.AddMinutes(-1),
+                $now.AddMinutes(-2),
+                $now.AddMinutes(-3),
+                $now.AddMinutes(-4)
+            )
+            $result = Resolve-WatchdogChurn -KillTimes $times -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow | Should Be 4
+            $result.Halt     | Should Be $true
+        }
+
+        It 'halts above Threshold' {
+            $times = @(
+                $now.AddMinutes(-1),
+                $now.AddMinutes(-2),
+                $now.AddMinutes(-3),
+                $now.AddMinutes(-4),
+                $now.AddMinutes(-5)
+            )
+            $result = Resolve-WatchdogChurn -KillTimes $times -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow | Should Be 5
+            $result.Halt     | Should Be $true
+        }
+    }
+
+    Context 'future timestamps -- clock skew must not hide churn' {
+
+        It 'keeps a kill time in the future (skew must not discard it)' {
+            $future = $now.AddMinutes(5)
+            $result = Resolve-WatchdogChurn -KillTimes @($future) -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow | Should Be 1
+            $result.Halt     | Should Be $false
+        }
+    }
+
+    Context 'Kept matches InWindow' {
+
+        It 'InWindow equals Kept.Count in all cases' {
+            $times = @(
+                $now.AddMinutes(-5),
+                $now.AddMinutes(-10),
+                $now.AddMinutes(-30)   # outside window
+            )
+            $result = Resolve-WatchdogChurn -KillTimes $times -Now $now -WindowMinutes 20 -Threshold 4
+            $result.InWindow   | Should Be $result.Kept.Count
+        }
+    }
+}
+
 # Clean up temp dirs and env vars so a follow-up test run starts fresh.
 Remove-Item -Path $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item Env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -ErrorAction SilentlyContinue

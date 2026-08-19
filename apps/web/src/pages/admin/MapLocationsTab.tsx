@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { AddressAutocomplete, type AddressSuggestion } from "../../components/AddressAutocomplete";
 import { LocationsMap } from "../../components/LocationsMap";
 import { useConfirm } from "../../hooks/useConfirm";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { TipFinderPanel } from "./TipFinderPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -172,7 +173,7 @@ export function MapLocationsTab() {
     try {
       const url = filter === "all" ? "/map-locations" : `/map-locations?kind=${filter}`;
       const res = await authFetch(url);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not load map locations."));
       setLocations((await res.json()) as MapLocation[]);
     } catch (err) {
       setError((err as Error).message);
@@ -233,7 +234,7 @@ export function MapLocationsTab() {
     if (!ok) return;
     try {
       const res = await authFetch(`/map-locations/${loc.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not deactivate location."));
       flash("Location deactivated.");
       await load();
     } catch (err) {
@@ -281,7 +282,7 @@ export function MapLocationsTab() {
           longitude: tipFromRatesAddress.longitude
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not create tip from waste rates."));
       flash(`Tip "${selectedFacility}" created.`);
       resetAddPanel();
       await load();
@@ -320,7 +321,7 @@ export function MapLocationsTab() {
           notes: newTipNotes.trim() || null
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not create tip."));
       flash(`Tip "${newTipName.trim()}" created.`);
       resetAddPanel();
       await load();
@@ -359,7 +360,7 @@ export function MapLocationsTab() {
           notes: newPoiNotes.trim() || null
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not create point of interest."));
       flash(`Point of interest "${newPoiName.trim()}" created.`);
       resetAddPanel();
       await load();

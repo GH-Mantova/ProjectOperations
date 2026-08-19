@@ -412,3 +412,43 @@ items:
       pr-fv2-formrule-contract is deliberately excluded - it is on a soak and must not be armed
       without Marco.
     order: 17
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master), from a defect Marco hit in the Tip Finder. Grounding
+  # the one screenshot turned up a migration that was recorded as finished and was not.
+  # -------------------------------------------------------------------------------------------
+  - id: web-raw-error-envelope-migration
+    title: "Finish the humane API-error migration - 38 web files still render the raw JSON envelope"
+    priority: P2
+    why: >
+      apps/web/src/lib/api-errors.ts exists and 22 files use it. But 38 files still do
+      `throw new Error(await res.text())` and then set that as the visible error message - 124
+      occurrences in total, measured on origin/main. res.text() is the whole HTTP error envelope, so
+      the user is shown raw JSON: statusCode, path, timestamp and all. Marco hit this on 2026-08-19
+      in the Tip Finder, where a perfectly good API message ("Tender site has no coordinates stored.
+      Update the site coordinates in Settings > Map locations") was rendered as the entire envelope.
+      sot/02-roadmap-and-status.md:150 records this work as **Done** ("lib/api-errors.ts, 16 files").
+      That is misleading: the HELPER is done, the MIGRATION is not. The doc should be corrected by a
+      Station 05 doc-reconcile, separately from the code.
+      There is also NO CI gate forbidding the pattern (checked .github/ and scripts/pr-gates/), so
+      the count can and does grow. A lint rule is arguably worth more than any single batch of edits.
+      The two worst-placed instances (TipFinderPanel 2, MapLocationsTab 5) are being fixed
+      separately as pr-fix-tipfinder-raw-error-render; this item covers the remaining 36 files.
+      SLICING: 36 files is far over the size-10 limit. Do NOT stage as one prompt. Slice by feature
+      area - crm/, forms/, tendering/, admin/, sites/, personas/ - each its own prompt, plus one
+      final slice adding the CI gate so the pattern cannot come back.
+    gate: 'test $(grep -rl "throw new Error(await res.text())" apps/web/src | wc -l) -gt 0'
+    gate_means: >
+      READY while any web file still throws the raw response body as its error message. Dies when the
+      last one is migrated. NOTE the gate counts FILES, so it stays READY through the whole slice
+      chain and correctly reports the work as unfinished until it genuinely is.
+    needs_marco: false
+    marco_note: >
+      One design question was deliberately NOT decided while fixing the Tip Finder instance, because
+      it is Marco's: when a tender site has no stored coordinates, should Tip Finder ERROR (current
+      behaviour, and the message does tell you how to fix it), or should it DEGRADE to ranking tips by
+      disposal rate alone with distance shown as unavailable? Erroring is honest; degrading is more
+      useful mid-estimate. Separately: the "Coming from" field on the Tip Finder is a disabled input
+      showing the placeholder "Tender site" - if choosing a different departure point is meant to be
+      possible, that is a second gap and needs its own item.
+    order: 18

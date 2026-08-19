@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { useOffline } from "../../offline/OfflineContext";
 
@@ -130,7 +131,7 @@ function ExpenseList({ onNew }: { onNew: () => void }) {
     }
     try {
       const response = await authFetch("/expenses?page=1&pageSize=25");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as { items: ExpenseRow[] };
       setRows(body.items ?? []);
     } catch (err) {
@@ -322,9 +323,10 @@ function NewExpense({
       }
 
       const response = createResult.response;
-      if (!response || !response.ok) {
-        throw new Error((await response?.text()) ?? "Could not create expense.");
+      if (!response) {
+        throw new Error("Could not create expense.");
       }
+      await throwIfApiError(response);
       const created = (await response.json()) as { id: string; number: string };
 
       const submitResult = await offlineFetch(
@@ -340,8 +342,8 @@ function NewExpense({
         return;
       }
 
-      if (submitResult.response && !submitResult.response.ok) {
-        throw new Error(await submitResult.response.text());
+      if (submitResult.response) {
+        await throwIfApiError(submitResult.response);
       }
 
       onSubmitted(

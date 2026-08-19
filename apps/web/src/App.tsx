@@ -58,6 +58,7 @@ import { MusterPage } from "./pages/sites/MusterPage";
 import { CompliancePage } from "./pages/compliance/CompliancePage";
 import { SafetyPage } from "./pages/safety/SafetyPage";
 import { ScheduleOfRatesAdminPage } from "./pages/ScheduleOfRatesAdminPage";
+import { CreateSorPage } from "./pages/schedule-of-rates/CreateSorPage";
 import { JobSorAttachWizardPage } from "./pages/JobSorAttachWizardPage";
 import { VariationPricingPage } from "./pages/VariationPricingPage";
 import { JobRolesPage } from "./pages/admin/JobRolesPage";
@@ -610,6 +611,8 @@ export function App() {
             {/* SLICE 11b: legacy estimate-rates admin page retired; redirect to canonical reference-data screen. */}
             <Route path="/admin/estimate-rates" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/schedule-of-rates" element={<ScheduleOfRatesAdminPage />} />
+            {/* SoR S4 (rate-hub): Create Schedule of Rates wizard — 4-step line picker + markup. */}
+            <Route path="/schedule-of-rates/create" element={<CreateSorPage />} />
             {/* SoR S4: attach a rate-book snapshot to a job or tender. */}
             <Route path="/schedule-of-rates/attach" element={<JobSorAttachWizardPage />} />
             {/* SoR S6: desktop-price a Variation from the locked Job SoR snapshot. */}

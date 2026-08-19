@@ -163,7 +163,7 @@ export function TenderClarificationLog({
     setLoading(true);
     try {
       const response = await authFetch(`/tenders/${tenderId}/clarification-notes`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setNotes((await response.json()) as NoteItem[]);
     } catch (err) {
       setError((err as Error).message);
@@ -229,7 +229,7 @@ export function TenderClarificationLog({
             dueDate: dueDate || undefined
           })
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         onRfiChanged();
       } else {
         if (!text.trim()) throw new Error("Text is required for communications.");
@@ -242,7 +242,7 @@ export function TenderClarificationLog({
             date: occurredAt || undefined
           })
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         await load();
       }
       await draft.discardDraft();
@@ -507,7 +507,7 @@ function ClarificationEntryRow({
             })
           }
         );
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
       } else {
         const response = await authFetch(
           `/tenders/${tenderId}/clarification-notes/${entry.id}`,
@@ -516,7 +516,7 @@ function ClarificationEntryRow({
             body: JSON.stringify({ text: draftText.trim() })
           }
         );
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
       }
       setEditing(false);
       onChanged();

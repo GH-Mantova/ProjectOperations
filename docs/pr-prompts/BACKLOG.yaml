@@ -508,16 +508,28 @@ items:
     gate_means: >
       READY while the legacy models still exist AND tendering still reaches them directly. Dies once
       the consumers are migrated and the legacy models are gone.
-    needs_marco: true
+    needs_marco: false
     marco_note: >
-      ONE DECISION REMAINS (was two). Full write-up (the code-writer's own) is in the watcher clone
-      at docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
+      BOTH DECISIONS ARE NOW SETTLED (2026-08-19). needs_marco flipped to false so this stops
+      surfacing as a question; the item itself STAYS until its gate dies, because the consumers are
+      staged but not yet merged. Full original write-up (the code-writer's own) is in the watcher
+      clone at docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, read it there.
+      A SEPARATE decision was spun out - see backlog item map-locations-waste-rate-coupling. It is
+      NOT a rates-pricing question and must not be folded into the consumer slices.
 
-      STILL OPEN - (1) Prep slice rates-11b2-a-resolver-consumers: route the 7 consumers THROUGH the
-          resolver (preferred: single source of truth, matches 11a's intent; requires adding the
-          lookup shapes they need to the resolver surface), or refactor them to hit RateTable
-          directly? Marco DEFERRED this on 2026-08-19 - "just the parity proof for now" - so neither
-          11b2-a nor 11b2-b has been written. Do NOT write them without asking again.
+      DECIDED 2026-08-19 (Marco) - (1) the consumers are migrated PER CLASS, not all one way. The
+          original binary (all through the resolver, or all direct to RateTable) did not survive
+          measurement - the 7 are three different problems. Staged as four slices, all ADMIT, all
+          premises verified alive on origin/main 9732def7 with controls -
+          s1 adds listRates(slug) to the resolver, additive, nothing else changes.
+          s2 routes scope-of-works + scope-redesign (single-key lookups AND pick-lists), gated on
+          s1 via requires_on_main.
+          s3 routes the persona lookup-rate handler + rates-export, also gated on s1.
+          s4 repoints the rates-import WRITES at the existing RateTablesService. NOT in the cluster
+          and deliberately ungated - it needs nothing from s1-s3. escalates true, it writes rate data.
+          TWO MEASUREMENT CORRECTIONS folded in. scope-of-works has 6 writes but they target
+          estimateItem and the Line tables, NOT rate tables - a phantom blocker. And
+          estimateMaterialDensity stays everywhere it appears; it is not on the drop list.
 
       DECIDED 2026-08-19 (Marco) - (2) ScopeWasteItem.transportRateId: SNAPSHOT the rate onto the
           row. Not a repoint, and NO id-mapping backfill. Staged and merged in #1223 as a 2-slice
@@ -617,3 +629,52 @@ items:
       than it was given is worse than one that refuses to load. Add a fixture test covering both
       failure modes above.
     order: 21
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master). Spun out of rates-11c-blocked-consumers after
+  # measuring what map-locations actually reads waste rates FOR. It is not a pricing consumer.
+  # -------------------------------------------------------------------------------------------
+  - id: map-locations-waste-rate-coupling
+    title: "Dropping EstimateWasteRate silently removes the TIP facility rename guard"
+    priority: P2
+    why: >
+      map-locations.service.ts is listed as one of the seven resolver-bypassing consumers, but it
+      never reads a price. It reads EstimateWasteRate for FACILITY IDENTITY, by string.
+      MEASURED on origin/main 9732def7 -
+      At :82 it asks which tips have any rate configured -
+      findMany where facility in tipFacilities, select facility only, distinct facility. That drives
+      a "set" versus "needed" badge in the UI.
+      At :107 and :149 it COUNTS waste-rate rows for a facility. The second one is the important
+      one - it throws ConflictException and REFUSES to rename a TIP location while any waste-rate
+      row still references the old facility string. Verbatim from the code -
+      "Cannot rename facility from X - N waste rate row(s) reference it by string. Update those
+      rates first or create a new TIP location."
+      THAT IS A REFERENTIAL-INTEGRITY GUARD IMPLEMENTED AS A STRING JOIN. There is no FK between
+      MapLocation.facility and EstimateWasteRate.facility - the coupling is a matching string and a
+      count query.
+      CONSEQUENCE - when SLICE 11c drops estimate_waste_rates, the count becomes zero for every
+      facility, the guard stops firing, and renaming a TIP silently orphans its rates. The rows do
+      not error and nothing surfaces. Neither the migration plan nor the 11c prompt mentions this.
+      This is why it is NOT part of the four consumer slices - those are plumbing, this is
+      correctness, and routing the read through the resolver would not fix it. The resolver would
+      answer from RateTable, whose rows key facility inside a JSON cells bag, so the guard would
+      have to be rewritten rather than repointed.
+    gate: 'grep -q "reference it by string" apps/api/src/modules/map-locations/map-locations.service.ts'
+    gate_means: >
+      READY while the string-join rename guard is still the only thing protecting facility
+      identity. Dies when the guard is either given a real relation or deliberately replaced. It
+      asserts the guard text the work must change, not merely that the file exists.
+    needs_marco: true
+    marco_note: >
+      A DESIGN DECISION, not a refactor. Three options, none obviously right.
+      (a) Give TIP facilities a real relation - MapLocation gains an id that waste rates point at,
+          and the rename guard becomes an FK. Correct, and the largest change; needs a backfill to
+          match existing facility strings to locations, and those strings may not all match.
+      (b) Move the guard to RateTable - keep the string join but count RateTable rows in the waste
+          table instead. Smallest change, preserves current behaviour exactly, keeps the fragility.
+      (c) Drop the guard deliberately and accept that renaming a TIP orphans its rates, with a
+          warning in the UI instead of a hard block. Cheapest, and a real loss of safety.
+      SEQUENCING - this must be settled BEFORE 11c drops estimate_waste_rates, not after. After the
+      drop there is no way to tell which facilities had rates, so option (a)'s backfill is no longer
+      possible. That ordering constraint is the reason this is registered rather than deferred.
+    order: 22

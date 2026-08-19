@@ -176,7 +176,7 @@ export function ClientQuotesPanel({
           authFetch(`/tenders/${tenderId}/quotes/${quoteId}`),
           authFetch(`/tenders/${tenderId}/quotes/${quoteId}/summary`)
         ]);
-        if (!qRes.ok) throw new Error(await qRes.text());
+        if (!qRes.ok) throw new Error(await readApiErrorMessage(qRes));
         setFull((await qRes.json()) as FullQuote);
         if (sRes.ok) setSummary((await sRes.json()) as SummaryResult);
       } catch (err) {
@@ -260,7 +260,7 @@ export function ClientQuotesPanel({
       body: JSON.stringify(body)
     });
     if (!res.ok) {
-      setError(await res.text());
+      setError(await readApiErrorMessage(res));
       return;
     }
     await loadOne(quoteId);

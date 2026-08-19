@@ -133,7 +133,7 @@ export function ScopeCuttingSheet({
         authFetch(itemsUrl),
         authFetch(`/estimate-rates/other-rates`)
       ]);
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
+      if (!itemsRes.ok) throw new Error(await readApiErrorMessage(itemsRes));
       setItems((await itemsRes.json()) as CuttingItem[]);
       if (ratesRes.ok) {
         const rates = (await ratesRes.json()) as OtherRate[];

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { useConfirm } from "../../hooks/useConfirm";
 import { OverrideField } from "../../components";
 import { ClientQuotesPanel } from "./ClientQuotesPanel";
@@ -133,7 +134,7 @@ export function TandCSection({
     setLoading(true);
     try {
       const response = await authFetch(`/tenders/${tenderId}/tandc`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = (await response.json()) as TandCResponse;
       setClauses(Array.isArray(body.clauses) ? body.clauses : []);
     } catch (err) {
@@ -155,7 +156,7 @@ export function TandCSection({
           method: "PATCH",
           body: JSON.stringify({ clauses: payloadClauses })
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         onToast("Saved");
       } catch (err) {
         setError((err as Error).message);
@@ -178,7 +179,7 @@ export function TandCSection({
       const response = await authFetch(`/tenders/${tenderId}/tandc/reset/${encodeURIComponent(number)}`, {
         method: "POST"
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = (await response.json()) as TandCResponse;
       setClauses(body.clauses);
       onToast(`Clause ${number} reset to standard`);
@@ -197,7 +198,7 @@ export function TandCSection({
     if (!ok) return;
     try {
       const response = await authFetch(`/tenders/${tenderId}/tandc/reset`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = (await response.json()) as TandCResponse;
       setClauses(body.clauses);
       onToast("All clauses reset to IS standard");
@@ -289,7 +290,7 @@ function GenerateQuoteSection({
   const loadExports = useCallback(async () => {
     try {
       const response = await authFetch(`/tenders/${tenderId}/exports`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setExports((await response.json()) as ExportEntry[]);
     } catch (err) {
       setError((err as Error).message);
@@ -305,7 +306,7 @@ function GenerateQuoteSection({
     setError(null);
     try {
       const response = await authFetch(`/tenders/${tenderId}/export/${kind}`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

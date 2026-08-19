@@ -1,7 +1,7 @@
 ---
 premise: ! test -f apps/web/src/pages/schedule-of-rates/CreateSorPage.tsx
 premise_means: The CreateSorPage component does not exist yet — S4 Create-SoR wizard is still needed.
-requires_file_on_main: apps/api/src/modules/schedule-of-rates/sor-source-markup.service.ts
+requires_on_main: apps/api/src/modules/schedule-of-rates/sor-source-markup.service.ts :: resolveEffectiveRate
 scope:
   - apps/web/src/pages/schedule-of-rates/CreateSorPage.tsx
   - apps/web/src/pages/schedule-of-rates/**

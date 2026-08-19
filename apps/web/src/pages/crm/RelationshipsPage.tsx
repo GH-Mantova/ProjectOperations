@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // CRM-2: Relationship intelligence page.
 // Surfaces three panels:
@@ -92,7 +93,7 @@ function fmtPct(val: string | null | undefined): string {
 }
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiErrorMessage(res));
   return (await res.json()) as T;
 }
 
@@ -215,7 +216,7 @@ function NotesPanel() {
         // For a full UX the form would include account/contact pickers; keeping minimal per scope.
         body: JSON.stringify({ body: body.trim(), accountId: null, contactId: null })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setBody("");
       void loadNotes();
     } catch (err) {

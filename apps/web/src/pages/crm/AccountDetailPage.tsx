@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // CRM-1: Client-360 / Account detail page.
 // Shows the Account with its linked Client identity, contacts, and
@@ -194,7 +195,7 @@ export function AccountDetailPage() {
     setError(null);
     try {
       const res = await authFetch(`/crm/accounts/${id}/360`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setAccount(await res.json() as Account360);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load account.");

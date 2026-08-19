@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 import { isAdminUser } from "../../auth/permissions";
 import { ContactFormModal, type ContactRecord } from "../../components/contacts/ContactsTab";
 
@@ -65,7 +66,7 @@ export function ContactsPage() {
       params.set("page", String(page));
       params.set("limit", String(PAGE_SIZE));
       const response = await authFetch(`/contacts?${params.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const body = (await response.json()) as { items: ContactRecord[]; total: number };
       setItems(body.items);
       setTotal(body.total);

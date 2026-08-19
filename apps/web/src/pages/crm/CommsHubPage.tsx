@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // CRM-4: Comms hub surface — internal threads + To-Do.
 // Anchored to a CRM record via ?entityType=ACCOUNT|TENDER|JOB|CONTRACT&entityId=…
@@ -127,7 +128,7 @@ export function CommsHubPage() {
     try {
       const qs = new URLSearchParams({ entityType, entityId });
       const res = await authFetch(`/crm/comms/threads?${qs.toString()}`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const data = await res.json() as { items: Thread[] };
       setThreads(data.items);
     } catch (err) {
@@ -144,7 +145,7 @@ export function CommsHubPage() {
     try {
       const qs = new URLSearchParams({ entityType, entityId });
       const res = await authFetch(`/crm/comms/tasks?${qs.toString()}`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const data = await res.json() as { items: Task[] };
       setTasks(data.items);
     } catch (err) {
@@ -158,7 +159,7 @@ export function CommsHubPage() {
     setLoading(true);
     try {
       const res = await authFetch(`/crm/comms/threads/${id}`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setSelectedThread(await res.json() as ThreadDetail);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load thread.");
@@ -183,7 +184,7 @@ export function CommsHubPage() {
       setNewSubject("");
       await loadThreads();
     } else {
-      setError(await res.text());
+      setError(await readApiErrorMessage(res));
     }
   }, [anchored, authFetch, entityType, entityId, newSubject, loadThreads]);
 
@@ -198,7 +199,7 @@ export function CommsHubPage() {
       setNewMessage("");
       await openThread(selectedThread.id);
     } else {
-      setError(await res.text());
+      setError(await readApiErrorMessage(res));
     }
   }, [authFetch, selectedThread, newMessage, openThread]);
 
@@ -219,7 +220,7 @@ export function CommsHubPage() {
       setNewTaskDue("");
       await loadTasks();
     } else {
-      setError(await res.text());
+      setError(await readApiErrorMessage(res));
     }
   }, [anchored, authFetch, entityType, entityId, newTaskTitle, newTaskDue, loadTasks]);
 

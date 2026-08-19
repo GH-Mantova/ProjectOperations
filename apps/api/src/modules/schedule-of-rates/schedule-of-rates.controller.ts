@@ -32,9 +32,32 @@ import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { ScheduleOfRatesService } from "./schedule-of-rates.service";
-import { SorCategory, SorPeriodHalf } from "@prisma/client";
+import { CreateSorService } from "./create-sor.service";
+import { SorCategory, SorPeriodHalf, SorRateSourceType } from "@prisma/client";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
+
+// S4 — Create SoR wizard DTOs
+
+class CreateSorLineDto {
+  @IsString() name!: string;
+  @IsEnum(SorCategory) category!: SorCategory;
+  @IsOptional() @IsString() unit?: string | null;
+  @Type(() => Number) @IsNumber() baseRate!: number;
+  @IsEnum(SorRateSourceType) sourceType!: SorRateSourceType;
+  @IsOptional() @IsString() sourceRateRowId?: string | null;
+  @IsOptional() @IsString() sourceSubRateId?: string | null;
+  @IsOptional() @Type(() => Number) @IsNumber() markupPct?: number | null;
+}
+
+class CreateSorWizardDto {
+  @Type(() => Number) @IsNumber() year!: number;
+  @IsEnum(SorPeriodHalf) half!: SorPeriodHalf;
+  @IsString() startDate!: string;
+  @IsString() expiryDate!: string;
+  @IsString() label!: string;
+  @IsArray() @ValidateNested({ each: true }) @Type(() => CreateSorLineDto) lines!: CreateSorLineDto[];
+}
 
 class CreatePeriodDto {
   @Type(() => Number) @IsNumber() year!: number;
@@ -101,7 +124,10 @@ class GenerateSorClientPdfDto {
 @Controller("schedule-of-rates")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ScheduleOfRatesController {
-  constructor(private readonly service: ScheduleOfRatesService) {}
+  constructor(
+    private readonly service: ScheduleOfRatesService,
+    private readonly createSorService: CreateSorService,
+  ) {}
 
   // ── Periods ───────────────────────────────────────────────────────────────
 
@@ -132,6 +158,27 @@ export class ScheduleOfRatesController {
   @ApiResponse({ status: 201, description: "Period created." })
   createPeriod(@Body() dto: CreatePeriodDto) {
     return this.service.createPeriod(dto as never);
+  }
+
+  /**
+   * S4 — Create SoR wizard endpoint.
+   *
+   * Creates the SorPeriod + all SorRate lines in a single transaction, with
+   * source linkage (INTERNAL / SUBBIE / SUPPLIER / MANUAL) and per-line markup
+   * pre-applied. Returns the full period including rates.
+   *
+   * POST body: CreateSorWizardDto
+   */
+  @Post("create-period")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "S4 wizard — create a SorPeriod with pre-linked rates." })
+  @ApiResponse({ status: 201, description: "Period created with rates." })
+  @ApiResponse({ status: 409, description: "Year+half combination already exists." })
+  createSorPeriod(
+    @Body() dto: CreateSorWizardDto,
+    @CurrentUser() actor: { sub: string },
+  ) {
+    return this.createSorService.createSorPeriod(dto as never, actor.sub);
   }
 
   // ── Rates ─────────────────────────────────────────────────────────────────

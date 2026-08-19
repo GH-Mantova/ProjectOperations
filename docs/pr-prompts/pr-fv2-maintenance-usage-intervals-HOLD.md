@@ -14,6 +14,7 @@ seed_only: false
 escalates: true
 backfill: false
 rollback_strategy: Drop the intervalUsage/usageUnit/lastCompletedReading/nextDueReading/usageWarningPct columns on AssetMaintenancePlan (fv2_maintenance_usage_intervals); all are nullable or have a default with no backfill, so the drop is safe.
+requires_on_main: 'apps/api/prisma/schema.prisma :: model AssetUsageReading'
 ---
 
 # Forms Engine v2 — maintenance usage intervals (F-8)

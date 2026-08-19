@@ -11,6 +11,25 @@ export type ResolvedRate = {
   source: RateSource;
 };
 
+/**
+ * A single entry returned by `listRates`. Extends the resolver-shaped result
+ * with `keys` so callers can (a) render a pick-list label and (b) feed the
+ * keys directly back into `resolveRate`.
+ *
+ * `ResolvedRate` was not reused here because it carries no identifying key
+ * information — the caller would know "value=450, unit=day" but not which
+ * row it came from. Pick-list consumers need both the descriptive keys and
+ * the value to render an option row and to round-trip the selection back
+ * through `resolveRate`.
+ */
+export type ListedRate = {
+  rowId: string;
+  keys: Record<string, unknown>;
+  value: number;
+  unit: string;
+  source: RateSource;
+};
+
 export type RateSetEntry = {
   key: string;
   rateTableId: string;
@@ -173,6 +192,227 @@ export class RateResolverService {
       }
     }
     return entries;
+  }
+
+  /**
+   * List all active rates for the given slug, ordered stably so callers can
+   * render a pick-list without re-sorting. Each entry carries the keys needed
+   * to round-trip the selection back into `resolveRate`.
+   *
+   * Covers all eight legacy slugs: labour, plant, waste, cutting, core-hole,
+   * fuel, enclosure, other-rates. Unknown slugs throw NotFoundException,
+   * consistent with `resolveRate`.
+   *
+   * Canonical-source precedence mirrors `resolveRate`:
+   *   - `ratetable` — RateTable first; falls back to legacy ONLY when the
+   *     RateTable slug does not exist (or has zero VALUE columns). Emits a
+   *     warn on fallback. If the slug IS registered in the RateTable, its
+   *     rows are authoritative — returns [] if the table is empty.
+   *   - `legacy` (default) — legacy first; falls back to RateTable ONLY when
+   *     the slug is not registered in the legacy adapter (default branch).
+   *     If the slug IS registered in the legacy adapter, its rows are
+   *     authoritative — returns [] if the table has no rows.
+   *
+   * This diverges from `resolveRate`'s single-lookup semantics: "no rows for
+   * slug X" is a valid empty state, whereas "slug X not registered" is the
+   * "try elsewhere" signal. See PR body for rationale.
+   *
+   * For `labour`, three entries are emitted per row (day/night/weekend) so
+   * callers receive the full rate matrix, consistent with the three separate
+   * `resolveRate` calls a consumer would otherwise make per role.
+   *
+   * RateTable path uses `valueCols[0]` only, matching `resolveRate`'s
+   * `tryRateTable` behaviour (not `enumerateRateSet`, which expands all VALUE
+   * columns for snapshot purposes).
+   */
+  async listRates(tableSlug: string): Promise<ListedRate[]> {
+    const source = this.getCanonicalSource();
+
+    if (source === "ratetable") {
+      const fromRateTable = await this.tryListRateTable(tableSlug);
+      if (fromRateTable !== null) return fromRateTable;
+      const fromLegacy = await this.tryListLegacy(tableSlug);
+      if (fromLegacy !== null) {
+        this.logger.warn({
+          event: "ratetable-miss-fell-back-to-legacy",
+          slug: tableSlug,
+          op: "listRates"
+        });
+        return fromLegacy;
+      }
+      throw new NotFoundException(
+        `No rate table with slug "${tableSlug}" (canonical source: ratetable).`
+      );
+    }
+
+    // Legacy-first (default).
+    const fromLegacy = await this.tryListLegacy(tableSlug);
+    if (fromLegacy !== null) return fromLegacy;
+    const fromRateTable = await this.tryListRateTable(tableSlug);
+    if (fromRateTable !== null) return fromRateTable;
+    throw new NotFoundException(`No rate table with slug "${tableSlug}".`);
+  }
+
+  /**
+   * Internal: list rates from the flexible RateTable model.
+   * Returns null when the slug does not exist in RateTable or has no VALUE
+   * columns (matching tryRateTable's `if (valueCols.length === 0) return null`).
+   * Returns [] when the slug exists but has no active rows — that is a
+   * valid empty state, not a miss.
+   */
+  private async tryListRateTable(tableSlug: string): Promise<ListedRate[] | null> {
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: tableSlug },
+      include: { columns: { orderBy: { sortOrder: "asc" } } }
+    });
+    if (!table) return null;
+    const keyCols = table.columns.filter((c) => c.role === "KEY");
+    const valueCols = table.columns.filter((c) => c.role === "VALUE");
+    if (valueCols.length === 0) return null;
+    // Use valueCols[0] only — matches resolveRate's tryRateTable behaviour.
+    const valueCol = valueCols[0];
+    const rows = await this.prisma.rateRow.findMany({
+      where: { rateTableId: table.id, isActive: true },
+      orderBy: { sortOrder: "asc" }
+    });
+    return rows.map((row) => {
+      const cells = (row.cells as Record<string, unknown> | null) ?? {};
+      const keys: Record<string, unknown> = {};
+      for (const col of keyCols) {
+        const val = cells[col.id] ?? cells[col.name];
+        keys[col.name] = val ?? null;
+      }
+      return {
+        rowId: row.id,
+        keys,
+        value: Number(cells[valueCol.id]),
+        unit: valueCol.unit ?? "",
+        source: "ratetable" as const
+      };
+    });
+  }
+
+  /**
+   * Internal: list rates from the legacy adapter map.
+   * Returns null when the slug is not registered (default branch) — the
+   * "try elsewhere" signal. Returns [] when the slug is registered but has
+   * no rows — that is a valid empty state.
+   */
+  private async tryListLegacy(slug: string): Promise<ListedRate[] | null> {
+    switch (slug) {
+      case "labour": {
+        const rows = await this.prisma.estimateLabourRate.findMany({
+          orderBy: { role: "asc" }
+        });
+        const entries: ListedRate[] = [];
+        for (const row of rows) {
+          entries.push(
+            { rowId: row.id, keys: { role: row.role, shift: "day" }, value: Number(row.dayRate), unit: "day", source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "night" }, value: Number(row.nightRate), unit: "day", source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, value: Number(row.weekendRate), unit: "day", source: "legacy" }
+          );
+        }
+        return entries;
+      }
+      case "plant": {
+        const rows = await this.prisma.estimatePlantRate.findMany({
+          orderBy: { item: "asc" }
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: { item: row.item },
+          value: Number(row.rate),
+          unit: row.unit,
+          source: "legacy" as const
+        }));
+      }
+      case "waste": {
+        const rows = await this.prisma.estimateWasteRate.findMany({
+          orderBy: [{ wasteType: "asc" }, { facility: "asc" }]
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: { wasteType: row.wasteType, facility: row.facility },
+          value: Number(row.tonRate),
+          unit: row.unit,
+          source: "legacy" as const
+        }));
+      }
+      case "cutting": {
+        const rows = await this.prisma.estimateCuttingRate.findMany({
+          orderBy: [
+            { equipment: "asc" },
+            { elevation: "asc" },
+            { material: "asc" },
+            { depthMm: "asc" }
+          ]
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: {
+            equipment: row.equipment,
+            elevation: row.elevation,
+            material: row.material,
+            depthMm: row.depthMm
+          },
+          value: Number(row.ratePerM),
+          unit: "m",
+          source: "legacy" as const
+        }));
+      }
+      case "core-hole": {
+        const rows = await this.prisma.estimateCoreHoleRate.findMany({
+          orderBy: { diameterMm: "asc" }
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: { diameterMm: row.diameterMm },
+          value: Number(row.ratePerHole),
+          unit: "hole",
+          source: "legacy" as const
+        }));
+      }
+      case "fuel": {
+        const rows = await this.prisma.estimateFuelRate.findMany({
+          orderBy: { item: "asc" }
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: { item: row.item },
+          value: Number(row.rate),
+          unit: row.unit,
+          source: "legacy" as const
+        }));
+      }
+      case "enclosure": {
+        const rows = await this.prisma.estimateEnclosureRate.findMany({
+          where: { isActive: true },
+          orderBy: { enclosureType: "asc" }
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: { enclosureType: row.enclosureType },
+          value: Number(row.rate),
+          unit: row.unit,
+          source: "legacy" as const
+        }));
+      }
+      case "other-rates": {
+        const rows = await this.prisma.cuttingOtherRate.findMany({
+          where: { isActive: true },
+          orderBy: { description: "asc" }
+        });
+        return rows.map((row) => ({
+          rowId: row.id,
+          keys: { description: row.description },
+          value: Number(row.rate),
+          unit: row.unit,
+          source: "legacy" as const
+        }));
+      }
+      default:
+        return null;
+    }
   }
 
   /**

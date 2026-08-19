@@ -1,5 +1,6 @@
 import { NotFoundException } from "@nestjs/common";
 import { RateResolverService } from "../rate-resolver.service";
+import type { ListedRate } from "../rate-resolver.service";
 
 const ORIGINAL_RATES_SOURCE = process.env.RATES_CANONICAL_SOURCE;
 
@@ -13,12 +14,14 @@ afterEach(() => {
 
 function makePrisma() {
   return {
-    estimateLabourRate: { findUnique: jest.fn() },
-    estimatePlantRate: { findUnique: jest.fn() },
-    estimateWasteRate: { findUnique: jest.fn() },
-    estimateCuttingRate: { findUnique: jest.fn() },
-    estimateCoreHoleRate: { findUnique: jest.fn() },
-    estimateFuelRate: { findUnique: jest.fn() },
+    estimateLabourRate: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    estimatePlantRate: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    estimateWasteRate: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    estimateCuttingRate: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    estimateCoreHoleRate: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    estimateFuelRate: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    estimateEnclosureRate: { findMany: jest.fn().mockResolvedValue([]) },
+    cuttingOtherRate: { findMany: jest.fn().mockResolvedValue([]) },
     estimateMaterialDensity: {
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([])
@@ -518,6 +521,86 @@ describe("RateResolverService", () => {
       prisma.rateTable.findUnique.mockResolvedValue(null);
       const svc = new RateResolverService(prisma as never);
       expect(await svc.resolveMaterialDensity("Unobtainium")).toBeNull();
+    });
+  });
+
+  describe("listRates", () => {
+    test("RateTable path returns rows with keys, value, unit and source=ratetable", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "ratetable";
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-plant",
+        slug: "plant",
+        columns: [
+          { id: "c-item", name: "Item", role: "KEY", unit: null, sortOrder: 1 },
+          { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 2 }
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        { id: "rr-exc", cells: { "c-item": "Excavator 20t", "c-rate": 800 } },
+        { id: "rr-doz", cells: { "c-item": "Dozer D6", "c-rate": 950 } }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("plant");
+      expect(out).toHaveLength(2);
+      expect(out[0]).toEqual({
+        rowId: "rr-exc",
+        keys: { Item: "Excavator 20t" },
+        value: 800,
+        unit: "day",
+        source: "ratetable"
+      });
+      expect(out[1]).toEqual({
+        rowId: "rr-doz",
+        keys: { Item: "Dozer D6" },
+        value: 950,
+        unit: "day",
+        source: "ratetable"
+      });
+      // Legacy path must NOT be consulted when ratetable answered.
+      expect(prisma.estimatePlantRate.findMany).not.toHaveBeenCalled();
+    });
+
+    test("falls back to legacy when RATES_CANONICAL_SOURCE=ratetable but rateTable slug is absent", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "ratetable";
+      const prisma = makePrisma();
+      // Slug not present in RateTable — simulate seed gap.
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      prisma.estimatePlantRate.findMany.mockResolvedValue([
+        { id: "p-exc", item: "Excavator 20t", rate: "800", unit: "day" },
+        { id: "p-doz", item: "Dozer D6", rate: "950", unit: "day" }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("plant");
+      expect(out).toHaveLength(2);
+      expect(out[0]).toMatchObject({ source: "legacy", value: 800, keys: { item: "Excavator 20t" } });
+      expect(out[1]).toMatchObject({ source: "legacy", value: 950, keys: { item: "Dozer D6" } });
+    });
+
+    test("unknown slug throws NotFoundException", async () => {
+      const prisma = makePrisma();
+      // Slug is not registered in legacy adapter and not in RateTable.
+      prisma.rateTable.findUnique.mockResolvedValue(null);
+      const svc = new RateResolverService(prisma as never);
+      await expect(svc.listRates("does-not-exist")).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    test("stable ordering: same result on two calls and findMany includes deterministic orderBy", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      // Legacy-first: plant slug is registered in adapter.
+      prisma.estimatePlantRate.findMany.mockResolvedValue([
+        { id: "p-a", item: "A tool", rate: "100", unit: "hr" },
+        { id: "p-b", item: "B tool", rate: "200", unit: "hr" }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const first: ListedRate[] = await svc.listRates("plant");
+      const second: ListedRate[] = await svc.listRates("plant");
+      expect(first).toEqual(second);
+      // The findMany call must have included the deterministic orderBy.
+      expect(prisma.estimatePlantRate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { item: "asc" } })
+      );
     });
   });
 });

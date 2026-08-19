@@ -443,3 +443,63 @@ items:
       export named in its pre-flight runbook, and Marco merges it. Nothing about SLICE 2's gate
       opening means it should be armed automatically.
     order: 19
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master) after pr-rates-s11c-drop-legacy-tables RAN and
+  # correctly STOOD DOWN. It opened no PR, created no branch or worktree, and dropped nothing.
+  # The code-writer wrote a full escalation at
+  #   C:\po-watcher\ProjectOperations\docs\pr-prompts\needs-marco\rates-11c-blocked-consumers.md
+  # That directory is GITIGNORED and lives in the WATCHER CLONE, not the dev tree - so the analysis
+  # is invisible to a fresh checkout and to any agent not on that machine. That is the only reason
+  # this item exists: to put it somewhere tracked.
+  # -------------------------------------------------------------------------------------------
+  - id: rates-11c-blocked-consumers
+    title: "SLICE 11c cannot run - 7 services bypass the rate resolver and a live FK blocks the DROP"
+    priority: P2
+    why: >
+      pr-rates-s11c-drop-legacy-tables was armed on 2026-08-19 (D54) because its gate
+      'requires_file_on_main: docs/data-model/rates-migration/STEP-11B-DONE.md' was satisfied. The
+      code-writer ran it, found its precondition false, and stopped per the slice's own
+      "STOP and report - do NOT attempt to refactor them here" rule.
+      VERIFIED INDEPENDENTLY on origin/main:
+      (a) STEP-11B-DONE.md is literally the single line "11b landed". A content-free stub armed a
+          destructive successor.
+      (b) SEVEN services read the legacy models directly, bypassing the resolver:
+          tendering/scope-of-works.service.ts, tendering/scope-waste.service.ts,
+          tendering/scope-redesign.service.ts, personas/tools/handlers/lookup-rate.handler.ts,
+          rates/rates-import.service.ts, rates/rates-export.service.ts,
+          map-locations/map-locations.service.ts.
+          NOTE estimates/estimates.service.ts also calls the legacy models directly but is NOT a
+          blocker - it is the /estimate-rates/* service that SLICE 11c itself deletes (11c step 2).
+          Counting it as an eighth consumer is a mistake; the code-writer was right to exclude it.
+      (c) ScopeWasteItem.transportRate is a LIVE FK: transportRate EstimatePlantRate? @relation(
+          "ScopeWasteItemTransportRate", fields: [transportRateId], references: [id],
+          onDelete: SetNull) at schema.prisma:3649. Dropping estimate_plant_rates fails at
+          PostgreSQL FK-check time regardless of any code change.
+      ROOT CAUSE: step 11a routed only the RESOLVER helpers to RateTable and implicitly assumed every
+      caller went through the resolver. 11b was frontend-only. The seven direct consumers were never
+      migrated by either.
+      NOTHING WAS LOST AND NOTHING WAS DROPPED - every guard worked. But Marco was one merge away from
+      being asked to take a production database backup for a migration that could not have succeeded.
+    gate: 'grep -q "model EstimateLabourRate" apps/api/prisma/schema.prisma && grep -rlq "prisma\.estimatePlantRate" apps/api/src/modules/tendering'
+    gate_means: >
+      READY while the legacy models still exist AND tendering still reaches them directly. Dies once
+      the consumers are migrated and the legacy models are gone.
+    needs_marco: true
+    marco_note: >
+      TWO DECISIONS BLOCK THE WHOLE 11-SERIES. Neither can be guessed. Full write-up (the
+      code-writer's own) is in the watcher clone at
+      docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
+      (1) Prep slice rates-11b2-migrate-consumers - route the 7 consumers THROUGH the resolver
+          (preferred: single source of truth, matches 11a's intent; requires adding the lookup shapes
+          they need to the resolver surface), or refactor them to hit RateTable directly?
+      (2) ScopeWasteItem.transportRateId - repoint at a RateTable row (needs an id-mapping backfill
+          from 11a's seed), or drop the FK and snapshot the rate onto the row? NOTE ScopeWasteItem
+          ALREADY snapshots quotedDisposalRate and quotedFuelPricePerLitre with a variance-flag
+          pattern, so transport is the only price on that row still read live.
+      Once the prep lands, the existing 11c prompt re-fires UNCHANGED and will pass.
+      SEPARATE SYSTEMIC ISSUE: the STEP-*-DONE.md marker convention lets a ONE-LINE STUB arm a
+      destructive successor. Cousin of lint-reject-noop-file-gate - there the gated file always
+      existed; here the file was real but its CONTENT proved nothing. A landed-marker should carry a
+      verify-line the next slice can grep, not just the word "landed".
+    order: 20

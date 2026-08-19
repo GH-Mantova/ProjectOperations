@@ -15,6 +15,7 @@ done_when: >-
 size: 8
 gate_allow: migrations
 escalates: true
+backfill: false
 seed_only: false
 requires_file_on_main:
   - docs/data-model/rates-migration/STEP-11B-DONE.md

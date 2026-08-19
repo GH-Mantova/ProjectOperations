@@ -1,5 +1,5 @@
 ---
-premise: grep -rc "FormOutputDelivery" apps/api/prisma/schema.prisma | grep -q ":0"
+premise: '! grep -q "FormOutputDelivery" apps/api/prisma/schema.prisma'
 premise_means: The FormOutputDelivery delivery-log table (and the output-channel delivery pipeline it backs) does not exist on main yet.
 scope:
   - apps/api/prisma/schema.prisma
@@ -17,6 +17,7 @@ size: 10
 gate_allow: migrations
 seed_only: false
 escalates: true
+backfill: false
 rollback_strategy: "The migration only ADDs the new form_output_delivery_logs table (append-only, no other table's columns or FKs are touched, no data backfill). Rollback is a plain DROP TABLE form_output_delivery_logs — nothing else references it, so reverting loses only delivery-attempt log rows, never submission or template data."
 ---
 

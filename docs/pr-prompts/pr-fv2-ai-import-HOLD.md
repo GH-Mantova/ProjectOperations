@@ -14,6 +14,7 @@ size: 7
 gate_allow: none
 seed_only: false
 escalates: false
+requires_file_on_main: apps/api/src/modules/forms/ai-form-describe.service.ts
 ---
 
 # Forms persona registration + Word/PDF/Cognito AI import

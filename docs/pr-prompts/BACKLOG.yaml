@@ -454,7 +454,7 @@ items:
   # this item exists: to put it somewhere tracked.
   # -------------------------------------------------------------------------------------------
   - id: rates-11c-blocked-consumers
-    title: "SLICE 11c cannot run - 7 services bypass the rate resolver and a live FK blocks the DROP"
+    title: "SLICE 11c cannot run - 7 services bypass the rate resolver (FK decision SETTLED 2026-08-19)"
     priority: P2
     why: >
       pr-rates-s11c-drop-legacy-tables was armed on 2026-08-19 (D54) because its gate
@@ -487,19 +487,110 @@ items:
       the consumers are migrated and the legacy models are gone.
     needs_marco: true
     marco_note: >
-      TWO DECISIONS BLOCK THE WHOLE 11-SERIES. Neither can be guessed. Full write-up (the
-      code-writer's own) is in the watcher clone at
-      docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
-      (1) Prep slice rates-11b2-migrate-consumers - route the 7 consumers THROUGH the resolver
-          (preferred: single source of truth, matches 11a's intent; requires adding the lookup shapes
-          they need to the resolver surface), or refactor them to hit RateTable directly?
-      (2) ScopeWasteItem.transportRateId - repoint at a RateTable row (needs an id-mapping backfill
-          from 11a's seed), or drop the FK and snapshot the rate onto the row? NOTE ScopeWasteItem
-          ALREADY snapshots quotedDisposalRate and quotedFuelPricePerLitre with a variance-flag
-          pattern, so transport is the only price on that row still read live.
-      Once the prep lands, the existing 11c prompt re-fires UNCHANGED and will pass.
+      ONE DECISION REMAINS (was two). Full write-up (the code-writer's own) is in the watcher clone
+      at docs/pr-prompts/needs-marco/rates-11c-blocked-consumers.md - gitignored, so read it there.
+
+      STILL OPEN - (1) Prep slice rates-11b2-a-resolver-consumers: route the 7 consumers THROUGH the
+          resolver (preferred: single source of truth, matches 11a's intent; requires adding the
+          lookup shapes they need to the resolver surface), or refactor them to hit RateTable
+          directly? Marco DEFERRED this on 2026-08-19 - "just the parity proof for now" - so neither
+          11b2-a nor 11b2-b has been written. Do NOT write them without asking again.
+
+      DECIDED 2026-08-19 (Marco) - (2) ScopeWasteItem.transportRateId: SNAPSHOT the rate onto the
+          row. Not a repoint, and NO id-mapping backfill. Staged and merged in #1223 as a 2-slice
+          chain - pr-waste-transport-rate-snapshot-ready.md (API; adds
+          quotedTransportRatePerDay, prices from the snapshot and falls back to the live rate when
+          NULL so existing rows are untouched, adds transport to the variance check, and stops
+          update() re-pricing on an unrelated PATCH) and pr-waste-transport-variance-ui-HOLD.md
+          (UI, chained on 'schema.prisma :: quotedTransportRatePerDay').
+          The decision was made off a measured pricing trace, not a preference: the line is a
+          SNAPSHOT on read (list() at scope-waste.service.ts:86 never recomputes) but a REPOINT on
+          any write (update() writes data.lineTotal unconditionally at :288), and variance() at
+          :548-550 flags neither because there is no transport snapshot to compare. Deliberately NO
+          backfill - writing today's rate onto old rows would fabricate a quote that never happened.
+
+      NEW BLOCKER FOUND 2026-08-19, not in the original write-up - the fallback audit does not
+          prove what 11c needs. scripts/rates/fallback-audit.mjs (#747) exits 0 when every legacy key
+          is RESOLVABLE from RateTable; resolvable is not IDENTICAL. A RateTable row answering $95/t
+          where legacy answers $85/t passes it. It also MIRRORS the resolver's lookup instead of
+          calling it, so it can agree with itself while disagreeing with production. The method that
+          does compare value+unit, RateResolverService.assertRateParity (rate-resolver.service.ts:88),
+          has NO caller outside three mocked-Prisma unit tests. 11b2-c (staged #1223,
+          pr-rates-11b2-c-parity-proof-ready.md) builds the real instrument. 11c must not merge until
+          it has RUN and come back clean - the prompt deliberately creates no *-DONE.md marker,
+          because existing is not the same as passing.
+
+      COUNTING RULE - tryLegacy answers EIGHT slugs: labour, plant, waste, cutting, core-hole, fuel,
+          enclosure, other-rates. docs/plans/rates-migration-plan.md:35 says "6 priced slugs" and
+          docs/pr-reviews/pr-747-review.md:9 says "6 legacy slug handlers". Both predate SLICE 11a,
+          which registered enclosure and other-rates precisely so the audit could route them
+          (comments at :425 and :437). Neither doc was wrong when written; both are stale. Wants a
+          doc-reconcile.
+
+      TWO PROMPT DEFECTS being corrected by pr-rates-drop-prompt-corrections-ready.md (staged #1223):
+          (i) pr-524-rates-b-slice2-canonical-HOLD.md:53-55 claims "Audit confirmed no inbound Prisma
+          relation/FK to any of them" - FALSE, ScopeWasteItem.transportRate is exactly that relation.
+          (ii) pr-524:14 carries escalates:false on an irreversible table drop with "do NOT
+          auto-merge" in prose only - third instance after #1142 and #1216. Also corrected there:
+          11c step 1 orders EstimateMaterialDensity dropped while pr-524 says keep it entirely;
+          CP-08-seed-idempotency.spec.ts:55,238,266 asserts it > 0 and
+          seed-initial-services.ts:3549-3555 seeds it, so dropping it fails CP-08. pr-524 is right;
+          rates-migration-plan.md:82 repeats the wrong instruction and gets the same fix.
+
+      Once the prep lands AND the parity proof is clean, the existing 11c prompt re-fires UNCHANGED.
       SEPARATE SYSTEMIC ISSUE: the STEP-*-DONE.md marker convention lets a ONE-LINE STUB arm a
       destructive successor. Cousin of lint-reject-noop-file-gate - there the gated file always
       existed; here the file was real but its CONTENT proved nothing. A landed-marker should carry a
       verify-line the next slice can grep, not just the word "landed".
     order: 20
+
+  # -------------------------------------------------------------------------------------------
+  # ADDED 2026-08-19 (Station 06 PR Master). Found by USING the register: a note I wrote was
+  # silently truncated mid-sentence and the checker reported no error at all.
+  # -------------------------------------------------------------------------------------------
+  - id: backlog-parser-swallows-folded-blocks
+    title: "check-backlog.mjs silently truncates a folded block at any indented 'word:' line"
+    priority: P2
+    why: >
+      scripts/pipeline/check-backlog.mjs parses BACKLOG.yaml with a hand-rolled reader. Inside a
+      folded block it applies this to every line -
+      line.match(/^\s{4,}([a-z_]+):\s*(.*)$/)
+      Any line indented 4+ spaces whose first token is a bare lowercase word followed by a colon is
+      taken as a NEW KEY. The folded block ends there, silently, with no warning and no non-zero
+      exit. Everything after that point is lost from the note.
+      MEASURED 2026-08-19 - writing the phrase "2-slice cluster - <name>" with the word "cluster"
+      at the start of a wrapped line ended a marco_note mid-sentence and dropped roughly 2,500
+      characters of analysis. The checker printed the truncated note and exited normally.
+      TWO FAILURE MODES, and the second is worse than lost text -
+      (a) TRUNCATION - an unrecognised word creates a junk key and the rest of the note vanishes.
+      (b) OVERWRITE - the word is one of the REAL key names, so the bogus line REPLACES that key.
+      A sentence starting with the word "gate" and a colon inside a note would silently replace the
+      item executable gate command. A gate is the only thing standing between a HOLD and being
+      reported READY TO STAGE, so this can surface a blocked item as ready.
+      CURRENT STATE - the register is clean. A scan of all 40 key-shaped lines in BACKLOG.yaml
+      found 8 distinct keys, all legitimate (id, title, priority, why, gate, gate_means,
+      needs_marco, marco_note, order) and zero bogus ones. The scan was checked both ways - it
+      detects the 40 real lines, and it fires on an injected fake. So nothing is corrupted TODAY.
+      This item exists so it stays that way.
+      FOOTNOTE - while writing THIS entry I tripped the bug twice more, on the words "cluster" and
+      "controlled" starting a wrapped line. Neither appeared in the checker own output; both were
+      caught only by a separate scan. That is the argument for failing loud.
+      RELATED - this is the third defect of the same family found on 2026-08-19. marco_note was
+      read by nothing until #1201/#1203. STEP-11B-DONE.md was a real file whose CONTENT proved
+      nothing, and it armed a destructive successor. Here the file is real, the parse "succeeds",
+      and the data is quietly wrong. All three share one shape - an instrument that reports success
+      while telling you less than the truth.
+    gate: '! grep -q "FOLD_KEY_GUARD" scripts/pipeline/check-backlog.mjs'
+    gate_means: >
+      READY while the folded-block reader still has no guard against key-shaped prose lines. The
+      fix marks its guard with the literal token FOLD_KEY_GUARD, so this dies the moment the fix
+      lands. It asserts an artifact the work itself produces, not merely that a file exists.
+    needs_marco: false
+    marco_note: >
+      Small and self-contained. Suggested shape, not binding - only treat a line as a new key if
+      the key name is in the known-key set for this schema, and FAIL LOUD (non-zero exit, named
+      line number) on any other key-shaped line inside a folded block rather than swallowing it.
+      Failing loud matters more than parsing it correctly - a register that quietly tells you less
+      than it was given is worse than one that refuses to load. Add a fixture test covering both
+      failure modes above.
+    order: 21

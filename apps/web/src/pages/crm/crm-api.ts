@@ -1,6 +1,8 @@
 // Typed fetch helpers for the unified CRM API (S3 backend surface).
 // Kept intentionally narrow — only the shapes the S4 triage list & modals need.
 
+import { readApiErrorMessage } from "../../lib/api-errors";
+
 export type CrmStage = "open" | "not_pursued" | "archived" | "new" | "qualified" | "quoting" | "won" | "lost";
 
 export type EntryOwner = { id: string; firstName: string; lastName: string };
@@ -54,7 +56,7 @@ export type UpdateEntryBody = Partial<CreateEntryBody> & { stage?: CrmStage };
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiErrorMessage(res));
   return (await res.json()) as T;
 }
 

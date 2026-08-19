@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // CRM slice 1 — Opportunity detail. Edit stage/probability/value/next-action
 // inline; convert-to-Tender is the marquee action (fires TenderingService
@@ -86,7 +87,7 @@ export function OpportunityDetailPage() {
     setError(null);
     try {
       const res = await authFetch(`/crm/opportunities/${id}`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setOpp(await res.json() as Opportunity);
     } catch (err) {
       setError((err as Error).message);
@@ -106,7 +107,7 @@ export function OpportunityDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setOpp(await res.json() as Opportunity);
     } catch (err) {
       setSaveError((err as Error).message);
@@ -147,7 +148,7 @@ export function OpportunityDetailPage() {
           dueDate: convertDueDate || undefined
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const updated = await res.json() as Opportunity;
       setOpp(updated);
       setShowConvert(false);

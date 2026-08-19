@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // Local label map — mirrors IS_DISCIPLINE_LABELS from api/personas/definitions/disciplines.ts.
 // Web and API do not share a runtime package, so the map is duplicated here (four codes only).
@@ -93,7 +94,7 @@ export function SubcontractorRatesTab({
       const response = await authFetch(
         `/subcontractors/${subcontractorSupplierId}/rates`
       );
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       setRates((await response.json()) as SubcontractorRate[]);
     } catch (err) {
       setError((err as Error).message);

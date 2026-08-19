@@ -289,7 +289,7 @@ export function ScopeQuantitiesTable({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await readApiErrorMessage(response));
         await onItemsChanged();
       } catch (err) {
         setError((err as Error).message);

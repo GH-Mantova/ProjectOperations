@@ -39,6 +39,9 @@
 #   PR_WATCHER_ADOPT_POLL_SEC seconds between liveness polls while supervising an
 #                             ADOPTED (already-running, previously orphaned) watcher
 #                             (default 60)
+#   PR_WATCHER_LANE           0-based lane index this supervisor owns (default unset =
+#                             single-lane mode, byte-for-byte legacy behaviour)
+#   PR_WATCHER_LANES          total number of lanes (default 2, must match index.mjs)
 
 $ErrorActionPreference = "Continue"
 
@@ -80,6 +83,24 @@ if ($env:PR_WATCHER_WD_POLL_SEC) { $wdPollSec = [int]$env:PR_WATCHER_WD_POLL_SEC
 $wdStateMaxAgeMin = 10
 if ($env:PR_WATCHER_WD_STATE_MAX_MIN) { $wdStateMaxAgeMin = [int]$env:PR_WATCHER_WD_STATE_MAX_MIN }
 $wdHeartbeat = Join-Path $env:PR_WATCHER_REPO_ROOT "scripts\pr-watcher\heartbeat.log"
+
+# 2026-08-20: lane-aware watchdog. When PR_WATCHER_LANE is set, the watchdog
+# only counts prompts owned by this lane as "runnable" in its fallback path.
+# Unset => legacy single-lane behaviour (count everything, no filtering).
+# Defaults mirror index.mjs lines 84-92: LANE null, LANES 2.
+$watcherLane  = $null
+$watcherLanes = 2
+if ($env:PR_WATCHER_LANE -ne $null -and $env:PR_WATCHER_LANE -ne '') {
+    $parsedLane = 0
+    if ([int]::TryParse($env:PR_WATCHER_LANE, [ref]$parsedLane)) { $watcherLane = $parsedLane }
+}
+if ($env:PR_WATCHER_LANES -ne $null -and $env:PR_WATCHER_LANES -ne '') {
+    $parsedLanes = 2
+    if ([int]::TryParse($env:PR_WATCHER_LANES, [ref]$parsedLanes) -and $parsedLanes -ge 1) {
+        $watcherLanes = $parsedLanes
+    }
+}
+$laneClassifyScript = Join-Path $here "lane-classify.mjs"
 
 # 2026-08-18: sentinel file for the watchdog/supervisor handshake.
 #
@@ -342,8 +363,9 @@ function Resolve-WatchdogChurn {
 # Nothing else is expected to set this variable in production.
 if ($env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -eq '1') { return }
 
-Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail."
-Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while runnable>0 and 0 in-progress (poll ${wdPollSec}s). Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to raw on-disk armed count if file is missing or stale."
+$laneDesc = if ($null -eq $watcherLane) { 'unset (single-lane mode)' } else { "lane=$watcherLane of $watcherLanes" }
+Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail. PR_WATCHER_LANE=$laneDesc"
+Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while runnable>0 and 0 in-progress (poll ${wdPollSec}s). Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to lane-filtered on-disk count if file is missing or stale."
 
 # HEARTBEAT WATCHDOG (2026-08-12) -- additive; the restart-on-exit loop below is
 # UNCHANGED. Runs concurrently for the life of the supervisor. When the node is
@@ -351,11 +373,146 @@ Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdH
 # node so the main loop's exit handling relaunches it fresh (which resets the
 # clone). ASCII only.
 $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
-    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag, $StateMaxAgeMin)
+    param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag, $StateMaxAgeMin,
+          $WatcherLane, $WatcherLanes, $LaneClassifyScript, $EscalationDir)
     function WD-Log([string]$m) {
         try { Add-Content -Path $SupLog -Value ("[{0}] WATCHDOG {1}" -f (Get-Date -Format o), $m) -Encoding UTF8 } catch {}
     }
-    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag stateMaxAgeMin=$StateMaxAgeMin)"
+    $laneDesc = if ($null -eq $WatcherLane) { 'unset (single-lane)' } else { "lane=$WatcherLane of $WatcherLanes" }
+    WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag stateMaxAgeMin=$StateMaxAgeMin PR_WATCHER_LANE=$laneDesc)"
+
+    # --- Lane-aware fallback armed-count helper (2026-08-20) -----------------
+    # When PR_WATCHER_LANE is set and .queue-state.json is missing/stale, shell
+    # out to lane-classify.mjs (which imports laneFor from index.mjs) to count
+    # only prompts this lane owns. index.mjs stays the single source of truth.
+    # When PR_WATCHER_LANE is unset, returns the raw count -- byte-for-byte
+    # identical to the pre-2026-08-20 behaviour (single-lane default).
+    #
+    # Returns [hashtable] @{ MyCount=<int>; OrphanNames=<string[]> }
+    #   MyCount     -- prompts this lane can own (0 when no filtering active)
+    #   OrphanNames -- names armed for a different lane (empty when no filtering)
+    function Get-LaneAwareCount {
+        param([string[]]$ArmedNames)
+        if ($null -eq $WatcherLane) {
+            # Single-lane mode: no filtering.
+            return @{ MyCount = $ArmedNames.Count; OrphanNames = @() }
+        }
+        if ($ArmedNames.Count -eq 0) {
+            return @{ MyCount = 0; OrphanNames = @() }
+        }
+        # Shell out to node. Each name is a separate argument; node prints one
+        # JSON object per line. A failure exits 0 (see lane-classify.mjs header)
+        # and prints lane=0 conservatively.
+        $myCount    = 0
+        $orphanList = New-Object 'System.Collections.Generic.List[string]'
+        try {
+            # Pass names as individual arguments to avoid shell quoting issues.
+            $classifyArgs = @($LaneClassifyScript, $PromptDir, "$WatcherLanes") + $ArmedNames
+            $lines = & node @classifyArgs 2>$null
+            foreach ($rawLine in $lines) {
+                $trimmed = "$rawLine".Trim()
+                if ($trimmed -eq '') { continue }
+                try {
+                    $obj = $trimmed | ConvertFrom-Json
+                    if ($obj.lane -eq $WatcherLane) {
+                        $myCount++
+                    } else {
+                        $orphanList.Add($obj.name)
+                    }
+                } catch {
+                    # Malformed JSON line: count it conservatively as ours.
+                    WD-Log ("lane-classify: malformed JSON line, counting conservatively: $trimmed")
+                    $myCount++
+                }
+            }
+        } catch {
+            # node not available or script error: fall back to counting everything.
+            WD-Log ("lane-classify: node invocation failed (" + $_.Exception.Message + "); falling back to total armed count.")
+            return @{ MyCount = $ArmedNames.Count; OrphanNames = @() }
+        }
+        return @{ MyCount = $myCount; OrphanNames = $orphanList.ToArray() }
+    }
+
+    # --- Orphan escalation tracker (2026-08-20) -------------------------------
+    # Write exactly ONE escalation file per distinct orphan set. A "distinct set"
+    # is identified by the sorted, pipe-joined list of orphan names -- if the set
+    # changes (a new prompt armed), a new file is written; the same set never
+    # produces more than one file regardless of how many polls fire.
+    # Key = sorted pipe-joined orphan name string; value = path already written.
+    $orphanEscalationsWritten = @{}
+    # Count of consecutive polls where the same orphan set was seen with no other
+    # lane's watcher running. After this many polls we write the escalation file.
+    $orphanSustainedPolls = 3
+    # Track consecutive-poll counters per orphan-set key.
+    $orphanPollCounts = @{}
+
+    function Test-OtherLaneRunning {
+        # Detect whether any node.exe is running index.mjs from a DIFFERENT
+        # PR_WATCHER_REPO_ROOT by checking process command-lines. We cannot know
+        # the other lane's repo root without extra config, so we look for ANY
+        # node.exe running index.mjs that is NOT the one we already know about.
+        # This mirrors how the main supervisor detects an already-running watcher.
+        $scriptName = 'index.mjs'
+        $allNodes = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+                      Where-Object { $_.CommandLine -match $scriptName })
+        return ($allNodes.Count -gt 1)  # >1 = at least one other lane is running
+    }
+
+    function Write-OrphanEscalation {
+        param([string]$Key, [string[]]$OrphanNames, [int]$PollCount)
+        try {
+            New-Item -ItemType Directory -Path $EscalationDir -Force | Out-Null
+            # Deterministic filename: hash of the sorted key so a re-armed
+            # identical set maps to the same basename and is never re-written.
+            $keyBytes  = [System.Text.Encoding]::UTF8.GetBytes($Key)
+            $hashBytes = [System.Security.Cryptography.SHA1]::Create().ComputeHash($keyBytes)
+            $keyHash   = ($hashBytes | ForEach-Object { "{0:x2}" -f $_ }) -join ''
+            $filename  = "ORPHANED-LANE-PROMPTS-{0}.md" -f $keyHash.Substring(0, 12)
+            $path      = Join-Path $EscalationDir $filename
+            if (Test-Path $path) {
+                # Already written for this exact set; do not duplicate.
+                return $path
+            }
+            $stamp   = Get-Date -Format o
+            $nameList = ($OrphanNames | ForEach-Object { "- $_" }) -join "`n"
+            $body = @"
+# ESCALATION: armed prompts orphaned in wrong lane
+
+Written by scripts/pr-watcher/supervise-watcher.ps1 at $stamp.
+Lane: PR_WATCHER_LANE=$WatcherLane of $WatcherLanes
+
+The following prompt(s) are armed (*-ready.md) but hash to a DIFFERENT lane
+whose watcher has not been running for at least $PollCount consecutive watchdog
+polls (~$([int]($PollCount * $PollSec / 60)) min). They will NEVER be dequeued
+by this watcher (lane $WatcherLane) and are not making progress.
+
+## Orphaned prompts
+
+$nameList
+
+## What to do
+
+1. Start the other lane's watcher (or set PR_WATCHER_LANE / PR_WATCHER_LANES
+   correctly so a supervisor picks them up).
+2. Or move the files to the correct lane's prompt dir.
+
+## Diagnosing the lane
+
+Run the classifier to confirm:
+  node scripts\pr-watcher\lane-classify.mjs <promptDir> $WatcherLanes <name...>
+
+## The queue is safe
+
+No prompts were deleted. They sit in docs/pr-prompts/ as *-ready.md files.
+"@
+            Set-Content -Path $path -Value $body -Encoding UTF8 -ErrorAction Stop
+            return $path
+        } catch {
+            WD-Log ("ORPHAN-ESCALATION write failed: " + $_.Exception.Message)
+            return ''
+        }
+    }
+
     while ($true) {
         Start-Sleep -Seconds $PollSec
         try {
@@ -365,14 +522,45 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
             $armed = @(Get-ChildItem (Join-Path $PromptDir '*-ready.md') -File -ErrorAction SilentlyContinue)
             if ($armed.Count -eq 0) { continue }   # empty queue: a stale heartbeat is legitimate idle
 
+            # --- Lane-aware classification (2026-08-20) ----------------------
+            # Count only prompts this lane owns for the stale-heartbeat test.
+            # Orphan detection runs every cycle but writes at most once per set.
+            $armedNames  = @($armed | ForEach-Object { $_.Name })
+            $laneResult  = Get-LaneAwareCount -ArmedNames $armedNames
+
+            # Orphan reporting: log every cycle; write escalation file once per
+            # distinct set after $orphanSustainedPolls consecutive cycles.
+            if ($laneResult.OrphanNames.Count -gt 0) {
+                $sortedOrphans = @($laneResult.OrphanNames | Sort-Object)
+                $orphanKey     = $sortedOrphans -join '|'
+                $otherRunning  = Test-OtherLaneRunning
+                WD-Log ("orphaned prompts for other lane (other-lane-running=$otherRunning): " + ($sortedOrphans -join ', '))
+                if (-not $otherRunning) {
+                    $prevCount = if ($orphanPollCounts.ContainsKey($orphanKey)) { $orphanPollCounts[$orphanKey] } else { 0 }
+                    $newCount  = $prevCount + 1
+                    $orphanPollCounts[$orphanKey] = $newCount
+                    if ($newCount -ge $orphanSustainedPolls -and -not $orphanEscalationsWritten.ContainsKey($orphanKey)) {
+                        $esc = Write-OrphanEscalation -Key $orphanKey -OrphanNames $sortedOrphans -PollCount $newCount
+                        if ($esc -ne '') {
+                            $orphanEscalationsWritten[$orphanKey] = $esc
+                            WD-Log ("ORPHAN-ESCALATION written: $esc (set: $orphanKey)")
+                        }
+                    }
+                } else {
+                    # Other lane is running: reset counter (it will pick them up).
+                    $orphanPollCounts[$orphanKey] = 0
+                }
+            }
+
             # The NODE is the only authority on what it can dequeue (lane routing +
             # dependency gates both live in index.mjs). It publishes that number; we
             # read it. If the file is missing or stale the node has stopped rescanning,
-            # so fall back to the raw on-disk count -- the pre-2026-08-19 behaviour,
-            # which fails toward restarting.
+            # so fall back to the lane-classified on-disk count (2026-08-20: was raw
+            # total -- the bug that caused the kill loop when all armed prompts belonged
+            # to another lane).
             $stateFile = Join-Path (Split-Path $Heartbeat) '.queue-state.json'
-            $runnable  = $armed.Count
-            $howKnown  = 'on-disk count (no fresh .queue-state.json)'
+            $runnable  = $laneResult.MyCount
+            $howKnown  = ("lane-classified on-disk count (lane=$WatcherLane, my={0} of {1} armed)" -f $laneResult.MyCount, $armed.Count)
             try {
                 if (Test-Path $stateFile) {
                     $stateAgeMin = ((Get-Date).ToUniversalTime() - (Get-Item $stateFile).LastWriteTimeUtc).TotalMinutes
@@ -384,7 +572,7 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
                         }
                     }
                 }
-            } catch { WD-Log ("queue-state read failed (" + $_.Exception.Message + "); using the on-disk count.") }
+            } catch { WD-Log ("queue-state read failed (" + $_.Exception.Message + "); using the lane-classified on-disk count.") }
 
             if ($runnable -le 0) {
                 WD-Log ("armed={0} runnable=0 -- nothing this node can dequeue; a stale heartbeat is legitimate idle. Source: {1}." -f $armed.Count, $howKnown)
@@ -415,7 +603,8 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
             }
         } catch { WD-Log ("poll error: " + $_.Exception.Message) }
     }
-} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog, $wdKillFlag, $wdStateMaxAgeMin
+} -ArgumentList $env:PR_WATCHER_PROMPT_DIR, $wdHeartbeat, $wdHungMin, $wdPollSec, $supLog, $wdKillFlag, $wdStateMaxAgeMin,
+    $watcherLane, $watcherLanes, $laneClassifyScript, $escalationDir
 
 $lastReasonKey     = ""
 $sameCount         = 0

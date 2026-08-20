@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
+import { throwIfApiError } from "../../lib/api-errors";
 
 type ClaimLineItem = {
   id: string;
@@ -53,7 +54,7 @@ export function ClaimDraftEditor({
 
   const refresh = useCallback(async () => {
     const response = await authFetch(`/contracts/${contractId}/claims/${claim.id}`);
-    if (!response.ok) throw new Error(await response.text());
+    await throwIfApiError(response);
     const next = (await response.json()) as ClaimDraft;
     setClaim(next);
     return next;
@@ -67,7 +68,7 @@ export function ClaimDraftEditor({
         `/contracts/${contractId}/claims/${claim.id}/items/${item.id}`,
         { method: "PATCH", body: JSON.stringify(patch) }
       );
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -90,7 +91,7 @@ export function ClaimDraftEditor({
         `/contracts/${contractId}/claims/${claim.id}/items/${item.id}`,
         { method: "DELETE" }
       );
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -112,7 +113,7 @@ export function ClaimDraftEditor({
         method: "POST",
         body: JSON.stringify(dto)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setAdding(false);
       await refresh();
     } catch (err) {
@@ -130,7 +131,7 @@ export function ClaimDraftEditor({
         method: "PATCH",
         body: JSON.stringify({ notes: notes.trim() ? notes : null })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await refresh();
     } catch (err) {
       setError((err as Error).message);

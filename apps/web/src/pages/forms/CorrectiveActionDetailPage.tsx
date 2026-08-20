@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
-import { readApiErrorMessage } from "../../lib/api-errors";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 
 type CorrectiveAction = {
   id: string;
@@ -86,7 +86,7 @@ function CorrectiveActionEditView({ id }: { id: string | undefined }) {
     setError(null);
     try {
       const res = await authFetch(`/forms/corrective-actions/${id}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setAction((await res.json()) as CorrectiveAction);
     } catch (err) {
       setError((err as Error).message);
@@ -109,7 +109,7 @@ function CorrectiveActionEditView({ id }: { id: string | undefined }) {
         method: "PATCH",
         body: JSON.stringify({ status: next })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -131,7 +131,7 @@ function CorrectiveActionEditView({ id }: { id: string | undefined }) {
         method: "POST",
         body: JSON.stringify({ closeOutNote: closeNote.trim(), evidencePath: evidencePath.trim() || undefined })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setShowCloseModal(false);
       setCloseNote("");
       setEvidencePath("");

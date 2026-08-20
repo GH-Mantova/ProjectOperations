@@ -4,6 +4,7 @@ import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
+import { throwIfApiError } from "../../lib/api-errors";
 import { BillingTab } from "./BillingTab";
 import { RecordHistory } from "../../components/RecordHistory";
 import { hwCreate } from "../handover/handoverApi";
@@ -113,7 +114,7 @@ export function ContractDetailPage() {
     if (!id) return;
     try {
       const response = await authFetch(`/contracts/${id}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setContract((await response.json()) as Contract);
     } catch (err) {
       setError((err as Error).message);
@@ -142,7 +143,7 @@ export function ContractDetailPage() {
         ? `/contracts/${contract.id}/archive`
         : `/contracts/${contract.id}/unarchive`;
       const response = await authFetch(endpoint, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -170,7 +171,7 @@ export function ContractDetailPage() {
     setDeleting(true);
     try {
       const response = await authFetch(`/contracts/${contract.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       navigate("/contracts");
     } catch (err) {
       setError((err as Error).message);
@@ -508,7 +509,7 @@ function VariationsTab({
         method: "POST",
         body: JSON.stringify({ description })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setAdding(false);
       await onRefresh();
     } catch (err) {
@@ -529,7 +530,7 @@ function VariationsTab({
         method: "PATCH",
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await onRefresh();
     } catch (err) {
       setError((err as Error).message);
@@ -701,7 +702,7 @@ function ClaimsTab({
         method: "POST",
         body: JSON.stringify({ claimMonth })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await onRefresh();
     } catch (err) {
       setError((err as Error).message);
@@ -845,7 +846,7 @@ function ClaimEditor({
   const load = useCallback(async () => {
     try {
       const response = await authFetch(`/contracts/${contractId}/claims/${claimId}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as {
         lineItems: ClaimLineItem[];
         totalClaimed: string;
@@ -869,7 +870,7 @@ function ClaimEditor({
         method: "PATCH",
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -882,7 +883,7 @@ function ClaimEditor({
         method: "POST",
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await onRefresh();
       await load();
     } catch (err) {
@@ -909,7 +910,7 @@ function ClaimEditor({
         method: "PUT",
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
       await onRefresh();
     } catch (err) {

@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -19,6 +20,7 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiProduces,
+  ApiQuery,
   ApiResponse,
   ApiTags
 } from "@nestjs/swagger";
@@ -37,6 +39,8 @@ import { RateTablesService } from "./rate-tables.service";
 import { RateResolverService } from "./rate-resolver.service";
 import { RatesExportService } from "./rates-export.service";
 import { RatesImportService } from "./rates-import.service";
+import { RateXlsmExportService } from "./rate-xlsm-export.service";
+import { RateXlsmImportService } from "./rate-xlsm-import.service";
 
 const PLATFORM_ADMIN = "platform.admin";
 
@@ -49,7 +53,9 @@ export class RatesController {
     private readonly tables: RateTablesService,
     private readonly resolver: RateResolverService,
     private readonly exporter: RatesExportService,
-    private readonly importer: RatesImportService
+    private readonly importer: RatesImportService,
+    private readonly xlsmExporter: RateXlsmExportService,
+    private readonly xlsmImporter: RateXlsmImportService
   ) {}
 
   // ── Export ───────────────────────────────────────────────────────────
@@ -249,5 +255,106 @@ export class RatesController {
   @ApiResponse({ status: 404, description: "No matching rate row." })
   resolve(@Param("slug") slug: string, @Body() keys: Record<string, unknown>) {
     return this.resolver.resolveRate(slug, keys ?? {});
+  }
+
+  // ── Hub .xlsm import (S5) ────────────────────────────────────────────
+
+  /**
+   * POST /rates/import/:tableSlug
+   *
+   * Multipart file upload against a specific RateTable slug.
+   *
+   * Without ?commit=true: parse and validate only — returns the stage result
+   * (errors, warnings, preview rows, impact summary). Writes NOTHING.
+   *
+   * With ?commit=true: if stage passes (valid=true) the rows are committed
+   * in a single all-or-nothing transaction (existing active rows soft-deleted,
+   * new rows inserted, audit entry written). Returns the same stage result
+   * enriched with { committed: true }.
+   *
+   * On validation failure with ?commit=true the endpoint returns 400 with the
+   * errors — no rows are written.
+   */
+  @Post("import/:tableSlug")
+  @RequirePermissions("rates.manage")
+  @UseInterceptors(FileInterceptor("file"))
+  @ApiConsumes("multipart/form-data")
+  @ApiQuery({
+    name: "commit",
+    required: false,
+    type: String,
+    description: "Pass commit=true to apply validated rows in one transaction."
+  })
+  @ApiOperation({
+    summary:
+      "S5 hub import: parse a .xlsm/.xlsx file for a specific RateTable. " +
+      "Add ?commit=true to execute the all-or-nothing write after validation passes."
+  })
+  @ApiResponse({ status: 200, description: "Stage result (+ committed flag when ?commit=true)." })
+  @ApiResponse({ status: 400, description: "No file, corrupt workbook, or validation errors." })
+  @ApiResponse({ status: 404, description: "RateTable slug not found." })
+  async importTableSlug(
+    @Param("tableSlug") tableSlug: string,
+    @Query("commit") commit: string | undefined,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      throw new BadRequestException("Upload an .xlsx or .xlsm file in the 'file' field.");
+    }
+
+    const stageResult = await this.xlsmImporter.stageImport(file.buffer, tableSlug);
+
+    if (commit === "true") {
+      if (!stageResult.valid) {
+        throw new BadRequestException({
+          message: "Import validation failed — no rows written.",
+          errors: stageResult.errors,
+          warnings: stageResult.warnings
+        });
+      }
+      await this.xlsmImporter.commitImport(stageResult, tableSlug, actor.sub);
+      return { ...stageResult, committed: true };
+    }
+
+    return stageResult;
+  }
+
+  // ── Hub .xlsm export (S5) ────────────────────────────────────────────
+
+  /**
+   * GET /rates/export/:tableSlug
+   *
+   * Download the active rows of the named RateTable as a ready-to-reimport
+   * .xlsx file. Filename: <slug>-rates.xlsx.
+   *
+   * Guard: rates.view OR rates.manage (manage is already sufficient; we also
+   * accept rates.view so read-only users can download without manage access).
+   * Since RequirePermissions is OR-logic by convention we use "rates.manage"
+   * as the minimum gate (adjust when rates.view is added to the permission set).
+   */
+  @Get("export/:tableSlug")
+  @RequirePermissions("rates.manage")
+  @ApiProduces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  @ApiOperation({
+    summary:
+      "S5 hub export: download a specific RateTable as an .xlsx workbook. " +
+      "Header row matches RateColumn names so the file round-trips through /import/:tableSlug."
+  })
+  @ApiResponse({ status: 200, description: ".xlsx workbook buffer." })
+  @ApiResponse({ status: 404, description: "RateTable slug not found." })
+  async exportTableSlug(
+    @Param("tableSlug") tableSlug: string,
+    @Res({ passthrough: false }) res: Response
+  ): Promise<void> {
+    const buffer = await this.xlsmExporter.exportTable(tableSlug);
+    const filename = `${tableSlug}-rates.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.end(buffer);
   }
 }

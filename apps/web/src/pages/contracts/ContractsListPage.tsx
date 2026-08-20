@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
+import { throwIfApiError } from "../../lib/api-errors";
 import { NewContractModal } from "./NewContractModal";
 
 type ContractRow = {
@@ -71,7 +72,7 @@ export function ContractsListPage() {
       else if (archiveView === "archived") params.set("includeArchived", "true");
       const url = `/contracts${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await authFetch(url);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as { items: ContractRow[] };
       // When showing archived-only, filter client-side (the API includes both when includeArchived=true)
       const items = archiveView === "archived"
@@ -106,7 +107,7 @@ export function ContractsListPage() {
     try {
       const endpoint = willArchive ? `/contracts/${row.id}/archive` : `/contracts/${row.id}/unarchive`;
       const response = await authFetch(endpoint, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -145,7 +146,7 @@ export function ContractsListPage() {
     setDeletingId(row.id);
     try {
       const response = await authFetch(`/contracts/${row.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);

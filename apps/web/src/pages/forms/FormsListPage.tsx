@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { formTemplateAuthority } from "./formTemplateAuthority";
 import { ImportFromPdfModal } from "./ImportFromPdfModal";
 import { DescribeToGenerateModal } from "./DescribeToGenerateModal";
@@ -166,7 +167,7 @@ export function FormsListPage() {
       ];
       if (canApprove) requests.push(authFetch("/forms/pending-approvals"));
       const [tplRes, mineRes, approvalsRes] = await Promise.all(requests);
-      if (!tplRes.ok) throw new Error(await tplRes.text());
+      await throwIfApiError(tplRes);
       const tplBody = (await tplRes.json()) as { items: FormTemplate[] };
       setTemplates(tplBody.items ?? []);
       if (mineRes.ok) {
@@ -248,7 +249,7 @@ export function FormsListPage() {
           sections: [{ title: "Section 1", sectionOrder: 1, fields: [] }]
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const created = (await res.json()) as { id: string };
       navigate(`/forms/designer/${created.id}`);
     } catch (err) {
@@ -266,7 +267,7 @@ export function FormsListPage() {
         method: "POST",
         body: "{}"
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const created = (await res.json()) as { id: string };
       await load();
       navigate(`/forms/designer/${created.id}`);
@@ -286,7 +287,7 @@ export function FormsListPage() {
         method: "POST",
         body: "{}"
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setConfirmArchive(null);
       await load();
     } catch (err) {
@@ -301,7 +302,7 @@ export function FormsListPage() {
     setError(null);
     try {
       const res = await authFetch(`/forms/templates/${template.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setConfirmDelete(null);
       await load();
     } catch (err) {
@@ -319,7 +320,7 @@ export function FormsListPage() {
         method: "POST",
         body: JSON.stringify({ templateId })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const draft = (await res.json()) as { id: string };
       navigate(`/forms/fill/${draft.id}`);
     } catch (err) {
@@ -826,7 +827,7 @@ function ApprovalsTab({
           body: JSON.stringify({ comment: comment.trim() || undefined })
         }
       );
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setOpenComment(null);
       setComment("");
       onChanged();

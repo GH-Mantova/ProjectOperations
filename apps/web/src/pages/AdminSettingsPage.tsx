@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../hooks/useConfirm";
 import { AdminAccessRequestsTab } from "./admin/AdminAccessRequestsTab";
@@ -137,8 +138,8 @@ function NotificationsTab() {
         authFetch("/admin/settings/notifications"),
         authFetch("/admin/settings/users")
       ]);
-      if (!tRes.ok) throw new Error(await tRes.text());
-      if (!uRes.ok) throw new Error(await uRes.text());
+      await throwIfApiError(tRes);
+      await throwIfApiError(uRes);
       setTriggers((await tRes.json()) as Trigger[]);
       setUsers((await uRes.json()) as AdminUser[]);
     } catch (err) {
@@ -158,7 +159,7 @@ function NotificationsTab() {
         method: "PATCH",
         body: JSON.stringify(patch)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const updated = (await response.json()) as Trigger;
       setTriggers((prev) => prev.map((t) => (t.trigger === trigger ? updated : t)));
       setSavedFlash(trigger);
@@ -402,7 +403,7 @@ function EmailTab() {
     setLoading(true);
     try {
       const response = await authFetch("/admin/settings/email");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as EmailConfig;
       setConfig(body);
       if (!loadedRef.current) {
@@ -429,7 +430,7 @@ function EmailTab() {
         method: "PATCH",
         body: JSON.stringify({ senderAddress: senderAddress.trim(), senderName: senderName.trim() })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setConfig((await response.json()) as EmailConfig);
     } catch (err) {
       setError((err as Error).message);
@@ -443,7 +444,7 @@ function EmailTab() {
     setTest(null);
     try {
       const response = await authFetch("/admin/settings/email/test");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setTest((await response.json()) as { success: boolean; message: string });
     } catch (err) {
       setTest({ success: false, message: (err as Error).message });
@@ -586,8 +587,8 @@ function SiteGeofencesTab() {
         authFetch("/field/geofences"),
         authFetch("/master-data/sites?page=1&pageSize=100")
       ]);
-      if (!gRes.ok) throw new Error(await gRes.text());
-      if (!sRes.ok) throw new Error(await sRes.text());
+      await throwIfApiError(gRes);
+      await throwIfApiError(sRes);
       setRows((await gRes.json()) as GeofenceRow[]);
       const sitesBody = (await sRes.json()) as { items: SiteOption[] };
       setSites(sitesBody.items);
@@ -651,7 +652,7 @@ function SiteGeofencesTab() {
           notes: draft.notes.trim() || undefined
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setSaveMsg(`Geofence "${draft.name.trim()}" saved.`);
       setDraft({ siteId: "", name: "", centreLat: "", centreLng: "", radiusMetres: "150", isActive: true, notes: "" });
       await load();
@@ -667,7 +668,7 @@ function SiteGeofencesTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !row.isActive })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -684,7 +685,7 @@ function SiteGeofencesTab() {
     if (!ok) return;
     try {
       const res = await authFetch(`/field/geofences/${row.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await load();
     } catch (err) {
       setError((err as Error).message);

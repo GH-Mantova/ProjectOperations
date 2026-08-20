@@ -7,6 +7,8 @@ import { RateResolverService } from "./rate-resolver.service";
 import { RateValidationService } from "./rate-validation.service";
 import { RatesExportService } from "./rates-export.service";
 import { RatesImportService } from "./rates-import.service";
+import { RateXlsmExportService } from "./rate-xlsm-export.service";
+import { RateXlsmImportService } from "./rate-xlsm-import.service";
 import { SubcontractorArchiveController } from "./subcontractor-archive.controller";
 
 @Module({
@@ -18,6 +20,8 @@ import { SubcontractorArchiveController } from "./subcontractor-archive.controll
     RateValidationService,
     RatesExportService,
     RatesImportService,
+    RateXlsmExportService,
+    RateXlsmImportService,
     RateArchiveService
   ],
   exports: [
@@ -26,6 +30,8 @@ import { SubcontractorArchiveController } from "./subcontractor-archive.controll
     RateValidationService,
     RatesExportService,
     RatesImportService,
+    RateXlsmExportService,
+    RateXlsmImportService,
     RateArchiveService
   ]
 })

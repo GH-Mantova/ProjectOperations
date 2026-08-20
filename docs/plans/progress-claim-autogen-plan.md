@@ -1,7 +1,19 @@
 # SLICE-0 plan — Automated progress-claim generation (with manual edit)
 
-**Status:** PLAN ONLY (Marco 2026-08-04: "yes, with option to manually edit"). Small — most of the
-engine already exists. No sub-slice armed.
+**Status:** ✅ **COMPLETE — both sub-slices are on main.** (Re-measured 2026-08-20 against
+`origin/main` 16402f22 by artifact, not by prompt name.) Marco 2026-08-04: "yes, with option to
+manually edit" — the manual-edit requirement shipped; there is no auto-issue path.
+
+- **PC-1** — "Generate this month's claim" + editable draft review.
+  `apps/web/src/pages/contracts/BillingTab.tsx:192` (`generateThisMonthsClaim()` → `claims/pro-forma`),
+  editor at `apps/web/src/pages/contracts/ClaimDraftEditor.tsx`. The "already drafted this month" 409
+  is handled by loading and editing the existing draft, as this plan's risk section required.
+- **PC-2** (optional) — month-end "drafts ready to review" reminder.
+  `apps/api/src/modules/contracts/claim-draft-reminder.service.ts` (`@Cron("0 22 28 * *")`), wired
+  through the existing `NotificationsService`/`EmailService` seam.
+
+> ⚠️ The previous Status line read *"PLAN ONLY … No sub-slice armed"* long after both had merged.
+> See the note at the top of `docs/pr-prompts/BACKLOG.yaml`.
 
 ## Problem / goal
 

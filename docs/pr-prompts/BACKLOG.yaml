@@ -1,6 +1,45 @@
 # =============================================================================================
 # THE BACKLOG REGISTER ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¶ work that is REAL but NOT YET IN THE QUEUE.
 #
+# ---------------------------------------------------------------------------------------------
+# ADDED 2026-08-20 (06-pr-master) -- READ THIS BEFORE YOU DISCHARGE AN ITEM.
+#
+# A DISCHARGE IS A HANDOFF, AND A HANDOFF CAN DROP THE WORK.
+#
+# The rule below is "when an item IS staged, delete it here; one place, never two." That rule is
+# right. It also has a hole, and the hole swallowed the biggest workstream in the repo for a month.
+#
+# What happened, exactly:
+#   2026-07-17  B-P0a (Job/Project) and B-P0b (Worker/WorkerProfile) were DISCHARGED from this file.
+#               The stated reason was correct on the day: their SLICE-0 plan prompts were staged in
+#               the queue, so this register entry was the redundant second place.
+#   2026-07-23  Both prompts were binned to superseded/cleared-2026-07-23-premise-dead/. Also
+#               correct: each premise was `! test -f <its plan doc>`, and the plan docs had just
+#               shipped. The premises were genuinely dead.
+#   Result      The work then lived in NO place. This register pointed at the prompts. The prompts
+#               were gone. Nothing pointed at the twelve unbuilt slices (B-P0a-4 remainder, -5..-9,
+#               B-P0b-1..-7). Nothing ever came back to ask. Found by hand on 2026-08-20.
+#
+# NEITHER DECISION WAS WRONG. The seam between them was never specified. "One place, never two" has
+# no step that says: WHEN THE ONE PLACE DIES, CHECK WHETHER IT WAS THE ONLY ONE.
+#
+# THE RULE:
+#   Before binning a prompt as premise-dead, grep THIS FILE for a DISCHARGED note naming it. If one
+#   exists, that prompt was somebody's only home. Do not bin it silently. Either re-open a register
+#   item for the work that remains, or stage the successor prompt in the same PR.
+#
+#   A prompt dying is not the same as the work being done. A SLICE-0 plan prompt dies at the moment
+#   its plan ships -- which is the moment the real work BEGINS.
+#
+# Being made mechanical by docs/pr-prompts/pr-queue-bin-guard-orphaned-discharge-ready.md.
+#
+# COROLLARY, same date, same cause: a plan's own "**Status:**" line is NOT a queue signal. Four
+# plans (forms-v2-f2-rules, progress-claim-autogen, realtime-websockets, subcontractor-rate-cards)
+# still read "PLAN ONLY ... no sub-slice armed" long after their sub-slices merged. Status lines are
+# hand-maintained and rot. Measure by ARTIFACT -- does the thing the slice was meant to build exist
+# on main -- never by a Status line and never by a prompt's filename.
+# ---------------------------------------------------------------------------------------------
+#
 # WHY THIS EXISTS
 # ---------------
 # On 2026-07-14 an audit found SEVEN pieces of designed work that had quietly fallen on the floor.
@@ -346,6 +385,50 @@ items:
   # register ONLY, mirroring buildRegisterCsv; no single-tender button). Staged as a SLICE 0 plan
   # rather than an implementation prompt because model Tender carries 39 relations, 28 of them
   # collections (schema.prisma:1222-1315) - far past size 10. One place, never two.
+  # -------------------------------------------------------------------------------------------
+  # -------------------------------------------------------------------------------------------
+  # RE-OPENED 2026-08-20 (06-pr-master). DISCHARGED 2026-07-17 into two prompts that were themselves
+  # binned 2026-07-23. See the note at the top of this file. It is back because the work is real,
+  # unbuilt, and as of this morning had no other home anywhere in the repo.
+  # -------------------------------------------------------------------------------------------
+  - id: model-merge-slices-rehomed
+    title: "B-P0a / B-P0b - 12 unbuilt model-merge slices, homeless since 2026-07-23"
+    priority: P1
+    why: >
+      Re-measured by artifact at origin/main 16402f22 on 2026-08-20. Every model the merge was meant
+      to retire is still live on schema.prisma: Job (1650), Project (3004), Worker (1082),
+      WorkerProfile (3164), Crew (1119), JobVariation (1829), Shift (1902). B-P0a-4 shipped only half
+      of itself - jobs.service.ts issueContract still flips tenderClient.contractIssued and
+      tender.status and mints no Contract; there is no ContractsService reference in that file at all,
+      so the slice reads as done and is not. Unbuilt: B-P0a-4 remainder, -5, -6, -7, -8, -9, and
+      B-P0b-1 through -7.
+      BLAST RADIUS - site-dissolution B-SD-6, -7 and -8 are hard-gated behind B-P0a-5, -7 and -8
+      respectively (docs/plans/site-dissolution-plan.md lines 316, 332, 342). That whole plan is
+      stalled behind this one, and nothing in either plan said so out loud.
+      DESIGNS EXIST BUT ONE POINTS THE WRONG WAY - sot/04 section B-P0b (3959+) is correct
+      (WorkerProfile canonical). sot/04 section B-P0a (3699+) is authored PROJECT-SURVIVES and
+      contradicts the Job-canonical decision (BACKLOG-DECISIONS section 1, Marco 2026-07-14;
+      re-confirmed by Marco 2026-08-20). Writing slice prompts from sot/04 as it stands today would
+      rebuild the direction Marco cancelled in July. That is what the gate below waits for.
+    gate: 'test -f docs/audits/model-merge-direction-reconcile.md && grep -q "^model Project " apps/api/prisma/schema.prisma'
+    gate_means: >
+      READY once the sot/04 direction reconcile has landed (its marker doc exists, so the design and
+      the decision finally agree) AND model Project is still on the schema (the fold is not finished).
+      Hidden until the reconcile lands - deliberately, because staging a slice before then produces
+      the wrong data model. Discharges when Project is dropped, which is the last slice.
+      The reconcile is staged as docs/pr-prompts/pr-sot-04-bp0a-job-canonical-reconcile-ready.md.
+    needs_marco: true
+    marco_note: >
+      DO NOT AUTO-STAGE. model-merge-plan section 2 forbids the watcher auto-staging any B-P0a-* or
+      B-P0b-* prompt, and the standing rule is ONE AT A TIME, Phase A strictly before Phase B, Marco
+      present, never concurrently - both workstreams regenerate the data-model map and two concurrent
+      spine reworks corrupt it. D26 is the approval for the Phase A remainder: "Finish the Job/Project
+      fold properly (B-P0a-5...-9); schedule when the board is quiet."
+      WHEN THIS ITEM IS EVENTUALLY DISCHARGED AGAIN, name the successor prompt here in the discharge
+      note and confirm it is not the item's only home. That is the exact mistake that lost this work
+      for a month.
+    order: 1
+
   # -------------------------------------------------------------------------------------------
   # ADDED 2026-08-19 (Station 06 PR Master), from a defect Marco hit in the Tip Finder. Grounding
   # the one screenshot turned up a migration that was recorded as finished and was not.

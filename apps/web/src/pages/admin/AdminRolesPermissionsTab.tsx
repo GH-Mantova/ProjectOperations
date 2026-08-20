@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useConfirm } from "../../hooks/useConfirm";
 import {
   buildMatrixRoles,
@@ -51,8 +52,8 @@ export function AdminRolesPermissionsTab() {
         authFetch("/roles?page=1&pageSize=100"),
         authFetch("/permissions")
       ]);
-      if (!rolesRes.ok) throw new Error(await rolesRes.text());
-      if (!permsRes.ok) throw new Error(await permsRes.text());
+      await throwIfApiError(rolesRes);
+      await throwIfApiError(permsRes);
       const rolesBody = (await rolesRes.json()) as RoleListResponse;
       const permsBody = (await permsRes.json()) as MatrixPermission[];
       setRoles(buildMatrixRoles(unwrapRoles(rolesBody)));

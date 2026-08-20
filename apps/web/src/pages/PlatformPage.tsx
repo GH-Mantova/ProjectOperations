@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppCard } from "@project-ops/ui";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../hooks/useConfirm";
 
@@ -188,7 +189,7 @@ function SharePointTestPanel() {
     setResult(null);
     try {
       const response = await authFetch("/sharepoint/test");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setResult(await response.json());
     } catch (err) {
       setError((err as Error).message);
@@ -267,7 +268,7 @@ function SharePointFolderMappingsPanel() {
     setError(null);
     try {
       const response = await authFetch("/admin/sharepoint-folder-mappings");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setMappings((await response.json()) as FolderMapping[]);
     } catch (err) {
       setError((err as Error).message);
@@ -444,7 +445,7 @@ function XeroPanel() {
     setError(null);
     try {
       const r = await authFetch("/xero/connect");
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       const body = (await r.json()) as { url: string };
       window.open(body.url, "_blank", "noopener");
       setInfo("Consent window opened — finish the flow in the new tab.");
@@ -467,7 +468,7 @@ function XeroPanel() {
     setError(null);
     try {
       const r = await authFetch("/xero/disconnect", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       setInfo("Disconnected.");
       await refresh();
     } catch (err) {
@@ -489,7 +490,7 @@ function XeroPanel() {
     setInfo(null);
     try {
       const r = await authFetch("/xero/contacts/sync-all", { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       const body = (await r.json()) as {
         total: number;
         results: Array<{ clientId: string; status: string }>;

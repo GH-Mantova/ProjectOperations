@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
@@ -159,7 +160,7 @@ export function JobSorAttachWizardPage() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       // Route the user back to the target so they can start using it.
       const path =
         targetKind === "job" ? `/jobs/${selectedTargetId}` : `/tenders`;

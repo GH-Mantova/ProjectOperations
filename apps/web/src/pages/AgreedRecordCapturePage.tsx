@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ export function AgreedRecordCapturePage() {
     setError(null);
     try {
       const res = await authFetch(`/agreed-records/for-job/${selectedJobId}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const body = await res.json();
       setRecords(body as AgreedRecordRow[]);
     } catch (err) {
@@ -177,7 +178,7 @@ export function AgreedRecordCapturePage() {
           workDate,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const created = await res.json() as AgreedRecordRow;
       setActiveArId(created.id);
       setActiveAr(created);
@@ -208,7 +209,7 @@ export function AgreedRecordCapturePage() {
           notes: lineNotes || null,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       // Refresh active AR
       const arRes = await authFetch(`/agreed-records/for-job/${formJobId}`);
       if (arRes.ok) {
@@ -236,7 +237,7 @@ export function AgreedRecordCapturePage() {
         `/agreed-records/${activeArId}/lines/${lineId}`,
         { method: "DELETE" },
       );
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       // Refresh
       const arRes = await authFetch(`/agreed-records/for-job/${formJobId}`);
       if (arRes.ok) {
@@ -260,7 +261,7 @@ export function AgreedRecordCapturePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: "PHOTO", filePath: photoPath }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       // Refresh
       const arRes = await authFetch(`/agreed-records/for-job/${formJobId}`);
       if (arRes.ok) {
@@ -292,7 +293,7 @@ export function AgreedRecordCapturePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const submitted = await res.json() as AgreedRecordRow;
       setSuccess(`Agreed Record ${submitted.recordNumber} submitted.`);
     } catch (err) {

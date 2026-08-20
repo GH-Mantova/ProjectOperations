@@ -11,6 +11,7 @@ import {
   type ReactNode
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../hooks/useConfirm";
 import { can } from "../auth/permissions";
@@ -369,7 +370,7 @@ export function ScheduleOfRatesAdminPage() {
           },
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -403,7 +404,7 @@ export function ScheduleOfRatesAdminPage() {
     setError(null);
     try {
       const r = await authFetch("/schedule-of-rates/periods");
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       const data = (await r.json()) as SorPeriodSummary[];
       setPeriods(data);
       // Auto-select the most-recent period when none is selected yet.
@@ -433,8 +434,8 @@ export function ScheduleOfRatesAdminPage() {
           authFetch(`/schedule-of-rates/periods/${periodId}`),
           authFetch(`/schedule-of-rates/periods/${periodId}/change-log`)
         ]);
-        if (!ratesRes.ok) throw new Error(await ratesRes.text());
-        if (!logRes.ok) throw new Error(await logRes.text());
+        await throwIfApiError(ratesRes);
+        await throwIfApiError(logRes);
         const ratesData = (await ratesRes.json()) as SorPeriodWithRates;
         const logData = (await logRes.json()) as SorChangeLogEntry[];
         setPeriodData(ratesData);
@@ -464,7 +465,7 @@ export function ScheduleOfRatesAdminPage() {
           method,
           body: body ? JSON.stringify(body) : undefined
         });
-        if (!response.ok) throw new Error(await response.text());
+        await throwIfApiError(response);
         // Reload both periods list (for counts) and period data
         await loadPeriods();
         if (selectedPeriodId) {
@@ -1981,7 +1982,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
       setLoadingClients(true);
       try {
         const res = await authFetch("/master-data/clients?limit=500&status=ACTIVE");
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         const data = (await res.json()) as { data?: ClientSummary[]; items?: ClientSummary[] } | ClientSummary[];
         // Handle both paginated and flat responses
         const list: ClientSummary[] = Array.isArray(data)
@@ -2002,7 +2003,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
   const loadCards = useCallback(async () => {
     try {
       const res = await authFetch(`/schedule-of-rates/client-cards/by-period/${periodId}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setCards((await res.json()) as SorClientRateCard[]);
     } catch (err) {
       setError((err as Error).message);
@@ -2019,7 +2020,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
     setError(null);
     try {
       const res = await authFetch(`/schedule-of-rates/client-cards/${cardId}/entries`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const data = (await res.json()) as { rows: MergedRateRow[] };
       setMergedRows(data.rows ?? []);
     } catch (err) {
@@ -2043,7 +2044,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
         `/schedule-of-rates/client-cards/clients/${selectedClientId}/periods/${periodId}`,
         { method: "POST" }
       );
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const data = (await res.json()) as { card: SorClientRateCard };
       setActiveCardId(data.card.id);
       await loadCards();
@@ -2073,7 +2074,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
           `/schedule-of-rates/client-cards/${activeCardId}/reset`,
           { method: "POST" }
         );
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         await loadRows(activeCardId);
       } catch (err) {
         setError((err as Error).message);
@@ -2101,7 +2102,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
           double: addDraft.double !== "" ? Number(addDraft.double) : null
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setShowAdd(false);
       setAddDraft({ category: "LABOUR", position: "", class: "", unit: "", ordinary: "", oneAndHalf: "", double: "" });
       await loadRows(activeCardId);
@@ -2130,7 +2131,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
           `/schedule-of-rates/client-cards/${activeCardId}/entries/by-rate/${sorRateId}`,
           { method: "DELETE" }
         );
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         await loadRows(activeCardId);
       } catch (err) {
         setError((err as Error).message);
@@ -2158,7 +2159,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
           `/schedule-of-rates/client-cards/entries/${entryId}`,
           { method: "DELETE" }
         );
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         await loadRows(activeCardId);
       } catch (err) {
         setError((err as Error).message);
@@ -2177,7 +2178,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
         `/schedule-of-rates/client-cards/entries/${entryId}`,
         { method: "PATCH", body: JSON.stringify(patch) }
       );
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       if (activeCardId) await loadRows(activeCardId);
     } catch (err) {
       setError((err as Error).message);

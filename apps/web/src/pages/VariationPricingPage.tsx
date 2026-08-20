@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
@@ -133,7 +134,7 @@ export function VariationPricingPage() {
     setError(null);
     try {
       const linesRes = await authFetch(`/variations/${variationId}/sor-lines`);
-      if (!linesRes.ok) throw new Error(await linesRes.text());
+      await throwIfApiError(linesRes);
       const linesData = (await linesRes.json()) as LinesResponse;
       setLines(linesData.lines);
       setTotal(linesData.total);
@@ -206,7 +207,7 @@ export function VariationPricingPage() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setQuantity("1");
       setSelectedRateId("");
       setManualName("");
@@ -240,7 +241,7 @@ export function VariationPricingPage() {
           method: "PATCH",
           body: JSON.stringify({ quantity: Number(nextQty) }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         await loadAll();
       } catch (err) {
         setError((err as Error).message);
@@ -256,7 +257,7 @@ export function VariationPricingPage() {
         const res = await authFetch(`/variations/${variationId}/sor-lines/${lineId}`, {
           method: "DELETE",
         });
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         await loadAll();
       } catch (err) {
         setError((err as Error).message);

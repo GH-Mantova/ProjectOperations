@@ -525,27 +525,31 @@ describe("RateResolverService", () => {
   });
 
   describe("listRates", () => {
-    test("RateTable path returns rows with keys, value, unit and source=ratetable", async () => {
+    test("RateTable path returns rows with keys, info, value, unit and source=ratetable", async () => {
       process.env.RATES_CANONICAL_SOURCE = "ratetable";
       const prisma = makePrisma();
       prisma.rateTable.findUnique.mockResolvedValue({
         id: "rt-plant",
         slug: "plant",
         columns: [
-          { id: "c-item", name: "Item", role: "KEY", unit: null, sortOrder: 1 },
-          { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 2 }
+          { id: "c-item",     name: "Item",     role: "KEY",   unit: null, sortOrder: 1 },
+          { id: "c-category", name: "Category", role: "INFO",  unit: null, sortOrder: 2 },
+          { id: "c-unit-inf", name: "Unit",     role: "INFO",  unit: null, sortOrder: 3 },
+          { id: "c-rate",     name: "Rate",     role: "VALUE", unit: "day", sortOrder: 4 }
         ]
       });
       prisma.rateRow.findMany.mockResolvedValue([
-        { id: "rr-exc", cells: { "c-item": "Excavator 20t", "c-rate": 800 } },
-        { id: "rr-doz", cells: { "c-item": "Dozer D6", "c-rate": 950 } }
+        { id: "rr-exc", cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800 } },
+        { id: "rr-doz", cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950 } }
       ]);
       const svc = new RateResolverService(prisma as never);
       const out: ListedRate[] = await svc.listRates("plant");
       expect(out).toHaveLength(2);
+      // keys carries only KEY columns; info carries INFO columns.
       expect(out[0]).toEqual({
         rowId: "rr-exc",
         keys: { Item: "Excavator 20t" },
+        info: { Category: "Excavator", Unit: "day" },
         value: 800,
         unit: "day",
         source: "ratetable"
@@ -553,6 +557,7 @@ describe("RateResolverService", () => {
       expect(out[1]).toEqual({
         rowId: "rr-doz",
         keys: { Item: "Dozer D6" },
+        info: { Category: "Dozer", Unit: "day" },
         value: 950,
         unit: "day",
         source: "ratetable"
@@ -561,19 +566,68 @@ describe("RateResolverService", () => {
       expect(prisma.estimatePlantRate.findMany).not.toHaveBeenCalled();
     });
 
+    test("RateTable path: a row with no INFO columns yields info={}", async () => {
+      process.env.RATES_CANONICAL_SOURCE = "ratetable";
+      const prisma = makePrisma();
+      prisma.rateTable.findUnique.mockResolvedValue({
+        id: "rt-fuel",
+        slug: "fuel",
+        columns: [
+          { id: "c-item", name: "Item", role: "KEY",   unit: null, sortOrder: 1 },
+          { id: "c-rate", name: "Rate", role: "VALUE", unit: "L",  sortOrder: 2 }
+          // No INFO columns.
+        ]
+      });
+      prisma.rateRow.findMany.mockResolvedValue([
+        { id: "rr-diesel", cells: { "c-item": "Diesel", "c-rate": 2.1 } }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("fuel");
+      expect(out).toHaveLength(1);
+      expect(out[0]!.info).toEqual({});
+      expect(out[0]!.info).not.toBeUndefined();
+    });
+
+    test("legacy path: plant rows carry info.Category and info.Unit", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimatePlantRate.findMany.mockResolvedValue([
+        { id: "p-exc", item: "Excavator 20t", rate: "800", unit: "day", category: "Excavator" },
+        { id: "p-doz", item: "Dozer D6",      rate: "950", unit: "day", category: null }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("plant");
+      expect(out).toHaveLength(2);
+      expect(out[0]!.info).toEqual({ Category: "Excavator", Unit: "day" });
+      // null category becomes "" (seed pattern); caller must guard against empty string.
+      expect(out[1]!.info).toEqual({ Category: "", Unit: "day" });
+    });
+
+    test("legacy path: non-plant slugs yield info={}", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimateFuelRate.findMany.mockResolvedValue([
+        { id: "f-1", item: "Diesel", rate: "2.1", unit: "L" }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("fuel");
+      expect(out).toHaveLength(1);
+      expect(out[0]!.info).toEqual({});
+    });
+
     test("falls back to legacy when RATES_CANONICAL_SOURCE=ratetable but rateTable slug is absent", async () => {
       process.env.RATES_CANONICAL_SOURCE = "ratetable";
       const prisma = makePrisma();
       // Slug not present in RateTable — simulate seed gap.
       prisma.rateTable.findUnique.mockResolvedValue(null);
       prisma.estimatePlantRate.findMany.mockResolvedValue([
-        { id: "p-exc", item: "Excavator 20t", rate: "800", unit: "day" },
-        { id: "p-doz", item: "Dozer D6", rate: "950", unit: "day" }
+        { id: "p-exc", item: "Excavator 20t", rate: "800", unit: "day", category: "Excavator" },
+        { id: "p-doz", item: "Dozer D6",      rate: "950", unit: "day", category: null }
       ]);
       const svc = new RateResolverService(prisma as never);
       const out: ListedRate[] = await svc.listRates("plant");
       expect(out).toHaveLength(2);
-      expect(out[0]).toMatchObject({ source: "legacy", value: 800, keys: { item: "Excavator 20t" } });
+      expect(out[0]).toMatchObject({ source: "legacy", value: 800, keys: { item: "Excavator 20t" }, info: { Category: "Excavator" } });
       expect(out[1]).toMatchObject({ source: "legacy", value: 950, keys: { item: "Dozer D6" } });
     });
 
@@ -590,8 +644,8 @@ describe("RateResolverService", () => {
       const prisma = makePrisma();
       // Legacy-first: plant slug is registered in adapter.
       prisma.estimatePlantRate.findMany.mockResolvedValue([
-        { id: "p-a", item: "A tool", rate: "100", unit: "hr" },
-        { id: "p-b", item: "B tool", rate: "200", unit: "hr" }
+        { id: "p-a", item: "A tool", rate: "100", unit: "hr", category: "Tool" },
+        { id: "p-b", item: "B tool", rate: "200", unit: "hr", category: "Tool" }
       ]);
       const svc = new RateResolverService(prisma as never);
       const first: ListedRate[] = await svc.listRates("plant");

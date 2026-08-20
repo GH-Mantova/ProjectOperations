@@ -12,6 +12,32 @@ const minimalRateResolver = {
   resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
 } as never;
 
+/**
+ * Build a RateResolverService stub whose listRates("plant") returns the
+ * supplied plant rate rows as ListedRate objects (with info.Category and
+ * info.Unit populated). Other slugs return [].
+ *
+ * This is the rewired harness for getCardSummary tests: category grouping
+ * is now driven by info.Category on ListedRate, not by estimatePlantRate
+ * rows fetched directly from Prisma.
+ */
+function buildRateResolverWithPlantRates(
+  plantRates: Array<{ id: string; category: string | null }>
+): { listRates: jest.Mock; resolveRate: jest.Mock } {
+  const listed = plantRates.map((r) => ({
+    rowId: r.id,
+    keys: { item: "" },
+    info: { Category: r.category ?? "", Unit: "" },
+    value: 0,
+    unit: "",
+    source: "legacy" as const
+  }));
+  return {
+    listRates: jest.fn(async (slug: string) => (slug === "plant" ? listed : [])),
+    resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
+  };
+}
+
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
 function buildPrismaMock(opts: {
@@ -703,10 +729,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc1", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc1", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 2, peakDays: 3 }] }
@@ -745,13 +771,13 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [
-        { id: "rate-exc1", category: "Excavator" },
-        { id: "rate-exc2", category: "Excavator" }
-      ]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([
+      { id: "rate-exc1", category: "Excavator" },
+      { id: "rate-exc2", category: "Excavator" }
+    ]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       {
@@ -777,10 +803,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-bob", category: "Bobcat" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-bob", category: "Bobcat" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 5 }] }
@@ -801,13 +827,13 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [
-        { id: "rate-truck", category: "Truck" },
-        { id: "rate-exc", category: "Excavator" }
-      ]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([
+      { id: "rate-truck", category: "Truck" },
+      { id: "rate-exc", category: "Excavator" }
+    ]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary[0]?.category).toBe("Excavator");
     expect(result.computed.plantSummary[1]?.category).toBe("Truck");
@@ -826,10 +852,12 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-misc", category: null }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    // null category: info.Category = "" — the service guards against empty string,
+    // so the entry falls through to the "Other" bucket. This is the negative control.
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-misc", category: null }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Other", items: [{ variant: "Attachment 16T-25T", peakQty: 1, peakDays: 2 }] }
@@ -872,10 +900,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-t", category: "Truck" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-t", category: "Truck" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Truck", items: [{ variant: "Tipper", peakQty: 1, peakDays: 5 }] }
@@ -902,10 +930,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2, peakDays: 5 }] }
@@ -945,10 +973,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.labourDays).toBe(3);
     expect(result.computed.duration).toBe(14);
@@ -970,10 +998,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
           { men: "3", days: "4", plantItems: null },
           { men: "2", days: "3", plantItems: null }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.labourDays).toBe(14.3);
     expect(result.computed.duration).toBe(14.3);
@@ -1001,4 +1029,74 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
     expect(result.overrides.labourDaysOverride).toBe(20.5);
     expect(result.computed.labourDays).toBe(5);
   });
+
+  // KNOWN GAP — ratetable cutover
+  //
+  // When RATES_CANONICAL_SOURCE=ratetable the resolver returns RateRow.id in
+  // rowId (e.g. "rr-plt-exc"). But plantRateId inside the plantItems JSON blob
+  // was historically populated from EstimatePlantRate.id (e.g. "legacy-exc-id").
+  // Those id spaces do NOT overlap, so rateCategories.get(plantRateId) always
+  // misses and every plant entry silently falls to "Other" — even when the
+  // ratetable adapter returns correct info.Category.
+  //
+  // This test is landed as .failing to make the gap visible with tests green.
+  // Fixing it requires either (a) storing RateRow.id in plantRateId at write
+  // time (a write-path change, scope of slice 3/4) or (b) building a reverse
+  // index from item key → category that does not rely on id matching.
+  //
+  // Do NOT delete or skip this test. Its job is to fail loudly when ratetable
+  // mode is active, so the gap is not silently inherited by the next refactor.
+  it.failing(
+    "KNOWN GAP: ratetable mode — category lookup misses because plantRateId space != RateRow.id space",
+    async () => {
+      const { prisma } = buildPrismaMock({
+        scopeCardFindFirst: {
+          ...cardBase,
+          scopeItems: [
+            {
+              men: "1",
+              days: "1",
+              plantItems: [
+                {
+                  columnIndex: 1,
+                  // plantRateId holds a legacy EstimatePlantRate.id
+                  plantRateId: "legacy-exc-id",
+                  description: "Excavator 01T-03T",
+                  qty: 1,
+                  days: 5
+                }
+              ]
+            }
+          ]
+        }
+      });
+      // Simulate ratetable adapter: rowId is a RateRow.id, NOT the legacy id.
+      // The category is correct in info.Category, but the id does not match.
+      const rateResolver = {
+        listRates: jest.fn(async (slug: string) =>
+          slug === "plant"
+            ? [
+                {
+                  rowId: "rr-plt-exc", // RateRow.id — different space from plantRateId
+                  keys: { Item: "Excavator 01T-03T" },
+                  info: { Category: "Excavator", Unit: "day" },
+                  value: 800,
+                  unit: "day",
+                  source: "ratetable" as const
+                }
+              ]
+            : []
+        ),
+        resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
+      };
+      const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
+      const result = await svc.getCardSummary("tender-1", "card-1");
+      // This assertion SHOULD pass but currently FAILS because the id-space
+      // mismatch causes the category to fall to "Other". The .failing wrapper
+      // means the test suite stays green while loudly documenting the gap.
+      expect(result.computed.plantSummary).toEqual([
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 1, peakDays: 5 }] }
+      ]);
+    }
+  );
 });

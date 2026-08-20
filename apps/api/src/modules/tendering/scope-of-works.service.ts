@@ -1098,19 +1098,25 @@ export class ScopeOfWorksService {
     }
 
     const rateIds = [...new Set(allPlantEntries.map((p) => p.plantRateId).filter(Boolean))] as string[];
-    // rates-consumers SLICE 2 — the original fetched EstimatePlantRate rows by
-    // id to get the category field. ListedRate does not carry category (it holds
-    // only keys.item, value, unit). We route through listRates to honour the
-    // canonical-source env var and build a rowId→item map; since category is
-    // unavailable, all plant entries fall back to category="Other" in the
-    // grouping below. This affects the card-summary display only, not pricing.
-    // Documented in PR body as a known display-only limitation.
+    // rates-consumers SLICE 2 — route through listRates to honour the
+    // canonical-source env var. ListedRate now carries info.Category (keyed
+    // by the RateTable column name "Category") on both adapter paths, so the
+    // map is populated correctly when legacy data is present.
+    //
+    // ⚠️ KNOWN GAP — ratetable cutover: when RATES_CANONICAL_SOURCE=ratetable
+    // the resolver returns RateRow.id values in rowId, but plantRateId inside
+    // the plantItems JSON blob was historically set to EstimatePlantRate.id.
+    // Those id spaces do not overlap, so the map.get() lookup will miss and
+    // every plant entry will fall back to "Other" — with all category tests
+    // still passing because they exercise the legacy path. A mapping fix
+    // is out of scope for SLICE 2; see "KNOWN GAP — ratetable cutover" in
+    // the PR body for the full analysis.
     const rateCategories = new Map<string, string>();
     if (rateIds.length > 0) {
-      const allPlantRates = await this.rateResolver.listRates("plant");
-      // Category is not in ListedRate — map remains empty; entries group as "Other".
-      // Keep the allPlantRates result available for future use without triggering lint.
-      void allPlantRates;
+      for (const r of await this.rateResolver.listRates("plant")) {
+        const cat = r.info.Category;
+        if (typeof cat === "string" && cat !== "") rateCategories.set(r.rowId, cat);
+      }
     }
 
     type VariantAccum = { peakQty: number; totalQtyDays: number };

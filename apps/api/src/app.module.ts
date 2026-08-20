@@ -82,6 +82,7 @@ import { NotificationPreferencesModule } from "./modules/notification-preference
 import { HandoverTemplatesModule } from "./modules/handover-templates/handover-templates.module";
 import { HandoversModule } from "./modules/handovers/handovers.module";
 import { SubcontractorRatesModule } from "./modules/subcontractor-rates/subcontractor-rates.module";
+import { BidPrioritisationModule } from "./modules/bid-prioritisation/bid-prioritisation.module";
 import { WinLikelihoodModule } from "./modules/win-likelihood/win-likelihood.module";
 import { ScheduleOfRatesModule } from "./modules/schedule-of-rates/schedule-of-rates.module";
 import { VariationsModule } from "./modules/variations/variations.module";
@@ -185,6 +186,7 @@ import { TenantsModule } from "./modules/tenants/tenants.module";
     HandoverTemplatesModule,
     HandoversModule,
     SubcontractorRatesModule,
+    BidPrioritisationModule,
     WinLikelihoodModule,
     ScheduleOfRatesModule,
     VariationsModule,

@@ -3898,6 +3898,38 @@ async function seedUserDashboards(prisma: PrismaClient) {
       });
     }
   }
+
+  // EW-1: AllocationWeightConfig seed rows (idempotent upsert on dimension+key).
+  // urgency dimension — maps dueDate proximity to a load multiplier.
+  const urgencyWeights = [
+    { key: "CRITICAL", weight: new Prisma.Decimal("4.00"), label: "Critical" },
+    { key: "HIGH",     weight: new Prisma.Decimal("2.50"), label: "High"     },
+    { key: "MEDIUM",   weight: new Prisma.Decimal("1.00"), label: "Medium"   },
+    { key: "LOW",      weight: new Prisma.Decimal("0.50"), label: "Low"      },
+  ];
+  for (const row of urgencyWeights) {
+    await prisma.allocationWeightConfig.upsert({
+      where: { dimension_key: { dimension: "urgency", key: row.key } },
+      update: { weight: row.weight, label: row.label },
+      create: { dimension: "urgency", key: row.key, weight: row.weight, label: row.label },
+    });
+  }
+
+  // size dimension — maps estimated value band to a load multiplier.
+  const sizeWeights = [
+    { key: "XS", weight: new Prisma.Decimal("0.50"), label: "Extra Small" },
+    { key: "S",  weight: new Prisma.Decimal("1.00"), label: "Small"       },
+    { key: "M",  weight: new Prisma.Decimal("2.00"), label: "Medium"      },
+    { key: "L",  weight: new Prisma.Decimal("3.50"), label: "Large"       },
+    { key: "XL", weight: new Prisma.Decimal("5.00"), label: "Extra Large" },
+  ];
+  for (const row of sizeWeights) {
+    await prisma.allocationWeightConfig.upsert({
+      where: { dimension_key: { dimension: "size", key: row.key } },
+      update: { weight: row.weight, label: row.label },
+      create: { dimension: "size", key: row.key, weight: row.weight, label: row.label },
+    });
+  }
 }
 
 // Stable string hash → small integer (for deterministic per-tender offsets)

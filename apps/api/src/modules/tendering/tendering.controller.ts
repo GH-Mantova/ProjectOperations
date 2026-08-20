@@ -96,6 +96,7 @@ class BumpTenderRevisionDto {
 }
 import { TenderingService } from "./tendering.service";
 import { WinLikelihoodService } from "../win-likelihood/win-likelihood.service";
+import { BidPrioritisationService } from "../bid-prioritisation/bid-prioritisation.service";
 
 /**
  * REST controller for the core tender CRUD + lifecycle surface under /tenders.
@@ -112,7 +113,8 @@ import { WinLikelihoodService } from "../win-likelihood/win-likelihood.service";
 export class TenderingController {
   constructor(
     private readonly service: TenderingService,
-    private readonly winLikelihood: WinLikelihoodService
+    private readonly winLikelihood: WinLikelihoodService,
+    private readonly bidPrioritisation: BidPrioritisationService
   ) {}
 
   /**
@@ -213,6 +215,38 @@ export class TenderingController {
   @ApiResponse({ status: 200, description: "Delete a saved filter preset." })
   deletePreset(@Param("id") id: string, @CurrentUser() actor: { sub: string }) {
     return this.service.deleteFilterPreset(actor.sub, id);
+  }
+
+  // ─── BP-1: Bid-prioritisation routes ──────────────────────────────────────
+  // IMPORTANT: all static-path routes must be declared BEFORE the greedy /:id
+  // route to prevent Nest routing them to getById("priority-ranking").
+
+  /**
+   * BP-1 — Priority ranking of open tenders by expected value.
+   *
+   * Returns open tenders ranked descending by expected-value score
+   * (pointEstimate * estimatedValue * BID_PRIORITY_WEIGHT). Tenders with
+   * null pointEstimate or null estimatedValue are flagged insufficientData: true
+   * and sorted last with a null score.
+   *
+   * ADVISORY ONLY — this ranking MUST NOT feed pricing, auto-accept, or auto-reject.
+   * It is a decision-support surface only.
+   *
+   * @returns BidPriorityItem[] sorted DESC by expectedValueScore, nulls last
+   */
+  @Get("priority-ranking")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({
+    summary:
+      "BP-1 — Priority ranking of open tenders by expected value (advisory only)"
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Open tenders ranked by expected-value score. Tenders with insufficient data appear last."
+  })
+  getPriorityRanking() {
+    return this.bidPrioritisation.getRankedOpenTenders();
   }
 
   // ─── WL3-S1: Win-likelihood routes ─────────────────────────────────────────

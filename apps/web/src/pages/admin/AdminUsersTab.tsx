@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useConfirm } from "../../hooks/useConfirm";
 import {
   copyTextToClipboard,
@@ -47,7 +48,7 @@ export function AdminUsersTab() {
         authFetch("/admin/users"),
         authFetch("/roles")
       ]);
-      if (!usersRes.ok) throw new Error(await usersRes.text());
+      await throwIfApiError(usersRes);
       setRows((await usersRes.json()) as Row[]);
       if (rolesRes.ok) {
         const body = (await rolesRes.json()) as { items?: Role[] } | Role[];
@@ -95,7 +96,7 @@ export function AdminUsersTab() {
         method: next ? "PATCH" : "DELETE",
         body: next ? JSON.stringify({ isActive: true }) : undefined
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
       showToast(`${label}d ${row.firstName} ${row.lastName}`);
     } catch (err) {
@@ -318,7 +319,7 @@ function UserFormModal({
             : { firstName, lastName, email, roleId }
         )
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await onSaved();
     } catch (err) {
       setError((err as Error).message);

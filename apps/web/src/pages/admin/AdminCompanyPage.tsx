@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { isAdminUser } from "../../auth/permissions";
 import { NoAccess } from "../../components/NoAccess";
 import { useConfirm } from "../../hooks/useConfirm";
+import { readApiErrorMessage } from "../../lib/api-errors";
 
 // ── Types shared with backend DTOs ────────────────────────────────────
 type CompanyProfile = {
@@ -540,6 +541,47 @@ type OperationsSettings = {
   updatedById: string | null;
 };
 
+/**
+ * Hours after which the fuel price is considered overdue.
+ *
+ * 48 hours: the cron runs daily, so one missed run is a blip (24 h gap).
+ * Two consecutive misses (48 h gap) is unambiguously a fault and must
+ * be surfaced as a warning.
+ */
+const FUEL_PRICE_STALE_THRESHOLD_HOURS = 48;
+
+/** Returns how old a fuel price fetch is, and whether it is overdue. */
+function getFuelPriceStaleness(fetchedAt: string | null): {
+  label: string;
+  overdue: boolean;
+} {
+  if (fetchedAt === null) {
+    return { label: "never fetched", overdue: true };
+  }
+  const ageMs = Date.now() - new Date(fetchedAt).getTime();
+  const ageHours = ageMs / (1000 * 60 * 60);
+  const overdue = ageHours > FUEL_PRICE_STALE_THRESHOLD_HOURS;
+  if (ageHours < 1) {
+    const mins = Math.round(ageMs / 60000);
+    return { label: `${mins}m ago`, overdue };
+  }
+  if (ageHours < 24) {
+    return { label: `${Math.round(ageHours)}h ago`, overdue };
+  }
+  const days = Math.floor(ageHours / 24);
+  const remHours = Math.round(ageHours % 24);
+  const label = remHours > 0 ? `${days}d ${remHours}h ago` : `${days}d ago`;
+  return { label, overdue };
+}
+
+type FuelPriceRefreshResult = {
+  ok: boolean;
+  message: string;
+  pricePerLitre?: number;
+  fetchedAt?: string;
+  throttled?: boolean;
+};
+
 function OperationsSettingsPanel() {
   const { authFetch } = useAuth();
   const [config, setConfig] = useState<OperationsSettings | null>(null);
@@ -550,6 +592,8 @@ function OperationsSettingsPanel() {
   const [fuelPrice, setFuelPrice] = useState("");
   const [fuelSource, setFuelSource] = useState("");
   const [travelRate, setTravelRate] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<FuelPriceRefreshResult | null>(null);
   const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -599,6 +643,29 @@ function OperationsSettingsPanel() {
     }
   };
 
+  const refresh = async () => {
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const response = await authFetch("/fuel-price/refresh", { method: "POST" });
+      if (!response.ok) {
+        const msg = await readApiErrorMessage(response);
+        setRefreshResult({ ok: false, message: msg });
+        return;
+      }
+      const result = (await response.json()) as FuelPriceRefreshResult;
+      setRefreshResult(result);
+      if (result.ok) {
+        // Reload the config so the new price and timestamp render immediately.
+        void load();
+      }
+    } catch (err) {
+      setRefreshResult({ ok: false, message: (err as Error).message });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <section
       style={{
@@ -624,7 +691,8 @@ function OperationsSettingsPanel() {
         <p style={{ color: "var(--text-muted)" }}>Loading…</p>
       ) : (
         <>
-          {/* Live feed readout — populated by the T-2 daily cron (fuelpricesqld:Ampol-Diesel-max). */}
+          {/* Live feed readout — populated by the T-2 daily cron (fuelpricesqld:Ampol-Diesel-max).
+              Only shown when source matches and a price is present. */}
           {config.fuelPriceSource === "fuelpricesqld:Ampol-Diesel-max" && config.fuelPricePerLitre != null ? (
             <div
               style={{
@@ -650,6 +718,80 @@ function OperationsSettingsPanel() {
               </span>
             </div>
           ) : null}
+
+          {/* Staleness readout — rendered unconditionally so a never-fetched or
+              non-live-feed source still shows a fetch indicator.
+              "never fetched" (null) is explicitly worse than stale, not better. */}
+          {(() => {
+            const { label, overdue } = getFuelPriceStaleness(config.fuelPriceFetchedAt);
+            return (
+              <div
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap"
+                }}
+              >
+                <span style={{ color: "var(--text-muted)" }}>
+                  Fuel price last fetched:
+                </span>
+                <span
+                  style={{
+                    fontWeight: overdue ? 600 : undefined,
+                    color: overdue ? "var(--status-danger, #dc2626)" : "var(--text-muted)"
+                  }}
+                  aria-label={overdue ? "Fuel price fetch overdue" : undefined}
+                >
+                  {label}
+                  {overdue && config.fuelPriceFetchedAt !== null ? ` — overdue (threshold: ${FUEL_PRICE_STALE_THRESHOLD_HOURS}h)` : ""}
+                </span>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--secondary"
+                  style={{ fontSize: 12, padding: "2px 10px" }}
+                  onClick={() => void refresh()}
+                  disabled={refreshing}
+                >
+                  {refreshing ? "Refreshing…" : "Refresh now"}
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Inline result of the most recent manual refresh. */}
+          {refreshResult !== null ? (
+            <div
+              style={{
+                fontSize: 12,
+                padding: "6px 10px",
+                borderRadius: 4,
+                background: refreshResult.ok
+                  ? "rgba(22,163,74,0.08)"
+                  : "rgba(220,38,38,0.08)",
+                color: refreshResult.ok ? "#15803d" : "var(--status-danger, #dc2626)",
+                borderLeft: `3px solid ${refreshResult.ok ? "#16a34a" : "#dc2626"}`
+              }}
+              aria-live="polite"
+            >
+              {refreshResult.ok ? (
+                <>
+                  <strong>Refreshed.</strong>{" "}
+                  New price: ${Number(refreshResult.pricePerLitre).toFixed(3)}/L at{" "}
+                  {refreshResult.fetchedAt
+                    ? new Date(refreshResult.fetchedAt).toLocaleString("en-AU")
+                    : "—"}
+                </>
+              ) : (
+                <>
+                  <strong>{refreshResult.throttled ? "Throttled." : "Refresh failed."}</strong>{" "}
+                  {refreshResult.message}
+                </>
+              )}
+            </div>
+          ) : null}
+
           <label className="estimate-editor__field">
             <span>Fuel price (per litre, AUD)</span>
             <input

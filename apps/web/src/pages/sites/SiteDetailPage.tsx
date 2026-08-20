@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CenteredModal, KpiCard } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { SiteFormModal, type SiteFormClientOption } from "./SiteFormModal";
 import { SiteHeadcountWidget } from "./SiteHeadcountWidget";
 import {
@@ -185,7 +186,7 @@ export function SiteDetailPage() {
         setNotFound(true);
         return;
       }
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as SiteDetail | null;
       if (!body) {
         setNotFound(true);

@@ -1,7 +1,23 @@
 # SLICE-0 plan — Forms Engine v2, F-2 (rules engine)
 
-**Status:** PLAN ONLY (Marco 2026-08-04). No sub-slice is armed yet. This breaks the single F-2 line
-in `sot/06 §8` into buildable, lint-sized (<=10 files) sub-slices, because F-2 as one PR is too big.
+**Status:** ✅ **COMPLETE — all three sub-slices are on main.** (Re-measured 2026-08-20 against
+`origin/main` 16402f22 by artifact, not by prompt name.) This plan broke the single F-2 line in
+`sot/06 §8` into buildable, lint-sized (<=10 files) sub-slices, because F-2 as one PR was too big.
+
+- **F-2a** — `FormRule.definition` JSON column + backfill migration. `apps/api/prisma/schema.prisma:2226`;
+  `apps/api/prisma/migrations/20260804_fv2_formrule_expand/migration.sql`; shared type at
+  `packages/config/src/forms-rule-definition.ts`.
+- **F-2b** — one evaluator, contract-tested. `apps/web/src/pages/forms/__tests__/formRulesContract.test.ts`;
+  both `rules-engine.service.ts` and `FormFillPage.tsx` now import the shared package.
+- **F-2c** — rules builder UI + WARN/BLOCK + acknowledgement. `apps/web/src/pages/forms/FormRulesBuilderPage.tsx`,
+  routed at `apps/web/src/App.tsx:388`; enforcement at `apps/api/src/modules/forms/forms-engine.service.ts:640-689`.
+
+> `docs/pr-prompts/pr-fv2-formrule-contract-HOLD.md` in the active queue is **not** an F-2 sub-slice —
+> it is the later post-soak legacy-column-drop slice this plan names separately. Leave it queued.
+>
+> ⚠️ The previous Status line read *"PLAN ONLY … No sub-slice is armed yet"* long after every
+> sub-slice had merged. Anyone triaging by Status line was misled. See the note at the top of
+> `docs/pr-prompts/BACKLOG.yaml` on why a plan's own Status line is not a queue signal.
 
 ## Problem / goal
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import {
   dropdownOptionsFromEnabledProviders,
   hasUnsavedChanges,
@@ -185,8 +186,8 @@ function PersonaSettingsCard({
     setLoading(true);
     Promise.all([authFetch(`/personas/${persona.slug}`), authFetch(`/personas/${persona.slug}/my-settings`)])
       .then(async ([defRes, mineRes]) => {
-        if (!defRes.ok) throw new Error(await defRes.text());
-        if (!mineRes.ok) throw new Error(await mineRes.text());
+        await throwIfApiError(defRes);
+        await throwIfApiError(mineRes);
         const defBody = (await defRes.json()) as { companyInstruction: CompanyInstructionRow };
         const mineBody = (await mineRes.json()) as UserPersonaSettings;
         return { defBody, mineBody };
@@ -241,7 +242,7 @@ function PersonaSettingsCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const updated = (await res.json()) as UserPersonaSettings;
       const next: UserPersonaSettings = {
         providerOverride: updated.providerOverride ?? null,

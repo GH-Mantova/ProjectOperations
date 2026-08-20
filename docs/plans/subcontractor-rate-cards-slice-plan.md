@@ -1,8 +1,27 @@
 # SLICE-0 plan — Subcontractor rate cards
 
-**Status:** PLAN ONLY (Marco 2026-08-04, "a thousand times yes; check what's deployed so it does not
-conflict/damage anything"). No sub-slice armed yet. This plan grounds the deployed rate system first,
-then proposes an additive design that does NOT disturb the in-flight rate-table migration.
+**Status:** 🟡 **PARTIAL — RC-1 and RC-2 are on main; RC-3 is outstanding and deliberately gated.**
+(Re-measured 2026-08-20 against `origin/main` 16402f22 by artifact, not by prompt name.)
+Marco 2026-08-04: "a thousand times yes; check what's deployed so it does not conflict/damage
+anything." This plan grounds the deployed rate system first, then proposes an additive design that
+does NOT disturb the in-flight rate-table migration — and that isolation has held.
+
+- **RC-1** ✅ — `SubcontractorRate` model + CRUD module + permissions.
+  `apps/api/prisma/schema.prisma:4672`; `apps/api/src/modules/subcontractor-rates/`; permissions
+  `subcontractors.rates.view` / `.manage` at `apps/api/src/common/permissions/permission-registry.ts:143-144`.
+  `RateResolverService` was left untouched, as designed.
+- **RC-2** ✅ — Rates tab on the subcontractor detail page.
+  `apps/web/src/pages/directory/SubcontractorRatesTab.tsx`, mounted at `SubcontractorsPage.tsx:704`.
+- **RC-3** ❌ **NOT SHIPPED** — opt-in scope-line pricing from a subbie card. Neither
+  `apps/api/src/modules/tendering/scope-line-subcontractor-pricing.service.ts` nor any
+  `priceFromSubcontractor` reference exists on main. Its prompt is parked at
+  `docs/pr-prompts/needs-marco/pr-subbie-rate-cards-scope-pricing-HOLD.md` (`requires_merged: [213]`,
+  `escalates: true`, body opens "⚠ DO NOT ARM until the gate is verified for real"). This is the
+  plan's own "RC-3 deferred behind PR-213" decision working as intended — **not** a dropped slice.
+
+> ⚠️ The previous Status line read *"PLAN ONLY … No sub-slice armed yet"* after RC-1 and RC-2 had
+> merged. Note that "all sub-slices shipped" would have been **equally wrong** — RC-3 is genuinely
+> unbuilt. See the note at the top of `docs/pr-prompts/BACKLOG.yaml`.
 
 ## Problem / goal
 

@@ -245,6 +245,142 @@ Negative:
 
 ---
 
+### Decision register — Marco's `D<n>` series (D1–D55)
+
+*Registered 2026-08-20, at `origin/main` `1bf4aab5`, by Station 05 (SoT Keeper) on Marco's
+instruction. This subsection is the **only** place a `D<n>` decision becomes citable.*
+
+#### What this register is, and what it is not
+
+Marco's design decisions have been recorded since 2026-08-17 in a **contemporaneous decision log
+held outside this repository** — the "ERP ideas decision log", maintained in Supervisor project
+memory and written at decision time. That log is real and it is dated, but it is **not the source
+of truth**, because `sot/README.md` reserves that role for `/sot/` alone. Until now the two
+documents each claimed authority over decisions and neither referenced the other. **Landing this
+register is what resolves that collision.**
+
+Every row below is transcribed verbatim from that log. Rows are **not** improved, merged or
+paraphrased; where the log carries an inline ⚠️ correction it is preserved, because those
+corrections are the audit trail.
+
+Each row carries a status:
+
+- **`REGISTERED`** — an artifact *in this repository* independently corroborates the decision, and
+  a human has read that artifact and confirmed it means the same thing. The anchor is named.
+- **`QUARANTINED`** — **recorded, but NOT binding.** No repo anchor exists. A quarantined row is
+  a faithful transcription of what the log says, awaiting Marco's confirmation.
+  **Citing a `QUARANTINED` row as authority is an error.**
+
+Of the 55 decisions: **20 REGISTERED, 35 QUARANTINED.**
+
+#### ⚠️ The `D<n>` identifier is not unique in this repository
+
+This was discovered while building the register and it is load-bearing. **At least four independent
+`D<n>` series coexist**, and a bare `grep -E '\bD[0-9]+\b'` conflates all of them:
+
+| Series | Example | Not to be confused with |
+|---|---|---|
+| **Marco's master log** (this register) | `D48` — explicit owner + share grants | — |
+| `tender-tracker-migration-plan.md` local list | `D3` *T-number is the idempotency key*, `D8`, `D9` — cited in `apps/api/src/modules/admin-imports/sharepoint-legacy-copy.service.ts:12-16` | Marco's D3 (payroll), D8 (branding), D9 (rate aggregator) |
+| `estimating-analytics-plan.md` local list | `D3`/`D4`/`D5` in `apps/api/src/modules/reporting/estimating-analytics-report.definitions.ts:7-10` | Marco's D3, D4, D5 |
+| `sot/06-active-specs.md` dashboard catalogue | `D1`–`D5` are **widget IDs** (`D1` = "Milestones due / overdue"), `:1223-1227` | not decisions at all |
+
+Incidental false positives also exist and are not decisions of any kind: `mergeCells("A1:D1")`
+(`estimate-excel.builder.ts:62`), the test fixture `ZZTEST-BP0A3-D1`, and `PRs C1-D1`
+(`sot/06:1346`).
+
+**Consequences, both of which matter:**
+
+1. A corroboration sweep by bare identifier match is worthless. Every `REGISTERED` row below was
+   confirmed by *reading the cited text*, not by counting grep hits.
+2. **A checker that fails on any `D<n>` present in the repo but absent from this register would be
+   wrong**, not merely noisy — it would demand that a spreadsheet cell reference and three unrelated
+   plan-local decision lists be registered as Marco's decisions. Any such checker must first
+   disambiguate the namespace. This is a stronger objection than the volume concern.
+
+**Proposed remedy — needs Marco, not actioned here:** plan-local decision lists should be renamed to
+a plan-scoped prefix (e.g. `TFM-D3`, `EA-D3`) so that `D<n>` unambiguously means "Marco's register".
+Allocation of `D` numbers is Marco's alone, so this register does not renumber anything.
+
+#### Intake rule (binding once this register lands)
+
+1. A decision is **not citable** until it appears in this register.
+2. New `D<n>` numbers are **allocated by Marco only.**
+3. A `QUARANTINED` row is recorded, not binding. Citing one as authority is an error.
+
+#### The register
+
+| # | Brief | Decision | Status | Anchor |
+|---|---|---|---|---|
+| D1 | method | Decisions first, then build in document order 1→8 | QUARANTINED | — |
+| D2 | 2.8.3 | Rates/SoR prompts **split backend vs UI**; backend may ship; screen changes wait for the redesign, with mock-ups for visual approval | QUARANTINED | — |
+| D3 | 4.2.5 | Payroll = prepare & export to Xero. ⚠️ **Contracts are on the Building & Construction Award** (corrected 08-17). Marco supplies a Xero payslip template. We never assert a pay rate. | QUARANTINED | — |
+| D4 | 2.4.1/.2 | Administration keeps 3 sections; kill duplicated entries only | QUARANTINED | — |
+| D5 | 1.2.1 | Colour/density **themes**, not layouts | QUARANTINED | — |
+| D6 | 2.4.4 | Automations: leave as-is, improve later; add explanatory copy on the page | QUARANTINED | — |
+| D7 | 2.5.1 | Only sysadmin/superuser can untick a permission; users get read-only "what I'm missing" + request | QUARANTINED | — |
+| D8 | 2.6.7.1 | Branding on **system-generated** docs only; uploaded docs untouched | QUARANTINED | — |
+| D9 | 2.8.2 | Rate aggregator: one canonical rate line, each subbie/supplier hangs a price off it | QUARANTINED | — |
+| D10 | 3.1 | Merge Safety + Cases + Compliance into one Issue register. KB excluded | QUARANTINED | — |
+| D11 | 3.1.1 | **KB becomes the IMS** — Explorer-style folder tree, curated by compliance/super admin | QUARANTINED | — |
+| D12 | 3.2.1 | Rename Documents → **"System Archives"**; extend "Ensure Folder" so every module gets folders | QUARANTINED | — |
+| D13 | 4.1.1f | Assignar-style skills model — see D30 for the confirmed shape | QUARANTINED | — |
+| D14 | 4.2.4 | Medical info: HR role/skill only, **access logged** | QUARANTINED | — |
+| D15 | 4.5.1 | **Dockets unchanged**; Expenses gain Company-expense vs Personal-reimbursement | QUARANTINED | — |
+| D16 | 6.1.1 | "Fold Jobs and Sites" = **site dissolution**. Stage that plan | QUARANTINED | — |
+| D17 | 7.1.2 | Merged duplicate clients kept as **alias**, never hard-deleted | QUARANTINED | — |
+| D18 | 7.2.2 | Per-tender CRM portal = **workspace**. Mock-up round owed | QUARANTINED | — |
+| D19 | 7.3.2 | Communicator: all three behaviours eventually; not now | QUARANTINED | — |
+| D20 | 8.2.1 | **Release S2a** (bidStatus schema) so Submitted is real | QUARANTINED | — |
+| D21 | 8.2.5.4 | Material-density editing waits inside the Rates & Lists redesign | QUARANTINED | — |
+| D22 | 8.2.7 | Shift Period **pulls** the rate; all SoW fields editable; edits never push back | QUARANTINED | — |
+| D23 | 2.6.5 | Fuel/Operations → Tendering (pricing) + Projects (driver-facing fuel/tip routing) | QUARANTINED | — |
+| D24 | 1.2.1 | Theme sequencing **option C** — token cleanup on the most-used screens first | REGISTERED | `docs/plans/theme-system-plan.md:4` |
+| D25 | 2.1 | Every data domain **can** be shared between companies, **nothing by default**, plus an **Import** option to copy between companies | REGISTERED | `docs/plans/multi-tenant-plan.md:15` |
+| D26 | 2.6.6 | **Finish the Job/Project fold properly** (B-P0a-5…-9); schedule when the board is quiet | REGISTERED | `docs/pr-prompts/BACKLOG.yaml:428` |
+| D27 | 2.8.2 | A missing rate is **"No rate" / "N/A"**, never 0; empty or 0 auto-display as N/A and are excluded from cheapest-source comparison | QUARANTINED | — |
+| D28 | 3.1.1 | IMS permissions: folder-level with inheritance + role grants, **documents require read acknowledgement** | QUARANTINED | — |
+| D29 | 4.1.1 | **Hard-block on qualifications; warn-with-logged-override on age and tenure** | QUARANTINED | — |
+| D30 | 4.1.1f | Requirement = qualification \| training \| age min \| tenure min \| **another skill**; Skill = named bundle (nesting falls out); JobRole requires skills + carries base hourly cost (sysadmin/payroll/superadmin only); eligibility is **computed, never manually ticked**; scheduler filters on it; profile shows what's missing | QUARANTINED | — |
+| D31 | 4.2.5.2 | ERP computes **hours + allowances + penalty FLAGS**; Xero applies the rates | QUARANTINED | — |
+| D32 | 4.4.5.1 | Geofence: **last fence entered wins**; overlaps flagged for supervisor allocation | QUARANTINED | — |
+| D33 | 4.5.2.2 | Expenses ex-GST on screen; Xero push uses a **per-category GST default** | QUARANTINED | — |
+| D34 | 5.1.2 | Deployed seed data: cleanup script **+** delete UI. ⚠️ **Marco runs the script, not an agent.** Also find out how demo seed reached production | REGISTERED | `docs/plans/tender-folder-model-plan.md:6,48` |
+| D35 | 8.2.4 | **Rewrite existing tender numbers** — all came from an import, nothing was ever issued from the ERP, so there is no risk | REGISTERED | `docs/plans/tender-folder-model-plan.md:6,41` |
+| D36 | 8.2.4/8.2.5 | SharePoint decides naming and **supersedes the client filename suffix**: folder `T260817 – Northshore` with shared tender subfolders plus a `Quotes` folder holding one subfolder per client | REGISTERED | `docs/plans/tender-folder-model-plan.md:6` |
+| D37 | 8.5.1 | Dashboard reports = **named report views with saved filters, pinnable as tabs**; `/reports` redirects | QUARANTINED | — |
+| D38 | 1.2.1 | **All four schemes approved** — IS Teal, Initial, Graphite, Harbour. Mock-up round CLOSED | QUARANTINED | — |
+| D39 | 2.6.7 | **Theme builder replaces Settings › Company › Branding**, folded into SLICE 17 | QUARANTINED | — |
+| D40 | 1.2 | Themes change colour/type/spacing/radius/component styling **only** — never layout or menu positions | REGISTERED | `docs/plans/settings-home-plan.md:314` |
+| D41 | 1.2.1 | Cleanup areas = tendering + CRM + jobs/projects/scheduler **+ shared components** | QUARANTINED | — |
+| D42 | process | **Leave SLICE 0 gate PRs open; never merge them.** ⚠️ log notes #1146/#1149/#1150 were all merged 2026-08-17 and their slice-0 prompts ran — flag this as needing Marco's ruling on whether D42 still stands | REGISTERED | `docs/plans/tender-folder-model-plan.md:6,46` |
+| D43 | 2.2 | Settings Home = **flat by default, Grouped toggle** | REGISTERED | `apps/web/src/pages/settings/SettingsHomePage.tsx:12` |
+| D44 | 2.2 | Search covers **name + description + tab name**, deep-links to the tab | REGISTERED | `apps/web/src/pages/settings/settings-search.ts:5` |
+| D45 | 2.2 | Permission-locked settings **SHOWN, not hidden** — greyed, lock, permission named, working **Request access** | REGISTERED | `apps/web/src/components/SettingsShell.tsx:74` |
+| D46 | 2.2 | Locked grouped at the **BOTTOM** under "Needs access · N" in BOTH views | REGISTERED | `apps/web/src/components/SettingsShell.tsx:74` |
+| D47 | 2.3 | PR Master drafts all §2.3 descriptions from code for one Marco review pass, flagging guesses | REGISTERED | `apps/web/src/components/settings-nav-items.ts:10` |
+| D48 | 2.1 | **Explicit owner + explicit share grants.** Blank `tenantId` is not a valid state (supersedes the 2026-08-04 "null = shared" mechanism; Model A itself unchanged) | REGISTERED | `apps/api/prisma/schema.prisma:45`; `apps/api/prisma/migrations/20260819160000_mt4_slice1_share_tables/migration.sql:1` |
+| D49 | 2.1 | **Master data and reference data only.** Transactions stay company-owned | REGISTERED | `docs/plans/multi-tenant-plan.md:17` |
+| D50 | 2.1 | **Import = a fully independent copy.** No link back, no sync. Import is NOT sharing | REGISTERED | `docs/plans/multi-tenant-plan.md:15` |
+| D51 | 2.1 | **Super admin / system owner only** may grant a share or run an Import | REGISTERED | `docs/plans/multi-tenant-plan.md:19` |
+| D52 | tender-full-export | **Permission = SUPER-USER ONLY, for now.** Deliberately *not* the archive `jobs.view` precedent: that was set when this was framed as a backup, and it is now **information disclosure** — a whole tender including internal notes and a document index leaving the system. Ship it restricted; widen later. | REGISTERED | `docs/plans/tender-full-export-plan.md:15` |
+| D53 | tender-full-export | **Scope = BULK over the filtered register only.** One entry point, mirroring the CSV export fixed in #1146 (respects active filter chips, ignores selection). **No single-tender button on `TenderDetailPage`** — one code path, one permission check. | REGISTERED | `docs/plans/tender-full-export-plan.md:16` |
+| D54 | rates s11c | **Build the PR now, held.** `pr-rates-s11c-drop-legacy-tables` gets `backfill: false` **with an explicit note that this is a DROP, not a data transform** — the field must not read as "harmless". `escalates: true` means arming builds a reviewable PR and applies `do-not-merge`; **the DROP happens at MERGE, and Marco takes a database backup first.** | REGISTERED | `docs/pr-prompts/BACKLOG.yaml:569` |
+| D55 | settings-restructure | **Station 05 drafts the `sot/01` §9 prose**, Marco reviews the PR rather than a blank page. The marker `docs/audits/settings-restructure-sot-reconcile.md` rides in the **same** doc-reconcile PR — CP-24 explicitly permits `sot/ + docs/` (`pr-gates.mjs:326-327`; `docs/**` is absent from `codeRe` by design). The "marker can't ride a sot-only PR" claim is **FALSE** and must stop being repeated. | QUARANTINED | — |
+
+#### Rows needing Marco's attention beyond simple confirmation
+
+- **D48 is the most important row in this register.** It is cited as the stated justification for
+  **live production schema** (`schema.prisma:45` and the SLICE 1 migration). Until today that
+  justification pointed at nothing in the repository.
+- **D42 contradicts observed history.** The log itself notes that #1146 / #1149 / #1150 were all
+  merged on 2026-08-17 and their SLICE 0 prompts ran, which is the opposite of "never merge them".
+  Recorded as-is and **not resolved here** — it needs Marco's ruling on whether D42 still stands.
+- **D55 is QUARANTINED** and is the decision that authorised this register's sibling work. It has no
+  repo anchor. It is transcribed faithfully and awaits confirmation like any other quarantined row.
+
+---
+
 ## Migration History Audit — 2026-06-19
 
 *(Source: `docs/migration-history-audit.md`. Point-in-time findings document —

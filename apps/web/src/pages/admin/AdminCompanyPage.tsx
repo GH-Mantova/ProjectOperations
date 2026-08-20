@@ -5,7 +5,6 @@ import { isAdminUser } from "../../auth/permissions";
 import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { NoAccess } from "../../components/NoAccess";
 import { useConfirm } from "../../hooks/useConfirm";
-import { readApiErrorMessage } from "../../lib/api-errors";
 
 // ── Types shared with backend DTOs ────────────────────────────────────
 type CompanyProfile = {

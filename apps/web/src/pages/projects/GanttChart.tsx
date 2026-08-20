@@ -11,6 +11,7 @@ import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { daysFromPx, shiftDatesByDays } from "./ganttDragMath";
+import { throwIfApiError } from "../../lib/api-errors";
 
 export type GanttTask = {
   id: string;
@@ -451,7 +452,7 @@ function EditTaskModal({
           colour: form.colour
         })
       });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       onSaved();
     } catch (e2) {
       setErr((e2 as Error).message);

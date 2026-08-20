@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useSafetyRealtime } from "../../hooks/useSafetyRealtime";
+import { throwIfApiError } from "../../lib/api-errors";
 
 const MUSTER_EVENT_TYPES = ["safety.muster.changed"] as const;
 
@@ -60,7 +61,7 @@ export function SiteHeadcountWidget({ siteId, refreshInterval = 300_000 }: Props
           setLoadError("You don't have permission to view the on-site headcount (safety.view required).");
           return;
         }
-        throw new Error(await res.text());
+        await throwIfApiError(res);
       }
       setData((await res.json()) as HeadcountData);
       setLoadError(null);

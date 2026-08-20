@@ -369,3 +369,77 @@ describe("variance() — transport threshold", () => {
     expect(result.hasVariance).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Test 5: escalateVariance() — transport-only variance notification body
+//
+// Regression: when only the transport rate had moved, the notification body
+// contained "no live rate available" because the transport clause was absent
+// from the delta array in escalateVariance(). This test asserts the body now
+// correctly includes the transport rate values.
+// ---------------------------------------------------------------------------
+describe("escalateVariance() — transport-only variance notification body", () => {
+  it("includes transport rate in notification body when only transport rate has moved", async () => {
+    // Snapshot: $1,200/day. Live: $1,201.50/day. Delta = $1.50 >= $1.00 threshold.
+    // Disposal and fuel snapshots equal live rates, so no variance on those.
+    const row = makeExistingRow({
+      quotedTransportRatePerDay: new Prisma.Decimal("1200"),
+      quotedDisposalRate: new Prisma.Decimal("85"),
+      quotedFuelPricePerLitre: new Prisma.Decimal("1.85")
+    });
+
+    // scopeWasteItem.findUnique → row
+    // estimatePlantRate.findUnique → live transport rate (1201.5)
+    // operationsSettings.findUnique → live fuel price (same as quoted: 1.85)
+    // notificationTriggerConfig.findUnique → enabled trigger
+    // user.findMany → recipients
+    // tender.findUnique → tender info
+    const scopeWasteFindUnique = jest.fn().mockImplementation(async (args: { where: { id?: string } }) => {
+      const id = args?.where?.id;
+      if (id === "item-1") return row;
+      return null;
+    });
+    const plantRateFindUnique = jest.fn().mockResolvedValue(makeTransportRate(1201.5));
+    const opsFindUnique = jest.fn().mockResolvedValue(makeOpsSettings(1.85));
+    const triggerFindUnique = jest.fn().mockResolvedValue({
+      trigger: "waste_line.rate_variance_escalated",
+      isEnabled: true,
+      recipientUserIds: ["user-recipient"],
+      recipientRoles: []
+    });
+    const tenderFindUnique = jest.fn().mockResolvedValue({
+      tenderNumber: "T-001",
+      title: "Test Tender"
+    });
+    const userFindMany = jest.fn().mockResolvedValue([{ id: "user-recipient" }]);
+    const notificationsCreate = jest.fn().mockResolvedValue({});
+
+    const prisma = {
+      scopeWasteItem: { findUnique: scopeWasteFindUnique },
+      estimatePlantRate: { findUnique: plantRateFindUnique },
+      operationsSettings: { findUnique: opsFindUnique },
+      notificationTriggerConfig: { findUnique: triggerFindUnique },
+      tender: { findUnique: tenderFindUnique },
+      user: { findMany: userFindMany }
+    };
+    // Disposal live rate equals snapshot (85) so disposalDelta = 0 -> no disposal clause
+    const rateResolver = { resolveRate: jest.fn().mockResolvedValue({ value: 85, unit: "t" }) };
+    const notifications = { create: notificationsCreate };
+
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    await svc.escalateVariance("tender-1", "item-1", "actor-1");
+
+    expect(notificationsCreate).toHaveBeenCalledTimes(1);
+
+    const callArgs = notificationsCreate.mock.calls[0]?.[0] as { body?: string } | undefined;
+    const body = callArgs?.body ?? "";
+
+    // The body must mention "transport" and include the two rate values
+    expect(body).toContain("transport");
+    expect(body).toContain("1200");
+    expect(body).toContain("1201.5");
+
+    // Must NOT fall back to the generic "no live rate available" text
+    expect(body).not.toContain("no live rate available");
+  });
+});

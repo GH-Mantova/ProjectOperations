@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { readApiErrorMessage } from "../../lib/api-errors";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -53,7 +53,7 @@ export function GlobalListsSection() {
     setLoadingLists(true);
     try {
       const response = await authFetch("/lists");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as ListSummary[];
       setLists(body);
       if (!selectedSlug && body.length > 0) setSelectedSlug(body[0].slug);
@@ -69,7 +69,7 @@ export function GlobalListsSection() {
       setLoadingItems(true);
       try {
         const response = await authFetch(`/lists/${slug}`);
-        if (!response.ok) throw new Error(await response.text());
+        await throwIfApiError(response);
         setSelected((await response.json()) as ResolvedList);
       } catch (err) {
         setError((err as Error).message);

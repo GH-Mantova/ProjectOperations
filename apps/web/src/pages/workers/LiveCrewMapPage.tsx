@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 // Live crew map — visualises workers who are currently clocked-on (last
@@ -83,7 +84,7 @@ export function LiveCrewMapPage() {
     setError(null);
     try {
       const response = await authFetch("/workers/live-crew");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setRows((await response.json()) as WhosWorkingRow[]);
     } catch (err) {
       setError((err as Error).message);
@@ -112,7 +113,7 @@ export function LiveCrewMapPage() {
           if (!cancelled) setTrail(null);
           return;
         }
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         const body = (await res.json()) as Trail;
         if (!cancelled) setTrail(body);
       } catch (err) {
@@ -145,7 +146,7 @@ export function LiveCrewMapPage() {
     try {
       const params = new URLSearchParams({ lat: String(lat), lng: String(lng), limit: "5" });
       const response = await authFetch(`/workers/live-crew/nearest?${params.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setNearest((await response.json()) as NearestWorker[]);
     } catch (err) {
       setNearestError((err as Error).message);

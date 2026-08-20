@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { throwIfApiError } from "../../lib/api-errors";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -110,7 +111,7 @@ function WorkersRosterTab() {
       params.set("isActive", activeOnly ? "true" : "false");
       if (search.trim()) params.set("search", search.trim());
       const response = await authFetch(`/workers?${params.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setData((await response.json()) as ListResponse);
     } catch (err) {
       setError((err as Error).message);
@@ -336,7 +337,7 @@ function AddWorkerModal({ onClose, onCreated }: { onClose: () => void; onCreated
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onCreated();
     } catch (err) {
       setError((err as Error).message);

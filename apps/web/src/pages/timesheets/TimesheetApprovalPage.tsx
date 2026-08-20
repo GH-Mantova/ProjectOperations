@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { throwIfApiError } from "../../lib/api-errors";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -131,8 +132,8 @@ function PendingTab() {
         authFetch(`/field/timesheets/pending?limit=100`),
         authFetch(`/field/timesheets/summary`)
       ]);
-      if (!listRes.ok) throw new Error(await listRes.text());
-      if (!summaryRes.ok) throw new Error(await summaryRes.text());
+      await throwIfApiError(listRes);
+      await throwIfApiError(summaryRes);
       setData((await listRes.json()) as ListResponse);
       setSummary((await summaryRes.json()) as Summary);
     } catch (err) {
@@ -157,7 +158,7 @@ function PendingTab() {
     }
     try {
       const response = await authFetch(`/field/timesheets/${row.id}/approve`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setToast("Timesheet approved");
       setSelectedIds((s) => {
         const next = new Set(s);
@@ -180,7 +181,7 @@ function PendingTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timesheetIds: ids })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as { approved: number };
       setToast(`${body.approved} timesheet${body.approved === 1 ? "" : "s"} approved`);
       setSelectedIds(new Set());
@@ -393,7 +394,7 @@ function AllTab() {
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
       const response = await authFetch(`/field/timesheets/all?${params.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setData((await response.json()) as ListResponse);
     } catch (err) {
       setError((err as Error).message);
@@ -580,7 +581,7 @@ function ReturnTimesheetModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: reason.trim() })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onReturned();
     } catch (err) {
       setError((err as Error).message);
@@ -669,7 +670,7 @@ function TimesheetDetailDrawer({
     setError(null);
     try {
       const response = await authFetch(`/field/timesheets/${timesheet.id}/approve`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onAction("approved");
     } catch (err) {
       setError((err as Error).message);

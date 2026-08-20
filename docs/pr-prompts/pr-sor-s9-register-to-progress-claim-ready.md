@@ -18,10 +18,16 @@ seed_only: false
 escalates: true
 rollback_strategy: Additive migration only — one nullable FK column (agreed_record_id) on the existing claim_line_items table + one seeded row in notification_trigger_configs (idempotent upsert). Nothing existing altered. Safe to leave on main; down migration drops the nullable column. Forward-only otherwise.
 backfill: false
-requires_file_on_main:
-  - apps/api/src/modules/variations/variation-sor.service.ts
-  - apps/api/src/modules/agreed-records/agreed-record-review.service.ts
 ---
+
+<!-- ARMED 2026-08-20 (06-pr-master). #1159 put this on HOLD because `requires_file_on_main` was
+     unmet pending #1158. #1158 merged 2026-08-18, so BOTH gate files are now on origin/main and the
+     gate can never fail again — `lint-prompt.mjs` rejected the prompt with FILE_GATE_DEAD while the
+     key was still present. Per the linter's own guidance ("drop the key entirely if the dependency is
+     genuinely satisfied") the key is removed rather than re-pointed: the dependency IS satisfied.
+     Verified on origin/main 16402f22: variation-sor.service.ts present, agreed-record-review.service.ts
+     present, and the premise target agreed-record-register.service.ts still absent. -->
+
 
 # SoR S9 — per-job register + feed approved items into ProgressClaim + Director trigger
 

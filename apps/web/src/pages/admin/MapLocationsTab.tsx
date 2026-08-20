@@ -4,8 +4,6 @@ import { AddressAutocomplete, type AddressSuggestion } from "../../components/Ad
 import { LocationsMap } from "../../components/LocationsMap";
 import { useConfirm } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
-import { TipFinderPanel } from "./TipFinderPanel";
-
 // ── Types ─────────────────────────────────────────────────────────────────
 
 type MapLocationKind = "TIP" | "POI";
@@ -715,8 +713,6 @@ export function MapLocationsTab() {
         </table>
       )}
 
-      {/* Tip Finder panel — operational costing tool for picking the best tip */}
-      <TipFinderPanel />
     </section>
   );
 }

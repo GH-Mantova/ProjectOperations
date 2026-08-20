@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useConfirm } from "../../hooks/useConfirm";
 
 // SLICE-4b — Unified API Keys vault UI.
@@ -81,7 +82,7 @@ export function ApiKeyVaultPanel() {
   const loadTypes = useCallback(async () => {
     try {
       const res = await authFetch("/api-keys/types");
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setTypes((await res.json()) as TypeSummary[]);
     } catch (err) {
       setError((err as Error).message);
@@ -93,7 +94,7 @@ export function ApiKeyVaultPanel() {
     setError(null);
     try {
       const res = await authFetch(`/api-keys/credentials?scope=${scope}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setCredentials((await res.json()) as CredentialSummary[]);
     } catch (err) {
       setError((err as Error).message);
@@ -110,8 +111,8 @@ export function ApiKeyVaultPanel() {
         authFetch(`/api-keys/credentials?scope=${scope}`),
         authFetch("/api-keys/types")
       ]);
-      if (!credRes.ok) throw new Error(await credRes.text());
-      if (!typeRes.ok) throw new Error(await typeRes.text());
+      await throwIfApiError(credRes);
+      await throwIfApiError(typeRes);
       setCredentials((await credRes.json()) as CredentialSummary[]);
       setTypes((await typeRes.json()) as TypeSummary[]);
     } catch (err) {
@@ -131,7 +132,7 @@ export function ApiKeyVaultPanel() {
         method: "PATCH",
         body: JSON.stringify({ enabled: !cred.enabled })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await loadCredentials();
       flashMsg(`${cred.name} ${!cred.enabled ? "enabled" : "disabled"}.`);
     } catch (err) {
@@ -149,7 +150,7 @@ export function ApiKeyVaultPanel() {
     if (!ok) return;
     try {
       const res = await authFetch(`/api-keys/credentials/${cred.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       flashMsg(`"${cred.name}" deleted.`);
       await loadCredentials();
     } catch (err) {
@@ -161,7 +162,7 @@ export function ApiKeyVaultPanel() {
     setTestResults((prev) => ({ ...prev, [cred.id]: "testing" }));
     try {
       const res = await authFetch(`/api-keys/credentials/${cred.id}/test`, { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const result = (await res.json()) as TestResult;
       setTestResults((prev) => ({ ...prev, [cred.id]: result }));
       if (result.ok) await loadCredentials();
@@ -176,7 +177,7 @@ export function ApiKeyVaultPanel() {
         method: "PATCH",
         body: JSON.stringify({ order: newOrder })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await loadCredentials();
     } catch (err) {
       setError((err as Error).message);
@@ -516,7 +517,7 @@ function AddKeyModal({
         method: "POST",
         body: JSON.stringify({ name: name.trim(), typeId, scope, key: keyValue.trim() })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await onSaved(`"${name.trim()}" added.`);
     } catch (err) {
       setError((err as Error).message);
@@ -612,7 +613,7 @@ function EditCredModal({
         method: "PATCH",
         body: JSON.stringify({ name: name.trim(), typeId })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await onSaved(`"${name.trim()}" updated.`);
     } catch (err) {
       setError((err as Error).message);
@@ -686,7 +687,7 @@ function RotateKeyModal({
         method: "PATCH",
         body: JSON.stringify({ key: keyValue.trim() })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await onSaved(`Key rotated for "${cred.name}".`);
     } catch (err) {
       setError((err as Error).message);
@@ -761,7 +762,7 @@ function ManageTypesModal({
   const refresh = async () => {
     try {
       const res = await authFetch("/api-keys/types");
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const updated = (await res.json()) as TypeSummary[];
       setLocalTypes(updated);
       await onChanged();
@@ -925,7 +926,7 @@ function RenameTypeInline({
         method: "PATCH",
         body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await onSaved(`"${name.trim()}" updated.`);
     } catch (err) {
       setError((err as Error).message);
@@ -989,7 +990,7 @@ function NewTypeInline({
         method: "POST",
         body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await onSaved(`"${name.trim()}" created.`);
     } catch (err) {
       setError((err as Error).message);

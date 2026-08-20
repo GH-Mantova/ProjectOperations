@@ -1,5 +1,6 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { BidPrioritisationModule } from "../bid-prioritisation/bid-prioritisation.module";
 import { ContractsModule } from "../contracts/contracts.module";
 import { MasterDataModule } from "../master-data/master-data.module";
 import { PlatformModule } from "../platform/platform.module";
@@ -35,7 +36,7 @@ import { ClarificationProposalsController } from "./scope/clarification-proposal
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
 
 @Module({
-  imports: [AuditModule, ContractsModule, MasterDataModule, PlatformModule, RatesModule, WinLikelihoodModule, forwardRef(() => ProjectsModule)],
+  imports: [AuditModule, BidPrioritisationModule, ContractsModule, MasterDataModule, PlatformModule, RatesModule, WinLikelihoodModule, forwardRef(() => ProjectsModule)],
   controllers: [
     // TenderLabelsController must be registered BEFORE TenderingController so
     // GET /tenders/labels hits the static-path handler here, not the greedy

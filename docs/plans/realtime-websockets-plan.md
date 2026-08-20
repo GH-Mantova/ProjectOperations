@@ -1,7 +1,29 @@
 # SLICE-0 plan — Real-time updates for scheduler + safety
 
-**Status:** PLAN ONLY (Marco 2026-08-04). Justification: 2+ people are logged in editing/checking the
-scheduler at once, so stale-until-refresh boards cause collisions. No sub-slice armed.
+**Status:** ✅ **COMPLETE — all three sub-slices are on main.** (Re-measured 2026-08-20 against
+`origin/main` 16402f22 by artifact, not by prompt name.) Original justification: 2+ people are logged
+in editing/checking the scheduler at once, so stale-until-refresh boards cause collisions.
+
+- **RT-1** — SSE transport + JWT auth + scheduler allocations channel + client refetch.
+  `apps/api/src/modules/scheduler/realtime/scheduler-realtime.controller.ts` (`GET /scheduler/realtime/stream`,
+  guarded, 30 s heartbeat); post-commit emits in `schedule-allocation.service.ts`; client refetch via
+  `apps/web/src/pages/scheduler/useSchedulerPresence.ts` → `SchedulerGridPage.tsx:104-109`.
+- **RT-2** — safety live (hazard/incident + muster push).
+  `apps/api/src/modules/safety/realtime/` (controller, emitter, guard); client
+  `apps/web/src/hooks/useSafetyRealtime.ts` consumed by `MusterPage.tsx` and `SiteHeadcountWidget.tsx`.
+- **RT-3** — presence / edit-conflict indicator.
+  `apps/api/src/modules/scheduler/realtime/scheduler-presence.registry.ts`; viewer roster surfaced in
+  `SchedulerGridPage.tsx:105`. RT-1 and RT-3 landed as one implementation.
+
+> ⚠️ **RT-2's prompt could not self-clear, and this is the interesting failure.**
+> `pr-realtime-safety-HOLD.md` sat in the active queue root until 2026-08-20 and `lint-prompt.mjs`
+> **ADMITted** it (size 8) — it did not detect the work as done. Its premise asked whether the safety
+> module referenced `SchedulerRealtimeService`/`scheduler-realtime`, but RT-2 deliberately shipped a
+> *parallel safety-scoped* SSE seam instead of importing the scheduler one, so the premise stayed true
+> against shipped code. Arming it would have burned an agent run rebuilding RT-2.
+> **A premise that names the implementation you expect, rather than the artifact you require, survives
+> its own delivery.** The prompt has been moved to
+> `docs/pr-prompts/superseded/cleared-2026-08-20-verified-shipped/`.
 
 **✅ DECISION LOCKED 2026-08-04 (Marco): transport = SSE (Server-Sent Events), NOT WebSockets.**
 The need is one-way **server → client** push ("something changed, refresh this") — clients still mutate

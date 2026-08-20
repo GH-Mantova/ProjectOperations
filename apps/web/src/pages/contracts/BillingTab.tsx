@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm, usePrompt } from "../../hooks/useConfirm";
+import { throwIfApiError } from "../../lib/api-errors";
 import { ClaimDraftEditor } from "./ClaimDraftEditor";
 
 type MilestoneTrigger = "DATE" | "PERCENT_COMPLETE" | "EVENT";
@@ -120,8 +121,8 @@ export function BillingTab({
         authFetch(`/contracts/${contractId}/milestones`),
         authFetch(`/contracts/${contractId}/revenue-recognition`)
       ]);
-      if (!msResp.ok) throw new Error(await msResp.text());
-      if (!revResp.ok) throw new Error(await revResp.text());
+      await throwIfApiError(msResp);
+      await throwIfApiError(revResp);
       setMilestones((await msResp.json()) as Milestone[]);
       setRevRec((await revResp.json()) as RevRec);
     } catch (err) {
@@ -139,7 +140,7 @@ export function BillingTab({
         method: "POST",
         body: JSON.stringify(dto)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setAdding(false);
       await load();
     } catch (err) {
@@ -153,7 +154,7 @@ export function BillingTab({
         method: "PATCH",
         body: JSON.stringify({ status: "DUE" })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -166,7 +167,7 @@ export function BillingTab({
         method: "POST",
         body: JSON.stringify({})
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
       await onRefresh();
     } catch (err) {
@@ -183,7 +184,7 @@ export function BillingTab({
     if (!ok) return;
     try {
       const response = await authFetch(`/contracts/${contractId}/milestones/${m.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -210,16 +211,16 @@ export function BillingTab({
       if (response.status === 409) {
         // Already drafted this month — open the existing draft instead of erroring.
         const list = await authFetch(`/contracts/${contractId}/claims`);
-        if (!list.ok) throw new Error(await list.text());
+        await throwIfApiError(list);
         const claims = (await list.json()) as ClaimDraft[];
         const existing = claims.find((c) => isSameMonth(c.claimMonth, month));
         if (!existing) throw new Error("Claim already exists for this month but could not be located.");
         const detail = await authFetch(`/contracts/${contractId}/claims/${existing.id}`);
-        if (!detail.ok) throw new Error(await detail.text());
+        await throwIfApiError(detail);
         setEditingDraft((await detail.json()) as ClaimDraft);
         return;
       }
-      throw new Error(await response.text());
+      await throwIfApiError(response);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -237,7 +238,7 @@ export function BillingTab({
         method: "POST",
         body: JSON.stringify({ claimMonth: `${month}-01` })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setPreview((await response.json()) as ProFormaPreview);
     } catch (err) {
       setError((err as Error).message);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { readApiErrorMessage } from "../../lib/api-errors";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -85,7 +85,7 @@ export function QualificationsSection({
     setError(null);
     try {
       const response = await authFetch(`/compliance/workers/${workerProfileId}/qualifications`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setItems((await response.json()) as Qualification[]);
     } catch (err) {
       setError((err as Error).message);
@@ -281,7 +281,7 @@ function QualificationModal({
         : `/compliance/workers/${workerProfileId}/qualifications`;
       const method = existing ? "PATCH" : "POST";
       const response = await authFetch(url, { method, body: JSON.stringify(payload) });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onSaved();
     } catch (e2) {
       setErr((e2 as Error).message);

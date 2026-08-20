@@ -711,6 +711,9 @@ export class ScopeWasteService {
         : null,
       v.fuelDelta != null
         ? `fuel $${v.quotedFuelPricePerLitre ?? "?"}/L -> $${v.currentFuelPricePerLitre ?? "?"}/L`
+        : null,
+      v.transportDelta != null
+        ? `transport $${v.quotedTransportRatePerDay ?? "?"}/day -> $${v.currentTransportRatePerDay ?? "?"}/day`
         : null
     ]
       .filter((s): s is string => s !== null)

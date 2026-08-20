@@ -7,6 +7,7 @@ import {
   useState,
   type PropsWithChildren
 } from "react";
+import { throwIfApiError } from "../lib/api-errors";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
 
@@ -85,7 +86,7 @@ export function PortalAuthProvider({ children }: PropsWithChildren) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = await response.json();
       setSession(body);
     },

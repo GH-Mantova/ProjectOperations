@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EmptyState } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 
 type CorrectiveAction = {
   id: string;
@@ -62,7 +63,7 @@ export function CorrectiveActionsPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (overdueOnly) params.set("overdue", "true");
       const res = await authFetch(`/forms/corrective-actions?${params.toString()}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setData((await res.json()) as PageData);
     } catch (err) {
       setError((err as Error).message);

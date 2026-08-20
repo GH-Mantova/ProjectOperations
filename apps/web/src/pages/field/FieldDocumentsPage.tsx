@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 type Allocation = {
@@ -39,7 +40,7 @@ export function FieldDocumentsPage() {
     (async () => {
       try {
         const allocResponse = await authFetch("/field/my-allocations");
-        if (!allocResponse.ok) throw new Error(await allocResponse.text());
+        await throwIfApiError(allocResponse);
         const allocations = (await allocResponse.json()) as Allocation[];
         const next: Group[] = [];
         for (const allocation of allocations) {

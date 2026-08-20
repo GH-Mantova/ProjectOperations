@@ -416,6 +416,86 @@ run("cluster-none-present",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
+// ── Regression: foreign-cwd premise resolution (fix: queue-sync-pin-lint-repo-root) ──────────
+// Before the fix, queue-sync never set LINT_REPO_ROOT and lint-prompt.mjs fell back to
+// process.cwd(). When queue-sync ran from a foreign cwd (e.g. a worktree or a temp dir),
+// repo-relative premise commands resolved against that cwd and 8 of 11 armed prompts flipped
+// verdict. This test verifies that a run from an alien cwd (no LINT_REPO_ROOT set) produces the
+// same verdict as a run with cwd:REPO -- the auto-detect fallback in lint-prompt.mjs makes it so.
+console.log("\n=== exit 0 ADMIT: foreign-cwd, no LINT_REPO_ROOT -> premise auto-resolves from repo (regression guard)");
+{
+  // Pick a needle that IS present in lint-prompt.mjs so the premise is truthy (work still needed).
+  const NEEDLE = "UNKNOWN_KEY";
+  const premiseCmd = "grep -q \"" + NEEDLE + "\" scripts/pipeline/lint-prompt.mjs";
+  const foreignDir = mkdtempSync(join(tmpdir(), "lint-foreign-"));
+  const fixtureFm =
+    "premise: '" + premiseCmd + "'\n" +
+    "premise_means: " + NEEDLE + " is present in lint-prompt.mjs (work still needed)\n" +
+    "scope:\n  - scripts/pipeline/**\n" +
+    "done_when: node scripts/pipeline/test-lint-prompt.mjs\n" +
+    "size: 2\ngate_allow: none";
+
+  // Run from foreign cwd with NO LINT_REPO_ROOT -- should ADMIT (exit 0) via auto-detect.
+  const fileInForeign = join(foreignDir, "foreign-cwd-ready.md");
+  writeFileSync(fileInForeign, "---\n" + fixtureFm + "\n---\n\n# body\n", "utf8");
+
+  const envWithoutPin = Object.assign({}, process.env);
+  delete envWithoutPin.LINT_REPO_ROOT;
+
+  let codeForeign = 0;
+  let outForeign = "";
+  try {
+    outForeign = execFileSync("node", [LINT, fileInForeign],
+      { cwd: foreignDir, encoding: "utf8", env: envWithoutPin });
+  } catch (ef) {
+    codeForeign = ef.status;
+    outForeign = String(ef.stdout || "") + String(ef.stderr || "");
+  }
+
+  const ok = codeForeign === 0;
+  console.log((ok ? "PASS " : "FAIL ") + "foreign-cwd-no-pin  (exit " + codeForeign + ", wanted 0)");
+  if (!ok) console.log("      " + outForeign.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+
+  rmSync(foreignDir, { recursive: true, force: true });
+}
+// ── FILE_GATE_DEAD: requires_file_on_main path already on origin/main ────────
+// Same class of hole as CLUSTER_DEAD_GATE, one gate type over. A path that
+// can never be absent can never fail, so the slice would dispatch ungated.
+// Applies to ALL prompts, not just cluster ones.
+
+console.log("\n=== exit 1 REJECT: requires_file_on_main path already on origin/main -> FILE_GATE_DEAD");
+// scripts/pipeline/lint-prompt.mjs has been on origin/main since long before this test file.
+runIsolated("file-gate-dead-scalar",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main: scripts/pipeline/lint-prompt.mjs", 1);
+
+console.log("\n=== exit 0 ADMIT: requires_file_on_main path NOT on origin/main -> gate legitimately unmet");
+runIsolated("file-gate-live",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main: apps/api/src/does-not-exist-abcxyz-1234567890.ts", 0);
+
+console.log("\n=== exit 1 REJECT: list form with one dead entry among live ones -> FILE_GATE_DEAD");
+runIsolated("file-gate-dead-list",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main:\n" +
+  "  - apps/api/src/does-not-exist-abcxyz-1234567890.ts\n" +
+  "  - scripts/pipeline/lint-prompt.mjs\n" +
+  "  - apps/api/src/also-not-there-qqqzzz-0987654321.ts", 1);
+
+console.log("\n=== exit 0 ADMIT: git unavailable during file-gate probe -> warning, admitted (fail-safe)");
+// Mirrors the CLUSTER_DEAD_GATE fail-safe test: an unreachable git binary
+// must WARN and SKIP, never reject. One broken tool must not bin the queue.
+runIsolated("file-gate-dead-git-broken",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
+  0,
+  { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

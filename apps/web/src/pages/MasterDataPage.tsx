@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppCard } from "@project-ops/ui";
 import { Link } from "react-router-dom";
+import { throwIfApiError } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { ClientStarRating } from "../components/ClientStarRating";
 
@@ -673,7 +674,7 @@ function ClientPreferencePanel({
         method: "PATCH",
         body: JSON.stringify({ name, preferenceScore: next })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onSaved();
     } catch (err) {
       setError((err as Error).message);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 const HOME_DASHBOARD_ID = "seed-home-dashboard";
@@ -40,8 +41,8 @@ export function DefaultDashboardSection() {
         authFetch("/dashboards"),
         authFetch("/users/me/default-dashboard")
       ]);
-      if (!dashResp.ok) throw new Error(await dashResp.text());
-      if (!currentResp.ok) throw new Error(await currentResp.text());
+      await throwIfApiError(dashResp);
+      await throwIfApiError(currentResp);
       const list = (await dashResp.json()) as Dashboard[];
       const resolved = (await currentResp.json()) as ResolvedDefault;
       setDashboards(list);
@@ -70,7 +71,7 @@ export function DefaultDashboardSection() {
         method: "PATCH",
         body: JSON.stringify({ dashboardId })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const resolved = (await response.json()) as ResolvedDefault;
       setCurrent(resolved);
       setSelection(resolved.isFallback ? "" : resolved.id);

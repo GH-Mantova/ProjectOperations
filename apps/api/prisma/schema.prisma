@@ -359,6 +359,13 @@ model User {
   workerSharesGranted  WorkerShare[]
   contactSharesGranted ContactShare[]
 
+  // EW-1: allocation pool candidacies, rejection authority, capacity, delegate relations.
+  poolCandidacies            TenderAllocationCandidate[] @relation("TenderPoolCandidate")
+  allocationRejections       TenderAllocationRejection[] @relation("TenderRejector")
+  estimatorCapacity          EstimatorCapacity?
+  allocatorDelegatesGranted  AllocatorDelegate[]         @relation("AllocatorDelegateGrantor")
+  allocatorDelegatesReceived AllocatorDelegate[]         @relation("AllocatorDelegateUser")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -1323,6 +1330,9 @@ model Tender {
   // NULL for every tender not currently in the withdrawn-review workflow
   // (all historical rows; every non-WITHDRAWN status).
   withdrawalState     String?                   @map("withdrawal_state")
+  // EW-1: allocation lifecycle state — separate from editorial status.
+  // UNALLOCATED | ALLOCATED | POOL | CLAIMED | REJECTED
+  allocationState     String                    @default("UNALLOCATED") @map("allocation_state")
   // TFM-S2: human-readable project name, used as the stable SharePoint folder
   // name base. Does NOT change when tenderNumber is bumped on revision, which
   // prevents the pre-revision folder being orphaned (stranding-fix invariant).
@@ -1378,12 +1388,16 @@ model Tender {
   // MT-3: required tenant scope (backfilled + enforced NOT NULL by MT-3 migration).
   tenantId            String                    @map("tenant_id")
   tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  // EW-1: allocation pool candidates and rejection history.
+  allocationCandidates TenderAllocationCandidate[]
+  allocationRejections TenderAllocationRejection[]
 
   @@index([status])
   @@index([estimatorUserId])
   @@index([assignedEstimatorId])
   @@index([siteId])
   @@index([tenantId])
+  @@index([allocationState])
   @@map("tenders")
 }
 
@@ -7881,4 +7895,68 @@ model AgreedRecordPricingLine {
 
   @@index([agreedRecordLineId])
   @@map("agreed_record_pricing_lines")
+}
+
+// ─── EW-1: Estimator Allocation + Capacity Schema ─────────────────────────────
+
+model TenderAllocationCandidate {
+  id          String    @id @default(cuid())
+  tenderId    String    @map("tender_id")
+  estimatorId String    @map("estimator_id")
+  offeredAt   DateTime  @default(now()) @map("offered_at")
+  claimedAt   DateTime? @map("claimed_at")
+  tender      Tender    @relation(fields: [tenderId],    references: [id], onDelete: Cascade)
+  estimator   User      @relation("TenderPoolCandidate", fields: [estimatorId], references: [id], onDelete: Cascade)
+  @@unique([tenderId, estimatorId])
+  @@index([tenderId])
+  @@index([estimatorId])
+  @@map("tender_allocation_candidates")
+}
+
+model TenderAllocationRejection {
+  id         String   @id @default(cuid())
+  tenderId   String   @map("tender_id")
+  rejectedBy String   @map("rejected_by")
+  reason     String
+  rejectedAt DateTime @default(now()) @map("rejected_at")
+  tender     Tender   @relation(fields: [tenderId],   references: [id], onDelete: Cascade)
+  rejector   User     @relation("TenderRejector", fields: [rejectedBy], references: [id], onDelete: Restrict)
+  @@index([tenderId])
+  @@map("tender_allocation_rejections")
+}
+
+model EstimatorCapacity {
+  id              String   @id @default(cuid())
+  userId          String   @unique @map("user_id")
+  availabilityPct Int      @default(100) @map("availability_pct")
+  concurrentCap   Int      @default(5)   @map("concurrent_cap")
+  updatedAt       DateTime @updatedAt    @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("estimator_capacity")
+}
+
+model AllocationWeightConfig {
+  id        String   @id @default(cuid())
+  dimension String
+  key       String
+  weight    Decimal  @db.Decimal(5, 2)
+  label     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@unique([dimension, key])
+  @@index([dimension])
+  @@map("allocation_weight_configs")
+}
+
+model AllocatorDelegate {
+  id          String   @id @default(cuid())
+  delegateId  String   @map("delegate_id")
+  grantedById String   @map("granted_by_id")
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  delegate    User     @relation("AllocatorDelegateUser",    fields: [delegateId],  references: [id], onDelete: Cascade)
+  grantedBy   User     @relation("AllocatorDelegateGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+  @@index([delegateId])
+  @@index([endDate])
+  @@map("allocator_delegates")
 }

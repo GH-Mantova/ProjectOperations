@@ -5,6 +5,8 @@ import type { Response } from "express";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { ReportingService } from "./reporting.service";
 import { ReportingExportService, type ReportExportFormat } from "./reporting-export.service";
 
@@ -24,6 +26,10 @@ class ReportRunQueryDto {
   @IsOptional()
   @IsString()
   clientId?: string;
+
+  @IsOptional()
+  @IsString()
+  estimatorId?: string;
 }
 
 class ReportExportQueryDto extends ReportRunQueryDto {
@@ -56,10 +62,15 @@ export class ReportingController {
   @ApiQuery({ name: "to", required: false })
   @ApiQuery({ name: "projectId", required: false })
   @ApiQuery({ name: "clientId", required: false })
+  @ApiQuery({ name: "estimatorId", required: false })
   @ApiResponse({ status: 200, description: "ReportRunResponse." })
   @ApiResponse({ status: 404, description: "Unknown report." })
-  run(@Param("reportKey") reportKey: string, @Query() query: ReportRunQueryDto) {
-    return this.reporting.run(reportKey, query);
+  run(
+    @Param("reportKey") reportKey: string,
+    @Query() query: ReportRunQueryDto,
+    @CurrentUser() currentUser: AuthenticatedUser
+  ) {
+    return this.reporting.run(reportKey, { ...query, currentUser });
   }
 
   @Get(":reportKey/export")
@@ -73,11 +84,15 @@ export class ReportingController {
   async export(
     @Param("reportKey") reportKey: string,
     @Query() query: ReportExportQueryDto,
-    @Res({ passthrough: false }) res: Response
+    @Res({ passthrough: false }) res: Response,
+    @CurrentUser() currentUser: AuthenticatedUser
   ): Promise<void> {
     const { format, ...params } = query;
     if (!format) throw new BadRequestException("format query parameter is required");
-    const { buffer, filename, contentType } = await this.exporter.export(reportKey, format, params);
+    const { buffer, filename, contentType } = await this.exporter.export(reportKey, format, {
+      ...params,
+      currentUser
+    });
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", String(buffer.length));

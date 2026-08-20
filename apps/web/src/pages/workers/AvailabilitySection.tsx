@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
@@ -66,7 +67,7 @@ export function AvailabilitySection({
       body: JSON.stringify({ status })
     });
     if (!r.ok) {
-      setError(await r.text());
+      setError(await readApiErrorMessage(r));
       return;
     }
     void load();
@@ -268,7 +269,7 @@ function AddModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       await discardDraft();
       onSaved();
     } catch (e2) {

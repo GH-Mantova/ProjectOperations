@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { readApiErrorMessage } from "../../lib/api-errors";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { DraftBanner, SaveDraftButton, useFormDraft } from "../../drafts";
@@ -99,7 +99,7 @@ export function ContactsTab({
       const response = await authFetch(
         `/contacts?organisationType=${organisationType}&organisationId=${organisationId}&limit=100`
       );
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as { items: ContactRecord[] };
       setItems(body.items);
     } catch (err) {
@@ -140,7 +140,7 @@ export function ContactsTab({
           lastName: row.lastName
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as { inviteUrl: string };
       setInviteUrl(body.inviteUrl);
       setInviting(row);
@@ -521,7 +521,7 @@ export function ContactFormModal({
         method,
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       if (!existing) await draft.discardDraft();
       onSaved(
         orgChanged ? "Contact moved" : existing ? "Contact updated" : "Contact added"

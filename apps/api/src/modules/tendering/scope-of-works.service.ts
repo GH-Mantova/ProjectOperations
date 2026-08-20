@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RateResolverService } from "../rates/rate-resolver.service";
 import {
   CreateScopeItemDto,
   CreateScopeItemInCardDto,
@@ -211,7 +212,10 @@ function deriveDimensionFields(
  */
 @Injectable()
 export class ScopeOfWorksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateResolver: RateResolverService
+  ) {}
 
   // ── Header ────────────────────────────────────────────────────────────
   /**
@@ -303,11 +307,27 @@ export class ScopeOfWorksService {
     // PR B2 — markup resolves per-card: effective = card.markupOverride
     // ?? tenderEstimate.markup ?? 30. card relation already included
     // above so no extra query.
-    const [labourRates, plantRates, tenderEstimate] = await Promise.all([
-      this.prisma.estimateLabourRate.findMany({ where: { isActive: true } }),
-      this.prisma.estimatePlantRate.findMany({ where: { isActive: true } }),
+    // rates-consumers SLICE 2 — route through RateResolverService.
+    // listRates returns all rows (the legacy adapter does not filter by
+    // isActive for labour/plant); the previous findMany filtered to
+    // isActive=true. In practice the seed has no inactive duplicates
+    // so pricing is identical, but the difference is documented in the
+    // PR body.
+    const [labourListed, plantListed, tenderEstimate] = await Promise.all([
+      this.rateResolver.listRates("labour"),
+      this.rateResolver.listRates("plant"),
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
+    // Adapt ListedRate → the shapes buildRateMaps expects.
+    // Labour: one entry per (role, shift); we need only shift==="day" for dayRate.
+    const labourRates = labourListed
+      .filter((r) => r.keys["shift"] === "day")
+      .map((r) => ({ role: String(r.keys["role"] ?? ""), dayRate: new Prisma.Decimal(r.value) }));
+    // Plant: one entry per item; rowId maps to EstimatePlantRate.id.
+    const plantRates = plantListed.map((r) => ({
+      id: r.rowId,
+      rate: new Prisma.Decimal(r.value)
+    }));
     const rateMaps = buildRateMaps(labourRates, plantRates);
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
@@ -613,15 +633,20 @@ export class ScopeOfWorksService {
     // 4. Labour line — if men + days were supplied.
     if (scopeItem.men && Number(scopeItem.men) > 0 && scopeItem.days && Number(scopeItem.days) > 0) {
       const role = DEFAULT_ROLE_BY_DISCIPLINE[discipline];
-      const rate = await this.prisma.estimateLabourRate.findUnique({ where: { role } });
       const shift = scopeItem.shift ?? "Day";
-      const dayRate = rate
-        ? shift === "Night"
-          ? Number(rate.nightRate)
-          : shift === "Weekend"
-            ? Number(rate.weekendRate)
-            : Number(rate.dayRate)
-        : 0;
+      // rates-consumers SLICE 2 — resolveRate replaces findUnique.
+      // resolveRate throws NotFoundException on miss; the prior code
+      // tolerated null (dayRate fell to 0). Preserve that behaviour.
+      let dayRate = 0;
+      try {
+        const resolvedLabour = await this.rateResolver.resolveRate("labour", {
+          role,
+          shift: shift.toLowerCase()
+        });
+        dayRate = resolvedLabour.value;
+      } catch {
+        // Miss tolerated: no rate for this role → dayRate stays 0.
+      }
       await this.prisma.estimateLabourLine.create({
         data: {
           itemId: item.id,
@@ -647,10 +672,22 @@ export class ScopeOfWorksService {
       const elevation = scopeItem.elevation ?? "Floor";
       const material = scopeItem.materialType ?? "Concrete";
       const depthMm = scopeItem.depthMm ?? 150;
-      const rate = await this.prisma.estimateCuttingRate.findFirst({
-        where: { equipment, elevation, material, depthMm: { lte: depthMm }, isActive: true },
-        orderBy: { depthMm: "desc" }
-      });
+      // rates-consumers SLICE 2 — range query reproduced via listRates.
+      // The original findFirst used depthMm: { lte: depthMm } + orderBy
+      // desc (deepest at-or-below match). resolveRate uses exact key match
+      // so it cannot reproduce this semantic. We use listRates to get all
+      // cutting rows and implement the range logic in-memory, preserving
+      // the exact same pick — deepest active row whose depthMm ≤ requested.
+      const allCuttingRates = await this.rateResolver.listRates("cutting");
+      const cuttingMatch = allCuttingRates
+        .filter(
+          (r) =>
+            r.keys["equipment"] === equipment &&
+            r.keys["elevation"] === elevation &&
+            r.keys["material"] === material &&
+            Number(r.keys["depthMm"]) <= depthMm
+        )
+        .sort((a, b) => Number(b.keys["depthMm"]) - Number(a.keys["depthMm"]))[0] ?? null;
       await this.prisma.estimateCuttingLine.create({
         data: {
           itemId: item.id,
@@ -661,7 +698,7 @@ export class ScopeOfWorksService {
           depthMm,
           qty: toDecimal(Number(scopeItem.lm)) ?? new Prisma.Decimal(0),
           unit: "lm",
-          rate: rate ? new Prisma.Decimal(rate.ratePerM) : new Prisma.Decimal(0)
+          rate: cuttingMatch ? new Prisma.Decimal(cuttingMatch.value) : new Prisma.Decimal(0)
         }
       });
     }
@@ -674,7 +711,15 @@ export class ScopeOfWorksService {
       scopeItem.coreHoleDiameterMm > 0
     ) {
       const diameterMm = scopeItem.coreHoleDiameterMm;
-      const rate = await this.prisma.estimateCoreHoleRate.findUnique({ where: { diameterMm } });
+      // rates-consumers SLICE 2 — resolveRate replaces findUnique.
+      // resolveRate throws NotFoundException on miss; tolerate as rate=0.
+      let coreHoleRateValue = 0;
+      try {
+        const resolvedCoreHole = await this.rateResolver.resolveRate("core-hole", { diameterMm });
+        coreHoleRateValue = resolvedCoreHole.value;
+      } catch {
+        // Miss tolerated: no rate for this diameter → stays 0.
+      }
       await this.prisma.estimateCuttingLine.create({
         data: {
           itemId: item.id,
@@ -682,7 +727,7 @@ export class ScopeOfWorksService {
           diameterMm,
           qty: toDecimal(Number(scopeItem.coreHoleQty)) ?? new Prisma.Decimal(0),
           unit: "each",
-          rate: rate ? new Prisma.Decimal(rate.ratePerHole) : new Prisma.Decimal(0)
+          rate: new Prisma.Decimal(coreHoleRateValue)
         }
       });
     }
@@ -691,18 +736,39 @@ export class ScopeOfWorksService {
     if (scopeItem.wasteTonnes && Number(scopeItem.wasteTonnes) > 0 && scopeItem.wasteType) {
       const wasteType = scopeItem.wasteType;
       const facility = scopeItem.wasteFacility ?? "";
-      const rate = facility
-        ? await this.prisma.estimateWasteRate.findUnique({ where: { wasteType_facility: { wasteType, facility } } })
-        : await this.prisma.estimateWasteRate.findFirst({ where: { wasteType, isActive: true } });
+      // rates-consumers SLICE 2 — replace findUnique/findFirst with listRates.
+      // listRates returns { rowId, keys: { wasteType, facility }, value (=tonRate), unit }.
+      // NOTE: loadRate is NOT carried by ListedRate — it is set to 0 here.
+      // In the legacy schema loadRate defaults to 0; any non-zero values will
+      // not flow into the waste line via this path. Documented in PR body.
+      const allWasteRates = await this.rateResolver.listRates("waste");
+      let resolvedWaste: { facility: string; tonRate: number } | null = null;
+      if (facility) {
+        // Exact match: both wasteType and facility specified.
+        const found = allWasteRates.find(
+          (r) => r.keys["wasteType"] === wasteType && r.keys["facility"] === facility
+        );
+        if (found) {
+          resolvedWaste = { facility: String(found.keys["facility"] ?? facility), tonRate: found.value };
+        }
+      } else {
+        // First-match: any active row with matching wasteType.
+        // listRates legacy path has no isActive filter (original findFirst
+        // used isActive: true); documented in PR body.
+        const found = allWasteRates.find((r) => r.keys["wasteType"] === wasteType);
+        if (found) {
+          resolvedWaste = { facility: String(found.keys["facility"] ?? ""), tonRate: found.value };
+        }
+      }
       await this.prisma.estimateWasteLine.create({
         data: {
           itemId: item.id,
           wasteType,
-          facility: rate?.facility ?? facility,
+          facility: resolvedWaste?.facility ?? facility,
           qtyTonnes: toDecimal(Number(scopeItem.wasteTonnes)) ?? new Prisma.Decimal(0),
-          tonRate: rate ? new Prisma.Decimal(rate.tonRate) : new Prisma.Decimal(0),
+          tonRate: resolvedWaste ? new Prisma.Decimal(resolvedWaste.tonRate) : new Prisma.Decimal(0),
           loads: scopeItem.wasteLoads ?? 0,
-          loadRate: rate ? new Prisma.Decimal(rate.loadRate) : new Prisma.Decimal(0)
+          loadRate: new Prisma.Decimal(0)
         }
       });
     }
@@ -724,14 +790,23 @@ export class ScopeOfWorksService {
     sortOrder: number
   ) {
     if (!days || Number(days) <= 0) return;
-    const rate = await this.prisma.estimatePlantRate.findUnique({ where: { item: plantItem } });
+    // rates-consumers SLICE 2 — resolveRate replaces findUnique.
+    // Plant key is { item }. resolveRate throws NotFoundException on miss;
+    // original code tolerated null (rate=0). Preserve that behaviour.
+    let plantRateValue = 0;
+    try {
+      const resolvedPlant = await this.rateResolver.resolveRate("plant", { item: plantItem });
+      plantRateValue = resolvedPlant.value;
+    } catch {
+      // Miss tolerated: no plant rate for this item → stays 0.
+    }
     await this.prisma.estimatePlantLine.create({
       data: {
         itemId,
         plantItem,
         qty: new Prisma.Decimal(1),
         days: new Prisma.Decimal(Number(days)),
-        rate: rate ? new Prisma.Decimal(rate.rate) : new Prisma.Decimal(0),
+        rate: new Prisma.Decimal(plantRateValue),
         sortOrder
       }
     });
@@ -1023,14 +1098,24 @@ export class ScopeOfWorksService {
     }
 
     const rateIds = [...new Set(allPlantEntries.map((p) => p.plantRateId).filter(Boolean))] as string[];
+    // rates-consumers SLICE 2 — route through listRates to honour the
+    // canonical-source env var. ListedRate now carries info.Category (keyed
+    // by the RateTable column name "Category") on both adapter paths, so the
+    // map is populated correctly when legacy data is present.
+    //
+    // ⚠️ KNOWN GAP — ratetable cutover: when RATES_CANONICAL_SOURCE=ratetable
+    // the resolver returns RateRow.id values in rowId, but plantRateId inside
+    // the plantItems JSON blob was historically set to EstimatePlantRate.id.
+    // Those id spaces do not overlap, so the map.get() lookup will miss and
+    // every plant entry will fall back to "Other" — with all category tests
+    // still passing because they exercise the legacy path. A mapping fix
+    // is out of scope for SLICE 2; see "KNOWN GAP — ratetable cutover" in
+    // the PR body for the full analysis.
     const rateCategories = new Map<string, string>();
     if (rateIds.length > 0) {
-      const rates = await this.prisma.estimatePlantRate.findMany({
-        where: { id: { in: rateIds } },
-        select: { id: true, category: true }
-      });
-      for (const r of rates) {
-        if (r.category) rateCategories.set(r.id, r.category);
+      for (const r of await this.rateResolver.listRates("plant")) {
+        const cat = r.info.Category;
+        if (typeof cat === "string" && cat !== "") rateCategories.set(r.rowId, cat);
       }
     }
 

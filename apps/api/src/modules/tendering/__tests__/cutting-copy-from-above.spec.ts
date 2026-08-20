@@ -6,6 +6,13 @@
 import { NotFoundException } from "@nestjs/common";
 import { ScopeRedesignService } from "../scope-redesign.service";
 
+// rates-consumers SLICE 2 — ScopeRedesignService now takes RateResolverService
+// as its second constructor argument. copyFromAbove does not use the resolver;
+// provide a minimal stub so existing specs compile and run unchanged.
+const minimalRateResolver = {
+  listRates: jest.fn().mockResolvedValue([])
+} as never;
+
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
 type ScopeItem = {
@@ -77,7 +84,7 @@ function buildPrismaMock(opts: {
 describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
   it("404s when the card is not found on this tender", async () => {
     const { prisma } = buildPrismaMock({ card: null });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await expect(svc.copyFromAbove("tender-1", "missing-card", "user-1")).rejects.toBeInstanceOf(
       NotFoundException
     );
@@ -97,7 +104,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     const result = await svc.copyFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 0, warnings: [] });
     expect(mocks.cuttingCreate).not.toHaveBeenCalled();
@@ -116,7 +123,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
         { wbsCode: "DEM1.4", description: "w", length: 5, depth: 0, material: "concrete", materialType: null, cuttingIncluded: true }
       ]
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     const result = await svc.copyFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 0, warnings: [] });
     expect(mocks.cuttingCreate).not.toHaveBeenCalled();
@@ -136,7 +143,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     const result = await svc.copyFromAbove("tender-1", "card-1", "user-1");
     expect(result.created).toBe(1);
     const data = (mocks.cuttingCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
@@ -158,7 +165,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
       ],
       deletedCount: 3
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     const result = await svc.copyFromAbove("tender-1", "card-1", "user-1");
     expect(result.replaced).toBe(3);
     expect(result.created).toBe(1);
@@ -189,7 +196,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await svc.copyFromAbove("tender-1", "card-1", "user-1");
     const data = (mocks.cuttingCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
 
@@ -223,7 +230,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await svc.copyFromAbove("tender-1", "card-1", "user-1");
     const data = (mocks.cuttingCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
     expect(data.material).toBeNull();
@@ -243,7 +250,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
         }
       ]
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     const result = await svc.copyFromAbove("tender-1", "card-1", "user-1");
     expect(result.created).toBe(1); // not blocked
     expect(result.warnings).toEqual(["DEM1.1: depth 2500mm — please verify"]);
@@ -253,7 +260,7 @@ describe("ScopeRedesignService.copyFromAbove (PR B4b)", () => {
 
   it("returns { replaced: 0, created: 0, warnings: [] } when no qualifying items", async () => {
     const { prisma } = buildPrismaMock({ scopeItems: [] });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     const result = await svc.copyFromAbove("tender-1", "card-1", "user-1");
     expect(result).toEqual({ replaced: 0, created: 0, warnings: [] });
   });

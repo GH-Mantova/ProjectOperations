@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RateResolverService } from "../rates/rate-resolver.service";
 import type { Discipline } from "./dto/scope-of-works.dto";
 import { DISCIPLINES } from "./dto/scope-of-works.dto";
 import {
@@ -175,9 +176,15 @@ export function inferCuttingMaterial(item: {
 /**
  * Implement the spec's 6-step rate resolver. Returns null when no rate
  * exists for the resolved key (UI shows "—" rather than erroring).
+ *
+ * rates-consumers SLICE 2 — parameter changed from `prisma: PrismaService`
+ * to `rateResolver: RateResolverService`. Range queries are reproduced
+ * in-memory using `listRates("cutting")` so the canonical-source env var
+ * is honoured. Behaviour (deepest-at-or-below, bucketed Tracksaw/Flush-cut,
+ * max-available fallback) is preserved exactly.
  */
 export async function resolveCuttingRate(
-  prisma: PrismaService,
+  rateResolver: RateResolverService,
   input: {
     equipment: string;
     elevation: string;
@@ -222,59 +229,51 @@ export async function resolveCuttingRate(
   }
 
   // Step 3 — effective depth.
-  let rateRow: { depthMm: number; ratePerM: unknown } | null = null;
+  // Fetch all cutting rates once; reproduce the original range-query
+  // semantics in-memory so canonical-source routing is honoured.
+  const allCuttingRates = await rateResolver.listRates("cutting");
+  // Filter to the resolved equipment/elevation/material combination.
+  const candidates = allCuttingRates.filter(
+    (r) =>
+      r.keys["equipment"] === equipment &&
+      r.keys["elevation"] === effectiveElevation &&
+      r.keys["material"] === effectiveMaterial
+  );
+
+  let rateRow: { depthMm: number; ratePerM: number } | null = null;
   if (equipment === "Tracksaw" || equipment === "Flush-cut") {
     const bucketed = Math.max(25, Math.ceil(depthMm / 25) * 25);
-    rateRow = await prisma.estimateCuttingRate.findFirst({
-      where: {
-        equipment,
-        elevation: effectiveElevation,
-        material: effectiveMaterial,
-        depthMm: bucketed,
-        isActive: true
-      }
-    });
-    // Fall back to the single seeded 25mm row if the bucketed depth isn't
-    // in the table (Tracksaw/Flush-cut only have the one seed row).
-    if (!rateRow) {
-      rateRow = await prisma.estimateCuttingRate.findFirst({
-        where: {
-          equipment,
-          elevation: effectiveElevation,
-          material: effectiveMaterial,
-          depthMm: { gte: 0 },
-          isActive: true
-        }
-      });
+    // Exact bucketed-depth lookup.
+    const exact = candidates.find((r) => Number(r.keys["depthMm"]) === bucketed);
+    if (exact) {
+      rateRow = { depthMm: bucketed, ratePerM: exact.value };
+    } else {
+      // Fall back to the smallest available row (mirrors original gte:0 + any fallback).
+      const fallback = candidates.sort(
+        (a, b) => Number(a.keys["depthMm"]) - Number(b.keys["depthMm"])
+      )[0];
+      if (fallback) rateRow = { depthMm: Number(fallback.keys["depthMm"]), ratePerM: fallback.value };
     }
   } else {
-    rateRow = await prisma.estimateCuttingRate.findFirst({
-      where: {
-        equipment,
-        elevation: effectiveElevation,
-        material: effectiveMaterial,
-        depthMm: { gte: depthMm },
-        isActive: true
-      },
-      orderBy: { depthMm: "asc" }
-    });
-    if (!rateRow) {
-      // If requested depth exceeds the max seeded depth, use the biggest available.
-      rateRow = await prisma.estimateCuttingRate.findFirst({
-        where: {
-          equipment,
-          elevation: effectiveElevation,
-          material: effectiveMaterial,
-          isActive: true
-        },
-        orderBy: { depthMm: "desc" }
-      });
+    // Deepest at-or-above-requested (original: depthMm >= depthMm, asc → first).
+    const atOrAbove = candidates
+      .filter((r) => Number(r.keys["depthMm"]) >= depthMm)
+      .sort((a, b) => Number(a.keys["depthMm"]) - Number(b.keys["depthMm"]));
+    if (atOrAbove.length > 0) {
+      const row = atOrAbove[0];
+      rateRow = { depthMm: Number(row.keys["depthMm"]), ratePerM: row.value };
+    } else {
+      // Requested depth exceeds max seeded depth — use the biggest available.
+      const biggest = candidates.sort(
+        (a, b) => Number(b.keys["depthMm"]) - Number(a.keys["depthMm"])
+      )[0];
+      if (biggest) rateRow = { depthMm: Number(biggest.keys["depthMm"]), ratePerM: biggest.value };
     }
   }
 
   if (!rateRow) return null;
 
-  const baseRate = Number(rateRow.ratePerM);
+  const baseRate = rateRow.ratePerM;
   const methodMultiplier = METHOD_MULTIPLIER[effectiveMethod ?? ""] ?? 1.0;
   const elevationMultiplier = ELEVATION_MULTIPLIER[requestedElevation] ?? 1.0;
   const finalRate = baseRate * methodMultiplier * elevationMultiplier;
@@ -300,12 +299,16 @@ export type CoreHoleRateResult =
  * diameters > 650mm (manual pricing); undersize diameters round up to
  * 32mm; between-listed diameters round up to the next available row.
  *
- * @param prisma - Prisma service used for the EstimateCoreHoleRate lookup
+ * rates-consumers SLICE 2 — parameter changed from `prisma: PrismaService`
+ * to `rateResolver: RateResolverService`. Range query (gte: lookupDiameter,
+ * asc) reproduced in-memory using `listRates("core-hole")`.
+ *
+ * @param rateResolver - RateResolverService for core-hole lookups
  * @param input - diameterMm plus optional elevation/method for multipliers
  * @returns a CoreHoleRateResult, or null when no active rate row matches
  */
 export async function resolveCoreHoleRate(
-  prisma: PrismaService,
+  rateResolver: RateResolverService,
   input: { diameterMm: number; elevation?: string | null; method?: string | null }
 ): Promise<CoreHoleRateResult | null> {
   const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation ?? "Floor"] ?? 1.0;
@@ -316,15 +319,18 @@ export async function resolveCoreHoleRate(
   }
   // Minimum supported diameter is 32mm — anything smaller uses the 32mm rate.
   const lookupDiameter = Math.max(32, input.diameterMm);
-  const rate = await prisma.estimateCoreHoleRate.findFirst({
-    where: { diameterMm: { gte: lookupDiameter }, isActive: true },
-    orderBy: { diameterMm: "asc" }
-  });
-  if (!rate) return null;
+  // rates-consumers SLICE 2 — fetch all core-hole rates and reproduce the
+  // original findFirst(diameterMm >= lookupDiameter, asc) in-memory.
+  const allCoreHoleRates = await rateResolver.listRates("core-hole");
+  const atOrAbove = allCoreHoleRates
+    .filter((r) => Number(r.keys["diameterMm"]) >= lookupDiameter)
+    .sort((a, b) => Number(a.keys["diameterMm"]) - Number(b.keys["diameterMm"]));
+  if (atOrAbove.length === 0) return null;
+  const matched = atOrAbove[0];
   return {
     isPOA: false,
-    ratePerHole: Number(rate.ratePerHole),
-    diameterResolved: rate.diameterMm,
+    ratePerHole: matched.value,
+    diameterResolved: Number(matched.keys["diameterMm"]),
     methodMultiplier,
     elevationMultiplier
   };
@@ -341,7 +347,10 @@ export async function resolveCoreHoleRate(
  */
 @Injectable()
 export class ScopeRedesignService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateResolver: RateResolverService
+  ) {}
 
   // ── Columns ──────────────────────────────────────────────────────────
   /**
@@ -837,11 +846,20 @@ export class ScopeRedesignService {
       where: { tenderId, status: { not: "excluded" } },
       include: { card: true }
     });
-    const [labourRates, plantRates, tenderEstimate] = await Promise.all([
-      this.prisma.estimateLabourRate.findMany({ where: { isActive: true } }),
-      this.prisma.estimatePlantRate.findMany({ where: { isActive: true } }),
+    // rates-consumers SLICE 2 — route through RateResolverService.
+    // See listItems() note in scope-of-works.service.ts for isActive caveat.
+    const [labourListed, plantListed, tenderEstimate] = await Promise.all([
+      this.rateResolver.listRates("labour"),
+      this.rateResolver.listRates("plant"),
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
+    const labourRates = labourListed
+      .filter((r) => r.keys["shift"] === "day")
+      .map((r) => ({ role: String(r.keys["role"] ?? ""), dayRate: new Prisma.Decimal(r.value) }));
+    const plantRates = plantListed.map((r) => ({
+      id: r.rowId,
+      rate: new Prisma.Decimal(r.value)
+    }));
     const rateMaps = buildRateMaps(labourRates, plantRates);
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
@@ -983,11 +1001,16 @@ export class ScopeRedesignService {
     if (dto.itemType === "other-rate") {
       // Other-rate lines reference the admin-managed catalogue directly;
       // multipliers and shift loading don't apply here.
+      // rates-consumers SLICE 2 — replace findUnique(id) with listRates.
+      // listRates("other-rates") returns only active rows (matching the
+      // original `!rate.isActive` guard). We match by rowId to preserve the
+      // "look up by PK" semantic of the original call.
       if (!dto.otherRateId) return { ratePerM: null, ratePerHole: null, lineTotal: null };
-      const rate = await this.prisma.cuttingOtherRate.findUnique({ where: { id: dto.otherRateId } });
-      if (!rate || !rate.isActive) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+      const allOtherRates = await this.rateResolver.listRates("other-rates");
+      const rate = allOtherRates.find((r) => r.rowId === dto.otherRateId) ?? null;
+      if (!rate) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityEach ?? dto.quantityLm ?? 1);
-      const total = Number(rate.rate) * qty;
+      const total = rate.value * qty;
       return {
         ratePerM: null,
         ratePerHole: null,
@@ -999,7 +1022,7 @@ export class ScopeRedesignService {
       if (!dto.equipment || !dto.depthMm) {
         return { ratePerM: null, ratePerHole: null, lineTotal: null };
       }
-      const resolved = await resolveCuttingRate(this.prisma, {
+      const resolved = await resolveCuttingRate(this.rateResolver, {
         equipment: dto.equipment,
         elevation: dto.elevation ?? "Floor",
         material: dto.material ?? "Concrete",
@@ -1018,7 +1041,7 @@ export class ScopeRedesignService {
 
     // core-hole: rate per 10mm depth × depth × qty × elevation × method + shift loading
     if (!dto.diameterMm) return { ratePerM: null, ratePerHole: null, lineTotal: null };
-    const resolved = await resolveCoreHoleRate(this.prisma, {
+    const resolved = await resolveCoreHoleRate(this.rateResolver, {
       diameterMm: dto.diameterMm,
       elevation: dto.elevation ?? "Floor",
       method: dto.method ?? null

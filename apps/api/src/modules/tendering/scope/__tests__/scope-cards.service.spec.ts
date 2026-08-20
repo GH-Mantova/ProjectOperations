@@ -4,6 +4,40 @@ import { ScopeOfWorksService } from "../../scope-of-works.service";
 // PR B1 — card-CRUD service method tests. Uses mocked PrismaService to
 // avoid DB dependency, mirroring the proposals.service.spec.ts pattern.
 
+// rates-consumers SLICE 2 — ScopeOfWorksService now takes RateResolverService
+// as its second constructor argument. These card-CRUD paths do not invoke the
+// resolver; provide a stub for compilation.
+const minimalRateResolver = {
+  listRates: jest.fn().mockResolvedValue([]),
+  resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
+} as never;
+
+/**
+ * Build a RateResolverService stub whose listRates("plant") returns the
+ * supplied plant rate rows as ListedRate objects (with info.Category and
+ * info.Unit populated). Other slugs return [].
+ *
+ * This is the rewired harness for getCardSummary tests: category grouping
+ * is now driven by info.Category on ListedRate, not by estimatePlantRate
+ * rows fetched directly from Prisma.
+ */
+function buildRateResolverWithPlantRates(
+  plantRates: Array<{ id: string; category: string | null }>
+): { listRates: jest.Mock; resolveRate: jest.Mock } {
+  const listed = plantRates.map((r) => ({
+    rowId: r.id,
+    keys: { item: "" },
+    info: { Category: r.category ?? "", Unit: "" },
+    value: 0,
+    unit: "",
+    source: "legacy" as const
+  }));
+  return {
+    listRates: jest.fn(async (slug: string) => (slug === "plant" ? listed : [])),
+    resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
+  };
+}
+
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
 function buildPrismaMock(opts: {
@@ -123,7 +157,7 @@ describe("ScopeOfWorksService.createCard (PR B1)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardAggregateMax: { cardNumber: null, sortOrder: null }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.createCard("tender-1", "user-1", { name: "Demo Site A", discipline: "DEM" });
     const args = (mocks.scopeCardCreate.mock.calls[0]?.[0] ?? {}) as {
       data?: { cardNumber?: number; sortOrder?: number; name?: string; discipline?: string };
@@ -138,7 +172,7 @@ describe("ScopeOfWorksService.createCard (PR B1)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardAggregateMax: { cardNumber: 3, sortOrder: 5 }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.createCard("tender-1", "user-1", { name: "Second DEM card", discipline: "DEM" });
     const args = (mocks.scopeCardCreate.mock.calls[0]?.[0] ?? {}) as {
       data?: { cardNumber?: number; sortOrder?: number };
@@ -149,7 +183,7 @@ describe("ScopeOfWorksService.createCard (PR B1)", () => {
 
   it("trims and truncates name to 200 chars", async () => {
     const { prisma, mocks } = buildPrismaMock();
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const longName = "  " + "x".repeat(250) + "  ";
     await svc.createCard("tender-1", "user-1", { name: longName, discipline: "CIV" });
     const args = (mocks.scopeCardCreate.mock.calls[0]?.[0] ?? {}) as {
@@ -165,7 +199,7 @@ describe("ScopeOfWorksService.renameCard (PR B1)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", name: "Old", discipline: "DEM", cardNumber: 1 }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.renameCard("tender-1", "card-1", "New Name");
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { name?: string };
@@ -175,7 +209,7 @@ describe("ScopeOfWorksService.renameCard (PR B1)", () => {
 
   it("throws NotFoundException when card not in tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(svc.renameCard("tender-1", "missing", "X")).rejects.toBeInstanceOf(
       NotFoundException
     );
@@ -193,7 +227,7 @@ describe("ScopeOfWorksService.changeCardDiscipline (PR B1)", () => {
         scopeItems: []
       }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.changeCardDiscipline("tender-1", "card-1", "DEM");
     expect(result.itemsRenumbered).toBe(0);
     expect(mocks.scopeCardUpdate).not.toHaveBeenCalled();
@@ -215,7 +249,7 @@ describe("ScopeOfWorksService.changeCardDiscipline (PR B1)", () => {
     });
     mocks.cuttingSheetItemUpdateMany.mockResolvedValue({ count: 1 });
     mocks.scopeWasteItemUpdateMany.mockResolvedValue({ count: 1 });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.changeCardDiscipline("tender-1", "card-1", "CIV");
     expect(result.itemsRenumbered).toBe(2);
     expect(result.cuttingRefsUpdated).toBe(2);
@@ -234,7 +268,7 @@ describe("ScopeOfWorksService.deleteCard (PR B1)", () => {
       scopeCardFindFirst: { id: "card-1" },
       scopeItemCount: 0
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.deleteCard("tender-1", "card-1");
     expect(mocks.scopeCardDelete).toHaveBeenCalledTimes(1);
   });
@@ -244,14 +278,14 @@ describe("ScopeOfWorksService.deleteCard (PR B1)", () => {
       scopeCardFindFirst: { id: "card-1" },
       scopeItemCount: 3
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(svc.deleteCard("tender-1", "card-1")).rejects.toBeInstanceOf(ConflictException);
     expect(mocks.scopeCardDelete).not.toHaveBeenCalled();
   });
 
   it("throws NotFoundException when card not in tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(svc.deleteCard("tender-1", "missing")).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -261,7 +295,7 @@ describe("ScopeOfWorksService.reorderCards (PR B1)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindMany: [{ id: "a" }, { id: "b" }, { id: "c" }]
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.reorderCards("tender-1", ["c", "a", "b"]);
     expect(mocks.$transaction).toHaveBeenCalledTimes(1);
     const txArg = mocks.$transaction.mock.calls[0]?.[0] as unknown[];
@@ -273,7 +307,7 @@ describe("ScopeOfWorksService.reorderCards (PR B1)", () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindMany: [{ id: "a" }]
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(svc.reorderCards("tender-1", ["a", "b"])).rejects.toBeInstanceOf(
       BadRequestException
     );
@@ -286,7 +320,7 @@ describe("ScopeOfWorksService.createItemInCard (PR B1)", () => {
       scopeCardFindFirst: { id: "card-1", discipline: "DEM", cardNumber: 1 },
       scopeItemAggregateMaxItemNumber: 2
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.createItemInCard("tender-1", "user-1", "card-1", {
       rowType: "demolition",
       description: "test"
@@ -301,7 +335,7 @@ describe("ScopeOfWorksService.createItemInCard (PR B1)", () => {
 
   it("throws NotFoundException for card not in tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(
       svc.createItemInCard("tender-1", "user-1", "missing", {
         rowType: "demolition",
@@ -339,7 +373,7 @@ describe("ScopeOfWorksService.listCards (PR B1)", () => {
         }
       ]
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.listCards("tender-1");
     expect(result).toHaveLength(2);
     expect(result[0]?.itemCount).toBe(3);
@@ -353,7 +387,7 @@ describe("ScopeOfWorksService.setPlantColumnCount (PR B1.6)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", plantColumnCount: 1 }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setPlantColumnCount("tender-1", "card-1", 3);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { plantColumnCount?: number };
@@ -365,7 +399,7 @@ describe("ScopeOfWorksService.setPlantColumnCount (PR B1.6)", () => {
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: { id: "card-1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(svc.setPlantColumnCount("tender-1", "card-1", 0)).rejects.toBeInstanceOf(
       BadRequestException
     );
@@ -373,7 +407,7 @@ describe("ScopeOfWorksService.setPlantColumnCount (PR B1.6)", () => {
 
   it("throws NotFoundException when card not in tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(svc.setPlantColumnCount("tender-1", "missing", 2)).rejects.toBeInstanceOf(
       NotFoundException
     );
@@ -383,7 +417,7 @@ describe("ScopeOfWorksService.setPlantColumnCount (PR B1.6)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", plantColumnCount: 3 }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setPlantColumnCount("tender-1", "card-1", 1);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { plantColumnCount?: number };
@@ -410,7 +444,7 @@ describe("listCards exposes plantColumnCount (PR B1.6)", () => {
         }
       ]
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.listCards("tender-1");
     expect(result[0]?.plantColumnCount).toBe(4);
   });
@@ -421,7 +455,7 @@ describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardNotes("tender-1", "c1", { cuttingNotes: "Cut at 7am" });
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { cuttingNotes?: string | null; wasteNotes?: string | null };
@@ -434,7 +468,7 @@ describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardNotes("tender-1", "c1", { wasteNotes: "Sort spoil onsite" });
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { cuttingNotes?: string | null; wasteNotes?: string | null };
@@ -447,7 +481,7 @@ describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardNotes("tender-1", "c1", { cuttingNotes: "A", wasteNotes: "B" });
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { cuttingNotes?: string | null; wasteNotes?: string | null };
@@ -460,7 +494,7 @@ describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardNotes("tender-1", "c1", { cuttingNotes: "" });
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { cuttingNotes?: string | null };
@@ -470,7 +504,7 @@ describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
 
   it("throws NotFoundException when card is not in the tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(
       svc.setCardNotes("tender-1", "missing", { cuttingNotes: "x" })
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -483,7 +517,7 @@ describe("ScopeOfWorksService.createItemInCard relaxed DTO (PR B1.7)", () => {
       scopeCardFindFirst: { id: "c1", discipline: "DEM", cardNumber: 1 },
       scopeItemAggregateMaxItemNumber: 0
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.createItemInCard("tender-1", "user-1", "c1", {});
     const args = (mocks.scopeOfWorksItemCreate.mock.calls[0]?.[0] ?? {}) as {
       data?: { rowType?: string; description?: string; wbsCode?: string };
@@ -498,7 +532,7 @@ describe("ScopeOfWorksService.createItemInCard relaxed DTO (PR B1.7)", () => {
       scopeCardFindFirst: { id: "c1", discipline: "DEM", cardNumber: 1 },
       scopeItemAggregateMaxItemNumber: 0
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.createItemInCard("tender-1", "user-1", "c1", { rowType: "demolition" });
     const args = (mocks.scopeOfWorksItemCreate.mock.calls[0]?.[0] ?? {}) as {
       data?: { rowType?: string };
@@ -512,7 +546,7 @@ describe("ScopeOfWorksService.setCardMarkupOverride (PR B2)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardMarkupOverride("tender-1", "c1", 42.5);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { markupOverride?: unknown };
@@ -525,7 +559,7 @@ describe("ScopeOfWorksService.setCardMarkupOverride (PR B2)", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardMarkupOverride("tender-1", "c1", null);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { markupOverride?: unknown };
@@ -535,7 +569,7 @@ describe("ScopeOfWorksService.setCardMarkupOverride (PR B2)", () => {
 
   it("throws NotFoundException when card is not in the tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(
       svc.setCardMarkupOverride("tender-1", "missing", 30)
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -549,7 +583,7 @@ describe("ScopeOfWorksService.resetAllCardMarkup", () => {
       .mockResolvedValueOnce({ count: 3 })
       .mockResolvedValueOnce({ count: 2 })
       .mockResolvedValueOnce({ count: 1 });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.resetAllCardMarkup("tender-1");
     expect(result).toEqual({ cardsReset: 3, wasteSectionsReset: 2, cuttingSectionsReset: 1 });
     const scopeArgs = (mocks.scopeCardUpdateMany.mock.calls[0]?.[0] ?? {}) as {
@@ -575,7 +609,7 @@ describe("ScopeOfWorksService.resetAllCardMarkup", () => {
 
   it("returns zero counts when nothing had an override", async () => {
     const { prisma } = buildPrismaMock();
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.resetAllCardMarkup("tender-1");
     expect(result).toEqual({ cardsReset: 0, wasteSectionsReset: 0, cuttingSectionsReset: 0 });
   });
@@ -586,7 +620,7 @@ describe("ScopeOfWorksService.setCardSectionMarkupOverride", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardSectionMarkupOverride("tender-1", "c1", "waste", 12.5);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { wasteMarkupOverride?: unknown; cuttingMarkupOverride?: unknown };
@@ -599,7 +633,7 @@ describe("ScopeOfWorksService.setCardSectionMarkupOverride", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardSectionMarkupOverride("tender-1", "c1", "cutting", 20);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { wasteMarkupOverride?: unknown; cuttingMarkupOverride?: unknown };
@@ -612,7 +646,7 @@ describe("ScopeOfWorksService.setCardSectionMarkupOverride", () => {
     const { prisma, mocks } = buildPrismaMock({
       scopeCardFindFirst: { id: "c1", tenderId: "tender-1" }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await svc.setCardSectionMarkupOverride("tender-1", "c1", "waste", null);
     const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
       data?: { wasteMarkupOverride?: unknown };
@@ -622,7 +656,7 @@ describe("ScopeOfWorksService.setCardSectionMarkupOverride", () => {
 
   it("throws NotFoundException when card is not in the tender", async () => {
     const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     await expect(
       svc.setCardSectionMarkupOverride("tender-1", "missing", "waste", 15)
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -665,7 +699,7 @@ describe("listCards exposes markupOverride (PR B2)", () => {
         }
       ]
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.listCards("tender-1");
     expect(result[0]?.markupOverride).toBe(45.5);
     expect(result[1]?.markupOverride).toBeNull();
@@ -695,10 +729,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc1", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc1", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Excavator", items: [{ variant: "01T-03T (dry hire)", peakQty: 2, peakDays: 3 }] }
@@ -717,7 +751,7 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
         ]
       }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.peakCrew).toBe(4);
     expect(result.computed.labourDays).toBe(14.3);
@@ -737,13 +771,13 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [
-        { id: "rate-exc1", category: "Excavator" },
-        { id: "rate-exc2", category: "Excavator" }
-      ]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([
+      { id: "rate-exc1", category: "Excavator" },
+      { id: "rate-exc2", category: "Excavator" }
+    ]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       {
@@ -769,10 +803,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-bob", category: "Bobcat" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-bob", category: "Bobcat" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Bobcat", items: [{ variant: null, peakQty: 1, peakDays: 5 }] }
@@ -793,13 +827,13 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [
-        { id: "rate-truck", category: "Truck" },
-        { id: "rate-exc", category: "Excavator" }
-      ]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([
+      { id: "rate-truck", category: "Truck" },
+      { id: "rate-exc", category: "Excavator" }
+    ]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary[0]?.category).toBe("Excavator");
     expect(result.computed.plantSummary[1]?.category).toBe("Truck");
@@ -818,10 +852,12 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-misc", category: null }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    // null category: info.Category = "" — the service guards against empty string,
+    // so the entry falls through to the "Other" bucket. This is the negative control.
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-misc", category: null }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Other", items: [{ variant: "Attachment 16T-25T", peakQty: 1, peakDays: 2 }] }
@@ -835,7 +871,7 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
         scopeItems: [{ men: "5", days: "10", plantItems: null }]
       }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.peakCrew).toBe(5);
     expect(result.computed.labourDays).toBe(10);
@@ -845,7 +881,7 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: { ...cardBase, scopeItems: [] }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.peakCrew).toBe(0);
     expect(result.computed.labourDays).toBe(0);
@@ -864,10 +900,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-t", category: "Truck" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-t", category: "Truck" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Truck", items: [{ variant: "Tipper", peakQty: 1, peakDays: 5 }] }
@@ -894,10 +930,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([
       { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 2, peakDays: 5 }] }
@@ -919,7 +955,7 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
         ]
       }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.plantSummary).toEqual([]);
   });
@@ -937,10 +973,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
             ]
           }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.labourDays).toBe(3);
     expect(result.computed.duration).toBe(14);
@@ -962,10 +998,10 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
           { men: "3", days: "4", plantItems: null },
           { men: "2", days: "3", plantItems: null }
         ]
-      },
-      estimatePlantRates: [{ id: "rate-exc", category: "Excavator" }]
+      }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const rateResolver = buildRateResolverWithPlantRates([{ id: "rate-exc", category: "Excavator" }]);
+    const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.labourDays).toBe(14.3);
     expect(result.computed.duration).toBe(14.3);
@@ -975,7 +1011,7 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
     const { prisma } = buildPrismaMock({
       scopeCardFindFirst: { ...cardBase, scopeItems: [] }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.computed.duration).toBe(0);
   });
@@ -988,9 +1024,79 @@ describe("ScopeOfWorksService.getCardSummary — category grouping + labourDays 
         scopeItems: [{ men: "2", days: "5", plantItems: null }]
       }
     });
-    const svc = new ScopeOfWorksService(prisma as never);
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
     const result = await svc.getCardSummary("tender-1", "card-1");
     expect(result.overrides.labourDaysOverride).toBe(20.5);
     expect(result.computed.labourDays).toBe(5);
   });
+
+  // KNOWN GAP — ratetable cutover
+  //
+  // When RATES_CANONICAL_SOURCE=ratetable the resolver returns RateRow.id in
+  // rowId (e.g. "rr-plt-exc"). But plantRateId inside the plantItems JSON blob
+  // was historically populated from EstimatePlantRate.id (e.g. "legacy-exc-id").
+  // Those id spaces do NOT overlap, so rateCategories.get(plantRateId) always
+  // misses and every plant entry silently falls to "Other" — even when the
+  // ratetable adapter returns correct info.Category.
+  //
+  // This test is landed as .failing to make the gap visible with tests green.
+  // Fixing it requires either (a) storing RateRow.id in plantRateId at write
+  // time (a write-path change, scope of slice 3/4) or (b) building a reverse
+  // index from item key → category that does not rely on id matching.
+  //
+  // Do NOT delete or skip this test. Its job is to fail loudly when ratetable
+  // mode is active, so the gap is not silently inherited by the next refactor.
+  it.failing(
+    "KNOWN GAP: ratetable mode — category lookup misses because plantRateId space != RateRow.id space",
+    async () => {
+      const { prisma } = buildPrismaMock({
+        scopeCardFindFirst: {
+          ...cardBase,
+          scopeItems: [
+            {
+              men: "1",
+              days: "1",
+              plantItems: [
+                {
+                  columnIndex: 1,
+                  // plantRateId holds a legacy EstimatePlantRate.id
+                  plantRateId: "legacy-exc-id",
+                  description: "Excavator 01T-03T",
+                  qty: 1,
+                  days: 5
+                }
+              ]
+            }
+          ]
+        }
+      });
+      // Simulate ratetable adapter: rowId is a RateRow.id, NOT the legacy id.
+      // The category is correct in info.Category, but the id does not match.
+      const rateResolver = {
+        listRates: jest.fn(async (slug: string) =>
+          slug === "plant"
+            ? [
+                {
+                  rowId: "rr-plt-exc", // RateRow.id — different space from plantRateId
+                  keys: { Item: "Excavator 01T-03T" },
+                  info: { Category: "Excavator", Unit: "day" },
+                  value: 800,
+                  unit: "day",
+                  source: "ratetable" as const
+                }
+              ]
+            : []
+        ),
+        resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
+      };
+      const svc = new ScopeOfWorksService(prisma as never, rateResolver as never);
+      const result = await svc.getCardSummary("tender-1", "card-1");
+      // This assertion SHOULD pass but currently FAILS because the id-space
+      // mismatch causes the category to fall to "Other". The .failing wrapper
+      // means the test suite stays green while loudly documenting the gap.
+      expect(result.computed.plantSummary).toEqual([
+        { category: "Excavator", items: [{ variant: "01T-03T", peakQty: 1, peakDays: 5 }] }
+      ]);
+    }
+  );
 });

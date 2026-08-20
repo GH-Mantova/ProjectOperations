@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useConfirm } from "../../hooks/useConfirm";
 
 type AccessRequestRow = {
@@ -39,8 +40,8 @@ export function AdminAccessRequestsTab() {
         authFetch("/admin/access-requests"),
         authFetch("/roles")
       ]);
-      if (!reqRes.ok) throw new Error(await reqRes.text());
-      if (!rolesRes.ok) throw new Error(await rolesRes.text());
+      await throwIfApiError(reqRes);
+      await throwIfApiError(rolesRes);
       const requests = (await reqRes.json()) as AccessRequestRow[];
       const rolesData = (await rolesRes.json()) as { items: Role[] } | Role[];
       const rolesList = Array.isArray(rolesData) ? rolesData : rolesData.items;
@@ -78,7 +79,7 @@ export function AdminAccessRequestsTab() {
         method: "POST",
         body: JSON.stringify({ roleIds: [roleId] })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (err) {
       setError((err as Error).message);
@@ -101,7 +102,7 @@ export function AdminAccessRequestsTab() {
       const response = await authFetch(`/admin/access-requests/${row.id}/deny`, {
         method: "POST"
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setRows((prev) => prev.filter((r) => r.id !== row.id));
     } catch (err) {
       setError((err as Error).message);

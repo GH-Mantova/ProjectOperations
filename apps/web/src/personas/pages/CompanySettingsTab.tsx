@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import {
   hasUnsavedChanges,
   type GlobalSettings,
@@ -86,7 +87,7 @@ export function CompanySettingsTab() {
           allowBringYourOwnKey: global.allowBringYourOwnKey
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const body = (await res.json()) as GlobalSettings;
       setGlobal(body);
       setGlobalInitial(body);
@@ -238,7 +239,7 @@ function PersonaInstructionEditor({
     setLoading(true);
     authFetch(`/personas/${persona.slug}`)
       .then(async (res) => {
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         return (await res.json()) as { companyInstruction: CompanyInstructionRow };
       })
       .then((body) => {
@@ -268,7 +269,7 @@ function PersonaInstructionEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instruction: draft })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const updated = (await res.json()) as CompanyInstructionRow;
       setRow(updated);
       setDraft(updated.instruction);

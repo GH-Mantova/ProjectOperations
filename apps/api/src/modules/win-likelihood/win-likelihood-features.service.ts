@@ -84,6 +84,20 @@ function toSeason(month: number): Season {
 }
 
 /**
+ * Derive lead time in whole days between two dates (end − start), rounded to
+ * the nearest integer. Returns null when either date is absent.
+ *
+ * Exported for EA-1 estimating analytics so the arithmetic is not duplicated.
+ * The win-likelihood service uses dueDate − createdAt; EA-1 uses
+ * submittedAt − createdAt — the same formula, different field pair.
+ */
+export function deriveLeadTimeDays(dates: { submittedAt: Date | null; createdAt: Date }): number | null {
+  if (!dates.submittedAt) return null;
+  const msPerDay = 86_400_000;
+  return Math.round((dates.submittedAt.getTime() - dates.createdAt.getTime()) / msPerDay);
+}
+
+/**
  * Resolves the "current" outcome for a tender: the head of the append-only
  * supersedes chain — the row that has no supersededBy pointer (i.e. it is not
  * itself superseded).

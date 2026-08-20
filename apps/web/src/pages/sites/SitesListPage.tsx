@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { SiteFormModal } from "./SiteFormModal";
 import { siteJobsCount } from "./sitesListLogic";
 
@@ -40,7 +41,7 @@ export function SitesListPage() {
       if (search.trim()) params.set("q", search.trim());
       params.set("pageSize", "100");
       const response = await authFetch(`/master-data/sites?${params.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as { items: Site[] };
       setItems(body.items);
     } catch (err) {

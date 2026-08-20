@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions";
+import { ESTIMATING_ANALYTICS_REPORT_DEFS } from "./estimating-analytics-report.definitions";
 
 // Cross-module BI reporting layer (slice 1).
 //
@@ -13,7 +15,7 @@ import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions"
 // this slice deliberately stays inside the transactional DB so the
 // tabular/exportable surface ships now, beside the dashboard widget system.
 
-export type ReportParamName = "from" | "to" | "projectId" | "clientId";
+export type ReportParamName = "from" | "to" | "projectId" | "clientId" | "estimatorId";
 
 export interface ReportParameterSpec {
   name: ReportParamName;
@@ -43,6 +45,9 @@ export interface ReportRunParams {
   to?: string;
   projectId?: string;
   clientId?: string;
+  estimatorId?: string;
+  /** D5 role-gating: populated by the controller; undefined in tests (treated as no self-filter). */
+  currentUser?: AuthenticatedUser;
 }
 
 export interface ReportRunResult {
@@ -369,7 +374,8 @@ const REPORT_DEFS: ReportDefinition[] = [
       return { rows, totals };
     }
   },
-  ...TENDER_WINLOSS_REPORT_DEFS
+  ...TENDER_WINLOSS_REPORT_DEFS,
+  ...ESTIMATING_ANALYTICS_REPORT_DEFS
 ];
 
 function toSummary(def: ReportDefinition): ReportDefinitionSummary {

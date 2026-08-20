@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { throwIfApiError } from "../../lib/api-errors";
 import { formTemplateAuthority } from "./formTemplateAuthority";
 import { ImportFromPdfModal } from "./ImportFromPdfModal";
+import { DescribeToGenerateModal } from "./DescribeToGenerateModal";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -154,6 +155,7 @@ export function FormsListPage() {
   const [confirmArchive, setConfirmArchive] = useState<FormTemplate | null>(null);
   const [shareTemplate, setShareTemplate] = useState<FormTemplate | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [showDescribe, setShowDescribe] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -379,6 +381,7 @@ export function FormsListPage() {
           archivedCount={archivedCount}
           onNew={() => void createBlankTemplate()}
           onImport={() => setShowImport(true)}
+          onDescribe={() => setShowDescribe(true)}
           onEdit={(t) => navigate(`/forms/designer/${t.id}`)}
           onDuplicate={(t) => void duplicateTemplate(t)}
           onArchiveConfirm={(t) => setConfirmArchive(t)}
@@ -464,6 +467,16 @@ export function FormsListPage() {
         />
       ) : null}
 
+      {showDescribe ? (
+        <DescribeToGenerateModal
+          onClose={() => setShowDescribe(false)}
+          onCreated={(templateId) => {
+            setShowDescribe(false);
+            navigate(`/forms/designer/${templateId}`);
+          }}
+        />
+      ) : null}
+
       {tab === "my-submissions" ? <MySubmissionsTab loading={loading} submissions={submissions} /> : null}
 
       {tab === "approvals" && canApprove ? (
@@ -493,6 +506,7 @@ function TemplatesTab({
   archivedCount,
   onNew,
   onImport,
+  onDescribe,
   onEdit,
   onDuplicate,
   onArchiveConfirm,
@@ -515,6 +529,7 @@ function TemplatesTab({
   archivedCount: number;
   onNew: () => void;
   onImport: () => void;
+  onDescribe: () => void;
   onEdit: (t: FormTemplate) => void;
   onDuplicate: (t: FormTemplate) => void;
   onArchiveConfirm: (t: FormTemplate) => void;
@@ -546,6 +561,14 @@ function TemplatesTab({
               {showArchived ? "← Back to active" : `Archived${archivedCount ? ` (${archivedCount})` : ""}`}
             </button>
             <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="s7-btn s7-btn--secondary"
+              onClick={onDescribe}
+              title="Describe the form in plain words; AI drafts a template you can review"
+            >
+              Describe a form…
+            </button>
             <button
               type="button"
               className="s7-btn s7-btn--secondary"

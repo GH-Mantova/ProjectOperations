@@ -26,6 +26,8 @@ import { PublicLinkService } from "./public-link.service";
 import { PushExecutorService } from "./push-executor.service";
 import { PushHandlersService } from "./push-handlers.service";
 import { AiFormFillAssistService } from "./ai-form-fill-assist.service";
+import { AiFormDescribeService } from "./ai-form-describe.service";
+import { AiRuleDraftService } from "./ai-rule-draft.service";
 
 /**
  * §13 Forms and Compliance module — wires the template/submission CRUD
@@ -77,7 +79,9 @@ import { AiFormFillAssistService } from "./ai-form-fill-assist.service";
     PublicLinkService,
     PushExecutorService,
     PushHandlersService,
-    AiFormFillAssistService
+    AiFormFillAssistService,
+    AiFormDescribeService,
+    AiRuleDraftService
   ],
   exports: [
     RulesEngineService,

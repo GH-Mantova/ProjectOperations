@@ -4,6 +4,7 @@ import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
+import { throwIfApiError } from "../../lib/api-errors";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
 import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
 import { GanttChart, type GanttTask } from "./GanttChart";
@@ -155,7 +156,7 @@ export function ProjectDetailPage() {
     if (!id) return;
     try {
       const r = await authFetch(`/projects/${id}/revert-to-tender/preflight`);
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       setRevertPreflight(await r.json());
     } catch (err) {
       setError((err as Error).message);
@@ -167,7 +168,7 @@ export function ProjectDetailPage() {
     setRevertBusy(true);
     try {
       const r = await authFetch(`/projects/${id}/revert-to-tender`, { method: "DELETE" });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       const body = (await r.json()) as { tenderId: string };
       setRevertPreflight(null);
       navigate(`/tenders/${body.tenderId}`);
@@ -489,7 +490,7 @@ function ScheduleTab({ project }: { project: ProjectDetail }) {
     setError(null);
     try {
       const r = await authFetch(`/projects/${project.id}/gantt`);
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       setTasks((await r.json()) as GanttTask[]);
     } catch (err) {
       setError((err as Error).message);
@@ -511,7 +512,7 @@ function ScheduleTab({ project }: { project: ProjectDetail }) {
     setError(null);
     try {
       const r = await authFetch(`/projects/${project.id}/gantt/generate`, { method: "POST" });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -737,7 +738,7 @@ function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProj
     setError(null);
     try {
       const response = await authFetch(`/projects/${project.id}/allocations`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setData((await response.json()) as AllocationsResponse);
     } catch (err) {
       setError((err as Error).message);
@@ -768,7 +769,7 @@ function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProj
       const response = await authFetch(`/projects/${project.id}/allocations/${allocId}`, {
         method: "DELETE"
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -1113,7 +1114,7 @@ function AllocateWorkerModal({
           return;
         }
       }
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const payload = (await response.json()) as {
         allocation: unknown;
         warnings: Array<{
@@ -1391,7 +1392,7 @@ function AllocateAssetModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onAllocated();
     } catch (err) {
       setError((err as Error).message);
@@ -1705,7 +1706,7 @@ function AddGanttTaskModal({
           sortOrder: existingCount
         })
       });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       onCreated();
     } catch (e2) {
       setErr((e2 as Error).message);
@@ -1828,7 +1829,7 @@ function RequiredQualificationsModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requiredQualifications: codes })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onSaved();
     } catch (e) {
       setErr((e as Error).message);
@@ -1978,7 +1979,7 @@ function DailyDiaryTab({ project }: { project: ProjectDetail }) {
     setError(null);
     try {
       const r = await authFetch(`/projects/${project.id}/daily-diary?limit=50`);
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       const body = (await r.json()) as { items: DailyDiary[] };
       setItems(body.items);
     } catch (err) {
@@ -2142,7 +2143,7 @@ function DailyDiaryEditor({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ date, ...payload })
           });
-      if (!r.ok) throw new Error(await r.text());
+      await throwIfApiError(r);
       onSaved();
     } catch (e) {
       setErr((e as Error).message);

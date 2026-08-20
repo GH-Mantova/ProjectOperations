@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { PROJECT_STATUSES, PROJECT_STATUS_LABELS } from "../../constants/statuses";
+import { throwIfApiError } from "../../lib/api-errors";
 
 type ProjectRow = {
   id: string;
@@ -60,7 +61,7 @@ export function ProjectsListPage() {
       if (statusFilter) query.set("status", statusFilter);
       if (search) query.set("search", search);
       const response = await authFetch(`/projects?${query.toString()}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setData((await response.json()) as ListResponse);
     } catch (err) {
       setError((err as Error).message);

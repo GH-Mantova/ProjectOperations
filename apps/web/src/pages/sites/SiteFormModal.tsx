@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 
 export type SiteFormClientOption = { id: string; name: string };
 
@@ -60,7 +61,7 @@ export function SiteFormModal({ clients, existing, onClose, onSaved }: SiteFormM
       const url = existing ? `/master-data/sites/${existing.id}` : "/master-data/sites";
       const method = existing ? "PATCH" : "POST";
       const response = await authFetch(url, { method, body: JSON.stringify(payload) });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onSaved();
     } catch (e2) {
       setErr((e2 as Error).message);

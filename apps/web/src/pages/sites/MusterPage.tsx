@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useSafetyRealtime } from "../../hooks/useSafetyRealtime";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
+import { throwIfApiError } from "../../lib/api-errors";
 
 const MUSTER_EVENT_TYPES = ["safety.muster.changed"] as const;
 
@@ -104,7 +105,7 @@ export function MusterPage() {
         setError("Muster event not found.");
         return;
       }
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setEvent((await res.json()) as MusterEvent);
     } catch (err) {
       setError((err as Error).message);

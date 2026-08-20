@@ -654,7 +654,212 @@ function formatValues(values: Record<string, unknown>): string {
     .join(", ");
 }
 
+// ── Hub import preview modal ─────────────────────────────────────────────────
+
+/**
+ * Shown after stageImport returns. Displays errors (no commit allowed),
+ * warnings, and a summary of the all-or-nothing impact before the user
+ * confirms the commit.
+ */
+function HubImportPreviewModal({
+  preview,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  preview: HubImportStageResult;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const canCommit = preview.valid && preview.preview.length > 0;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Import preview"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 40,
+        padding: 20
+      }}
+      onClick={onCancel}
+    >
+      <div
+        className="s7-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(720px, 100%)",
+          maxHeight: "90vh",
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12
+        }}
+      >
+        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
+          Import preview — {preview.tableSlug}
+        </h3>
+
+        {/* Validation errors — blocks commit */}
+        {preview.errors.length > 0 ? (
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 6,
+              background: "rgba(239,68,68,0.08)",
+              borderLeft: "3px solid #ef4444",
+              fontSize: 12
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              Validation errors — fix the file and re-upload
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {preview.errors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* Warnings */}
+        {preview.warnings.length > 0 ? (
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 6,
+              background: "rgba(245,158,11,0.08)",
+              borderLeft: "3px solid #f59e0b",
+              fontSize: 12
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              Warnings ({preview.warnings.length})
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {preview.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* Impact summary */}
+        {preview.valid ? (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 6,
+              background: "var(--surface-raised, #f8fafc)",
+              fontSize: 13
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>All-or-nothing impact</div>
+            <div style={{ display: "flex", gap: 24 }}>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>{preview.impact.replaced}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 11 }}>rows deactivated</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>{preview.impact.inserted}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 11 }}>rows inserted</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>{preview.impact.changed}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 11 }}>key matches (updates)</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Row preview (first 10) */}
+        {preview.valid && preview.preview.length > 0 ? (
+          <details open={preview.preview.length <= 20}>
+            <summary style={{ fontSize: 12, cursor: "pointer" }}>
+              Preview ({preview.preview.length} row{preview.preview.length === 1 ? "" : "s"})
+            </summary>
+            <ul style={{ margin: "4px 0", paddingLeft: 18, fontSize: 12 }}>
+              {preview.preview.slice(0, 50).map((row, i) => (
+                <li key={i}>{row.naturalKey}</li>
+              ))}
+              {preview.preview.length > 50 ? (
+                <li style={{ color: "var(--text-muted)" }}>
+                  … and {preview.preview.length - 50} more
+                </li>
+              ) : null}
+            </ul>
+          </details>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 8 }}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost"
+            onClick={onCancel}
+            disabled={busy}
+            style={{ minHeight: 40 }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary"
+            onClick={onConfirm}
+            disabled={busy || !canCommit}
+            title={
+              !preview.valid
+                ? "Fix validation errors before committing."
+                : preview.preview.length === 0
+                  ? "No rows to import."
+                  : undefined
+            }
+            style={{ minHeight: 40 }}
+          >
+            {busy
+              ? "Committing…"
+              : canCommit
+                ? `Commit ${preview.impact.inserted} row${preview.impact.inserted === 1 ? "" : "s"}`
+                : "Cannot commit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Rate table detail ────────────────────────────────────────────────────
+
+// ── Hub import types ─────────────────────────────────────────────────────────
+
+type HubCandidateRow = {
+  sourceRowIndex: number;
+  cells: Record<string, unknown>;
+  naturalKey: string;
+};
+
+type HubImpact = {
+  replaced: number;
+  inserted: number;
+  changed: number;
+};
+
+type HubImportStageResult = {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  preview: HubCandidateRow[];
+  impact: HubImpact;
+  tableSlug: string;
+};
+
+// ── RateTableDetail ──────────────────────────────────────────────────────────
 
 function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged: () => Promise<void> }) {
   const { authFetch } = useAuth();
@@ -663,6 +868,12 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   const [rowDraft, setRowDraft] = useState<Record<string, unknown> | null>(null);
   const [editRowId, setEditRowId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, unknown> | null>(null);
+
+  // Hub import/export state
+  const [hubExporting, setHubExporting] = useState(false);
+  const [hubImporting, setHubImporting] = useState(false);
+  const [hubImportPreview, setHubImportPreview] = useState<HubImportStageResult | null>(null);
+  const hubFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const columnErrors = useMemo(() => validateColumnStructure(table.columns), [table.columns]);
   const rowErrors = useMemo(
@@ -784,6 +995,76 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
     await onChanged();
   };
 
+  // Cached File object so the commit phase can re-upload without asking the user again.
+  const [hubImportFile, setHubImportFile] = useState<File | null>(null);
+
+  // Hub export: download active rows for this specific table as .xlsx
+  const handleHubExport = async () => {
+    setHubExporting(true);
+    setPendingError(null);
+    try {
+      const res = await authFetch(`/rates/export/${table.slug}`);
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Export failed."));
+      const blob = await res.blob();
+      const filename = `${table.slug}-rates.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setPendingError((err as Error).message);
+    } finally {
+      setHubExporting(false);
+    }
+  };
+
+  // Hub import stage: parse the file without writing anything; store file for commit phase
+  const handleHubImportStage = async (file: File) => {
+    setHubImporting(true);
+    setPendingError(null);
+    setHubImportFile(file);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await authFetch(`/rates/import/${table.slug}`, { method: "POST", body: form });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Import preview failed."));
+      const result = (await res.json()) as HubImportStageResult;
+      setHubImportPreview(result);
+    } catch (err) {
+      setPendingError((err as Error).message);
+      setHubImportFile(null);
+    } finally {
+      setHubImporting(false);
+    }
+  };
+
+  // Hub import commit: re-POST the same file with ?commit=true for the all-or-nothing write
+  const handleHubImportCommit = async () => {
+    if (!hubImportPreview || !hubImportFile) return;
+    setHubImporting(true);
+    setPendingError(null);
+    try {
+      const form = new FormData();
+      form.append("file", hubImportFile);
+      const res = await authFetch(`/rates/import/${table.slug}?commit=true`, {
+        method: "POST",
+        body: form
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Commit failed."));
+      setHubImportPreview(null);
+      setHubImportFile(null);
+      await onChanged();
+    } catch (err) {
+      setPendingError((err as Error).message);
+    } finally {
+      setHubImporting(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="s7-card">
@@ -806,6 +1087,41 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
             {table.description ? (
               <p style={{ marginTop: 8, color: "var(--text-muted)" }}>{table.description}</p>
             ) : null}
+          </div>
+
+          {/* Hub .xlsx import/export for this specific table */}
+          <div style={{ display: "inline-flex", gap: 6, flexShrink: 0, marginTop: 4 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => void handleHubExport()}
+              disabled={hubExporting}
+              title={`Download active rows of "${table.name}" as .xlsx`}
+              style={{ minHeight: 32 }}
+            >
+              {hubExporting ? "Exporting…" : "Export .xlsx"}
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => hubFileInputRef.current?.click()}
+              disabled={hubImporting}
+              title={`Upload an .xlsx file to import rows into "${table.name}". Shows a preview before committing.`}
+              style={{ minHeight: 32 }}
+            >
+              {hubImporting ? "Reading…" : "Import .xlsx"}
+            </button>
+            <input
+              ref={hubFileInputRef}
+              type="file"
+              accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroenabled.12"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleHubImportStage(f);
+                e.target.value = "";
+              }}
+            />
           </div>
         </div>
 
@@ -840,6 +1156,18 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
         onChangeEditDraft={(next) => setEditDraft(next)}
         onDeleteRow={handleDeleteRow}
       />
+
+      {hubImportPreview ? (
+        <HubImportPreviewModal
+          preview={hubImportPreview}
+          busy={hubImporting}
+          onCancel={() => {
+            setHubImportPreview(null);
+            setHubImportFile(null);
+          }}
+          onConfirm={() => void handleHubImportCommit()}
+        />
+      ) : null}
     </div>
   );
 }

@@ -20,7 +20,27 @@ rollback_strategy: Additive migration only — one nullable FK column (agreed_re
 backfill: false
 ---
 
-<!-- ARMED 2026-08-20 (06-pr-master). #1159 put this on HOLD because `requires_file_on_main` was
+<!-- DISARMED 2026-08-20 (06-pr-master), same day it was armed. Marco decided to SPLIT this at the
+     API/web seam rather than run it whole: `size: 9` is the largest thing in the queue, and single
+     nine-scope runs are the shape that historically produces partial work. Splitting lets the API
+     half land and prove itself even if the web half needs a second pass.
+
+     Station 00 disarmed it in the queue tree at 06:19:26Z, 38 seconds after the watcher had QUEUED
+     it — queued, not started, so nothing ran. But main still said `-ready`, so the next tree sync
+     would have re-armed it and run it whole, against the decision. This rename closes that.
+
+     Re-measured before renaming: still ADMIT, size 9, premise alive. It is live work, not stale —
+     it is held for re-shaping, not retired.
+
+     NEXT: split into S9a (API + schema, the first seven scope paths, gate_allow: migrations,
+     escalates: true) and S9b (web — JobSorRegisterPage.tsx + App.tsx, gate_allow: none,
+     escalates: false, cluster: sor-s9, cluster_order: 2) with S9b's `requires_on_main` pointed at a
+     REAL symbol S9a introduces in agreed-record-register.controller.ts — never a marker file.
+     Carry the rollback_strategy onto S9a verbatim; S9b needs none (revert the PR).
+     Keep the provenance note below — it explains why the dead gate key was dropped, not re-pointed.
+
+     ORIGINAL ARMING NOTE FOLLOWS.
+     ARMED 2026-08-20 (06-pr-master). #1159 put this on HOLD because `requires_file_on_main` was
      unmet pending #1158. #1158 merged 2026-08-18, so BOTH gate files are now on origin/main and the
      gate can never fail again — `lint-prompt.mjs` rejected the prompt with FILE_GATE_DEAD while the
      key was still present. Per the linter's own guidance ("drop the key entirely if the dependency is

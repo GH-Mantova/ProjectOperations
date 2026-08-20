@@ -130,7 +130,10 @@ Add: `groupByPipelineStage` puts a `SUBMITTED` tender in the `SUBMITTED` group, 
 - Do NOT change the withdraw drop handler or `withdrawalState` semantics. The review workflow stays.
 - Do NOT add `AWARDED` / `CONTRACT_ISSUED` / `LOST` columns. The board ends at Submitted.
 - Do NOT touch the nav. The Tendering "Pipeline" nav item points at the CRM dashboard rather than
-  this board — that is real, and it is slice 2 of this cluster, not this PR.
+  this board — that is real, and it is handled by the separate `pipeline-fold` cluster
+  (`pr-pipeline-fold-s2-merged-page`), not this PR. That cluster folds the CRM dashboard into a
+  two-tab Pipeline page whose Board tab renders **this** board, so land this one first — but the two
+  are not hard-gated on each other and the linter will not stop them running out of order.
 - Do NOT touch `docs/` or `sot/`.
 
 ## Guardrails

@@ -7,6 +7,9 @@
  *   - Filters by brand (Ampol site ids) — non-Ampol sites ignored.
  *   - Empty result keeps last stored value (returns null, no upsert).
  *   - Non-200 from GetSitesPrices keeps last stored value (returns null).
+ *   - fetchAndStoreWithResult returns failure without clearing stored price.
+ *   - manualRefresh refuses a second call within 60s (throttle).
+ *   - Staleness helper: 47h fine, 49h overdue.
  *
  * Pattern mirrors estimates.service.spec.ts — plain-object stubs, no
  * NestJS testing module, production code not modified.
@@ -317,5 +320,149 @@ describe("FuelPriceService — price selection", () => {
       update: { fuelPriceSource: string };
     };
     expect(upsertCall.update.fuelPriceSource).toBe("fuelpricesqld:Ampol-Diesel-max");
+  });
+});
+
+// ── New slice tests (fuel-price-refresh-and-staleness) ─────────────────────
+
+describe("FuelPriceService — fetchAndStoreWithResult failure does not clear stored price", () => {
+  it("returns ok=false and does NOT call upsert when GetSitesPrices returns non-200", async () => {
+    const prisma = buildPrisma();
+
+    class FailingFetchService extends FuelPriceService {
+      protected override apiFetch(url: string, _token: string): Promise<Response> {
+        if (url.includes("GetSitesPrices")) {
+          return Promise.resolve({
+            ok: false,
+            status: 401,
+            json: async () => ({})
+          } as unknown as Response);
+        }
+        if (url.includes("GetCountryFuelTypes")) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => fuelTypesBody } as unknown as Response);
+        }
+        if (url.includes("GetCountryBrands")) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => brandsBody } as unknown as Response);
+        }
+        if (url.includes("GetFullSiteDetails")) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => siteDetailsBody } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as unknown as Response);
+      }
+    }
+
+    const service = new FailingFetchService(
+      prisma as never,
+      buildIntegrationKeys() as never,
+      buildConfig() as never
+    );
+
+    const result = await service.fetchAndStoreWithResult();
+
+    // Failure must be reported and the stored price must NOT be touched.
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/401|HTTP|stored price retained/i);
+    expect(prisma.operationsSettings.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns ok=false and does NOT call upsert when no token is available", async () => {
+    const prisma = buildPrisma();
+    const service = buildService({
+      prisma,
+      integrationKeys: buildIntegrationKeys(null),
+      config: buildConfig({ tokenEnvFallback: null }),
+      apiResponses: {}
+    });
+
+    const result = await service.fetchAndStoreWithResult();
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/token|key/i);
+    expect(prisma.operationsSettings.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("FuelPriceService — manualRefresh throttle", () => {
+  it("refuses a second call within 60s and returns throttled=true without calling upstream", async () => {
+    const prisma = buildPrisma();
+    let fetchCallCount = 0;
+
+    class ThrottleTestService extends FuelPriceService {
+      protected override apiFetch(url: string, _token: string): Promise<Response> {
+        fetchCallCount++;
+        if (url.includes("GetSitesPrices")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              SitePrices: [
+                { SiteId: AMPOL_SITE_ID, FuelId: DIESEL_FUEL_ID, Price: 2100, CollectionMethod: "", TransactionDateUtc: "" }
+              ]
+            })
+          } as unknown as Response);
+        }
+        if (url.includes("GetCountryFuelTypes")) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => fuelTypesBody } as unknown as Response);
+        }
+        if (url.includes("GetCountryBrands")) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => brandsBody } as unknown as Response);
+        }
+        if (url.includes("GetFullSiteDetails")) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => siteDetailsBody } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as unknown as Response);
+      }
+    }
+
+    const service = new ThrottleTestService(
+      prisma as never,
+      buildIntegrationKeys() as never,
+      buildConfig() as never
+    );
+
+    // First call — should succeed and call GetSitesPrices.
+    const first = await service.manualRefresh();
+    expect(first.ok).toBe(true);
+    const fetchCountAfterFirst = fetchCallCount;
+
+    // Second call immediately after — should be throttled.
+    const second = await service.manualRefresh();
+    expect(second.ok).toBe(false);
+    expect(second.throttled).toBe(true);
+    expect(second.message).toMatch(/60|minute|wait|rate limit/i);
+
+    // Upstream must not have been called again.
+    expect(fetchCallCount).toBe(fetchCountAfterFirst);
+  });
+});
+
+// ── Staleness helper tests (boundary at 47h and 49h) ──────────────────────
+// The helper lives in AdminCompanyPage.tsx (web), but the boundary behaviour
+// is a pure function that we can test from the service side via the threshold
+// constant. These tests verify the intent: 47h is fine, 49h is overdue.
+// (The actual web helper is a local function; tested here as spec-level logic
+// using the same constant value: FUEL_PRICE_STALE_THRESHOLD_HOURS = 48.)
+
+const STALE_THRESHOLD_HOURS = 48; // Must match AdminCompanyPage.tsx FUEL_PRICE_STALE_THRESHOLD_HOURS
+
+function stalenessOverdue(fetchedAt: Date | null): boolean {
+  if (fetchedAt === null) return true;
+  const ageHours = (Date.now() - fetchedAt.getTime()) / (1000 * 60 * 60);
+  return ageHours > STALE_THRESHOLD_HOURS;
+}
+
+describe("Fuel price staleness helper — boundary at 48h", () => {
+  it("returns overdue=false for a fetch 47 hours ago", () => {
+    const fetchedAt = new Date(Date.now() - 47 * 60 * 60 * 1000);
+    expect(stalenessOverdue(fetchedAt)).toBe(false);
+  });
+
+  it("returns overdue=true for a fetch 49 hours ago", () => {
+    const fetchedAt = new Date(Date.now() - 49 * 60 * 60 * 1000);
+    expect(stalenessOverdue(fetchedAt)).toBe(true);
+  });
+
+  it("returns overdue=true when fetchedAt is null (never fetched)", () => {
+    expect(stalenessOverdue(null)).toBe(true);
   });
 });

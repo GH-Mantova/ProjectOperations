@@ -3,6 +3,7 @@ import { AuditModule } from "../audit/audit.module";
 import { RatesModule } from "../rates/rates.module";
 import { EstimatesController } from "./estimates.controller";
 import { EstimatesService } from "./estimates.service";
+import { FuelPriceController } from "./fuel-price.controller";
 import { FuelPriceService } from "./fuel-price.service";
 
 /**
@@ -18,11 +19,14 @@ import { FuelPriceService } from "./fuel-price.service";
  * {@link FuelPriceService} is registered here and runs a daily @Cron job
  * (02:00 UTC) to pull Ampol diesel prices from fuelpricesqld.com.au and
  * write them to OperationsSettings (R3 T-2).
+ *
+ * {@link FuelPriceController} exposes POST /fuel-price/refresh for manual
+ * admin-triggered refreshes (guarded by platform.admin).
  */
 @Module({
   imports: [AuditModule, RatesModule],
-  controllers: [EstimatesController],
+  controllers: [EstimatesController, FuelPriceController],
   providers: [EstimatesService, FuelPriceService],
-  exports: [EstimatesService]
+  exports: [EstimatesService, FuelPriceService]
 })
 export class EstimatesModule {}

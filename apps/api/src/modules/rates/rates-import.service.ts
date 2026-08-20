@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { MaterialKind, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RateTablesService } from "./rate-tables.service";
 
 // ── Sheet names (export writes these; import matches case-insensitively) ─
 const WASTE_SHEET = "Waste Disposal Fees";
@@ -79,9 +80,19 @@ export type ImportApplyResult = {
   total: number;
 };
 
+/**
+ * System actor ID used when the import write-path calls RateTablesService.
+ * RateRow.createdById / updatedById are nullable String fields with no FK
+ * constraint, so a sentinel value is safe and clearly identifies the source.
+ */
+const IMPORT_ACTOR = "system-import";
+
 @Injectable()
 export class RatesImportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateTables: RateTablesService
+  ) {}
 
   async preview(buffer: Buffer): Promise<ImportPreview> {
     const workbook = new ExcelJS.Workbook();
@@ -436,26 +447,47 @@ export class RatesImportService {
   private async applyWaste(
     op: Extract<ImportOperation, { surface: "waste" }>
   ): Promise<void> {
-    const data = {
-      facility: op.values.facility,
-      wasteType: op.values.wasteType,
-      wasteGroup: op.values.wasteGroup,
-      unit: op.values.unit,
-      tonRate: new Prisma.Decimal(op.values.tonRate),
-      loadRate: new Prisma.Decimal(op.values.loadRate)
-    };
-    if (op.op === "update" && op.id) {
-      await this.prisma.estimateWasteRate.update({ where: { id: op.id }, data });
-      return;
-    }
-    // ADD path: upsert on (wasteType, facility) so re-import stays idempotent
-    // if a previous apply already inserted the row.
-    await this.prisma.estimateWasteRate.upsert({
-      where: {
-        wasteType_facility: { wasteType: data.wasteType, facility: data.facility }
-      },
-      create: data,
-      update: data
+    // Route to the correct RateTable based on unit — the legacy EstimateWasteRate table
+    // is unified, but the RateTable projection splits into waste-per-tonne (tonne unit)
+    // and waste-per-m3 (all other units, e.g. m³). The value column name differs too.
+    const isTonne = op.values.unit.toLowerCase() === "tonne";
+    const tableSlug = isTonne ? "waste-per-tonne" : "waste-per-m3";
+
+    // Map of import domain field → RateTable column name for this surface.
+    // Column names must match what the seed created exactly.
+    const fieldToColName: Record<string, string> = isTonne
+      ? {
+          facility: "Facility",
+          wasteType: "Waste type",
+          wasteGroup: "Group",
+          ton: "Rate per tonne",
+          load: "Rate per load"
+        }
+      : {
+          facility: "Facility",
+          wasteType: "Waste type",
+          wasteGroup: "Group",
+          m3: "Rate per m³"
+        };
+
+    // Build cells and find existing row; both are done against live table metadata.
+    const cellsByColName: Record<string, unknown> = isTonne
+      ? {
+          facility: op.values.facility,
+          wasteType: op.values.wasteType,
+          wasteGroup: op.values.wasteGroup ?? "",
+          ton: op.values.tonRate,
+          load: op.values.loadRate
+        }
+      : {
+          facility: op.values.facility,
+          wasteType: op.values.wasteType,
+          wasteGroup: op.values.wasteGroup ?? "",
+          m3: op.values.tonRate
+        };
+
+    await this.upsertRateTableRow(tableSlug, fieldToColName, cellsByColName, {
+      naturalKeyFields: ["facility", "wasteType"]
     });
   }
 
@@ -483,21 +515,101 @@ export class RatesImportService {
   private async applyPlant(
     op: Extract<ImportOperation, { surface: "plant" | "transport" }>
   ): Promise<void> {
-    const data = {
-      item: op.values.item,
-      category: op.values.category,
-      unit: op.values.unit,
-      rate: new Prisma.Decimal(op.values.rate)
+    // Both plant and transport rows live in the "plant" RateTable (the legacy
+    // EstimatePlantRate table stored both, distinguished by unit and category).
+    const fieldToColName: Record<string, string> = {
+      item: "Item",
+      category: "Category",
+      unit: "Unit",
+      rate: "Rate"
     };
-    if (op.op === "update" && op.id) {
-      await this.prisma.estimatePlantRate.update({ where: { id: op.id }, data });
-      return;
-    }
-    await this.prisma.estimatePlantRate.upsert({
-      where: { item: data.item },
-      create: data,
-      update: data
+    const cellsByColName: Record<string, unknown> = {
+      item: op.values.item,
+      category: op.values.category ?? "",
+      unit: op.values.unit,
+      rate: op.values.rate
+    };
+
+    await this.upsertRateTableRow("plant", fieldToColName, cellsByColName, {
+      naturalKeyFields: ["item"]
     });
+  }
+
+  // ── RateTable upsert helper ───────────────────────────────────────────
+
+  /**
+   * Find-then-update-or-create a RateRow in the given RateTable slug,
+   * preserving the same upsert semantics the legacy Prisma calls used.
+   *
+   * `fieldToColName` maps the short domain-field keys used in `cellsByColName`
+   * to the exact column names stored in the DB. This indirection means no
+   * hardcoded column IDs here — column IDs are resolved at runtime from the
+   * live table metadata, so they survive any future seed reorganisation.
+   *
+   * `naturalKeyFields` names the subset of field keys that together form the
+   * natural key (the unique-match criterion for "update vs insert").
+   *
+   * Throws NotFoundException if the table slug does not exist — the caller
+   * should not silently create rows in a non-existent table.
+   */
+  private async upsertRateTableRow(
+    tableSlug: string,
+    fieldToColName: Record<string, string>,
+    cellsByColName: Record<string, unknown>,
+    opts: { naturalKeyFields: string[] }
+  ): Promise<void> {
+    // Look up the table with its columns.
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: tableSlug },
+      include: { columns: { orderBy: { sortOrder: "asc" } } }
+    });
+    if (!table) {
+      throw new NotFoundException(
+        `Import write failed: RateTable with slug "${tableSlug}" not found. ` +
+          `Run seedRateTableProjections to create it before importing.`
+      );
+    }
+
+    // Build a name->id map for fast lookup.
+    const colIdByName = new Map(table.columns.map((c) => [c.name, c.id]));
+
+    // Translate cellsByColName (field-keyed) into cells (column-id-keyed).
+    const cells: Record<string, unknown> = {};
+    for (const [field, colName] of Object.entries(fieldToColName)) {
+      const colId = colIdByName.get(colName);
+      if (!colId) continue; // column absent in this table -- skip gracefully
+      cells[colId] = cellsByColName[field];
+    }
+
+    // Build the natural-key predicate to find an existing row.
+    const keyPredicates: Array<{ colId: string; value: string }> = [];
+    for (const field of opts.naturalKeyFields) {
+      const colName = fieldToColName[field];
+      const colId = colName ? colIdByName.get(colName) : undefined;
+      if (colId) {
+        keyPredicates.push({
+          colId,
+          value: String(cellsByColName[field] ?? "").trim().toLowerCase()
+        });
+      }
+    }
+
+    // Search active rows for a natural-key match.
+    const activeRows = await this.prisma.rateRow.findMany({
+      where: { rateTableId: table.id, isActive: true }
+    });
+    const existingRow = activeRows.find((r) => {
+      const rowCells = (r.cells as Record<string, unknown> | null) ?? {};
+      return keyPredicates.every(
+        ({ colId, value }) => String(rowCells[colId] ?? "").trim().toLowerCase() === value
+      );
+    });
+
+    if (existingRow) {
+      await this.rateTables.updateRow(IMPORT_ACTOR, table.id, existingRow.id, { cells });
+    } else {
+      await this.rateTables.createRow(IMPORT_ACTOR, table.id, { cells });
+    }
   }
 
   // ── Comparators ──────────────────────────────────────────────────────

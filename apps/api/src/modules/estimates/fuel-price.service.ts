@@ -22,6 +22,22 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 /** Rate-limit guard: never call GetSitesPrices more than once per minute. */
 const MIN_PRICE_FETCH_INTERVAL_MS = 60 * 1000;
 
+/**
+ * Result returned by {@link FuelPriceService.fetchAndStoreWithResult}.
+ * ok=true means a new price was fetched and persisted; ok=false means the
+ * last stored price was retained (with a reason).
+ */
+export interface FuelPriceFetchResult {
+  ok: boolean;
+  message: string;
+  /** Present only when ok=true. New price written to OperationsSettings. */
+  pricePerLitre?: number;
+  /** Present only when ok=true. Timestamp written to OperationsSettings. */
+  fetchedAt?: Date;
+  /** Present only when ok=false — indicates throttle was triggered. */
+  throttled?: boolean;
+}
+
 interface SitePrice {
   SiteId: number;
   FuelId: number;
@@ -90,12 +106,18 @@ export class FuelPriceService {
   /**
    * Scheduled job: runs every day at 02:00 UTC.
    * Follows the compliance cron precedent (ComplianceService.runDailyComplianceTasks).
+   * Intentionally ignores the result — unattended crons log warnings but do not surface failures.
    */
   @Cron("0 2 * * *", { name: "fuel-price-daily-fetch", timeZone: "UTC" })
   async runDailyFuelPriceFetch(): Promise<void> {
     this.logger.log("FuelPriceService: starting daily price fetch.");
     try {
-      await this.fetchAndStore();
+      const result = await this.fetchAndStoreWithResult();
+      if (!result.ok) {
+        this.logger.warn({
+          message: `FuelPriceService: daily fetch did not store a new price — ${result.message}`
+        });
+      }
     } catch (err) {
       this.logger.warn({
         message: "FuelPriceService: unhandled error in daily cron — last stored price retained.",
@@ -105,37 +127,68 @@ export class FuelPriceService {
   }
 
   /**
-   * Core fetch-and-store logic. Exposed for testing and for manual triggers.
+   * Manual refresh endpoint entry point. Checks the 60-second throttle
+   * before delegating to the core logic. Returns a structured result the
+   * caller can surface to the user.
    *
-   * Returns the written $/L value, or null if the existing value was kept
-   * (zero valid prices, or any API failure).
+   * The throttle compares against {@link lastPriceFetchAt}, which is updated
+   * inside {@link fetchAndStoreWithResult} when GetSitesPrices is called.
    */
-  async fetchAndStore(): Promise<number | null> {
+  async manualRefresh(): Promise<FuelPriceFetchResult> {
+    const now = Date.now();
+    if (now - this.lastPriceFetchAt < MIN_PRICE_FETCH_INTERVAL_MS) {
+      const secondsAgo = Math.round((now - this.lastPriceFetchAt) / 1000);
+      const waitSeconds = Math.ceil((MIN_PRICE_FETCH_INTERVAL_MS - (now - this.lastPriceFetchAt)) / 1000);
+      this.logger.warn({
+        message: `FuelPriceService: manual refresh refused — GetSitesPrices was called ${secondsAgo}s ago. Wait ${waitSeconds}s.`
+      });
+      return {
+        ok: false,
+        throttled: true,
+        message: `Refresh refused: last fetch was ${secondsAgo}s ago. Please wait ${waitSeconds}s before retrying (paid API rate limit).`
+      };
+    }
+    return this.fetchAndStoreWithResult();
+  }
+
+  /**
+   * Core fetch-and-store logic. Returns a typed result describing what happened.
+   *
+   * On any failure the last stored price is retained — this is the correct
+   * graceful-fallback behaviour. The returned result communicates what happened
+   * so manual callers can surface it; the cron caller ignores the result.
+   *
+   * NOTE: the rate-limit guard for GetSitesPrices is NOT re-checked here — the
+   * daily cron does not need it (it runs once per day), and the manual path
+   * checks via {@link manualRefresh} before calling this.
+   */
+  async fetchAndStoreWithResult(): Promise<FuelPriceFetchResult> {
     const token = await this.resolveToken();
     if (!token) {
-      this.logger.warn({
-        message:
-          "FuelPriceService: no token available (resolveIntegrationKey returned null, env fallback absent). Skipping fetch."
-      });
-      return null;
+      const message = "No API token available (check the fuelpricesqld integration key). Last stored price retained.";
+      this.logger.warn({ message: `FuelPriceService: ${message}` });
+      return { ok: false, message };
     }
 
     const cfg = this.config.get<FuelPriceConfig>("fuelPrice");
     if (!cfg) {
-      this.logger.warn({ message: "FuelPriceService: fuelPrice config missing. Skipping fetch." });
-      return null;
+      const message = "Fuel price configuration missing. Last stored price retained.";
+      this.logger.warn({ message: `FuelPriceService: ${message}` });
+      return { ok: false, message };
     }
 
     // ── Step 1: resolve daily cache (fuel type id, brand ids, site ids) ──────
     const daily = await this.resolveDailyCache(token, cfg);
-    if (!daily) return null;
+    if (!daily) {
+      const message = "Failed to resolve API cache (fuel types/brands/sites). Last stored price retained.";
+      return { ok: false, message };
+    }
 
     const { dieselFuelId, ampolBrandIds, ampolSiteIds } = daily;
     if (dieselFuelId === null) {
-      this.logger.warn({
-        message: `FuelPriceService: fuel type "${cfg.fuelName}" not found in country fuel types. Skipping fetch.`
-      });
-      return null;
+      const message = `Fuel type "${cfg.fuelName}" not found in country fuel types. Last stored price retained.`;
+      this.logger.warn({ message: `FuelPriceService: ${message}` });
+      return { ok: false, message };
     }
 
     this.logger.log({
@@ -145,16 +198,7 @@ export class FuelPriceService {
       ampolSiteCount: ampolSiteIds.size
     });
 
-    // ── Step 2: rate-limit guard for GetSitesPrices ───────────────────────
-    const now = Date.now();
-    if (now - this.lastPriceFetchAt < MIN_PRICE_FETCH_INTERVAL_MS) {
-      this.logger.warn({
-        message: "FuelPriceService: GetSitesPrices called less than 1 minute ago. Skipping to respect rate limit."
-      });
-      return null;
-    }
-
-    // ── Step 3: fetch site prices ─────────────────────────────────────────
+    // ── Step 2: fetch site prices ─────────────────────────────────────────
     const pricesUrl =
       `${cfg.baseUrl}/Price/GetSitesPrices` +
       `?countryId=${cfg.countryId}&geoRegionLevel=${cfg.regionLevel}&geoRegionId=${cfg.regionId}`;
@@ -164,24 +208,23 @@ export class FuelPriceService {
       const response = await this.apiFetch(pricesUrl, token);
       this.lastPriceFetchAt = Date.now();
       if (!response.ok) {
+        const message = `API returned HTTP ${response.status} from GetSitesPrices. Last stored price retained.`;
         this.logger.warn({
-          message: `FuelPriceService: GetSitesPrices returned HTTP ${response.status}. Last stored price retained.`,
+          message: `FuelPriceService: ${message}`,
           url: pricesUrl,
           status: response.status
         });
-        return null;
+        return { ok: false, message };
       }
       const body = (await response.json()) as { SitePrices?: SitePrice[] };
       sitePrices = body.SitePrices ?? [];
     } catch (err) {
-      this.logger.warn({
-        message: `FuelPriceService: network error calling GetSitesPrices. Last stored price retained.`,
-        error: (err as Error).message
-      });
-      return null;
+      const message = `Network error calling GetSitesPrices: ${(err as Error).message}. Last stored price retained.`;
+      this.logger.warn({ message: `FuelPriceService: ${message}` });
+      return { ok: false, message };
     }
 
-    // ── Step 4: filter and pick maximum ──────────────────────────────────
+    // ── Step 3: filter and pick maximum ──────────────────────────────────
     const validPrices = sitePrices
       .filter(
         (row) =>
@@ -192,18 +235,19 @@ export class FuelPriceService {
       .map((row) => row.Price);
 
     if (validPrices.length === 0) {
+      const message = "Zero valid Ampol diesel prices found after filtering. Last stored price retained.";
       this.logger.warn({
-        message:
-          "FuelPriceService: zero valid Ampol diesel prices found after filtering. Last stored price retained.",
+        message: `FuelPriceService: ${message}`,
         totalRows: sitePrices.length,
         dieselFuelId,
         ampolSiteCount: ampolSiteIds.size
       });
-      return null;
+      return { ok: false, message };
     }
 
     const maxRaw = Math.max(...validPrices);
     const pricePerLitre = maxRaw / PRICE_DIVISOR;
+    const fetchedAt = new Date();
 
     this.logger.log({
       message: "FuelPriceService: price resolved.",
@@ -212,19 +256,19 @@ export class FuelPriceService {
       validPriceCount: validPrices.length
     });
 
-    // ── Step 5: persist ───────────────────────────────────────────────────
+    // ── Step 4: persist ───────────────────────────────────────────────────
     await this.prisma.operationsSettings.upsert({
       where: { id: SINGLETON_ID },
       create: {
         id: SINGLETON_ID,
         fuelPricePerLitre: pricePerLitre,
         fuelPriceSource: "fuelpricesqld:Ampol-Diesel-max",
-        fuelPriceFetchedAt: new Date()
+        fuelPriceFetchedAt: fetchedAt
       },
       update: {
         fuelPricePerLitre: pricePerLitre,
         fuelPriceSource: "fuelpricesqld:Ampol-Diesel-max",
-        fuelPriceFetchedAt: new Date()
+        fuelPriceFetchedAt: fetchedAt
       }
     });
 
@@ -232,7 +276,24 @@ export class FuelPriceService {
       message: `FuelPriceService: OperationsSettings updated — $${pricePerLitre.toFixed(3)}/L (source: fuelpricesqld:Ampol-Diesel-max).`
     });
 
-    return pricePerLitre;
+    return {
+      ok: true,
+      message: `Fuel price updated to $${pricePerLitre.toFixed(3)}/L (source: fuelpricesqld:Ampol-Diesel-max).`,
+      pricePerLitre,
+      fetchedAt
+    };
+  }
+
+  /**
+   * Core fetch-and-store logic. Retained for backwards compatibility with
+   * existing tests. Delegates to {@link fetchAndStoreWithResult}.
+   *
+   * @deprecated Use fetchAndStoreWithResult for new callers.
+   * Returns the written $/L value, or null if the existing value was kept.
+   */
+  async fetchAndStore(): Promise<number | null> {
+    const result = await this.fetchAndStoreWithResult();
+    return result.ok ? (result.pricePerLitre ?? null) : null;
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────

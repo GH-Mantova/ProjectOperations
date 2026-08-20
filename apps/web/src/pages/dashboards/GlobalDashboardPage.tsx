@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 
 type DataPoint = { label: string; value: number };
 
@@ -92,7 +93,7 @@ export function GlobalDashboardPage() {
     setError(null);
     try {
       const response = await authFetch(`/dashboards/${encodeURIComponent(id)}/render`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setDashboard((await response.json()) as DashboardRender);
     } catch (err) {
       setError((err as Error).message || "Could not load dashboard.");

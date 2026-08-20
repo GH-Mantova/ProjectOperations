@@ -128,3 +128,29 @@ and #646 are green + mergeable and left unmerged for Marco (escalates:true).
 Build-the-code-PR-now decision stands (`mail-send-managed-identity`, escalates). Marco confirmed he
 will supervise the ops sequence: deploy -> trigger a real access-request -> confirm the email LANDS
 -> only THEN delete the old app-registration secrets (never alongside; LL-36).
+
+---
+
+## D. Transport-capacity grid grouping — **TRANSPORT TYPE IS THE OUTER LEVEL** (Marco, 2026-08-20)
+
+On the `rt-tc` (Transport capacity) rate table, the KEY columns group **transport type first,
+material class second** — the reverse of what the seeding migration
+(`20260715120000_r3_t0_asset_fuel_capacity_ops_settings`) wrote.
+
+**Marco's reasoning, confirmed directly on 2026-08-20:** a truck is the thing you pick; the material
+is what you look up against it. It also turns 6 groups of 4 into 4 groups of 6.
+
+Implemented by `docs/pr-prompts/pr-transport-capacity-column-order-HOLD.md` (slice 3 of the
+`rates-column-hygiene` cluster), which rewrites `sort_order` accordingly.
+
+**Why this entry exists at all.** The prompt asserted *"Marco's call: transport type is the outer
+level"* with **no record anywhere behind it** — a self-attributed decision on a migration that
+rewrites column order on a table every estimator sees. A repo-wide search on `origin/main` for that
+claim returned nothing: zero hits for "transport type is", zero for "outer level" in any relevant
+sense, nothing in this file, nothing in `BACKLOG.yaml`. The only occurrence was the sentence
+asserting it. That is the LL-39 failure mode, and it was caught by asking rather than by assuming.
+It is written down here so the next agent inherits a decision instead of an assertion.
+
+**Still open, and deliberately NOT answered here:** the seeding migration's own comment at
+`migration.sql:59-60` — *"Transport types are the four rigs the Initial Services fleet actually runs
+(Marco to confirm)"* — is a **different** question about the rig list itself. It remains unconfirmed.

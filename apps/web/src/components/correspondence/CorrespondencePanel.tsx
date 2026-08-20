@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 type OwnerKind = "client" | "tender" | "job";
@@ -56,7 +57,7 @@ export function CorrespondencePanel({ ownerKind, ownerId, enabled = true }: Prop
     setError(null);
     try {
       const res = await authFetch(`/correspondence/${ownerKind}/${ownerId}`);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setThreads((await res.json()) as ThreadRow[]);
     } catch (err) {
       setError((err as Error).message);
@@ -104,7 +105,7 @@ export function CorrespondencePanel({ ownerKind, ownerId, enabled = true }: Prop
           threadId: replyThreadId ?? undefined
         })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       resetCompose();
       await load();
     } catch (err) {

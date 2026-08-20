@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { throwIfApiError } from "../../lib/api-errors";
 import { CenteredModal, EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
@@ -59,7 +60,7 @@ export function WorkerDetailPage() {
     setError(null);
     try {
       const response = await authFetch(`/workers/${id}`);
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setWorker((await response.json()) as WorkerDetail);
     } catch (err) {
       setError((err as Error).message);
@@ -84,7 +85,7 @@ export function WorkerDetailPage() {
     setDeactivating(true);
     try {
       const response = await authFetch(`/workers/${worker.id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       navigate("/workers");
     } catch (err) {
       setError((err as Error).message);
@@ -300,7 +301,7 @@ function EditWorkerModal({
           ticketNumbers: form.ticketNumbers.trim() || null
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -575,7 +576,7 @@ function ProvisionMobileAccessModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tempPassword })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       onProvisioned(tempPassword);
     } catch (err) {
       setError((err as Error).message);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 
 export type TimelineEntityType = "Job" | "Tender" | "Client" | "Contact";
@@ -90,7 +91,7 @@ export function Timeline({ entityType, entityId, enabled = true }: Props) {
     try {
       const url = buildUrl(undefined, fromDate || undefined, toDate || undefined);
       const res = await authFetch(url);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const payload = (await res.json()) as { items: TimelineItem[]; nextCursor: string | null };
       setItems(payload.items ?? []);
       setNextCursor(payload.nextCursor ?? null);
@@ -112,7 +113,7 @@ export function Timeline({ entityType, entityId, enabled = true }: Props) {
     try {
       const url = buildUrl(nextCursor, fromDate || undefined, toDate || undefined);
       const res = await authFetch(url);
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const payload = (await res.json()) as { items: TimelineItem[]; nextCursor: string | null };
       // Append older items (server returns newest-first, so appending keeps order)
       setItems((prev) => [...prev, ...(payload.items ?? [])]);
@@ -153,7 +154,7 @@ export function Timeline({ entityType, entityId, enabled = true }: Props) {
         method: "POST",
         body: JSON.stringify({ body: trimmed })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setNoteBody("");
       await load();
     } catch (err) {

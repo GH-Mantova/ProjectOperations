@@ -2,10 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { SECTIONS, partitionSettingsNavItems, type SettingsNavItem } from "../../components/SettingsShell";
+import { searchSettings, type SearchResult } from "./settings-search";
 
 // SettingsHomePage -- SLICE 2 (settings-home-plan.md).
+// SLICE 3 adds a search input at the top; non-empty query renders search
+//   results instead of the full home view.  Results respect the flat/grouped
+//   toggle and preserve the locked card UI (D44/D45/D46).
 //
-// Renders all settings items (open + locked) for the signed-in user.
 // D43: flat view by default; Grouped toggle switches to section headings.
 // D45: locked items are shown greyed with a lock icon and Request access button.
 // D46: locked items always appear at the bottom under a "Needs access -- N" divider,
@@ -151,12 +154,12 @@ function LockedCard({
   );
 }
 
-function OpenCard({ item }: { item: SettingsNavItem }) {
+function OpenCard({ item, href }: { item: SettingsNavItem; href?: string }) {
   const slug = slugFromTo(item.to);
   return (
     <li key={item.to}>
       <Link
-        to={item.to}
+        to={href ?? item.to}
         data-testid={`settings-home-open-${slug}`}
         style={CARD_STYLE}
       >
@@ -166,9 +169,156 @@ function OpenCard({ item }: { item: SettingsNavItem }) {
   );
 }
 
+// ── Search results view ───────────────────────────────────────────────────
+
+function SearchResultCard({
+  result,
+  authFetch
+}: {
+  result: SearchResult;
+  authFetch: (input: string, init?: RequestInit) => Promise<Response>;
+}) {
+  if (result.locked) {
+    return <LockedCard item={result.item} authFetch={authFetch} />;
+  }
+  return <OpenCard item={result.item} href={result.href} />;
+}
+
+function SearchResultsView({
+  query,
+  results,
+  grouped,
+  authFetch
+}: {
+  query: string;
+  results: SearchResult[];
+  grouped: boolean;
+  authFetch: (input: string, init?: RequestInit) => Promise<Response>;
+}) {
+  if (results.length === 0) {
+    return (
+      <p
+        data-testid="settings-home-search-empty"
+        style={{ color: "var(--text-muted)", margin: 0 }}
+      >
+        {`No settings match "${query}".`}
+      </p>
+    );
+  }
+
+  const openResults = results.filter((r) => !r.locked);
+  const lockedResults = results.filter((r) => r.locked);
+
+  if (grouped) {
+    // Grouped: section headings for open results, then locked divider.
+    // Group by original section membership.
+    const sectionGroups = SECTIONS.map((section) => {
+      const sectionTos = new Set(section.items.map((i) => i.to));
+      const sectionOpen = openResults.filter((r) => sectionTos.has(r.item.to));
+      return { ...section, results: sectionOpen };
+    }).filter((sg) => sg.results.length > 0);
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {sectionGroups.map((sg) => (
+          <div key={sg.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <h3
+              className="s7-type-label"
+              style={{
+                margin: 0,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                fontSize: "0.75rem",
+                letterSpacing: "0.05em"
+              }}
+            >
+              {sg.label}
+            </h3>
+            <ul style={GRID_STYLE}>
+              {sg.results.map((r) => (
+                <SearchResultCard
+                  key={r.href}
+                  result={r}
+                  authFetch={authFetch}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
+
+        {lockedResults.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p
+              style={{
+                margin: 0,
+                fontWeight: 600,
+                color: "var(--text-muted)",
+                borderTop: "1px solid var(--border, #e5e7eb)",
+                paddingTop: 16
+              }}
+            >
+              Needs access &mdash; {lockedResults.length}
+            </p>
+            <ul style={GRID_STYLE}>
+              {lockedResults.map((r) => (
+                <SearchResultCard
+                  key={r.href}
+                  result={r}
+                  authFetch={authFetch}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Flat: all open results, then locked divider.
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {openResults.length > 0 && (
+        <ul style={GRID_STYLE}>
+          {openResults.map((r) => (
+            <SearchResultCard key={r.href} result={r} authFetch={authFetch} />
+          ))}
+        </ul>
+      )}
+
+      {lockedResults.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <p
+            style={{
+              margin: 0,
+              fontWeight: 600,
+              color: "var(--text-muted)",
+              borderTop: "1px solid var(--border, #e5e7eb)",
+              paddingTop: 16
+            }}
+          >
+            Needs access &mdash; {lockedResults.length}
+          </p>
+          <ul style={GRID_STYLE}>
+            {lockedResults.map((r) => (
+              <SearchResultCard
+                key={r.href}
+                result={r}
+                authFetch={authFetch}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────
+
 export function SettingsHomePage() {
   const { user, authFetch } = useAuth();
   const [grouped, setGrouped] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Partition each section's items into open/locked.
   const partitioned = SECTIONS.map((section) => {
@@ -178,6 +328,12 @@ export function SettingsHomePage() {
 
   const totalOpen = partitioned.reduce((sum, s) => sum + s.open.length, 0);
   const allLocked = partitioned.flatMap((s) => s.locked);
+
+  // Compute search results when query is non-empty.
+  const trimmedQuery = searchQuery.trim();
+  const searchResults = trimmedQuery
+    ? searchSettings(SECTIONS, user, searchQuery)
+    : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -206,7 +362,37 @@ export function SettingsHomePage() {
         </button>
       </header>
 
-      {grouped ? (
+      {/* SLICE 3: search input */}
+      <div>
+        <input
+          type="search"
+          data-testid="settings-home-search"
+          placeholder="Search settings..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: "100%",
+            maxWidth: 480,
+            padding: "8px 12px",
+            borderRadius: 6,
+            border: "1px solid var(--border, #e5e7eb)",
+            background: "var(--surface, #fff)",
+            color: "var(--text-primary)",
+            fontSize: "0.9rem",
+            boxSizing: "border-box"
+          }}
+        />
+      </div>
+
+      {/* Search results or full home view */}
+      {searchResults !== null ? (
+        <SearchResultsView
+          query={trimmedQuery}
+          results={searchResults}
+          grouped={grouped}
+          authFetch={authFetch}
+        />
+      ) : grouped ? (
         // Grouped: sections with their open items, then a single locked divider at the bottom.
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {partitioned.map((section) =>

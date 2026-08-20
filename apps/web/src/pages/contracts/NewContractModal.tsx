@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 
 type ProjectOption = {
   id: string;
@@ -32,7 +33,7 @@ export function NewContractModal({ onClose }: { onClose: () => void }) {
         authFetch("/projects?limit=100"),
         authFetch("/contracts")
       ]);
-      if (!projectsRes.ok) throw new Error(await projectsRes.text());
+      await throwIfApiError(projectsRes);
       const projectsBody = (await projectsRes.json()) as {
         items?: Array<{ id: string; projectNumber: string; name: string; client?: { name: string } | null }>;
       };
@@ -85,7 +86,7 @@ export function NewContractModal({ onClose }: { onClose: () => void }) {
           notes: notes.trim() || undefined
         })
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const created = (await response.json()) as { id: string };
       navigate(`/contracts/${created.id}`);
     } catch (err) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { FormDraftStore } from "../../drafts";
 import { captureGpsReading } from "../field/useAutoGps";
 import { ConsentPanel, GPS_HARD_BLOCK_MSG } from "../field/GpsConsent";
@@ -344,7 +345,7 @@ export function FormFillPage() {
     (async () => {
       try {
         const res = await authFetch(`/forms/submissions/${submissionId}`);
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         const body = (await res.json()) as Submission;
         if (cancelled) return;
         setSubmission(body);
@@ -447,7 +448,7 @@ export function FormFillPage() {
           method: "PATCH",
           body: JSON.stringify({ values: next, sectionEntries: entries })
         });
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         setSaveStatus("saved");
       } catch {
         setSaveStatus("error");
@@ -680,7 +681,7 @@ export function FormFillPage() {
         setError(GPS_HARD_BLOCK_MSG);
         return;
       }
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       const body = (await res.json()) as { id: string; triggeredRecords?: Array<{ recordType: string; recordId: string }> };
       if (user?.id) {
         try {

@@ -12,7 +12,7 @@ seed_only: false
 escalates: true
 cluster: rates-column-hygiene
 cluster_order: 1
-rollback_strategy: 'Migration only sets rate_columns.unit on three named column ids where unit IS NULL. To revert: UPDATE "rate_columns" SET unit = NULL WHERE id IN (...). Nothing depends on the value, so leaving it applied is harmless if the run dies mid-flight.'
+rollback_strategy: 'Migration only sets rate_columns.unit on the three VALUE columns named Rate in the plant/fuel/enclosure tables, matched by (rate_table_id via slug, name, role) and guarded on unit IS NULL OR unit = per the corrected SQL in step 2. To revert: the same statement with SET unit = NULL and the guard dropped. Nothing depends on the value, so leaving it applied is harmless if the run dies mid-flight.'
 ---
 
 # Give the three unit-less VALUE columns a unit
@@ -34,7 +34,10 @@ what makes this a copy-paste omission rather than a design choice:
 | `fuel` | `Rate` | *(null)* | `day` |
 | `enclosure` | `Rate` | *(null)* | `day` |
 
-Verified on `origin/main`: 3 VALUE columns declared without a unit, 9 with one. The premise
+Re-verified on `origin/main` `6bf3614d` (2026-08-20): **16 VALUE columns declared in the seed, 13
+with a unit, 3 without.** An earlier draft of this prompt said "3 without, 9 with" — that undercount
+missed the four multi-line `rt-exc-prod` column specs (all four do carry units). The fix list below
+is unaffected; only the tally was wrong. The premise
 pattern is `VALUE., sortOrder` (the `.` stands in for the closing quote) — deliberately written
 without a `: ` sequence, because a colon-space inside an unquoted YAML scalar breaks front-matter
 parsing and the prompt would never reach the lint.
@@ -66,17 +69,33 @@ is per-column metadata. They are different things and both are wanted.
    `prisma migrate deploy` and **never runs the TypeScript seed** (CP-23; the same reasoning is
    written into `20260713140000_seed_baseline_rate_tables/migration.sql` and
    `20260804120000_grant_field_worker_expenses/migration.sql`). A seed-only change never reaches
-   production. Set the unit on the three column ids, guarded so a re-run is a no-op:
+   production. Set the unit on the three columns, guarded so a re-run is a no-op:
+
+   **Do NOT key this migration on the literal column ids.** ⚠️ Corrected 2026-08-20 after a
+   re-measure. The seed's upsert (`seed-initial-services.ts:3644`) matches on
+   **`rateTableId_name`**, and sets `id: colId` **only in its `create` branch**
+   (`:3641` `const colId = \`${spec.id}-c-${col.key}\`;`, used at `:3652`). So a `rate_columns` row
+   created by any other path — the admin UI's `createColumn`, most obviously — carries a **cuid**
+   under that same name, not `rt-plt-c-rate`. A migration keyed on the literal id would then
+   silently update nothing and still exit 0, leaving the table's column operations broken with a
+   green deploy. Confirming the ids *statically against the seed source* does not catch this,
+   because the source is right and the row is different.
+
+   Key on the same unique constraint the seed itself uses:
 
    ```sql
-   UPDATE "rate_columns" SET unit = 'day', updated_at = NOW()
-   WHERE id IN ('rt-plt-c-rate', 'rt-fl-c-rate', 'rt-en-c-rate')
-     AND (unit IS NULL OR unit = '');
+   UPDATE "rate_columns" c SET unit = 'day', updated_at = NOW()
+   FROM "rate_tables" t
+   WHERE c.rate_table_id = t.id
+     AND t.slug IN ('plant', 'fuel', 'enclosure')
+     AND c.name = 'Rate'
+     AND c.role = 'VALUE'
+     AND (c.unit IS NULL OR c.unit = '');
    ```
 
-   Confirm those three ids against the seed's `${spec.id}-c-${col.key}` construction before
-   writing them; if an id does not match, match on `(rate_table_id, name)` instead rather than
-   guessing.
+   Still idempotent, and correct whichever path created the row. **Assert the row count you
+   updated** and fail the migration if it is zero — a no-op here means the assumption is wrong and
+   you want to know at deploy time, not from a support ticket.
 
 3. **`apps/api/test/canonical/CP-08-seed-idempotency.spec.ts`** — add an assertion that after
    seeding, **zero** RateColumn rows with `role = 'VALUE'` have a null or blank unit. Assert the
@@ -92,7 +111,7 @@ is per-column metadata. They are different things and both are wanted.
 - Do not touch the INFO `Unit` column on any table.
 - Do not change the "Structure issues" banner text or `validateColumnStructure` in
   `apps/web/src/pages/admin/ratesListsHelpers.ts` — the client mirror is already correct.
-- Do not add units to any other table; the other nine VALUE columns already have them.
+- Do not add units to any other table; the other **thirteen** VALUE columns already have them.
 - Do not rename, reorder, or re-type any column.
 - Do not touch `/sot/`.
 

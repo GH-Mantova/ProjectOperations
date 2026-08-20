@@ -31,7 +31,7 @@
 #   A prompt dying is not the same as the work being done. A SLICE-0 plan prompt dies at the moment
 #   its plan ships -- which is the moment the real work BEGINS.
 #
-# Being made mechanical by docs/pr-prompts/pr-queue-bin-guard-orphaned-discharge-ready.md.
+# Being made mechanical by docs/pr-prompts/pr-queue-bin-guard-orphaned-discharge-HOLD.md.
 #
 # COROLLARY, same date, same cause: a plan's own "**Status:**" line is NOT a queue signal. Four
 # plans (forms-v2-f2-rules, progress-claim-autogen, realtime-websockets, subcontractor-rate-cards)
@@ -416,7 +416,10 @@ items:
       the decision finally agree) AND model Project is still on the schema (the fold is not finished).
       Hidden until the reconcile lands - deliberately, because staging a slice before then produces
       the wrong data model. Discharges when Project is dropped, which is the last slice.
-      The reconcile is staged as docs/pr-prompts/pr-sot-04-bp0a-job-canonical-reconcile-ready.md.
+      The reconcile is staged as docs/pr-prompts/pr-sot-04-bp0a-job-canonical-reconcile-HOLD.md.
+      Staged -HOLD, not -ready, per the arming convention: .gitignore:75 ignores
+      docs/pr-prompts/*-ready.md, so a -ready file needs git add -f to be committed at all and then
+      re-dirties the tree when the watcher moves it. Arm it by git mv, which keeps it tracked.
     needs_marco: true
     marco_note: >
       DO NOT AUTO-STAGE. model-merge-plan section 2 forbids the watcher auto-staging any B-P0a-* or

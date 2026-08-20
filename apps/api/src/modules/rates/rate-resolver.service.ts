@@ -21,10 +21,16 @@ export type ResolvedRate = {
  * row it came from. Pick-list consumers need both the descriptive keys and
  * the value to render an option row and to round-trip the selection back
  * through `resolveRate`.
+ *
+ * `info` carries the INFO-role columns from the rate table (descriptive
+ * metadata not used for pricing or key-matching). Always present; `{}`
+ * when there are no INFO columns. Keyed by the RateTable column `name`
+ * so both adapter paths expose the same key (e.g. `"Category"`).
  */
 export type ListedRate = {
   rowId: string;
   keys: Record<string, unknown>;
+  info: Record<string, unknown>;
   value: number;
   unit: string;
   source: RateSource;
@@ -267,6 +273,7 @@ export class RateResolverService {
     });
     if (!table) return null;
     const keyCols = table.columns.filter((c) => c.role === "KEY");
+    const infoCols = table.columns.filter((c) => c.role === "INFO");
     const valueCols = table.columns.filter((c) => c.role === "VALUE");
     if (valueCols.length === 0) return null;
     // Use valueCols[0] only — matches resolveRate's tryRateTable behaviour.
@@ -282,9 +289,15 @@ export class RateResolverService {
         const val = cells[col.id] ?? cells[col.name];
         keys[col.name] = val ?? null;
       }
+      const info: Record<string, unknown> = {};
+      for (const col of infoCols) {
+        const val = cells[col.id] ?? cells[col.name];
+        info[col.name] = val ?? null;
+      }
       return {
         rowId: row.id,
         keys,
+        info,
         value: Number(cells[valueCol.id]),
         unit: valueCol.unit ?? "",
         source: "ratetable" as const
@@ -307,9 +320,9 @@ export class RateResolverService {
         const entries: ListedRate[] = [];
         for (const row of rows) {
           entries.push(
-            { rowId: row.id, keys: { role: row.role, shift: "day" }, value: Number(row.dayRate), unit: "day", source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "night" }, value: Number(row.nightRate), unit: "day", source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, value: Number(row.weekendRate), unit: "day", source: "legacy" }
+            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", source: "legacy" }
           );
         }
         return entries;
@@ -321,6 +334,10 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { item: row.item },
+          // INFO columns keyed by RateTable column name so both adapter paths
+          // expose the same key. Blank category stays as "" — consumers must
+          // guard against empty string (seed writes category: row.category ?? "").
+          info: { Category: row.category ?? "", Unit: row.unit },
           value: Number(row.rate),
           unit: row.unit,
           source: "legacy" as const
@@ -333,6 +350,7 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { wasteType: row.wasteType, facility: row.facility },
+          info: {},
           value: Number(row.tonRate),
           unit: row.unit,
           source: "legacy" as const
@@ -355,6 +373,7 @@ export class RateResolverService {
             material: row.material,
             depthMm: row.depthMm
           },
+          info: {},
           value: Number(row.ratePerM),
           unit: "m",
           source: "legacy" as const
@@ -367,6 +386,7 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { diameterMm: row.diameterMm },
+          info: {},
           value: Number(row.ratePerHole),
           unit: "hole",
           source: "legacy" as const
@@ -379,6 +399,7 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { item: row.item },
+          info: {},
           value: Number(row.rate),
           unit: row.unit,
           source: "legacy" as const
@@ -392,6 +413,7 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { enclosureType: row.enclosureType },
+          info: {},
           value: Number(row.rate),
           unit: row.unit,
           source: "legacy" as const
@@ -405,6 +427,7 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { description: row.description },
+          info: {},
           value: Number(row.rate),
           unit: row.unit,
           source: "legacy" as const

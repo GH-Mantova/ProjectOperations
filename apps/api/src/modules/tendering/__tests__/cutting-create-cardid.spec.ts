@@ -16,6 +16,13 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { ScopeRedesignService } from "../scope-redesign.service";
 import type { UpdateCuttingItemDto } from "../scope-redesign.controller";
 
+// rates-consumers SLICE 2 — ScopeRedesignService now takes RateResolverService
+// as its second constructor argument. createCuttingItem(other-rate, no otherRateId)
+// short-circuits before calling listRates; provide a stub for the remaining path.
+const minimalRateResolver = {
+  listRates: jest.fn().mockResolvedValue([])
+} as never;
+
 type AsyncMock = jest.Mock<Promise<unknown>, unknown[]>;
 
 function buildPrismaMock(opts: {
@@ -67,7 +74,7 @@ describe("ScopeRedesignService.createCuttingItem — cardId contract (PR B4b.1)"
     // the user sees a clean error, not a 500-via-FK or a 500-via
     // database-constraint.
     const { prisma, mocks } = buildPrismaMock();
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await expect(
       svc.createCuttingItem("tender-1", "user-1", makeDto({ cardId: "" }))
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -77,7 +84,7 @@ describe("ScopeRedesignService.createCuttingItem — cardId contract (PR B4b.1)"
 
   it("whitespace-only cardId also rejects with 400 (B-followup)", async () => {
     const { prisma, mocks } = buildPrismaMock();
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await expect(
       svc.createCuttingItem("tender-1", "user-1", makeDto({ cardId: "   " }))
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -87,7 +94,7 @@ describe("ScopeRedesignService.createCuttingItem — cardId contract (PR B4b.1)"
 
   it("missing cardId (undefined) rejects with 400 (B-followup — schema is NOT NULL)", async () => {
     const { prisma, mocks } = buildPrismaMock();
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await expect(
       svc.createCuttingItem("tender-1", "user-1", makeDto({}))
     ).rejects.toThrow(/cardId is required/);
@@ -99,7 +106,7 @@ describe("ScopeRedesignService.createCuttingItem — cardId contract (PR B4b.1)"
     const { prisma, mocks } = buildPrismaMock({
       cardLookupResult: { id: "real-card-uuid" }
     });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await svc.createCuttingItem(
       "tender-1",
       "user-1",
@@ -117,7 +124,7 @@ describe("ScopeRedesignService.createCuttingItem — cardId contract (PR B4b.1)"
 
   it("non-existent cardId still 404s (B4b regression)", async () => {
     const { prisma, mocks } = buildPrismaMock({ cardLookupResult: null });
-    const svc = new ScopeRedesignService(prisma as never);
+    const svc = new ScopeRedesignService(prisma as never, minimalRateResolver);
     await expect(
       svc.createCuttingItem(
         "tender-1",

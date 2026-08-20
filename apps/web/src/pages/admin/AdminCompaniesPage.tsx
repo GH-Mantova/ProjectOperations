@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { throwIfApiError } from "../../lib/api-errors";
 import { NoAccess } from "../../components/NoAccess";
 import { useConfirm } from "../../hooks/useConfirm";
 
@@ -81,7 +82,7 @@ export function AdminCompaniesPage() {
     setError(null);
     try {
       const res = await authFetch("/tenants");
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setTenants((await res.json()) as Tenant[]);
     } catch (err) {
       setError((err as Error).message);
@@ -102,7 +103,7 @@ export function AdminCompaniesPage() {
       setUsersError(null);
       try {
         const res = await authFetch(`/tenants/${tenantId}/users`);
-        if (!res.ok) throw new Error(await res.text());
+        await throwIfApiError(res);
         setTenantUsers((await res.json()) as TenantUser[]);
       } catch (err) {
         setUsersError((err as Error).message);
@@ -141,7 +142,7 @@ export function AdminCompaniesPage() {
         method: "POST",
         body: JSON.stringify({ name, code: createCode.trim() || undefined })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setCreateOpen(false);
       setCreateName("");
       setCreateCode("");
@@ -174,7 +175,7 @@ export function AdminCompaniesPage() {
         method: "PATCH",
         body: JSON.stringify({ name, code: editCode.trim() || undefined })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setEditTenant(null);
       await loadTenants();
     } catch (err) {
@@ -198,7 +199,7 @@ export function AdminCompaniesPage() {
         method: "PATCH",
         body: JSON.stringify({ isActive: !tenant.isActive })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       await loadTenants();
     } catch (err) {
       setError(`Failed to ${action} company: ${(err as Error).message}`);
@@ -215,7 +216,7 @@ export function AdminCompaniesPage() {
         method: "PATCH",
         body: JSON.stringify({ userId })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setAssignUserId("");
       await loadTenantUsers(selectedTenant.id);
     } catch (err) {

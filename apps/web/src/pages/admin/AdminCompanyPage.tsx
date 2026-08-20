@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { isAdminUser } from "../../auth/permissions";
+import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { NoAccess } from "../../components/NoAccess";
 import { useConfirm } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
@@ -170,7 +171,7 @@ export function AdminCompanyPage() {
         setError(null);
         return;
       }
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setProfile((await res.json()) as CompanyProfile);
       setNotFound(false);
       setError(null);
@@ -210,7 +211,7 @@ export function AdminCompanyPage() {
     setCreating(true);
     try {
       const res = await authFetch("/admin/company/profile", { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setProfile((await res.json()) as CompanyProfile);
       setNotFound(false);
       setError(null);
@@ -227,7 +228,7 @@ export function AdminCompanyPage() {
         method: "PATCH",
         body: JSON.stringify({ [field]: value })
       });
-      if (!res.ok) throw new Error(await res.text());
+      await throwIfApiError(res);
       setProfile((await res.json()) as CompanyProfile);
       setSavedFlash(String(field));
       setTimeout(() => setSavedFlash((s) => (s === String(field) ? null : s)), 1500);
@@ -600,7 +601,7 @@ function OperationsSettingsPanel() {
     setLoading(true);
     try {
       const response = await authFetch("/admin/settings/operations");
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       const body = (await response.json()) as OperationsSettings;
       setConfig(body);
       if (!loadedRef.current) {
@@ -632,7 +633,7 @@ function OperationsSettingsPanel() {
         method: "PATCH",
         body: JSON.stringify(patch)
       });
-      if (!response.ok) throw new Error(await response.text());
+      await throwIfApiError(response);
       setConfig((await response.json()) as OperationsSettings);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
@@ -928,7 +929,7 @@ function LegalDocumentsSection({
   const load = useCallback(async () => {
     const res = await authFetch("/admin/company/legal-documents");
     if (!res.ok) {
-      setError(await res.text());
+      setError(await readApiErrorMessage(res));
       return;
     }
     setDocs((await res.json()) as LegalDocument[]);
@@ -954,7 +955,7 @@ function LegalDocumentsSection({
       body: JSON.stringify({ type: selectedType, content: draftContent })
     });
     if (!res.ok) {
-      setError(await res.text());
+      setError(await readApiErrorMessage(res));
       return;
     }
     setDraftContent("");
@@ -1095,7 +1096,7 @@ function ComplianceSection({
         })
       });
       if (!res.ok) {
-        setError(await res.text());
+        setError(await readApiErrorMessage(res));
         return;
       }
       setLicenceDraft(null);
@@ -1121,7 +1122,7 @@ function ComplianceSection({
         })
       });
       if (!res.ok) {
-        setError(await res.text());
+        setError(await readApiErrorMessage(res));
         return;
       }
       setInsuranceDraft(null);

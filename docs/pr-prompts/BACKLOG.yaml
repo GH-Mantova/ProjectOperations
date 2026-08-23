@@ -666,57 +666,6 @@ items:
     order: 20
 
   # -------------------------------------------------------------------------------------------
-  # ADDED 2026-08-19 (Station 06 PR Master). Found by USING the register: a note I wrote was
-  # silently truncated mid-sentence and the checker reported no error at all.
-  # -------------------------------------------------------------------------------------------
-  - id: backlog-parser-swallows-folded-blocks
-    title: "check-backlog.mjs silently truncates a folded block at any indented 'word:' line"
-    priority: P2
-    why: >
-      scripts/pipeline/check-backlog.mjs parses BACKLOG.yaml with a hand-rolled reader. Inside a
-      folded block it applies this to every line -
-      line.match(/^\s{4,}([a-z_]+):\s*(.*)$/)
-      Any line indented 4+ spaces whose first token is a bare lowercase word followed by a colon is
-      taken as a NEW KEY. The folded block ends there, silently, with no warning and no non-zero
-      exit. Everything after that point is lost from the note.
-      MEASURED 2026-08-19 - writing the phrase "2-slice cluster - <name>" with the word "cluster"
-      at the start of a wrapped line ended a marco_note mid-sentence and dropped roughly 2,500
-      characters of analysis. The checker printed the truncated note and exited normally.
-      TWO FAILURE MODES, and the second is worse than lost text -
-      (a) TRUNCATION - an unrecognised word creates a junk key and the rest of the note vanishes.
-      (b) OVERWRITE - the word is one of the REAL key names, so the bogus line REPLACES that key.
-      A sentence starting with the word "gate" and a colon inside a note would silently replace the
-      item executable gate command. A gate is the only thing standing between a HOLD and being
-      reported READY TO STAGE, so this can surface a blocked item as ready.
-      CURRENT STATE - the register is clean. A scan of all 40 key-shaped lines in BACKLOG.yaml
-      found 8 distinct keys, all legitimate (id, title, priority, why, gate, gate_means,
-      needs_marco, marco_note, order) and zero bogus ones. The scan was checked both ways - it
-      detects the 40 real lines, and it fires on an injected fake. So nothing is corrupted TODAY.
-      This item exists so it stays that way.
-      FOOTNOTE - while writing THIS entry I tripped the bug twice more, on the words "cluster" and
-      "controlled" starting a wrapped line. Neither appeared in the checker own output; both were
-      caught only by a separate scan. That is the argument for failing loud.
-      RELATED - this is the third defect of the same family found on 2026-08-19. marco_note was
-      read by nothing until #1201/#1203. STEP-11B-DONE.md was a real file whose CONTENT proved
-      nothing, and it armed a destructive successor. Here the file is real, the parse "succeeds",
-      and the data is quietly wrong. All three share one shape - an instrument that reports success
-      while telling you less than the truth.
-    gate: '! grep -q "FOLD_KEY_GUARD" scripts/pipeline/check-backlog.mjs'
-    gate_means: >
-      READY while the folded-block reader still has no guard against key-shaped prose lines. The
-      fix marks its guard with the literal token FOLD_KEY_GUARD, so this dies the moment the fix
-      lands. It asserts an artifact the work itself produces, not merely that a file exists.
-    needs_marco: false
-    marco_note: >
-      Small and self-contained. Suggested shape, not binding - only treat a line as a new key if
-      the key name is in the known-key set for this schema, and FAIL LOUD (non-zero exit, named
-      line number) on any other key-shaped line inside a folded block rather than swallowing it.
-      Failing loud matters more than parsing it correctly - a register that quietly tells you less
-      than it was given is worse than one that refuses to load. Add a fixture test covering both
-      failure modes above.
-    order: 21
-
-  # -------------------------------------------------------------------------------------------
   # ADDED 2026-08-19 (Station 06 PR Master). Spun out of rates-11c-blocked-consumers after
   # measuring what map-locations actually reads waste rates FOR. It is not a pricing consumer.
   # -------------------------------------------------------------------------------------------

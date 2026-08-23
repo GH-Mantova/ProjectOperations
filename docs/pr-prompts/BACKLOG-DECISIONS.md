@@ -154,3 +154,9 @@ It is written down here so the next agent inherits a decision instead of an asse
 **Still open, and deliberately NOT answered here:** the seeding migration's own comment at
 `migration.sql:59-60` — *"Transport types are the four rigs the Initial Services fleet actually runs
 (Marco to confirm)"* — is a **different** question about the rig list itself. It remains unconfirmed.
+
+---
+
+## E. backlog-parser-swallows-folded-blocks — **DISCHARGED 2026-08-21 (04-scanner)**
+
+DISCHARGED 2026-08-21 (04-scanner): backlog-parser-swallows-folded-blocks. Fix shipped via pr-backlog-parser-fold-key-guard-ready.md (now in superseded/cleared-2026-08-19-round3/). FOLD_KEY_GUARD is present in scripts/pipeline/check-backlog.mjs on main at a561b703, so the item's gate can never be satisfied again. Discharged, not deferred.

@@ -707,6 +707,30 @@ export function lint(file, opts) {
       "        Every prompt needs an EXECUTABLE premise, or nothing can tell whether it is stale.");
   }
 
+  // MISSING_STANDING_AUTHORITY — WARN-ONLY diagnostic (does not affect exit code).
+  //
+  // On 2026-08-20 three armed prompts exited 0 without opening a PR; none granted the agent
+  // authority to push. A survey of 75 top-level prompts split the corpus three ways:
+  //   A — grant present in body                                       (37)
+  //   B — heading `## STANDING AUTHORITY` present but grant absent    (17 imposters)
+  //   C — no standing-authority text at all                           (21)
+  // Populations B and C both produce silent exit-0 runs. This warning surfaces both classes so
+  // Marco can see them without touching the exit code. Flipping to REJECT would MALFORM 38 of
+  // 75 live prompts at once and stall queue arming; that is a later slice, on Marco's call.
+  {
+    const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
+    const body = bodyMatch ? bodyMatch[1] : "";
+    const GRANT = "STANDING AUTHORITY to finish the work, commit, push";
+    if (!body.includes(GRANT)) {
+      const hasHeading = /^##\s+STANDING\s+AUTHORITY\b/im.test(body);
+      const detail = hasHeading ? "(heading present, grant absent)" : "(no standing-authority text)";
+      process.stderr.write(
+        "WARN  " + name + "  MISSING_STANDING_AUTHORITY " + detail +
+        " — body grants no authority to push; this run may exit 0 without opening a PR.\n"
+      );
+    }
+  }
+
   // CLUSTER-CHAINING SLICE 1: validate dependency keys.
   // (a) Reject any unrecognised requires* key — catches hyphen vs. underscore, plural vs.
   //     singular, and other near-misses that parseFrontMatter silently ignores.

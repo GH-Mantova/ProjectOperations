@@ -1,6 +1,6 @@
 # ProjectOperations — Autonomous PR Chain
 
-Last updated: 2026-07-07 09:26 AEST
+Last updated: 2026-08-24 (UTC) — merged-PR ledger reconciled to #1304 (curated narrative still ends at #495; see the ledger section at the end of this file)
 
 # Started: 2026-04-25 11:08 AEST
 # Chain: PR #80 → #81 → #82 → #83 → #84 → #85 → #86 → #87
@@ -22,6 +22,7 @@ Progress is append-only — most recent entries are at the end.
 | PR #112 | Doc cleanup (this PR's predecessor) | 2026-04-27 |
 | (this PR) | Doc hygiene infrastructure | 2026-04-27 |
 | #455–#493 | B-P0a spine · dashboards · authority seam · tender packages · inventory · forms authoring · QA batch | 2026-07-07 |
+| #496–#1304 | Machine-generated merged-PR ledger (index only, no curated narrative) | 2026-07-07 to 2026-08-24 |
 
 **Quick navigation:**
 - Latest entry → scroll to bottom of file
@@ -11196,3 +11197,837 @@ Examples:
 - acknowledge or escalate a blocked shift directly from top-level execution surfaces
 - add lightweight "waiting on planner" / "handoff complete" actions
 - keep deep module pages for richer work, but continue pulling the most common daily actions upward
+
+---
+
+## 2026-08-24 (UTC) — RECONCILE: machine-generated merged-PR ledger, #496 → #1304
+
+**Station:** 05 SoT-Keeper · **Base:** `origin/main 74066ae9` · **Landed via:** doc-reconcile PR (`sot/` + `docs/` only, CP-24).
+
+### Why this section exists
+
+This log's curated narrative **stopped at PR #495**. Everything merged since — **789 pull
+requests**, 2026-07-07 to 2026-08-24 — was unrecorded, so any chat reading `03` alone would conclude the
+project had not moved in weeks. That was the single largest source-of-truth gap on the board.
+
+### What this section is, and what it is NOT
+
+- ✅ It **is** a deterministic, regeneratable index: every PR merged into `main` after #495, with its
+  merge timestamp and its title, read live from GitHub.
+- ❌ It is **NOT** the curated per-PR narrative the entries above #495 carry ("Type / Branch / Detail /
+  Status", audit passes, chain pauses). Curated prose is never auto-written — a machine cannot honestly
+  author the "what this means" paragraphs, so it does not pretend to.
+
+Treat this as the **index** to the gap, not its closure. A human chat backfilling narrative for any PR
+below should keep the row and add the prose beneath it.
+
+### Regenerate command (the instrument, so the next run can re-derive rather than re-discover)
+
+```
+gh pr list --repo GH-Mantova/ProjectOperations --state merged --limit 2000 \
+   --json number,title,mergedAt --jq '.[] | select(.number > 495)'
+```
+
+### Known limits of this instrument
+
+- Merged-only. PRs opened-and-closed without merge are **absent by design** — an empty row here is not
+  an empty world.
+- Numbering is not contiguous: gaps in the `#` column are closed-unmerged PRs, not missing records.
+- Titles are the PR titles as authored. A PR body that over-claims is not corrected here; per DOCTRINE,
+  trust code and CI over prose.
+
+### Ledger
+
+| PR | Merged (UTC) | Title |
+|---|---|---|
+| #496 | 2026-07-07 12:59Z | [Feat] Procurement ÔÇö request ÔåÆ approval ÔåÆ PO (slice 1) |
+| #497 | 2026-07-07 16:26Z | [Feat] Comms + Approvals ÔÇö Phase 2 slice 1 (foundation) |
+| #498 | 2026-07-07 10:26Z | [Docs] SoT reconcile ÔÇö roadmap/progress/README/CLAUDE/project_instructions to #481 |
+| #499 | 2026-07-07 22:44Z | [Forms F-1] Builder shell ÔÇö three-pane designer |
+| #500 | 2026-07-07 09:59Z | [Scheduler/Structural] Job-Project merge Phase A: additive links + reversible backfill |
+| #501 | 2026-07-07 23:33Z | [Feat] Rates & Lists R0b ÔÇö in-ERP admin UI (slice 1) |
+| #502 | 2026-07-07 14:51Z | [Fix] PR watcher: per-run wall-clock watchdog for hung children |
+| #503 | 2026-07-08 02:07Z | [Dashboards] Widget batch 1 ÔÇö eight quick wins |
+| #504 | 2026-07-08 00:29Z | [Fix] Seed tender-package-disciplines GlobalList into prod |
+| #505 | 2026-07-07 23:20Z | [Fix] PWA: working in-app update prompt (no more stale bundle) |
+| #506 | 2026-07-08 01:54Z | [Feat] Grant Marco super-user (seed parity with Sean) |
+| #507 | 2026-07-08 05:59Z | feat(pwa): never-stale shell + build SHA stamped end-to-end |
+| #508 | 2026-07-08 02:47Z | feat(client-versions): admin telemetry + remote update nudge |
+| #509 | 2026-07-08 05:47Z | fix(api/cors): allow CORS_ORIGIN to be a comma-separated list for custom-domain cutover |
+| #510 | 2026-07-08 06:32Z | [Feat] Per-widget delete on dashboards (header trash + settings action) |
+| #511 | 2026-07-08 06:42Z | docs: consolidate source-of-truth into /sot/ + hard rule |
+| #512 | 2026-07-08 22:55Z | [Dashboards] Widget batch 2 ÔÇö approvals, quotes, photos, My day |
+| #513 | 2026-07-08 06:11Z | [chore] Watcher: run against a dedicated clone (env-gated) |
+| #514 | 2026-07-08 05:29Z | [Fix] /workers/leaves route-order 404 + route-shadowing CI guard |
+| #515 | 2026-07-08 06:55Z | [chore] Watcher: self-clean orphaned apitest worktrees |
+| #516 | 2026-07-09 01:26Z | feat(tender): editable per-tender Rates tab (lock + override) |
+| #517 | 2026-07-08 22:21Z | [Section S9] Fix E2E getByLabel strict-mode collision in NewDashboardModal test |
+| #518 | 2026-07-08 23:07Z | fix(pdf): actionable Chrome-missing error + auto-provision puppeteer |
+| #519 | 2026-07-08 22:31Z | fix(tender-wizard): add/remove builder via per-client endpoints |
+| #520 | 2026-07-08 22:43Z | fix(watcher): stop benign git checkout stderr crashing preflight auto-recover |
+| #521 | 2026-07-08 23:19Z | feat(dashboards): search + A-Z/Z-A sort in widget gallery |
+| #522 | 2026-07-09 00:40Z | chore(watcher): decouple prompt queue from clone via PR_WATCHER_PROMPT_DIR |
+| #523 | 2026-07-09 02:10Z | fix(tender-wizard): save on advance + confirm before close |
+| #524 | 2026-07-09 02:46Z | [Feat] Tender Rates tab - columnar matrix (match Rates admin) |
+| #525 | 2026-07-09 03:10Z | fix(pdf): surface PdfRenderError message + status through API instead of generic 500 |
+| #526 | 2026-07-09 03:38Z | [Forms FV2] Basic / survey / layout field wire-ups |
+| #527 | 2026-07-10 00:51Z | [Dashboards] Widget batch 3 (weather) + gallery module view |
+| #528 | 2026-07-10 01:14Z | [Fix] pr-watcher ÔÇö route no-PR runs to no-pr-opened/, not processed/ |
+| #529 | 2026-07-09 06:59Z | feat(tender-rates): master/detail table picker + fix duplicated unit header |
+| #530 | 2026-07-09 10:24Z | [Feat] Tender wizard - inline quick-add for builder & contact |
+| #531 | 2026-07-10 01:04Z | chore(data-model): regenerate relationship map (180 -> 190 models) |
+| #532 | 2026-07-10 02:28Z | chore(data-model): track graph-html generator + pnpm data-model:buildÔÇª |
+| #533 | 2026-07-10 04:55Z | chore/harden watcher prompt dir |
+| #534 | 2026-07-10 05:19Z | docs(sot): data-model regen uses pnpm data-model:build; graph html isÔÇª |
+| #535 | 2026-07-13 00:40Z | feat(rates): shared FilterableRateGrid for admin + tender surfaces |
+| #536 | 2026-07-13 01:04Z | ci: gate schema.prisma changes on data-model map regeneration |
+| #537 | 2026-07-11 00:00Z | fix(web): honor super-user in frontend permission guards |
+| #538 | 2026-07-14 03:13Z | fix(auth): shared-computer switch-user + gated Entra request-access ÔÇö DO NOT AUTO-MERGE |
+| #539 | 2026-07-11 00:10Z | chore(data-model): classify all Unclassified models |
+| #540 | 2026-07-13 07:29Z | feat(rates): add isReference flag + excavator-production reference table |
+| #541 | 2026-07-13 23:32Z | feat(quotes): traceability link from ClientQuote cost lines back to internal TenderEstimate |
+| #542 | 2026-07-13 00:27Z | docs(sot): reconcile 04 data-model re-merge + 02 roadmap status |
+| #543 | 2026-07-13 02:19Z | ci(pr-gates): CP-23 seed-without-migration guard |
+| #544 | 2026-07-14 01:16Z | fix(web): render <NoAccess/> instead of redirecting on permission failure |
+| #545 | 2026-07-13 19:40Z | ci(pr-gates): CP-24 sot-purity hard block on code+sot mixing |
+| #546 | 2026-07-13 23:42Z | feat(admin): editable role-permissions matrix + additive seed (S3-016 fix) |
+| #547 | 2026-07-13 06:24Z | feat(graph): SHAREPOINT_AUTH_MODE ÔÇö managed identity for prod, keep client-secret for dev |
+| #548 | 2026-07-13 23:01Z | fix(pdf): surface Chromium launch error verbatim (Step 1 diagnostic) |
+| #549 | 2026-07-13 23:54Z | feat(company-profile): singleton for who "we" are + effective-dated legal docs |
+| #550 | 2026-07-13 07:04Z | docs(scheduler): design spec + phased plan for unified resourcing |
+| #551 | 2026-07-13 06:46Z | fix(auth): grant prod super-user flag to marco@ and sean@ (migration) |
+| #552 | 2026-07-14 03:51Z | fix(prod): seed baseline RateTable rows via idempotent data migration |
+| #553 | 2026-07-13 23:22Z | fix(config-delete): guard + audit hard-delete on 5 config surfaces (S3-020) |
+| #554 | 2026-07-13 23:12Z | fix(web): consolidate project/job status catalogues (S3-014) |
+| #555 | 2026-07-14 00:03Z | fix(web): dashboard widgets link to routes that do not exist (404) ÔÇö QA S3-019 |
+| #556 | 2026-07-14 00:14Z | feat(sharepoint): folder mappings as CONFIG DATA, not env vars |
+| #557 | 2026-07-14 02:02Z | feat(pipeline): hardened board primitives, prompt lint, watcher recovery |
+| #558 | 2026-07-14 02:20Z | docs(sot): retire chat routing, add boot sequence + concurrency rules, LL-36/37/38 |
+| #559 | 2026-07-14 02:35Z | feat(pipeline): evidence gate, smoke harness, intake-lint fix, numbered agent stations |
+| #560 | 2026-07-14 02:49Z | fix(shell): collapse toggle stays visible when sidebar collapses |
+| #561 | 2026-07-14 04:40Z | fix(web): admin nav super-user parity + reachable orphan routes + no more silent bounces |
+| #562 | 2026-07-14 03:00Z | docs(pipeline): DOCTRINE 7 - your instrument lies, calibrate it before trusting the reading |
+| #563 | 2026-07-14 03:29Z | fix(pipeline): discharge #538 from NEVER-MERGE; stop the gate test passing on a broken load |
+| #564 | 2026-07-14 03:40Z | fix(ci): CP-25 must not flag COMMENTS as permission-redirects |
+| #565 | 2026-07-14 04:03Z | docs(pipeline): version the five station briefs |
+| #566 | 2026-07-14 04:30Z | docs: tenant-readiness investigation ÔÇö could a second company set this up? |
+| #567 | 2026-07-14 04:51Z | docs(sot): put the pipeline INTO the boot sequence + LL-39 (your instrument lies) |
+| #568 | 2026-07-14 04:17Z | docs(prompts): STANDING AUTHORITY ÔÇö an agent that finishes the work then asks permission has failed |
+| #569 | 2026-07-14 05:19Z | feat(guard): deny-only PreToolUse hook ÔÇö a floor under skip-all-approvals |
+| #570 | 2026-07-14 05:04Z | feat(backlog): executable-gate register so blocked work cannot rot unseen |
+| #571 | 2026-07-14 08:15Z | docs(backlog): Marco's 9 decisions - every needs_marco question answered |
+| #572 | 2026-07-14 06:18Z | feat(pipeline): preflight - check the watcher, the stations and GitHub BEFORE touching the board |
+| #573 | 2026-07-14 08:38Z | docs(sot): correct sot/04 header schema sha (was CRLF-derived) |
+| #574 | 2026-07-14 09:01Z | fix(watcher): self-heal a dirty preflight instead of crash-looping forever |
+| #575 | 2026-07-14 09:14Z | feat(web): Payroll Export page over existing CSV endpoint |
+| #576 | 2026-07-14 09:24Z | feat(pr-watcher): track supervise-watcher.ps1 ÔÇö the auto-restart wrapper the queue depends on |
+| #577 | 2026-07-14 08:50Z | fix(tendering): PATCH /tenders/:id must not silently destroy nested collections |
+| #578 | 2026-07-14 09:35Z | pr-c2: register 5 orphaned HOLDs + record 8 Marco answers + drop the done one |
+| #579 | 2026-07-14 10:10Z | feat(rates): RATES_CANONICAL_SOURCE switch ÔÇö the missing precondition for pr-524 |
+| #580 | 2026-07-14 12:11Z | feat(forms): F-4 advanced field types ÔÇö Lookup / Calculation / Table / Terms |
+| #581 | 2026-07-14 14:11Z | fix(backlog): drop tautological gates and delete two items already shipped |
+| #582 | 2026-07-14 16:36Z | docs: Workflow Studio + data-model relationship graph |
+| #583 | 2026-07-14 16:47Z | docs(backlog): discharge workflow-studio + watcher-launcher; archive two shipped HOLD prompts |
+| #584 | 2026-07-14 16:11Z | docs(sot-04): re-merge generated schema map (sha 8b3ac9223562) |
+| #585 | 2026-07-14 16:22Z | chore(watcher): track watcher-launcher.ps1 so it survives a git clean |
+| #586 | 2026-07-14 17:04Z | docs(backlog): register flaky batch5-sites post-delete empty-state race |
+| #587 | 2026-07-14 20:12Z | test(e2e): wait for sites list to settle before post-delete filter |
+| #588 | 2026-07-15 00:44Z | chore(pipeline): bring-up-to-speed + status-sweep tooling |
+| #589 | 2026-07-15 00:58Z | chore(graphify): AST-only knowledge graph setup (Option A) |
+| #590 | 2026-07-15 01:11Z | docs(backlog): record Marco's 3 decisions + spin off form-site item |
+| #591 | 2026-07-15 03:23Z | chore(backlog): fix strict-parse indent + drop repo-streamline-pass + hygiene |
+| #592 | 2026-07-15 03:34Z | chore(pipeline): strict-structure guard + reconcile station briefs |
+| #593 | 2026-07-15 06:43Z | feat(admin): third-party integration keys in System Settings (encrypted) |
+| #594 | 2026-07-15 06:10Z | feat(tendering): filter transport items from plant picker dropdown |
+| #595 | 2026-07-15 22:37Z | feat(assets,admin): R3 T-0 asset capacity/fuel + fuel-price setting |
+| #596 | 2026-07-15 06:28Z | feat(rates): add MaterialKind enum to EstimateMaterialDensity (foundation) |
+| #597 | 2026-07-15 12:15Z | feat(rates): in-place row editing in Rates & Lists admin grid |
+| #598 | 2026-07-16 03:51Z | feat(scope): multiple material rows per skill card (Raj R1) |
+| #600 | 2026-07-15 07:21Z | docs(sot): wire bring-up-to-speed.ps1 into the boot sequence |
+| #601 | 2026-07-15 23:51Z | docs(backlog): reconcile Marco 2026-07-15 decisions + stage 5 prompts |
+| #602 | 2026-07-17 00:13Z | feat(email): MAIL_AUTH_MODE managed-identity for Outlook Graph (mirror #547) |
+| #603 | 2026-07-15 08:12Z | fix(watcher): restart-watcher-if-wedged cold-starts a DOWN watcher on an empty queue |
+| #604 | 2026-07-15 10:14Z | docs: stage pr-branding-manager backlog gate - 04-scanner 2026-07-15 |
+| #607 | 2026-07-16 00:14Z | docs(sot): re-merge generated schema-map into sot/04 (sha 783380faea0e, 197/25) |
+| #608 | 2026-07-16 01:34Z | feat(users,dashboards): per-user default dashboard + Home fallback |
+| #609 | 2026-07-16 02:44Z | docs(forms): stage form-engine gap prompts + gap-analysis drafts |
+| #610 | 2026-07-16 14:37Z | feat(forms): reusable content-snippet library + content_block field type |
+| #611 | 2026-07-16 04:45Z | feat(forms): corrective-action (CAPA) close-out loop |
+| #612 | 2026-07-16 02:32Z | docs(erp): stage ERP-wide gap prompts + competitor gap-analysis |
+| #613 | 2026-07-16 03:36Z | docs(sot): pipeline status + register staged gap-prompt batches |
+| #614 | 2026-07-16 02:14Z | docs(backlog): register flaky batch8-documents-archive toHaveURL race (executable gate) |
+| #615 | 2026-07-16 09:25Z | feat(assets): barcode/QR tags + checkout custody chain |
+| #616 | 2026-07-16 05:01Z | feat(branding): land BrandColorScheme + BrandAsset (DB-stored, super-user gated) |
+| #617 | 2026-07-16 04:33Z | feat(erp,procurement): Commitment (subcontract/PO) tracking against job budget |
+| #618 | 2026-07-16 10:03Z | feat(compliance): proactive competency expiry alerts + register |
+| #619 | 2026-07-16 04:06Z | feat(diary): daily site diary ÔÇö one-per-day evidentiary record |
+| #620 | 2026-07-16 15:03Z | feat(erp): digital delivery / haulage / disposal dockets |
+| #621 | 2026-07-16 22:26Z | feat(erp): job-scoped punch / snag / defect list |
+| #622 | 2026-07-16 14:48Z | feat(erp): SOPA payment-schedule response on progress claims (ERP gap A/commercial) |
+| #623 | 2026-07-16 09:49Z | feat(erp): geofenced clock-in/out on existing GPS capture (ERP gap C/time) |
+| #624 | 2026-07-16 08:21Z | feat(erp,whs): seeded WHS template packs ÔÇö permit/JHA/toolbox/bulletin |
+| #625 | 2026-07-16 08:56Z | feat(forms): public link + kiosk + QR capture ÔÇö unauthenticated form submission |
+| #626 | 2026-07-17 00:54Z | feat(forms): inspection scoring + pass/fail response sets |
+| #627 | 2026-07-16 07:14Z | docs(sot): UI Acceptance Review (visual verification) design |
+| #628 | 2026-07-16 08:05Z | docs(queue): stage data-model map untrack + browser-view prompts (HOLD) |
+| #629 | 2026-07-17 00:29Z | feat(forms): render submission as branded PDF / evidence pack |
+| #630 | 2026-07-16 10:15Z | feat(admin): super-user data-model map viewable from deployed web app |
+| #631 | 2026-07-16 07:40Z | feat(tendering): per-material inline waste controls + delete on Material 2+ |
+| #633 | 2026-07-16 06:31Z | docs(queue): stage pr-qa-flaky-batch8-archive-race + backlog hygiene |
+| #634 | 2026-07-16 06:41Z | docs(queue): stage pr-qa-field-guard-superuser (S2 super-user /field lockout) |
+| #635 | 2026-07-16 06:56Z | chore(data-model): untrack generated map, kill the DIRTY treadmill |
+| #636 | 2026-07-16 07:27Z | feat(pipeline): visual-smoke capture + STATION 02 VISION REVIEW |
+| #637 | 2026-07-16 09:39Z | docs(queue): stage gap prompts - dialogs foundation+migrations, forms site-field |
+| #638 | 2026-07-16 09:14Z | feat(watcher): warn on untracked -ready.md in the loose queue |
+| #639 | 2026-07-16 08:40Z | docs(queue): stage decided backlog prompts - FIELD OTP auth, calculators, density (escalates) |
+| #640 | 2026-07-16 12:12Z | docs(queue): stage Smart Wizard + QA-C + Job/Project slice-0 plan (Job canonical, resolved) |
+| #641 | 2026-07-16 12:23Z | feat(tendering): Geoapify address autocomplete + Site link on tender wizard |
+| #642 | 2026-07-17 05:56Z | feat(data-model): siteId NOT NULL on Job + Project (Unassigned backfill) |
+| #643 | 2026-07-16 12:34Z | feat(users,dashboards): per-user default dashboard UI (picker + landing) |
+| #644 | 2026-07-16 14:25Z | chore(data-model): untrack generated relationship-graph.html (finishes #635) |
+| #645 | 2026-07-16 16:12Z | docs(backlog): discharge mail-send-managed-identity (already open PR #602) |
+| #646 | 2026-07-17 06:07Z | feat(tendering): enforce siteId NOT NULL on Tender + backfill legacy rows |
+| #647 | 2026-07-16 20:14Z | docs(qa): stage prompt - UserProfilePage super-user parity (S3) |
+| #648 | 2026-07-17 00:40Z | docs(queue): stage pr-email-test-diagnosis prompt (follow-up to #602) |
+| #649 | 2026-07-17 04:10Z | docs(pipeline): stage SWMS split-build + B-P0b Worker merge slice-0 plan prompts |
+| #650 | 2026-07-17 06:42Z | docs(queue): track 37 previously-untracked backlog prompt drafts (durability) |
+| #651 | 2026-07-17 07:16Z | feat(contracts): billing rigor ÔÇö milestones + pro-forma + revenue recognition |
+| #652 | 2026-07-17 06:53Z | chore(pipeline): prune shipped/in-flight staged prompts |
+| #653 | 2026-07-17 08:12Z | feat(cases): case management slice 1 ÔÇö defects, warranty, RFIs, complaints |
+| #654 | 2026-07-17 07:04Z | docs(backlog): discharge B-P0a/B-P0b (already staged as plan prompts) |
+| #655 | 2026-07-17 11:42Z | feat(surveys): customer voice / satisfaction survey capture + client score rollup |
+| #656 | 2026-07-17 07:29Z | docs(queue): stage nav IA reorg prompts (8) |
+| #657 | 2026-07-18 02:27Z | feat(expenses): expense management slice 1 ÔÇö capture + approval |
+| #658 | 2026-07-17 08:35Z | feat(hr): HR self-service leave requests with manager approvals and org chart |
+| #659 | 2026-07-17 08:23Z | feat(procurement): slice 3 ÔÇö VendorInvoice + three-way match + reconcile audit |
+| #660 | 2026-07-17 10:50Z | feat(rates): Excel export (half 1 of round-trip) |
+| #661 | 2026-07-17 11:02Z | feat(scheduler): D365 RSO-parity suggest engine (phase 1, assistive) |
+| #662 | 2026-07-17 18:30Z | feat(tendering): scope-of-works EACH + FACTOR material kinds |
+| #663 | 2026-07-17 10:37Z | feat(platform): configurable automation engine (MVP slice 1) |
+| #664 | 2026-07-18 06:12Z | feat(platform): business process flow stage bar (MVP slice 1) |
+| #665 | 2026-07-17 10:26Z | feat(platform): global relevance search + quick-create command bar (MVP) |
+| #666 | 2026-07-17 10:13Z | feat(ux): universal in-context AI assist panel (Copilot everywhere) |
+| #667 | 2026-07-17 20:28Z | feat(ux): duplicate detection on Client / Subcontractor / Contact create |
+| #668 | 2026-07-17 12:13Z | feat(ux): design tokens dark mode + shell theme toggle |
+| #669 | 2026-07-17 12:36Z | docs(queue): stage pr-qa-workers-manage-permission-registry (workers.manage permanently-false gate from #658) |
+| #670 | 2026-07-17 12:50Z | feat(ux): D365-style per-record change history (surface AuditLog) |
+| #671 | 2026-07-17 16:13Z | feat(ux): D365-style saved views + personalisable DataGrid (MVP) |
+| #672 | 2026-07-20 01:15Z | feat(ux): universal activity Timeline (D365 parity, MVP) |
+| #673 | 2026-07-17 12:24Z | feat(ux): ViewSwitcher framework + Jobs grid/kanban/table views |
+| #674 | 2026-07-18 21:22Z | docs(queue): stage pr-qa-clients-perms-registry (fix permanently-false clients.* gate shipped by #655) |
+| #675 | 2026-07-18 00:11Z | docs(backlog): discharge 3 register items whose work shipped to main |
+| #676 | 2026-07-18 20:39Z | docs(queue): stage pr-fix-672-timeline-conflict-and-spec (unblock the board) |
+| #677 | 2026-07-19 00:01Z | docs(queue): stage pr-qa-envexample-auth-mode (AUTH_MODE undocumented in .env.example) |
+| #678 | 2026-07-19 02:10Z | docs(queue): stage pr-fix-smoke-env-provisioning (rule-6 smoke gate cannot pass on any branch) |
+| #679 | 2026-07-19 04:10Z | docs(queue): arm dashboard-UI prompt; discharge shipped graphify; repair dead swms gate |
+| #680 | 2026-07-19 06:10Z | fix(smoke): provision .env into worktree; fail loud with SMOKE-ENV-MISSING |
+| #681 | 2026-07-19 08:09Z | docs(pr-prompts): stage pr-qa-expenses-superuser-parity (S3 super-user parity) |
+| #682 | 2026-07-19 12:11Z | docs(env): document AUTH_MODE and optional ENTRA_* overrides |
+| #683 | 2026-07-19 12:21Z | fix(web/expenses): honor isSuperUser on ExpensesPage manage/approve gates |
+| #684 | 2026-07-19 12:34Z | fix(web): FieldOnlyGuard/RootRedirect must honor isSuperUser (S2 super-user lockout) |
+| #685 | 2026-07-19 12:47Z | fix(web): route UserProfilePage admin gate through isAdminUser (S3 super-user parity) |
+| #686 | 2026-07-19 14:10Z | test(e2e): fix batch8-archive View-link -> toHaveURL race |
+| #687 | 2026-07-19 16:09Z | docs(pr-prompts): arm permission-registry coverage guard prompt (04-scanner) |
+| #688 | 2026-07-19 16:24Z | docs(sot): re-merge generated schema-map into sot/04 (231/41/358) |
+| #689 | 2026-07-19 18:10Z | test(api): guard that every @RequirePermissions code is in the registry |
+| #690 | 2026-07-19 20:41Z | chore(queue): bin 8 armed prompts whose work has already shipped |
+| #691 | 2026-07-19 20:28Z | fix(api): register workers.manage permission code (#658 permanently-false gate) |
+| #692 | 2026-07-19 22:36Z | feat(web): add ConfirmDialog + useConfirm hook primitive |
+| #693 | 2026-07-19 22:10Z | fix(pipeline): smoke against a dedicated DB, use migrate deploy, stop masking migrate failures |
+| #694 | 2026-07-19 22:22Z | feat(email): structured EmailConnectionDiagnosis for admin email-test |
+| #695 | 2026-07-19 23:29Z | feat(pipeline): queue-sync -- reconcile armed-by-commit prompts into the filesystem queue |
+| #696 | 2026-07-20 00:45Z | docs(queue): respec ops map locations (tips + POIs) as a Settings tab |
+| #697 | 2026-07-19 22:49Z | fix(pipeline): resolve prisma from the api workspace in smoke-pr |
+| #698 | 2026-07-20 00:07Z | docs(queue): stage pr-qa-envexample-runtime-vars |
+| #699 | 2026-07-20 02:40Z | feat(rates): migrate EstimateMaterialDensity into the RateTable system |
+| #700 | 2026-07-19 23:41Z | feat(pipeline): executable escalation + lesson registers on one shared gate evaluator |
+| #701 | 2026-07-19 23:54Z | chore(queue): bin 37 shipped-stale HOLD prompts (completes crash-interrupted run) |
+| #702 | 2026-07-20 00:20Z | docs(sot): LL-40/LL-41 - watcher launch lifetime + crash aftermath recovery |
+| #704 | 2026-07-20 00:32Z | fix(pipeline): give smoke setup its own cold-start budget; clear orphaned smoke worktree |
+| #705 | 2026-07-21 06:43Z | feat(estimates): task-time + waste-weight calculator seam (SoT ┬º10) |
+| #706 | 2026-07-20 02:11Z | docs(pipeline): needs-marco/ is the only real stop; escalates:true gates merge not run |
+| #707 | 2026-07-20 02:23Z | fix(e2e): batch7 timeline settle waited on spinner absence, not fetch resolution |
+| #708 | 2026-07-21 06:19Z | feat(auth): FIELD-worker OTP provider (personal email + short-lived code) |
+| #709 | 2026-07-20 03:12Z | docs(pipeline): script registry - who owns which script and when to call it |
+| #710 | 2026-07-20 14:23Z | fix(web): TenderingSettingsPage - replace raw controls with DS components |
+| #711 | 2026-07-20 02:54Z | chore(queue): reconcile prompt queue - bin 2 dead, arm 6 |
+| #712 | 2026-07-20 06:26Z | feat(forms): existing_site picker field type (per-form site capture) |
+| #713 | 2026-07-20 03:26Z | docs(queue): stage pr-qa-timeline-superuser-and-contacts-perm (#672 shipped a super-user lockout + two permanently-false gates) |
+| #714 | 2026-07-20 03:38Z | docs(queue): stage OTP integration-test prompt so #708 clears on CI evidence |
+| #715 | 2026-07-20 15:18Z | docs(bp0a): SLICE 0 ÔÇö Job/Project merge slice plan (Job canonical) |
+| #716 | 2026-07-20 04:13Z | chore(scripts): delete 15 archaeology scripts - git history is the archive |
+| #717 | 2026-07-21 05:33Z | docs(queue): arm 14 gate-cleared prompts, unblock the held set, re-hold 2 destructive |
+| #718 | 2026-07-20 03:52Z | test(e2e): quarantine confirmed-flaky plant-pills spec + track fix in BACKLOG |
+| #719 | 2026-07-20 04:26Z | docs(queue): arm prompt - guard hard-coded Set-Location in check-all-drift.ps1 + preflight.ps1 |
+| #720 | 2026-07-20 06:12Z | feat(reporting): cross-module BI reporting layer (slice 1) |
+| #721 | 2026-07-20 07:53Z | feat(knowledge): internal Knowledge Base / SOP library (case management slice 2) |
+| #722 | 2026-07-21 04:03Z | feat(crm): lead + opportunity pipeline slice 1 (Tier 4) |
+| #723 | 2026-07-20 08:27Z | feat(erp): cost-to-complete forecast per job |
+| #724 | 2026-07-20 22:45Z | docs(queue): arm prompt - frontend super-user parity for 4 residual bare capability flags |
+| #725 | 2026-07-21 04:20Z | feat(erp): live crew map + nearest on-clock worker |
+| #726 | 2026-07-20 07:38Z | fix(pipeline): guard the hard-coded Set-Location in check-all-drift.ps1 and preflight.ps1 |
+| #727 | 2026-07-20 07:12Z | fix(pipeline): supervisor adopts an orphaned watcher instead of exiting 0 |
+| #728 | 2026-07-20 08:07Z | feat(compliance): PrequalificationRequest workflow + dashboard |
+| #729 | 2026-07-21 03:02Z | feat(field): expense capture on the field PWA (slice 2) |
+| #731 | 2026-07-21 03:50Z | docs(pr-prompts): stage TenderClient cascade JobConversion guard prompt |
+| #732 | 2026-07-21 00:44Z | feat(erp): site sign-in / sign-out (WHS spine for who is on site right now) |
+| #733 | 2026-07-20 23:36Z | feat(forms): AI build-a-form-from-PDF (draft, never auto-publishes) |
+| #734 | 2026-07-21 00:00Z | feat(directory): unified Clients / Subs & Suppliers / Contacts tabbed page |
+| #735 | 2026-07-23 06:53Z | feat(ux): fold Archive into Documents and Resources into Workers |
+| #736 | 2026-07-20 10:40Z | docs(queue): arm conflict-resolution prompts for DIRTY #722 and #732 |
+| #737 | 2026-07-21 06:31Z | chore(routes): remove dead /tenders/dashboard route |
+| #738 | 2026-07-21 02:05Z | feat(scheduler): one page with Board / Grid / Availability view tabs |
+| #739 | 2026-07-21 07:33Z | feat(settings): unified SettingsShell for personal/company/administration |
+| #740 | 2026-07-20 12:11Z | docs(sot): rewrite sot/01 SECTION 9 to approved 7-group nav IA |
+| #741 | 2026-07-21 03:16Z | feat(ops): map locations register (ops-m1) |
+| #742 | 2026-07-21 03:32Z | fix(permissions): register clients.view / clients.manage (permanently-false gate from #655) |
+| #743 | 2026-07-20 12:25Z | docs(env): document 4 runtime env vars read by apps/api |
+| #744 | 2026-07-21 01:00Z | test(compliance): Workstream-C audit + fill prequal gap |
+| #745 | 2026-07-21 02:41Z | feat(tendering): waste transport cost engine (R3 T-1) |
+| #746 | 2026-07-21 06:06Z | feat(nav): reorganise desktop sidebar into the 7 approved groups (structure only) |
+| #747 | 2026-07-20 23:14Z | feat(rates): fallback-audit script + ratetable-miss warn signal (pr-524 phase-D gate) |
+| #748 | 2026-07-20 22:25Z | feat(rates): xlsx import with preview/confirm (round-trip half 2) |
+| #749 | 2026-07-20 16:14Z | chore(data-model): audit FormSubmission siteId nulls before NOT NULL flip |
+| #750 | 2026-07-21 01:44Z | feat(dashboards): Smart Wizard shell reads metadata catalog at runtime |
+| #751 | 2026-07-20 20:11Z | docs(swms): SLICE 0 - ordered SPLIT build plan (Tracks A + B) |
+| #752 | 2026-07-21 05:22Z | docs(sot): re-merge generated schema map (234/42/363) + refresh sot/02 ┬º2 |
+| #753 | 2026-07-20 18:14Z | docs(bp0b): SLICE 0 ÔÇö Worker/WorkerProfile merge slice plan (WorkerProfile canonical) |
+| #754 | 2026-07-20 22:14Z | feat(xero): push ACCPAY bills + pull payment status |
+| #755 | 2026-07-21 00:15Z | docs(queue): arm SWMS SLICE A1 prompt; discharge swms-interactive-module |
+| #756 | 2026-07-21 01:25Z | docs(queue): arm dependabot lockfile prompt (14 alerts) |
+| #757 | 2026-07-21 02:21Z | docs(queue): arm seed-hardening prompt (staff local passwords -> SSO-ONLY) |
+| #758 | 2026-07-21 04:32Z | chore(security): security-audit.ps1 baseline check + registry entry |
+| #759 | 2026-07-21 07:48Z | docs(pr-prompts): arm muster-headcount + ops-m1b (gates satisfied) |
+| #760 | 2026-07-21 08:06Z | feat(watcher): front-matter dependency gating (rescued from watcher clone) |
+| #761 | 2026-07-21 12:11Z | docs(pr-prompts): stage Xero env-drift fix prompt |
+| #762 | 2026-07-21 19:20Z | docs(sot-04): re-merge generated data-model section (234ÔåÆ239 models) |
+| #763 | 2026-07-22 00:24Z | docs(sot-02): reconcile In-PR list to live board (26 -> 1) |
+| #764 | 2026-07-23 06:05Z | chore(data-model): untrack derived map artifacts; keep catalog tracked |
+| #765 | 2026-07-22 01:11Z | chore(queue): arm #735 spec-retarget prompt |
+| #766 | 2026-07-22 03:13Z | chore(queue): arm UI naming fixes (B1-B4 links, A1/A4-A6/A9 titles) |
+| #767 | 2026-07-22 05:31Z | chore(queue): arm fix-735 acceptance-specs prompt |
+| #768 | 2026-07-23 05:14Z | docs(pr-reviews): recover 27 per-PR review files (#739-#767) from the watcher clone |
+| #769 | 2026-07-23 04:39Z | docs(sot-05): migrate 15 chat-memory-only lessons into the incident ledger (LL-42..LL-56) |
+| #770 | 2026-07-23 05:02Z | docs(backlog): register 4 systems-hardening items with executable gates |
+| #771 | 2026-07-23 04:50Z | docs(sot-01): binding append-only movement rule for new financial/quantity/compliance models |
+| #772 | 2026-07-23 06:18Z | chore(queue): arm watcher verdict-archival prompt |
+| #773 | 2026-07-23 06:33Z | chore(queue): clear 24 premise-dead prompts to superseded/ |
+| #774 | 2026-07-23 08:13Z | docs(pipeline): stage 4 systems-hardening prompts (04-scanner) |
+| #775 | 2026-07-23 16:34Z | chore(deps): fix 13 dependabot alerts (axios 1.18, brace-expansion) |
+| #776 | 2026-07-23 09:04Z | feat(safety): muster/evacuation roll-call ÔÇö schema, API, headcount widget |
+| #777 | 2026-07-23 16:46Z | fix(ux): align page H1 titles to sidebar labels (A1/A4/A5/A6/A9) |
+| #778 | 2026-07-23 16:23Z | fix(web): repoint Tender Contacts/Clients quick-actions to /tenders (B1-B4) |
+| #779 | 2026-07-27 06:01Z | feat(web): add LocationsMap panel to Settings > Map locations tab (m1b) |
+| #780 | 2026-07-23 08:48Z | fix(web): super-user parity for four residual capability flags |
+| #781 | 2026-07-23 12:22Z | fix(tender-clients): guard removeClient against silent JobConversion cascade loss |
+| #782 | 2026-07-23 20:08Z | fix(timeline): honour isSuperUser and stop gating on unregistered permission codes |
+| #783 | 2026-07-23 10:33Z | docs(env): document Xero account-code and tracking-category overrides in .env.example |
+| #784 | 2026-07-23 18:25Z | chore(queue): close PR #732 conflict-resolve prompt (already merged 2026-07-21) |
+| #785 | 2026-07-23 19:57Z | docs(queue): stage ERP-review prompts (contract autocreate, material waste autofill, ops-m3 daily-km) |
+| #786 | 2026-07-23 18:13Z | docs(sot-04): re-merge generated data-model section (239ÔåÆ241 models, muster from #776) |
+| #787 | 2026-07-27 05:48Z | chore(deps): bump the npm_and_yarn group across 2 directories with 1 update |
+| #788 | 2026-07-24 00:21Z | feat(crm): one-click "Generate draft tender" from a lead |
+| #789 | 2026-07-27 08:06Z | feat(crm): move CRM board onto Tenders page as a second tab |
+| #790 | 2026-07-24 21:13Z | docs(qa): audit idempotency + retry/degrade across external integrations |
+| #791 | 2026-07-24 00:41Z | docs(pipeline): add STATION 06 - PR MASTER (interactive PR intake/brainstorm) |
+| #792 | 2026-07-27 00:14Z | docs(sot-01): add Integration ownership section |
+| #793 | 2026-07-27 01:52Z | docs(prompt-schema): add rollback_strategy field, required for migration-scoped prompts |
+| #794 | 2026-07-27 01:23Z | docs(scanner): add ADVERSARIAL PROMPT CRITIQUE section (design-attack pass, report-only) |
+| #795 | 2026-07-27 04:13Z | feat(scope-materials): derive waste group/item from material ÔÇö hide per-row pickers |
+| #796 | 2026-07-27 07:33Z | fix(seed): stop seeding real staff with the public Password123! local password |
+| #797 | 2026-07-31 00:21Z | feat(swms): SLICE A1 - SWMS template catalog tables |
+| #798 | 2026-07-27 04:25Z | feat(contracts): auto-create Contract when tender moves to CONTRACT_ISSUED |
+| #799 | 2026-07-24 04:24Z | feat(tendering): DB-backed org-wide label overrides |
+| #800 | 2026-07-24 04:14Z | feat(watcher): archive settled review verdicts out of the clone tree |
+| #801 | 2026-07-24 07:09Z | chore(queue): arm fix-forward prompts (userdash e2e race on main, 779 deps) + watcher fix-lane |
+| #802 | 2026-07-24 07:51Z | docs(pipeline): FIX LANE awareness for stations 00/03/04/06 |
+| #803 | 2026-07-24 07:21Z | fix(dashboards): idempotent user-dashboard create - P2002 returns existing row (unblocks board-wide e2e red) |
+| #805 | 2026-07-24 07:35Z | chore(queue): weekend reconcile - arm 6 dialog migrations, clear 15 stale prompts |
+| #806 | 2026-07-24 08:08Z | feat(watcher): FIX LANE ÔÇö fixes_pr prompts jump the queue |
+| #807 | 2026-07-27 02:11Z | feat(admin): migrate native dialogs to useConfirm hook |
+| #808 | 2026-07-27 04:37Z | feat(web): migrate native dialogs to useConfirm hook (batch A) |
+| #809 | 2026-07-27 03:57Z | feat(web): migrate native dialogs to useConfirm (batch B - projects/scheduler/workers) |
+| #810 | 2026-07-27 02:23Z | feat(web): migrate native dialogs to useConfirm (personas + dashboards) |
+| #811 | 2026-07-27 02:55Z | feat(tendering): migrate native dialogs to useConfirm (batch A, 6 files) |
+| #812 | 2026-07-27 03:43Z | feat(tendering): migrate native dialogs to useConfirm (batch B, 5 files) |
+| #813 | 2026-07-27 02:39Z | docs(queue): stage synthetic-fixtures Xero slice 1 |
+| #814 | 2026-07-27 05:03Z | docs(sot-02): reconcile In-PR list to live board (1 to 6) |
+| #815 | 2026-07-27 05:16Z | chore(deps): override fast-uri >=3.1.4 (clears 2 high dependabot alerts) |
+| #816 | 2026-07-27 07:44Z | docs(queue): stage GPS A1-A3 + PR 789 fix-lane prompts |
+| #817 | 2026-07-31 03:13Z | feat(field): GPS-A1 ÔÇö mandatory auto-captured GPS with hard-block on clock-on/off |
+| #818 | 2026-07-27 16:21Z | docs(sot-04): re-merge generated data-model section (schema 241->242 models, TenderingLabel from #799) |
+| #819 | 2026-07-31 04:26Z | feat(map-locations): OPS-M2 tip finder ÔÇö TipRecommendationLog + recommendations API + finder panel |
+| #820 | 2026-07-31 04:38Z | feat(field): GPS-A2 ÔÇö foreground breadcrumb trail while on the clock |
+| #821 | 2026-07-31 05:15Z | GPS-A3 ÔÇö mandatory GPS across site attendance, muster, and forms |
+| #822 | 2026-07-31 04:51Z | docs(sot-05): add LL-57 - body do-not-merge note is not a gate; only the label parks a PR |
+| #823 | 2026-07-31 05:03Z | docs(queue): stage home-dashboard system-default prompt + rename HOLD |
+| #824 | 2026-07-31 05:53Z | fix(dashboard): server-owned system default ÔÇö kill Operations Overview resurrection loop |
+| #825 | 2026-07-31 06:23Z | docs(queue): stage tenders-fold prompt + arm home-rename |
+| #826 | 2026-07-31 06:51Z | docs(queue): tenders-fold v2 (delete tender settings) + 2 security prompts |
+| #827 | 2026-07-31 07:12Z | docs(queue): system audit wave - 9 fix prompts + audit report + decisions |
+| #828 | 2026-07-31 08:15Z | feat(dashboard): rename Home heading "Operations Overview" -> "Home" |
+| #829 | 2026-07-31 10:14Z | security: one write path for AI provider keys ÔÇö /settings/ai only |
+| #830 | 2026-07-31 08:53Z | fix(forms): + New Action opens create form (not 404) |
+| #831 | 2026-07-31 08:38Z | fix(field): docket form uses Worker endpoint so submissions can succeed |
+| #832 | 2026-07-31 08:26Z | fix(procurement): notification linkUrl ÔåÆ existing /procurement route |
+| #834 | 2026-07-31 10:58Z | fix(sidebar): gate every nav item on its API's view permission |
+| #835 | 2026-07-31 13:01Z | fix(quickcreate): wire ?new=1 on 4 targets, drop 2 with no create affordance |
+| #836 | 2026-07-31 11:12Z | fix(routing): orphan /archive redirect, query-preserving redirects, dead-end + double-hop fixes |
+| #837 | 2026-07-31 12:46Z | security(api): declare permission guards on admin-users + access-requests mutations |
+| #838 | 2026-07-31 10:36Z | security(api): gate global-list item mutations on masterdata.manage |
+| #839 | 2026-07-31 10:25Z | security(api): timeline ensureViewer fails closed for unmapped entity types |
+| #840 | 2026-07-31 10:47Z | docs(plans): Settings restructure binding slice plan |
+| #841 | 2026-07-31 14:23Z | feat(nav): finish Tenders consolidation; delete dead Tender Settings |
+| #842 | 2026-07-31 12:32Z | docs(queue): fix-lane - batch8 archive spec (main red) + 841 conflicts |
+| #843 | 2026-07-31 14:11Z | fix(e2e): update batch8 archive spec for /archive->documents redirect |
+| #844 | 2026-08-02 21:26Z | docs(queue): Monday decisions wave - 14 prompts + decisions record |
+| #845 | 2026-08-02 22:12Z | fix(routes): delete condemned orphan pages ÔÇö /tenders/reports, /resources, /surveys/* |
+| #846 | 2026-08-03 01:34Z | docs(queue): stage PR Master fixes (geofence limit + company-profile POST + wizard-catalog plan) |
+| #847 | 2026-08-03 01:59Z | fix(nav): make /directory canonical; redirect /master-data; drop clients-grid demo |
+| #848 | 2026-08-03 06:09Z | fix(field-nav): add Dockets and Leave entries |
+| #849 | 2026-08-03 01:21Z | fix(field): mobile-native notifications page; bell stops ejecting to desktop shell |
+| #850 | 2026-08-03 06:20Z | feat(hr): Leave Approvals nav entry + NoAccess gate on approvals page (slice 1) |
+| #851 | 2026-08-03 02:49Z | fix(nav): mobile tab bar ÔÇö add Home tab, skip sub-group parents |
+| #852 | 2026-08-03 03:27Z | docs(backlog): record Marco's Option A decision on gps-native-wrapper-app |
+| #853 | 2026-08-03 01:05Z | docs(queue): stage merge-liberty+speed plan + plant-pills e2e fix |
+| #854 | 2026-08-03 03:14Z | fix(nav): adopt /dockets and /expenses into HR sidebar |
+| #855 | 2026-08-03 02:37Z | fix(company-profile): add POST /admin/company/profile bootstrap route |
+| #856 | 2026-08-03 01:47Z | test(e2e): un-quarantine plant-pills spec; serialize scope-item PATCHes |
+| #857 | 2026-08-03 00:40Z | docs(queue): stage screenshot-review batch (PDF fix + A/E tab + waste transport + 3 plans) |
+| #858 | 2026-08-03 00:53Z | docs(queue): stage Site-dissolution SLICE-0 plan |
+| #859 | 2026-08-03 00:29Z | test(e2e): scope batch8 archive-heading locator to exact match |
+| #860 | 2026-08-03 02:25Z | fix(admin-settings): use paged sites query on geofences tab |
+| #861 | 2026-08-03 03:01Z | fix(deploy): install Chrome system libs at App Service startup so PDF export works |
+| #862 | 2026-08-03 02:13Z | fix(timesheets): dedupe payroll CSV export ÔÇö Approval tab links to PayrollExportPage |
+| #863 | 2026-08-03 03:39Z | docs(plans): consolidate Assets/Inventory/Maintenance/Procurement into one tabbed page (SLICE-0) |
+| #864 | 2026-08-03 04:12Z | docs(backlog): discharge flaky-batch3-plant-pills (shipped via #856) |
+| #865 | 2026-08-03 04:52Z | docs(plans): SLICE-0 plan to consolidate Case/CorrectiveAction/Safety+Hazard into one Issue engine |
+| #866 | 2026-08-03 05:53Z | docs(plans): SLICE-0 plan for editable Job/Stage durations that drive scheduler resource allocation |
+| #867 | 2026-08-03 23:10Z | docs(plans): SLICE-0 plan to widen autonomous merge liberty + speed up smoke/merge (do-not-merge) |
+| #868 | 2026-08-03 07:13Z | docs(queue): stage + arm dialogs-migrate-stragglers |
+| #869 | 2026-08-03 07:42Z | docs(queue): stage + arm dialogs-prompt-primitive |
+| #870 | 2026-08-03 08:10Z | feat(web): migrate native dialogs to useConfirm (stragglers) |
+| #871 | 2026-08-03 10:13Z | docs(plans): SLICE-0 model-merge plan ÔÇö B-P0a (Job/Project) first, then B-P0b (Worker/WorkerProfile) |
+| #872 | 2026-08-03 12:12Z | docs(plans): SLICE-0 reporting dashboard layout (user-composed reports as a dashboard) |
+| #873 | 2026-08-03 23:24Z | docs(plans): SLICE-0 plan to dissolve Site (physical ÔåÆ Job, commercial ÔåÆ Client; Directory ÔåÆ Clients) |
+| #874 | 2026-08-04 00:12Z | docs(plans): SLICE-0 plan to make Smart Wizard metadata-catalog resolve in deployed API |
+| #875 | 2026-08-03 22:05Z | feat(web): honor ?highlight= param on Jobs/Tenders/Workers lists |
+| #876 | 2026-08-03 22:56Z | seed(field-worker): grant expenses.view + expenses.manage |
+| #877 | 2026-08-03 18:13Z | docs(plans): SLICE 1 permission-code inventory for settings restructure |
+| #878 | 2026-08-04 00:27Z | ci(web): run vitest suite on every PR (settings-restructure SLICE 2) |
+| #879 | 2026-08-04 01:27Z | feat(tendering): add Assumptions & Exclusions tab to assistant panel |
+| #880 | 2026-08-04 02:26Z | feat(tendering/waste): expand transport sub-row by default on new rows |
+| #881 | 2026-08-03 21:05Z | docs(queue): stage smoke-harness auth-throttle 429 fix prompts |
+| #882 | 2026-08-03 21:51Z | fix(smoke): relax auth login throttle for smoke env (parity with CI) |
+| #883 | 2026-08-04 00:48Z | test(synthetic-fixtures): SLICE 1 ÔÇö Xero synthetic provider + idempotency reference |
+| #884 | 2026-08-03 22:39Z | docs(queue): stage permission role->permission reconciler (follow-up to #876) |
+| #885 | 2026-08-04 00:38Z | Stage SLICE-0 plan prompt: unified API-key vault + geocoding failover |
+| #886 | 2026-08-04 01:02Z | fix(e2e): assert timeline system-entry by title, not by capped count |
+| #887 | 2026-08-04 01:15Z | docs(plans): SLICE-0 unified API-key vault + geocoding provider-failover chain |
+| #888 | 2026-08-04 01:39Z | Stage SLICE-1 prompt: ApiCredential/ApiKeyType vault models + migration |
+| #889 | 2026-08-04 02:13Z | feat(api): SLICE-1 ApiCredential + ApiKeyType vault models (additive migration) |
+| #890 | 2026-08-04 02:39Z | Stage SLICE-2 prompt: ApiKeysService.resolve() seam (legacy fallback) |
+| #891 | 2026-08-04 03:19Z | docs(pipeline): stage synthetic-fixtures slices 2 (graph-mail) + 3 (forms-ingestion) |
+| #892 | 2026-08-04 03:53Z | feat(api): SLICE-2 ApiKeysService.resolve() seam (legacy-primary) |
+| #893 | 2026-08-04 04:06Z | Stage SLICE-3 prompt: vault backfill + seed types + resolve() vault-flip |
+| #894 | 2026-08-04 04:41Z | docs(queue): stage Smart Wizard metadata-catalog fix prompts (SLICE 1-3) |
+| #895 | 2026-08-04 05:09Z | feat(api): SLICE-3 backfill ApiCredential vault + flip resolve() to vault-first |
+| #896 | 2026-08-04 05:37Z | feat(api): SLICE-1 bundle metadata-catalog.json into API build artifact |
+| #897 | 2026-08-04 18:59Z | feat(web): add usePrompt dialog primitive + migrate 3 native window.prompt sites |
+| #899 | 2026-08-04 06:03Z | docs(sot-02): reconcile roadmap to live board (2026-08-04) |
+| #900 | 2026-08-04 05:23Z | Stage SLICE-5 prompt: GeocodingChainService (autocomplete failover) |
+| #901 | 2026-08-04 06:27Z | feat(api): SLICE-5 GeocodingChainService (autocomplete failover, Geoapify adapter) |
+| #902 | 2026-08-04 05:51Z | docs(queue): stage + arm offline-provider error-boundary |
+| #903 | 2026-08-04 06:14Z | docs(plans): SLICE-0 plans batch 1 ├óÔé¼ÔÇØ Forms v2 WHOLE program (F-2..F-13) + subcontractor rate cards |
+| #904 | 2026-08-04 07:13Z | feat(api): SLICE-2 metadata catalog resolver (env -> bundle -> walker) + production-shape spec |
+| #905 | 2026-08-04 19:28Z | docs(plans): SLICE-0 plans batch 2 ├óÔé¼ÔÇØ websockets, multi-tenant, progress-claim, win/loss |
+| #906 | 2026-08-04 18:47Z | fix(web): wrap /field OfflineProvider subtree in ErrorBoundary |
+| #907 | 2026-08-04 19:13Z | docs(sot-02): move planned items into ├é┬º3; clear ├é┬º4/├é┬º5/├é┬º6 |
+| #908 | 2026-08-04 06:55Z | docs(pipeline): arm SLICE-6 geocoding adapters + forward/reverse + cost tiering |
+| #909 | 2026-08-04 07:48Z | feat(api): SLICE-6 Google/Geocodify/MapTiler/Nominatim geocoding adapters + forward/reverse + cost tiering |
+| #910 | 2026-08-04 08:05Z | docs(runbook): SLICE-3 smart-wizard catalog verify runbook + resolver log |
+| #911 | 2026-08-04 08:21Z | docs(pipeline): arm SLICE-7 custom REST geocoding adapter (SSRF-hardened) |
+| #912 | 2026-08-04 09:05Z | feat(api): SLICE-7 custom REST geocoding adapter (SSRF-hardened) |
+| #913 | 2026-08-04 21:13Z | docs(pipeline): arm SLICE-4a vault management API; stage 4b/4c (HOLD) |
+| #914 | 2026-08-04 21:25Z | docs(sot): Smart Wizard catalog resolution lesson (SLICE 4 - LL-58 + sec6 rule) |
+| #915 | 2026-08-04 21:51Z | docs(plans): lock realtime=SSE + multi-tenant=model-A decisions |
+| #916 | 2026-08-04 22:02Z | docs(sot-02): resolve ├é┬º6 decisions #8/#9 (realtime=SSE, multi-tenant=model-A) |
+| #917 | 2026-08-04 22:43Z | feat(api): SLICE-4a vault management API (ApiCredential + ApiKeyType CRUD + per-type validation) |
+| #918 | 2026-08-04 23:32Z | docs(queue): stage intent-first Smart Wizard SLICE-0 plan prompt |
+| #919 | 2026-08-04 23:06Z | docs(pipeline): arm settings-restructure SLICE 3 (Settings visible + per-item gates) |
+| #920 | 2026-08-05 00:15Z | docs(plan): SLICE-0 intent-first Smart Wizard (module -> intent -> widget) |
+| #921 | 2026-08-04 23:19Z | stage: program slice prompts (33 HOLD + F-2a armed) |
+| #922 | 2026-08-05 01:18Z | SLICE 3 ÔÇö Settings group visible to all + per-item permission gates |
+| #923 | 2026-08-05 03:20Z | feat(forms): F-2a ÔÇö FormRule definition column + shared rule-definition types |
+| #924 | 2026-08-05 01:30Z | arm: F-2b (rules-eval-unify) gated on F-2a #923 |
+| #925 | 2026-08-05 01:42Z | docs(pipeline): arm settings-restructure SLICE 4 (Notifications inbox -> /inbox) |
+| #926 | 2026-08-05 01:56Z | docs(pipeline): consolidated activity log 2026-08-04..05 (cross-chat) |
+| #927 | 2026-08-05 02:28Z | feat(web): SLICE 4 ÔÇö move Notifications inbox to /inbox; wire topbar bell |
+| #928 | 2026-08-05 02:42Z | docs(pipeline): arm settings-restructure SLICE 6 (Lists -> /settings/reference-data) |
+| #929 | 2026-08-05 03:08Z | chore(security): clear 15 Dependabot alerts via pnpm override bumps |
+| #930 | 2026-08-05 03:33Z | feat(web): SLICE 6 ÔÇö Reference data & Lists off UserProfilePage; single Company home at /settings/reference-data |
+| #931 | 2026-08-05 04:02Z | docs(pipeline): stage fix - guard /settings/company route with AdminOnly |
+| #932 | 2026-08-05 03:48Z | docs(pipeline): arm settings-restructure SLICE 7 (consolidate Users -> AdminUsersTab) |
+| #933 | 2026-08-05 05:05Z | feat(forms): F-2b ÔÇö one rule evaluator (shared), contract-tested |
+| #934 | 2026-08-05 04:21Z | feat(web): SLICE 7 ÔÇö consolidate Users onto AdminUsersTab, delete UsersPage |
+| #935 | 2026-08-05 04:47Z | docs(pipeline): arm settings-restructure SLICE 8 (fold Roles + Permissions into one page) |
+| #936 | 2026-08-05 05:21Z | feat(web): SLICE 8 ÔÇö fold Roles + Permissions into one editable page |
+| #937 | 2026-08-05 06:28Z | docs(plans): pipeline correctness gates - SLICE-0 (do-not-merge, review) |
+| #938 | 2026-08-05 06:00Z | arm: F-2c (rules-builder) gated on F-2b #933 |
+| #939 | 2026-08-05 05:34Z | docs(pipeline): stage QA fix - document METADATA_CATALOG_PATH in .env.example |
+| #940 | 2026-08-05 06:42Z | docs(pipeline): stage timeline pagination + date-range filter |
+| #941 | 2026-08-05 05:47Z | docs(pipeline): arm settings-restructure SLICE 9 (delete Audit stub tab) |
+| #942 | 2026-08-05 06:57Z | SLICE 9 ÔÇö delete Audit stub tab from AdminSettingsPage |
+| #943 | 2026-08-05 07:44Z | feat(forms): F-2c ÔÇö visual rules builder + WARN/BLOCK submit gates |
+| #944 | 2026-08-05 07:31Z | docs(pipeline): arm settings-restructure SLICE 10 (adopt Automations into Administration nav) |
+| #945 | 2026-08-05 07:56Z | feat(settings): SLICE 10 - adopt Automations into Administration nav |
+| #946 | 2026-08-05 08:08Z | docs(pipeline): arm settings-restructure SLICE 12 (SharePoint config into Platform page) |
+| #947 | 2026-08-05 09:07Z | feat(settings): SLICE 12 ÔÇö merge SharePoint config into Platform page |
+| #948 | 2026-08-05 09:28Z | docs(pipeline): arm settings-restructure SLICE 13 (Operations fuel into Company commercial defaults) |
+| #949 | 2026-08-05 09:52Z | feat(settings): SLICE 13 ÔÇö Operations/Fuel under Company profile |
+| #950 | 2026-08-05 10:21Z | docs(pipeline): arm settings-restructure SLICE 15 (move Job roles to Workers area) |
+| #951 | 2026-08-05 10:50Z | feat(settings): SLICE 15 - move Job roles to the Workers area |
+| #952 | 2026-08-05 11:02Z | docs(pipeline): arm settings-restructure SLICE 16 (administration landing hub) |
+| #953 | 2026-08-05 11:34Z | feat(settings): SLICE 16 ÔÇö /settings/administration landing hub (fix direct-hit 404) |
+| #954 | 2026-08-05 20:57Z | arm: F-3 (repeating-sections) gated on F-2c #943 |
+| #955 | 2026-08-05 21:18Z | docs(pipeline): stage correctness-gates code slices (SLICES 1-3) |
+| #956 | 2026-08-05 22:03Z | docs(pipeline): arm settings-restructure SLICE 5 (notification preferences API+UI) |
+| #957 | 2026-08-05 23:05Z | feat(forms): F-3 ÔÇö repeating sections (entryIndex + designer toggle + fill UI + rule operators) |
+| #958 | 2026-08-05 22:39Z | docs(pipeline): stage approved UI fixes (Directory #2/#3, Rates&Lists #5) |
+| #959 | 2026-08-05 22:50Z | docs(pipeline): stage reporting-dashboard slice prompts (#6) |
+| #960 | 2026-08-06 00:04Z | feat(settings): SLICE 5 ÔÇö notification preferences (schema + API + narrowing helper + UI) |
+| #961 | 2026-08-06 00:21Z | docs(pipeline): stage contract-handover-wizard plan + B-HW-1..11 chain |
+| #962 | 2026-08-06 00:40Z | arm: F-4 (fields-wave1) gated on F-3 #957 |
+| #963 | 2026-08-06 00:53Z | docs(plan): amend site-dissolution ├ö├ç├Â keep Directory name; confirm 1:1 job-site |
+| #964 | 2026-08-06 01:12Z | docs(plan): record job-identity invariant on site-dissolution plan |
+| #965 | 2026-08-06 01:25Z | docs(plan): #7 updates ├ö├ç├Â Directory left as-is; delete mock-up site-unassigned rows |
+| #966 | 2026-08-06 03:24Z | fix(web): Directory ÔÇö open Client detail in centered modal |
+| #967 | 2026-08-06 01:51Z | docs(pipeline): arm settings-restructure SLICE 14 (move Client versions + Map locations to Administration) |
+| #968 | 2026-08-06 01:37Z | docs(pipeline): fold B-HW-4 into B-P0a-4; remove standalone contract-at-issue prompt |
+| #969 | 2026-08-11 09:30Z | fix(web): Directory ÔÇö remove Workers tab; fix tab flicker |
+| #970 | 2026-08-06 02:06Z | docs(pipeline): rates migration plan (SLICE 11) + chained 11a/11b/11c |
+| #971 | 2026-08-06 02:19Z | docs(pipeline): contract-at-issue already exists; fix B-HW-5 gate |
+| #972 | 2026-08-06 02:33Z | docs(pipeline): arm settings-restructure SLICE 17 (per-screen permissions) |
+| #974 | 2026-08-06 02:45Z | docs(pipeline): 11c opens as DRAFT (hard lock on permanent rates-table drop) |
+| #975 | 2026-08-06 02:57Z | fix(pipeline): isolate batch-pr-smoke in a worktree + reap 95 shipped prompts |
+| #976 | 2026-08-11 07:04Z | feat(api): B-P0a-4-i ├ö├ç├Â re-point JobConversion to surviving Project |
+| #977 | 2026-08-06 03:11Z | docs(pipeline): record SLICE 20 sot-reconcile (BACKLOG) + settings-plan amendments |
+| #979 | 2026-08-06 10:39Z | fix(web): align Availability Report page aria-label with H1 / sidebar label |
+| #980 | 2026-08-06 06:14Z | fix(web): guard /settings/company route with <AdminOnly> (defence-in-depth) |
+| #981 | 2026-08-06 10:53Z | feat(forms): F-4 wave 1 ÔÇö Unique ID field, live Calculation, nested Lookup |
+| #982 | 2026-08-06 06:37Z | test(api): Gate A ÔÇö FormRule.definition backfill correctness (pipeline-correctness-gates SLICE 2) |
+| #983 | 2026-08-06 06:50Z | feat(pipeline): Gate A intake-lint ÔÇö backfill migrations must ship a test (SLICE 3) |
+| #984 | 2026-08-06 07:05Z | test(web): Gate B ÔÇö authz route-guard consistency |
+| #985 | 2026-08-06 06:25Z | feat(api): handover template schema + permission + default-template seed (B-HW-1) |
+| #986 | 2026-08-11 04:47Z | fix(qa): document METADATA_CATALOG_PATH in .env.example (env-drift) |
+| #987 | 2026-08-06 10:25Z | fix(web): remove Rates & Lists sidebar entry; consolidate under Settings |
+| #988 | 2026-08-11 07:53Z | feat(api): handover template CRUD + explicit publish/versioning (B-HW-2) |
+| #989 | 2026-08-06 07:59Z | docs(reporting): SLICE 1 ÔÇö reporting-dashboard conventions (Option A + widget-type naming) |
+| #990 | 2026-08-06 10:13Z | docs(reporting): SLICE 2 ÔÇö reporting definitions parity audit |
+| #991 | 2026-08-06 12:13Z | feat(web): SLICE 14 ÔÇö dissolve Client versions and Map locations into Administration hub |
+| #992 | 2026-08-11 08:46Z | feat(web): reporting widget category + ReportTableWidget (SLICE 3 of reporting-dashboard-layout-plan) |
+| #993 | 2026-08-06 12:24Z | test(api): synthetic fixtures slice 3 ÔÇö native forms ingestion (F1/F3) + idempotency spec |
+| #994 | 2026-08-11 05:01Z | test(api): synthetic-fixtures slice 2 ÔÇö graph-mail in-memory provider + idempotency spec |
+| #995 | 2026-08-06 12:54Z | feat(web): add Assumptions & Exclusions tab to Tendering Assistant ChatPanel |
+| #996 | 2026-08-06 11:43Z | docs(pipeline): arm F-5 (fv2 WHS field wave) gate requires_merged:[981] |
+| #997 | 2026-08-06 12:39Z | feat(timeline): cursor pagination + date-range filter for the universal timeline |
+| #998 | 2026-08-06 14:12Z | feat(forms): F-5 WHS field wave ÔÇö worker/asset/location pickers + Signature v2 seal |
+| #999 | 2026-08-06 14:40Z | docs(pipeline): arm F-6 (fv2 weather field) gate requires_merged:[998] |
+| #1000 | 2026-08-06 15:41Z | feat(forms): F-6 weather auto-capture field |
+| #1001 | 2026-08-10 23:42Z | docs(pipeline): arm F-7 (fv2 asset usage readings) gate requires_merged:[1000] |
+| #1003 | 2026-08-11 00:10Z | docs(queue): stage tender win/loss prompts (WL-1a/WL-1b/WL-2) |
+| #1004 | 2026-08-10 23:29Z | feat(tendering): WL-1a tender outcome capture ÔÇö structured, optional, append-only |
+| #1005 | 2026-08-10 23:54Z | docs(queue): stage directory archive/decommission plan + AR-1 |
+| #1006 | 2026-08-11 01:13Z | feat(reporting): WL-2 tender win/loss reports |
+| #1007 | 2026-08-11 00:23Z | feat(tendering): WL-1b tender outcome capture (web) ÔÇö modal + needs-outcome panel |
+| #1008 | 2026-08-11 00:35Z | docs(queue): revive R3-T2 fuel feed + progress-claim autogen |
+| #1009 | 2026-08-11 01:00Z | feat(contracts): editable pro-forma claim-draft editor |
+| #1010 | 2026-08-11 01:25Z | feat(estimates): R3 T-2 ÔÇö live Ampol diesel fuel-price feed (fuelpricesqld.com.au) |
+| #1011 | 2026-08-11 01:39Z | docs(queue): Schedule of Rates SLICE-0 plan + S1 master schema |
+| #1012 | 2026-08-11 02:30Z | feat(rates): SoR S1 ÔÇö Schedule of Rates master schema + API + seed |
+| #1013 | 2026-08-11 01:58Z | docs(queue): arm WL3-S1 baseline win-likelihood + subbie rate-cards RC-1/RC-2 |
+| #1014 | 2026-08-11 04:14Z | feat(tendering): WL3-S1 win-likelihood API + capture-gap audit |
+| #1015 | 2026-08-11 05:20Z | feat(directory): RC-1 subcontractor rate cards API ÔÇö model + CRUD + permissions |
+| #1016 | 2026-08-11 06:52Z | feat(directory): RC-2 ÔÇö Rates tab on SubcontractorsPage detail panel |
+| #1017 | 2026-08-11 10:12Z | docs(queue): arm Roles and Permissions admin redesign SLICE-0 plan |
+| #1018 | 2026-08-11 09:44Z | docs(plans): SLICE-0 ÔÇö Roles & Permissions admin redesign |
+| #1019 | 2026-08-11 07:38Z | docs(queue): arm SoR S2 - master admin UI |
+| #1020 | 2026-08-11 09:17Z | feat(web): B-HW-3 handover template editor UI (Settings) |
+| #1021 | 2026-08-11 10:45Z | feat(web): ReportChartWidget (SLICE 4 of reporting-dashboard-layout-plan) |
+| #1022 | 2026-08-11 09:58Z | chore(deps): fix 2 open Dependabot alerts (react-router 7.18.2, js-yaml 3.15.1) |
+| #1023 | 2026-08-11 10:59Z | feat(web): AR-1 Directory first-class archive/unarchive + default-list exclusion |
+| #1025 | 2026-08-11 11:16Z | feat(forms): F-3 ÔÇö entryIndex on bypass DTO + has-any-entry-where doc alias |
+| #1026 | 2026-08-11 11:57Z | fix(web): gate every sidebar item on its API's view permission + fix breadcrumb gaps |
+| #1027 | 2026-08-11 21:29Z | feat(web): report widget filters + dashboard filter bar (SLICE 5) |
+| #1028 | 2026-08-11 12:45Z | feat(web): "Reporting dashboard" starter template (SLICE 7 of reporting-dashboard-layout-plan) |
+| #1029 | 2026-08-11 13:10Z | feat(web): search highlight ?highlight= pattern on Jobs, Tenders, Workers (slice 1/2) |
+| #1030 | 2026-08-11 13:47Z | feat(web): SLICE-13 fold Operations/Fuel under Company profile > Commercial defaults |
+| #1031 | 2026-08-11 14:24Z | feat(web): SoR S2 ÔÇö Schedule of Rates master admin UI + change-log view |
+| #1032 | 2026-08-11 20:34Z | fix(pipeline): queue-sync forbidden denylist (never-arm guard) |
+| #1033 | 2026-08-11 22:56Z | feat(api): B-HW-5 handover instance schema + types |
+| #1034 | 2026-08-11 22:43Z | feat(sor): S3 ÔÇö per-client rate card |
+| #1035 | 2026-08-11 21:41Z | feat(api,web): SoR S5 ÔÇö client SoR PDF (applicable lines to branded PDF) |
+| #1036 | 2026-08-11 22:16Z | feat(contracts): month-end cron ÔÇö notify responsible role when draft progress claim is ready |
+| #1037 | 2026-08-11 23:11Z | feat(forms): F-9a ÔÇö FormFieldPushBinding table + post-commit push executor |
+| #1038 | 2026-08-11 22:28Z | docs(pipeline): supervisor is an ACTING board-owner (fix methodology + merge policy + in-chain HOLD) |
+| #1039 | 2026-08-11 23:27Z | feat(web): OPS-M3 ÔÇö waste row tip finder with dailyKm auto-fill |
+| #1040 | 2026-08-11 23:38Z | docs: CRM leads-collapse plan + 6 chained slice prompts (SLICE-0) |
+| #1041 | 2026-08-12 00:01Z | fix(watcher): heartbeat watchdog restarts an alive-but-hung watcher node |
+| #1042 | 2026-08-12 00:18Z | feat(api): S1 ÔÇö contract archive/unarchive + super-user hard-delete |
+| #1043 | 2026-08-12 01:19Z | fix(master-data): client archive PATCH accepts partial DTO + tidy directory archive controls |
+| #1044 | 2026-08-12 01:54Z | feat(web): S2 ÔÇö contracts archive/unarchive + super-user delete |
+| #1045 | 2026-08-12 01:38Z | feat(forms): F-9b ÔÇö push bindings UI + Plant Pre-Start dispatch handlers |
+| #1046 | 2026-08-12 02:06Z | feat(forms): system-context resolver + rules-engine system actions |
+| #1047 | 2026-08-12 02:45Z | feat(api): B-HW-6 handover API ÔÇö create, values, one-way prefill, completeness |
+| #1048 | 2026-08-12 03:22Z | docs: rate-hub SLICE-0 plan + 6 chained slice prompts |
+| #1049 | 2026-08-12 03:01Z | [CRM-PRIORITY] CRM module slice-0: plan + 6 chained slice prompts (CRM-1..CRM-6) |
+| #1050 | 2026-08-12 05:25Z | feat(web): B-HW-7 ÔÇö handover wizard shell |
+| #1052 | 2026-08-12 06:46Z | feat(api): CRM S1 ÔÇö fold Lead into Opportunity; add DropReason lookup |
+| #1053 | 2026-08-12 06:16Z | chore(prompts): force-track armed roots (mt0, cfx, realtime, vendor) |
+| #1054 | 2026-08-12 06:29Z | docs: CFX plan + 5 chained slice prompts (SLICE-0) ÔÇö configurable client/vendor fields + file-based Xero exchange |
+| #1055 | 2026-08-12 07:11Z | [CRM-PRIORITY] feat(crm): CRM-1 Account foundation + Client-360 view |
+| #1056 | 2026-08-12 08:44Z | feat(api): CRM S2 ÔÇö DropReason CRUD API |
+| #1057 | 2026-08-12 08:05Z | feat(watcher): default-off multi-lane routing filter (PR_WATCHER_LANE) |
+| #1058 | 2026-08-12 07:51Z | docs: stage+arm pr-master-hardening slice0 |
+| #1059 | 2026-08-12 08:30Z | [CRM-PRIORITY] feat(crm): CRM-3 lead front door ÔÇö multi-source capture + triage + Account link |
+| #1060 | 2026-08-12 08:57Z | docs: bid-prioritisation SLICE-0 plan + 2 chained slice prompts (BP-1, BP-2) |
+| #1061 | 2026-08-12 08:18Z | fix(watcher): clone-specific process guards (multi-lane safe) |
+| #1064 | 2026-08-12 09:25Z | [CRM-PRIORITY] CRM-4 comms hub: internal threads + To-Do (decoupled sub-module) |
+| #1065 | 2026-08-12 09:49Z | [CRM-PRIORITY] feat(crm): CRM-6 pipeline + win/loss dashboard |
+| #1066 | 2026-08-12 10:44Z | feat(api): CFX-1 ÔÇö FieldDefinition registry, customFields JSON, missing Xero parity columns |
+| #1067 | 2026-08-13 01:45Z | feat(api): CRM S3 ÔÇö unified entry CRUD + "Don't pursue" action |
+| #1068 | 2026-08-12 10:02Z | [CRM-PRIORITY] feat(crm): CRM-5 comms email ÔÇö auto-log mail against Account/Tender via existing provider seam |
+| #1069 | 2026-08-12 10:18Z | docs(estimating-analytics): SLICE-0 plan + EA-1/EA-2 chained slice prompts (HOLD) |
+| #1070 | 2026-08-12 10:31Z | feat(api): B-HW-10 handover subcontractors & procurement |
+| #1071 | 2026-08-12 11:37Z | feat(web): B-HW-8 auto-field safeguards + derived variance |
+| #1072 | 2026-08-12 10:57Z | docs(estimating): estimator allocation workflow + weighted capacity board ÔÇö plan + chained slice prompts |
+| #1073 | 2026-08-12 11:23Z | docs(sor): chain remaining SoR workflow slices ÔÇö S4/S6/S7/S8/S9 |
+| #1074 | 2026-08-12 19:02Z | feat(tenancy): MT-0 ÔÇö Tenant model + additive nullable tenantId on pilot models |
+| #1075 | 2026-08-12 11:10Z | docs(tender-migration): SLICE-0 plan + MIG-1/2/3 chained slice prompts (ready) |
+| #1076 | 2026-08-12 11:50Z | feat(web): CFX-2 ÔÇö admin screen to configure client/vendor field definitions |
+| #1077 | 2026-08-12 22:36Z | feat(schema): MIG-1 drop Site @@unique([name]) |
+| #1078 | 2026-08-12 12:04Z | feat(forms): F-13 fill-time AI assist ÔÇö suggest-never-decide panel |
+| #1079 | 2026-08-12 12:18Z | feat(pipeline): DESTRUCTIVE_MUST_ESCALATE ÔÇö enforce escalates:true for destructive slices |
+| #1080 | 2026-08-12 23:15Z | feat(schedule-of-rates): SoR S4 attach-to-job wizard + JobSorSnapshot + per-record version lock |
+| #1081 | 2026-08-13 07:58Z | feat(web+api): CFX-3 ÔÇö dynamic field rendering on client + vendor forms |
+| #1082 | 2026-08-12 13:21Z | feat(rate-hub): S1 ÔÇö vendor hub tabs + type grouping on reference-data page |
+| #1083 | 2026-08-12 22:47Z | chore(backlog): discharge timeline-history-pagination (shipped in #997) |
+| #1084 | 2026-08-12 23:02Z | feat(rate-hub): S2 ÔÇö delete safeguard for hub vendors (archive-first + super-user hard-delete) |
+| #1085 | 2026-08-12 23:56Z | docs(gps): Option B native-wrapper build plan + reactivate backlog note |
+| #1086 | 2026-08-12 23:43Z | feat(admin-imports): MIG-2 ÔÇö tender-tracker import endpoint + service |
+| #1087 | 2026-08-12 23:28Z | feat(rates): SLICE 11a ÔÇö enclosure/other-rates/material-densities into RateTable + migration |
+| #1088 | 2026-08-13 01:30Z | feat(rate-hub): S3 ÔÇö SoR line source enum + markup (INTERNAL/SUBBIE/SUPPLIER/MANUAL) |
+| #1089 | 2026-08-13 00:38Z | chore(queue): arm field LocationProvider-seam prompt |
+| #1090 | 2026-08-13 00:24Z | feat(sor): S6 - Variation pricing from locked Job SoR snapshot |
+| #1091 | 2026-08-13 00:11Z | chore(rates): SLICE 11b ÔÇö retire legacy estimate-rates admin page |
+| #1092 | 2026-08-13 01:05Z | feat(migration): MIG-3 ÔÇö SharePoint legacy-folder copy job |
+| #1093 | 2026-08-13 00:52Z | feat(scheduler): RT-3 ÔÇö presence indicator + soft edit-conflict nudge on scheduler grid |
+| #1094 | 2026-08-13 01:18Z | feat(web): per-widget report export (SLICE 6) |
+| #1095 | 2026-08-13 08:35Z | feat(admin): SLICE 17 ÔÇö per-screen permission guards on Administration routes |
+| #1096 | 2026-08-13 02:10Z | feat(sor): S7 ÔÇö Agreed Record (AR / dayworks) field capture |
+| #1097 | 2026-08-13 02:22Z | feat(web): CRM S4 ÔÇö triage list; unified add-new; don't pursue modal |
+| #1098 | 2026-08-13 02:36Z | docs(tender-reminders): SLICE-0 plan + chained TR-1..TR-4 HOLD prompts |
+| #1099 | 2026-08-13 04:25Z | feat(web): CRM S5 ÔÇö rename tab to "Leads & opportunities"; ?tab=crm redirect |
+| #1100 | 2026-08-13 04:07Z | fix(admin-imports): tender-tracker import mapping + clean titles |
+| #1101 | 2026-08-13 05:29Z | fix(admin-imports): auto-generate tender numbers on import |
+| #1102 | 2026-08-13 07:16Z | docs(tendering): SLICE-0 plan - Pipeline/Register lifecycle re-model |
+| #1103 | 2026-08-13 07:29Z | chore(queue): arm tender-lifecycle-s1 pipeline/register fix |
+| #1104 | 2026-08-13 18:43Z | chore(queue): stage tender-lifecycle-s2a (HOLD, bidStatus schema) |
+| #1105 | 2026-08-13 07:45Z | feat(admin-imports): MIG-3.1 tender-folder backfill endpoint |
+| #1106 | 2026-08-13 18:57Z | feat(tendering): S1 ÔÇö four-stage pipeline board + per-view filters + full-dataset pagination |
+| #1107 | 2026-08-14 01:22Z | feat(tenancy): MT-1 tenant-scoping Prisma extension (security core) |
+| #1108 | 2026-08-14 00:20Z | feat(safety): RT-2 SSE realtime for incidents, hazards, and muster |
+| #1110 | 2026-08-14 01:35Z | chore(queue): arm unified-api-key-vault-slice4b (vault UI in AdminSettingsPage Integrations tab) |
+| #1111 | 2026-08-14 01:56Z | feat(admin-settings): SLICE-4b unified API Keys vault UI |
+| #1112 | 2026-08-14 02:35Z | feat(auth): MT-2 ÔÇö identity carries tenant (JWT + session + company switch) |
+| #1113 | 2026-08-14 03:50Z | chore(queue): re-arm CRM-2 relationship-intelligence (auto-merge) |
+| #1114 | 2026-08-14 04:41Z | fix(watcher): clear stale-locked worktrees with remove -f -f (stop lane crash-loops) |
+| #1115 | 2026-08-14 06:59Z | [CRM-PRIORITY] feat(crm): CRM-2 (S2) ÔÇö Relationship intelligence |
+| #1117 | 2026-08-14 13:36Z | feat(tenancy): MT-3 ÔÇö backfill + enforce tenantId on Tender and Job |
+| #1118 | 2026-08-14 04:56Z | ci: raise Node heap for API job (stop flaky test:canonical OOMs) |
+| #1119 | 2026-08-14 05:17Z | chore(queue): arm theme-initial-option (named-theme picker + Initial) |
+| #1120 | 2026-08-14 05:31Z | docs(nav): CRM+Tendering nav re-model SLICE-0 (plan + NAV-1..4 + withdrawn-review) |
+| #1121 | 2026-08-14 05:47Z | docs(supervisor): active-drive mandate for weekend 00-supervisor |
+| #1122 | 2026-08-14 10:01Z | feat(tendering): withdrawn-review workflow + tenders.review permission |
+| #1124 | 2026-08-14 06:32Z | Remove dev seed login details from README |
+| #1125 | 2026-08-14 06:46Z | feat(ai-settings): SLICE-4c ÔÇö retire AI-keys entry surface, redirect to vault panel |
+| #1126 | 2026-08-14 06:26Z | ci: skip heavy jobs on docs-only PRs + cancel superseded runs |
+| #1127 | 2026-08-14 09:12Z | feat(nav): NAV-1 ÔÇö Tendering rename + CRM top-level group |
+| #1128 | 2026-08-14 09:49Z | feat(nav): NAV-3 ÔÇö Leads & Opportunities standalone + Tenders register |
+| #1129 | 2026-08-14 13:19Z | feat(crm): NAV-2 ÔÇö Accounts index (Client-360 landing) |
+| #1130 | 2026-08-14 13:04Z | feat(nav): NAV-4 ÔÇö CRM redirects (dead /crm/* + /clients alias into /crm/accounts) |
+| #1131 | 2026-08-14 13:48Z | docs(supervisor): merge-order + duplicate-check rules for weekend supervisor |
+| #1132 | 2026-08-14 18:48Z | feat(tenancy): MT-4 ÔÇö tenant assignment UI |
+| #1133 | 2026-08-14 20:41Z | feat(tenancy): MT-5 ÔÇö company admin UI (create/manage companies, assign users) |
+| #1134 | 2026-08-14 22:12Z | feat(api+web): CFX-4 ÔÇö Xero contact-CSV EXPORT (BUILTIN parity fields only) |
+| #1135 | 2026-08-15 06:01Z | fix(tenancy): backfill user home_tenant_id - restore hidden tenant-scoped data |
+| #1136 | 2026-08-17 01:56Z | fix(crm): seed drop reasons in prod + stop the opportunity page crashing on client-less leads |
+| #1137 | 2026-08-17 03:05Z | chore(queue): arm tracker follow-up-notes recovery - Column O notes into Activity feed |
+| #1138 | 2026-08-17 07:14Z | chore(queue): arm theme-system SLICE 0 - write the slice plan |
+| #1139 | 2026-08-17 03:41Z | fix(tendering): tracker Follow Up Notes into Activity & communications (Stage A migrate + notesOnly import) |
+| #1140 | 2026-08-17 04:24Z | fix(pipeline): scope-gate the OPS-6 intent words so harmless prompts stop being rejected |
+| #1141 | 2026-08-17 07:08Z | chore(queue): arm cluster-chaining SLICE 0 - write the slice plan |
+| #1142 | 2026-08-17 04:42Z | fix(pipeline): actually enforce escalates:true - withhold auto-merge and gate on do-not-merge |
+| #1143 | 2026-08-17 07:10Z | chore(queue): stage TenderClientNote retirement - S1 armed, S2 HOLD |
+| #1144 | 2026-08-17 04:46Z | docs(queue): retire two prompts whose premises are dead |
+| #1145 | 2026-08-17 05:01Z | docs(queue): retire 72 armed prompts whose premises are already satisfied |
+| #1146 | 2026-08-17 06:28Z | chore(queue): arm register CSV export fix - all ten columns, all loaded rows |
+| #1147 | 2026-08-17 06:29Z | chore(queue): disarm 5 prompts and escalate seed-harden before restarting the lanes |
+| #1148 | 2026-08-17 06:42Z | chore(queue): premise sweep round 2 - retire 11, unarm vendor-OCR, escalate CFX-5 |
+| #1149 | 2026-08-17 07:17Z | chore(queue): arm Settings Home + search SLICE 0 - write the slice plan |
+| #1150 | 2026-08-17 07:19Z | chore(queue): arm multi-company sharing MT-4/MT-5 SLICE 0 - rewrite the plan for explicit sharing |
+| #1151 | 2026-08-18 00:45Z | feat(cfx-5): Xero file-based contact import ÔÇö dry-run preview + confirm |
+| #1152 | 2026-08-17 10:36Z | feat(web): CRM S6 ÔÇö drop-reason admin screen |
+| #1153 | 2026-08-17 08:35Z | feat(field): introduce LocationProvider seam for GPS reads |
+| #1154 | 2026-08-17 10:51Z | fix(tendering): CSV export ÔÇö all ten columns, all loaded rows, no silent empty-selection no-op |
+| #1155 | 2026-08-17 08:47Z | chore(queue): arm fix-forward for PR #1151 - Xero import Prisma delegate casts |
+| #1156 | 2026-08-18 02:11Z | feat(assets): F-7 asset usage readings (append-only history + denorm current-reading) |
+| #1157 | 2026-08-17 10:09Z | feat(handovers): compliance obligation derivation (B-HW-9) |
+| #1158 | 2026-08-18 02:47Z | feat(sor-s8): AR office review lane - price, approve, send-back |
+| #1159 | 2026-08-17 10:21Z | chore(queue): HOLD sor-s9 - requires_file_on_main gate unmet until #1158 lands |
+| #1160 | 2026-08-18 01:06Z | feat(api): finalise handover -> create job (B-HW-11) |
+| #1161 | 2026-08-17 11:41Z | docs(plans): cluster-chaining SLICE 0 plan |
+| #1162 | 2026-08-17 14:36Z | fix(watcher): stop the exit -1 crash loop - rotate launcher transcript, treat every non-zero exit as a failure |
+| #1163 | 2026-08-17 23:18Z | fix(watcher): detect restart churn - the health check was blind to crash loops |
+| #1164 | 2026-08-18 00:13Z | docs(pipeline): DOCTRINE 7.1 - stations must declare provenance |
+| #1165 | 2026-08-18 01:31Z | refactor(tendering): retire TenderClientNote code surface (slice 1 of 2) |
+| #1166 | 2026-08-18 01:56Z | fix(seed): remove all Password123 literals from seed-initial-services |
+| #1167 | 2026-08-18 01:17Z | docs(plans): Settings Home + search ÔÇö binding slice plan |
+| #1168 | 2026-08-18 01:13Z | docs(pr-prompts): arm queue-sync malformed-vs-shipped fix (04-scanner) |
+| #1169 | 2026-08-18 02:13Z | chore(queue): arm watchdog-relaunch fix - a watchdog kill reads as a deliberate stop |
+| #1170 | 2026-08-18 02:15Z | chore(queue): arm dependabot HIGH clearance + document the git add -f arming rule |
+| #1171 | 2026-08-18 03:13Z | feat(dashboards): route landing via per-user defaultDashboardId resolver |
+| #1172 | 2026-08-18 02:17Z | chore(queue): arm relabel guard - the watcher re-applied do-not-merge after Marco removed it |
+| #1173 | 2026-08-18 02:29Z | chore(queue): arm doc-reconcile scripts CP-24 docs/ marker fix |
+| #1174 | 2026-08-18 02:31Z | chore(queue): record Marco's 2026-08-18 decisions + retire a prompt whose premise cannot die |
+| #1175 | 2026-08-18 04:00Z | docs(plans): MT-4/MT-5 SLICE 0 ÔÇö rewrite multi-tenant plan for D48 (explicit sharing) |
+| #1176 | 2026-08-18 03:17Z | docs(plans): theme system ÔÇö write slice plan (SLICE 0) |
+| #1177 | 2026-08-18 02:57Z | chore(queue): arm watchdog lane-awareness fix - it counts prompts it will never run |
+| #1178 | 2026-08-18 05:28Z | fix(deps): clear 4 HIGH Dependabot advisories via pnpm.overrides |
+| #1179 | 2026-08-18 05:41Z | fix(queue-sync): split lint exit 1 (malformed) from exit 3 (shipped) |
+| #1180 | 2026-08-18 04:51Z | chore(queue): arm cluster-chaining SLICE 1 - intake linter learns the dependency keys |
+| #1181 | 2026-08-18 05:55Z | fix(pr-watcher): watchdog/supervisor deadlock - watchdog kill no longer reads as deliberate stop |
+| #1182 | 2026-08-18 06:15Z | fix(pr-watcher): stop re-applying do-not-merge after Marco removed it |
+| #1183 | 2026-08-18 06:42Z | fix(pipeline): align doc-reconcile helpers with CP-24 (allow sot/ + docs/, block only code) |
+| #1184 | 2026-08-18 06:59Z | feat(lint): cluster-chaining SLICE 1 -- intake linter learns dependency keys |
+| #1185 | 2026-08-18 06:28Z | fix(queue): scanner findings - gps gate, two false-premise prompts retired, scanner doc polarity |
+| #1186 | 2026-08-18 08:14Z | docs(pipeline): arm cluster-chaining SLICES 2, 3 and 7 |
+| #1187 | 2026-08-18 10:51Z | chore(queue): arm tender folder model SLICE 0 emitter |
+| #1188 | 2026-08-18 08:26Z | chore(queue): arm CI pipeline-tests job + escalates-enforcement doc reconcile |
+| #1189 | 2026-08-18 09:19Z | feat(pr-watcher): cluster-chaining SLICE 2 -- watcher learns requires_on_main content gate |
+| #1190 | 2026-08-18 09:55Z | feat(lint): cluster-chaining SLICE 3 -- cluster metadata + graph rules |
+| #1191 | 2026-08-18 09:40Z | feat(pr-watcher): cluster-chaining SLICE 7 -- guard merge-queue.mjs |
+| #1192 | 2026-08-18 09:25Z | chore(queue): arm NEVER-MERGE list reconcile |
+| #1193 | 2026-08-18 10:24Z | ci: add pipeline-tests job (watcher + linter test suites) |
+| #1194 | 2026-08-18 10:09Z | docs(cluster-chaining): reconcile stale escalates bullet in section 9 |
+| #1195 | 2026-08-18 10:38Z | chore(queue): reconcile NEVER-MERGE list -- three stale copies, both entries discharged |
+| #1196 | 2026-08-18 11:22Z | docs(tender-folder-model): SLICE 0 plan + 9 slice prompts |
+| #1197 | 2026-08-18 12:16Z | feat(tfm-s1): listFolderChildren seam (MIG-3.5) |
+| #1198 | 2026-08-18 13:19Z | feat(tfm-s2): Tender.projectName + stable folder naming |
+| #1199 | 2026-08-18 13:49Z | feat(tfm-s6): legacy root config + two-level month walk |
+| #1200 | 2026-08-18 15:20Z | feat(tfm-s4): nested paths + per-client Quotes folders |
+| #1201 | 2026-08-18 14:21Z | docs(queue): arm pr-backlog-surface-marco-note (04-scanner) |
+| #1202 | 2026-08-18 18:02Z | docs(sot-04): re-merge generated schema-map (242 to 284 models) |
+| #1203 | 2026-08-18 15:43Z | docs(queue): surface marco_note in backlog gate checker |
+| #1204 | 2026-08-18 16:04Z | feat(tfm-s5): provisioning visibility -- persist folder status + retry pill |
+| #1205 | 2026-08-18 17:59Z | feat(tfm-s7): copy precondition -- assert destination folder exists before plan/execute (#TFM-S7) |
+| #1206 | 2026-08-18 23:02Z | feat(tfm-s8): the 2026 copy -- capture plan + do-not-merge |
+| #1207 | 2026-08-18 19:56Z | docs(queue): arm TFM-S10 - copy guard must derive the same folder name provisioning did |
+| #1208 | 2026-08-18 20:23Z | feat(tfm-s10): copy guard resolves tender folder via projectName ?? site.name (#TFM-S10) |
+| #1209 | 2026-08-18 23:29Z | feat(tfm-s9): reprovision 2026 tenders + cleanup list (#TFM-S9) |
+| #1210 | 2026-08-19 00:19Z | docs(queue): arm the watchdog runnable-count fix + chain the kill-churn halt |
+| #1211 | 2026-08-19 01:02Z | docs(queue): retire 18 prompts verified shipped on main (incl. the whole multi-tenant chain) |
+| #1212 | 2026-08-19 01:07Z | docs(backlog): register the no-op requires_file_on_main gate as a lint rule to build |
+| #1213 | 2026-08-19 00:58Z | fix(watchdog): count runnable prompts, not armed, to prevent false HUNG kills |
+| #1214 | 2026-08-19 01:14Z | docs(queue): unblock three migration prompts, arm s11c, fix a premise that could never hold |
+| #1215 | 2026-08-19 01:16Z | docs(queue): log the Tip Finder raw-error-envelope defect + register the 38-file migration behind it |
+| #1216 | 2026-08-19 01:46Z | docs(queue): fix the pr-ew-s2 no-op gate + stage a sot/02 doc-reconcile for two false statements |
+| #1217 | 2026-08-19 01:51Z | docs(queue): arm Settings Home SLICE 1 + chain SLICES 2 and 3 |
+| #1218 | 2026-08-19 02:02Z | docs(queue): arm multi-company SLICE 1, hold SLICE 2 (production data), register SLICES 3-5 |
+| #1219 | 2026-08-19 02:35Z | fix(tip-finder): unwrap API error envelope instead of dumping raw JSON |
+| #1220 | 2026-08-19 02:41Z | docs(queue): arm the tender-full-export SLICE 0 plan, discharge the backlog item |
+| #1221 | 2026-08-19 02:51Z | docs(backlog): register why SLICE 11c stood down - 7 resolver-bypassing consumers + a live FK |
+| #1222 | 2026-08-19 02:45Z | docs(queue): FILE_GATE_DEAD cluster + 2 humane-API-error slices (scanner 2026-08-19) |
+| #1223 | 2026-08-19 02:59Z | docs(queue): stage 11b2-c parity proof, waste transport-rate snapshot cluster, drop-prompt corrections |
+| #1224 | 2026-08-19 03:54Z | fix(web): use readApiErrorMessage in tendering pages (slice 1/N) |
+| #1225 | 2026-08-19 03:22Z | docs(backlog): settle the 11c transport-FK decision + register the folded-block parser defect |
+| #1226 | 2026-08-19 04:18Z | feat(rates): SLICE 11b2-c -- parity-proof instrument (value+unit identity gate for 11c) |
+| #1227 | 2026-08-19 03:59Z | docs(queue): repoint/drop 7 dead file gates ahead of FILE_GATE_DEAD lint (SLICE 1) |
+| #1228 | 2026-08-19 05:22Z | feat(web): settings-home SLICE 1 ÔÇö extend nav model (description + tabs + partitionSettingsNavItems) |
+| #1229 | 2026-08-19 05:05Z | docs(queue): re-scope the humane API-error chain to its real size (82 files, not 38) |
+| #1230 | 2026-08-19 05:57Z | feat(tenancy): MT-4 SLICE 1 ÔÇö share-list tables (schema only, additive) |
+| #1231 | 2026-08-19 06:24Z | docs(plans): SLICE 0 build plan for full-tender export |
+| #1232 | 2026-08-19 06:01Z | docs(queue): stage the fix for the BACKLOG.yaml folded-block parser defect |
+| #1233 | 2026-08-19 06:53Z | feat(tendering): snapshot transport rate on ScopeWasteItem ÔÇö SLICE 1 (API) |
+| #1234 | 2026-08-19 07:15Z | fix(web): humane API errors in tendering pages ÔÇö SLICE A (6 files) |
+| #1235 | 2026-08-19 06:55Z | docs(queue): retire 47 verified-shipped prompts (armed 44 to 9) |
+| #1236 | 2026-08-19 07:39Z | fix(pipeline): backlog folded-block parser rejects key-shaped prose (FOLD_KEY_GUARD) |
+| #1237 | 2026-08-19 06:58Z | docs(queue): stage the 4 per-class rates-consumer slices + register the map-locations coupling |
+| #1238 | 2026-08-19 10:45Z | feat(rates): add listRates to RateResolverService (rates-consumers SLICE 1) |
+| #1239 | 2026-08-19 09:24Z | feat(web): SettingsHomePage lists all settings with locked cards (SLICE 2) |
+| #1240 | 2026-08-19 10:49Z | docs(queue): disarm SLICE 11c on main - rename to -HOLD |
+| #1241 | 2026-08-19 10:53Z | docs(queue): stage the Playwright browser-cache fix for tendering-e2e |
+| #1242 | 2026-08-19 11:17Z | feat(tendering): show transport-rate delta in waste variance panel ÔÇö SLICE 2 (web) |
+| #1243 | 2026-08-19 11:33Z | ci: cache Playwright browser binaries in tendering-e2e workflow |
+| #1244 | 2026-08-19 14:19Z | docs(pr-prompts): stage migration-naming guard prompt |
+| #1245 | 2026-08-19 18:23Z | docs(pr-prompts): stage queue-sync lint-cwd fix - 8 of 11 armed prompts flip verdict by cwd |
+| #1246 | 2026-08-19 20:11Z | test(api): guard against NEW bare YYYYMMDD_ migration folder names |
+| #1247 | 2026-08-19 19:18Z | docs(queue): retire 6 verified-shipped prompts, hold sot-02 on main |
+| #1248 | 2026-08-19 21:03Z | refactor(web): humane API errors ÔÇö tendering part B (6 files, 15 sites) |
+| #1249 | 2026-08-19 20:44Z | fix(web): humane API errors ÔÇö field/dockets/compliance (slice 3/10) |
+| #1251 | 2026-08-19 20:27Z | fix(web): humane API errors ÔÇö CRM and directory pages (slice 4/10) |
+| #1252 | 2026-08-19 22:22Z | feat(watchdog): in-loop churn guard for repeated watchdog kills (cluster-2) |
+| #1253 | 2026-08-19 22:07Z | feat(lint): reject FILE_GATE_DEAD ÔÇö requires_file_on_main path already on main |
+| #1254 | 2026-08-19 23:01Z | fix(queue-sync): pin LINT_REPO_ROOT so premise cwd resolves from repo |
+| #1255 | 2026-08-19 21:46Z | feat(rate-hub): S4 ÔÇö Create Schedule of Rates wizard (3-tab line picker + markup preview) |
+| #1256 | 2026-08-19 21:49Z | docs(pipeline): stage the e2e container migration as a trial-then-swap cluster |
+| #1257 | 2026-08-20 09:07Z | feat(rates-consumers): route tendering services through RateResolverService ÔÇö SLICE 2 |
+| #1258 | 2026-08-20 00:37Z | feat(rates): SLICE 4 ÔÇö repoint import write-path to RateTablesService |
+| #1259 | 2026-08-19 22:37Z | docs(queue): Tip Finder on the tender waste card only + answer the map-locations backfill question |
+| #1260 | 2026-08-20 03:19Z | feat(web): humane API errors ÔÇö sites/projects/global dashboard (slice 9/10) |
+| #1261 | 2026-08-19 22:41Z | docs(queue): commit the fv2 forms-chain ordering that only existed in untracked drafts |
+| #1262 | 2026-08-19 22:45Z | docs(queue): surface fuel-price staleness + add a manual refresh |
+| #1263 | 2026-08-19 23:14Z | docs(queue): arm the e2e container trial (SLICE 1 only) |
+| #1264 | 2026-08-19 23:30Z | feat(web): humane API errors ÔÇö dashboards SLICE 10 |
+| #1265 | 2026-08-20 00:57Z | refactor(web): humane API errors ÔÇö SLICE 5 (top-level pages + account sections) |
+| #1266 | 2026-08-20 02:07Z | feat(web): humane API errors slice 6 ÔÇö admin/personas/portal (45ÔåÆ0) |
+| #1267 | 2026-08-20 02:21Z | feat(web): humane API errors ÔÇö contracts/forms (slice 7 of 10) |
+| #1268 | 2026-08-20 00:11Z | docs(queue): stage the sot-reference-hygiene cluster (3 slices, all HOLD) |
+| #1269 | 2026-08-20 02:44Z | feat(web): humane-api-errors slice 8 ÔÇö workers, timesheets, shared components |
+| #1270 | 2026-08-20 04:44Z | feat(bp-1): bid-prioritisation priority API + expected-value compute |
+| #1271 | 2026-08-20 00:59Z | docs(queue): stage the Comms hub unanchored inbox (HOLD) |
+| #1272 | 2026-08-20 05:29Z | feat(reporting): EA-1 estimator turnaround + qty-vs-value report defs |
+| #1273 | 2026-08-20 02:59Z | docs(queue): stage the rates-column-hygiene cluster (3 chained slices) + waste variance-message fix |
+| #1274 | 2026-08-20 04:30Z | feat(tendering): EW-1 allocation + capacity schema (additive migration) |
+| #1275 | 2026-08-20 04:15Z | fix(watcher): lane-aware watchdog stops kill loop on orphaned prompts |
+| #1276 | 2026-08-20 04:59Z | feat(estimates): fuel-price staleness display + manual refresh endpoint |
+| #1277 | 2026-08-20 02:55Z | docs(queue): stage the NAV-5 sot/01 SECTION 9 nav-IA reconcile (HOLD) |
+| #1278 | 2026-08-20 03:03Z | docs(queue): re-home the orphaned B-P0a/B-P0b slices + correct four false plan Status lines |
+| #1279 | 2026-08-20 03:35Z | feat(forms): describe-to-generate + AI rule-drafting bar (F-12 slice 2) |
+| #1280 | 2026-08-20 03:58Z | docs(queue): arm the waste-variance transport message fix |
+| #1281 | 2026-08-20 05:44Z | feat(rate-hub): S5 ÔÇö .xlsm import/export on hub with staged validation + impact preview |
+| #1282 | 2026-08-20 05:56Z | feat(web): Settings Home slice 3 ÔÇö search across items and tabs |
+| #1283 | 2026-08-20 05:14Z | refactor(web): remove TipFinderPanel from Settings > Map Locations |
+| #1284 | 2026-08-20 04:01Z | docs(queue): stage the fix for #1257's plant-category regression (HOLD) |
+| #1285 | 2026-08-20 09:23Z | fix(waste): include transport delta in rate-variance notification body |
+| #1286 | 2026-08-20 07:09Z | docs(queue): arm the #1257 plant-category fix |
+| #1287 | 2026-08-20 07:57Z | docs(sot): register Marco's D1-D55 decision series in sot/05 |
+| #1288 | 2026-08-20 08:00Z | docs(queue): stage the Leads & opportunities title fix + triage archive (both HOLD) |
+| #1289 | 2026-08-20 07:58Z | docs(queue): stage the Tendering board fix, the nav repoint, and the CRM direction change |
+| #1290 | 2026-08-20 08:37Z | docs(queue): replace the nav-repoint prompt with the pipeline FOLD (2 slices) |
+| #1291 | 2026-08-20 08:34Z | docs(queue): disarm sor-s9 for splitting, retire three shipped prompts |
+| #1292 | 2026-08-20 19:03Z | docs(pr-prompts): stage env-example drift prompt for 7 undocumented boot vars |
+| #1293 | 2026-08-20 19:04Z | docs(pr-prompts): stage 04-scanner brief corrections + discharge dead backlog item |
+| #1294 | 2026-08-24 02:55Z | feat(lint): WARN on prompts missing STANDING AUTHORITY grant |
+| #1295 | 2026-08-24 00:10Z | docs(backlog): discharge backlog-parser-swallows-folded-blocks (fix shipped) |
+| #1296 | 2026-08-24 03:12Z | docs(env-example): document 7 undocumented boot-time env vars |
+| #1297 | 2026-08-24 00:41Z | docs(pipeline): calibrate 04-scanner brief sub-checks (a) and (e); repair mojibake |
+| #1298 | 2026-08-24 01:27Z | docs(sot): SLICE 20 - reconcile sot/01 s9 Settings IA, fix the fetch-URL contradiction, rescind D42 |
+| #1299 | 2026-08-24 01:29Z | docs(sot): sot/README fetch URLs - replace the wrong blob advice with ?plain=1 |
+| #1300 | 2026-08-24 01:24Z | docs(queue): land the board repair, 11 staged slices, and the approvals gate |
+| #1301 | 2026-08-24 02:41Z | docs(pr-prompts): DISMISSED_MEANS_PROCEED clause -- a dismissed question is not a stop signal |
+| #1302 | 2026-08-24 04:38Z | feat(pr-watcher): bounded auto-restage for [NO-PR] runs (slice 2) |
+| #1303 | 2026-08-24 03:04Z | docs(pipeline): station capability matrix + stage the watchdog merge-wait fix |
+| #1304 | 2026-08-24 04:51Z | fix(pr-watcher): keep heartbeat ticking during merge-wait so watchdog stops killing healthy runs |
+
+<!-- end machine-generated merged-PR ledger -->

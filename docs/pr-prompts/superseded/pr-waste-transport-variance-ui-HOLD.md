@@ -17,7 +17,7 @@ escalates: false
 backfill: false
 cluster: waste-transport-snapshot
 cluster_order: 2
-requires_on_main: 'apps/api/prisma/schema.prisma :: quotedTransportRatePerDay'
+requires_merged: 1233
 ---
 
 # SLICE 2 — show the transport rate in the waste variance panel
@@ -59,5 +59,13 @@ banner with neither of its two existing rows populated — correct but mute.
   (it must render nothing for that row, not "$0.00" and not "—").
 
 ## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+The lines below are a SCOPE limit, not permission to stop before pushing. Both apply.
 
 Two-file display change. Stop and report rather than widening scope.

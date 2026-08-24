@@ -11,7 +11,16 @@ done_when: pnpm build && pnpm lint && ! grep -q "^model EstimateLabourRate" apps
 size: 8
 gate_allow: migrations
 seed_only: false
-escalates: false
+escalates: true
+backfill: false
+rollback_strategy: >-
+  PERMANENT AND NOT AUTO-REVERTABLE - this migration DROPS the legacy rate
+  tables. A down migration cannot restore dropped rows. The only rollback path
+  is a pre-merge database backup plus a point-in-time restore, so that backup
+  is mandatory BEFORE merge, not before deploy. If the migration aborts
+  mid-flight the tables are simply still present and it can be re-run after
+  investigation.
+requires_file_on_main: docs/approvals/rates-b-slice2-canonical-approved-by-marco.md
 ---
 # HOLD - Rates & Lists B-slice-2, PHASE D: drop the legacy rate tables (irreversible)
 
@@ -94,3 +103,14 @@ regardless of `PR_WATCHER_AUTO_MERGE_POLICY`.
 ### After opening
 
 Do not merge or tick boxes ??? leave for shepherd re-verify + Marco review. Must not auto-merge.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

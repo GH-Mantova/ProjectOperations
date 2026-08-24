@@ -11,7 +11,7 @@ seed_only: false
 escalates: false
 cluster: watchdog-runnable
 cluster_order: 2
-requires_on_main: scripts/pr-watcher/supervise-watcher.ps1 :: .queue-state.json
+requires_merged: 1213
 ---
 
 # Fix: repeated watchdog kills must escalate instead of running forever

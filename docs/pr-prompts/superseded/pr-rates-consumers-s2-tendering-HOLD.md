@@ -19,7 +19,7 @@ escalates: false
 backfill: false
 cluster: rates-consumers
 cluster_order: 2
-requires_on_main: 'apps/api/src/modules/rates/rate-resolver.service.ts :: listRates'
+requires_merged: 1238
 ---
 
 # Rates consumers SLICE 2 — route the tendering services through the resolver
@@ -70,5 +70,13 @@ user sees changes.
   before/after comparison, say so plainly rather than asserting equivalence.
 
 ## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+The lines below are a SCOPE limit, not permission to stop before pushing. Both apply.
 
 Read-path migration only, no behaviour change. Stop and report rather than widening scope.

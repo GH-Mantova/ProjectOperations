@@ -9,6 +9,8 @@ scope:
   - apps/api/src/modules/forms/dto/forms.dto.ts
   - apps/api/prisma/seed.ts
   - apps/api/prisma/seed-initial-services.ts
+  - apps/api/src/modules/forms/__tests__/formrule-definition-backfill.spec.ts
+  - apps/api/src/modules/forms/__tests__/forms.service.spec.ts
   - docs/data-model/relationship-map.json
   - docs/data-model/relationship-map.md
   - docs/data-model/metadata-catalog.json
@@ -17,6 +19,7 @@ size: 10
 gate_allow: migrations
 seed_only: false
 escalates: true
+backfill: false
 rollback_strategy: "This is a destructive column drop and is deliberately irreversible for the dropped column *values*: an earlier rules-storage slice already backfilled every legacy row (sourceFieldKey, targetFieldKey, operator, comparisonValue, effect) into the richer `definition` Json tree and both evaluators have been reading `definition` exclusively since that slice's soak period began — `definition` is the single source of truth by the time this migration runs, so no runtime code depends on the dropped columns. If a rollback is genuinely needed, add the five columns back as nullable in a follow-up migration and leave them NULL; do NOT attempt to reverse-populate them from `definition` in this PR or any rollback migration — that would reintroduce a second writable rule store and recreate exactly the drift risk section 3.5 eliminated. Confirm with `prisma migrate status` that this is the next unapplied migration before merging (any merge is a separate, later, human-driven step — this PR itself stays unmerged)."
 ---
 

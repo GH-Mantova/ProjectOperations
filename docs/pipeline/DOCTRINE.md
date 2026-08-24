@@ -304,3 +304,110 @@ runs (station 02 step 2). **HOLD is a waiting state, not a veto** -- an ex-HOLD 
 its promotion means its chain precondition was met, so drive it like any other. This is entirely
 separate from the **forbidden never-arm denylist** enforced in `queue-sync.ps1` (rates-s11c,
 site-dissolution, B-P0a-4-ii..8, B-SD), which nothing ever promotes.
+
+---
+
+# 🔧 §9. INSTRUMENTS — the measured traps, in one place
+
+<!-- CANONICAL-BLOCK: instruments v1 — the shared trap list. Stations POINT here; they do not copy it.
+     lint-station.mjs fails if this block is edited without re-recording its hash. -->
+
+§7 tells you your instrument lies. This section names the specific lies, each one **measured**, each
+one having already cost this pipeline real work. Before 2026-08-24 these lived scattered across five
+pasted scheduled-task files where they drifted independently and could not be reviewed. They live
+here now because they are true for **every** station.
+
+## 9.1 The shell
+
+- ⚠️ **`$` is STRIPPED from any `-Command "..."` string** before PowerShell parses it. `$LASTEXITCODE`
+  becomes bare `+`, `$_` becomes `.Line`, and the command dies with a parser error that looks like a
+  syntax mistake. **Anything containing `$` goes in a `.ps1` file run with `-File`.**
+- ⚠️ **Streamed output PAUSES on lines starting with `#`** — the REPL-prompt detector fires on markdown
+  headings. This is not a hang. Keep calling `read_process_output` with explicit offsets until it
+  reports `0 remaining`.
+- ⚠️ **PowerShell 5.1 has no inline `if` expression.** `$x = if (...) {...}` parses, but
+  `"text $(if ...)"` does not. Assign first, interpolate second.
+- ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
+
+## 9.2 Git
+
+- 🔴 **`git ls-tree --name-only <ref> -- <dir>` WITHOUT `-r` returns exactly ONE line** — the tree
+  entry, not its contents. Any filter over that reports **zero**, which reads as "nothing is there."
+  This produced a false "0 tracked ready-files" against a truth of 9, asserted into a live station
+  prompt. **ALWAYS `-r`, and always control the query against a file you know is tracked.**
+- ⚠️ **`git status` is structurally blind to gitignored files.** A `*-ready.md` never shows as `??`.
+  Use `git check-ignore -v` or `git ls-files --others --ignored --exclude-standard`.
+- ⚠️ **`git fetch origin main` updates `FETCH_HEAD` only** and leaves a stale "behind by N". Use
+  `git fetch origin +refs/heads/main:refs/remotes/origin/main`.
+- 🔴 **Never `git checkout .`, `checkout -- <dir>`, `reset --hard`, `stash pop` or `git clean` in the
+  dev tree** to "get a clean read". Consumed prompts retired into gitignored folders come back armed.
+  **To recover ONE file without tripping it: `git show HEAD:<path>` piped to a write.**
+- 🔴 **Never run `git` through the device bridge against the Windows `.git`.** A cut-short VM-side call
+  leaves a **0-byte `index.lock` with no Windows process**, so "zero git processes" reads true forever,
+  the lock never expires, and `status-sweep.ps1` §7 escalates it to DO NOT ACT — freezing every
+  station. **Three occurrences in two days.**
+- ⚠️ **The dev tree's index is SHARED between concurrent chats.** A `git mv` typed by another chat sits
+  staged and your commit will carry it. **Check `git diff --cached --name-status` before every commit**,
+  and commit with a pathspec (`git commit -- <path>`) when anything else is staged. Two collisions in
+  two sessions, both caught by eye rather than by a guard.
+- ⚠️ **`git stash` in the watcher clone is a CLOSED LOOP** — the launcher's preflight stashes on every
+  start, and nothing ever pops. Report the count and its growth. `git stash drop`, **never `pop`**.
+
+## 9.3 Files and encoding
+
+- ⚠️ **`Get-Content` reports FALSE MOJIBAKE.** The console encoding mangles the display, not the file.
+  **Check the bytes before calling anything corrupt** — decode strictly and look for `U+FFFD`.
+- 🔴 **But real double-encoding exists too, and it is invisible to a validity check.** A file read as
+  CP1252 and rewritten as UTF-8 is *valid* UTF-8 with zero `U+FFFD` — the wrong characters, faithfully
+  encoded. Its signature is `U+00E2 U+20AC U+201D` (`â€"` for an em dash). 133 sequences were found
+  and repaired across five station docs on 2026-08-24. **Distinguish the two by decoding, not by
+  looking.**
+- 🔴 **EDIT DOCS AND PROMPTS WITH NODE** (`readFileSync` / `writeFileSync`, utf8), **not PowerShell.**
+  `Get-Content -Raw` piped to `Set-Content` double-encodes UTF-8 and adds a BOM — it is how the damage
+  above was done in the first place. A `--numstat` reading far larger than your intended change is the
+  symptom; check it before you commit.
+
+## 9.4 GitHub
+
+- ⚠️ **The GitHub MCP token cannot merge, and cannot open PRs (403).** Use `gh` through Desktop
+  Commander.
+- 🔴 **A `--jq` string has its quotes stripped in transit**, jq then fails, and the output prints
+  `labels=[]` — **a broken query that reads exactly like "no labels"**. This nearly shipped a merge on
+  a PR carrying `do-not-merge`. **Read JSON into a parser (`ConvertFrom-Json`) and control it against a
+  case you know is non-empty.**
+- ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
+  **per-commit**.
+- ⚠️ **`mergeStateStatus: CLEAN` can still be refused** — "the base branch policy prohibits the merge"
+  is policy evaluation lagging the rollup. Use `gh pr merge --auto`; never reach for `--admin`.
+- ⚠️ **"Absent from `origin/main`" is NOT "orphaned"** — check open PRs before calling anything dead.
+
+## 9.5 The pipeline's own instruments
+
+- ⚠️ **`lint-prompt.mjs` reports REJECT when `gh` is merely missing.** That is the instrument failing,
+  not the prompt. Check `gh` before believing a REJECT.
+- 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** Before arming anything: read the BODY
+  for `<!-- watcher: do-not-arm -->` or a `DO NOT ARM` line — **the linter cannot see them**. Measured:
+  8 prompts carrying one still linted ADMIT, including one that drops database tables.
+- ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
+  design**. Exclude them from prompt audits instead of reporting them as malformed.
+- ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is
+  not a stop signal. The real sentinel is `STOP-WATCHER`, and **it cannot stop an already-running
+  watcher.**
+- ⚠️ **A restart adopts nothing.** The watcher runs `index.mjs` **from the clone**, so the clone must
+  be fast-forwarded before a restart changes any behaviour.
+- ⚠️ **The watchdog heartbeat only ticks MID-RUN**, so age alone cannot separate idle from wedged. A
+  long-stale heartbeat while a PR is open usually means **merge-wait**, not a hang.
+- ⚠️ **Never count or kill by image name.** Resolve PIDs and verify command lines — 19 `node.exe` were
+  running on 2026-08-24 and exactly one was the watcher.
+- ⚠️ **QUARANTINED ledger rows are recorded but NOT binding.** Citing one as authority is an error.
+
+## 9.6 The rule behind all of them
+
+🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is
+blind to, and run the same query against a case you know returns something. Every trap above is a
+query that answered confidently and wrongly.
+
+⚠️ **"No process is holding it" is only evidence when you know WHERE the process would have run.** A
+lock left by a destroyed Linux VM has no Windows process by construction, forever.
+
+<!-- END-CANONICAL-BLOCK: instruments v1 -->

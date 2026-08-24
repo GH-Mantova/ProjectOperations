@@ -12,6 +12,7 @@
 // Exit 0 = ADMIT.  Exit 1 = REJECT.  Run from the repo root.
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
 
@@ -39,6 +40,27 @@ const ALLOWED_WIN_ROOTS = [
 ];
 
 const FORBIDDEN_OUTPUTS = ['docs/qa/qa-findings.md', 'docs/qa/qa-checklist.md'];
+
+// A path is REAL only if git tracks it. `existsSync` passes for untracked and gitignored files
+// that exist on one machine and nowhere else — which is precisely the defect this catches: the
+// supervisor brief named docs/pr-prompts/queue-watch-state.md, present on Marco's disk, absent from
+// every clone, from CI, and from any cloud-fired station reading the same instruction.
+let TRACKED = null;
+function isTracked(p) {
+  if (TRACKED === null) {
+    try {
+      TRACKED = new Set(execSync('git ls-files', { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+        .split('\n').map((x) => x.trim()).filter(Boolean));
+    } catch {
+      TRACKED = false;   // git unavailable — say so at the end rather than passing silently
+    }
+  }
+  if (TRACKED === false) return existsSync(p);
+  if (TRACKED.has(p)) return true;
+  const dir = p.replace(/\/$/, '') + '/';
+  for (const t of TRACKED) if (t.startsWith(dir)) return true;
+  return false;
+}
 
 const sha = (s) => createHash('sha256').update(s.replace(/\r\n/g, '\n'), 'utf8').digest('hex').slice(0, 16);
 
@@ -117,7 +139,7 @@ function lintOne(file, canon, collect) {
   }
 
   for (const p of repoPathsIn(text)) {
-    if (!existsSync(resolve(ROOT, p))) fails.push(`names a repo path that does not exist: \`${p}\``);
+    if (!isTracked(p)) fails.push(`names a repo path that git does not track: \`${p}\` — it may exist on one machine, but a clone, CI, and any cloud-fired station will not see it`);
   }
 
   for (const m of text.matchAll(/([A-Za-z]:\\[A-Za-z0-9_.\-\\ ]+)/g)) {
@@ -205,5 +227,6 @@ if (contractV && off.length) {
 }
 
 console.log('');
+if (TRACKED === false) console.log(C.yel('NOTE  ') + '  git ls-files was unavailable — fell back to filesystem existence, which is weaker');
 console.log(bad ? C.red(`REJECT: ${bad} of ${targets.length} docs failed`) : C.grn(`ADMIT: all ${targets.length} docs clean`));
 process.exit(bad ? 1 : 0);

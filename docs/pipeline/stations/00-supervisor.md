@@ -346,7 +346,7 @@ Read all of these. If another agent already found or escalated something, **add 
 
 - `docs/pr-prompts/shepherd-state.md` - what the shepherd did, merged, escalated
 - ~~docs/pr-prompts/triage-state.md~~ - REMOVED: this file does not exist on main (checked 2026-08-24).
-- `docs/pr-prompts/queue-watch-state.md` - **your own prior runs.** Never act twice on one signal.
+- docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there - **your own prior runs.** Never act twice on one signal.
 - `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (`.gitignore:107`)** - it is absent from a
   clean checkout, so read it if present but never treat its silence as evidence, and never send a
   station there to report.
@@ -490,7 +490,7 @@ suggesting deletion.** Never delete unsupervised.
 
 # PHASE 4 - REPORT
 
-Append to `docs/pr-prompts/queue-watch-state.md` with a UTC timestamp:
+Append to docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there with a UTC timestamp:
 
 - the verdict from each check
 - what you FIXED, and the **evidence** it worked (new PID, green check, queue moved)

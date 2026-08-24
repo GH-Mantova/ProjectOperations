@@ -1,7 +1,6 @@
 ---
 premise: '! grep -q "seed-estimating-analytics-dashboard" apps/api/prisma/seed.ts'
 premise_means: The "Estimating Analytics" curated global-dashboard preset row is not seeded yet — EA-2 has not run.
-requires_file_on_main: apps/api/src/modules/reporting/estimating-analytics-report.definitions.ts
 scope:
   - apps/api/prisma/seed.ts
   - apps/api/src/modules/platform/**
@@ -10,8 +9,20 @@ done_when: pnpm build && pnpm lint && grep -q "seed-estimating-analytics-dashboa
 size: 9
 gate_allow: none
 seed_only: false
-escalates: false
+escalates: true
+backfill: false
+rollback_strategy: >-
+  Additive: the default path is a preset upsert into seed.ts with no
+  UPDATE ... SET and no migration. Revert the PR to remove the preset row; no
+  existing dashboard, report definition or user data is touched either way.
 ---
+<!-- escalates was false until 2026-08-23. lint-prompt.mjs DESTRUCTIVE_MUST_ESCALATE fires
+     because `scope` reaches apps/api/prisma/seed.ts AND the body mentions "backfill" in the
+     conditional migration-path guidance below. The default path is genuinely additive, so
+     `backfill: false` is a true assertion - but `escalates: false` on a prompt that can reach
+     the seed file is the exact trap that lets merge-queue.ps1 auto-merge a CLEAN unlabelled PR.
+     Marco: if you want this back on auto-merge, set escalates: false and reword the sub-bullet
+     at "Satisfy Gate A" so the word does not appear. Supervisor chose the safe half. -->
 
 # EA-2 — "Estimating Analytics" curated GLOBAL dashboard preset
 

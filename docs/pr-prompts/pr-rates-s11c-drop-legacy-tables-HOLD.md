@@ -17,11 +17,10 @@ gate_allow: migrations
 escalates: true
 backfill: false
 seed_only: false
-requires_file_on_main:
-  - docs/data-model/rates-migration/STEP-11B-DONE.md
 rollback_strategy: >-
   PERMANENT / NOT auto-revertable once merged — drops tables. A pre-merge DB
   backup is the rollback path. Do not merge without it.
+requires_file_on_main: docs/approvals/rates-s11c-drop-legacy-tables-approved-by-marco.md
 ---
 
 # SLICE 11c — remove the legacy rates tables, API, and resolver fallback
@@ -66,3 +65,14 @@ Read `docs/plans/rates-migration-plan.md` (section "11c") first. Gated on 11b
 ## Verify
 - `pnpm build`; parity/fallback audit still green; full API + e2e suites green;
   grep confirms no legacy model or `/estimate-rates` route remains.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

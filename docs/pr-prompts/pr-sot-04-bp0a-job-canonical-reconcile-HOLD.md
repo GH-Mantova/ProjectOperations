@@ -114,3 +114,14 @@ The single load-bearing line is **3712**:
 - One attempt. If the section already reads Job-canonical, say `NO-OP: <reason>` and exit.
 - `pnpm lint` must pass. CP-24 will fail the PR if anything outside `sot/` and `docs/` is touched.
 - **`escalates: true`** — open the PR and LEAVE IT UNMERGED for Marco.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

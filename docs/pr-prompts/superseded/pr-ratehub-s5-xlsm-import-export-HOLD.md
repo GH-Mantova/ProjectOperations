@@ -1,7 +1,6 @@
 ---
 premise: ! test -f apps/api/src/modules/rates/rate-xlsm-import.service.ts
 premise_means: The rate-xlsm-import service does not exist yet — S5 .xlsm import/export work is still needed.
-requires_file_on_main: apps/web/src/pages/schedule-of-rates/CreateSorPage.tsx
 scope:
   - apps/api/src/modules/rates/rate-xlsm-import.service.ts
   - apps/api/src/modules/rates/rate-xlsm-export.service.ts

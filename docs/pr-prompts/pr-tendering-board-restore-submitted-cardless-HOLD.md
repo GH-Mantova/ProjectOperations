@@ -143,3 +143,14 @@ Add: `groupByPipelineStage` puts a `SUBMITTED` tender in the `SUBMITTED` group, 
 - Four files. The stale comment at `TenderingPage.tsx:806` claiming "4 submission-stage columns only"
   is a leftover from #1106 — it becomes true again, but re-read it and make sure it says what the
   code now does.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

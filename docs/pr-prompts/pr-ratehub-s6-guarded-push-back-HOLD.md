@@ -1,7 +1,6 @@
 ---
 premise: ! test -f apps/api/src/modules/rates/rate-push-back.service.ts
 premise_means: The rate-push-back service does not exist yet — S6 guarded push-back work is still needed.
-requires_file_on_main: apps/api/src/modules/rates/rate-xlsm-import.service.ts
 scope:
   - apps/api/src/modules/rates/rate-push-back.service.ts
   - apps/api/src/modules/rates/rates.controller.ts

@@ -13,7 +13,7 @@ size: 8
 gate_allow: none
 seed_only: false
 escalates: false
-requires_file_on_main: apps/api/src/modules/tendering/capacity.service.ts
+requires_on_main: apps/api/src/modules/tendering/capacity.service.ts :: getAllEstimatorsSummary
 ---
 
 # EW-5: Capacity board UI + allocation actions + delegation config UI

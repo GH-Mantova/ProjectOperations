@@ -135,3 +135,14 @@ and discard the pass if either misbehaves.**
 State in the PR body: the three file paths created; that `git diff --name-only`
 contains no `sot/` path; and the four-part heading structure present in both
 incident files.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

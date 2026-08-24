@@ -173,6 +173,11 @@ jobs:
       - run: node --test "scripts/pr-watcher/__tests__/*.mjs"
       - run: node --test "scripts/pipeline/__tests__/*.mjs"
       - run: node scripts/pipeline/test-lint-prompt.mjs
+      # Station instruction docs get the same treatment the prompt queue gets.
+      # Before this gate, five pasted copies of station behaviour drifted for weeks and
+      # four of them carried advice the pipeline had already disproved - including one
+      # telling the supervisor to relaunch a launcher that is not the real one.
+      - run: node scripts/pipeline/lint-station.mjs
 
   web:
     name: Web — lint, logic tests, vitest, build

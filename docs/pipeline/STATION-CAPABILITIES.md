@@ -6,22 +6,41 @@ disagrees with this file, **measure before believing either** - and fix the lose
 
 ---
 
-## 1. Every station has THREE layers. Know which one you are reading.
+## 1. Every station has FOUR layers. Know which one actually governs you.
 
-| Layer | Where it lives | Who changes it |
-|---|---|---|
-| **The task prompt** | the scheduled task's message (device or cloud) | Marco, by pasting |
-| **The skill** | a Cowork account skill, e.g. `supervisor`. A **thin bootstrap** | Marco, in the Skills UI - **an agent cannot edit it** |
-| **The station doc** | `docs/pipeline/stations/0N-*.md` in this repo | any station, by ordinary docs PR |
+**Corrected 2026-08-24 by measurement.** This section previously said three, and named the Cowork
+account skill as the thin bootstrap. That was wrong for scheduled runs.
 
-**The skill's own words: "the station's single source of behaviour lives in the repo."** So the
-station doc is the real content, and it is the layer an agent CAN fix. When you find a contradiction,
-prefer fixing the repo doc and report the other two to Marco.
+| Layer | Where it lives | Who changes it | Governs a scheduled run? |
+|---|---|---|---|
+| **The scheduled-task file** | `C:\Users\Marco\Claude\Scheduled\<task>\SKILL.md` on the box | Marco, by pasting | YES - **this is the one** |
+| **The Cowork account skill** | e.g. `supervisor`, in the Skills UI | Marco, in the Skills UI - an agent cannot edit it | **NO - never invoked** |
+| **The station doc** | `docs/pipeline/stations/0N-*.md` in this repo | any station, by ordinary docs PR | only if the run reads it |
+| **This file** | `docs/pipeline/STATION-CAPABILITIES.md` | any station, by ordinary docs PR | only if the run reads it |
 
-🔴 **All three drift independently.** Measured 2026-08-24: four skills carried "web_fetch the blob
-URL; the raw CDN lags" - advice this pipeline had already proved wrong and removed from `sot/` in
-PRs #1298/#1299. The `machine-minder` skill named the wrong watcher launcher and called it "the REAL
-launcher path". **A stale instruction reads exactly like a current one.**
+**MEASURED 2026-08-24, 12 consecutive scheduled runs** (00-supervisor, 04-scanner, 05-sot-keeper),
+560 tool calls in total: the `Skill` tool **was advertised in every one of them and invoked ZERO
+times.** The scheduled task inlines its own `SKILL.md` verbatim as the opening user turn:
+
+```
+<scheduled-task name="04-scanner" file="C:\Users\Marco\Claude\Scheduled\04-scanner\SKILL.md">
+```
+
+**Consequence: editing a Cowork account skill changes nothing about a scheduled station.** Account
+skills apply only when a human invokes them in an interactive chat. To change a scheduled station's
+behaviour you must edit its file under `C:\Users\Marco\Claude\Scheduled\`, or the repo station doc
+that file tells it to read.
+
+**Which layer to fix when they disagree:** prefer the repo doc - it is the only layer an agent can
+change, and it is versioned. Then report the drift so Marco can update the scheduled-task file. Never
+assume the two agree.
+
+**All layers drift independently, and a stale instruction reads exactly like a current one.** Measured
+the same day: four account skills carried "web_fetch the blob URL; the raw CDN lags" - advice this
+pipeline had already disproved and removed from `sot/` in PRs #1298/#1299. The `machine-minder` skill
+named the wrong watcher launcher and called it "the REAL launcher path". And `02-board-driver`'s
+scheduled file has not been touched since 2026-07-14.
+
 
 ---
 

@@ -9,7 +9,7 @@
  *
  * The single most important assertion here is BROKEN != STALE.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -495,6 +495,72 @@ runIsolated("file-gate-dead-git-broken",
   "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
   0,
   { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
+
+// ── MISSING_STANDING_AUTHORITY (WARN-ONLY) ──────────────────────────────────
+// A prompt whose body does not grant push authority still lints ADMIT (exit 0),
+// but a diagnostic line goes to stderr. The rule is WARN-only on purpose:
+// flipping to REJECT would MALFORM 38 of 75 live prompts at once and stall the
+// queue. Two directions to cover: warns when the grant is absent, silent when
+// the grant is present. `spawnSync` because the existing `run()` helper only
+// captures stderr on non-zero exit, and this check must not change exit code.
+
+function runCaptureStderr(fileText, name) {
+  const file = join(dir, name + "-ready.md");
+  writeFileSync(file, fileText, "utf8");
+  const r = spawnSync("node", [LINT, file], { cwd: REPO, encoding: "utf8" });
+  return { code: r.status, stdout: String(r.stdout || ""), stderr: String(r.stderr || "") };
+}
+
+console.log("\n=== WARN: body without the grant -> exit 0 (warn-only) AND stderr contains MISSING_STANDING_AUTHORITY");
+{
+  const fm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n" +
+    "# body\n\nno standing-authority text of any kind here.\n";
+  const r = runCaptureStderr(fm, "no-authority-warn");
+  const okExit = r.code === 0;
+  const okWarn = r.stderr.includes("MISSING_STANDING_AUTHORITY");
+  const okDetail = r.stderr.includes("(no standing-authority text)");
+  const ok = okExit && okWarn && okDetail;
+  console.log((ok ? "PASS " : "FAIL ") + "no-authority-warn  (exit " + r.code +
+    ", warned=" + okWarn + ", detail=" + okDetail + ")");
+  if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+}
+
+console.log("\n=== WARN: heading present but grant absent -> stderr distinguishes the imposter class");
+{
+  const fm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n" +
+    "## STANDING AUTHORITY\n\nDocumentation corrections only. Stop and report rather than widening scope.\n";
+  const r = runCaptureStderr(fm, "imposter-heading");
+  const okExit = r.code === 0;
+  const okWarn = r.stderr.includes("MISSING_STANDING_AUTHORITY");
+  const okDetail = r.stderr.includes("(heading present, grant absent)");
+  const ok = okExit && okWarn && okDetail;
+  console.log((ok ? "PASS " : "FAIL ") + "imposter-heading  (exit " + r.code +
+    ", warned=" + okWarn + ", detail=" + okDetail + ")");
+  if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+}
+
+console.log("\n=== quiet: body with the grant -> exit 0 AND stderr must not contain MISSING_STANDING_AUTHORITY");
+{
+  const fm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n" +
+    "## STANDING AUTHORITY\n\n" +
+    "> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**\n";
+  const r = runCaptureStderr(fm, "with-authority-quiet");
+  const okExit = r.code === 0;
+  const okQuiet = !r.stderr.includes("MISSING_STANDING_AUTHORITY");
+  const ok = okExit && okQuiet;
+  console.log((ok ? "PASS " : "FAIL ") + "with-authority-quiet  (exit " + r.code +
+    ", quiet=" + okQuiet + ")");
+  if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+}
 
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");

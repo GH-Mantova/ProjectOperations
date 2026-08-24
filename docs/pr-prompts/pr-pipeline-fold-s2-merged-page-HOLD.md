@@ -109,3 +109,14 @@ so.
 - `pnpm build`, `pnpm lint` and both test files must pass.
 - Six files. If the e2e suite asserts the old nav target or the `/crm/pipeline` page, fix those
   assertions and name them in the PR body rather than leaving CI to find them.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

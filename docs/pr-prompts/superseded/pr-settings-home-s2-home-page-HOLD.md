@@ -13,7 +13,7 @@ seed_only: false
 escalates: false
 cluster: settings-home
 cluster_order: 2
-requires_on_main: apps/web/src/components/SettingsShell.tsx :: partitionSettingsNavItems
+requires_merged: 1228
 ---
 
 # Settings Home SLICE 2 — the `SettingsHomePage`

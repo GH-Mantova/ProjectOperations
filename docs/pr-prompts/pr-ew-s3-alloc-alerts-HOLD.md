@@ -11,7 +11,7 @@ size: 5
 gate_allow: none
 seed_only: false
 escalates: false
-requires_file_on_main: apps/api/src/modules/tendering/allocation.service.ts
+requires_on_main: apps/api/src/modules/tendering/allocation.service.ts :: detectUnallocated
 ---
 
 # EW-3: Allocation alerts via NotificationsService
@@ -19,8 +19,10 @@ requires_file_on_main: apps/api/src/modules/tendering/allocation.service.ts
 **Binding plan:** `docs/plans/estimator-allocation-workload-plan.md` (read sections 3.6, 3.8, and 6
 in full before starting). This is the third slice of the estimator allocation workflow cluster.
 
-**Gate:** EW-2 (allocation engine) must be on main. Verify that `allocation.service.ts` exists in
-`apps/api/src/modules/tendering/` before starting.
+**Gate:** EW-2c (allocation rejection path) must be on main. Verify that `detectUnallocated` is
+present in `apps/api/src/modules/tendering/allocation.service.ts` before starting - this slice
+consumes it. (EW-2 was split into 2a/2b/2c/2d on 2026-08-23; the file merely existing is no longer
+sufficient evidence that the engine is complete.)
 
 ## Context — grounded against origin/main (REUSE — do NOT rebuild)
 

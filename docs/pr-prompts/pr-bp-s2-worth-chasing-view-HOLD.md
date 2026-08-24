@@ -1,7 +1,6 @@
 ---
 premise: '! test -f apps/web/src/pages/tendering/BidPriorityRankingPage.tsx'
 premise_means: No bid-priority ranked view page exists on main yet — BP-2 (worth-chasing view) has not run.
-requires_file_on_main: apps/api/src/modules/bid-prioritisation/bid-prioritisation.service.ts
 scope:
   - apps/web/src/pages/tendering/BidPriorityRankingPage.tsx
   - apps/web/src/hooks/useBidPriorityRanking.ts

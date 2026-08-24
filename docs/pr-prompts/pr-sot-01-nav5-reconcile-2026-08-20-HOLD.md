@@ -139,3 +139,14 @@ Leave the `> Implementation is staged separately…` note that follows the block
 other entry. That is a relative path and is very likely a defect. Out of scope for a doc-reconcile;
 recorded so it is not lost. The block above documents it verbatim rather than silently "fixing" it,
 because §9 must describe what ships.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

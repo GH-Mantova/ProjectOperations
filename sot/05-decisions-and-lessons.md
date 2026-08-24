@@ -353,7 +353,7 @@ Allocation of `D` numbers is Marco's alone, so this register does not renumber a
 | D39 | 2.6.7 | **Theme builder replaces Settings › Company › Branding**, folded into SLICE 17 | QUARANTINED | — |
 | D40 | 1.2 | Themes change colour/type/spacing/radius/component styling **only** — never layout or menu positions | REGISTERED | `docs/plans/settings-home-plan.md:314` |
 | D41 | 1.2.1 | Cleanup areas = tendering + CRM + jobs/projects/scheduler **+ shared components** | QUARANTINED | — |
-| D42 | process | **Leave SLICE 0 gate PRs open; never merge them.** ⚠️ log notes #1146/#1149/#1150 were all merged 2026-08-17 and their slice-0 prompts ran — flag this as needing Marco's ruling on whether D42 still stands | REGISTERED | `docs/plans/tender-folder-model-plan.md:6,46` |
+| D42 | process | ~~**Leave SLICE 0 gate PRs open; never merge them.**~~ **RESCINDED — Marco, 2026-08-20.** Do NOT cite this as authority. Evidence it was rescinded on: #1146 / #1149 / #1150 were all merged 2026-08-17 and their SLICE 0 prompts then ran, i.e. the practice had already diverged from the rule and the merged outcome was the intended one. Recorded by Station 05 on 2026-08-24 from the standing-instruction set; the ruling itself is Marco's, dated 2026-08-20 | RESCINDED | `docs/plans/tender-folder-model-plan.md:6,46` · merged PRs #1146, #1149, #1150 (2026-08-17) |
 | D43 | 2.2 | Settings Home = **flat by default, Grouped toggle** | REGISTERED | `apps/web/src/pages/settings/SettingsHomePage.tsx:12` |
 | D44 | 2.2 | Search covers **name + description + tab name**, deep-links to the tab | REGISTERED | `apps/web/src/pages/settings/settings-search.ts:5` |
 | D45 | 2.2 | Permission-locked settings **SHOWN, not hidden** — greyed, lock, permission named, working **Request access** | REGISTERED | `apps/web/src/components/SettingsShell.tsx:74` |
@@ -373,9 +373,10 @@ Allocation of `D` numbers is Marco's alone, so this register does not renumber a
 - **D48 is the most important row in this register.** It is cited as the stated justification for
   **live production schema** (`schema.prisma:45` and the SLICE 1 migration). Until today that
   justification pointed at nothing in the repository.
-- **D42 contradicts observed history.** The log itself notes that #1146 / #1149 / #1150 were all
-  merged on 2026-08-17 and their SLICE 0 prompts ran, which is the opposite of "never merge them".
-  Recorded as-is and **not resolved here** — it needs Marco's ruling on whether D42 still stands.
+- **D42 — RESOLVED 2026-08-20 (Marco): RESCINDED.** It contradicted observed history: #1146 / #1149
+  / #1150 were all merged on 2026-08-17 and their SLICE 0 prompts then ran, which is the opposite of
+  "never merge them". Marco ruled the merged outcome was the intended one. The row is now marked
+  RESCINDED and **must not be cited as authority**. Recorded by Station 05, 2026-08-24.
 - **D55 is QUARANTINED** and is the decision that authorised this register's sibling work. It has no
   repo anchor. It is transcribed faithfully and awaits confirmation like any other quarantined row.
 

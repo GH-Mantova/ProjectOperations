@@ -102,11 +102,29 @@ One platform. One source of truth. Desktop for office, mobile web for field.
 | Roadmap | `sot/02-roadmap-and-status.md` (was `roadmap.md`) |
 | Progress log | `sot/03-progress-log.md` (was `progress.md`) |
 
-### Key URLs (use blob URL — raw CDN has delays)
-- SoT README: https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/README.md
-- Charter (01): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/01-charter-and-architecture.md
-- Roadmap (02): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/02-roadmap-and-status.md
-- Progress (03): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/03-progress-log.md
+### Key URLs — always append `?plain=1` when FETCHING
+
+**BINDING (Station 05, 2026-08-24). This supersedes both of the older, contradictory
+instructions in this file** — the previous heading here said "use blob URL — raw CDN has
+delays", and SECTION 15 said "always use the raw URL". Neither was safe on its own.
+
+A **bare** `blob/main/sot/README.md` fetch has been observed returning a **2026-07-08**
+rendering of the README — the version carrying the MAIN / OldMain# / Chat# / DR# chat-routing
+model that was retired in July. An agent that boots off that page reads retired law as current.
+
+Rules, in order:
+
+1. **`?plain=1` on the blob URL** — truthful, and what every new chat should use to boot.
+2. `raw.githubusercontent.com/...` — also truthful; may lag by seconds, not weeks.
+3. The GitHub MCP (`get_file_contents`) — truthful.
+4. **A bare blob URL is for humans clicking links, not for fetching.** Never boot from one.
+5. Best of all when you are on the box: read the **local checkout**, or run
+   `scripts/pipeline/bring-up-to-speed.ps1` §C2, which prints `sot/README.md` in full.
+
+- SoT README: https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/README.md?plain=1
+- Charter (01): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/01-charter-and-architecture.md?plain=1
+- Roadmap (02): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/02-roadmap-and-status.md?plain=1
+- Progress (03): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/03-progress-log.md?plain=1
 
 ---
 
@@ -372,11 +390,33 @@ PORTAL_PUBLIC_URL=
    Forms                → /forms
    Documents            → /documents   (Archived tab folds /archive)
 
-7. SETTINGS  (role-gated)
-   Personal:            Account | Notifications | Calendar sync
-   Company:             Company | AI Settings | Data Model
-   Administration (admin/super only):
-                        Users | Roles | Permissions | Audit | Platform | Job Roles
+7. SETTINGS  (per-screen permissions — the blanket admin route guard is GONE)
+   Personal:
+     Account                  → /settings/account
+     Notification preferences → /settings/notifications
+     Calendar sync            → /settings/calendar-sync
+   Company:
+     Company                  → /settings/company               (platform.admin)
+     AI settings              → /settings/ai                    (platform.admin)
+     Reference data & Lists   → /settings/reference-data
+     Handover template        → /settings/handover-template     (handovertemplate.manage)
+     Data model               → /settings/data-model
+     Field definitions        → /settings/field-definitions
+     Companies                → /settings/companies
+   Administration:
+     Admin settings           → /settings/administration/system            (system.manage)
+     Users                    → /settings/administration/users             (users.view)
+     Roles & Permissions      → /settings/administration/roles             (roles.view)
+     Audit                    → /settings/administration/audit             (audit.view)
+     Platform                 → /settings/administration/platform          (sharepoint.view)
+     Automations              → /settings/administration/automations       (automations.view)
+     Client versions          → /settings/administration/client-versions   (system.manage)
+     Map locations            → /settings/administration/map-locations     (system.manage)
+     Xero file exchange       → /settings/administration/xero-exchange     (platform.admin)
+     CRM drop reasons         → /settings/administration/crm-drop-reasons  (crm.manage)
+   Job roles is NOT a Settings screen — SLICE 15 moved it to HR, /workers/job-roles
+   (resources.manage). "Permissions" is not a separate screen either; it folded into
+   "Roles & Permissions" and /settings/administration/permissions redirects there.
 
 FIELD (FieldLayout, mobile only — bottom nav)
   Allocations        → /field/allocations
@@ -385,9 +425,22 @@ FIELD (FieldLayout, mobile only — bottom nav)
   Safety             → /field/safety
 ```
 
-> Implementation is staged separately. Deletions of `/tenders/dashboard`, the two seeded
-> dashboards, and `/admin/estimate-rates` are tracked as follow-ups — this section defines
-> the target IA, not the migration order.
+> Implementation is staged separately. This section defines the target IA, not the migration
+> order.
+>
+> **Reconcile status (measured at `origin/main c17a8bb6`, 2026-08-24, Station 05):**
+> `/tenders/dashboard` and `/admin/estimate-rates` are **done** — neither is a live route;
+> `/admin/estimate-rates` now redirects to `/settings/reference-data` (`App.tsx:611-612`,
+> SLICE 11b), and `/admin/rates-lists` redirects to the same place (`App.tsx:622`). The two
+> seeded dashboards were **not** re-verified in this pass — still an open follow-up.
+>
+> Group 7 above was reconciled by SLICE 20 against the shipped nav model
+> (`apps/web/src/components/settings-nav-items.ts`), which is the operative source for
+> Settings destinations and their permission codes. **Groups 1-6 and FIELD are NOT yet
+> reconciled** — they still describe the pre-NAV-1 sidebar (the group is named "ESTIMATING",
+> there is no CRM group). That reconcile is NAV-5, staged at
+> `docs/pr-prompts/pr-sot-01-nav5-reconcile-2026-08-20-HOLD.md`; the live model is
+> `apps/web/src/components/ShellLayout.tsx` `NAV_GROUPS`.
 
 ---
 
@@ -1256,10 +1309,10 @@ cannot be resolved from repo state today.
 
 ### progress log — `sot/03-progress-log.md`
 Maintained in `/sot/`. Append-only. Never delete entries.
-Fetch (full file): https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/sot/03-progress-log.md
-Fetch (navigation): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/03-progress-log.md
-Note: always use the raw URL for reading file contents — the blob URL
-serves a truncated HTML page that cuts off long files.
+Fetch (full file): https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/03-progress-log.md?plain=1
+Fetch (alternative):  https://raw.githubusercontent.com/GH-Mantova/ProjectOperations/main/sot/03-progress-log.md
+Note: see SECTION 3 → "Key URLs". A **bare** blob URL can serve a stale or truncated render;
+`?plain=1`, the raw URL and the GitHub MCP are all truthful. Never boot a chat off a bare blob URL.
 
 Format:
 ```

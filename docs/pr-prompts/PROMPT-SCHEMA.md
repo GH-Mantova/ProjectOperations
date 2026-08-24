@@ -273,6 +273,36 @@ safety net that catches a run is still a burned run.
 
 ---
 
+### DISMISSED_MEANS_PROCEED -- a dismissed question is not a stop signal
+
+In a headless run there is no human to answer a question. If you ask and the question is dismissed,
+ignored, or returns empty, that is **not** a stop signal -- it is the absence of a human, which the
+prompt already told you to expect.
+
+**Proceed on best judgement.** Record the assumption you made in the PR body so the reviewer can see
+what you decided and why. Stopping because a question went unanswered is indistinguishable from
+failing -- the run is discarded either way.
+
+The dismissed question is not evidence that the task is ambiguous, blocked, or out-of-scope. It is
+evidence that no human was present. Those are different things. Treat them differently.
+
+**The one exception -- hard stops still stop you.** If the blocker is any of the following, do NOT
+proceed on judgement:
+
+- Azure / Entra / SharePoint of any kind (portal, app settings, secrets, permissions, `az`, Graph)
+- Production auth or secrets
+- Irreversible or destructive actions (force-push, schema drop, deleting a secret)
+- Anything that requires a real human identity or interactive login
+
+In those cases say `NO-OP: <reason>` plainly, describe what you would have done and why you
+stopped, and exit. A hard stop is a refusal with a report, never silence.
+
+*Evidence: the `pr-comms-hub-inbox` run on 2026-08-20T09:16Z ran for 68 s, produced a 465-byte
+log, and did zero work -- a dismissed question was read as a stop signal. As of that date,
+`docs/pr-prompts/no-pr-opened/` holds 107 prompts with the same failure mode.*
+
+---
+
 ## Also required, in the body
 
 - **What to build** — specific, with file paths.

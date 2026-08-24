@@ -670,7 +670,7 @@ while ($true) {
                          -Now (Get-Date) `
                          -WindowMinutes $wdChurnWindowMin `
                          -Threshold $wdChurnThreshold
-            $watchdogKillTimes = [System.Collections.Generic.List[datetime]]$churn.Kept
+            $watchdogKillTimes = [System.Collections.Generic.List[datetime]]::new([datetime[]]$churn.Kept)
             Sup-Log ("Watchdog kill {0} of {1} inside a {2} min window." -f $churn.InWindow, $wdChurnThreshold, $wdChurnWindowMin)
 
             if ($churn.Halt) {

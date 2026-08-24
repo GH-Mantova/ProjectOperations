@@ -165,6 +165,11 @@ const DRY_RUN = process.env.PR_WATCHER_DRY_RUN === "true"; // default OFF
 const HEARTBEAT_FILE = path.join(__dirname, "heartbeat.log");
 const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const HEARTBEAT_MAX_LINES = 500;
+
+// Marker used in heartbeat `name` field while a merge-wait loop is in
+// progress. Greppable constant so tests and the watchdog can assert its
+// presence without hard-coding a string literal.
+export const MERGE_WAIT_HEARTBEAT = "merge-wait-heartbeat";
 const QUEUE_STATE_FILE = path.join(__dirname, ".queue-state.json");
 
 // NO-PR bounded auto-restage (slice 2) — feature flag + greppable marker.
@@ -1120,7 +1125,7 @@ async function unmetDependencies(deps) {
 
 let heartbeatTimer = null;
 
-function stopHeartbeat() {
+export function stopHeartbeat() {
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
@@ -1197,21 +1202,25 @@ async function writeQueueState() {
   }
 }
 
-function startHeartbeat(name, getLastLine, onRunTimeout) {
+// _opts is intentionally undocumented in the public API — it exists only so
+// unit tests can inject a synchronous `appendLine` without writing to disk.
+export function startHeartbeat(name, getLastLine, onRunTimeout, _opts = {}) {
   stopHeartbeat();
+  const appendLine = _opts._appendLine ?? appendHeartbeatLine;
+  const intervalMs = _opts._intervalMs ?? HEARTBEAT_INTERVAL_MS;
   const startedMs = Date.now();
   let tripped = false;
   heartbeatTimer = setInterval(async () => {
     const elapsedMs = Date.now() - startedMs;
     const elapsedSec = Math.round(elapsedMs / 1000);
     const snippet = (getLastLine() ?? "").slice(0, 160);
-    await appendHeartbeatLine(`[${ts()}] ${name} elapsed=${elapsedSec}s last: ${snippet}`);
+    await appendLine(`[${ts()}] ${name} elapsed=${elapsedSec}s last: ${snippet}`);
     if (!tripped && isRunTimedOut(elapsedMs, RUN_TIMEOUT_MS)) {
       tripped = true;
       const capMin = RUN_TIMEOUT_MS / 60000;
       const msg = `[run-timeout] ${name} exceeded ${capMin} min (elapsed=${elapsedSec}s) — killing child + quarantining`;
       log("run-timeout", `${name} exceeded ${capMin} min (elapsed=${elapsedSec}s) — killing child + quarantining`);
-      await appendHeartbeatLine(`[${ts()}] ${msg}`);
+      await appendLine(`[${ts()}] ${msg}`);
       if (onRunTimeout) {
         try {
           onRunTimeout();
@@ -1220,7 +1229,7 @@ function startHeartbeat(name, getLastLine, onRunTimeout) {
         }
       }
     }
-  }, HEARTBEAT_INTERVAL_MS);
+  }, intervalMs);
 }
 
 // --- Policy auto-merge helpers ---
@@ -1432,121 +1441,143 @@ async function postHeldForMarcoComment(prNumber) {
   }
 }
 
-async function holdForMarco(prNumber, promptName, runStartedAtMs) {
-  let state;
+async function holdForMarco(prNumber, promptName, runStartedAtMs, _hbOpts = {}) {
+  const hbStartedMs = Date.now();
+  startHeartbeat(
+    MERGE_WAIT_HEARTBEAT,
+    () => `waiting for Marco review of PR #${prNumber} (elapsed=${Math.round((Date.now() - hbStartedMs) / 1000)}s)`,
+    null,
+    _hbOpts,
+  );
   try {
-    state = await fetchEscalationState(prNumber);
-  } catch (err) {
-    // If we can't read PR state, fall back to fail-loud: warn and skip label + comment
-    // rather than blindly re-applying (which is exactly the bug being fixed).
-    log(
-      "merge",
-      `PR #${prNumber}: could NOT read escalation state (${err.message}) — refusing to modify label. Verify by hand.`,
-    );
-    return {
-      ok: false,
-      marco: true,
-      reason: `escalates:true — could not read PR state (${err.message}); label NOT touched, verify by hand.`,
-    };
-  }
-
-  const decision = decideEscalationAction({
-    prCreatedAtMs: state.prCreatedAtMs,
-    runStartedAtMs,
-    currentLabels: state.currentLabels,
-    doNotMergeEvents: state.doNotMergeEvents,
-  });
-
-  if (decision.action === "spent") {
-    log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}. Filing prompt as processed, no label/comment.`);
-    return { spent: true, reason: decision.reason };
-  }
-
-  if (decision.action === "already-labeled") {
-    log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}`);
-    return { ok: false, marco: true, reason: `escalates:true — ${decision.reason}` };
-  }
-
-  if (decision.action === "declined") {
-    log(
-      "merge",
-      `PR #${prNumber}: escalates:true — REFUSING to re-apply \`do-not-merge\`: ${decision.reason}`,
-    );
-    return {
-      ok: false,
-      marco: true,
-      reason: `escalates:true — ${decision.reason}`,
-    };
-  }
-
-  log("merge", `PR #${prNumber}: escalates:true — NOT enabling auto-merge; labelling do-not-merge`);
-  try {
-    await runGh(["pr", "edit", String(prNumber), "--add-label", "do-not-merge"]);
-  } catch (err) {
-    // Fail LOUD, never silently: an unlabelled escalates PR is exactly the hazard this closes.
-    log("merge", `PR #${prNumber}: FAILED to apply do-not-merge label: ${err.message}`);
-    return {
-      ok: false,
-      marco: true,
-      reason: `escalates:true — auto-merge withheld, but the do-not-merge label could NOT be applied (${err.message}). Apply it by hand before anyone merges.`,
-    };
-  }
-  try {
-    await postHeldForMarcoComment(prNumber);
-  } catch (err) {
-    log("merge", `PR #${prNumber}: comment failed (non-fatal): ${err.message}`);
-  }
-  return { ok: false, marco: true, reason: "escalates:true — held for Marco, labelled do-not-merge" };
-}
-
-// Enable auto-merge, then poll until merged or failure.
-async function waitForMerge(prNumber, promptName) {
-  try {
-    log("merge", `enabling auto-merge on PR #${prNumber}`);
-    await runGh(["pr", "merge", String(prNumber), "--auto", "--squash", "--delete-branch"]);
-  } catch (err) {
-    log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
-    // Continue anyway — the PR may merge if the user/CI handles it.
-  }
-
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < MERGE_TIMEOUT_MS) {
-    let data;
+    let state;
     try {
-      data = await runGh(
-        ["pr", "view", String(prNumber), "--json", "state,statusCheckRollup,mergedAt"],
-        { json: true },
-      );
+      state = await fetchEscalationState(prNumber);
     } catch (err) {
-      log("merge", `gh pr view failed: ${err.message} — retrying in ${POLL_INTERVAL_MS / 1000}s`);
-      await sleep(POLL_INTERVAL_MS);
-      continue;
-    }
-
-    if (data.state === "MERGED") {
-      log("merge", `PR #${prNumber} merged at ${data.mergedAt}`);
-      return { ok: true };
-    }
-    if (data.state === "CLOSED") {
-      return { ok: false, reason: "closed-without-merge" };
-    }
-
-    const checks = data.statusCheckRollup ?? [];
-    const failed = checks.find(
-      (c) => c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT",
-    );
-    if (failed) {
+      // If we can't read PR state, fall back to fail-loud: warn and skip label + comment
+      // rather than blindly re-applying (which is exactly the bug being fixed).
+      log(
+        "merge",
+        `PR #${prNumber}: could NOT read escalation state (${err.message}) — refusing to modify label. Verify by hand.`,
+      );
       return {
         ok: false,
-        reason: `ci-${failed.conclusion.toLowerCase()}`,
-        check: failed.name ?? "(unknown)",
+        marco: true,
+        reason: `escalates:true — could not read PR state (${err.message}); label NOT touched, verify by hand.`,
       };
     }
 
-    await sleep(POLL_INTERVAL_MS);
-  }
+    const decision = decideEscalationAction({
+      prCreatedAtMs: state.prCreatedAtMs,
+      runStartedAtMs,
+      currentLabels: state.currentLabels,
+      doNotMergeEvents: state.doNotMergeEvents,
+    });
 
-  return { ok: false, reason: "timeout" };
+    if (decision.action === "spent") {
+      log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}. Filing prompt as processed, no label/comment.`);
+      return { spent: true, reason: decision.reason };
+    }
+
+    if (decision.action === "already-labeled") {
+      log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}`);
+      return { ok: false, marco: true, reason: `escalates:true — ${decision.reason}` };
+    }
+
+    if (decision.action === "declined") {
+      log(
+        "merge",
+        `PR #${prNumber}: escalates:true — REFUSING to re-apply \`do-not-merge\`: ${decision.reason}`,
+      );
+      return {
+        ok: false,
+        marco: true,
+        reason: `escalates:true — ${decision.reason}`,
+      };
+    }
+
+    log("merge", `PR #${prNumber}: escalates:true — NOT enabling auto-merge; labelling do-not-merge`);
+    try {
+      await runGh(["pr", "edit", String(prNumber), "--add-label", "do-not-merge"]);
+    } catch (err) {
+      // Fail LOUD, never silently: an unlabelled escalates PR is exactly the hazard this closes.
+      log("merge", `PR #${prNumber}: FAILED to apply do-not-merge label: ${err.message}`);
+      return {
+        ok: false,
+        marco: true,
+        reason: `escalates:true — auto-merge withheld, but the do-not-merge label could NOT be applied (${err.message}). Apply it by hand before anyone merges.`,
+      };
+    }
+    try {
+      await postHeldForMarcoComment(prNumber);
+    } catch (err) {
+      log("merge", `PR #${prNumber}: comment failed (non-fatal): ${err.message}`);
+    }
+    return { ok: false, marco: true, reason: "escalates:true — held for Marco, labelled do-not-merge" };
+  } finally {
+    stopHeartbeat();
+  }
+}
+
+// Enable auto-merge, then poll until merged or failure.
+async function waitForMerge(prNumber, promptName, _hbOpts = {}) {
+  const hbStartedMs = Date.now();
+  startHeartbeat(
+    MERGE_WAIT_HEARTBEAT,
+    () => `waiting for merge of PR #${prNumber} (elapsed=${Math.round((Date.now() - hbStartedMs) / 1000)}s)`,
+    null,
+    _hbOpts,
+  );
+  try {
+    try {
+      log("merge", `enabling auto-merge on PR #${prNumber}`);
+      await runGh(["pr", "merge", String(prNumber), "--auto", "--squash", "--delete-branch"]);
+    } catch (err) {
+      log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
+      // Continue anyway — the PR may merge if the user/CI handles it.
+    }
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < MERGE_TIMEOUT_MS) {
+      let data;
+      try {
+        data = await runGh(
+          ["pr", "view", String(prNumber), "--json", "state,statusCheckRollup,mergedAt"],
+          { json: true },
+        );
+      } catch (err) {
+        log("merge", `gh pr view failed: ${err.message} — retrying in ${POLL_INTERVAL_MS / 1000}s`);
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
+
+      if (data.state === "MERGED") {
+        log("merge", `PR #${prNumber} merged at ${data.mergedAt}`);
+        return { ok: true };
+      }
+      if (data.state === "CLOSED") {
+        return { ok: false, reason: "closed-without-merge" };
+      }
+
+      const checks = data.statusCheckRollup ?? [];
+      const failed = checks.find(
+        (c) => c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT",
+      );
+      if (failed) {
+        return {
+          ok: false,
+          reason: `ci-${failed.conclusion.toLowerCase()}`,
+          check: failed.name ?? "(unknown)",
+        };
+      }
+
+      await sleep(POLL_INTERVAL_MS);
+    }
+
+    return { ok: false, reason: "timeout" };
+  } finally {
+    stopHeartbeat();
+  }
 }
 
 // tests-docs policy merge loop. Returns:
@@ -1554,84 +1585,95 @@ async function waitForMerge(prNumber, promptName) {
 //   { ok: false, marco: true, reason }    — doesn't qualify / timed out → Marco
 //   { ok: false, ci: true, reason, check }— CI red → quarantine path
 //   { ok: false, reason }                 — closed without merge
-async function waitForPolicyMerge(prNumber) {
-  // Static gate first: a diff outside tests/** + docs/** (or containing
-  // migrations) never qualifies — hand to Marco immediately, no waiting.
-  let filesData;
+async function waitForPolicyMerge(prNumber, _hbOpts = {}) {
+  const hbStartedMs = Date.now();
+  startHeartbeat(
+    MERGE_WAIT_HEARTBEAT,
+    () => `waiting for merge of PR #${prNumber} (elapsed=${Math.round((Date.now() - hbStartedMs) / 1000)}s)`,
+    null,
+    _hbOpts,
+  );
   try {
-    filesData = await runGh(["pr", "view", String(prNumber), "--json", "files"], { json: true });
-  } catch (err) {
-    return { ok: false, marco: true, reason: `files query failed: ${err.message}` };
-  }
-  const cls = classifyPolicyFiles(filesData.files ?? []);
-  if (!cls.ok) {
-    return { ok: false, marco: true, reason: cls.reason };
-  }
-
-  const startedAt = Date.now();
-  let mergeEnabled = false;
-  while (Date.now() - startedAt < MERGE_TIMEOUT_MS) {
-    let data;
+    // Static gate first: a diff outside tests/** + docs/** (or containing
+    // migrations) never qualifies — hand to Marco immediately, no waiting.
+    let filesData;
     try {
-      data = await runGh(
-        ["pr", "view", String(prNumber), "--json", "state,statusCheckRollup,mergedAt"],
-        { json: true },
-      );
+      filesData = await runGh(["pr", "view", String(prNumber), "--json", "files"], { json: true });
     } catch (err) {
-      log("merge", `gh pr view failed: ${err.message} — retrying in ${POLL_INTERVAL_MS / 1000}s`);
-      await sleep(POLL_INTERVAL_MS);
-      continue;
+      return { ok: false, marco: true, reason: `files query failed: ${err.message}` };
+    }
+    const cls = classifyPolicyFiles(filesData.files ?? []);
+    if (!cls.ok) {
+      return { ok: false, marco: true, reason: cls.reason };
     }
 
-    if (data.state === "MERGED") {
-      log("merge", `PR #${prNumber} merged at ${data.mergedAt} (policy: tests-docs)`);
-      return { ok: true };
-    }
-    if (data.state === "CLOSED") {
-      return { ok: false, reason: "closed-without-merge" };
-    }
-
-    const checks = data.statusCheckRollup ?? [];
-    const failed = checks.find(
-      (c) => c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT",
-    );
-    if (failed) {
-      return {
-        ok: false,
-        ci: true,
-        reason: `ci-${failed.conclusion.toLowerCase()}`,
-        check: failed.name ?? "(unknown)",
-      };
-    }
-
-    const allGreen =
-      checks.length > 0 &&
-      checks.every((c) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion));
-
-    if (!mergeEnabled && allGreen && (await verdictApproves(prNumber))) {
-      if (DRY_RUN) {
-        log("dry-run", `PR #${prNumber}: all tests-docs conditions met — would enable auto-merge`);
-        return { ok: false, marco: true, reason: "dry-run: auto-merge not executed" };
-      }
+    const startedAt = Date.now();
+    let mergeEnabled = false;
+    while (Date.now() - startedAt < MERGE_TIMEOUT_MS) {
+      let data;
       try {
-        log("merge", `PR #${prNumber}: tests-docs policy satisfied — enabling auto-merge`);
-        await runGh(["pr", "merge", String(prNumber), "--auto", "--squash", "--delete-branch"]);
-        mergeEnabled = true;
+        data = await runGh(
+          ["pr", "view", String(prNumber), "--json", "state,statusCheckRollup,mergedAt"],
+          { json: true },
+        );
       } catch (err) {
-        log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
+        log("merge", `gh pr view failed: ${err.message} — retrying in ${POLL_INTERVAL_MS / 1000}s`);
+        await sleep(POLL_INTERVAL_MS);
+        continue;
       }
+
+      if (data.state === "MERGED") {
+        log("merge", `PR #${prNumber} merged at ${data.mergedAt} (policy: tests-docs)`);
+        return { ok: true };
+      }
+      if (data.state === "CLOSED") {
+        return { ok: false, reason: "closed-without-merge" };
+      }
+
+      const checks = data.statusCheckRollup ?? [];
+      const failed = checks.find(
+        (c) => c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT",
+      );
+      if (failed) {
+        return {
+          ok: false,
+          ci: true,
+          reason: `ci-${failed.conclusion.toLowerCase()}`,
+          check: failed.name ?? "(unknown)",
+        };
+      }
+
+      const allGreen =
+        checks.length > 0 &&
+        checks.every((c) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion));
+
+      if (!mergeEnabled && allGreen && (await verdictApproves(prNumber))) {
+        if (DRY_RUN) {
+          log("dry-run", `PR #${prNumber}: all tests-docs conditions met — would enable auto-merge`);
+          return { ok: false, marco: true, reason: "dry-run: auto-merge not executed" };
+        }
+        try {
+          log("merge", `PR #${prNumber}: tests-docs policy satisfied — enabling auto-merge`);
+          await runGh(["pr", "merge", String(prNumber), "--auto", "--squash", "--delete-branch"]);
+          mergeEnabled = true;
+        } catch (err) {
+          log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
+        }
+      }
+
+      await sleep(POLL_INTERVAL_MS);
     }
 
-    await sleep(POLL_INTERVAL_MS);
+    return {
+      ok: false,
+      marco: true,
+      reason: mergeEnabled
+        ? "timeout after auto-merge enabled"
+        : "timeout waiting for green checks + MERGE verdict",
+    };
+  } finally {
+    stopHeartbeat();
   }
-
-  return {
-    ok: false,
-    marco: true,
-    reason: mergeEnabled
-      ? "timeout after auto-merge enabled"
-      : "timeout waiting for green checks + MERGE verdict",
-  };
 }
 
 // Move all queued + on-disk -ready.md files into paused/.

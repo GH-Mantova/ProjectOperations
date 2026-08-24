@@ -109,13 +109,13 @@ Reading config already committed to the repo is fine. Mutating tenant state is n
   does NOT match CP-11's regex and the gate fails with the marker visibly present.
 
 
-## CLEAN-TREE MANDATE (2026-07-15) â€” arm ONLY from a clean worktree
+## CLEAN-TREE MANDATE (2026-07-15) — arm ONLY from a clean worktree
 
 Reconciles this brief with the live `04-scanner` SKILL. On 2026-07-15 the scanner correctly re-verified
-all 11 gates against `origin/main`, but **armed zero prompts** â€” because its scheduled sandbox tree was
+all 11 gates against `origin/main`, but **armed zero prompts** — because its scheduled sandbox tree was
 7 commits behind `origin/main` and dirty, with a flaky `.git` mount. Arming or linting from that tree
-would be an **unverifiable board mutation (Â§1)**, and a gate read against it is an **instrument lie
-(Â§7)**. Identifying ready work but never staging it is the gap this closes.
+would be an **unverifiable board mutation (§1)**, and a gate read against it is an **instrument lie
+(§7)**. Identifying ready work but never staging it is the gap this closes.
 
 **Before any gate check you will trust, any `lint-prompt.mjs`, or any arm:** create a clean isolated
 worktree off `origin/main` on the Windows filesystem via Desktop Commander, and do the whole thing there:
@@ -128,16 +128,16 @@ git -C C:\ProjectOperations2 worktree add C:\po-scan-<rand> origin/main
 git -C C:\ProjectOperations2 worktree remove C:\po-scan-<rand> --force ; git -C C:\ProjectOperations2 worktree prune
 ```
 
-If you cannot obtain a clean worktree, DECLARE it (`NO-OP: could not arm verifiably â€” no clean tree`).
+If you cannot obtain a clean worktree, DECLARE it (`NO-OP: could not arm verifiably — no clean tree`).
 Never arm from the sandbox tree; never silently skip ready items.
 
 `check-backlog.mjs` now hard-fails (exit 2) with a **STRICT-STRUCTURE GUARD** message if any `- id:` in
-BACKLOG.yaml is not at exactly 2-space indent. If you see that, the register is malformed â€” fix the
+BACKLOG.yaml is not at exactly 2-space indent. If you see that, the register is malformed — fix the
 indent first; do not report gate readings from a malformed file.
 
 ---
 
-## ðŸ§° YOUR SCRIPTS â€” the registry is the source of truth
+## 🧰 YOUR SCRIPTS — the registry is the source of truth
 
 **`docs/pipeline/SCRIPT-REGISTRY.md`** lists every script, its owner, whether it mutates, and when
 to call it. Read it rather than guessing from a filename.
@@ -147,34 +147,34 @@ below either reports or stages.
 
 **Every cycle, inside the clean worktree (STEP 0):**
 
-- `scripts/pipeline/check-backlog.mjs` â€” **STEP 1.** Exit **10** = a blocker has cleared and work is
+- `scripts/pipeline/check-backlog.mjs` — **STEP 1.** Exit **10** = a blocker has cleared and work is
   ready to stage. You are the thing that comes back and asks.
-- `scripts/pipeline/check-escalations.mjs` â€” has an escalation actually been FIXED, or only talked
-  about? **A merged PR is not a shipped fix** â€” #674 merged the *prompt*, not the fix.
-- `scripts/pipeline/check-lessons.mjs` â€” **exit 0 = CLEAN, exit 2 = a lesson has REGRESSED.**
+- `scripts/pipeline/check-escalations.mjs` — has an escalation actually been FIXED, or only talked
+  about? **A merged PR is not a shipped fix** — #674 merged the *prompt*, not the fix.
+- `scripts/pipeline/check-lessons.mjs` — **exit 0 = CLEAN, exit 2 = a lesson has REGRESSED.**
 
 **Before arming anything:**
 
-- `scripts/pipeline/lint-prompt.mjs` â€” exit 0 = ADMIT Â· **exit 3 = already done, BIN IT (you just
-  saved a whole agent run)** Â· exit 1 = your prompt is wrong.
-- `scripts/pipeline/triage-holds.ps1` â€” read-only HOLD triage; proves which HOLDs are already
+- `scripts/pipeline/lint-prompt.mjs` — exit 0 = ADMIT · **exit 3 = already done, BIN IT (you just
+  saved a whole agent run)** · exit 1 = your prompt is wrong.
+- `scripts/pipeline/triage-holds.ps1` — read-only HOLD triage; proves which HOLDs are already
   satisfied. Pairs with the backlog check.
 
 **Audit sweep:**
 
-- `scripts/pipeline/check-all-drift.ps1` â€” is the data-model map stale on any open PR? Report only.
-- `scripts/pipeline/check-sot-bytes.mjs` â€” reads the **bytes**, not PowerShell's decoding of them.
-- `scripts/pipeline/check-sot-encoding.ps1` â€” is a working copy of `sot/` byte-damaged? PS 5.1
+- `scripts/pipeline/check-all-drift.ps1` — is the data-model map stale on any open PR? Report only.
+- `scripts/pipeline/check-sot-bytes.mjs` — reads the **bytes**, not PowerShell's decoding of them.
+- `scripts/pipeline/check-sot-encoding.ps1` — is a working copy of `sot/` byte-damaged? PS 5.1
   decodes BOM-less UTF-8 as Windows-1252, so mangled em-dashes are a real and recurring defect.
-- `scripts/data-model/build-relationship-map.mjs --check` â€” validates drift without writing.
-- `scripts/pipeline/visual-smoke.mjs` â€” Playwright capture for the vision review.
+- `scripts/data-model/build-relationship-map.mjs --check` — validates drift without writing.
+- `scripts/pipeline/visual-smoke.mjs` — Playwright capture for the vision review.
 
 `scripts/pipeline/gate-eval.mjs` is the shared evaluator behind the three gate checkers. Don't call
-it directly â€” fix gates there.
+it directly — fix gates there.
 
 **Not yours:** every MUTATING script under STATION 00 in the registry (merging, rebasing, arming
 auto-merge, restarting the watcher), the `scripts/pr-watcher/*` internals, and everything under
-MARCO-ONLY. If a finding needs one of those, **report it â€” do not run it.**
+MARCO-ONLY. If a finding needs one of those, **report it — do not run it.**
 
 ---
 
@@ -196,7 +196,7 @@ the report. A silent auto-fix would poison the very design review this section e
 For each staged/armed prompt, work the following checklist and file a report line for each hit:
 
 - **Missed callers in `scope`.** Grep the repo for every symbol/route/component the prompt names.
-  If a call site is touched by the fix but not listed in `scope`, flag it â€” a half-migrated symbol
+  If a call site is touched by the fix but not listed in `scope`, flag it — a half-migrated symbol
   ships a broken build (or worse, a silently-inconsistent one). Cite the missed path(s).
 - **Premise doesn't die on landing (LL-54).** Re-read the `premise` command as if the fix has
   already shipped. If it will *still* evaluate true, the prompt will re-fire forever after merge.
@@ -214,7 +214,7 @@ For each staged/armed prompt, work the following checklist and file a report lin
   map. Flag which guard is likely to red-fail on this PR so the owning station can pre-empt it.
 - **Honest `size`.** Compare the declared `size` against the real blast radius implied by the
   `scope` + the greps above. If a `size: 1` prompt touches five files across two apps and adds a
-  new migration, flag it as a split waiting to happen â€” the watcher's per-run turn budget will
+  new migration, flag it as a split waiting to happen — the watcher's per-run turn budget will
   chew through the context and either time out or ship half the work.
 
 Severity guidance for report lines: missed caller or dead premise = S2 (prompt is broken as

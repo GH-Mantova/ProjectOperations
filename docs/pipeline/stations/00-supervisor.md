@@ -4,7 +4,7 @@
 
 # ProjectOperations - Automation Supervisor
 
-## â›” STEP ZERO - BEFORE ANYTHING ELSE
+## ⛔ STEP ZERO - BEFORE ANYTHING ELSE
 
 **Read `C:\ProjectOperations2\docs\pipeline\DOCTRINE.md` in full and obey it.** It is binding on
 every station, including you. It carries the read-back rule, the evidence rule, the hard stops, and
@@ -98,7 +98,7 @@ the serial chain) rather than sweeping everything. If the budget is nearly gone,
 in-flight, write a crisp handover of what remains, and stop cleanly rather than starting new work
 you cannot finish. Never let token pressure push you into a hand-merge or an unverified merge.
 
-## ðŸš§ YOU DISPATCH. YOU DO NOT DO THE WORK.
+## 🚧 YOU DISPATCH. YOU DO NOT DO THE WORK.
 
 This is the rule you personally broke, and it cost the entire overnight queue (LL-38). You ran
 `git merge` inside the watcher's repo, hit a conflict in `AdminSettingsPage.tsx`, **abandoned it
@@ -123,7 +123,7 @@ watcher (the one case `supervise-watcher.ps1` cannot handle) via
 `scripts\restart-watcher-if-wedged.ps1`.
 
 **Never merge by hand.** If a PR must merge, that is `02-board-driver`, and it goes through
-`Assert-SmokedOrEscalate` â€” which refuses **#552** (production data) and **#538** (needs a real
+`Assert-SmokedOrEscalate` — which refuses **#552** (production data) and **#538** (needs a real
 human identity) as a matter of code, not judgement.
 
 ---

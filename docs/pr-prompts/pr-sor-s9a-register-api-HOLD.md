@@ -1,0 +1,128 @@
+---
+premise: '! test -f apps/api/src/modules/agreed-records/agreed-record-register.service.ts'
+premise_means: The per-job VC+AR register service and its progress-claim feed do not exist yet - approved VCs (S6) and approved ARs (S8) cannot flow into a ProgressClaim, and the Director claim-ready trigger is not seeded. S6 (VariationSorLine) and S8 (AgreedRecordPricingLine) are on main.
+scope:
+  - apps/api/prisma/schema.prisma
+  - apps/api/prisma/migrations/**
+  - docs/data-model/**
+  - apps/api/src/modules/agreed-records/agreed-record-register.service.ts
+  - apps/api/src/modules/agreed-records/agreed-record-register.controller.ts
+  - apps/api/src/modules/agreed-records/agreed-records.module.ts
+  - apps/api/src/modules/agreed-records/__tests__/agreed-record-register.service.spec.ts
+done_when: pnpm build && pnpm lint && test -f apps/api/src/modules/agreed-records/agreed-record-register.service.ts && grep -q "agreedRecordId" apps/api/prisma/schema.prisma && grep -q "eligible-for-claim" apps/api/src/modules/agreed-records/agreed-record-register.controller.ts
+size: 6
+gate_allow: migrations
+seed_only: false
+escalates: true
+rollback_strategy: Additive migration only - one nullable FK column (agreed_record_id) on the existing claim_line_items table + one seeded row in notification_trigger_configs (idempotent upsert). Nothing existing altered. Safe to leave on main; down migration drops the nullable column. Forward-only otherwise.
+backfill: false
+cluster: sor-s9
+cluster_order: 1
+---
+
+# SoR S9a - per-job register API + feed approved items into ProgressClaim + Director trigger
+
+**Slice 1 of 2.** Marco decided 2026-08-20 to split the former S9 (`size: 9`, the largest thing in
+the queue) at the **API/web seam**: single nine-scope runs are the shape that historically produces
+partial work, and splitting lets the API half land and prove itself even if the web half needs a
+second pass. **S9b builds the UI and gates on a real symbol this slice introduces.**
+
+Final workflow slice (`docs/plans/sor-program-plan.md` on main; design in memory
+`project_sor_program`). The per-JOB register (VC + AR, showing SoR version + status) and the one-way
+feed of **approved / signed** items into the EXISTING `ProgressClaim` via `ClaimLineItem`. Director
+is notified through the existing `NotificationTriggerConfig` seam when a claim is ready. VC already
+feeds `ClaimLineItem` via its `variationId` FK today; the AR side needs a symmetric nullable FK
+added here.
+
+## Grounded (read first - on main today)
+
+- `apps/api/prisma/schema.prisma` - `ProgressClaim` (line 3957), `ClaimLineItem` (line 4016; already
+  has `variationId` FK to `Variation`, feeds SUM into the claim). **Grep for the model names rather
+  than trusting those line numbers.** Add ONE nullable FK column here.
+- S6's `VariationSorLine` - approved VCs still surface through the existing
+  `Variation.approvedAmount` / `ClaimLineItem.variationId` path (unchanged).
+- S8's `AgreedRecord` + `AgreedRecordPricingLine` + `totalPricedAmount` - approved ARs are the new
+  source this slice teaches `ClaimLineItem` to link to.
+- The existing progress-claim service on main - do NOT rewrite it; add a helper the register calls
+  when raising a claim, so the register is the only new surface.
+
+## What to build
+
+1. **`apps/api/prisma/schema.prisma`** - TWO small additive edits (nothing existing altered):
+   - Add a nullable FK on `ClaimLineItem`:
+     ```prisma
+     agreedRecordId String?       @map("agreed_record_id")
+     agreedRecord   AgreedRecord? @relation(fields: [agreedRecordId], references: [id], onDelete: SetNull)
+     ```
+     and the back-ref `claimLineItems ClaimLineItem[]` on `AgreedRecord`.
+   - No new model, no new enum, no new table. A nullable column addition only.
+
+2. **Migration** - additive (`ADD COLUMN agreed_record_id` + FK index). Bare
+   `GATE-ALLOW: migrations` at column 0 of the PR body. In the paired seed step, **upsert** ONE row
+   into `notification_trigger_configs`:
+   - `progress_claim.ready_for_director` - label "Progress claim ready - Director review",
+     recipientRoles `["DIRECTOR"]`, isEnabled `true`. Use the canonical role token on main if it
+     differs, and note the mapping in the PR body.
+
+3. Regenerate `docs/data-model/**` via `node scripts/data-model/build-relationship-map.mjs`.
+   ⚠️ Regenerating **shrinks tracked `metadata-catalog.json`** - that has aborted a slice before.
+   Expect it, and say so in the PR body rather than treating it as damage.
+
+4. **`agreed-record-register.service.ts`** + **`.controller.ts`**, wired into the existing
+   `agreed-records.module.ts`, guarded by the existing project-manager / claims-manage permission
+   (**reuse - do NOT invent a new one**):
+   - `GET register/for-job/:jobId` - combined per-job list of:
+     - VCs on the job's contract (via `Contract` -> `Variation`), showing `variationNumber`,
+       description, status (`VariationStatus`), `sorVersion` (join through the earliest
+       `VariationSorLine` - the first line stamps the version), and `pricedAmount`.
+     - ARs on the job (`AgreedRecord` where jobId matches), showing `recordNumber`, description,
+       status, `sorVersion`, `totalPricedAmount`, worker + client-rep signature presence.
+     Sorted by `createdAt` desc.
+   - `POST register/for-job/:jobId/raise-claim` - body `{ claimMonth, variationIds[], agreedRecordIds[] }`.
+     Filters inputs to APPROVED-only (VC where `Variation.approvedAmount != null`; AR where
+     `AgreedRecord.status == APPROVED` **and both signatures present**). Calls the existing
+     progress-claim service to create/append a `ProgressClaim` for the contract + month, then writes
+     one `ClaimLineItem` per included item (`variationId` for VC lines, `agreedRecordId` for AR
+     lines; `contractValue` = approvedAmount / totalPricedAmount; `thisClaimPct = 100`;
+     `thisClaimAmount` = that value). Fires `progress_claim.ready_for_director` **AFTER** the claim
+     is written.
+   - `GET register/for-job/:jobId/eligible-for-claim` - the filtered APPROVED-only view the UI uses
+     to build the raise-claim payload. 🔴 **The literal route segment `eligible-for-claim` must
+     appear in the controller** - S9b's chain gate points at that exact string, and `done_when`
+     asserts it. Do not rename it.
+
+5. **Spec** `__tests__/agreed-record-register.service.spec.ts`: (a) the register merges VC + AR rows
+   for a job, (b) eligible-for-claim filters unapproved / unsigned items out, (c) raise-claim creates
+   `ClaimLineItem` rows with `agreedRecordId` set for AR entries and `variationId` for VC entries,
+   (d) the Director trigger fires **after** the claim write, not before.
+
+## Do NOT
+
+- **Do NOT build any UI.** `JobSorRegisterPage.tsx` and the `App.tsx` route are **S9b**. Building
+  them here defeats the split and re-creates the size-9 run Marco broke up.
+- Do NOT introduce a parallel claim model - feed the EXISTING `ProgressClaim` via `ClaimLineItem`.
+- Do NOT include DRAFT / SUBMITTED / SENT_BACK ARs in the claim feed - APPROVED with both signatures
+  present, only.
+- Do NOT re-run any pricing - VC and AR are both already priced at their frozen snapshot rates.
+- Do NOT wire notifications for state changes other than the claim-ready trigger (S8 owns AR-lane).
+- Do NOT build the configurable approval-chain / roles editor UI (DEFERRED in the plan's LATER).
+- Do NOT touch tender pricing, Azure/Entra/SharePoint, or `/sot/`.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Scope discipline still applies: do not widen beyond the seven paths in `scope`. That is a scope
+limit, **not** a reason to stop before pushing.
+
+## Guardrails
+
+- One attempt. If the register service already exists on main, say `NO-OP: <reason>` and stop.
+- Never ask a question or "stand by" for approval. There is no human in a headless run.
+- Read the CI job log before diagnosing a failure.
+- Regenerate the data-model map up front.
+- `pnpm build` and `pnpm lint` must both pass before you open the PR.

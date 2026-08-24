@@ -12,7 +12,7 @@ seed_only: false
 escalates: false
 cluster: lint-file-gate-dead
 cluster_order: 2
-requires_file_on_main: docs/audits/dead-file-gates-repointed-2026-08-19.md
+requires_merged: 1227
 ---
 
 # SLICE 2 — `FILE_GATE_DEAD`: reject a `requires_file_on_main` that is already satisfied

@@ -5,12 +5,22 @@ scope:
   - apps/api/prisma/schema.prisma
   - apps/api/prisma/migrations/**
   - apps/api/src/modules/**
+  - apps/api/src/common/tenancy/__tests__/siteid-notnull-backfill.spec.ts
   - docs/data-model/**
 done_when: pnpm build && pnpm lint && ! grep -qE "^[[:space:]]+siteId[[:space:]]+String\?" apps/api/prisma/schema.prisma && node scripts/data-model/build-relationship-map.mjs --check
 size: 8
 gate_allow: migrations
 seed_only: false
-escalates: false
+escalates: true
+rollback_strategy: >-
+  PRODUCTION DATA. The backfill UPDATE is idempotent (WHERE site_id IS NULL) and
+  re-runnable. The NOT NULL constraint is the irreversible half - reverting means
+  dropping the constraints, which restores the previous shape but NOT the
+  knowledge of which rows were originally blank. That knowledge lives only in the
+  CSV export taken before the migration runs, which is therefore mandatory. If the
+  run aborts mid-flight the constraint is simply not applied and it can be re-run
+  after investigation.
+requires_file_on_main: docs/approvals/siteid-notnull-backfill-approved-by-marco.md
 ---
 <!-- watcher: do-not-arm -->
 # HOLD — [Chore] Enforce siteId NOT NULL on Tender/Job/Project/FormSubmission (+ backfill)
@@ -60,3 +70,14 @@ a Site should probably be `Restrict` once siteId is mandatory; confirm).
 - `node scripts/data-model/build-relationship-map.mjs` regenerated + `--check` OK.
 - PR body: NULL counts before backfill, backfill strategy per model, new `onDelete`, and a
   **Data-model impact** section.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

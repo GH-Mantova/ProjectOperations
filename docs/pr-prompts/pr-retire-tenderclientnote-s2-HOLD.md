@@ -15,8 +15,7 @@ seed_only: false
 escalates: true
 rollback_strategy: Destructive and forward-only — a dropped table cannot be restored by a down migration. The recovery path is the JSON export this slice produces BEFORE the drop (all 127 rows with ids, authors and timestamps), plus the fact that every note's content already exists in tender_clarification_notes. If the drop fails mid-flight the table is simply still present and the migration can be re-run; if it succeeds and was wrong, restore from the export plus a database point-in-time restore.
 backfill: false
-requires_file_on_main:
-  - docs/runbooks/tracker-followup-notes-recovery.md
+requires_file_on_main: docs/approvals/retire-tenderclientnote-s2-approved-by-marco.md
 ---
 
 # Retire TenderClientNote — SLICE 2: export the rows, then drop the table
@@ -130,4 +129,12 @@ Label the PR `do-not-merge`. **Marco merges it himself, and Marco runs the expor
 merge it, do not run the migration against production, and do not arm this prompt.
 
 You have STANDING AUTHORITY to write the code, commit, push, and OPEN THE PR — but only once this
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+The lines below are a SCOPE limit, not permission to stop before pushing. Both apply.
 prompt has been deliberately armed by Marco. Do not merge.

@@ -91,3 +91,14 @@ line containing that prompt's basename. If one is found:
 - One attempt. If `ORPHANED_DISCHARGE` already exists in the linter, say `NO-OP: <reason>` and exit.
 - `pnpm lint` and `node scripts/pipeline/test-lint-prompt.mjs` must both pass.
 - Two files. If it starts growing past that, stop and say so rather than widening scope.
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+Every scope limit stated above still applies. A scope limit is **not** a reason to stop
+before pushing.

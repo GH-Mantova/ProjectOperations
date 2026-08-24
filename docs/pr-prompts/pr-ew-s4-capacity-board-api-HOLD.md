@@ -11,7 +11,7 @@ size: 6
 gate_allow: none
 seed_only: false
 escalates: false
-requires_file_on_main: apps/api/src/modules/tendering/allocation.service.ts
+requires_file_on_main: apps/api/src/modules/tendering/allocation.controller.ts
 ---
 
 # EW-4: Weighted load + capacity-board API + suggest-next
@@ -19,8 +19,10 @@ requires_file_on_main: apps/api/src/modules/tendering/allocation.service.ts
 **Binding plan:** `docs/plans/estimator-allocation-workload-plan.md` (read sections 5, 7, and 10
 in full before starting). This is the fourth slice of the estimator allocation workflow cluster.
 
-**Gate:** EW-1 (schema) and EW-2 (allocation engine) must be on main. Verify that both
-`model EstimatorCapacity` is in `schema.prisma` AND `allocation.service.ts` exists before starting.
+**Gate:** EW-1 (schema) and EW-2d (allocation controller) must be on main. Verify that both
+`model EstimatorCapacity` is in `schema.prisma` AND `allocation.controller.ts` exists before
+starting - this slice adds endpoints to that controller. (EW-2 was split into 2a/2b/2c/2d on
+2026-08-23; `allocation.service.ts` existing no longer means the controller does.)
 
 ## Context — grounded against origin/main (REUSE — do NOT rebuild)
 

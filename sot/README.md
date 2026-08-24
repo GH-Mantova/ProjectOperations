@@ -215,15 +215,28 @@ per-PR reviews (`docs/pr-reviews/**`), QA registers (`docs/qa/*`), runbooks/guid
 
 ---
 
-## 🔗 Fetch URLs (use blob — raw CDN has delays)
+## 🔗 Fetch URLs — always append `?plain=1` when FETCHING
 
-- README: `https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/README.md`
-- 01 Charter & Architecture: `…/blob/main/sot/01-charter-and-architecture.md`
-- 02 Roadmap & Status: `…/blob/main/sot/02-roadmap-and-status.md`
-- 03 Progress Log: `…/blob/main/sot/03-progress-log.md`
-- 04 Data Model: `…/blob/main/sot/04-data-model.md`
-- 05 Decisions & Lessons: `…/blob/main/sot/05-decisions-and-lessons.md`
-- 06 Active Specs: `…/blob/main/sot/06-active-specs.md`
+⚠️ A **bare** `blob/main/sot/README.md` fetch has been measured returning a **2026-07-08**
+render of this file — the retired `MAIN / OldMain# / Chat# / DR#` chat-routing model — while
+`?plain=1`, `raw.githubusercontent.com` and the GitHub MCP all returned the current one at the
+same moment. A control fetch of `sot/05` by bare blob URL was **correct**, so bare-blob fetching
+is not broken in general: it is broken here, and this is the first file every new chat reads.
+
+`?plain=1` keeps the `github.com` host, so the CDN-delay concern that motivated the old advice
+never applies. `raw.githubusercontent.com` and the GitHub MCP are also truthful. **Never boot a
+chat off a bare blob URL.** The companion reconcile in `sot/01-charter-and-architecture.md`
+SECTION 3 → "Key URLs" and SECTION 15 carries the identical rule.
+
+Measured 2026-08-24 by Station 05 (SoT Keeper) against `origin/main` `6ec80638`.
+
+- README: `https://github.com/GH-Mantova/ProjectOperations/blob/main/sot/README.md?plain=1`
+- 01 Charter & Architecture: `…/blob/main/sot/01-charter-and-architecture.md?plain=1`
+- 02 Roadmap & Status: `…/blob/main/sot/02-roadmap-and-status.md?plain=1`
+- 03 Progress Log: `…/blob/main/sot/03-progress-log.md?plain=1`
+- 04 Data Model: `…/blob/main/sot/04-data-model.md?plain=1`
+- 05 Decisions & Lessons: `…/blob/main/sot/05-decisions-and-lessons.md?plain=1`
+- 06 Active Specs: `…/blob/main/sot/06-active-specs.md?plain=1`
 
 ---
 

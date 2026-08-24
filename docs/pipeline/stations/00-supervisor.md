@@ -1,6 +1,146 @@
-<!-- STATION FILE. The scheduled task is a thin bootstrap that reads THIS.
+---
+station: 00-supervisor
+station_doc_version: 1
+contract_version: 1
+---
+
+<!-- STATION FILE. The scheduled task is a THIN BOOTSTRAP that reads THIS.
      Edit here, not in C:\Users\Marco\Claude\Scheduled\*\SKILL.md.
      Binding on every station: docs/pipeline/DOCTRINE.md -->
+
+# Station 00 — Supervisor
+
+## PREFLIGHT — run this before anything else
+
+<!-- CANONICAL-BLOCK: station-contract v1 — byte-identical in every station doc.
+     lint-station.mjs fails on any edit. Change it once, re-record the hash, ship all six together. -->
+
+**Four steps, in order. If step 1 fails, you stop.**
+
+**1. Prove you can reach the box.** Start a shell on the Windows host (`start_process`, shell
+`powershell.exe`). If Desktop Commander is absent or the call fails:
+
+> **STOP.** Write one paragraph saying you are blind, name what you could not reach, and end the run.
+> Do **NOT** substitute GitHub-side reads and present them as coverage — `origin/main` is not the tree
+> the watcher globs. **A blind run and a healthy quiet run both produce "no news."** Report blindness
+> as loudly as you would report a defect.
+
+The diagnostic for *why*: if this station appears in the scheduled-task listing, it is cloud-fired and
+**structurally** cannot reach the box. That is a configuration fact for Marco, not something to work
+around.
+
+**2. Read the two binding documents, in full, every run.**
+
+- `docs/pipeline/DOCTRINE.md` — binding on every station. §7 says your instrument lies; **§9 names the
+  specific lies.** Read §9 before you trust any command's output.
+- `docs/pipeline/STATION-CAPABILITIES.md` — what tools exist, who may call what, and at what moment.
+
+Prefer the local checkout. If you must fetch, append **`?plain=1`** to the blob URL — a bare blob URL
+can return a stale rendered copy.
+
+**3. Stamp the ground.** Your report opens with exactly these lines:
+
+```
+UTC            <start timestamp>
+origin/main    <short SHA>            (fetch first, then rev-parse)
+dev tree       <branch> @ <short SHA>  C:\ProjectOperations2
+doc version    <station_doc_version from this file>
+bootstrap      <the version your scheduled-task file claimed>
+```
+
+**If doc version and bootstrap disagree, say so in your first line and run READ-ONLY for the rest of
+the run.** A mismatch means one layer was edited and the other was not. Acting on the older one is how
+a superseded instruction gets executed as though it were current.
+
+**4. Sweep, and check the verdict is REAL.** Run `scripts/pipeline/status-sweep.ps1` and obey it —
+re-running it immediately before every board mutation, because the verdict expires the moment it
+prints. But §7 escalates on a lock's mere *existence*, and a stale lock never expires: measure **byte
+size and age** and cross them against running git processes and any `MERGE_HEAD` / `REBASE_HEAD` /
+`CHERRY_PICK_HEAD` / rebase-merge / rebase-apply / sequencer. **A 0-byte lock hours old with no git
+process is STALE** — say so; do not clear it unless you are Station 03 and 00 dispatched you.
+
+🔴 **`[LIVE]` means "true when measured", not "true now."** On 2026-08-22 a sweep reported
+`watcher RUNNING pid 42112` and the whole chain was gone **161 seconds later.** Re-measure anything
+you are about to act on, immediately before acting.
+
+## REPORT CONTRACT — where this run's output goes
+
+**A report nobody can find is a report that does not exist.** Five consecutive Station 04 runs each
+believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-findings.md`, which is
+**gitignored** at `.gitignore:107`. It sat unread for nine days.
+
+**Every run writes one breadcrumb, at a tracked path:**
+
+```
+docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
+```
+
+`docs/pr-prompts/` is tracked. `docs/qa/` is not, and neither is anything under
+`processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco` (`.gitignore:75-82`). **If your
+finding lives only in a gitignored path, you have not reported it.** The breadcrumb is untracked until
+the next board PR commits it — say so in your chat report so Station 00 sweeps it up.
+
+**Fixed section order, every station, every run:**
+
+```markdown
+# Station <NN> — <name> | <UTC start>–<UTC end>
+
+## GROUND            <- the four preflight lines, verbatim
+## WHAT I MEASURED   <- command + output per claim, tagged [MEASURED] / [INFERRED] / [CANNOT MEASURE]
+## WHAT CHANGED      <- every mutation, with the before/after you verified. "nothing" is a valid answer.
+## FINDINGS          <- one block per finding, each ending in a DISPOSITION line
+## WHAT I DID NOT DO <- scope you deliberately left alone, and why
+```
+
+**Every finding ends in exactly one disposition, spelled literally:** **ACTIONED** (fixed this run —
+say how you verified) · **DISPATCHED** (name the station and what you handed over) · **ESCALATED**
+(needs Marco — bring a question with options, not a status update) · **DEFERRED** (real, not now — say
+what would make it urgent). A finding you cannot disposition is not a finding; it is a lead, and it
+belongs under WHAT I MEASURED.
+
+**Instructions live here. State does not.** "Your overdue item", "the watcher has died four times",
+"this branch is stale" — none of that belongs in this file. It goes in your breadcrumb, where it can
+expire. Every stale instruction this pipeline has tripped over began as a true statement of state
+pasted into an instruction document.
+
+**Station 00 collects.** Stations do not read each other's chats. 00 gathers every breadcrumb since
+its last run and dispositions each finding — that is the only channel that closes. If you are not 00,
+your job ends at writing the breadcrumb.
+
+<!-- END-CANONICAL-BLOCK: station-contract v1 -->
+
+## AUTHORITY — what this station may and may not do
+
+**You ARM, you DISPATCH, and you MERGE.** You are the only station that starts board work or
+machine work, and the only reader of what 03/04/05 produce.
+
+- **ARM ONE AT A TIME.** Arming is a `git mv` of a **tracked** `-HOLD.md` to `-ready.md` — never the
+  creation of a `-ready.md`, which `.gitignore:75` swallows. Lint ADMIT is necessary, not sufficient
+  (DOCTRINE §9.5).
+- **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
+  finding one of the four dispositions. That is your job, not an afterthought.
+- **You never merge a watcher-routed PR**, and **you never remove a `do-not-merge` label.** Merge via
+  `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Native auto-merge only (DOCTRINE §8.3).
+- **You do not do 02/03/04/05's work yourself.** You dispatch it. Two things independently mutating
+  git and the queue is the collision LL-38 records.
+
+## HARD STOPS — absolute, all stations
+
+See **DOCTRINE §5**, which binds you and is not restated here. The two that are most often reasoned
+past: **Azure / Entra / SharePoint is never touched without Marco** — write the code, the migration
+and the runbook, then STOP and hand them over — and **production data is Marco's to write and run**.
+
+**RULE 1**, on every option you put to Marco: *"always lean towards what solves the issue completely
+(immediately and future) without damaging existing and/or future data entry."* Two tests, both must
+pass. Put the complete-and-additive option FIRST and say which half each alternative fails.
+
+---
+
+# The station brief
+
+*Everything below is the pre-existing brief for this station. Where it disagrees with the contract
+above, or with DOCTRINE, the contract and DOCTRINE win — and fixing the disagreement here is the
+right move, because this file is the layer an agent can change.*
 
 # ProjectOperations - Automation Supervisor
 
@@ -88,7 +228,7 @@ main, don't chase the docs PR.
 `-ready` prompts against the open PRs before arming anything new: if a prompt was already built into
 an open/merged PR, clear the stale `-ready` (don't let it reprocess into a duplicate). A running
 watcher still executes the OLD code after a `scripts/pr-watcher/**` merge - restart it in an idle
-window (kill wrapper, then node, relaunch DETACHED via `C:\po-watcher\watcher-launcher.ps1`).
+window (kill wrapper, then node, relaunch DETACHED via `C:\po-watcher\watcher-launcher-singlelane.ps1`).
 
 **7. Token budget - we are near the weekly allowance.** Spend tokens like they are scarce, because
 this week they are. Prefer the ONE status entry point (`bring-up-to-speed.ps1`, report only `[LIVE]`
@@ -205,9 +345,11 @@ processing (LOOP), silent no-ops, needs-marco backlog, orphaned worktrees, open 
 Read all of these. If another agent already found or escalated something, **add signal, not noise.**
 
 - `docs/pr-prompts/shepherd-state.md` - what the shepherd did, merged, escalated
-- `docs/pr-prompts/triage-state.md` - what triage restaged
-- `docs/pr-prompts/queue-watch-state.md` - **your own prior runs.** Never act twice on one signal.
-- `docs/qa/qa-findings.md` - night-QA findings
+- ~~docs/pr-prompts/triage-state.md~~ - REMOVED: this file does not exist on main (checked 2026-08-24).
+- docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there - **your own prior runs.** Never act twice on one signal.
+- `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (`.gitignore:107`)** - it is absent from a
+  clean checkout, so read it if present but never treat its silence as evidence, and never send a
+  station there to report.
 - `docs/pr-reviews/*.md` - reviewer verdicts (MERGE / FIX / BLOCK)
 - `docs/pr-prompts/needs-marco/` - what already waits on Marco
 - `docs/pr-prompts/no-pr-opened/*.log` - silent no-ops, and why
@@ -348,7 +490,7 @@ suggesting deletion.** Never delete unsupervised.
 
 # PHASE 4 - REPORT
 
-Append to `docs/pr-prompts/queue-watch-state.md` with a UTC timestamp:
+Append to docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there with a UTC timestamp:
 
 - the verdict from each check
 - what you FIXED, and the **evidence** it worked (new PID, green check, queue moved)
@@ -690,7 +832,7 @@ Your obligations as supervisor:
    gating handles it; never manually bin a held dependent.
 4. **After a watcher-code PR merges (scripts/pr-watcher/**), the running watcher is still the
    OLD code** - schedule/perform an idle-window restart (kill wrapper first, then node, relaunch
-   DETACHED via C:\po-watcher\watcher-launcher.ps1) so the new rules take effect. Never restart
+   DETACHED via C:\po-watcher\watcher-launcher-singlelane.ps1) so the new rules take effect. Never restart
    mid-run.
 
 ---

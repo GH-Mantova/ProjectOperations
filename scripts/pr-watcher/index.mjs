@@ -172,6 +172,13 @@ const HEARTBEAT_MAX_LINES = 500;
 export const MERGE_WAIT_HEARTBEAT = "merge-wait-heartbeat";
 const QUEUE_STATE_FILE = path.join(__dirname, ".queue-state.json");
 
+// NO-PR bounded auto-restage (slice 2) — feature flag + greppable marker.
+// When true, a [NO-PR] run that said "NO-OP:" is filed to processed/; any
+// other [NO-PR] run is given up to two more attempts (b, c suffixes) before
+// hard-failing to failed/. When false, the legacy behaviour (file to
+// no-pr-opened/ always) is preserved.
+export const NO_PR_RESTAGE = true;
+
 // Transient-failure signatures — a failed run whose output matches one of
 // these gets ONE automatic retry before quarantine. Override the defaults
 // with PR_WATCHER_TRANSIENT_PATTERNS (comma-separated regex bodies, applied
@@ -278,6 +285,46 @@ export function isTransientFailure(text) {
   if (!text) return false;
   const tail = text.length > 16384 ? text.slice(-16384) : text;
   return TRANSIENT_PATTERNS.some((re) => re.test(tail));
+}
+
+// --- NO-PR bounded auto-restage helpers -------------------------------------
+
+// Convention: the restage ladder uses filename suffixes immediately before
+// `-ready.md`.  Only `-b-ready.md` and `-c-ready.md` (i.e. a single letter
+// preceded by a hyphen, at the very end of the stem) count as attempt markers.
+// This means `pr-slice-b-ready.md` IS treated as attempt 2 when the previous
+// rung `pr-slice-ready.md` is implied by the naming ladder — because the token
+// `-b-` immediately precedes `-ready.md`.  Authors whose genuine base stem ends
+// with the letter b or c MUST add a disambiguating suffix, e.g.
+// `pr-slice-b-alpha-ready.md`, to avoid the collision.  In practice this is
+// extremely rare because prompt stems are descriptive phrases.
+//
+// Rung mapping:
+//   pr-foo-ready.md   (attempt 1)  →  pr-foo-b-ready.md   (attempt 2)
+//   pr-foo-b-ready.md (attempt 2)  →  pr-foo-c-ready.md   (attempt 3)
+//   pr-foo-c-ready.md (attempt 3)  →  null (bound exhausted)
+// Same transitions apply to the rev- prefix.
+export function nextRestageName(name) {
+  // Match: <prefix>-b-ready.md  →  attempt 3
+  const attemptBMatch = name.match(/^(.*)-b(-ready\.md)$/i);
+  if (attemptBMatch) {
+    return `${attemptBMatch[1]}-c${attemptBMatch[2]}`;
+  }
+
+  // Match: <prefix>-c-ready.md  →  bound exhausted
+  const attemptCMatch = name.match(/^(.*)-c(-ready\.md)$/i);
+  if (attemptCMatch) {
+    return null;
+  }
+
+  // Match: <prefix>-ready.md  →  attempt 2
+  const baseMatch = name.match(/^(.*?)(-ready\.md)$/i);
+  if (baseMatch) {
+    return `${baseMatch[1]}-b${baseMatch[2]}`;
+  }
+
+  // Not a recognised pattern — cannot restage
+  return null;
 }
 
 // One retry per prompt name, tracked in memory. A watcher restart resets
@@ -2255,10 +2302,80 @@ async function drain() {
     if (AUTO_MERGE && !reviewJob) {
       const prNumber = extractPrNumber(agentOutput);
       if (prNumber == null) {
-        // Agent exited 0 but never opened a PR. Treating this as success has
-        // caused fully-specified prompts to silently vanish into processed/.
-        // Route to no-pr-opened/ so a human can triage: legitimately no PR
-        // needed vs. silent failure is a judgment call, not a heuristic.
+        // Agent exited 0 but never opened a PR.
+        //
+        // Case 1: agent declared NO-OP: — a legitimate no-PR outcome.
+        // File to processed/ so it doesn't get re-queued or triage-labelled.
+        // The check is case-sensitive and allows optional leading whitespace,
+        // matching the "NO-OP: <one-line reason>" convention from the doctrine.
+        const noOpMatch = agentOutput.split(/\r?\n/).some((line) =>
+          /^\s*NO-OP:/.test(line),
+        );
+        if (noOpMatch) {
+          const dest = path.join(PROCESSED_DIR, name);
+          const logDest = path.join(PROCESSED_DIR, `${name}.log`);
+          const noOpReason = "WATCHER: agent reported NO-OP — filed to processed/ (no PR needed).";
+          try {
+            await rename(filePath, dest);
+            await writeFile(logDest, `${noOpReason}\n\n${logBody}`);
+            log("NO-PR", `${name} → processed/ (agent said NO-OP — legitimate no-PR outcome)`);
+          } catch (err) {
+            log("error", `move no-op to processed/: ${err.message}`);
+          }
+          seen.delete(name);
+          running = false;
+          drain();
+          return;
+        }
+
+        // Case 2: NO_PR_RESTAGE is enabled — bounded auto-restage (up to 3 attempts).
+        if (NO_PR_RESTAGE) {
+          const nextName = nextRestageName(name);
+          if (nextName !== null) {
+            // Attempt available — rename in PROMPT_DIR so the watcher re-arms it.
+            const nextFilePath = path.join(PROMPT_DIR, nextName);
+            const logDest = path.join(PROMPT_DIR, `${nextName}.log`);
+            const attemptLabel = nextName.match(/-b-ready\.md$/i) ? "2 (b)" : "3 (c)";
+            try {
+              await rename(filePath, nextFilePath);
+              await writeFile(logDest, `WATCHER: restage attempt ${attemptLabel} — prior run opened no PR.\n\n${logBody}`);
+              log("NO-PR", `${name} → ${nextName} (no PR found — attempt ${attemptLabel})`);
+            } catch (err) {
+              log("error", `restage rename failed: ${err.message}`);
+            }
+            seen.delete(name);
+            enqueue(nextName, { source: "no-pr-restage" });
+            running = false;
+            drain();
+            return;
+          }
+
+          // Bound exhausted (this was attempt 3) — hard failure to failed/.
+          const dest = path.join(FAILED_DIR, name);
+          const logDest = path.join(FAILED_DIR, `${name}.log`);
+          const failReason =
+            "WATCHER: agent exited 0 but opened no PR on all 3 attempts — " +
+            "quarantined to failed/ for manual review.";
+          try {
+            await rename(filePath, dest);
+            await writeFile(logDest, `${failReason}\n\n${logBody}`);
+            log("FAIL", `${name} → failed/ (no PR opened on 3 attempts — hard failure)`);
+          } catch (err) {
+            log("error", `move no-pr hard-fail: ${err.message}`);
+          }
+          await writeQuarantineReport(name, agentOutput, null);
+          seen.delete(name);
+          if (AUTO_MERGE && !reviewJob) {
+            await pauseQueue(`${name}: no PR opened after 3 attempts`);
+            running = false;
+            return;
+          }
+          running = false;
+          drain();
+          return;
+        }
+
+        // Case 3: NO_PR_RESTAGE disabled — legacy fallback: file to no-pr-opened/.
         const reason =
           "WATCHER: agent exited 0 but no PR number was found in its output — " +
           "filed to no-pr-opened/ for manual review, NOT treated as success.";

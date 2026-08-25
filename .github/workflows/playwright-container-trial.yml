@@ -1,0 +1,102 @@
+name: Tendering Browser Smoke (container trial)
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit SHA to run against
+        required: false
+        default: main
+
+jobs:
+  tendering-e2e-container:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.59.1-noble
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: project_operations
+          POSTGRES_USER: project_ops
+          POSTGRES_PASSWORD: project_ops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U project_ops -d project_operations"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://project_ops:project_ops@postgres:5432/project_operations?schema=public
+      API_PORT: 3000
+      API_PREFIX: api/v1
+      JWT_ACCESS_SECRET: replace-me-access
+      JWT_REFRESH_SECRET: replace-me-refresh
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      # E2E suites log in many times per minute from one IP — lift the auth
+      # throttle far above the production defaults (5 login / 30 refresh per min).
+      AUTH_THROTTLE_LIMIT: 1000
+      AUTH_THROTTLE_REFRESH_LIMIT: 1000
+      SHAREPOINT_MODE: mock
+      SHAREPOINT_SITE_ID: project-operations-site
+      SHAREPOINT_LIBRARY_ID: project-operations-library
+      SHAREPOINT_ROOT_FOLDER: Project Operations
+      # Deterministic 32-byte hex key used solely for CI tests. Real
+      # production keys live in Azure Key Vault and are never committed.
+      BYOK_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: pnpm/action-setup@v4.0.0
+
+      - uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Assert image tag matches the installed Playwright version
+        run: |
+          want="$(node -p "require('@playwright/test/package.json').version")"
+          have="1.59.1"   # keep in step with the container image tag above
+          if [ "$want" != "$have" ]; then
+            echo "::error::Playwright resolves to $want but the container image is $have."
+            echo "::error::Bump the image tag in this file."
+            exit 1
+          fi
+
+      - name: Generate Prisma client
+        run: pnpm --dir apps/api exec prisma generate
+
+      - name: Apply Prisma migrations
+        run: pnpm --dir apps/api exec prisma migrate deploy
+
+      - name: Seed database
+        run: pnpm --filter @project-ops/api seed
+
+      - name: Validate API build
+        run: pnpm --filter @project-ops/api build
+
+      - name: Validate web logic
+        run: pnpm test:web:logic
+
+      - name: Run Tendering browser smoke
+        run: pnpm exec playwright test tests/e2e/tendering.spec.ts --reporter=list,html
+
+      - name: Run PR-acceptance E2E suite
+        run: pnpm exec playwright test tests/e2e/pr-acceptance --project=chromium --reporter=list,html --workers=1
+
+      - uses: actions/upload-artifact@v4.4.0
+        if: ${{ !cancelled() && hashFiles('playwright-report/**') != '' }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

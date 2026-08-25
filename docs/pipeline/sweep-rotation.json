@@ -1,0 +1,28 @@
+{
+  "_why": "Station 04 covers ONE named sweep per run, completely, instead of every sweep shallowly. Without recorded state every fresh run picks the first entry, which narrows coverage without rotating it - gate liveness gets checked forever and instruction drift never does. This file is that state. Station 04 reads it, runs the sweep it names, then advances it via: node scripts/pipeline/next-sweep.mjs --advance",
+  "last_index": -1,
+  "last_run_utc": null,
+  "last_station": null,
+  "sweeps": [
+    {
+      "key": "gate-liveness",
+      "title": "Gate liveness",
+      "brief": "Execute every armed and HOLD prompt's premise against origin/main at a named SHA. A premise that returns false is finished work still sitting on the board. Repair dead requires_merged / requires_file_on_main / requires_on_main gates - and re-check the prompts behind each one you repair, because a dead gate MASKS the premise behind it."
+    },
+    {
+      "key": "instrument-honesty",
+      "title": "Instrument honesty",
+      "brief": "Take DOCTRINE section 9 and prove each trap is still trapped. Run the query that lies (ls-tree without -r, git status against a gitignored file, gh run list --branch main, a --jq string through the shell) and confirm the documented failure still reproduces. A trap that has been fixed upstream and still reads as live is itself drift. Report anything section 9 claims that you cannot reproduce."
+    },
+    {
+      "key": "repo-hygiene",
+      "title": "Repo hygiene",
+      "brief": "Orphaned worktrees and their locks, stash growth in the watcher clone, superseded prompt files littering the queue root, tracked *-ready.md at depth 1 (the board trap), branches merged but not deleted, and HOLD files tracked on main whose work has already shipped. REPORT ONLY - stage a prompt for anything worth deleting. No agent bulk-deletes."
+    },
+    {
+      "key": "instruction-drift",
+      "title": "Instruction drift",
+      "brief": "Diff each scheduled-task bootstrap under C:\\Users\\Marco\\Claude\\Scheduled against the repo station doc it points at. Confirm station_doc_version matches on both sides. Run lint-station.mjs. Check every path DOCTRINE and the station docs name still resolves. This sweep exists because five pasted copies drifted for weeks and four carried advice this pipeline had already disproved."
+    }
+  ]
+}

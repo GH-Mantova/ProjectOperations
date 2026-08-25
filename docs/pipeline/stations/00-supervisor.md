@@ -119,6 +119,10 @@ machine work, and the only reader of what 03/04/05 produce.
   (DOCTRINE §9.5).
 - **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
   finding one of the four dispositions. That is your job, not an afterthought.
+  **Start with `node scripts/pipeline/check-breadcrumb.mjs --freshness`.** It validates the shape of
+  every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
+  station is not a quiet one** — either it did not run, or it ran and did not report, and both are
+  defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
 - **You never merge a watcher-routed PR**, and **you never remove a `do-not-merge` label.** Merge via
   `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Native auto-merge only (DOCTRINE §8.3).
 - **You do not do 02/03/04/05's work yourself.** You dispatch it. Two things independently mutating

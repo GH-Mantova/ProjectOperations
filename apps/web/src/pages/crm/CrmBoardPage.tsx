@@ -8,6 +8,7 @@ import {
   listDropReasons,
   listEntries,
   priceIt,
+  updateEntry,
   type DropReason,
   type Entry
 } from "./crm-api";
@@ -15,6 +16,10 @@ import {
 // CRM S4 — triage surface. Replaces the old kanban with a single Triage list:
 // two actions per row (Price it → Draft Tender; Don't pursue → reason modal).
 // One unified "+ Add new" modal creates a lead or opportunity.
+
+// Canonical page title — matches ShellLayout breadcrumb and sidebar nav label.
+// Exported so the regression test can assert it without rendering the component.
+export const PAGE_TITLE = "Leads & opportunities";
 
 type SiteLite = { id: string; name: string; suburb: string | null };
 type ClientLite = { id: string; name: string };
@@ -201,7 +206,7 @@ export function CrmBoardContent() {
   return (
     <div style={{ padding: "24px 32px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h1 style={{ fontFamily: "var(--font-heading, Syne)", fontSize: 24, margin: 0 }}>CRM</h1>
+        <h1 className="s7-type-page-title" style={{ margin: 0 }}>{PAGE_TITLE}</h1>
         <button
           onClick={() => setShowAddNew(true)}
           style={{
@@ -253,6 +258,8 @@ export function CrmBoardContent() {
           onOpen={(id) => navigate(`/crm/opportunities/${id}`)}
           onPriceIt={(id) => void openPriceDialog(id)}
           onDontPursue={(id) => setDontPursueTargetId(id)}
+          onArchive={(id) => void updateEntry(authFetch, id, { stage: "archived" }).then(() => load())}
+          onRestore={(id) => void updateEntry(authFetch, id, { stage: "open" }).then(() => load())}
         />
       )}
 

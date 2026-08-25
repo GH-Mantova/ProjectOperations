@@ -3,8 +3,8 @@ import { Reflector } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import { PipelineDashboardController } from "../pipeline-dashboard.controller";
 import { PipelineDashboardService } from "../pipeline-dashboard.service";
-import { PermissionsGuard } from "../../../common/auth/permissions.guard";
-import { JwtAuthGuard } from "../../../common/auth/jwt-auth.guard";
+import { PermissionsGuard } from "../../../../common/auth/permissions.guard";
+import { JwtAuthGuard } from "../../../../common/auth/jwt-auth.guard";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

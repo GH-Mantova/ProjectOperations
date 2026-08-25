@@ -8,6 +8,7 @@ import {
   listDropReasons,
   listEntries,
   priceIt,
+  updateEntry,
   type DropReason,
   type Entry
 } from "./crm-api";
@@ -257,6 +258,8 @@ export function CrmBoardContent() {
           onOpen={(id) => navigate(`/crm/opportunities/${id}`)}
           onPriceIt={(id) => void openPriceDialog(id)}
           onDontPursue={(id) => setDontPursueTargetId(id)}
+          onArchive={(id) => void updateEntry(authFetch, id, { stage: "archived" }).then(() => load())}
+          onRestore={(id) => void updateEntry(authFetch, id, { stage: "open" }).then(() => load())}
         />
       )}
 

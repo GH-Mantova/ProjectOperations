@@ -156,7 +156,19 @@ Therefore: for every check you run locally, you MUST also read the ACTUAL CI che
 
 === AUDIT (always; read-only) ===
 Use sandboxed bash/node; the repo is mounted.
-1. SCHEMA -> MAP DRIFT: `node scripts/data-model/build-relationship-map.mjs --check`. Non-zero = the committed map (docs/data-model/relationship-map.*) is stale vs apps/api/prisma/schema.prisma. THEN cross-check the `data-model-drift` CI job's real conclusion on main + open PRs (Rule Zero).
+1. SCHEMA PARSE SANITY: `node scripts/data-model/build-relationship-map.mjs --check`.
+   🔴 **CORRECTED 2026-08-25 — this is NOT a drift gate and never was.** `--check` does **not**
+   compare against any committed artifact: `relationship-map.md` and `.json` are **gitignored**
+   (`.gitignore:126-127`) because committing them churned every open PR, and the source says so at
+   `build-relationship-map.mjs:18-19`. All `--check` proves is that `schema.prisma` parses with no
+   unresolvable model/enum reference; it `return`s at line 561 **before** writing anything.
+   **MEASURED negative control:** a garbage line was prepended to the committed-looking
+   `relationship-map.md` and `--check` still printed `OK` and exited **0**. The matching CI job is
+   named `Data model — generator sanity (schema.prisma parses cleanly)`, not a drift job.
+   **Consequence: a clean `--check` is NOT evidence that sot/04's generated section is current.**
+   The only real drift probe is audit step 3 — compare sot/04's header counts against a freshly
+   generated `relationship-map.md` header. THEN cross-check the CI job's real conclusion on main +
+   open PRs (Rule Zero).
 2. CATALOG VALIDITY: assert docs/data-model/metadata-catalog.json parses as valid JSON (`node -e "JSON.parse(require('fs').readFileSync('docs/data-model/metadata-catalog.json','utf8'))"`). It was invalid (unterminated string @ ~offset 407816) for four consecutive sweeps and nothing acted on it. If invalid, this is a HIGH-severity finding — say so loudly, do not bury it.
 3. SOT-04 DRIFT: compare model/enum/FK/domain counts in sot/04-data-model.md's header against the freshly generated docs/data-model/relationship-map.md header. Mismatch = the SoT master's generated section was not re-merged after a regen.
 4. ROADMAP DRIFT: compare sot/02's In-PR / Staged lists against ACTUAL open PRs and the docs/pr-prompts/ queue. Note items marked In-PR that are merged/closed, or Staged prompts already merged.
@@ -174,7 +186,16 @@ Only fully deterministic, regeneratable drift — nothing requiring judgement:
 - NEVER auto-fix (REPORT ONLY, hand to a development chat): schema.prisma, migrations, seeds, application code, permission registry, curated prose in sot/01/02/03/05/06, roadmap STATUS semantics, catalog business meaning, or any structural drift. If unsure whether something is deterministic, it is NOT — report it.
 
 SAFEGUARDS (a fix run must satisfy ALL; if any fails, ABORT the fix, restore touched files, downgrade to report-only):
-S1. NEVER edit main directly, NEVER push/merge. Deliver as ONE staged doc-reconcile PR PROMPT at docs/pr-prompts/pr-sot-reconcile-{YYYY-MM-DD}-ready.md, marked "SoT governance doc — Marco reviews the rendered diff."
+S1. NEVER edit main directly, NEVER merge. Deliver as ONE doc-reconcile PR that YOU open from a
+    disposable worktree off `origin/main`, marked "SoT governance doc — Marco reviews the rendered
+    diff." 🔴 **CORRECTED 2026-08-25.** The old wording said "NEVER push" and told you to stage
+    `docs/pr-prompts/pr-sot-reconcile-{YYYY-MM-DD}-ready.md`. Both are now wrong and the second is
+    dangerous: (a) `.gitignore:75` ignores `docs/pr-prompts/*-ready.md`, so that file cannot be
+    committed at all without `-f`; (b) a loose `*-ready.md` **IS an armed prompt** — the watcher
+    globs the dev tree and will run it (DOCTRINE §5b) — and **Station 05 may never arm**; and
+    (c) STATION-CAPABILITIES.md §5 grants 05 "Create a PR — ✅ doc-reconcile only", and the
+    AUTHORITY section above says "you never arm and you never merge", which is silent on push.
+    Opening the PR yourself is the sanctioned delivery. Never arm, never merge.
 S2. Determinism: run the generator TWICE; outputs byte-identical (modulo the Last updated stamp). If not, ABORT.
 S3. Section-scoped: PROVE only the generated section changed — compare the curated MERGED SOURCES region's sha256 before/after. If any curated byte moved, ABORT.
 S4. No content loss: curated line count must not decrease. If it shrank, ABORT.

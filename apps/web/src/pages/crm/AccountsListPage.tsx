@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { formatWinRate } from "./formatWinRate";
 
 // NAV-2: Accounts index — Client-360 landing page.
 // Lists all non-archived accounts with summary stats.
@@ -72,11 +73,6 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 // ── Format helpers ────────────────────────────────────────────────────────────
-
-function fmtPct(val: number | null): string {
-  if (val == null) return "—";
-  return `${Math.round(val * 100)}%`;
-}
 
 function fmtRelative(iso: string | null): string {
   if (!iso) return "—";
@@ -294,7 +290,7 @@ export function AccountsListPage() {
                         </span>
                       </td>
                       {/* Win rate */}
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{fmtPct(row.winRate)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>{formatWinRate(row.winRate)}</td>
                       {/* Open opportunities */}
                       <td style={{ ...tdStyle, textAlign: "right" }}>{row.openOpportunitiesCount}</td>
                       {/* Last contact */}

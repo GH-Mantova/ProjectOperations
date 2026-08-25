@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { formatWinRate } from "./formatWinRate";
 
 // CRM-1: Client-360 / Account detail page.
 // Shows the Account with its linked Client identity, contacts, and
@@ -128,14 +129,8 @@ function fmtDate(iso: string | null | undefined): string {
   }
 }
 
-function fmtPct(val: string | null | undefined): string {
-  if (val == null) return "—";
-  const num = parseFloat(val);
-  return Number.isFinite(num) ? `${(num * 100).toFixed(0)}%` : "—";
-}
-
 const s: Record<string, React.CSSProperties> = {
-  page: { padding: "24px", maxWidth: 900, margin: "0 auto", fontFamily: "sans-serif" },
+  page: { padding: "24px", maxWidth: 900, margin: "0 auto" },
   header: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 },
   backBtn: {
     background: "none",
@@ -356,7 +351,7 @@ export function AccountDetailPage() {
             </div>
             <div>
               <div style={s.label}>Win rate</div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{fmtPct(client.winRate)}</div>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{formatWinRate(client.winRate)}</div>
             </div>
             {client.lastTenderAt && (
               <div>

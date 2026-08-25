@@ -1,11 +1,21 @@
+import { useState } from "react";
+import { useConfirm } from "../../hooks/useConfirm";
 import type { Entry } from "./crm-api";
+import { filterByStage, makeArchiveHandler } from "./LeadsTriageList.helpers";
+
+// Re-export pure helpers so consumers can import them from either path.
+export { filterByStage, makeArchiveHandler } from "./LeadsTriageList.helpers";
 
 type Props = {
   entries: Entry[];
   onOpen: (id: string) => void;
   onPriceIt: (id: string) => void;
   onDontPursue: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
 };
+
+// ── Formatting helpers ────────────────────────────────────────────────────────
 
 function fmtMoney(value: number): string {
   return new Intl.NumberFormat("en-AU", {
@@ -26,9 +36,16 @@ function ownerLabel(owner: Entry["owner"]): string {
   return `${owner.firstName} ${owner.lastName}`.trim() || "Unassigned";
 }
 
-export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue }: Props) {
-  const open = entries.filter((e) => e.stage === "open");
-  const notPursued = entries.filter((e) => e.stage === "not_pursued");
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue, onArchive, onRestore }: Props) {
+  const open = filterByStage(entries, "open");
+  const notPursued = filterByStage(entries, "not_pursued");
+  const archived = filterByStage(entries, "archived");
+
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+
+  const confirm = useConfirm();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -49,6 +66,7 @@ export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue }: Pr
                 onOpen={() => onOpen(e.id)}
                 onPriceIt={() => onPriceIt(e.id)}
                 onDontPursue={() => onDontPursue(e.id)}
+                onArchive={makeArchiveHandler(e.id, onArchive, confirm)}
               />
             ))}
           </div>
@@ -67,20 +85,61 @@ export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue }: Pr
           </div>
         </section>
       )}
+
+      {archived.length > 0 && (
+        <section>
+          <button
+            onClick={() => setArchivedExpanded((prev) => !prev)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontFamily: "var(--font-heading, Syne)",
+              fontSize: 16,
+              color: "var(--text-muted, #999)",
+              marginBottom: archivedExpanded ? 8 : 0
+            }}
+            aria-expanded={archivedExpanded}
+          >
+            <span style={{ fontSize: 11, userSelect: "none" }}>{archivedExpanded ? "▾" : "▸"}</span>
+            Archived ({archived.length})
+          </button>
+          {archivedExpanded && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {archived.map((e) => (
+                <ArchivedRow
+                  key={e.id}
+                  entry={e}
+                  onOpen={() => onOpen(e.id)}
+                  onRestore={() => onRestore(e.id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function TriageRow({
   entry,
   onOpen,
   onPriceIt,
-  onDontPursue
+  onDontPursue,
+  onArchive
 }: {
   entry: Entry;
   onOpen: () => void;
   onPriceIt: () => void;
   onDontPursue: () => void;
+  onArchive: () => void;
 }) {
   const value = parseValue(entry.estimatedValue);
   return (
@@ -138,6 +197,21 @@ function TriageRow({
         >
           Don't pursue
         </button>
+        <button
+          onClick={() => void onArchive()}
+          aria-label="Archive"
+          style={{
+            padding: "4px 10px",
+            borderRadius: 6,
+            border: "1px solid #e5e7eb",
+            background: "transparent",
+            cursor: "pointer",
+            fontSize: 12,
+            color: "var(--text-muted, #888)"
+          }}
+        >
+          Archive
+        </button>
       </div>
     </div>
   );
@@ -171,6 +245,53 @@ function NotPursuedRow({ entry, onOpen }: { entry: Entry; onOpen: () => void }) 
           {entry.client?.name ?? "-"} · Owner: {ownerLabel(entry.owner)}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ArchivedRow({
+  entry,
+  onOpen,
+  onRestore
+}: {
+  entry: Entry;
+  onOpen: () => void;
+  onRestore: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: 6,
+        padding: 12,
+        display: "flex",
+        gap: 12,
+        alignItems: "center"
+      }}
+    >
+      <div style={{ flex: 1, cursor: "pointer" }} onClick={onOpen}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2 }}>
+          <span style={{ fontWeight: 600, color: "var(--text-muted, #666)" }}>{entry.title}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-muted, #999)" }}>
+          {entry.client?.name ?? "-"} · Owner: {ownerLabel(entry.owner)}
+        </div>
+      </div>
+      <button
+        onClick={onRestore}
+        style={{
+          padding: "4px 10px",
+          borderRadius: 6,
+          border: "1px solid #e5e7eb",
+          background: "transparent",
+          cursor: "pointer",
+          fontSize: 12,
+          color: "var(--text-muted, #555)"
+        }}
+      >
+        Restore
+      </button>
     </div>
   );
 }

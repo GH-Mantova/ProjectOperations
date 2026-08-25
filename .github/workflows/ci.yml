@@ -198,3 +198,23 @@ jobs:
       - run: pnpm --filter @project-ops/web build
         env:
           VITE_API_BASE_URL: http://localhost:3000/api/v1
+
+  raw-error-envelope:
+    # Regression gate: prevents any page from reintroducing the raw-error-envelope
+    # shapes that the humane-API-errors migration removed.
+    # Checked shapes:
+    #   throw new Error(await <var>.text())
+    #   setError(await <var>.text())
+    # Per-line suppression: // raw-error-envelope-allow: <reason>
+    # Fix pointer:          apps/web/src/lib/api-errors.ts
+    # See docs/engineering/humane-api-errors-gate.md for the full rule.
+    name: raw-error-envelope gate — no raw API text() in apps/web/src
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      - name: Check for raw-error-envelope call sites
+        run: node scripts/pr-gates/check-raw-error-envelope.mjs

@@ -103,8 +103,10 @@ describe("OWN-1 ClientStatsService — atomic increment under concurrency", () =
 
     expect(client.tenderCount).toBe(2);
     expect(client.winCount).toBe(3);
-    // winRate = round(3 * 100 / 2, 2) = 150.00 — kept even though > 100 since
-    // it mirrors the pre-existing formula. The point of the test is atomicity.
+    // winRate = round(3 * 100 / 2, 2) = 150.00. A win is counted once per tender
+    // via the tenderWinCounted guard in tendering.service, so the 150% figure here
+    // is a service-layer artefact that the guard prevents at the caller; this test
+    // validates atomicity of the underlying SQL increment, not the guard itself.
     expect(Number(client.winRate)).toBe(150);
   });
 });

@@ -283,7 +283,7 @@ export class TenderingService {
 
     const existing = await this.prisma.tender.findMany({
       where: { id: { in: uniqueIds } },
-      select: { id: true, status: true, submittedAt: true, ratesSnapshotAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true }
+      select: { id: true, status: true, submittedAt: true, ratesSnapshotAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true, tenderWinCounted: true }
     });
     const missing = uniqueIds.filter((id) => !existing.some((tender) => tender.id === id));
     if (missing.length) {
@@ -317,6 +317,9 @@ export class TenderingService {
         }
         if (isScorable && !tender.tenderScoreCounted) {
           data.tenderScoreCounted = true;
+          if (isWon) {
+            data.tenderWinCounted = true;
+          }
         }
         return this.prisma.tender.update({
           where: { id: tender.id },
@@ -330,8 +333,16 @@ export class TenderingService {
     for (const tender of existing) {
       if (isScorable && !tender.tenderScoreCounted) {
         await this.clientStats.recordTenderOutcome(tender.id, { isWin: isWon, mode: "first-count" });
-      } else if (isWon && tender.tenderScoreCounted) {
+      } else if (isWon && tender.tenderScoreCounted && tender.tenderWinCounted !== true) {
+        // Tender was previously submitted/lost and is now being won — bump
+        // winCount without double-counting tenderCount. tenderWinCounted guards
+        // against re-firing when status advances AWARDED → CONTRACT_ISSUED →
+        // CONVERTED. Write-back outside transaction mirrors updateStatus pattern.
         await this.clientStats.recordTenderOutcome(tender.id, { isWin: true, mode: "win-flip" });
+        await this.prisma.tender.update({
+          where: { id: tender.id },
+          data: { tenderWinCounted: true }
+        });
       }
     }
 
@@ -1038,12 +1049,18 @@ export class TenderingService {
       await this.clientStats.recordTenderOutcome(id, { isWin: isWon, mode: "first-count" });
       await this.prisma.tender.update({
         where: { id },
-        data: { tenderScoreCounted: true }
+        data: { tenderScoreCounted: true, ...(isWon ? { tenderWinCounted: true } : {}) }
       });
-    } else if (isWon && existing.tenderScoreCounted) {
+    } else if (isWon && existing.tenderScoreCounted && existing.tenderWinCounted !== true) {
       // Tender was previously submitted/lost (tenderCount incremented) and
       // is now being won — bump winCount without double-counting tenderCount.
+      // tenderWinCounted guards against a second win-flip if status later
+      // transitions AWARDED → CONTRACT_ISSUED → CONVERTED.
       await this.clientStats.recordTenderOutcome(id, { isWin: true, mode: "win-flip" });
+      await this.prisma.tender.update({
+        where: { id },
+        data: { tenderWinCounted: true }
+      });
     }
 
     // Auto-create the Contract when the tender moves INTO CONTRACT_ISSUED.

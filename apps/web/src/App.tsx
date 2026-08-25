@@ -655,31 +655,105 @@ export function App() {
             <Route path="/cases/:id" element={<CaseDetailPage />} />
             <Route path="/knowledge" element={<KbListPage />} />
             <Route path="/knowledge/:id" element={<KbArticlePage />} />
-            {/* NAV-1: /crm index now redirects to /crm/accounts via CrmIndex. */}
-            <Route index path="/crm" element={<CrmIndex />} />
-            <Route path="/crm/opportunities/:id" element={<OpportunityDetailPage />} />
+            {/* CRM routes — gated on crm.view so users without the permission
+                see the NoAccess component instead of a blank/error page.
+                The API already enforces crm.view on every CRM controller; this
+                guard closes the client-side failure-mode gap (pasted URLs). */}
+            <Route
+              path="/crm"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  {/* NAV-1: /crm index now redirects to /crm/accounts via CrmIndex. */}
+                  <CrmIndex />
+                </RequirePermissions>
+              }
+            />
+            <Route
+              path="/crm/opportunities/:id"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <OpportunityDetailPage />
+                </RequirePermissions>
+              }
+            />
             {/* NAV-2: Accounts index page — Client-360 landing. */}
-            <Route path="/crm/accounts" element={<AccountsListPage />} />
-            <Route path="/crm/accounts/:id" element={<AccountDetailPage />} />
+            <Route
+              path="/crm/accounts"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <AccountsListPage />
+                </RequirePermissions>
+              }
+            />
+            <Route
+              path="/crm/accounts/:id"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <AccountDetailPage />
+                </RequirePermissions>
+              }
+            />
             {/* NAV-3: /crm/register — read-only view of every tender across
                 all statuses, with CLIENT + STATUS columns and filters. */}
-            <Route path="/crm/register" element={<TendersRegisterPage />} />
+            <Route
+              path="/crm/register"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <TendersRegisterPage />
+                </RequirePermissions>
+              }
+            />
             {/* CRM-6: pipeline + win/loss dashboard (read-only). */}
-            <Route path="/crm/pipeline" element={<PipelineDashboardPage />} />
+            <Route
+              path="/crm/pipeline"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <PipelineDashboardPage />
+                </RequirePermissions>
+              }
+            />
             {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored
                 via ?entityType=…&entityId=… so any record page can link in
                 without the sub-module knowing about their models. */}
-            <Route path="/crm/comms" element={<CommsHubPage />} />
+            <Route
+              path="/crm/comms"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <CommsHubPage />
+                </RequirePermissions>
+              }
+            />
             {/* CRM-2: Relationship intelligence — notes log + going-cold nudge
                 + repeat-business surfacing. */}
-            <Route path="/crm/relationships" element={<RelationshipsPage />} />
+            <Route
+              path="/crm/relationships"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <RelationshipsPage />
+                </RequirePermissions>
+              }
+            />
             {/* NAV-4: Catch-all for dead /crm/* paths → /crm/accounts.
                 Must sit AFTER all named /crm/** routes so real routes still
                 resolve first (React Router v6 most-specific-first matching). */}
-            <Route path="/crm/*" element={<CrmCatchAllRedirect />} />
+            <Route
+              path="/crm/*"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <CrmCatchAllRedirect />
+                </RequirePermissions>
+              }
+            />
             {/* NAV-4: Light bookmark alias /clients → /crm/accounts.
                 Deep Directory decommission deferred to site-dissolution-plan. */}
-            <Route path="/clients" element={<ClientsEntryRedirect />} />
+            <Route
+              path="/clients"
+              element={
+                <RequirePermissions perms={["crm.view"]}>
+                  <ClientsEntryRedirect />
+                </RequirePermissions>
+              }
+            />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/directory" element={<DirectoryPage />} />
             {/* Legacy per-surface directory routes redirect into the unified

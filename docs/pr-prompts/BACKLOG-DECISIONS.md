@@ -160,3 +160,34 @@ It is written down here so the next agent inherits a decision instead of an asse
 ## E. backlog-parser-swallows-folded-blocks — **DISCHARGED 2026-08-21 (04-scanner)**
 
 DISCHARGED 2026-08-21 (04-scanner): backlog-parser-swallows-folded-blocks. Fix shipped via pr-backlog-parser-fold-key-guard-ready.md (now in superseded/cleared-2026-08-19-round3/). FOLD_KEY_GUARD is present in scripts/pipeline/check-backlog.mjs on main at a561b703, so the item's gate can never be satisfied again. Discharged, not deferred.
+
+---
+
+## F. CRM tender view — **RICHER surface, not thinner** (Marco, 2026-08-20)
+
+**What the rule was (2026-08-12):** `docs/plans/crm-module-plan.md` §"Marco's locked decisions
+(2026-08-12)", decisions 2 and the ownership matrix. The matrix row at line 90 (re-grepped
+2026-08-25 at git SHA 74066ae9) read `read-only roll-up` for `Tender price / scope / outcome`.
+The rule paragraph at line 94 read: *"transactional facts are read-only roll-ups in the CRM."*
+The combined effect was that the CRM was the *thinner* surface — it could only surface what the
+Tendering register surfaced, and no more.
+
+**What the rule is now (2026-08-20):** The write-ownership rule is **unchanged**: the CRM still
+never edits price, scope, or outcome. Tendering (`Tender`) remains the canonical owner for writes.
+What changed is the view capability. Marco's words: *"the CRM page should be much richer than the
+Tendering."* Read-only-on-writes and richer-in-view are not in conflict; the 2026-08-12 wording
+conflated them.
+
+**Why this is coherent, not a whim.** On the same date (2026-08-20) Marco decided that the
+Tendering Pipeline board ends at **Submitted**. Once a tender moves to Submitted, the CRM takes
+over with intensive follow-ups, chasing, and relationship management until the tender is won or
+lost. The board is the submission funnel; everything after submission is the CRM's job. A surface
+that owns the longer half of the tender lifecycle needing more capability than the submission funnel
+is a direct consequence of that split — not a contradiction of the write-ownership rule.
+
+**Supersedes:** part of `docs/plans/crm-module-plan.md` §"Marco's locked decisions (2026-08-12)",
+specifically the matrix row for `Tender price / scope / outcome` (line 90 at SHA 74066ae9) and the
+rule paragraph opening "transactional facts are read-only roll-ups" (line 94 at SHA 74066ae9).
+The write-ownership rule itself (CRM never edits transactional facts) is **not** superseded.
+
+**Reconcile PR:** `docs/crm-plan-2026-08-20-supersession`.

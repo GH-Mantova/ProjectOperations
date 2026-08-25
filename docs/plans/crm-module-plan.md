@@ -50,6 +50,15 @@ Modules and seams:
 
 ## Marco's locked decisions (2026-08-12) - bake in, do NOT re-litigate
 
+> **SUPERSEDED IN PART — Marco, 2026-08-20.** Decision 2's ownership matrix stands for *writes*:
+> the CRM still never edits a transactional fact. What no longer stands is the implication that the
+> CRM is therefore the **thinner** surface. Marco: *"the CRM page should be much richer than the
+> Tendering."* The CRM is where a tender's life continues after submission — follow-ups, chasing,
+> relationship context — so its tender views may carry more capability than the Tendering register,
+> not less. Read-only-on-writes and richer-in-view are not in conflict; the 2026-08-12 wording
+> conflated them. The 2026-08-12 rules below are preserved in full so the history stays readable;
+> the lines corrected by this supersession are annotated inline.
+
 1. **CRM is the organising source of truth**, layered over the transactional spine - NOT a
    generic sales CRM. Closest models are AEC bid-management CRMs (Followup CRM,
    Unanet/Cosential, BuildingConnected, Procore).
@@ -87,14 +96,17 @@ Modules and seams:
 | Lead / opportunity state              | CRM (leads-collapse)   | owns                    |
 | Activities / tasks / to-dos           | CRM (comms sub-module) | owns                    |
 | Communications (threads + email)      | CRM (comms sub-module) | owns                    |
-| Tender price / scope / outcome        | Tendering (`Tender`)   | read-only roll-up       |
-| Job execution / status                | Jobs (`Job`)           | read-only roll-up       |
-| Contract terms / claims               | Contracts (`Contract`) | read-only roll-up       |
+| Tender price / scope / outcome        | Tendering (`Tender`)   | read-only on writes; CRM view may be richer (2026-08-20) |
+| Job execution / status                | Jobs (`Job`)           | read-only on writes     |
+| Contract terms / claims               | Contracts (`Contract`) | read-only on writes     |
 
-Rule of the matrix: **transactional facts are read-only roll-ups in the CRM; the Account
-WRAPS Client (never a second identity copy); comms stays a decoupled sub-module.** No fact
-is edited in two places. The CRM pulls transactional facts for display and pushes down
-organisation/relationship context; it never writes into the transactional owners.
+Rule of the matrix: **transactional facts are read-only with respect to writes in the CRM
+(the CRM never edits price, scope, or outcome); the Account WRAPS Client (never a second
+identity copy); comms stays a decoupled sub-module.** No fact is edited in two places. The
+CRM pulls transactional facts for display and pushes down organisation/relationship context;
+it never writes into the transactional owners. *(Superseded in part 2026-08-20: read-only on
+writes does NOT mean the CRM is the thinner surface — its tender views may carry more
+capability than the Tendering register. See supersession note above.)*
 
 ## The six ordered slices (each <= ~10 files, keep this order)
 

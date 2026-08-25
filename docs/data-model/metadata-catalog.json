@@ -22915,6 +22915,12 @@
           "filterable": true,
           "aggregations": []
         },
+        "tenderWinCounted": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "wonAt": {
           "role": "time",
           "label": null,

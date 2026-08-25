@@ -10,7 +10,7 @@ import { Type } from "class-transformer";
 import { IsIn, IsOptional, IsString } from "class-validator";
 import { JwtAuthGuard } from "../../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/auth/permissions.guard";
-import { RequirePermissions } from "../../../common/auth/permissions.decorator";
+import { RequireAnyPermission } from "../../../common/auth/permissions.decorator";
 import {
   PipelineDashboardService,
   type WinRateGroupBy
@@ -38,7 +38,10 @@ class StalledQueryDto {
 
 /**
  * CRM-6: REST surface for the pipeline + win/loss dashboard. Read-only.
- * Uses `crm.view` on every route.
+ * Uses @RequireAnyPermission("tenders.view", "crm.view") on every route —
+ * either permission grants access. This reflects Marco's 2026-08-20 decision
+ * that "Tenders = CRM in access" for this surface: estimators who enter CRM
+ * data hold tenders.view and must be able to see the dashboard insights.
  */
 @ApiTags("CRM Pipeline Dashboard")
 @ApiBearerAuth()
@@ -48,7 +51,7 @@ export class PipelineDashboardController {
   constructor(private readonly service: PipelineDashboardService) {}
 
   @Get("dashboard")
-  @RequirePermissions("crm.view")
+  @RequireAnyPermission("tenders.view", "crm.view")
   @ApiOperation({
     summary: "Full dashboard: pipeline by stage, win rates, stalled opps, coverage."
   })
@@ -60,7 +63,7 @@ export class PipelineDashboardController {
   }
 
   @Get("by-stage")
-  @RequirePermissions("crm.view")
+  @RequireAnyPermission("tenders.view", "crm.view")
   @ApiOperation({ summary: "Open pipeline bucketed by opportunity stage." })
   @ApiQuery({ name: "ownerId", required: false })
   getByStage(@Query() query: ByStageQueryDto) {
@@ -68,7 +71,7 @@ export class PipelineDashboardController {
   }
 
   @Get("win-rates")
-  @RequirePermissions("crm.view")
+  @RequireAnyPermission("tenders.view", "crm.view")
   @ApiOperation({ summary: "Win rate grouped by client, sector, source, or estimator." })
   @ApiQuery({ name: "groupBy", required: true, enum: GROUP_BYS })
   getWinRates(@Query() query: WinRatesQueryDto) {
@@ -76,7 +79,7 @@ export class PipelineDashboardController {
   }
 
   @Get("stalled")
-  @RequirePermissions("crm.view")
+  @RequireAnyPermission("tenders.view", "crm.view")
   @ApiOperation({ summary: "Open opportunities with overdue next-action or stale updates." })
   @ApiQuery({ name: "thresholdDays", required: false })
   @ApiQuery({ name: "ownerId", required: false })
@@ -85,7 +88,7 @@ export class PipelineDashboardController {
   }
 
   @Get("relationship-coverage")
-  @RequirePermissions("crm.view")
+  @RequireAnyPermission("tenders.view", "crm.view")
   @ApiOperation({ summary: "Account primary-contact coverage summary." })
   getRelationshipCoverage() {
     return this.service.getRelationshipCoverage();

@@ -459,23 +459,32 @@ function readFromOriginMain(path, repoRoot) {
 }
 
 /**
- * FILE_GATE_DEAD: a `requires_file_on_main` path that ALREADY exists on
- * origin/main at intake. A path that can never be absent can never fail, so
- * the slice dispatches with no ordering at all — alongside its predecessor
- * rather than after it. Same class of hole as CLUSTER_DEAD_GATE, one gate
- * type over.
+ * FILE_GATE_DEAD vs GATE_RELEASED — same probe, two verdicts by prompt state.
  *
- * Applies to ALL prompts (cluster or not) — a dead file gate is just as dead
- * on a non-cluster prompt.
+ * A `requires_file_on_main` path that is present on origin/main means one of
+ * two very different things, depending on whether the prompt is still parked
+ * (a `-HOLD.md`) or has been armed (`-ready.md` / other):
+ *
+ *   - non-HOLD  → FILE_GATE_DEAD (REJECT).  The path is present at *author
+ *     time*, before the slice was ever armed.  A gate that can never be
+ *     absent can never fail, so the slice would dispatch alongside its
+ *     predecessor with no ordering at all.  Genuine authoring hole.
+ *
+ *   - HOLD      → GATE_RELEASED (ADMIT + promotion signal).  The prompt was
+ *     parked *waiting* for exactly this path to land; its arrival IS the
+ *     success condition, not a defect.  Emit a distinct message so the reader
+ *     sees a HOLD is ready to promote — collapsing this into a plain ADMIT
+ *     would hide the event in `--all` output.
  *
  * Fail SAFE on git errors: emit a warning, admit the prompt. One broken
  * `git` binary must not bin the whole queue.
  */
-function checkFileGateDead(fm, repoRoot, name) {
+function checkFileGateDead(fm, repoRoot, name, isHold) {
   const raw = fm.requires_file_on_main;
   if (raw === undefined || raw === "" || (Array.isArray(raw) && raw.length === 0)) {
     return { ok: true };
   }
+  const released = [];
   const vals = Array.isArray(raw) ? raw : [raw];
   for (const v of vals) {
     const path = String(v).trim();
@@ -483,61 +492,98 @@ function checkFileGateDead(fm, repoRoot, name) {
     const contents = readFromOriginMain(path, repoRoot);
     if (contents === null) {
       process.stderr.write(
-        "WARN  " + (name || "<file>") + "  could not probe origin/main:" + path + " for file-gate-dead check; skipping.\n"
+        "WARN  " + (name || "<file>") + "  could not probe origin/main:" + path + " for file-gate probe; skipping.\n"
       );
       continue;
     }
     if (contents.absent) continue; // path missing on main = gate legitimately unmet
+    if (isHold) {
+      released.push({
+        code: "GATE_RELEASED",
+        gate: "requires_file_on_main",
+        path,
+        msg: "requires_file_on_main: \"" + path + "\" is now on origin/main — HOLD is ready to promote.",
+      });
+      continue;
+    }
     return {
       ok: false, code: "FILE_GATE_DEAD",
       msg:
-        "requires_file_on_main: \"" + path + "\" is ALREADY on origin/main at intake.\n" +
-        "        This is the FILE_GATE_DEAD case — the path can never be absent, so the gate\n" +
-        "        can never fail. The slice would dispatch alongside its predecessor with no\n" +
-        "        ordering at all. Two legal fixes:\n" +
+        "requires_file_on_main: \"" + path + "\" is on origin/main at author-time (non-HOLD prompt).\n" +
+        "        FILE_GATE_DEAD — the path is present before the slice is even armed, so the gate\n" +
+        "        can never fail and the slice would dispatch alongside its predecessor with no\n" +
+        "        ordering at all. (For a -HOLD.md whose gate has RELEASED, this same probe emits\n" +
+        "        GATE_RELEASED and admits — the HOLD is ready to promote.)\n" +
+        "        Two legal fixes:\n" +
         "          - re-point at a content gate the predecessor actually introduces:\n" +
         "                requires_on_main: " + path + " :: <fixed string from the predecessor>\n" +
         "          - drop the key entirely if the dependency is genuinely satisfied.",
     };
   }
+  if (released.length > 0) return { ok: true, released };
   return { ok: true };
 }
 
 /**
- * CLUSTER_DEAD_GATE: a requires_on_main whose fixed string is ALREADY present
- * on origin/main at intake time. The arming PR would dispatch the slice
- * instantly with no gate at all, which reads as ordered and is not.
+ * CLUSTER_DEAD_GATE vs GATE_RELEASED — same probe, two verdicts by prompt state.
  *
- * Applies only when cluster is present (do not extend the non-cluster
- * queue's lint-time network probe). Existence-only gates (no `::`) are
- * NOT checked here - that would be a legitimate "wait for the file to
- * appear" gate; only content gates can be dead on arrival.
+ * A `requires_on_main` content needle (`path :: fixed-string`) found on
+ * origin/main means one of two very different things, depending on whether
+ * the prompt is still parked (a `-HOLD.md`) or has been armed:
+ *
+ *   - non-HOLD  → CLUSTER_DEAD_GATE (REJECT).  Needle present at author time,
+ *     before the slice was ever armed.  The arming PR would dispatch this
+ *     slice with no ordering gate at all.  Genuine authoring hole.
+ *
+ *   - HOLD      → GATE_RELEASED (ADMIT + promotion signal).  The prompt was
+ *     parked *waiting* for exactly this needle to appear; its arrival IS the
+ *     success condition, not a defect.  Emit a distinct message so the reader
+ *     sees a HOLD is ready to promote.
+ *
+ * Existence-only gates (no `::`) are NOT checked here — that would be a
+ * legitimate "wait for the file to appear" gate; only content gates can be
+ * dead-on-arrival or freshly released.
  *
  * Fail SAFE on git errors: emit a warning, admit the prompt.
  */
-function checkDeadGate(fm, repoRoot, name) {
+function checkDeadGate(fm, repoRoot, name, isHold) {
   const entries = parseRequiresOnMainEntries(fm);
+  const released = [];
   for (const { path, needle } of entries) {
     if (!needle) continue; // existence gate, not a content gate
     const contents = readFromOriginMain(path, repoRoot);
     if (contents === null) {
       process.stderr.write(
-        "WARN  " + (name || "<file>") + "  cluster: could not probe origin/main:" + path + " for dead-gate check; skipping.\n"
+        "WARN  " + (name || "<file>") + "  cluster: could not probe origin/main:" + path + " for content-gate probe; skipping.\n"
       );
       continue;
     }
     if (contents.absent) continue; // file missing = gate legitimately unmet
     if (typeof contents === "string" && contents.indexOf(needle) !== -1) {
+      if (isHold) {
+        released.push({
+          code: "GATE_RELEASED",
+          gate: "requires_on_main",
+          path,
+          needle,
+          msg: "requires_on_main: \"" + path + " :: " + needle + "\" is now on origin/main — HOLD is ready to promote.",
+        });
+        continue;
+      }
       return {
         ok: false, code: "CLUSTER_DEAD_GATE",
         msg:
-          "requires_on_main: \"" + path + " :: " + needle + "\" is ALREADY on origin/main at intake.\n" +
-          "        This is the CLUSTER_DEAD_GATE case - the arming PR would dispatch this slice\n" +
-          "        with no ordering gate at all. Change the needle to something the predecessor\n" +
-          "        slice actually introduces, or drop the gate if the predecessor is already merged.",
+          "requires_on_main: \"" + path + " :: " + needle + "\" is on origin/main at author-time (non-HOLD prompt).\n" +
+          "        CLUSTER_DEAD_GATE - the needle is present before the slice is even armed,\n" +
+          "        so the arming PR would dispatch this slice with no ordering gate at all.\n" +
+          "        (For a -HOLD.md whose gate has RELEASED, this same probe emits GATE_RELEASED\n" +
+          "        and admits - the HOLD is ready to promote.)\n" +
+          "        Change the needle to something the predecessor slice actually introduces,\n" +
+          "        or drop the gate if the predecessor is already merged.",
       };
     }
   }
+  if (released.length > 0) return { ok: true, released };
   return { ok: true };
 }
 
@@ -545,6 +591,7 @@ const RESET = "\x1b[0m";
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
+const CYAN = "\x1b[36m";
 const DIM = "\x1b[2m";
 
 /** Minimal YAML front-matter parser. Deliberately dumb: no dependency, no surprises. */
@@ -697,8 +744,14 @@ export function lint(file, opts) {
   const dequeue = opts && opts.dequeue;
   const repoRoot = (opts && opts.repoRoot) || process.cwd();
   const name = basename(file);
+  // A prompt filename ending -HOLD.md is by definition parked waiting for its
+  // gate. When its gate is found satisfied on origin/main, the file-gate and
+  // content-gate probes emit GATE_RELEASED (ADMIT + promotion signal) instead
+  // of FILE_GATE_DEAD / CLUSTER_DEAD_GATE (REJECT). See the two checkers.
+  const isHold = /-HOLD\.md$/i.test(name);
   const fileText = readFileSync(file, "utf8");
   const fm = parseFrontMatter(fileText);
+  const released = [];
   const fail = (code, msg) => ({ ok: false, code, msg, name });
 
   if (!fm) {
@@ -786,9 +839,12 @@ export function lint(file, opts) {
       }
 
       // CLUSTER_DEAD_GATE - only meaningful for cluster prompts, and only
-      // when there is a content gate (path :: needle) to probe.
-      const deadRes = checkDeadGate(fm, repoRoot, name);
+      // when there is a content gate (path :: needle) to probe. On a HOLD
+      // the same probe emits GATE_RELEASED (ADMIT) instead — collected into
+      // `released` and reported distinctly by the CLI.
+      const deadRes = checkDeadGate(fm, repoRoot, name, isHold);
       if (!deadRes.ok) return fail(deadRes.code, deadRes.msg);
+      if (deadRes.released) released.push(...deadRes.released);
     }
   }
 
@@ -796,10 +852,12 @@ export function lint(file, opts) {
   // CLUSTER_DEAD_GATE it needs no `::` content gate — a bare
   // `requires_file_on_main: <path>` whose path already exists on origin/main
   // can never fail, so the slice would dispatch ungated. Fail SAFE on git
-  // errors — one broken probe must not bin the whole queue.
+  // errors — one broken probe must not bin the whole queue. On a HOLD the
+  // same probe emits GATE_RELEASED (ADMIT) instead.
   {
-    const fileDeadRes = checkFileGateDead(fm, repoRoot, name);
+    const fileDeadRes = checkFileGateDead(fm, repoRoot, name, isHold);
     if (!fileDeadRes.ok) return fail(fileDeadRes.code, fileDeadRes.msg);
+    if (fileDeadRes.released) released.push(...fileDeadRes.released);
   }
 
   const missing = REQUIRED.filter((k) => !fm[k] || (Array.isArray(fm[k]) && fm[k].length === 0));
@@ -996,7 +1054,7 @@ export function lint(file, opts) {
     };
   }
 
-  return { ok: true, name, size, premise: String(fm.premise) };
+  return { ok: true, name, size, premise: String(fm.premise), released };
 }
 
 // ---------------------------------------------------------------------------
@@ -1027,7 +1085,13 @@ let files = [];
 let dequeue = false;
 
 if (args[0] === "--all") {
-  files = readdirSync(args[1]).filter((f) => f.endsWith("-ready.md")).map((f) => join(args[1], f));
+  // Include both -ready.md (armed) and -HOLD.md (parked) so a HOLD whose gate
+  // has just RELEASED surfaces as a PROMOTE line in the same sweep. Without
+  // -HOLD.md coverage here, GATE_RELEASED events would never be visible from
+  // --all and the guardrail count comparison could not be executed.
+  files = readdirSync(args[1])
+    .filter((f) => f.endsWith("-ready.md") || f.endsWith("-HOLD.md"))
+    .map((f) => join(args[1], f));
 } else if (args[0] === "--dequeue") {
   dequeue = true;
   files = [args[1]];
@@ -1036,6 +1100,7 @@ if (args[0] === "--all") {
 }
 
 let admitted = 0;
+let promoted = 0;
 let rejected = 0;
 let stale = 0;
 
@@ -1047,7 +1112,17 @@ for (const f of files) {
   }
   const r = lint(f, { dequeue, repoRoot });
   if (r.ok) {
-    console.log(GREEN + "ADMIT  " + RESET + " " + r.name + "  " + DIM + "(size " + r.size + ")" + RESET);
+    if (r.released && r.released.length > 0) {
+      // GATE_RELEASED — the HOLD is ready to promote. Distinct PROMOTE line so
+      // the event is not lost in a large --all sweep.
+      console.log(CYAN + "PROMOTE" + RESET + " " + r.name + "  " + DIM + "(size " + r.size + ")" + RESET);
+      for (const rel of r.released) {
+        console.log("        " + CYAN + "GATE_RELEASED" + RESET + " " + rel.msg);
+      }
+      promoted++;
+    } else {
+      console.log(GREEN + "ADMIT  " + RESET + " " + r.name + "  " + DIM + "(size " + r.size + ")" + RESET);
+    }
     admitted++;
   } else if (r.stale) {
     console.log(YELLOW + "STALE  " + RESET + " " + r.name + "\n        " + r.msg);
@@ -1060,7 +1135,12 @@ for (const f of files) {
 
 if (files.length > 1) {
   console.log("\n" + DIM + "----------------------------------------" + RESET);
-  console.log("admitted " + GREEN + admitted + RESET + " | stale " + YELLOW + stale + RESET + " | rejected " + RED + rejected + RESET);
+  console.log(
+    "admitted " + GREEN + admitted + RESET +
+    " (of which promote " + CYAN + promoted + RESET + ")" +
+    " | stale " + YELLOW + stale + RESET +
+    " | rejected " + RED + rejected + RESET
+  );
 }
 
 process.exit(stale > 0 && files.length === 1 ? 3 : rejected > 0 ? 1 : 0);

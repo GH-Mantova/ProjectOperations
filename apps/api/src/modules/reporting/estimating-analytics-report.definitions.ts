@@ -4,10 +4,11 @@ import type { AuthenticatedUser } from "../../common/auth/authenticated-request.
 import { deriveLeadTimeDays } from "../win-likelihood/win-likelihood-features.service";
 
 // EA-1: Two new read-only report definitions for estimating analytics.
-// Decision D3: turnaround = days-to-quote (submittedAt − createdAt), excludes
-//              still-open tenders (DRAFT / IN_PROGRESS).
-// Decision D4: qty-vs-$ throughput = count + Σ estimatedValue per estimator.
-// Decision D5: if currentUser is NOT isSuperUser, self-filter to own tenders.
+// Decision references (from docs/plans/estimating-analytics-plan.md):
+// Decision EA-D3: turnaround = days-to-quote (submittedAt − createdAt), excludes
+//                 still-open tenders (DRAFT / IN_PROGRESS).
+// Decision EA-D4: qty-vs-$ throughput = count + Σ estimatedValue per estimator.
+// Decision EA-D5: if currentUser is NOT isSuperUser, self-filter to own tenders.
 //
 // NOTE: This file intentionally does NOT import from reporting.service to avoid
 // a circular dependency (reporting.service imports this file). It uses local
@@ -123,7 +124,7 @@ function formatEstimatorName(
   return name || estimator.email || "Unassigned";
 }
 
-// Build the self-filter clause for D5 role gating.
+// Build the self-filter clause for EA-D5 role gating.
 // Estimator self-view: restrict to tenders assigned to the current user.
 // Manager / super-user / no currentUser: no restriction.
 function selfFilterClause(params: ReportRunParams): { assignedEstimatorId?: string } {
@@ -180,7 +181,7 @@ async function runTurnaround(prisma: PrismaService, params: ReportRunParams): Pr
 
   const buckets = new Map<string, { days: number[] }>();
   for (const t of tenders) {
-    // D3: skip tenders with no submittedAt (null = still-open or never submitted).
+    // EA-D3: skip tenders with no submittedAt (null = still-open or never submitted).
     if (!t.submittedAt) continue;
 
     const leadDays = deriveLeadTimeDays({ submittedAt: t.submittedAt, createdAt: t.createdAt });
@@ -223,7 +224,7 @@ async function runTurnaround(prisma: PrismaService, params: ReportRunParams): Pr
 // ── Definition B — estimator-qty-vs-value ──────────────────────────────────
 
 async function runQtyVsValue(prisma: PrismaService, params: ReportRunParams): Promise<ReportRunResult> {
-  // D4: include all non-open tenders that have a non-null estimatedValue.
+  // EA-D4: include all non-open tenders that have a non-null estimatedValue.
   const tenders = await loadEstimatingTenders(prisma, params, {
     estimatedValue: { not: null }
   });

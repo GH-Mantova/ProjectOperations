@@ -698,7 +698,7 @@ export function App() {
             <Route
               path="/crm/register"
               element={
-                <RequirePermissions perms={["crm.view"]}>
+                <RequirePermissions perms={["crm.view", "tenders.view"]}>
                   <TendersRegisterPage />
                 </RequirePermissions>
               }
@@ -707,7 +707,7 @@ export function App() {
             <Route
               path="/crm/pipeline"
               element={
-                <RequirePermissions perms={["crm.view"]}>
+                <RequirePermissions perms={["crm.view", "tenders.view"]}>
                   <PipelineDashboardPage />
                 </RequirePermissions>
               }

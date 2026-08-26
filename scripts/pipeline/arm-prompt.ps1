@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Serialize arming of a HOLD prompt to a ready prompt.
@@ -97,12 +97,14 @@ function Acquire-Lock {
 
     while ($true) {
         try {
-            # FileShare.None = exclusive: any other opener gets an IOException immediately.
+            # FileShare.Read = exclusive for WRITERS, readable by waiters. A second
+            # arming attempt asks for ReadWrite+FileShare::None and is still refused,
+            # but a waiter can now open the file read-only to name the holder.
             $lockStream = [System.IO.File]::Open(
                 $LOCK_PATH,
                 [System.IO.FileMode]::OpenOrCreate,
                 [System.IO.FileAccess]::ReadWrite,
-                [System.IO.FileShare]::None
+                [System.IO.FileShare]::Read
             )
             # Write our PID so a timeout message can name the holder.
             $lockStream.SetLength(0)
@@ -114,8 +116,21 @@ function Acquire-Lock {
             # Lock is held. Read the holder PID if we can.
             $holderPid = "(unknown)"
             try {
-                $raw = [System.IO.File]::ReadAllText($LOCK_PATH)
-                if ($raw -match '^\d+$') { $holderPid = $raw.Trim() }
+                # The holder's handle is FileAccess::ReadWrite. A reader must therefore
+                # allow ReadWrite in ITS share mode or the open is refused - which is why
+                # [System.IO.File]::ReadAllText (FileShare.Read) threw here every single
+                # time and the timeout message always said '(unknown)'.
+                $reader = [System.IO.File]::Open(
+                    $LOCK_PATH,
+                    [System.IO.FileMode]::Open,
+                    [System.IO.FileAccess]::Read,
+                    [System.IO.FileShare]::ReadWrite
+                )
+                try {
+                    $sr  = New-Object System.IO.StreamReader($reader)
+                    $raw = $sr.ReadToEnd()
+                    if ($raw.Trim() -match '^\d+$') { $holderPid = $raw.Trim() }
+                } finally { $reader.Close(); $reader.Dispose() }
             } catch { }
 
             if ([datetime]::UtcNow -ge $deadline) {
@@ -315,6 +330,26 @@ try {
         # Undo the rename by reversing the git mv.
         Write-Step "Undoing rename: git mv $READY_REL $HOLD_REL ..."
         Invoke-Git @("mv", $READY_REL, $HOLD_REL)
+        $undoExit = $LASTEXITCODE
+
+        # Exit 3 tells the caller 'I changed nothing'. That is only true if the reverse
+        # rename actually happened. Read the index back and PROVE it before saying so -
+        # a silently-failed rollback leaves the rename staged in a tree several chats
+        # share, which is the exact defect this script exists to prevent.
+        $residual = @(Get-StagedPaths)
+        if ($undoExit -ne 0 -or $residual.Count -gt 0) {
+            Write-Fail "ROLLBACK FAILED. The index is NOT clean and this run DID change state."
+            Write-Host "  reverse git mv exit: $undoExit"
+            Write-Host "  still staged ($($residual.Count)): $($residual -join ', ')"
+            Write-Host ""
+            Write-Host "  A human must clear this before anything else commits in ${REPO_ROOT}:"
+            foreach ($stuck in $residual) {
+                Write-Host "    git -C $REPO_ROOT restore --staged $stuck"
+            }
+            exit 4
+        }
+
+        Write-Step "Rollback verified: index is clean."
         exit 3
     }
 

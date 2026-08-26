@@ -249,6 +249,20 @@ function runArmPromptSimple(repoDir, slug, args = [], opts = {}) {
 
   // Write the patched script to a temp file.
   const tmpFile = join(os.tmpdir(), `arm-test-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`);
+  // String.replace with a non-matching regex returns the input UNCHANGED, silently.
+  // If either constant is ever reformatted, the 'patched' script would keep pointing at
+  // C:\ProjectOperations2 and this test suite would run `git mv` against the live shared
+  // dev tree - the precise incident arm-prompt.ps1 exists to prevent. Fail closed instead.
+  if (patched === scriptContent) {
+    throw new Error("arm-prompt.test: REPO_ROOT/LINT_SCRIPT patch did not apply (script unchanged)");
+  }
+  if (patched.includes('"C:\\ProjectOperations2"')) {
+    throw new Error("arm-prompt.test: patched script still references the live repo C:\\ProjectOperations2");
+  }
+  if (!patched.includes(repoDir)) {
+    throw new Error(`arm-prompt.test: patched script does not reference the temp repo ${repoDir}`);
+  }
+
   writeFileSync(tmpFile, patched, "utf8");
 
   try {
@@ -435,6 +449,66 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
       assert.notEqual(res.status, 0, `expected non-zero exit when lock is held, got 0\nstdout: ${res.stdout}`);
     } finally {
       // Kill the lock-holder process so it releases the lock.
+      try { lockHolder.kill(); } catch (_) {}
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Lock held by ANOTHER arm-prompt run -> the timeout message names the holder
+  // -------------------------------------------------------------------------
+  // The test above holds the lock with FileShare::None, which no waiter can read.
+  // The case that actually matters is arm-prompt vs arm-prompt, where the holder
+  // shares Read. Before 2026-08-26 the waiter used File::ReadAllText (FileShare.Read),
+  // which cannot coexist with the holder's ReadWrite handle, so the read threw every
+  // time and the message always said '(unknown)'. Assert on the PID, not just the code.
+  test("timeout message names the holder PID when the lock is held by an arm-prompt-style writer", async () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-lock-pid";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const lockPath = join(repo, ".git", "po-arm.lock");
+    const holderPid = "424242";
+
+    // Mirror arm-prompt.ps1's own Acquire-Lock exactly: ReadWrite + FileShare::Read.
+    const acquireLockScript = [
+      `$stream = [System.IO.File]::Open('${lockPath}', [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)`,
+      `$stream.SetLength(0)`,
+      `$bytes = [System.Text.Encoding]::ASCII.GetBytes('${holderPid}')`,
+      `$stream.Write($bytes, 0, $bytes.Length)`,
+      `$stream.Flush()`,
+      `Write-Host 'LOCK_ACQUIRED'`,
+      `Start-Sleep -Seconds 30`,
+      `$stream.Close()`,
+    ].join("; ");
+
+    const lockHolder = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-Command", acquireLockScript], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+
+    await new Promise((resolve) => {
+      let buf = "";
+      lockHolder.stdout.on("data", (chunk) => {
+        buf += chunk.toString();
+        if (buf.includes("LOCK_ACQUIRED")) resolve();
+      });
+      lockHolder.on("error", () => resolve());
+      setTimeout(resolve, 5000);
+    });
+
+    try {
+      const res = runArmPromptSimple(repo, slug, [], { lockTimeoutSeconds: 3 });
+      const out = `${res.stdout || ""}${res.stderr || ""}`;
+      assert.notEqual(res.status, 0, `expected non-zero exit when lock is held, got 0\n${out}`);
+      assert.ok(
+        out.includes(`Held by PID ${holderPid}`),
+        `timeout message must name the holder PID ${holderPid}, got:\n${out}`
+      );
+      assert.ok(
+        !out.includes("Held by PID (unknown)"),
+        `holder PID must be readable, not '(unknown)'. Output:\n${out}`
+      );
+      assert.equal(gitDiffCached(repo), "", "index must be clean");
+    } finally {
       try { lockHolder.kill(); } catch (_) {}
     }
   });

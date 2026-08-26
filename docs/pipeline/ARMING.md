@@ -38,8 +38,11 @@ Every occurrence was caught by a human reading `git diff --cached --name-status`
 ## What arm-prompt.ps1 does
 
 1. **Takes an exclusive lock** on `C:\ProjectOperations2\.git\po-arm.lock` using real OS file
-   locking (`[System.IO.File]::Open` with `FileShare::None`). Retries with backoff up to 60 s.
-   On timeout, exits non-zero and names the holder's PID.
+   locking (`[System.IO.File]::Open` with `FileShare::Read` - exclusive to writers, readable
+   by waiters). Retries with backoff up to 60 s. On timeout, exits 1 and names the holder's PID,
+   which it reads through a `FileShare::ReadWrite` stream. (Before 2026-08-26 the holder used
+   `FileShare::None` and the waiter used `File::ReadAllText`, so the read ALWAYS threw and the
+   message ALWAYS said `(unknown)`. This document asserted the opposite.)
 2. **Index-guard (before)**: refuses with exit 2 if `git diff --cached --name-only` is non-empty.
    Arming must start from a clean index.
 3. **Verifies the target**: HOLD file exists and is tracked; ready file does not already exist;
@@ -49,6 +52,9 @@ Every occurrence was caught by a human reading `git diff --cached --name-status`
 5. **Index-guard (after)**: checks that `git diff --cached --name-only` contains exactly the two
    expected paths (HOLD deletion + ready addition) and nothing else. If extra staged paths appear,
    restores them to un-staged state, undoes the rename, and exits 3.
+   The rollback is then read back: if the reverse `git mv` failed or anything is still staged,
+   it exits **4** and prints the exact `git restore --staged` commands a human must run. Exit 3
+   therefore means, and now provably means, "nothing was changed".
 6. **Releases the lock** in a `finally` block — always, on every failure path.
 
 The `-WhatIf` flag runs steps 2 and 3 and prints the plan without touching anything.

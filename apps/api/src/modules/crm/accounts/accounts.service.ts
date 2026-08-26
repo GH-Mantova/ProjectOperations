@@ -307,11 +307,17 @@ export class AccountsService {
         })
       : [];
 
+    // Uncapped total of tenders linked to this client (for cap disclosure in the UI)
+    const tenderTotal = account.clientId
+      ? await this.prisma.tenderClient.count({ where: { clientId: account.clientId } })
+      : 0;
+
     return {
       ...account,
       rollUps: {
         contacts,
         tenders: tenders.map((tc) => tc.tender),
+        tenderTotal,
         jobs
       }
     };

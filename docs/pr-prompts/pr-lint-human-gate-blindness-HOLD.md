@@ -5,8 +5,8 @@ scope:
   - scripts/pipeline/lint-prompt.mjs
   - scripts/pipeline/__tests__/lint-prompt.human-gate.test.mjs
   - docs/pipeline/ARMING.md
-done_when: node --test scripts/pipeline/__tests__/lint-prompt.human-gate.test.mjs && grep -q "HUMAN_GATE" scripts/pipeline/lint-prompt.mjs
-size: 4
+done_when: node --test scripts/pipeline/__tests__/lint-prompt.human-gate.test.mjs && grep -q "HUMAN_GATE" scripts/pipeline/lint-prompt.mjs && grep -q "GATE_NOT_RELEASED" scripts/pipeline/lint-prompt.mjs
+size: 5
 gate_allow: none
 seed_only: false
 escalates: false
@@ -94,6 +94,51 @@ term in this file is elided for exactly one reason: the detector cannot read mar
 instruction from a quotation. One shared normalizer fixes both, which is why they are one slice and
 not two.
 
+## The third defect — an UNSATISFIED gate now admits silently
+
+Measured 2026-08-26 at 09:43Z against `1f3a3747`, after #1330 landed.
+
+#1330 fixed a released `requires_on_main` gate reading as a permanent REJECT. The other half of the
+same probe did not come with it.
+
+`pr-crm-wincount-s3-recompute-HOLD.md` declares:
+
+```
+requires_on_main: apps/api/src/modules/jobs/jobs.service.ts :: clientStats.recordTenderOutcome
+cluster: crm-wincount   cluster_order: 3
+```
+
+That needle is **NOT on origin/main** — `git grep` in that file returns nothing, against a control
+proving the file is readable. Its predecessor slice has not run. The prompt is chain-blocked by
+construction. The linter says:
+
+```
+ADMIT   pr-crm-wincount-s3-recompute-HOLD.md  (size 3)     exit 0
+```
+
+A bare ADMIT. **Nothing distinguishes it from a prompt whose gate IS satisfied** —
+`pr-crm-tender-count-truth`, armed the same night with its gate genuinely released, printed the
+identical single line.
+
+The mechanism differs from the first two defects (this one is not about scanning prose), but the
+consequence and the file are the same: **the verdict does not carry what the caller needs.** ADMIT is
+what an arming decision trusts, and the old failure at least refused. A silent ADMIT on work that
+cannot correctly run yet is the failure direction that costs a run.
+
+### What to do about it
+
+Emit a distinct verdict when a `requires_on_main` needle is declared and **absent** from
+`origin/main` — the mirror of `GATE_RELEASED`. Suggested code: `GATE_NOT_RELEASED`.
+
+Whether it REJECTs or admits-with-a-loud-signal is a judgement for the implementer, but it must
+satisfy one property: **after this change, a bare ADMIT means the declared gates are satisfied.**
+State in the PR body which you chose and why.
+
+Fail-safe, and it is not optional: if the probe itself cannot run — no `origin/main` ref, shallow
+checkout, `git` unavailable — that is **not** "gate absent". Say so and take the existing
+warn-and-skip path. Reporting a gate as unsatisfied because the instrument was broken would bin real
+work, which is the failure DOCTRINE §7 lie #3 already cost this pipeline once.
+
 ## What to build
 
 ### 1. `lint-prompt.mjs` — a pure, exported `checkHumanGate(bodyText)`
@@ -151,6 +196,11 @@ Cover, at minimum:
 - a body containing `DO NOT ARM` **inside a fenced code block** returns `ok: true`
 - `docs/approvals/` alone does **not** reject
 - the marker's line number appears in the message
+- **GATE**: a HOLD declaring a `requires_on_main` needle that is ABSENT from origin/main does NOT
+  return a bare ADMIT — it carries the new code
+- **GATE control**: a HOLD whose needle IS present still admits, and still emits `GATE_RELEASED`
+- **GATE fail-safe**: with the `origin/main` probe made to fail, the result is warn-and-skip, NOT
+  a false "gate absent"
 - **TIER-1**: a body quoting a destructive-sounding FILENAME in backticks does NOT force escalates
 - **TIER-1 control**: a body with a real, un-quoted destructive DDL statement in prose still DOES
   force `escalates: true`. Spell the statement out in the test file, not in a prompt body —
@@ -179,6 +229,7 @@ warns, and that the only thing that clears it is a person editing the prompt.
 node --test scripts/pipeline/__tests__/lint-prompt.human-gate.test.mjs
 node scripts/pipeline/lint-prompt.mjs docs/pr-prompts/pr-siteid-notnull-backfill-HOLD.md ; echo "exit=$?"
 node scripts/pipeline/lint-prompt.mjs docs/pr-prompts/pr-crm-wincount-s2-close-bypasses-HOLD.md ; echo "exit=$?"
+node scripts/pipeline/lint-prompt.mjs docs/pr-prompts/pr-crm-wincount-s3-recompute-HOLD.md ; echo "exit=$?"
 node scripts/pipeline/test-lint-prompt.mjs
 ```
 

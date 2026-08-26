@@ -4,16 +4,18 @@
 // Why this exists: the first cut of the /crm route guard gated all ten CRM
 // routes on crm.view alone. Two of them serve a wider audience:
 //
-//   /crm/pipeline  — pipeline-dashboard.controller.ts decorates every route
-//                    @RequireAnyPermission("tenders.view", "crm.view"), and
-//                    pipeline-dashboard.controller.spec.ts explicitly asserts
-//                    "allows a user who holds tenders.view (and NOT crm.view)".
+//   /crm/pipeline  — PIPELINE-FOLD (2026-08-20): /crm/pipeline is now an
+//                    unguarded <Navigate replace> to /tenders/pipeline. The
+//                    access control lives on /tenders/pipeline (tenders.view).
+//                    The API (pipeline-dashboard.controller.ts) still decorates
+//                    routes @RequireAnyPermission("tenders.view", "crm.view"),
+//                    but the front-end gate moved to the canonical URL.
 //   /crm/register  — TendersRegisterPage fetches only the tendering API via
 //                    fetchAllPages(); it calls no crm.* endpoint at all.
 //
-// Gating those two on crm.view alone renders NoAccess for an audience the API
-// deliberately admits. RequirePermissions is `perms.some(...)` — OR semantics —
-// so listing both codes widens the gate rather than narrowing it.
+// Gating /crm/register on crm.view alone renders NoAccess for an audience the
+// API deliberately admits. RequirePermissions is `perms.some(...)` — OR
+// semantics — so listing both codes widens the gate rather than narrowing it.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -45,17 +47,29 @@ function permsForRoute(routePath: string): string[] {
     .filter(Boolean);
 }
 
+/** True when routePath's element is a <Navigate> redirect (no guard). */
+function isRedirectRoute(routePath: string): boolean {
+  const anchor = `path="${routePath}"`;
+  const at = appTsx.indexOf(anchor);
+  if (at === -1) throw new Error(`route not found in App.tsx: ${routePath}`);
+  // The element= value on the same route tag — look for <Navigate
+  const routeTag = appTsx.slice(at, appTsx.indexOf("/>", at) + 2);
+  return routeTag.includes("<Navigate");
+}
+
 describe("CRM route guards match the audience their API admits", () => {
-  it("/crm/pipeline admits tenders.view holders (the API does)", () => {
-    expect(permsForRoute("/crm/pipeline")).toContain("tenders.view");
+  // pipeline-fold (2026-08-20): /crm/pipeline is now a bare <Navigate replace>
+  // redirect to /tenders/pipeline. Access control lives on /tenders/pipeline,
+  // gated on tenders.view. These tests are updated to reflect the new shape.
+  it("/crm/pipeline is an unguarded redirect (pipeline-fold)", () => {
+    expect(isRedirectRoute("/crm/pipeline")).toBe(true);
   });
 
   it("/crm/register admits tenders.view holders (it calls only the tendering API)", () => {
     expect(permsForRoute("/crm/register")).toContain("tenders.view");
   });
 
-  it("both still admit crm.view holders", () => {
-    expect(permsForRoute("/crm/pipeline")).toContain("crm.view");
+  it("/crm/register admits crm.view holders", () => {
     expect(permsForRoute("/crm/register")).toContain("crm.view");
   });
 

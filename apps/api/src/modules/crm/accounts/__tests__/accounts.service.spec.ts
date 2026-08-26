@@ -14,7 +14,7 @@ type MockPrisma = {
   client: { findUnique: jest.Mock };
   user: { findUnique: jest.Mock };
   contact: { findMany: jest.Mock };
-  tenderClient: { findMany: jest.Mock };
+  tenderClient: { findMany: jest.Mock; count: jest.Mock };
   job: { findMany: jest.Mock };
   $transaction: jest.Mock;
 };
@@ -31,7 +31,7 @@ function makePrisma(): MockPrisma {
     client: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
     contact: { findMany: jest.fn().mockResolvedValue([]) },
-    tenderClient: { findMany: jest.fn().mockResolvedValue([]) },
+    tenderClient: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     job: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockImplementation(async (arg) => {
       if (typeof arg === "function") return arg(prisma);
@@ -256,6 +256,45 @@ describe("AccountsService.getAccount360", () => {
 
     const service = makeService(prisma);
     await expect(service.getAccount360("missing")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("returns tenderTotal from count, not capped by findMany (e.g. 42 total, 20 shown)", async () => {
+    const prisma = makePrisma();
+    prisma.account.findUnique.mockResolvedValue({ ...ACCOUNT_STUB });
+    // Simulate 42 linked tenders in the DB but findMany only returns 20 (capped)
+    const twentyRows = Array.from({ length: 20 }, (_, i) => ({
+      tender: {
+        id: `tender-${i + 1}`,
+        tenderNumber: `T-${String(i + 1).padStart(3, "0")}`,
+        title: `Tender ${i + 1}`,
+        status: "OPEN",
+        dueDate: null,
+        createdAt: new Date()
+      }
+    }));
+    prisma.tenderClient.findMany.mockResolvedValue(twentyRows);
+    prisma.tenderClient.count.mockResolvedValue(42);
+
+    const service = makeService(prisma);
+    const result = await service.getAccount360("acct-1");
+
+    expect(result.rollUps.tenders).toHaveLength(20);
+    expect(result.rollUps.tenderTotal).toBe(42);
+  });
+
+  it("returns tenderTotal of 0 and does not call count when clientId is null", async () => {
+    const prisma = makePrisma();
+    prisma.account.findUnique.mockResolvedValue({
+      ...ACCOUNT_STUB,
+      clientId: null,
+      client: null
+    });
+
+    const service = makeService(prisma);
+    const result = await service.getAccount360("acct-1");
+
+    expect(result.rollUps.tenderTotal).toBe(0);
+    expect(prisma.tenderClient.count).not.toHaveBeenCalled();
   });
 });
 

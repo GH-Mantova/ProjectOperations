@@ -11,8 +11,8 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-08-25 14:16 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `49b774e989af`)
+- Last updated: 2026-08-26 14:14 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `b26240cf69d9`)
 - Models: 292 | Enums: 66 | FK edges: 482 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
@@ -2200,7 +2200,7 @@ graph LR
 
 ### Model: Tender
 
-- Table: `tenders` | Domain: Tendering | Fields: 70
+- Table: `tenders` | Domain: Tendering | Fields: 71
 - Belongs to (FK out):
   - `estimator` -> **User** (estimatorUserId, onDelete SetNull)
   - `assignedEstimator` -> **User** (assignedEstimatorId, onDelete SetNull)

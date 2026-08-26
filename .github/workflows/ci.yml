@@ -183,6 +183,49 @@ jobs:
       # Structure only in CI - the freshness check needs a live box and would always fail here.
       - run: node scripts/pipeline/check-breadcrumb.mjs
 
+  pipeline-tests-windows:
+    name: Pipeline — arm-prompt tests (Windows)
+    # This job exists ONLY so scripts/pipeline/__tests__/arm-prompt.test.mjs
+    # actually runs. Its 8 tests are IS_WIN-gated and SKIP on the ubuntu
+    # pipeline-tests job above, so arm-prompt.ps1 shipped with a bug that made
+    # it unparseable under Windows PowerShell 5.1 (BOM-less UTF-8 + em dashes
+    # decoded as Windows-1252) while CI stayed green throughout. See prompt
+    # docs/pr-prompts/... for the incident.
+    runs-on: windows-latest
+    steps:
+      # fetch-depth: 0 for the same reason as pipeline-tests: the linter's
+      # gate probes need origin/main, and a rule that quietly does nothing in
+      # CI is the failure this cluster exists to prevent.
+      - uses: actions/checkout@v4.2.2
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      # shell: bash is REQUIRED. The GitHub windows-latest runner defaults to
+      # PowerShell, which does NOT glob-expand arguments to external commands.
+      # Without bash, `node --test "scripts/pipeline/__tests__/*.mjs"` receives
+      # a literal unexpanded pattern, discovers 0 files, and exits 0 — a green
+      # job that ran nothing, recreating the exact blindness this job removes.
+      # We then assert on the summary: skipped must be 0, and pass must be at
+      # least 8 (the arm-prompt suite). A discovery of nothing must FAIL.
+      - name: Pipeline tests (Windows)
+        shell: bash
+        run: |
+          set -uo pipefail
+          node --test "scripts/pipeline/__tests__/*.mjs" 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          skipped=$(grep -E 'skipped [0-9]+$' test-output.txt | tail -1 | awk '{print $NF}')
+          pass=$(grep -E 'pass [0-9]+$' test-output.txt | tail -1 | awk '{print $NF}')
+          if [ "${skipped:-missing}" != "0" ]; then
+            echo "::error::expected skipped=0, got skipped=${skipped:-missing}"
+            exit 1
+          fi
+          if [ -z "${pass:-}" ] || [ "$pass" -lt 8 ]; then
+            echo "::error::expected pass>=8 (arm-prompt suite), got pass=${pass:-missing}"
+            exit 1
+          fi
+          echo "OK: pass=$pass skipped=$skipped"
+
   web:
     name: Web — lint, logic tests, vitest, build
     needs: changes

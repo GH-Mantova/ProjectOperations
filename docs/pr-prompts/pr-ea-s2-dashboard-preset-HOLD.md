@@ -115,7 +115,7 @@ Add an idempotent block modelled on `seed-home-dashboard`:
 - `isDefault`: `false` (do NOT displace the existing Home default)
 
 Then `prisma.dashboardWidget.deleteMany({ where: { dashboardId } })` followed by
-`prisma.dashboardWidget.createMany` with a FOCUSED widget list (keep it lean — Decision D6):
+`prisma.dashboardWidget.createMany` with a FOCUSED widget list (keep it lean — Decision EA-D6):
 
 1. `type: "report-chart"` / `config: { reportKey: "tender-winloss-by-estimator" }` — SHIPPED
 2. `type: "report-table"` / `config: { reportKey: "tender-winloss-by-client" }` — SHIPPED
@@ -151,7 +151,7 @@ needs to pass the right params:
 - If `GlobalDashboardPage.tsx` / `DashboardSwitcher.tsx` auto-discover global dashboards via
   the API, **no web edit is required** and you should keep the web-side diff empty.
 - If a switcher entry / nav label needs to be added, follow the existing convention (do
-  NOT introduce a bespoke `EstimatingAnalyticsPage.tsx` — Decision D6 forbids a bespoke page).
+  NOT introduce a bespoke `EstimatingAnalyticsPage.tsx` — Decision EA-D6 forbids a bespoke page).
 
 ### 4. Tests
 
@@ -169,16 +169,16 @@ needs to pass the right params:
 - Do NOT edit `apps/api/prisma/schema.prisma` — the preset uses existing `Dashboard` /
   `DashboardWidget` models. No new columns, no new tables.
 - Do NOT rebuild the shipped `tender-winloss-*` report defs or the `leadTimeDays` maths —
-  ASSEMBLE, do not reimplement (Decision D1).
+  ASSEMBLE, do not reimplement (Decision EA-D1).
 - Do NOT build the pipeline-value widget from scratch — reference the CRM S6 output if it
-  has landed, otherwise fall back to an existing shipped report key (Decision D6 keeps
+  has landed, otherwise fall back to an existing shipped report key (Decision EA-D6 keeps
   scope tight).
 - Do NOT build a bespoke `EstimatingAnalyticsPage.tsx` — the home is inside the existing
-  global-dashboard mechanism (Decision D6).
-- Do NOT build any Excel-style pivot UI — Decision D7 (out of scope for this program).
+  global-dashboard mechanism (Decision EA-D6).
+- Do NOT build any Excel-style pivot UI — Decision EA-D7 (out of scope for this program).
 - Do NOT displace `seed-home-dashboard` as `isDefault: true`.
 - Do NOT expose one estimator's numbers to another — pass params so EA-1's compute-time
-  role gate kicks in as self-view (Decision D5).
+  role gate kicks in as self-view (Decision EA-D5).
 - Do NOT invent a new `DashboardWidget.type` string. Reuse the exact strings the web
   registries accept.
 - Do NOT touch `/sot/`, Azure/Entra/SharePoint, or any file outside declared scope.

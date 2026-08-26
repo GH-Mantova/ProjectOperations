@@ -147,7 +147,7 @@ Power Pages external portal). See `project_d365_parity_program` + `project_jotfo
 
 **Forms Engine v2 (F-2 → F-13)** — **planned → §3** as `forms-v2-program-plan` (one sequential launch chain; design spec in `06-active-specs.md`).
 
-**Partial last-mile** — error-envelope humane render **Done** (`lib/api-errors.ts`, 16 files); AI-provider abstraction **resolved** (#829). Payroll-export + plant-utilisation pages **Done → §1**. Still open: `siteId` NOT-NULL backfill (HOLD `pr-siteid-notnull-backfill`, prod-data → §6) and auto SharePoint Lost/Archived re-org (Entra-blocked → §6). Blocked on **Entra grants** (§6): calendar adapter, correspondence Graph ingestion, Azure Mail.Send.
+**Partial last-mile** — error-envelope humane render **PARTIAL** — the helper `lib/api-errors.ts` shipped and 22 files use it, but **38 files / 124 call sites** still do `throw new Error(await res.text())` and render the raw JSON envelope to the user (measured 2026-08-19); tracked as BACKLOG `web-raw-error-envelope-migration`; AI-provider abstraction **resolved** (#829). Payroll-export + plant-utilisation pages **Done → §1**. Still open: `siteId` NOT-NULL backfill (HOLD `pr-siteid-notnull-backfill`, prod-data → §6) and auto SharePoint Lost/Archived re-org (Entra-blocked → §6). Blocked on **Entra grants** (§6): calendar adapter, correspondence Graph ingestion, Azure Mail.Send.
 
 **Phase 6 tech debt** — OfflineProvider error-boundary **armed** (#902). SW auto-update race, dead-letter UX, and orphaned cardless-waste rows are **already resolved/closed** (prompt-based SW updates; `DeadLetterBanner`; `ScopeWasteItem.cardId` now required + cascade). `directory.finance`/`subcontractor_contacts`/`wasteTonnes→qty` items were already verified closed 2026-07-08.
 
@@ -178,7 +178,7 @@ stay on CSV. Custom dashboard widget builder is **already shipped** (`CustomBuil
 5. **Raj + Sean tendering sign-off** + their Variation / Schedule-of-Rates PDF templates.
 6. **#895 API-key vault SLICE-3** — production-data backfill + `resolve()` vault-flip; open, do-not-merge, awaiting your review of the rendered diff.
 7. **#876 field-worker `expenses.view` / `expenses.manage`** — permission grant; needs your call.
-> **Resolved 2026-08-04 (were #8/#9):** **Websockets transport → SSE** (server-sent events; no Azure change needed). **Multi-tenant model → A, row-level `tenantId`** (nullable; null = shared master data, set = company-owned transactions). Both baked into their §3 plan docs — those two programs are unblocked (RT-1 / MT-0 armable).
+> **Resolved 2026-08-04 (were #8/#9):** **Websockets transport → SSE** (server-sent events; no Azure change needed). **Multi-tenant model → A, row-level `tenantId`**. ⚠️ **Mechanism SUPERSEDED 2026-08-17 by D48** — a blank `tenantId` is **not** a valid state; every record has an owner, and sharing is an **explicit grant**, never an implicit null. Model A itself is unchanged. The 2026-08-04 wording "nullable; null = shared master data" no longer describes the design — see `docs/plans/multi-tenant-plan.md`. Both baked into their §3 plan docs — those two programs are unblocked (RT-1 / MT-0 armable).
 
 > Items 1–2 (#503 route bug, #507 deploy.yml) are ~2 weeks old — **re-verify against the current board** before acting; they may already be resolved.
 > **Top strategic unblock:** item 3 (Entra grants) gates the largest cluster of stalled work — calendar sync, correspondence ingestion, and production email.

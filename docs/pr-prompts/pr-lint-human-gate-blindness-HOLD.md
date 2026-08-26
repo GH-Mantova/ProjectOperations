@@ -20,25 +20,41 @@ escalates: false
 arming gate. So a prompt whose own text says, in capitals, that it must not be armed still returns
 `ADMIT`, exit 0 — and `ADMIT` is exactly what an arming decision trusts.
 
-Measured across the 61 `pr-*.md` at the queue root: **12 carry a gate the linter cannot see.**
+Measured across the 61 `pr-*.md` at the queue root: **5 carry a gate the linter cannot see.**
 
 ```
-pr-524-rates-b-slice2-canonical-HOLD.md          [DO NOT ARM, Arm ONLY, docs/approvals/]
-pr-e2e-container-s2-swap-required-job-HOLD.md    [DO NOT ARM]
-pr-gate-release-is-not-a-reject-HOLD.md          [DO NOT ARM]
-pr-nav-jobs-projects-merge-HOLD.md               [DO NOT ARM, Arm ONLY]
-pr-ops-m2b-tipping-tab-reminder-HOLD.md          [DO NOT ARM, Arm ONLY]
-pr-rates-s11c-<elided>-tables-HOLD.md         [DO NOT ARM, docs/approvals/]
-pr-retire-tenderclientnote-s2-HOLD.md            [DO NOT ARM, docs/approvals/]
-pr-siteid-notnull-backfill-HOLD.md               [<!-- watcher: do-not-arm -->, docs/approvals/]
-pr-tenant-mt4-s2-ownership-migration-HOLD.md     [DO NOT ARM, docs/approvals/]
-pr-unified-api-key-vault-slice4c-retire-old-screens-HOLD.md  [DO NOT ARM]
-pr-user-default-dashboard-ui-RETIRED-...md       [DO NOT ARM]
-pr-vendor-invoice-ocr-HOLD.md                    [DO NOT ARM]
+pr-524-rates-b-slice2-canonical-HOLD.md    :27  STATUS: DRAFTED, STAGED, DO NOT ARM YET.
+                                                IRREVERSIBLE TABLE DROP. Cowork armed this by
+                                                mistake in a batch sweep on 2026-08-...
+                                           :29  ## Arm ONLY when ALL of these are true
+pr-ops-m2b-tipping-tab-reminder-HOLD.md    :18  STATUS: DRAFTED, STAGED, **DO NOT ARM YET**.
+pr-retire-tenderclientnote-s2-HOLD.md      :23  # HOLD - DO NOT ARM. NEVER auto-arm this prompt.
+pr-siteid-notnull-backfill-HOLD.md         :25  <!-- watcher: do-not-arm -->
+pr-vendor-invoice-ocr-HOLD.md              :17  STATUS: DRAFTED, STAGED, DO NOT ARM YET - but the
+                                                CODE gates are now CLEARED.
 ```
 
-Control: 21 of the 61 match the generic word `arm`, so the detector is neither matching everything
-nor nothing.
+**All five lint `ADMIT`, exit 0** - verified individually, including the one whose own body records
+that it was *already armed by mistake once* and drops tables irreversibly.
+
+### The number in the first version of this prompt was WRONG, and the mistake is instructive
+
+It said twelve. The scan behind it was **case-insensitive**, so it also matched the ordinary prose
+form that appears in most prompts' Do-NOT sections:
+
+> Do NOT arm, promote or rename any HOLD as part of this PR.
+
+That is an instruction to the *implementing agent* about the work, not a gate on the prompt. Seven of
+the original twelve were that. The false positive was caught only because one of them -
+`pr-gate-release-is-not-a-reject` - was armed by Station 00 and started running while this was being
+written, which forced a proper read.
+
+**Therefore, a hard requirement, not a nicety: the `DO NOT ARM` match MUST be case-sensitive.**
+Genuine gates are written in capitals; the prose instruction is not. A case-insensitive detector
+would reject roughly one prompt in five for saying the words "do not arm" in a sentence about not
+arming things - and a linter that cries wolf is switched off, which is worse than the blindness it
+replaced.
+
 
 Three were linted directly. **All three returned `ADMIT`, exit 0:**
 

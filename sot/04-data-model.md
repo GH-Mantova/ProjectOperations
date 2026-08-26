@@ -3794,58 +3794,80 @@ to see.
 ## Job / Project Consolidation — Survivor-Spine Design (B-P0a)
 
 > **Status:** Design / analysis only. This document changes no schema, service,
-> migration, or route. It is the plan of record for collapsing the duplicated
-> `Job` and `Project` delivery entities into a single spine.
+> migration, or route. It is the data-model design behind the operational slice
+> plan. The **operational slice plan of record is
+> `docs/architecture/drafts/job-project-merge-slice-plan.md`** — that file
+> owns per-slice PR sequencing, the Phase-A unwind list (section 4 there), and
+> the ordered slices; this section owns the data-model shape.
 >
-> **Decision date:** 2026-07-02 (Marco). **Scope owner:** WHS & Commercial Compliance.
-> **Verified against:** `apps/api/prisma/schema.prisma` (3912 lines) and the
-> `jobs` / `projects` / `tendering` / `contracts` modules at commit `d769b86`
-> (`origin/main`). All line numbers below are from that tree.
+> **Direction (RE-DECIDED):** `Job` is the surviving delivery entity; `Project`
+> is folded into it and retired. See `docs/pr-prompts/BACKLOG-DECISIONS.md`
+> §1 (Marco, 2026-07-14: "`Job` IS CANONICAL"), the slice plan (Marco,
+> 2026-07-16), and Marco's 2026-08-20 re-confirmation.
+> The prior Project-canonical authoring of this section (dated 2026-07-02)
+> was superseded on 2026-07-14 and is captured in
+> `docs/audits/model-merge-direction-reconcile.md`.
+>
+> **Scope owner:** WHS & Commercial Compliance.
+> **Verified against:** `apps/api/prisma/schema.prisma` and the
+> `jobs` / `projects` / `tendering` / `contracts` modules at `origin/main`.
+> Line numbers below reference the tree cited in the appendix.
 
 ### 1. Survivor + name decision
 
-**`Project` survives as the delivery spine. `Job` is folded into it and retired.**
+**`Job` is the surviving delivery entity. `Project` is folded into it and retired.**
 The user-facing name stays **"Job"** in the UX; the surviving table/model is
-`Project` / `projects`.
+`Job` / `jobs`. Where downstream code still speaks Project (contracts, gantt,
+scheduler, timesheets, pre-starts, allocations), the FK is re-pointed onto
+`Job` in the slices below.
 
-#### Evidence (schema + service, this checkout)
+#### Evidence of downstream coupling (must be moved, not preserved as-is)
 
-- **The new day-grain scheduler already binds to `Project`, not `Job`.**
-  `ScheduleAllocation` (schema L2147) has `projectId -> Project` (L2153-2154) and
-  `workerProfileId -> WorkerProfile` (L2156-2157). There is no `jobId` on it.
-  Choosing `Job` would orphan the entire scheduler grid.
-- **`Contract` binds to `Project` one-to-one.** `Contract.projectId` is
-  `@unique @map("project_id")` with `project Project @relation(...)`
-  (schema L2909-2910). `contracts.service.ts` is already Project-native — it
-  reads `contract.project.sourceTenderId` (L366) and creates contracts against
-  `dto.projectId` (L116-124). No contract code references `Job`.
-- **Gantt binds to `Project` + `WorkerProfile`.** `GanttTask.projectId -> Project`
-  (schema L3618-3619) and `assignedToId -> WorkerProfile` (L3627-3628).
-  `projects/gantt.service.ts` and `gantt.controller.ts` live inside the projects
-  module.
-- **Timesheets and pre-starts bind to `Project` (+ `ProjectAllocation`).**
+- **The day-grain scheduler is currently bound to `Project`.**
+  `ScheduleAllocation` (schema L2147) has `projectId -> Project` (L2153-2154)
+  and `workerProfileId -> WorkerProfile` (L2156-2157). Reversing to a
+  Job-canonical spine means `projectId` is re-pointed to `jobId -> Job` in the
+  scheduler slice; the unique key `schedule_alloc_worker_uniq` is re-issued as
+  `(date, jobId, workerProfileId, jobRoleId)` (see section 5).
+- **`Contract` is currently 1:1 with `Project`.** `Contract.projectId` is
+  `@unique @map("project_id")` (schema L2909-2910). `contracts.service.ts`
+  reads `contract.project.sourceTenderId` (L366) and creates against
+  `dto.projectId` (L116-124). All of that is re-pointed to `jobId -> Job` in
+  slice **B-P0a-4** (conversion unify) and slice **B-P0a-7** (edges).
+- **Gantt is currently `Project` + `WorkerProfile`.** `GanttTask.projectId ->
+  Project` (schema L3618-3619) and `assignedToId -> WorkerProfile`
+  (L3627-3628). `GanttTask.projectId` is re-pointed to `jobId`.
+- **Timesheets and pre-starts are currently on `Project` (+ `ProjectAllocation`).**
   `Timesheet.projectId -> Project` (L2280-2281) and
-  `PreStartChecklist.projectId -> Project` (L2230-2231). Neither has a `jobId`.
-- **`Project` carries the commercial delivery payload.** It holds
+  `PreStartChecklist.projectId -> Project` (L2230-2231). Both re-point to
+  `Job` in slice **B-P0a-7**. `ProjectAllocation` itself becomes derived (see
+  section 4).
+- **The commercial delivery payload currently lives on `Project`** —
   `estimateSnapshot Json` (L1990), `contractValue` / `budget` / `actualCost`
   Decimals (L1973-1976), structured site address fields (L1968-1972),
-  `requiredQualifications String[]` used by the competency gate (L1973), the
-  `ProjectStatus` enum lifecycle (L1925-1932), scope items, milestones, and an
-  activity log. `Job` has none of the estimate/contract/scope machinery.
+  `requiredQualifications String[]` (L1973), the `ProjectStatus` enum
+  lifecycle (L1925-1932), scope items, milestones, activity log. **All of it
+  moves onto `Job`.** `Job` gains these columns/relations by expand-then-
+  backfill; the ProjectStatus enum is renamed to `JobStatus` in the contract
+  slice (see 2.1, and slice -8).
 
-#### What `Job` contributes (must be preserved into `Project`)
+#### What `Job` already contributes (and keeps)
 
-- **The business-facing name "job"** — kept as UX label only.
+- **The business-facing name "job"** — matches the surviving spine.
 - **The operational work breakdown**: `JobStage -> JobActivity -> Shift`
-  (schema L993, L1013, L1130). `Project` has no equivalent nested WBS today
-  (it has flat `ProjectScopeItem` + `ProjectMilestone`, L2018-2044).
+  (schema L993, L1013, L1130). Stays on `Job`; `Project`'s flat
+  `ProjectScopeItem` + `ProjectMilestone` (L2018-2044) are re-pointed onto
+  `Job` (as `JobScopeItem` / `JobMilestone` in cosmetic rename slices, or
+  under the existing model names re-parented — decided in the slice plan).
 - **Tender-conversion bridge semantics**: `JobConversion` (L979) records
-  `tenderId`, `tenderClientId`, `jobId`, `carriedDocuments` — richer than the
-  Project path, which only writes `sourceTenderId` and an activity-log row.
+  `tenderId`, `tenderClientId`, `jobId`, `carriedDocuments`. **Stays on Job**;
+  the Project-side `sourceTenderId + activity row` is re-pointed to write
+  through this bridge.
 - **The `jobNumber` identity** `J{YYMMDD}-{SLUG}-{NNN}` (see
-  `jobs/job-number.service.ts` L6-8, `format()` L49) vs Project's
-  `IS-P{NNN}` (`projects.service.ts` L83). Number-scheme reconciliation is a
-  first-class migration concern (see section 7).
+  `jobs/job-number.service.ts` L6-8, `format()` L49) survives as the DB
+  identity. `projectNumber` (`IS-P{NNN}`, `projects.service.ts` L83) is kept
+  as a nullable/unique attribute on `Job` for the transition; both display
+  paths continue to work until the contract slice.
 
 ### 2. Field + relation inventory
 
@@ -3853,141 +3875,169 @@ The user-facing name stays **"Job"** in the UX; the surviving table/model is
 
 | Field | On `Job` | On `Project` | Resolution |
 |---|---|---|---|
-| identity number | `jobNumber` unique, `J{YYMMDD}-{SLUG}-{NNN}` (L941) | `projectNumber` unique, `IS-P{NNN}` (L1961) | **Keep both columns during transition.** `projectNumber` stays the DB key; `jobNumber` becomes an additional (nullable, unique) attribute on `Project` so the UX "Job number" survives. Do NOT drop either until section 6 slice -8. |
-| `name` | `name String` (L944) | `name String` (L1962) | Same semantics -> single `Project.name`. Direct copy on backfill. |
-| `clientId` | `clientId` -> Client, `onDelete: Restrict` (L946, L954) | `clientId` -> Client, `onDelete: Restrict` (L1966-1967) | Identical -> `Project.clientId`. Verify Job/Project client agree per source tender before backfill. |
-| `sourceTenderId` | `@unique` (L948, L956) | **not unique** (L1964-1965) | **Collision + constraint mismatch.** Two rows (one Job, one Project) can share a tender today because Project's FK is not unique. Consolidation makes `Project.sourceTenderId` unique (see section 3, section 6 slice -3). |
-| `status` | `String @default("PLANNING")` (L949) | `ProjectStatus` enum, default `MOBILISING` (L1963) | **Type collision.** Job's free-string status vs Project's enum. Map Job statuses into `ProjectStatus` (or extend the enum) during backfill; see section 6 slice -2 mapping. |
-| `projectManagerId` | -> User, SetNull (L950, L957) | -> User, SetNull (L1981-1982) | Identical -> `Project.projectManagerId`. |
-| `supervisorId` | -> User, SetNull (L951, L958) | -> User, SetNull (L1983-1984) | Identical -> `Project.supervisorId`. |
-| site linkage | `siteId` -> `Site` (nullable, L947, L955) | structured `siteAddress*` fields (L1968-1972) | **Shape collision.** Job points at a `Site` row; Project inlines the address. Backfill: resolve `Job.site` -> the five `siteAddress*` columns; keep an optional `siteId` on `Project` if a normalised Site link is still wanted (decide in section 6 slice -2). |
+| identity number | `jobNumber` unique, `J{YYMMDD}-{SLUG}-{NNN}` (L941) | `projectNumber` unique, `IS-P{NNN}` (L1961) | **Keep both columns during transition.** `jobNumber` stays the DB identity; `projectNumber` becomes an additional (nullable, unique) attribute on `Job` so historical `IS-P###` numbers survive lookups. Do NOT drop either until section 6 slice -8. |
+| `name` | `name String` (L944) | `name String` (L1962) | Same semantics -> single `Job.name`. Direct copy on backfill (Job's is authoritative where both exist). |
+| `clientId` | `clientId` -> Client, `onDelete: Restrict` (L946, L954) | `clientId` -> Client, `onDelete: Restrict` (L1966-1967) | Identical -> `Job.clientId`. Verify Job/Project client agree per source tender before backfill. |
+| `sourceTenderId` | `@unique` (L948, L956) | **not unique** (L1964-1965) | **Constraint holds on Job.** `Job.sourceTenderId` already `@unique` and is the surviving column. `Project.sourceTenderId` (non-unique) is folded away with the row in slice -8; the merge map (see slice -2) resolves any tender that was double-converted before it is discarded. |
+| `status` | `String @default("PLANNING")` (L949) | `ProjectStatus` enum, default `MOBILISING` (L1963) | **Type collision.** Job's free-string status is promoted to a **`JobStatus` enum** (renamed from `ProjectStatus`, superset of both value sets). Backfill maps free-string `Job.status` values into enum members; unmapped values fall to a safe default with an activity-log note. See section 6 slice -2. |
+| `projectManagerId` | -> User, SetNull (L950, L957) | -> User, SetNull (L1981-1982) | Identical -> `Job.projectManagerId` (column may be renamed `Job.managerId` in a cosmetic slice; column meaning is unchanged). |
+| `supervisorId` | -> User, SetNull (L951, L958) | -> User, SetNull (L1983-1984) | Identical -> `Job.supervisorId`. |
+| site linkage | `siteId` -> `Site` (nullable, L947, L955) | structured `siteAddress*` fields (L1968-1972) | **Shape collision — Job's normalised link wins.** `Job.siteId` stays the surviving representation. For Projects that only have inline `siteAddress*` and no matching `Site` row, slice -2 either (a) upserts a `Site` from the inline address and points `Job.siteId` at it, or (b) copies the five `siteAddress*` columns onto `Job` as denormalised fallbacks. Decide in the slice plan. |
 | audit timestamps | `createdAt` / `updatedAt` (L952-953) | `createdAt` / `updatedAt` (L2006-2007) | Standard — no action. |
 
-#### 2.2 `Job` relation inventory -> disposition
+#### 2.2 `Project` relation inventory -> disposition (fold onto `Job`)
 
-| Job relation (schema line) | Target | Disposition on `Project` |
+| Project relation (schema line) | Target | Disposition on `Job` |
 |---|---|---|
-| `conversion JobConversion?` (L960) | tender bridge | **Move / merge.** Re-point `JobConversion.jobId` -> `projectId` (or fold its fields — `carriedDocuments`, `tenderClientId` — into the Project conversion path). See section 3. |
-| `stages JobStage[]` (L961) | WBS level 1 | **Move onto Project.** Add `JobStage.projectId -> Project`; backfill from `Job.id -> Project.id` map. New WBS is Project-owned. |
-| `activities JobActivity[]` (L962) | WBS level 2 | **Move onto Project** (transitively, via re-parented stages). `JobActivity.jobId` is re-pointed to `projectId`; `jobStageId` FK unchanged. |
-| `shifts Shift[]` (L963) | operational shifts | **Move onto Project.** `Shift.jobId -> projectId`. See section 4 — Shift is the legacy allocation cluster and is scheduled for retirement, so this move may be a no-op if Shift is dropped instead. |
-| `issues JobIssue[]` (L964) | delivery issues | **Move onto Project.** `JobIssue.jobId -> projectId`; rename table/model to `ProjectIssue` in a later cosmetic slice (optional). |
-| `variations JobVariation[]` (L965) | scope variations | **Drop as duplicate / derive.** `Project` already reaches contract-level `Variation` via `Contract.variations` (L2923). `JobVariation` (L1065) and `Variation` (L2931) overlap. Decision: **keep the contract-linked `Variation`; migrate any `JobVariation` rows into it, then drop `JobVariation`.** Flagged as a data-merge risk in section 7. |
-| `progressEntries JobProgressEntry[]` (L966) | progress log | **Move onto Project.** `JobProgressEntry.jobId -> projectId`. Complements Project's `activityLog` — keep both (different grain: progress % vs audit action). |
-| `statusHistory JobStatusHistory[]` (L967) | status audit | **Derive / drop.** `ProjectActivityLog` with action `STATUS_CHANGED` (enum L1935) already records transitions. Migrate history into `ProjectActivityLog`, then drop `JobStatusHistory`. |
-| `formSubmissions FormSubmission[]` (L968) | forms | **Re-point.** `FormSubmission` currently can attach to Job, Shift, Worker. Add/redirect its Project linkage; backfill Job-attached submissions to the mapped Project. |
-| `closeout JobCloseout?` (L969) | closeout | **Move onto Project.** `JobCloseout.jobId -> projectId` (unique). Feeds the S6 Archive route. No Project-side closeout exists yet, so this is a clean move. |
-| `correspondences CorrespondenceThread[]` (L970, relation "JobCorrespondence") | comms hub | **Re-point.** Redirect the `JobCorrespondence` relation to Project; backfill thread parent ids. |
-| `jobNumber` (field, L941) | identity | **Move as attribute** onto `Project.jobNumber` (nullable/unique), per 2.1. |
+| `contract Contract?` (unique, L2909-2910) | 1:1 commercial contract | **Re-point.** `Contract.projectId -> jobId` (unique). `contracts.service.ts` swaps `dto.projectId` -> `dto.jobId` and reads `contract.job.sourceTenderId` in place of `contract.project.sourceTenderId`. Slice -4. |
+| `scopeItems ProjectScopeItem[]` (L2018) | scope | **Re-point onto Job** (`ProjectScopeItem.projectId -> jobId`). Optional cosmetic rename `JobScopeItem` in slice -8; existing `Job`-side `JobStage/JobActivity` WBS keeps its identity — Project's flat scope items become peers of them under `Job`. |
+| `milestones ProjectMilestone[]` (L2019) | milestones | **Re-point onto Job.** `ProjectMilestone.projectId -> jobId`. Optional rename `JobMilestone` in slice -8. |
+| `activityLog ProjectActivityLog[]` (L2020) | delivery audit | **Re-point onto Job.** `ProjectActivityLog.projectId -> jobId`. `Job.statusHistory JobStatusHistory[]` and the folded activity log both survive on `Job` (different grain: status transitions vs generic audit action). |
+| `allocations ProjectAllocation[]` (L2105) | worker/asset range | **Re-point onto Job** (`ProjectAllocation.projectId -> jobId`). Note this model becomes **derived** end-state per section 4; keep it as a real table with re-pointed FK until the derivation is built. |
+| `scheduleAllocations ScheduleAllocation[]` (L2147) | day-grain scheduler | **Re-point onto Job** (`ScheduleAllocation.projectId -> jobId`). The composite unique key becomes `(date, jobId, workerProfileId, jobRoleId)` — see section 5. |
+| `preStartChecklists PreStartChecklist[]` (L2230) | pre-start | **Re-point.** `PreStartChecklist.projectId -> jobId`. |
+| `timesheets Timesheet[]` (L2280) | timesheets | **Re-point.** `Timesheet.projectId -> jobId`. |
+| `safetyIncidents SafetyIncident[]` | HSEQ | **Re-point** to `jobId`. |
+| `hazardObservations HazardObservation[]` | HSEQ | **Re-point** to `jobId`. |
+| `ganttTasks GanttTask[]` (L3616) | gantt | **Re-point.** `GanttTask.projectId -> jobId`. `projects/gantt.service.ts` and `gantt.controller.ts` move under the jobs module (or stay put and switch to `jobId` internally — decided in the slice plan). |
+| `documents (TenderDocumentLink)` | tender docs | **Re-point.** Any `TenderDocumentLink` that points at Project via a `projectId` back-reference re-points to `jobId`. `JobConversion.carriedDocuments` remains the primary bridge. |
+| `sourceTenderId String?` (L1964) | tender source | **Fold away.** `Job.sourceTenderId` (already `@unique`) is authoritative. The merge map in slice -2 resolves any tender that was double-converted; the Project row is discarded in slice -8. |
+| `estimateSnapshot Json?` (L1990) | estimate audit | **Move onto Job.** New nullable column `Job.estimateSnapshot Json?`; backfilled by the -2 map. |
+| `contractValue` / `budget` / `actualCost` (L1973-1976) | Decimals | **Move onto Job.** New nullable columns; backfilled by the -2 map. |
+| `requiredQualifications String[]` (L1973) | competency gate | **Move onto Job.** New column; competency gate switches to read from `Job.requiredQualifications`. |
+| `projectNumber` (L1961) | identity | **Move as attribute** onto `Job.projectNumber` (nullable/unique), per 2.1, so historical `IS-P###` lookups survive. |
 
-#### 2.3 `Project` relations that stay put (canonical)
+#### 2.3 `Job` relations that stay put (canonical)
 
-`scopeItems`, `milestones`, `activityLog`, `documents` (`TenderDocumentLink`),
-`allocations` (`ProjectAllocation`), `scheduleAllocations` (`ScheduleAllocation`),
-`preStartChecklists`, `timesheets`, `contract`, `safetyIncidents`,
-`hazardObservations`, `ganttTasks` (schema L1994-2005). None move; the folded
-Job relations join them.
+`conversion` (`JobConversion`), `stages` (`JobStage`), `activities`
+(`JobActivity`), `shifts` (`Shift` — see section 4 for retirement),
+`issues` (`JobIssue`), `variations` (`JobVariation` — see section 6 slice -6
+for merge into contract-linked `Variation`), `progressEntries`
+(`JobProgressEntry`), `statusHistory` (`JobStatusHistory`), `formSubmissions`
+(`FormSubmission`), `closeout` (`JobCloseout`), `correspondences`
+(`CorrespondenceThread`, relation `JobCorrespondence`). None move; the
+re-parented Project relations join them.
 
 ### 3. Tender-conversion unification
 
 **Today there are two unlinked tender -> delivery paths (verified):**
 
-1. **Project path — SURVIVES.** `ProjectsService.convertFromTender` (L535),
-   exposed by `tendering/tender-convert.controller.ts` as
-   `POST /tenders/:id/convert`. Requires `tender.status === "AWARDED"` (L557),
-   allocates `IS-P###`, snapshots the estimate, flattens scope into
-   `ProjectScopeItem`, re-parents `TenderDocumentLink`s, writes a
-   `PROJECT_CREATED` activity row, notifies the PM. Guards against
-   double-conversion via `findFirst({ sourceTenderId })` (L561-570).
-
-2. **Job path — RETIRED.** `JobsService.convertTenderToJob` (L1145), exposed by
-   `jobs/tender-conversion.controller.ts` as
+1. **Job path — SURVIVES.** `JobsService.convertTenderToJob` (L1145), exposed
+   by `jobs/tender-conversion.controller.ts` as
    `POST /tenders/:tenderId/convert-to-job`. Requires an awarded **and**
    contracted client (`isAwarded && contractIssued`, L1158-1164), allocates a
    `jobNumber`, creates a `Job` + a `JobConversion` bridge (L1227-1245),
    provisions a SharePoint folder, and carries documents. Also present:
    `reuseArchivedJobConversion` (L1339) and `rollbackTenderLifecycle` (L1521).
+   This bridge (`JobConversion`) is richer than the Project path and is the
+   audit artifact we keep.
+
+2. **Project path — RETIRED.** `ProjectsService.convertFromTender` (L535),
+   exposed by `tendering/tender-convert.controller.ts` as
+   `POST /tenders/:id/convert`. Requires `tender.status === "AWARDED"` (L557),
+   allocates `IS-P###`, snapshots the estimate, flattens scope into
+   `ProjectScopeItem`, re-parents `TenderDocumentLink`s, writes a
+   `PROJECT_CREATED` activity row, notifies the PM. Guards via
+   `findFirst({ sourceTenderId })` (L561-570). Its behaviours (estimate
+   snapshot, scope flatten, doc re-parent, PM notification, `AWARDED` gate)
+   are all preserved — they move onto the Job path.
 
 #### Divergence that must be reconciled
 
 - **Gating differs**: Project path fires at `AWARDED`; Job path fires at
-  `CONTRACT_ISSUED`. The unified path must define one lifecycle gate. Proposal:
-  keep the Project path's `AWARDED` entry to create the `Project`, and treat the
-  Job path's contract step as `ContractsService.create` against that Project
-  (which already exists). i.e. **award -> convert-to-Project -> issue Contract**,
-  removing the Job path's own contract gate.
-- **`JobConversion` richness**: the Job path records `carriedDocuments`,
-  `tenderClientId`, and archived-job reuse. The Project path only sets
-  `sourceTenderId` + an activity row. **Preserve** `carriedDocuments` +
-  `tenderClientId` by either (a) re-pointing `JobConversion.jobId -> projectId`,
-  or (b) adding those two fields to the Project conversion activity payload.
-  Slice section 6 -4 picks (a) to retain the bridge row as an audit artifact.
+  `CONTRACT_ISSUED`. The unified path defines one lifecycle gate. Proposal:
+  the surviving Job path fires at `AWARDED` (Project path's gate), creating
+  the `Job` + `JobConversion` bridge; the separate `CONTRACT_ISSUED` step
+  becomes `ContractsService.create` against that Job. i.e.
+  **award -> convert-to-Job -> issue Contract**. Job path is loosened at the
+  entry gate (drops the `contractIssued` requirement); contract issuance
+  becomes an explicit second step. Slice -4.
+- **Behaviours to migrate onto the Job path**: `estimateSnapshot` write,
+  `ProjectScopeItem` flatten (now writes `JobScopeItem`/re-parented items),
+  `TenderDocumentLink` re-parent, `PROJECT_CREATED` activity row (renamed
+  `JOB_CREATED`), PM notification, `findFirst({ sourceTenderId })` guard
+  (already redundant with `Job.sourceTenderId @unique`).
 
 #### Caller redirects
 
-- `jobs/tender-conversion.controller.ts` — its `convert`,
-  `reuseArchived`, and lifecycle routes are re-pointed to the Project path.
-  Keep the old URL (`/convert-to-job`) as a thin alias delegating to
-  `convertFromTender` during the transition, or 308-redirect it, so external
-  callers don't break. Retire after clients migrate.
-- `jobs.service.issueContract` (L1072) currently only flips
-  `tenderClient.contractIssued` + tender status. Redirect its callers to
-  `ContractsService.create` (Project-native, L116) so a real `Contract` row is
-  produced.
-- `contracts.service.ts` — **no change needed**; already Project-native
-  (reads `contract.project.sourceTenderId`, L366).
-- `Project.sourceTenderId` gains a **unique** constraint (matching Job's
-  existing `@unique`, L948) so a tender maps to exactly one delivery row. This
-  is the constraint change that makes the two paths safe to collapse.
+- `tendering/tender-convert.controller.ts` — `POST /tenders/:id/convert` is
+  re-pointed to the Job path (delegates to `JobsService.convertTenderToJob`
+  or a merged successor). Keep the old URL as a 308-redirect / thin alias
+  during the transition so external callers don't break. Retire after
+  telemetry shows no traffic.
+- `ProjectsService.convertFromTender` (L535) — its body moves into the Job
+  path; the surviving public method delegates or is removed once the alias
+  above is retired.
+- `ContractsService.create` — redirected to require `dto.jobId` in place of
+  `dto.projectId`; slice -4 handles the FK re-pointing (`Contract.projectId
+  -> jobId`, unique).
+- `contracts.service.ts` — read paths (`contract.project.sourceTenderId`
+  L366) become `contract.job.sourceTenderId`.
+- **Unique constraint invariant**: `Job.sourceTenderId @unique` (L948)
+  already enforces "one tender maps to exactly one delivery row." No new
+  unique index is needed on the Job side; slice -3 verifies the merge map
+  produces no duplicates before slice -8 drops the Project rows.
 
 ### 4. Allocation-model reconciliation (design only — do NOT implement)
 
 Three allocation representations exist today:
 
-| Model | Grain | Binds to | Consumers | Fate |
-|---|---|---|---|---|
-| `Shift` (L1130) + `ShiftWorkerAssignment` (L1160) + `ShiftAssetAssignment` (L1176) + `SchedulingConflict` (L1189) + `ShiftRoleRequirement` | time-range (`startAt`/`endAt`), bound to **`Job`** via `jobId`/`jobActivityId` | legacy shift board; `Worker` (not `WorkerProfile`) via `ShiftWorkerAssignment.workerId` (L1167) | **Retire** the whole Shift cluster after ScheduleAllocation fully covers its use. |
-| `ProjectAllocation` (L2105) | date **range** (`startDate`/`endDate`), bound to **`Project`** + `WorkerProfile`/`Asset` | timesheets, pre-starts, competency gate, `CompetencyOverride` | **Keep as a derived view** over `ScheduleAllocation` (a contiguous run of day rows collapses to one range) OR keep as-is short-term because timesheets/pre-starts FK to it (L2233-2234, L2285-2286). Not dropped in this project. |
-| `ScheduleAllocation` (L2147) | **day-grain** (`date @db.Date`), bound to **`Project`** + `WorkerProfile` + `JobRole` | scheduler grid; eligibility/conflict computed on read | **Canonical.** Everything converges here. |
+| Model | Grain | Binds to (today) | Binds to (end state) | Consumers | Fate |
+|---|---|---|---|---|---|
+| `Shift` (L1130) + `ShiftWorkerAssignment` (L1160) + `ShiftAssetAssignment` (L1176) + `SchedulingConflict` (L1189) + `ShiftRoleRequirement` | time-range (`startAt`/`endAt`), bound to **`Job`** via `jobId`/`jobActivityId` | (unchanged — already `Job`) | legacy shift board; `Worker` (not `WorkerProfile`) via `ShiftWorkerAssignment.workerId` (L1167) | **Retire** the whole Shift cluster after ScheduleAllocation fully covers its use. |
+| `ProjectAllocation` (L2105) | date **range** (`startDate`/`endDate`), bound to **`Project`** + `WorkerProfile`/`Asset` | `Job` + `WorkerProfile`/`Asset` (FK re-pointed in slice -7); optionally renamed `JobAllocation` in slice -8 | timesheets, pre-starts, competency gate, `CompetencyOverride` | **Keep as a derived view** over `ScheduleAllocation` (a contiguous run of day rows collapses to one range). May remain a real table (with re-pointed FK to `Job`) short-term because timesheets/pre-starts FK to it (L2233-2234, L2285-2286); not dropped in this project. |
+| `ScheduleAllocation` (L2147) | **day-grain** (`date @db.Date`), bound to **`Project`** + `WorkerProfile` + `JobRole` | **`Job`** + `WorkerProfile` + `JobRole` (FK re-pointed; unique key re-issued — section 5) | scheduler grid; eligibility/conflict computed on read | **Canonical.** Everything converges here. |
 
 #### Intended end state
 
 - `ScheduleAllocation` is the single source of truth for who is on what
-  project on which day, in which `JobRole`.
-- `ProjectAllocation` is **derived** — presented as a range view materialised
-  from contiguous `ScheduleAllocation` day rows — so timesheets and pre-starts
-  keep a stable range anchor without a second hand-maintained table. (It may
-  remain a real table backfilled from ScheduleAllocation until the derivation
-  is built; the point is it stops being independently authored.)
-- The `Shift` cluster is **retired**: its `jobId`/`jobActivityId` linkage dies
-  with `Job`, and its assignments used the legacy `Worker` model (folded in
-  B-P0b). Shifts do not move onto `Project`; they are dropped once no read path
-  depends on them.
+  **job** on which day, in which `JobRole`. The `projectId` FK is renamed
+  `jobId` and re-points at `Job`.
+- `ProjectAllocation` (optionally renamed `JobAllocation`) is **derived** —
+  presented as a range view materialised from contiguous `ScheduleAllocation`
+  day rows — so timesheets and pre-starts keep a stable range anchor without
+  a second hand-maintained table. (It may remain a real table backfilled from
+  `ScheduleAllocation` until the derivation is built; the point is it stops
+  being independently authored.)
+- The `Shift` cluster is **retired**: its `jobId`/`jobActivityId` linkage
+  (already Job-side) is dropped once no read path depends on it. Assignments
+  used the legacy `Worker` model (folded in B-P0b). Shifts stay on `Job`
+  until they are dropped.
 
 This section is **design intent only** — no allocation migration is authored
-here. It scopes what later slices (and B-P0b for `Worker -> WorkerProfile`) must
-achieve.
+here. It scopes what later slices (and B-P0b for `Worker -> WorkerProfile`)
+must achieve.
 
 ### 5. Multi-role guard (locked)
 
-`ScheduleAllocation` carries the composite uniqueness key (schema L2166):
+`ScheduleAllocation` carries the composite uniqueness key (schema L2166,
+today Project-bound):
 
 ```prisma
 @@unique([date, projectId, workerProfileId, jobRoleId], name: "schedule_alloc_worker_uniq")
 ```
 
-Because `jobRoleId` is part of the key, **one worker can hold two different
-`JobRole`s on the same project on the same day** — this is the intended,
-locked behaviour.
+Under the Job-canonical direction it is re-issued in slice -7 as:
 
-- **This key MUST NOT be narrowed** to `(date, projectId, workerProfileId)`.
+```prisma
+@@unique([date, jobId, workerProfileId, jobRoleId], name: "schedule_alloc_worker_uniq")
+```
+
+Because `jobRoleId` is part of the key, **one worker can hold two different
+`JobRole`s on the same job on the same day** — this is the intended, locked
+behaviour, and it is direction-independent.
+
+- **This key MUST NOT be narrowed** to `(date, jobId, workerProfileId)`.
   Narrowing it would silently forbid multi-role-same-day and would fail the
   backfill for any worker already holding two roles.
-- No migration is required to *establish* the role rule — it already exists.
+- The re-issue in slice -7 is a **rename of the scope column**, not a
+  narrowing: the arity stays at 4 and `jobRoleId` stays in the key.
 - **A regression test that inserts two rows differing only by `jobRoleId` for
-  the same `(date, projectId, workerProfileId)` and asserts both succeed belongs
-  in the FIRST migration slice** (section 6 slice -1), so any later slice that
-  touches `ScheduleAllocation` indexing cannot regress the rule unnoticed.
+  the same `(date, jobId, workerProfileId)` and asserts both succeed belongs
+  in the FIRST migration slice** (section 6 slice -1), so any later slice
+  that touches `ScheduleAllocation` indexing cannot regress the rule
+  unnoticed. The test asserts on the current column name (`projectId` before
+  slice -7, `jobId` after) — slice -7 updates the test alongside the index.
 
 ### 6. Phased migration plan
 
@@ -3997,57 +4047,77 @@ writes -> contract**. Migration folders use **full `YYYYMMDDHHMMSS_` timestamps*
 (Prisma loads migrations alphabetically; bare `YYYYMMDD_` folders sort before
 timestamped ones on the same day and reorder backfills — see section 7).
 
+Slice numbers are **fixed** — B-P0b (`Worker -> WorkerProfile`) cross-references
+them by number (B-P0a-7, B-P0a-9). The **content** of each slice is reversed
+here from the prior Project-canonical design; the numbering is not.
+
 | Slice | PR | Phase | Migration file(s) | What it does |
 |---|---|---|---|---|
-| **B-P0a-1** | `improvement/s-bp0a1-guard-and-expand` | expand + guard | `YYYYMMDDHHMMSS_bp0a1_project_job_spine_expand` | Add nullable columns to `Project`: `jobNumber` (unique, nullable), optional `siteId`, and a `legacyJobId` back-pointer for backfill traceability. Add the **multi-role regression test** (section 5). No data moved yet. Reversible: drop the new columns. |
-| **B-P0a-2** | `improvement/s-bp0a2-status-and-site-map` | backfill (attributes) | `YYYYMMDDHHMMSS_bp0a2_backfill_job_attributes` | Build the `Job.id -> Project.id` map keyed by `sourceTenderId` (both have it) and by client+name for tender-less jobs. Backfill `Project.jobNumber`, map free-string `Job.status -> ProjectStatus` (mapping inline in the migration), resolve `Job.siteId -> siteAddress*`. Inline `INSERT ... SELECT` data steps. Reversible: null the backfilled columns. |
-| **B-P0a-3** | `improvement/s-bp0a3-source-tender-unique` | contract (constraint) | `YYYYMMDDHHMMSS_bp0a3_project_source_tender_unique` | After verifying no duplicate `sourceTenderId` across the mapped set, add `@unique` to `Project.sourceTenderId`. Reversible: drop the unique index. **Blocked until -2 proves 1:1 mapping.** |
-| **B-P0a-4** | `improvement/s-bp0a4-conversion-unify` | switch writes (conversion) | `YYYYMMDDHHMMSS_bp0a4_reparent_job_conversion` | Re-point `JobConversion.jobId -> projectId`; unify the two tender paths (section 3): `/convert-to-job` becomes an alias of `convertFromTender`; `jobs.issueContract` delegates to `ContractsService.create`. Reversible: restore the alias->own-impl and the FK. |
-| **B-P0a-5** | `improvement/s-bp0a5-move-wbs` | backfill + switch (WBS) | `YYYYMMDDHHMMSS_bp0a5_reparent_stages_activities` | Add `projectId` to `JobStage` / `JobActivity` / `JobProgressEntry` / `JobCloseout` / `JobIssue`; backfill via the -2 map; switch read/write paths to Project. Reversible: keep `jobId` columns until -8. |
-| **B-P0a-6** | `improvement/s-bp0a6-merge-variations` | backfill (merge) | `YYYYMMDDHHMMSS_bp0a6_merge_job_variations` | Merge `JobVariation` rows into contract-linked `Variation` (2.2); merge `JobStatusHistory` into `ProjectActivityLog`. Reversible only via re-import from a pre-migration snapshot — **flagged high-risk** (section 7). |
-| **B-P0a-7** | `improvement/s-bp0a7-forms-comms` | switch (edges) | `YYYYMMDDHHMMSS_bp0a7_reparent_forms_correspondence` | Re-point `FormSubmission` and `CorrespondenceThread` Job linkages to Project; backfill. Reversible: restore Job linkage. |
-| **B-P0a-8** | `improvement/s-bp0a8-contract-job` | contract (drop) | `YYYYMMDDHHMMSS_bp0a8_drop_job_tables` | After a soak period with all reads on Project, drop `jobId` columns and the legacy `Job` / `JobConversion` (if fully folded) / `JobStage.jobId` etc. columns and finally the `jobs` table. **Irreversible without snapshot restore** — gated on green metrics from -1..-7. |
-| **B-P0a-9** (optional) | `improvement/s-bp0a9-shift-retire` | contract (allocation) | `YYYYMMDDHHMMSS_bp0a9_retire_shift_cluster` | Retire the `Shift` cluster per section 4 once ScheduleAllocation covers its use. Coordinate with B-P0b (`Worker -> WorkerProfile`). Reversible until the table drop step. |
+| **B-P0a-1** | `improvement/s-bp0a1-guard-and-expand` | expand + guard | `YYYYMMDDHHMMSS_bp0a1_job_project_spine_expand` | Add nullable columns to `Job` for the fields that only exist on `Project` today: `projectNumber` (unique, nullable), `estimateSnapshot Json?`, `contractValue` / `budget` / `actualCost` Decimals, `requiredQualifications String[]`, and a `legacyProjectId` back-pointer for backfill traceability. Rename/introduce `JobStatus` enum as a superset of `ProjectStatus` values (nullable transitional column `Job.statusEnum` alongside the existing free-string `Job.status`, until slice -8). Add the **multi-role regression test** (section 5). No data moved yet. Reversible: drop the new columns/enum. |
+| **B-P0a-2** | `improvement/s-bp0a2-status-and-site-map` | backfill (attributes) | `YYYYMMDDHHMMSS_bp0a2_backfill_project_attributes` | Build the `Project.id -> Job.id` map keyed by `sourceTenderId` (both have it — Job's is already unique) and by client+name for tender-less projects. Backfill `Job.projectNumber`, `Job.estimateSnapshot`, `Job.contractValue`/`budget`/`actualCost`, `Job.requiredQualifications` from mapped Projects. Map free-string `Job.status` -> `JobStatus` enum members (mapping inline in the migration; unmapped -> safe default with activity-log note). Resolve `Project.siteAddress*` -> `Job.siteId` via `Site` upsert (or copy inline fallbacks per section 2.1). Inline `INSERT ... SELECT` data steps. Reversible: null the backfilled columns. |
+| **B-P0a-3** | `improvement/s-bp0a3-merge-map-verify` | verify (no schema change) | *(none — verification only)* | Verify the `Project.id -> Job.id` map is 1:1 across the mapped set (no tender maps to both a Job and a Project without a resolved survivor). Emit a report of unresolved duplicates. **Blocks slices -4..-8 until zero unresolved duplicates.** Reversible: N/A (no schema change). *(Note: no new unique index is needed on the Job side — `Job.sourceTenderId @unique` already exists at L948.)* |
+| **B-P0a-4** | `improvement/s-bp0a4-conversion-unify` | switch writes (conversion + contract) | `YYYYMMDDHHMMSS_bp0a4_reparent_contract_and_conversion` | Unify the two tender paths (section 3): `POST /tenders/:id/convert` becomes an alias/redirect of `convertTenderToJob`; `ProjectsService.convertFromTender` moves its body onto the Job path (estimateSnapshot, scope flatten, doc re-parent, PM notification). Re-point `Contract.projectId -> jobId` (unique) and switch `contracts.service.ts` to `dto.jobId` / `contract.job.sourceTenderId`. Reversible: restore the alias-to-own-impl and the FK. |
+| **B-P0a-5** | `improvement/s-bp0a5-move-scope-and-audit` | backfill + switch (scope/audit) | `YYYYMMDDHHMMSS_bp0a5_reparent_scope_milestones_activity_log` | Add `jobId` to `ProjectScopeItem` / `ProjectMilestone` / `ProjectActivityLog`; backfill via the -2 map; switch read/write paths to Job. Reversible: keep `projectId` columns until -8. |
+| **B-P0a-6** | `improvement/s-bp0a6-merge-variations` | backfill (merge) | `YYYYMMDDHHMMSS_bp0a6_merge_job_variations` | Merge `JobVariation` rows into contract-linked `Variation` (2.3); confirm `ProjectActivityLog` folded onto `Job` via -5 covers Project-side status audit. Reversible only via re-import from a pre-migration snapshot — **flagged high-risk** (section 7). |
+| **B-P0a-7** | `improvement/s-bp0a7-forms-comms-and-alloc` | switch (edges) | `YYYYMMDDHHMMSS_bp0a7_reparent_forms_correspondence_alloc` | Re-point `FormSubmission` and `CorrespondenceThread` Project linkages to `Job`; re-point `ProjectAllocation.projectId -> jobId`, `ScheduleAllocation.projectId -> jobId` (re-issuing `schedule_alloc_worker_uniq` per section 5), `Timesheet.projectId -> jobId`, `PreStartChecklist.projectId -> jobId`, `SafetyIncident.projectId -> jobId`, `HazardObservation.projectId -> jobId`, `GanttTask.projectId -> jobId`. **Sequence against B-P0b-4** (`FormSubmission.workerProfileId` — same table): land B-P0a-7 first, per B-P0b's own note. Reversible: restore Project FKs. |
+| **B-P0a-8** | `improvement/s-bp0a8-contract-project` | contract (drop) | `YYYYMMDDHHMMSS_bp0a8_drop_project_tables` | After a soak period with all reads on `Job`, drop `projectId` columns on the folded children, drop the transitional `Job.status` free-string column (leaving `Job.statusEnum` renamed to `Job.status`), drop `ProjectScopeItem` / `ProjectMilestone` / `ProjectActivityLog` (contents already folded via -5), the `ProjectStatus` enum, and finally the `projects` table. Cosmetic model renames (`ProjectAllocation -> JobAllocation`, etc.) may accompany or be deferred to a follow-up slice. **Irreversible without snapshot restore** — gated on green metrics from -1..-7. |
+| **B-P0a-9** (optional) | `improvement/s-bp0a9-shift-retire` | contract (allocation) | `YYYYMMDDHHMMSS_bp0a9_retire_shift_cluster` | Retire the `Shift` cluster per section 4 once `ScheduleAllocation` covers its use. The cluster is already Job-bound, so no re-parenting is needed — just drop. Coordinate with B-P0b (`Worker -> WorkerProfile`). Reversible until the table drop step. |
 
-Slices -1 through -4 are safe and low-risk. -6 and -8 are the destructive ones
-and must not ship until earlier slices are soaked in production.
+Slices -1 through -5 are safe and low-risk. -6 and -8 are the destructive
+ones and must not ship until earlier slices are soaked in production.
+
+**Phase-A unwind:** the prior direction shipped some Phase-A links onto the
+schema (`Project.legacyJobId`, `Project.jobNumber` on Project, `Project.sourceJobId`
++ `ProjectSourceJob` relation, `Job.survivingProjectId` +
+`JobSurvivingProject` relation, and their indexes). Under Job-canonical those
+are reversed or deleted. **The unwind list is not re-derived here — see
+`docs/architecture/drafts/job-project-merge-slice-plan.md` section 4** for
+the authoritative per-link disposition, folded into the -1 / -8 slices.
 
 ### 7. Risk + rollback register
 
 | # | Risk | Likelihood | Impact | Mitigation / rollback |
 |---|---|---|---|---|
-| R1 | **Data loss on Job->Project merge** (variations, status history in -6; table drop in -8). | Med | High | Take a full DB snapshot immediately before -6 and -8. Never combine a backfill and a drop in one slice. Rollback = restore snapshot; forward-only otherwise. |
-| R2 | **`sourceTenderId` duplicate blocks the unique constraint** (-3): a tender that was converted down *both* paths yields two rows. | Med | High | -2 emits a report of tenders with both a Job and a Project. Resolve (pick survivor, merge children) before -3. -3 aborts if any duplicate remains. Rollback: drop the unique index. |
+| R1 | **Data loss on Project->Job merge** (variations in -6; table drop in -8). | Med | High | Take a full DB snapshot immediately before -6 and -8. Never combine a backfill and a drop in one slice. Rollback = restore snapshot; forward-only otherwise. |
+| R2 | **Tender double-conversion blocks the merge map** (-3): a tender that was converted down *both* paths yields one Job **and** one Project. Job's `sourceTenderId @unique` prevents two Jobs, so the collision is Job-vs-Project, not Job-vs-Job. | Med | High | -2 emits a report of tenders with both a Job and a Project. Resolve (pick survivor, merge children onto the Job) before -3. -3 aborts if any unresolved duplicate remains. Rollback: N/A — -3 has no schema change. |
 | R3 | **Migration ordering / alphabetical load.** Prisma loads folders alphabetically; a bare `YYYYMMDD_` folder sorts *before* a `YYYYMMDDHHMMSS_` folder on the same day, so a backfill can run before the column it fills exists. | Med | High | **All new folders use full 14-digit `YYYYMMDDHHMMSS_` timestamps.** Keep backfill data **inline** in the migration (INSERT/UPDATE ... SELECT), never in a separate seed that could reorder. Verify order with `prisma migrate status` before applying. |
 | R4 | **FK / backfill ordering within a slice**: re-parenting children before the parent map is built produces orphans. | Med | Med | Each slice: (1) add nullable FK, (2) backfill from the `-2` map, (3) only then enforce NOT NULL / switch writes. Never enforce NOT NULL in the same statement as the column add. |
-| R5 | **Status enum coercion** (-2): a free-string `Job.status` value has no `ProjectStatus` member. | Low | Med | Ship the mapping inline in -2; unmapped values fall to `MOBILISING` with an activity-log note. Extend `ProjectStatus` first if a genuine new state exists. |
-| R6 | **Multi-role rule regressed** by a later index change. | Low | High | Regression test locked in -1 (section 5). CI fails if `schedule_alloc_worker_uniq` loses `jobRoleId`. |
-| R7 | **External callers of `/tenders/:id/convert-to-job` break** when the Job path retires. | Med | Med | -4 keeps the old route as an alias/redirect to `convertFromTender`; retire only after telemetry shows no traffic. |
-| R8 | **Number-scheme confusion**: `jobNumber` (`J...`) and `projectNumber` (`IS-P...`) coexist on one row. | Low | Low | Keep both columns; UX shows the label "Job number" over `jobNumber`. No renumbering of historical rows. |
+| R5 | **Status enum coercion** (-2): a free-string `Job.status` value has no `JobStatus` member. | Low | Med | Ship the mapping inline in -2; unmapped values fall to a safe default with an activity-log note. Extend the `JobStatus` enum first if a genuine new state exists. |
+| R6 | **Multi-role rule regressed** by any index work near `ScheduleAllocation` (including the -7 re-issue of `schedule_alloc_worker_uniq` from `projectId` to `jobId`). | Low | High | Regression test locked in -1 (section 5); slice -7 updates the test alongside the index re-issue. CI fails if the key loses `jobRoleId` or drops from 4 columns. |
+| R7 | **External callers of `POST /tenders/:id/convert` (Project path) break** when it becomes a Job-path alias. | Med | Med | -4 keeps the old route as an alias/redirect to the Job path; retire only after telemetry shows no traffic. |
+| R8 | **Number-scheme coexistence**: `jobNumber` (`J...`) stays authoritative; `projectNumber` (`IS-P...`) survives as a nullable/unique attribute on `Job` for historical lookups. | Low | Low | Keep both columns; UX shows the label "Job number" over `jobNumber`. No renumbering of historical rows. `projectNumber` may be dropped in a much later cosmetic slice if lookup traffic goes to zero. |
 | R9 | **Shift retirement (-9) removes data still read somewhere.** | Med | Med | Audit all `Shift`/`ShiftWorkerAssignment` readers first; -9 is optional and gated on B-P0b. Reversible until the final table drop. |
 
 #### Rollback per slice (summary)
 
-- **-1, -3, -4, -5, -7:** reversible by dropping the added column/constraint or
+- **-1, -4, -5, -7:** reversible by dropping the added column/constraint or
   restoring the previous route/FK; no data destroyed.
 - **-2:** reversible by nulling backfilled columns.
-- **-6, -8:** **destructive** — rollback is snapshot restore only. Gate behind a
-  soak period and an explicit go/no-go.
+- **-3:** verification only; no schema change to reverse.
+- **-6, -8:** **destructive** — rollback is snapshot restore only. Gate
+  behind a soak period and an explicit go/no-go.
 - **-9:** reversible until the table-drop step.
 
-### Appendix — verified reference points (commit d769b86)
+### Appendix — verified reference points
+
+Line numbers were verified against `apps/api/prisma/schema.prisma` at commit
+`d769b86` (the tree the prior Project-canonical authoring cited). Where
+Phase-A links have since landed on `origin/main`, the operational slice plan
+(`docs/architecture/drafts/job-project-merge-slice-plan.md` section 4)
+carries the current schema line numbers for the unwind targets and is the
+authoritative reference for those.
 
 - `Job` model — schema **L940**; `jobNumber` unique L941; `sourceTenderId @unique` L948.
 - `Project` model — schema **L1960**; `sourceTenderId` (not unique) L1964; `estimateSnapshot` L1990.
 - `JobConversion` — L979; `JobStage` L993; `JobActivity` L1013; `Shift` L1130.
 - `WorkerProfile` — L2068; `ProjectAllocation` L2105; `ScheduleAllocation` L2147.
-- `schedule_alloc_worker_uniq` — L2166.
-- `GanttTask` — L3616; `Contract` — L2907 (unique `projectId`).
-- `ProjectsService.convertFromTender` — `projects.service.ts` L535.
-- `JobsService.convertTenderToJob` — `jobs.service.ts` L1145; `issueContract` L1072.
-- `TenderConvertController` (project path) — `tendering/tender-convert.controller.ts` L48 (`POST /tenders/:id/convert`).
-- `TenderConversionController` (job path) — `jobs/tender-conversion.controller.ts` (`POST /tenders/:tenderId/convert-to-job`).
-- Web routes — `apps/web/src/App.tsx` L197-200 (`/jobs`, `/jobs/:id`, `/projects`, `/projects/:id`).
+- `schedule_alloc_worker_uniq` — L2166 (today `projectId`; re-issued as `jobId` in slice -7).
+- `GanttTask` — L3616; `Contract` — L2907 (unique `projectId`, re-pointed to `jobId` in slice -4).
+- `ProjectsService.convertFromTender` — `projects.service.ts` L535 (body moves onto Job path in slice -4).
+- `JobsService.convertTenderToJob` — `jobs.service.ts` L1145; `issueContract` L1072 (surviving conversion path; -4 loosens gate from `contractIssued` to `AWARDED`).
+- `TenderConvertController` (project path, retiring) — `tendering/tender-convert.controller.ts` L48 (`POST /tenders/:id/convert`).
+- `TenderConversionController` (job path, surviving) — `jobs/tender-conversion.controller.ts` (`POST /tenders/:tenderId/convert-to-job`).
+- Web routes — `apps/web/src/App.tsx` L197-200 (`/jobs`, `/jobs/:id`, `/projects`, `/projects/:id`; `/projects` becomes a redirect to `/jobs` in slice -8).
 
 ---
 
@@ -4445,8 +4515,8 @@ stated. **CONFLICT** = two-writers-no-arbiter, needs a single-writer refactor.
 | `ProjectAllocation` (schema.prisma:2110) | `allocations` (create/update/delete) | — | timesheets, pre-starts, field | **OK today; becomes derived per B-P0c** (sot/04-data-model.md (this doc) section 4: "stops being independently authored"). No new writers. |
 | `ScheduleAllocation` (schema.prisma:2152) | `scheduler` | — | scheduler grid, availability report | **OK — canonical allocation model** (sot/04-data-model.md (this doc) section 4). Multi-role unique key `schedule_alloc_worker_uniq` must not be narrowed (section 5 there). |
 | `Shift` cluster (schema.prisma:1131-1247) | `scheduler` (shift, assignments, conflicts) + `resources` (availabilityWindow, workerRoleSuitability, shiftRoleRequirement) | — | legacy shift board, ResourcesPage | **Deferred to B-P0a-9** — retirement path. Freeze: no new features on this cluster. |
-| `Job` + children (schema.prisma:941-1129) | `jobs` | — | jobs pages, archive | **Deferred to B-P0a** — folded into Project. |
-| `Project` + children (schema.prisma:1961-2071) | `projects` | `scheduler` reads only | contracts, gantt, timesheets | **OK — the surviving spine** (sot/04-data-model.md (this doc) section 1). |
+| `Job` + children (schema.prisma:941-1129) | `jobs` | — | jobs pages, archive | **OK — the surviving spine** (sot/04-data-model.md (this doc) section 1). Job/Project consolidation collapses Project onto Job. |
+| `Project` + children (schema.prisma:1961-2071) | `projects` | `scheduler` reads only | contracts, gantt, timesheets | **Deferred to B-P0a** — folded into Job (sot/04-data-model.md (this doc) section 1). Do not add writers. |
 | `Contract` / `Variation` / `ProgressClaim` / `ClaimLineItem` (schema.prisma:2912-3002) | `contracts` (sole writer + number sequences) | — | project detail, dashboards | **OK.** Note `JobVariation` (schema.prisma:1058) duplicates `Variation` — B-P0a-6 merges it; not re-decided here. |
 | `SubcontractorSupplier` (schema.prisma:3191) | `directory` (create/update) | `compliance` (subcontractorSupplier.update — auto-block on expired critical licence, compliance module) | directory pages, compliance dashboard | **SBD** with rule: compliance may write only the block/status fields; all other edits in directory. |
 
@@ -4566,7 +4636,7 @@ COMMERCIAL  [locked seed - 5 items; Contracts entry removed — folded into
   Rates & Lists                -> /admin/estimate-rates
 
 OPERATIONS  [6 items]
-  Jobs                         -> /projects (B-P0a: Project spine, "Job" label)
+  Jobs                         -> /jobs (B-P0a: Job spine, "Job" label; /projects 308-redirects to /jobs after slice -8)
   Scheduler                    -> /scheduler (single workspace, tabs: Grid / By-job / Availability)
   Timesheets                   -> /timesheets/approval (currently orphan route)
   Sites                        -> /sites
@@ -4602,8 +4672,9 @@ ADMIN (admin-only)  [3 items]
   *Changes ground truth:* section 9 DIRECTORY block (project_instructions.md:328-334).
 - **Rates & Lists Admin -> Commercial** — it is estimating reference data used
   daily by estimators, not platform admin (locked seed). *Changes section 9:347-349.*
-- **Jobs/Projects become one item** — B-P0a section 1: Project survives, UX label
-  stays "Job". Nav shows one item; `/jobs` remains a redirect during transition.
+- **Jobs/Projects become one item** — B-P0a section 1: Job survives, UX label
+  stays "Job". Nav shows one item pointing at `/jobs`; `/projects` becomes a
+  308-redirect to `/jobs` in slice -8.
   *Changes section 9:314-315.*
 - **Scheduler collapses 4 -> 1** — per finding S3-001 (docs/qa/qa-findings.md:17-24):
   one workspace with view tabs; Calendar Sync relocated to account settings.
@@ -5011,10 +5082,13 @@ model JobRoleDemand {
 
 #### 5.3 The core: day-grain allocation (the shared backend)
 
-> **[SoT reconcile]** The proposal below binds to `jobId`; the LOCKED design and the
-> committed schema use `projectId` (Project is the surviving spine — B-P0a). The
-> shipped `ScheduleAllocation` keys are `@@unique([date, projectId, workerProfileId,
-> jobRoleId])` and `@@unique([date, projectId, assetId])`. Preserved as design origin.
+> **[SoT reconcile — direction reversed 2026-07-14]** The proposal below binds to
+> `jobId`, which matches the RE-DECIDED Job-canonical direction (see B-P0a
+> section 1). The **currently shipped** `ScheduleAllocation` keys still use
+> `projectId` — `@@unique([date, projectId, workerProfileId, jobRoleId])` and
+> `@@unique([date, projectId, assetId])` — and are re-issued to `jobId` in
+> **B-P0a slice -7** (with the multi-role guard preserved; see B-P0a section 5).
+> Preserved as design origin.
 
 ```prisma
 enum ScheduleTargetType {

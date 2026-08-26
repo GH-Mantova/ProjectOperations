@@ -559,16 +559,19 @@ console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle released -> G
   }
 }
 
-console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle unmet -> plain ADMIT (no PROMOTE)");
+// NOTE: behavior changed by feat/lint-human-gate-blindness (GATE_NOT_RELEASED).
+// A HOLD with an unmet requires_on_main :: needle now REJECTs with GATE_NOT_RELEASED
+// instead of plain ADMIT. This ensures "bare ADMIT means all declared gates are satisfied."
+console.log("\n=== exit 1 REJECT: HOLD + requires_on_main :: needle unmet -> GATE_NOT_RELEASED (not bare ADMIT)");
 {
   const out = runIsolated("hold-content-gate-unmet",
     "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: hold-unmet-test\ncluster_order: 2\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_HOLD_XYZ_1234567890",
-    0, { hold: true });
-  if (/GATE_RELEASED/.test(out) || /PROMOTE/.test(out)) {
-    console.log("      FAIL expected plain ADMIT with no PROMOTE line. got:\n      " +
+    1, { hold: true });
+  if (!/GATE_NOT_RELEASED/.test(out)) {
+    console.log("      FAIL expected GATE_NOT_RELEASED in output. got:\n      " +
       out.trim().split("\n").join("\n      "));
     fail++; pass--;
   }

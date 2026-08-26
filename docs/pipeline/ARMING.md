@@ -71,3 +71,55 @@ The slug is the file stem without the `-HOLD.md` suffix. Example:
 ```powershell
 scripts\pipeline\arm-prompt.ps1 -Name pr-arm-lock-s1-serialize-arming
 ```
+
+## Lint codes that block arming
+
+The intake linter (`scripts/pipeline/lint-prompt.mjs`) runs as part of step 3 above. The
+following codes are relevant to the arming workflow.
+
+### `HUMAN_GATE_PRESENT` (exit 1 — hard REJECT)
+
+Triggered when the prompt body contains any of:
+
+| Marker | Match rule |
+|---|---|
+| `<!-- watcher: do-not-arm -->` | HTML comment, whitespace-tolerant, case-insensitive |
+| A line containing `DO NOT ARM` | CASE-SENSITIVE — genuine gates are in capitals |
+| A line containing `Arm ONLY` | Conditional arming — a person named the condition |
+
+The match is intentionally **case-sensitive** for `DO NOT ARM` and `Arm ONLY`. Genuine human
+gates are written in capitals. The prose instruction "Do NOT arm ..." (mixed case) that appears
+in prompt bodies explaining these rules is NOT a gate.
+
+Matches inside fenced code blocks (`` ``` ``) and inline code spans (`` ` ``) are **ignored**. A
+prompt that documents this feature, including the originating prompt
+`pr-lint-human-gate-blindness-HOLD.md`, quotes these markers as examples and must not self-reject.
+
+A `docs/approvals/` reference in the body **warns only** (does not reject). The approval document
+is a legitimate gate artefact.
+
+**The only thing that clears `HUMAN_GATE_PRESENT` is a human removing the marker from the
+prompt body.** No flag, no env var, no bypass exists. This is intentional.
+
+### `GATE_RELEASED` (exit 0 — ADMIT + promotion signal)
+
+When a HOLD declares `requires_on_main: path :: needle` and the needle IS on origin/main, the
+linter emits `GATE_RELEASED` and returns ADMIT. The CLI shows `PROMOTE` to distinguish it from a
+plain ADMIT. This means the HOLD is ready to arm.
+
+### `GATE_NOT_RELEASED` (exit 1 — REJECT)
+
+When a HOLD declares `requires_on_main: path :: needle` and the needle is **absent** from
+origin/main, the linter emits `GATE_NOT_RELEASED` and returns REJECT (exit 1). This is not an
+error — it means the HOLD is correctly waiting for its predecessor slice.
+
+**Design choice: REJECT, not admit-with-signal.** The post-condition for this change is: a bare
+ADMIT means all declared gates are satisfied. Returning ADMIT for an unmet needle would make a
+waiting HOLD indistinguishable from a ready one. REJECT is the clearest signal.
+
+**Fail-safe:** if the `git` probe cannot reach origin/main (shallow clone, no remote, broken git
+binary), the linter warns to stderr and skips the check. A broken instrument must never report a
+gate as absent — that would bin real work. `[CANNOT MEASURE]` becomes WARN + skip, not REJECT.
+
+Existence-only gates (`requires_on_main: path` with no `::`) are not affected by this code. They
+are handled by `FILE_GATE_DEAD` / `GATE_RELEASED` (the pre-existing path).

@@ -541,6 +541,60 @@ function checkDeadGate(fm, repoRoot, name) {
   return { ok: true };
 }
 
+/**
+ * ORPHANED_DISCHARGE guard.
+ *
+ * `docs/pr-prompts/BACKLOG.yaml` operates a rule: when an item IS staged into a
+ * prompt, delete it from the register — one place, never two. Separately, this
+ * linter bins a prompt whose premise no longer holds. Both rules are right; the
+ * seam between them is not. On 2026-07-23 twelve slices of the B-P0a/B-P0b
+ * workstream were lost when their SLICE-0 plan prompts were binned as STALE
+ * moments after `BACKLOG.yaml` had discharged the register entries into them.
+ *
+ * The general rule: a prompt dying is NOT the same as the work being done. A
+ * SLICE-0 plan prompt dies at the exact moment its plan ships — which is when
+ * the real work begins.
+ *
+ * When the premise is dead AND `BACKLOG.yaml` still names this prompt basename,
+ * this prompt is the register's only pointer to the work. Escalate STALE →
+ * REJECT (exit 1) so a human chooses either to re-open the register item or to
+ * stage the successor prompt in the same PR that bins this one.
+ *
+ * Read the register as UTF-8 (basenames are ASCII, so mojibake elsewhere in the
+ * file does not affect the search). Match on the full basename with a boundary
+ * check — a bare substring would confuse `pr-foo-HOLD.md` with any longer name
+ * that ends in the same suffix.
+ *
+ * Fail SAFE: if the register cannot be read, return null and let the ordinary
+ * STALE path proceed. A missing or unreadable register must not itself bin the
+ * queue.
+ *
+ * Test seam: `LINT_BACKLOG_PATH` overrides the default location so the unit
+ * tests can point at a synthetic register without a whole fake repo.
+ */
+function checkOrphanedDischarge(promptName, repoRoot) {
+  const override = process.env.LINT_BACKLOG_PATH;
+  const backlogPath = override && override !== ""
+    ? override
+    : join(repoRoot, "docs", "pr-prompts", "BACKLOG.yaml");
+  let text;
+  try {
+    text = readFileSync(backlogPath, "utf8");
+  } catch (_) {
+    return null;
+  }
+  const nameEsc = promptName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // A filename-safe char on either side would mean the "match" is inside a
+  // longer basename — pr-foo-HOLD.md as a substring of pr-foo-extended-HOLD.md.
+  const re = new RegExp(
+    "(^|[^A-Za-z0-9_.\\-])" + nameEsc + "($|[^A-Za-z0-9_.\\-])"
+  );
+  for (const line of text.split(/\r?\n/)) {
+    if (re.test(line)) return { line: line.trim() };
+  }
+  return null;
+}
+
 const RESET = "\x1b[0m";
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -985,6 +1039,24 @@ export function lint(file, opts) {
   }
 
   if (!res.needed) {
+    // ORPHANED_DISCHARGE guard. If BACKLOG.yaml still names this prompt's
+    // basename, the register discharged its only pointer to the work into this
+    // prompt. Binning it would delete the last record of that work — the exact
+    // 2026-07-23 loss (twelve B-P0a/B-P0b slices, found by hand a month later).
+    // Escalate STALE → REJECT (exit 1); a human must decide.
+    const orphan = checkOrphanedDischarge(name, repoRoot);
+    if (orphan) {
+      return fail("ORPHANED_DISCHARGE",
+        "Premise is dead, but BACKLOG.yaml still names this prompt as the only home for a discharged item:\n" +
+        "        " + DIM + orphan.line + RESET + "\n" +
+        "        Binning it would delete the register's last pointer to that work.\n" +
+        "        On 2026-07-23 twelve B-P0a/B-P0b slices were lost this way — the register\n" +
+        "        entry pointed here, this prompt was binned, and the work lived in no place at all.\n" +
+        "        Two legal fixes:\n" +
+        "          - re-open a BACKLOG.yaml item covering the work that remains, OR\n" +
+        "          - stage the successor prompt in the same PR that bins this one.\n" +
+        "        REJECT (exit 1), not stale-bin (exit 3), on purpose: quiet-bin is what caused the loss.");
+    }
     if (dequeue) {
       renameSync(file, file.replace(/-ready\.md$/, ".md") + ".stale-premise-already-satisfied");
     }

@@ -278,7 +278,11 @@ function runIsolated(name, frontMatter, expectedExit, opts) {
   for (const sibName of Object.keys(siblings)) {
     writeFileSync(join(isoDir, sibName), siblings[sibName], "utf8");
   }
-  const file = join(isoDir, name + "-ready.md");
+  // Prompts parked waiting for a gate use the -HOLD.md suffix. The linter
+  // decides GATE_RELEASED vs FILE_GATE_DEAD / CLUSTER_DEAD_GATE off this suffix,
+  // so the test harness must be able to write either.
+  const suffix = opts.hold ? "-HOLD.md" : "-ready.md";
+  const file = join(isoDir, name + suffix);
   writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
 
   const env = Object.assign({}, process.env, opts.env || {});
@@ -495,6 +499,80 @@ runIsolated("file-gate-dead-git-broken",
   "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
   0,
   { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
+
+// ── GATE_RELEASED: a HOLD whose gate has landed on origin/main promotes. ─────
+// The two dead-gate probes have a two-way verdict: on a -ready.md prompt the
+// gate-satisfied state is a REJECT (authoring hole), on a -HOLD.md prompt it
+// is an ADMIT + PROMOTE (the parked slice is ready to arm). Cover both cells
+// for both gate types; the two non-HOLD cells (released -> REJECT, unmet ->
+// ADMIT) are already covered by the tests just above.
+//
+// The five in-tree HOLDs Marco measured (2026-08-25T22:10Z) were rejected on
+// exactly this: 4 x CLUSTER_DEAD_GATE + 1 x FILE_GATE_DEAD. Under the fix
+// they must all ADMIT with GATE_RELEASED, and non-HOLD prompts with the same
+// front-matter must continue to REJECT.
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main released -> GATE_RELEASED (PROMOTE)");
+{
+  const out = runIsolated("hold-file-gate-released",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
+    0, { hold: true });
+  if (!/GATE_RELEASED/.test(out) || !/PROMOTE/.test(out)) {
+    console.log("      FAIL expected PROMOTE + GATE_RELEASED in output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main unmet -> plain ADMIT (no PROMOTE)");
+{
+  const out = runIsolated("hold-file-gate-unmet",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "requires_file_on_main: apps/api/src/does-not-exist-hold-xyz-9876543210.ts",
+    0, { hold: true });
+  if (/GATE_RELEASED/.test(out) || /PROMOTE/.test(out)) {
+    console.log("      FAIL expected plain ADMIT with no PROMOTE line. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle released -> GATE_RELEASED (PROMOTE)");
+{
+  // GATE_RELEASED is the constant the fix introduces into lint-prompt.mjs, so
+  // it is on origin/main only AFTER this PR merges. Use a needle that is
+  // present on origin/main today, else the test is a chicken-and-egg problem.
+  // UNKNOWN_KEY has been on origin/main since cluster-chaining SLICE 1.
+  const out = runIsolated("hold-content-gate-released",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: hold-released-test\ncluster_order: 2\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
+    0, { hold: true });
+  if (!/GATE_RELEASED/.test(out) || !/PROMOTE/.test(out)) {
+    console.log("      FAIL expected PROMOTE + GATE_RELEASED in output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle unmet -> plain ADMIT (no PROMOTE)");
+{
+  const out = runIsolated("hold-content-gate-unmet",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: hold-unmet-test\ncluster_order: 2\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_HOLD_XYZ_1234567890",
+    0, { hold: true });
+  if (/GATE_RELEASED/.test(out) || /PROMOTE/.test(out)) {
+    console.log("      FAIL expected plain ADMIT with no PROMOTE line. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
 
 // ── MISSING_STANDING_AUTHORITY (WARN-ONLY) ──────────────────────────────────
 // A prompt whose body does not grant push authority still lints ADMIT (exit 0),

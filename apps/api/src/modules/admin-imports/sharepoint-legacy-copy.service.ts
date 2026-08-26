@@ -10,10 +10,10 @@
  *   - Skips files that are already present at the destination (idempotency).
  *
  * Decision references (from docs/plans/tender-tracker-migration-plan.md):
- *   D3  T-number is the idempotency key embedded in Tender.title.
- *   D8  Copy via the EXISTING Graph seam — no new Graph/MSAL client.
- *       escalates: true — Azure environment.
- *   D9  No real folder names or client data in fixtures.
+ *   TFM-D3  T-number is the idempotency key embedded in Tender.title.
+ *   TFM-D8  Copy via the EXISTING Graph seam — no new Graph/MSAL client.
+ *           escalates: true — Azure environment.
+ *   TFM-D9  No real folder names or client data in fixtures.
  *
  * TFM-S6 changes:
  *   - legacyTendersRoot (from apps/api/src/config/sharepoint.config.ts) is

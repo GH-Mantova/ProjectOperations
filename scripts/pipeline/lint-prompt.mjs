@@ -594,6 +594,199 @@ const YELLOW = "\x1b[33m";
 const CYAN = "\x1b[36m";
 const DIM = "\x1b[2m";
 
+// ---------------------------------------------------------------------------
+// Code-context normalizer (Defect 2 fix)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip fenced code blocks (``` ... ```) and inline code spans (`...`) from
+ * text before scanning for markers. Terms inside backticks or fences are
+ * quotations, not instructions; treating them as instructions causes false
+ * positives on prompts that document this very linter.
+ *
+ * Strategy:
+ *   1. Replace every fenced block (``` or ~~~, opening/closing fence on its own
+ *      line) with blank lines of the same length so line numbers are preserved.
+ *   2. Replace every inline code span (balanced backtick runs) with spaces so
+ *      character offsets are preserved.
+ *
+ * Exported so both checkHumanGate and the TIER-1 destructive check can share it.
+ */
+export function stripCodeContext(text) {
+  // Step 1: remove fenced blocks. A fence is three or more backticks or tildes
+  // at the start of a line (possibly preceded by spaces). The closing fence must
+  // use the same character as the opening fence.
+  let out = text.replace(
+    /(^|\r?\n)([ \t]*)(```+|~~~+)([^\r\n]*)([\s\S]*?)((?:\r?\n[ \t]*)\3[^\S\r\n]*(?=\r?\n|$))/gm,
+    (match) => " ".repeat(match.length),
+  );
+
+  // Step 2: remove inline code spans. Handles multi-backtick delimiters like
+  // ``foo`` but not fenced blocks (already gone). A span is: one or more
+  // backticks, any content not containing a matching run, closing backticks.
+  out = out.replace(/`+[^`\r\n]*`+/g, (match) => " ".repeat(match.length));
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Human arming gate detector (Defect 1 fix)
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan a prompt body for human arming gate markers.
+ *
+ * Hard REJECT (code HUMAN_GATE_PRESENT) on any of:
+ *   <!-- watcher: do-not-arm -->   (HTML comment, case-insensitive whitespace)
+ *   a line containing DO NOT ARM   (CASE-SENSITIVE — genuine gates are in caps;
+ *                                   prose "Do NOT arm ..." is not a gate)
+ *   a line containing Arm ONLY     (conditional arming — human named the condition)
+ *
+ * WARN only (do not reject) on a docs/approvals/ reference — the approval
+ * document is a legitimate gate artefact, not a human stop marker.
+ *
+ * Ignores matches inside fenced code blocks and inline code spans: a prompt
+ * that documents this feature (including this very prompt) quotes these strings
+ * as examples. Strip via stripCodeContext() first.
+ *
+ * The message names WHICH marker matched and THE LINE it is on, and ends with
+ * the one thing that clears it: a human removing the marker.
+ *
+ * Shape mirrors checkFixesPrTargetOpen: pure, exported, unit-testable.
+ * Returns { ok: true } or { ok: false, code, msg }.
+ */
+export function checkHumanGate(bodyText) {
+  const stripped = stripCodeContext(bodyText);
+  const lines = stripped.split(/\r?\n/);
+
+  // Marker 1: <!-- watcher: do-not-arm --> (HTML comment, whitespace-tolerant, case-insensitive)
+  const DO_NOT_ARM_COMMENT = /<!--\s*watcher:\s*do-not-arm\s*-->/i;
+  // Marker 2: a line containing the EXACT sequence DO NOT ARM (case-sensitive)
+  const DO_NOT_ARM_CAPS = /DO NOT ARM/;
+  // Marker 3: a line containing "Arm ONLY" (conditional arming, case-sensitive on "Arm")
+  const ARM_ONLY = /Arm ONLY/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNum = i + 1;
+
+    if (DO_NOT_ARM_COMMENT.test(line)) {
+      return {
+        ok: false,
+        code: "HUMAN_GATE_PRESENT",
+        msg:
+          "HUMAN_GATE_PRESENT: line " + lineNum + " contains <!-- watcher: do-not-arm --> marker.\n" +
+          "        Matched: " + line.trim() + "\n" +
+          "        A person explicitly marked this prompt do-not-arm. The only thing that clears\n" +
+          "        this gate is a human removing the marker from the prompt body.",
+      };
+    }
+
+    if (DO_NOT_ARM_CAPS.test(line)) {
+      return {
+        ok: false,
+        code: "HUMAN_GATE_PRESENT",
+        msg:
+          "HUMAN_GATE_PRESENT: line " + lineNum + " contains DO NOT ARM.\n" +
+          "        Matched: " + line.trim() + "\n" +
+          "        A person explicitly marked this prompt do-not-arm. The only thing that clears\n" +
+          "        this gate is a human removing the marker from the prompt body.",
+      };
+    }
+
+    if (ARM_ONLY.test(line)) {
+      return {
+        ok: false,
+        code: "HUMAN_GATE_PRESENT",
+        msg:
+          "HUMAN_GATE_PRESENT: line " + lineNum + " contains 'Arm ONLY' (conditional arming).\n" +
+          "        Matched: " + line.trim() + "\n" +
+          "        A person named a condition that must be satisfied before arming. The only\n" +
+          "        thing that clears this gate is a human removing the marker from the prompt body.",
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// GATE_NOT_RELEASED: requires_on_main needle absent from origin/main (Defect 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * When a HOLD declares a requires_on_main needle and that needle is ABSENT from
+ * origin/main, emit GATE_NOT_RELEASED. This is the inverse of GATE_RELEASED.
+ *
+ * Design choice: REJECT (exit 1).
+ * Rationale: the post-condition demands that a bare ADMIT means all declared
+ * gates are satisfied. A HOLD with an unmet requires_on_main content needle
+ * should NOT return a bare ADMIT — it should return a distinct signal. REJECT
+ * is the clearest distinct signal: it cannot be confused with a plain ADMIT.
+ * The cost (the HOLD appears as a REJECT until its needle lands) is the
+ * intended behavior — it was never ready to arm.
+ *
+ * Fail-safe: if the probe itself cannot run (no origin/main, shallow clone, git
+ * unavailable) → warn-and-skip (return { ok: true }). A broken instrument must
+ * NEVER report "gate absent" — that would bin real work.
+ *
+ * This check ONLY applies to HOLD prompts (isHold=true) and ONLY to content
+ * gates (path :: needle). Existence-only gates (no ::) are legitimate "wait for
+ * the file to appear" gates — they are covered by checkFileGateDead / checkDeadGate
+ * which already handle them correctly.
+ *
+ * Returns { ok: true } (skip / gate met or existence-only) or
+ *         { ok: false, code: "GATE_NOT_RELEASED", msg }
+ */
+function checkGateNotReleased(fm, repoRoot, name, isHold) {
+  if (!isHold) return { ok: true }; // only meaningful for HOLDs
+
+  const entries = parseRequiresOnMainEntries(fm);
+  for (const { path, needle } of entries) {
+    if (!needle) continue; // existence-only gate — not our check
+
+    const contents = readFromOriginMain(path, repoRoot);
+    if (contents === null) {
+      // git unavailable / broken — warn and skip (fail-safe)
+      process.stderr.write(
+        "WARN  " + (name || "<file>") + "  GATE_NOT_RELEASED probe: could not reach origin/main:" +
+        path + "; skipping (fail-safe — not reporting gate as absent).\n"
+      );
+      continue;
+    }
+    if (contents.absent) {
+      // File itself is absent from origin/main. The gate file hasn't landed yet;
+      // so the needle definitely hasn't landed either. That IS an unmet gate.
+      return {
+        ok: false,
+        code: "GATE_NOT_RELEASED",
+        msg:
+          "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
+          "the file \"" + path + "\" is not on origin/main yet, so the needle is absent.\n" +
+          "        This HOLD is parked waiting for its predecessor slice to land.\n" +
+          "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
+          "        This is not an error — it means the HOLD is correctly waiting.",
+      };
+    }
+    // File is present — check whether the needle is in it
+    if (typeof contents === "string" && contents.indexOf(needle) === -1) {
+      return {
+        ok: false,
+        code: "GATE_NOT_RELEASED",
+        msg:
+          "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
+          "needle not found in origin/main:" + path + ".\n" +
+          "        This HOLD is parked waiting for its predecessor slice to land.\n" +
+          "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
+          "        This is not an error — it means the HOLD is correctly waiting.",
+      };
+    }
+    // Needle IS present: gate is satisfied. checkDeadGate will emit GATE_RELEASED.
+    // Nothing to do here.
+  }
+  return { ok: true };
+}
+
 /** Minimal YAML front-matter parser. Deliberately dumb: no dependency, no surprises. */
 export function parseFrontMatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -760,6 +953,16 @@ export function lint(file, opts) {
       "        Every prompt needs an EXECUTABLE premise, or nothing can tell whether it is stale.");
   }
 
+  // HUMAN_GATE_PRESENT — hard REJECT before the premise runs.
+  // A prompt whose body carries an explicit human arming gate must REJECT even if the
+  // premise passes. The check runs over the body only (after the front-matter closing ---).
+  {
+    const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
+    const bodyForGate = bodyMatch ? bodyMatch[1] : "";
+    const gateRes = checkHumanGate(bodyForGate);
+    if (!gateRes.ok) return fail(gateRes.code, gateRes.msg);
+  }
+
   // MISSING_STANDING_AUTHORITY — WARN-ONLY diagnostic (does not affect exit code).
   //
   // On 2026-08-20 three armed prompts exited 0 without opening a PR; none granted the agent
@@ -860,6 +1063,17 @@ export function lint(file, opts) {
     if (fileDeadRes.released) released.push(...fileDeadRes.released);
   }
 
+  // GATE_NOT_RELEASED — for HOLDs with a requires_on_main content needle that is
+  // ABSENT from origin/main. REJECT with a distinct code so a bare ADMIT unambiguously
+  // means the gate IS satisfied. Fail-safe: probe failure → warn-and-skip.
+  // NOTE: This runs AFTER checkDeadGate, which handles the "needle IS present" case
+  // (emitting GATE_RELEASED). So if we reach here, the needle is either absent or
+  // the file is absent — both mean GATE_NOT_RELEASED.
+  if (isHold) {
+    const gnrRes = checkGateNotReleased(fm, repoRoot, name, isHold);
+    if (!gnrRes.ok) return fail(gnrRes.code, gnrRes.msg);
+  }
+
   const missing = REQUIRED.filter((k) => !fm[k] || (Array.isArray(fm[k]) && fm[k].length === 0));
   if (missing.length) return fail("MISSING_FIELD", "Missing required field(s): " + missing.join(", "));
 
@@ -953,20 +1167,26 @@ export function lint(file, opts) {
     const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
     const body = bodyMatch ? bodyMatch[1] : "";
 
+    // Strip fenced code blocks and inline code spans before scanning.
+    // A filename like `drop-legacy-tables.sql` quoted in prose is a quotation,
+    // not an instruction — the original flat-text scan fired on it.
+    // stripCodeContext() is the shared normalizer (also used by checkHumanGate).
+    const bodyStripped = stripCodeContext(body);
+
     const scopeList = Array.isArray(fm.scope) ? fm.scope : [String(fm.scope || "")];
     const corpusAll = [
       String(fm.premise || ""),
       String(fm.premise_means || ""),
       ...scopeList,
       String(fm.done_when || ""),
-      body,
+      bodyStripped,
     ].join("\n");
 
     const corpusProse = [
       String(fm.premise || ""),
       String(fm.premise_means || ""),
       String(fm.done_when || ""),
-      body,
+      bodyStripped,
     ].join("\n");
 
     // Can this prompt reach the database at all? Only a scope entry under apps/api/prisma/**

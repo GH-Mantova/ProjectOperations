@@ -59,6 +59,10 @@ export const permissionRegistry = [
   // and lands on the CRM Tenders register. Modeled on the leave-approval
   // pattern — role-assignable, not hardcoded to a user.
   { code: "tenders.review", module: "tendering", label: "Review withdrawn tenders (reopen or confirm)", description: "Reviewer authority to reopen a withdrawn tender to Estimating, or confirm the withdrawal (exits the Pipeline)", isHighRisk: true },
+  // EW-2a: Allocation authority. Whoever holds this capability is the allocator —
+  // no hardcoded user or role name. Grants access to allocate, override, reassign,
+  // and view the capacity board.
+  { code: "tenders.allocate", module: "tendering", label: "Allocate tenders to estimators", description: "Assign, reassign, and override tender-to-estimator allocations; view and manage the estimator capacity board", isHighRisk: true },
   { code: "tenderdocuments.view", module: "tendering", label: "View tender documents", description: "View tender documents" },
   { code: "tenderdocuments.manage", module: "tendering", label: "Upload and manage tender documents", description: "Manage tender documents" },
   { code: "jobs.view", module: "jobs", label: "View jobs", description: "View jobs" },

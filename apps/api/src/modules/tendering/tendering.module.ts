@@ -34,6 +34,7 @@ import { QuoteProposalsController } from "./scope/quote-proposals.controller";
 import { QuoteProposalsService } from "./scope/quote-proposals.service";
 import { ClarificationProposalsController } from "./scope/clarification-proposals.controller";
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
+import { CapacityService } from "./capacity.service";
 
 @Module({
   imports: [AuditModule, BidPrioritisationModule, ContractsModule, MasterDataModule, PlatformModule, RatesModule, WinLikelihoodModule, forwardRef(() => ProjectsModule)],
@@ -74,7 +75,8 @@ import { ClarificationProposalsService } from "./scope/clarification-proposals.s
     ProposalsService,
     EstimateProposalsService,
     QuoteProposalsService,
-    ClarificationProposalsService
+    ClarificationProposalsService,
+    CapacityService
   ],
   exports: [
     TenderingService,

@@ -6,14 +6,7 @@ const config: Config = {
   testRegex: ".*\\.spec\\.ts$",
   testPathIgnorePatterns: ["/node_modules/", "/dist/", "/test/canonical/"],
   transform: {
-    "^.+\\.(t|j)s$": ["ts-jest", {
-      // TS2339 fires when spec files reference Prisma model properties (e.g.
-      // allocationWeightConfig, estimatorCapacity) that exist in schema.prisma
-      // but were added AFTER the last `prisma generate` run in this environment.
-      // CI regenerates the client before running tests, so this is a local-only
-      // gap. Suppressing here keeps the suite runnable without hiding real errors.
-      diagnostics: { ignoreCodes: [2339, 2345, 2353, 7006] }
-    }]
+    "^.+\\.(t|j)s$": "ts-jest"
   },
   // Mirror tsconfig.base.json paths so runtime imports of the shared config
   // package resolve during jest. `import type` gets elided by ts-jest so the

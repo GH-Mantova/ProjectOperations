@@ -9,8 +9,17 @@ import { VALUE_BAND_EDGES } from "../win-likelihood/win-likelihood-features.serv
 const TERMINAL_STATUSES = ["AWARDED", "CONTRACT_ISSUED", "CONVERTED", "LOST", "WITHDRAWN"] as const;
 
 // ── Size-band keys ────────────────────────────────────────────────────────────
-// VALUE_BAND_EDGES has 4 entries (index 0..3). We map them to the four keys
-// that are seeded in AllocationWeightConfig for dimension="size".
+// VALUE_BAND_EDGES has 4 entries (index 0..3) and its LAST edge is
+// maxExclusive: Infinity, so exactly four bands are reachable here.
+// AllocationWeightConfig seeds FIVE size keys (prisma/seed.ts:3951-3957):
+// XS 0.50, S 1.00, M 2.00, L 3.50, XL 5.00. Because the >1M edge is the
+// last one, every tender above 1M lands on "L" (3.50) and the seeded "XL"
+// (5.00) row is unreachable. That is a real gap, but closing it means
+// choosing a fifth value threshold, which is not derivable from anything
+// in the repo - it is a product decision, so it is documented here and
+// raised rather than guessed. Do NOT simply append "XL" to the list below
+// expecting the fallback in sizeBand() to select it: that fallback is
+// unreachable while the last edge is Infinity.
 // null estimatedValue falls back to "M" (middle tier).
 const SIZE_BAND_KEYS = ["XS", "S", "M", "L"] as const;
 export type SizeBandKey = (typeof SIZE_BAND_KEYS)[number];

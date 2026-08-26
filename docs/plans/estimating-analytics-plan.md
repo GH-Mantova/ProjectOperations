@@ -37,13 +37,13 @@ bigger program and explicitly out of scope).
 
 | # | Decision |
 |---|---|
-| D1 | **Reuse, don't rebuild.** Win-rate is shipped. The two NEW definitions are only the GAPS: estimator turnaround/lead-time, and qty-vs-$ throughput. |
-| D2 | **No schema change** — both new reports are read-only `ReportDefinition`s over existing tables. If EA-2's preset genuinely requires a seeded global-dashboard ROW (a data migration), THAT slice — and only that slice — carries `gate_allow: migrations` + a rollback strategy and sets `escalates: true`. |
-| D3 | **Turnaround = days-to-quote**, reusing win-likelihood's `leadTimeDays`. **Exclude still-open tenders** (count only submitted/quoted). Group by estimator. Params: estimator / client / period / date-range. |
-| D4 | **qty-vs-$ throughput** = count of tenders priced vs Σ `estimatedValue`, per estimator. |
-| D5 | **Role-gated visibility.** Estimators see their OWN performance (self-view filters to the current user); managers/leadership see the ALL-estimator rollup. The report params + preset must respect role. |
-| D6 | **Home = inside the reporting/dashboard framework** (a curated "Estimating Analytics" GLOBAL dashboard preset), NOT a bespoke page. Keep the preset focused (priority metrics), not a wall of widgets. |
-| D7 | **Excel-style free-form pivot builder is OUT of scope** for this brief. |
+| EA-D1 | **Reuse, don't rebuild.** Win-rate is shipped. The two NEW definitions are only the GAPS: estimator turnaround/lead-time, and qty-vs-$ throughput. |
+| EA-D2 | **No schema change** — both new reports are read-only `ReportDefinition`s over existing tables. If EA-2's preset genuinely requires a seeded global-dashboard ROW (a data migration), THAT slice — and only that slice — carries `gate_allow: migrations` + a rollback strategy and sets `escalates: true`. |
+| EA-D3 | **Turnaround = days-to-quote**, reusing win-likelihood's `leadTimeDays`. **Exclude still-open tenders** (count only submitted/quoted). Group by estimator. Params: estimator / client / period / date-range. |
+| EA-D4 | **qty-vs-$ throughput** = count of tenders priced vs Σ `estimatedValue`, per estimator. |
+| EA-D5 | **Role-gated visibility.** Estimators see their OWN performance (self-view filters to the current user); managers/leadership see the ALL-estimator rollup. The report params + preset must respect role. |
+| EA-D6 | **Home = inside the reporting/dashboard framework** (a curated "Estimating Analytics" GLOBAL dashboard preset), NOT a bespoke page. Keep the preset focused (priority metrics), not a wall of widgets. |
+| EA-D7 | **Excel-style free-form pivot builder is OUT of scope** for this brief. |
 
 ---
 

@@ -82,6 +82,7 @@ type Account360 = {
   rollUps: {
     contacts: ContactRow[];
     tenders: TenderRow[];
+    tenderTotal: number;
     jobs: JobRow[];
   };
 };
@@ -342,7 +343,7 @@ export function AccountDetailPage() {
           {/* Win/loss roll-up (read-only cache from Client model) */}
           <div style={{ display: "flex", gap: 32, marginTop: 16, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
             <div>
-              <div style={s.label}>Tenders</div>
+              <div style={s.label}>Outcomes recorded</div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{client.tenderCount}</div>
             </div>
             <div>
@@ -389,7 +390,7 @@ export function AccountDetailPage() {
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
               {" "}
-              <span style={{ opacity: 0.7 }}>({rollUps[tab].length})</span>
+              <span style={{ opacity: 0.7 }}>({tab === "tenders" ? rollUps.tenderTotal : rollUps[tab].length})</span>
             </button>
           ))}
         </div>
@@ -427,28 +428,35 @@ export function AccountDetailPage() {
           rollUps.tenders.length === 0
             ? <div style={s.empty}>No tenders found for this client.</div>
             : (
-              <table style={s.table}>
-                <thead>
-                  <tr>
-                    <th style={s.th}>Number</th>
-                    <th style={s.th}>Title</th>
-                    <th style={s.th}>Status</th>
-                    <th style={s.th}>Due</th>
-                    <th style={s.th}>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rollUps.tenders.map((t) => (
-                    <tr key={t.id}>
-                      <td style={s.td}>{t.tenderNumber}</td>
-                      <td style={s.td}>{t.title}</td>
-                      <td style={s.td}>{t.status}</td>
-                      <td style={s.td}>{fmtDate(t.dueDate)}</td>
-                      <td style={s.td}>{fmtDate(t.createdAt)}</td>
+              <>
+                <table style={s.table}>
+                  <thead>
+                    <tr>
+                      <th style={s.th}>Number</th>
+                      <th style={s.th}>Title</th>
+                      <th style={s.th}>Status</th>
+                      <th style={s.th}>Due</th>
+                      <th style={s.th}>Created</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rollUps.tenders.map((t) => (
+                      <tr key={t.id}>
+                        <td style={s.td}>{t.tenderNumber}</td>
+                        <td style={s.td}>{t.title}</td>
+                        <td style={s.td}>{t.status}</td>
+                        <td style={s.td}>{fmtDate(t.dueDate)}</td>
+                        <td style={s.td}>{fmtDate(t.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {rollUps.tenders.length < rollUps.tenderTotal && (
+                  <div style={{ ...s.empty, marginTop: 8 }}>
+                    Showing {rollUps.tenders.length} of {rollUps.tenderTotal}
+                  </div>
+                )}
+              </>
             )
         )}
 

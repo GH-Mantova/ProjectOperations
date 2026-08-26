@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { entityLabel, sortThreadsByActivity } from "./comms-inbox.helpers";
 
 // CRM-4: Comms hub surface — internal threads + To-Do.
 // Anchored to a CRM record via ?entityType=ACCOUNT|TENDER|JOB|CONTRACT&entityId=…
 // The decoupled sub-module surfaces two tabs (threads + tasks) so it can
 // later lift into its own product without a UI rewrite. Email integration
 // is CRM-5 and lives out-of-scope for this slice.
+//
+// CRM-4 / NAV-4 reconciliation: ShellLayout wires /crm/comms with no query
+// string; this page now renders an unanchored inbox when entityId is absent.
+// The anchored path (from a record detail page) is unchanged.
 
 type ActorLite = { id: string; firstName: string; lastName: string };
 
@@ -38,6 +43,8 @@ type Task = {
   dueAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  entityType: string;
+  entityId: string;
   assignee: ActorLite | null;
   createdBy: ActorLite | null;
 };
@@ -98,6 +105,275 @@ const STATUS_COLOUR: Record<Task["status"], { bg: string; fg: string }> = {
   DONE: { bg: "#d1fae5", fg: "#065f46" },
   CANCELLED: { bg: "#f3f4f6", fg: "#6b7280" }
 };
+
+const INBOX_PAGE_SIZE = 25;
+
+// ── Unanchored inbox component ────────────────────────────────────────────────
+//
+// Rendered when /crm/comms has no entityType/entityId query string (the nav
+// entry). Shows all threads and my-tasks across every entity, paged.
+// Clicking a thread navigates to the anchored view (?entityType=…&entityId=…)
+// so there is one conversation UI, not two.
+
+function CommsInboxPage() {
+  const { authFetch, user } = useAuth();
+  const navigate = useNavigate();
+
+  const [inboxTab, setInboxTab] = useState<"threads" | "tasks">("threads");
+
+  // Threads paging
+  const [inboxThreads, setInboxThreads] = useState<Thread[]>([]);
+  const [inboxThreadsTotal, setInboxThreadsTotal] = useState(0);
+  const [inboxThreadsPage, setInboxThreadsPage] = useState(1);
+  const [loadingThreads, setLoadingThreads] = useState(false);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+
+  // Tasks paging
+  const [inboxTasks, setInboxTasks] = useState<Task[]>([]);
+  const [inboxTasksTotal, setInboxTasksTotal] = useState(0);
+  const [inboxTasksPage, setInboxTasksPage] = useState(1);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+
+  const loadInboxThreads = useCallback(async (page: number) => {
+    setLoadingThreads(true);
+    setThreadsError(null);
+    try {
+      const qs = new URLSearchParams({
+        page: String(page),
+        limit: String(INBOX_PAGE_SIZE)
+      });
+      const res = await authFetch(`/crm/comms/threads?${qs.toString()}`);
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const data = await res.json() as { items: Thread[]; total: number };
+      setInboxThreads(data.items);
+      setInboxThreadsTotal(data.total);
+      setInboxThreadsPage(page);
+    } catch (err) {
+      setThreadsError(err instanceof Error ? err.message : "Failed to load threads.");
+    } finally {
+      setLoadingThreads(false);
+    }
+  }, [authFetch]);
+
+  const loadInboxTasks = useCallback(async (page: number) => {
+    if (!user) return;
+    setLoadingTasks(true);
+    setTasksError(null);
+    try {
+      const qs = new URLSearchParams({
+        assigneeId: user.id,
+        page: String(page),
+        limit: String(INBOX_PAGE_SIZE)
+      });
+      const res = await authFetch(`/crm/comms/tasks?${qs.toString()}`);
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const data = await res.json() as { items: Task[]; total: number };
+      setInboxTasks(data.items);
+      setInboxTasksTotal(data.total);
+      setInboxTasksPage(page);
+    } catch (err) {
+      setTasksError(err instanceof Error ? err.message : "Failed to load tasks.");
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [authFetch, user]);
+
+  useEffect(() => {
+    void loadInboxThreads(1);
+  }, [loadInboxThreads]);
+
+  useEffect(() => {
+    if (inboxTab === "tasks") void loadInboxTasks(1);
+  }, [inboxTab, loadInboxTasks]);
+
+  const sortedThreads = useMemo(
+    () => sortThreadsByActivity(
+      inboxThreads.map((t) => ({
+        ...t,
+        entityDisplay: entityLabel(t.entityType, t.entityId)
+      }))
+    ),
+    [inboxThreads]
+  );
+
+  const inboxThreadsTotalPages = Math.ceil(inboxThreadsTotal / INBOX_PAGE_SIZE);
+  const inboxTasksTotalPages = Math.ceil(inboxTasksTotal / INBOX_PAGE_SIZE);
+
+  function openAnchoredView(thread: { entityType: string; entityId: string }) {
+    navigate(`/crm/comms?entityType=${encodeURIComponent(thread.entityType)}&entityId=${encodeURIComponent(thread.entityId)}`);
+  }
+
+  return (
+    <div style={s.page}>
+      <div style={s.header}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Comms hub</h1>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>All records</span>
+      </div>
+
+      <div style={{ ...s.card, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+        <div style={{ fontSize: 13, color: "#15803d" }}>
+          Inbox view — showing threads across all records. Threads linked to deleted records are
+          shown with an explicit label. Click any thread to open it in the anchored view.
+        </div>
+      </div>
+
+      <div style={s.tabs}>
+        {(["threads", "tasks"] as const).map((t) => (
+          <button
+            key={t}
+            style={{
+              ...s.tab,
+              background: inboxTab === t ? "#6366f1" : "#f3f4f6",
+              color: inboxTab === t ? "#fff" : "#374151",
+              fontWeight: inboxTab === t ? 700 : 400
+            }}
+            onClick={() => setInboxTab(t)}
+          >
+            {t === "threads" ? `Threads (${inboxThreadsTotal})` : `My to-dos (${inboxTasksTotal})`}
+          </button>
+        ))}
+      </div>
+
+      {inboxTab === "threads" && (
+        <>
+          {threadsError && <div style={{ ...s.card, color: "#dc2626" }}>{threadsError}</div>}
+          {loadingThreads
+            ? <div style={s.empty}>Loading…</div>
+            : (
+              <div style={s.card}>
+                <div style={s.cardTitle}>
+                  Threads — page {inboxThreadsPage} of {inboxThreadsTotalPages || 1}
+                </div>
+                {sortedThreads.length === 0
+                  ? <div style={s.empty}>No threads found.</div>
+                  : sortedThreads.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => openAnchoredView(t)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "10px 6px",
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: "1px solid #f3f4f6",
+                          cursor: "pointer"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
+                            {t.subject ?? "(no subject)"}
+                          </span>
+                          <span style={{
+                            ...s.badge,
+                            background: "#e0e7ff",
+                            color: "#3730a3",
+                            fontSize: 10
+                          }}>
+                            {t.entityDisplay}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                          Updated {fmtDate(t.updatedAt)}
+                        </div>
+                      </button>
+                    ))}
+
+                {inboxThreadsTotalPages > 1 && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+                    <button
+                      style={s.secondaryBtn}
+                      disabled={inboxThreadsPage <= 1}
+                      onClick={() => void loadInboxThreads(inboxThreadsPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      style={s.secondaryBtn}
+                      disabled={inboxThreadsPage >= inboxThreadsTotalPages}
+                      onClick={() => void loadInboxThreads(inboxThreadsPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+        </>
+      )}
+
+      {inboxTab === "tasks" && (
+        <>
+          {tasksError && <div style={{ ...s.card, color: "#dc2626" }}>{tasksError}</div>}
+          {loadingTasks
+            ? <div style={s.empty}>Loading…</div>
+            : (
+              <div style={s.card}>
+                <div style={s.cardTitle}>
+                  My to-dos — page {inboxTasksPage} of {inboxTasksTotalPages || 1}
+                </div>
+                {inboxTasks.length === 0
+                  ? <div style={s.empty}>No tasks assigned to you.</div>
+                  : inboxTasks.map((t) => (
+                      <div key={t.id} style={s.taskRow}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            textDecoration: t.status === "DONE" ? "line-through" : "none",
+                            color: t.status === "DONE" ? "#9ca3af" : "#111827"
+                          }}>
+                            {t.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+                            {entityLabel(t.entityType, t.entityId)}
+                          </div>
+                          {t.description && (
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>{t.description}</div>
+                          )}
+                        </div>
+                        <span style={{
+                          ...s.badge,
+                          background: STATUS_COLOUR[t.status].bg,
+                          color: STATUS_COLOUR[t.status].fg
+                        }}>
+                          {STATUS_LABEL[t.status]}
+                        </span>
+                        <span style={{ fontSize: 11, color: "#6b7280", minWidth: 90, textAlign: "right" }}>
+                          {t.dueAt ? `Due ${fmtDate(t.dueAt)}` : "—"}
+                        </span>
+                      </div>
+                    ))}
+
+                {inboxTasksTotalPages > 1 && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+                    <button
+                      style={s.secondaryBtn}
+                      disabled={inboxTasksPage <= 1}
+                      onClick={() => void loadInboxTasks(inboxTasksPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      style={s.secondaryBtn}
+                      disabled={inboxTasksPage >= inboxTasksTotalPages}
+                      onClick={() => void loadInboxTasks(inboxTasksPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
 
 export function CommsHubPage() {
   const { authFetch } = useAuth();
@@ -234,19 +510,10 @@ export function CommsHubPage() {
     if (res.ok) await loadTasks();
   }, [authFetch, loadTasks]);
 
+  // When there is no anchor, render the unanchored inbox.
+  // This replaces the former error-only early-return (CRM-4 / NAV-4 reconciliation).
   if (!anchored) {
-    return (
-      <div style={s.page}>
-        <h1 style={{ fontSize: 20, fontWeight: 700 }}>Comms hub</h1>
-        <div style={s.card}>
-          <div style={s.empty}>
-            Missing <code>entityType</code> and <code>entityId</code> query
-            parameters. Open this page from a record page (Account / Tender /
-            Job / Contract) that anchors the conversation.
-          </div>
-        </div>
-      </div>
-    );
+    return <CommsInboxPage />;
   }
 
   return (

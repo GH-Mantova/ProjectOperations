@@ -22,6 +22,7 @@ import { SettingsHomePage } from "./pages/settings/SettingsHomePage";
 import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
+import { PipelinePage } from "./pages/tendering/PipelinePage";
 import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
@@ -342,11 +343,9 @@ export function App() {
                 CrmBoardContent renders the triage list + forecast; the Tenders
                 page now stays focused on draft entry + pricing + Pipeline. */}
             <Route path="/tenders/leads" element={<CrmBoardContent />} />
-            {/* Codex-era /pipeline + /workspace + /create wrappers were
-                retired in PR #78 alongside the Playwright spec rewrite. The
-                routes redirect to the redesigned register so older bookmarks
-                keep working. */}
-            <Route path="/tenders/pipeline" element={<Navigate to="/tenders" replace />} />
+            {/* pipeline-fold (2026-08-20): /tenders/pipeline is now the combined
+                Board + Insights page. The old redirect to /tenders is replaced. */}
+            <Route path="/tenders/pipeline" element={<PipelinePage />} />
             <Route path="/tenders/create" element={<Navigate to="/tenders" replace />} />
             <Route path="/tenders/workspace" element={<Navigate to="/tenders" replace />} />
             {/* Unified Directory redirects — /tenders/{clients,contacts} were
@@ -703,14 +702,11 @@ export function App() {
                 </RequirePermissions>
               }
             />
-            {/* CRM-6: pipeline + win/loss dashboard (read-only). */}
+            {/* pipeline-fold (2026-08-20): /crm/pipeline redirects to the new
+                combined page under Tendering so existing bookmarks keep working. */}
             <Route
               path="/crm/pipeline"
-              element={
-                <RequirePermissions perms={["crm.view", "tenders.view"]}>
-                  <PipelineDashboardPage />
-                </RequirePermissions>
-              }
+              element={<Navigate to="/tenders/pipeline" replace />}
             />
             {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored
                 via ?entityType=…&entityId=… so any record page can link in

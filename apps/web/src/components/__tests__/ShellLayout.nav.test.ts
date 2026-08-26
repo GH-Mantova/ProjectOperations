@@ -205,8 +205,9 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // Leads & opportunities placeholder points at /tenders — tenders.view gate.
     { label: "Leads & opportunities", permission: "tenders.view" },
     { label: "Tenders", permission: "tenders.view" },
-    // Pipeline hits /crm/pipeline — crm.view (pipeline-dashboard.controller.ts).
-    { label: "Pipeline", permission: "crm.view" },
+    // Pipeline hits /tenders/pipeline — tenders.view (pipeline-fold, 2026-08-20).
+    // Changed from crm.view so tender staff (without crm.view) see the item.
+    { label: "Pipeline", permission: "tenders.view" },
     { label: "Schedule of Rates", permission: "rates.manage" },
     // Contracts API gates on finance.view (legacy naming from when contracts
     // lived under the finance module), NOT contracts.view.

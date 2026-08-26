@@ -46,7 +46,7 @@ export interface ReportRunParams {
   projectId?: string;
   clientId?: string;
   estimatorId?: string;
-  /** D5 role-gating: populated by the controller; undefined in tests (treated as no self-filter). */
+  /** EA-D5 role-gating: populated by the controller; undefined in tests (treated as no self-filter). */
   currentUser?: AuthenticatedUser;
 }
 

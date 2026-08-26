@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RateResolverService } from "./rate-resolver.service";
 
 type EstimateWasteRateRow = Awaited<
   ReturnType<PrismaService["estimateWasteRate"]["findMany"]>
@@ -9,9 +10,21 @@ type EstimateWasteRateRow = Awaited<
 type EstimateMaterialDensityRow = Awaited<
   ReturnType<PrismaService["estimateMaterialDensity"]["findMany"]>
 >[number];
-type EstimatePlantRateRow = Awaited<
-  ReturnType<PrismaService["estimatePlantRate"]["findMany"]>
->[number];
+
+/**
+ * Normalised plant-rate row used internally by addPlantSheet /
+ * addTransportSheet. Built from ListedRate (rates-consumers SLICE 3) so
+ * the two sheet-writers don't need to know which source answered.
+ * All values are already converted to primitives — no Decimal arithmetic
+ * needed downstream.
+ */
+type PlantRateExportRow = {
+  id: string;
+  item: string;
+  category: string;
+  rate: number;
+  unit: string;
+};
 
 const HEADER_FILL: ExcelJS.FillPattern = {
   type: "pattern",
@@ -28,7 +41,7 @@ function decimalToNumber(value: Prisma.Decimal | number | null | undefined): num
   return Number(value.toString());
 }
 
-function isTransportPlantRate(rate: EstimatePlantRateRow): boolean {
+function isTransportPlantRate(rate: PlantRateExportRow): boolean {
   const category = (rate.category ?? "").trim().toLowerCase();
   const unit = (rate.unit ?? "").trim().toLowerCase();
   return category === "truck" || unit === "each way";
@@ -46,18 +59,49 @@ function isTransportPlantRate(rate: EstimatePlantRateRow): boolean {
  */
 @Injectable()
 export class RatesExportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateResolver: RateResolverService
+  ) {}
 
   async buildWorkbook(): Promise<{ buffer: Buffer; filename: string }> {
-    const [wasteRates, densities, plantRates] = await Promise.all([
+    // rates-consumers SLICE 3: estimatePlantRate.findMany routed through
+    // RateResolverService.listRates("plant"). estimateWasteRate and
+    // estimateMaterialDensity are left on direct prisma:
+    //   - estimateWasteRate: listRates("waste") drops wasteGroup + loadRate
+    //     which are required export columns. Cannot route without losing data.
+    //   - estimateMaterialDensity: listMaterialDensities() adds isActive:"desc"
+    //     as a leading sort key, changing row order vs the current
+    //     [category, materialName] sort. Byte-identical export contract
+    //     requires the original sort; direct prisma is preserved.
+    const listedPlant = await this.rateResolver.listRates("plant");
+    // Re-sort to match the original [category asc, item asc] order from the
+    // direct prisma call. listRates("plant") returns item-only order.
+    listedPlant.sort((lhs, rhs) => {
+      const catLhs = String(lhs.info.Category ?? "").toLowerCase();
+      const catRhs = String(rhs.info.Category ?? "").toLowerCase();
+      if (catLhs < catRhs) return -1;
+      if (catLhs > catRhs) return 1;
+      const itemLhs = String(lhs.keys.item ?? "").toLowerCase();
+      const itemRhs = String(rhs.keys.item ?? "").toLowerCase();
+      if (itemLhs < itemRhs) return -1;
+      if (itemLhs > itemRhs) return 1;
+      return 0;
+    });
+    const plantRates: PlantRateExportRow[] = listedPlant.map((r) => ({
+      id: r.rowId,
+      item: String(r.keys.item ?? ""),
+      category: String(r.info.Category ?? ""),
+      rate: r.value,
+      unit: r.unit
+    }));
+
+    const [wasteRates, densities] = await Promise.all([
       this.prisma.estimateWasteRate.findMany({
         orderBy: [{ facility: "asc" }, { wasteType: "asc" }]
       }),
       this.prisma.estimateMaterialDensity.findMany({
         orderBy: [{ category: "asc" }, { materialName: "asc" }]
-      }),
-      this.prisma.estimatePlantRate.findMany({
-        orderBy: [{ category: "asc" }, { item: "asc" }]
       })
     ]);
 
@@ -133,7 +177,7 @@ export class RatesExportService {
     this.styleHeader(sheet);
   }
 
-  private addPlantSheet(workbook: ExcelJS.Workbook, rows: EstimatePlantRateRow[]) {
+  private addPlantSheet(workbook: ExcelJS.Workbook, rows: PlantRateExportRow[]) {
     const sheet = workbook.addWorksheet("Plant Rates");
     sheet.columns = [
       { header: KEY_COLUMN_HEADER, key: "key", width: 38 },
@@ -145,14 +189,14 @@ export class RatesExportService {
       sheet.addRow({
         key: row.id,
         type: row.item,
-        comments: row.category ?? "",
-        rate: decimalToNumber(row.rate)
+        comments: row.category,
+        rate: row.rate
       });
     }
     this.styleHeader(sheet);
   }
 
-  private addTransportSheet(workbook: ExcelJS.Workbook, rows: EstimatePlantRateRow[]) {
+  private addTransportSheet(workbook: ExcelJS.Workbook, rows: PlantRateExportRow[]) {
     const sheet = workbook.addWorksheet("Transport Fees");
     sheet.columns = [
       { header: KEY_COLUMN_HEADER, key: "key", width: 38 },
@@ -164,8 +208,8 @@ export class RatesExportService {
       sheet.addRow({
         key: row.id,
         type: row.item,
-        comments: row.category ?? "",
-        rate: decimalToNumber(row.rate)
+        comments: row.category,
+        rate: row.rate
       });
     }
     this.styleHeader(sheet);

@@ -3,12 +3,15 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma, ProjectActivityAction, ProjectStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { EmailService } from "../email/email.service";
+import { ClientStatsService } from "../master-data/client-stats.service";
+import { decideTenderScoring } from "../master-data/tender-scoring-helper";
 import { NotificationsService } from "../platform/notifications.service";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import type { ListProjectsQueryDto, ProjectStatusDto, UpdateProjectDto } from "./dto/update-project.dto";
@@ -68,7 +71,13 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
-    private readonly email: EmailService
+    private readonly email: EmailService,
+    // clientStats is injected from MasterDataModule (exported from
+    // master-data.module.ts). Made @Optional so the many existing unit tests
+    // that construct ProjectsService directly (without DI) keep compiling
+    // without needing to supply a mock — tests that exercise scoring paths
+    // supply it explicitly. Nest wires the real service in production.
+    @Optional() private readonly clientStats?: ClientStatsService
   ) {}
 
   // ── Numbering ─────────────────────────────────────────────────────────
@@ -924,12 +933,61 @@ export class ProjectsService {
       });
     });
 
+    // Client scoring — outside the transaction, same pattern as
+    // TenderingService.updateStatus:326 and :1032. The tender is being reset
+    // to CONTRACT_ISSUED, which is a scorable won-status. In practice the
+    // tenderScoreCounted / tenderWinCounted flags will already be true (the
+    // tender passed through updateStatus when it was first won), so this call
+    // will be a no-op in normal flow. It is present so that any tender that
+    // reaches this path without previously going through updateStatus still
+    // gets counted exactly once.
+    await this.scoreTenderStatus(tenderId, "CONTRACT_ISSUED");
+
     return {
       success: true,
       tenderId,
       revertedAt: new Date().toISOString(),
       cascadeCounts
     };
+  }
+
+  /**
+   * Apply client win/tender scoring for a tender status write that occurred
+   * outside TenderingService.updateStatus. Reads the current scoring flags
+   * from the DB (safe to call after the status transaction — the transaction
+   * does not modify the scoring flags), applies decideTenderScoring, calls
+   * clientStats.recordTenderOutcome if action != "none", then persists the
+   * flag update.
+   *
+   * No-op when clientStats is absent (test environment without the injection).
+   */
+  private async scoreTenderStatus(tenderId: string, newStatus: string): Promise<void> {
+    if (!this.clientStats) return;
+
+    const scoring = await this.prisma.tender.findUnique({
+      where: { id: tenderId },
+      select: { tenderScoreCounted: true, tenderWinCounted: true }
+    });
+    if (!scoring) return;
+
+    const decision = decideTenderScoring(
+      scoring.tenderScoreCounted,
+      scoring.tenderWinCounted,
+      newStatus
+    );
+    if (decision.action === "none") return;
+
+    await this.clientStats.recordTenderOutcome(tenderId, {
+      isWin: decision.isWin,
+      mode: decision.action
+    });
+    await this.prisma.tender.update({
+      where: { id: tenderId },
+      data: {
+        tenderScoreCounted: true,
+        ...(decision.isWin ? { tenderWinCounted: true } : {})
+      }
+    });
   }
 
   private async notifyProjectManager(projectId: string, userId: string, projectNumber: string, name: string) {

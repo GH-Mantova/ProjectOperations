@@ -357,6 +357,47 @@ try {
     Write-Host "[arm-prompt] SUCCESS: $HOLD_REL -> $READY_REL" -ForegroundColor Green
     Write-Host "[arm-prompt] Index contains exactly the two expected paths. Ready to commit."
 
+    # ---------------------------------------------------------------------
+    # AUDIT: arming is a state change and must leave a trace.
+    #
+    # Added 2026-08-27. Twice that day a prompt was found armed that nobody in
+    # the session had armed - pr-dns-s3 (escalates, sot-touching, became #1349)
+    # and pr-crm-wincount-s2 (escalates). Both were legitimate work, but "who
+    # armed this, and when" was unanswerable: queue-sync was ruled out (zero
+    # -ready.md on origin/main) and no scheduled task arms anything, yet this
+    # script - the one place arming actually happens - wrote no record.
+    #
+    # The parent process is the part that matters: git mv preserves the HOLD's
+    # mtime, so the file itself carries no evidence of when it was armed, and
+    # several chats share this tree. Capturing the caller is what turns "some
+    # chat did this" into a name.
+    #
+    # Best-effort by design: a logging failure must never fail an arming that
+    # already succeeded, and must never touch the index (the file is untracked,
+    # like .queue-sync-ledger.txt beside it).
+    # ---------------------------------------------------------------------
+    try {
+        $armLog = "$REPO_ROOT\docs\pr-prompts\.arming-log.txt"
+        $stamp  = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $caller = "unknown"
+        try {
+            $me = Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop
+            $pp = Get-CimInstance Win32_Process -Filter "ProcessId=$($me.ParentProcessId)" -ErrorAction Stop
+            $caller = "$($pp.Name):$($pp.ProcessId)"
+        } catch { }
+        $esc = "?"
+        try {
+            $fm = Get-Content -LiteralPath $READY_ABS -TotalCount 30 -ErrorAction Stop
+            $hit = $fm | Where-Object { $_ -match '^escalates:' } | Select-Object -First 1
+            if ($hit) { $esc = ($hit -replace '^escalates:\s*', '').Trim() }
+        } catch { }
+        $line = "$stamp  ARMED  $Name  escalates=$esc  by=$env:USERNAME@$env:COMPUTERNAME  pid=$PID  caller=$caller"
+        Add-Content -LiteralPath $armLog -Value $line -Encoding ASCII
+        Write-Step "Audit line written to .arming-log.txt"
+    } catch {
+        Write-Host "[arm-prompt] WARN: could not write .arming-log.txt ($($_.Exception.Message)). Arming stands."
+    }
+
 } finally {
     # Step 6: release lock — always, on every path.
     if ($lockStream -ne $null) {

@@ -189,16 +189,19 @@ export const NAV_GROUPS: NavGroup[] = [
           path === "/tenders" ||
           (path.startsWith("/tenders/") &&
             !path.startsWith("/tenders/contacts") &&
-            !path.startsWith("/tenders/leads")),
+            !path.startsWith("/tenders/leads") &&
+            !path.startsWith("/tenders/pipeline")),
         requiresPermission: "tenders.view"
       },
       {
-        // CRM pipeline dashboard (crm.view — same gate as accounts/comms).
-        to: "/crm/pipeline",
+        // PIPELINE_FOLDED — pipeline-fold cluster marker (2026-08-20).
+        // Repointed from /crm/pipeline to /tenders/pipeline; gate changed
+        // from crm.view to tenders.view so tender staff see this item.
+        to: "/tenders/pipeline",
         label: "Pipeline",
         icon: ICON_AUDIT,
-        match: (path) => path.startsWith("/crm/pipeline"),
-        requiresPermission: "crm.view"
+        match: (path) => path.startsWith("/tenders/pipeline"),
+        requiresPermission: "tenders.view"
       },
       {
         // SoR S2 — master rate-book for live-job variations (VC) and agreed
@@ -262,6 +265,9 @@ export const NAV_GROUPS: NavGroup[] = [
         match: (path) => path.startsWith("/crm/comms"),
         requiresPermission: "crm.view"
       }
+      // Pipeline entry removed from CRM group (pipeline-fold, 2026-08-20).
+      // The Pipeline nav item now lives under Tendering, pointing to
+      // /tenders/pipeline. See the PIPELINE_FOLDED marker above.
     ]
   },
   {
@@ -481,6 +487,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders": "Tendering",
   // NAV-3: standalone Leads & Opportunities route (was a tab on /tenders).
   "/tenders/leads": "Leads & opportunities",
+  // pipeline-fold: combined Board + Insights page.
+  "/tenders/pipeline": "Pipeline",
   "/workers": "Workers",
   "/workers/leave-approvals": "Leave Approvals",
   "/workers/live-crew": "Live crew map",

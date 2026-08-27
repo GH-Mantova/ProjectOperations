@@ -278,7 +278,11 @@ function runIsolated(name, frontMatter, expectedExit, opts) {
   for (const sibName of Object.keys(siblings)) {
     writeFileSync(join(isoDir, sibName), siblings[sibName], "utf8");
   }
-  const file = join(isoDir, name + "-ready.md");
+  // Prompts parked waiting for a gate use the -HOLD.md suffix. The linter
+  // decides GATE_RELEASED vs FILE_GATE_DEAD / CLUSTER_DEAD_GATE off this suffix,
+  // so the test harness must be able to write either.
+  const suffix = opts.hold ? "-HOLD.md" : "-ready.md";
+  const file = join(isoDir, name + suffix);
   writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
 
   const env = Object.assign({}, process.env, opts.env || {});
@@ -496,6 +500,83 @@ runIsolated("file-gate-dead-git-broken",
   0,
   { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
 
+// ── GATE_RELEASED: a HOLD whose gate has landed on origin/main promotes. ─────
+// The two dead-gate probes have a two-way verdict: on a -ready.md prompt the
+// gate-satisfied state is a REJECT (authoring hole), on a -HOLD.md prompt it
+// is an ADMIT + PROMOTE (the parked slice is ready to arm). Cover both cells
+// for both gate types; the two non-HOLD cells (released -> REJECT, unmet ->
+// ADMIT) are already covered by the tests just above.
+//
+// The five in-tree HOLDs Marco measured (2026-08-25T22:10Z) were rejected on
+// exactly this: 4 x CLUSTER_DEAD_GATE + 1 x FILE_GATE_DEAD. Under the fix
+// they must all ADMIT with GATE_RELEASED, and non-HOLD prompts with the same
+// front-matter must continue to REJECT.
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main released -> GATE_RELEASED (PROMOTE)");
+{
+  const out = runIsolated("hold-file-gate-released",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
+    0, { hold: true });
+  if (!/GATE_RELEASED/.test(out) || !/PROMOTE/.test(out)) {
+    console.log("      FAIL expected PROMOTE + GATE_RELEASED in output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main unmet -> plain ADMIT (no PROMOTE)");
+{
+  const out = runIsolated("hold-file-gate-unmet",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "requires_file_on_main: apps/api/src/does-not-exist-hold-xyz-9876543210.ts",
+    0, { hold: true });
+  if (/GATE_RELEASED/.test(out) || /PROMOTE/.test(out)) {
+    console.log("      FAIL expected plain ADMIT with no PROMOTE line. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle released -> GATE_RELEASED (PROMOTE)");
+{
+  // GATE_RELEASED is the constant the fix introduces into lint-prompt.mjs, so
+  // it is on origin/main only AFTER this PR merges. Use a needle that is
+  // present on origin/main today, else the test is a chicken-and-egg problem.
+  // UNKNOWN_KEY has been on origin/main since cluster-chaining SLICE 1.
+  const out = runIsolated("hold-content-gate-released",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: hold-released-test\ncluster_order: 2\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
+    0, { hold: true });
+  if (!/GATE_RELEASED/.test(out) || !/PROMOTE/.test(out)) {
+    console.log("      FAIL expected PROMOTE + GATE_RELEASED in output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+// NOTE: behavior changed by feat/lint-human-gate-blindness (GATE_NOT_RELEASED).
+// A HOLD with an unmet requires_on_main :: needle now REJECTs with GATE_NOT_RELEASED
+// instead of plain ADMIT. This ensures "bare ADMIT means all declared gates are satisfied."
+console.log("\n=== exit 1 REJECT: HOLD + requires_on_main :: needle unmet -> GATE_NOT_RELEASED (not bare ADMIT)");
+{
+  const out = runIsolated("hold-content-gate-unmet",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: hold-unmet-test\ncluster_order: 2\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_HOLD_XYZ_1234567890",
+    1, { hold: true });
+  if (!/GATE_NOT_RELEASED/.test(out)) {
+    console.log("      FAIL expected GATE_NOT_RELEASED in output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
 // ── MISSING_STANDING_AUTHORITY (WARN-ONLY) ──────────────────────────────────
 // A prompt whose body does not grant push authority still lints ADMIT (exit 0),
 // but a diagnostic line goes to stderr. The rule is WARN-only on purpose:
@@ -561,6 +642,74 @@ console.log("\n=== quiet: body with the grant -> exit 0 AND stderr must not cont
   if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
   ok ? pass++ : fail++;
 }
+
+// ── ORPHANED_DISCHARGE guard ────────────────────────────────────────────────
+// A prompt going STALE is normally binned quietly. But if BACKLOG.yaml has
+// discharged a backlog item into this prompt — the register's only pointer to
+// the work is this file — binning it destroys the last record. On 2026-07-23
+// twelve B-P0a/B-P0b slices were lost this way (found by hand 2026-08-20).
+// The guard escalates STALE → REJECT (exit 1) on that single case; all other
+// STALE paths must remain exit 3, because 34 historical agent runs were saved
+// by the quiet-bin path and it must not regress.
+//
+// Helper points the linter at a synthetic BACKLOG.yaml via LINT_BACKLOG_PATH,
+// so we do not need to fake a whole repo root.
+function runWithBacklog(name, frontMatter, backlogText, expectedExit) {
+  const isoDir = mkdtempSync(join(tmpdir(), "lint-orph-"));
+  const backlogPath = join(isoDir, "BACKLOG.yaml");
+  writeFileSync(backlogPath, backlogText, "utf8");
+  const file = join(isoDir, name + "-ready.md");
+  writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
+  const env = Object.assign({}, process.env, { LINT_BACKLOG_PATH: backlogPath });
+  let code = 0;
+  let out = "";
+  try {
+    out = execFileSync("node", [LINT, file], { cwd: REPO, encoding: "utf8", env });
+  } catch (e) {
+    code = e.status;
+    out = String(e.stdout || "") + String(e.stderr || "");
+  }
+  const ok = code === expectedExit;
+  console.log((ok ? "PASS " : "FAIL ") + name + "  (exit " + code + ", wanted " + expectedExit + ")");
+  if (!ok) console.log("      " + out.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+  rmSync(isoDir, { recursive: true, force: true });
+  return out;
+}
+
+console.log("\n=== exit 1 REJECT: stale prompt whose basename appears in a BACKLOG.yaml discharge line -> ORPHANED_DISCHARGE");
+{
+  const out = runWithBacklog("pr-orphan-example",
+    "premise: 'false'\npremise_means: forces stale (premise always false)\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none",
+    "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-orphan-example-ready.md\n",
+    1);
+  if (!/ORPHANED_DISCHARGE/.test(out)) {
+    console.log("      FAIL code ORPHANED_DISCHARGE not in output:\n      " + out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 3 STALE: ordinary stale, basename appears nowhere in BACKLOG.yaml (34 historical runs saved)");
+runWithBacklog("pr-ordinary-stale",
+  "premise: 'false'\npremise_means: forces stale\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none",
+  "items:\n  # nothing named here mentions the linted prompt\n",
+  3);
+
+console.log("\n=== exit 0 ADMIT: live prompt named in a discharge line -> guard only fires on the stale path");
+runWithBacklog("pr-live-and-discharged",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none",
+  "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-live-and-discharged-ready.md\n",
+  0);
+
+console.log("\n=== exit 3 STALE: substring safety - pr-foo-HOLD-ready.md must not match pr-foo-extended-HOLD-ready.md");
+runWithBacklog("pr-foo-HOLD",
+  "premise: 'false'\npremise_means: forces stale\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none",
+  "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-foo-extended-HOLD-ready.md\n",
+  3);
 
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");

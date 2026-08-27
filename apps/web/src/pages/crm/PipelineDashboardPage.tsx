@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
+// PipelineInsightsContent is exported so PipelinePage (tenders/pipeline?tab=insights)
+// can embed the same four panels without duplicating logic or data-fetching.
+// PipelineDashboardPage remains the standalone route at /crm/pipeline
+// (redirected to /tenders/pipeline by App.tsx — kept for bookmark compat).
+
 // CRM-6: Pipeline + win/loss dashboard.
 // Read-only surface over TenderOutcome (win/loss capture) and
 // Opportunity/Account roll-ups. No mutation happens here.
@@ -109,7 +114,10 @@ function fmtDate(iso: string | null): string {
   }
 }
 
-export function PipelineDashboardPage() {
+// PipelineInsightsContent — the four panels (stage breakdown, win rate,
+// stalled opportunities, relationship coverage). Extracted so PipelinePage
+// can embed it as the Insights tab without duplicating data-fetching.
+export function PipelineInsightsContent() {
   const { authFetch } = useAuth();
   const navigate = useNavigate();
 
@@ -153,7 +161,7 @@ export function PipelineDashboardPage() {
   }, [data, groupBy]);
 
   return (
-    <div style={{ padding: "24px 32px" }}>
+    <div>
       <div
         style={{
           display: "flex",
@@ -162,9 +170,6 @@ export function PipelineDashboardPage() {
           marginBottom: 16
         }}
       >
-        <h1 style={{ fontFamily: "var(--font-heading, Syne)", fontSize: 24, margin: 0 }}>
-          Pipeline &amp; win/loss dashboard
-        </h1>
         <button
           onClick={() => void load()}
           style={{
@@ -200,7 +205,9 @@ export function PipelineDashboardPage() {
 
       {!loading && !error && data && (
         <>
-          <PipelineByStageCard block={data.byStage} />
+          <section aria-label="Open pipeline by stage">
+            <PipelineByStageCard block={data.byStage} />
+          </section>
 
           <div style={{ marginTop: 20 }}>
             <SectionHeader
@@ -269,6 +276,20 @@ export function PipelineDashboardPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// PipelineDashboardPage — the standalone page wrapper. /crm/pipeline redirects
+// here (-> /tenders/pipeline) so this component is effectively unused in normal
+// navigation but kept so the route still resolves for any direct imports.
+export function PipelineDashboardPage() {
+  return (
+    <div style={{ padding: "24px 32px" }}>
+      <h1 style={{ fontFamily: "var(--font-heading, Syne)", fontSize: 24, margin: "0 0 16px" }}>
+        Pipeline &amp; win/loss dashboard
+      </h1>
+      <PipelineInsightsContent />
     </div>
   );
 }

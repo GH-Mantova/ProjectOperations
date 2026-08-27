@@ -286,9 +286,9 @@ describe("estimator-qty-vs-value run()", () => {
   });
 });
 
-// ── D5 Role gate ─────────────────────────────────────────────────────────────
+// ── EA-D5 Role gate ──────────────────────────────────────────────────────────
 
-describe("D5 role-gate", () => {
+describe("EA-D5 role-gate", () => {
   it("estimator self-view: where clause includes assignedEstimatorId = currentUser.sub", async () => {
     const prisma = makePrisma([]);
     const params = baseParams({ currentUser: estimatorUser("user-est-1") });

@@ -11,7 +11,7 @@
 
 ## Why
 
-Per `docs/plans/tender-tracker-migration-plan.md` decision **D4**: MIG-2 imports 540 tenders
+Per `docs/plans/tender-tracker-migration-plan.md` decision **TFM-D4**: MIG-2 imports 540 tenders
 and creates a name-only stub `Site` per tender. Real-world project names collide (multiple
 projects share a site name over years), so the previous `Site @@unique([name])` constraint
 would have blocked MIG-2. Marco: *"sites/addresses are NOT unique — the auto ID is the key;

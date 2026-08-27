@@ -28,9 +28,9 @@ tracker into those existing models — it does NOT build a new tender/client sys
 
 - **NOT a new tender/client/site model.** Reuse `Tender`, `Client`, `Site`, `TenderClientNote`.
 - **NOT a Xero-sourced client import.** Marco has locked "clients = tracker clients only" —
-  Xero is not the source of truth for this program (decision D1 below).
+  Xero is not the source of truth for this program (decision TFM-D1 below).
 - **NOT a bulk address enrichment.** Every tender needs a Site, but the tracker has no address
-  data — sites are created as **name-only stubs** (D4). Users complete the address when they
+  data — sites are created as **name-only stubs** (TFM-D4). Users complete the address when they
   open the tender.
 - **NOT CRM Account creation.** CRM-1 must independently auto-create an Account per Client so
   clients imported here are wrapped by the CRM. That is called out under "Cross-dependencies"
@@ -63,15 +63,15 @@ tracker into those existing models — it does NOT build a new tender/client sys
 
 | # | Decision |
 |---|---|
-| D1 | **Client set = the tracker's clients ONLY.** One `Client` per distinct "Client Company Name" (dedupe on normalised — lowercased, whitespace-collapsed — name). Users merge/edit variants later. Xero is NOT the client source for this program. |
-| D2 | **All 540 rows import as Tenders.** Map the tracker's word-"Probability" (mislabelled — it is the pipeline stage/outcome), reinforced by `Decision`: `Won` → status `WON` + set `wonAt`; `Lost` → `LOST` + set `lostAt`; `Not quoting` → `WITHDRAWN`; `Submitted` → `SUBMITTED`; `Quoting`, `Chasing`, `Hot`, `Warm`, `Cold` → `DRAFT` (open). Where `Decision` disagrees with the word-"Probability", `Decision` wins (a `Won`/`Lost` decision is the terminal fact). |
-| D3 | **Legacy T-number lives in the Project Name / `title`.** Format: `title = "T#### — <Project Name>"`. This makes the legacy number searchable in the ERP and is the **idempotency key** for re-runs (match by the `T####` substring in title). No separate legacy field. |
-| D4 | **Every tender needs a Site but the tracker has NO address.** Create a name-only stub Site per tender: `name = title`, all address fields NULL, `clientId` set to the linked client, `notes = "IMPORTED — address to be completed"`. Users complete the address when they open the tender. Because sites are NOT unique by name (multiple projects share the same site name over years), **MIG-1 first drops `Site @@unique([name])`** before MIG-2 can safely create stubs. |
-| D5 | **Follow Up Notes → `TenderClientNote`** (`noteType = "note"`, linked to `tenderId` AND `clientId` — so CRM reads it per client too). One row per non-empty note; multiple notes on one tender are split on line boundaries or kept as a single note if the tracker cell is a single blob (author decides in MIG-2 based on the real data shape at commit time). |
-| D6 | **Estimator matching by name against existing `User` rows.** Known names in the tracker: `Sean Lattin`, `Raj Pudasaini`, `Marco Mantovanini` (the tracker misspells this as `Mantovaninni` — match by best-effort normalised name), `Russel Cummings`. Unmatched → leave `estimatorUserId` NULL and flag in the dry-run report. **Never create Users.** |
-| D7 | **Field mapping:** `Tender Price` → `estimatedValue` (Decimal); `Lead time` → `leadTimeDays` (Int); `Quote Due Date` → `dueDate` (DateTime); `Date Submitted` → `submittedAt` (DateTime). Missing / unparseable → NULL and flag in the dry-run report. |
-| D8 | **SharePoint legacy folder copy** (MIG-3): match legacy folder by the `T####` number to the ERP-created folder for the same tender, copy contents via the EXISTING Graph seam. `escalates: true` (Azure environment). The slice AUTHORS the job; it does not touch Azure/Entra/SharePoint config. |
-| D9 | **Data privacy:** the real tracker workbook is UPLOADED to the endpoint at runtime — NEVER committed to the repo (public). Slice fixtures use synthetic rows only. |
+| TFM-D1 | **Client set = the tracker's clients ONLY.** One `Client` per distinct "Client Company Name" (dedupe on normalised — lowercased, whitespace-collapsed — name). Users merge/edit variants later. Xero is NOT the client source for this program. |
+| TFM-D2 | **All 540 rows import as Tenders.** Map the tracker's word-"Probability" (mislabelled — it is the pipeline stage/outcome), reinforced by `Decision`: `Won` → status `WON` + set `wonAt`; `Lost` → `LOST` + set `lostAt`; `Not quoting` → `WITHDRAWN`; `Submitted` → `SUBMITTED`; `Quoting`, `Chasing`, `Hot`, `Warm`, `Cold` → `DRAFT` (open). Where `Decision` disagrees with the word-"Probability", `Decision` wins (a `Won`/`Lost` decision is the terminal fact). |
+| TFM-D3 | **Legacy T-number lives in the Project Name / `title`.** Format: `title = "T#### — <Project Name>"`. This makes the legacy number searchable in the ERP and is the **idempotency key** for re-runs (match by the `T####` substring in title). No separate legacy field. |
+| TFM-D4 | **Every tender needs a Site but the tracker has NO address.** Create a name-only stub Site per tender: `name = title`, all address fields NULL, `clientId` set to the linked client, `notes = "IMPORTED — address to be completed"`. Users complete the address when they open the tender. Because sites are NOT unique by name (multiple projects share the same site name over years), **MIG-1 first drops `Site @@unique([name])`** before MIG-2 can safely create stubs. |
+| TFM-D5 | **Follow Up Notes → `TenderClientNote`** (`noteType = "note"`, linked to `tenderId` AND `clientId` — so CRM reads it per client too). One row per non-empty note; multiple notes on one tender are split on line boundaries or kept as a single note if the tracker cell is a single blob (author decides in MIG-2 based on the real data shape at commit time). |
+| TFM-D6 | **Estimator matching by name against existing `User` rows.** Known names in the tracker: `Sean Lattin`, `Raj Pudasaini`, `Marco Mantovanini` (the tracker misspells this as `Mantovaninni` — match by best-effort normalised name), `Russel Cummings`. Unmatched → leave `estimatorUserId` NULL and flag in the dry-run report. **Never create Users.** |
+| TFM-D7 | **Field mapping:** `Tender Price` → `estimatedValue` (Decimal); `Lead time` → `leadTimeDays` (Int); `Quote Due Date` → `dueDate` (DateTime); `Date Submitted` → `submittedAt` (DateTime). Missing / unparseable → NULL and flag in the dry-run report. |
+| TFM-D8 | **SharePoint legacy folder copy** (MIG-3): match legacy folder by the `T####` number to the ERP-created folder for the same tender, copy contents via the EXISTING Graph seam. `escalates: true` (Azure environment). The slice AUTHORS the job; it does not touch Azure/Entra/SharePoint config. |
+| TFM-D9 | **Data privacy:** the real tracker workbook is UPLOADED to the endpoint at runtime — NEVER committed to the repo (public). Slice fixtures use synthetic rows only. |
 
 ---
 
@@ -110,13 +110,13 @@ to the previous one via `requires_file_on_main`. All three `escalates: true`.
   commit the updated `docs/data-model/relationship-map.json`, `relationship-map.md`, and
   `metadata-catalog.json`.
 - **Landed marker:** `docs/data-model/tender-migration/MIG-1-DONE.md` — a one-page note
-  recording that MIG-1 shipped, the migration name, and the rationale (linking to D4). This
+  recording that MIG-1 shipped, the migration name, and the rationale (linking to TFM-D4). This
   file is the anchor that MIG-2 chains on via `requires_file_on_main`.
 - **Backfill:** none — the change removes a constraint, no data transformation.
   `backfill: false`.
 
 **Why now:** the ERP has one project per Site to date, so the unique constraint has held.
-Once the tracker imports 540 tenders as stub sites (D4), the constraint will conflict with
+Once the tracker imports 540 tenders as stub sites (TFM-D4), the constraint will conflict with
 real-world duplicate project names and multiple stub sites sharing a client. Sites are NOT
 unique in reality (Marco: "the auto ID is the key; you revisit addresses over years").
 
@@ -140,33 +140,33 @@ unique in reality (Marco: "the auto ID is the key; you revisit addresses over ye
   - `tender-tracker-import.module.ts` — wires it into `app.module.ts`.
   - `tender-tracker-import.service.spec.ts` — unit tests over synthetic fixtures.
 - On `dryRun`: parse the workbook, compute:
-  - Unique clients to be created (per D1 — normalised-name dedupe).
-  - Tender rows to be created (per D2/D3/D7).
-  - Unmatched estimator names (per D6).
+  - Unique clients to be created (per TFM-D1 — normalised-name dedupe).
+  - Tender rows to be created (per TFM-D2/TFM-D3/TFM-D7).
+  - Unmatched estimator names (per TFM-D6).
   - Row-level parse errors (bad dates, unparseable Decimal, missing Project Name / Client).
   Return a structured report; write NOTHING.
 - On commit: idempotently, in a transaction per row (or per bounded batch):
-  1. Upsert `Client` by normalised name (D1).
-  2. Create name-only stub `Site` (D4) — enabled by MIG-1.
-  3. Upsert `Tender` keyed on the `T####` substring in `title` (D3):
+  1. Upsert `Client` by normalised name (TFM-D1).
+  2. Create name-only stub `Site` (TFM-D4) — enabled by MIG-1.
+  3. Upsert `Tender` keyed on the `T####` substring in `title` (TFM-D3):
      - `title = "T#### — <Project Name>"`.
-     - `status` + `wonAt` / `lostAt` per D2.
-     - `estimatorUserId` per D6 (NULL if unmatched).
+     - `status` + `wonAt` / `lostAt` per TFM-D2.
+     - `estimatorUserId` per TFM-D6 (NULL if unmatched).
      - `siteId` → stub site.
-     - `estimatedValue`, `leadTimeDays`, `dueDate`, `submittedAt` per D7.
+     - `estimatedValue`, `leadTimeDays`, `dueDate`, `submittedAt` per TFM-D7.
      - `tenderClients` link to the upserted client.
   4. For each non-empty Follow Up Note → `TenderClientNote` (`noteType = "note"`, linked to
-     tender + client) per D5. On re-run, skip if a note with the same (`tenderId`, `clientId`,
+     tender + client) per TFM-D5. On re-run, skip if a note with the same (`tenderId`, `clientId`,
      `body`, `occurredAt`) already exists.
 - Return an execution report: created / skipped / errored counts.
 
 **Guardrails specific to MIG-2:**
 
 - Fixtures under `apps/api/src/modules/admin-imports/**/__fixtures__/` MUST be synthetic. Do
-  NOT commit any row from the real tracker workbook (D9).
+  NOT commit any row from the real tracker workbook (TFM-D9).
 - No new fields on `Tender` / `Client` / `Site` / `TenderClientNote`. Reuse only.
 - No `schema.prisma` change (MIG-1 already did the one change needed).
-- Never invent a User row for an unmatched estimator (D6).
+- Never invent a User row for an unmatched estimator (TFM-D6).
 
 ### MIG-3 (S3) — SharePoint legacy-folder copy job
 

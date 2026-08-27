@@ -1990,11 +1990,17 @@ async function seedReviewedSet(set) {
   return set;
 }
 
-// Render the review prompt template, replacing {{PR_NUMBER}} and {{PR_TITLE}}.
-function renderTemplate(template, prNumber, prTitle) {
+// Render the review prompt template, replacing {{PR_NUMBER}}, {{PR_TITLE}},
+// {{PROMPT_DIR}}, and {{PR_FILES}}.
+export function renderTemplate(template, prNumber, prTitle, promptDir, prFiles) {
+  const fileList = Array.isArray(prFiles) && prFiles.length > 0
+    ? prFiles.map(f => `- ${f}`).join("\n")
+    : "(unknown — reviewer must fetch via `gh pr view <N> --json files`)";
   return template
     .replaceAll("{{PR_NUMBER}}", String(prNumber))
-    .replaceAll("{{PR_TITLE}}", prTitle);
+    .replaceAll("{{PR_TITLE}}", prTitle)
+    .replaceAll("{{PROMPT_DIR}}", promptDir ?? "")
+    .replaceAll("{{PR_FILES}}", fileList);
 }
 
 let reviewTemplate = null;
@@ -2041,7 +2047,13 @@ async function pollForNewPrs() {
       continue;
     }
     const promptPath = path.join(PROMPT_DIR, promptName);
-    const body = renderTemplate(reviewTemplate, pr.number, pr.title);
+    let prFilesList = null;
+    try {
+      prFilesList = await prFileList(pr.number);
+    } catch (err) {
+      log("review", `warning: could not fetch file list for PR #${pr.number}: ${err.message} — continuing with empty list`);
+    }
+    const body = renderTemplate(reviewTemplate, pr.number, pr.title, PROMPT_DIR, prFilesList);
     try {
       await writeFile(promptPath, body, "utf-8");
     } catch (err) {

@@ -1,6 +1,8 @@
 /**
  * check-sot-refs.mjs — walk every sot/**\/*.md and verify every path-shaped
- * backtick reference resolves against the repo root.
+ * backtick reference resolves against one of the declared SEARCH_ROOTS
+ * (repo root first, then the api/web source prefixes sot/ writes paths against —
+ * see the SEARCH_ROOTS block below for the measurement that put them there).
  *
  * POLARITY — this is the ORDINARY direction (unlike check-lessons.mjs which is inverted):
  *   exit 0  = every extracted reference resolved (or was explicitly allowlisted)
@@ -109,9 +111,36 @@ function isSkippableRef(ref) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// SEARCH ROOTS — the conventions sot/ actually uses, declared explicitly.
+//
+// MEASURED 2026-08-27 against 115 "dangling" references: 87 of them (76%) were
+// real files that the checker could not see because it only ever resolved from
+// the repo root. sot/ writes source paths in three conventions, all deliberate:
+//
+//   sot/06-active-specs.md  "### `modules/permissions/permissions.controller.ts`"
+//                           -> relative to apps/api/src            (68 refs)
+//   sot/04-data-model.md    "exposed by `tendering/tender-convert.controller.ts`"
+//                           -> relative to apps/api/src/modules    (17 refs)
+//   assorted web refs       -> relative to apps/web/src            ( 2 refs)
+//
+// A resolver that does not know the convention reports a working document as
+// broken, which is DOCTRINE §7's failure mode exactly: a confident, coherent,
+// WRONG verdict about a healthy system. Order matters — first hit wins — and
+// every hit under a non-repo-root prefix is COUNTED and PRINTED below, so this
+// list can widen the search but can never widen it silently.
+//
+// Do NOT add a root to make a single stubborn reference pass. A path that only
+// resolves under a module-local prefix (e.g. `builders/quote-html.builder.ts`,
+// which is relative to whichever module the surrounding prose names) is prose,
+// not a path — fix it in sot/, or allowlist it with a reason.
+// ---------------------------------------------------------------------------
+const SEARCH_ROOTS = ["", "apps/api/src", "apps/api/src/modules", "apps/web/src"];
+
 let totalExtracted = 0;
 const failures = [];
 const exemptions = [];
+const viaSearchRoot = new Map();
 
 for (const filePath of sotFiles) {
   const relFile = path.relative(repoRoot, filePath);
@@ -151,10 +180,22 @@ for (const filePath of sotFiles) {
       const normalized = refPath.startsWith("./") ? refPath.slice(2) : refPath;
       // Strip anchor fragment (#section-name) before checking existence
       const withoutFragment = normalized.replace(/#[^/]*$/, "");
-      const absPath = path.resolve(repoRoot, withoutFragment);
 
-      if (!existsSync(absPath)) {
+      // Resolve against each declared search root, in order. The FIRST hit wins,
+      // and any hit under a non-repo-root prefix is counted and reported so that
+      // widening the search can never be silent.
+      let resolvedRoot = null;
+      for (const searchRoot of SEARCH_ROOTS) {
+        if (existsSync(path.resolve(repoRoot, searchRoot, withoutFragment))) {
+          resolvedRoot = searchRoot;
+          break;
+        }
+      }
+
+      if (resolvedRoot === null) {
         failures.push({ file: relFile, line: lineNum, path: refPath });
+      } else if (resolvedRoot !== "") {
+        viaSearchRoot.set(resolvedRoot, (viaSearchRoot.get(resolvedRoot) || 0) + 1);
       }
     }
   }
@@ -186,8 +227,18 @@ if (exemptions.length > 0) {
   console.log("");
 }
 
+if (viaSearchRoot.size > 0) {
+  const viaTotal = [...viaSearchRoot.values()].reduce((a, b) => a + b, 0);
+  console.log("--- RESOLVED VIA A NON-ROOT SEARCH PATH (" + viaTotal + ") --- printed so widening is never silent:");
+  for (const [root, count] of [...viaSearchRoot.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log("  VIA  " + root + "/  = " + count + " reference(s)");
+  }
+  console.log("");
+}
+
 if (failures.length > 0) {
-  console.log("!!! DANGLING REFERENCES (" + failures.length + ") --- these paths do not exist at repo root:");
+  console.log("!!! DANGLING REFERENCES (" + failures.length + ") --- these paths resolve under NONE of " +
+    SEARCH_ROOTS.map((r) => (r === "" ? "<repoRoot>" : r + "/")).join(", ") + ":");
   for (const fail of failures) {
     console.log("  FAIL  " + fail.file + ":" + fail.line + "  " + fail.path);
   }

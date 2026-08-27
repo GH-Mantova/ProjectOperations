@@ -272,3 +272,80 @@ test("total reference count is always printed in output", () => {
     cleanup();
   }
 });
+
+// ---------------------------------------------------------------------------
+// 8. SEARCH ROOTS — a reference that resolves ONLY under a declared non-root
+//    prefix must PASS, and the widening must be PRINTED, never silent.
+//
+//    This is the case that produced 87 of 115 false "dangling" reports before
+//    SEARCH_ROOTS existed: sot/06 writes `modules/x/y.controller.ts` relative
+//    to apps/api/src, and sot/04 writes `x/y.controller.ts` relative to
+//    apps/api/src/modules.
+// ---------------------------------------------------------------------------
+
+test("search roots: api-relative reference resolves, and the widening is printed", () => {
+  const { root, cleanup } = createFixture();
+  try {
+    mkdirSync(join(root, "apps", "api", "src", "modules", "permissions"), { recursive: true });
+    writeFileSync(
+      join(root, "apps", "api", "src", "modules", "permissions", "permissions.controller.ts"),
+      "// real controller\n",
+    );
+
+    writeFileSync(
+      join(root, "sot", "test.md"),
+      [
+        "### `modules/permissions/permissions.controller.ts` — api-src relative",
+        "exposed by `permissions/permissions.controller.ts` — api-src-modules relative",
+      ].join("\n") + "\n",
+    );
+
+    const { status, stdout, stderr } = run(root);
+    const combined = stdout + stderr;
+
+    assert.equal(status, 0, "exit must be 0 when refs resolve under a declared search root; got:\n" + combined);
+    assert.ok(combined.includes("dangling=0"), "must report dangling=0; got:\n" + combined);
+    assert.ok(
+      combined.includes("RESOLVED VIA A NON-ROOT SEARCH PATH"),
+      "widening must be announced, never silent; got:\n" + combined,
+    );
+    assert.ok(
+      combined.includes("apps/api/src/") && combined.includes("apps/api/src/modules/"),
+      "both search roots that fired must be named with their counts; got:\n" + combined,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 9. NEGATIVE CONTROL for #8 — SEARCH_ROOTS must not become a blanket pass.
+//    A path that exists under NO declared root still fails, and the failure
+//    names every root that was tried so the reader can see the search was real.
+// ---------------------------------------------------------------------------
+
+test("search roots: a path under no declared root still FAILS, and the roots are named", () => {
+  const { root, cleanup } = createFixture();
+  try {
+    // A real file in a directory that is deliberately NOT a search root
+    mkdirSync(join(root, "packages", "misc"), { recursive: true });
+    writeFileSync(join(root, "packages", "misc", "thing.ts"), "// not on the search path\n");
+
+    writeFileSync(
+      join(root, "sot", "test.md"),
+      "See `misc/thing.ts` for details.\n",
+    );
+
+    const { status, stdout, stderr } = run(root);
+    const combined = stdout + stderr;
+
+    assert.notEqual(status, 0, "a ref outside every declared root must still fail; got:\n" + combined);
+    assert.ok(combined.includes("misc/thing.ts"), "the offending path must be named; got:\n" + combined);
+    assert.ok(
+      combined.includes("apps/api/src/modules/") && combined.includes("<repoRoot>"),
+      "the failure must name the roots that were tried; got:\n" + combined,
+    );
+  } finally {
+    cleanup();
+  }
+});

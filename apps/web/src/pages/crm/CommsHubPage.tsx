@@ -373,10 +373,40 @@ function CommsInboxPage() {
   );
 }
 
+// ── Exported body builders (pure — testable without React) ────────────────────
+
+/**
+ * Builds the JSON body for POST /crm/comms/tasks.
+ * assigneeId must always be included so tasks appear in the creator's "My to-dos"
+ * (the inbox query filters by assigneeId — omitting it means the task is unassigned
+ * and the To-dos tab is always empty for the creating user).
+ */
+export function buildCreateTaskBody(args: {
+  entityType: string;
+  entityId: string;
+  title: string;
+  dueAt: string | null;
+  userId: string;
+}): {
+  entityType: string;
+  entityId: string;
+  title: string;
+  dueAt: string | null;
+  assigneeId: string;
+} {
+  return {
+    entityType: args.entityType,
+    entityId: args.entityId,
+    title: args.title,
+    dueAt: args.dueAt,
+    assigneeId: args.userId
+  };
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function CommsHubPage() {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
   const [params] = useSearchParams();
   const entityType = params.get("entityType") ?? "ACCOUNT";
   const entityId = params.get("entityId") ?? "";
@@ -480,16 +510,17 @@ export function CommsHubPage() {
   }, [authFetch, selectedThread, newMessage, openThread]);
 
   const createTask = useCallback(async () => {
-    if (!anchored || !newTaskTitle.trim()) return;
+    if (!anchored || !newTaskTitle.trim() || !user) return;
     const res = await authFetch(`/crm/comms/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: JSON.stringify(buildCreateTaskBody({
         entityType,
         entityId,
         title: newTaskTitle.trim(),
-        dueAt: newTaskDue || null
-      })
+        dueAt: newTaskDue || null,
+        userId: user.id
+      }))
     });
     if (res.ok) {
       setNewTaskTitle("");
@@ -498,7 +529,7 @@ export function CommsHubPage() {
     } else {
       setError(await readApiErrorMessage(res));
     }
-  }, [anchored, authFetch, entityType, entityId, newTaskTitle, newTaskDue, loadTasks]);
+  }, [anchored, authFetch, entityType, entityId, newTaskTitle, newTaskDue, loadTasks, user]);
 
   const toggleTask = useCallback(async (task: Task) => {
     const nextStatus = task.status === "DONE" ? "OPEN" : "DONE";

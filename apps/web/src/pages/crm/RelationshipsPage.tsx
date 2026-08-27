@@ -175,6 +175,37 @@ const s: Record<string, React.CSSProperties> = {
   }
 };
 
+// ── Exported body builders (pure — testable without React) ────────────────────
+
+type AccountPickerItem = { id: string; name: string };
+
+/**
+ * Builds the JSON body for POST /crm/relationships/notes.
+ *
+ * Guard rule (mirrors relationships.service.ts:58-62):
+ *   A note must carry at least one of accountId or contactId.
+ *   Sending both as null throws BadRequestException("A note must be linked to
+ *   at least one of: accountId, contactId.") — that is why the caller must
+ *   supply a real accountId before the submit button is enabled.
+ */
+export function buildCreateNoteBody(args: {
+  body: string;
+  accountId: string;
+  contactId?: string | null;
+}): {
+  body: string;
+  accountId: string;
+  contactId: string | null;
+} {
+  // accountId is required (non-nullable string at the call-site).
+  // contactId is optional and defaults to null.
+  return {
+    body: args.body,
+    accountId: args.accountId,
+    contactId: args.contactId ?? null
+  };
+}
+
 // ── Notes panel ───────────────────────────────────────────────────────────────
 
 function NotesPanel() {
@@ -186,6 +217,11 @@ function NotesPanel() {
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Account picker — required to unblock submit (service rejects both-null).
+  const [accounts, setAccounts] = useState<AccountPickerItem[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [accountsLoading, setAccountsLoading] = useState(true);
 
   const loadNotes = useCallback(async () => {
     setLoading(true);
@@ -204,20 +240,38 @@ function NotesPanel() {
 
   useEffect(() => { void loadNotes(); }, [loadNotes]);
 
+  // Load account summary list for the picker (crm.view — same gate as this page).
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await authFetch("/crm/accounts/summary");
+        if (!res.ok) return; // silently degrade — picker shows empty
+        const data = await res.json() as AccountPickerItem[];
+        if (mounted) setAccounts(data);
+      } finally {
+        if (mounted) setAccountsLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [authFetch]);
+
   const handleCreate = async () => {
-    if (!body.trim()) return;
+    if (!body.trim() || !selectedAccountId) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
       const res = await authFetch("/crm/relationships/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // account-level note only — the user hasn't picked a specific account/contact here.
-        // For a full UX the form would include account/contact pickers; keeping minimal per scope.
-        body: JSON.stringify({ body: body.trim(), accountId: null, contactId: null })
+        body: JSON.stringify(buildCreateNoteBody({
+          body: body.trim(),
+          accountId: selectedAccountId
+        }))
       });
       if (!res.ok) throw new Error(await readApiErrorMessage(res));
       setBody("");
+      setSelectedAccountId("");
       void loadNotes();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to save note.");
@@ -226,9 +280,25 @@ function NotesPanel() {
     }
   };
 
+  const canSubmit = !submitting && body.trim().length > 0 && selectedAccountId.length > 0;
+
   return (
     <div>
       <div style={s.form}>
+        <select
+          style={{ ...s.textarea, minHeight: "unset", height: 38, resize: "none" }}
+          value={selectedAccountId}
+          onChange={(e) => setSelectedAccountId(e.target.value)}
+          disabled={accountsLoading}
+          aria-label="Account"
+        >
+          <option value="">
+            {accountsLoading ? "Loading accounts…" : "— Select account —"}
+          </option>
+          {accounts.map((acc) => (
+            <option key={acc.id} value={acc.id}>{acc.name}</option>
+          ))}
+        </select>
         <textarea
           style={s.textarea}
           placeholder="Add a relationship note (call, meeting, email summary…)"
@@ -236,7 +306,7 @@ function NotesPanel() {
           onChange={(e) => setBody(e.target.value)}
         />
         {submitError && <div style={s.err}>{submitError}</div>}
-        <button style={s.btn} onClick={handleCreate} disabled={submitting || !body.trim()}>
+        <button style={s.btn} onClick={handleCreate} disabled={!canSubmit}>
           {submitting ? "Saving…" : "Add note"}
         </button>
       </div>

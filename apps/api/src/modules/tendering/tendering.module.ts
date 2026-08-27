@@ -34,6 +34,7 @@ import { QuoteProposalsController } from "./scope/quote-proposals.controller";
 import { QuoteProposalsService } from "./scope/quote-proposals.service";
 import { ClarificationProposalsController } from "./scope/clarification-proposals.controller";
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
+import { AllocationService } from "./allocation.service";
 import { CapacityService } from "./capacity.service";
 
 @Module({
@@ -76,7 +77,8 @@ import { CapacityService } from "./capacity.service";
     EstimateProposalsService,
     QuoteProposalsService,
     ClarificationProposalsService,
-    CapacityService
+    CapacityService,
+    AllocationService
   ],
   exports: [
     TenderingService,

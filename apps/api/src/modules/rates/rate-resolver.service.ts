@@ -350,7 +350,12 @@ export class RateResolverService {
         return rows.map((row) => ({
           rowId: row.id,
           keys: { wasteType: row.wasteType, facility: row.facility },
-          info: {},
+          // INFO columns keyed by RateTable column name so both adapter paths
+          // expose the same key. wasteGroup is String? — null is carried
+          // through (do NOT coerce to ""); export callers must guard.
+          // loadRate is Decimal @default(0); convert with Number() consistent
+          // with the adjacent value: Number(row.tonRate) conversion.
+          info: { wasteGroup: row.wasteGroup, loadRate: Number(row.loadRate) },
           value: Number(row.tonRate),
           unit: row.unit,
           source: "legacy" as const

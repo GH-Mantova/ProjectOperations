@@ -1,8 +1,9 @@
-// ShellLayout.nav tests — pipeline-fold cluster (2026-08-20).
+// ShellLayout.nav tests — pipeline-fold cluster (2026-08-20, updated 2026-08-27).
 //
 // Validates the nav structure changes from the pipeline-fold:
 //   5. The Tendering "Pipeline" item links to /tenders/pipeline and is gated
-//      on tenders.view (not crm.view).
+//      on tenders.view OR crm.view (requiresAnyPermission, matching the API's
+//      @RequireAnyPermission; fixes discoverability gap from #1334).
 //   6. The CRM group no longer has a Pipeline entry.
 //   7. Only one nav item is active on /tenders/pipeline (exclusion-list check).
 //
@@ -18,6 +19,7 @@ type NavItem = {
   label: string;
   match?: (path: string) => boolean;
   requiresPermission?: string;
+  requiresAnyPermission?: string[];
 };
 
 function allItems(groupId: string): NavItem[] {
@@ -49,8 +51,11 @@ describe("Tendering group Pipeline nav item (pipeline-fold)", () => {
     expect(pipelineItem?.to).toBe("/tenders/pipeline");
   });
 
-  it("is gated on tenders.view (not crm.view)", () => {
-    expect(pipelineItem?.requiresPermission).toBe("tenders.view");
+  it("is gated on tenders.view OR crm.view via requiresAnyPermission (not a single requiresPermission)", () => {
+    // The API uses @RequireAnyPermission("tenders.view", "crm.view"); the nav
+    // gate must match so both holder classes can discover the page.
+    expect(pipelineItem?.requiresPermission).toBeUndefined();
+    expect(pipelineItem?.requiresAnyPermission).toEqual(["tenders.view", "crm.view"]);
   });
 
   it("match predicate activates on /tenders/pipeline", () => {

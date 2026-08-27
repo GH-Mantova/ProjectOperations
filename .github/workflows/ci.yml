@@ -182,6 +182,45 @@ jobs:
       # station DOC says where findings go; this checks that a station RUN put them there.
       # Structure only in CI - the freshness check needs a live box and would always fail here.
       - run: node scripts/pipeline/check-breadcrumb.mjs
+      # --- sot/ and pipeline register checkers ---
+      # Polarities differ per checker; each step's handling is documented inline.
+      # check-sot-refs: exit 0 = all references resolve; non-zero = dangling path(s).
+      - name: check-sot-refs
+        run: node scripts/pipeline/check-sot-refs.mjs
+      # check-lessons: exit 0 = clean (no regressions); exit 1 = broken instrument;
+      # exit 2 = at least one lesson has regressed. All non-zero are failures.
+      - name: check-lessons
+        run: node scripts/pipeline/check-lessons.mjs
+      # check-escalations: exit 0 = ran cleanly; exit 1 = register malformed or
+      # evaluator self-test failed. Non-zero is a failure.
+      - name: check-escalations
+        run: node scripts/pipeline/check-escalations.mjs
+      # check-backlog: exit 0 = nothing newly ready; exit 10 = READY TO STAGE (a good
+      # signal, not an error — do NOT fail CI on it); exit 1/2/3 = broken/malformed.
+      # Uses bash so the exit code is inspectable and 10 can be treated as pass.
+      - name: check-backlog
+        shell: bash
+        run: |
+          set +e
+          node scripts/pipeline/check-backlog.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ] || [ "$code" -eq 10 ]; then
+            exit 0
+          fi
+          echo "check-backlog failed with exit $code"
+          exit "$code"
+      # check-sot-bytes: this script has no process.exit calls — it always exits 0
+      # and prints "*** DAMAGED ***" on mojibake. Fail the step by grepping output.
+      - name: check-sot-bytes
+        shell: bash
+        run: |
+          out=$(node scripts/pipeline/check-sot-bytes.mjs)
+          echo "$out"
+          if echo "$out" | grep -q "DAMAGED"; then
+            echo "check-sot-bytes detected damaged UTF-8"
+            exit 1
+          fi
 
   pipeline-tests-windows:
     name: Pipeline — arm-prompt tests (Windows)

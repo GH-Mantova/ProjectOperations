@@ -34,7 +34,12 @@
     "xero:import-contacts": "pnpm --filter @project-ops/api xero:import-contacts",
     "pr:watch": "node scripts/pr-watcher/index.mjs",
     "rates:fallback-audit": "node scripts/rates/fallback-audit.mjs",
-    "rates:parity-proof": "node scripts/rates/parity-proof.mjs"
+    "rates:parity-proof": "node scripts/rates/parity-proof.mjs",
+    "check:sot-refs": "node scripts/pipeline/check-sot-refs.mjs",
+    "check:lessons": "node scripts/pipeline/check-lessons.mjs",
+    "check:backlog": "node scripts/pipeline/check-backlog.mjs",
+    "check:escalations": "node scripts/pipeline/check-escalations.mjs",
+    "check:sot-bytes": "node scripts/pipeline/check-sot-bytes.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

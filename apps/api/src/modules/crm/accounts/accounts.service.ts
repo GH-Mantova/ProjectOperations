@@ -57,14 +57,21 @@ const GOING_COLD_THRESHOLD_DAYS = 14;
  *   - lastContactedAt is a real date (not null)
  *   - that date is more than GOING_COLD_THRESHOLD_DAYS ago
  * Null lastContactedAt is NOT cold (we have no evidence either way).
+ *
+ * `nowMs` is an OPTIONAL injected clock, defaulting to the real wall clock.
+ * Every existing caller is unaffected. It exists so the 14-day boundary can be
+ * asserted against a FIXED instant: a spec that pins `lastContactedAt` to a
+ * literal date while the function reads `Date.now()` is a time bomb that goes
+ * green in CI and turns red, permanently, on a date nobody chose.
  */
 export function deriveGoingCold(
   lifecycle: string,
-  lastContactedAt: Date | null
+  lastContactedAt: Date | null,
+  nowMs: number = Date.now()
 ): boolean {
   if (lifecycle === "PAST") return false;
   if (!lastContactedAt) return false;
-  const diffMs = Date.now() - lastContactedAt.getTime();
+  const diffMs = nowMs - lastContactedAt.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
   return diffDays > GOING_COLD_THRESHOLD_DAYS;
 }

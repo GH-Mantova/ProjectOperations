@@ -2,16 +2,41 @@ import { Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RateResolverService } from "./rate-resolver.service";
 
-type EstimateWasteRateRow = Awaited<
-  ReturnType<PrismaService["estimateWasteRate"]["findMany"]>
->[number];
 type EstimateMaterialDensityRow = Awaited<
   ReturnType<PrismaService["estimateMaterialDensity"]["findMany"]>
 >[number];
-type EstimatePlantRateRow = Awaited<
-  ReturnType<PrismaService["estimatePlantRate"]["findMany"]>
->[number];
+
+/**
+ * Normalised plant-rate row used internally by addPlantSheet /
+ * addTransportSheet. Built from ListedRate (rates-consumers SLICE 3) so
+ * the two sheet-writers don't need to know which source answered.
+ * All values are already converted to primitives — no Decimal arithmetic
+ * needed downstream.
+ */
+type PlantRateExportRow = {
+  id: string;
+  item: string;
+  category: string;
+  rate: number;
+  unit: string;
+};
+
+/**
+ * Normalised waste-rate row used internally by addWasteSheet.
+ * Built from ListedRate (rates-consumers SLICE 3a) so the sheet-writer
+ * doesn't need to know which source answered. All values are primitives.
+ */
+type WasteRateExportRow = {
+  id: string;
+  facility: string;
+  wasteType: string;
+  wasteGroup: string | null;
+  unit: string;
+  tonRate: number;
+  loadRate: number;
+};
 
 const HEADER_FILL: ExcelJS.FillPattern = {
   type: "pattern",
@@ -28,10 +53,26 @@ function decimalToNumber(value: Prisma.Decimal | number | null | undefined): num
   return Number(value.toString());
 }
 
-function isTransportPlantRate(rate: EstimatePlantRateRow): boolean {
+function isTransportPlantRate(rate: PlantRateExportRow): boolean {
   const category = (rate.category ?? "").trim().toLowerCase();
   const unit = (rate.unit ?? "").trim().toLowerCase();
   return category === "truck" || unit === "each way";
+}
+
+/**
+ * Stable JS comparator that approximates Postgres default collation for the
+ * ASCII-range values in rate tables. Uses raw string comparison (NOT
+ * .toLowerCase()) — this preserves digit-before-letter ordering consistent
+ * with Postgres "C" / POSIX collation, which is what the real DB uses.
+ *
+ * ORDERING TRAP from PR #1337: `.toLowerCase()` does NOT reproduce Postgres
+ * collation. Use this comparator instead. If mixed-locale or unicode values
+ * appear in a future data set, re-verify and update this comparator.
+ */
+function pgAscCompare(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
 /**
@@ -46,20 +87,71 @@ function isTransportPlantRate(rate: EstimatePlantRateRow): boolean {
  */
 @Injectable()
 export class RatesExportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateResolver: RateResolverService
+  ) {}
 
   async buildWorkbook(): Promise<{ buffer: Buffer; filename: string }> {
-    const [wasteRates, densities, plantRates] = await Promise.all([
-      this.prisma.estimateWasteRate.findMany({
-        orderBy: [{ facility: "asc" }, { wasteType: "asc" }]
-      }),
+    // rates-consumers SLICE 3a: both estimatePlantRate.findMany and
+    // estimateWasteRate.findMany are routed through RateResolverService.
+    // estimateMaterialDensity is left on direct prisma — it is a density
+    // lookup, not a $ rate, and the done_when for pr-524 requires the
+    // model to survive.
+    const [listedPlant, listedWaste, densities] = await Promise.all([
+      this.rateResolver.listRates("plant"),
+      this.rateResolver.listRates("waste"),
       this.prisma.estimateMaterialDensity.findMany({
         orderBy: [{ category: "asc" }, { materialName: "asc" }]
-      }),
-      this.prisma.estimatePlantRate.findMany({
-        orderBy: [{ category: "asc" }, { item: "asc" }]
       })
     ]);
+
+    // Re-sort plant to match original DB order: [category asc, item asc].
+    // listRates("plant") returns item-only order ({ item: "asc" }).
+    // ORDERING TRAP: use pgAscCompare (raw string) not .toLowerCase() —
+    // see function comment above for why.
+    listedPlant.sort((lhs, rhs) => {
+      const catCmp = pgAscCompare(
+        String(lhs.info.Category ?? ""),
+        String(rhs.info.Category ?? "")
+      );
+      if (catCmp !== 0) return catCmp;
+      return pgAscCompare(
+        String(lhs.keys.item ?? ""),
+        String(rhs.keys.item ?? "")
+      );
+    });
+    const plantRates: PlantRateExportRow[] = listedPlant.map((r) => ({
+      id: r.rowId,
+      item: String(r.keys.item ?? ""),
+      category: String(r.info.Category ?? ""),
+      rate: r.value,
+      unit: r.unit
+    }));
+
+    // Re-sort waste to match original DB order: [facility asc, wasteType asc].
+    // listRates("waste") returns [wasteType asc, facility asc] (reversed).
+    // ORDERING TRAP: use pgAscCompare (raw string) not .toLowerCase().
+    listedWaste.sort((lhs, rhs) => {
+      const facCmp = pgAscCompare(
+        String(lhs.keys.facility ?? ""),
+        String(rhs.keys.facility ?? "")
+      );
+      if (facCmp !== 0) return facCmp;
+      return pgAscCompare(
+        String(lhs.keys.wasteType ?? ""),
+        String(rhs.keys.wasteType ?? "")
+      );
+    });
+    const wasteRates: WasteRateExportRow[] = listedWaste.map((r) => ({
+      id: r.rowId,
+      facility: String(r.keys.facility ?? ""),
+      wasteType: String(r.keys.wasteType ?? ""),
+      wasteGroup: r.info.wasteGroup !== undefined ? (r.info.wasteGroup as string | null) : null,
+      unit: r.unit,
+      tonRate: r.value,
+      loadRate: typeof r.info.loadRate === "number" ? r.info.loadRate : 0
+    }));
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "ProjectOperations";
@@ -82,7 +174,7 @@ export class RatesExportService {
     return { buffer, filename: `rates-lists-${stamp}.xlsx` };
   }
 
-  private addWasteSheet(workbook: ExcelJS.Workbook, rows: EstimateWasteRateRow[]) {
+  private addWasteSheet(workbook: ExcelJS.Workbook, rows: WasteRateExportRow[]) {
     const sheet = workbook.addWorksheet("Waste Disposal Fees");
     sheet.columns = [
       { header: KEY_COLUMN_HEADER, key: "key", width: 38 },
@@ -100,8 +192,8 @@ export class RatesExportService {
         wasteType: row.wasteType,
         group: row.wasteGroup ?? "",
         unit: row.unit,
-        rate: decimalToNumber(row.tonRate),
-        loadRate: decimalToNumber(row.loadRate)
+        rate: row.tonRate,
+        loadRate: row.loadRate
       });
     }
     this.styleHeader(sheet);
@@ -133,7 +225,7 @@ export class RatesExportService {
     this.styleHeader(sheet);
   }
 
-  private addPlantSheet(workbook: ExcelJS.Workbook, rows: EstimatePlantRateRow[]) {
+  private addPlantSheet(workbook: ExcelJS.Workbook, rows: PlantRateExportRow[]) {
     const sheet = workbook.addWorksheet("Plant Rates");
     sheet.columns = [
       { header: KEY_COLUMN_HEADER, key: "key", width: 38 },
@@ -145,14 +237,14 @@ export class RatesExportService {
       sheet.addRow({
         key: row.id,
         type: row.item,
-        comments: row.category ?? "",
-        rate: decimalToNumber(row.rate)
+        comments: row.category,
+        rate: row.rate
       });
     }
     this.styleHeader(sheet);
   }
 
-  private addTransportSheet(workbook: ExcelJS.Workbook, rows: EstimatePlantRateRow[]) {
+  private addTransportSheet(workbook: ExcelJS.Workbook, rows: PlantRateExportRow[]) {
     const sheet = workbook.addWorksheet("Transport Fees");
     sheet.columns = [
       { header: KEY_COLUMN_HEADER, key: "key", width: 38 },
@@ -164,8 +256,8 @@ export class RatesExportService {
       sheet.addRow({
         key: row.id,
         type: row.item,
-        comments: row.category ?? "",
-        rate: decimalToNumber(row.rate)
+        comments: row.category,
+        rate: row.rate
       });
     }
     this.styleHeader(sheet);

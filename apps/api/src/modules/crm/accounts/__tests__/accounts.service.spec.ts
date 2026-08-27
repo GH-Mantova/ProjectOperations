@@ -301,39 +301,55 @@ describe("AccountsService.getAccount360", () => {
 // ── deriveGoingCold (NAV-2) ───────────────────────────────────────────────────
 
 describe("deriveGoingCold (NAV-2 accounts summary)", () => {
+  // NOW is a FIXED instant and is injected into the function under test.
+  // It must never be compared against the real wall clock: `daysAgo(1)` is a
+  // literal date, so a spec that let deriveGoingCold read Date.now() passed in
+  // CI until exactly 2026-08-27T12:00:00Z and failed permanently from then on
+  // (14 days + 1 after NOW). The clock is now pinned on BOTH sides.
   const NOW = new Date("2026-08-14T12:00:00Z");
+  const NOW_MS = NOW.getTime();
   const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
 
-  // Case 1: >14 days + non-PAST → cold
+  // Case 1: >14 days + non-PAST → cold. Now assertable, because the clock is injected.
   it("returns true when lastContactedAt is >14 days ago and lifecycle is ACTIVE", () => {
-    // Use real Date.now via the exported function; pass a stale date.
-    const stale = daysAgo(15);
-    // We can't inject nowMs here (the service uses Date.now() directly),
-    // so we just verify the boundary: 15 days old vs threshold of 14.
-    // The function is tested with a controlled clock in the web spec;
-    // here we test the business-rule logic with real time offset.
-    // To keep this deterministic, test only the structural invariants.
-    expect(deriveGoingCold("PAST", stale)).toBe(false);        // PAST → never cold
-    expect(deriveGoingCold("ACTIVE", null)).toBe(false);       // null → not cold
-    expect(deriveGoingCold("PROSPECT", null)).toBe(false);     // null → not cold
+    expect(deriveGoingCold("ACTIVE", daysAgo(15), NOW_MS)).toBe(true);
+    expect(deriveGoingCold("PROSPECT", daysAgo(15), NOW_MS)).toBe(true);
+    expect(deriveGoingCold("PAST", daysAgo(15), NOW_MS)).toBe(false);   // PAST → never cold
+    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(false);        // null → not cold
+    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(false);      // null → not cold
+  });
+
+  // Case 1b: the boundary itself — exactly 14 days is NOT cold, 14 days + 1ms is.
+  it("treats exactly 14 days as not cold, and one millisecond past it as cold", () => {
+    expect(deriveGoingCold("ACTIVE", daysAgo(14), NOW_MS)).toBe(false);
+    const justOver = new Date(daysAgo(14).getTime() - 1);
+    expect(deriveGoingCold("ACTIVE", justOver, NOW_MS)).toBe(true);
   });
 
   // Case 2: PAST lifecycle → never cold regardless of date
   it("returns false for PAST lifecycle even with a very old lastContactedAt", () => {
-    expect(deriveGoingCold("PAST", daysAgo(365))).toBe(false);
-    expect(deriveGoingCold("PAST", daysAgo(1))).toBe(false);
+    expect(deriveGoingCold("PAST", daysAgo(365), NOW_MS)).toBe(false);
+    expect(deriveGoingCold("PAST", daysAgo(1), NOW_MS)).toBe(false);
   });
 
   // Case 3: null lastContactedAt → not cold
   it("returns false when lastContactedAt is null", () => {
-    expect(deriveGoingCold("ACTIVE", null)).toBe(false);
-    expect(deriveGoingCold("PROSPECT", null)).toBe(false);
+    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(false);
+    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(false);
   });
 
   // Case 4: very fresh contact → not cold
   it("returns false when lastContactedAt is very recent (1 day ago)", () => {
     // A date 1 day ago is well within the 14-day window.
-    expect(deriveGoingCold("ACTIVE", daysAgo(1))).toBe(false);
+    expect(deriveGoingCold("ACTIVE", daysAgo(1), NOW_MS)).toBe(false);
+  });
+
+  // Case 5: the DEFAULT clock still works — no caller has to pass nowMs.
+  it("defaults to the real wall clock when nowMs is omitted", () => {
+    const oneDayAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+    const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    expect(deriveGoingCold("ACTIVE", oneDayAgo)).toBe(false);
+    expect(deriveGoingCold("ACTIVE", twentyDaysAgo)).toBe(true);
   });
 });
 

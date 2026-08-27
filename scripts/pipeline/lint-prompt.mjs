@@ -496,7 +496,7 @@ function checkFileGateDead(fm, repoRoot, name, isHold) {
       );
       continue;
     }
-    if (contents.absent) continue; // path missing on main = gate legitimately unmet
+    if (contents.absent) continue; // path missing on main = gate legitimately unmet — checkGateNotReleased catches the unmet-HOLD case
     if (isHold) {
       released.push({
         code: "GATE_RELEASED",
@@ -765,79 +765,156 @@ export function checkHumanGate(bodyText) {
 }
 
 // ---------------------------------------------------------------------------
-// GATE_NOT_RELEASED: requires_on_main needle absent from origin/main (Defect 3)
+// GATE_NOT_RELEASED / FILE_GATE_NOT_RELEASED: unmet existence or content gate
+// on a HOLD — Pipeline Guard 3 (Defect 3 + extension)
 // ---------------------------------------------------------------------------
 
 /**
- * When a HOLD declares a requires_on_main needle and that needle is ABSENT from
- * origin/main, emit GATE_NOT_RELEASED. This is the inverse of GATE_RELEASED.
+ * When a HOLD declares a gate whose condition is ABSENT from origin/main, emit a
+ * distinct rejection code so that a bare ADMIT unambiguously means all gates are
+ * satisfied. Covers three gate forms:
+ *
+ *   1. requires_on_main: <path> :: <needle>  → GATE_NOT_RELEASED (needle absent or
+ *      file absent)
+ *   2. requires_on_main: <path>              → FILE_GATE_NOT_RELEASED (file absent,
+ *      existence-only gate; previously skipped with `continue`, which is the latent
+ *      hole fixed here)
+ *   3. requires_file_on_main: <path>         → FILE_GATE_NOT_RELEASED (file absent;
+ *      checkFileGateDead only emitted GATE_RELEASED for the PRESENT case, leaving
+ *      the ABSENT HOLD case entirely uncovered — this is the regression fixed here)
  *
  * Design choice: REJECT (exit 1).
  * Rationale: the post-condition demands that a bare ADMIT means all declared
- * gates are satisfied. A HOLD with an unmet requires_on_main content needle
- * should NOT return a bare ADMIT — it should return a distinct signal. REJECT
- * is the clearest distinct signal: it cannot be confused with a plain ADMIT.
- * The cost (the HOLD appears as a REJECT until its needle lands) is the
+ * gates are satisfied. A HOLD with an unmet gate should NOT return a bare ADMIT.
+ * REJECT is the clearest distinct signal: it cannot be confused with a plain ADMIT.
+ * The cost (the HOLD appears as a REJECT until its gate lands) is the
  * intended behavior — it was never ready to arm.
  *
  * Fail-safe: if the probe itself cannot run (no origin/main, shallow clone, git
  * unavailable) → warn-and-skip (return { ok: true }). A broken instrument must
  * NEVER report "gate absent" — that would bin real work.
  *
- * This check ONLY applies to HOLD prompts (isHold=true) and ONLY to content
- * gates (path :: needle). Existence-only gates (no ::) are legitimate "wait for
- * the file to appear" gates — they are covered by checkFileGateDead / checkDeadGate
- * which already handle them correctly.
+ * This check ONLY applies to HOLD prompts (isHold=true).
  *
- * Returns { ok: true } (skip / gate met or existence-only) or
- *         { ok: false, code: "GATE_NOT_RELEASED", msg }
+ * Returns { ok: true } (skip / gate met) or
+ *         { ok: false, code: "GATE_NOT_RELEASED"|"FILE_GATE_NOT_RELEASED", msg }
  */
 function checkGateNotReleased(fm, repoRoot, name, isHold) {
   if (!isHold) return { ok: true }; // only meaningful for HOLDs
 
+  // --- requires_on_main entries (both with-needle and needle-less) ---
   const entries = parseRequiresOnMainEntries(fm);
   for (const { path, needle } of entries) {
-    if (!needle) continue; // existence-only gate — not our check
-
-    const contents = readFromOriginMain(path, repoRoot);
-    if (contents === null) {
-      // git unavailable / broken — warn and skip (fail-safe)
-      process.stderr.write(
-        "WARN  " + (name || "<file>") + "  GATE_NOT_RELEASED probe: could not reach origin/main:" +
-        path + "; skipping (fail-safe — not reporting gate as absent).\n"
-      );
-      continue;
+    if (needle) {
+      // Content gate (path :: needle): check both file-absent and needle-absent.
+      const contents = readFromOriginMain(path, repoRoot);
+      if (contents === null) {
+        // git unavailable / broken — warn and skip (fail-safe)
+        process.stderr.write(
+          "WARN  " + (name || "<file>") + "  GATE_NOT_RELEASED probe: could not reach origin/main:" +
+          path + "; skipping (fail-safe — not reporting gate as absent).\n"
+        );
+        continue;
+      }
+      if (contents.absent) {
+        // File itself is absent from origin/main. The gate file hasn't landed yet;
+        // so the needle definitely hasn't landed either. That IS an unmet gate.
+        return {
+          ok: false,
+          code: "GATE_NOT_RELEASED",
+          msg:
+            "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
+            "the file \"" + path + "\" is not on origin/main yet, so the needle is absent.\n" +
+            "        This HOLD is parked waiting for its predecessor slice to land.\n" +
+            "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
+            "        This is not an error — it means the HOLD is correctly waiting.",
+        };
+      }
+      // File is present — check whether the needle is in it
+      if (typeof contents === "string" && contents.indexOf(needle) === -1) {
+        return {
+          ok: false,
+          code: "GATE_NOT_RELEASED",
+          msg:
+            "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
+            "needle not found in origin/main:" + path + ".\n" +
+            "        This HOLD is parked waiting for its predecessor slice to land.\n" +
+            "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
+            "        This is not an error — it means the HOLD is correctly waiting.",
+        };
+      }
+      // Needle IS present: gate is satisfied. checkDeadGate will emit GATE_RELEASED.
+      // Nothing to do here.
+    } else {
+      // Existence-only gate (needle === null): check whether the file is absent.
+      // checkDeadGate skips these entirely (only handles content gates), so we own this.
+      const contents = readFromOriginMain(path, repoRoot);
+      if (contents === null) {
+        // git unavailable / broken — warn and skip (fail-safe)
+        process.stderr.write(
+          "WARN  " + (name || "<file>") + "  GATE_NOT_RELEASED probe: could not reach origin/main:" +
+          path + "; skipping (fail-safe — not reporting gate as absent).\n"
+        );
+        continue;
+      }
+      if (contents.absent) {
+        // File is not on origin/main yet — the existence gate is unmet.
+        return {
+          ok: false,
+          code: "FILE_GATE_NOT_RELEASED",
+          msg:
+            "FILE_GATE_NOT_RELEASED: requires_on_main: \"" + path + "\" — " +
+            "the file is not on origin/main yet.\n" +
+            "        This HOLD is parked waiting for its predecessor slice to land.\n" +
+            "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
+            "        This is not an error — it means the HOLD is correctly waiting.",
+        };
+      }
+      // File IS present: existence gate is satisfied. checkFileGateDead handles non-HOLDs;
+      // for HOLDs, checkFileGateDead already emits GATE_RELEASED — nothing to do here.
     }
-    if (contents.absent) {
-      // File itself is absent from origin/main. The gate file hasn't landed yet;
-      // so the needle definitely hasn't landed either. That IS an unmet gate.
-      return {
-        ok: false,
-        code: "GATE_NOT_RELEASED",
-        msg:
-          "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
-          "the file \"" + path + "\" is not on origin/main yet, so the needle is absent.\n" +
-          "        This HOLD is parked waiting for its predecessor slice to land.\n" +
-          "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
-          "        This is not an error — it means the HOLD is correctly waiting.",
-      };
-    }
-    // File is present — check whether the needle is in it
-    if (typeof contents === "string" && contents.indexOf(needle) === -1) {
-      return {
-        ok: false,
-        code: "GATE_NOT_RELEASED",
-        msg:
-          "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
-          "needle not found in origin/main:" + path + ".\n" +
-          "        This HOLD is parked waiting for its predecessor slice to land.\n" +
-          "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
-          "        This is not an error — it means the HOLD is correctly waiting.",
-      };
-    }
-    // Needle IS present: gate is satisfied. checkDeadGate will emit GATE_RELEASED.
-    // Nothing to do here.
   }
+
+  // --- requires_file_on_main entries ---
+  // checkFileGateDead already handles GATE_RELEASED (path present on main) and FILE_GATE_DEAD
+  // (path present on non-HOLD). Here we catch the unmet-HOLD case: path ABSENT on origin/main.
+  // This is the regression: a HOLD with requires_file_on_main pointing at an absent path was
+  // previously admitted as a bare ADMIT, indistinguishable from a satisfied gate.
+  {
+    const raw = fm.requires_file_on_main;
+    if (raw !== undefined && raw !== "" && !(Array.isArray(raw) && raw.length === 0)) {
+      const vals = Array.isArray(raw) ? raw : [raw];
+      for (const v of vals) {
+        const path = String(v).trim();
+        if (!path) continue;
+        const contents = readFromOriginMain(path, repoRoot);
+        if (contents === null) {
+          // git unavailable / broken — warn and skip (fail-safe)
+          process.stderr.write(
+            "WARN  " + (name || "<file>") + "  GATE_NOT_RELEASED probe: could not reach origin/main:" +
+            path + "; skipping (fail-safe — not reporting gate as absent).\n"
+          );
+          continue;
+        }
+        if (contents.absent) {
+          // File is not on origin/main yet — the existence gate is unmet.
+          return {
+            ok: false,
+            code: "FILE_GATE_NOT_RELEASED",
+            msg:
+              "FILE_GATE_NOT_RELEASED: requires_file_on_main: \"" + path + "\" — " +
+              "the file is not on origin/main yet.\n" +
+              "        This HOLD is parked waiting for its predecessor slice to land.\n" +
+              "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
+              "        This is not an error — it means the HOLD is correctly waiting.",
+          };
+        }
+        // File IS present: checkFileGateDead already emitted GATE_RELEASED for this HOLD.
+        // Nothing to do here.
+      }
+    }
+  }
+
   return { ok: true };
 }
 
@@ -1117,12 +1194,15 @@ export function lint(file, opts) {
     if (fileDeadRes.released) released.push(...fileDeadRes.released);
   }
 
-  // GATE_NOT_RELEASED — for HOLDs with a requires_on_main content needle that is
-  // ABSENT from origin/main. REJECT with a distinct code so a bare ADMIT unambiguously
-  // means the gate IS satisfied. Fail-safe: probe failure → warn-and-skip.
+  // GATE_NOT_RELEASED / FILE_GATE_NOT_RELEASED — for HOLDs with a gate key whose
+  // condition is ABSENT from origin/main. Covers three forms:
+  //   1. requires_on_main: <path> :: <needle>  — needle or file absent
+  //   2. requires_on_main: <path>              — existence gate, file absent
+  //   3. requires_file_on_main: <path>         — existence gate, file absent
+  // REJECT with a distinct code so a bare ADMIT unambiguously means the gate IS
+  // satisfied. Fail-safe: probe failure → warn-and-skip.
   // NOTE: This runs AFTER checkDeadGate, which handles the "needle IS present" case
-  // (emitting GATE_RELEASED). So if we reach here, the needle is either absent or
-  // the file is absent — both mean GATE_NOT_RELEASED.
+  // (emitting GATE_RELEASED for HOLDs). So if we reach here, the gate is unmet.
   if (isHold) {
     const gnrRes = checkGateNotReleased(fm, repoRoot, name, isHold);
     if (!gnrRes.ok) return fail(gnrRes.code, gnrRes.msg);

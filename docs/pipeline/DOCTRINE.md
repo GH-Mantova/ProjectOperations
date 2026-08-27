@@ -309,7 +309,7 @@ site-dissolution, B-P0a-4-ii..8, B-SD), which nothing ever promotes.
 
 # 🔧 §9. INSTRUMENTS — the measured traps, in one place
 
-<!-- CANONICAL-BLOCK: instruments v1 — the shared trap list. Stations POINT here; they do not copy it.
+<!-- CANONICAL-BLOCK: instruments v2 — the shared trap list. Stations POINT here; they do not copy it.
      lint-station.mjs fails if this block is edited without re-recording its hash. -->
 
 §7 tells you your instrument lies. This section names the specific lies, each one **measured**, each
@@ -325,8 +325,6 @@ here now because they are true for **every** station.
 - ⚠️ **Streamed output PAUSES on lines starting with `#`** — the REPL-prompt detector fires on markdown
   headings. This is not a hang. Keep calling `read_process_output` with explicit offsets until it
   reports `0 remaining`.
-- ⚠️ **PowerShell 5.1 has no inline `if` expression.** `$x = if (...) {...}` parses, but
-  `"text $(if ...)"` does not. Assign first, interpolate second.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ## 9.2 Git
@@ -337,8 +335,11 @@ here now because they are true for **every** station.
   prompt. **ALWAYS `-r`, and always control the query against a file you know is tracked.**
 - ⚠️ **`git status` is structurally blind to gitignored files.** A `*-ready.md` never shows as `??`.
   Use `git check-ignore -v` or `git ls-files --others --ignored --exclude-standard`.
-- ⚠️ **`git fetch origin main` updates `FETCH_HEAD` only** and leaves a stale "behind by N". Use
-  `git fetch origin +refs/heads/main:refs/remotes/origin/main`.
+- ⚠️ **`git fetch origin main` DOES opportunistically update `refs/remotes/origin/main`** on git 2.55,
+  because `origin` has a configured fetch refspec. The explicit
+  `git fetch origin +refs/heads/main:refs/remotes/origin/main` form is still the one to write — it is
+  correct on every git version and does not depend on the remote's config — but a stale `origin/main`
+  after a plain fetch is no longer the expected failure and should be investigated, not assumed.
 - 🔴 **Never `git checkout .`, `checkout -- <dir>`, `reset --hard`, `stash pop` or `git clean` in the
   dev tree** to "get a clean read". Consumed prompts retired into gitignored folders come back armed.
   **To recover ONE file without tripping it: `git show HEAD:<path>` piped to a write.**
@@ -371,10 +372,12 @@ here now because they are true for **every** station.
 
 - ⚠️ **The GitHub MCP token cannot merge, and cannot open PRs (403).** Use `gh` through Desktop
   Commander.
-- 🔴 **A `--jq` string has its quotes stripped in transit**, jq then fails, and the output prints
-  `labels=[]` — **a broken query that reads exactly like "no labels"**. This nearly shipped a merge on
-  a PR carrying `do-not-merge`. **Read JSON into a parser (`ConvertFrom-Json`) and control it against a
-  case you know is non-empty.**
+- 🔴 **A `--jq` expression survives the `-Command` layer intact, spaces included.** What does NOT
+  survive is an escaped double quote: `join(\",\")` arrives as `join(,\)` and jq fails LOUDLY with
+  `failed to parse jq expression`. Keep double quotes out of jq expressions, or use `--json` plus
+  `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach** — piping a JSON array
+  straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge queue
+  select **#552 — the production-data PR.**
 - ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
   **per-commit**.
 - ⚠️ **`mergeStateStatus: CLEAN` can still be refused** — "the base branch policy prohibits the merge"
@@ -383,8 +386,10 @@ here now because they are true for **every** station.
 
 ## 9.5 The pipeline's own instruments
 
-- ⚠️ **`lint-prompt.mjs` reports REJECT when `gh` is merely missing.** That is the instrument failing,
-  not the prompt. Check `gh` before believing a REJECT.
+- 🔴 **`lint-prompt.mjs` does NOT reject when `gh` is missing** — it WARNs `could not probe ...
+  skipping` and ADMITs with exit 0, so every `origin/main:` file-gate is silently waived. An ADMIT
+  obtained without `gh` on PATH proves strictly less than an ordinary ADMIT. Confirm `gh` resolves
+  before believing any ADMIT.
 - 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** Before arming anything: read the BODY
   for `<!-- watcher: do-not-arm -->` or a `DO NOT ARM` line — **the linter cannot see them**. Measured:
   8 prompts carrying one still linted ADMIT, including one that drops database tables.
@@ -410,4 +415,4 @@ query that answered confidently and wrongly.
 ⚠️ **"No process is holding it" is only evidence when you know WHERE the process would have run.** A
 lock left by a destroyed Linux VM has no Windows process by construction, forever.
 
-<!-- END-CANONICAL-BLOCK: instruments v1 -->
+<!-- END-CANONICAL-BLOCK: instruments v2 -->

@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { MasterDataModule } from "../master-data/master-data.module";
 import { PlatformModule } from "../platform/platform.module";
 import { JobNumberService } from "./job-number.service";
 import { JobsController } from "./jobs.controller";
@@ -12,13 +13,15 @@ import { TenderConversionController } from "./tender-conversion.controller";
  * (award → contract → convert → reuse → rollback). Depends on
  * {@link PlatformModule} for {@link SharePointService} (folder
  * provisioning on conversion) and {@link NotificationsService}
- * (live follow-up refresh). {@link JobsService} and
- * {@link JobNumberService} are re-exported so other modules (tendering,
- * dashboards, scheduler) can read jobs and resolve canonical job
- * numbers without going through HTTP.
+ * (live follow-up refresh). {@link MasterDataModule} is imported for
+ * {@link ClientStatsService} so every tender status write that routes
+ * through JobsService also fires the client win/tender scorer.
+ * {@link JobsService} and {@link JobNumberService} are re-exported so
+ * other modules (tendering, dashboards, scheduler) can read jobs and
+ * resolve canonical job numbers without going through HTTP.
  */
 @Module({
-  imports: [PlatformModule],
+  imports: [MasterDataModule, PlatformModule],
   controllers: [JobsController, TenderConversionController],
   providers: [JobsService, JobNumberService],
   exports: [JobsService, JobNumberService]

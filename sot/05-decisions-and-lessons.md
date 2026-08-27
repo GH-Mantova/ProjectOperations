@@ -3,6 +3,7 @@
 **Compiled:** 2026-06-11 by Cowork, from memory files, chat history, sanity-check findings, escalations, and watcher logs.
 **Purpose:** one place that records every operational issue this project has hit, its root cause, the fix, and the guard now standing. Agents and humans check this BEFORE diagnosing anything that looks familiar. Append new entries; never delete.
 **Rule of use:** if a symptom matches an entry here, apply the documented playbook before inventing a new diagnosis. If a fix changes a guard, update the entry.
+**Namespace:** the `D<n>` numbering is exclusive to this register (`D_NAMESPACE_EXCLUSIVE`); foreign series carry their own prefix (`TFM-D<n>`, `EA-D<n>`) and dashboard widgets use `W<n>`.
 
 ---
 

@@ -5,6 +5,7 @@ import { AuditService } from "../audit/audit.service";
 import { ContractsService } from "../contracts/contracts.service";
 import { EmailService } from "../email/email.service";
 import { ClientStatsService } from "../master-data/client-stats.service";
+import { decideTenderScoring } from "../master-data/tender-scoring-helper";
 import { SharePointService } from "../platform/sharepoint.service";
 import { ProjectsService } from "../projects/projects.service";
 import { TenderNumberService } from "./tender-number.service";
@@ -330,15 +331,17 @@ export class TenderingService {
     );
 
     // Client scoring — update outside the main transaction (same pattern as updateStatus).
+    // decideTenderScoring encodes the rule so every call-site stays in sync.
     for (const tender of existing) {
-      if (isScorable && !tender.tenderScoreCounted) {
-        await this.clientStats.recordTenderOutcome(tender.id, { isWin: isWon, mode: "first-count" });
-      } else if (isWon && tender.tenderScoreCounted && tender.tenderWinCounted !== true) {
-        // Tender was previously submitted/lost and is now being won — bump
-        // winCount without double-counting tenderCount. tenderWinCounted guards
-        // against re-firing when status advances AWARDED → CONTRACT_ISSUED →
-        // CONVERTED. Write-back outside transaction mirrors updateStatus pattern.
-        await this.clientStats.recordTenderOutcome(tender.id, { isWin: true, mode: "win-flip" });
+      const decision = decideTenderScoring(tender.tenderScoreCounted, tender.tenderWinCounted, status);
+      if (decision.action === "none") continue;
+      await this.clientStats.recordTenderOutcome(tender.id, {
+        isWin: decision.isWin,
+        mode: decision.action
+      });
+      if (decision.action === "win-flip") {
+        // win-flip: flag not yet written inside the transaction (only first-count
+        // sets tenderWinCounted in the transaction above). Write it now.
         await this.prisma.tender.update({
           where: { id: tender.id },
           data: { tenderWinCounted: true }
@@ -1043,23 +1046,23 @@ export class TenderingService {
     // Client scoring — SUBMITTED/AWARDED/LOST all count as a tender the
     // client considered. Each linked client is updated once (flag on the
     // Tender prevents double-counting when status flips back and forth).
-    const isWon = status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED";
-    const isScorable = isWon || status === "SUBMITTED" || status === "LOST";
-    if (isScorable && !existing.tenderScoreCounted) {
-      await this.clientStats.recordTenderOutcome(id, { isWin: isWon, mode: "first-count" });
-      await this.prisma.tender.update({
-        where: { id },
-        data: { tenderScoreCounted: true, ...(isWon ? { tenderWinCounted: true } : {}) }
+    // decideTenderScoring encodes the rule so every call-site stays in sync.
+    const scoringDecision = decideTenderScoring(
+      existing.tenderScoreCounted,
+      existing.tenderWinCounted,
+      status
+    );
+    if (scoringDecision.action !== "none") {
+      await this.clientStats.recordTenderOutcome(id, {
+        isWin: scoringDecision.isWin,
+        mode: scoringDecision.action
       });
-    } else if (isWon && existing.tenderScoreCounted && existing.tenderWinCounted !== true) {
-      // Tender was previously submitted/lost (tenderCount incremented) and
-      // is now being won — bump winCount without double-counting tenderCount.
-      // tenderWinCounted guards against a second win-flip if status later
-      // transitions AWARDED → CONTRACT_ISSUED → CONVERTED.
-      await this.clientStats.recordTenderOutcome(id, { isWin: true, mode: "win-flip" });
       await this.prisma.tender.update({
         where: { id },
-        data: { tenderWinCounted: true }
+        data: {
+          tenderScoreCounted: true,
+          ...(scoringDecision.isWin ? { tenderWinCounted: true } : {})
+        }
       });
     }
 

@@ -562,3 +562,89 @@ describe("ProjectsService.activity", () => {
     );
   });
 });
+
+// ─── Client scoring — revertToTender path ──────────────────────────────────
+//
+// revertToTender resets the source tender's status to CONTRACT_ISSUED.
+// The scoreTenderStatus helper runs after the transaction and applies the
+// same first-count / win-flip / no-op logic as TenderingService.updateStatus.
+// In normal flow the flags are already set, so the call is a no-op; but the
+// hook must be present so a tender that was never scored through updateStatus
+// still gets counted.
+
+describe("ProjectsService.revertToTender — client scoring", () => {
+  function buildRevertService(scoringFlags: { tenderScoreCounted: boolean; tenderWinCounted: boolean }) {
+    const recordTenderOutcome = jest.fn().mockResolvedValue(undefined);
+
+    // Full tx mock that satisfies revertToTender's internal writes.
+    const revertTx = {
+      safetyIncident: { updateMany: jest.fn().mockResolvedValue({}) },
+      hazardObservation: { updateMany: jest.fn().mockResolvedValue({}) },
+      tenderDocumentLink: { updateMany: jest.fn().mockResolvedValue({}) },
+      project: { delete: jest.fn().mockResolvedValue({}) },
+      tender: { update: jest.fn().mockResolvedValue({}) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) }
+    };
+
+    const projectRecord = {
+      id: "p-1",
+      projectNumber: "IS-P001",
+      name: "Test Project",
+      status: "MOBILISING",
+      sourceTenderId: "tender-1",
+      _count: {
+        scopeItems: 0, milestones: 0, activityLog: 0, allocations: 0,
+        preStartChecklists: 0, timesheets: 0, ganttTasks: 0,
+        safetyIncidents: 0, hazardObservations: 0, documents: 0
+      }
+    };
+
+    const prisma = {
+      project: { findUnique: jest.fn().mockResolvedValue(projectRecord) },
+      contract: { count: jest.fn().mockResolvedValue(0) },
+      // tender.findUnique is called by scoreTenderStatus to read the flags.
+      tender: { findUnique: jest.fn().mockResolvedValue(scoringFlags), update: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation(async (fn: unknown) => (fn as (tx: unknown) => unknown)(revertTx))
+    };
+
+    const audit = { write: jest.fn().mockResolvedValue(undefined) };
+    const notifications = { create: jest.fn().mockResolvedValue(undefined) };
+    const email = { sendNotificationEmail: jest.fn().mockResolvedValue(undefined) };
+    const clientStats = { recordTenderOutcome };
+
+    const service = new ProjectsService(
+      prisma as never,
+      audit as never,
+      notifications as never,
+      email as never,
+      clientStats as never
+    );
+
+    return { service, recordTenderOutcome, tenderUpdate: prisma.tender.update };
+  }
+
+  it("calls recordTenderOutcome with first-count+isWin=true when tender is not yet scored", async () => {
+    const { service, recordTenderOutcome, tenderUpdate } = buildRevertService({
+      tenderScoreCounted: false,
+      tenderWinCounted: false
+    });
+
+    await service.revertToTender("p-1", "user-1");
+
+    expect(recordTenderOutcome).toHaveBeenCalledWith("tender-1", { isWin: true, mode: "first-count" });
+    expect(tenderUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tenderScoreCounted: true, tenderWinCounted: true }) })
+    );
+  });
+
+  it("does NOT call recordTenderOutcome when already fully counted (normal flow)", async () => {
+    const { service, recordTenderOutcome } = buildRevertService({
+      tenderScoreCounted: true,
+      tenderWinCounted: true
+    });
+
+    await service.revertToTender("p-1", "user-1");
+
+    expect(recordTenderOutcome).not.toHaveBeenCalled();
+  });
+});

@@ -526,15 +526,19 @@ console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main released -> GATE_R
   }
 }
 
-console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main unmet -> plain ADMIT (no PROMOTE)");
+// Pipeline Guard 3 inverted this expectation. It previously asserted the DEFECT:
+// a HOLD whose requires_file_on_main path is ABSENT from origin/main admitted as a
+// bare ADMIT, indistinguishable from a satisfied gate. That is precisely what this
+// slice removes, so the fixture now expects exit 1 + FILE_GATE_NOT_RELEASED.
+console.log("\n=== exit 1 REJECT: HOLD + requires_file_on_main unmet -> FILE_GATE_NOT_RELEASED");
 {
   const out = runIsolated("hold-file-gate-unmet",
     "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "requires_file_on_main: apps/api/src/does-not-exist-hold-xyz-9876543210.ts",
-    0, { hold: true });
-  if (/GATE_RELEASED/.test(out) || /PROMOTE/.test(out)) {
-    console.log("      FAIL expected plain ADMIT with no PROMOTE line. got:\n      " +
+    1, { hold: true });
+  if (!/FILE_GATE_NOT_RELEASED/.test(out) || /PROMOTE/.test(out)) {
+    console.log("      FAIL expected FILE_GATE_NOT_RELEASED and no PROMOTE line. got:\n      " +
       out.trim().split("\n").join("\n      "));
     fail++; pass--;
   }

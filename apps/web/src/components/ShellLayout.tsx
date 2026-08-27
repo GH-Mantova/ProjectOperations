@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { can, isAdminUser } from "../auth/permissions";
+import { can, canAny, isAdminUser } from "../auth/permissions";
 import { buildInfo } from "../buildInfo";
 import { NotificationsDropdown } from "./NotificationsDropdown";
 import { CommandPalette } from "./CommandPalette";
@@ -31,6 +31,11 @@ type NavItem = {
   // not have the permission. The route itself still renders a NoAccess page
   // if a user reaches the URL directly (defence-in-depth).
   requiresPermission?: string;
+  // Any-of gate. When set, the item is shown to users holding AT LEAST ONE of
+  // these permissions. Use when the backing API uses @RequireAnyPermission so
+  // the nav audience matches the server's audience exactly. Mutually exclusive
+  // with requiresPermission in practice; if both are set, BOTH must pass.
+  requiresAnyPermission?: string[];
   // Stricter than adminOnly on the parent group: hide the item unless the
   // user has isSuperUser === true (a regular Admin role is not enough).
   superUserOnly?: boolean;
@@ -195,13 +200,16 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         // PIPELINE_FOLDED — pipeline-fold cluster marker (2026-08-20).
-        // Repointed from /crm/pipeline to /tenders/pipeline; gate changed
-        // from crm.view to tenders.view so tender staff see this item.
+        // Repointed from /crm/pipeline to /tenders/pipeline. Gate uses
+        // requiresAnyPermission to match the API's
+        // @RequireAnyPermission("tenders.view", "crm.view") on every
+        // pipeline-dashboard route, so both tenders.view and crm.view
+        // holders see this item (fixes discoverability gap from #1334).
         to: "/tenders/pipeline",
         label: "Pipeline",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/tenders/pipeline"),
-        requiresPermission: "tenders.view"
+        requiresAnyPermission: ["tenders.view", "crm.view"]
       },
       {
         // SoR S2 — master rate-book for live-job variations (VC) and agreed
@@ -643,6 +651,7 @@ export function ShellLayout() {
       items: group.items.filter((item) => {
         if (item.superUserOnly && user?.isSuperUser !== true) return false;
         if (item.requiresPermission && !can(user, item.requiresPermission)) return false;
+        if (item.requiresAnyPermission && !canAny(user, ...item.requiresAnyPermission)) return false;
         return true;
       })
     }))

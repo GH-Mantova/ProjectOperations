@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
-import { can, isAdminUser } from "../../auth/permissions";
+import { can, canAny, isAdminUser } from "../../auth/permissions";
 import { NAV_GROUPS, pickMobileTabItem } from "../ShellLayout";
 
 function fakeUser(overrides: Partial<SafeUser>): SafeUser {
@@ -205,9 +205,8 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // Leads & opportunities placeholder points at /tenders — tenders.view gate.
     { label: "Leads & opportunities", permission: "tenders.view" },
     { label: "Tenders", permission: "tenders.view" },
-    // Pipeline hits /tenders/pipeline — tenders.view (pipeline-fold, 2026-08-20).
-    // Changed from crm.view so tender staff (without crm.view) see the item.
-    { label: "Pipeline", permission: "tenders.view" },
+    // Pipeline uses requiresAnyPermission (not requiresPermission) — see
+    // the any-of gate tests in the "requiresAnyPermission" describe block below.
     { label: "Schedule of Rates", permission: "rates.manage" },
     // Contracts API gates on finance.view (legacy naming from when contracts
     // lived under the finance module), NOT contracts.view.
@@ -323,5 +322,47 @@ describe("ShellLayout nav — per-item permission gates", () => {
     for (const { permission } of EXPECTED_CHILD_GATES) {
       expect(can(superUser, permission)).toBe(true);
     }
+  });
+});
+
+// requiresAnyPermission gate — pipeline-fold discoverability fix (2026-08-27).
+// The Pipeline item's backing API uses @RequireAnyPermission("tenders.view",
+// "crm.view"). The nav gate must match so crm.view-only users can reach the
+// page they are entitled to use.
+describe("ShellLayout nav — requiresAnyPermission gate (Pipeline item)", () => {
+  const pipelineItem = NAV_GROUPS
+    .find((g) => g.id === "tendering")
+    ?.items.find((i) => i.label === "Pipeline");
+
+  it("Pipeline item is visible to a tenders.view-only user", () => {
+    const user = fakeUser({ permissions: ["tenders.view"] });
+    expect(pipelineItem).toBeDefined();
+    const codes = pipelineItem!.requiresAnyPermission!;
+    expect(canAny(user, ...codes)).toBe(true);
+  });
+
+  it("Pipeline item is visible to a crm.view-only user", () => {
+    const user = fakeUser({ permissions: ["crm.view"] });
+    expect(pipelineItem).toBeDefined();
+    const codes = pipelineItem!.requiresAnyPermission!;
+    expect(canAny(user, ...codes)).toBe(true);
+  });
+
+  it("Pipeline item is hidden from a user with neither tenders.view nor crm.view", () => {
+    const user = fakeUser({ permissions: ["jobs.view"] });
+    expect(pipelineItem).toBeDefined();
+    const codes = pipelineItem!.requiresAnyPermission!;
+    expect(canAny(user, ...codes)).toBe(false);
+  });
+
+  it("generic: any nav item with requiresAnyPermission is filtered out for a user holding none of the listed codes", () => {
+    // This test must not rely solely on the Pipeline item — it asserts the
+    // any-of contract for an arbitrary item shape. If the Pipeline item is
+    // ever removed, this test still exercises the gate logic.
+    const syntheticItem = { requiresAnyPermission: ["alpha.view", "beta.manage"] };
+    const userWithNone = fakeUser({ permissions: ["gamma.view"] });
+    const userWithOne = fakeUser({ permissions: ["alpha.view"] });
+    expect(canAny(userWithNone, ...syntheticItem.requiresAnyPermission)).toBe(false);
+    expect(canAny(userWithOne, ...syntheticItem.requiresAnyPermission)).toBe(true);
   });
 });

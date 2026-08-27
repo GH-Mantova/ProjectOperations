@@ -47,6 +47,8 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { validateVerdict } from "./verdict-guard.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Isolation: the watcher can run against a dedicated clone (its own .git)
 // so automation never churns the interactive working tree's HEAD/index.
@@ -1246,13 +1248,31 @@ export function classifyPolicyFiles(files) {
   return { ok: true };
 }
 
+// Fetch the list of file paths touched by a PR using `gh pr view --json files`.
+// Returns a string[] of normalized path strings. Throws on gh failure.
+async function prFileList(prNumber) {
+  const data = await runGh(["pr", "view", String(prNumber), "--json", "files"], { json: true });
+  const files = data.files ?? [];
+  return files.map((f) => (typeof f === "string" ? f : (f.path ?? "")));
+}
+
 // The reviewer writes docs/pr-reviews/pr-{N}-review.md with the verdict on
 // the first line: "VERDICT: MERGE" (or FIX / BLOCK). Only MERGE approves.
-async function verdictApproves(prNumber) {
+// When prFiles is provided (string[]), the guard also runs: a MERGE verdict
+// that names files not in the PR is rejected even if the text says MERGE.
+async function verdictApproves(prNumber, prFiles) {
   const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
   try {
     const content = await readFile(verdictPath, "utf-8");
-    return /^VERDICT:\s*MERGE\b/m.test(content);
+    if (!/^VERDICT:\s*MERGE\b/m.test(content)) return false;
+    if (prFiles != null) {
+      const guardResult = validateVerdict({ verdictText: content, prFiles });
+      if (!guardResult.ok) {
+        log("verdict-guard", `PR #${prNumber}: MERGE verdict blocked — cites files not in PR: ${guardResult.unmatched.join(", ")}`);
+        return false;
+      }
+    }
+    return true;
   } catch {
     return false;
   }
@@ -1606,6 +1626,11 @@ async function waitForPolicyMerge(prNumber, _hbOpts = {}) {
     if (!cls.ok) {
       return { ok: false, marco: true, reason: cls.reason };
     }
+    // Capture the file path list once; pass to verdictApproves so the guard
+    // can reject a MERGE verdict that cites files not in this PR.
+    const policyPrFiles = (filesData.files ?? []).map(
+      (f) => (typeof f === "string" ? f : (f.path ?? "")),
+    );
 
     const startedAt = Date.now();
     let mergeEnabled = false;
@@ -1647,7 +1672,7 @@ async function waitForPolicyMerge(prNumber, _hbOpts = {}) {
         checks.length > 0 &&
         checks.every((c) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion));
 
-      if (!mergeEnabled && allGreen && (await verdictApproves(prNumber))) {
+      if (!mergeEnabled && allGreen && (await verdictApproves(prNumber, policyPrFiles))) {
         if (DRY_RUN) {
           log("dry-run", `PR #${prNumber}: all tests-docs conditions met — would enable auto-merge`);
           return { ok: false, marco: true, reason: "dry-run: auto-merge not executed" };
@@ -2292,6 +2317,75 @@ async function drain() {
     // the watcher mid-job can rarely re-run a review and post a duplicate
     // comment — accepted, simpler than tracking mirrored PRs in state.
     if (reviewJob) {
+      // PIPELINE GUARD 1: validate the verdict against the actual PR file list
+      // before mirroring. A stale watcher clone can cause the review agent to
+      // cite files from local main that are not in the PR under review. Those
+      // phantom references are detected here and the verdict is quarantined to
+      // blocked/ rather than mirrored — keeping the false verdict off GitHub.
+      const reviewPrNum = reviewJobPrNumber(name);
+      let guardBlocked = false;
+      if (reviewPrNum != null) {
+        try {
+          const guardPrFiles = await prFileList(reviewPrNum);
+          const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${reviewPrNum}-review.md`);
+          let verdictText = "";
+          try {
+            verdictText = await readFile(verdictPath, "utf-8");
+          } catch {
+            // verdict file not found — guard cannot run; let mirror proceed
+            verdictText = "";
+          }
+          if (verdictText) {
+            const guardResult = validateVerdict({ verdictText, prFiles: guardPrFiles });
+            if (!guardResult.ok) {
+              guardBlocked = true;
+              log("verdict-guard", `PR #${reviewPrNum}: verdict cites files not in PR — blocking mirror, moving to blocked/`);
+              const dest = path.join(BLOCKED_DIR, name);
+              const logDest = path.join(BLOCKED_DIR, `${name}.log`);
+              const noteDest = path.join(BLOCKED_DIR, `${name}.guard-block.md`);
+              const note = [
+                `# Verdict-guard block — ${name}`,
+                ``,
+                `Blocked: ${ts()}`,
+                `PR: #${reviewPrNum}`,
+                ``,
+                `The verdict named the following file(s) that are NOT in PR #${reviewPrNum}:`,
+                ``,
+                ...guardResult.unmatched.map((p) => `  - ${p}`),
+                ``,
+                `This usually means the review agent ran against a stale local main`,
+                `(syncMain() only advances inside the AUTO_MERGE block for non-gated PRs).`,
+                ``,
+                `Action: re-queue this review prompt after the watcher clone is updated,`,
+                `or remove the phantom file references from the verdict and re-queue.`,
+                ``,
+              ].join("\n");
+              try {
+                await mkdir(BLOCKED_DIR, { recursive: true });
+                await rename(filePath, dest);
+                await writeFile(logDest, logBody, "utf-8");
+                await writeFile(noteDest, note, "utf-8");
+              } catch (mvErr) {
+                log("error", `verdict-guard move to blocked/ failed: ${mvErr.message}`);
+              }
+            }
+          }
+        } catch (guardErr) {
+          // Guard infrastructure failure (e.g. gh call failed). Log and
+          // proceed — the guard failing open is better than silently dropping
+          // legitimate verdicts. The phantom-file defect is a quality issue,
+          // not a security issue.
+          log("verdict-guard", `guard check failed for PR #${reviewPrNum}: ${guardErr.message} — proceeding with mirror`);
+        }
+      }
+
+      if (guardBlocked) {
+        seen.delete(name);
+        running = false;
+        drain();
+        return;
+      }
+
       await mirrorVerdictToPr(name);
     }
 

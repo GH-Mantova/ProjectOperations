@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { MasterDataModule } from "../master-data/master-data.module";
 import { PlatformModule } from "../platform/platform.module";
 import { ProcurementModule } from "../procurement/procurement.module";
 import { DailyDiaryController } from "./daily-diary.controller";
@@ -32,7 +33,7 @@ import { PunchItemsService } from "./punch-items.service";
  * {@link CommitmentService} (which is exported from ProcurementModule).
  */
 @Module({
-  imports: [AuditModule, PlatformModule, ProcurementModule],
+  imports: [AuditModule, MasterDataModule, PlatformModule, ProcurementModule],
   controllers: [
     ProjectsController,
     GanttController,

@@ -765,6 +765,247 @@ describe("JobsService.awardTenderClient", () => {
   });
 });
 
+// ─── Client scoring — forward paths ────────────────────────────────────────
+//
+// Each of the five forward-path methods (awardTenderClient, issueContract,
+// convertTenderToJob, reuseArchivedJobConversion, and the revertToTender path
+// in ProjectsService) must call ClientStatsService.recordTenderOutcome after
+// the status write. These tests verify that the right call is made (or not
+// made) for each combination of flag state and new status.
+
+function buildServiceWithStats(extraPrisma: Record<string, unknown> = {}) {
+  const auditWrite = jest.fn().mockResolvedValue(undefined);
+  const refreshLiveFollowUps = jest.fn().mockResolvedValue(undefined);
+  const recordTenderOutcome = jest.fn().mockResolvedValue(undefined);
+
+  // Default tender row returned by requireTender (first findUnique call).
+  const fullTenderRow = tenderRow({
+    tenderClients: [
+      { id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: true, contractIssuedAt: null }
+    ]
+  });
+
+  const prisma: Record<string, unknown> = {
+    job: {
+      findUnique: jest.fn().mockResolvedValue(jobRow()),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn().mockResolvedValue(jobRow()),
+      update: jest.fn().mockResolvedValue(jobRow())
+    },
+    jobCloseout: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({})
+    },
+    jobStage: {
+      findUnique: jest.fn().mockResolvedValue({ id: "stage-1", jobId: "job-1" }),
+      create: jest.fn().mockResolvedValue({ id: "stage-new", name: "Stage" }),
+      update: jest.fn().mockResolvedValue({})
+    },
+    jobConversion: {
+      upsert: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({})
+    },
+    jobActivity: { findUnique: jest.fn().mockResolvedValue(null) },
+    jobIssue: { findUnique: jest.fn().mockResolvedValue(null) },
+    jobVariation: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null) },
+    jobProgressEntry: { create: jest.fn().mockResolvedValue({}) },
+    jobStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+    activityEntry: { create: jest.fn().mockResolvedValue({}) },
+    searchEntry: { create: jest.fn().mockResolvedValue({}) },
+    sharePointFolderLink: { update: jest.fn().mockResolvedValue({}) },
+    documentLink: {
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn().mockResolvedValue({})
+    },
+    project: { findFirst: jest.fn().mockResolvedValue(null) },
+    // tender.findUnique is called twice on forward paths:
+    //   1. requireTender — returns the full tender row
+    //   2. scoreTenderStatus — returns just the scoring flags
+    // We default to "not yet scored" (first-count scenario).
+    tender: {
+      findUnique: jest.fn()
+        .mockResolvedValueOnce(fullTenderRow)
+        .mockResolvedValue({ tenderScoreCounted: false, tenderWinCounted: false }),
+      update: jest.fn().mockResolvedValue({})
+    },
+    tenderClient: {
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    $transaction: jest.fn().mockImplementation((input: unknown) => {
+      if (typeof input === "function") {
+        return (input as (tx: unknown) => Promise<unknown>)(prisma);
+      }
+      return Promise.all(input as Array<Promise<unknown>>);
+    }),
+    ...extraPrisma
+  };
+
+  const audit = { write: auditWrite };
+  const sharepoint = { ensureFolder: jest.fn().mockResolvedValue({ id: "folder-1" }) };
+  const notifications = { refreshLiveFollowUps };
+  const jobNumberService = {
+    generate: jest.fn().mockResolvedValue({ jobNumber: "J260612-ACME-001", clientSlugSnapshot: "ACME" }),
+    validate: jest.fn().mockReturnValue(null)
+  };
+  const clientStats = { recordTenderOutcome };
+
+  const service = new JobsService(
+    prisma as never,
+    audit as never,
+    sharepoint as never,
+    notifications as never,
+    jobNumberService as never,
+    clientStats as never
+  );
+
+  return { service, prisma, recordTenderOutcome, clientStats };
+}
+
+describe("JobsService — client scoring on forward status writes", () => {
+  // buildServiceWithStats sets up tender.findUnique with:
+  //   call 1 (queued): fullTenderRow — returned for the first requireTender call
+  //   call 2+ (default): { tenderScoreCounted: false, tenderWinCounted: false }
+  //
+  // Each forward method calls requireTender at start, then scoreTenderStatus
+  // (which reads the scoring flags), then requireTender again for the return
+  // value. So the call pattern for findUnique is:
+  //   call 1 → fullTenderRow (from queue — initial requireTender)
+  //   call 2 → default/override (scoreTenderStatus scoring flags)
+  //   call 3 → default/override (return requireTender)
+  //
+  // Tests that need specific scoring flags override the default mock.
+
+  describe("awardTenderClient", () => {
+    it("calls recordTenderOutcome with first-count+isWin=true when tender is not yet scored", async () => {
+      // Default buildServiceWithStats has tenderScoreCounted=false, so first-count fires.
+      const { service, prisma, recordTenderOutcome } = buildServiceWithStats();
+      // Override call 1 to use a tc-1 client that the target matches.
+      (prisma.tender as { findUnique: jest.Mock }).findUnique
+        .mockResolvedValueOnce(tenderRow({
+          tenderClients: [
+            { id: "tc-1", clientId: "client-1", isAwarded: false, contractIssued: false, contractIssuedAt: null }
+          ]
+        }));
+      // Calls 2+ keep the default { tenderScoreCounted: false, tenderWinCounted: false }
+
+      await service.awardTenderClient("tender-1", "tc-1", "user-1");
+
+      expect(recordTenderOutcome).toHaveBeenCalledWith("tender-1", { isWin: true, mode: "first-count" });
+      expect((prisma.tender as { update: jest.Mock }).update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ tenderScoreCounted: true, tenderWinCounted: true }) })
+      );
+    });
+
+    it("calls recordTenderOutcome with win-flip when tender was already submitted/lost", async () => {
+      const { service, prisma, recordTenderOutcome } = buildServiceWithStats({
+        tender: {
+          findUnique: jest.fn()
+            .mockResolvedValueOnce(tenderRow({
+              tenderClients: [
+                { id: "tc-1", clientId: "client-1", isAwarded: false, contractIssued: false, contractIssuedAt: null }
+              ]
+            }))
+            // scoreTenderStatus reads: already scored, not yet won
+            .mockResolvedValueOnce({ tenderScoreCounted: true, tenderWinCounted: false })
+            // second requireTender at return
+            .mockResolvedValueOnce(tenderRow()),
+          update: jest.fn().mockResolvedValue({})
+        }
+      });
+
+      await service.awardTenderClient("tender-1", "tc-1", "user-1");
+
+      expect(recordTenderOutcome).toHaveBeenCalledWith("tender-1", { isWin: true, mode: "win-flip" });
+    });
+
+    it("does NOT call recordTenderOutcome when the tender is already fully counted", async () => {
+      const { service, prisma, recordTenderOutcome } = buildServiceWithStats({
+        tender: {
+          findUnique: jest.fn()
+            .mockResolvedValueOnce(tenderRow({
+              tenderClients: [
+                { id: "tc-1", clientId: "client-1", isAwarded: false, contractIssued: false, contractIssuedAt: null }
+              ]
+            }))
+            // scoreTenderStatus reads: already scored and won — no-op
+            .mockResolvedValue({ tenderScoreCounted: true, tenderWinCounted: true }),
+          update: jest.fn().mockResolvedValue({})
+        }
+      });
+
+      await service.awardTenderClient("tender-1", "tc-1", "user-1");
+
+      expect(recordTenderOutcome).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("issueContract", () => {
+    it("calls recordTenderOutcome with first-count+isWin=true when tender is not yet scored", async () => {
+      const { service, prisma, recordTenderOutcome } = buildServiceWithStats();
+      (prisma.tender as { findUnique: jest.Mock }).findUnique
+        .mockResolvedValueOnce(tenderRow({
+          tenderClients: [
+            { id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: false, contractIssuedAt: null }
+          ]
+        }));
+      // Calls 2+ keep the default { tenderScoreCounted: false, tenderWinCounted: false }
+
+      await service.issueContract("tender-1", { tenderClientId: "tc-1" } as never, "user-1");
+
+      expect(recordTenderOutcome).toHaveBeenCalledWith("tender-1", { isWin: true, mode: "first-count" });
+    });
+
+    it("does NOT call recordTenderOutcome when already scored and won", async () => {
+      const { service, prisma, recordTenderOutcome } = buildServiceWithStats({
+        tender: {
+          findUnique: jest.fn()
+            .mockResolvedValueOnce(tenderRow({
+              tenderClients: [
+                { id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: false, contractIssuedAt: null }
+              ]
+            }))
+            .mockResolvedValue({ tenderScoreCounted: true, tenderWinCounted: true }),
+          update: jest.fn().mockResolvedValue({})
+        }
+      });
+
+      await service.issueContract("tender-1", { tenderClientId: "tc-1" } as never, "user-1");
+
+      expect(recordTenderOutcome).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("rollbackTenderLifecycle", () => {
+    it("does NOT call recordTenderOutcome at all — backward move must never increment", async () => {
+      // rollbackTenderLifecycle calls requireTender twice (start + return).
+      // scoreTenderStatus is deliberately absent. No scoring call must fire.
+      const { service, prisma, recordTenderOutcome } = buildServiceWithStats({
+        tender: {
+          findUnique: jest.fn()
+            .mockResolvedValueOnce(tenderRow({
+              tenderClients: [
+                { id: "tc-1", clientId: "client-1", isAwarded: true, contractIssued: true, contractIssuedAt: null }
+              ]
+            }))
+            .mockResolvedValue(tenderRow()),
+          update: jest.fn().mockResolvedValue({})
+        }
+      });
+
+      await service.rollbackTenderLifecycle(
+        "tender-1",
+        { targetStage: "AWARDED", tenderClientId: "tc-1" } as never,
+        "user-1"
+      );
+
+      expect(recordTenderOutcome).not.toHaveBeenCalled();
+    });
+  });
+});
+
 // ─── Tenant scoping gap ────────────────────────────────────────────────────
 
 describe("JobsService — tenant scoping gap", () => {

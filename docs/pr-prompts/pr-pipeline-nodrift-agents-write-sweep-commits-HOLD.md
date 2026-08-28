@@ -24,7 +24,7 @@ escalates: false
 backfill: false
 cluster: pipeline-nodrift
 cluster_order: 1
-requires_on_main: scripts/pipeline/arm-prompt.ps1 :: .arming-log.txt
+requires_merged: 1351
 ---
 
 # NO-DRIFT — agents write, one job commits

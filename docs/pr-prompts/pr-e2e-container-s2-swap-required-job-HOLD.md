@@ -22,7 +22,7 @@ escalates: true
 backfill: false
 cluster: e2e-container
 cluster_order: 2
-requires_on_main: '.github/workflows/playwright-container-trial.yml :: mcr.microsoft.com/playwright'
+requires_merged: 1317
 rollback_strategy: >-
   One commit touching two workflow files. `git revert` restores the previous
   `tendering-e2e` verbatim, including the install step and the browser cache

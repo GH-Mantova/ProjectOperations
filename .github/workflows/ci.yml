@@ -184,29 +184,32 @@ jobs:
       - run: node scripts/pipeline/check-breadcrumb.mjs
       # --- sot/ and pipeline register checkers ---
       # Polarities differ per checker; each step's handling is documented inline.
-      # check-sot-refs: exit 0 = all references resolve; non-zero = dangling path(s).
+      # check-sot-refs: exit 0 = all references resolve (or are baselined/excluded);
+      # non-zero = at least one reference dangled outside docs/qa/sot-refs-baseline.json.
       #
-      # TEMPORARILY NON-BLOCKING - and here is the exact condition for removing that.
-      # Measured 2026-08-27 (run 33065422941): 28 pre-existing dangling references inside
-      # sot/*.md. Repairs belong to Station 05 (sot/ is its exclusive domain), so blocking
-      # here would stall every other workstream behind one station's backlog - and a check
-      # that is red by default is a check everyone learns to ignore.
-      #
-      # pr-sot-refs-s1-baseline-ratchet-and-discovery classifies those 28 (genuine dangle /
-      # checker defect / consumed-prompt churn), writes docs/qa/sot-refs-baseline.json, and
-      # then DELETES the wrapper below so this step blocks on anything not baselined.
-      # Do not remove this comment without doing that work.
-      - name: check-sot-refs (non-blocking until baseline lands)
+      # Blocking since PR sot-refs-s1: the 28 pre-existing dangling references are
+      # recorded in docs/qa/sot-refs-baseline.json. That file may only SHRINK — the
+      # ratchet step below rejects any PR that adds an entry. Burn-down is Station 05's.
+      - run: node scripts/pipeline/check-sot-refs.mjs
+      # RATCHET: docs/qa/sot-refs-baseline.json may only shrink.
+      # Any PR that adds a "missing_path" entry (i.e. appends a new dangling reference
+      # to the baseline rather than fixing it) is rejected here. Removals stay allowed.
+      # Without this gate the first person under deadline pressure appends their broken
+      # reference and the whole mechanism becomes decoration within a month.
+      # Guard: if the file did not exist on the base branch this is the creation PR —
+      # additions are expected. Only enforce the ratchet once the file is established.
+      - name: sot-refs ratchet — baseline may only shrink
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
-          set +e
-          node scripts/pipeline/check-sot-refs.mjs
-          code=$?
-          set -e
-          if [ "$code" -ne 0 ]; then
-            echo "::warning::check-sot-refs found dangling references (exit $code) - not blocking yet; see pr-sot-refs-s1-baseline-ratchet-and-discovery"
+          if ! git show "origin/${{ github.base_ref }}:docs/qa/sot-refs-baseline.json" > /dev/null 2>&1; then
+            echo "sot-refs-baseline.json is new on this PR — ratchet skipped (creation is allowed)"
+            exit 0
           fi
-          exit 0
+          if git diff "origin/${{ github.base_ref }}" -- docs/qa/sot-refs-baseline.json | grep '^+.*"missing_path"'; then
+            echo "::error::docs/qa/sot-refs-baseline.json gained a new entry. The baseline may only SHRINK. Fix the dangling reference in sot/ instead of adding it to the baseline."
+            exit 1
+          fi
       # check-lessons: exit 0 = clean (no regressions); exit 1 = broken instrument;
       # exit 2 = at least one lesson has regressed. All non-zero are failures.
       - name: check-lessons

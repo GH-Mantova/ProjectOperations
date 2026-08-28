@@ -109,6 +109,30 @@ your job ends at writing the breadcrumb.
 
 <!-- END-CANONICAL-BLOCK: station-contract v1 -->
 
+## SOT-REFS BURN-DOWN — your primary housekeeping obligation
+
+`docs/qa/sot-refs-baseline.json` records 26 dangling references inside `sot/*.md` that existed when
+the CI gate was made blocking. This file **may only shrink**. The CI ratchet rejects any PR that adds
+an entry. You are the only station that may edit `sot/`, so you are the only one who can burn this list
+down.
+
+**Workflow — one entry at a time:**
+
+1. Open `docs/qa/sot-refs-baseline.json` and pick an entry.
+2. Fix the reference in the corresponding `sot/` file (point it at the real path, update the prose, or
+   remove the stale reference entirely — whichever is correct per the sot content).
+3. Delete that entry from `docs/qa/sot-refs-baseline.json`.
+4. Run `node scripts/pipeline/check-sot-refs.mjs` — must exit 0 with one fewer BASELINED line.
+5. Ship both changes (`sot/` fix + baseline entry deletion) in the same doc-reconcile PR.
+
+**Never add an entry.** If you encounter a newly dangling reference, fix it in `sot/` directly. The
+baseline is a burn-down list for pre-existing debt, not a place to park new problems.
+
+**Verification:** `node scripts/pipeline/check-sot-refs.mjs` prints `sot-refs: N baselined exemptions
+remain` on every run. N must be lower than it was before your PR, never higher.
+
+---
+
 ## AUTHORITY — what this station may and may not do
 
 **You are the ONLY station permitted to edit `/sot/`.**

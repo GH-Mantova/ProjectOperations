@@ -349,3 +349,175 @@ test("search roots: a path under no declared root still FAILS, and the roots are
     cleanup();
   }
 });
+
+// ---------------------------------------------------------------------------
+// 10. BASELINE — a dangling reference that IS in docs/qa/sot-refs-baseline.json
+//     must be treated as exempt (exit 0), and the exemption must be printed.
+// ---------------------------------------------------------------------------
+
+test("baseline: a baselined dangling reference exits 0 and prints BASELINED", () => {
+  const { root, cleanup } = createFixture();
+  try {
+    // Write a sot file with a reference to a file that does NOT exist
+    writeFileSync(
+      join(root, "sot", "test.md"),
+      "See `docs/missing-thing.md` for details.\n",
+    );
+
+    // Write a baseline that covers this exact reference
+    mkdirSync(join(root, "docs", "qa"), { recursive: true });
+    writeFileSync(
+      join(root, "docs", "qa", "sot-refs-baseline.json"),
+      JSON.stringify({
+        _readme: "test",
+        entries: [
+          { sot_file: "sot/test.md", line: 1, missing_path: "docs/missing-thing.md", recorded: "2026-08-28" },
+        ],
+      }),
+    );
+
+    const { status, stdout, stderr } = run(root);
+    const combined = stdout + stderr;
+
+    assert.equal(status, 0, "exit must be 0 when the dangling ref is baselined; got:\n" + combined);
+    assert.ok(
+      combined.includes("BASELINED"),
+      "output must print BASELINED; got:\n" + combined,
+    );
+    assert.ok(
+      combined.includes("docs/missing-thing.md"),
+      "output must name the baselined path; got:\n" + combined,
+    );
+    assert.ok(
+      combined.includes("sot-refs-baseline.json"),
+      "output must reference the baseline file path; got:\n" + combined,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 11. BASELINE — a dangling reference that is NOT in the baseline must still
+//     exit 1. The baseline must never become a blanket pass.
+// ---------------------------------------------------------------------------
+
+test("baseline: a dangling reference absent from baseline still fails", () => {
+  const { root, cleanup } = createFixture();
+  try {
+    // Write a sot file with TWO missing references
+    writeFileSync(
+      join(root, "sot", "test.md"),
+      "See `docs/missing-a.md` and `docs/missing-b.md`.\n",
+    );
+
+    // Baseline covers only one of the two
+    mkdirSync(join(root, "docs", "qa"), { recursive: true });
+    writeFileSync(
+      join(root, "docs", "qa", "sot-refs-baseline.json"),
+      JSON.stringify({
+        _readme: "test",
+        entries: [
+          { sot_file: "sot/test.md", line: 1, missing_path: "docs/missing-a.md", recorded: "2026-08-28" },
+        ],
+      }),
+    );
+
+    const { status, stdout, stderr } = run(root);
+    const combined = stdout + stderr;
+
+    assert.notEqual(status, 0, "exit must be non-zero when a ref is absent from the baseline; got:\n" + combined);
+    assert.ok(
+      combined.includes("docs/missing-b.md"),
+      "the un-baselined dangling path must appear; got:\n" + combined,
+    );
+    assert.ok(
+      combined.includes("FAIL") || combined.includes("DANGLING"),
+      "output must contain FAIL or DANGLING for the un-baselined ref; got:\n" + combined,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 12. PATH-CLASS EXCLUSION — docs/pr-prompts/*-ready.md references must be
+//     excluded by design (consumed-prompt churn) and NOT counted as failures.
+//     The exclusion must be PRINTED — silent exclusions rot.
+// ---------------------------------------------------------------------------
+
+test("path-class exclusion: *-ready.md in pr-prompts is excluded and printed", () => {
+  const { root, cleanup } = createFixture();
+  try {
+    // A real file that resolves (to satisfy the zero-refs guard)
+    mkdirSync(join(root, "docs"), { recursive: true });
+    writeFileSync(join(root, "docs", "real.md"), "# real\n");
+
+    // The sot file references a *-ready.md (always absent) AND a real file
+    writeFileSync(
+      join(root, "sot", "test.md"),
+      [
+        "Builds on `docs/pr-prompts/pr-some-feature-ready.md` (in flight).",
+        "See also `docs/real.md` for context.",
+      ].join("\n") + "\n",
+    );
+
+    const { status, stdout, stderr } = run(root);
+    const combined = stdout + stderr;
+
+    assert.equal(status, 0, "exit must be 0 when the only dangling ref is a *-ready.md; got:\n" + combined);
+    assert.ok(
+      combined.includes("EXCLUDED") || combined.includes("PATH-CLASS"),
+      "output must announce the path-class exclusion; got:\n" + combined,
+    );
+    assert.ok(
+      combined.includes("pr-some-feature-ready.md"),
+      "output must name the excluded path; got:\n" + combined,
+    );
+    // The reason must be printed — silent exclusions rot
+    assert.ok(
+      combined.includes("consumed") || combined.includes("watcher") || combined.includes("processed"),
+      "output must include the exclusion reason; got:\n" + combined,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 13. PATH-CLASS EXCLUSION negative control — a *-HOLD.md or other non-ready
+//     file in pr-prompts that doesn't exist is NOT excluded; it must fail.
+//     The exclusion must match only the exact *-ready.md pattern.
+// ---------------------------------------------------------------------------
+
+test("path-class exclusion: a missing non-ready pr-prompt still fails", () => {
+  const { root, cleanup } = createFixture();
+  try {
+    // A real file to avoid zero-refs
+    mkdirSync(join(root, "docs"), { recursive: true });
+    writeFileSync(join(root, "docs", "real.md"), "# real\n");
+
+    writeFileSync(
+      join(root, "sot", "test.md"),
+      [
+        "Held: `docs/pr-prompts/pr-some-feature-HOLD.md`.",
+        "See also `docs/real.md`.",
+      ].join("\n") + "\n",
+    );
+
+    const { status, stdout, stderr } = run(root);
+    const combined = stdout + stderr;
+
+    assert.notEqual(status, 0, "a missing non-ready pr-prompt must still fail; got:\n" + combined);
+    assert.ok(
+      combined.includes("pr-some-feature-HOLD.md"),
+      "the dangling HOLD path must be named; got:\n" + combined,
+    );
+    assert.ok(
+      combined.includes("FAIL") || combined.includes("DANGLING"),
+      "output must contain FAIL or DANGLING; got:\n" + combined,
+    );
+  } finally {
+    cleanup();
+  }
+});

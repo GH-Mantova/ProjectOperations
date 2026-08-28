@@ -195,6 +195,71 @@ are dead escalations that the sweep re-prints every run and every reader must re
 **Disposition: DEFERRED** — clearing them is a doc-only sweep with no board effect, and it is not
 worth a PR of its own; fold it into the next board PR that touches `docs/pr-prompts/`.
 
+### F7 — ROOT CAUSE of the retracted RULE-2 breach count: the merge lane logs a verdict for a PR the run never opened
+
+Found by following the prompt I armed in F1. Its predecessor run at **2026-08-28 02:11Z** ended
+without opening anything — the log says so in plain words: *"an absent `requires_on_main` symbol is
+a hard hold — I do not open the PR."* The **last line of that same log** is:
+
+```
+[watcher] merge result for PR #1251: {"ok":false,"marco":true,"reason":"outside tests/ or docs/: apps/web/src/pages/crm/AccountDetailPage.tsx"}
+```
+
+**[MEASURED]** `gh pr view 1251` → **MERGED 2026-08-19T20:27:52Z**, title
+`fix(web): humane API errors — CRM and directory pages (slice 4/10)`, head
+`worktree-agent-a31651488ce1001b3`. That PR merged **nine days earlier** and has nothing to do with
+this prompt.
+
+So the merge lane, on a run that opened no PR at all, (a) picked up a stale PR number from somewhere,
+(b) evaluated a merge against it, and (c) wrote **`"marco":true`** into the run's log for it.
+
+This matters far beyond one log line. `'"marco":true'` in `processed/<prompt>.md.log` is the **one
+live probe for RULE 2** — "never merge a PR the watcher routed to Marco". **[MEASURED]** that string
+occurs in **567** processed logs, and `merge result for PR #1251` occurs in **2**. Every one of those
+567 is now suspect, because the lane demonstrably attributes a routing decision to a PR the run never
+touched. The 04:08Z run retracted the breach count on the grounds that no signal distinguished Marco
+from an agent; this is the concrete mechanism underneath that retraction, and it is worse than
+"unverified" — it is a probe that can be **positively wrong**.
+
+**Do not resurrect any RULE-2 count from `processed/*.log` until the merge lane proves the PR number
+belongs to the run that logged it.** The fix — record the PR number the run itself opened, and refuse
+to emit a merge result when the run opened none — is one small change in the watcher's merge lane.
+
+**Disposition: ESCALATED.** The safety rule Marco cares most about (RULE 2) is being measured by an
+instrument that reports on the wrong PR, and the correct handling of a *false* routing is not a
+decision an agent should make alone. Two options, complete-and-additive first:
+
+- **(A) Make the lane state its own subject.** Have the run carry the PR number it opened, log
+  `no PR opened — merge lane skipped` when it opened none, and treat a merge result naming any other
+  PR as a hard error. *Complete:* the probe stops lying now and stays honest as the lane evolves.
+  *Additive:* nothing is deleted; existing logs keep their meaning, and the 567 historical hits can
+  be re-scored later against the PRs each run actually opened.
+- **(B) Suppress the merge-lane line on no-PR runs only.** Cheaper, and it removes today's false
+  positives — but it fails the *future* half of RULE 1: a run that opens PR X could still log a
+  verdict for PR Y, and nothing would catch it.
+
+### F8 — an armed prompt can re-fire itself under a `-b` name, and the new file's mtime is a lie
+
+**[MEASURED]** After the watcher consumed `pr-crm-s2-nav-three-items-tabs-ready.md` at ~06:15Z, a
+second armed file appeared — `pr-crm-s2-nav-three-items-tabs-b-ready.md` — and the heartbeat has been
+running it since 06:16:13Z. Armed count went `0 → 1 → 0 → 1` inside four minutes without me touching
+anything after the first `git mv`.
+
+The re-fire itself looks correct: the 02:11Z run explicitly asked for it (*"land the S1 PR … then
+re-fire this prompt"*), and the gate it was waiting on is now released. **This is not a LOOP** and I
+did not rename it to `-LOOPING.md`; a loop is the same work running a third time with nothing having
+changed, and here the gate state changed between the two fires.
+
+What is worth recording is the **instrument trap**: the `-b` file's `LastWriteTimeUtc` is
+**2026-08-27 08:02:33** — a day before it existed in the queue — because the rename that created it
+preserved the source file's mtime. Anyone counting "recently armed prompts" by file mtime, or judging
+whether a queue is moving by timestamp, will read this file as stale. **Age a prompt by the heartbeat
+line that names it, never by its mtime.**
+
+**Disposition: DEFERRED** — the re-fire is behaving; the trap is now written down. Becomes urgent if a
+third fire appears for the same prompt with no state change between them, which *would* be the LOOP
+case and is Station 00's to rename.
+
 ## WHAT I DID NOT DO
 
 - **Did not land Station 04's 0617 breadcrumb.** It is a proven false positive (F2), but

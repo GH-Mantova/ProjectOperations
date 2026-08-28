@@ -8,6 +8,7 @@ scope:
   - apps/api/src/modules/master-data/**
   - apps/api/src/modules/crm/accounts/**
   - apps/api/prisma/migrations/**
+  - apps/api/src/modules/crm/accounts/__tests__/ensure-account-for-client.spec.ts
   - apps/api/src/modules/**/__tests__/**
 done_when: >-
   pnpm build && pnpm lint && grep -q "ensureAccountForClient"

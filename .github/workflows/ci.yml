@@ -241,6 +241,9 @@ jobs:
             echo "check-sot-bytes detected damaged UTF-8"
             exit 1
           fi
+      # D-namespace S4: warn-only register checker. Exits 0 always; findings are
+      # printed for slice 5 triage before the mode is flipped to FAIL.
+      - run: node scripts/pipeline/check-d-register.mjs
 
   pipeline-tests-windows:
     name: Pipeline — arm-prompt tests (Windows)

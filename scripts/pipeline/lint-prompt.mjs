@@ -525,20 +525,27 @@ function checkFileGateDead(fm, repoRoot, name, isHold) {
 }
 
 /**
- * CLUSTER_DEAD_GATE vs GATE_RELEASED — same probe, two verdicts by prompt state.
+ * CLUSTER_DEAD_GATE vs GATE_RELEASED — same probe, two verdicts by prompt state
+ * AND cluster position.
  *
  * A `requires_on_main` content needle (`path :: fixed-string`) found on
- * origin/main means one of two very different things, depending on whether
- * the prompt is still parked (a `-HOLD.md`) or has been armed:
+ * origin/main means different things depending on whether the prompt is a
+ * chain successor and whether it is armed:
  *
- *   - non-HOLD  → CLUSTER_DEAD_GATE (REJECT).  Needle present at author time,
- *     before the slice was ever armed.  The arming PR would dispatch this
- *     slice with no ordering gate at all.  Genuine authoring hole.
+ *   - HOLD (any cluster_order)  → GATE_RELEASED (ADMIT + promotion signal).
+ *     The prompt was parked *waiting* for exactly this needle to appear; its
+ *     arrival IS the success condition, not a defect.
  *
- *   - HOLD      → GATE_RELEASED (ADMIT + promotion signal).  The prompt was
- *     parked *waiting* for exactly this needle to appear; its arrival IS the
- *     success condition, not a defect.  Emit a distinct message so the reader
- *     sees a HOLD is ready to promote.
+ *   - non-HOLD, cluster_order > 1 → GATE_RELEASED (ADMIT). A chain successor
+ *     depends on its predecessor landing. A satisfied gate here means the
+ *     predecessor SHIPPED — that is the precondition for arming, not a
+ *     defect. Without this carve-out, every merge in a chain manufactures a
+ *     dead-gate rejection on the next slice.
+ *
+ *   - non-HOLD, cluster_order == 1 (or unclustered)  → CLUSTER_DEAD_GATE
+ *     (REJECT). No predecessor exists, so a needle present at author time is
+ *     a decorative gate that can never fail — the slice would dispatch with
+ *     no ordering at all. Genuine authoring hole.
  *
  * Existence-only gates (no `::`) are NOT checked here — that would be a
  * legitimate "wait for the file to appear" gate; only content gates can be
@@ -549,6 +556,8 @@ function checkFileGateDead(fm, repoRoot, name, isHold) {
 function checkDeadGate(fm, repoRoot, name, isHold) {
   const entries = parseRequiresOnMainEntries(fm);
   const released = [];
+  const orderNum = Number(fm.cluster_order);
+  const isChainSuccessor = Number.isInteger(orderNum) && orderNum > 1;
   for (const { path, needle } of entries) {
     if (!needle) continue; // existence gate, not a content gate
     const contents = readFromOriginMain(path, repoRoot);
@@ -560,24 +569,26 @@ function checkDeadGate(fm, repoRoot, name, isHold) {
     }
     if (contents.absent) continue; // file missing = gate legitimately unmet
     if (typeof contents === "string" && contents.indexOf(needle) !== -1) {
-      if (isHold) {
+      if (isHold || isChainSuccessor) {
         released.push({
           code: "GATE_RELEASED",
           gate: "requires_on_main",
           path,
           needle,
-          msg: "requires_on_main: \"" + path + " :: " + needle + "\" is now on origin/main — HOLD is ready to promote.",
+          msg: isHold
+            ? "requires_on_main: \"" + path + " :: " + needle + "\" is now on origin/main — HOLD is ready to promote."
+            : "requires_on_main: \"" + path + " :: " + needle + "\" is now on origin/main — chain successor's predecessor has landed.",
         });
         continue;
       }
       return {
         ok: false, code: "CLUSTER_DEAD_GATE",
         msg:
-          "requires_on_main: \"" + path + " :: " + needle + "\" is on origin/main at author-time (non-HOLD prompt).\n" +
+          "requires_on_main: \"" + path + " :: " + needle + "\" is on origin/main at author-time (non-HOLD prompt, cluster_order 1).\n" +
           "        CLUSTER_DEAD_GATE - the needle is present before the slice is even armed,\n" +
           "        so the arming PR would dispatch this slice with no ordering gate at all.\n" +
-          "        (For a -HOLD.md whose gate has RELEASED, this same probe emits GATE_RELEASED\n" +
-          "        and admits - the HOLD is ready to promote.)\n" +
+          "        (For a -HOLD.md OR a chain successor (cluster_order > 1), this same probe\n" +
+          "        emits GATE_RELEASED and admits.)\n" +
           "        Change the needle to something the predecessor slice actually introduces,\n" +
           "        or drop the gate if the predecessor is already merged.",
       };
@@ -794,13 +805,18 @@ export function checkHumanGate(bodyText) {
  * unavailable) → warn-and-skip (return { ok: true }). A broken instrument must
  * NEVER report "gate absent" — that would bin real work.
  *
- * This check ONLY applies to HOLD prompts (isHold=true).
+ * ARMED_GATE_STILL_CHECKED: runs for every prompt regardless of `-HOLD.md` vs
+ * `-ready.md` filename. Arming a prompt renames the file, and a gate check
+ * gated on filename would strip the moment the prompt could actually run —
+ * which is precisely when the gate matters most.
  *
  * Returns { ok: true } (skip / gate met) or
  *         { ok: false, code: "GATE_NOT_RELEASED"|"FILE_GATE_NOT_RELEASED", msg }
  */
 function checkGateNotReleased(fm, repoRoot, name, isHold) {
-  if (!isHold) return { ok: true }; // only meaningful for HOLDs
+  const stateLine = isHold
+    ? "        This HOLD is parked waiting for its predecessor slice to land.\n"
+    : "        This armed prompt cannot run yet — its predecessor slice has not landed.\n";
 
   // --- requires_on_main entries (both with-needle and needle-less) ---
   const entries = parseRequiresOnMainEntries(fm);
@@ -825,9 +841,8 @@ function checkGateNotReleased(fm, repoRoot, name, isHold) {
           msg:
             "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
             "the file \"" + path + "\" is not on origin/main yet, so the needle is absent.\n" +
-            "        This HOLD is parked waiting for its predecessor slice to land.\n" +
-            "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
-            "        This is not an error — it means the HOLD is correctly waiting.",
+            stateLine +
+            "        A bare ADMIT would be indistinguishable from a prompt whose gate IS satisfied.",
         };
       }
       // File is present — check whether the needle is in it
@@ -838,9 +853,8 @@ function checkGateNotReleased(fm, repoRoot, name, isHold) {
           msg:
             "GATE_NOT_RELEASED: requires_on_main: \"" + path + " :: " + needle + "\" — " +
             "needle not found in origin/main:" + path + ".\n" +
-            "        This HOLD is parked waiting for its predecessor slice to land.\n" +
-            "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
-            "        This is not an error — it means the HOLD is correctly waiting.",
+            stateLine +
+            "        A bare ADMIT would be indistinguishable from a prompt whose gate IS satisfied.",
         };
       }
       // Needle IS present: gate is satisfied. checkDeadGate will emit GATE_RELEASED.
@@ -865,9 +879,8 @@ function checkGateNotReleased(fm, repoRoot, name, isHold) {
           msg:
             "FILE_GATE_NOT_RELEASED: requires_on_main: \"" + path + "\" — " +
             "the file is not on origin/main yet.\n" +
-            "        This HOLD is parked waiting for its predecessor slice to land.\n" +
-            "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
-            "        This is not an error — it means the HOLD is correctly waiting.",
+            stateLine +
+            "        A bare ADMIT would be indistinguishable from a prompt whose gate IS satisfied.",
         };
       }
       // File IS present: existence gate is satisfied. checkFileGateDead handles non-HOLDs;
@@ -904,9 +917,8 @@ function checkGateNotReleased(fm, repoRoot, name, isHold) {
             msg:
               "FILE_GATE_NOT_RELEASED: requires_file_on_main: \"" + path + "\" — " +
               "the file is not on origin/main yet.\n" +
-              "        This HOLD is parked waiting for its predecessor slice to land.\n" +
-              "        A bare ADMIT would be indistinguishable from a HOLD whose gate IS satisfied.\n" +
-              "        This is not an error — it means the HOLD is correctly waiting.",
+              stateLine +
+              "        A bare ADMIT would be indistinguishable from a prompt whose gate IS satisfied.",
           };
         }
         // File IS present: checkFileGateDead already emitted GATE_RELEASED for this HOLD.
@@ -1194,16 +1206,25 @@ export function lint(file, opts) {
     if (fileDeadRes.released) released.push(...fileDeadRes.released);
   }
 
-  // GATE_NOT_RELEASED / FILE_GATE_NOT_RELEASED — for HOLDs with a gate key whose
-  // condition is ABSENT from origin/main. Covers three forms:
+  // ARMED_GATE_STILL_CHECKED — the check runs for every prompt, not only HOLDs.
+  //
+  // GATE_NOT_RELEASED / FILE_GATE_NOT_RELEASED — a gate key whose condition is
+  // ABSENT from origin/main. Covers three forms:
   //   1. requires_on_main: <path> :: <needle>  — needle or file absent
   //   2. requires_on_main: <path>              — existence gate, file absent
   //   3. requires_file_on_main: <path>         — existence gate, file absent
+  //
+  // Why the check is filename-independent: `isHold` is derived from the filename
+  // (`-HOLD.md` vs `-ready.md`). Arming a prompt renames the file, and any
+  // arming path that bypasses `arm-prompt.ps1` — e.g. a raw `fs.renameSync` —
+  // used to strip the gate check silently. The linter must give the same
+  // verdict about the same bytes whatever the file is called.
+  //
   // REJECT with a distinct code so a bare ADMIT unambiguously means the gate IS
-  // satisfied. Fail-safe: probe failure → warn-and-skip.
-  // NOTE: This runs AFTER checkDeadGate, which handles the "needle IS present" case
-  // (emitting GATE_RELEASED for HOLDs). So if we reach here, the gate is unmet.
-  if (isHold) {
+  // satisfied. Fail-safe: probe failure → warn-and-skip. This runs AFTER
+  // checkDeadGate, which handles the "needle IS present" case (emitting
+  // GATE_RELEASED). So if we reach here, the gate is unmet.
+  {
     const gnrRes = checkGateNotReleased(fm, repoRoot, name, isHold);
     if (!gnrRes.ok) return fail(gnrRes.code, gnrRes.msg);
   }

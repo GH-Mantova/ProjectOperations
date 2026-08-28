@@ -107,17 +107,18 @@ describe("FILE_GATE_NOT_RELEASED — requires_file_on_main", () => {
     );
   });
 
-  // Test 3: non-HOLD with requires_file_on_main pointing at absent path → admits unchanged
-  // The gate check is only for HOLDs. A non-HOLD with an absent path has no FILE_GATE_DEAD
-  // (the path is absent, so FILE_GATE_DEAD does not fire), and FILE_GATE_NOT_RELEASED only
-  // applies to HOLDs. So it admits — documenting the intentional scope.
-  test("non-HOLD with requires_file_on_main pointing at absent path → admits (intentional scope: HOLDs only)", () => {
+  // Test 3: non-HOLD with requires_file_on_main pointing at absent path → REJECT
+  // Post-ARMED_GATE_STILL_CHECKED (this PR): the check runs regardless of the -HOLD.md vs
+  // -ready.md filename. An armed prompt whose existence gate is unmet REJECTS with
+  // FILE_GATE_NOT_RELEASED for the same reason a HOLD would — a bare ADMIT must mean the
+  // gate IS satisfied. The previous behavior admitted this case; that was the defect.
+  test("non-HOLD with requires_file_on_main pointing at absent path → exit 1, FILE_GATE_NOT_RELEASED (ARMED_GATE_STILL_CHECKED)", () => {
     const prompt = makeReadyPrompt("requires_file_on_main: " + ABSENT_PATH);
     const r = runLint(prompt, { hold: false, name: "fgnr-rfom-nonhold" });
-    assert.strictEqual(r.code, 0, "non-HOLD should admit (exit 0); got stdout: " + r.stdout);
+    assert.strictEqual(r.code, 1, "non-HOLD with unmet gate should reject (exit 1); got stdout: " + r.stdout);
     assert.ok(
-      !r.stdout.includes("FILE_GATE_NOT_RELEASED"),
-      "non-HOLD should NOT get FILE_GATE_NOT_RELEASED; got: " + r.stdout
+      r.stdout.includes("FILE_GATE_NOT_RELEASED"),
+      "non-HOLD should now get FILE_GATE_NOT_RELEASED; got: " + r.stdout
     );
   });
 });

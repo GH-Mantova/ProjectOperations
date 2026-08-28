@@ -237,25 +237,31 @@ run("dep-on-main-empty",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_on_main:", 1);
 
-console.log("\n=== exit 0 ADMIT: all three keys well-formed (inline scalar form)");
+console.log("\n=== exit 0 ADMIT: requires_merged well-formed → admitted (no path-gate check)");
 run("dep-all-keys-well-formed",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "requires_merged: 42\n" +
-  "requires_file_on_main: apps/api/src/foo.ts\n" +
-  "requires_on_main: apps/api/src/bar.ts", 0);
+  "requires_merged: 42", 0);
 
-console.log("\n=== exit 0 ADMIT: requires_on_main path-only → admitted (honoured by watcher since SLICE 2)");
-run("dep-on-main-path-only",
+// requires_on_main / requires_file_on_main with paths ABSENT from origin/main REJECT under the
+// ARMED_GATE_STILL_CHECKED fix (the whole point of the gate is that the prompt cannot run yet).
+// To test that the SLICE 1 parser accepts well-formed values, we defeat the gate probe with a
+// broken git binary so it warns-and-skips fail-safe. The parser-shape check still runs and admits.
+console.log("\n=== exit 0 ADMIT: requires_on_main path-only shape accepted (git broken -> gate probe skipped)");
+runIsolated("dep-on-main-path-only",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "requires_on_main: apps/foo.ts", 0);
+  "requires_on_main: apps/foo.ts",
+  0,
+  { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-shape-check-9876543210" } });
 
-console.log("\n=== exit 0 ADMIT: requires_on_main path :: fixed-string → admitted (honoured by watcher since SLICE 2)");
-run("dep-on-main-path-and-string",
+console.log("\n=== exit 0 ADMIT: requires_on_main path :: fixed-string shape accepted (git broken -> gate probe skipped)");
+runIsolated("dep-on-main-path-and-string",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "requires_on_main: apps/foo.ts :: some fixed string", 0);
+  "requires_on_main: apps/foo.ts :: some fixed string",
+  0,
+  { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-shape-check-9876543210" } });
 
 console.log("\n=== exit 0 ADMIT: prompt with NONE of the dep keys → unchanged behaviour (MOST important)");
 run("dep-none-present",
@@ -315,12 +321,18 @@ run("cluster-order-2-no-dep",
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: 2", 1);
 
-console.log("\n=== exit 0 ADMIT: cluster_order:2 with requires_on_main (non-dead) -> legal");
+console.log("\n=== exit 0 ADMIT: HOLD cluster_order:2 with unmet dep (git broken -> gate probe skipped, shape legal)");
+// Post-ARMED_GATE_STILL_CHECKED: an armed cluster_order:2 with an unmet needle correctly REJECTS
+// with GATE_NOT_RELEASED. To keep this test focused on cluster+dep SHAPE legality (SLICE 3), it
+// runs on a HOLD (which historically admitted this shape as "parked, waiting for the needle") and
+// with a broken git binary so the gate probe warns-and-skips fail-safe.
 runIsolated("cluster-order-2-with-dep",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: 2\n" +
-  "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_XYZ_1234567890", 0);
+  "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_XYZ_1234567890",
+  0,
+  { hold: true, env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-shape-check-9876543210" } });
 
 console.log("\n=== exit 1 REJECT: cluster_order:0 -> CLUSTER_ORDER_INVALID");
 run("cluster-order-zero",
@@ -397,19 +409,22 @@ runIsolated("good-with-bad-sibling",
   0,
   { siblings: { "malformed-ready.md": "no front-matter here, just garbage text\n" } });
 
-console.log("\n=== exit 1 REJECT: requires_on_main needle already on origin/main -> CLUSTER_DEAD_GATE");
+console.log("\n=== exit 1 REJECT: requires_on_main needle already on origin/main, cluster_order:1 -> CLUSTER_DEAD_GATE");
 // UNKNOWN_KEY is on origin/main:scripts/pipeline/lint-prompt.mjs (SLICE 1).
+// Only cluster_order:1 (no predecessor) still emits CLUSTER_DEAD_GATE. A cluster_order > 1
+// is a chain successor whose satisfied gate means the predecessor landed — that is GATE_RELEASED,
+// not a dead gate. See the cluster-order-3-successor-satisfied test below.
 runIsolated("cluster-dead-gate",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "cluster: dead-gate-test\ncluster_order: 2\n" +
+  "cluster: dead-gate-test\ncluster_order: 1\n" +
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY", 1);
 
 console.log("\n=== exit 0 ADMIT: git unavailable during dead-gate probe -> warning, admitted");
 runIsolated("cluster-dead-gate-git-broken",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "cluster: dead-gate-safe\ncluster_order: 2\n" +
+  "cluster: dead-gate-safe\ncluster_order: 1\n" +
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
   0,
   { env: { LINT_GIT_BIN: "this-git-binary-does-not-exist-xyz-1234567890" } });
@@ -475,11 +490,13 @@ runIsolated("file-gate-dead-scalar",
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_file_on_main: scripts/pipeline/lint-prompt.mjs", 1);
 
-console.log("\n=== exit 0 ADMIT: requires_file_on_main path NOT on origin/main -> gate legitimately unmet");
+console.log("\n=== exit 1 REJECT: armed requires_file_on_main path NOT on origin/main -> FILE_GATE_NOT_RELEASED");
+// Post-ARMED_GATE_STILL_CHECKED: an armed prompt whose existence gate is unmet REJECTS. Under the
+// previous behavior this admitted as a bare ADMIT because checkGateNotReleased was HOLD-only.
 runIsolated("file-gate-live",
   "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "requires_file_on_main: apps/api/src/does-not-exist-abcxyz-1234567890.ts", 0);
+  "requires_file_on_main: apps/api/src/does-not-exist-abcxyz-1234567890.ts", 1);
 
 console.log("\n=== exit 1 REJECT: list form with one dead entry among live ones -> FILE_GATE_DEAD");
 runIsolated("file-gate-dead-list",
@@ -580,6 +597,128 @@ console.log("\n=== exit 1 REJECT: HOLD + requires_on_main :: needle unmet -> GAT
     fail++; pass--;
   }
 }
+
+// ── ARMED_GATE_STILL_CHECKED ────────────────────────────────────────────────
+// The linter used to gate `checkGateNotReleased` behind `isHold`, so the moment
+// a prompt was armed (renamed `-HOLD.md` → `-ready.md`) its gate check
+// evaporated. The check now runs for every prompt regardless of filename, and
+// `checkDeadGate` treats a satisfied gate on a chain successor (cluster_order
+// > 1) as GATE_RELEASED rather than CLUSTER_DEAD_GATE. Both directions covered
+// here — armed prompts with unmet gates REJECT, armed chain successors with
+// satisfied gates ADMIT with GATE_RELEASED.
+
+console.log("\n=== exit 1 REJECT: ARMED requires_file_on_main path absent -> FILE_GATE_NOT_RELEASED (the fix)");
+{
+  const out = runIsolated("armed-file-gate-unmet",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "requires_file_on_main: apps/api/src/does-not-exist-armed-xyz-1234567890.ts",
+    1);
+  if (!/FILE_GATE_NOT_RELEASED/.test(out)) {
+    console.log("      FAIL expected FILE_GATE_NOT_RELEASED. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 1 REJECT: ARMED requires_on_main :: needle absent -> GATE_NOT_RELEASED (the fix)");
+{
+  const out = runIsolated("armed-content-gate-unmet",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: armed-unmet-test\ncluster_order: 2\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_ARMED_XYZ_1234567890",
+    1);
+  if (!/GATE_NOT_RELEASED/.test(out)) {
+    console.log("      FAIL expected GATE_NOT_RELEASED. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 1 REJECT: HOLD version of same body still rejects (regression guard)");
+{
+  const out = runIsolated("held-file-gate-unmet-symmetry",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "requires_file_on_main: apps/api/src/does-not-exist-symmetry-xyz-1234567890.ts",
+    1, { hold: true });
+  if (!/FILE_GATE_NOT_RELEASED/.test(out)) {
+    console.log("      FAIL expected FILE_GATE_NOT_RELEASED. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 1 REJECT: HOLD version of unmet content gate still rejects (regression guard)");
+{
+  const out = runIsolated("held-content-gate-unmet-symmetry",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: held-unmet-symmetry\ncluster_order: 2\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_SYMMETRY_XYZ_1234567890",
+    1, { hold: true });
+  if (!/GATE_NOT_RELEASED/.test(out)) {
+    console.log("      FAIL expected GATE_NOT_RELEASED. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: armed prompt with satisfied requires_merged only, no clusters (regression guard)");
+// The ARMED_GATE_STILL_CHECKED fix must not regress the plain armed-with-no-content-gate case.
+run("armed-no-content-gate-admits",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "requires_merged: 42", 0);
+
+console.log("\n=== exit 1 REJECT: ARMED cluster_order:1 needle already on main -> CLUSTER_DEAD_GATE (decorative-gate case survives)");
+{
+  const out = runIsolated("armed-cluster-order-1-dead-gate",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: armed-order-1-dead\ncluster_order: 1\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
+    1);
+  if (!/CLUSTER_DEAD_GATE/.test(out)) {
+    console.log("      FAIL expected CLUSTER_DEAD_GATE. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: ARMED cluster_order:3 chain successor with satisfied gate -> GATE_RELEASED (the checkDeadGate fix)");
+{
+  // Real fixture reasoning per the prompt: pr-crm-s3-account-on-client-create shape.
+  // A chain successor's satisfied gate means the predecessor SHIPPED — precondition for arming,
+  // not a defect. UNKNOWN_KEY is on origin/main:scripts/pipeline/lint-prompt.mjs.
+  const out = runIsolated("armed-cluster-order-3-successor-satisfied",
+    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+    "cluster: armed-order-3-satisfied\ncluster_order: 3\n" +
+    "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
+    0);
+  if (!/GATE_RELEASED/.test(out)) {
+    console.log("      FAIL expected GATE_RELEASED. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  if (/CLUSTER_DEAD_GATE/.test(out)) {
+    console.log("      FAIL should not emit CLUSTER_DEAD_GATE. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 1 REJECT: ARMED cluster_order:3 requires_file_on_main path present -> FILE_GATE_DEAD (carve-out intact)");
+// Step 5 in the fix: `requires_file_on_main` carries no ordering semantics, so a path present at
+// author-time is still a dead gate regardless of cluster position.
+runIsolated("armed-cluster-order-3-file-gate-dead",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
+  "cluster: armed-order-3-file-dead\ncluster_order: 3\n" +
+  "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY\n" +
+  "requires_file_on_main: scripts/pipeline/lint-prompt.mjs", 1);
 
 // ── MISSING_STANDING_AUTHORITY (WARN-ONLY) ──────────────────────────────────
 // A prompt whose body does not grant push authority still lints ADMIT (exit 0),

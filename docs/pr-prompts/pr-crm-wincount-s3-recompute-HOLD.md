@@ -11,7 +11,7 @@ seed_only: false
 escalates: true
 cluster: crm-wincount
 cluster_order: 3
-requires_on_main: apps/api/src/modules/jobs/jobs.service.ts :: clientStats.recordTenderOutcome
+requires_merged: 1350
 ---
 
 # Restate the cached client counters from the tender graph

@@ -188,3 +188,110 @@ becomes urgent the moment a station commits from the dev tree without checking
 
 **This breadcrumb is committed by this run's own board PR** — it is not waiting on a
 future sweep.
+
+---
+
+# POSTSCRIPT — 2026-08-28T14:35Z. WHAT CHANGED item 2 above is WRONG. I am correcting it.
+
+The section above says I "armed exactly one prompt —
+`pr-devtree-sync-ff-only-guard-HOLD.md`". That happened, and then it failed, and the
+honest account is below. The paragraph above was written before the watcher picked the
+prompt up; it described my intention, which is the exact failure DOCTRINE names
+("your report described your intentions, not your effects").
+
+## F8 — I armed a prompt that carried a HUMAN GATE. My RULE-4 grep could not see it.
+
+**[MEASURED]** Timeline from the watcher's own logs:
+
+```
+14:14Z  git mv HOLD -> ready            armed count 0 -> 1, verified on disk
+14:16:01Z  run 1  exit 0, no PR         "Standing by for your call on the HOLD."
+14:17:14Z  restage attempt 2 (b)  exit 0, no PR
+14:17:49Z  restage attempt 3 (c)  exit 0, no PR
+14:18:30Z  quarantined to failed/       "agent exited 0 but opened no PR on all 3 attempts"
+```
+
+**The cause.** `pr-devtree-sync-ff-only-guard-HOLD.md` lines 64–67 read:
+
+```
+## Why this is a HOLD
+
+The rule it encodes is Marco's to ratify: it forbids a command several concurrent chats
+currently use routinely. Escalated by Station 00 in its 2026-08-28T08:08Z breadcrumb.
+Arm only after he answers.
+```
+
+That is a human arming gate — **and it is invisible to every gate I ran.**
+`lint-prompt.mjs` returned ADMIT exit 0. My RULE-4 body grep matched none of its five
+patterns, because the prompt never says `DO NOT ARM`, never says `do-not-arm`, and names
+no `docs/approvals/` file. It says *"Arm only after he answers"* in prose. The executing
+agent read it, honoured it, and correctly refused to touch `guard.mjs` — three times.
+
+**Blast radius: bounded and now zero.** No code was touched, no PR opened, no branch
+pushed; three watcher runs totalling about 2.5 minutes were burned. The one real piece of
+damage was to the queue: a legitimately-held prompt had been demoted into `failed/`, where
+it reads as a failure rather than as something waiting on Marco.
+
+**Repair, read back.** I copied the quarantined body back to
+`docs/pr-prompts/pr-devtree-sync-ff-only-guard-HOLD.md` and proved it byte-identical
+rather than merely present:
+
+```
+git rev-parse HEAD:docs/pr-prompts/pr-devtree-sync-ff-only-guard-HOLD.md
+                                     -> 2daace1d9fc6bc208d692db25a3e471f0e41611a
+git hash-object docs/pr-prompts/pr-devtree-sync-ff-only-guard-HOLD.md
+                                     -> 2daace1d9fc6bc208d692db25a3e471f0e41611a   IDENTICAL
+(control: hashing a different HOLD does NOT match, so the comparison is not vacuous)
+```
+
+I then unstaged my rename with a path-scoped `git restore --staged` on those two paths
+only — never a bare `git reset`. Tracked, on disk, unmodified, `ARMED` back to 0. The
+`failed/` log and report are left exactly as written; they are the record.
+
+**DISPOSITION: ACTIONED** — my error, my repair, verified by hash. The prompt is back on
+HOLD and still correctly waiting on Marco's answer to the 08:08Z escalation.
+
+## F9 — the staged fix for this defect class UNDER-COVERS the case that just bit me.
+
+`pr-lint-human-gate-blindness-HOLD.md` exists precisely to teach `lint-prompt.mjs` to see
+human gates. But its own spec table (lines 154–155) enumerates exactly two syntaxes: the
+`<!-- watcher: do-not-arm -->` comment, and a case-sensitive `DO NOT ARM` line. **Neither
+matches "Arm only after he answers."** Landing it as written would close most of the hole
+and leave this one open, while making everyone believe the hole was closed — which is
+worse than the status quo.
+
+**DISPOSITION: DISPATCHED to Station 06 (PR Master)** — extend that prompt's detector
+table before it is armed. Two additions, both measured against real prompt text in this
+repo: a `## Why this is a HOLD` heading, and the phrase family `Arm only after` /
+`Arm only when`. Keep the case-sensitivity requirement — the prompt is right that a
+case-insensitive `do not arm` rejects roughly one prompt in five for merely discussing the
+subject.
+
+## F10 — the reliable signal is POSITIVE, not negative. Stop grepping only for refusals.
+
+Grepping for ways a prompt might say "don't" is unbounded; I found a sixth phrasing today
+and there will be a seventh. The prompt that ran correctly this run
+(`pr-station-contract-breadcrumb-validator-and-qa-claim`) carries an explicit
+**`## STANDING AUTHORITY`** section granting the agent authority to finish, commit, push
+and open the PR without asking. The prompt that produced three silent no-ops carries no
+such grant and instead explains why it is held.
+
+**The discriminator is the presence of the grant, not the absence of a refusal.** That is
+a closed test rather than an open-ended one.
+
+**DISPOSITION: DEFERRED** — real and worth encoding as a lint rule ("a prompt armed
+without a STANDING AUTHORITY grant WARNs"), but it needs a survey of how many existing
+HOLDs carry the grant before it can be a gate rather than noise. It becomes urgent the
+moment a second prose-gated prompt burns a run. Until then RULE 4 gains one cheap manual
+step, recorded here: **before arming, confirm the prompt GRANTS standing authority.**
+
+## Corrected WHAT CHANGED
+
+1. Board PR **#1378 merged** at 14:18:12Z (merge commit `1791c91a`) — five files that
+   existed on one disk are now on `main`, verified by `git ls-tree -r origin/main`.
+2. `pr-devtree-sync-ff-only-guard` — armed, failed three times, **restored to HOLD**.
+   Net effect on the queue: nil, proven by blob hash.
+3. `pr-station-contract-breadcrumb-validator-and-qa-claim-HOLD.md` → `-ready.md`.
+   Lint ADMIT exit 0, clean under the extended gate grep, carries STANDING AUTHORITY.
+   **ARMED = 1** at the end of this run.
+4. This postscript, and nothing else.

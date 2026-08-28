@@ -182,6 +182,9 @@ jobs:
       # station DOC says where findings go; this checks that a station RUN put them there.
       # Structure only in CI - the freshness check needs a live box and would always fail here.
       - run: node scripts/pipeline/check-breadcrumb.mjs
+      # D-namespace S4: warn-only register checker. Exits 0 always; findings are
+      # printed for slice 5 triage before the mode is flipped to FAIL.
+      - run: node scripts/pipeline/check-d-register.mjs
 
   pipeline-tests-windows:
     name: Pipeline — arm-prompt tests (Windows)

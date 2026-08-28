@@ -17,6 +17,7 @@
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const DIR = 'docs/pr-prompts';
 const ROOT = process.cwd();
@@ -37,6 +38,40 @@ const CADENCE = { '00': 2, '02': null, '03': 24, '04': 4, '05': 24 };
 const SECTIONS = ['## GROUND', '## WHAT I MEASURED', '## WHAT CHANGED', '## FINDINGS', '## WHAT I DID NOT DO'];
 const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];
 const NAME_RE = /^00-(\d\d)-([a-z0-9-]+)-(\d{4}-\d{2}-\d{2})-(\d{4})-([a-z0-9-]+)\.md$/;
+
+// The gitignored-sink gate. A finding is only routed into a gitignored channel when the
+// path is preceded by a routing verb + destination preposition — writing/reporting/logging
+// INTO the file. A prose mention that DISCUSSES a gitignored path (e.g. "runs where
+// docs/qa/qa-checklist.md is absent") is a legitimate finding, not a routing act, and must
+// not be rejected. The prior implementation used a +/-200-char proximity scan for the word
+// "gitignor" and rejected every mention that fell outside the window — punishing exactly
+// the class of finding this contract exists to encourage.
+export const ROUTING_VERBS = /(?:write|writes|written|wrote|report|reports|reported|route|routes|routed|log|logs|logged|append|appends|appended|record|records|recorded|output|outputs|save|saves|saved|put|puts|file|files|filed)\s+(?:it\s+|them\s+|this\s+|findings?\s+|the\s+\w+\s+)?(?:to|into|in|at|under)\s*$/i;
+const GITIGNORED_PATHS = ['docs/qa/qa-findings.md', 'docs/qa/qa-checklist.md'];
+
+// Exported for unit testing. Returns an array of "line N: ..." failure strings.
+// A mention passes if EITHER (a) the path is not preceded by a routing construction, OR
+// (b) the surrounding +/-200-character window notes that the path is gitignored — the
+// original escape hatch, kept intact so nothing that passed before starts failing.
+export function checkGitignoredSink(text) {
+  const fails = [];
+  for (const bad of GITIGNORED_PATHS) {
+    let from = 0;
+    for (;;) {
+      const i = text.indexOf(bad, from);
+      if (i === -1) break;
+      from = i + bad.length;
+      const before = text.slice(Math.max(0, i - 80), i);
+      const window = text.slice(Math.max(0, i - 200), i + 200);
+      const routedInto = ROUTING_VERBS.test(before);
+      const gitignoreNoted = /gitignor/i.test(window);
+      if (routedInto && !gitignoreNoted) {
+        fails.push(`line ${text.slice(0, i).split('\n').length}: routes findings to \`${bad}\`, which is gitignored`);
+      }
+    }
+  }
+  return fails;
+}
 
 const C = process.stdout.isTTY
   ? { red: (s) => `\x1b[31m${s}\x1b[0m`, grn: (s) => `\x1b[32m${s}\x1b[0m`, yel: (s) => `\x1b[33m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` }
@@ -77,22 +112,18 @@ function checkOne(file, name) {
     }
   }
 
-  // never route findings into a gitignored channel
-  for (const bad of ['docs/qa/qa-findings.md', 'docs/qa/qa-checklist.md']) {
-    let from = 0;
-    for (;;) {
-      const i = text.indexOf(bad, from);
-      if (i === -1) break;
-      from = i + bad.length;
-      if (!/gitignor/i.test(text.slice(Math.max(0, i - 200), i + 200))) {
-        fails.push(`line ${text.slice(0, i).split('\n').length}: routes findings to \`${bad}\`, which is gitignored`);
-      }
-    }
-  }
+  // never route findings into a gitignored channel — see checkGitignoredSink above
+  for (const fail of checkGitignoredSink(text)) fails.push(fail);
   return fails;
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
+// Guard: only run the CLI when invoked directly. Importing this module from a
+// test (or any other consumer) must not execute the breadcrumb sweep.
+const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (invokedDirectly) main();
+
+function main() {
 const args = process.argv.slice(2);
 const freshness = args.includes('--freshness');
 const only = (() => { const i = args.indexOf('--station'); return i === -1 ? null : args[i + 1]; })();
@@ -159,3 +190,4 @@ if (bad) { console.log(C.red(`REJECT: ${bad} malformed breadcrumb(s)`)); process
 if (silent) { console.log(C.yel(`SILENT: ${silent} station(s) past cadence`)); process.exit(2); }
 console.log(C.grn('CLEAN'));
 process.exit(0);
+}

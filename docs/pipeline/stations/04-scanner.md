@@ -75,10 +75,7 @@ believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-f
 docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 ```
 
-`docs/pr-prompts/` is tracked. `docs/qa/` is not, and neither is anything under
-`processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco` (`.gitignore:75-82`). **If your
-finding lives only in a gitignored path, you have not reported it.** The breadcrumb is untracked until
-the next board PR commits it — say so in your chat report so Station 00 sweeps it up.
+`docs/pr-prompts/` is tracked. Under `docs/qa/`, five specific files are gitignored (`qa-checklist.md`, `qa-findings.md`, `qa-test-data-registry.md`, `.qa-run.lock`, `qa-run-*.md`) — the directory itself is tracked. Anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco` (`.gitignore:75-82`) is not tracked. **If your finding lives only in a gitignored path, you have not reported it.** The breadcrumb is untracked until the next board PR commits it — say so in your chat report so Station 00 sweeps it up.
 
 **Fixed section order, every station, every run:**
 
@@ -106,6 +103,8 @@ pasted into an instruction document.
 **Station 00 collects.** Stations do not read each other's chats. 00 gathers every breadcrumb since
 its last run and dispositions each finding — that is the only channel that closes. If you are not 00,
 your job ends at writing the breadcrumb.
+
+**`check-breadcrumb.mjs` is THE breadcrumb validator** — it enforces the five-section structure above and runs in CI under "Pipeline — watcher + linter tests". A station may only claim ADMIT on a breadcrumb after actually running `node scripts/pipeline/check-breadcrumb.mjs`. `lint-prompt.mjs` treats every `docs/pr-prompts/` file as a prompt instruction; its verdict on breadcrumbs is noise and must not be quoted for or against admission.
 
 <!-- END-CANONICAL-BLOCK: station-contract v1 -->
 

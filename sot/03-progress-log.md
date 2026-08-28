@@ -5174,7 +5174,7 @@ branch (rebased onto main to pick up #181's hardened toDecimal).
    delimiter (`\x00`) so distinct pairs stay distinct.
 
 ### Tests added in B4a.2 (5 new specs)
-- `__tests__/scope-update-item-preserve.spec.ts` (NEW, 4 specs):
+- `tendering/__tests__/scope-update-item-preserve.spec.ts` (NEW, 4 specs):
   notes-only PATCH leaves dimensions untouched; wasteIncluded-only
   PATCH leaves dimensions untouched; length-only PATCH recomputes
   from raw (override not preserved when not supplied); explicit

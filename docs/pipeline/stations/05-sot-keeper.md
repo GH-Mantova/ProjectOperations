@@ -125,6 +125,20 @@ down.
 4. Run `node scripts/pipeline/check-sot-refs.mjs` — must exit 0 with one fewer BASELINED line.
 5. Ship both changes (`sot/` fix + baseline entry deletion) in the same doc-reconcile PR.
 
+🔴 **A LOCAL PASS IS NOT THE CI ANSWER — verify against `origin/main`, not your disk.**
+`check-sot-refs.mjs` resolves references with `existsSync` against the **working tree**, so an entry
+can look "already fixed" purely because its target is a gitignored local artifact.
+**MEASURED 2026-08-28 @`82ba8538`, same command, same SHA:** the dev tree printed
+`sot-refs: 20 baselined exemptions remain`; a clean worktree off `origin/main` printed **26**.
+The six-entry gap is `docs/data-model/relationship-map.md`, `docs/qa/qa-findings.md`,
+`docs/qa/qa-checklist.md` and `apps/api/scripts/xero-import-report.md` — all gitignored, all absent
+from `origin/main`. **Deleting one of those entries turns a baselined exemption into a hard CI
+failure on every PR.** Before deleting any entry, prove the target is really there:
+
+```
+git cat-file -e origin/main:<missing_path>   # exit 0 = safe to burn down
+```
+
 **Never add an entry.** If you encounter a newly dangling reference, fix it in `sot/` directly. The
 baseline is a burn-down list for pre-existing debt, not a place to park new problems.
 

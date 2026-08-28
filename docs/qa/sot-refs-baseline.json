@@ -1,8 +1,7 @@
 {
-  "_readme": "Known-dangling references inside sot/*.md, recorded 2026-08-28. This file may only SHRINK. CI rejects any PR that adds an entry. Burn-down is Station 05's job: fix the reference in sot/, then delete its entry here in the same PR. See docs/pipeline/stations/05-sot-keeper.md.",
+  "_readme": "Known-dangling references inside sot/*.md, recorded 2026-08-28. This file may only SHRINK. CI rejects any PR that adds an entry. Burn-down is Station 05's job: fix the reference in sot/, then delete its entry here in the same PR. See docs/pipeline/stations/05-sot-keeper.md. TRAP (MEASURED 2026-08-28 @82ba8538): check-sot-refs.mjs resolves with existsSync against the WORKING TREE, so an entry can read as 'already resolved' on a dev box purely because its target is a gitignored local artifact. Six entries here do exactly that -- the dev tree printed '20 baselined' while a clean worktree off origin/main printed '26' at the same SHA. Before deleting any entry, prove the target is on main: git cat-file -e origin/main:<path>. Deleting an entry that only resolves locally turns it into a hard CI failure.",
   "entries": [
     { "sot_file": "sot/01-charter-and-architecture.md", "line": 9, "missing_path": "docs/architecture-overview.md", "recorded": "2026-08-28" },
-    { "sot_file": "sot/03-progress-log.md", "line": 5177, "missing_path": "__tests__/scope-update-item-preserve.spec.ts", "recorded": "2026-08-28" },
     { "sot_file": "sot/03-progress-log.md", "line": 7437, "missing_path": "apps/api/scripts/xero-import-report.md", "recorded": "2026-08-28" },
     { "sot_file": "sot/03-progress-log.md", "line": 7464, "missing_path": "apps/api/scripts/xero-import-report.md", "recorded": "2026-08-28" },
     { "sot_file": "sot/03-progress-log.md", "line": 9075, "missing_path": "docs/module-build-log.md", "recorded": "2026-08-28" },
@@ -17,8 +16,6 @@
     { "sot_file": "sot/04-data-model.md", "line": 4467, "missing_path": "docs/qa/qa-checklist.md", "recorded": "2026-08-28" },
     { "sot_file": "sot/04-data-model.md", "line": 4467, "missing_path": "docs/qa/qa-findings.md", "recorded": "2026-08-28" },
     { "sot_file": "sot/04-data-model.md", "line": 4482, "missing_path": "docs/qa/qa-checklist.md", "recorded": "2026-08-28" },
-    { "sot_file": "sot/06-active-specs.md", "line": 617, "missing_path": "builders/quote-html.builder.ts", "recorded": "2026-08-28" },
-    { "sot_file": "sot/06-active-specs.md", "line": 618, "missing_path": "providers/outlook.provider.ts", "recorded": "2026-08-28" },
     { "sot_file": "sot/06-active-specs.md", "line": 1197, "missing_path": "docs/pr-prompts/pr-dashboard-gantt-heatmap-widgets-HOLD.md", "recorded": "2026-08-28" },
     { "sot_file": "sot/06-active-specs.md", "line": 1199, "missing_path": "docs/pr-prompts/pr-dashboard-rename-copyfrom-HOLD.md", "recorded": "2026-08-28" },
     { "sot_file": "sot/06-active-specs.md", "line": 1512, "missing_path": "apps/api/src/modules/tendering/tender-scope-drafting.service.ts", "recorded": "2026-08-28" },

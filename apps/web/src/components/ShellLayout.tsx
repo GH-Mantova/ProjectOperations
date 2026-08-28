@@ -257,10 +257,12 @@ export const NAV_GROUPS: NavGroup[] = [
         requiresPermission: "crm.view"
       },
       {
-        // NAV-3 will surface the real Tenders register view. Placeholder route
-        // registered in App.tsx (TendersRegisterPlaceholderPage).
+        // CRM_NAV_TABS — S2 (2026-08-28): renamed from "Tenders register" to
+        // "Tenders" to match the three-item CRM group (Accounts · Tenders ·
+        // Comms hub). The route /crm/register is unchanged; tabs (Register ·
+        // Follow-ups) are rendered inside TendersPage via ?tab=.
         to: "/crm/register",
-        label: "Tenders register",
+        label: "Tenders",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/crm/register"),
         requiresPermission: "crm.view"
@@ -511,7 +513,7 @@ const BREADCRUMBS: Record<string, string> = {
   // Keep prefixes for all CRM surfaces so the topbar breadcrumb resolves.
   "/crm": "CRM",
   "/crm/accounts": "Accounts",
-  "/crm/register": "Tenders register",
+  "/crm/register": "Tenders",
   "/crm/comms": "Comms hub",
   "/crm/pipeline": "Pipeline",
   "/crm/opportunities": "CRM",

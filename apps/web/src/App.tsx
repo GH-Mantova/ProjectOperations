@@ -111,14 +111,15 @@ import { KbArticlePage } from "./pages/knowledge/KbArticlePage";
 import { OpportunityDetailPage } from "./pages/crm/OpportunityDetailPage";
 import { DropReasonAdminPage } from "./pages/crm/DropReasonAdminPage";
 import { AccountDetailPage } from "./pages/crm/AccountDetailPage";
-import { AccountsListPage } from "./pages/crm/AccountsListPage";
+// AccountsListPage is rendered inside AccountsPage (CRM S2 tab shell).
 import { PipelineDashboardPage } from "./pages/crm/PipelineDashboardPage";
-import { CommsHubPage } from "./pages/crm/CommsHubPage";
+import { CommsPage } from "./pages/crm/CommsPage";
 import { CrmIndex } from "./pages/crm/CrmIndex";
 import { CrmCatchAllRedirect, ClientsEntryRedirect } from "./pages/crm/CrmRedirects";
-import { TendersRegisterPage } from "./pages/crm/TendersRegisterPage";
+import { TendersPage } from "./pages/crm/TendersPage";
+import { AccountsPage } from "./pages/crm/AccountsPage";
 import { CrmBoardContent } from "./pages/crm/CrmBoardPage";
-import { RelationshipsPage } from "./pages/crm/RelationshipsPage";
+// RelationshipsPage is rendered inside AccountsPage (CRM S2 tab shell).
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { OfflineIndicator } from "./offline/OfflineIndicator";
@@ -675,12 +676,15 @@ export function App() {
                 </RequirePermissions>
               }
             />
-            {/* NAV-2: Accounts index page — Client-360 landing. */}
+            {/* CRM S2: Accounts landing — tab shell (List · Relationships).
+                AccountsPage renders AccountsListPage or RelationshipsPage
+                based on ?tab=. /crm/relationships redirects here with
+                ?tab=relationships below, preserving the old URL as a bookmark. */}
             <Route
               path="/crm/accounts"
               element={
                 <RequirePermissions perms={["crm.view"]}>
-                  <AccountsListPage />
+                  <AccountsPage />
                 </RequirePermissions>
               }
             />
@@ -692,13 +696,14 @@ export function App() {
                 </RequirePermissions>
               }
             />
-            {/* NAV-3: /crm/register — read-only view of every tender across
-                all statuses, with CLIENT + STATUS columns and filters. */}
+            {/* CRM S2: Tenders landing — tab shell (Register · Follow-ups).
+                TendersPage renders TendersRegisterPage or a Follow-ups empty
+                state (filled by S8) based on ?tab=. */}
             <Route
               path="/crm/register"
               element={
                 <RequirePermissions perms={["crm.view", "tenders.view"]}>
-                  <TendersRegisterPage />
+                  <TendersPage />
                 </RequirePermissions>
               }
             />
@@ -708,24 +713,26 @@ export function App() {
               path="/crm/pipeline"
               element={<Navigate to="/tenders/pipeline" replace />}
             />
-            {/* CRM-4: Comms hub — internal threads + To-Do sub-module. Anchored
-                via ?entityType=…&entityId=… so any record page can link in
-                without the sub-module knowing about their models. */}
+            {/* CRM S2: Comms hub landing — tab shell (Inbox · Threads · To-dos).
+                CommsPage renders CommsHubPage or empty states (filled by S10)
+                based on ?tab=. Anchored links (?entityType=…&entityId=…) still
+                reach CommsHubPage through the Inbox tab (default). */}
             <Route
               path="/crm/comms"
               element={
                 <RequirePermissions perms={["crm.view"]}>
-                  <CommsHubPage />
+                  <CommsPage />
                 </RequirePermissions>
               }
             />
-            {/* CRM-2: Relationship intelligence — notes log + going-cold nudge
-                + repeat-business surfacing. */}
+            {/* CRM S2: /crm/relationships redirects to the Accounts page with
+                the Relationships tab active. The route is preserved as a redirect
+                (not deleted) so existing bookmarks and inbound links keep working. */}
             <Route
               path="/crm/relationships"
               element={
                 <RequirePermissions perms={["crm.view"]}>
-                  <RelationshipsPage />
+                  <Navigate to="/crm/accounts?tab=relationships" replace />
                 </RequirePermissions>
               }
             />

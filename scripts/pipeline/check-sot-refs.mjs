@@ -5,8 +5,9 @@
  * see the SEARCH_ROOTS block below for the measurement that put them there).
  *
  * POLARITY — this is the ORDINARY direction (unlike check-lessons.mjs which is inverted):
- *   exit 0  = every extracted reference resolved (or was explicitly allowlisted)
- *   exit 1  = at least one reference dangled (printed with file + line + path)
+ *   exit 0  = every extracted reference resolved, was explicitly allowlisted, was baselined,
+ *             or fell under a declared path-class exclusion
+ *   exit 1  = at least one reference dangled (not in baseline, not excluded)
  *   exit 1  = broken instrument: zero sot/ files found, OR zero references extracted
  *
  * The broken-instrument guard exists because a checker that reads clean because it
@@ -23,9 +24,18 @@
  * The total count of extracted references is always printed so a regex that silently
  * matches zero is visible as broken, not as a pass.
  *
- * Allowlist: a reference on a line containing the inline HTML comment
+ * Allowlist (inline): a reference on a line containing the inline HTML comment
  *   <!-- sot-ref-allow: <reason> -->
  * is exempted. Every exemption is printed with its reason — silent allowlists rot.
+ *
+ * Baseline: docs/qa/sot-refs-baseline.json records references that are genuinely
+ * dangling but whose repair belongs to Station 05. Every baselined exemption is
+ * printed on every run with its count — silent allowlists rot. This file may only
+ * SHRINK. The CI ratchet rejects any PR that adds an entry.
+ *
+ * Path-class exclusions: certain structural path patterns are excluded by design
+ * rather than per-entry, because they will always dangle. See EXCLUDED_PATH_CLASSES
+ * below. Each exclusion is printed on every run.
  *
  * Usage:  node scripts/pipeline/check-sot-refs.mjs [--root <repoRoot>]
  */
@@ -73,6 +83,56 @@ const sotFiles = walkSot(sotDir);
 if (sotFiles.length === 0) {
   console.error("BROKEN: no sot/*.md files found under " + sotDir + " — instrument cannot read the input");
   process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// BASELINE — docs/qa/sot-refs-baseline.json
+//
+// Records references that are genuinely dangling but whose repair belongs to
+// Station 05 (sot/ is its exclusive domain). Every baselined exemption is
+// printed on every run — silent allowlists rot.
+//
+// This file may ONLY SHRINK. The CI ratchet rejects any PR that adds an entry.
+// Burn-down: fix the reference in sot/, delete its entry here, same PR.
+// ---------------------------------------------------------------------------
+const BASELINE_PATH = path.join(repoRoot, "docs", "qa", "sot-refs-baseline.json");
+let baselineEntries = [];
+if (existsSync(BASELINE_PATH)) {
+  try {
+    const raw = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
+    baselineEntries = Array.isArray(raw.entries) ? raw.entries : [];
+  } catch (err) {
+    console.error("BROKEN: could not parse " + BASELINE_PATH + " — " + err.message);
+    process.exit(1);
+  }
+}
+
+function isBaselined(relFile, lineNum, refPath) {
+  // Normalise Windows backslashes so baseline keys match on any OS
+  const normFile = relFile.replace(/\\/g, "/");
+  return baselineEntries.some(
+    (e) => e.sot_file === normFile && e.line === lineNum && e.missing_path === refPath,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PATH-CLASS EXCLUSIONS — patterns excluded by design, not per-entry baseline.
+//
+// docs/pr-prompts/*-ready.md: armed prompts that the watcher consumes into
+// docs/pr-prompts/processed/ by design. These files are guaranteed to be absent
+// once the queue drains, and re-baselining them forever would make the baseline
+// a noise source rather than a burn-down list. Exclude the whole pattern here.
+// ---------------------------------------------------------------------------
+const EXCLUDED_PATH_CLASSES = [
+  {
+    pattern: /^docs\/pr-prompts\/.*-ready\.md$/,
+    reason: "armed prompts consumed by the watcher into processed/ by design — always absent after queue drains",
+  },
+];
+
+function isPathClassExcluded(refPath) {
+  const normalised = refPath.replace(/\\/g, "/").replace(/^\.\//, "");
+  return EXCLUDED_PATH_CLASSES.find((cls) => cls.pattern.test(normalised)) || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +200,8 @@ const SEARCH_ROOTS = ["", "apps/api/src", "apps/api/src/modules", "apps/web/src"
 let totalExtracted = 0;
 const failures = [];
 const exemptions = [];
+const baselinedExemptions = [];
+const pathClassExclusions = [];
 const viaSearchRoot = new Map();
 
 for (const filePath of sotFiles) {
@@ -168,11 +230,18 @@ for (const filePath of sotFiles) {
 
       totalExtracted++;
 
-      // Check for allowlist marker on this same line
+      // Check for inline allowlist marker on this same line
       const allowMatch = ALLOW_COMMENT_RE.exec(line);
       if (allowMatch) {
         const reason = allowMatch[1].trim();
         exemptions.push({ file: relFile, line: lineNum, path: refPath, reason });
+        continue;
+      }
+
+      // Check for path-class exclusion
+      const excludedClass = isPathClassExcluded(refPath);
+      if (excludedClass) {
+        pathClassExclusions.push({ file: relFile, line: lineNum, path: refPath, reason: excludedClass.reason });
         continue;
       }
 
@@ -193,7 +262,12 @@ for (const filePath of sotFiles) {
       }
 
       if (resolvedRoot === null) {
-        failures.push({ file: relFile, line: lineNum, path: refPath });
+        // Check baseline before counting as a failure
+        if (isBaselined(relFile, lineNum, refPath)) {
+          baselinedExemptions.push({ file: relFile, line: lineNum, path: refPath });
+        } else {
+          failures.push({ file: relFile, line: lineNum, path: refPath });
+        }
       } else if (resolvedRoot !== "") {
         viaSearchRoot.set(resolvedRoot, (viaSearchRoot.get(resolvedRoot) || 0) + 1);
       }
@@ -227,6 +301,28 @@ if (exemptions.length > 0) {
   console.log("");
 }
 
+// Always print path-class exclusions so the exclusion list cannot silently grow without notice
+if (pathClassExclusions.length > 0) {
+  console.log("--- PATH-CLASS EXCLUDED (" + pathClassExclusions.length + ") --- consumed-prompt churn or other structural exclusions:");
+  for (const ex of pathClassExclusions) {
+    console.log("  EXCLUDED  " + ex.file + ":" + ex.line + "  " + ex.path);
+    console.log("            reason: " + ex.reason);
+  }
+  console.log("");
+}
+
+// Always print baseline exemptions — silent allowlists rot.
+// The count is the burn-down metric: Station 05 shrinks it one entry at a time.
+if (baselinedExemptions.length > 0) {
+  console.log("--- BASELINED EXEMPTIONS (" + baselinedExemptions.length + ") --- recorded in " + BASELINE_PATH.replace(repoRoot + path.sep, "").replace(repoRoot + "/", "") + " — may only SHRINK:");
+  for (const ex of baselinedExemptions) {
+    console.log("  BASELINED  " + ex.file + ":" + ex.line + "  " + ex.path);
+  }
+  console.log("");
+  console.log("sot-refs: " + baselinedExemptions.length + " baselined exemptions remain (docs/qa/sot-refs-baseline.json) — may only shrink");
+  console.log("");
+}
+
 if (viaSearchRoot.size > 0) {
   const viaTotal = [...viaSearchRoot.values()].reduce((a, b) => a + b, 0);
   console.log("--- RESOLVED VIA A NON-ROOT SEARCH PATH (" + viaTotal + ") --- printed so widening is never silent:");
@@ -243,10 +339,10 @@ if (failures.length > 0) {
     console.log("  FAIL  " + fail.file + ":" + fail.line + "  " + fail.path);
   }
   console.log("");
-  console.log("total=" + totalExtracted + "  dangling=" + failures.length + "  exempt=" + exemptions.length);
+  console.log("total=" + totalExtracted + "  dangling=" + failures.length + "  exempt=" + exemptions.length + "  baselined=" + baselinedExemptions.length + "  excluded=" + pathClassExclusions.length);
   process.exit(1);
 }
 
-console.log("total=" + totalExtracted + "  dangling=0  exempt=" + exemptions.length);
+console.log("total=" + totalExtracted + "  dangling=0  exempt=" + exemptions.length + "  baselined=" + baselinedExemptions.length + "  excluded=" + pathClassExclusions.length);
 console.log("All sot/ references resolve. This is the boring, correct outcome.");
 process.exit(0);

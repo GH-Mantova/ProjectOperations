@@ -182,6 +182,71 @@ jobs:
       # station DOC says where findings go; this checks that a station RUN put them there.
       # Structure only in CI - the freshness check needs a live box and would always fail here.
       - run: node scripts/pipeline/check-breadcrumb.mjs
+      # --- sot/ and pipeline register checkers ---
+      # Polarities differ per checker; each step's handling is documented inline.
+      # check-sot-refs: exit 0 = all references resolve (or are baselined/excluded);
+      # non-zero = at least one reference dangled outside docs/qa/sot-refs-baseline.json.
+      #
+      # Blocking since PR sot-refs-s1: the 28 pre-existing dangling references are
+      # recorded in docs/qa/sot-refs-baseline.json. That file may only SHRINK — the
+      # ratchet step below rejects any PR that adds an entry. Burn-down is Station 05's.
+      - run: node scripts/pipeline/check-sot-refs.mjs
+      # RATCHET: docs/qa/sot-refs-baseline.json may only shrink.
+      # Any PR that adds a "missing_path" entry (i.e. appends a new dangling reference
+      # to the baseline rather than fixing it) is rejected here. Removals stay allowed.
+      # Without this gate the first person under deadline pressure appends their broken
+      # reference and the whole mechanism becomes decoration within a month.
+      # Guard: if the file did not exist on the base branch this is the creation PR —
+      # additions are expected. Only enforce the ratchet once the file is established.
+      - name: sot-refs ratchet — baseline may only shrink
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if ! git show "origin/${{ github.base_ref }}:docs/qa/sot-refs-baseline.json" > /dev/null 2>&1; then
+            echo "sot-refs-baseline.json is new on this PR — ratchet skipped (creation is allowed)"
+            exit 0
+          fi
+          if git diff "origin/${{ github.base_ref }}" -- docs/qa/sot-refs-baseline.json | grep '^+.*"missing_path"'; then
+            echo "::error::docs/qa/sot-refs-baseline.json gained a new entry. The baseline may only SHRINK. Fix the dangling reference in sot/ instead of adding it to the baseline."
+            exit 1
+          fi
+      # check-lessons: exit 0 = clean (no regressions); exit 1 = broken instrument;
+      # exit 2 = at least one lesson has regressed. All non-zero are failures.
+      - name: check-lessons
+        run: node scripts/pipeline/check-lessons.mjs
+      # check-escalations: exit 0 = ran cleanly; exit 1 = register malformed or
+      # evaluator self-test failed. Non-zero is a failure.
+      - name: check-escalations
+        run: node scripts/pipeline/check-escalations.mjs
+      # check-backlog: exit 0 = nothing newly ready; exit 10 = READY TO STAGE (a good
+      # signal, not an error — do NOT fail CI on it); exit 1/2/3 = broken/malformed.
+      # Uses bash so the exit code is inspectable and 10 can be treated as pass.
+      - name: check-backlog
+        shell: bash
+        run: |
+          set +e
+          node scripts/pipeline/check-backlog.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ] || [ "$code" -eq 10 ]; then
+            exit 0
+          fi
+          echo "check-backlog failed with exit $code"
+          exit "$code"
+      # check-sot-bytes: this script has no process.exit calls — it always exits 0
+      # and prints "*** DAMAGED ***" on mojibake. Fail the step by grepping output.
+      - name: check-sot-bytes
+        shell: bash
+        run: |
+          out=$(node scripts/pipeline/check-sot-bytes.mjs)
+          echo "$out"
+          if echo "$out" | grep -q "DAMAGED"; then
+            echo "check-sot-bytes detected damaged UTF-8"
+            exit 1
+          fi
+      # D-namespace S4: warn-only register checker. Exits 0 always; findings are
+      # printed for slice 5 triage before the mode is flipped to FAIL.
+      - run: node scripts/pipeline/check-d-register.mjs
 
   pipeline-tests-windows:
     name: Pipeline — arm-prompt tests (Windows)

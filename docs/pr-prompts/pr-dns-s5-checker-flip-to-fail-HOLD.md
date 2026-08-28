@@ -11,7 +11,7 @@ seed_only: false
 escalates: true
 cluster: d-namespace
 cluster_order: 5
-requires_on_main: scripts/pipeline/check-d-register.mjs :: D_REGISTER_MODE
+requires_merged: 1361
 ---
 
 # D-namespace S5 - flip the checker from warn to fail

@@ -656,5 +656,107 @@ describe("RateResolverService", () => {
         expect.objectContaining({ orderBy: { item: "asc" } })
       );
     });
+
+    // -----------------------------------------------------------------------
+    // SLICE 3a: waste adapter info bag — wasteGroup + loadRate
+    // -----------------------------------------------------------------------
+    test("legacy path: waste rows carry info.wasteGroup (string) and info.loadRate (number)", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimateWasteRate.findMany.mockResolvedValue([
+        {
+          id: "w-1",
+          wasteType: "General waste",
+          facility: "BMI Swanbank",
+          wasteGroup: "GENERAL",
+          unit: "tonne",
+          tonRate: "180",
+          loadRate: "120"
+        },
+        {
+          id: "w-2",
+          wasteType: "Concrete",
+          facility: "Cleanaway Willawong",
+          wasteGroup: "Inert",
+          unit: "tonne",
+          tonRate: "45",
+          loadRate: "0"
+        }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("waste");
+      expect(out).toHaveLength(2);
+      // info.wasteGroup is the raw string value (not coerced)
+      expect(out[0]!.info).toEqual({ wasteGroup: "GENERAL", loadRate: 120 });
+      expect(out[1]!.info).toEqual({ wasteGroup: "Inert", loadRate: 0 });
+      // info.loadRate is a JS number (Number(Decimal)), not a Decimal
+      expect(typeof out[0]!.info.loadRate).toBe("number");
+      expect(typeof out[1]!.info.loadRate).toBe("number");
+    });
+
+    test("legacy path: waste info.wasteGroup is null when DB value is null (not coerced to string)", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimateWasteRate.findMany.mockResolvedValue([
+        {
+          id: "w-null",
+          wasteType: "Asphalt",
+          facility: "Suez Environmental",
+          wasteGroup: null,   // String? — null must pass through
+          unit: "tonne",
+          tonRate: "95",
+          loadRate: "0"
+        }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("waste");
+      expect(out).toHaveLength(1);
+      // null must NOT be coerced to "" — the export adds ?? "" at render time
+      expect(out[0]!.info.wasteGroup).toBeNull();
+      expect(out[0]!.info.loadRate).toBe(0);
+    });
+
+    test("legacy path: waste info.loadRate is always a number, not a Prisma Decimal", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimateWasteRate.findMany.mockResolvedValue([
+        {
+          id: "w-dec",
+          wasteType: "Mixed C&D",
+          facility: "BMI Swanbank",
+          wasteGroup: "C&D",
+          unit: "tonne",
+          tonRate: "150",
+          loadRate: "87.50"
+        }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("waste");
+      expect(out[0]!.info.loadRate).toBe(87.5);
+      // Must be a JS number primitive, not a Decimal object.
+      // typeof "number" is sufficient: Decimal objects have typeof "object".
+      expect(typeof out[0]!.info.loadRate).toBe("number");
+    });
+
+    test("legacy path: waste keys still carry wasteType + facility (unchanged)", async () => {
+      delete process.env.RATES_CANONICAL_SOURCE;
+      const prisma = makePrisma();
+      prisma.estimateWasteRate.findMany.mockResolvedValue([
+        {
+          id: "w-keys",
+          wasteType: "General waste",
+          facility: "Cleanaway Willawong",
+          wasteGroup: "GENERAL",
+          unit: "tonne",
+          tonRate: "180",
+          loadRate: "0"
+        }
+      ]);
+      const svc = new RateResolverService(prisma as never);
+      const out: ListedRate[] = await svc.listRates("waste");
+      expect(out[0]!.keys).toEqual({ wasteType: "General waste", facility: "Cleanaway Willawong" });
+      expect(out[0]!.value).toBe(180);
+      expect(out[0]!.source).toBe("legacy");
+    });
   });
 });

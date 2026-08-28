@@ -2,6 +2,14 @@ Use the pr-fix-reviewer agent to review PR #{{PR_NUMBER}} ("{{PR_TITLE}}") on GH
 
 Auto-fired by the PR-watcher. Operating rules for this headless run:
 
+Prompt queue lives at: {{PROMPT_DIR}}
+(This may be OUTSIDE the git clone. Use filesystem globs against this path, not git-indexed search — the queue dirs are gitignored.)
+
+Files changed in this PR (authoritative — from `gh pr view --json files` at enqueue time):
+{{PR_FILES}}
+
+OPERATING RULE: The file list above is authoritative. Do NOT derive the PR's changes from a local `git diff` in this clone — this clone's `main` is not kept in sync and its worktree may be on a different branch. Fetch the diff via `gh pr diff <N>` if you need the hunks.
+
 1. Follow the pr-fix-reviewer process (.claude/agents/pr-fix-reviewer.md) in full:
    scope compliance against the originating prompt (find it in
    docs/pr-prompts/processed/ by matching the branch/title), CI status,

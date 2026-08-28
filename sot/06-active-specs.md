@@ -1220,11 +1220,11 @@ Not proposed (already covered): pipeline value/stage, win rates, monthly revenue
 
 | # | Widget idea | Visual kind | Data source | Value note | Effort | Caveats |
 |---|---|---|---|---|---|---|
-| D1 | **Milestones due / overdue** — project milestones planned in the next 14 days or past-due without an actual date | mini-list | `ProjectMilestone.plannedDate/actualDate/status` (schema.prisma:2035), `projects` module — thin "upcoming milestones" endpoint | The morning "what's landing this fortnight" board every ops meeting starts with | M | **Empty in prod until B-P0a** (zero Project rows). Projects is the surviving spine — safe to build on |
-| D2 | **Quiet jobs** — active jobs with no activity/progress entry in N days | mini-list | `JobActivity` (schema.prisma:1014) / `JobProgressEntry` (:1078), `jobs` module — needs a "last activity per job" aggregate | A silent job is usually a stalled job; surfaces problems before the client rings | L | Jobs data exists in prod today. `JobActivity` moves to Project under B-P0a-5 — build query behind a service method so re-pointing is one change. Note `platform` also mutates JobActivity (ownership map §1 — ambiguous, read-only here is fine) |
-| D3 | **Closeout laggards** — jobs marked COMPLETE whose closeout checklist isn't done | KPI + mini-list | `JobCloseout` (schema.prisma:1112) vs `Job.status`, `jobs` module | Warranty docs, final claims and handover packs slip exactly here | M | Jobs data in prod. Whole Job cluster folds into Project (B-P0a) — same service-method insulation as D2 |
-| D4 | **Documents added this week** — latest files linked across tenders/jobs | mini-list | `DocumentLink.createdAt` (schema.prisma:276), `documents`/`platform` modules | Quick "what paperwork moved" scan without opening every job | M | DocumentLink is a platform primitive with raw-prisma writes from jobs/tender-documents pending refactor OWN-6 — reads unaffected |
-| D5 | **Portal invites pending** — client portal invites sent but not accepted | KPI | `PortalInvite` (schema.prisma:3599), `portal` module | Tells you which clients never actually got into their portal | M | Portal module has zero API tests (ownership map §5.3) — pair the endpoint with its first test |
+| W1 | **Milestones due / overdue** — project milestones planned in the next 14 days or past-due without an actual date | mini-list | `ProjectMilestone.plannedDate/actualDate/status` (schema.prisma:2035), `projects` module — thin "upcoming milestones" endpoint | The morning "what's landing this fortnight" board every ops meeting starts with | M | **Empty in prod until B-P0a** (zero Project rows). Projects is the surviving spine — safe to build on |
+| W2 | **Quiet jobs** — active jobs with no activity/progress entry in N days | mini-list | `JobActivity` (schema.prisma:1014) / `JobProgressEntry` (:1078), `jobs` module — needs a "last activity per job" aggregate | A silent job is usually a stalled job; surfaces problems before the client rings | L | Jobs data exists in prod today. `JobActivity` moves to Project under B-P0a-5 — build query behind a service method so re-pointing is one change. Note `platform` also mutates JobActivity (ownership map §1 — ambiguous, read-only here is fine) |
+| W3 | **Closeout laggards** — jobs marked COMPLETE whose closeout checklist isn't done | KPI + mini-list | `JobCloseout` (schema.prisma:1112) vs `Job.status`, `jobs` module | Warranty docs, final claims and handover packs slip exactly here | M | Jobs data in prod. Whole Job cluster folds into Project (B-P0a) — same service-method insulation as W2 |
+| W4 | **Documents added this week** — latest files linked across tenders/jobs | mini-list | `DocumentLink.createdAt` (schema.prisma:276), `documents`/`platform` modules | Quick "what paperwork moved" scan without opening every job | M | DocumentLink is a platform primitive with raw-prisma writes from jobs/tender-documents pending refactor OWN-6 — reads unaffected |
+| W5 | **Portal invites pending** — client portal invites sent but not accepted | KPI | `PortalInvite` (schema.prisma:3599), `portal` module | Tells you which clients never actually got into their portal | M | Portal module has zero API tests (ownership map §5.3) — pair the endpoint with its first test |
 
 Not proposed: project timeline (exists), Gantt snapshot (planned, §2), jobs by status/stage (exist + custom builder), open issues (exists). Scheduling-conflict widgets over the `Shift` cluster are deliberately excluded — that cluster is frozen for retirement (ownership map §1, B-P0a-9).
 
@@ -1288,7 +1288,7 @@ Ranked by glance-value ÷ effort, restricted to S/M where **prod has data today*
 9. **Pre-starts today + fit-for-work exceptions** (H2+H3, M as a pair) — Marco's own WHS morning check; ship the submitted-count version first, add the expected denominator after B-P0c.
 10. **Recent activity feed** (P2, S) — audit endpoint exists; cheap admin comfort.
 
-**Hold for B-P0a/B-P0c (good ideas, wrong week):** Progress claims this month (C5) and Variations awaiting approval (C6) — zero Contract rows in prod until the shells deploy; Milestones due (D1) — zero Projects; Timesheet chasers (W7) and the full pre-start denominator — both straddle the dual allocation model that B-P0c collapses.
+**Hold for B-P0a/B-P0c (good ideas, wrong week):** Progress claims this month (C5) and Variations awaiting approval (C6) — zero Contract rows in prod until the shells deploy; Milestones due (W1) — zero Projects; Timesheet chasers (W7) and the full pre-start denominator — both straddle the dual allocation model that B-P0c collapses.
 
 **Surprises found during the survey** (for whoever builds next):
 
@@ -1319,7 +1319,7 @@ Power BI construction templates confirm the genre conventions: days-without-inci
 ### Ideas our catalogue missed
 
 - **Site weather widget** — today + next few days for each active job/project site (Procore and Buildertrend both treat this as table stakes). *Feasibility:* no weather data in our model; needs a free external API (e.g. Open-Meteo/BOM) keyed off the Site/Job address or postcode — Sites exist in master data, so it's a new small integration, not a schema change. Effort L (first external-API widget), but zero DB work.
-- **Recent site photos feed** — latest photos across active jobs, Buildertrend-style. *Feasibility:* we have `DocumentLink` rows (§4 D4); filter to image mime types and render thumbnails instead of a filename list. Effectively D4 with pictures — M.
+- **Recent site photos feed** — latest photos across active jobs, Buildertrend-style. *Feasibility:* we have `DocumentLink` rows (§4 W4); filter to image mime types and render thumbnails instead of a filename list. Effectively W4 with pictures — M.
 - **"My day" personal widget** — the logged-in user's own allocations today, pending approvals, forms due (Procore Home's "today's schedule" idea, made personal). *Feasibility:* all reads exist per-module (`ScheduleAllocation`, `FormApproval`, pre-starts); the new bit is filtering by the current user and composing one card — M, respects the same B-P0c allocation caveats as W6/H2.
 - **Static text / heading / image widgets** — Smartsheet-style annotation widgets so a dashboard can carry instructions ("ring Marco if this is red"), section headings, or a logo. *Feasibility:* no data source at all — config-only registry entries. S, and cheap polish for shared dashboards.
 - **Embed widget** — a card that frames an external URL (a SharePoint page, a Power BI report). *Feasibility:* S–M technically (config + iframe), but needs an allow-list of domains for safety; worth holding until a real use case shows up.
@@ -1343,7 +1343,7 @@ Power BI construction templates confirm the genre conventions: days-without-inci
 
 
 
-\*\*Status:\*\* approved 2026-05-16, MVP (PRs A1-B3) targets next-week Sean+Raj demo; full arrangement screen (PRs C1-D1) ships post-demo.
+\*\*Status:\*\* approved 2026-05-16, MVP (PRs A1-B3) targets next-week Sean+Raj demo; full arrangement screen (PRs C1 through PR D1) ships post-demo.
 
 \*\*Authority:\*\* Marco (MAIN, 2026-05-16). Decisions captured in this doc are canonical — code conforms to this, not to legacy patterns.
 
@@ -2097,7 +2097,7 @@ These don't block design approval but need answers when drafting each PR:
 
 4\. \*\*C1:\*\* Where do client-facing quote names come from? Client.name? Or a per-quote name field?
 
-5\. \*\*D1:\*\* If 5A.2 (HTML→PDF migration) hasn't shipped by demo, do we ship PDF generation through the existing PDFKit pipeline as a stopgap, or block on 5A.2 first?
+5\. \*\*PR D1:\*\* If 5A.2 (HTML→PDF migration) hasn't shipped by demo, do we ship PDF generation through the existing PDFKit pipeline as a stopgap, or block on 5A.2 first?
 
 
 
@@ -2240,7 +2240,7 @@ versa) is genuinely new UI on top of the existing data layer.
 - File: `apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts` (1173 LOC)
 - Stack: **PDFKit** (per file header: "Server-side PDF builder using PDFKit primitives only. No headless browser, no HTML rendering — intentional for stability.")
 - Reads from: `fetchTenderForExport` — `ScopeOfWorksItem + CuttingSheetItem + TenderTandC + TenderAssumption + TenderExclusion`
-- **Reads directly from scope tables**, not from `QuoteScopeItem`. D1's job is to rewire this to honour per-quote arrangement.
+- **Reads directly from scope tables**, not from `QuoteScopeItem`. PR D1's job is to rewire this to honour per-quote arrangement.
 - 5A.2 HTML→PDF migration: **not shipped**. Q5 status: OPEN.
 
 #### 1.5 Persona implications (current state)
@@ -2345,7 +2345,7 @@ have a tractable demo dataset.
 **Q5 (PR D1): If 5A.2 (HTML→PDF migration) hasn't shipped by demo, stopgap on PDFKit or block on 5A.2?**
 - **Status:** OPEN
 - **Finding:** 5A.2 has **not** shipped. `quote-pdf.builder.ts` is still PDFKit (its file header explicitly notes "intentional for stability"). HTML→PDF is not in the dependency graph (`puppeteer` / `playwright PDF` search returned nothing).
-- **Recommendation:** **Stopgap on PDFKit.** D1's job is to make the PDF respect arrangement; that's a "what to render" change, not a "how to render" change. PDFKit can read from `QuoteScopeItem` + the `ClientQuote.show*` flags + per-line `isVisible` + per-line `sortOrder` exactly as well as HTML would. Coupling C-chain to 5A.2 would block the demo on a sibling migration that has its own scope; the stability argument in the file header still applies.
+- **Recommendation:** **Stopgap on PDFKit.** PR D1's job is to make the PDF respect arrangement; that's a "what to render" change, not a "how to render" change. PDFKit can read from `QuoteScopeItem` + the `ClientQuote.show*` flags + per-line `isVisible` + per-line `sortOrder` exactly as well as HTML would. Coupling C-chain to 5A.2 would block the demo on a sibling migration that has its own scope; the stability argument in the file header still applies.
 
 ### 4. Refined C-chain PR breakdown
 
@@ -2409,7 +2409,7 @@ required. Existing Quote tab can be progressively replaced.
 ### 5. Recommendations for MAIN before writing the C1 prompt
 
 1. **Confirm Q4 answer** (per-quote name vs Client.name fallback). Recommended: Client.name + revision in C1; promote to per-quote `displayName` in C4 only if requested.
-2. **Confirm Q5 answer** (PDFKit stopgap vs block on 5A.2). Recommended: stopgap on PDFKit — D1 is a "what to render" change, decoupled from HTML migration's "how to render".
+2. **Confirm Q5 answer** (PDFKit stopgap vs block on 5A.2). Recommended: stopgap on PDFKit — PR D1 is a "what to render" change, decoupled from HTML migration's "how to render".
 3. **Decide on `push-from-scope` extension vs replacement.** The endpoint already exists at POST `/tenders/:tenderId/quotes/:quoteId/scope-items/push-from-scope`. C1 should either (a) extend it to handle the full Calc-Sheet → Arrangement materialisation, or (b) ship a new endpoint and deprecate this one. Discovery didn't open the handler — C1's implementation prompt should include a Phase 0 reading of what it currently does so the decision is informed.
 4. **Decide the C1 frontend boundary**: extend `ClientQuotesPanel.tsx` (currently 2122 LOC, already organised into per-quote tabs) vs build a new arrangement-screen component. Recommended: extend in place. The existing structure (ClientRow → QuoteContentsPanel → QuoteEditor → tab components) is the right place to add an "Arrangement" tab alongside Cost / Provisional / Options / Assumptions / Exclusions / Preview.
 5. **Persona update**: C1 (or any C-chain PR) should add the Calc-Sheet-as-source-of-truth invariant to `tendering.persona.ts`'s QUOTE_SUBMODE_PROMPT. Discovery confirmed this rule is not yet in the persona prompt.
@@ -2419,7 +2419,7 @@ required. Existing Quote tab can be progressively replaced.
 - **Demo data thin on the Quote side.** Only T260512-BRIS-Rev1 has a quote; only 3 cost lines + 1 provisional line + 7 exclusions + 4 assumptions across the whole dev DB. C1's demo prep may want a seed-data PR adding 2-3 more quotes to populate the arrangement screen visually.
 - **TenderClient model is rich** — has `isAwarded`, `contractIssued`, `relationshipType`, etc. The arrangement screen's client picker may want to surface "awarded" / "primary" status to help estimators distinguish the awarded client from also-rans. Not in scope for C1 but worth a UX note.
 - **`assumptionMode` on `ClientQuote`** has values `"free"` and (presumably) `"linked"`. The current `QuoteAssumption` model supports both modes (optional FK to `QuoteCostLine`). C3's "collapse / hide" UI should respect this — linked assumptions probably auto-hide when their cost line is hidden, which is a non-trivial UX detail to confirm with estimators.
-- **`generatedPdfPath` on `ClientQuote`** suggests PDFs are cached. D1 should think about cache invalidation when arrangement changes.
+- **`generatedPdfPath` on `ClientQuote`** suggests PDFs are cached. PR D1 should think about cache invalidation when arrangement changes.
 
 — end of C-chain Phase 0 discovery —
 
@@ -2701,7 +2701,7 @@ and 6 in P-chain (Projects module redesign, described by Marco
 | C2 | C-chain | Drag-and-drop + grouping | M | reuses @dnd-kit; pivots on source card | discovered |
 | C3 | C-chain | Collapse/expand/hide | S | reuses isVisible + show* flags | discovered |
 | C4 | C-chain | Reset to original / displayName | S/M | re-runs push-from-scope | discovered |
-| D1 | C-chain | Quote PDF respects arrangement | M | PDFKit stopgap (Q5 locked) | discovered |
+| PR D1 | C-chain | Quote PDF respects arrangement | M | PDFKit stopgap (Q5 locked) | discovered |
 | P-tab1 | P-chain | Project Overview restructure | S | depends on user list catalog | new |
 | P-tab2 | P-chain | Project Documents with type dropdown | M | extensible doc-type catalog | new |
 | P-tab3 | P-chain | Project Scope with "pull from quote" + log | L | overlaps with C2/C3 UX; needs change-log model | new |
@@ -2812,7 +2812,7 @@ authoritative role label) + key dates + financials, no clutter.
 - **Change-log granularity:** per-field, per-line, or per-card? **Recommendation:** per-line (one log entry per scope-row edit, with a diff in `details`). Matches what the existing ProjectActivityLog supports.
 
 **Cross-cutting concerns:**
-- Depends on C-chain (C2/C3 ideally precede; D1 also wants this data layer to be quote-arrangement-aware).
+- Depends on C-chain (C2/C3 ideally precede; PR D1 also wants this data layer to be quote-arrangement-aware).
 - The "pull from quote" semantic means the existing `convertFromTender` snapshot needs an overhaul.
 
 **Suggested PR breakdown:**

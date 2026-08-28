@@ -1,0 +1,31 @@
+{
+  "_readme": "Known-dangling references inside sot/*.md, recorded 2026-08-28. This file may only SHRINK. CI rejects any PR that adds an entry. Burn-down is Station 05's job: fix the reference in sot/, then delete its entry here in the same PR. See docs/pipeline/stations/05-sot-keeper.md.",
+  "entries": [
+    { "sot_file": "sot/01-charter-and-architecture.md", "line": 9, "missing_path": "docs/architecture-overview.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 5177, "missing_path": "__tests__/scope-update-item-preserve.spec.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 7437, "missing_path": "apps/api/scripts/xero-import-report.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 7464, "missing_path": "apps/api/scripts/xero-import-report.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 9075, "missing_path": "docs/module-build-log.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 9679, "missing_path": "docs/module-build-log.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 9679, "missing_path": "docs/architecture-overview.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 9684, "missing_path": "docs/Project-History-Sprints-1-to-12.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 10296, "missing_path": "docs/continuation-log.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/03-progress-log.md", "line": 10694, "missing_path": "docs/continuation-log.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/04-data-model.md", "line": 9, "missing_path": "docs/data-model/relationship-map.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/04-data-model.md", "line": 4142, "missing_path": "docs/qa/Master-QA-and-Consolidation-Program-Plan.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/04-data-model.md", "line": 4443, "missing_path": "docs/qa/Master-QA-and-Consolidation-Program-Plan.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/04-data-model.md", "line": 4467, "missing_path": "docs/qa/qa-checklist.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/04-data-model.md", "line": 4467, "missing_path": "docs/qa/qa-findings.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/04-data-model.md", "line": 4482, "missing_path": "docs/qa/qa-checklist.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 617, "missing_path": "builders/quote-html.builder.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 618, "missing_path": "providers/outlook.provider.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 1197, "missing_path": "docs/pr-prompts/pr-dashboard-gantt-heatmap-widgets-HOLD.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 1199, "missing_path": "docs/pr-prompts/pr-dashboard-rename-copyfrom-HOLD.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 1512, "missing_path": "apps/api/src/modules/tendering/tender-scope-drafting.service.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 1906, "missing_path": "apps/api/src/modules/tendering/tender-scope-drafting.service.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 2240, "missing_path": "apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 3094, "missing_path": "docs/pr-prompts/needs-marco/pr-188-authz-findings.md", "recorded": "2026-08-28" },
+    { "sot_file": "sot/06-active-specs.md", "line": 3943, "missing_path": "modules/tendering/tender-client-notes.controller.ts", "recorded": "2026-08-28" },
+    { "sot_file": "sot/README.md", "line": 190, "missing_path": "graphify-out/GRAPH_REPORT.md", "recorded": "2026-08-28" }
+  ]
+}

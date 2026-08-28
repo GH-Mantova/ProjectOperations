@@ -33,7 +33,7 @@ const ROOT = process.cwd();
 const CONTRACT_FROM = '2026-08-25T0000';
 
 // station -> cadence in hours. A station is SILENT past 2x its cadence.
-const CADENCE = { '00': 2, '02': null, '03': 4, '04': 4, '05': 24 };
+const CADENCE = { '00': 2, '02': null, '03': 24, '04': 4, '05': 24 };
 
 const SECTIONS = ['## GROUND', '## WHAT I MEASURED', '## WHAT CHANGED', '## FINDINGS', '## WHAT I DID NOT DO'];
 const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];

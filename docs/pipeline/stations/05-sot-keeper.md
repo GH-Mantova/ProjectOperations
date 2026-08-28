@@ -109,6 +109,30 @@ your job ends at writing the breadcrumb.
 
 <!-- END-CANONICAL-BLOCK: station-contract v1 -->
 
+## SOT-REFS BURN-DOWN — your primary housekeeping obligation
+
+`docs/qa/sot-refs-baseline.json` records 26 dangling references inside `sot/*.md` that existed when
+the CI gate was made blocking. This file **may only shrink**. The CI ratchet rejects any PR that adds
+an entry. You are the only station that may edit `sot/`, so you are the only one who can burn this list
+down.
+
+**Workflow — one entry at a time:**
+
+1. Open `docs/qa/sot-refs-baseline.json` and pick an entry.
+2. Fix the reference in the corresponding `sot/` file (point it at the real path, update the prose, or
+   remove the stale reference entirely — whichever is correct per the sot content).
+3. Delete that entry from `docs/qa/sot-refs-baseline.json`.
+4. Run `node scripts/pipeline/check-sot-refs.mjs` — must exit 0 with one fewer BASELINED line.
+5. Ship both changes (`sot/` fix + baseline entry deletion) in the same doc-reconcile PR.
+
+**Never add an entry.** If you encounter a newly dangling reference, fix it in `sot/` directly. The
+baseline is a burn-down list for pre-existing debt, not a place to park new problems.
+
+**Verification:** `node scripts/pipeline/check-sot-refs.mjs` prints `sot-refs: N baselined exemptions
+remain` on every run. N must be lower than it was before your PR, never higher.
+
+---
+
 ## AUTHORITY — what this station may and may not do
 
 **You are the ONLY station permitted to edit `/sot/`.**
@@ -172,7 +196,7 @@ Use sandboxed bash/node; the repo is mounted.
 2. CATALOG VALIDITY: assert docs/data-model/metadata-catalog.json parses as valid JSON (`node -e "JSON.parse(require('fs').readFileSync('docs/data-model/metadata-catalog.json','utf8'))"`). It was invalid (unterminated string @ ~offset 407816) for four consecutive sweeps and nothing acted on it. If invalid, this is a HIGH-severity finding — say so loudly, do not bury it.
 3. SOT-04 DRIFT: compare model/enum/FK/domain counts in sot/04-data-model.md's header against the freshly generated docs/data-model/relationship-map.md header. Mismatch = the SoT master's generated section was not re-merged after a regen.
 4. ROADMAP DRIFT: compare sot/02's In-PR / Staged lists against ACTUAL open PRs and the docs/pr-prompts/ queue. Note items marked In-PR that are merged/closed, or Staged prompts already merged.
-5. AUTOMATION HEALTH: report whether the four ProjectOps scheduled tasks (pr-shepherd, night-qa, watcher-triage, feature-queue-watch) are ENABLED, and whether the pr-watcher daemon has processed anything recently (docs/pr-prompts/processed/ mtimes). A disabled shepherd or dead watcher means NOTHING is merging — this silently stalled the board for 3 days in July 2026. Lead the report with it if so.
+5. AUTOMATION HEALTH: report watcher liveness by PID **and command line** (`Get-CimInstance Win32_Process` filtered on `pr-watcher[\\/]index\.mjs` — never by image name), the state and `LastTaskResult` of whatever restarter tasks the live task list actually holds, and the newest mtimes under `docs/pr-prompts/processed/`. **Read the live task list; do not enumerate task names from this document.** A dead watcher or a failing restarter means NOTHING is merging — this silently stalled the board for 3 days in July 2026. Lead the report with it if so. (Corrected 2026-08-27: this step previously named four fixtures — `pr-shepherd`, `night-qa`, `watcher-triage`, `feature-queue-watch` — which have not existed for months. `Get-ScheduledTask` across all visible Windows tasks returns none of them and only `PO Watcher Keepalive` matches the project, so every run either reported four phantom tasks as broken or quietly dropped the step.)
 6. MODEL <-> MIGRATION <-> CODE COHERENCE: every `model X` in schema has a backing migration; every migration table has a live model; every model referenced by apps/api/src resolves. Report mismatches.
 7. REGISTRY: modules/models in the repo not reflected in sot/01's module registry (report only).
 

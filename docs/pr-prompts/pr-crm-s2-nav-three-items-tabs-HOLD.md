@@ -15,9 +15,9 @@ gate_allow: none
 seed_only: false
 escalates: false
 backfill: false
+requires_merged: 1356
 cluster: crm-build
 cluster_order: 2
-requires_on_main: apps/web/src/pages/crm/RelationshipsPage.tsx :: buildCreateNoteBody
 ---
 
 # CRM S2 — three nav items, sub-pages as tabs

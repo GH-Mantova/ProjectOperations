@@ -109,7 +109,7 @@ describe("ShellLayout nav — NAV-1 restructure (2026-08-14)", () => {
     ]);
   });
 
-  it("CRM group (NAV-1) is between Tendering and Projects with Accounts, Tenders register, Comms hub", () => {
+  it("CRM group (S2) has exactly three items in order: Accounts, Tenders, Comms hub", () => {
     const groupIds = NAV_GROUPS.map((g) => g.id);
     const tenderingIdx = groupIds.indexOf("tendering");
     const crmIdx = groupIds.indexOf("crm");
@@ -119,9 +119,10 @@ describe("ShellLayout nav — NAV-1 restructure (2026-08-14)", () => {
     expect(crmIdx).toBeLessThan(projectsIdx);
 
     const crm = NAV_GROUPS.find((g) => g.id === "crm");
+    // S2: renamed "Tenders register" → "Tenders" to match the three-item CRM group
     expect(crm?.items.map((i) => [i.label, i.to])).toEqual([
       ["Accounts", "/crm/accounts"],
-      ["Tenders register", "/crm/register"],
+      ["Tenders", "/crm/register"],
       ["Comms hub", "/crm/comms"]
     ]);
   });
@@ -212,11 +213,11 @@ describe("ShellLayout nav — per-item permission gates", () => {
     // lived under the finance module), NOT contracts.view.
     { label: "Contracts", permission: "finance.view" },
     { label: "Reports", permission: "reporting.view" },
-    // CRM group (NAV-1). All three items gate on crm.view — the single read
-    // gate across accounts.controller.ts, comms.controller.ts, and
-    // pipeline-dashboard.controller.ts.
+    // CRM group (S2). Accounts and Comms hub are checked here; the CRM
+    // "Tenders" item (at /crm/register) shares its label with the Tendering
+    // group's "Tenders" item, so its crm.view gate is verified separately in
+    // the "CRM S2 tab group shape" describe block to avoid a false label match.
     { label: "Accounts", permission: "crm.view" },
-    { label: "Tenders register", permission: "crm.view" },
     { label: "Comms hub", permission: "crm.view" },
     { label: "Jobs", permission: "jobs.view" },
     // Sites list hits /master-data/sites — masterdata.view, not sites.view.
@@ -322,6 +323,49 @@ describe("ShellLayout nav — per-item permission gates", () => {
     for (const { permission } of EXPECTED_CHILD_GATES) {
       expect(can(superUser, permission)).toBe(true);
     }
+  });
+});
+
+// CRM S2 — nav-tabs tests (2026-08-28).
+// Four adversarial assertions locking the S2 nav decisions:
+//   1. CRM group has exactly three items in the order Accounts, Tenders, Comms hub.
+//   2. No CRM item has `children` — the negative control for the rejected collapsible pattern.
+//   3. Each of the three carries its crm.view gate, unchanged.
+//   4. pickMobileTabItem still returns an absolute route for the CRM group.
+describe("ShellLayout nav — CRM S2 tab group shape", () => {
+  const crmGroup = NAV_GROUPS.find((g) => g.id === "crm");
+
+  it("CRM group has exactly three items", () => {
+    expect(crmGroup?.items).toHaveLength(3);
+  });
+
+  it("CRM items are in order: Accounts, Tenders, Comms hub", () => {
+    expect(crmGroup?.items.map((i) => i.label)).toEqual([
+      "Accounts",
+      "Tenders",
+      "Comms hub"
+    ]);
+  });
+
+  it("no CRM item has children — the collapsible pattern is explicitly rejected", () => {
+    // Marco explicitly rejected the Operations Assets-&-Equipment collapsible
+    // pattern for CRM. Nesting is via in-page tabs, NEVER a sidebar parent.
+    for (const item of crmGroup?.items ?? []) {
+      expect(item.children, `${item.label} must not have children`).toBeUndefined();
+    }
+  });
+
+  it("each CRM item carries crm.view as its requiresPermission gate", () => {
+    for (const item of crmGroup?.items ?? []) {
+      expect(item.requiresPermission, `${item.label} must be gated on crm.view`).toBe("crm.view");
+    }
+  });
+
+  it("pickMobileTabItem returns an absolute route for the CRM group", () => {
+    expect(crmGroup).toBeDefined();
+    const picked = pickMobileTabItem(crmGroup!);
+    expect(picked).toBeDefined();
+    expect(picked?.to.startsWith("/")).toBe(true);
   });
 });
 

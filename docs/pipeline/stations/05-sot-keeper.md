@@ -75,10 +75,15 @@ believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-f
 docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 ```
 
-`docs/pr-prompts/` is tracked. `docs/qa/` is not, and neither is anything under
-`processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco` (`.gitignore:75-82`). **If your
-finding lives only in a gitignored path, you have not reported it.** The breadcrumb is untracked until
-the next board PR commits it — say so in your chat report so Station 00 sweeps it up.
+`docs/pr-prompts/` is tracked. The gitignored sinks are the five files named at
+`.gitignore:106-110` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
+`docs/qa/qa-test-data-registry.md`, `docs/qa/.qa-run.lock`, and the `docs/qa/qa-run-*.md` pattern —
+plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco`
+(`.gitignore:75-82`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
+is checked in and CI ratchets against it — so it is those five files, not the folder, that swallow
+findings. **If your finding lives only in a gitignored path, you have not reported it.** The
+breadcrumb is untracked until the next board PR commits it — say so in your chat report so Station
+00 sweeps it up.
 
 **Fixed section order, every station, every run:**
 
@@ -97,6 +102,13 @@ say how you verified) · **DISPATCHED** (name the station and what you handed ov
 (needs Marco — bring a question with options, not a status update) · **DEFERRED** (real, not now — say
 what would make it urgent). A finding you cannot disposition is not a finding; it is a lead, and it
 belongs under WHAT I MEASURED.
+
+**The breadcrumb has one validator, and its name is `scripts/pipeline/check-breadcrumb.mjs`.** It
+enforces the five sections above and runs in CI under the `pipeline-tests` job. `scripts/pipeline/lint-prompt.mjs`
+gates `docs/pr-prompts/` as *prompts*: it rejects a breadcrumb for having no YAML front matter and
+never returns a passing verdict on one, in either direction. **A `lint-prompt` result on a breadcrumb
+is not evidence of anything and must not be quoted as one.** Do not write `breadcrumb-clean` in a
+report until `check-breadcrumb.mjs` has actually been run and exited 0 — quote the command.
 
 **Instructions live here. State does not.** "Your overdue item", "the watcher has died four times",
 "this branch is stale" — none of that belongs in this file. It goes in your breadcrumb, where it can

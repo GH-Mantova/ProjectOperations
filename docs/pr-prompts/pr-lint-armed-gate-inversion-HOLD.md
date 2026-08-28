@@ -18,7 +18,7 @@ escalates: true
 backfill: false
 ---
 
-# The unmet-gate check stops applying at the exact moment it starts to matter
+# Two gate verdicts that depend on the filename, not on the bytes
 
 ## The defect, measured 2026-08-28
 
@@ -80,9 +80,37 @@ in `scripts/pr-watcher/index.mjs` are comments, not invocations.
 3. **Keep every existing fail-safe.** A probe that errors must still warn-and-skip, not reject. One
    broken `git` call must never bin the queue.
 
-4. Leave `checkFileGateDead` and `checkDeadGate` exactly as they are. Their HOLD/non-HOLD split is
-   deliberate and correct: a gate satisfied at author time is a promotion signal for a HOLD and a
-   dead gate for an armed prompt. **Only the unmet-gate path is wrong.**
+4. **Stop `CLUSTER_DEAD_GATE` firing on a chain successor.** In `checkDeadGate`, when the prompt
+   declares `cluster_order > 1`, a satisfied `requires_on_main` means the PREDECESSOR LANDED — which
+   is the precondition for arming, not a defect. Emit `GATE_RELEASED` there (the same verdict the
+   HOLD branch already emits), in both name states.
+
+   Keep `CLUSTER_DEAD_GATE` for `cluster_order: 1` and for unclustered prompts. There, no
+   predecessor exists, so a gate satisfied at author time really is decorative and the original
+   reasoning holds.
+
+   **This corrects an instruction in an earlier version of this prompt**, which said to leave
+   `checkDeadGate` alone because its HOLD/non-HOLD split was "deliberate and correct". That was
+   wrong, and the evidence is a clean six-case test set (2026-08-28):
+
+   | prompt | cluster_order | today | should be |
+   |---|---|---|---|
+   | `pr-e2e-container-s2-swap-required-job` | 2 | DEAD_GATE | released |
+   | `pr-crm-wincount-s3-recompute` | 3 | DEAD_GATE | released |
+   | `pr-crm-s3-account-on-client-create` | 3 | DEAD_GATE | released |
+   | `pr-rates-11b2-resolver-isactive-surface` | 4 | DEAD_GATE | released |
+   | `pr-dns-s5-checker-flip-to-fail` | 5 | DEAD_GATE | released |
+   | `pr-pipeline-nodrift-agents-write-sweep-commits` | **1** | DEAD_GATE | **DEAD_GATE — correct** |
+
+   Five of six are chain successors the rule flags wrongly. The one it flags rightly is the one
+   whose gate was genuinely satisfied when it was authored.
+
+   The symptom this removes: `pr-crm-s3` became a dead gate at 08:41Z on 2026-08-28 because #1369
+   put `CRM_NAV_TABS` on main. **Every merge manufactures a dead gate on the next slice**, so
+   without this the queue needs a hand-written front-matter fix after every single chain merge.
+
+5. Leave `checkFileGateDead` alone. `requires_file_on_main` carries no ordering semantics, so a
+   path present at author time really is a dead gate there regardless of cluster position.
 
 ## Do NOT
 
@@ -104,8 +132,12 @@ Add cases to `scripts/pipeline/test-lint-prompt.mjs` (or a new file under `__tes
   exit 1, `GATE_NOT_RELEASED`.
 - **must still REJECT** — the same two bodies under `-HOLD.md` names, unchanged behaviour.
 - **must still ADMIT** — an armed prompt whose gate IS satisfied and which is not clustered.
-- **must still REJECT `CLUSTER_DEAD_GATE`** — an armed clustered prompt whose needle is present, so
-  step 4's carve-out is proven intact.
+- **must REJECT `CLUSTER_DEAD_GATE`** — an armed prompt with `cluster_order: 1` whose needle is
+  present. The decorative-gate case survives.
+- **must NOT reject** — an armed prompt with `cluster_order: 3` whose needle is present: it emits
+  `GATE_RELEASED` and admits. Use `pr-crm-s3-account-on-client-create` as the real fixture.
+- **must still REJECT `FILE_GATE_DEAD`** — an armed prompt whose `requires_file_on_main` path is
+  present, at any cluster_order, proving step 5's carve-out is intact.
 - **must still PROMOTE** — a HOLD whose gate has just released, emitting `GATE_RELEASED`.
 
 Then re-run the board sweep: every one of the 24 must reject under its armed name, and the 13 gated

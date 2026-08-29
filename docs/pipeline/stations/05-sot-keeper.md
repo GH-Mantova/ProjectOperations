@@ -37,8 +37,13 @@ the call, and report what actually happened.
   specific lies.** Read §9 before you trust any command's output.
 - `docs/pipeline/STATION-CAPABILITIES.md` — what tools exist, who may call what, and at what moment.
 
-Prefer the local checkout. If you must fetch, append **`?plain=1`** to the blob URL — a bare blob URL
-can return a stale rendered copy.
+🔴 **Read all three — this file included — from `git show origin/main:<path>`, NEVER from the
+working copy in `C:\ProjectOperations2`.** That tree is routinely several commits behind `main`, and
+`station_doc_version` **cannot** catch it: content gets corrected without bumping the version, and
+bumping it is forbidden — so **a version match is not a freshness proof.** Measured 2026-08-29: two
+stations in one day were served a superseded copy of their own binding instructions, one carrying a
+claim `origin/main` records as REFUTED. If you must fetch over the network instead, append
+**`?plain=1`** to the blob URL — a bare blob URL can return a stale rendered copy.
 
 **3. Stamp the ground.** Your report opens with exactly these lines:
 

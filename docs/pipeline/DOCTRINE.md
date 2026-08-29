@@ -319,22 +319,35 @@ here now because they are true for **every** station.
 
 ## 9.1 The shell
 
-- ⚠️ **`$` is STRIPPED from any `-Command "..."` string** before PowerShell parses it. `$LASTEXITCODE`
-  becomes bare `+`, `$_` becomes `.Line`, and the command dies with a parser error that looks like a
-  syntax mistake. **Anything containing `$` goes in a `.ps1` file run with `-File`.**
-- ⚠️ **Streamed output PAUSES on lines starting with `#`** — the REPL-prompt detector fires on markdown
-  headings. This is not a hang. Keep calling `read_process_output` with explicit offsets until it
+- ⚠️ **`$` is EXPANDED by the `-Command "..."` layer before PowerShell parses it** —
+  `$true`→`True`, `$PID`→the new process’s PID, undefined and `$env:` forms→empty. Usually this
+  dies as a parser error that looks like a syntax mistake; **sometimes it produces a VALID command
+  carrying a value you never wrote, and exits 0** — the silent-wrong-value case is the dangerous one.
+  `interact_with_process` does NOT do this (measured 2026-08-29, control `CTRL=42`).
+  **Anything containing `$` goes in a `.ps1` file run with `-File`.**
+- ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
+  **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
+  the first read), but early returns are real — one was observed the same run on a line with no `#`.
+  This is not a hang. Keep calling `read_process_output` with explicit offsets until it
   reports `0 remaining`.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ## 9.2 Git
 
-- 🔴 **`git ls-tree --name-only <ref> -- <dir>` WITHOUT `-r` returns exactly ONE line** — the tree
-  entry, not its contents. Any filter over that reports **zero**, which reads as "nothing is there."
-  This produced a false "0 tracked ready-files" against a truth of 9, asserted into a live station
-  prompt. **ALWAYS `-r`, and always control the query against a file you know is tracked.**
+- 🔴 **`git ls-tree --name-only <ref> -- <dir>` returns exactly the level you asked for.** With
+  **no trailing slash** it returns the tree entry itself — **ONE line**, not its contents — and any
+  filter over that reports **zero**, which reads as "nothing is there." That produced a false
+  "0 tracked ready-files" against a truth of 9, asserted into a live station prompt. With a
+  **trailing slash** (`-- <dir>/`) it returns that directory’s **direct children**, which is correct
+  for a depth-1 filter and **ZERO for anything deeper** (measured 2026-08-29: `superseded/*.md`
+  returned 0 without `-r` and 247 with it). **Always `-r` unless you deliberately want one level,
+  and always control the query against a file you know is tracked.**
 - ⚠️ **`git status` is structurally blind to gitignored files.** A `*-ready.md` never shows as `??`.
-  Use `git check-ignore -v` or `git ls-files --others --ignored --exclude-standard`.
+  Use `git ls-files --others --ignored --exclude-standard`, or `git check-ignore -v` **on a FILE**.
+  🔴 `git check-ignore -v` on a **directory** prints nothing and exits 1 — "not ignored" — even when a
+  rule ignores its contents (measured 2026-08-29 on `docs/pr-prompts/processed`, with and without a
+  trailing slash; the same query on a file **inside** it returns `.gitignore:76`). §9.6’s own failure,
+  sitting inside this cure.
 - ⚠️ **On git 2.55 a plain `git fetch origin main` DOES opportunistically update
   `refs/remotes/origin/main`**, because `origin` has a configured fetch refspec. The explicit
   `git fetch origin +refs/heads/main:refs/remotes/origin/main` form is still the one to write — it
@@ -365,9 +378,13 @@ here now because they are true for **every** station.
   and repaired across five station docs on 2026-08-24. **Distinguish the two by decoding, not by
   looking.**
 - 🔴 **EDIT DOCS AND PROMPTS WITH NODE** (`readFileSync` / `writeFileSync`, utf8), **not PowerShell.**
-  `Get-Content -Raw` piped to `Set-Content` double-encodes UTF-8 and adds a BOM — it is how the damage
-  above was done in the first place. A `--numstat` reading far larger than your intended change is the
-  symptom; check it before you commit.
+  The double-encoder is **`Set-Content -Encoding UTF8`** and **`Out-File -Encoding utf8`**: PS 5.1 has
+  already decoded the file as CP1252, so re-encoding adds a **BOM** and the `â€”` signature — that is how
+  the 133 damaged sequences above were made. **Plain `Set-Content` is byte-lossless for content**
+  (measured 2026-08-29: em dash intact, +2 bytes of CRLF only), so do **not** "fix" it by adding
+  `-Encoding UTF8` — that adds the actual cause. Neither form is a safe way to edit a doc, because
+  plain `Set-Content` still rewrites line endings. A `--numstat` reading far larger than your
+  intended change is the symptom; check it before you commit.
 
 ## 9.4 GitHub
 
@@ -387,13 +404,24 @@ here now because they are true for **every** station.
 
 ## 9.5 The pipeline's own instruments
 
-- 🔴 **`lint-prompt.mjs` does NOT reject when `gh` is missing** — it WARNs `could not probe ...
-  skipping` and ADMITs with exit 0, so every `origin/main:` file-gate is silently waived. An ADMIT
-  obtained without `gh` on PATH proves strictly less than an ordinary ADMIT — including for prompts
-  that drop database tables. Confirm `gh` resolves before believing any ADMIT.
-- 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** Before arming anything: read the BODY
-  for `<!-- watcher: do-not-arm -->` or a `DO NOT ARM` line — **the linter cannot see them**. Measured:
-  8 prompts carrying one still linted ADMIT, including one that drops database tables.
+- 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
+  `gh`.** `readFromOriginMain` (`lint-prompt.mjs:439-459`) runs
+  `execFileSync(process.env.LINT_GIT_BIN || "git", ["show", "origin/main:<path>"])` and on failure
+  `return null; // git broken - skip check, fail SAFE`, and it feeds all five gate probes (`:492`,
+  `:563`, `:826`, `:865`, `:903`). **`gh` appears nowhere in it**, so the old advice — *"confirm `gh`
+  resolves"* — proved nothing. **Confirm `git` resolves AND read its stderr before believing any
+  ADMIT.** And "fail SAFE" is safe only against wrongly *binning* a prompt: with respect to
+  **arming** it fails **OPEN**, because a skipped gate reads as an ADMIT — including for prompts
+  that drop database tables.
+- 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see the two
+  literal markers — `DO_NOT_ARM_COMMENT` (`lint-prompt.mjs:728`, case-insensitive) and
+  `DO_NOT_ARM_CAPS` (`:730`, case-**sensitive**) — and reports `HUMAN_GATE_PRESENT: line N contains`
+  at `:743` and `:755`. **The advice survives the fix:** a **prose** human gate matches neither regex,
+  and exactly that burned an arm on 2026-08-28T14:09Z — so still read the BODY before arming.
+  Measured 2026-08-29 over the 61 depth-1 `-HOLD`/`-ready` on `origin/main`: the two markers cover
+  **7 distinct prompts**; `## STANDING AUTHORITY` appears on **51 of 61** and is boilerplate, not a
+  gate; and `pr-dns-s5-checker-flip-to-fail-HOLD` — which standing guidance says must never be armed
+  — carries **neither** marker, so it is invisible to the linter and to any grep built on them.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

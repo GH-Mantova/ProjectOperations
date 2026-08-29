@@ -170,7 +170,7 @@ Find the repo mount: ls -d /sessions/*/mnt/ProjectOperations2. Check docs/qa/.qa
 
 STATE FILES (read in order):
 1. docs/qa/qa-checklist.md — ⚠️ **GITIGNORED (`.gitignore:106`)**, so it is absent from a clean
-   checkout and its silence is never evidence. If present, resume at the first [ ] or [~] item. If missing, rebuild from docs/qa/Master-QA-and-Consolidation-Program-Plan.md (Phase 0 + Workstream A actionable; B and C marked [-] BLOCKED). Ensure the checklist carries a recurring Part 0 static-audit item covering all six sub-checks; if absent, add it.
+   checkout and its silence is never evidence. If present, resume at the first [ ] or [~] item. If missing, rebuild from docs/pipeline/stations/04-scanner.md Part 0 (the six sub-checks below) — the file this line used to name, docs/qa/Master-QA-and-Consolidation-Program-Plan.md, was deleted in the 2026-08-17 cleanup and never restored, so the old instruction was an unrunnable rebuild from a file that does not exist ([MEASURED] 2026-08-29, absent from origin/main, from disk, and from .gitignore; present in exactly one commit, the pre-cleanup backup 8e2eba71). Ensure the checklist carries a recurring Part 0 static-audit item covering all six sub-checks; if absent, add it.
 2. docs/qa/qa-findings.md — ⚠️ **GITIGNORED (`.gitignore:107`)**. READ it if present so you do not
    re-file a known finding, but 🔴 **DO NOT WRITE YOUR FINDINGS THERE.** Five consecutive runs did
    and the finding sat unread for nine days. Your findings go in the tracked breadcrumb named in the

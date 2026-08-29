@@ -187,7 +187,7 @@ jobs:
       # check-sot-refs: exit 0 = all references resolve (or are baselined/excluded);
       # non-zero = at least one reference dangled outside docs/qa/sot-refs-baseline.json.
       #
-      # Blocking since PR sot-refs-s1: the 28 pre-existing dangling references are
+      # Blocking since PR sot-refs-s1: the 23 pre-existing dangling references are
       # recorded in docs/qa/sot-refs-baseline.json. That file may only SHRINK — the
       # ratchet step below rejects any PR that adds an entry. Burn-down is Station 05's.
       - run: node scripts/pipeline/check-sot-refs.mjs

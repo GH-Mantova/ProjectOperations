@@ -16,4 +16,4 @@ Before diagnosing any operational, CI, git, or database issue, check
 Repo: `GH-Mantova/ProjectOperations` · Local: `C:\ProjectOperations2`
 Seed login: `admin@projectops.local` / `Password123!` (all seed users share `Password123!`).
 Never commit directly to `main`. `pnpm build` + `pnpm lint` must pass before any PR.
-SOT reference baseline: `docs/qa/sot-refs-baseline.json` tracks 26 known-dangling sot/ refs — may only SHRINK; burn-down is Station 05's (fix in sot/, delete the entry, same PR).
+SOT reference baseline: `docs/qa/sot-refs-baseline.json` tracks 23 known-dangling sot/ refs — may only SHRINK; burn-down is Station 05’s (fix in sot/, delete the entry, same PR).

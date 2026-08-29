@@ -77,11 +77,25 @@ const C = process.stdout.isTTY
   ? { red: (s) => `\x1b[31m${s}\x1b[0m`, grn: (s) => `\x1b[32m${s}\x1b[0m`, yel: (s) => `\x1b[33m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m` }
   : { red: (s) => s, grn: (s) => s, yel: (s) => s, dim: (s) => s };
 
+// What has actually LANDED. Prefer origin/main: this repo's index AND working
+// directory both lag main, and a lagging read produced three separate false
+// verdicts — a false UNTRACKED, a false ok on a breadcrumb that never landed, and
+// a false SILENT on station 00 (measured 2026-08-29T08:09Z: dev tree 3 behind, the
+// 0608 breadcrumb present on main and absent from disk).
+// `-r` is mandatory: `git ls-tree` without it returns the tree entry, not its
+// contents, and any filter over that reports zero (DOCTRINE §9.2).
+// Falls back to the local index so a shallow CI checkout with no `origin/main`
+// keeps the previous behaviour instead of silently losing the check.
 function tracked() {
-  try {
-    return new Set(execSync(`git ls-files ${DIR}`, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
-      .split('\n').map((s) => s.trim()).filter(Boolean));
-  } catch { return null; }
+  const probes = [`git ls-tree -r --name-only origin/main -- ${DIR}`, `git ls-files ${DIR}`];
+  for (const cmd of probes) {
+    try {
+      const set = new Set(execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024 })
+        .split('\n').map((s) => s.trim()).filter(Boolean));
+      if (set.size) return set;
+    } catch { /* instrument unavailable — try the next one */ }
+  }
+  return null;
 }
 
 function checkOne(file, name) {
@@ -131,7 +145,15 @@ const only = (() => { const i = args.indexOf('--station'); return i === -1 ? nul
 if (!existsSync(DIR)) { console.error(C.red('REJECT') + `  ${DIR} does not exist`); process.exit(1); }
 
 const trackedSet = tracked();
-const all = readdirSync(DIR).filter((f) => NAME_RE.test(f));
+// Freshness must count breadcrumbs that LANDED on main but are not in THIS working
+// directory, or a tree behind main reports a station SILENT on the very run whose
+// breadcrumb just merged. Structural checks still run only on files present on
+// disk — a file we cannot read cannot be validated.
+const onDisk = readdirSync(DIR).filter((f) => NAME_RE.test(f));
+const fromMain = trackedSet
+  ? [...trackedSet].map((p) => p.slice(p.lastIndexOf('/') + 1)).filter((f) => NAME_RE.test(f))
+  : [];
+const all = [...new Set([...onDisk, ...fromMain])];
 const newest = new Map();
 let bad = 0, checked = 0, skipped = 0;
 
@@ -144,6 +166,10 @@ for (const f of all.sort()) {
   const stamp = `${date}T${hhmm.slice(0, 2)}:${hhmm.slice(2)}:00Z`;
   const prev = newest.get(nn);
   if (!prev || stamp > prev.stamp) newest.set(nn, { stamp, file: f });
+
+  // Landed on main, absent from this working tree: it counts for freshness and
+  // is by definition tracked, so there is nothing left to check here.
+  if (!existsSync(`${DIR}/${f}`)) continue;
 
   if (`${date}T${hhmm}` < CONTRACT_FROM) { skipped++; continue; }
   if (trackedSet && !trackedSet.has(`${DIR}/${f}`)) {

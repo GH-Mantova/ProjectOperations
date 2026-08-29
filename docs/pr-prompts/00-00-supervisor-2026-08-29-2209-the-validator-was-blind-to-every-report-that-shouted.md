@@ -141,6 +141,29 @@ CLEAN      EXIT=0
 **109 checked, up from 105 — the four shouting reports are now inside the validator's field of
 view, and the check is green.**
 
+**MERGED** 2026-08-29T22:31:06Z, merge commit `880274e6`, read back with
+`gh pr view 1397 --json state,mergedAt,mergeCommit` → `MERGED`. Dev tree fast-forwarded to
+`880274e6`, `rev-list --left-right` `0	0`, worktree removed and pruned. **The ff was not blocked
+this time, and the reason is instructive: I wrote the breadcrumb inside the PR's own worktree, so
+no untracked twin was ever created in the dev tree.** The 20:09Z cure held without being re-run.
+
+**PR #1398** — branch `docs/canonical-name-the-breadcrumb-home`, worktree
+`C:\po-worktrees\crumb-home` off `880274e6`. Three things, all authored after 04's 22:10Z
+breadcrumb landed on disk mid-run:
+
+1. **The canonical `station-contract v1` block now names where a breadcrumb is written** — inside
+   the run's own PR (best), or the dev tree; never a disposable worktree, which is torn down with
+   the report inside it and no error. This closes dispatch item 1, which 04 measured at 22:10Z as
+   **NOT LANDED** after being handed to 06. Patched by one script over one string so the block is
+   byte-identical by construction, not by proofreading: all six files reported the same new hash
+   `192677cc8d5680a6` *before* `--write-canonical` was run, which is the identity proof. Negative
+   control first — the pre-record lint REJECTED 6 of 7 docs, so the guard is live. Re-lint after
+   recording: `ADMIT: all 7 docs clean`, exit 0. **`station_doc_version` was NOT bumped.**
+2. **Station 04's 22:10Z breadcrumb committed**, so it stops being untracked and reaches somebody.
+3. **`docs/pipeline/sweep-rotation.json` committed** at `last_index=3`. 04 flagged this as the
+   thing that must ride along: uncommitted, the next 04 run repeats `instruction-drift` and the
+   rotation silently stops.
+
 ## FINDINGS
 
 **F1 — The breadcrumb validator was blind to exactly the reports it most needed to see.**
@@ -190,6 +213,61 @@ command.
 Eleventh reading at source, byte-identical to the tenth. **ESCALATED** (already open, unanswered —
 this is a re-statement, not a new question): only Marco can re-authenticate, and the separate
 question of whether to build a pre-arm expiry guard is still unanswered.
+
+---
+
+### COLLECT — Station 04's 22:10Z breadcrumb, which landed on disk while this run was in flight
+
+At 22:09Z there was nothing to collect. `00-04-scanner-2026-08-29-2210-bootstraps-refuted-blindness-rule.md`
+appeared at 22:14Z and I collected it before closing. Its six findings, dispositioned:
+
+**F6 (04's F1) — all five scheduled bootstraps still carry the REFUTED "in the listing ⇒ cloud-fired
+⇒ blind" rule, inside their STOP paragraph.** **ESCALATED — folded into the question already open,
+deliberately not reopened as a third.** 04 adds the decisive counter-example: its own run appeared
+in `list_scheduled_tasks` *and* reached the box. It also corrects its own earlier claim that
+`fix-station-bootstraps.mjs` does not exist — it does, at
+`C:\po-sup-fix-scripts\fix-station-bootstraps.mjs`, 4405 B, written and dry-run-proven by my 10:08Z
+run. **The fix has been written for twelve hours and is waiting on one word.** My own reading of
+the authority question is unchanged and I state it plainly rather than re-asking: the bootstraps
+live outside the repo, so no PR reaches them and no CI gate reviews them —
+`STATION-CAPABILITIES.md` §1 names their only editor as Marco, and rewriting five files that govern
+every station's STOP behaviour, unreviewed, is an authorisation grant. 04's ordering **(C) then
+(A)** — say yes today, land the in-repo canonical copy plus a preflight hash-check tomorrow — is
+the right shape, and (A) is the half that passes RULE 1's future test.
+
+**F7 (04's F2) — `docs/pr-prompts/AWAITING-MARCO-DECISION.md` has never existed, and Station 02's
+doc names it as an escalation channel in two places.** **DEFERRED**, with the trigger stated: it
+costs nothing while 02 is dispatch-only and unscheduled, and becomes live the moment 02 is
+dispatched. I am arbitrating the direction now so the next hand does not need a ruling: **delete
+02's rule 6c and let `needs-marco/` be the single channel.** That is not a preference — DOCTRINE
+§5b already says *"`needs-marco/` IS THE ONLY REAL STOP"*, so restoring a second channel would be
+re-creating the `qa-findings.md` failure class on purpose.
+
+**F8 (04's F3) — Station 00 retired `triage-state.md`; Station 03 still depends on it in five
+places, including its cross-run usage-limit state.** **DEFERRED**, and arbitrated: **repoint 03's
+five references at its own breadcrumb**, which is the only channel that closes, rather than
+resurrecting a file 00 has formally declared non-existent. 03 next runs ~23:00Z; the failure mode
+if it fires first is an untracked local file nobody reads, which is bad but not destructive. It
+becomes urgent if 03 ever limit-parks a batch, because that decision is the one that needs to
+survive a run boundary.
+
+**F9 (04's F6) — the status of the three items I dispatched to 06 at 20:09Z, measured rather than
+assumed.** Item 1 (canonical block names the breadcrumb's home): **ACTIONED** by me in #1398 above.
+Item 3's `ls-tree` half: 04 confirms LANDED in #1390 — matching my F4, which is the retraction.
+Item 3's `NAME_RE` half, which 04 honestly recorded as `[CANNOT MEASURE]` rather than guessing:
+**ACTIONED** by me in #1397 above; the six-hidden-breadcrumbs figure it could not confirm measures
+as 37 invisible, 4 of them post-contract. **Item 2 stands and is now better specified by 04's
+measurement: the `exempt=` bucket in `check-sot-refs.mjs` is BUILT AND EMPTY** — `exempt=0`,
+`baselined=17`. The baseline fell 23 → 17 by burn-down, not by bucketing, so the floor-of-8 problem
+is intact inside the 17 and the remaining work is *populating* the bucket, not building it.
+**DEFERRED** rather than re-dispatched, because per F3 dispatching to 06 parks things; it is a
+small, well-specified job for whichever station next has authoring authority and a spare cycle.
+
+**Also noted, no action:** 04 confirms the 19 untracked twins that blocked the 20:09Z ff are gone
+and that cure held; `docs/pr-prompts/pr-doctrine-s9-four-false-traps-LOOPING.md` is untracked in the
+queue root but carries the `-LOOPING` suffix, matches no watcher glob, and is **not** armed; the
+`[STALE]` escalation-file list `status-sweep.ps1` prints keeps growing and clearing it is mine —
+**DEFERRED**, it is noise, not risk.
 
 ## WHAT I DID NOT DO
 

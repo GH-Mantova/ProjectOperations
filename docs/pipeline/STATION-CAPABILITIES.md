@@ -54,9 +54,16 @@ scheduled file has not been touched since 2026-07-14.
 | **Cloud task** | **NO - structurally blind** | **YES** | yes |
 | **Interactive chat** | usually yes | n/a | yes |
 
-**The diagnostic:** if a station appears in `list_triggers`, it is cloud-fired and **will be blind**.
-Station 03 ran blind three times before this was found; the name "(local)" was not evidence, the
-listing was.
+🔴 **There is no diagnostic short of trying.** An earlier version of this section said *"if a
+station appears in `list_triggers`, it is cloud-fired and **will be blind**."* **That is REFUTED,
+in both directions.** MEASURED 2026-08-28/29: Station 03 filed a complete breadcrumb at 23:02Z
+**while blind**, and Station 00's 02:08Z run appeared in the scheduled-task listing **and had
+Desktop Commander**. Blindness is **intermittent** - roughly 40% of Station 00's recent runs - and
+**its cause is not known**. The listing predicts nothing, in either direction.
+
+**So the only test is the call itself:** run `start_process` with shell `powershell.exe` and report
+what happened. Never infer blindness from the listing, from the task name, or from a quiet result -
+and never let a blind run go unreported because you assumed it was expected.
 
 **First action, every scheduled run:** prove you can reach the host (`start_process`, shell
 `powershell.exe`). If absent, **say so in one paragraph and STOP.** Do NOT substitute GitHub-side

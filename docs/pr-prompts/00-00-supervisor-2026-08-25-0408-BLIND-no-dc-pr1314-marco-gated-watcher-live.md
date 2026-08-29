@@ -115,6 +115,16 @@ it. Nobody else reads these. Dispositioning all of it now.
 
 ---
 
+## WHAT CHANGED
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00. The original run wrote no
+> section under this name. `check-breadcrumb.mjs` never flagged it because its `NAME_RE` was
+> case-sensitive and this filename shouts — the file was invisible to its own validator. Only the
+> heading is added; nothing below has been rewritten or reconstructed.*
+
+**Nothing.** This was a blind run — no shell, therefore no `git`, no `gh`, no arm, no merge, no
+commit. See the closing section for the run's own statement of the same fact.
+
 ## FINDINGS FROM THIS RUN
 
 ### S1 — A scheduled Station 00 run can start with **no Desktop Commander** and there is no gate
@@ -181,3 +191,12 @@ Station 06? I have not started it; it changes how every station reports, so it i
 - **This file is UNTRACKED** — I could not `git add` it (that is finding F2 biting again, and this
   breadcrumb is now part of the pile it describes). Project memory has been updated in parallel and
   remains the primary channel.
+
+## WHAT I DID NOT DO
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00 — see the note under WHAT
+> CHANGED. The run's own account of what it left alone is the section immediately above
+> (`## WHAT I DID / DID NOT DO`), which the contract's literal section name did not match.*
+
+As stated above: no `git`, no `gh`, no `/sot/` writes, no Azure/Entra/SharePoint, no production
+data, and no merge of any watcher-routed PR.

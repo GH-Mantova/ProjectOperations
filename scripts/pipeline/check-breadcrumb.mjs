@@ -37,7 +37,15 @@ const CADENCE = { '00': 2, '02': null, '03': 24, '04': 4, '05': 24 };
 
 const SECTIONS = ['## GROUND', '## WHAT I MEASURED', '## WHAT CHANGED', '## FINDINGS', '## WHAT I DID NOT DO'];
 const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];
-const NAME_RE = /^00-(\d\d)-([a-z0-9-]+)-(\d{4}-\d{2}-\d{2})-(\d{4})-([a-z0-9-]+)\.md$/;
+// CASE-INSENSITIVE ON PURPOSE. This regex is the validator's ONLY gate: a file it does not
+// match is not validated, not counted, and invisible to --freshness. The station segment and
+// the slug were `[a-z0-9-]+`, so any breadcrumb with a capital in its name fell straight
+// through — and stations capitalise exactly when the news is loud. Four post-contract reports
+// named `...-BLIND-no-dc-...` were silently unvalidated, and three of them turn out to be
+// missing sections nobody ever flagged. Measured 2026-08-29: 37 of 149 `00-*` files on main
+// failed this pattern. A validator that skips the reports its own authors SHOUTED is worse
+// than no validator, because its CLEAN reads as coverage. Widened, never narrowed.
+const NAME_RE = /^00-(\d\d)-([A-Za-z0-9-]+)-(\d{4}-\d{2}-\d{2})-(\d{4})-([A-Za-z0-9-]+)\.md$/;
 
 // The gitignored-sink gate. A finding is only routed into a gitignored channel when the
 // path is preceded by a routing verb + destination preposition — writing/reporting/logging

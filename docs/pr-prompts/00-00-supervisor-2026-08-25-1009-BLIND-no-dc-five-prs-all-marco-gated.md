@@ -7,8 +7,18 @@
 > and it is NOT the coverage a sighted run gives. **No merge, no arm, no dispatch, no commit was
 > performed.** A blind run and a healthy quiet run both produce "no news" — this was the blind one.
 
+## GROUND
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00. This report used numbered
+> headings instead of the five contract section names, so `check-breadcrumb.mjs` scored it as
+> missing all five — except that it never scored it at all: `NAME_RE` was case-sensitive and this
+> filename shouts, so the file was invisible to its own validator. Only headings are added here;
+> no sentence of the original has been rewritten, reordered or reconstructed.*
+
 **Version check:** bootstrap `station_doc_version: 1` · station doc `station_doc_version: 1` → **MATCH**.
 Read from the mount at `C:\ProjectOperations2\docs\pipeline\stations\00-supervisor.md`.
+Run boundary and blindness are stated in the block above; no `origin/main` SHA could be taken,
+because no shell was available.
 
 ---
 
@@ -22,6 +32,11 @@ The watcher is **LIVE, healthy and productive** — it opened three PRs and is m
 while I write this.
 
 ---
+
+## WHAT I MEASURED
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00 — see the note under GROUND.
+> The original section name is retained immediately below.*
 
 ## 2. WHAT I COULD MEASURE
 
@@ -112,6 +127,13 @@ Verbatim, PR #1321:
 
 ---
 
+## WHAT CHANGED
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00 — see the note under GROUND.*
+
+**Nothing.** Section 3 above records that this run armed nothing and that nothing needed arming;
+with no shell there was no `git`, no `gh`, no merge and no commit.
+
 ## 5. FOR MARCO — one question, RULE 1 applied
 
 **Every PR the pipeline opens now stops at you.** Five for five today; three of them held by a
@@ -142,6 +164,11 @@ Alternatives, and which half of RULE 1 each fails:
 
 ---
 
+## FINDINGS
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00 — see the note under GROUND.
+> This run's findings and their dispositions are the table below, unaltered.*
+
 ## 6. DISPOSITIONS
 
 | # | Finding | Disposition |
@@ -160,3 +187,11 @@ Alternatives, and which half of RULE 1 each fails:
 **Run boundary:** 2026-08-25 10:09:12Z → 10:14:06Z. Blind (no shell). No writes to the repo other
 than this breadcrumb. Board mutated *during* the run (#1321 opened 10:09:23Z, review enqueued
 10:12:36Z) — **re-measure before acting on anything above.**
+
+## WHAT I DID NOT DO
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00 — see the note under GROUND.*
+
+Section 4 above (`WHAT I COULD NOT MEASURE`) is this run's account of the scope it could not
+reach. Deliberately left alone: no arm, no merge, no dispatch, no commit, no `/sot/` write, no
+Azure/Entra/SharePoint, no production data.

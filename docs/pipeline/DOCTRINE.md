@@ -368,6 +368,14 @@ here now because they are true for **every** station.
 - ⚠️ **`git stash` in the watcher clone is a CLOSED LOOP** — the launcher's preflight stashes on every
   start, and nothing ever pops. Report the count and its growth. `git stash drop`, **never `pop`**.
 
+- 🔴 **`git branch -r` reads the LOCAL remote-tracking cache, not the remote.** `git fetch`
+  without `--prune` never deletes a tracking ref, so branches GitHub deleted on merge live on
+  locally forever — **54 reported against 21 real, measured 2026-08-29.** Cross-referencing that
+  list against the GitHub API inherits the error and dresses it as a finding. **Ask the remote:
+  `git ls-remote --heads origin`.** Separately, `git branch -r --merged origin/main` is blind to
+  squash merges, which is every merge in this repo, and `gh pr list --limit N` silently TRUNCATES
+  at N — `--limit 600` returned 600 rows and a different, wrong answer from `--limit 2000`.
+
 ## 9.3 Files and encoding
 
 - ⚠️ **`Get-Content` reports FALSE MOJIBAKE.** The console encoding mangles the display, not the file.

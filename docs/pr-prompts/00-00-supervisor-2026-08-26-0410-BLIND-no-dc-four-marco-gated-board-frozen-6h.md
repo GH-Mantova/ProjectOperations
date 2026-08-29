@@ -101,6 +101,24 @@ Exactly one new breadcrumb in the window (mtimes on the mount are **local AEST+1
 
 No 02/03/05/06 breadcrumbs since 02:08Z.
 
+## WHAT CHANGED
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00. The original run wrote no
+> section under this name. `check-breadcrumb.mjs` never flagged it because its `NAME_RE` was
+> case-sensitive and this filename shouts — the file was invisible to its own validator. Only the
+> heading is added; nothing else has been rewritten or reconstructed.*
+
+**Nothing.** The run was blind on the write side: no shell, so no arm, no merge, no commit. The
+section below states the same thing in the run's own words.
+
+## FINDINGS
+
+> *Contract-reconciliation heading, added 2026-08-29 by Station 00 — see the note above.*
+
+This run recorded its findings under `## WHAT I MEASURED` and `## COLLECT` and carried each one to
+the `## DISPOSITIONS` table at the foot of the file, where every entry is ACTIONED, DISPATCHED,
+ESCALATED or DEFERRED. Read that table as this section's body; nothing has been added to it.
+
 ## WHAT I DID NOT DO, AND WHY
 
 - **Merged nothing.** All four open PRs are watcher-routed to Marco. **RULE 2** — never merge a

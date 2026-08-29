@@ -25,9 +25,11 @@ contract_version: 1
 > the watcher globs. **A blind run and a healthy quiet run both produce "no news."** Report blindness
 > as loudly as you would report a defect.
 
-The diagnostic for *why*: if this station appears in the scheduled-task listing, it is cloud-fired and
-**structurally** cannot reach the box. That is a configuration fact for Marco, not something to work
-around.
+There is **no diagnostic short of trying.** The scheduled-task listing predicts nothing, in either
+direction — see `STATION-CAPABILITIES.md` §2, where the old "in the listing ⇒ cloud-fired ⇒ blind"
+rule is REFUTED with measurements from both sides. Blindness is **intermittent** and **its cause is
+not known**, so never infer it from the listing, from the task name, or from a quiet result: make
+the call, and report what actually happened.
 
 **2. Read the two binding documents, in full, every run.**
 

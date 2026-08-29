@@ -92,6 +92,14 @@ findings. **If your finding lives only in a gitignored path, you have not report
 breadcrumb is untracked until the next board PR commits it — say so in your chat report so Station
 00 sweeps it up.
 
+**Where you write it decides whether it survives.** Two homes are correct: **inside your own run's
+PR**, which is best — the breadcrumb lands with the change it describes and needs nobody to sweep it
+up — or the **dev tree** at `C:\ProjectOperations2\docs\pr-prompts\`, where Station 00 collects it.
+**Never leave it in a disposable worktree.** The worktree is torn down at the end of the run and the
+report dies with it, with no error and no trace: a station that believes it reported is
+indistinguishable from one that did. A breadcrumb filename matches no watcher glob, so leaving it
+untracked in the queue root arms nothing.
+
 **Fixed section order, every station, every run:**
 
 ```markdown

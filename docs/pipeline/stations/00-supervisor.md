@@ -464,7 +464,7 @@ Run this every cycle. You run ON the Windows box, so a LOCAL process check is al
     $node = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
               Where-Object { $_.CommandLine -match 'pr-watcher[\\/]index\.mjs' })
     $wrap = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-              Where-Object { $_.CommandLine -match '-File.*supervise-watcher\.ps1' })
+              Where-Object { $_.CommandLine -match '-File.*(supervise-watcher|watcher-launcher-singlelane)\.ps1' })
     if ($wrap.Count -eq 0) {
         Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
           '-File','C:\ProjectOperations2\scripts\pr-watcher\supervise-watcher.ps1'
@@ -472,6 +472,13 @@ Run this every cycle. You run ON the Windows box, so a LOCAL process check is al
     } else {
         Write-Output "ENSURE-UP: wrapper present (node=$($node.Count) wrapper=$($wrap.Count)) - no action."
     }
+
+🔴 **The probe above matches BOTH wrapper names deliberately.** MEASURED 2026-08-29T20:21Z: the
+three live wrappers on this box are all `-File "C:\po-watcher\watcher-launcher-singlelane.ps1"`,
+and **zero** match `supervise-watcher.ps1`. Matching only the latter reported a healthy,
+triple-supervised watcher as an ORPHANED NODE — a fault that does not exist, whose "fix" is to
+start a fourth supervisor family. `status-sweep.ps1` counted the three correctly the same minute;
+when two instruments disagree about the machinery, resolve it by reading the COMMAND LINES.
 
 Then **re-check after ~30s that the wrapper is still alive** - see the trap below.
 

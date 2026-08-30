@@ -463,19 +463,23 @@ here now because they are true for **every** station.
   never-arm prompt**, and it fires at `:728` before the premise is ever evaluated. The general
   warning stands: a **prose** human gate matches neither regex and is invisible to both the
   linter and any grep built on them.
-- 🔴 **`lint-prompt.mjs`’s `parseFrontMatter` has NO block-scalar support: `key: >-` parses to the
-  literal two-character string `">-"`, and the indented body is SILENTLY DROPPED** — the continuation
-  lines match neither the list-item regex nor `^([a-z_]+):` (`lint-prompt.mjs:934-966`). Measured
-  2026-08-30 with both controls (folded → `">-"`, plain → its text) across all **61** depth-1
-  `-HOLD`/`-ready` prompts on `origin/main`: **31 occurrences, every one on `premise_means` or
-  `done_when`, and ZERO on a gate-bearing key** (`premise`, `requires_merged`, `requires_on_main`,
-  `requires_file_on_main`, `fixes_pr`) — so no gate is broken today. The live cost is that a STALE
-  verdict prints `Premise no longer holds: ">-"` (`:1444`) instead of the reason, and a census built
-  on those fields reads mostly false positives — exactly the 4-of-5 miscount on 2026-08-30. **The
-  latent cost is severe: a `premise` written as a folded scalar becomes the command `>-`, the shell
-  fails it, that reads as premise-false, and the prompt is BINNED as already-done.** Never write a
-  gate-bearing key as a block scalar, and never quote a `premise_means` out of lint output without
-  checking it is not those two characters.
+- 🔴 **`lint-prompt.mjs`’s `parseFrontMatter` has NO block-scalar support, and it currently RUBBER-STAMPS
+  the LL-29 rollback gate.** `key: >-` stores the literal two characters `">-"` and the indented body is
+  silently dropped — the continuation lines match neither the list-item regex nor `^([a-z_]+):`
+  (`lint-prompt.mjs:934-966`). `">-"` is neither missing nor empty, **so every presence check passes on
+  content nobody wrote.** Measured 2026-08-30 with both controls (folded → `">-"`, plain → its text)
+  across all 61 depth-1 `-HOLD`/`-ready` prompts on `origin/main`:
+  `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12 · and **0** on `premise`, `scope`,
+  `fixes_pr` or any `requires_*`. **7 of the 17 Prisma-migration-scoped prompts are among the 10**,
+  including two irreversible table drops (`pr-524-rates-b-slice2-canonical`,
+  `pr-rates-s11c-drop-legacy-tables`) and `pr-siteid-notnull-backfill` — all three have a rollback gate
+  that reads two characters and passes. Independently found 2026-08-19 and 2026-08-28 and re-measured
+  here; the `premise`-is-clean half has held all three times, which is the only reason nothing has been
+  mis-binned. The fix is staged as `pr-lint-frontmatter-block-scalar-collapse-HOLD.md` (ADMIT).
+  **Until it lands: never write a front-matter key as a block scalar, treat a `">-"` in lint output as
+  an UNREAD field rather than a value, and read `rollback_strategy` out of the file by eye before
+  trusting any migration-scoped ADMIT.** The watcher is NOT affected — `scripts/pr-watcher/index.mjs`
+  has its own extractor that folds correctly, so lint and the watcher disagree about the same file.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

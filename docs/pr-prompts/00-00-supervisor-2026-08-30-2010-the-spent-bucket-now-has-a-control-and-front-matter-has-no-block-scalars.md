@@ -118,41 +118,71 @@ of them wraps its pattern in `[regex]::Escape`.
 
 **ACTIONED.**
 
-### F3 [S3] NEW — `parseFrontMatter` has no block-scalar support, and it nearly sold me a false defect
+### F3 [S2] — CORRECTED MID-RUN. The front-matter parser eats block scalars, and it IS breaking a live gate
 
-Found while proving F1's fixture honest, which is the only reason it was found at all. My first
-fixture wrote `premise_means:` as a folded scalar and the linter reported
-`Premise no longer holds: ">-"`. Read quickly that says *the premise was clobbered* — a live gate
-defect. It is not.
+**I got this wrong first and am recording both the wrong answer and how it was caught, because the
+wrong answer is the more instructive half.**
 
-The truth, measured: `parseFrontMatter` (`lint-prompt.mjs:934-966`) matches only
-`^([a-z_]+):\s*(.*)$` and a list-item form. **A block scalar therefore stores the literal two
-characters `">-"` and its indented body is silently discarded** — the continuation lines match
-neither pattern and fall through the loop. The STALE message at `:1444` prints `premise_means` by
-design, so what I saw was the parse result, not a clobbered premise.
+Found while proving F1's fixture honest: my first fixture wrote `premise_means:` as a folded scalar
+and the linter reported `Premise no longer holds: ">-"`. `parseFrontMatter`
+(`lint-prompt.mjs:934-966`) matches only `^([a-z_]+):\s*(.*)$` and a list-item form, so **a block
+scalar stores the literal two characters and the indented body falls through the loop and is
+discarded.** That much was right.
 
-Scanned all **61** depth-1 `-HOLD`/`-ready` prompts on `origin/main` (disk 61, `git ls-tree -r`
-tracked 61 — they agree), with both controls green in the same run (folded → `">-"`, plain → its
-text): [MEASURED]
+**What I then asserted, and it was wrong:** I scanned `premise` and the four `requires_*` keys, found
+0, and wrote *"no gate is broken today."* Two things refuted it before this PR merged. Project memory
+carries this same defect found on **2026-08-19** and again on **2026-08-28** — so it was never mine to
+call NEW — and the 08-28 finding named the key I had not looked at. Re-measured, same engine, both
+controls green: [MEASURED]
 
 ```
-=== GATE-BEARING keys as a BLOCK SCALAR: 0
-    (premise, requires_merged, requires_on_main, requires_file_on_main, fixes_pr)
-=== DOC-ONLY keys as a BLOCK SCALAR:     31   (premise_means / done_when)
+block-scalar on rollback_strategy      10      <- the one that matters
+block-scalar on premise_means          19
+block-scalar on done_when              12
+block-scalar on premise                 0
+block-scalar on scope / fixes_pr / requires_*   0
 ```
 
-**No gate is broken today.** The live cost is that lint output and any census built on those fields
-read `">-"` instead of the text — which is exactly the mechanism behind the 4-of-5 false-positive
-`done_when` census on 2026-08-30. The latent cost is severe and worth writing down: a `premise`
-written as a folded scalar becomes the command `>-`, the shell fails it, that reads as premise-false,
-and the prompt is **binned as already-done** — the precise disaster `parseFrontMatter`'s own
-quote-stripping comment says bit on first test.
+`lint-prompt.mjs:1241-1252` demands a non-empty `rollback_strategy` for any `prisma/migrations`-scoped
+prompt. `">-"` is neither missing nor empty, **so the gate passes without reading anything.** Of the
+**17** migration-scoped prompts on the board, **7 are rubber-stamped**: [MEASURED]
 
-Landed as a DOCTRINE §9.5 bullet. **ACTIONED.** Deliberately doctrine and not a parser change: adding
-block-scalar support to `parseFrontMatter` alters how **every** prompt on the board is read, and with
-zero gate-bearing occurrences it buys nothing today while risking everything. If someone later wants
-the parser fixed, the complete-and-additive move is a *lint warning* when a block scalar appears on a
-gate-bearing key — not a silent change of meaning.
+```
+pr-524-rates-b-slice2-canonical-HOLD        (irreversible table drop)
+pr-rates-s11c-drop-legacy-tables-HOLD       (irreversible table drop)
+pr-siteid-notnull-backfill-HOLD
+pr-company-manage-s1-permission-and-grant-HOLD
+pr-crm-s11-archive-reason-delete-empty-HOLD
+pr-crm-s3-account-on-client-create-HOLD
+pr-crm-s7-interaction-log-HOLD
+```
+
+The other 10 carry real rollback prose and gate correctly — that split is the positive control: the
+gate is not broken for everything, it is broken for exactly the folded ones.
+
+**Two things keep this at S2 rather than S1.** `premise` collapsed on **zero** prompts on all three
+measurement dates, so nothing has ever been mis-binned as already-done. And the watcher is unaffected:
+`scripts/pr-watcher/index.mjs` has its own extractor that folds correctly, so the linter gates on `""`
+while the watcher runs the real text.
+
+**ACTIONED** as doctrine: the DOCTRINE §9.5 bullet in this PR now states the rubber-stamp plainly
+instead of my original "no gate is broken", and tells the reader to read `rollback_strategy` by eye
+before trusting a migration-scoped ADMIT.
+
+**The code fix is already staged and needs no new work from anyone:**
+`pr-lint-frontmatter-block-scalar-collapse-HOLD.md`, lint **ADMIT exit 0, size 2**, premise
+`! grep -q "foldBlockScalar" scripts/pipeline/lint-prompt.mjs` still alive. It is one of the 30
+gate-satisfied HOLDs and I could not arm it — **the OAuth block (F8)**. It is the strongest
+next-arm candidate the moment Marco re-authenticates, ahead of the existing next-arm order, because
+until it lands three destructive-migration prompts have a rollback gate that reads two characters.
+
+**The method note worth keeping:** the reason I nearly shipped a false all-clear is that I chose the
+key set from the failure I happened to trip over (`premise_means`) instead of from the set of keys
+any gate actually reads. DOCTRINE §7's "prove your instrument can produce a positive" does not cover
+this — my controls were green and my scan was correct; it just answered a narrower question than the
+sentence I wrote about it. **Check that the population you measured is the population your claim is
+about.**
+
 
 ### F4 [S4] 04's F3 (approval-marker gates report two different reasons) — **DEFERRED**, ratified
 

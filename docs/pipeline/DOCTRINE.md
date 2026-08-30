@@ -394,6 +394,14 @@ here now because they are true for **every** station.
   plain `Set-Content` still rewrites line endings. A `--numstat` reading far larger than your
   intended change is the symptom; check it before you commit.
 
+- ⚠️ **`Compare-Object` reports PHANTOM differences between two BYTE-IDENTICAL files.**
+  Measured 2026-08-29 on two 285-line copies of `docs/pipeline/stations/03-machine-minder.md`: it
+  returned **100 differences** while `git diff --stat origin/main -- docs/pipeline` returned
+  **empty** and `git hash-object` matched. A line-ending / sync-window artefact, not a real diff.
+  Believed, it would have opened a station report with a false *"your station doc is not what
+  `origin/main` says it is"* — the §7 shape exactly. **To decide whether two files differ, use
+  `git diff`, `git hash-object`, or a `Buffer.compare` in node. Never `Compare-Object`.**
+
 ## 9.4 GitHub
 
 - ⚠️ **The GitHub MCP token cannot merge, and cannot open PRs (403).** Use `gh` through Desktop

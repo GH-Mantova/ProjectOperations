@@ -74,7 +74,7 @@ you are about to act on, immediately before acting.
 
 **A report nobody can find is a report that does not exist.** Five consecutive Station 04 runs each
 believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-findings.md`, which is
-**gitignored** at `.gitignore:107`. It sat unread for nine days.
+**gitignored** at `.gitignore:108`. It sat unread for nine days.
 
 **Every run writes one breadcrumb, at a tracked path:**
 
@@ -83,10 +83,10 @@ docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 ```
 
 `docs/pr-prompts/` is tracked. The gitignored sinks are the five files named at
-`.gitignore:106-110` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
+`.gitignore:107-111` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
 `docs/qa/qa-test-data-registry.md`, `docs/qa/.qa-run.lock`, and the `docs/qa/qa-run-*.md` pattern —
-plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco`
-(`.gitignore:75-82`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
+plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco|no-pr-opened`
+(`.gitignore:76-83`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
 is checked in and CI ratchets against it — so it is those five files, not the folder, that swallow
 findings. **If your finding lives only in a gitignored path, you have not reported it.** The
 breadcrumb is untracked until the next board PR commits it — say so in your chat report so Station
@@ -387,7 +387,7 @@ Read all of these. If another agent already found or escalated something, **add 
 - `docs/pr-prompts/shepherd-state.md` - what the shepherd did, merged, escalated
 - ~~docs/pr-prompts/triage-state.md~~ - REMOVED: this file does not exist on main (checked 2026-08-24).
 - docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there - **your own prior runs.** Never act twice on one signal.
-- `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (`.gitignore:107`)** - it is absent from a
+- `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (`.gitignore:108`)** - it is absent from a
   clean checkout, so read it if present but never treat its silence as evidence, and never send a
   station there to report.
 - `docs/pr-reviews/*.md` - reviewer verdicts (MERGE / FIX / BLOCK)

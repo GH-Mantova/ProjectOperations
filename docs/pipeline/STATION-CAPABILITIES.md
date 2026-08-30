@@ -85,10 +85,21 @@ its chat report plus a breadcrumb are then the only channels, and Station 00 mus
 - 🔴 **NOT limited to the session's mapped folders.** MEASURED: `allowedDirectories` is `[]` =
   unrestricted; it reads `C:\Windows`, `C:\Users`, the watcher clone and Scheduled Tasks regardless
   of what Cowork has mapped. **One mapped folder is enough for a station to do its job.**
-- ⚠️ **`$` is STRIPPED from any `-Command "..."` string.** Anything with `$` goes in a `.ps1` run
-  with `-File`.
-- ⚠️ Streamed output **PAUSES on lines starting with `#`** - not a hang; keep reading with explicit
-  offsets until `0 remaining`.
+- 🔴 **The shell traps live in DOCTRINE §9.1. Read them there; this file must not restate them.**
+  Two restatements that sat here drifted away from §9.1 and were caught 2026-08-30 by Station 04:
+  this file said `$` is **STRIPPED** from a `-Command "..."` string, when §9.1 measured it
+  **EXPANDED** — and expansion is the worse failure, because a stripped token dies as a loud parser
+  error while an expanded one can produce a **valid command carrying a value you never wrote, exit
+  0**. 04 reproduced it first-hand in its own opening call: `$PSVersionTable.PSVersion.ToString()`
+  came back as `System.Collections.Hashtable.PSVersion.ToString()` — the token replaced by its
+  value, not removed. This file also asserted that streamed output **pauses on lines starting with
+  `#`**, a mechanism §9.1 records as **not reproduced** on Desktop Commander 0.2.47; the real effect
+  is an early return with output still pending, seen on a line with no `#`. Both restatements sent a
+  reader looking for the wrong signature, and because the bootstraps prescribe reading this file
+  **after** DOCTRINE, the weaker version was the one read last. **§9.1 is inside a hash-gated
+  canonical block and cannot drift; a paraphrase here can. So: no paraphrase.** The operative rules
+  remain — anything containing `$` goes in a `.ps1` run with `-File`, and you keep calling
+  `read_process_output` with explicit offsets until it reports `0 remaining`.
 - ⚠️ Blocked commands include `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ### The device bridge (`device_bash`, `device_stage_files`, `device_commit_files`)
@@ -190,7 +201,7 @@ one of exactly four dispositions: **ACTIONED / DISPATCHED / ESCALATED / DEFERRED
 |---|---|
 | **Project memory** | ✅ **primary** - the only one that reliably survives. ⚠️ may be absent in a device task |
 | `docs/pr-prompts/00-*.md` breadcrumbs | ✅ tracked on main as of #1300 (before that: 20 on disk, **0 tracked**) |
-| `docs/qa/qa-findings.md` | 🔴 **GITIGNORED (`.gitignore:107`)** - anything found only there is UNREPORTED. It swallowed a released gate for nine days |
+| `docs/qa/qa-findings.md` | 🔴 **GITIGNORED (`.gitignore:108`)** - anything found only there is UNREPORTED. It swallowed a released gate for nine days |
 | Chat | ❌ not durable; no other agent can read it |
 
 ---

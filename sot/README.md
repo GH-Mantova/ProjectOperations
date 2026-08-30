@@ -187,7 +187,7 @@ Prisma/SQL schema + infrastructure in one graph**.
 
 - Ask the graph first: `graphify query "what connects the rate resolver to the schema?"`,
   `graphify path "ClientQuote" "TenderEstimate"`, `graphify explain "RateResolverService"`.
-- Broad architecture review: `graphify-out/GRAPH_REPORT.md`. <!-- sot-ref-allow: graphify-out/ is gitignored at .gitignore:134 - tool output, never on main -->
+- Broad architecture review: `graphify-out/GRAPH_REPORT.md`.
 - **Graphify is NOT source of truth.** It is a generated navigation index (a `docs/`-class
   artifact that lives at repo root only because the tool requires it). The canonical Prisma
   spine remains `sot/04-data-model.md` + `scripts/data-model/build-relationship-map.mjs`

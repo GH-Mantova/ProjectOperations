@@ -1194,9 +1194,9 @@ Registry: `apps/web/src/dashboards/widgetRegistry.ts` · components in `apps/web
 | Item | Where it stands |
 |---|---|
 | **Widget gallery** (two-step add-widget picker with visual-kind rail, thumbnails, live preview, placement mode) | **Shipped** — PR #473 (`widgetGallery.ts` + `WidgetGalleryModal.tsx` are in main) |
-| **Program (Gantt) snapshot widget** — compact read-only Gantt of active projects, next 4 weeks | **Held prompt**, `docs/pr-prompts/pr-dashboard-gantt-heatmap-widgets-HOLD.md` — gated behind #473 (now met) and dashboards-PR serialization |
+| **Program (Gantt) snapshot widget** — compact read-only Gantt of active projects, next 4 weeks | **Held prompt**, `docs/pr-prompts/pr-dashboard-gantt-heatmap-widgets-HOLD.md` — gated behind #473 (now met) and dashboards-PR serialization | <!-- sot-ref-allow: queue prompt consumed by the watcher - absent once run, same class as the -ready.md path exclusion -->
 | **Worker availability heatmap widget** — workers × next 14 days, free / partial / full | Same held prompt; respects the locked multi-role rule (one worker-day even with two roles) |
-| Dashboard rename / copy-from | `docs/pr-prompts/pr-dashboard-rename-copyfrom-HOLD.md` — dashboard management, not a widget, but it holds the serialization lock |
+| Dashboard rename / copy-from | `docs/pr-prompts/pr-dashboard-rename-copyfrom-HOLD.md` — dashboard management, not a widget, but it holds the serialization lock | <!-- sot-ref-allow: queue prompt consumed by the watcher - absent once run, same class as the -ready.md path exclusion -->
 
 ---
 
@@ -3091,7 +3091,7 @@ Generated from controller source (`@Controller`, `@UseGuards`, `@RequirePermissi
 `test/permission-matrix` branch. This is the **expected** behaviour contract; the serial suite
 `apps/api/src/common/auth/__tests__/permission-matrix.spec.ts` asserts the high-value route groups live
 against a seeded database. F1 (global-list creation) and F4 (worker leave / unavailability writes) from
-`docs/pr-prompts/needs-marco/pr-188-authz-findings.md` were tightened in PR-188b — F1 is now gated by
+`docs/pr-prompts/needs-marco/pr-188-authz-findings.md` were tightened in PR-188b — F1 is now gated by <!-- sot-ref-allow: docs/pr-prompts/needs-marco/ is gitignored at .gitignore:82 - never on main by design -->
 `masterdata.manage` and F4 by `resources.manage`. The matrix below reflects the post-PR-188b state.
 
 ## Roles used

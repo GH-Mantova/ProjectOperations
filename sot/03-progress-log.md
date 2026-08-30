@@ -7434,7 +7434,7 @@ Detail: One-shot CLI script (`apps/api/scripts/xero-import-contacts.ts`,
 
   Dry-run by default: classifies every row as CREATE / UPDATE /
   NO_CHANGE / SKIPPED, writes a markdown report
-  (`apps/api/scripts/xero-import-report.md`, gitignored), and
+  (`apps/api/scripts/xero-import-report.md`, gitignored), and <!-- sot-ref-allow: generated Xero import report, gitignored at .gitignore:86 - never on main by design -->
   exits without touching the database. Only `--commit` persists.
   Idempotent: match on `xeroContactId` if set, otherwise exact
   trimmed `name`; re-runs on the same input produce no further
@@ -7461,7 +7461,7 @@ Detail: One-shot CLI script (`apps/api/scripts/xero-import-contacts.ts`,
 
   No new dependencies. No new env vars. No schema migration —
   PR #277 is the source of truth for fields. Marker file
-  `apps/api/scripts/xero-import-report.md` added to .gitignore.
+  `apps/api/scripts/xero-import-report.md` added to .gitignore. <!-- sot-ref-allow: generated Xero import report, gitignored at .gitignore:86 - never on main by design -->
 Status: OPEN — do NOT auto-merge; Marco reviews report then runs
   `--commit` manually before merging.
 

@@ -405,6 +405,15 @@ here now because they are true for **every** station.
   above, and it corrupts a grep, a line count, a hash or a node read just as readily. **To dump a
   blob, write it with node (`readFileSync`/`writeFileSync`, utf8) — never `>` or `Out-File`. To
   decide whether two files differ, use `git diff`, `git hash-object`, or `Buffer.compare` in node.**
+- 🔴 **`Select-String -SimpleMatch` takes a LITERAL, so `[regex]::Escape()` must NEVER be applied
+  to its pattern.** The escaped form `reminder-policy\.service\.ts` is searched *with the
+  backslashes*, matches nothing, and exits 0 — an absent-needle reading that is really an unusable
+  query. Measured 2026-08-30: it reported **6 of 7** gate producers absent, and the only 2 needles
+  it got right were the only 2 with no `.` in them; written up as-is that would have been six
+  confident, coherent, wrong findings. **Control every literal search against a needle you know is
+  present AND one you know is not** — a dotless control passes while every dotted query silently
+  fails.
+
 
 ## 9.4 GitHub
 
@@ -454,6 +463,23 @@ here now because they are true for **every** station.
   never-arm prompt**, and it fires at `:728` before the premise is ever evaluated. The general
   warning stands: a **prose** human gate matches neither regex and is invisible to both the
   linter and any grep built on them.
+- 🔴 **`lint-prompt.mjs`’s `parseFrontMatter` has NO block-scalar support, and it currently RUBBER-STAMPS
+  the LL-29 rollback gate.** `key: >-` stores the literal two characters `">-"` and the indented body is
+  silently dropped — the continuation lines match neither the list-item regex nor `^([a-z_]+):`
+  (`lint-prompt.mjs:934-966`). `">-"` is neither missing nor empty, **so every presence check passes on
+  content nobody wrote.** Measured 2026-08-30 with both controls (folded → `">-"`, plain → its text)
+  across all 61 depth-1 `-HOLD`/`-ready` prompts on `origin/main`:
+  `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12 · and **0** on `premise`, `scope`,
+  `fixes_pr` or any `requires_*`. **7 of the 17 Prisma-migration-scoped prompts are among the 10**,
+  including two irreversible table drops (`pr-524-rates-b-slice2-canonical`,
+  `pr-rates-s11c-drop-legacy-tables`) and `pr-siteid-notnull-backfill` — all three have a rollback gate
+  that reads two characters and passes. Independently found 2026-08-19 and 2026-08-28 and re-measured
+  here; the `premise`-is-clean half has held all three times, which is the only reason nothing has been
+  mis-binned. The fix is staged as `pr-lint-frontmatter-block-scalar-collapse-HOLD.md` (ADMIT).
+  **Until it lands: never write a front-matter key as a block scalar, treat a `">-"` in lint output as
+  an UNREAD field rather than a value, and read `rollback_strategy` out of the file by eye before
+  trusting any migration-scoped ADMIT.** The watcher is NOT affected — `scripts/pr-watcher/index.mjs`
+  has its own extractor that folds correctly, so lint and the watcher disagree about the same file.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

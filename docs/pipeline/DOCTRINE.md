@@ -466,6 +466,14 @@ here now because they are true for **every** station.
 - ⚠️ **Never count or kill by image name.** Resolve PIDs and verify command lines — 19 `node.exe` were
   running on 2026-08-24 and exactly one was the watcher.
 - ⚠️ **QUARANTINED ledger rows are recorded but NOT binding.** Citing one as authority is an error.
+- ⚠️ **`check-breadcrumb.mjs` measures two different sets, and only ONE of them sees `archive/`.**
+  **Freshness is recursive**: `trackedSet` comes from `git ls-tree -r --name-only origin/main -- docs/pr-prompts`
+  (`:98`) and is matched by **basename** (`:162`), so archiving a station's newest breadcrumb does
+  **not** make it read SILENT — measured 2026-08-30 archiving 152 files, with `03` (15.1h) and `05`
+  (24.0h) unchanged across the move. **Structure is depth-1 only**: it iterates `readdirSync(DIR)`
+  at `:160`, so the same move took `structure: 122 checked` to `11`. Both exited 0. Archiving is
+  therefore safe, but "it counts by basename" is true of freshness and **false** of the structure
+  pass — do not quote the one result as covering both.
 
 ## 9.6 The rule behind all of them
 

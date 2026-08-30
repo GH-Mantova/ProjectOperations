@@ -394,13 +394,17 @@ here now because they are true for **every** station.
   plain `Set-Content` still rewrites line endings. A `--numstat` reading far larger than your
   intended change is the symptom; check it before you commit.
 
-- ⚠️ **`Compare-Object` reports PHANTOM differences between two BYTE-IDENTICAL files.**
-  Measured 2026-08-29 on two 285-line copies of `docs/pipeline/stations/03-machine-minder.md`: it
-  returned **100 differences** while `git diff --stat origin/main -- docs/pipeline` returned
-  **empty** and `git hash-object` matched. A line-ending / sync-window artefact, not a real diff.
-  Believed, it would have opened a station report with a false *"your station doc is not what
-  `origin/main` says it is"* — the §7 shape exactly. **To decide whether two files differ, use
-  `git diff`, `git hash-object`, or a `Buffer.compare` in node. Never `Compare-Object`.**
+- 🔴 **PowerShell's `>` redirection writes UTF-16LE in PS 5.1.** `git show <ref>:<path> > file`
+  produces a file **twice the size**, starting `FF FE`, that no byte-wise or hash comparison will
+  ever match the UTF-8 original — while `git diff` correctly reports no difference. Measured
+  2026-08-30 on `docs/pipeline/stations/03-machine-minder.md`: 20489 bytes → **40980**, and
+  `Compare-Object` over the two returned **100 differences** on a 285-line file, while
+  `git diff --stat origin/main -- <path>` returned **empty**. **`Compare-Object` was NOT the liar
+  here** — it returns **0** on a genuinely byte-identical pair (measured the same run, `Copy-Item`
+  control, matching `git hash-object`). Same family as the `Set-Content -Encoding UTF8` bullet
+  above, and it corrupts a grep, a line count, a hash or a node read just as readily. **To dump a
+  blob, write it with node (`readFileSync`/`writeFileSync`, utf8) — never `>` or `Out-File`. To
+  decide whether two files differ, use `git diff`, `git hash-object`, or `Buffer.compare` in node.**
 
 ## 9.4 GitHub
 
@@ -434,10 +438,14 @@ here now because they are true for **every** station.
   `DO_NOT_ARM_CAPS` (`:730`, case-**sensitive**) — and reports `HUMAN_GATE_PRESENT: line N contains`
   at `:743` and `:755`. **The advice survives the fix:** a **prose** human gate matches neither regex,
   and exactly that burned an arm on 2026-08-28T14:09Z — so still read the BODY before arming.
-  Measured 2026-08-29 over the 61 depth-1 `-HOLD`/`-ready` on `origin/main`: the two markers cover
-  **7 distinct prompts**; `## STANDING AUTHORITY` appears on **51 of 61** and is boilerplate, not a
-  gate; and `pr-dns-s5-checker-flip-to-fail-HOLD` — which standing guidance says must never be armed
-  — carries **neither** marker, so it is invisible to the linter and to any grep built on them.
+  Measured 2026-08-30 over the 59 depth-1 `-HOLD`/`-ready` on `origin/main`: the two markers cover
+  **7 distinct prompts**; `## STANDING AUTHORITY` appears on **51 of 59** and is boilerplate, not a
+  gate; and `pr-dns-s5-checker-flip-to-fail-HOLD` carried **neither** marker until #1400
+  (2026-08-30) put `<!-- watcher: do-not-arm -->` on it — `lint-prompt.mjs` now REJECTs it
+  `[HUMAN_GATE_PRESENT]` at exit 1. **Adding the literal marker is the cure for any future
+  never-arm prompt**, and it fires at `:728` before the premise is ever evaluated. The general
+  warning stands: a **prose** human gate matches neither regex and is invisible to both the
+  linter and any grep built on them.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

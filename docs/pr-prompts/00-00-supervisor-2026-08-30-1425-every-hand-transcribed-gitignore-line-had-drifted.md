@@ -74,7 +74,7 @@ box" is exactly what LL-38 says to check for and say out loud. [MEASURED]
 
 ## WHAT CHANGED
 
-**PR #1405.** All docs; no code, no `sot/`, no migration, no data.
+**PR #1406.** All docs; no code, no `sot/`, no migration, no data.
 
 - **The three canonical-block citations**, in all six station docs at once: `:106-110` → **`:107-111`**,
   `:107` → **`:108`**, `:75-82` → **`:76-83`**, and `no-pr-opened` **added** to the sink enumeration.
@@ -103,7 +103,7 @@ made it un-patchable one file at a time, which is why it survived: it is byte-id
 docs and hash-gated, so a single-file fix fails the linter and a reader who tried once would have
 backed off.
 
-**DISPOSITION: ACTIONED** in #1405, plus the `.gitignore:73` stray 04's scope did not cover.
+**DISPOSITION: ACTIONED** in #1406, plus the `.gitignore:73` stray 04's scope did not cover.
 Verified by the `REJECT: 6 of 7` → `ADMIT: all 7` pair and by a repo-wide re-grep showing no
 remaining wrong citation in any governing doc.
 
@@ -114,7 +114,7 @@ measured it **expanded**. Stripping dies loudly; expansion can hand you a valid 
 value you never wrote and exit 0. 04 hit it in its own first tool call. The same section also
 asserted the `#`-heading pause that §9.1 records as not reproduced.
 
-**DISPOSITION: ACTIONED** in #1405 — and fixed by **deletion of the paraphrase**, not by correcting
+**DISPOSITION: ACTIONED** in #1406 — and fixed by **deletion of the paraphrase**, not by correcting
 it. §9.1 is inside a hash-gated canonical block and cannot drift; a restatement of it in a second
 binding file can, and did. A corrected paraphrase would drift again.
 
@@ -156,11 +156,26 @@ Say (A), (B) or (C) in chat and it is done in the next run.
 waiting for 00. That dependency has never been declared anywhere.
 
 **DISPOSITION: ACTIONED for this cycle, DEFERRED as a design issue.** The file is committed in
-#1405, so the rotation turns. 04's own urgency trigger stands and is the right one: if
+#1406, so the rotation turns. 04's own urgency trigger stands and is the right one: if
 `next-sweep.mjs` reports `instruction-drift` **again** at 18:10Z, the advance is not being carried
 and it stops being S4.
 
-### F5 — the collect window and the cadence window are not the same window
+### F5 — Station 05 was not silent after all, and it did the work I dispatched
+
+My 14:08Z breadcrumb read `05` at 24.0h/24 and DEFERRED its outstanding `sot-ref-allow` burn-down
+with a trigger for the next run. **That deferral is discharged already.** While I was building this
+PR, `git worktree list` showed `C:/po-worktrees/sot-1411` — Station 05, mid-run — and it has since
+opened **#1405, "the sot-refs burn-down floor of 8 was not a floor - 23 baselined -> 13"**. That is
+precisely the work re-dispatched to it at 06:3xZ, and it went further than the dispatch asked:
+the dispatch scoped 10 of 23 entries, 05 cleared 10 and challenged the premise that the remaining 8
+were structurally un-clearable. [MEASURED — `gh pr view 1405`, state OPEN, no labels]
+
+**DISPOSITION: ACTIONED.** The F4 deferral in my 14:08Z breadcrumb is closed; do not re-raise it.
+The floor claim itself — "8 is a hard floor, deleting one blocks CI on every PR" — is a standing
+belief in 00's memory that #1405 contradicts, and **CI on #1405 is the instrument that settles it,
+not either of us.** I drive it green and merge it on that basis, or I do not merge it at all.
+
+### F6 — the collect window and the cadence window are not the same window
 
 My 14:08Z run measured an empty collect channel truthfully, and 04 filed 77 seconds later. Anything
 04 writes between 00's measurement and 00's next run at 16:09Z would have sat for two hours — and on

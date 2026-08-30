@@ -50,6 +50,34 @@ if (-not (Test-Path $linter))   { Write-Output ("NO-OP: linter not found: " + $l
 
 Set-Location $Repo
 
+# ---- SPENT positive control (DOCTRINE section 7 standing guard 1) -------------------------
+# The self-calibration at the bottom of this script counts NON-EMPTY buckets. With spent=0 --
+# the reading on 2026-08-30 across 59 and 61 HOLDs -- the two verdicts it observed were ADMIT
+# and REJECT, so it printed "calibrated" about the one bucket it had never exercised. That is
+# the exact shape of a check never seen to pass. This control fires the SPENT branch on a
+# fixture with a legitimately-false premise BEFORE the board is read, so spent=0 means "no
+# spent prompts" rather than "this instrument cannot say spent".
+$spentFixture   = Join-Path $Repo "scripts\pipeline\fixtures\spent-positive-control.md"
+$spentProbeOk   = $false
+$spentProbeNote = ""
+if (Test-Path $spentFixture) {
+    $probeOutput = (& node $linter "scripts/pipeline/fixtures/spent-positive-control.md" 2>&1)
+    $probeExit   = $LASTEXITCODE
+    if ($probeExit -eq 3) {
+        $spentProbeOk = $true
+    } else {
+        $spentProbeNote = "fixture returned exit " + $probeExit + " (expected 3)"
+    }
+} else {
+    $spentProbeNote = "fixture missing: " + $spentFixture
+}
+if ($spentProbeOk) {
+    Write-Output "    SPENT control: PASS -- lint-prompt.mjs emitted exit 3 on the fixture, so the SPENT bucket is measurable."
+} else {
+    Write-Output ("!!! SUSPECT: the SPENT bucket is UNMEASURABLE this run -- " + $spentProbeNote)
+    Write-Output "!!! spent=0 below proves NOTHING. Fix the control before believing any spent reading."
+}
+
 $holdFiles = @(Get-ChildItem -Path $queueDir -Filter "*-HOLD.md" -File | Sort-Object Name)
 Write-Output ("=== HOLD triage  --  " + $holdFiles.Count + " *-HOLD.md at depth 1 of docs/pr-prompts")
 Write-Output ("    linter: " + $linter + "   (read-only; --dequeue is never passed)")
@@ -115,13 +143,23 @@ $buckets = 0
 foreach ($count in @($spent.Count, $satisfied.Count, $stillGated.Count)) { if ($count -gt 0) { $buckets++ } }
 
 Write-Output ("=== TOTALS  spent=" + $spent.Count + "  gates-satisfied=" + $satisfied.Count + "  still-gated=" + $stillGated.Count + "  unreadable=" + $unreadable.Count + "  of " + $holdFiles.Count)
+if (-not $spentProbeOk) {
+    Write-Output ("!!! SUSPECT: spent=" + $spent.Count + " is UNMEASURED -- the SPENT positive control did not pass (" + $spentProbeNote + ").")
+}
 if ($buckets -lt 2) {
     Write-Output "!!! SUSPECT: every HOLD landed in ONE bucket. That is the signature of a broken"
     Write-Output "!!! probe, not of a uniform board. Prove node and git both resolve for"
     Write-Output "!!! lint-prompt.mjs (DOCTRINE 9.5 -- a missing git makes every gate skip) before"
     Write-Output "!!! believing this run."
 } else {
-    Write-Output ("    calibrated: " + $buckets + " distinct verdicts observed, so the probe can both pass and fail.")
+    $seen = New-Object System.Collections.ArrayList
+    if ($spent.Count      -gt 0) { [void]$seen.Add("SPENT") }
+    if ($satisfied.Count  -gt 0) { [void]$seen.Add("ADMIT") }
+    if ($stillGated.Count -gt 0) { [void]$seen.Add("REJECT") }
+    Write-Output ("    calibrated: " + $buckets + " distinct verdicts observed on the board (" + ($seen -join ", ") + ").")
+    if ($spentProbeOk) {
+        Write-Output "    SPENT was additionally proved reachable by the fixture control above."
+    }
 }
 Write-Output "    READ-ONLY: nothing was armed, renamed, moved or staged."
 exit 0

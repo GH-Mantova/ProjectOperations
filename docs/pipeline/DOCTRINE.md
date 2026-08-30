@@ -405,6 +405,15 @@ here now because they are true for **every** station.
   above, and it corrupts a grep, a line count, a hash or a node read just as readily. **To dump a
   blob, write it with node (`readFileSync`/`writeFileSync`, utf8) — never `>` or `Out-File`. To
   decide whether two files differ, use `git diff`, `git hash-object`, or `Buffer.compare` in node.**
+- 🔴 **`Select-String -SimpleMatch` takes a LITERAL, so `[regex]::Escape()` must NEVER be applied
+  to its pattern.** The escaped form `reminder-policy\.service\.ts` is searched *with the
+  backslashes*, matches nothing, and exits 0 — an absent-needle reading that is really an unusable
+  query. Measured 2026-08-30: it reported **6 of 7** gate producers absent, and the only 2 needles
+  it got right were the only 2 with no `.` in them; written up as-is that would have been six
+  confident, coherent, wrong findings. **Control every literal search against a needle you know is
+  present AND one you know is not** — a dotless control passes while every dotted query silently
+  fails.
+
 
 ## 9.4 GitHub
 
@@ -454,6 +463,19 @@ here now because they are true for **every** station.
   never-arm prompt**, and it fires at `:728` before the premise is ever evaluated. The general
   warning stands: a **prose** human gate matches neither regex and is invisible to both the
   linter and any grep built on them.
+- 🔴 **`lint-prompt.mjs`’s `parseFrontMatter` has NO block-scalar support: `key: >-` parses to the
+  literal two-character string `">-"`, and the indented body is SILENTLY DROPPED** — the continuation
+  lines match neither the list-item regex nor `^([a-z_]+):` (`lint-prompt.mjs:934-966`). Measured
+  2026-08-30 with both controls (folded → `">-"`, plain → its text) across all **61** depth-1
+  `-HOLD`/`-ready` prompts on `origin/main`: **31 occurrences, every one on `premise_means` or
+  `done_when`, and ZERO on a gate-bearing key** (`premise`, `requires_merged`, `requires_on_main`,
+  `requires_file_on_main`, `fixes_pr`) — so no gate is broken today. The live cost is that a STALE
+  verdict prints `Premise no longer holds: ">-"` (`:1444`) instead of the reason, and a census built
+  on those fields reads mostly false positives — exactly the 4-of-5 miscount on 2026-08-30. **The
+  latent cost is severe: a `premise` written as a folded scalar becomes the command `>-`, the shell
+  fails it, that reads as premise-false, and the prompt is BINNED as already-done.** Never write a
+  gate-bearing key as a block scalar, and never quote a `premise_means` out of lint output without
+  checking it is not those two characters.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

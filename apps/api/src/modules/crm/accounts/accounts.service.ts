@@ -8,6 +8,19 @@ import { PrismaService } from "../../../prisma/prisma.service";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * CRM-S4: Per-client row returned by the link-preview endpoint.
+ * All fields come from cached Client columns — no extra aggregation query.
+ */
+export type ClientLinkPreviewRow = {
+  clientId: string;
+  name: string;
+  tenderCount: number;
+  wonCount: number;
+  lastTenderAt: Date | null;
+  existingAccountId: string | null;
+};
+
 export type CreateAccountInput = {
   clientId?: string | null;
   lifecycleStatus?: AccountLifecycleStatus;
@@ -367,6 +380,44 @@ export class AccountsService {
         jobs
       }
     };
+  }
+
+  // ── CRM-S4: Link-preview — per-client stats for the review screen ────────────
+
+  /**
+   * CRM-S4: Returns one row per active Client, carrying the cached tender stats
+   * and the existingAccountId (null if the client has no Account yet).
+   *
+   * Used by AccountLinkPreview so Marco can review and correct the proposed
+   * lifecycle before committing. NEVER writes any row.
+   *
+   * All numeric values come from the Client cached columns (tenderCount,
+   * winCount, lastTenderAt) — no aggregation at query time.
+   */
+  async listClientLinkPreview(): Promise<ClientLinkPreviewRow[]> {
+    const clients = await this.prisma.client.findMany({
+      where: { isActive: true },
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        tenderCount: true,
+        winCount: true,
+        lastTenderAt: true,
+        account: {
+          select: { id: true }
+        }
+      }
+    });
+
+    return clients.map((c) => ({
+      clientId: c.id,
+      name: c.name,
+      tenderCount: c.tenderCount,
+      wonCount: c.winCount,
+      lastTenderAt: c.lastTenderAt,
+      existingAccountId: c.account?.id ?? null
+    }));
   }
 
   // ── NAV-2: Accounts index summary list ──────────────────────────────────────

@@ -1,7 +1,7 @@
 {
   "_why": "Station 04 covers ONE named sweep per run, completely, instead of every sweep shallowly. Without recorded state every fresh run picks the first entry, which narrows coverage without rotating it - gate liveness gets checked forever and instruction drift never does. This file is that state. Station 04 reads it, runs the sweep it names, then advances it via: node scripts/pipeline/next-sweep.mjs --advance",
-  "last_index": 0,
-  "last_run_utc": "2026-08-30T02:11:11Z",
+  "last_index": 1,
+  "last_run_utc": "2026-08-30T06:11:04Z",
   "last_station": "04-scanner",
   "sweeps": [
     {

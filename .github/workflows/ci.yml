@@ -206,10 +206,15 @@ jobs:
             echo "sot-refs-baseline.json is new on this PR — ratchet skipped (creation is allowed)"
             exit 0
           fi
-          if git diff "origin/${{ github.base_ref }}" -- docs/qa/sot-refs-baseline.json | grep '^+.*"missing_path"'; then
-            echo "::error::docs/qa/sot-refs-baseline.json gained a new entry. The baseline may only SHRINK. Fix the dangling reference in sot/ instead of adding it to the baseline."
-            exit 1
-          fi
+          # A DIFF CANNOT SEE A REORDER. The grep this replaced failed on any added
+          # line mentioning missing_path, so an entry that merely MOVED within the
+          # array read as a new one. Measured on #1405: a burn-down taking the
+          # baseline 23 -> 13 was rejected for re-emitting one byte-identical entry
+          # at a new position. Compare the SETS instead - see the script header.
+          git show "origin/${{ github.base_ref }}:docs/qa/sot-refs-baseline.json" > "$RUNNER_TEMP/sot-refs-baseline.base.json"
+          node scripts/pipeline/check-sot-baseline-ratchet.mjs \
+            "$RUNNER_TEMP/sot-refs-baseline.base.json" \
+            docs/qa/sot-refs-baseline.json
       # check-lessons: exit 0 = clean (no regressions); exit 1 = broken instrument;
       # exit 2 = at least one lesson has regressed. All non-zero are failures.
       - name: check-lessons

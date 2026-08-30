@@ -337,8 +337,10 @@ below either reports or stages.
 
 - `scripts/pipeline/lint-prompt.mjs` — exit 0 = ADMIT · **exit 3 = already done, BIN IT (you just
   saved a whole agent run)** · exit 1 = your prompt is wrong.
-- `scripts/pipeline/triage-holds.ps1` — read-only HOLD triage; proves which HOLDs are already
-  satisfied. Pairs with the backlog check.
+- `scripts/pipeline/triage-holds.ps1` — read-only HOLD triage. Delegates to
+  `lint-prompt.mjs` per HOLD and classifies by exit code: 3 = SPENT (already satisfied,
+  retire it), 0 = gates satisfied (a CANDIDATE only — ADMIT is necessary, not sufficient),
+  1 = still gated. Mutates nothing. Pairs with the backlog check.
 
 **Audit sweep:**
 

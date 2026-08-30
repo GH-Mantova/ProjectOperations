@@ -12,6 +12,8 @@ seed_only: false
 escalates: false
 ---
 
+<!-- watcher: do-not-arm -->
+
 # Durable fix: declarative role->permission map + boot-time reconciler
 
 **GATED: this is an AUTHORIZATION-ARCHITECTURE change. Do NOT rename to `-ready` until Marco (or a

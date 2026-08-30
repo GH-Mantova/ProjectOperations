@@ -1,29 +1,127 @@
-# Triage the HOLD queue. Read-only. Proves which HOLDs are already satisfied.
+# Triage the HOLD queue. READ-ONLY. Answers ONE question: which of the *-HOLD.md prompts
+# in the queue root have gates that are already satisfied, and which are spent?
 #
-# LESSON (cost 3 runs): do NOT pass `-q '<jq>'` to gh from PowerShell 5.1. PS re-splits
-# the quoted expression on spaces and gh sees several args. Ask for raw --json and parse
-# with ConvertFrom-Json. And always ASSIGN THEN FOREACH - piping a JSON array straight
-# into Where-Object collapses it to ONE object (this is the bug that once let the merge
-# queue select #552, the production-data PR).
-$ErrorActionPreference = "Continue"
-Set-Location "C:\po-watcher\ProjectOperations"
+# WHAT THIS USED TO BE (2026-07-24 .. 2026-08-30, 37 days). The file's first line already
+# claimed "Proves which HOLDs are already satisfied." It did nothing of the kind: its entire
+# HOLD logic was two hardcoded PR numbers (545, 548) passed to gh pr view -- zero references
+# to docs/pr-prompts, zero globs, and exit 0 unconditionally. It examined 0 of the 59 depth-1
+# HOLDs, and both PRs had been MERGED for weeks. DOCTRINE section 7's exact shape: a check
+# never seen to fail is not a check, and its green read as coverage. Two documents vouched
+# for it by name over the population arm-order decisions run against (SCRIPT-REGISTRY.md and
+# stations/04-scanner.md). Found by Station 04, 2026-08-30T10:10Z; rewritten by Station 00.
+#
+# WHY IT DELEGATES INSTEAD OF EVALUATING. The gate evaluator already exists and is reviewed:
+# scripts/pipeline/lint-prompt.mjs. Re-implementing premise / requires_merged /
+# requires_on_main / requires_file_on_main here would create a SECOND gate engine that can
+# disagree with the one the watcher actually obeys -- a new instrument that lies. So this
+# script calls the real one, per file, and classifies by EXIT CODE.
+#
+#   exit 0  ADMIT  -> gates satisfied. A CANDIDATE for arming, never an instruction to arm.
+#   exit 3  STALE  -> premise already satisfied: the work has SHIPPED. The prompt is spent
+#                     and belongs in superseded/. This is the literal answer to "already
+#                     satisfied" and the reason this script exists.
+#   exit 1  REJECT -> still gated (unmet dependency, human gate, malformed) -- reason shown.
+#
+# NEVER passes --dequeue: with that flag lint-prompt.mjs RENAMES the file (line 1440). This
+# script mutates nothing, arms nothing and renames nothing. Verified read-only 2026-08-30.
+#
+# ADMIT IS NECESSARY, NOT SUFFICIENT (DOCTRINE section 9.5). A PROSE human gate matches
+# neither do-not-arm regex and is invisible to the linter. READ THE BODY BEFORE ARMING, and
+# arm ONE AT A TIME. Only Station 00 arms.
+#
+# LESSON KEPT FROM THE ORIGINAL (cost 3 runs): do NOT pass -q with a jq expression to gh from
+# PowerShell 5.1 -- PS re-splits the quoted expression on spaces. Ask for raw --json and parse
+# with ConvertFrom-Json. And always ASSIGN THEN FOREACH: piping a JSON array straight into
+# Where-Object collapses it to ONE object (the bug that once let the merge queue select
+# #552, the production-data PR).
 
-Write-Output "=== PRs referenced by the shepherd-merge HOLDs"
-foreach ($n in 545, 548) {
-    $raw = gh pr view $n --json "state,title" 2>&1 | Out-String
-    try {
-        $o = $raw | ConvertFrom-Json
-        Write-Output ("  #" + $n + "  " + $o.state + "  " + $o.title)
-    } catch {
-        Write-Output ("  #" + $n + "  UNREADABLE: " + $raw.Trim())
+[CmdletBinding()]
+param(
+    [string] $Repo = "C:\ProjectOperations2"
+)
+
+$ErrorActionPreference = "Continue"
+
+$queueDir = Join-Path $Repo "docs\pr-prompts"
+$linter   = Join-Path $Repo "scripts\pipeline\lint-prompt.mjs"
+
+if (-not (Test-Path $queueDir)) { Write-Output ("NO-OP: queue directory not found: " + $queueDir); exit 0 }
+if (-not (Test-Path $linter))   { Write-Output ("NO-OP: linter not found: " + $linter);          exit 0 }
+
+Set-Location $Repo
+
+$holdFiles = @(Get-ChildItem -Path $queueDir -Filter "*-HOLD.md" -File | Sort-Object Name)
+Write-Output ("=== HOLD triage  --  " + $holdFiles.Count + " *-HOLD.md at depth 1 of docs/pr-prompts")
+Write-Output ("    linter: " + $linter + "   (read-only; --dequeue is never passed)")
+Write-Output ""
+
+if ($holdFiles.Count -eq 0) { Write-Output "NO-OP: no *-HOLD.md prompts in the queue root."; exit 0 }
+
+$satisfied  = New-Object System.Collections.ArrayList
+$spent      = New-Object System.Collections.ArrayList
+$stillGated = New-Object System.Collections.ArrayList
+$unreadable = New-Object System.Collections.ArrayList
+
+foreach ($holdFile in $holdFiles) {
+    $relative  = "docs/pr-prompts/" + $holdFile.Name
+    $rawOutput = (& node $linter $relative 2>&1)
+    $exitCode  = $LASTEXITCODE
+    $text      = ($rawOutput | Out-String)
+
+    # First non-empty line, minus ANSI colour, is the verdict line.
+    $verdict = ""
+    foreach ($line in ($text -split "`r?`n")) {
+        $clean = ($line -replace "\x1b\[[0-9;]*m", "").Trim()
+        if ($clean) { $verdict = $clean; break }
+    }
+
+    $record = [pscustomobject]@{ Name = $holdFile.Name; Exit = $exitCode; Verdict = $verdict }
+
+    switch ($exitCode) {
+        0       { [void]$satisfied.Add($record) }
+        3       { [void]$spent.Add($record) }
+        1       { [void]$stillGated.Add($record) }
+        default { [void]$unreadable.Add($record) }
     }
 }
 
+Write-Output ">>> SPENT -- premise already satisfied, the work has SHIPPED (lint exit 3)"
+Write-Output "    The strongest sense of 'already satisfied'. Retire them to"
+Write-Output "    docs/pr-prompts/superseded/ in a board PR. Do NOT arm."
+if ($spent.Count -eq 0) { Write-Output "    (none)" }
+foreach ($item in $spent) { Write-Output ("    " + $item.Name + "`n        " + $item.Verdict) }
 Write-Output ""
-Write-Output "=== open PRs (is there anything left for pr-zzz-resolve-all-dirty-prs?)"
-$raw = gh pr list --state open --json "number,mergeable,title" 2>&1 | Out-String
-$board = $raw | ConvertFrom-Json
-foreach ($p in $board) {
-    Write-Output ("  #" + $p.number + "  " + $p.mergeable + "  " + $p.title)
+
+Write-Output ">>> GATES SATISFIED -- lint ADMITs (exit 0). CANDIDATES, not instructions."
+Write-Output "    ADMIT is NECESSARY, NOT SUFFICIENT. Read the body: a prose human gate is"
+Write-Output "    invisible to the linter. Arm ONE AT A TIME, and only Station 00 arms."
+if ($satisfied.Count -eq 0) { Write-Output "    (none)" }
+foreach ($item in $satisfied) { Write-Output ("    " + $item.Name) }
+Write-Output ""
+
+Write-Output ">>> STILL GATED (lint exit 1) -- correctly on hold"
+if ($stillGated.Count -eq 0) { Write-Output "    (none)" }
+foreach ($item in $stillGated) { Write-Output ("    " + $item.Name + "`n        " + $item.Verdict) }
+Write-Output ""
+
+if ($unreadable.Count -gt 0) {
+    Write-Output ">>> UNREADABLE -- unexpected linter exit code. Treat as UNMEASURED, not as a pass."
+    foreach ($item in $unreadable) { Write-Output ("    " + $item.Name + "  exit=" + $item.Exit + "`n        " + $item.Verdict) }
+    Write-Output ""
 }
-Write-Output ("  open count: " + @($board).Count)
+
+# Self-calibration (DOCTRINE section 7): prove the instrument can produce more than one answer.
+$buckets = 0
+foreach ($count in @($spent.Count, $satisfied.Count, $stillGated.Count)) { if ($count -gt 0) { $buckets++ } }
+
+Write-Output ("=== TOTALS  spent=" + $spent.Count + "  gates-satisfied=" + $satisfied.Count + "  still-gated=" + $stillGated.Count + "  unreadable=" + $unreadable.Count + "  of " + $holdFiles.Count)
+if ($buckets -lt 2) {
+    Write-Output "!!! SUSPECT: every HOLD landed in ONE bucket. That is the signature of a broken"
+    Write-Output "!!! probe, not of a uniform board. Prove node and git both resolve for"
+    Write-Output "!!! lint-prompt.mjs (DOCTRINE 9.5 -- a missing git makes every gate skip) before"
+    Write-Output "!!! believing this run."
+} else {
+    Write-Output ("    calibrated: " + $buckets + " distinct verdicts observed, so the probe can both pass and fail.")
+}
+Write-Output "    READ-ONLY: nothing was armed, renamed, moved or staged."
+exit 0

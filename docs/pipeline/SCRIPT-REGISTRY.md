@@ -77,7 +77,7 @@ stages prompts — that is the whole job.
 | `pipeline\check-lessons.mjs` | Runs each lesson's `regressed_when` gate. **Inverted polarity: exit 0 means the bad state is BACK.** | Every cycle. |
 | `pipeline\gate-eval.mjs` | The one shared executable-gate evaluator behind the three above. | Don't call directly; fix gates here. |
 | `pipeline\lint-prompt.mjs` | Intake lint. Exit 0 = ADMIT · **exit 3 = already done, BIN IT** · exit 1 = the prompt is wrong. | Before arming ANY prompt. |
-| `pipeline\triage-holds.ps1` | Read-only HOLD triage — proves which HOLDs are already satisfied. | Periodically; pairs with the backlog check. |
+| `pipeline\triage-holds.ps1` | Read-only HOLD triage. Runs `lint-prompt.mjs` over every depth-1 `*-HOLD.md` and classifies by EXIT CODE: 3 = SPENT (premise already satisfied — retire it to `superseded/`), 0 = gates satisfied (a CANDIDATE only; ADMIT is necessary, NOT sufficient), 1 = still gated. Mutates nothing; never passes `--dequeue`. | Before any arming decision; pairs with the backlog check. |
 | `pipeline\check-all-drift.ps1` | Is the data-model map stale on any open PR? Report only. | Audit sweep. |
 | `pipeline\check-sot-bytes.mjs` | Reads the **bytes**, not PowerShell's decoding of them. | Suspected encoding damage in `sot/`. |
 | `pipeline\check-sot-encoding.ps1` | Is Marco's working copy of `sot/` byte-damaged (em-dashes, arrows mangled)? | Same. PS 5.1 decodes BOM-less UTF-8 as Windows-1252. |

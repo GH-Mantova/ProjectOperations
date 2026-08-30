@@ -150,6 +150,15 @@ machine work, and the only reader of what 03/04/05 produce.
   every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
   station is not a quiet one** — either it did not run, or it ran and did not report, and both are
   defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
+- **ARCHIVE WHAT YOU HAVE COLLECTED.** Once every finding in a breadcrumb carries a
+  disposition, `git mv` it to `docs/pr-prompts/archive/` in the same board PR. On
+  2026-08-30 the queue root was **159 breadcrumbs to 59 live `-HOLD.md`** and growing
+  ~20 files/day, so the board this station arms from was getting harder to see by eye
+  every day. This is SAFE for freshness: `check-breadcrumb.mjs` builds its tracked set
+  with `git ls-tree -r` and matches breadcrumbs by **basename**, so an archived one still
+  counts for `--freshness` and can never make a station read SILENT (measured 2026-08-30;
+  `archive/` already holds 41 files). Leave the CURRENT cycle in the root — archive is for
+  what you have already dispositioned.
 - **You never merge a watcher-routed PR**, and **you never remove a `do-not-merge` label.** Merge via
   `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Native auto-merge only (DOCTRINE §8.3).
 - **You do not do 02/03/04/05's work yourself.** You dispatch it. Two things independently mutating

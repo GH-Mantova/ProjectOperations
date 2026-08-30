@@ -418,6 +418,14 @@ here now because they are true for **every** station.
   queue select **#552 — the production-data PR.**
 - ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
   **per-commit**.
+- 🔴 **...and `gh run list --commit <SHA>` answers `[]` for a SHORT sha, exit 0.** Measured
+  2026-08-30 with controls on gh 2.90.0: `--commit 62fd27f1` returned `[]`, while
+  `--commit 62fd27f1527e963165bfa37962a5476bbaf36d7d` returned that same commit’s **four** runs
+  (Push on main / CI / Deploy / Tendering Browser Smoke, all `success`). The short form does not
+  error and does not warn — so the per-commit cure for the bullet above hands you an empty list that
+  reads as *"no CI ran on this commit"*, which is the same false negative in a new costume. **Pass the
+  full 40-char SHA** (`git rev-parse origin/main`), and control the query against a commit you know
+  has runs.
 - ⚠️ **`mergeStateStatus: CLEAN` can still be refused** — "the base branch policy prohibits the merge"
   is policy evaluation lagging the rollup. Use `gh pr merge --auto`; never reach for `--admin`.
 - ⚠️ **"Absent from `origin/main`" is NOT "orphaned"** — check open PRs before calling anything dead.

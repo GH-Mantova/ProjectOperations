@@ -187,6 +187,39 @@ long enough to see the file appear.
 be actioned inside one cycle arriving in that gap, or 00 going blind for two consecutive runs while
 04 stays sighted — the alternation measured this week makes that plausible rather than theoretical.
 
+### F7 — the sot-refs ratchet fired hardest on the work it exists to encourage
+
+I went to merge 05's #1405 and found it RED on `Pipeline — watcher + linter tests`. Read the job
+log rather than the diff (DOCTRINE §3): the failing step is `sot-refs ratchet — baseline may only
+shrink`, and it was
+
+```
+git diff "origin/$base" -- docs/qa/sot-refs-baseline.json | grep '^+.*"missing_path"'
+```
+
+**A diff cannot see a reorder.** #1405 took the baseline **23 → 13** and was rejected for ONE added
+line that is byte-identical to a removed line in the same diff — `sot/06-active-specs.md:3943`,
+`recorded: 2026-08-28`, i.e. two days older than the PR — re-emitted at a different array position
+because eleven entries above it were deleted. [MEASURED — `git fetch origin refs/pull/1405/head`,
+then `git diff origin/main pr1405 -- docs/qa/sot-refs-baseline.json`]
+
+**This was structural, not bad luck, and that is the real finding.** Burning a baselined entry down
+REQUIRES editing `sot/`; editing `sot/` shifts the line numbers of every dangling ref below the
+edit, which rewrites those entries. The gate was therefore guaranteed to obstruct its own purpose —
+and the burn-down it blocked is the one **I dispatched to 05 eight hours earlier.** It also explains
+the standing belief in 00's memory that "the floor is 8, not 0": the floor was never structural, it
+was this gate refusing every attempt to go below it.
+
+**DISPOSITION: ACTIONED** in **#1407**, as its own PR because CP-24 forbids mixing code and `sot/`
+and that is precisely why the fix could not ride along in #1405.
+`scripts/pipeline/check-sot-baseline-ratchet.mjs` compares SETS: it fails if HEAD holds a
+`(sot_file, missing_path)` pair absent from BASE, **or** if HEAD's entry count exceeds BASE's. The
+line number is excluded from the key on purpose; the count condition is what still catches a real
+new entry sharing a pair with an old one. It exits **2**, never 0, when it cannot read a baseline.
+Proved in BOTH directions before shipping: `origin/main → #1405` exits 0 (`23 -> 13, no new pair`),
+and the same comparison **reversed** exits 1, naming `sot/README.md:190` and `COUNT 13 -> 23`.
+Four-case positive control runs on every invocation.
+
 ## WHAT I DID NOT DO
 
 - **Did not run `fix-station-bootstraps.mjs`** (F3). The authority question is open and the matrix

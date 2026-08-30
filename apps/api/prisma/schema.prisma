@@ -925,9 +925,11 @@ model Contact {
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
   tenantId               String?        @map("tenant_id")
   tenant                 Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  // CRM-2: optional link to the Account that owns this contact; populated for
-  // all contacts whose organisationType = 'CLIENT' once their Client has an
-  // Account. Null = not yet linked (backward-compatible; no orphan risk).
+  // CRM-2: optional link to the Account that owns this contact.
+  // CRM-S3 data migration backfills this for contacts whose organisationType =
+  // 'CLIENT' where their Client already has an Account. New contacts are linked
+  // at write time via ensureAccountForClient. Null = not yet linked (backward-
+  // compatible; no orphan risk).
   accountId              String?        @map("account_id")
   account                Account?       @relation("AccountContacts", fields: [accountId], references: [id], onDelete: SetNull)
   // CRM-2: last time someone logged a RelationshipNote against this contact.

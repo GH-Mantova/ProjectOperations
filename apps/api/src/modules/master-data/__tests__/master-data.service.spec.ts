@@ -36,8 +36,9 @@ function tableCRUD() {
 }
 
 function buildPrismaMock() {
-  return {
-    client: tableCRUD(),
+  const clientTable = tableCRUD();
+  const mock = {
+    client: clientTable,
     contact: tableCRUD(),
     site: tableCRUD(),
     tender: { findMany: jest.fn().mockResolvedValue([]) as AsyncMock },
@@ -51,19 +52,36 @@ function buildPrismaMock() {
     },
     asset: tableCRUD(),
     workerCompetency: tableCRUD(),
-    lookupValue: tableCRUD()
+    lookupValue: tableCRUD(),
+    // CRM-S3: $transaction — calls the interactive callback with the same mock as tx
+    $transaction: jest.fn().mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") {
+        return (arg as (tx: unknown) => Promise<unknown>)({ client: clientTable });
+      }
+      return Promise.all(arg as Promise<unknown>[]);
+    }) as AsyncMock
   };
+  return mock;
 }
 
 function buildAudit() {
   return { write: jest.fn().mockResolvedValue(undefined) as AsyncMock };
 }
 
+// CRM-S3: minimal accountsService stub so tests that don't exercise account
+// creation still compile and pass.
+function buildAccountsServiceStub() {
+  return {
+    ensureAccountForClient: jest.fn().mockResolvedValue({ id: "acct-stub" }) as AsyncMock
+  };
+}
+
 function makeService() {
   const prisma = buildPrismaMock();
   const audit = buildAudit();
-  const service = new MasterDataService(prisma as never, audit as never);
-  return { service, prisma, audit };
+  const accountsService = buildAccountsServiceStub();
+  const service = new MasterDataService(prisma as never, audit as never, accountsService as never);
+  return { service, prisma, audit, accountsService };
 }
 
 const PAGE_QUERY: { page: number; pageSize: number } = { page: 1, pageSize: 10 };

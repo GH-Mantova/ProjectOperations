@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { FieldAppliesTo, FieldSource } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { AccountsService } from "../crm/accounts/accounts.service";
 import { MasterDataQueryDto } from "./dto/master-data-query.dto";
 import {
   UpdateClientDto,
@@ -32,7 +33,8 @@ export class MasterDataService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly accountsService: AccountsService
   ) {}
 
   /**
@@ -175,7 +177,13 @@ export class MasterDataService {
       }
     }
 
-    const record = await this.prisma.client.create({ data: createData as never });
+    // CRM-S3: create the Client and its wrapping Account atomically so there is
+    // never a window where a Client exists without an Account.
+    const record = await this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.create({ data: createData as never });
+      await this.accountsService.ensureAccountForClient(client.id, tx);
+      return client;
+    });
     await this.audit(actorId, "masterdata.client.create", "Client", record.id);
     return record;
   }

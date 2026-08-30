@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { AccountLifecycleStatus, AccountSource, AccountType, Prisma } from "@prisma/client";
+import { AccountLifecycleStatus, AccountSource, AccountType, Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -109,6 +109,45 @@ export class AccountsService {
       },
       include: this.accountInclude()
     });
+  }
+
+  /**
+   * CRM-S3: Idempotently ensure a PROSPECT Account exists for the given Client.
+   *
+   * If an Account already wraps this Client (clientId is `@unique` on Account),
+   * the existing row is returned unchanged — no second row is created, no field
+   * is overwritten. Safe to call on every client-create path.
+   *
+   * Accepts an optional Prisma transaction client so the account creation can
+   * be atomically committed alongside the parent Client row.
+   *
+   * @param clientId - The Client id to wrap.
+   * @param tx - Optional interactive transaction client.
+   * @returns The existing or newly-created Account row (id only).
+   */
+  async ensureAccountForClient(
+    clientId: string,
+    tx?: Prisma.TransactionClient | PrismaClient
+  ): Promise<{ id: string }> {
+    const db = tx ?? this.prisma;
+
+    // Idempotence: return the existing account if one already wraps this client.
+    const existing = await db.account.findUnique({
+      where: { clientId },
+      select: { id: true }
+    });
+    if (existing) return existing;
+
+    const created = await db.account.create({
+      data: {
+        clientId,
+        lifecycleStatus: "PROSPECT",
+        accountType: "CLIENT",
+        source: "OTHER"
+      },
+      select: { id: true }
+    });
+    return created;
   }
 
   async listAccounts(query: ListAccountsQuery) {

@@ -30,9 +30,16 @@ function buildPrismaMock(overrides: {
       ...data
     }));
 
+  // CRM-S3: $transaction wrapper — calls the interactive callback with prisma as tx
+  const txWrapper = jest.fn().mockImplementation(async (arg: unknown) => {
+    if (typeof arg === "function") return (arg as (tx: unknown) => Promise<unknown>)({ client: { create: clientCreate, update: clientUpdate } });
+    return Promise.all(arg as Promise<unknown>[]);
+  });
+
   const prisma = {
     client: { findFirst: clientFindFirst, create: clientCreate, update: clientUpdate },
-    contact: { create: contactCreate, update: contactUpdate }
+    contact: { create: contactCreate, update: contactUpdate },
+    $transaction: txWrapper
   } as never;
   const audit = { write: jest.fn().mockResolvedValue(undefined) } as never;
   return {
@@ -42,9 +49,15 @@ function buildPrismaMock(overrides: {
   };
 }
 
+// CRM-S3: stub accountsService so existing tests that exercise the create path
+// do not need a real AccountsService wired in.
+const STUB_ACCOUNTS_SERVICE = {
+  ensureAccountForClient: jest.fn().mockResolvedValue({ id: "acct-stub" })
+};
+
 function makeService(overrides: Parameters<typeof buildPrismaMock>[0] = {}) {
   const { prisma, audit, mocks } = buildPrismaMock(overrides);
-  const service = new MasterDataService(prisma, audit);
+  const service = new MasterDataService(prisma, audit, STUB_ACCOUNTS_SERVICE as never);
   return { service, mocks };
 }
 

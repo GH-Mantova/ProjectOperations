@@ -14,6 +14,12 @@ cluster_order: 5
 requires_merged: 1361
 ---
 
+<!-- watcher: do-not-arm -->
+Station 00 must not arm this slice. The bar is the human precondition below (one clean
+warn-only run on main, read by a person); it is not expressible as a machine gate, so it
+was previously held only by chat memory. This marker moves it onto the linter:
+lint-prompt.mjs:728 hard-REJECTs with HUMAN_GATE_PRESENT before the premise runs.
+
 # D-namespace S5 - flip the checker from warn to fail
 
 **Slice 5 of 5, the last.** Full spec:

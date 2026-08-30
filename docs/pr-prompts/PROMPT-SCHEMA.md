@@ -537,7 +537,7 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 
 ## Arming a prompt requires `git add -f`
 
-`.gitignore:73` ignores `docs/pr-prompts/*-ready.md`:
+`.gitignore:75` ignores `docs/pr-prompts/*-ready.md`:
 
 ```
 docs/pr-prompts/*-ready.md

@@ -72,14 +72,14 @@ That matters because the same document, at line 182, instructs the scanner to wr
 
 `docs/qa/qa-github-audit.md` is not on disk, not on `origin/main`, and not gitignored
 (`git check-ignore --no-index -v` returns nothing for it; the same probe correctly returns
-`.gitignore:107` for `qa-findings.md`, so the instrument is not blind). Obeying line 182 therefore
+`.gitignore:108` for `qa-findings.md`, so the instrument is not blind). Obeying line 182 therefore
 creates a **tracked** file, which the HARD RULES block in the same document forbids.
 
 A second dead path in the same document, line 159:
 
 > If missing, rebuild from `docs/qa/Master-QA-and-Consolidation-Program-Plan.md`
 
-That file does not exist on disk, on `origin/main`, or in `.gitignore`. `.gitignore:105` even carries
+That file does not exist on disk, on `origin/main`, or in `.gitignore`. `.gitignore:106` even carries
 the comment "The Master Plan doc stays committable" — a comment about a file that is not there.
 
 ### What to change
@@ -87,11 +87,11 @@ the comment "The Master Plan doc stays committable" — a comment about a file t
 In `docs/pipeline/stations/04-scanner.md`:
 
 1. Replace the parenthetical `(all gitignored)` with the accurate statement: name the five ignored
-   entries from `.gitignore:106-110` and say plainly that anything else under `docs/qa/` is TRACKED.
+   entries from `.gitignore:107-111` and say plainly that anything else under `docs/qa/` is TRACKED.
    The `done_when` greps for the absence of the exact substring `state files (all gitignored)`.
 2. At line 182, stop telling the scanner to create `docs/qa/qa-github-audit.md`. Either name a path
    that IS ignored (e.g. fold the audit marker into `qa-findings.md`, already ignored at
-   `.gitignore:107`) or say the marker lives in the tracked breadcrumb. Pick one and be explicit —
+   `.gitignore:108`) or say the marker lives in the tracked breadcrumb. Pick one and be explicit —
    do not leave "create if absent" pointing at an un-ignored path.
 3. At line 159, mark `docs/qa/Master-QA-and-Consolidation-Program-Plan.md` as ABSENT (verified
    2026-08-26 against `origin/main cfc74982`) and say what to do instead when the checklist is

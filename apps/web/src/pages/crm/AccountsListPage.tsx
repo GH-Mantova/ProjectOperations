@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
 import { AccountLinkPreview } from "./AccountLinkPreview";
+import { buildCreateNoteBody } from "./RelationshipsPage";
 import {
   createAccount,
   validateCreateAccountForm,
@@ -354,6 +355,134 @@ function StatTile({ label, value, accent }: { label: string; value: string | num
   );
 }
 
+// ── Log-contact modal (CRM-S6) ────────────────────────────────────────────────
+// Reuses buildCreateNoteBody from RelationshipsPage so the note creation logic
+// lives in exactly one place. Do NOT duplicate the note form.
+
+function LogContactModal({
+  accountId,
+  accountName,
+  onClose,
+  onSaved
+}: {
+  accountId: string;
+  accountName: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      // accountId is non-null here (button is per-row, row always has an id).
+      const payload = buildCreateNoteBody({ body: body.trim(), accountId });
+      const res = await authFetch("/crm/relationships/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      onSaved();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save note.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Log contact for ${accountName}`}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 10,
+          padding: 28,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.18)"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Log contact — {accountName}</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#6b7280", padding: "0 4px" }}
+          >
+            &times;
+          </button>
+        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)}>
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+              Note <span style={{ color: "#dc2626" }}>*</span>
+            </span>
+            <textarea
+              ref={textareaRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={4}
+              required
+              style={{ ...fieldStyle, resize: "vertical" }}
+              placeholder="Call summary, meeting notes, email follow-up…"
+            />
+          </label>
+
+          {saveError && (
+            <div role="alert" style={{ color: "#dc2626", fontSize: 13, marginBottom: 12, padding: "8px 10px", background: "#fef2f2", borderRadius: 6 }}>
+              {saveError}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 13 }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !body.trim()}
+              style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#6366f1", color: "#fff", cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600 }}
+            >
+              {saving ? "Saving…" : "Save note"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function AccountsListPage() {
@@ -370,6 +499,9 @@ export function AccountsListPage() {
 
   // CRM-S5: new account modal.
   const [showNewAccount, setShowNewAccount] = useState(false);
+
+  // CRM-S6: log-contact modal — stores the account row being contacted.
+  const [logContactRow, setLogContactRow] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -597,6 +729,7 @@ export function AccountsListPage() {
                     <th style={{ ...thStyle, textAlign: "right" }}>Open opps</th>
                     <th style={thStyle}>Last contact</th>
                     <th style={thStyle}>Status</th>
+                    <th style={thStyle}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -672,6 +805,31 @@ export function AccountsListPage() {
                           </span>
                         )}
                       </td>
+                      {/* CRM-S6: Log contact — opens note form pre-filled for this account */}
+                      <td
+                        style={tdStyle}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          aria-label={`Log contact for ${row.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLogContactRow({ id: row.id, name: row.name });
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 5,
+                            border: "1px solid #d1d5db",
+                            background: "#fff",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            color: "#374151",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          Log contact
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -689,6 +847,19 @@ export function AccountsListPage() {
             setShowNewAccount(false);
             void load();
             navigate(`/crm/accounts/${id}`);
+          }}
+        />
+      )}
+
+      {/* CRM-S6: log-contact modal */}
+      {logContactRow && (
+        <LogContactModal
+          accountId={logContactRow.id}
+          accountName={logContactRow.name}
+          onClose={() => setLogContactRow(null)}
+          onSaved={() => {
+            setLogContactRow(null);
+            void load();
           }}
         />
       )}

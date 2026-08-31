@@ -76,7 +76,23 @@ export class RateResolverService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolveRate(tableSlug: string, keys: Record<string, unknown>): Promise<ResolvedRate> {
+  async resolveRate(
+    tableSlug: string,
+    keys: Record<string, unknown>,
+    options?: { tenderId?: string }
+  ): Promise<ResolvedRate> {
+    // ── Snapshot check (ABOVE the canonical-source switch) ───────────────
+    // If this tender has a locked rate set, try to serve the rate from it.
+    // A snapshot key is {rateTableId}:{rowId}:{columnId}; we derive the
+    // candidate key by finding the matching RateTable row for this slug +
+    // keys, then check if that key exists in the snapshot entries.
+    // This path is intentionally independent of RATES_CANONICAL_SOURCE
+    // (snapshot rows are always RateTable-keyed).
+    if (options?.tenderId) {
+      const snapshot = await this.trySnapshot(options.tenderId, tableSlug, keys);
+      if (snapshot !== null) return snapshot;
+    }
+
     const source = this.getCanonicalSource();
 
     if (source === "ratetable") {
@@ -101,6 +117,136 @@ export class RateResolverService {
     const flexible = await this.tryRateTable(tableSlug, keys);
     if (flexible) return flexible;
     throw new NotFoundException(`No rate table with slug "${tableSlug}".`);
+  }
+
+  /**
+   * Internal: attempt to resolve a rate from the tender's locked
+   * TenderRateSet snapshot. Returns the resolved rate (with
+   * `TENDER_RATE_SNAPSHOT_APPLIED` logged) when the key exists in the
+   * snapshot; returns `null` when no snapshot exists for the tender or
+   * the slug cannot be matched to a RateTable row. When a snapshot
+   * EXISTS but the resolved key is ABSENT, logs
+   * `snapshot-miss-fell-back-to-live` with the missing key so ops can
+   * audit the gap — the caller then continues to live rate resolution.
+   *
+   * Key derivation: we resolve `{rateTableId}:{rowId}:{columnId}` using
+   * the same KEY-column matching logic as `tryRateTable` (case-insensitive
+   * col-name matching, first VALUE column). A slug not present in
+   * RateTable at all (`null` from `tryRateTableKey`) means there are no
+   * snapshot entries for this slug — that is a soft miss (no warning, no
+   * fall-back log: the slug lives entirely in the legacy path).
+   */
+  private async trySnapshot(
+    tenderId: string,
+    tableSlug: string,
+    keys: Record<string, unknown>
+  ): Promise<ResolvedRate | null> {
+    // Load the snapshot entries for this tender. A miss means no snapshot.
+    const rateSet = await this.prisma.tenderRateSet.findUnique({
+      where: { tenderId },
+      select: { id: true }
+    });
+    if (!rateSet) return null;
+
+    const entries = await this.prisma.tenderRateEntry.findMany({
+      where: { tenderRateSetId: rateSet.id }
+    });
+    // NOTE: do NOT return null for empty entries here — an empty snapshot
+    // still means the tender HAS a snapshot, so a derivable key that is
+    // absent from it should still emit snapshot-miss-fell-back-to-live.
+
+    const entryByKey = new Map(
+      entries.map((e) => [e.key, e] as const)
+    );
+
+    // Derive the candidate key by resolving the slug + keys against the
+    // RateTable model. Returns { key, rowId, unit } or null when the slug
+    // is not in RateTable (legacy-only slug — no warning needed).
+    const candidate = await this.tryRateTableKey(tableSlug, keys);
+    if (!candidate) {
+      // Slug not modelled in RateTable at all — no snapshot entries can
+      // exist for it. Fall through silently to live resolution.
+      return null;
+    }
+
+    const entry = entryByKey.get(candidate.key);
+    if (!entry) {
+      // Snapshot exists for this tender but does not cover this key.
+      // Log the miss so ops can see the gap, then fall back to live.
+      this.logger.warn({
+        event: "snapshot-miss-fell-back-to-live",
+        tenderId,
+        slug: tableSlug,
+        candidateKey: candidate.key
+      });
+      return null;
+    }
+
+    // Snapshot hit. The effective value is overrideValue ?? originalValue.
+    const effectiveValue =
+      entry.overrideValue !== null && entry.overrideValue !== undefined
+        ? Number(entry.overrideValue)
+        : Number(entry.originalValue);
+
+    this.logger.log({
+      event: "TENDER_RATE_SNAPSHOT_APPLIED",
+      tenderId,
+      slug: tableSlug,
+      key: candidate.key
+    });
+
+    return {
+      rowId: candidate.rowId,
+      value: effectiveValue,
+      unit: candidate.unit,
+      source: "ratetable"
+    };
+  }
+
+  /**
+   * Internal: resolve the `{rateTableId}:{rowId}:{columnId}` candidate
+   * key for a given slug + keys without reading the snapshot. Returns
+   * `{ key, rowId, unit }` on a match; returns `null` when the slug is
+   * not present in RateTable or has no VALUE columns (the "try elsewhere"
+   * signal — no warning). This is the same KEY-matching logic as
+   * `tryRateTable`, extended to also return the composite key.
+   */
+  private async tryRateTableKey(
+    tableSlug: string,
+    keys: Record<string, unknown>
+  ): Promise<{ key: string; rowId: string; unit: string } | null> {
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: tableSlug },
+      include: { columns: true }
+    });
+    if (!table) return null;
+    const keyCols = table.columns.filter((c) => c.role === "KEY");
+    const valueCols = table.columns.filter((c) => c.role === "VALUE");
+    if (valueCols.length === 0) return null;
+
+    const rows = await this.prisma.rateRow.findMany({
+      where: { rateTableId: table.id, isActive: true }
+    });
+    const keysLower: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(keys)) {
+      keysLower[k.trim().toLowerCase()] = v;
+    }
+    const match = rows.find((r) => {
+      const cells = (r.cells as Record<string, unknown> | null) ?? {};
+      return keyCols.every((c) => {
+        const colNameLower = c.name.trim().toLowerCase();
+        const callerVal = keys[c.name] ?? keysLower[colNameLower] ?? keys[c.id];
+        return norm(cells[c.id]) === norm(callerVal);
+      });
+    });
+    if (!match) return null;
+
+    const candidateKey = `${table.id}:${match.id}:${valueCols[0].id}`;
+    return {
+      key: candidateKey,
+      rowId: match.id,
+      unit: valueCols[0].unit ?? ""
+    };
   }
 
   /**
@@ -209,6 +355,17 @@ export class RateResolverService {
    * fuel, enclosure, other-rates. Unknown slugs throw NotFoundException,
    * consistent with `resolveRate`.
    *
+   * Snapshot precedence (SLICE 2 — SNAPSHOT_LIST_APPLIED):
+   *   When `options.tenderId` is supplied and that tender has a locked
+   *   TenderRateSet, the returned rows carry the snapshot's effectiveValue
+   *   (overrideValue ?? originalValue) for any row matched by
+   *   `{rateTableId}:{rowId}:{columnId}`. The check sits ABOVE
+   *   `getCanonicalSource()` so it fires regardless of the
+   *   RATES_CANONICAL_SOURCE setting — the same trap slice 1 documents.
+   *   A per-row miss is a warn + live-value fallback; the list is never
+   *   truncated. Logs `SNAPSHOT_LIST_APPLIED` (slug, tenderId, hitCount,
+   *   missCount) so the next slice can gate on it.
+   *
    * Canonical-source precedence mirrors `resolveRate`:
    *   - `ratetable` — RateTable first; falls back to legacy ONLY when the
    *     RateTable slug does not exist (or has zero VALUE columns). Emits a
@@ -231,32 +388,156 @@ export class RateResolverService {
    * `tryRateTable` behaviour (not `enumerateRateSet`, which expands all VALUE
    * columns for snapshot purposes).
    */
-  async listRates(tableSlug: string): Promise<ListedRate[]> {
+  async listRates(tableSlug: string, options?: { tenderId?: string }): Promise<ListedRate[]> {
+    // ── Snapshot check — ABOVE getCanonicalSource() ──────────────────────
+    // Snapshot entries are RateTable-keyed ({rateTableId}:{rowId}:{columnId}).
+    // A check nested inside the ratetable branch would do nothing when the
+    // canonical source is legacy (default). This is the same trap slice 1
+    // documents in resolveRate; we avoid it here by checking unconditionally.
+    const snapshotEntries = options?.tenderId
+      ? await this.loadSnapshotEntries(options.tenderId, tableSlug)
+      : null;
+
     const source = this.getCanonicalSource();
 
+    let liveRates: ListedRate[];
     if (source === "ratetable") {
       const fromRateTable = await this.tryListRateTable(tableSlug);
-      if (fromRateTable !== null) return fromRateTable;
+      if (fromRateTable !== null) {
+        liveRates = fromRateTable;
+      } else {
+        const fromLegacy = await this.tryListLegacy(tableSlug);
+        if (fromLegacy !== null) {
+          this.logger.warn({
+            event: "ratetable-miss-fell-back-to-legacy",
+            slug: tableSlug,
+            op: "listRates"
+          });
+          liveRates = fromLegacy;
+        } else {
+          throw new NotFoundException(
+            `No rate table with slug "${tableSlug}" (canonical source: ratetable).`
+          );
+        }
+      }
+    } else {
+      // Legacy-first (default).
       const fromLegacy = await this.tryListLegacy(tableSlug);
       if (fromLegacy !== null) {
-        this.logger.warn({
-          event: "ratetable-miss-fell-back-to-legacy",
-          slug: tableSlug,
-          op: "listRates"
-        });
-        return fromLegacy;
+        liveRates = fromLegacy;
+      } else {
+        const fromRateTable = await this.tryListRateTable(tableSlug);
+        if (fromRateTable !== null) {
+          liveRates = fromRateTable;
+        } else {
+          throw new NotFoundException(`No rate table with slug "${tableSlug}".`);
+        }
       }
-      throw new NotFoundException(
-        `No rate table with slug "${tableSlug}" (canonical source: ratetable).`
-      );
     }
 
-    // Legacy-first (default).
-    const fromLegacy = await this.tryListLegacy(tableSlug);
-    if (fromLegacy !== null) return fromLegacy;
-    const fromRateTable = await this.tryListRateTable(tableSlug);
-    if (fromRateTable !== null) return fromRateTable;
-    throw new NotFoundException(`No rate table with slug "${tableSlug}".`);
+    if (!snapshotEntries || snapshotEntries.size === 0) return liveRates;
+    return this.applySnapshotToList(liveRates, snapshotEntries, tableSlug, options!.tenderId!);
+  }
+
+  /**
+   * Load TenderRateEntry rows for a given tender + slug combination into a
+   * Map keyed by `{rowId}:{columnId}` (the rateTableId prefix is stripped
+   * because listRates matches by rowId — the table slug already scopes the
+   * lookup). Returns null when the tender has no locked TenderRateSet.
+   *
+   * Key format from enumerateRateSet / lock(): `{rateTableId}:{rowId}:{columnId}`.
+   * We strip the rateTableId prefix so callers can look up by `{rowId}:{columnId}`.
+   */
+  private async loadSnapshotEntries(
+    tenderId: string,
+    tableSlug: string
+  ): Promise<Map<string, number> | null> {
+    const set = await this.prisma.tenderRateSet.findUnique({
+      where: { tenderId },
+      select: { id: true }
+    });
+    if (!set) return null;
+
+    const entries = await this.prisma.tenderRateEntry.findMany({
+      where: { tenderRateSetId: set.id, rateTableSlug: tableSlug }
+    });
+    if (entries.length === 0) return null;
+
+    const byRowColKey = new Map<string, number>();
+    for (const entry of entries) {
+      // key = "{rateTableId}:{rowId}:{columnId}" — strip rateTableId prefix.
+      const parts = entry.key.split(":");
+      if (parts.length < 3) continue;
+      const rowColKey = `${parts[1]}:${parts[2]}`;
+      const effectiveValue = entry.overrideValue ?? entry.originalValue;
+      byRowColKey.set(rowColKey, Number(effectiveValue));
+    }
+    return byRowColKey;
+  }
+
+  /**
+   * Overlay snapshot values onto a live rate list. For each listed row:
+   *   - If the snapshot has a `{rowId}:{columnId}` match, use the snapshot
+   *     value (overrideValue ?? originalValue).
+   *   - If no match, warn with `snapshot-list-miss-fell-back-to-live` and
+   *     keep the live value.
+   *
+   * The list is never truncated — every live row is returned. Logs
+   * `SNAPSHOT_LIST_APPLIED` with summary counts.
+   *
+   * NOTE: legacy adapter paths do not carry a `columnId` in the snapshot
+   * key (legacy rates have no RateTable column). For those slugs the
+   * snapshot entries will always miss (the slug maps to a legacy table that
+   * enumerateRateSet excludes). That is by design: only RateTable-backed
+   * slugs can be locked.
+   */
+  private applySnapshotToList(
+    liveRates: ListedRate[],
+    snapshotEntries: Map<string, number>,
+    tableSlug: string,
+    tenderId: string
+  ): ListedRate[] {
+    let hitCount = 0;
+    let missCount = 0;
+
+    const result = liveRates.map((row) => {
+      // Build every possible {rowId}:{columnId} key for this row.
+      // For RateTable-backed rows the snapshot map holds exactly one value
+      // column per row (valueCols[0] from tryListRateTable, which mirrors
+      // enumerateRateSet's column enumeration). We do not know the columnId
+      // here, so we scan all entries whose key starts with `{rowId}:`.
+      let snapshotValue: number | undefined;
+      for (const [key, value] of snapshotEntries) {
+        if (key.startsWith(`${row.rowId}:`)) {
+          snapshotValue = value;
+          break;
+        }
+      }
+
+      if (snapshotValue !== undefined) {
+        hitCount += 1;
+        return { ...row, value: snapshotValue };
+      }
+
+      missCount += 1;
+      this.logger.warn({
+        event: "snapshot-list-miss-fell-back-to-live",
+        slug: tableSlug,
+        tenderId,
+        rowId: row.rowId
+      });
+      return row;
+    });
+
+    this.logger.log({
+      event: "SNAPSHOT_LIST_APPLIED",
+      slug: tableSlug,
+      tenderId,
+      hitCount,
+      missCount
+    });
+
+    return result;
   }
 
   /**

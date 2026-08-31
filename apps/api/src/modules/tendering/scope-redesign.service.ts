@@ -191,6 +191,7 @@ export async function resolveCuttingRate(
     material: string;
     depthMm: number;
     method?: string | null;
+    tenderId?: string | null;
   }
 ): Promise<{ baseRate: number; methodMultiplier: number; elevationMultiplier: number; finalRate: number } | null> {
   const { equipment, depthMm } = input;
@@ -231,7 +232,8 @@ export async function resolveCuttingRate(
   // Step 3 — effective depth.
   // Fetch all cutting rates once; reproduce the original range-query
   // semantics in-memory so canonical-source routing is honoured.
-  const allCuttingRates = await rateResolver.listRates("cutting");
+  // Pass tenderId so locked-rate snapshots are applied (SLICE 2).
+  const allCuttingRates = await rateResolver.listRates("cutting", input.tenderId ? { tenderId: input.tenderId } : undefined);
   // Filter to the resolved equipment/elevation/material combination.
   const candidates = allCuttingRates.filter(
     (r) =>
@@ -309,7 +311,7 @@ export type CoreHoleRateResult =
  */
 export async function resolveCoreHoleRate(
   rateResolver: RateResolverService,
-  input: { diameterMm: number; elevation?: string | null; method?: string | null }
+  input: { diameterMm: number; elevation?: string | null; method?: string | null; tenderId?: string | null }
 ): Promise<CoreHoleRateResult | null> {
   const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation ?? "Floor"] ?? 1.0;
   const methodMultiplier = METHOD_MULTIPLIER[input.method ?? ""] ?? 1.0;
@@ -321,7 +323,8 @@ export async function resolveCoreHoleRate(
   const lookupDiameter = Math.max(32, input.diameterMm);
   // rates-consumers SLICE 2 — fetch all core-hole rates and reproduce the
   // original findFirst(diameterMm >= lookupDiameter, asc) in-memory.
-  const allCoreHoleRates = await rateResolver.listRates("core-hole");
+  // Pass tenderId so locked-rate snapshots are applied (SLICE 2).
+  const allCoreHoleRates = await rateResolver.listRates("core-hole", input.tenderId ? { tenderId: input.tenderId } : undefined);
   const atOrAbove = allCoreHoleRates
     .filter((r) => Number(r.keys["diameterMm"]) >= lookupDiameter)
     .sort((a, b) => Number(a.keys["diameterMm"]) - Number(b.keys["diameterMm"]));
@@ -501,7 +504,7 @@ export class ScopeRedesignService {
       });
       if (!card) throw new NotFoundException("Scope card not found on this tender.");
     }
-    const priced = await this.pricedCuttingData(dto);
+    const priced = await this.pricedCuttingData({ ...dto, tenderId });
     return this.prisma.cuttingSheetItem.create({
       data: {
         tenderId,
@@ -596,7 +599,7 @@ export class ScopeRedesignService {
             : null,
       otherRateId: dto.otherRateId !== undefined ? dto.otherRateId : existing.otherRateId
     };
-    const priced = await this.pricedCuttingData(merged);
+    const priced = await this.pricedCuttingData({ ...merged, tenderId });
     return this.prisma.cuttingSheetItem.update({
       where: { id: itemId },
       data: {
@@ -847,10 +850,13 @@ export class ScopeRedesignService {
       include: { card: true }
     });
     // rates-consumers SLICE 2 — route through RateResolverService.
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
+    // snapshots are applied when this tender has a TenderRateSet.
     // See listItems() note in scope-of-works.service.ts for isActive caveat.
+    const snapshotOpts = { tenderId };
     const [labourListed, plantListed, tenderEstimate] = await Promise.all([
-      this.rateResolver.listRates("labour"),
-      this.rateResolver.listRates("plant"),
+      this.rateResolver.listRates("labour", snapshotOpts),
+      this.rateResolver.listRates("plant", snapshotOpts),
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
     const labourRates = labourListed
@@ -991,6 +997,7 @@ export class ScopeRedesignService {
     shiftLoading?: number | null;
     method?: string | null;
     otherRateId?: string | null;
+    tenderId?: string | null;
   }): Promise<{
     ratePerM: Prisma.Decimal | null;
     ratePerHole: Prisma.Decimal | null;
@@ -1006,7 +1013,8 @@ export class ScopeRedesignService {
       // original `!rate.isActive` guard). We match by rowId to preserve the
       // "look up by PK" semantic of the original call.
       if (!dto.otherRateId) return { ratePerM: null, ratePerHole: null, lineTotal: null };
-      const allOtherRates = await this.rateResolver.listRates("other-rates");
+      // Pass tenderId so locked-rate snapshots are applied (SLICE 2).
+      const allOtherRates = await this.rateResolver.listRates("other-rates", dto.tenderId ? { tenderId: dto.tenderId } : undefined);
       const rate = allOtherRates.find((r) => r.rowId === dto.otherRateId) ?? null;
       if (!rate) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityEach ?? dto.quantityLm ?? 1);
@@ -1027,7 +1035,8 @@ export class ScopeRedesignService {
         elevation: dto.elevation ?? "Floor",
         material: dto.material ?? "Concrete",
         depthMm: dto.depthMm,
-        method: dto.method ?? null
+        method: dto.method ?? null,
+        tenderId: dto.tenderId ?? null
       });
       if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityLm ?? 0);
@@ -1044,7 +1053,8 @@ export class ScopeRedesignService {
     const resolved = await resolveCoreHoleRate(this.rateResolver, {
       diameterMm: dto.diameterMm,
       elevation: dto.elevation ?? "Floor",
-      method: dto.method ?? null
+      method: dto.method ?? null,
+      tenderId: dto.tenderId ?? null
     });
     if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
     if (resolved.isPOA) {

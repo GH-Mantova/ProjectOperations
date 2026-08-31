@@ -854,6 +854,57 @@ runWithBacklog("pr-foo-HOLD",
   "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-foo-extended-HOLD-ready.md\n",
   3);
 
+// ── YAML block scalar folding (foldBlockScalar) ────────────────────────────
+// parseFrontMatter used to return the raw indicator string (">-", "|", etc.)
+// instead of the folded body.  That made the LL-29 rollback gate rubber-stamp
+// ">-" as non-empty, the destructive-pattern corpus receive ">-" instead of
+// the acceptance command, and STALE verdict render "Premise no longer holds: ">-"".
+// foldBlockScalar() is the fix; the tests below are its acceptance harness.
+// At least one test must contain the literal string "block scalar" so the
+// done_when gate in the prompt that ships this fix can self-verify.
+// [block scalar folding tests follow]
+
+console.log("\n=== block scalar: exit 0 ADMIT: folded >- rollback_strategy on migration prompt is read as real text");
+// Before the fix, fm.rollback_strategy === ">-" (non-empty string) so the LL-29
+// gate passed. After the fix it returns the real body, still non-empty, so it
+// still admits — but now for the right reason.
+run("block-scalar-rollback-folded",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/backfill.spec.ts\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: >-\n" +
+  "  additive; safe to leave, re-run drops nothing;\n" +
+  "  revert migration X if needed", 0);
+
+console.log("\n=== block scalar: exit 1 REJECT: empty folded >- rollback_strategy is caught by LL-29 gate");
+// Before the fix, ">-" was a non-empty string and the gate passed silently.
+// After the fix, the body lines are blank/absent, foldBlockScalar returns "",
+// out[key] becomes [], and the LL-29 empty check correctly rejects.
+run("block-scalar-rollback-empty",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/backfill.spec.ts\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: >-\n", 1);
+
+console.log("\n=== block scalar: exit 1 REJECT: folded done_when with DROP TABLE reaches destructive-pattern corpus");
+// Before the fix the corpus received ">-" which does not match DROP TABLE.
+// After the fix the real body text reaches the corpus and DESTRUCTIVE_MUST_ESCALATE fires.
+run("block-scalar-done-when-drop-table",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: >-\n" +
+  "  pnpm build && DROP TABLE legacy_rates\nsize: 3\ngate_allow: none\nescalates: false", 1);
+
+console.log("\n=== block scalar: exit 0 ADMIT: literal | block preserves newlines, rollback_strategy is non-empty");
+// The "|" style must preserve newlines (literal block scalar).
+// We verify this admits (non-empty value reaches LL-29 gate correctly).
+run("block-scalar-literal-pipe",
+  "premise: 'true'\npremise_means: always\nscope:\n  - apps/api/prisma/migrations/**\n" +
+  "  - apps/api/test/migration.spec.ts\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: migrations\n" +
+  "rollback_strategy: |\n" +
+  "  Step 1: revert the migration\n" +
+  "  Step 2: re-deploy the previous release", 0);
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

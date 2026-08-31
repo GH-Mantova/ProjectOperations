@@ -58,7 +58,7 @@ describe("resolveCuttingRate (SLICE 2 — uses RateResolverService)", () => {
       material: "Concrete",
       depthMm: 150
     });
-    expect(listRates).toHaveBeenCalledWith("cutting");
+    expect(listRates).toHaveBeenCalledWith("cutting", undefined);
     expect(result).not.toBeNull();
     expect(result!.baseRate).toBe(45);
     expect(result!.finalRate).toBe(45); // Floor multiplier = 1.0, no method
@@ -132,7 +132,7 @@ describe("resolveCoreHoleRate (SLICE 2 — uses RateResolverService)", () => {
 
     // diameterMm=75: gte candidates = [100]; asc → first is 100
     const result = await resolveCoreHoleRate(rateResolver, { diameterMm: 75 });
-    expect(listRates).toHaveBeenCalledWith("core-hole");
+    expect(listRates).toHaveBeenCalledWith("core-hole", undefined);
     expect(result).not.toBeNull();
     expect(result!.isPOA).toBe(false);
     if (!result!.isPOA) {
@@ -186,7 +186,7 @@ describe("ScopeRedesignService.createCuttingItem — other-rate via listRates", 
       cardId: "card-1"
     });
 
-    expect(listRates).toHaveBeenCalledWith("other-rates");
+    expect(listRates).toHaveBeenCalledWith("other-rates", { tenderId: "t-1" });
     const data = (cuttingCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
     // 250 rate × 2 qty = 500 lineTotal
     expect(Number(data.lineTotal)).toBe(500);
@@ -236,7 +236,7 @@ describe("ScopeRedesignService.summary — calls listRates for labour and plant"
 
     await svc.summary("t-1");
 
-    expect(listRates).toHaveBeenCalledWith("labour");
-    expect(listRates).toHaveBeenCalledWith("plant");
+    expect(listRates).toHaveBeenCalledWith("labour", { tenderId: "t-1" });
+    expect(listRates).toHaveBeenCalledWith("plant", { tenderId: "t-1" });
   });
 });

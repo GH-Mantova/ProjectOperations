@@ -308,14 +308,17 @@ export class ScopeOfWorksService {
     // ?? tenderEstimate.markup ?? 30. card relation already included
     // above so no extra query.
     // rates-consumers SLICE 2 — route through RateResolverService.
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
+    // snapshots are applied when this tender has a TenderRateSet.
     // listRates returns all rows (the legacy adapter does not filter by
     // isActive for labour/plant); the previous findMany filtered to
     // isActive=true. In practice the seed has no inactive duplicates
     // so pricing is identical, but the difference is documented in the
     // PR body.
+    const snapshotOpts = { tenderId };
     const [labourListed, plantListed, tenderEstimate] = await Promise.all([
-      this.rateResolver.listRates("labour"),
-      this.rateResolver.listRates("plant"),
+      this.rateResolver.listRates("labour", snapshotOpts),
+      this.rateResolver.listRates("plant", snapshotOpts),
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
     // Adapt ListedRate → the shapes buildRateMaps expects.
@@ -635,6 +638,8 @@ export class ScopeOfWorksService {
       const role = DEFAULT_ROLE_BY_DISCIPLINE[discipline];
       const shift = scopeItem.shift ?? "Day";
       // rates-consumers SLICE 2 — resolveRate replaces findUnique.
+      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
+      // snapshots are applied when this tender has a TenderRateSet.
       // resolveRate throws NotFoundException on miss; the prior code
       // tolerated null (dayRate fell to 0). Preserve that behaviour.
       let dayRate = 0;
@@ -642,7 +647,7 @@ export class ScopeOfWorksService {
         const resolvedLabour = await this.rateResolver.resolveRate("labour", {
           role,
           shift: shift.toLowerCase()
-        });
+        }, { tenderId });
         dayRate = resolvedLabour.value;
       } catch {
         // Miss tolerated: no rate for this role → dayRate stays 0.
@@ -660,11 +665,12 @@ export class ScopeOfWorksService {
     }
 
     // 5. Plant lines.
-    await this.addPlantLineIfSet(item.id, "Excavator 16T-25T (wet hire)", scopeItem.excavatorDays, 0);
-    await this.addPlantLineIfSet(item.id, "Bobcat", scopeItem.bobcatDays, 1);
-    await this.addPlantLineIfSet(item.id, "EWP", scopeItem.ewpDays, 2);
-    await this.addPlantLineIfSet(item.id, "Hook truck", scopeItem.hookTruckDays, 3);
-    await this.addPlantLineIfSet(item.id, "Semi tipper", scopeItem.semiTipperDays, 4);
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate snapshots apply.
+    await this.addPlantLineIfSet(item.id, "Excavator 16T-25T (wet hire)", scopeItem.excavatorDays, 0, tenderId);
+    await this.addPlantLineIfSet(item.id, "Bobcat", scopeItem.bobcatDays, 1, tenderId);
+    await this.addPlantLineIfSet(item.id, "EWP", scopeItem.ewpDays, 2, tenderId);
+    await this.addPlantLineIfSet(item.id, "Hook truck", scopeItem.hookTruckDays, 3, tenderId);
+    await this.addPlantLineIfSet(item.id, "Semi tipper", scopeItem.semiTipperDays, 4, tenderId);
 
     // 6. Cutting line — if lm + equipment set.
     if (scopeItem.lm && Number(scopeItem.lm) > 0 && scopeItem.cuttingEquipment) {
@@ -678,7 +684,8 @@ export class ScopeOfWorksService {
       // so it cannot reproduce this semantic. We use listRates to get all
       // cutting rows and implement the range logic in-memory, preserving
       // the exact same pick — deepest active row whose depthMm ≤ requested.
-      const allCuttingRates = await this.rateResolver.listRates("cutting");
+      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate snapshots apply.
+      const allCuttingRates = await this.rateResolver.listRates("cutting", { tenderId });
       const cuttingMatch = allCuttingRates
         .filter(
           (r) =>
@@ -712,10 +719,12 @@ export class ScopeOfWorksService {
     ) {
       const diameterMm = scopeItem.coreHoleDiameterMm;
       // rates-consumers SLICE 2 — resolveRate replaces findUnique.
+      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
+      // snapshots are applied when this tender has a TenderRateSet.
       // resolveRate throws NotFoundException on miss; tolerate as rate=0.
       let coreHoleRateValue = 0;
       try {
-        const resolvedCoreHole = await this.rateResolver.resolveRate("core-hole", { diameterMm });
+        const resolvedCoreHole = await this.rateResolver.resolveRate("core-hole", { diameterMm }, { tenderId });
         coreHoleRateValue = resolvedCoreHole.value;
       } catch {
         // Miss tolerated: no rate for this diameter → stays 0.
@@ -741,7 +750,8 @@ export class ScopeOfWorksService {
       // NOTE: loadRate is NOT carried by ListedRate — it is set to 0 here.
       // In the legacy schema loadRate defaults to 0; any non-zero values will
       // not flow into the waste line via this path. Documented in PR body.
-      const allWasteRates = await this.rateResolver.listRates("waste");
+      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate snapshots apply.
+      const allWasteRates = await this.rateResolver.listRates("waste", { tenderId });
       let resolvedWaste: { facility: string; tonRate: number } | null = null;
       if (facility) {
         // Exact match: both wasteType and facility specified.
@@ -787,15 +797,18 @@ export class ScopeOfWorksService {
     itemId: string,
     plantItem: string,
     days: Prisma.Decimal | null,
-    sortOrder: number
+    sortOrder: number,
+    tenderId?: string
   ) {
     if (!days || Number(days) <= 0) return;
     // rates-consumers SLICE 2 — resolveRate replaces findUnique.
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
+    // snapshots are applied when this tender has a TenderRateSet.
     // Plant key is { item }. resolveRate throws NotFoundException on miss;
     // original code tolerated null (rate=0). Preserve that behaviour.
     let plantRateValue = 0;
     try {
-      const resolvedPlant = await this.rateResolver.resolveRate("plant", { item: plantItem });
+      const resolvedPlant = await this.rateResolver.resolveRate("plant", { item: plantItem }, tenderId ? { tenderId } : undefined);
       plantRateValue = resolvedPlant.value;
     } catch {
       // Miss tolerated: no plant rate for this item → stays 0.
@@ -1111,9 +1124,10 @@ export class ScopeOfWorksService {
     // still passing because they exercise the legacy path. A mapping fix
     // is out of scope for SLICE 2; see "KNOWN GAP — ratetable cutover" in
     // the PR body for the full analysis.
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate snapshots apply.
     const rateCategories = new Map<string, string>();
     if (rateIds.length > 0) {
-      for (const r of await this.rateResolver.listRates("plant")) {
+      for (const r of await this.rateResolver.listRates("plant", { tenderId })) {
         const cat = r.info.Category;
         if (typeof cat === "string" && cat !== "") rateCategories.set(r.rowId, cat);
       }

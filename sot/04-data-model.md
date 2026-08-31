@@ -11,9 +11,9 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-08-26 14:14 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `b26240cf69d9`)
-- Models: 292 | Enums: 66 | FK edges: 482 | Domains: 23
+- Last updated: 2026-08-31 14:14 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `221a543f55ce`)
+- Models: 292 | Enums: 68 | FK edges: 482 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
 
@@ -858,7 +858,7 @@ graph LR
 
 ### Model: RateTable
 
-- Table: `rate_tables` | Domain: Estimating | Fields: 16
+- Table: `rate_tables` | Domain: Estimating | Fields: 17
 - Belongs to (FK out):
   - `supplier` -> **SubcontractorSupplier** (supplierId)
 - Has many:
@@ -2689,14 +2689,14 @@ graph LR
 
 ### Model: CommThread
 
-- Table: `comm_threads` | Domain: Unclassified | Fields: 11
+- Table: `comm_threads` | Domain: Unclassified | Fields: 12
 - Belongs to (FK out):
   - `createdBy` -> **User** (createdById, onDelete Cascade)
 - Has many:
   - `messages` -> **CommMessage**[]
   - `tasks` -> **CommTask**[]
 - Referenced by: **CommMessage**, **CommTask**
-- Suggested dimensions: entityType, createdBy
+- Suggested dimensions: entityType, kind, createdBy
 - Time fields: archivedAt
 
 ### Model: Commitment
@@ -3022,12 +3022,12 @@ graph LR
 
 ### Model: RelationshipNote
 
-- Table: `relationship_notes` | Domain: Unclassified | Fields: 10
+- Table: `relationship_notes` | Domain: Unclassified | Fields: 11
 - Belongs to (FK out):
   - `account` -> **Account** (accountId, onDelete SetNull)
   - `contact` -> **Contact** (contactId, onDelete SetNull)
   - `author` -> **User** (authorId, onDelete Cascade)
-- Suggested dimensions: account, contact, author
+- Suggested dimensions: account, contact, author, channel
 
 ### Model: SavedView
 
@@ -3315,6 +3315,7 @@ graph LR
 - **ClaimStatus**: DRAFT, SUBMITTED, APPROVED, PAID
 - **ClientQuoteStatus**: DRAFT, SENT, SUPERSEDED
 - **CommTaskStatus**: OPEN, IN_PROGRESS, DONE, CANCELLED
+- **CommThreadKind**: conversation, logged_contact
 - **CommitmentChangeStatus**: DRAFT, PENDING, APPROVED, REJECTED
 - **CommitmentStatus**: DRAFT, APPROVED, CLOSED, CANCELLED
 - **CommitmentType**: SUBCONTRACT, PURCHASE_ORDER, HIRE, OTHER
@@ -3332,6 +3333,7 @@ graph LR
 - **HandoverOrigin**: suggested, manual
 - **HandoverResponsibleParty**: us, client
 - **HandoverStatus**: draft, finalised
+- **InteractionChannel**: phone, email, meeting, site_visit, other
 - **InvoiceMatchStatus**: PENDING, MATCHED, HELD, APPROVED, REJECTED
 - **KbArticleStatus**: DRAFT, PUBLISHED
 - **LeadCaptureChannel**: email, phone, portal, referral, cold_outreach, other

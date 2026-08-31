@@ -138,19 +138,35 @@ your job ends at writing the breadcrumb.
 
 ## SOT-REFS BURN-DOWN — your primary housekeeping obligation
 
-`docs/qa/sot-refs-baseline.json` records 26 dangling references inside `sot/*.md` that existed when
+`docs/qa/sot-refs-baseline.json` records the dangling references inside `sot/*.md` that existed when
 the CI gate was made blocking. This file **may only shrink**. The CI ratchet rejects any PR that adds
 an entry. You are the only station that may edit `sot/`, so you are the only one who can burn this list
 down.
+
+🔴 **The count lives in that file (`entries.length`) — never in this sentence.** This paragraph said
+**26** until 2026-08-31, when the real figure was **14**; `CLAUDE.md:19` carried the same stale number
+and was fixed for the same reason in #1408. State does not belong in an instruction document.
 
 **Workflow — one entry at a time:**
 
 1. Open `docs/qa/sot-refs-baseline.json` and pick an entry.
 2. Fix the reference in the corresponding `sot/` file (point it at the real path, update the prose, or
    remove the stale reference entirely — whichever is correct per the sot content).
-3. Delete that entry from `docs/qa/sot-refs-baseline.json`.
+3. Delete that entry from `docs/qa/sot-refs-baseline.json` — **or**, if the target is correct but
+   structurally absent from `origin/main` (gitignored by design), leave the reference alone and write
+   an inline `<!-- sot-ref-allow: reason -->` marker on the `sot/` line itself, then delete the entry.
+   The marker moves the reference from `baselined=` to `exempt=`; a bare deletion would turn it into a
+   hard CI failure. The marker is Station 05's alone to write, because it lives inside `sot/`.
 4. Run `node scripts/pipeline/check-sot-refs.mjs` — must exit 0 with one fewer BASELINED line.
-5. Ship both changes (`sot/` fix + baseline entry deletion) in the same doc-reconcile PR.
+5. **Re-key every baseline entry whose line number your `sot/` edit moved.** The baseline is keyed by
+   `line`; `check-sot-refs.mjs` matches on it exactly, so any edit ABOVE a baselined reference breaks
+   the baseline and fails CI. **MEASURED 2026-08-31 @`6e105076`:** re-merging sot/04's generated section
+   added 2 lines and instantly turned the two `sot/04-data-model.md` entries (4142, 4443) into
+   `dangling=2, exit 1`; bumping them to 4144 and 4445 restored `dangling=0`. This is ratchet-safe by
+   construction — `check-sot-baseline-ratchet.mjs` keys on `(sot_file, missing_path)` and deliberately
+   ignores `line` — but nothing warns you, and `check-sot-refs.mjs` and the ratchet disagree about
+   whether a line number matters.
+6. Ship every change (`sot/` fix + baseline edit) in the same doc-reconcile PR.
 
 🔴 **A LOCAL PASS IS NOT THE CI ANSWER — verify against `origin/main`, not your disk.**
 `check-sot-refs.mjs` resolves references with `existsSync` against the **working tree**, so an entry

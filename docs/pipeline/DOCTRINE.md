@@ -519,6 +519,18 @@ here now because they are true for **every** station.
   falsify it — as this replacement does — or it will outlive its own truth in the one document every
   station is told it can trust.
 
+- 🔴 **AN ARMED `-ready.md`'s mtime DATES ITS AUTHORSHIP, NOT ITS ARMING — `git mv` preserves mtime.**
+  The only clock that dates an arm is the arming log `.arming-log.txt` in the queue folder — which is
+  itself **UNTRACKED**, so it exists on the box that armed and nowhere else; a clone, CI and any
+  cloud-fired station are blind to it and must not infer arm age at all. Measured 2026-08-31 by
+  Station 04: at 18:14Z `pr-lint-not-a-prompt-ready.md` sat on disk with mtime **2026-08-28T08:12:35Z**
+  — 3.4 days old — while the arming log recorded `2026-08-31T18:13:56Z ARMED pr-lint-not-a-prompt`,
+  **two minutes earlier.** The file is gitignored at `.gitignore:75`, so `git status` shows only the
+  ` D` of the vanished `-HOLD.md`, and a sweep run 177 seconds before the arm had already printed
+  `armed: 0`. Read together, those three readings compose into *"a prompt has been armed and unseen
+  since 28 August"* — a confident, coherent, wrong S2 that 04 nearly filed. **Never infer arm age from
+  a `-ready.md`'s mtime.** This is also the cleanest instance yet of §7's `[LIVE]` rule: the sweep's
+  `armed: 0` was correct when printed and false three minutes later.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

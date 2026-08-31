@@ -562,3 +562,84 @@ query that answered confidently and wrongly.
 lock left by a destroyed Linux VM has no Windows process by construction, forever.
 
 <!-- END-CANONICAL-BLOCK: instruments v2 -->
+
+
+# 🛰️ §10. SECOND LANES — work that reaches the repo without passing through the watcher
+
+Added 2026-08-31. Until now exactly one path put code on this board: a prompt is armed, the watcher
+builds it, the watcher opens the PR, and the watcher writes a merge verdict. **That assumption is now
+false.** A Claude Code cloud session connected to `GH-Mantova/ProjectOperations` can clone, branch,
+commit and open a PR without the watcher, the dev tree or Marco's machine being involved at all, and
+Claude Design can author interface work the same way. Everything below follows from that.
+
+## 10.1 A PR the watcher did not open carries NO RULE-2 verdict — and that reads as "cleared"
+
+🔴🔴 **THIS IS A SAFETY RULE, NOT A CONVENTION.** RULE 2 — never merge a PR the watcher routed to
+Marco — has exactly one live probe: the line
+
+    [watcher] merge result for PR #N: {"ok":false,"marco":true,"reason":"…"}
+
+written into `docs/pr-prompts/processed/<prompt>.md.log` by the watcher's merge step
+(`index.mjs`, `waitForPolicyMerge` / `waitForMerge`). **A PR that never went through the watcher never
+gets that line.** Probing for it returns empty — and an empty result here is indistinguishable from
+"this PR was checked and is not Marco's".
+
+This is §9.6 (*an empty result is not an empty world*) with a merge button attached. Measured
+2026-08-31: the probe's own corpus holds **593** `"marco":true` verdicts across **1801** logs, so the
+probe is well calibrated for watcher-opened PRs and says nothing whatsoever about any other PR.
+
+**THE RULE.** Before merging ANY PR, establish which lane opened it, and say so:
+
+1. `docs/pr-prompts/processed/*.md.log` contains a verdict naming that PR ⇒ obey it. `marco:true` ⇒
+   **RULE 2 applies, do not merge.**
+2. No log names that PR ⇒ **it did not come through the watcher.** The absence proves nothing about
+   its risk. Apply the policy gate BY HAND — `classifyPolicyFiles` in `index.mjs` is the definition:
+   any path outside `^(tests|docs)/`, or any path matching `(^|/)migrations/`, means **it is Marco's**.
+3. Never record "no verdict found" as "not routed to Marco". Write `[NO LANE VERDICT — hand-classified]`
+   and give the classification.
+
+⚠️ **The probe must be written without a quote character**: `-Pattern 'marco.:true'` (regex, `.` matches
+the quote). The `-SimpleMatch '"marco":true'` form returns 0 **and so does its negative control** —
+escaped double quotes do not survive the `-Command` layer (§9.4, and it is a SHELL fact, not a `gh` one).
+
+## 10.2 A cloud session is a CODE-WRITING lane. It cannot drive the board.
+
+`arm-prompt.ps1`, `smoke-pr.ps1`, `pipeline-lib.ps1`, `status-sweep.ps1` and `bring-up-to-speed.ps1`
+are Windows PowerShell 5.1 reading absolute paths under `C:\ProjectOperations2` and `C:\po-watcher`.
+A cloud session has none of them. It therefore **cannot arm, cannot smoke, cannot merge through
+`Assert-SmokedOrEscalate`, and cannot read the queue's true state.**
+
+- ✅ It may: write code and docs, open a PR, and say plainly which lane it is.
+- 🚫 It may NOT: arm or disarm a prompt, merge anything, mutate `docs/pr-prompts/`, touch `/sot/`
+  (Station 05's, CP-24), or act as a second supervisor. *"Nobody owns dev-tree convergence"* is an
+  open escalation; a second unsynchronised board actor is exactly the failure it names.
+- 🔧 A cloud session sees **only what is committed to the repo.** The station bootstraps under
+  `C:\Users\Marco\Claude\Scheduled\*\SKILL.md`, the project memory, and any chat are all invisible to
+  it. If a rule is not in `sot/`, `docs/` or `CLAUDE.md`, the cloud lane does not have it.
+
+## 10.3 Route docs-and-tests work through the watcher, not around it
+
+The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,
+and `classifyPolicyFiles` admits a diff confined to `tests/**` + `docs/**` with no `migrations/` path.
+**42 PRs have merged with no human through that gate.** It works.
+
+🔴 **But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to Marco.** Not
+because the gate is blocked: because docs work is hand-landed in a disposable worktree instead of
+armed as a prompt, so it never reaches the gate. Hand-landing is legitimate (00 may merge a docs-only
+PR itself) and it does not consume Marco — but it produces **no review**, and it is how a docs change
+lands with nobody but its author having read it.
+
+**Prefer arming a docs/tests change over hand-landing it.** Hand-land when the content must be exact
+— binding law, a canonical block, a correction to DOCTRINE itself — and say in the PR body that you
+did, and why.
+
+## 10.4 Design decisions are settled BEFORE the prompt, not inside the slice
+
+Interface questions have been surfacing as mid-slice STOP-AND-REPORTs — the owner-control permission
+model in `#1416`, the Tip Finder no-coordinates behaviour, the map-locations rename guard. Each one
+burns a slice and then waits on Marco anyway.
+
+**A design question found while writing a prompt is Marco's to answer before the prompt is armed**
+(RULE 3). `PROMPT-SCHEMA.md` already requires an executable premise; an unsettled interface decision
+is a premise that cannot execute. Take it to him as a decision with options and the measured evidence
+for each, not as a status update.

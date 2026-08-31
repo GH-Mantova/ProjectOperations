@@ -1,11 +1,12 @@
-// Archive / Restore triage entries — pure-logic unit tests.
+// Archive / Restore / Delete triage entries — pure-logic unit tests.
 //
 // The web workspace has no @testing-library / jsdom setup (all existing
-// web tests are pure logic). We test the two helpers exported from
-// LeadsTriageList:
+// web tests are pure logic). We test the helpers exported from
+// LeadsTriageList and its helpers file.
 //   filterByStage   — pure filter used to build open / archived / notPursued slices
 //   makeArchiveHandler — returns an async thunk; confirm resolves true → calls
 //                        onArchive; resolves false (cancel) → does NOT call onArchive.
+//   isEntryEmpty (inline predicate) — governs whether Delete is shown on ArchivedRow.
 
 import { describe, expect, it, vi } from "vitest";
 import { filterByStage, makeArchiveHandler } from "../LeadsTriageList.helpers";
@@ -32,9 +33,26 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     convertedTender: null,
     dropReason: null,
     dropReasonDetail: null,
+    // CRM-S11 archive fields
+    archiveReason: null,
+    archiveReasonDetail: null,
+    archivedAt: null,
+    archivedById: null,
     createdAt: "2026-08-20T00:00:00Z",
     ...overrides
   };
+}
+
+// Mirrors the isEntryEmpty predicate in LeadsTriageList.tsx (kept in sync manually
+// — if the predicate changes, update this test helper too).
+function isEntryEmpty(entry: Entry): boolean {
+  return (
+    !entry.description &&
+    !entry.contact &&
+    !entry.estimatedValue &&
+    !entry.dropReason &&
+    !entry.convertedTender
+  );
 }
 
 const openEntry = makeEntry({ id: "open-1", stage: "open" });
@@ -114,5 +132,46 @@ describe("makeArchiveHandler (LeadsTriageList)", () => {
     await handler();
 
     expect(onRestore).toHaveBeenCalledWith("arc-1");
+  });
+});
+
+// ── CRM-S11: isEntryEmpty (delete predicate) ─────────────────────────────────
+// The delete button on ArchivedRow is shown only when isEntryEmpty holds.
+// These four tests guard the four named blocking fields plus the happy path.
+
+describe("isEntryEmpty (CRM-S11 delete predicate)", () => {
+  it("(test s11-delete-3a) entry with a description blocks delete", () => {
+    const entry = makeEntry({ stage: "archived", description: "Some notes" });
+    expect(isEntryEmpty(entry)).toBe(false);
+  });
+
+  it("(test s11-delete-3b) entry with a contact blocks delete", () => {
+    const entry = makeEntry({
+      stage: "archived",
+      contact: { id: "c-1", firstName: "Jane", lastName: "Doe", email: null }
+    });
+    expect(isEntryEmpty(entry)).toBe(false);
+  });
+
+  it("(test s11-delete-3c) entry with an estimatedValue blocks delete", () => {
+    const entry = makeEntry({ stage: "archived", estimatedValue: "15000" });
+    expect(isEntryEmpty(entry)).toBe(false);
+  });
+
+  it("(test s11-delete-3d) entry with a commThread is caught server-side; client predicate passes without that field", () => {
+    // The client-side predicate cannot see comm threads — that check is server-side.
+    // An entry that appears empty client-side but has a thread will be refused by
+    // the API with a 400 naming "commThread". The client shows the delete button;
+    // the server enforces the guard. This test documents that design decision.
+    const entry = makeEntry({ stage: "archived" });
+    // Client-side predicate: empty — delete button is shown.
+    expect(isEntryEmpty(entry)).toBe(true);
+    // The API will refuse with "Cannot delete entry X: commThread" if a thread exists.
+    // That path is exercised in the API unit tests (crm.service.archive.spec.ts).
+  });
+
+  it("(test s11-delete-4) genuinely empty entry — delete button is shown", () => {
+    const entry = makeEntry({ stage: "archived" });
+    expect(isEntryEmpty(entry)).toBe(true);
   });
 });

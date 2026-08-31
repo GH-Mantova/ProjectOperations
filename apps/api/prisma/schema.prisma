@@ -287,7 +287,8 @@ model User {
   caseCommentsAuthored CaseComment[] @relation("CaseCommentAuthor")
 
   // CRM â€” Opportunities (unified leads + opportunities pipeline).
-  opportunitiesOwned Opportunity[] @relation("OpportunityOwner")
+  opportunitiesOwned     Opportunity[] @relation("OpportunityOwner")
+  opportunitiesArchivedBy Opportunity[] @relation("OpportunityArchivedBy")
   // Knowledge Base / SOP library (slice 2 â€” KB articles authored by this user).
   kbArticlesAuthored KbArticle[]   @relation("KbArticleAuthor")
 
@@ -6733,7 +6734,8 @@ model DropReason {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  opportunities Opportunity[]
+  opportunities        Opportunity[] @relation("OpportunityDropReason")
+  archivedOpportunities Opportunity[] @relation("OpportunityArchiveReason")
 
   @@map("drop_reasons")
 }
@@ -6781,8 +6783,17 @@ model Opportunity {
 
   // Managed drop-reason lookup (replaces free-text lostReason).
   dropReasonId     String?     @map("drop_reason_id")
-  dropReason       DropReason? @relation(fields: [dropReasonId], references: [id], onDelete: SetNull)
+  dropReason       DropReason? @relation("OpportunityDropReason", fields: [dropReasonId], references: [id], onDelete: SetNull)
   dropReasonDetail String?     @map("drop_reason_detail")
+
+  // CRM-S11: Archive with a governed reason (reuses DropReason — same list,
+  // so archive reasons are reportable alongside drop reasons).
+  archiveReasonId     String?     @map("archive_reason_id")
+  archiveReason       DropReason? @relation("OpportunityArchiveReason", fields: [archiveReasonId], references: [id], onDelete: SetNull)
+  archiveReasonDetail String?     @map("archive_reason_detail")
+  archivedAt          DateTime?   @map("archived_at")
+  archivedById        String?     @map("archived_by_id")
+  archivedBy          User?       @relation("OpportunityArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
 
   // Convert-to-Tender: unique 1:1 back-link once fired. Cascade-null when the
   // tender is deleted so the opportunity survives (marked won â†’ tender removed).

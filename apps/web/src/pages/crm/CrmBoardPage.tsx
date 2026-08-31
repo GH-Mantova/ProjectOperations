@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { DontPursueModal } from "./DontPursueModal";
+import { ArchiveEntryModal } from "./ArchiveEntryModal";
 import { LeadsTriageList } from "./LeadsTriageList";
 import {
   createEntry,
+  deleteEntry,
   listDropReasons,
   listEntries,
   priceIt,
-  updateEntry,
+  restoreEntry,
   type DropReason,
   type Entry
 } from "./crm-api";
@@ -66,6 +68,9 @@ export function CrmBoardContent() {
 
   // Don't pursue modal
   const [dontPursueTargetId, setDontPursueTargetId] = useState<string | null>(null);
+
+  // Archive modal
+  const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
 
   // Price it (draft tender) modal
   const [priceTarget, setPriceTarget] = useState<Entry | null>(null);
@@ -258,8 +263,9 @@ export function CrmBoardContent() {
           onOpen={(id) => navigate(`/crm/opportunities/${id}`)}
           onPriceIt={(id) => void openPriceDialog(id)}
           onDontPursue={(id) => setDontPursueTargetId(id)}
-          onArchive={(id) => void updateEntry(authFetch, id, { stage: "archived" }).then(() => load())}
-          onRestore={(id) => void updateEntry(authFetch, id, { stage: "open" }).then(() => load())}
+          onArchive={(id) => setArchiveTargetId(id)}
+          onRestore={(id) => void restoreEntry(authFetch, id).then(() => load()).catch((err: Error) => setError(err.message))}
+          onDelete={(id) => void deleteEntry(authFetch, id).then(() => load()).catch((err: Error) => setError(err.message))}
         />
       )}
 
@@ -370,6 +376,19 @@ export function CrmBoardContent() {
           onClose={() => setDontPursueTargetId(null)}
           onSaved={() => {
             setDontPursueTargetId(null);
+            void load();
+          }}
+        />
+      )}
+
+      {/* Archive modal */}
+      {archiveTargetId && (
+        <ArchiveEntryModal
+          entryId={archiveTargetId}
+          entryTitle={entries.find((e) => e.id === archiveTargetId)?.title}
+          onClose={() => setArchiveTargetId(null)}
+          onSaved={() => {
+            setArchiveTargetId(null);
             void load();
           }}
         />

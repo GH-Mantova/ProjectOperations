@@ -9,6 +9,7 @@ import { UpdateDropReasonDto } from "./dto/update-drop-reason.dto";
 import { CreateEntryDto } from "./dto/create-entry.dto";
 import { UpdateEntryDto } from "./dto/update-entry.dto";
 import { DontPursueDto } from "./dto/dont-pursue.dto";
+import { ArchiveEntryDto } from "./dto/archive-entry.dto";
 import {
   OpportunitySource,
   OpportunityStage,
@@ -373,7 +374,6 @@ export class CrmService {
       where: { id },
       include: {
         ...this.opportunityInclude(),
-        dropReason: { select: { id: true, label: true } },
         convertedTender: { select: { id: true, tenderNumber: true, title: true, status: true } }
       }
     });
@@ -649,6 +649,125 @@ export class CrmService {
     });
   }
 
+  /**
+   * Archive a CRM entry with a mandatory governed reason (reuses DropReason).
+   *
+   * @throws NotFoundException  If the entry does not exist.
+   * @throws BadRequestException If archiveReasonId is missing or the DropReason
+   *   does not exist.
+   */
+  async archiveEntry(id: string, dto: ArchiveEntryDto, actorId: string) {
+    const existing = await this.prisma.opportunity.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Entry ${id} not found.`);
+
+    const reason = await this.prisma.dropReason.findUnique({
+      where: { id: dto.archiveReasonId },
+      select: { id: true }
+    });
+    if (!reason) {
+      throw new BadRequestException(
+        `DropReason ${dto.archiveReasonId} not found. Use a valid drop reason id.`
+      );
+    }
+
+    return this.prisma.opportunity.update({
+      where: { id },
+      data: {
+        stage: "archived",
+        archiveReasonId: dto.archiveReasonId,
+        archiveReasonDetail: dto.detail ?? null,
+        archivedAt: new Date(),
+        archivedById: actorId
+      },
+      include: this.opportunityInclude()
+    });
+  }
+
+  /**
+   * Restore a CRM entry from archived stage back to open.
+   * Clears all archive fields. Unrestricted — no reason needed to un-archive.
+   *
+   * @throws NotFoundException  If the entry does not exist.
+   * @throws BadRequestException If the entry is not archived.
+   */
+  async restoreEntry(id: string) {
+    const existing = await this.prisma.opportunity.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Entry ${id} not found.`);
+    if (existing.stage !== "archived") {
+      throw new BadRequestException(
+        `Entry ${id} is not archived (current stage: ${existing.stage}).`
+      );
+    }
+
+    return this.prisma.opportunity.update({
+      where: { id },
+      data: {
+        stage: "open",
+        archiveReasonId: null,
+        archiveReasonDetail: null,
+        archivedAt: null,
+        archivedById: null
+      },
+      include: this.opportunityInclude()
+    });
+  }
+
+  /**
+   * Delete a CRM entry — permitted only when the entry is genuinely empty:
+   * no description, no contact, no account, no estimatedValue, no dropReason,
+   * no convertedTender, and no CommThread anchored to it.
+   *
+   * The comms-thread check reads prisma.commThread directly using the shared
+   * PrismaService rather than importing CommsService, preserving the module
+   * boundary. CommThread is a Prisma model in the same database; CrmService
+   * already owns PrismaService, so this requires no new NestJS dependency.
+   *
+   * Refuses with a 400 that names the blocking field(s).
+   *
+   * @throws NotFoundException    If the entry does not exist.
+   * @throws BadRequestException  If any content field is non-empty.
+   */
+  async deleteEntry(id: string) {
+    const existing = await this.prisma.opportunity.findUnique({
+      where: { id },
+      select: {
+        description: true,
+        contactId: true,
+        accountId: true,
+        estimatedValue: true,
+        dropReasonId: true,
+        convertedTenderId: true
+      }
+    });
+    if (!existing) throw new NotFoundException(`Entry ${id} not found.`);
+
+    const blockers: string[] = [];
+    if (existing.description) blockers.push("description");
+    if (existing.contactId) blockers.push("contact");
+    if (existing.accountId) blockers.push("account");
+    if (existing.estimatedValue !== null) blockers.push("estimatedValue");
+    if (existing.dropReasonId) blockers.push("dropReason");
+    if (existing.convertedTenderId) blockers.push("convertedTender");
+
+    // Check for comms threads anchored to this opportunity.
+    // We read CommThread directly via PrismaService to avoid importing
+    // CommsService across the module boundary. The polymorphic (entityType,
+    // entityId) pair uses entityType="opportunity" by convention in CommsService.
+    const threadCount = await this.prisma.commThread.count({
+      where: { entityType: "opportunity", entityId: id }
+    });
+    if (threadCount > 0) blockers.push("commThread");
+
+    if (blockers.length > 0) {
+      throw new BadRequestException(
+        `Cannot delete entry ${id}: the following fields are not empty: ${blockers.join(", ")}. ` +
+          `Archive the entry instead — archive is reversible, delete is not.`
+      );
+    }
+
+    await this.prisma.opportunity.delete({ where: { id } });
+  }
+
   // ── Forecast ─────────────────────────────────────────────────────────────
 
   /**
@@ -738,12 +857,13 @@ export class CrmService {
   async deleteDropReason(id: string) {
     const existing = await this.prisma.dropReason.findUnique({
       where: { id },
-      include: { _count: { select: { opportunities: true } } }
+      include: { _count: { select: { opportunities: true, archivedOpportunities: true } } }
     });
     if (!existing) throw new NotFoundException(`DropReason ${id} not found.`);
-    if (existing._count.opportunities > 0) {
+    const totalUsage = existing._count.opportunities + existing._count.archivedOpportunities;
+    if (totalUsage > 0) {
       throw new ConflictException(
-        `DropReason ${id} is referenced by ${existing._count.opportunities} opportunity(s) and cannot be deleted.`
+        `DropReason ${id} is referenced by ${totalUsage} opportunity(s) and cannot be deleted.`
       );
     }
     await this.prisma.dropReason.delete({ where: { id } });
@@ -756,7 +876,9 @@ export class CrmService {
       client: { select: { id: true, name: true } },
       contact: { select: { id: true, firstName: true, lastName: true, email: true } },
       owner: { select: { id: true, firstName: true, lastName: true } },
-      convertedTender: { select: { id: true, tenderNumber: true, status: true } }
+      convertedTender: { select: { id: true, tenderNumber: true, status: true } },
+      dropReason: { select: { id: true, label: true } },
+      archiveReason: { select: { id: true, label: true } }
     } satisfies Prisma.OpportunityInclude;
   }
 

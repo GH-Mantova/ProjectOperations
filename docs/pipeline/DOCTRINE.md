@@ -339,9 +339,21 @@ here now because they are true for **every** station.
   filter over that reports **zero**, which reads as "nothing is there." That produced a false
   "0 tracked ready-files" against a truth of 9, asserted into a live station prompt. With a
   **trailing slash** (`-- <dir>/`) it returns that directory’s **direct children**, which is correct
-  for a depth-1 filter and **ZERO for anything deeper** (measured 2026-08-29: `superseded/*.md`
-  returned 0 without `-r` and 247 with it). **Always `-r` unless you deliberately want one level,
-  and always control the query against a file you know is tracked.**
+  for a depth-1 filter and **ZERO for anything deeper** (measured 2026-08-31 at `b19f3db9`:
+  `-- docs/pr-prompts/superseded` returns **1** without `-r` and **252** with it). **Always `-r`
+  unless you deliberately want one level, and always control the query against a file you know is
+  tracked.**
+- 🔴 **`git ls-tree` has NO glob pathspec, and it does not tell you.** Any `*` form returns **0**
+  silently at exit 0: `-- 'docs/pr-prompts/superseded/*.md'` returns 0 *with* `-r` and *without*
+  it — and so does the positive control `-- 'docs/pr-prompts/*.md'`, against a truth of **85**
+  tracked files. The only glob form that fails loudly is the explicit magic:
+  `:(glob)docs/pr-prompts/superseded/**/*.md` → `fatal: pathspec magic not supported by this
+  command: 'glob'`. **So `-r` never rescues a zero-result glob** — it returns the same zero, and now
+  you believe it. `ls-tree` takes literal path prefixes; filter the result, don't glob the pathspec.
+  (Until 2026-08-31 the bullet above used `superseded/*.md` as its worked example, claiming 0
+  without `-r` and 247 with it — a contrast that query form cannot produce in either direction.
+  Found by Station 04 on 2026-08-30, re-measured with the failing control by Station 00 on
+  2026-08-31. The headline rule was never wrong; its illustration was.)
 - ⚠️ **`git status` is structurally blind to gitignored files.** A `*-ready.md` never shows as `??`.
   Use `git ls-files --others --ignored --exclude-standard`, or `git check-ignore -v` **on a FILE**.
   🔴 `git check-ignore -v` on a **directory** prints nothing and exits 1 — "not ignored" — even when a

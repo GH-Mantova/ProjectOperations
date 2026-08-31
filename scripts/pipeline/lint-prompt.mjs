@@ -930,6 +930,109 @@ function checkGateNotReleased(fm, repoRoot, name, isHold) {
   return { ok: true };
 }
 
+/**
+ * Fold a YAML block scalar into a plain string.
+ *
+ * A block scalar begins with an indicator on the key line (">", ">-", ">+", "|",
+ * "|-", "|+") and continues on subsequent lines that are more-indented than the key
+ * line.  Without this helper, parseFrontMatter returns the raw indicator string
+ * (e.g. ">-") instead of the folded body, so every gate that reads a block-scalar
+ * field receives a two-character lie.
+ *
+ * Chomping rules (- / + / bare):
+ *   "-"  strip all trailing newlines
+ *   "+"  keep all trailing newlines
+ *   bare keep exactly one trailing newline (we return without the trailing \n for
+ *        easy string comparisons — callers already do .trim() where needed)
+ *
+ * @param {string[]} lines   All lines of the front-matter block.
+ * @param {number}   startIdx  Index of the line AFTER the key: indicator line.
+ * @param {number}   keyCol  Column (0-based) of the key on the indicator line.
+ * @param {string}   indicator  One of ">", ">-", ">+", "|", "|-", "|+".
+ * @returns {{ value: string, nextIdx: number }}
+ *   value   — the resolved scalar string (no trailing newline unless "+" chomp)
+ *   nextIdx — the index of the first line that was NOT consumed
+ */
+function foldBlockScalar(lines, startIdx, keyCol, indicator) {
+  const folded = indicator[0] === ">";
+  const chomp = indicator.length > 1 ? indicator[1] : "";
+
+  // Determine the content indentation from the first non-empty body line.
+  let contentIndent = -1;
+  for (let scan = startIdx; scan < lines.length; scan++) {
+    const raw = lines[scan];
+    if (raw.trim() === "") continue; // blank line — skip for indent detection
+    let col = 0;
+    while (col < raw.length && (raw[col] === " " || raw[col] === "\t")) col++;
+    if (col > keyCol) { contentIndent = col; break; }
+    // A non-blank line that is NOT more-indented than the key means the block is empty.
+    break;
+  }
+
+  if (contentIndent === -1) {
+    // No indented body lines found — the scalar is empty.
+    return { value: "", nextIdx: startIdx };
+  }
+
+  const chunks = [];
+  let idx = startIdx;
+  while (idx < lines.length) {
+    const raw = lines[idx];
+    if (raw.trim() === "") {
+      // Blank line inside the block scalar
+      chunks.push("");
+      idx++;
+      continue;
+    }
+    // Measure indentation of this line.
+    let col = 0;
+    while (col < raw.length && (raw[col] === " " || raw[col] === "\t")) col++;
+    if (col < contentIndent) break; // back to the outer YAML level — block ends
+    chunks.push(raw.slice(contentIndent));
+    idx++;
+  }
+
+  // Build the value according to the style.
+  let value;
+  if (folded) {
+    // Folded (">") — join wrapped lines with spaces; blank lines become newlines.
+    const parts = [];
+    let pendingNewlines = 0;
+    for (const chunk of chunks) {
+      if (chunk === "") {
+        pendingNewlines++;
+      } else {
+        if (parts.length > 0) {
+          if (pendingNewlines > 0) {
+            parts.push("\n".repeat(pendingNewlines));
+          } else {
+            parts.push(" ");
+          }
+        }
+        pendingNewlines = 0;
+        parts.push(chunk);
+      }
+    }
+    value = parts.join("");
+  } else {
+    // Literal ("|") — preserve lines as-is joined with newlines.
+    value = chunks.join("\n");
+  }
+
+  // Apply chomping.
+  if (chomp === "-") {
+    value = value.replace(/\n+$/, "");
+  } else if (chomp === "+") {
+    // Keep all trailing newlines — value already has them from blank chunks.
+    // Add a final newline if the last non-blank chunk did not produce one.
+    if (!value.endsWith("\n") && chunks.length > 0) value += "\n";
+  }
+  // bare chomp: keep exactly one trailing newline — we just leave value as-is
+  // (it ends without \n from the join logic above, which is fine for our callers).
+
+  return { value, nextIdx: idx };
+}
+
 /** Minimal YAML front-matter parser. Deliberately dumb: no dependency, no surprises. */
 export function parseFrontMatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -937,7 +1040,10 @@ export function parseFrontMatter(text) {
   const out = {};
   let key = null;
 
-  for (const raw of m[1].split(/\r?\n/)) {
+  // Use indexed iteration so the block-scalar folder can advance i past consumed lines.
+  const lines = m[1].split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const line = raw.replace(/\s+$/, "");
     if (!line.trim() || line.trim().startsWith("#")) continue;
 
@@ -952,6 +1058,22 @@ export function parseFrontMatter(text) {
     if (kv) {
       key = kv[1];
       let v = kv[2].trim();
+
+      // YAML block scalar indicators: ">", ">-", ">+", "|", "|-", "|+".
+      // Without folding, parseFrontMatter returns the two-character indicator string
+      // instead of the real value, so every gate that reads a block-scalar field is
+      // handed a lie (e.g. ">-" instead of the rollback strategy text).
+      const BLOCK_INDICATORS = [">-", ">+", ">", "|-", "|+", "|"];
+      if (BLOCK_INDICATORS.includes(v)) {
+        // Determine the key's column for indentation comparison.
+        let keyCol = 0;
+        while (keyCol < line.length && (line[keyCol] === " " || line[keyCol] === "\t")) keyCol++;
+        const result = foldBlockScalar(lines, i + 1, keyCol, v);
+        out[key] = result.value === "" ? [] : result.value;
+        i = result.nextIdx - 1; // -1 because the outer loop will i++
+        continue;
+      }
+
       // Strip surrounding quotes. WITHOUT THIS, a premise written as
       //     premise: '! grep -q "X" file'
       // executes WITH its quotes, the shell cannot find that "file", it fails, and the

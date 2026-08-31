@@ -120,9 +120,12 @@ this is the complete-and-additive option — it cures the PR *and* the latent `m
 move, changes no data and no data entry, and holds for every future card at any wrap boundary.
 The alternative (a separate `fixes_pr` against `main`) fails the *immediate* half: it would leave
 `#1443` red and, being an `apps/web` diff, would itself be watcher-routed to Marco — two human
-merges instead of one, for the same cure. **Verification is CI's, not mine: `tendering-e2e` takes
-~13 min and had not settled when this run ended. If it is still red on `7235c280`, the next 00 owns
-it and should start from the new `error-context.md`, not from this note.**
+merges instead of one, for the same cure. **VERIFIED — the exit code decided, not my reading of it.**
+`[MEASURED]` at 13:45:57Z, `gh pr checks 1443` → `tendering-e2e  pass  12m58s`
+(run `33395847652`, job `99500101709`) on `7235c280`. The suite that had failed twice on this branch
+is green, and `#1450`'s earlier green on the same base remains the control that says this was never
+a main-wide regression. **#1443 is now green on every check and is Marco's to merge — not mine
+(RULE 2, `"marco":true`, measured above).**
 
 **F2 — `#1450` is green, CLEAN, unlabelled — and still not mine.**
 13/13 checks pass, `mergeStateStatus: CLEAN`, zero labels. The watcher routed it to Marco anyway:
@@ -193,9 +196,8 @@ returns it, and the 10:09Z run refuted the "only restorable copy" premise with t
   wedged, so there was nothing to restart).
 - **Did not run `git` in `C:\po-watcher\ProjectOperations`,** and did not touch the dev tree's
   index: both writes this run happened in disposable worktrees off a fetched ref.
-- **Did not wait for `#1443`'s `tendering-e2e` to settle.** ~13 minutes; the run ended first. That
-  is the one claim in this report I could not close, and F1 says so plainly rather than reporting
-  the fix as verified.
+- **Did not merge `#1443`,** although I made it green. It is `escalates: true` and watcher-routed;
+  driving it green is my lane, merging it is not.
 - **Did not re-measure the estpricing HOLD premises, the sot-refs baseline, or the watcher clone's
   dirty count.** All three were measured within the last two hours by 00 or 04 and none is a
   standing state I should be re-deriving.

@@ -1,0 +1,233 @@
+#!/usr/bin/env node
+/**
+ * pre-commit hook — refuse an unlogged HOLD->ready arming rename
+ *
+ * Installed to .git/hooks/pre-commit by scripts/pipeline/install-agents.ps1
+ * (or manually: cp scripts/pipeline/hooks/pre-commit .git/hooks/pre-commit)
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THIS HOOK DOES
+ *
+ * When a commit stages a rename of the form:
+ *
+ *   docs/pr-prompts/<slug>-HOLD.md  ->  docs/pr-prompts/<slug>-ready.md
+ *
+ * the hook checks whether the slug appears in an ARMED line in
+ * docs/pr-prompts/.arming-log.txt.  If it does not, the commit is refused
+ * with a message telling the committer to re-arm via arm-prompt.ps1.
+ *
+ * The literal token "unlogged-arm" appears in this file because the slice
+ * premise and done_when grep for it:
+ *
+ *   grep -q "unlogged-arm" scripts/pipeline/hooks/pre-commit
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THIS HOOK DOES NOT DO
+ *
+ * - It does NOT block a bare HOLD deletion (no -ready.md counterpart). That is
+ *   how Station 06 board PRs retire consumed prompts. That case must pass.
+ * - It does NOT block any path outside docs/pr-prompts/.
+ * - It does NOT block a rename that HAS a matching ARMED log line.
+ * - It does NOT fail when .arming-log.txt is absent — a fresh clone has no log.
+ *   Absent log means "cannot judge": warn, allow, and say why.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A SPEED BUMP, NOT A GATE
+ *
+ * Git hooks live in .git/hooks/, which is NOT versioned. This file is
+ * committed to scripts/pipeline/hooks/ as source of truth, but it is only
+ * active for repos where the install step has been run.  Anyone who clones
+ * without running the install step has no hook.  The filesystem (and
+ * .arming-log.txt) remains the only sound arm census; this hook exists to
+ * catch accidents, not to make bypass impossible.
+ *
+ * ---------------------------------------------------------------------------
+ */
+
+"use strict";
+
+import { execFileSync } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// ---------------------------------------------------------------------------
+// Locate repo root from hook location or cwd
+// ---------------------------------------------------------------------------
+
+// When installed as .git/hooks/pre-commit, __dirname is .git/hooks/.
+// When run from scripts/pipeline/hooks/, __dirname is scripts/pipeline/hooks/.
+// In both cases we can find the repo root via `git rev-parse --show-toplevel`.
+
+let REPO_ROOT;
+try {
+  REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+  }).trim();
+} catch (_) {
+  process.stderr.write("[pre-commit] WARN: could not determine repo root; skipping unlogged-arm check.\n");
+  process.exit(0);
+}
+
+const ARM_LOG = join(REPO_ROOT, "docs", "pr-prompts", ".arming-log.txt");
+const PROMPTS_DIR = "docs/pr-prompts/";
+
+// ---------------------------------------------------------------------------
+// Read staged name-status
+// ---------------------------------------------------------------------------
+
+let nameStatus;
+try {
+  nameStatus = execFileSync(
+    "git",
+    ["diff", "--cached", "--name-status", "-M"],
+    { encoding: "utf8", cwd: REPO_ROOT, stdio: ["pipe", "pipe", "pipe"] }
+  );
+} catch (_) {
+  process.stderr.write("[pre-commit] WARN: git diff --cached failed; skipping unlogged-arm check.\n");
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Parse the staged file list into sets
+// ---------------------------------------------------------------------------
+// Lines from `git diff --cached --name-status -M`:
+//   D  docs/pr-prompts/pr-foo-HOLD.md            <- bare deletion
+//   A  docs/pr-prompts/pr-foo-ready.md           <- bare addition
+//   R100  docs/pr-prompts/pr-foo-HOLD.md  docs/pr-prompts/pr-foo-ready.md  <- rename
+
+/** Set of slugs for which a -HOLD.md was removed (delete or rename-from). */
+const holdRemovedSlugs = new Set();
+
+/** Set of slugs for which a -ready.md was added (add or rename-to). */
+const readyAddedSlugs = new Set();
+
+for (const rawLine of nameStatus.split("\n")) {
+  const line = rawLine.trimEnd();
+  if (!line) continue;
+
+  const parts = line.split(/\t/);
+  const status = parts[0];    // e.g. "D", "A", "R100", "M", ...
+  const oldPath = parts[1];   // always present
+  const newPath = parts[2];   // only for renames
+
+  if (status.startsWith("R") && newPath) {
+    // Rename: check both sides
+    if (oldPath.startsWith(PROMPTS_DIR) && oldPath.endsWith("-HOLD.md")) {
+      const slug = oldPath.slice(PROMPTS_DIR.length, -"-HOLD.md".length);
+      holdRemovedSlugs.add(slug);
+    }
+    if (newPath.startsWith(PROMPTS_DIR) && newPath.endsWith("-ready.md")) {
+      const slug = newPath.slice(PROMPTS_DIR.length, -"-ready.md".length);
+      readyAddedSlugs.add(slug);
+    }
+  } else if (status === "D" && oldPath) {
+    if (oldPath.startsWith(PROMPTS_DIR) && oldPath.endsWith("-HOLD.md")) {
+      const slug = oldPath.slice(PROMPTS_DIR.length, -"-HOLD.md".length);
+      holdRemovedSlugs.add(slug);
+    }
+  } else if (status === "A" && oldPath) {
+    // oldPath is actually the only path in an A line
+    if (oldPath.startsWith(PROMPTS_DIR) && oldPath.endsWith("-ready.md")) {
+      const slug = oldPath.slice(PROMPTS_DIR.length, -"-ready.md".length);
+      readyAddedSlugs.add(slug);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Find slugs that look like an unlogged HOLD->ready rename pair
+// ---------------------------------------------------------------------------
+// A "pair" means the same slug has BOTH a HOLD removal AND a ready addition.
+// A lone HOLD deletion (Station 06 bookkeeping) has no ready counterpart — allow it.
+
+/** @type {string[]} slugs that appear to be HOLD->ready rename pairs */
+const pairSlugs = [];
+for (const slug of holdRemovedSlugs) {
+  if (readyAddedSlugs.has(slug)) {
+    pairSlugs.push(slug);
+  }
+}
+
+if (pairSlugs.length === 0) {
+  // No HOLD->ready pairs staged — nothing to check.
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Read .arming-log.txt (absent = cannot judge → warn and allow)
+// ---------------------------------------------------------------------------
+
+let logContents = null;
+if (existsSync(ARM_LOG)) {
+  try {
+    logContents = readFileSync(ARM_LOG, "utf8");
+  } catch (err) {
+    process.stderr.write(
+      `[pre-commit] WARN: could not read .arming-log.txt (${err.message}); skipping unlogged-arm check.\n`
+    );
+    process.exit(0);
+  }
+} else {
+  process.stderr.write(
+    "[pre-commit] WARN: .arming-log.txt is absent (fresh clone?). Cannot judge whether staged\n" +
+    "  arming renames are logged. Allowing commit, but please verify these were armed via\n" +
+    "  scripts/pipeline/arm-prompt.ps1:\n"
+  );
+  for (const slug of pairSlugs) {
+    process.stderr.write(`    ${slug}\n`);
+  }
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Check each pair slug against the log
+// ---------------------------------------------------------------------------
+// Match: a line containing "ARMED" followed (anywhere on the line) by the slug.
+// We do NOT require field positions — the log is append-only and best-effort.
+// The header comment "# WRAPPER ARMS ONLY" is tolerated (it contains no "ARMED").
+
+/** @type {string[]} slugs that have a HOLD->ready pair but NO matching ARMED line */
+const unloggedSlugs = [];
+
+for (const slug of pairSlugs) {
+  // Look for any line that contains "ARMED" AND the slug.
+  // This tolerates varying field counts and the header comment.
+  const hasEntry = logContents.split("\n").some(
+    (line) => line.includes("ARMED") && line.includes(slug)
+  );
+  if (!hasEntry) {
+    unloggedSlugs.push(slug);
+  }
+}
+
+if (unloggedSlugs.length === 0) {
+  // All pairs are logged — allow the commit.
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Refuse: unlogged-arm detected
+// ---------------------------------------------------------------------------
+
+process.stderr.write(
+  "\n[pre-commit] ERROR: unlogged-arm — staged HOLD->ready rename(s) with no matching\n" +
+  "  entry in docs/pr-prompts/.arming-log.txt.\n\n" +
+  "  A bare `git mv` bypasses arm-prompt.ps1, takes no lock, and writes nothing to\n" +
+  "  the audit log.  This hook refuses it as a backstop.\n\n" +
+  "  To fix: un-stage and re-arm each prompt via the wrapper:\n\n"
+);
+for (const slug of unloggedSlugs) {
+  process.stderr.write(
+    `    git restore --staged docs/pr-prompts/${slug}-HOLD.md docs/pr-prompts/${slug}-ready.md\n` +
+    `    git restore docs/pr-prompts/${slug}-ready.md   # undo the filesystem rename\n` +
+    `    scripts/pipeline/arm-prompt.ps1 -Name ${slug}\n\n`
+  );
+}
+process.stderr.write(
+  "  Note: hooks are not versioned into .git/hooks automatically; this is a speed\n" +
+  "  bump, not a hard gate.  The filesystem remains the only sound arm census.\n\n"
+);
+
+process.exit(1);

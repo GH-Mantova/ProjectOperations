@@ -402,6 +402,14 @@ export function JobDetailPage() {
           <span className={STATUS_CLASS[job.status] ?? "s7-badge s7-badge--neutral"}>
             {STATUS_LABEL[job.status] ?? job.status}
           </span>
+          {/* CRM-S9: deep-link into anchored Comms hub for this job. */}
+          <Link
+            to={`/crm/comms?entityType=JOB&entityId=${encodeURIComponent(job.id)}`}
+            className="s7-btn s7-btn--secondary s7-btn--sm"
+            title="Open the Comms hub anchored to this job"
+          >
+            Comms →
+          </Link>
           {job.closeout ? (
             <Link to={`/archive/${job.id}`} className="s7-btn s7-btn--secondary s7-btn--sm">
               View archive →

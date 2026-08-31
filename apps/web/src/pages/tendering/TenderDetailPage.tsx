@@ -448,6 +448,14 @@ export function TenderDetailPage() {
               canRetry={canManageTenders}
               onRetried={() => void reload()}
             />
+            {/* CRM-S9: deep-link into anchored Comms hub for this tender. */}
+            <Link
+              to={`/crm/comms?entityType=TENDER&entityId=${encodeURIComponent(tender.id)}`}
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              title="Open the Comms hub anchored to this tender"
+            >
+              Comms →
+            </Link>
             {canManageTenders ? (
               <select
                 aria-label="Change tender status"

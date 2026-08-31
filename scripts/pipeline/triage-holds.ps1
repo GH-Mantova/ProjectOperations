@@ -50,6 +50,54 @@ if (-not (Test-Path $linter))   { Write-Output ("NO-OP: linter not found: " + $l
 
 Set-Location $Repo
 
+# ---- GIT positive control (DOCTRINE section 7 standing guard 1 and 2) ---------------------
+# WHY THIS EXISTS. lint-prompt.mjs fails OPEN with respect to arming: readFromOriginMain
+# (lint-prompt.mjs:439-459) returns null when `git` cannot be reached and every one of the
+# five gate probes then SKIPS, so the verdict line and the exit code are indistinguishable
+# from a real ADMIT. Measured by Station 04 on 2026-08-30, A/B on the same board in the same
+# minute: with a healthy git, gates-satisfied=29 / still-gated=31; with LINT_GIT_BIN pointed
+# at a nonexistent binary, gates-satisfied=53 / still-gated=7. 24 gated HOLDs silently
+# changed bucket -- including pr-rates-s11c-drop-legacy-tables (an irreversible table drop
+# whose skipped gate is the file recording MARCO'S WRITTEN APPROVAL) -- and the calibration
+# line printed the identical reassurance both times, because the 7 survivors were the
+# HUMAN_GATE_PRESENT rejects matched at lint-prompt.mjs:728 BEFORE any git probe runs. The
+# one failure mode where the buckets are wholesale wrong is precisely the one that leaves
+# two buckets populated, so `buckets -lt 2` can never catch it.
+#
+# So: prove git can read origin/main BEFORE the sweep, and refuse to publish TOTALS if it
+# cannot. An empty result is not an empty world (DOCTRINE section 9.6).
+#
+# The probe deliberately resolves the binary the SAME way lint-prompt.mjs does --
+# $env:LINT_GIT_BIN ?? "git" -- so that testing the linter with a broken LINT_GIT_BIN also
+# trips this control instead of sailing past it.
+$gitBin      = if ($env:LINT_GIT_BIN) { $env:LINT_GIT_BIN } else { "git" }
+$gitProbeOk  = $false
+$gitProbeNote = ""
+$knownTracked = "docs/pipeline/DOCTRINE.md"
+try {
+    $gitProbeOut = (& $gitBin show ("origin/main:" + $knownTracked) 2>&1 | Out-String)
+    $gitProbeExit = $LASTEXITCODE
+    if ($gitProbeExit -eq 0 -and $gitProbeOut.Length -gt 0) {
+        $gitProbeOk = $true
+    } else {
+        $gitProbeNote = "`"" + $gitBin + " show origin/main:" + $knownTracked + "`" exited " + $gitProbeExit + " and returned " + $gitProbeOut.Length + " chars"
+    }
+} catch {
+    $gitProbeNote = "`"" + $gitBin + "`" could not be executed: " + $_.Exception.Message
+}
+if ($gitProbeOk) {
+    Write-Output ("    GIT control: PASS -- " + $gitBin + " read origin/main:" + $knownTracked + " (" + $gitProbeOut.Length + " chars), so gate probes can actually run.")
+} else {
+    Write-Output "[CANNOT MEASURE] the gate probes cannot run: git could not read origin/main."
+    Write-Output ("    " + $gitProbeNote)
+    Write-Output "    lint-prompt.mjs fails OPEN here -- every gate SKIPS and every gated HOLD"
+    Write-Output "    would be reported as a candidate for arming, at exit 0, with no visible"
+    Write-Output "    difference from a real ADMIT (DOCTRINE section 9.5). Publishing buckets"
+    Write-Output "    from this state is worse than publishing nothing, so nothing is published."
+    Write-Output "    Fix git (or unset LINT_GIT_BIN) and re-run. ARM NOTHING off this run."
+    exit 2
+}
+
 # ---- SPENT positive control (DOCTRINE section 7 standing guard 1) -------------------------
 # The self-calibration at the bottom of this script counts NON-EMPTY buckets. With spent=0 --
 # the reading on 2026-08-30 across 59 and 61 HOLDs -- the two verdicts it observed were ADMIT
@@ -89,12 +137,25 @@ $satisfied  = New-Object System.Collections.ArrayList
 $spent      = New-Object System.Collections.ArrayList
 $stillGated = New-Object System.Collections.ArrayList
 $unreadable = New-Object System.Collections.ArrayList
+$skippedGates = New-Object System.Collections.ArrayList
 
 foreach ($holdFile in $holdFiles) {
     $relative  = "docs/pr-prompts/" + $holdFile.Name
     $rawOutput = (& node $linter $relative 2>&1)
     $exitCode  = $LASTEXITCODE
     $text      = ($rawOutput | Out-String)
+
+    # A PARTIAL git outage does not trip the preflight above: git resolves, but an individual
+    # `git show origin/main:<path>` still fails and lint-prompt.mjs prints
+    #   "WARN  GATE_..._probe: could not reach origin/main:<path>; skipping (fail-safe ...)"
+    # then ADMITs at exit 0. That WARN scrolls past above the TOTALS line everybody quotes, so
+    # count it here and refuse to publish totals that any skipped gate contributed to.
+    foreach ($rawLine in ($text -split "`r?`n")) {
+        $cleanLine = ($rawLine -replace "\x1b\[[0-9;]*m", "").Trim()
+        if ($cleanLine -match "probe: could not reach") {
+            [void]$skippedGates.Add([pscustomobject]@{ Name = $holdFile.Name; Warn = $cleanLine })
+        }
+    }
 
     # First non-empty line, minus ANSI colour, is the verdict line.
     $verdict = ""
@@ -136,6 +197,23 @@ if ($unreadable.Count -gt 0) {
     Write-Output ">>> UNREADABLE -- unexpected linter exit code. Treat as UNMEASURED, not as a pass."
     foreach ($item in $unreadable) { Write-Output ("    " + $item.Name + "  exit=" + $item.Exit + "`n        " + $item.Verdict) }
     Write-Output ""
+}
+
+# ---- SKIPPED-GATE gate: a partial git outage poisons the buckets, silently ----------------
+if ($skippedGates.Count -gt 0) {
+    $affected = @($skippedGates | Select-Object -ExpandProperty Name -Unique)
+    Write-Output (">>> SKIPPED GATES -- " + $skippedGates.Count + " gate probe(s) could not reach origin/main, across " + $affected.Count + " prompt(s)")
+    foreach ($item in $skippedGates) { Write-Output ("    " + $item.Name + "`n        " + $item.Warn) }
+    Write-Output ""
+    Write-Output "[CANNOT MEASURE] TOTALS are NOT published for this run."
+    Write-Output "    A skipped gate is fail-safe against wrongly BINNING a prompt and fail-OPEN"
+    Write-Output "    with respect to ARMING it: the gate simply does not run, and the prompt"
+    Write-Output "    ADMITs at exit 0 (DOCTRINE section 9.5). Every prompt listed above is"
+    Write-Output "    therefore UNMEASURED, not satisfied -- and a bucket count that includes"
+    Write-Output "    unmeasured prompts is the confident wrong verdict DOCTRINE section 7 exists"
+    Write-Output "    to prevent. ARM NOTHING off this run. Fix the reachability and re-run."
+    Write-Output "    READ-ONLY: nothing was armed, renamed, moved or staged."
+    exit 2
 }
 
 # Self-calibration (DOCTRINE section 7): prove the instrument can produce more than one answer.

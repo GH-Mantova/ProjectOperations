@@ -11,7 +11,7 @@ type MockPrisma = {
     update: jest.Mock;
     count: jest.Mock;
   };
-  client: { findUnique: jest.Mock };
+  client: { findUnique: jest.Mock; findMany: jest.Mock };
   user: { findUnique: jest.Mock };
   contact: { findMany: jest.Mock };
   tenderClient: { findMany: jest.Mock; count: jest.Mock };
@@ -28,7 +28,7 @@ function makePrisma(): MockPrisma {
       update: jest.fn(),
       count: jest.fn().mockResolvedValue(0)
     },
-    client: { findUnique: jest.fn() },
+    client: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     user: { findUnique: jest.fn() },
     contact: { findMany: jest.fn().mockResolvedValue([]) },
     tenderClient: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
@@ -466,5 +466,90 @@ describe("AccountsService.listAccountSummaries", () => {
     const service = makeService(prisma);
     const summaries = await service.listAccountSummaries();
     expect(summaries).toEqual([]);
+  });
+});
+
+// ── listClientLinkPreview (CRM-S4) ────────────────────────────────────────────
+
+describe("AccountsService.listClientLinkPreview", () => {
+  function makeClientRow(overrides: {
+    id?: string;
+    name?: string;
+    tenderCount?: number;
+    winCount?: number;
+    lastTenderAt?: Date | null;
+    account?: { id: string } | null;
+  } = {}) {
+    return {
+      id: overrides.id ?? "client-1",
+      name: overrides.name ?? "Acme Pty Ltd",
+      tenderCount: overrides.tenderCount ?? 0,
+      winCount: overrides.winCount ?? 0,
+      lastTenderAt: overrides.lastTenderAt !== undefined ? overrides.lastTenderAt : null,
+      account: overrides.account !== undefined ? overrides.account : null
+    };
+  }
+
+  it("returns the expected shape for a client with an existing account", async () => {
+    const prisma = makePrisma();
+    const lastTender = new Date("2025-06-01T00:00:00Z");
+    prisma.client.findMany.mockResolvedValue([
+      makeClientRow({
+        id: "client-1",
+        name: "Acme Pty Ltd",
+        tenderCount: 5,
+        winCount: 2,
+        lastTenderAt: lastTender,
+        account: { id: "acct-1" }
+      })
+    ]);
+
+    const service = makeService(prisma);
+    const rows = await service.listClientLinkPreview();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      clientId: "client-1",
+      name: "Acme Pty Ltd",
+      tenderCount: 5,
+      wonCount: 2,
+      lastTenderAt: lastTender,
+      existingAccountId: "acct-1"
+    });
+  });
+
+  it("returns existingAccountId as null when client has no account", async () => {
+    const prisma = makePrisma();
+    prisma.client.findMany.mockResolvedValue([
+      makeClientRow({ id: "client-2", name: "New Co", account: null })
+    ]);
+
+    const service = makeService(prisma);
+    const rows = await service.listClientLinkPreview();
+
+    expect(rows[0].existingAccountId).toBeNull();
+  });
+
+  it("returns empty array when there are no active clients", async () => {
+    const prisma = makePrisma();
+    prisma.client.findMany.mockResolvedValue([]);
+
+    const service = makeService(prisma);
+    const rows = await service.listClientLinkPreview();
+
+    expect(rows).toEqual([]);
+  });
+
+  it("maps tenderCount and wonCount from the cached client columns", async () => {
+    const prisma = makePrisma();
+    prisma.client.findMany.mockResolvedValue([
+      makeClientRow({ tenderCount: 10, winCount: 4, account: null })
+    ]);
+
+    const service = makeService(prisma);
+    const rows = await service.listClientLinkPreview();
+
+    expect(rows[0].tenderCount).toBe(10);
+    expect(rows[0].wonCount).toBe(4);
   });
 });

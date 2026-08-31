@@ -97,6 +97,19 @@ export class AccountsController {
     return this.service.listAccountSummaries();
   }
 
+  @Get("link-preview")
+  @RequirePermissions("crm.view")
+  @ApiOperation({
+    summary: "CRM-S4: Per-client stats for the review-and-link preview screen.",
+    description:
+      "Returns one row per active Client with cached tender stats and the existingAccountId. " +
+      "Read-only — writes nothing. Used by AccountLinkPreview before Marco commits."
+  })
+  @ApiResponse({ status: 200, description: "Array of client link-preview rows." })
+  listClientLinkPreview() {
+    return this.service.listClientLinkPreview();
+  }
+
   @Get(":id")
   @RequirePermissions("crm.view")
   @ApiOperation({ summary: "Get an account by id." })

@@ -180,7 +180,9 @@ export class ScopeWasteService {
       assetId: dto.assetId ?? null,
       wasteType: dto.wasteType ?? null,
       wasteFacility: dto.wasteFacility ?? null,
-      existingQuotedTransportRatePerDay: null
+      existingQuotedTransportRatePerDay: null,
+      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId for snapshot lookup.
+      tenderId
     });
     const legacy = this.deriveTotals(
       tonnesN,
@@ -353,7 +355,9 @@ export class ScopeWasteService {
         assetId: eAssetId,
         wasteType: eWasteType,
         wasteFacility: eWasteFacility,
-        existingQuotedTransportRatePerDay
+        existingQuotedTransportRatePerDay,
+        // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId for snapshot lookup.
+        tenderId
       });
       const legacy = this.deriveTotals(tonnes, m3, loads, ratePerTonne, ratePerLoad, unit);
       const effectiveLineTotal =
@@ -465,6 +469,8 @@ export class ScopeWasteService {
     // transportRateId the snapshot is cleared (null) by the caller so the
     // engine re-fetches and records the new live rate.
     existingQuotedTransportRatePerDay: number | null;
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — tender id for snapshot lookup.
+    tenderId?: string | null;
   }): Promise<EngineResult> {
     const empty: EngineResult = {
       loads: null,
@@ -558,6 +564,8 @@ export class ScopeWasteService {
 
     // Disposal cost - resolve via the rate resolver so we honour the
     // canonical-source flip (R0 decision: one price source).
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
+    // snapshots are applied when this tender has a TenderRateSet.
     let disposalCost: number | null = null;
     let quotedDisposalRate: number | null = null;
     if (input.wasteType && input.wasteFacility) {
@@ -565,7 +573,7 @@ export class ScopeWasteService {
         const resolved = await this.rateResolver.resolveRate("waste", {
           wasteType: input.wasteType,
           facility: input.wasteFacility
-        });
+        }, input.tenderId ? { tenderId: input.tenderId } : undefined);
         // Bill against the side that matches the rate's unit.
         const disposalQty = resolved.unit === "m³" || resolved.unit === "m3"
           ? (input.m3 != null ? Number(input.m3) : wasteAmount)
@@ -605,6 +613,10 @@ export class ScopeWasteService {
     if (!row || row.tenderId !== tenderId) {
       throw new NotFoundException("Waste item not found on this tender.");
     }
+    // SLICE 2 — variance() checks LIVE rates (not snapshot) intentionally:
+    // the variance flag compares what was quoted at lock time (quotedDisposalRate)
+    // against the current live market rate. Using the snapshot here would
+    // report zero variance for every locked tender, defeating the purpose.
     let currentDisposalRate: number | null = null;
     if (row.wasteType && row.wasteFacility) {
       try {

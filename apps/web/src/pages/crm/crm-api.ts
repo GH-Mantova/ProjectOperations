@@ -277,3 +277,134 @@ export async function unarchiveAccount(
   });
   return jsonOrThrow<{ id: string }>(res);
 }
+
+// ── Lead intake verbs (CRM-S10) ───────────────────────────────────────────────
+//
+// These helpers target /crm/intake/*, NOT the legacy /crm/entries or /crm/leads
+// paths. The intake module owns captureChannel, captureDetail, and the
+// account-auto-create semantics; the legacy paths never set those columns.
+
+export type IntakeCaptureChannel = "email" | "phone" | "portal" | "referral" | "cold_outreach" | "other";
+
+export type IntakeLead = {
+  id: string;
+  title: string;
+  stage: CrmStage;
+  captureChannel: IntakeCaptureChannel | null;
+  captureDetail: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  nextActionAt: string | null;
+  nextActionNote: string | null;
+  client: EntryClient | null;
+  contact: EntryContact | null;
+  owner: EntryOwner | null;
+  account: { id: string; lifecycleStatus: string } | null;
+  dropReason: { id: string; label: string } | null;
+  dropReasonDetail: string | null;
+};
+
+export type ListOpenLeadsResult = {
+  items: IntakeLead[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type ListOpenLeadsParams = {
+  page?: number;
+  limit?: number;
+  captureChannel?: IntakeCaptureChannel;
+  accountId?: string;
+  ownerId?: string;
+  search?: string;
+};
+
+export type CaptureLeadBody = {
+  title: string;
+  clientId: string;
+  captureChannel?: IntakeCaptureChannel;
+  captureDetail?: string | null;
+  source?: string;
+  contactId?: string | null;
+  ownerId?: string | null;
+  notes?: string | null;
+  nextActionAt?: string | null;
+  nextActionNote?: string | null;
+};
+
+export type TriageLeadBody =
+  | { action: "tender"; siteId: string; tenderTitle?: string }
+  | { action: "dont_pursue"; dropReasonId: string; dropReasonDetail?: string | null };
+
+/**
+ * Builds a triage body for POST /crm/intake/:id/triage.
+ * The action discriminant is explicit so callers cannot accidentally emit
+ * a legacy stage value.
+ */
+export function buildTriageBody(input: TriageLeadBody): TriageLeadBody {
+  if (input.action === "tender") {
+    const body: { action: "tender"; siteId: string; tenderTitle?: string } = {
+      action: "tender",
+      siteId: input.siteId
+    };
+    if (input.tenderTitle !== undefined) body.tenderTitle = input.tenderTitle;
+    return body;
+  }
+  const body: { action: "dont_pursue"; dropReasonId: string; dropReasonDetail?: string | null } = {
+    action: "dont_pursue",
+    dropReasonId: input.dropReasonId
+  };
+  if (input.dropReasonDetail !== undefined) body.dropReasonDetail = input.dropReasonDetail;
+  return body;
+}
+
+/** GET /crm/intake/open — paginated list of open leads with intake enrichment. */
+export async function listOpenLeads(
+  authFetch: AuthFetch,
+  params: ListOpenLeadsParams = {}
+): Promise<ListOpenLeadsResult> {
+  const qs = new URLSearchParams();
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params.captureChannel) qs.set("captureChannel", params.captureChannel);
+  if (params.accountId) qs.set("accountId", params.accountId);
+  if (params.ownerId) qs.set("ownerId", params.ownerId);
+  if (params.search) qs.set("search", params.search);
+  const res = await authFetch(`/crm/intake/open?${qs.toString()}`);
+  return jsonOrThrow<ListOpenLeadsResult>(res);
+}
+
+/** POST /crm/intake — capture a new lead. Returns the created lead row. */
+export async function captureLead(
+  authFetch: AuthFetch,
+  dto: CaptureLeadBody
+): Promise<IntakeLead> {
+  const res = await authFetch("/crm/intake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto)
+  });
+  return jsonOrThrow<IntakeLead>(res);
+}
+
+/**
+ * POST /crm/intake/:id/triage — triage an open lead.
+ *
+ * Targets /crm/intake/:id/triage, NOT /crm/entries/:id. The intake module
+ * owns triage: it sets captureChannel and accountId which the legacy path
+ * does not touch.
+ */
+export async function triageLead(
+  authFetch: AuthFetch,
+  id: string,
+  dto: TriageLeadBody
+): Promise<IntakeLead> {
+  const res = await authFetch(`/crm/intake/${id}/triage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildTriageBody(dto))
+  });
+  return jsonOrThrow<IntakeLead>(res);
+}

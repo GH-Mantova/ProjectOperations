@@ -391,11 +391,59 @@ try {
             $hit = $fm | Where-Object { $_ -match '^escalates:' } | Select-Object -First 1
             if ($hit) { $esc = ($hit -replace '^escalates:\s*', '').Trim() }
         } catch { }
+        # Add a header when the log is first created. This is NOT an arm census:
+        # a bare `git mv` writes nothing here; the only sound census is the filesystem.
+        # Station 00's F10 is precisely that this log gets read as the census.
+        if (-not (Test-Path -LiteralPath $armLog)) {
+            $header = @(
+                "# WRAPPER ARMS ONLY - this file is NOT an arm census. A bare ``git mv`` writes nothing here.",
+                "# The only sound census is the filesystem: docs/pr-prompts/*-ready.md"
+            ) -join "`n"
+            Set-Content -LiteralPath $armLog -Value $header -Encoding ASCII -NoNewline
+            Add-Content -LiteralPath $armLog -Value "" -Encoding ASCII
+        }
         $line = "$stamp  ARMED  $Name  escalates=$esc  by=$env:USERNAME@$env:COMPUTERNAME  pid=$PID  caller=$caller"
         Add-Content -LiteralPath $armLog -Value $line -Encoding ASCII
         Write-Step "Audit line written to .arming-log.txt"
     } catch {
         Write-Host "[arm-prompt] WARN: could not write .arming-log.txt ($($_.Exception.Message)). Arming stands."
+    }
+
+    # -------------------------------------------------------------------------
+    # Step 7 — ARM_INDEX_RELEASED: un-stage the rename so no subsequent commit
+    # in this shared working tree can sweep it up silently.
+    #
+    # This is the defect the script exists to prevent: a bare `git mv` leaves
+    # the rename staged and any chat that commits next picks it up. We staged the
+    # rename only to verify exactly two expected paths; once verified and logged
+    # we must release it. The watcher consumes the ready file from the filesystem,
+    # not from the index, so un-staging does not affect dispatch.
+    #
+    # Order: AFTER Assert-IndexExactlyTwoPaths (Step 5) and AFTER the audit line,
+    # BEFORE the finally that drops the lock. Doing it inside the lock means no
+    # other actor can stage into the window between the check and the release.
+    # -------------------------------------------------------------------------
+    Write-Step "Releasing staged rename from index (ARM_INDEX_RELEASED) ..."
+    $releaseExit = 0
+    Invoke-Git @("restore", "--staged", $HOLD_REL, $READY_REL)
+    $releaseExit = $LASTEXITCODE
+
+    # Verify the release by reading the index back. The rollback path at lines
+    # 335-350 sets this precedent: prove the index state before reporting it.
+    $residualAfterRelease = @(Get-StagedPaths)
+    if ($releaseExit -ne 0 -or $residualAfterRelease.Count -gt 0) {
+        # Arming STANDS: the rename is on disk, the audit line is written, the
+        # watcher will consume it. This WARN does not fail the run (exit 0).
+        # Name the residual paths and the exact commands a human needs to clear them.
+        Write-Host "[arm-prompt] WARN: ARM_INDEX_RELEASED — restore --staged did not fully clean the index." -ForegroundColor Yellow
+        Write-Host "[arm-prompt] WARN: Arming is complete (ready file on disk, audit logged) but these paths remain staged:"
+        foreach ($stuck in $residualAfterRelease) {
+            Write-Host "  $stuck"
+            Write-Host "    git -C $REPO_ROOT restore --staged $stuck"
+        }
+        Write-Host "[arm-prompt] WARN: A human must clear the above before the next arm."
+    } else {
+        Write-Step "Index clean after release — no staged paths remain."
     }
 
 } finally {

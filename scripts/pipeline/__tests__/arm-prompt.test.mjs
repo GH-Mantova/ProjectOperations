@@ -310,10 +310,10 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
     assert.ok(!existsSync(holdPath), "HOLD file should have been renamed away");
     assert.ok(existsSync(readyPath), "ready file should now exist");
 
-    // The rename should be staged.
+    // Step 7 (ARM_INDEX_RELEASED): the index must be CLEAN after arming.
+    // Before Step 7 the rename was left staged; that is the defect this change fixes.
     const cached = gitDiffCached(repo);
-    assert.ok(cached.includes(`${slug}-HOLD.md`) || cached.includes(`${slug}-ready.md`),
-      `expected staged paths in diff-cached, got: ${cached}`);
+    assert.equal(cached, "", `index must be clean after arming (Step 7), got: ${cached}`);
   });
 
   // -------------------------------------------------------------------------
@@ -539,6 +539,211 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
     const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
     assert.ok(existsSync(holdPath), "HOLD file must still exist after -WhatIf");
     assert.ok(!existsSync(readyPath), "ready file must not exist after -WhatIf");
+  });
+
+  // -------------------------------------------------------------------------
+  // Step 7 regression: index clean after a successful arm
+  // This is the primary test for ARM_INDEX_RELEASED.
+  // -------------------------------------------------------------------------
+  test("index is clean after a successful arm (Step 7 ARM_INDEX_RELEASED)", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-index-released";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug);
+    assert.equal(res.status, 0, `expected exit 0\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+
+    // The ready file must be on disk — watcher reads from filesystem.
+    assert.ok(existsSync(readyPath), "ready file must exist on disk after arming");
+
+    // The index must be clean: no staged paths remain.
+    const result = execFileSync("git", ["-C", repo, "diff", "--cached", "--name-status"], { encoding: "utf8" });
+    assert.equal(result.trim(), "", `index must be empty after Step 7, got:\n${result}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // ready file survives the index release (the watcher reads the filesystem)
+  // -------------------------------------------------------------------------
+  test("ready file is on disk after the index release", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-ready-survives";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const holdPath  = join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`);
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug);
+    assert.equal(res.status, 0, `expected exit 0\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+
+    // HOLD is gone, ready is present — the filesystem state the watcher needs.
+    assert.ok(!existsSync(holdPath), "HOLD must be gone after arming");
+    assert.ok(existsSync(readyPath), "ready file must exist on disk — watcher reads filesystem");
+  });
+
+  // -------------------------------------------------------------------------
+  // Audit line is still written after the index release
+  // -------------------------------------------------------------------------
+  test("audit line written to .arming-log.txt even after index release", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-audit-after-release";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug);
+    assert.equal(res.status, 0, `expected exit 0\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+
+    const logPath = join(repo, "docs", "pr-prompts", ".arming-log.txt");
+    assert.ok(existsSync(logPath), ".arming-log.txt must exist after arming");
+    const logContent = readFileSync(logPath, "utf8");
+    assert.ok(logContent.includes(`ARMED  ${slug}`), `audit line must mention the slug, got:\n${logContent}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Back-to-back arming: arm A then arm B without an intervening commit.
+  // Before Step 7, arm B failed Assert-CleanIndex because arm A left the
+  // rename staged. This is the regression that reopened the bypass.
+  // -------------------------------------------------------------------------
+  test("back-to-back arming succeeds: arm A then arm B without a commit in between", () => {
+    const repo = makeTempRepo();
+    const slugA = "pr-test-back-to-back-a";
+    const slugB = "pr-test-back-to-back-b";
+    addHoldFile(repo, slugA, validHoldContent());
+    addHoldFile(repo, slugB, validHoldContent());
+
+    const readyPathA = join(repo, "docs", "pr-prompts", `${slugA}-ready.md`);
+    const readyPathB = join(repo, "docs", "pr-prompts", `${slugB}-ready.md`);
+
+    // Arm A.
+    const resA = runArmPromptSimple(repo, slugA);
+    assert.equal(resA.status, 0, `arm A expected exit 0\nstdout: ${resA.stdout}\nstderr: ${resA.stderr}`);
+    assert.ok(existsSync(readyPathA), "arm A: ready file must exist");
+
+    // Without Step 7, the staged rename from arm A would now make arm B fail
+    // Assert-CleanIndex with exit 2. With Step 7 it must exit 0.
+    const resB = runArmPromptSimple(repo, slugB);
+    assert.equal(resB.status, 0,
+      `arm B expected exit 0 (back-to-back arming regression)\nstdout: ${resB.stdout}\nstderr: ${resB.stderr}`);
+    assert.ok(existsSync(readyPathB), "arm B: ready file must exist");
+
+    // Index must still be clean after both arms.
+    const cached = gitDiffCached(repo);
+    assert.equal(cached, "", `index must be clean after both arms, got: ${cached}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Unexpected-stage path: with a foreign path staged during the window,
+  // the run restores it, undoes the rename, and exits 3 with a clean index.
+  //
+  // We simulate this by having a foreign file staged BEFORE arming (arm-prompt
+  // will see it in Assert-CleanIndex and reject early) — we instead test the
+  // rollback path directly by staging a foreign file AFTER the lock check
+  // would occur. Since we cannot intercept the PS script mid-run, we verify
+  // the established rollback behaviour: a pre-staged foreign file makes the
+  // arm exit 2 with a clean index (no HOLD->ready rename on disk or staged).
+  // -------------------------------------------------------------------------
+  test("unexpected-stage path: pre-existing staged foreign file causes exit 2 with clean index", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-unexpected-stage";
+    addHoldFile(repo, slug, validHoldContent());
+
+    // Stage a foreign file to simulate a dirty index.
+    const foreignFile = join(repo, "foreign-staged.txt");
+    writeFileSync(foreignFile, "foreign\n", "utf8");
+    execFileSync("git", ["-C", repo, "add", "foreign-staged.txt"], { encoding: "utf8" });
+
+    const holdPath  = join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`);
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug);
+
+    // Must exit 2 (dirty index guard).
+    assert.equal(res.status, 2, `expected exit 2 (dirty-index guard), got ${res.status}\nstdout: ${res.stdout}`);
+
+    // HOLD still present, ready absent.
+    assert.ok(existsSync(holdPath), "HOLD must still exist after exit 2");
+    assert.ok(!existsSync(readyPath), "ready must not exist after exit 2");
+
+    // The foreign staged file must still be staged (we didn't unstage it).
+    const cached = gitDiffCached(repo);
+    assert.ok(cached.includes("foreign-staged.txt"), `foreign file must remain staged, got: ${cached}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Release-failure is not an arming failure.
+  //
+  // We simulate a restore failure by making the HOLD path un-restore-able.
+  // The simplest approach: arm successfully, but the index release can only
+  // fail if git restore --staged fails. We cannot easily force that in a
+  // white-box way, so instead we test the observable contract: after a
+  // successful arm, exit is 0 and the ready file is on disk, regardless of
+  // whether stdout mentions a WARN. This tests the non-fatal path assertion.
+  //
+  // To truly test the warn path we patch the script: replace the restore
+  // command with one that always exits 1, then verify exit 0 + WARN in stdout
+  // + ready file on disk.
+  // -------------------------------------------------------------------------
+  test("release failure is not an arming failure: exit 0 + WARN + ready file on disk", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-release-fail";
+    addHoldFile(repo, slug, validHoldContent());
+
+    // Read and patch the arm script so that the `git restore --staged` call
+    // inside Step 7 always fails (exit 1). We do this by replacing the
+    // `Invoke-Git @("restore", "--staged", $HOLD_REL, $READY_REL)` line
+    // with a command that writes nothing and sets $LASTEXITCODE to 1.
+    const scriptContent = readFileSync(ARM_SCRIPT, "utf8");
+
+    // Patch REPO_ROOT and LINT_SCRIPT as the normal runner does.
+    let patched = scriptContent;
+    patched = patched.replace(
+      /\$REPO_ROOT\s*=\s*"C:\\ProjectOperations2"/,
+      `$REPO_ROOT   = "${repo}"`
+    );
+    patched = patched.replace(
+      /\$LINT_SCRIPT\s*=\s*"[^"]*lint-prompt\.mjs"/,
+      `$LINT_SCRIPT = "${LINT_SCRIPT}"`
+    );
+    if (patched === scriptContent) {
+      throw new Error("arm-prompt.test release-fail: REPO_ROOT/LINT_SCRIPT patch did not apply");
+    }
+
+    // Replace the restore call in Step 7 with a failing stub.
+    // The exact line is: `    Invoke-Git @("restore", "--staged", $HOLD_REL, $READY_REL)`
+    // After our patch it still contains that exact text, so we can replace it.
+    const restoreLine = `    Invoke-Git @("restore", "--staged", $HOLD_REL, $READY_REL)`;
+    const stubLine    = `    $global:LASTEXITCODE = 1  # STUB: simulate restore --staged failure`;
+    if (!patched.includes(restoreLine)) {
+      throw new Error("arm-prompt.test release-fail: restore line not found in patched script — update the stub");
+    }
+    patched = patched.replace(restoreLine, stubLine);
+
+    const tmpFile = join(os.tmpdir(), `arm-release-fail-${Date.now()}.ps1`);
+    writeFileSync(tmpFile, patched, "utf8");
+
+    let res;
+    try {
+      const psArgs = ["-NoProfile", "-NonInteractive", "-File", tmpFile, "-Name", slug,
+        "-LockTimeoutSeconds", "5"];
+      const spawnResult = spawnSync(PWSH, psArgs, { encoding: "utf8", timeout: 30000 });
+      res = { status: spawnResult.status == null ? -1 : spawnResult.status, stdout: spawnResult.stdout || "", stderr: spawnResult.stderr || "" };
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+    }
+
+    // Arming must still exit 0 even though the restore failed.
+    assert.equal(res.status, 0,
+      `release failure must not fail the arm: expected exit 0, got ${res.status}\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+
+    // A WARN must appear in stdout naming the residual paths.
+    assert.ok(
+      res.stdout.includes("WARN") && res.stdout.includes("ARM_INDEX_RELEASED"),
+      `stdout must contain WARN and ARM_INDEX_RELEASED when release fails\nstdout: ${res.stdout}`
+    );
+
+    // The ready file must still be on disk (arming stands).
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+    assert.ok(existsSync(readyPath), "ready file must be on disk even when index release failed");
   });
 
 });

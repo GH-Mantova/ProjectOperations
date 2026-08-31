@@ -16,6 +16,10 @@ type MockPrisma = {
   contact: { findMany: jest.Mock };
   tenderClient: { findMany: jest.Mock; count: jest.Mock };
   job: { findMany: jest.Mock };
+  contract: { findMany: jest.Mock };
+  opportunity: { findMany: jest.Mock };
+  relationshipNote: { findMany: jest.Mock };
+  commThread: { findMany: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -33,6 +37,10 @@ function makePrisma(): MockPrisma {
     contact: { findMany: jest.fn().mockResolvedValue([]) },
     tenderClient: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     job: { findMany: jest.fn().mockResolvedValue([]) },
+    contract: { findMany: jest.fn().mockResolvedValue([]) },
+    opportunity: { findMany: jest.fn().mockResolvedValue([]) },
+    relationshipNote: { findMany: jest.fn().mockResolvedValue([]) },
+    commThread: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockImplementation(async (arg) => {
       if (typeof arg === "function") return arg(prisma);
       return Promise.all(arg);
@@ -551,5 +559,171 @@ describe("AccountsService.listClientLinkPreview", () => {
 
     expect(rows[0].tenderCount).toBe(10);
     expect(rows[0].wonCount).toBe(4);
+  });
+});
+
+// ── CRM-S6: getAccount360 with new roll-up keys ───────────────────────────────
+
+describe("AccountsService.getAccount360 — CRM-S6 roll-ups", () => {
+  const ACCOUNT_360_STUB = {
+    ...ACCOUNT_STUB,
+    client: {
+      id: "client-1",
+      name: "Acme Pty Ltd",
+      code: null,
+      tradingName: null,
+      abn: null,
+      acn: null,
+      email: null,
+      phone: null,
+      website: null,
+      physicalAddress: null,
+      physicalSuburb: null,
+      physicalState: null,
+      physicalPostcode: null,
+      industry: null,
+      winCount: 1,
+      tenderCount: 2,
+      winRate: "0.50",
+      lastTenderAt: null,
+      lastWonAt: null,
+      isActive: true,
+      onHold: false,
+      onHoldReason: null
+    }
+  };
+
+  // Test 1: 4 new roll-up keys exist AND original 3 keys are unchanged.
+  it("returns 4 new roll-up keys AND the original 3 keys unchanged", async () => {
+    const prisma = makePrisma();
+    prisma.account.findUnique.mockResolvedValue(ACCOUNT_360_STUB);
+    prisma.contact.findMany.mockResolvedValue([
+      { id: "c1", firstName: "Jane", lastName: "Smith", role: null, email: null, phone: null, mobile: null, isPrimary: true, isAccountsContact: false, isActive: true }
+    ]);
+    prisma.tenderClient.findMany.mockResolvedValue([
+      { tender: { id: "t1", tenderNumber: "T-001", title: "Roof job", status: "OPEN", dueDate: null, createdAt: new Date() } }
+    ]);
+    prisma.tenderClient.count.mockResolvedValue(1);
+    prisma.job.findMany.mockResolvedValue([
+      { id: "j1", jobNumber: "J-001", name: "Build", status: "ACTIVE", createdAt: new Date() }
+    ]);
+    prisma.contract.findMany.mockResolvedValue([
+      { id: "con1", contractNumber: "CON-001", contractValue: "100000", status: "ACTIVE", startDate: null, endDate: null, archivedAt: null, createdAt: new Date(), project: { id: "p1", projectNumber: "P-001", name: "Project A" } }
+    ]);
+    prisma.opportunity.findMany.mockResolvedValue([
+      { id: "opp1", title: "Big deal", stage: "qualified", probability: 50, estimatedValue: "50000", expectedCloseDate: null, wonAt: null, lostAt: null, createdAt: new Date() }
+    ]);
+    prisma.relationshipNote.findMany.mockResolvedValue([
+      { id: "rn1", body: "Called client", createdAt: new Date("2026-08-01T10:00:00Z"), author: { id: "u1", firstName: "Bob", lastName: "Jones" }, contact: null }
+    ]);
+    prisma.commThread.findMany.mockResolvedValue([
+      { id: "ct1", subject: "Follow up", createdAt: new Date("2026-08-02T10:00:00Z"), createdBy: { id: "u1", firstName: "Bob", lastName: "Jones" }, messages: [] }
+    ]);
+
+    const service = makeService(prisma);
+    const result = await service.getAccount360("acct-1");
+
+    // Original 3 keys unchanged
+    expect(result.rollUps.contacts).toHaveLength(1);
+    expect(result.rollUps.tenders).toHaveLength(1);
+    expect(result.rollUps.jobs).toHaveLength(1);
+    expect(result.rollUps.tenderTotal).toBe(1);
+
+    // 4 new keys present
+    expect(result.rollUps.contracts).toHaveLength(1);
+    expect(result.rollUps.opportunities).toHaveLength(1);
+    expect(result.rollUps.relationshipNotes).toHaveLength(1);
+    expect(result.rollUps.commThreads).toHaveLength(1);
+  });
+
+  // Test 2: account with no contracts returns [] not undefined.
+  it("returns [] for contracts when account has no contracts", async () => {
+    const prisma = makePrisma();
+    prisma.account.findUnique.mockResolvedValue(ACCOUNT_360_STUB);
+    prisma.contract.findMany.mockResolvedValue([]);
+
+    const service = makeService(prisma);
+    const result = await service.getAccount360("acct-1");
+
+    expect(result.rollUps.contracts).toEqual([]);
+    expect(result.rollUps.contracts).not.toBeUndefined();
+  });
+
+  // Test 3: account with null clientId returns [] for contracts without calling contract.findMany with a clientId.
+  it("returns [] for contracts when clientId is null (no client linked)", async () => {
+    const prisma = makePrisma();
+    prisma.account.findUnique.mockResolvedValue({ ...ACCOUNT_360_STUB, clientId: null, client: null });
+
+    const service = makeService(prisma);
+    const result = await service.getAccount360("acct-1");
+
+    expect(result.rollUps.contracts).toEqual([]);
+    // contract.findMany should not have been called with a where clause carrying a clientId
+    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ── CRM-S6: Activity ordering ─────────────────────────────────────────────────
+
+describe("AccountsService.getAccount360 — Activity ordering (CRM-S6)", () => {
+  const BASE_STUB = {
+    ...ACCOUNT_STUB,
+    client: {
+      id: "client-1", name: "Acme Pty Ltd", code: null, tradingName: null, abn: null, acn: null,
+      email: null, phone: null, website: null, physicalAddress: null, physicalSuburb: null,
+      physicalState: null, physicalPostcode: null, industry: null, winCount: 0, tenderCount: 0,
+      winRate: null, lastTenderAt: null, lastWonAt: null, isActive: true, onHold: false, onHoldReason: null
+    }
+  };
+
+  // Test 3 (of spec): note + thread interleave by timestamp, newest-first.
+  it("relationship notes and comm threads are returned so the UI can interleave them newest-first", async () => {
+    const prisma = makePrisma();
+    prisma.account.findUnique.mockResolvedValue(BASE_STUB);
+
+    const olderNote = new Date("2026-07-01T09:00:00Z");
+    const newerThread = new Date("2026-07-15T14:00:00Z");
+
+    prisma.relationshipNote.findMany.mockResolvedValue([
+      { id: "rn1", body: "Old note", createdAt: olderNote, author: { id: "u1", firstName: "A", lastName: "B" }, contact: null }
+    ]);
+    prisma.commThread.findMany.mockResolvedValue([
+      { id: "ct1", subject: "New thread", createdAt: newerThread, createdBy: { id: "u1", firstName: "A", lastName: "B" }, messages: [] }
+    ]);
+
+    const service = makeService(prisma);
+    const result = await service.getAccount360("acct-1");
+
+    // API returns both; UI merges them. Confirm both are present with correct timestamps.
+    expect(result.rollUps.relationshipNotes).toHaveLength(1);
+    expect(result.rollUps.commThreads).toHaveLength(1);
+    expect(result.rollUps.relationshipNotes[0].createdAt).toEqual(olderNote);
+    expect(result.rollUps.commThreads[0].createdAt).toEqual(newerThread);
+    // newerThread > olderNote — UI will sort them newest-first
+    expect(newerThread.getTime()).toBeGreaterThan(olderNote.getTime());
+  });
+});
+
+// ── CRM-S6: rollUpContracts ────────────────────────────────────────────────────
+
+describe("AccountsService.rollUpContracts (CRM-S6)", () => {
+  it("returns [] when clientId is null", async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+    const result = await service.rollUpContracts(null);
+    expect(result).toEqual([]);
+    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+  });
+
+  it("calls contract.findMany with a where clause scoped to the clientId", async () => {
+    const prisma = makePrisma();
+    prisma.contract.findMany.mockResolvedValue([]);
+    const service = makeService(prisma);
+    await service.rollUpContracts("client-1");
+    expect(prisma.contract.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { project: { clientId: "client-1" } }
+      })
+    );
   });
 });

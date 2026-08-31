@@ -81,6 +81,18 @@ export class RateResolverService {
     keys: Record<string, unknown>,
     options?: { tenderId?: string }
   ): Promise<ResolvedRate> {
+    // ── Snapshot check (ABOVE the canonical-source switch) ───────────────
+    // If this tender has a locked rate set, try to serve the rate from it.
+    // A snapshot key is {rateTableId}:{rowId}:{columnId}; we derive the
+    // candidate key by finding the matching RateTable row for this slug +
+    // keys, then check if that key exists in the snapshot entries.
+    // This path is intentionally independent of RATES_CANONICAL_SOURCE
+    // (snapshot rows are always RateTable-keyed).
+    if (options?.tenderId) {
+      const snapshot = await this.trySnapshot(options.tenderId, tableSlug, keys);
+      if (snapshot !== null) return snapshot;
+    }
+
     const source = this.getCanonicalSource();
 
     if (source === "ratetable") {
@@ -105,6 +117,136 @@ export class RateResolverService {
     const flexible = await this.tryRateTable(tableSlug, keys);
     if (flexible) return flexible;
     throw new NotFoundException(`No rate table with slug "${tableSlug}".`);
+  }
+
+  /**
+   * Internal: attempt to resolve a rate from the tender's locked
+   * TenderRateSet snapshot. Returns the resolved rate (with
+   * `TENDER_RATE_SNAPSHOT_APPLIED` logged) when the key exists in the
+   * snapshot; returns `null` when no snapshot exists for the tender or
+   * the slug cannot be matched to a RateTable row. When a snapshot
+   * EXISTS but the resolved key is ABSENT, logs
+   * `snapshot-miss-fell-back-to-live` with the missing key so ops can
+   * audit the gap — the caller then continues to live rate resolution.
+   *
+   * Key derivation: we resolve `{rateTableId}:{rowId}:{columnId}` using
+   * the same KEY-column matching logic as `tryRateTable` (case-insensitive
+   * col-name matching, first VALUE column). A slug not present in
+   * RateTable at all (`null` from `tryRateTableKey`) means there are no
+   * snapshot entries for this slug — that is a soft miss (no warning, no
+   * fall-back log: the slug lives entirely in the legacy path).
+   */
+  private async trySnapshot(
+    tenderId: string,
+    tableSlug: string,
+    keys: Record<string, unknown>
+  ): Promise<ResolvedRate | null> {
+    // Load the snapshot entries for this tender. A miss means no snapshot.
+    const rateSet = await this.prisma.tenderRateSet.findUnique({
+      where: { tenderId },
+      select: { id: true }
+    });
+    if (!rateSet) return null;
+
+    const entries = await this.prisma.tenderRateEntry.findMany({
+      where: { tenderRateSetId: rateSet.id }
+    });
+    // NOTE: do NOT return null for empty entries here — an empty snapshot
+    // still means the tender HAS a snapshot, so a derivable key that is
+    // absent from it should still emit snapshot-miss-fell-back-to-live.
+
+    const entryByKey = new Map(
+      entries.map((e) => [e.key, e] as const)
+    );
+
+    // Derive the candidate key by resolving the slug + keys against the
+    // RateTable model. Returns { key, rowId, unit } or null when the slug
+    // is not in RateTable (legacy-only slug — no warning needed).
+    const candidate = await this.tryRateTableKey(tableSlug, keys);
+    if (!candidate) {
+      // Slug not modelled in RateTable at all — no snapshot entries can
+      // exist for it. Fall through silently to live resolution.
+      return null;
+    }
+
+    const entry = entryByKey.get(candidate.key);
+    if (!entry) {
+      // Snapshot exists for this tender but does not cover this key.
+      // Log the miss so ops can see the gap, then fall back to live.
+      this.logger.warn({
+        event: "snapshot-miss-fell-back-to-live",
+        tenderId,
+        slug: tableSlug,
+        candidateKey: candidate.key
+      });
+      return null;
+    }
+
+    // Snapshot hit. The effective value is overrideValue ?? originalValue.
+    const effectiveValue =
+      entry.overrideValue !== null && entry.overrideValue !== undefined
+        ? Number(entry.overrideValue)
+        : Number(entry.originalValue);
+
+    this.logger.log({
+      event: "TENDER_RATE_SNAPSHOT_APPLIED",
+      tenderId,
+      slug: tableSlug,
+      key: candidate.key
+    });
+
+    return {
+      rowId: candidate.rowId,
+      value: effectiveValue,
+      unit: candidate.unit,
+      source: "ratetable"
+    };
+  }
+
+  /**
+   * Internal: resolve the `{rateTableId}:{rowId}:{columnId}` candidate
+   * key for a given slug + keys without reading the snapshot. Returns
+   * `{ key, rowId, unit }` on a match; returns `null` when the slug is
+   * not present in RateTable or has no VALUE columns (the "try elsewhere"
+   * signal — no warning). This is the same KEY-matching logic as
+   * `tryRateTable`, extended to also return the composite key.
+   */
+  private async tryRateTableKey(
+    tableSlug: string,
+    keys: Record<string, unknown>
+  ): Promise<{ key: string; rowId: string; unit: string } | null> {
+    const table = await this.prisma.rateTable.findUnique({
+      where: { slug: tableSlug },
+      include: { columns: true }
+    });
+    if (!table) return null;
+    const keyCols = table.columns.filter((c) => c.role === "KEY");
+    const valueCols = table.columns.filter((c) => c.role === "VALUE");
+    if (valueCols.length === 0) return null;
+
+    const rows = await this.prisma.rateRow.findMany({
+      where: { rateTableId: table.id, isActive: true }
+    });
+    const keysLower: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(keys)) {
+      keysLower[k.trim().toLowerCase()] = v;
+    }
+    const match = rows.find((r) => {
+      const cells = (r.cells as Record<string, unknown> | null) ?? {};
+      return keyCols.every((c) => {
+        const colNameLower = c.name.trim().toLowerCase();
+        const callerVal = keys[c.name] ?? keysLower[colNameLower] ?? keys[c.id];
+        return norm(cells[c.id]) === norm(callerVal);
+      });
+    });
+    if (!match) return null;
+
+    const candidateKey = `${table.id}:${match.id}:${valueCols[0].id}`;
+    return {
+      key: candidateKey,
+      rowId: match.id,
+      unit: valueCols[0].unit ?? ""
+    };
   }
 
   /**

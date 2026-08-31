@@ -15,7 +15,7 @@ escalates: true
 backfill: false
 rollback_strategy: 'Additive only - adds one nullable Json column (charge_steps) to rate_tables and creates no data. Safe to leave applied if the run dies mid-flight; re-running drops nothing and the column is ignored by every existing reader.'
 cluster: estimating-pricing
-cluster_order: 3
+cluster_order: 4
 requires_on_main: 'apps/api/src/modules/tendering/scope-redesign.service.ts :: CUTTING_RATE_CORRECTIONS_V1'
 ---
 

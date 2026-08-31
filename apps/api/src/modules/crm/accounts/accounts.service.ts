@@ -94,7 +94,10 @@ export function deriveGoingCold(
 /**
  * CRM-1: AccountsService — Account spine management + Client-360 read-only
  * roll-ups. Aggregates an Account's contacts and read-only roll-ups of the
- * transactional owners (tenders/jobs/contracts) WITHOUT editing them.
+ * transactional owners (tenders/jobs) WITHOUT editing them.
+ *
+ * CRM-S6 extends this with contracts, opportunities, relationshipNotes and
+ * comms threads anchored to the account — all read-only.
  *
  * Ownership rule (from the CRM plan):
  *   CRM owns: organisation/relationship layer, contacts, lead/opp state.
@@ -371,15 +374,112 @@ export class AccountsService {
       ? await this.prisma.tenderClient.count({ where: { clientId: account.clientId } })
       : 0;
 
+    // CRM-S6: Read-only roll-up — contracts for this client (via Project join)
+    const contracts = await this.rollUpContracts(account.clientId);
+
+    // CRM-S6: Read-only roll-up — opportunities directly linked to this account
+    const opportunities = await this.prisma.opportunity.findMany({
+      where: { accountId: account.id },
+      select: {
+        id: true,
+        title: true,
+        stage: true,
+        probability: true,
+        estimatedValue: true,
+        expectedCloseDate: true,
+        wonAt: true,
+        lostAt: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+
+    // CRM-S6: Read-only roll-up — relationship notes filed against this account
+    const relationshipNotes = await this.prisma.relationshipNote.findMany({
+      where: { accountId: account.id },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        author: { select: { id: true, firstName: true, lastName: true } },
+        contact: { select: { id: true, firstName: true, lastName: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100
+    });
+
+    // CRM-S6: Read-only roll-up — comms threads anchored to this account.
+    // CommThread uses a polymorphic (entityType, entityId) anchor — no direct
+    // FK to Account — so we query from the accounts side via those two columns.
+    const commThreads = await this.prisma.commThread.findMany({
+      where: { entityType: "ACCOUNT", entityId: account.id, archivedAt: null },
+      select: {
+        id: true,
+        subject: true,
+        createdAt: true,
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
+        messages: {
+          select: { id: true, body: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
+          take: 1
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+
     return {
       ...account,
       rollUps: {
         contacts,
         tenders: tenders.map((tc) => tc.tender),
         tenderTotal,
-        jobs
+        jobs,
+        contracts,
+        opportunities,
+        relationshipNotes,
+        commThreads
       }
     };
+  }
+
+  /**
+   * CRM-S6: Rolls up Contract rows for a given clientId.
+   *
+   * Contracts are owned by the Project → Contract chain; they carry no direct
+   * FK to Account or Client. We traverse: clientId → Project (clientId) →
+   * Contract.  Read-only; never writes.
+   *
+   * Returns [] (never undefined) when clientId is null or no contracts exist.
+   */
+  async rollUpContracts(clientId: string | null) {
+    if (!clientId) return [];
+
+    return this.prisma.contract.findMany({
+      where: {
+        project: { clientId }
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        contractValue: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        archivedAt: true,
+        createdAt: true,
+        project: {
+          select: {
+            id: true,
+            projectNumber: true,
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
   }
 
   // ── CRM-S4: Link-preview — per-client stats for the review screen ────────────

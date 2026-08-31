@@ -82,10 +82,13 @@ if ($ghOk) {
     $when = if ($p.mergedAt) { ($p.mergedAt -replace 'T', ' ').Substring(0, 16) + "Z" } else { "?" }
     Line "LIVE" ("   #" + $p.number + "  " + $when + "  " + $p.title)
   }
-  # is the TRUNK green? (main-branch CI health -- open-PR CI does not tell you this)
-  $mainci = gh run list --branch main --limit 3 2>$null
-  $mfail = @($mainci | Select-String -Pattern "failure", "cancelled", "timed_out" -SimpleMatch).Count
-  $mok = @($mainci | Select-String -Pattern "success" -SimpleMatch).Count
+  # is the TRUNK green?
+  # Fix: use --json and read conclusion field only -- prevents commit titles containing
+  # "failure"/"cancelled" from being counted as failed runs. (trunk-conclusion)
+  $mainRunsJson = gh run list --branch main --limit 3 --json conclusion,displayTitle 2>$null
+  $mainRuns = @($mainRunsJson | ConvertFrom-Json)
+  $mfail = @($mainRuns | Where-Object { $_.conclusion -ne "success" -and $_.conclusion -ne "" -and $null -ne $_.conclusion }).Count
+  $mok = @($mainRuns | Where-Object { $_.conclusion -eq "success" }).Count
   Line "LIVE" ("main branch CI (last 3 runs): " + $mok + " success / " + $mfail + " not-success" + $(if ($mfail -gt 0) { "  <-- TRUNK IS RED" } else { "  (trunk green)" }))
 } else {
   Line "BROKEN" "SKIPPED -- gh positive control failed above."
@@ -113,12 +116,65 @@ if (Test-Path (Join-Path $WatcherClone ".git")) {
   $cflag = if ($cbranch -ne "main" -or $cdirty -gt 0) { "  <-- NOT clean-on-main; the watcher may refuse to start" } else { "" }
   Line "LIVE" ("watcher clone: branch=" + ($cbranch) + " dirty=" + $cdirty + $cflag)
 } else { Line "LIVE" ("watcher clone MISSING at " + $WatcherClone) }
-# orphaned worktrees -- a leftover worktree means an aborted station run
+
+# worktree-liveness: classify each non-main worktree as LIVE or orphaned based on dirty state
+# and age. Do NOT use node.exe process presence as the liveness signal (DOCTRINE 9.5).
+# Liveness rules:
+#   dirty (any uncommitted files)  => LIVE STATION WORKTREE regardless of age
+#   clean AND touched < 30 min ago => LIVE STATION WORKTREE (station may just be starting/finishing)
+#   clean AND touched >= 30 min ago => orphaned -- aborted run leftover, investigate/prune
 $wt = @(git worktree list 2>$null | Where-Object { $_ -notmatch "\[main\]$" -and $_ -notmatch [regex]::Escape($Repo) })
+$liveWorktrees = @()
 if ($wt.Count -gt 0) {
-  Line "LIVE" ("orphaned worktrees: " + $wt.Count + " (aborted run leftovers -- investigate/prune):")
-  foreach ($x in $wt) { Line "LIVE" ("   " + $x) }
-} else { Line "LIVE" "orphaned worktrees: none" }
+  Line "LIVE" ("non-main worktrees found: " + $wt.Count + " -- classifying by liveness...")
+  foreach ($wtLine in $wt) {
+    # git worktree list format: <path>  <sha>  [<branch>]
+    $wtPath = ($wtLine -split '\s+')[0].Trim()
+    $dirtyCount = 0
+    $ageMinutes = -1
+    if (Test-Path $wtPath) {
+      $dirtyOutput = git -C $wtPath status --porcelain 2>$null
+      $dirtyCount = @($dirtyOutput | Where-Object { $_ -match '\S' }).Count
+      $lastWrite = (Get-Item $wtPath).LastWriteTimeUtc
+      $ageMinutes = [int]((Get-Date).ToUniversalTime() - $lastWrite).TotalMinutes
+    }
+    $isLive = ($dirtyCount -gt 0) -or ($ageMinutes -ge 0 -and $ageMinutes -lt 30)
+    if ($isLive) {
+      $liveWorktrees += $wtPath
+      Line "LIVE" ("   LIVE STATION WORKTREE: " + $wtLine)
+      Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min  -- do NOT prune; a station is working here")
+    } else {
+      Line "LIVE" ("   orphaned worktree (aborted run leftover -- investigate/prune): " + $wtLine)
+      Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min")
+    }
+  }
+} else { Line "LIVE" "non-main worktrees: none" }
+
+# worktree-registry-escapees: directories under worktree roots that are NOT in git worktree list.
+# These are invisible to the registry-based check above. Report them; do NOT prune.
+# Station 03 acts on REGISTRY-ESCAPEE findings.
+$worktreeRoots = @("C:\po-worktrees", "C:\po-wt", "C:\po-watcher-worktrees")
+$registeredPaths = @(git worktree list 2>$null | ForEach-Object { ($_ -split '\s+')[0].Trim().ToLower() })
+$escapeeCount = 0
+foreach ($wtRoot in $worktreeRoots) {
+  if (-not (Test-Path $wtRoot)) { continue }
+  $subdirs = @(Get-ChildItem $wtRoot -Directory -ErrorAction SilentlyContinue)
+  foreach ($subdir in $subdirs) {
+    $subdirLower = $subdir.FullName.ToLower() -replace '\\', '/'
+    $inRegistry = $registeredPaths | Where-Object { ($_ -replace '\\', '/') -eq $subdirLower }
+    if (-not $inRegistry) {
+      $escapeeCount++
+      $escapeeAge = [int]((Get-Date).ToUniversalTime() - $subdir.LastWriteTimeUtc).TotalMinutes
+      $escapeeSize = (Get-ChildItem $subdir.FullName -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+      $escapeeKB = if ($escapeeSize) { [int]($escapeeSize / 1024) } else { 0 }
+      $hasLock = Test-Path (Join-Path $subdir.FullName ".git\index.lock")
+      Line "LIVE" ("   REGISTRY-ESCAPEE: " + $subdir.FullName + "  size=" + $escapeeKB + "KB  age=" + $escapeeAge + "min  .lock=" + $hasLock)
+    }
+  }
+}
+if ($escapeeCount -eq 0) { Line "LIVE" "worktree-registry-escapees: none found under known roots" }
+else { Line "LIVE" ("worktree-registry-escapees: " + $escapeeCount + " found -- Station 03 should review and prune if confirmed dead") }
+
 # the guard hook is the safety floor (#569) -- confirm it still exists
 $guard = Join-Path $Repo ".claude\hooks\guard.mjs"
 Line "LIVE" ("guard hook (.claude/hooks/guard.mjs): " + $(if (Test-Path $guard) { "present" } else { "*** MISSING -- the skip-all-approvals floor is gone" }))
@@ -260,10 +316,16 @@ Section "7. VERDICT"
 $safe = -not $boardBusy
 if (-not $safe) {
   Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- in-progress prompt / git lock / git process). Wait, re-run, then act."
+} elseif ($liveWorktrees.Count -gt 0) {
+  # A LIVE STATION WORKTREE means a station is actively working. Do not say SAFE TO ACT.
+  # Do NOT say DO NOT ACT either -- a live worktree off origin/main is correct isolation.
+  Line "LIVE" ("CAUTION: " + $liveWorktrees.Count + " LIVE STATION WORKTREE(s) detected (section 2):")
+  foreach ($lwt in $liveWorktrees) { Line "LIVE" ("   " + $lwt) }
+  Line "LIVE" "A station may be mid-run. Prefer to wait and re-run; if you must act, use an ISOLATED worktree and touch only NEW branches/PRs."
 } elseif ($recent.Count -gt 0) {
   Line "LIVE" "CAUTION: no local lock, but a PR was touched on GitHub in the last 2 min (section 3). A station may be doing gh-only work. Prefer to wait a minute and re-run; if you must act, use an ISOLATED worktree and touch only NEW branches/PRs."
 } else {
-  Line "LIVE" "SAFE TO ACT: no board mutation in progress, no recent remote activity."
+  Line "LIVE" "SAFE TO ACT: no board mutation in progress, no recent remote activity, no live station worktrees."
   Line "LIVE" "   For any git WRITE, still prefer an ISOLATED worktree off origin/main. NEVER merge -- the supervisor drives the board."
 }
 Write-Host ""

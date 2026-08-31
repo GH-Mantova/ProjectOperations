@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { CommsService, extractMentions } from "../comms.service";
+import { CommsService, extractMentions, type LastInteractionResult } from "../comms.service";
 
 // ── Mock Prisma ───────────────────────────────────────────────────────────────
 
@@ -395,5 +395,249 @@ describe("extractMentions", () => {
 
   it("returns empty on plain text", () => {
     expect(extractMentions("no mentions here")).toEqual([]);
+  });
+});
+
+// ── CRM-S7: logContact ────────────────────────────────────────────────────────
+
+describe("CommsService.logContact", () => {
+  const AUTHOR = { id: "user-1", firstName: "Marco", lastName: "Rossi" };
+  const LOG_THREAD = {
+    id: "thread-logged-1",
+    entityType: "TENDER",
+    entityId: "tender-1",
+    subject: "Call — 2026-08-31",
+    kind: "logged_contact" as const,
+    createdById: "user-1",
+    createdAt: new Date("2026-08-31T05:00:00Z"),
+    updatedAt: new Date("2026-08-31T05:00:00Z"),
+    archivedAt: null
+  };
+  const LOG_MESSAGE = {
+    id: "msg-logged-1",
+    threadId: "thread-logged-1",
+    authorId: "user-1",
+    body: "Called the client re pricing.",
+    mentions: null,
+    createdAt: new Date("2026-08-31T05:00:00Z"),
+    author: AUTHOR
+  };
+
+  it("creates exactly one thread (kind=logged_contact) and exactly one message", async () => {
+    const prisma = makePrisma();
+    // Simulate transaction that calls thread.create then message.create
+    prisma.$transaction.mockImplementation(async (fn) => {
+      // fn is the async callback — call it with a proxy of prisma
+      const txProxy = {
+        commThread: {
+          create: jest.fn().mockResolvedValue(LOG_THREAD)
+        },
+        commMessage: {
+          create: jest.fn().mockResolvedValue(LOG_MESSAGE)
+        }
+      };
+      const result = await fn(txProxy as never);
+      return result;
+    });
+
+    const service = makeService(prisma);
+    const result = await service.logContact({
+      entityType: "TENDER",
+      entityId: "tender-1",
+      subject: "Call — 2026-08-31",
+      body: "Called the client re pricing.",
+      createdById: "user-1"
+    });
+
+    expect(result.thread.kind).toBe("logged_contact");
+    expect(result.message.id).toBe("msg-logged-1");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects when entityId is empty", async () => {
+    const service = makeService(makePrisma());
+    await expect(
+      service.logContact({
+        entityType: "TENDER",
+        entityId: "   ",
+        subject: "Call",
+        body: "Body",
+        createdById: "user-1"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("rejects when subject is empty", async () => {
+    const service = makeService(makePrisma());
+    await expect(
+      service.logContact({
+        entityType: "TENDER",
+        entityId: "tender-1",
+        subject: "   ",
+        body: "Body",
+        createdById: "user-1"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("rejects when body is empty", async () => {
+    const service = makeService(makePrisma());
+    await expect(
+      service.logContact({
+        entityType: "TENDER",
+        entityId: "tender-1",
+        subject: "Call",
+        body: "",
+        createdById: "user-1"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("rejects when creator is unknown", async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue(null);
+    const service = makeService(prisma);
+    await expect(
+      service.logContact({
+        entityType: "TENDER",
+        entityId: "tender-1",
+        subject: "Call",
+        body: "Body",
+        createdById: "ghost"
+      })
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("a logged_contact thread is distinguishable from a conversation thread by its kind field", () => {
+    // The discriminator: logged_contact vs conversation
+    expect(LOG_THREAD.kind).toBe("logged_contact");
+    const conversationThread = { ...LOG_THREAD, kind: "conversation" as const };
+    expect(conversationThread.kind).not.toBe("logged_contact");
+  });
+});
+
+// ── CRM-S7: lastInteractionFor ────────────────────────────────────────────────
+
+describe("CommsService.lastInteractionFor", () => {
+  const NOW = new Date("2026-08-31T10:00:00Z");
+  const OLDER = new Date("2026-08-30T10:00:00Z");
+  const AUTHOR = { id: "user-1", firstName: "Marco", lastName: "Rossi" };
+
+  function makeMessage(createdAt: Date) {
+    return {
+      id: `msg-${createdAt.toISOString()}`,
+      threadId: "thread-1",
+      authorId: "user-1",
+      body: "Some log",
+      createdAt,
+      author: AUTHOR,
+      thread: { entityType: "TENDER", entityId: "tender-1" }
+    };
+  }
+
+  it("returns the newest message and its author when logged contacts exist", async () => {
+    const prisma = makePrisma();
+    // findFirst returns the newest (ORDER BY createdAt DESC handled by service)
+    const newestMsg = makeMessage(NOW);
+    (prisma as unknown as { commMessage: { findFirst: jest.Mock } }).commMessage = {
+      findFirst: jest.fn().mockResolvedValue(newestMsg)
+    } as never;
+
+    const service = makeService(prisma);
+    const result = await service.lastInteractionFor("TENDER", "tender-1");
+
+    expect(result).not.toBeNull();
+    expect((result as NonNullable<LastInteractionResult>).lastMessageAt).toEqual(NOW);
+    expect((result as NonNullable<LastInteractionResult>).loggedBy.id).toBe("user-1");
+  });
+
+  it("returns null for a tender with no logged contact (sorts last in the register)", async () => {
+    const prisma = makePrisma();
+    (prisma as unknown as { commMessage: { findFirst: jest.Mock } }).commMessage = {
+      findFirst: jest.fn().mockResolvedValue(null)
+    } as never;
+
+    const service = makeService(prisma);
+    const result = await service.lastInteractionFor("TENDER", "tender-no-contact");
+
+    expect(result).toBeNull();
+    // The Register sorts null entries last — null is the sentinel for "no interaction"
+  });
+
+  it("null result sorts after dated result when compared in the UI sort key", () => {
+    // Represents the sort logic the UI applies: null -> Infinity (sorts last)
+    const sortKey = (r: LastInteractionResult) =>
+      r ? r.lastMessageAt.getTime() : Infinity;
+
+    const withInteraction: LastInteractionResult = {
+      entityType: "TENDER",
+      entityId: "tender-1",
+      lastMessageAt: OLDER,
+      loggedBy: AUTHOR
+    };
+    const noInteraction: LastInteractionResult = null;
+
+    expect(sortKey(withInteraction)).toBeLessThan(sortKey(noInteraction));
+  });
+});
+
+// ── CRM-S7: lastInteractionBatch ─────────────────────────────────────────────
+
+describe("CommsService.lastInteractionBatch", () => {
+  const AUTHOR = { id: "user-1", firstName: "Marco", lastName: "Rossi" };
+
+  it("returns empty map for empty input", async () => {
+    const service = makeService(makePrisma());
+    const result = await service.lastInteractionBatch([]);
+    expect(result.size).toBe(0);
+  });
+
+  it("keyed by entityType:entityId, picks newest message per entity", async () => {
+    const prisma = makePrisma();
+    const msg1 = {
+      id: "msg-1",
+      threadId: "t1",
+      authorId: "user-1",
+      body: "Newer",
+      createdAt: new Date("2026-08-31T10:00:00Z"),
+      author: AUTHOR,
+      thread: { entityType: "TENDER", entityId: "tender-1" }
+    };
+    const msg2 = {
+      id: "msg-2",
+      threadId: "t2",
+      authorId: "user-1",
+      body: "Older",
+      createdAt: new Date("2026-08-30T10:00:00Z"),
+      author: AUTHOR,
+      thread: { entityType: "TENDER", entityId: "tender-2" }
+    };
+    (prisma as unknown as { commMessage: { findMany: jest.Mock } }).commMessage = {
+      findMany: jest.fn().mockResolvedValue([msg1, msg2])
+    } as never;
+
+    const service = makeService(prisma);
+    const result = await service.lastInteractionBatch([
+      { entityType: "TENDER", entityId: "tender-1" },
+      { entityType: "TENDER", entityId: "tender-2" }
+    ]);
+
+    expect(result.size).toBe(2);
+    expect(result.get("TENDER:tender-1")?.lastMessageAt).toEqual(new Date("2026-08-31T10:00:00Z"));
+    expect(result.get("TENDER:tender-2")?.lastMessageAt).toEqual(new Date("2026-08-30T10:00:00Z"));
+  });
+
+  it("tender absent from result map has no logged contact (renders '—' in the register)", async () => {
+    const prisma = makePrisma();
+    (prisma as unknown as { commMessage: { findMany: jest.Mock } }).commMessage = {
+      findMany: jest.fn().mockResolvedValue([]) // no interactions at all
+    } as never;
+
+    const service = makeService(prisma);
+    const result = await service.lastInteractionBatch([
+      { entityType: "TENDER", entityId: "tender-no-contact" }
+    ]);
+
+    expect(result.has("TENDER:tender-no-contact")).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString
 } from "class-validator";
@@ -89,6 +90,27 @@ class ListTasksQueryDto {
   overdueOnly?: boolean;
   @IsOptional() @Type(() => Number) page?: number;
   @IsOptional() @Type(() => Number) limit?: number;
+}
+
+/** CRM-S7: Log a contact interaction on a tender or opportunity. */
+class LogContactDto {
+  @IsIn(COMM_ENTITY_TYPES as unknown as string[]) entityType!: string;
+  @IsNotEmpty() @IsString() entityId!: string;
+  @IsNotEmpty() @IsString() subject!: string;
+  @IsNotEmpty() @IsString() body!: string;
+}
+
+/** CRM-S7: Query params for last-interaction single lookup. */
+class LastInteractionQueryDto {
+  @IsIn(COMM_ENTITY_TYPES as unknown as string[]) entityType!: string;
+  @IsNotEmpty() @IsString() entityId!: string;
+}
+
+/** CRM-S7: Batch last-interaction request body. */
+class LastInteractionBatchDto {
+  @IsArray()
+  @ArrayUnique()
+  pairs!: Array<{ entityType: string; entityId: string }>;
 }
 
 /**
@@ -235,5 +257,59 @@ export class CommsController {
   @ApiParam({ name: "id", description: "Task id" })
   updateTask(@Param("id") id: string, @Body() dto: UpdateTaskDto) {
     return this.service.updateTask(id, dto as never);
+  }
+
+  // ── CRM-S7: Interaction log ────────────────────────────────────────────────
+
+  @Post("log-contact")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "Log a contact interaction on a tender or opportunity. Creates one thread (kind=logged_contact) + one message."
+  })
+  @ApiResponse({ status: 201, description: "Thread and message created." })
+  @ApiResponse({ status: 400, description: "Validation error." })
+  logContact(
+    @Body() dto: LogContactDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.logContact({
+      entityType: dto.entityType as never,
+      entityId: dto.entityId,
+      subject: dto.subject,
+      body: dto.body,
+      createdById: actor.sub
+    });
+  }
+
+  @Get("last-interaction")
+  @RequirePermissions("crm.view")
+  @ApiOperation({
+    summary:
+      "Last interaction for a tender or opportunity (max CommMessage.createdAt across logged_contact threads). Returns null when none."
+  })
+  @ApiQuery({ name: "entityType", required: true, enum: COMM_ENTITY_TYPES })
+  @ApiQuery({ name: "entityId", required: true })
+  @ApiResponse({ status: 200, description: "Last interaction or null." })
+  lastInteraction(@Query() query: LastInteractionQueryDto) {
+    return this.service.lastInteractionFor(
+      query.entityType as never,
+      query.entityId
+    );
+  }
+
+  @Post("last-interaction/batch")
+  @RequirePermissions("crm.view")
+  @ApiOperation({
+    summary:
+      "Batch last-interaction lookup for the Tenders Register. POST a list of (entityType, entityId) pairs; returns an array of last-interaction results (null entries omitted — callers key by entityId)."
+  })
+  @ApiResponse({ status: 200, description: "Array of last-interaction results." })
+  async lastInteractionBatch(@Body() dto: LastInteractionBatchDto) {
+    const map = await this.service.lastInteractionBatch(
+      dto.pairs as never
+    );
+    // Convert Map to array for JSON serialisation.
+    return Array.from(map.values());
   }
 }

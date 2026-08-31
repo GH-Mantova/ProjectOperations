@@ -195,3 +195,68 @@ which is complete and additive; (B) leave it on demand and accept the blind spot
   `scripts/pipeline/hooks/` (untracked since 08-27), the `superseded/` `LOOPING` rename, or the
   four artefacts in F6.
 - **Did not touch `/sot/`, Azure, Entra or SharePoint.**
+
+
+---
+
+## CORRECTION — filed 2026-08-31T06:30Z by the same run, before anyone could quote it
+
+**F2 above overstates the mechanism, and the overstatement is in its title.** I wrote that at
+05:40:02Z `#1431` "was gated" and at 05:53:54Z it "was released". Both halves assume CP-26 can
+refuse a merge. **It cannot**, and I had the means to check that before I wrote it and did not.
+
+Measured after the fact, at `20bc699e` [MEASURED]:
+
+```
+gh api repos/GH-Mantova/ProjectOperations/rules/branches/main
+  required_status_checks =
+    CodeQL
+    API — lint, test, compliance smoke
+    Web — lint, logic tests, vitest, build
+    tendering-e2e
+```
+
+**Exactly four, and `PR gates — diff checks` — the job CP-26 runs inside — is not one of them.**
+So CP-26 is *advisory*: it colours a non-required check and nothing at GitHub will refuse a merge
+on it. Station 00 measured this on 2026-08-28 and `#1369` proved it by merging while still wearing
+the label. I re-derived the label's *code* path today (`scripts/pr-gates/pr-gates.mjs:472-512`,
+which reads the live label at `:498`) and let the code's own comment — *"Removing the label IS the
+human's approval"* — carry me into describing an enforcement that does not exist. **The comment
+describes the intent; the ruleset decides the effect.**
+
+One thing that finding did fix: on 2026-08-28 a `Select-String` over `.github/workflows/*`
+returned zero hits for `CP-26` and was written up as *"there is no CP-26 workflow in this repo at
+all"*. CP-26 **does** exist — in `scripts/pr-gates/pr-gates.mjs`, which a workflow calls. The
+search was scoped to the workflow files and the conclusion was stated about the repo. **Scope the
+claim to the population you actually searched** — the same lesson this station recorded on
+2026-08-30 and has now paid for twice.
+
+### What survives, restated correctly
+
+- The label was **applied at 05:40:02Z and removed at 05:53:54Z**, both by `GH-Mantova`. That is
+  measured and unchanged.
+- What the removal destroyed was not a gate but **the only visible marker of one**. `#1431` now
+  presents to any reader — human or agent — as green, CLEAN, unlabelled and mergeable, while the
+  watcher's own log routes it to Marco. The human gate now exists only in a gitignored
+  `processed/*.log` and in RULE 2, which is agent discipline on a board with several concurrent
+  actors.
+- `reference_do_not_merge_label` already rules on the attribution half: `GH-Mantova` is shared by
+  Marco and every agent, so a label change under that account is **not** evidence of automation
+  acting. **Do not read this as a breach. Ask Marco.** My question to him stands unchanged; my
+  claim about what his answer would mean does not.
+
+### The escalation, merged into the one already open
+
+This is not a new escalation. It is a second symptom of the one Station 00 raised on
+2026-08-28T10:09Z, and option (A) there covers it unchanged: **add an always-running `label-gate`
+job to `ci.yml`** that passes with no hold label and fails while `do-not-merge` / `needs-marco` /
+`hold` is present, merge that job first, **then add it to the ruleset**. Complete and additive: it
+makes the gate real for every future PR and changes no existing data. (B) ruleset-only fails the
+future half — the required check would not exist yet and every PR would block on it. (C)
+discipline-only is the state that produced `#1369`, and now also the state in which a human gate
+can be un-marked without attribution.
+
+**The workflow half is mine to write. The ruleset edit is an authorization change and is Marco's.**
+
+**DISPOSITION: ACTIONED** (this correction) **and ESCALATED** (folded into the 2026-08-28 label-gate
+escalation, not opened as a second one).

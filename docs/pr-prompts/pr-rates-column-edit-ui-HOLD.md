@@ -9,7 +9,7 @@ done_when: pnpm build && pnpm lint && pnpm --filter @project-ops/web test && gre
 size: 3
 gate_allow: none
 seed_only: false
-escalates: false
+escalates: true
 cluster: rates-column-hygiene
 cluster_order: 2
 requires_on_main: apps/api/test/canonical/CP-08-seed-idempotency.spec.ts :: VALUE_COLUMNS_HAVE_UNITS
@@ -94,3 +94,7 @@ re-checks on each rescan until that string is on `origin/main`; it does not bin 
 - One attempt. Never exit silently — if you cannot proceed, say `NO-OP: <reason>`.
 - Never ask a question or "stand by" for approval. There is no human in this run.
 - Read the job log before diagnosing any CI failure.
+- `escalates: true` gates the MERGE, not the RUN. Open the PR; Marco removes `do-not-merge`.
+  (Raised from `false` by Marco, 31 Aug: this rewrites the Columns card on a screen estimators use,
+  and reordering VALUE columns changes what a priced lookup returns — see the warning this slice
+  is required to render. It gets a human look before it lands.)

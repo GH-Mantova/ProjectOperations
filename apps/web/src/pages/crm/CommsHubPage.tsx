@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { entityLabel, sortThreadsByActivity } from "./comms-inbox.helpers";
 import { AnchorPicker, buildCreateThreadBody, mapTypeToServer, type PickerSelection } from "./AnchorPicker";
+import { CommsInboxTriage } from "./CommsInboxTriage";
 
 // CRM-4: Comms hub surface — internal threads + To-Do.
 // Anchored to a CRM record via ?entityType=ACCOUNT|TENDER|JOB|CONTRACT&entityId=…
@@ -120,7 +121,8 @@ function CommsInboxPage() {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
 
-  const [inboxTab, setInboxTab] = useState<"threads" | "tasks">("threads");
+  // CRM-S10: three tabs — Inbox (lead triage), Threads, My to-dos.
+  const [inboxTab, setInboxTab] = useState<"inbox" | "threads" | "tasks">("inbox");
 
   // CRM-S9: New-thread composer for the unanchored inbox.
   // Before S9, /crm/comms was a closed loop on an empty system — createThread
@@ -286,7 +288,7 @@ function CommsInboxPage() {
       </div>
 
       <div style={s.tabs}>
-        {(["threads", "tasks"] as const).map((t) => (
+        {(["inbox", "threads", "tasks"] as const).map((t) => (
           <button
             key={t}
             style={{
@@ -297,10 +299,17 @@ function CommsInboxPage() {
             }}
             onClick={() => setInboxTab(t)}
           >
-            {t === "threads" ? `Threads (${inboxThreadsTotal})` : `My to-dos (${inboxTasksTotal})`}
+            {t === "inbox" ? "Inbox" : t === "threads" ? `Threads (${inboxThreadsTotal})` : `My to-dos (${inboxTasksTotal})`}
           </button>
         ))}
       </div>
+
+      {/* CRM-S10: Inbox tab — lead intake's screen inside the Comms hub window.
+          Boundary rule: CommsInboxTriage calls /crm/intake/* only.
+          The anchor picker selection (pickerSelection) acts as the anchor filter. */}
+      {inboxTab === "inbox" && (
+        <CommsInboxTriage anchorFilter={pickerSelection} />
+      )}
 
       {inboxTab === "threads" && (
         <>

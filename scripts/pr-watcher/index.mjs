@@ -174,6 +174,11 @@ const HEARTBEAT_MAX_LINES = 500;
 export const MERGE_WAIT_HEARTBEAT = "merge-wait-heartbeat";
 const QUEUE_STATE_FILE = path.join(__dirname, ".queue-state.json");
 
+// Conflict-notification state file — persists { [prNumber]: { sha, notifiedAt,
+// consecutiveDirtyCount } } so we don't spam comments across watcher restarts.
+// Named alongside .reviewed-prs.json for consistency.
+const CONFLICT_STATE_FILE = path.join(__dirname, ".conflict-notified-prs.json");
+
 // NO-PR bounded auto-restage (slice 2) — feature flag + greppable marker.
 // When true, a [NO-PR] run that said "NO-OP:" is filed to processed/; any
 // other [NO-PR] run is given up to two more attempts (b, c suffixes) before
@@ -1270,6 +1275,7 @@ async function writeQueueState() {
       owned: result.owned,
       deferred: [...deferredNames],
       runnable: result.runnable,
+      conflictedPrs: [...confirmedConflictedPrs].sort((a, b) => a - b),
     };
 
     const tmp = QUEUE_STATE_FILE + ".tmp";
@@ -2142,26 +2148,214 @@ async function pollForNewPrs() {
   }
 }
 
+// ── Conflict-notification state ────────────────────────────────────────────
+// Tracks consecutive DIRTY observations per PR so we fire exactly one comment
+// per (PR number, head sha) on the second consecutive DIRTY poll.
+// Shape: { [prNumber]: { sha: string, notifiedAt: string|null, consecutiveDirtyCount: number } }
+// Module-level set keeps queue-state.json's conflictedPrs list current.
+
+let conflictNotified = {}; // loaded at startup — identifier must appear in source (premise grep)
+const confirmedConflictedPrs = new Set(); // PR numbers with confirmed (notified) conflicts
+
+async function loadConflictState() {
+  try {
+    const raw = await readFile(CONFLICT_STATE_FILE, "utf-8");
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      conflictNotified = data;
+      // Restore confirmedConflictedPrs from persisted state
+      confirmedConflictedPrs.clear();
+      for (const [num, entry] of Object.entries(conflictNotified)) {
+        if (entry && entry.notifiedAt) {
+          confirmedConflictedPrs.add(Number(num));
+        }
+      }
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      log("update", `warning: could not load conflict state (${err.message}) — starting empty`);
+    }
+    conflictNotified = {};
+    confirmedConflictedPrs.clear();
+  }
+}
+
+async function saveConflictState(state) {
+  const tmp = CONFLICT_STATE_FILE + ".tmp";
+  const data = JSON.stringify(state, null, 2);
+  try {
+    await writeFile(tmp, data, "utf-8");
+    await rename(tmp, CONFLICT_STATE_FILE);
+  } catch (err) {
+    log("update", `conflict state save failed (${err.message}), retrying...`);
+    try {
+      await writeFile(tmp, data, "utf-8");
+      await rename(tmp, CONFLICT_STATE_FILE);
+    } catch (err2) {
+      log("update", `conflict state save failed again (${err2.message}) — continuing`);
+    }
+  }
+}
+
+// Pure helper (exported for tests) — decides whether to notify about a
+// conflicted PR and updates the in-memory + persisted state.
+//
+// Injected deps:
+//   postComment(prNumber, body) — posts comment on the PR; may throw
+//   loadState()                 — returns the full conflictNotified map
+//   saveState(map)              — persists the map; may throw
+//   updateConfirmedSet(prNum, add) — adds/removes from confirmedConflictedPrs
+//   logger(level, msg)         — log function
+//
+// Does NOT throw into the caller: all errors are caught and logged.
+export async function handleConflictedPr(pr, {
+  postComment,
+  loadState,
+  saveState,
+  updateConfirmedSet,
+  logger,
+} = {}) {
+  const prNum = pr.number;
+  const sha = pr.headRefOid ?? "";
+  const state = await loadState();
+  const entry = state[prNum];
+
+  // If the entry exists but the sha changed, it's a new push — reset.
+  const isNewPush = entry && entry.sha !== sha;
+  const currentCount = (entry && !isNewPush) ? entry.consecutiveDirtyCount : 0;
+  const alreadyNotified = entry && !isNewPush && entry.notifiedAt !== null;
+  const newCount = currentCount + 1;
+
+  if (alreadyNotified) {
+    // Already notified for this sha — nothing to do; suppress per-poll log.
+    return;
+  }
+
+  const newEntry = {
+    sha,
+    notifiedAt: null,
+    consecutiveDirtyCount: newCount,
+  };
+
+  if (newCount === 1) {
+    // First observation — wait for second before acting (false-positive guard).
+    logger("update", `PR #${prNum} has conflicts — waiting for second consecutive observation before notifying`);
+    state[prNum] = newEntry;
+    await saveState(state);
+    return;
+  }
+
+  // Second (or later) consecutive observation — confirmed conflict. Notify once.
+  logger("update", `PR #${prNum} has conflicts (confirmed on observation ${newCount}) — posting comment`);
+  let notifiedAt = null;
+  try {
+    const body =
+      `PR #${prNum} has a merge conflict that \`update-branch\` cannot resolve. ` +
+      `A human rebase is needed before this PR can be merged.`;
+    await postComment(prNum, body);
+    notifiedAt = new Date().toISOString();
+    updateConfirmedSet(prNum, true);
+    logger("update", `PR #${prNum} conflict comment posted (sha=${sha.slice(0, 8)})`);
+  } catch (err) {
+    logger("update", `PR #${prNum} conflict comment failed (non-fatal): ${err.message}`);
+    // Swallow — do not stop processing other PRs.
+    // We still mark notifiedAt=null so we retry on next confirmation.
+  }
+
+  state[prNum] = { sha, notifiedAt, consecutiveDirtyCount: newCount };
+  await saveState(state);
+}
+
+// Remove a PR from conflict tracking when it leaves DIRTY state.
+// Exported for tests.
+export async function clearConflictEntry(prNum, {
+  loadState,
+  saveState,
+  updateConfirmedSet,
+  logger,
+} = {}) {
+  const state = await loadState();
+  if (!state[prNum]) return; // nothing to clear
+  const wasConfirmed = state[prNum].notifiedAt !== null;
+  delete state[prNum];
+  updateConfirmedSet(prNum, false);
+  await saveState(state);
+  if (wasConfirmed) {
+    logger("update", `PR #${prNum} conflict resolved — removed from conflict tracking`);
+  }
+}
+
 // Auto-update-branch: bring our own open PRs that fell BEHIND main up to
-// date. Conflicting PRs (mergeStateStatus DIRTY) are skipped — update-branch
-// can't resolve conflicts; those need a human rebase.
+// date. Conflicting PRs (mergeStateStatus DIRTY) get a one-time human
+// notification after two consecutive DIRTY observations; then we move on.
 async function pollForBehindPrs() {
   if (queuePaused) return;
   let prs;
   try {
     prs = await runGh(
-      ["pr", "list", "--author", "@me", "--state", "open", "--json", "number,title,mergeStateStatus"],
+      ["pr", "list", "--author", "@me", "--state", "open", "--json",
+        "number,title,mergeStateStatus,headRefOid"],
       { json: true },
     );
   } catch (err) {
     log("update", `poll failed: ${err.message} — will retry next tick`);
     return;
   }
+
+  // Build the set of PR numbers seen as DIRTY this poll so we can clear
+  // entries for PRs that have recovered.
+  const dirtyThisPoll = new Set();
+
   for (const pr of prs) {
     if (pr.mergeStateStatus === "DIRTY") {
-      log("update", `PR #${pr.number} has conflicts — skipping update-branch`);
+      dirtyThisPoll.add(pr.number);
+
+      // Inject real deps for production path.
+      await handleConflictedPr(pr, {
+        postComment: async (prNum, body) => {
+          const tmpFile = path.join(__dirname, `.conflict-comment-${prNum}.tmp.md`);
+          try {
+            await writeFile(tmpFile, body, "utf-8");
+            await runGh(["pr", "comment", String(prNum), "--body-file", tmpFile]);
+          } finally {
+            try { unlinkSync(tmpFile); } catch { /* best-effort */ }
+          }
+        },
+        loadState: async () => conflictNotified,
+        saveState: async (state) => {
+          conflictNotified = state;
+          await saveConflictState(state);
+        },
+        updateConfirmedSet: (prNum, add) => {
+          if (add) confirmedConflictedPrs.add(prNum);
+          else confirmedConflictedPrs.delete(prNum);
+        },
+        logger: log,
+      }).catch((err) => {
+        log("update", `conflict handler error for PR #${pr.number}: ${err.message}`);
+      });
+
       continue;
     }
+
+    // PR is no longer DIRTY — clear any conflict entry for it.
+    if (conflictNotified[pr.number]) {
+      await clearConflictEntry(pr.number, {
+        loadState: async () => conflictNotified,
+        saveState: async (state) => {
+          conflictNotified = state;
+          await saveConflictState(state);
+        },
+        updateConfirmedSet: (prNum, add) => {
+          if (add) confirmedConflictedPrs.add(prNum);
+          else confirmedConflictedPrs.delete(prNum);
+        },
+        logger: log,
+      }).catch((err) => {
+        log("update", `conflict clear error for PR #${pr.number}: ${err.message}`);
+      });
+    }
+
     if (pr.mergeStateStatus !== "BEHIND") continue;
     if (DRY_RUN) {
       log("dry-run", `PR #${pr.number} is BEHIND — would run gh pr update-branch ${pr.number}`);
@@ -2883,6 +3077,7 @@ async function main() {
 
   await runArchiveSettledVerdicts();
 
+  await loadConflictState(); // restore conflict-notification state across restarts
   await scanExisting();
   await writeQueueState(); // publish initial state after startup scan
 

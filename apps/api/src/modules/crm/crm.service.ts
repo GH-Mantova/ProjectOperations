@@ -751,10 +751,17 @@ export class CrmService {
 
     // Check for comms threads anchored to this opportunity.
     // We read CommThread directly via PrismaService to avoid importing
-    // CommsService across the module boundary. The polymorphic (entityType,
-    // entityId) pair uses entityType="opportunity" by convention in CommsService.
+    // CommsService across the module boundary.
+    //
+    // CASE MATTERS. COMM_ENTITY_TYPES in comms.service.ts is UPPERCASE
+    // ("ACCOUNT" | "TENDER" | "OPPORTUNITY" | "JOB" | "CONTRACT"), createThread
+    // stores input.entityType verbatim, and nothing normalises case anywhere in
+    // that module. A lowercase "opportunity" here matches zero rows in Postgres,
+    // which would make this guard silently dead and let an entry with live comms
+    // threads be deleted - the exact outcome "delete only when empty" exists to
+    // prevent. The literal below MUST stay in sync with COMM_ENTITY_TYPES.
     const threadCount = await this.prisma.commThread.count({
-      where: { entityType: "opportunity", entityId: id }
+      where: { entityType: "OPPORTUNITY", entityId: id }
     });
     if (threadCount > 0) blockers.push("commThread");
 

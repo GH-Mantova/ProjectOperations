@@ -254,6 +254,30 @@ describe("CrmService.deleteEntry", () => {
     expect((err as BadRequestException).message).toContain("commThread");
   });
 
+  it("(s11-3d-query) the commThread guard queries entityType 'OPPORTUNITY' (uppercase)", async () => {
+    // REGRESSION: this originally queried entityType: "opportunity" (lowercase).
+    // COMM_ENTITY_TYPES is uppercase and nothing normalises case, so the guard
+    // matched zero rows and could never fire. The s11-3d test above mocks
+    // count() and asserts only the branch, so it stayed green with the query
+    // broken - it is the WHERE clause that has to be pinned, not the branch.
+    const prisma = makePrisma();
+    prisma.opportunity.findUnique.mockResolvedValue(makeOpportunity());
+    prisma.commThread.count.mockResolvedValue(0);
+    prisma.opportunity.delete.mockResolvedValue(undefined);
+
+    const service = makeService(prisma);
+    await service.deleteEntry("opp-1");
+
+    expect(prisma.commThread.count).toHaveBeenCalledWith({
+      where: { entityType: "OPPORTUNITY", entityId: "opp-1" }
+    });
+    const arg = prisma.commThread.count.mock.calls[0][0] as {
+      where: { entityType: string };
+    };
+    expect(arg.where.entityType).toBe("OPPORTUNITY");
+    expect(arg.where.entityType).not.toBe("opportunity");
+  });
+
   it("(s11-4) succeeds on a genuinely empty entry — the row is deleted", async () => {
     const prisma = makePrisma();
     prisma.opportunity.findUnique.mockResolvedValue(makeOpportunity());

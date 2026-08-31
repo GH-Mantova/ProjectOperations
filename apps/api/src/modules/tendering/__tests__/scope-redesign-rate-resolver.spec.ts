@@ -81,7 +81,11 @@ describe("resolveCuttingRate (SLICE 2 — uses RateResolverService)", () => {
     expect(result!.baseRate).toBe(50); // max available fallback
   });
 
-  it("applies Wall elevation multiplier (1.1)", async () => {
+  it("Demosaw Wall: elevation multiplier is 1.0 (sheet already prices Wall rows — CUTTING_RATE_CORRECTIONS_V1 defect 4 fix)", async () => {
+    // Demosaw has dedicated Wall rows in the Cutrite schedule (e.g. $48.60/m at
+    // 150 mm). Applying 1.1x on top would double-count the wall surcharge.
+    // After CUTTING_RATE_CORRECTIONS_V1 the elevationMultiplier for Demosaw
+    // Wall is 1.0 — the row's own price encodes the uplift.
     const cuttingRates = [
       {
         rowId: "cr-wall-100",
@@ -101,8 +105,8 @@ describe("resolveCuttingRate (SLICE 2 — uses RateResolverService)", () => {
       depthMm: 100
     });
     expect(result).not.toBeNull();
-    expect(result!.elevationMultiplier).toBe(1.1);
-    expect(result!.finalRate).toBeCloseTo(44, 5);
+    expect(result!.elevationMultiplier).toBe(1.0);
+    expect(result!.finalRate).toBeCloseTo(40, 5); // no uplift — $40.00, not $44.00
   });
 
   it("returns null when no matching cutting rows found", async () => {

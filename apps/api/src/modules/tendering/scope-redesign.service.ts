@@ -94,11 +94,27 @@ function defaultColumnsForDiscipline(discipline: Discipline): string[] {
   return Array.from(union).filter((c) => !(REQUIRED_COLUMNS as readonly string[]).includes(c));
 }
 
-const ELEVATION_MULTIPLIER: Record<string, number> = {
-  Floor: 1.0,
-  Any: 1.0,
-  Wall: 1.1,
-  Inverted: 2.0
+// CUTTING_RATE_CORRECTIONS_V1 — Defect 4 fix:
+// Elevation multiplier is only applied to rigs that do NOT have their own
+// Wall rows in the Cutrite schedule. Demosaw has dedicated Wall rows (already
+// priced at Wall rates); Roadsaw is Floor-only. Only rigs whose rows are
+// stored as elevation="Any" (Ringsaw, Flush-cut, Tracksaw) take the uplift.
+// Mapping: equipment → elevation multiplier to apply for a Wall request.
+const ELEVATION_MULTIPLIER_BY_EQUIPMENT: Record<string, Record<string, number>> = {
+  // "Any"-elevation rigs: the sheet doesn't have separate Wall rows, so apply
+  // the uplift here to represent the extra effort.
+  Ringsaw: { Floor: 1.0, Any: 1.0, Wall: 1.1, Inverted: 2.0 },
+  "Flush-cut": { Floor: 1.0, Any: 1.0, Wall: 1.1, Inverted: 2.0 },
+  Tracksaw: { Floor: 1.0, Any: 1.0, Wall: 1.1, Inverted: 2.0 },
+  // Demosaw has its own Wall rows — the sheet price already encodes the uplift.
+  Demosaw: { Floor: 1.0, Any: 1.0, Wall: 1.0, Inverted: 2.0 },
+  // Roadsaw is Floor-only; Wall is never reached, but guard at 1.0 anyway.
+  Roadsaw: { Floor: 1.0, Any: 1.0, Wall: 1.0, Inverted: 2.0 }
+};
+
+// Fallback for any equipment not explicitly listed (safe default).
+const ELEVATION_MULTIPLIER_DEFAULT: Record<string, number> = {
+  Floor: 1.0, Any: 1.0, Wall: 1.1, Inverted: 2.0
 };
 
 const METHOD_MULTIPLIER: Record<string, number> = {
@@ -277,9 +293,28 @@ export async function resolveCuttingRate(
 
   const baseRate = rateRow.ratePerM;
   const methodMultiplier = METHOD_MULTIPLIER[effectiveMethod ?? ""] ?? 1.0;
-  const elevationMultiplier = ELEVATION_MULTIPLIER[requestedElevation] ?? 1.0;
-  const finalRate = baseRate * methodMultiplier * elevationMultiplier;
-  return { baseRate, methodMultiplier, elevationMultiplier, finalRate };
+  // CUTTING_RATE_CORRECTIONS_V1 — Defect 4: elevation multiplier is scoped
+  // per equipment. Demosaw already has priced Wall rows in the Cutrite sheet;
+  // applying 1.1x on top would double-count the wall surcharge ($48.60 →
+  // $53.46 against the sheet price of $48.60). Only Any-elevation rigs
+  // (Ringsaw, Flush-cut, Tracksaw) take the uplift here.
+  const elevationMap = ELEVATION_MULTIPLIER_BY_EQUIPMENT[equipment] ?? ELEVATION_MULTIPLIER_DEFAULT;
+  const elevationMultiplier = elevationMap[requestedElevation] ?? 1.0;
+  // CUTTING_RATE_CORRECTIONS_V1 — Defect 2: Tracksaw and Flush-cut have only
+  // a single 25 mm row in the Cutrite schedule. The original bucketed lookup
+  // fell back to that row for any depth, pricing all cuts at $18.00/m. Marco's
+  // rule: $18.00 buys 25 mm; rate scales at $0.72/mm (= floor/25), with the
+  // 25 mm floor as a minimum. Both constants are derived from the seeded row so
+  // a Cutrite reprice moves the floor and per-mm rate together.
+  let effectiveBaseRate = baseRate;
+  if (equipment === "Tracksaw" || equipment === "Flush-cut") {
+    const floorRate = rateRow.ratePerM; // seeded 25 mm row value (e.g. $18.00)
+    const depthMmCapped = rateRow.depthMm; // the bucket's own depthMm (25 mm)
+    const perMm = floorRate / depthMmCapped; // $0.72/mm when floor=$18.00 and cap=25
+    effectiveBaseRate = Math.max(floorRate, depthMm * perMm);
+  }
+  const finalRate = effectiveBaseRate * methodMultiplier * elevationMultiplier;
+  return { baseRate: effectiveBaseRate, methodMultiplier, elevationMultiplier, finalRate };
 }
 
 // Core hole resolver — spec Part 3.2. Returns isPOA=true for > 650mm so
@@ -313,8 +348,12 @@ export async function resolveCoreHoleRate(
   rateResolver: RateResolverService,
   input: { diameterMm: number; elevation?: string | null; method?: string | null; tenderId?: string | null }
 ): Promise<CoreHoleRateResult | null> {
-  const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation ?? "Floor"] ?? 1.0;
-  const methodMultiplier = METHOD_MULTIPLIER[input.method ?? ""] ?? 1.0;
+  // CUTTING_RATE_CORRECTIONS_V1 — Defect 3: core holes take NO method
+  // multiplier. The Cutrite schedule does not have a Low-emission or High-Freq
+  // surcharge for core drilling; applying METHOD_MULTIPLIER here silently added
+  // 25% to every Low-emission core-hole job. methodMultiplier is always 1.0.
+  const methodMultiplier = 1.0;
+  const elevationMultiplier = ELEVATION_MULTIPLIER_DEFAULT[input.elevation ?? "Floor"] ?? 1.0;
 
   if (input.diameterMm > 650) {
     return { isPOA: true, ratePerHole: null, methodMultiplier, elevationMultiplier };
@@ -1066,7 +1105,13 @@ export class ScopeRedesignService {
       };
     }
     const depthMm = dto.depthMm && dto.depthMm > 0 ? dto.depthMm : 0;
-    const depthUnits = depthMm / 10; // rate is $/hole per 10mm depth
+    // CUTTING_RATE_CORRECTIONS_V1 — Defect 1: depth units must be rounded and
+    // must have a minimum of 1. Marco's rule: the listed rate buys one whole
+    // 10 mm unit; part-units round at the five (x0–x4 down, x5–x9 up — i.e.
+    // standard Math.round); every hole bills at least one unit.
+    // Before: depthMm / 10 produced fractional units (14 mm → 1.4 units →
+    // $2.38 per hole instead of $1.70).
+    const depthUnits = Math.max(1, Math.round(depthMm / 10)); // rate is $/hole per 10mm depth
     const qty = dto.quantityEach ?? 0;
     const total = resolved.ratePerHole * depthUnits * qty * resolved.elevationMultiplier * resolved.methodMultiplier + shiftLoading;
     const finalPerHoleRate = resolved.ratePerHole * depthUnits * resolved.elevationMultiplier * resolved.methodMultiplier;

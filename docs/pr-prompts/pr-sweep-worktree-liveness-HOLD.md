@@ -10,8 +10,8 @@ scope:
   - scripts/pipeline/status-sweep.ps1
 done_when: >-
   grep -q "worktree-liveness" scripts/pipeline/status-sweep.ps1 && grep -q "LIVE STATION WORKTREE"
-  scripts/pipeline/status-sweep.ps1
-size: 2
+  scripts/pipeline/status-sweep.ps1 && grep -q "trunk-conclusion" scripts/pipeline/status-sweep.ps1
+size: 3
 gate_allow: none
 seed_only: false
 escalates: false
@@ -112,6 +112,41 @@ worktree down before you finish; leaving it behind reproduces the very thing thi
   process table.
 - Do **not** widen the 30-minute window into the classifier's only signal. A worktree can be dirty
   and hours old — that is still LIVE, because pruning it still destroys work. Dirty wins over age.
+
+## A SECOND defect in the same script — fix both, in this one PR
+
+Added 2026-08-31T14:5xZ, folded in from Station 04's `00-04-scanner-2026-08-31-1410-…` breadcrumb
+(its F3), because it lives in the same file and two prompts editing one script is a conflict waiting
+to happen.
+
+**`status-sweep.ps1:86-88` decides "TRUNK IS RED" by grepping the human-readable table, so it matches
+the commit TITLE, not the run conclusion:**
+
+```powershell
+$mfail = @($mainci | Select-String -Pattern "failure","cancelled","timed_out" -SimpleMatch).Count
+```
+
+`gh run list --branch main --limit 3` is called **without `--json`**, and the table's TITLE column is
+the commit subject. Any commit whose subject contains one of those three words is counted as a failed
+run. 04's control — two synthetic rows, **both conclusion `success`**, one titled
+`fix(ci): stop swallowing a test failure` — produced
+`2 success / 1 not-success  <-- TRUNK IS RED`, which is false.
+
+This is not hypothetical here: of the last 400 `origin/main` subjects, **one already contains a
+needle** — `fix(watcher): stop the exit -1 crash loop … treat every non-zero exit as a failure
+(#1162)`. It fires whenever such a commit sits in the top 3. A sweep reading `TRUNK IS RED` at
+14:11:31Z on 2026-08-31 could not be accounted for by a re-run (`run_attempt` = 1 on all 12 most
+recent main runs) or by a genuine red (last 20 main runs = 20 × `success`).
+
+**Do:** read `gh run list --branch main --limit 3 --json conclusion,displayTitle` and count the
+**`conclusion` field**, never the rendered table. Escaping the needles is not the fix — it leaves the
+class intact. The literal `trunk-conclusion` must appear in the script (a comment is fine); it is
+what `done_when` greps for.
+
+**Positive control:** feed the counter a fixture containing a `success` run titled
+`fix(ci): stop swallowing a test failure` and prove it reports **0 not-success**, then feed it a
+genuine `failure` conclusion and prove it reports 1. A counter that has only ever returned one answer
+has not been tested.
 
 ## STANDING AUTHORITY
 

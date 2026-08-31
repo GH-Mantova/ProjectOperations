@@ -81,7 +81,7 @@ describe("resolveCuttingRate (SLICE 2 — uses RateResolverService)", () => {
     expect(result!.baseRate).toBe(50); // max available fallback
   });
 
-  it("applies Wall elevation multiplier (1.1)", async () => {
+  it("Demosaw Wall does NOT apply elevation multiplier — priced Wall rows encode the premium (CUTTING_RATE_CORRECTIONS_V1 D4)", async () => {
     const cuttingRates = [
       {
         rowId: "cr-wall-100",
@@ -101,8 +101,9 @@ describe("resolveCuttingRate (SLICE 2 — uses RateResolverService)", () => {
       depthMm: 100
     });
     expect(result).not.toBeNull();
-    expect(result!.elevationMultiplier).toBe(1.1);
-    expect(result!.finalRate).toBeCloseTo(44, 5);
+    // D4 fix: Demosaw has explicit Wall rows — no uplift on top (was 1.1, now 1.0)
+    expect(result!.elevationMultiplier).toBe(1.0);
+    expect(result!.finalRate).toBeCloseTo(40, 5);
   });
 
   it("returns null when no matching cutting rows found", async () => {

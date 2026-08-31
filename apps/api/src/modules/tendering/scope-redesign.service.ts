@@ -244,17 +244,21 @@ export async function resolveCuttingRate(
 
   let rateRow: { depthMm: number; ratePerM: number } | null = null;
   if (equipment === "Tracksaw" || equipment === "Flush-cut") {
-    const bucketed = Math.max(25, Math.ceil(depthMm / 25) * 25);
-    // Exact bucketed-depth lookup.
-    const exact = candidates.find((r) => Number(r.keys["depthMm"]) === bucketed);
-    if (exact) {
-      rateRow = { depthMm: bucketed, ratePerM: exact.value };
-    } else {
-      // Fall back to the smallest available row (mirrors original gte:0 + any fallback).
-      const fallback = candidates.sort(
-        (a, b) => Number(a.keys["depthMm"]) - Number(b.keys["depthMm"])
-      )[0];
-      if (fallback) rateRow = { depthMm: Number(fallback.keys["depthMm"]), ratePerM: fallback.value };
+    // CUTTING_RATE_CORRECTIONS_V1 — D2: depth-scaling for Tracksaw/Flush-cut.
+    // The Cutrite schedule has only a single 25mm row for these rigs.
+    // Rule: the 25mm row is the floor rate; above 25mm the rate scales linearly
+    // at (floorRate / 25) per mm, with the floor as the minimum.
+    // Both the floor rate and per-mm rate are derived from the seeded 25mm row
+    // so a Cutrite reprice moves them together.
+    const floorRow = candidates.sort(
+      (a, b) => Number(a.keys["depthMm"]) - Number(b.keys["depthMm"])
+    )[0];
+    if (floorRow) {
+      const floorDepthMm = Number(floorRow.keys["depthMm"]); // 25 from seed
+      const floorRate = floorRow.value;                       // 18.00 from seed
+      const perMmRate = floorRate / floorDepthMm;             // 0.72/mm
+      const scaledRate = Math.max(floorRate, depthMm * perMmRate);
+      rateRow = { depthMm, ratePerM: scaledRate };
     }
   } else {
     // Deepest at-or-above-requested (original: depthMm >= depthMm, asc → first).
@@ -277,7 +281,18 @@ export async function resolveCuttingRate(
 
   const baseRate = rateRow.ratePerM;
   const methodMultiplier = METHOD_MULTIPLIER[effectiveMethod ?? ""] ?? 1.0;
-  const elevationMultiplier = ELEVATION_MULTIPLIER[requestedElevation] ?? 1.0;
+  // CUTTING_RATE_CORRECTIONS_V1 — D4: elevation loading is per-equipment.
+  // Demosaw has explicit Wall/Floor rows in the Cutrite schedule — the wall
+  // premium is already encoded in the row value. Applying ELEVATION_MULTIPLIER
+  // on top produces a double-loaded rate (e.g. $48.60 × 1.1 = $53.46 vs sheet
+  // $48.60). Rule: uplift only where the rig does NOT have its own Wall rows.
+  //   - Demosaw: has Wall rows → elevationMultiplier always 1.0
+  //   - Ringsaw, Flush-cut, Tracksaw: stored as "Any" → multiplier applies
+  //   - Roadsaw: Floor-only (sanitiseSawElevation pins it); multiplier is 1.0
+  const elevationMultiplier =
+    equipment === "Demosaw"
+      ? 1.0
+      : ELEVATION_MULTIPLIER[requestedElevation] ?? 1.0;
   const finalRate = baseRate * methodMultiplier * elevationMultiplier;
   return { baseRate, methodMultiplier, elevationMultiplier, finalRate };
 }
@@ -314,7 +329,10 @@ export async function resolveCoreHoleRate(
   input: { diameterMm: number; elevation?: string | null; method?: string | null; tenderId?: string | null }
 ): Promise<CoreHoleRateResult | null> {
   const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation ?? "Floor"] ?? 1.0;
-  const methodMultiplier = METHOD_MULTIPLIER[input.method ?? ""] ?? 1.0;
+  // CUTTING_RATE_CORRECTIONS_V1 — D3: core holes take no method multiplier.
+  // The Cutrite schedule does not have method-keyed core-hole rows.
+  // Applying METHOD_MULTIPLIER here silently added 25% for Low-emission/High-Freq.
+  const methodMultiplier = 1.0;
 
   if (input.diameterMm > 650) {
     return { isPOA: true, ratePerHole: null, methodMultiplier, elevationMultiplier };
@@ -1066,7 +1084,11 @@ export class ScopeRedesignService {
       };
     }
     const depthMm = dto.depthMm && dto.depthMm > 0 ? dto.depthMm : 0;
-    const depthUnits = depthMm / 10; // rate is $/hole per 10mm depth
+    // CUTTING_RATE_CORRECTIONS_V1 — D1: depth rounding and minimum.
+    // The listed rate buys one whole 10mm unit. Part-units round at the five
+    // (x0–x4 down, x5–x9 up) using standard Math.round. Every hole bills at
+    // least one unit regardless of how shallow the depth is.
+    const depthUnits = Math.max(1, Math.round(depthMm / 10)); // rate is $/hole per 10mm depth
     const qty = dto.quantityEach ?? 0;
     const total = resolved.ratePerHole * depthUnits * qty * resolved.elevationMultiplier * resolved.methodMultiplier + shiftLoading;
     const finalPerHoleRate = resolved.ratePerHole * depthUnits * resolved.elevationMultiplier * resolved.methodMultiplier;

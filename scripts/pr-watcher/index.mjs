@@ -658,15 +658,43 @@ async function mirrorVerdictToPr(name) {
 //     silently delete one on a transient gh outage.
 //   - Files whose name doesn't match pr-N-review.md are ignored entirely.
 //   - Archival is always a MOVE, never a delete.
+//   - listTrackedVerdicts is REQUIRED. Files it returns are skipped entirely —
+//     before the fetchPrState call — so tracked files cost no gh quota and are
+//     never moved. A default of "nothing is tracked" is the present bug spelled
+//     as a default: any future caller that forgets the argument would silently
+//     restore the startup-autostash loop.
 export async function archiveSettledVerdicts({
   reviewsDir,
   archiveDir,
   fetchPrState,
+  listTrackedVerdicts,
   logger = () => {},
   fsOps,
 } = {}) {
+  if (typeof listTrackedVerdicts !== "function") {
+    throw new TypeError(
+      "archiveSettledVerdicts: listTrackedVerdicts is required (async () => string[]). " +
+        "Omitting it would silently treat every file as untracked — restoring the startup-autostash loop.",
+    );
+  }
   const ops = fsOps ?? { readdir, mkdir, rename };
-  const stats = { archived: 0, kept: 0, skipped: 0 };
+  const stats = { archived: 0, kept: 0, skipped: 0, tracked: 0 };
+
+  // Resolve the tracked set once per sweep — one process, no network quota.
+  let trackedSet;
+  try {
+    const trackedBasenames = await listTrackedVerdicts();
+    trackedSet = new Set(trackedBasenames);
+  } catch (err) {
+    // Failing closed: treat every file as tracked so we never move a git-tracked
+    // file on a transient failure.
+    logger(
+      "review",
+      `verdict-archive: listTrackedVerdicts failed, treating all files as tracked this sweep: ${err.message}`,
+    );
+    trackedSet = null; // null sentinel — skip all files below
+  }
+
   let entries;
   try {
     entries = await ops.readdir(reviewsDir);
@@ -678,6 +706,13 @@ export async function archiveSettledVerdicts({
   for (const name of entries) {
     const m = name.match(/^pr-(\d+)-review\.md$/);
     if (!m) continue;
+
+    // Skip tracked files before any gh call — no quota cost, no move.
+    if (trackedSet === null || trackedSet.has(name)) {
+      stats.tracked++;
+      continue;
+    }
+
     const prNumber = Number(m[1]);
     let state;
     try {
@@ -731,12 +766,32 @@ async function runArchiveSettledVerdicts() {
         );
         return json.state;
       },
+      // One `git ls-files` process per sweep — no network, no gh quota.
+      // Returns basenames only (the filenames inside docs/pr-reviews/).
+      // On failure the function throws, and archiveSettledVerdicts treats
+      // every file as tracked for that sweep (fail-closed).
+      listTrackedVerdicts: async () => {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+        const { stdout } = await execFileAsync("git", [
+          "-C",
+          REPO_ROOT,
+          "ls-files",
+          "docs/pr-reviews",
+        ]);
+        return stdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((rel) => path.basename(rel));
+      },
       logger: log,
     });
-    if (stats.archived + stats.kept + stats.skipped > 0) {
+    if (stats.archived + stats.kept + stats.skipped + stats.tracked > 0) {
       log(
         "review",
-        `verdict-archive sweep: archived=${stats.archived} kept=${stats.kept} skipped=${stats.skipped}`,
+        `verdict-archive sweep: archived=${stats.archived} kept=${stats.kept} skipped=${stats.skipped} tracked=${stats.tracked}`,
       );
     }
   } catch (err) {

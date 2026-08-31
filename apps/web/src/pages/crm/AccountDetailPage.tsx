@@ -75,6 +75,50 @@ type JobRow = {
   createdAt: string;
 };
 
+type ContractRow = {
+  id: string;
+  contractNumber: string;
+  contractValue: string;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  project: { id: string; projectNumber: string; name: string };
+};
+
+type OpportunityRow = {
+  id: string;
+  title: string;
+  stage: string;
+  probability: number;
+  estimatedValue: string | null;
+  expectedCloseDate: string | null;
+  wonAt: string | null;
+  lostAt: string | null;
+  createdAt: string;
+};
+
+type ActivityItem =
+  | { kind: "note"; id: string; body: string; createdAt: string; authorName: string; contactName: string | null }
+  | { kind: "thread"; id: string; subject: string | null; createdAt: string; authorName: string; firstMessage: string | null };
+
+type RelationshipNoteRow = {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: OwnerLite;
+  contact: { id: string; firstName: string; lastName: string } | null;
+};
+
+type CommThreadRow = {
+  id: string;
+  subject: string | null;
+  createdAt: string;
+  createdBy: OwnerLite;
+  messages: Array<{ id: string; body: string; createdAt: string }>;
+};
+
 type Account360 = {
   id: string;
   clientId: string | null;
@@ -93,6 +137,10 @@ type Account360 = {
     tenders: TenderRow[];
     tenderTotal: number;
     jobs: JobRow[];
+    contracts: ContractRow[];
+    opportunities: OpportunityRow[];
+    relationshipNotes: RelationshipNoteRow[];
+    commThreads: CommThreadRow[];
   };
 };
 
@@ -192,7 +240,7 @@ export function AccountDetailPage() {
   const [account, setAccount] = useState<Account360 | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"contacts" | "tenders" | "jobs">("contacts");
+  const [activeTab, setActiveTab] = useState<"activity" | "contacts" | "tenders" | "jobs" | "contracts" | "opportunities">("activity");
 
   // CRM-S5: inline-edit state.
   const [editing, setEditing] = useState(false);
@@ -602,28 +650,53 @@ export function AccountDetailPage() {
 
       {/* Roll-up tabs */}
       <div style={s.card}>
-        <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
-          {(["contacts", "tenders", "jobs"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: "6px 16px",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontWeight: activeTab === tab ? 700 : 400,
-                background: activeTab === tab ? "#6366f1" : "#f3f4f6",
-                color: activeTab === tab ? "#fff" : "#374151",
-                fontSize: 13
-              }}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              {" "}
-              <span style={{ opacity: 0.7 }}>({tab === "tenders" ? rollUps.tenderTotal : rollUps[tab].length})</span>
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
+          {(["activity", "contacts", "tenders", "jobs", "contracts", "opportunities"] as const).map((tab) => {
+            let count: number | string;
+            if (tab === "activity") {
+              count = rollUps.relationshipNotes.length + rollUps.commThreads.length;
+            } else if (tab === "tenders") {
+              count = rollUps.tenderTotal;
+            } else if (tab === "contacts") {
+              count = rollUps.contacts.length;
+            } else if (tab === "jobs") {
+              count = rollUps.jobs.length;
+            } else if (tab === "contracts") {
+              count = rollUps.contracts.length;
+            } else {
+              count = rollUps.opportunities.length;
+            }
+            const label = tab === "activity" ? "Activity" : tab.charAt(0).toUpperCase() + tab.slice(1);
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: "6px 16px",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontWeight: activeTab === tab ? 700 : 400,
+                  background: activeTab === tab ? "#6366f1" : "#f3f4f6",
+                  color: activeTab === tab ? "#fff" : "#374151",
+                  fontSize: 13
+                }}
+              >
+                {label}
+                {" "}
+                <span style={{ opacity: 0.7 }}>({count})</span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Activity tab: notes + threads merged newest-first */}
+        {activeTab === "activity" && (
+          <ActivityTab
+            relationshipNotes={rollUps.relationshipNotes}
+            commThreads={rollUps.commThreads}
+          />
+        )}
 
         {activeTab === "contacts" && (
           rollUps.contacts.length === 0
@@ -716,9 +789,159 @@ export function AccountDetailPage() {
               </table>
             )
         )}
+
+        {activeTab === "contracts" && (
+          rollUps.contracts.length === 0
+            ? <div style={s.empty}>No contracts found for this client.</div>
+            : (
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Number</th>
+                    <th style={s.th}>Project</th>
+                    <th style={s.th}>Value</th>
+                    <th style={s.th}>Status</th>
+                    <th style={s.th}>Start</th>
+                    <th style={s.th}>End</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rollUps.contracts.map((c) => (
+                    <tr key={c.id}>
+                      <td style={s.td}>{c.contractNumber}</td>
+                      <td style={s.td}>{c.project.name}</td>
+                      <td style={s.td}>{formatDecimal(c.contractValue)}</td>
+                      <td style={s.td}>{c.archivedAt ? "Archived" : c.status}</td>
+                      <td style={s.td}>{fmtDate(c.startDate)}</td>
+                      <td style={s.td}>{fmtDate(c.endDate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+        )}
+
+        {activeTab === "opportunities" && (
+          rollUps.opportunities.length === 0
+            ? <div style={s.empty}>No opportunities linked to this account.</div>
+            : (
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Title</th>
+                    <th style={s.th}>Stage</th>
+                    <th style={s.th}>Probability</th>
+                    <th style={s.th}>Value</th>
+                    <th style={s.th}>Close date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rollUps.opportunities.map((o) => (
+                    <tr key={o.id}>
+                      <td style={s.td}>{o.title}</td>
+                      <td style={s.td}>{o.stage}</td>
+                      <td style={s.td}>{o.probability}%</td>
+                      <td style={s.td}>{o.estimatedValue ? formatDecimal(o.estimatedValue) : "—"}</td>
+                      <td style={s.td}>{fmtDate(o.expectedCloseDate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+        )}
       </div>
     </div>
   );
+}
+
+// ── Activity tab ──────────────────────────────────────────────────────────────
+
+function ActivityTab({
+  relationshipNotes,
+  commThreads
+}: {
+  relationshipNotes: RelationshipNoteRow[];
+  commThreads: CommThreadRow[];
+}) {
+  // Merge notes and threads into a single timeline sorted newest-first.
+  const items: ActivityItem[] = [
+    ...relationshipNotes.map((n): ActivityItem => ({
+      kind: "note",
+      id: n.id,
+      body: n.body,
+      createdAt: n.createdAt,
+      authorName: `${n.author.firstName} ${n.author.lastName}`,
+      contactName: n.contact ? `${n.contact.firstName} ${n.contact.lastName}` : null
+    })),
+    ...commThreads.map((t): ActivityItem => ({
+      kind: "thread",
+      id: t.id,
+      subject: t.subject,
+      createdAt: t.createdAt,
+      authorName: `${t.createdBy.firstName} ${t.createdBy.lastName}`,
+      firstMessage: t.messages[0]?.body ?? null
+    }))
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  if (items.length === 0) {
+    return (
+      <div>
+        <div style={{ color: "#6b7280", fontSize: 13, marginBottom: 16, padding: "8px 12px", background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+          Email capture is pending M365 provisioning — email threads will appear here once connected.
+        </div>
+        <div style={{ color: "#9ca3af", fontSize: 13, padding: "12px 0" }}>No activity recorded for this account yet.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Email empty-state notice — always shown so the label is visible */}
+      <div style={{ color: "#6b7280", fontSize: 12, marginBottom: 12, padding: "6px 10px", background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+        Email capture pending M365 provisioning — email threads not yet shown here.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.map((item) => (
+          <div
+            key={`${item.kind}-${item.id}`}
+            style={{ borderLeft: `3px solid ${item.kind === "note" ? "#6366f1" : "#16a34a"}`, paddingLeft: 12, paddingTop: 4, paddingBottom: 4 }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: item.kind === "note" ? "#6366f1" : "#16a34a", textTransform: "uppercase" }}>
+                {item.kind === "note" ? "Note" : "Thread"}
+              </span>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                {fmtDate(item.createdAt)} — {item.authorName}
+              </span>
+              {item.kind === "note" && item.contactName && (
+                <span style={{ fontSize: 11, color: "#9ca3af" }}>re: {item.contactName}</span>
+              )}
+            </div>
+            {item.kind === "note" && (
+              <div style={{ fontSize: 13, color: "#111827", whiteSpace: "pre-wrap" }}>{item.body}</div>
+            )}
+            {item.kind === "thread" && (
+              <div style={{ fontSize: 13, color: "#111827" }}>
+                <strong>{item.subject ?? "(no subject)"}</strong>
+                {item.firstMessage && (
+                  <div style={{ color: "#6b7280", marginTop: 2 }}>{item.firstMessage.slice(0, 120)}{item.firstMessage.length > 120 ? "…" : ""}</div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────────
+
+function formatDecimal(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  if (!Number.isFinite(num)) return String(value);
+  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(num);
 }
 
 // ── Edit-form option lists (CRM-S5) ───────────────────────────────────────────

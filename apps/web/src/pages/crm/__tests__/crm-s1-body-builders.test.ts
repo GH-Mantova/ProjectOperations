@@ -120,3 +120,37 @@ describe("buildCreateNoteBody (CRM S1 RelationshipsPage)", () => {
     expect(body.body).toBe(text);
   });
 });
+
+// ── CRM-S6: Log contact (AccountsListPage) ────────────────────────────────────
+// Test 4 of CRM-S6 spec: "Log contact builds note body carrying row's
+// accountId — never null (S1's guard)."
+//
+// The LogContactModal reuses buildCreateNoteBody. This test asserts that when
+// the function is called with an accountId taken from a list row, the resulting
+// body carries that accountId and it is never null.
+
+describe("buildCreateNoteBody — CRM-S6 Log contact guard", () => {
+  it("Log contact: accountId from list row is present in the body", () => {
+    const rowAccountId = "acct-from-list-row-123";
+    const body = buildCreateNoteBody({ body: "Spoke on the phone", accountId: rowAccountId });
+    expect(body.accountId).toBe(rowAccountId);
+  });
+
+  it("Log contact: accountId is never null", () => {
+    const rowAccountId = "acct-xyz";
+    const body = buildCreateNoteBody({ body: "Follow-up email sent", accountId: rowAccountId });
+    expect(body.accountId).not.toBeNull();
+  });
+
+  it("Log contact: accountId is a non-empty string", () => {
+    const rowAccountId = "acct-abc";
+    const body = buildCreateNoteBody({ body: "Met in person", accountId: rowAccountId });
+    expect(typeof body.accountId).toBe("string");
+    expect(body.accountId.length).toBeGreaterThan(0);
+  });
+
+  it("Log contact: contactId defaults to null (row has no contact pre-selected)", () => {
+    const body = buildCreateNoteBody({ body: "Left voicemail", accountId: "acct-def" });
+    expect(body.contactId).toBeNull();
+  });
+});

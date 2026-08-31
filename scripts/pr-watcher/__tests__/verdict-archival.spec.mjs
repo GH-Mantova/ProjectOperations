@@ -36,9 +36,10 @@ test("archives a verdict when its PR is MERGED", async () => {
       assert.equal(n, 42);
       return "MERGED";
     },
+    listTrackedVerdicts: async () => [],
   });
 
-  assert.deepEqual(stats, { archived: 1, kept: 0, skipped: 0 });
+  assert.deepEqual(stats, { archived: 1, kept: 0, skipped: 0, tracked: 0 });
   assert.equal(existsSync(path.join(reviewsDir, name)), false);
   const moved = await readFile(path.join(archiveDir, name), "utf-8");
   assert.equal(moved, "verdict-body");
@@ -52,9 +53,10 @@ test("archives a verdict when its PR is CLOSED", async () => {
     reviewsDir,
     archiveDir,
     fetchPrState: async () => "CLOSED",
+    listTrackedVerdicts: async () => [],
   });
 
-  assert.deepEqual(stats, { archived: 1, kept: 0, skipped: 0 });
+  assert.deepEqual(stats, { archived: 1, kept: 0, skipped: 0, tracked: 0 });
   assert.equal(existsSync(path.join(archiveDir, "pr-7-review.md")), true);
 });
 
@@ -67,9 +69,10 @@ test("leaves a verdict in place when its PR is OPEN", async () => {
     reviewsDir,
     archiveDir,
     fetchPrState: async () => "OPEN",
+    listTrackedVerdicts: async () => [],
   });
 
-  assert.deepEqual(stats, { archived: 0, kept: 1, skipped: 0 });
+  assert.deepEqual(stats, { archived: 0, kept: 1, skipped: 0, tracked: 0 });
   assert.equal(existsSync(path.join(reviewsDir, name)), true);
   assert.equal(existsSync(archiveDir), false);
 });
@@ -86,10 +89,11 @@ test("failed state query leaves file in place and does not throw", async () => {
     fetchPrState: async () => {
       throw new Error("gh exited 1: rate-limited");
     },
+    listTrackedVerdicts: async () => [],
     logger: (level, msg) => logged.push([level, msg]),
   });
 
-  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 1 });
+  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 1, tracked: 0 });
   assert.equal(existsSync(path.join(reviewsDir, name)), true);
   assert.equal(existsSync(archiveDir), false);
   assert.ok(
@@ -112,9 +116,10 @@ test("ignores files that don't match pr-N-review.md", async () => {
       calls++;
       return "MERGED";
     },
+    listTrackedVerdicts: async () => [],
   });
 
-  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 0 });
+  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 0, tracked: 0 });
   assert.equal(calls, 0);
   const remaining = await readdir(reviewsDir);
   assert.deepEqual(remaining.sort(), ["README.md", "pr-abc-review.md", "pr-notes.md"]);
@@ -134,9 +139,10 @@ test("handles a mix of MERGED, OPEN, and failing PRs in one sweep", async () => 
       if (n === 2) return "OPEN";
       throw new Error("nope");
     },
+    listTrackedVerdicts: async () => [],
   });
 
-  assert.deepEqual(stats, { archived: 1, kept: 1, skipped: 1 });
+  assert.deepEqual(stats, { archived: 1, kept: 1, skipped: 1, tracked: 0 });
   assert.equal(existsSync(path.join(archiveDir, "pr-1-review.md")), true);
   assert.equal(existsSync(path.join(reviewsDir, "pr-2-review.md")), true);
   assert.equal(existsSync(path.join(reviewsDir, "pr-3-review.md")), true);
@@ -150,6 +156,117 @@ test("missing reviewsDir is a no-op, returns zeroed stats", async () => {
     fetchPrState: async () => {
       throw new Error("should not be called");
     },
+    listTrackedVerdicts: async () => [],
   });
-  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 0 });
+  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 0, tracked: 0 });
+});
+
+// ── New tests for tracked-file protection ──────────────────────────────────
+
+test("skips a tracked verdict — no fetchPrState call, file stays, tracked:1", async () => {
+  const { reviewsDir, archiveDir } = await makeSandbox();
+  const name = "pr-55-review.md";
+  await writeFile(path.join(reviewsDir, name), "tracked-body", "utf-8");
+
+  let fetchCalls = 0;
+  const stats = await archiveSettledVerdicts({
+    reviewsDir,
+    archiveDir,
+    fetchPrState: async () => {
+      fetchCalls++;
+      return "MERGED";
+    },
+    listTrackedVerdicts: async () => [name],
+  });
+
+  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 0, tracked: 1 });
+  assert.equal(existsSync(path.join(reviewsDir, name)), true, "file must remain in reviewsDir");
+  assert.equal(existsSync(path.join(archiveDir, name)), false, "file must not appear in archiveDir");
+  assert.equal(fetchCalls, 0, "fetchPrState must never be called for a tracked file");
+});
+
+test("still archives an untracked verdict when tracked set is non-empty", async () => {
+  const { reviewsDir, archiveDir } = await makeSandbox();
+  const tracked = "pr-10-review.md";
+  const untracked = "pr-20-review.md";
+  await writeFile(path.join(reviewsDir, tracked), "tracked", "utf-8");
+  await writeFile(path.join(reviewsDir, untracked), "untracked", "utf-8");
+
+  const stats = await archiveSettledVerdicts({
+    reviewsDir,
+    archiveDir,
+    fetchPrState: async () => "MERGED",
+    listTrackedVerdicts: async () => [tracked],
+  });
+
+  assert.deepEqual(stats, { archived: 1, kept: 0, skipped: 0, tracked: 1 });
+  assert.equal(existsSync(path.join(reviewsDir, tracked)), true, "tracked file must stay");
+  assert.equal(existsSync(path.join(archiveDir, untracked)), true, "untracked file must be archived");
+});
+
+test("mixed sweep: one tracked and one untracked MERGED verdict — exactly one moves", async () => {
+  const { reviewsDir, archiveDir } = await makeSandbox();
+  const trackedName = "pr-100-review.md";
+  const untrackedName = "pr-200-review.md";
+  await writeFile(path.join(reviewsDir, trackedName), "t", "utf-8");
+  await writeFile(path.join(reviewsDir, untrackedName), "u", "utf-8");
+
+  const stats = await archiveSettledVerdicts({
+    reviewsDir,
+    archiveDir,
+    fetchPrState: async () => "MERGED",
+    listTrackedVerdicts: async () => [trackedName],
+  });
+
+  assert.deepEqual(stats, { archived: 1, kept: 0, skipped: 0, tracked: 1 });
+  assert.equal(existsSync(path.join(reviewsDir, trackedName)), true);
+  assert.equal(existsSync(path.join(archiveDir, trackedName)), false);
+  assert.equal(existsSync(path.join(archiveDir, untrackedName)), true);
+});
+
+test("tracked lookup throws — all files skipped, nothing moves, one log line, no throw", async () => {
+  const { reviewsDir, archiveDir } = await makeSandbox();
+  await writeFile(path.join(reviewsDir, "pr-77-review.md"), "body", "utf-8");
+  const logged = [];
+
+  const stats = await archiveSettledVerdicts({
+    reviewsDir,
+    archiveDir,
+    fetchPrState: async () => "MERGED",
+    listTrackedVerdicts: async () => {
+      throw new Error("git subprocess failed");
+    },
+    logger: (level, msg) => logged.push([level, msg]),
+  });
+
+  // Fail-closed: everything counted as tracked, nothing moved
+  assert.deepEqual(stats, { archived: 0, kept: 0, skipped: 0, tracked: 1 });
+  assert.equal(existsSync(path.join(reviewsDir, "pr-77-review.md")), true, "file must stay");
+  assert.equal(existsSync(archiveDir), false, "archiveDir must not be created");
+  assert.equal(logged.length, 1, "exactly one log line");
+  assert.ok(
+    logged[0][1].includes("listTrackedVerdicts failed"),
+    `expected 'listTrackedVerdicts failed' in log, got: ${logged[0][1]}`,
+  );
+});
+
+test("missing listTrackedVerdicts dependency throws TypeError", async () => {
+  const { reviewsDir, archiveDir } = await makeSandbox();
+  await assert.rejects(
+    () =>
+      archiveSettledVerdicts({
+        reviewsDir,
+        archiveDir,
+        fetchPrState: async () => "MERGED",
+        // listTrackedVerdicts intentionally omitted
+      }),
+    (err) => {
+      assert.ok(err instanceof TypeError, `expected TypeError, got ${err.constructor.name}`);
+      assert.ok(
+        err.message.includes("listTrackedVerdicts is required"),
+        `expected message about listTrackedVerdicts, got: ${err.message}`,
+      );
+      return true;
+    },
+  );
 });

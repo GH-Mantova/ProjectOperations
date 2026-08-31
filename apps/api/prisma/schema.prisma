@@ -7597,6 +7597,18 @@ model Account {
 // may be null so that notes can be filed at account level only (no contact
 // selected), or at contact level only (no account context).
 
+/// CRM-S7: Communication medium for a relationship note.
+/// Distinct from LeadCaptureChannel (which answers "how did a lead arrive").
+/// These are contact media: phone call, email thread, meeting, site visit.
+/// NULL is valid — historic notes pre-date this field and have no channel.
+enum InteractionChannel {
+  phone
+  email
+  meeting
+  site_visit
+  other
+}
+
 model RelationshipNote {
   id        String   @id @default(cuid())
   /// The account this note is filed against. Null = contact-only note.
@@ -7610,6 +7622,9 @@ model RelationshipNote {
   author    User     @relation("RelationshipNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   /// Free-text body of the note (call summary, meeting minutes, etc.).
   body      String
+  /// CRM-S7: communication medium. NULL for historic notes — not backfilled.
+  /// UI renders NULL as "—". Do NOT add tenderId/opportunityId here.
+  channel   InteractionChannel? @map("channel")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -7669,22 +7684,35 @@ enum CommTaskStatus {
   CANCELLED
 }
 
+/// CRM-S7: Discriminator so the Comms hub can filter conversation threads from
+/// logged-contact threads. S10 will wire the filter UI; this enum gives it
+/// something to filter ON without requiring a second migration later.
+/// conversation — normal user-to-user discussion thread (default, back-compat).
+/// logged_contact — auto-created when a user logs a contact on a tender/opp.
+enum CommThreadKind {
+  conversation
+  logged_contact
+}
+
 /// CRM-4: A conversation thread anchored to any CRM record via a polymorphic
 /// (entityType, entityId) pair. Threads are soft-archivable (archivedAt).
 model CommThread {
-  id          String        @id @default(cuid())
+  id          String         @id @default(cuid())
   /// Entity kind the thread is anchored to. Validated at the DTO layer;
   /// stored as a String for sub-module decoupling.
-  entityType  String        @map("entity_type")
-  entityId    String        @map("entity_id")
+  entityType  String         @map("entity_type")
+  entityId    String         @map("entity_id")
   subject     String?
-  createdById String        @map("created_by_id")
-  createdBy   User          @relation("CommThreadCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-  archivedAt  DateTime?     @map("archived_at")
-  messages    CommMessage[] @relation("CommMessageThread")
-  tasks       CommTask[]    @relation("CommTaskThread")
+  /// CRM-S7: conversation (default) or logged_contact.
+  /// Existing rows default to conversation; no backfill required.
+  kind        CommThreadKind @default(conversation) @map("kind")
+  createdById String         @map("created_by_id")
+  createdBy   User           @relation("CommThreadCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  archivedAt  DateTime?      @map("archived_at")
+  messages    CommMessage[]  @relation("CommMessageThread")
+  tasks       CommTask[]     @relation("CommTaskThread")
 
   @@index([entityType, entityId])
   @@index([createdById])

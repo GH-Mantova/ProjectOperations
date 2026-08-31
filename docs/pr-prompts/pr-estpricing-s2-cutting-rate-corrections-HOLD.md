@@ -10,8 +10,8 @@ gate_allow: none
 seed_only: false
 escalates: true
 cluster: estimating-pricing
-cluster_order: 2
-requires_on_main: 'apps/api/src/modules/rates/rate-resolver.service.ts :: TENDER_RATE_SNAPSHOT_APPLIED'
+cluster_order: 3
+requires_on_main: 'apps/api/src/modules/rates/rate-resolver.service.ts :: SNAPSHOT_LIST_APPLIED'
 ---
 
 # Four measured concrete-cutting pricing defects

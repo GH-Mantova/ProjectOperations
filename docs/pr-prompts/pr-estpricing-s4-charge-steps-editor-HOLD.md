@@ -13,7 +13,7 @@ gate_allow: none
 seed_only: false
 escalates: true
 cluster: estimating-pricing
-cluster_order: 4
+cluster_order: 5
 requires_on_main: 'apps/api/prisma/schema.prisma :: chargeSteps'
 ---
 

@@ -475,23 +475,32 @@ here now because they are true for **every** station.
   never-arm prompt**, and it fires at `:728` before the premise is ever evaluated. The general
   warning stands: a **prose** human gate matches neither regex and is invisible to both the
   linter and any grep built on them.
-- 🔴 **`lint-prompt.mjs`’s `parseFrontMatter` has NO block-scalar support, and it currently RUBBER-STAMPS
-  the LL-29 rollback gate.** `key: >-` stores the literal two characters `">-"` and the indented body is
-  silently dropped — the continuation lines match neither the list-item regex nor `^([a-z_]+):`
-  (`lint-prompt.mjs:934-966`). `">-"` is neither missing nor empty, **so every presence check passes on
-  content nobody wrote.** Measured 2026-08-30 with both controls (folded → `">-"`, plain → its text)
-  across all 61 depth-1 `-HOLD`/`-ready` prompts on `origin/main`:
-  `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12 · and **0** on `premise`, `scope`,
-  `fixes_pr` or any `requires_*`. **7 of the 17 Prisma-migration-scoped prompts are among the 10**,
-  including two irreversible table drops (`pr-524-rates-b-slice2-canonical`,
-  `pr-rates-s11c-drop-legacy-tables`) and `pr-siteid-notnull-backfill` — all three have a rollback gate
-  that reads two characters and passes. Independently found 2026-08-19 and 2026-08-28 and re-measured
-  here; the `premise`-is-clean half has held all three times, which is the only reason nothing has been
-  mis-binned. The fix is staged as `pr-lint-frontmatter-block-scalar-collapse-HOLD.md` (ADMIT).
-  **Until it lands: never write a front-matter key as a block scalar, treat a `">-"` in lint output as
-  an UNREAD field rather than a value, and read `rollback_strategy` out of the file by eye before
-  trusting any migration-scoped ADMIT.** The watcher is NOT affected — `scripts/pr-watcher/index.mjs`
-  has its own extractor that folds correctly, so lint and the watcher disagree about the same file.
+- 🟢 **LANDED 2026-08-31T01:21:53Z — `parseFrontMatter` now FOLDS block scalars, so the LL-29 rollback
+  gate is real again.** PR **#1414** (`1a62c86d`) added `foldBlockScalar` for `>`, `>-`, `>+`, `|`, `|-`,
+  `|+` with correct chomping. Measured on `origin/main` at `6e105076`:
+  `git grep -c foldBlockScalar origin/main -- scripts/pipeline/lint-prompt.mjs` → **2**, with the
+  negative control `zzzNoSuchTokenZzz` → exit 1. **The three instructions this bullet used to carry
+  are RETIRED — do not follow them:** a block scalar in front matter is now read, a `">-"` in lint
+  output is no longer the expected symptom, and a migration-scoped ADMIT no longer needs
+  `rollback_strategy` checked by eye.
+  **What is still worth knowing.** From 2026-08-19 to 2026-08-31 the parser stored the literal two
+  characters `">-"` and silently dropped the indented body, so **every presence check passed on
+  content nobody wrote.** Across the 61 depth-1 `-HOLD`/`-ready` prompts that was
+  `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12 — including two irreversible
+  table drops (`pr-524-rates-b-slice2-canonical`, `pr-rates-s11c-drop-legacy-tables`) and
+  `pr-siteid-notnull-backfill`. 🔴 **Those prompts have never been linted by a working rollback
+  gate — RE-LINT any of them before arming.** `premise`, `scope`, `fixes_pr` and the `requires_*`
+  family measured **0** on all three occasions this was found, which is the only reason nothing was
+  ever mis-binned. The watcher was never affected — `scripts/pr-watcher/index.mjs` has always had
+  its own extractor that folds correctly.
+  ⚠️ **This bullet went on asserting "the fix is staged as
+  `pr-lint-frontmatter-block-scalar-collapse-HOLD.md` (ADMIT)" for thirteen hours after that file had
+  been armed, consumed and merged.** Four station runs read this block in full inside that window and
+  none caught it. **A hash-gated canonical block is protected against being EDITED, not against going
+  STALE.** So: any claim here about a fix that has not yet landed must name the probe that would
+  falsify it — as this replacement does — or it will outlive its own truth in the one document every
+  station is told it can trust.
+
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
 - ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is

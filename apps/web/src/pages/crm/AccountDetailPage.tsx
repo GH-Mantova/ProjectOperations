@@ -3,6 +3,15 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
+import {
+  archiveAccount,
+  buildPatchAccountBody,
+  patchAccount,
+  unarchiveAccount,
+  type AccountLifecycleStatus,
+  type AccountSource,
+  type AccountType
+} from "./crm-api";
 
 // CRM-1: Client-360 / Account detail page.
 // Shows the Account with its linked Client identity, contacts, and
@@ -185,6 +194,17 @@ export function AccountDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"contacts" | "tenders" | "jobs">("contacts");
 
+  // CRM-S5: inline-edit state.
+  const [editing, setEditing] = useState(false);
+  const [editLifecycle, setEditLifecycle] = useState<AccountLifecycleStatus>("PROSPECT");
+  const [editType, setEditType] = useState<AccountType>("CLIENT");
+  const [editSource, setEditSource] = useState<AccountSource>("OTHER");
+  const [editNotes, setEditNotes] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -201,6 +221,78 @@ export function AccountDetailPage() {
   }, [authFetch, id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // CRM-S5: open the edit form, seeded from current account data.
+  function openEdit() {
+    if (!account) return;
+    setEditLifecycle(account.lifecycleStatus);
+    setEditType(account.accountType as AccountType);
+    setEditSource(account.source as AccountSource);
+    setEditNotes(account.notes ?? "");
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  // CRM-S5: save the edit form — sends only changed fields.
+  async function handleSave() {
+    if (!account || !id) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const body = buildPatchAccountBody(
+        {
+          lifecycleStatus: account.lifecycleStatus,
+          accountType: account.accountType as AccountType,
+          source: account.source as AccountSource,
+          notes: account.notes
+        },
+        {
+          lifecycleStatus: editLifecycle,
+          accountType: editType,
+          source: editSource,
+          notes: editNotes.trim() || null
+        }
+      );
+      await patchAccount(authFetch, id, body);
+      setEditing(false);
+      void load();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // CRM-S5: soft-archive the account.
+  async function handleArchive() {
+    if (!id) return;
+    setArchiving(true);
+    setSaveError(null);
+    try {
+      await archiveAccount(authFetch, id);
+      setArchiveConfirm(false);
+      void load();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to archive.");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  // CRM-S5: restore a soft-archived account.
+  async function handleUnarchive() {
+    if (!id) return;
+    setArchiving(true);
+    setSaveError(null);
+    try {
+      await unarchiveAccount(authFetch, id);
+      void load();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to unarchive.");
+    } finally {
+      setArchiving(false);
+    }
+  }
 
   if (loading) return <div style={s.page}>Loading…</div>;
   if (error) return <div style={s.page}><div style={{ color: "#dc2626" }}>{error}</div></div>;
@@ -238,35 +330,173 @@ export function AccountDetailPage() {
         </div>
       )}
 
-      {/* Account details */}
+      {/* Account details — inline-editable (CRM-S5) */}
       <div style={s.card}>
-        <div style={s.cardTitle}>Account</div>
-        <div style={s.grid2}>
-          <div>
-            <div style={s.label}>Type</div>
-            <div style={s.value}>{ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={s.cardTitle as React.CSSProperties & { marginBottom: 0 }}>Account</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {!editing && !account.archivedAt && (
+              <button
+                onClick={openEdit}
+                style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}
+              >
+                Edit
+              </button>
+            )}
+            {/* Archive / Unarchive */}
+            {!account.archivedAt ? (
+              <button
+                onClick={() => setArchiveConfirm(true)}
+                disabled={archiving}
+                style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #fbbf24", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12 }}
+              >
+                Archive
+              </button>
+            ) : (
+              <button
+                onClick={() => void handleUnarchive()}
+                disabled={archiving}
+                style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #6366f1", background: "#eef2ff", color: "#4338ca", cursor: "pointer", fontSize: 12 }}
+              >
+                {archiving ? "Restoring…" : "Unarchive"}
+              </button>
+            )}
           </div>
-          <div>
-            <div style={s.label}>Source</div>
-            <div style={s.value}>{SOURCE_LABEL[account.source] ?? account.source}</div>
-          </div>
-          <div>
-            <div style={s.label}>Owner</div>
-            <div style={s.value}>
-              {owner ? `${owner.firstName} ${owner.lastName}` : "—"}
-            </div>
-          </div>
-          <div>
-            <div style={s.label}>Created</div>
-            <div style={s.value}>{fmtDate(account.createdAt)}</div>
-          </div>
-          {account.notes && (
-            <div style={{ gridColumn: "1 / -1" }}>
-              <div style={s.label}>Notes</div>
-              <div style={{ ...s.value, whiteSpace: "pre-wrap" }}>{account.notes}</div>
-            </div>
-          )}
         </div>
+
+        {/* Archive confirm prompt */}
+        {archiveConfirm && (
+          <div role="alert" style={{ background: "#fffbeb", border: "1px solid #fbbf24", borderRadius: 6, padding: "12px 14px", marginBottom: 12 }}>
+            <p style={{ margin: "0 0 10px", fontSize: 13, color: "#92400e" }}>
+              Archive this account? It will be hidden from the list but not deleted.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => void handleArchive()}
+                disabled={archiving}
+                style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: "#f59e0b", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 12 }}
+              >
+                {archiving ? "Archiving…" : "Yes, archive"}
+              </button>
+              <button
+                onClick={() => setArchiveConfirm(false)}
+                style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {saveError && (
+          <div role="alert" style={{ color: "#dc2626", fontSize: 13, marginBottom: 12, padding: "8px 10px", background: "#fef2f2", borderRadius: 6 }}>
+            {saveError}
+          </div>
+        )}
+
+        {editing ? (
+          /* Edit form */
+          <div>
+            <div style={s.grid2}>
+              <label style={{ display: "block" }}>
+                <div style={s.label}>Lifecycle</div>
+                <select
+                  value={editLifecycle}
+                  onChange={(e) => setEditLifecycle(e.target.value as AccountLifecycleStatus)}
+                  style={detailFieldStyle}
+                >
+                  {LIFECYCLE_OPTIONS_DETAIL.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label style={{ display: "block" }}>
+                <div style={s.label}>Type</div>
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value as AccountType)}
+                  style={detailFieldStyle}
+                >
+                  {ACCOUNT_TYPE_OPTIONS_DETAIL.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label style={{ display: "block" }}>
+                <div style={s.label}>Source</div>
+                <select
+                  value={editSource}
+                  onChange={(e) => setEditSource(e.target.value as AccountSource)}
+                  style={detailFieldStyle}
+                >
+                  {ACCOUNT_SOURCE_OPTIONS_DETAIL.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <div>
+                <div style={s.label}>Owner</div>
+                <div style={{ ...s.value, fontSize: 12, color: "#6b7280" }}>
+                  {owner ? `${owner.firstName} ${owner.lastName}` : "—"}
+                  <span style={{ display: "block", fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                    (Owner editing requires users.view permission — available in a future slice)
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div style={s.label}>Created</div>
+                <div style={s.value}>{fmtDate(account.createdAt)}</div>
+              </div>
+            </div>
+            <label style={{ display: "block", marginTop: 8 }}>
+              <div style={s.label}>Notes</div>
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={3}
+                style={{ ...detailFieldStyle, width: "100%", resize: "vertical", boxSizing: "border-box" }}
+                placeholder="Notes about this account…"
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button
+                onClick={() => void handleSave()}
+                disabled={saving}
+                style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: "#6366f1", color: "#fff", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontSize: 13 }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                onClick={() => { setEditing(false); setSaveError(null); }}
+                style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 13 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Read-only view */
+          <div style={s.grid2}>
+            <div>
+              <div style={s.label}>Type</div>
+              <div style={s.value}>{ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType}</div>
+            </div>
+            <div>
+              <div style={s.label}>Source</div>
+              <div style={s.value}>{SOURCE_LABEL[account.source] ?? account.source}</div>
+            </div>
+            <div>
+              <div style={s.label}>Owner</div>
+              <div style={s.value}>
+                {owner ? `${owner.firstName} ${owner.lastName}` : "—"}
+              </div>
+            </div>
+            <div>
+              <div style={s.label}>Created</div>
+              <div style={s.value}>{fmtDate(account.createdAt)}</div>
+            </div>
+            {account.notes && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <div style={s.label}>Notes</div>
+                <div style={{ ...s.value, whiteSpace: "pre-wrap" }}>{account.notes}</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Client identity */}
@@ -490,3 +720,39 @@ export function AccountDetailPage() {
     </div>
   );
 }
+
+// ── Edit-form option lists (CRM-S5) ───────────────────────────────────────────
+
+const LIFECYCLE_OPTIONS_DETAIL: Array<{ value: AccountLifecycleStatus; label: string }> = [
+  { value: "PROSPECT", label: "Prospect" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "PAST", label: "Past" }
+];
+
+const ACCOUNT_TYPE_OPTIONS_DETAIL: Array<{ value: AccountType; label: string }> = [
+  { value: "CLIENT", label: "Client" },
+  { value: "PROSPECT", label: "Prospect" },
+  { value: "HEAD_CONTRACTOR", label: "Head contractor" },
+  { value: "SUBCONTRACTOR", label: "Subcontractor" },
+  { value: "PARTNER", label: "Partner" },
+  { value: "OTHER", label: "Other" }
+];
+
+const ACCOUNT_SOURCE_OPTIONS_DETAIL: Array<{ value: AccountSource; label: string }> = [
+  { value: "REFERRAL", label: "Referral" },
+  { value: "DIRECT", label: "Direct" },
+  { value: "TENDER_PORTAL", label: "Tender portal" },
+  { value: "COLD_OUTREACH", label: "Cold outreach" },
+  { value: "REPEAT_BUSINESS", label: "Repeat business" },
+  { value: "OTHER", label: "Other" }
+];
+
+const detailFieldStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "6px 8px",
+  borderRadius: 5,
+  border: "1px solid #d1d5db",
+  fontSize: 13,
+  background: "#fff",
+  marginTop: 2
+};

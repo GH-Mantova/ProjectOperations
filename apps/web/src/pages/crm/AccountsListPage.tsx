@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
 import { AccountLinkPreview } from "./AccountLinkPreview";
+import {
+  createAccount,
+  validateCreateAccountForm,
+  type AccountLifecycleStatus,
+  type AccountSource,
+  type AccountType
+} from "./crm-api";
 
 // NAV-2: Accounts index — Client-360 landing page.
 // Lists all non-archived accounts with summary stats.
@@ -49,6 +56,242 @@ export function computeGoingCold(
   const diffDays = (nowMs - ts) / (1000 * 60 * 60 * 24);
   return diffDays > 14;
 }
+
+// ── New-account modal ─────────────────────────────────────────────────────────
+
+const ACCOUNT_TYPE_OPTIONS: Array<{ value: AccountType; label: string }> = [
+  { value: "CLIENT", label: "Client" },
+  { value: "PROSPECT", label: "Prospect" },
+  { value: "HEAD_CONTRACTOR", label: "Head contractor" },
+  { value: "SUBCONTRACTOR", label: "Subcontractor" },
+  { value: "PARTNER", label: "Partner" },
+  { value: "OTHER", label: "Other" }
+];
+
+const ACCOUNT_SOURCE_OPTIONS: Array<{ value: AccountSource; label: string }> = [
+  { value: "REFERRAL", label: "Referral" },
+  { value: "DIRECT", label: "Direct" },
+  { value: "TENDER_PORTAL", label: "Tender portal" },
+  { value: "COLD_OUTREACH", label: "Cold outreach" },
+  { value: "REPEAT_BUSINESS", label: "Repeat business" },
+  { value: "OTHER", label: "Other" }
+];
+
+const LIFECYCLE_OPTIONS: Array<{ value: AccountLifecycleStatus; label: string }> = [
+  { value: "PROSPECT", label: "Prospect" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "PAST", label: "Past" }
+];
+
+type ClientOption = { id: string; name: string };
+
+function NewAccountModal({
+  onClose,
+  onCreated
+}: {
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const { authFetch } = useAuth();
+
+  const [clientId, setClientId] = useState("");
+  const [accountType, setAccountType] = useState<AccountType>("CLIENT");
+  const [source, setSource] = useState<AccountSource>("OTHER");
+  const [lifecycleStatus, setLifecycleStatus] = useState<AccountLifecycleStatus>("PROSPECT");
+  const [notes, setNotes] = useState("");
+
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const firstInputRef = useRef<HTMLSelectElement>(null);
+
+  // Load clients for the client-link dropdown.
+  useEffect(() => {
+    setClientsLoading(true);
+    void authFetch("/clients?page=1&pageSize=200&isActive=true")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { items?: ClientOption[] } | ClientOption[];
+        const items = Array.isArray(data) ? data : (data.items ?? []);
+        setClients(items as ClientOption[]);
+      })
+      .finally(() => setClientsLoading(false));
+  }, [authFetch]);
+
+  useEffect(() => {
+    firstInputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const err = validateCreateAccountForm({ clientId: clientId || null });
+    if (err) {
+      setFormError(err);
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const acc = await createAccount(authFetch, {
+        clientId: clientId || null,
+        accountType,
+        source,
+        lifecycleStatus,
+        notes: notes.trim() || null
+      });
+      onCreated(acc.id);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create account.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="New account"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 10,
+          padding: 28,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.18)"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>New account</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#6b7280", padding: "0 4px" }}
+          >
+            &times;
+          </button>
+        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)}>
+          {/* Client link — required (gives the account its name) */}
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+              Client link <span style={{ color: "#dc2626" }}>*</span>
+            </span>
+            <select
+              ref={firstInputRef}
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+              disabled={clientsLoading}
+              style={fieldStyle}
+            >
+              <option value="">— Select a client —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {clientsLoading && (
+              <span style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, display: "block" }}>Loading clients…</span>
+            )}
+          </label>
+
+          {/* Lifecycle */}
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+              Lifecycle
+            </span>
+            <select value={lifecycleStatus} onChange={(e) => setLifecycleStatus(e.target.value as AccountLifecycleStatus)} style={fieldStyle}>
+              {LIFECYCLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+
+          {/* Type */}
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+              Type
+            </span>
+            <select value={accountType} onChange={(e) => setAccountType(e.target.value as AccountType)} style={fieldStyle}>
+              {ACCOUNT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+
+          {/* Source */}
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+              Source
+            </span>
+            <select value={source} onChange={(e) => setSource(e.target.value as AccountSource)} style={fieldStyle}>
+              {ACCOUNT_SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+
+          {/* Notes */}
+          <label style={{ display: "block", marginBottom: 16 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+              Notes
+            </span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              style={{ ...fieldStyle, resize: "vertical" }}
+              placeholder="Optional notes about this account…"
+            />
+          </label>
+
+          {formError && (
+            <div role="alert" style={{ color: "#dc2626", fontSize: 13, marginBottom: 12, padding: "8px 10px", background: "#fef2f2", borderRadius: 6 }}>
+              {formError}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ padding: "8px 18px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 13 }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#6366f1", color: "#fff", cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600 }}
+            >
+              {saving ? "Creating…" : "Create account"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const fieldStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 6,
+  border: "1px solid #d1d5db",
+  fontSize: 13,
+  background: "#fff",
+  boxSizing: "border-box"
+};
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -124,6 +367,9 @@ export function AccountsListPage() {
   // CRM-S4: unlinked client count for the banner.
   const [unlinkedCount, setUnlinkedCount] = useState<number | null>(null);
   const [showLinkPreview, setShowLinkPreview] = useState(false);
+
+  // CRM-S5: new account modal.
+  const [showNewAccount, setShowNewAccount] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -201,19 +447,37 @@ export function AccountsListPage() {
         <h1 style={{ fontFamily: "var(--font-heading, Syne)", fontSize: 24, margin: 0 }}>
           Accounts
         </h1>
-        <button
-          onClick={() => void load()}
-          style={{
-            padding: "10px 18px",
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            background: "#fff",
-            cursor: "pointer",
-            minHeight: 44
-          }}
-        >
-          Refresh
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => void load()}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              background: "#fff",
+              cursor: "pointer",
+              minHeight: 44
+            }}
+          >
+            Refresh
+          </button>
+          <button
+            onClick={() => setShowNewAccount(true)}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 6,
+              border: "none",
+              background: "#6366f1",
+              color: "#fff",
+              fontWeight: 600,
+              cursor: "pointer",
+              minHeight: 44,
+              fontSize: 14
+            }}
+          >
+            + New account
+          </button>
+        </div>
       </div>
 
       {/* Loading / error */}
@@ -296,8 +560,22 @@ export function AccountsListPage() {
                 borderRadius: 8
               }}
             >
-              No accounts yet. Accounts are created from the Directory when a Client is promoted to
-              an Account.
+              <p style={{ marginBottom: 16 }}>No accounts yet.</p>
+              <button
+                onClick={() => setShowNewAccount(true)}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "#6366f1",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: 14
+                }}
+              >
+                + Create your first account
+              </button>
             </div>
           ) : (
             /* Accounts table */
@@ -401,6 +679,18 @@ export function AccountsListPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* CRM-S5: new account modal */}
+      {showNewAccount && (
+        <NewAccountModal
+          onClose={() => setShowNewAccount(false)}
+          onCreated={(id) => {
+            setShowNewAccount(false);
+            void load();
+            navigate(`/crm/accounts/${id}`);
+          }}
+        />
       )}
     </div>
   );

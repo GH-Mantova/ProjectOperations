@@ -53,6 +53,100 @@ export type CreateEntryBody = {
 
 export type UpdateEntryBody = Partial<CreateEntryBody> & { stage?: CrmStage };
 
+// ── Account verb types (CRM-S5) ───────────────────────────────────────────────
+
+export type AccountLifecycleStatus = "PROSPECT" | "ACTIVE" | "PAST";
+export type AccountType = "CLIENT" | "PROSPECT" | "HEAD_CONTRACTOR" | "SUBCONTRACTOR" | "PARTNER" | "OTHER";
+export type AccountSource = "REFERRAL" | "DIRECT" | "TENDER_PORTAL" | "COLD_OUTREACH" | "REPEAT_BUSINESS" | "OTHER";
+
+/**
+ * Body for POST /crm/accounts.
+ *
+ * The Account model has no standalone `name` column — the display name
+ * is derived from the linked Client (or "Unnamed" when unlinked).
+ * All fields are optional at the API level; the form enforces clientId
+ * to ensure a meaningful name is always visible in the list.
+ */
+export type CreateAccountBody = {
+  clientId?: string | null;
+  lifecycleStatus?: AccountLifecycleStatus;
+  accountType?: AccountType;
+  source?: AccountSource;
+  ownerId?: string | null;
+  notes?: string | null;
+};
+
+/**
+ * Body for PATCH /crm/accounts/:id.
+ *
+ * Only send changed fields — unchanged fields must be absent (not null).
+ * Never send clientId unless explicitly re-linking — silently re-linking
+ * is the dangerous mistake.
+ *
+ * NOTE: clientId is intentionally omitted from this type. Re-linking an
+ * account to a different client is a destructive operation that must be
+ * an explicit, separate action. Using PatchAccountBody can never
+ * accidentally emit clientId.
+ */
+export type PatchAccountBody = {
+  lifecycleStatus?: AccountLifecycleStatus;
+  accountType?: AccountType;
+  source?: AccountSource;
+  ownerId?: string | null;
+  notes?: string | null;
+};
+
+/**
+ * Builds a PATCH body that contains ONLY the fields that changed.
+ * Unchanged fields are absent — not null, not undefined.
+ *
+ * Fields omitted from this builder (e.g. clientId) can never be
+ * accidentally emitted, closing the silent re-link risk.
+ */
+export function buildPatchAccountBody(
+  current: {
+    lifecycleStatus: AccountLifecycleStatus;
+    accountType: AccountType;
+    source: AccountSource;
+    notes: string | null;
+  },
+  next: {
+    lifecycleStatus?: AccountLifecycleStatus;
+    accountType?: AccountType;
+    source?: AccountSource;
+    notes?: string | null;
+  }
+): PatchAccountBody {
+  const body: PatchAccountBody = {};
+  if (next.lifecycleStatus !== undefined && next.lifecycleStatus !== current.lifecycleStatus) {
+    body.lifecycleStatus = next.lifecycleStatus;
+  }
+  if (next.accountType !== undefined && next.accountType !== current.accountType) {
+    body.accountType = next.accountType;
+  }
+  if (next.source !== undefined && next.source !== current.source) {
+    body.source = next.source;
+  }
+  if (next.notes !== undefined && next.notes !== current.notes) {
+    body.notes = next.notes;
+  }
+  return body;
+}
+
+/**
+ * Validates a create-account form. Returns null when valid, or an error
+ * message string when invalid.
+ *
+ * The form requires a clientId so that the account has a meaningful name
+ * in the list (the Account model has no standalone name column).
+ */
+export function validateCreateAccountForm(fields: { clientId?: string | null }): string | null {
+  if (!fields.clientId?.trim()) {
+    return "A client link is required to give the account a name.";
+  }
+  return null;
+}
+
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
@@ -127,4 +221,59 @@ export async function priceIt(
 export async function listDropReasons(authFetch: AuthFetch): Promise<DropReason[]> {
   const res = await authFetch("/crm/drop-reasons");
   return jsonOrThrow<DropReason[]>(res);
+}
+
+// ── Account verbs (CRM-S5) ────────────────────────────────────────────────────
+
+/** POST /crm/accounts — create a new account. */
+export async function createAccount(
+  authFetch: AuthFetch,
+  dto: CreateAccountBody
+): Promise<{ id: string }> {
+  const res = await authFetch("/crm/accounts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto)
+  });
+  return jsonOrThrow<{ id: string }>(res);
+}
+
+/** PATCH /crm/accounts/:id — update mutable account fields. */
+export async function patchAccount(
+  authFetch: AuthFetch,
+  id: string,
+  dto: PatchAccountBody
+): Promise<{ id: string }> {
+  const res = await authFetch(`/crm/accounts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto)
+  });
+  return jsonOrThrow<{ id: string }>(res);
+}
+
+/** POST /crm/accounts/:id/archive — soft-archive an account. */
+export async function archiveAccount(
+  authFetch: AuthFetch,
+  id: string
+): Promise<{ id: string }> {
+  const res = await authFetch(`/crm/accounts/${id}/archive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  return jsonOrThrow<{ id: string }>(res);
+}
+
+/** POST /crm/accounts/:id/unarchive — restore a soft-archived account. */
+export async function unarchiveAccount(
+  authFetch: AuthFetch,
+  id: string
+): Promise<{ id: string }> {
+  const res = await authFetch(`/crm/accounts/${id}/unarchive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  return jsonOrThrow<{ id: string }>(res);
 }

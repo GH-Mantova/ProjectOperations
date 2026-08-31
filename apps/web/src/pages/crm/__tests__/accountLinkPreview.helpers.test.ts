@@ -18,9 +18,11 @@ import {
   buildCommitAction,
   buildPreviewRows,
   proposeLifecycle,
+  proposeLifecycleWithBasis,
   resolveLifecycle,
   type ClientLinkPreviewRow,
-  type PreviewRow
+  type PreviewRow,
+  type ProposalLifecycle
 } from "../accountLinkPreview.helpers";
 
 // ── Clock helpers ─────────────────────────────────────────────────────────────
@@ -45,6 +47,20 @@ function makeRow(
     existingAccountId: null,
     ...overrides
   };
+}
+
+/**
+ * Convenience: builds a PreviewRow from a ClientLinkPreviewRow by running
+ * it through proposeLifecycleWithBasis so tests don't have to hard-code basis.
+ * Accepts an optional override value.
+ */
+function makePreviewRow(
+  rowOverrides: Partial<ClientLinkPreviewRow> = {},
+  override: PreviewRow["override"] = null
+): PreviewRow {
+  const raw = makeRow(rowOverrides);
+  const { lifecycle, basis } = proposeLifecycleWithBasis(raw, NOW_MS);
+  return { ...raw, proposed: lifecycle, basis, override };
 }
 
 // ── proposeLifecycle ──────────────────────────────────────────────────────────
@@ -144,6 +160,7 @@ describe("buildCommitAction payload shape (CRM-S4 test 7)", () => {
     const row: PreviewRow = {
       ...makeRow({ clientId: "client-1", existingAccountId: null }),
       proposed: "ACTIVE",
+      basis: "won",
       override: null
     };
     const action = buildCommitAction(row);
@@ -166,6 +183,7 @@ describe("buildCommitAction payload shape (CRM-S4 test 7)", () => {
     const row: PreviewRow = {
       ...makeRow({ clientId: "client-1", existingAccountId: "acct-1" }),
       proposed: "PROSPECT",
+      basis: "tendered-no-win",
       override: "ACTIVE"
     };
     const action = buildCommitAction(row);
@@ -197,6 +215,7 @@ describe("buildCommitAction skips untouched linked rows (CRM-S4 regression)", ()
     const row: PreviewRow = {
       ...makeRow({ clientId: "client-1", existingAccountId: "acct-1" }),
       proposed: "ACTIVE",
+      basis: "won",
       override: null
     };
     expect(buildCommitAction(row).kind).toBe("skip");
@@ -206,6 +225,7 @@ describe("buildCommitAction skips untouched linked rows (CRM-S4 regression)", ()
     const row: PreviewRow = {
       ...makeRow({ clientId: "client-1", existingAccountId: "acct-1" }),
       proposed: "ACTIVE",
+      basis: "won",
       override: "PAST"
     };
     const action = buildCommitAction(row);
@@ -218,6 +238,7 @@ describe("buildCommitAction skips untouched linked rows (CRM-S4 regression)", ()
     const row: PreviewRow = {
       ...makeRow({ clientId: "client-2", existingAccountId: null }),
       proposed: "PROSPECT",
+      basis: "tendered-no-win",
       override: null
     };
     const action = buildCommitAction(row);
@@ -229,10 +250,173 @@ describe("buildCommitAction skips untouched linked rows (CRM-S4 regression)", ()
   it("a board of only untouched linked rows produces zero writes", () => {
     const rows: PreviewRow[] = ["acct-1", "acct-2", "acct-3"].map((id, i) => ({
       ...makeRow({ clientId: `client-${i}`, existingAccountId: id, wonCount: 1 }),
-      proposed: "ACTIVE",
+      proposed: "ACTIVE" as const,
+      basis: "won" as const,
       override: null
     }));
     const writes = rows.filter((r) => buildCommitAction(r).kind !== "skip");
     expect(writes).toHaveLength(0);
+  });
+});
+
+// ── ProposalBasis (CRM-S4 no-history-basis) ───────────────────────────────────
+//
+// Negative-control note: if the `no-history` branch were removed from
+// proposeLifecycleWithBasis, tenderCount===0 rows would fall through to the
+// `tenderCount > 0 && wonCount === 0` guard (which is also false) and reach the
+// final return — but to confirm the discriminator test below would fail, that
+// final branch would need to say `tendered-no-win` instead of `no-history`.
+// The discriminator test below explicitly verifies that basis is NOT the same
+// for `tendered-no-win` and `no-history` even though both resolve to PROSPECT
+// lifecycle. (Tested locally by temporarily commenting out the `no-history`
+// return and confirming the discriminator test fails.)
+
+describe("proposeLifecycleWithBasis — basis discriminant (CRM-S4 no-history)", () => {
+  // basis: no-history
+  it("returns basis 'no-history' and lifecycle PROSPECT for zero-counter rows", () => {
+    const row = makeRow({ tenderCount: 0, wonCount: 0, lastTenderAt: null });
+    const result = proposeLifecycleWithBasis(row, NOW_MS);
+    expect(result.basis).toBe("no-history");
+    expect(result.lifecycle).toBe("PROSPECT");
+  });
+
+  // basis: won
+  it("returns basis 'won' and lifecycle ACTIVE for wonCount > 0 with recent tender", () => {
+    const row = makeRow({ wonCount: 1, tenderCount: 1, lastTenderAt: monthsAgoIso(6) });
+    const result = proposeLifecycleWithBasis(row, NOW_MS);
+    expect(result.basis).toBe("won");
+    expect(result.lifecycle).toBe("ACTIVE");
+  });
+
+  // basis: stale (24-month rule wins over won)
+  it("returns basis 'stale' and lifecycle PAST when lastTenderAt > 24 months ago", () => {
+    const row = makeRow({ wonCount: 2, tenderCount: 5, lastTenderAt: monthsAgoIso(25) });
+    const result = proposeLifecycleWithBasis(row, NOW_MS);
+    expect(result.basis).toBe("stale");
+    expect(result.lifecycle).toBe("PAST");
+  });
+
+  // basis: tendered-no-win
+  it("returns basis 'tendered-no-win' and lifecycle PROSPECT for tenderCount > 0 wonCount === 0", () => {
+    const row = makeRow({ tenderCount: 3, wonCount: 0, lastTenderAt: monthsAgoIso(6) });
+    const result = proposeLifecycleWithBasis(row, NOW_MS);
+    expect(result.basis).toBe("tendered-no-win");
+    expect(result.lifecycle).toBe("PROSPECT");
+  });
+
+  // Discriminator test: tendered-no-win vs no-history — MUST be different
+  it("discriminator: tendered-no-win and no-history both resolve PROSPECT but are NOT equal basis", () => {
+    const tenderedNoWin = proposeLifecycleWithBasis(
+      makeRow({ tenderCount: 2, wonCount: 0, lastTenderAt: monthsAgoIso(6) }),
+      NOW_MS
+    );
+    const noHistory = proposeLifecycleWithBasis(
+      makeRow({ tenderCount: 0, wonCount: 0, lastTenderAt: null }),
+      NOW_MS
+    );
+    // Both resolve to PROSPECT
+    expect(tenderedNoWin.lifecycle).toBe("PROSPECT");
+    expect(noHistory.lifecycle).toBe("PROSPECT");
+    // But the bases MUST differ — this is the whole point
+    expect(tenderedNoWin.basis).toBe("tendered-no-win");
+    expect(noHistory.basis).toBe("no-history");
+    expect(tenderedNoWin.basis).not.toBe(noHistory.basis);
+  });
+});
+
+// ── Bulk-set skips no-history rows (CRM-S4 no-history-basis) ─────────────────
+
+describe("bulk-set skips no-history rows (CRM-S4 no-history-basis)", () => {
+  /**
+   * Simulates the updated bulk-set mechanic: excludes no-history rows AND
+   * preserves manual overrides. Mirrors the bulkSet() function in AccountLinkPreview.tsx.
+   */
+  function applyMainBulkSet(rows: PreviewRow[], lifecycle: ProposalLifecycle): PreviewRow[] {
+    return rows.map((row) => {
+      if (row.override !== null) return row; // preserve manual overrides
+      if (row.basis === "no-history") return row; // no-history rows excluded
+      return { ...row, override: lifecycle };
+    });
+  }
+
+  it("main bulk-set skips no-history rows and applies to the rest", () => {
+    // Three rows: no-history, tendered-no-win, won
+    const noHistoryRow = makePreviewRow({ clientId: "nh", tenderCount: 0, wonCount: 0, lastTenderAt: null });
+    const tenderedRow = makePreviewRow({ clientId: "tn", tenderCount: 3, wonCount: 0, lastTenderAt: monthsAgoIso(6) });
+    const wonRow = makePreviewRow({ clientId: "wo", wonCount: 2, tenderCount: 2, lastTenderAt: monthsAgoIso(3) });
+
+    const rows = [noHistoryRow, tenderedRow, wonRow];
+    const after = applyMainBulkSet(rows, "ACTIVE");
+
+    // no-history row must stay unoverridden
+    const nh = after.find((r) => r.clientId === "nh")!;
+    expect(nh.override).toBeNull();
+    expect(nh.basis).toBe("no-history");
+
+    // The other two receive the bulk override
+    const tn = after.find((r) => r.clientId === "tn")!;
+    const wo = after.find((r) => r.clientId === "wo")!;
+    expect(tn.override).toBe("ACTIVE");
+    expect(wo.override).toBe("ACTIVE");
+  });
+
+  it("a manual override on any row survives the main bulk-set (CRM-S4 test 6 guarantee)", () => {
+    const noHistoryRow = makePreviewRow({ clientId: "nh", tenderCount: 0, wonCount: 0, lastTenderAt: null });
+    const tenderedRow = makePreviewRow(
+      { clientId: "tn", tenderCount: 3, wonCount: 0, lastTenderAt: monthsAgoIso(6) },
+      "PAST" // manually overridden to PAST
+    );
+    const wonRow = makePreviewRow({ clientId: "wo", wonCount: 2, tenderCount: 2, lastTenderAt: monthsAgoIso(3) });
+
+    const rows = [noHistoryRow, tenderedRow, wonRow];
+    const after = applyMainBulkSet(rows, "ACTIVE");
+
+    // tenderedRow had a manual override — it must stay PAST
+    const tn = after.find((r) => r.clientId === "tn")!;
+    expect(tn.override).toBe("PAST");
+    expect(resolveLifecycle(tn)).toBe("PAST");
+
+    // wonRow had no override — it picks up ACTIVE
+    const wo = after.find((r) => r.clientId === "wo")!;
+    expect(wo.override).toBe("ACTIVE");
+  });
+});
+
+// ── Commit behaviour for no-history rows (CRM-S4 no-history-basis) ────────────
+
+describe("buildCommitAction no-history row edge cases (CRM-S4 no-history-basis)", () => {
+  it("linked no-history row with null override returns skip", () => {
+    // This pins the 'linked no-history stays skip' guarantee explicitly.
+    const row = makePreviewRow(
+      { clientId: "nh-linked", existingAccountId: "acct-nh", tenderCount: 0, wonCount: 0, lastTenderAt: null }
+    );
+    expect(row.basis).toBe("no-history");
+    expect(row.override).toBeNull();
+    expect(buildCommitAction(row).kind).toBe("skip");
+  });
+
+  it("a board of only linked no-history rows with null overrides has zero writes", () => {
+    const rows = ["acct-1", "acct-2", "acct-3"].map((id, i) =>
+      makePreviewRow({ clientId: `nh-${i}`, existingAccountId: id, tenderCount: 0, wonCount: 0, lastTenderAt: null })
+    );
+    const allNoHistory = rows.every((r) => r.basis === "no-history");
+    expect(allNoHistory).toBe(true);
+
+    const writes = rows.filter((r) => buildCommitAction(r).kind !== "skip");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("unlinked no-history row still creates with PROSPECT lifecycle (S3 backfill preserved)", () => {
+    const row = makePreviewRow(
+      { clientId: "nh-unlinked", existingAccountId: null, tenderCount: 0, wonCount: 0, lastTenderAt: null }
+    );
+    expect(row.basis).toBe("no-history");
+    expect(row.proposed).toBe("PROSPECT");
+
+    const action = buildCommitAction(row);
+    expect(action.kind).toBe("create");
+    if (action.kind !== "create") throw new Error("unexpected");
+    expect(action.payload.clientId).toBe("nh-unlinked");
+    expect(action.payload.lifecycleStatus).toBe("PROSPECT");
   });
 });

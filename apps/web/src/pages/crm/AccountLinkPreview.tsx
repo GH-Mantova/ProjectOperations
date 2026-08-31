@@ -6,7 +6,8 @@
 // Design decisions (from Marco decision 7):
 //   - NOTHING is written until Commit.
 //   - Per-row lifecycle select. Bulk-set header applies only to rows with no
-//     manual override already set.
+//     manual override already set AND excludes no-history rows.
+//   - "No history" rows have a separate deliberate bulk-set control.
 //   - Proposal rule displayed on screen.
 //   - Ambiguous count MUST be 0 (the relation is 1:1 by construction). If it
 //     is not zero the screen reports it and blocks commit.
@@ -19,7 +20,6 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import {
   buildCommitAction,
   buildPreviewRows,
-  proposeLifecycle,
   resolveLifecycle,
   type ClientLinkPreviewRow,
   type PreviewRow,
@@ -96,6 +96,8 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
   // We assert it here for safety — the screen blocks commit if non-zero.
   const ambiguousCount = 0; // structural guarantee: Account.clientId is @unique
 
+  const noHistoryCount = rows.filter((r) => r.basis === "no-history").length;
+
   // What Commit will ACTUALLY write: every create, plus the already-linked rows
   // the reviewer has explicitly re-graded. Untouched linked rows return "skip".
   // The button is labelled from this, not from unlinkedRows, so the number on
@@ -112,12 +114,25 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
     );
   }
 
-  // ── Bulk-set ───────────────────────────────────────────────────────────────
+  // ── Bulk-set (main) — excludes no-history rows ────────────────────────────
 
   function bulkSet(lifecycle: ProposalLifecycle) {
     setRows((prev) =>
       prev.map((r) => {
         if (r.override !== null) return r; // preserve manual overrides
+        if (r.basis === "no-history") return r; // no-history rows require deliberate action
+        return { ...r, override: lifecycle };
+      })
+    );
+  }
+
+  // ── Bulk-set (no-history only) ────────────────────────────────────────────
+
+  function bulkSetNoHistory(lifecycle: ProposalLifecycle) {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.basis !== "no-history") return r; // only sweep no-history rows
+        if (r.override !== null) return r; // preserve manual overrides within no-history rows
         return { ...r, override: lifecycle };
       })
     );
@@ -197,7 +212,7 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
   if (loading) {
     return (
       <div style={{ padding: "40px 32px" }}>
-        <p style={{ color: "var(--text-muted, #666)" }}>Loading preview…</p>
+        <p style={{ color: "var(--text-muted, #666)" }}>Loading preview{"…"}</p>
       </div>
     );
   }
@@ -252,8 +267,9 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
           color: "#1e40af"
         }}
       >
-        <strong>Proposal rule:</strong> won a tender &rarr; <em>Active</em>; tendered but never won,
-        or never tendered &rarr; <em>Prospect</em>; nothing in 24 months &rarr; <em>Past</em>.
+        <strong>Proposal rule:</strong> won a tender &rarr; <em>Active</em>; tendered but never won
+        &rarr; <em>Prospect</em>; nothing in 24 months &rarr; <em>Past</em>; no tender history at
+        all &rarr; <em>No history</em> (choose a lifecycle manually before committing).
         You can override any row before committing.
       </div>
 
@@ -262,6 +278,7 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
         <CountTile label="Exact matches (1:1)" value={exactMatchCount} />
         <CountTile label="Ambiguous" value={ambiguousCount} warn={ambiguousCount > 0} />
         <CountTile label="Already linked (skipped)" value={alreadyLinkedCount} />
+        <CountTile label="No history" value={noHistoryCount} />
       </div>
 
       {/* Ambiguous block — design says stop here if non-zero */}
@@ -297,13 +314,13 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
         </div>
       ) : (
         <>
-          {/* Bulk-set control */}
+          {/* Main bulk-set control — skips no-history rows */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 10,
-              marginBottom: 12,
+              marginBottom: 8,
               padding: "8px 12px",
               background: "#f9fafb",
               border: "1px solid #e5e7eb",
@@ -312,7 +329,7 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
             }}
           >
             <span style={{ color: "#374151", fontWeight: 600 }}>
-              Bulk-set all unoverridden rows:
+              Bulk-set all unoverridden rows (excludes no-history):
             </span>
             {LIFECYCLE_OPTIONS.map((opt) => (
               <button
@@ -333,6 +350,45 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
               </button>
             ))}
           </div>
+
+          {/* No-history bulk-set control — deliberate action required */}
+          {noHistoryCount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 12,
+                padding: "8px 12px",
+                background: "#fafaf9",
+                border: "1px solid #e7e5e4",
+                borderRadius: 6,
+                fontSize: 13
+              }}
+            >
+              <span style={{ color: "#57534e", fontWeight: 600 }}>
+                For rows with no history ({noHistoryCount}):
+              </span>
+              {LIFECYCLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => bulkSetNoHistory(opt.value)}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    border: "1px solid #d6d3d1",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: LIFECYCLE_COLOUR[opt.value]
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Preview table */}
           <div
@@ -361,6 +417,11 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
                   const effective = resolveLifecycle(row);
                   const hasOverride = row.override !== null;
                   const isLinked = row.existingAccountId !== null;
+                  const isNoHistory = row.basis === "no-history";
+                  // For no-history rows with no override, the select shows placeholder.
+                  // The effective lifecycle is still PROSPECT (the fallback), which
+                  // will be used in the create payload — this is correct per spec.
+                  const selectValue = isNoHistory && !hasOverride ? "" : effective;
                   return (
                     <tr
                       key={row.clientId}
@@ -381,39 +442,67 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
                       <td style={tdStyle}>{fmtDate(row.lastTenderAt)}</td>
                       {/* Proposed lifecycle badge */}
                       <td style={tdStyle}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "2px 8px",
-                            borderRadius: 10,
-                            background: LIFECYCLE_COLOUR[proposeLifecycle(row)],
-                            color: "#fff",
-                            fontSize: 11,
-                            fontWeight: 600
-                          }}
-                        >
-                          {proposeLifecycle(row)}
-                        </span>
+                        {isNoHistory ? (
+                          // No-history: neutral pill — do not show PROSPECT colour
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 8px",
+                              borderRadius: 10,
+                              background: "transparent",
+                              border: "1px solid #9ca3af",
+                              color: "#6b7280",
+                              fontSize: 11,
+                              fontWeight: 600
+                            }}
+                          >
+                            No history
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 8px",
+                              borderRadius: 10,
+                              background: LIFECYCLE_COLOUR[row.proposed],
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: 600
+                            }}
+                          >
+                            {row.proposed}
+                          </span>
+                        )}
                       </td>
                       {/* Editable lifecycle select */}
                       <td style={tdStyle}>
                         <select
-                          value={effective}
+                          value={selectValue}
                           disabled={isLinked}
-                          onChange={(e) =>
-                            setRowOverride(row.clientId, e.target.value as ProposalLifecycle)
-                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setRowOverride(
+                              row.clientId,
+                              val === "" ? null : (val as ProposalLifecycle)
+                            );
+                          }}
                           style={{
                             padding: "4px 8px",
                             borderRadius: 4,
                             border: `1px solid ${hasOverride ? "#6366f1" : "#d1d5db"}`,
                             fontSize: 12,
                             fontWeight: hasOverride ? 700 : 400,
-                            color: LIFECYCLE_COLOUR[effective],
+                            color: selectValue === "" ? "#9ca3af" : LIFECYCLE_COLOUR[effective],
                             background: "#fff",
                             cursor: isLinked ? "not-allowed" : "pointer"
                           }}
                         >
+                          {/* Placeholder shown only for no-history rows before user picks a value */}
+                          {isNoHistory && !hasOverride && (
+                            <option value="" disabled>
+                              — choose —
+                            </option>
+                          )}
                           {LIFECYCLE_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                               {opt.label}

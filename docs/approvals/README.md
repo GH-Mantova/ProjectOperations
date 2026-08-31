@@ -5,9 +5,18 @@
 ## The defect this exists to close
 
 Several prompts carry an inline `<!-- watcher: do-not-arm -->` comment or a `DO NOT ARM` status
-line in their body. **`lint-prompt.mjs` cannot see either of them.** Measured 2026-08-23: eight
-prompts carrying a body-level do-not-arm marker still linted `ADMIT`, including one that drops
-database tables and one that needs an Azure key only Marco can enter.
+line in their body. **When this file was written, `lint-prompt.mjs` could not see either of them.**
+Measured 2026-08-23: eight prompts carrying a body-level do-not-arm marker still linted `ADMIT`,
+including one that drops database tables and one that needs an Azure key only Marco can enter.
+
+🔧 **CORRECTED 2026-08-31 (Station 04, landed by Station 00).** That is no longer true. The linter
+now matches both literal markers and REJECTs `[HUMAN_GATE_PRESENT]` — see DOCTRINE §9.5, which is
+the single place those line numbers and their limits are recorded. **Do not restate §9.5 here; a
+paraphrase in this file will drift away from it.** The one operational consequence worth stating is
+in "Granting an approval" below: the human gate is evaluated **before** the file gate, so a granted
+approval does not on its own release a prompt that also carries a body marker. The general warning
+in §9.5 still stands — a **prose** human gate matches neither regex and is invisible to the linter
+and to any grep built on it.
 
 Until now the only thing actually stopping those prompts was that their dependency gate happened
 to be dead, so lint rejected them **for an unrelated reason**. That is an accident, not a control.
@@ -30,7 +39,15 @@ machine-enforceable, and visible to every instrument.
 1. Create `docs/approvals/<slug>-approved-by-marco.md` stating **what** is approved, **on what
    evidence**, and **what must be true at merge time** (a DB backup, an export, a soak result).
 2. Land it via an ordinary docs PR.
-3. Arm the prompt normally: `git mv docs/pr-prompts/<name>-HOLD.md docs/pr-prompts/<name>-ready.md`.
+3. 🔴 **If the prompt body ALSO carries `DO NOT ARM` or `<!-- watcher: do-not-arm -->`, remove that
+   line in the same PR.** The human gate is evaluated **before** the file gate, so lint will still
+   REJECT `[HUMAN_GATE_PRESENT]` and the arm will fail even though the approval marker is on `main`.
+   Measured 2026-08-31 with a control (the same fixture with and without one injected marker line):
+   unmodified → `REJECT [FILE_GATE_NOT_RELEASED]`, with-marker → `REJECT [HUMAN_GATE_PRESENT]`,
+   both exit 1. **Three of the five prompts in the table below are in this state today** —
+   `pr-524-rates-b-slice2-canonical`, `pr-retire-tenderclientnote-s2`, `pr-siteid-notnull-backfill`.
+   The other two reject on the approval gate alone, as this document originally described.
+4. Arm the prompt normally: `git mv docs/pr-prompts/<name>-HOLD.md docs/pr-prompts/<name>-ready.md`.
 
 Deleting the marker later re-closes the gate.
 

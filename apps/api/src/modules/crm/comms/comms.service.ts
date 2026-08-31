@@ -84,6 +84,10 @@ export type ListTasksQuery = {
 /**
  * CRM-S7: Input for logging a contact interaction on a tender or opportunity.
  * Creates one CommThread (kind=logged_contact) + one CommMessage.
+ *
+ * CRM-S8: Optional next-action fields. When nextActionAt is provided a
+ * CommTask is created in the same transaction so the interaction and the
+ * follow-up are always written atomically.
  */
 export type LogContactInput = {
   entityType: CommEntityType;
@@ -94,6 +98,10 @@ export type LogContactInput = {
   body: string;
   /** The internal user performing the log action. */
   createdById: string;
+  /** CRM-S8: optional next-action due date (ISO string). */
+  nextActionAt?: string | null;
+  /** CRM-S8: optional next-action note / title. */
+  nextActionNote?: string | null;
 };
 
 /**
@@ -415,7 +423,28 @@ export class CommsService {
         }
       });
 
-      return { thread, message };
+      // CRM-S8: atomic next-action — create a CommTask in the same transaction
+      // so there is never an interaction without its follow-up.
+      let task: Awaited<ReturnType<typeof tx.commTask.create>> | null = null;
+      if (input.nextActionAt) {
+        const taskTitle = input.nextActionNote?.trim() || "Follow up";
+        task = await tx.commTask.create({
+          data: {
+            entityType: input.entityType,
+            entityId: input.entityId,
+            title: taskTitle,
+            threadId: thread.id,
+            createdById: input.createdById,
+            dueAt: new Date(input.nextActionAt)
+          },
+          include: {
+            createdBy: { select: { id: true, firstName: true, lastName: true } },
+            assignee: { select: { id: true, firstName: true, lastName: true } }
+          }
+        });
+      }
+
+      return { thread, message, task };
     });
   }
 

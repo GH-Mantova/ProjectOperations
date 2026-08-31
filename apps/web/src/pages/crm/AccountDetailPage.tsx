@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
@@ -383,6 +383,13 @@ export function AccountDetailPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={s.cardTitle as React.CSSProperties & { marginBottom: 0 }}>Account</div>
           <div style={{ display: "flex", gap: 8 }}>
+            {/* CRM-S9: deep-link into anchored Comms hub for this account. */}
+            <Link
+              to={`/crm/comms?entityType=ACCOUNT&entityId=${encodeURIComponent(account.id)}`}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #6366f1", background: "#eef2ff", color: "#3730a3", cursor: "pointer", fontSize: 12, textDecoration: "none" }}
+            >
+              Open comms →
+            </Link>
             {!editing && !account.archivedAt && (
               <button
                 onClick={openEdit}

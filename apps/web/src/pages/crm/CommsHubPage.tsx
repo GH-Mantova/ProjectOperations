@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { entityLabel, sortThreadsByActivity } from "./comms-inbox.helpers";
+import { AnchorPicker, buildCreateThreadBody, mapTypeToServer, type PickerSelection } from "./AnchorPicker";
 
 // CRM-4: Comms hub surface — internal threads + To-Do.
 // Anchored to a CRM record via ?entityType=ACCOUNT|TENDER|JOB|CONTRACT&entityId=…
@@ -121,6 +122,16 @@ function CommsInboxPage() {
 
   const [inboxTab, setInboxTab] = useState<"threads" | "tasks">("threads");
 
+  // CRM-S9: New-thread composer for the unanchored inbox.
+  // Before S9, /crm/comms was a closed loop on an empty system — createThread
+  // exits early unless anchored, and anchored was only set by the query string
+  // that the nav does not carry. AnchorPicker gives the user a way to pick a
+  // record here and land in anchored mode with the new thread already open.
+  const [pickerSelection, setPickerSelection] = useState<PickerSelection | null>(null);
+  const [newSubject, setNewSubject] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   // Threads paging
   const [inboxThreads, setInboxThreads] = useState<Thread[]>([]);
   const [inboxThreadsTotal, setInboxThreadsTotal] = useState(0);
@@ -204,6 +215,34 @@ function CommsInboxPage() {
     navigate(`/crm/comms?entityType=${encodeURIComponent(thread.entityType)}&entityId=${encodeURIComponent(thread.entityId)}`);
   }
 
+  const canCreate =
+    pickerSelection?.kind === "entity" &&
+    !!pickerSelection.entityId &&
+    newSubject.trim().length > 0;
+
+  const startThread = useCallback(async () => {
+    if (!canCreate || pickerSelection?.kind !== "entity") return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const body = buildCreateThreadBody(pickerSelection, newSubject.trim());
+      const res = await authFetch(`/crm/comms/threads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const serverType = mapTypeToServer(pickerSelection.type);
+      navigate(
+        `/crm/comms?entityType=${encodeURIComponent(serverType)}&entityId=${encodeURIComponent(pickerSelection.entityId)}`
+      );
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create thread.");
+    } finally {
+      setCreating(false);
+    }
+  }, [authFetch, canCreate, navigate, newSubject, pickerSelection]);
+
   return (
     <div style={s.page}>
       <div style={s.header}>
@@ -216,6 +255,34 @@ function CommsInboxPage() {
           Inbox view — showing threads across all records. Threads linked to deleted records are
           shown with an explicit label. Click any thread to open it in the anchored view.
         </div>
+      </div>
+
+      {/* CRM-S9 composer: pick an anchor + subject then Start. */}
+      <div style={s.card}>
+        <div style={s.cardTitle}>New thread</div>
+        <AnchorPicker
+          authFetch={authFetch}
+          value={pickerSelection}
+          onChange={(sel) => { setPickerSelection(sel); setCreateError(null); }}
+        />
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input
+            style={s.input}
+            placeholder="Subject"
+            value={newSubject}
+            onChange={(e) => setNewSubject(e.target.value)}
+          />
+          <button
+            style={{ ...s.primaryBtn, opacity: canCreate && !creating ? 1 : 0.5, cursor: canCreate && !creating ? "pointer" : "not-allowed" }}
+            onClick={() => void startThread()}
+            disabled={!canCreate || creating}
+          >
+            {creating ? "Starting…" : "Start"}
+          </button>
+        </div>
+        {createError && (
+          <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{createError}</div>
+        )}
       </div>
 
       <div style={s.tabs}>

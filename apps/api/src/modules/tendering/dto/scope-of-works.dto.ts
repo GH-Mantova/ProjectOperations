@@ -22,7 +22,9 @@ import {
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 // scope-subcontracted order 2 (2026-08-31) — added SUB (5-code system).
 // Single source of truth: apps/api/src/modules/personas/definitions/disciplines.ts
-/** Canonical 5-code discipline tuple (DEM/CIV/ASB/SUB/Other) -- re-exported from IS_DISCIPLINE_CODES. */
+/** Canonical 5-code discipline tuple (DEM/CIV/ASB/Other/SUB) -- re-exported from IS_DISCIPLINE_CODES.
+ *  Order is load-bearing: it drives DISCIPLINE_ORDER (export display), SCOPE_CARD_DEFAULTS.sortOrder
+ *  and the web tab order, and the API/web parity spec asserts both tuples match element for element. */
 export const DISCIPLINES = IS_DISCIPLINE_CODES;
 // Row-type slugs accepted by the API. The first six entries are the legacy
 // names (kept so historical rows keep passing validation); the rest are the

@@ -14,8 +14,8 @@ import { tenderingPersona } from "../definitions/tendering.persona";
 // standalone tokens (word-boundary checks).
 
 describe("discipline codes constants (PR A1)", () => {
-  it("has exactly 4 codes in canonical order", () => {
-    expect([...IS_DISCIPLINE_CODES]).toEqual(["DEM", "CIV", "ASB", "Other"]);
+  it("has exactly 5 codes in canonical order", () => {
+    expect([...IS_DISCIPLINE_CODES]).toEqual(["DEM", "CIV", "ASB", "Other", "SUB"]);
   });
 
   it("maps every legacy code to a valid new code", () => {

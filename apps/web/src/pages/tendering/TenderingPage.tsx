@@ -11,6 +11,7 @@ import { OutcomeCaptureModal, OutcomeCaptureTender } from "./OutcomeCaptureModal
 import { NeedsOutcomePanel } from "./NeedsOutcomePanel";
 import { OutcomeCapturePayload, recordOutcome } from "./outcomeApi";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { IS_DISCIPLINE_CODES, type IsDisciplineCode } from "../../constants/disciplines";
 
 type TenderListItem = {
   id: string;
@@ -122,8 +123,9 @@ const PROBABILITY_COLOR: Record<ProbabilityBucket, string> = {
 };
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
-const DISCIPLINES = ["DEM", "CIV", "ASB", "Other"] as const;
-type Discipline = (typeof DISCIPLINES)[number];
+// Single source of truth: apps/web/src/constants/disciplines.ts
+const DISCIPLINES = IS_DISCIPLINE_CODES;
+type Discipline = IsDisciplineCode;
 
 type ColumnKey =
   | "tenderNumber"

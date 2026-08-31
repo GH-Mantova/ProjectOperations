@@ -7,9 +7,11 @@ scope:
   - apps/api/src/modules/tendering/scope/card-defaults.ts
   - apps/api/src/modules/tendering/scope-redesign.service.ts
   - apps/api/src/modules/estimate-export/excel/estimate-excel.builder.ts
+  - apps/web/src/constants/disciplines.ts
+  - apps/api/src/modules/personas/definitions/__tests__/disciplines-single-source.spec.ts
   - apps/api/src/modules/tendering/__tests__/sub-discipline.spec.ts
-done_when: pnpm build && pnpm lint && grep -q "\"Other\", \"SUB\"" apps/api/src/modules/personas/definitions/disciplines.ts
-size: 6
+done_when: pnpm build && pnpm lint && grep -q "\"Other\", \"SUB\"" apps/api/src/modules/personas/definitions/disciplines.ts && grep -q "\"Other\", \"SUB\"" apps/web/src/constants/disciplines.ts
+size: 8
 gate_allow: none
 seed_only: false
 escalates: true
@@ -62,7 +64,23 @@ individual line is provisional is the next slice; this one places SUB in the tot
 3. `ROW_TYPES_BY_DISCIPLINE` gains a SUB entry.
 4. `DEFAULT_ROLE_BY_DISCIPLINE` gains an explicit SUB entry.
 5. `DISCIPLINE_ORDER` gains SUB so it reaches the Excel summary and `grandTotal`.
-6. Spec at `apps/api/src/modules/tendering/__tests__/sub-discipline.spec.ts` with a failing-first
+
+6. **`apps/web/src/constants/disciplines.ts` gains `"SUB"` too — this is the one the compiler
+   cannot catch for you.** Slice 1 could not make the web import from the API module (no shared
+   runtime package), so it created a second canonical tuple for the web app and said so in that
+   file's header. There are therefore **two** tuples, not one, and TypeScript cannot see across the
+   package boundary. Add SUB to the API tuple alone and the build stays green, the API prices SUB
+   correctly, and **the tab never appears in the UI** — a silent half-landing with no error
+   anywhere. Add its label to `IS_DISCIPLINE_LABELS` in the same file.
+
+7. **Close the hole rather than stepping around it.** Extend
+   `apps/api/src/modules/personas/definitions/__tests__/disciplines-single-source.spec.ts` with an
+   assertion that the API and web tuples contain **exactly the same codes in the same order**. That
+   spec already reads both files from the repo root and already names both as canonical in its
+   header; it just never checks they agree. Without this, the next code added to one and not the
+   other repeats this exact bug, and nothing fails.
+
+8. Spec at `apps/api/src/modules/tendering/__tests__/sub-discipline.spec.ts` with a failing-first
    case for each of the two silent failures above, plus one asserting a SUB card round-trips.
 
 ## Do NOT
@@ -78,6 +96,9 @@ individual line is provisional is the next slice; this one places SUB in the tot
 - Both new specs fail on the current head and pass after — state both in the PR body.
 - An export of a tender with a SUB card: its rows appear in Scope Detail AND its money is inside
   the Summary total. Quote the two figures in the PR body.
+- **Confirm in the PR body that SUB is present in BOTH tuples**, naming both file paths, and that
+  the parity assertion fails when you remove SUB from either one. A build that passes with SUB in
+  only one of them is the exact defect this slice was amended to prevent.
 
 ## STANDING AUTHORITY
 

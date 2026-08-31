@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
+import { AccountLinkPreview } from "./AccountLinkPreview";
 
 // NAV-2: Accounts index — Client-360 landing page.
 // Lists all non-archived accounts with summary stats.
@@ -120,13 +121,24 @@ export function AccountsListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // CRM-S4: unlinked client count for the banner.
+  const [unlinkedCount, setUnlinkedCount] = useState<number | null>(null);
+  const [showLinkPreview, setShowLinkPreview] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch("/crm/accounts/summary");
-      if (!res.ok) throw new Error(await readApiErrorMessage(res));
-      setRows((await res.json()) as AccountSummaryRow[]);
+      const [summaryRes, linkRes] = await Promise.all([
+        authFetch("/crm/accounts/summary"),
+        authFetch("/crm/accounts/link-preview")
+      ]);
+      if (!summaryRes.ok) throw new Error(await readApiErrorMessage(summaryRes));
+      setRows((await summaryRes.json()) as AccountSummaryRow[]);
+      if (linkRes.ok) {
+        const linkRows = (await linkRes.json()) as Array<{ existingAccountId: string | null }>;
+        setUnlinkedCount(linkRows.filter((r) => r.existingAccountId === null).length);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load accounts.");
     } finally {
@@ -146,6 +158,34 @@ export function AccountsListPage() {
   const goingColdCount = rows.filter((r) => r.goingCold).length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  // CRM-S4: render the link-preview overlay when open.
+  if (showLinkPreview) {
+    return (
+      <div style={{ padding: "24px 32px" }}>
+        <button
+          onClick={() => setShowLinkPreview(false)}
+          style={{
+            marginBottom: 16,
+            padding: "8px 16px",
+            borderRadius: 6,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            cursor: "pointer",
+            fontSize: 13
+          }}
+        >
+          &larr; Back to accounts list
+        </button>
+        <AccountLinkPreview
+          onDone={() => {
+            setShowLinkPreview(false);
+            void load();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "24px 32px" }}>
@@ -204,6 +244,45 @@ export function AccountsListPage() {
             <StatTile label="Prospects" value={prospectCount} />
             <StatTile label="Going cold" value={goingColdCount} accent={goingColdCount > 0} />
           </div>
+
+          {/* CRM-S4: banner — shown when clients exist with no account.
+              Disappears once the count reaches 0 (all clients linked). */}
+          {unlinkedCount !== null && unlinkedCount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                background: "#fff7ed",
+                border: "1px solid #fed7aa",
+                borderRadius: 8,
+                marginBottom: 20
+              }}
+            >
+              <span style={{ fontSize: 13, color: "#92400e" }}>
+                <strong>{unlinkedCount} client{unlinkedCount !== 1 ? "s have" : " has"} no account.</strong>{" "}
+                Review and commit the link — this is a one-time catch-up.
+              </span>
+              <button
+                onClick={() => setShowLinkPreview(true)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #f97316",
+                  background: "#fff",
+                  color: "#ea580c",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                  minHeight: 36
+                }}
+              >
+                Review and link &rarr;
+              </button>
+            </div>
+          )}
 
           {/* Empty state */}
           {rows.length === 0 ? (

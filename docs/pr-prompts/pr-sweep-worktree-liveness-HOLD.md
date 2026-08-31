@@ -11,6 +11,7 @@ scope:
 done_when: >-
   grep -q "worktree-liveness" scripts/pipeline/status-sweep.ps1 && grep -q "LIVE STATION WORKTREE"
   scripts/pipeline/status-sweep.ps1 && grep -q "trunk-conclusion" scripts/pipeline/status-sweep.ps1
+  && grep -q "worktree-registry-escapees" scripts/pipeline/status-sweep.ps1
 size: 3
 gate_allow: none
 seed_only: false
@@ -147,6 +148,50 @@ what `done_when` greps for.
 `fix(ci): stop swallowing a test failure` and prove it reports **0 not-success**, then feed it a
 genuine `failure` conclusion and prove it reports 1. A counter that has only ever returned one answer
 has not been tested.
+
+## A THIRD defect in the same script — fix all three, in this one PR
+
+Added 2026-08-31T18:3xZ by Station 00, folded in from Station 04's
+`00-04-scanner-2026-08-31-1810-orphan-worktrees-the-sweep-cannot-see.md` (its F1), for the same
+reason the second one was: it is the same six lines of the same script, and two prompts editing one
+function is a conflict waiting to happen.
+
+**The classifier above fixes how `$wt`'s entries are LABELLED. It does not fix the fact that `$wt`
+is the wrong POPULATION.** `git worktree list` reads the git **registry**. A worktree whose
+registry entry is gone is exactly what an orphan IS, so the query can never enumerate one — DOCTRINE
+§9.6, *an empty result is not an empty world*.
+
+**Measured 2026-08-31T18:1xZ (Station 04):**
+
+- `git -C C:\ProjectOperations2 worktree list` → one line, the dev tree. `C:\ProjectOperations2\.git\worktrees`
+  is **ABSENT** — the registry is genuinely empty, so §2 prints `orphaned worktrees: none`.
+- `Get-ChildItem C:\po-worktrees` → **4 orphan directories, 85.3 MB, 7519 files**:
+  `po-scan-1787002207` (17 Aug, 26.0 MB), `scan-1787220682` (20 Aug, 27.6 MB), `ph` (31.7 MB), and
+  `fix-followup-notes` (empty shell, no `.git`). Two of the `.git` files point at
+  `/sessions/<sandbox>/mnt/...` for Linux sandboxes **that no longer exist**.
+- No `.lock` file in any of the four, so this is inert litter today — **not** a freeze. It is worth
+  fixing because the next one to appear *with* a lock will be invisible in exactly the same way, and
+  a lock with no holding process never expires.
+
+The check is not broken: the same line printed a true positive at 14:22:36Z naming
+`C:/po-worktrees/sot-05-20260831`. The query works; the population is wrong.
+
+**Do:** report the **set difference** as well as the registry. Enumerate the directories under the
+worktree roots (`C:\po-worktrees`, `C:\po-wt`, `C:\po-watcher-worktrees` — take them from a list at
+the top of the function, not hard-coded inline), and for every directory that is **not** in
+`git worktree list`, print it as `REGISTRY-ESCAPEE` with its size, age, and whether it holds a
+`.lock`. Keep the registry-derived output exactly as the classifier above leaves it; this is
+additive. The literal `worktree-registry-escapees` must appear in the script (a comment naming this
+prompt is fine); it is what the extended `done_when` greps for.
+
+**Do NOT delete, prune or `git clean` any of them** — the script reports, Station 03 acts (and the
+"Do NOT" list above already says so; it binds this section too).
+
+**Positive control the implementer must run:** the four directories named above are on this box
+right now, so the escapee count must come back **≥ 1** on a real run. Then create a *registered*
+worktree (`git worktree add C:\po-worktrees\_probe-registered origin/main --detach`) and prove it is
+**NOT** reported as an escapee, before tearing it down. A set-difference that has only ever returned
+one of its two answers has not been tested.
 
 ## STANDING AUTHORITY
 

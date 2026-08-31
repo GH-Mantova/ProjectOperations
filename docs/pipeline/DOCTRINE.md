@@ -360,6 +360,11 @@ here now because they are true for **every** station.
   rule ignores its contents (measured 2026-08-29 on `docs/pr-prompts/processed`, with and without a
   trailing slash; the same query on a file **inside** it returns `.gitignore:76`). §9.6’s own failure,
   sitting inside this cure.
+  🔴 **And that silence is BYTE-IDENTICAL to a true negative, so it carries no information at all.**
+  Measured 2026-08-31 with the control the earlier note lacked: `git check-ignore -v
+  docs/pr-prompts/processed` → exit 1, empty; `git check-ignore -v CLAUDE.md` — a tracked file that
+  genuinely is not ignored → **exit 1, empty**; the same query on a file *inside* the directory →
+  exit 0, `.gitignore:76`. Opposite truths, identical results. **Only the file form answers.**
 - ⚠️ **On git 2.55 a plain `git fetch origin main` DOES opportunistically update
   `refs/remotes/origin/main`**, because `origin` has a configured fetch refspec. The explicit
   `git fetch origin +refs/heads/main:refs/remotes/origin/main` form is still the one to write — it
@@ -457,15 +462,25 @@ here now because they are true for **every** station.
   `gh`.** `readFromOriginMain` (`lint-prompt.mjs:439-459`) runs
   `execFileSync(process.env.LINT_GIT_BIN || "git", ["show", "origin/main:<path>"])` and on failure
   `return null; // git broken - skip check, fail SAFE`, and it feeds all five gate probes (`:492`,
-  `:563`, `:826`, `:865`, `:903`). **`gh` appears nowhere in it**, so the old advice — *"confirm `gh`
-  resolves"* — proved nothing. **Confirm `git` resolves AND read its stderr before believing any
+  `:563`, `:826`, `:865`, `:903`). **The five GATE probes use `git` only**, so the old advice — *"confirm `gh`
+  resolves"* — proves nothing about them. 🔴 **But `gh` is NOT absent from the file, and this
+  bullet said it was until 2026-08-31.** `lint-prompt.mjs:1164` reads
+  `process.env.LINT_GH_BIN || "gh"` and `:1165` shells `gh pr view <n> --json state` inside
+  `ghFetchPrState`, reached from the exported `checkFixesPrTargetOpen` (`:1518` calls it *"a single
+  gh call"*). **A `fixes_pr` verdict therefore DOES depend on `gh`** — confirm it resolves before
+  trusting one. (Found by Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour —
+  `Select-String LINT_GH_BIN` returns exactly one hit, line 1164.) **Confirm `git` resolves AND read its stderr before believing any
   ADMIT.** And "fail SAFE" is safe only against wrongly *binning* a prompt: with respect to
   **arming** it fails **OPEN**, because a skipped gate reads as an ADMIT — including for prompts
   that drop database tables.
-- 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see the two
-  literal markers — `DO_NOT_ARM_COMMENT` (`lint-prompt.mjs:728`, case-insensitive) and
-  `DO_NOT_ARM_CAPS` (`:730`, case-**sensitive**) — and reports `HUMAN_GATE_PRESENT: line N contains`
-  at `:743` and `:755`. **The advice survives the fix:** a **prose** human gate matches neither regex,
+- 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see **three**
+  literal markers — `DO_NOT_ARM_COMMENT` (`lint-prompt.mjs:728`, case-insensitive),
+  `DO_NOT_ARM_CAPS` (`:730`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/` (`:732`,
+  conditional arming), which this bullet omitted until 2026-08-31** — and reports
+  `HUMAN_GATE_PRESENT: line N contains` at `:743`, `:755` and `:767`. **RULE 4's arming detector
+  greps the union of these markers as its second instrument, so a two-marker grep under-reports
+  which prompts the linter actually gates** (Station 04, 2026-08-31; re-measured by 00 the same
+  hour, with the control that `"Arm ONLY"` occurred 0 times in this document). **The advice survives the fix:** a **prose** human gate matches neither regex,
   and exactly that burned an arm on 2026-08-28T14:09Z — so still read the BODY before arming.
   Measured 2026-08-30 over the 59 depth-1 `-HOLD`/`-ready` on `origin/main`: the two markers cover
   **7 distinct prompts**; `## STANDING AUTHORITY` appears on **51 of 59** and is boilerplate, not a
@@ -485,8 +500,11 @@ here now because they are true for **every** station.
   `rollback_strategy` checked by eye.
   **What is still worth knowing.** From 2026-08-19 to 2026-08-31 the parser stored the literal two
   characters `">-"` and silently dropped the indented body, so **every presence check passed on
-  content nobody wrote.** Across the 61 depth-1 `-HOLD`/`-ready` prompts that was
-  `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12 — including two irreversible
+  content nobody wrote.** Across the 61 depth-1 `-HOLD`/`-ready` prompts on main at the
+  time, that was `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12; re-measured by
+  Station 04 on 2026-08-31T14:1xZ over the **59** that survive, it is **8 · 14 · 10**, the drop being
+  the prompts retired in #1448/#1449. ⚠️ **Those are counts, i.e. state: re-measure, never quote.**
+  The 10 included two irreversible
   table drops (`pr-524-rates-b-slice2-canonical`, `pr-rates-s11c-drop-legacy-tables`) and
   `pr-siteid-notnull-backfill`. 🔴 **Those prompts have never been linted by a working rollback
   gate — RE-LINT any of them before arming.** `premise`, `scope`, `fixes_pr` and the `requires_*`

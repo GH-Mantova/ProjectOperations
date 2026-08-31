@@ -178,6 +178,13 @@ jobs:
       # four of them carried advice the pipeline had already disproved - including one
       # telling the supervisor to relaunch a launcher that is not the real one.
       - run: node scripts/pipeline/lint-station.mjs
+      # The compiled station agents must POINT at the doctrine, never carry a copy.
+      # Until 2026-08-31 each of .claude/agents/{00..05}.md carried TWO embedded copies, both
+      # encoding-damaged and both frozen at section 7.1 - so every station spawned from them ran
+      # on a stale excerpt with sections 8, 9 and 10 missing, referencing DOCTRINE.md zero times,
+      # and no instrument measured the drift. An embedded copy of a living document always drifts;
+      # this gate is what stops it coming back.
+      - run: node scripts/pipeline/check-agent-doctrine.mjs
       # The report contract, enforced on the reports themselves. lint-station checks that a
       # station DOC says where findings go; this checks that a station RUN put them there.
       # Structure only in CI - the freshness check needs a live box and would always fail here.

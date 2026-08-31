@@ -329,3 +329,72 @@ clone          dirty 38 / stash 54  (under 04's 45 / 60 thresholds)
 ```
 
 The board moved once during this run (0 → 1 open PR at 04:11Z). `origin/main` did not.
+
+---
+
+## CORRECTION, 04:2xZ — "prompt arms = 1" was true when measured and false seven minutes later
+
+Recording this rather than editing the claim away, because how it stopped being true is the finding.
+
+**What I wrote:** *"Prompt arms = 1"*, read back at 04:19:51Z immediately after arming
+`pr-watcher-verdict-sweep-skips-tracked`, with `arm-prompt.ps1`'s own index guard confirming the
+queue held nothing else.
+
+**What is true at 04:26:37Z:** `Get-ChildItem docs\pr-prompts -Filter *-ready.md` returns **two** —
+mine, and `pr-scopesub-s1-one-discipline-list-ready.md`. `[MEASURED]`
+
+`pr-scopesub-s1` was **absent** from the same query at 04:19:51Z and present at 04:26:37Z, so it was
+armed by another actor inside that seven-minute window. It is a legitimate arm: one of the three
+ungated ADMIT heads from 06's 01:37Z cluster, `escalates: false`, and its scope (scope-sub
+discipline lists) is disjoint from mine (`scripts/pr-watcher/**`), so the same-file race in F2 does
+not apply here.
+
+### F10 — `.arming-log.txt` is not an arm census, and I nearly used it as one
+
+The other arm has **no entry** in `.arming-log.txt`: `Select-String -SimpleMatch 'scopesub'` → **0**,
+against a positive control of my own arm → **1**. It was armed by a bare `git mv`, which
+`arm-prompt.ps1`'s own header calls a defect precisely because it writes no audit line and takes no
+lock.
+
+So the log records only the arms made through the wrapper. Anyone auditing "how many prompts are
+armed, and who armed them" by reading it gets a confident, coherent, incomplete answer — DOCTRINE
+§7's shape exactly. **The only sound census is the filesystem** (`Get-ChildItem *-ready.md`,
+excluding `rev-<n>-ready.md` review jobs per §9.5); the log answers a narrower question — "which
+arms went through the wrapper" — and must be quoted as that.
+
+This also means **RULE 4 cannot be enforced by reading the log.** Two prompts are armed right now
+and the log shows one.
+
+**ESCALATED** → Marco, RULE 1, complete-and-additive FIRST:
+
+- **(A) Make the bare `git mv` route impossible: a pre-commit / guard hook that refuses a staged
+  `*-HOLD.md → *-ready.md` rename with no matching `.arming-log.txt` line.** Complete — every future
+  arm is logged whoever makes it, so the log becomes the census it is already read as. Additive — it
+  blocks nothing that goes through `arm-prompt.ps1`, deletes nothing, and changes no existing arm.
+  A guard hook already exists at `.claude/hooks/guard.mjs`, so this adds a rule rather than a
+  mechanism.
+- **(B) Leave the route open and fix the readers** — teach every station that the log is partial.
+  Fails *complete*: it depends on every future reader remembering, which is the failure mode that
+  produced this line.
+- **(C) Accept two concurrent arms as normal and retire RULE 4's one-at-a-time.** Fails *complete*
+  in a different way — it does not damage data, but it removes the gap in which a slice is verified
+  and the clone fast-forwarded before the next one starts, which is what RULE 4 buys.
+
+**I disarmed neither prompt.** Disarming another actor's deliberate arm destroys their work — the
+lesson from my own 02:08Z run — and disarming mine would need a second PR to revert a rename already
+on `main`. Both are `escalates: false`, non-destructive, and disjoint in scope, so the cost of
+leaving both is that two prompts run back to back without a verification gap, not a collision.
+
+### Corrected END STATE
+
+```
+UTC            2026-08-31T04:2xZ
+origin/main    c109cf09   (moved f63e1ade → c109cf09 when #1425 merged at 04:25:47Z)
+dev tree       main @ c109cf09   — fast-forwarded, untracked-breadcrumb backlog now ZERO
+open PRs       1  (#1424, MERGEABLE, BLOCKED by do-not-merge — Marco's)
+prompt arms    2  (mine: pr-watcher-verdict-sweep-skips-tracked; another actor's: pr-scopesub-s1)
+watcher        RESTARTED ~04:25Z; startup verdict-archive sweep archived=37 kept=1
+```
+
+The watcher restart at 04:25Z is the loop the prompt I armed exists to close: `archived=37` on a
+startup sweep, which is exactly the tracked-file count that makes the clone dirty at every launch.

@@ -182,3 +182,57 @@ describe("buildCommitAction payload shape (CRM-S4 test 7)", () => {
     }
   });
 });
+
+// ── Untouched already-linked rows must not be written ─────────────────────────
+//
+// Regression guard. buildCommitAction used to return a "patch" for EVERY row
+// that already had an account, carrying resolveLifecycle(row) — which falls
+// back to the computed proposal because PreviewRow does not carry the stored
+// lifecycle. Pressing Commit therefore rewrote the lifecycle of every linked
+// account to the rule's guess, overwriting values set by hand, while the screen
+// reported those same rows as "Already linked (skipped)".
+
+describe("buildCommitAction skips untouched linked rows (CRM-S4 regression)", () => {
+  it("returns skip for an already-linked row the reviewer did not touch", () => {
+    const row: PreviewRow = {
+      ...makeRow({ clientId: "client-1", existingAccountId: "acct-1" }),
+      proposed: "ACTIVE",
+      override: null
+    };
+    expect(buildCommitAction(row).kind).toBe("skip");
+  });
+
+  it("returns patch once the reviewer overrides that same row", () => {
+    const row: PreviewRow = {
+      ...makeRow({ clientId: "client-1", existingAccountId: "acct-1" }),
+      proposed: "ACTIVE",
+      override: "PAST"
+    };
+    const action = buildCommitAction(row);
+    expect(action.kind).toBe("patch");
+    if (action.kind !== "patch") throw new Error("unexpected");
+    expect(action.payload.lifecycleStatus).toBe("PAST");
+  });
+
+  it("still creates for an unlinked row with no override", () => {
+    const row: PreviewRow = {
+      ...makeRow({ clientId: "client-2", existingAccountId: null }),
+      proposed: "PROSPECT",
+      override: null
+    };
+    const action = buildCommitAction(row);
+    expect(action.kind).toBe("create");
+    if (action.kind !== "create") throw new Error("unexpected");
+    expect(action.payload.clientId).toBe("client-2");
+  });
+
+  it("a board of only untouched linked rows produces zero writes", () => {
+    const rows: PreviewRow[] = ["acct-1", "acct-2", "acct-3"].map((id, i) => ({
+      ...makeRow({ clientId: `client-${i}`, existingAccountId: id, wonCount: 1 }),
+      proposed: "ACTIVE",
+      override: null
+    }));
+    const writes = rows.filter((r) => buildCommitAction(r).kind !== "skip");
+    expect(writes).toHaveLength(0);
+  });
+});

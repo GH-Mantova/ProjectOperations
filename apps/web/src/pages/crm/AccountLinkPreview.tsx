@@ -96,6 +96,14 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
   // We assert it here for safety — the screen blocks commit if non-zero.
   const ambiguousCount = 0; // structural guarantee: Account.clientId is @unique
 
+  // What Commit will ACTUALLY write: every create, plus the already-linked rows
+  // the reviewer has explicitly re-graded. Untouched linked rows return "skip".
+  // The button is labelled from this, not from unlinkedRows, so the number on
+  // the button is the number of rows that get written.
+  const pendingWriteCount = rows.filter(
+    (row) => buildCommitAction(row).kind !== "skip"
+  ).length;
+
   // ── Per-row lifecycle override ─────────────────────────────────────────────
 
   function setRowOverride(clientId: string, lifecycle: ProposalLifecycle | null) {
@@ -487,20 +495,28 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
           {/* Commit button */}
           <button
             onClick={() => void handleCommit()}
-            disabled={committing || ambiguousCount > 0}
+            disabled={committing || ambiguousCount > 0 || pendingWriteCount === 0}
             style={{
               padding: "12px 28px",
               borderRadius: 6,
               border: "none",
-              background: ambiguousCount > 0 ? "#9ca3af" : "#4f46e5",
+              background:
+                ambiguousCount > 0 || pendingWriteCount === 0 ? "#9ca3af" : "#4f46e5",
               color: "#fff",
               fontWeight: 700,
               fontSize: 14,
-              cursor: committing || ambiguousCount > 0 ? "not-allowed" : "pointer",
+              cursor:
+                committing || ambiguousCount > 0 || pendingWriteCount === 0
+                  ? "not-allowed"
+                  : "pointer",
               minHeight: 44
             }}
           >
-            {committing ? "Committing…" : `Commit ${unlinkedRows.length} account${unlinkedRows.length !== 1 ? "s" : ""}`}
+            {committing
+              ? "Committing…"
+              : pendingWriteCount === 0
+                ? "Nothing to commit"
+                : `Commit ${pendingWriteCount} row${pendingWriteCount !== 1 ? "s" : ""}`}
           </button>
         </>
       )}

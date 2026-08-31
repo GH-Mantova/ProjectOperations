@@ -112,9 +112,18 @@ export type CommitAction =
 export function buildCommitAction(row: PreviewRow): CommitAction {
   const lifecycle = resolveLifecycle(row);
   if (row.existingAccountId !== null) {
-    // Account already exists — only patch if the lifecycle select was changed.
-    // We always send the current effective lifecycle so the review commit is
-    // idempotent (re-committing the same screen writes nothing new).
+    // Account already exists. Patch it ONLY when the reviewer actually moved
+    // the lifecycle select for this row (row.override !== null).
+    //
+    // An untouched row must skip. resolveLifecycle() falls back to the COMPUTED
+    // proposal and PreviewRow does not carry the account's stored lifecycle, so
+    // patching an untouched row would overwrite a value a human set by hand
+    // with the rule's guess — a bulk write behind a screen that reports these
+    // rows as "Already linked (skipped)". Decision 7 requires preview-then-
+    // confirm per row, never a one-click bulk write.
+    if (row.override === null) {
+      return { kind: "skip" };
+    }
     return {
       kind: "patch",
       payload: { accountId: row.existingAccountId, lifecycleStatus: lifecycle }

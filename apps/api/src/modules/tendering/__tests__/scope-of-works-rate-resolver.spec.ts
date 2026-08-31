@@ -96,7 +96,7 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       const scopeItem = makeConfirmedScopeItem({ shift: "Night" });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
-      expect(resolveRate).toHaveBeenCalledWith("labour", { role: "Demolition labourer", shift: "night" });
+      expect(resolveRate).toHaveBeenCalledWith("labour", { role: "Demolition labourer", shift: "night" }, { tenderId: "t-1" });
       // Rate value is used in labour line create
       const labourCreate = (prisma as never as { estimateLabourLine: { create: jest.Mock } }).estimateLabourLine.create;
       expect(labourCreate).toHaveBeenCalledTimes(1);
@@ -136,7 +136,7 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
-      expect(resolveRate).toHaveBeenCalledWith("plant", { item: "Excavator 16T-25T (wet hire)" });
+      expect(resolveRate).toHaveBeenCalledWith("plant", { item: "Excavator 16T-25T (wet hire)" }, { tenderId: "t-1" });
       const plantCreate = (prisma as never as { estimatePlantLine: { create: jest.Mock } }).estimatePlantLine.create;
       expect(plantCreate).toHaveBeenCalledTimes(1);
       const data = (plantCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
@@ -179,7 +179,7 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
-      expect(resolveRate).toHaveBeenCalledWith("core-hole", { diameterMm: 100 });
+      expect(resolveRate).toHaveBeenCalledWith("core-hole", { diameterMm: 100 }, { tenderId: "t-1" });
       const cuttingCreate = (prisma as never as { estimateCuttingLine: { create: jest.Mock } }).estimateCuttingLine.create;
       expect(cuttingCreate).toHaveBeenCalledTimes(1);
       const data = (cuttingCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
@@ -231,7 +231,7 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
-      expect(listRates).toHaveBeenCalledWith("cutting");
+      expect(listRates).toHaveBeenCalledWith("cutting", { tenderId: "t-1" });
       const cuttingCreate = (prisma as never as { estimateCuttingLine: { create: jest.Mock } }).estimateCuttingLine.create;
       expect(cuttingCreate).toHaveBeenCalledTimes(1);
       const data = (cuttingCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
@@ -260,7 +260,7 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
-      expect(listRates).toHaveBeenCalledWith("waste");
+      expect(listRates).toHaveBeenCalledWith("waste", { tenderId: "t-1" });
       const wasteCreate = (prisma as never as { estimateWasteLine: { create: jest.Mock } }).estimateWasteLine.create;
       expect(wasteCreate).toHaveBeenCalledTimes(1);
       const data = (wasteCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
@@ -320,8 +320,8 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
 
       await svc.listItems("t-1");
 
-      expect(listRates).toHaveBeenCalledWith("labour");
-      expect(listRates).toHaveBeenCalledWith("plant");
+      expect(listRates).toHaveBeenCalledWith("labour", { tenderId: "t-1" });
+      expect(listRates).toHaveBeenCalledWith("plant", { tenderId: "t-1" });
     });
   });
 });

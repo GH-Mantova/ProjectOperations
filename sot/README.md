@@ -182,12 +182,14 @@ what the body claims** (#476 and #478 both over-claimed and both merged anyway).
 
 ## 🕸️ Graph-first navigation (Graphify)
 
-The repo ships a committed knowledge graph in `graphify-out/` covering **app code +
-Prisma/SQL schema + infrastructure in one graph**.
+The repo can BUILD a knowledge graph into `graphify-out/` covering **app code +
+Prisma/SQL schema + infrastructure in one graph**. It is **not committed**: `graphify-out/`
+is gitignored (`.gitignore` line 134 — the graph is ~19 MB and fully regenerable offline),
+and has never been tracked. Build it once per checkout with the setup runbook below.
 
 - Ask the graph first: `graphify query "what connects the rate resolver to the schema?"`,
   `graphify path "ClientQuote" "TenderEstimate"`, `graphify explain "RateResolverService"`.
-- Broad architecture review: `graphify-out/GRAPH_REPORT.md`.
+- Broad architecture review: `graphify-out/GRAPH_REPORT.md` (present only after you build the graph). <!-- sot-ref-allow: graphify-out/ is gitignored at .gitignore line 134 and has never been tracked - MEASURED 2026-08-31, git log --all over the path returns 0 commits, positive control on sot/README.md returns 2. The path is correct for a local build and is structurally absent from origin/main by design, so this reference can never resolve in CI. -->
 - **Graphify is NOT source of truth.** It is a generated navigation index (a `docs/`-class
   artifact that lives at repo root only because the tool requires it). The canonical Prisma
   spine remains `sot/04-data-model.md` + `scripts/data-model/build-relationship-map.mjs`

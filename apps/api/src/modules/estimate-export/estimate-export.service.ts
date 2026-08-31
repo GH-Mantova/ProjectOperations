@@ -10,13 +10,24 @@ import {
   type PdfCompanyContext,
 } from "../pdf-rendering/builders/quote-html.builder";
 import { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
+import {
+  IS_DISCIPLINE_CODES,
+  type IsDisciplineCode
+} from "../personas/definitions/disciplines";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 // Display order must match the Quote tab and the cost-summary bar.
-export const DISCIPLINE_ORDER = ["DEM", "CIV", "ASB", "Other"] as const;
-export type Discipline = (typeof DISCIPLINE_ORDER)[number];
+// Single source of truth: apps/api/src/modules/personas/definitions/disciplines.ts
 
-export const DISCIPLINE_LABEL: Record<string, string> = {
+/** Canonical discipline tuple — alias for IS_DISCIPLINE_CODES. Exported for
+ *  estimate-excel.builder and estimate-export.service.spec.ts consumers. */
+export const DISCIPLINE_ORDER = IS_DISCIPLINE_CODES;
+/** Union of the four canonical discipline codes — alias for IsDisciplineCode. */
+export type Discipline = IsDisciplineCode;
+
+/** Discipline display labels for export documents. Typed against the canonical
+ *  union so a missing key is a compile error, not a silent undefined at runtime. */
+export const DISCIPLINE_LABEL: Record<IsDisciplineCode, string> = {
   DEM: "Demolition",
   CIV: "Civil Works",
   ASB: "Asbestos Removal",

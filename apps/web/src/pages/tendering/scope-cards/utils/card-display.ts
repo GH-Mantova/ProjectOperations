@@ -1,5 +1,7 @@
 // PR B1.5 — display helpers for the cards-as-tabs UI.
 
+import { IS_DISCIPLINE_CODES, type IsDisciplineCode } from "../../../../constants/disciplines";
+
 export function formatCardCode(discipline: string, cardNumber: number): string {
   return `${discipline}${cardNumber}`;
 }
@@ -12,8 +14,8 @@ export function formatItemCode(
   return `${discipline}${cardNumber}.${itemNumber}`;
 }
 
-// Mirror of apps/api IS_DISCIPLINE_LABELS — kept duplicated since web ↔ api
-// don't share a runtime package.
+// Discipline labels for the cards UI. Derived from the canonical source —
+// apps/web/src/constants/disciplines.ts — so a future code change propagates here.
 export const DISCIPLINE_LABELS: Record<string, string> = {
   DEM: "Demolition",
   CIV: "Civil works",
@@ -21,8 +23,9 @@ export const DISCIPLINE_LABELS: Record<string, string> = {
   Other: "Other"
 };
 
-export const DISCIPLINE_CODES = ["DEM", "CIV", "ASB", "Other"] as const;
-export type DisciplineCode = (typeof DISCIPLINE_CODES)[number];
+/** Canonical discipline code tuple — imported from the single source of truth. */
+export const DISCIPLINE_CODES = IS_DISCIPLINE_CODES;
+export type DisciplineCode = IsDisciplineCode;
 
 // Same colour palette used by the (now-deleted) ScopeDisciplineBar so users
 // see a familiar accent stripe on each card tab.

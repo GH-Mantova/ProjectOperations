@@ -3,17 +3,14 @@ import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { IS_DISCIPLINE_CODES, IS_DISCIPLINE_LABELS } from "../../constants/disciplines";
 
-// Local label map — mirrors IS_DISCIPLINE_LABELS from api/personas/definitions/disciplines.ts.
-// Web and API do not share a runtime package, so the map is duplicated here (four codes only).
-const DISCIPLINE_LABELS: Record<string, string> = {
-  DEM: "Demolition",
-  CIV: "Civil",
-  ASB: "Asbestos",
-  Other: "Other",
-};
-
-const DISCIPLINE_CODES = ["DEM", "CIV", "ASB", "Other"] as const;
+// Discipline labels and codes — imported from the single source of truth.
+// apps/web/src/constants/disciplines.ts mirrors the API canonical source.
+// Spread into Record<string, string> so string-typed runtime values can index
+// into the map without a cast (same runtime behaviour, looser type annotation).
+const DISCIPLINE_LABELS: Record<string, string> = { ...IS_DISCIPLINE_LABELS };
+const DISCIPLINE_CODES = IS_DISCIPLINE_CODES;
 
 type SubcontractorRate = {
   id: string;

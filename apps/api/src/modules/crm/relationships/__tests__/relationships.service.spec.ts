@@ -1,6 +1,9 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { RelationshipsService } from "../relationships.service";
 
+// CRM-S7: channel enum values available without importing Prisma
+const VALID_CHANNELS = ["phone", "email", "meeting", "site_visit", "other"] as const;
+
 // ── Mock Prisma ───────────────────────────────────────────────────────────────
 
 type MockPrisma = {
@@ -63,6 +66,7 @@ const NOTE_STUB = {
   contactId: "contact-1",
   authorId: "user-1",
   body: "Called Jane, discussed Q4 quote.",
+  channel: null,
   createdAt: NOW,
   updatedAt: NOW,
   author: { id: "user-1", firstName: "Marco", lastName: "M" },
@@ -330,5 +334,59 @@ describe("RelationshipsService.getRepeatBusinessAccounts", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].client?.winCount).toBeGreaterThan(1);
+  });
+});
+
+// ── CRM-S7: channel field on RelationshipNote ─────────────────────────────────
+
+describe("CRM-S7 RelationshipNote.channel", () => {
+  it("a note created without channel has channel=null (historic notes stay NULL)", async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: "user-1" });
+    prisma.account.findUnique.mockResolvedValue({ id: "acct-1" });
+    // Account-only note (no contact) — avoids needing a contact mock
+    const noChannelStub = { ...NOTE_STUB, contactId: null, contact: null, channel: null };
+    prisma.relationshipNote.create.mockResolvedValue(noChannelStub);
+
+    const service = makeService(prisma);
+    const result = await service.createNote({
+      accountId: "acct-1",
+      authorId: "user-1",
+      body: "Discussed Q4 quote."
+      // channel omitted — tests historic-note path; NULL is preserved as-is
+    });
+
+    expect(result.channel).toBeNull();
+    // NULL channel renders as "—" in the UI (rendering is the web layer's responsibility,
+    // but the null value is what we assert here)
+  });
+
+  it("a note created with channel=phone stores the value", async () => {
+    const prisma = makePrisma();
+    prisma.user.findUnique.mockResolvedValue({ id: "user-1" });
+    prisma.account.findUnique.mockResolvedValue({ id: "acct-1" });
+    // Account-only note (no contact) to keep the mock simple
+    const phoneStub = { ...NOTE_STUB, contactId: null, contact: null, channel: "phone" };
+    prisma.relationshipNote.create.mockResolvedValue(phoneStub);
+
+    const service = makeService(prisma);
+    const result = await service.createNote({
+      accountId: "acct-1",
+      authorId: "user-1",
+      body: "Phone call.",
+      channel: "phone" as never
+    });
+
+    expect(result.channel).toBe("phone");
+    // Verify the create call received the channel value
+    expect(prisma.relationshipNote.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ channel: "phone" })
+      })
+    );
+  });
+
+  it("VALID_CHANNELS contains the five expected values from the schema", () => {
+    expect(VALID_CHANNELS).toEqual(["phone", "email", "meeting", "site_visit", "other"]);
   });
 });

@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { CommTaskStatus, Prisma } from "@prisma/client";
+import { CommTaskStatus, CommThreadKind, Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
 
 // ── Entity types the comms hub can be anchored to ────────────────────────────
@@ -14,8 +14,17 @@ import { PrismaService } from "../../../prisma/prisma.service";
  * stays polymorphic and decoupled from the transactional owners, but the
  * DTO / service layer tightens it to this tuple so callers can't invent
  * arbitrary entity types at runtime.
+ *
+ * CRM-S7: OPPORTUNITY added so logged-contact threads can be anchored to
+ * pipeline opportunities as well as tenders.
  */
-export const COMM_ENTITY_TYPES = ["ACCOUNT", "TENDER", "JOB", "CONTRACT"] as const;
+export const COMM_ENTITY_TYPES = [
+  "ACCOUNT",
+  "TENDER",
+  "OPPORTUNITY",
+  "JOB",
+  "CONTRACT"
+] as const;
 export type CommEntityType = (typeof COMM_ENTITY_TYPES)[number];
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -71,6 +80,32 @@ export type ListTasksQuery = {
   page?: number;
   limit?: number;
 };
+
+/**
+ * CRM-S7: Input for logging a contact interaction on a tender or opportunity.
+ * Creates one CommThread (kind=logged_contact) + one CommMessage.
+ */
+export type LogContactInput = {
+  entityType: CommEntityType;
+  entityId: string;
+  /** Displayed as the thread subject. Derived by the caller (e.g. "Call — 2026-08-31"). */
+  subject: string;
+  /** Body of the single log message. */
+  body: string;
+  /** The internal user performing the log action. */
+  createdById: string;
+};
+
+/**
+ * CRM-S7: Last-interaction summary for the Tenders Register.
+ * NULL when no logged-contact thread exists for the entity.
+ */
+export type LastInteractionResult = {
+  entityType: string;
+  entityId: string;
+  lastMessageAt: Date;
+  loggedBy: { id: string; firstName: string; lastName: string };
+} | null;
 
 // ── Service ──────────────────────────────────────────────────────────────────
 
@@ -333,6 +368,148 @@ export class CommsService {
     });
     if (!row) throw new NotFoundException(`CommTask ${id} not found.`);
     return row;
+  }
+
+  // ── CRM-S7: Interaction log ────────────────────────────────────────────────
+
+  /**
+   * Log a contact interaction on a tender or opportunity.
+   * Creates exactly one CommThread (kind=logged_contact) and exactly one
+   * CommMessage. The thread is NOT archived — it stays live so the Register
+   * can surface it via lastInteractionFor.
+   *
+   * Rule: one call, one atomic write pair. The thread and message are created
+   * in a transaction so there is never a thread with zero messages.
+   */
+  async logContact(input: LogContactInput) {
+    this.requireEntityType(input.entityType);
+    if (!input.entityId?.trim()) {
+      throw new BadRequestException("entityId is required.");
+    }
+    const subject = input.subject?.trim();
+    if (!subject) throw new BadRequestException("subject is required for a logged contact.");
+    const body = input.body?.trim();
+    if (!body) throw new BadRequestException("body is required.");
+    await this.requireUser(input.createdById);
+
+    return this.prisma.$transaction(async (tx) => {
+      const thread = await tx.commThread.create({
+        data: {
+          entityType: input.entityType,
+          entityId: input.entityId,
+          subject,
+          kind: CommThreadKind.logged_contact,
+          createdById: input.createdById
+        }
+      });
+
+      const message = await tx.commMessage.create({
+        data: {
+          threadId: thread.id,
+          authorId: input.createdById,
+          body,
+          mentions: Prisma.JsonNull
+        },
+        include: {
+          author: { select: { id: true, firstName: true, lastName: true } }
+        }
+      });
+
+      return { thread, message };
+    });
+  }
+
+  /**
+   * CRM-S7: Last interaction for the Tenders Register.
+   *
+   * Returns the most-recent CommMessage (by createdAt) across all
+   * logged_contact threads anchored to (entityType, entityId), plus its
+   * author. Rows with no logged contact return null — the Register renders
+   * null as "—" and sorts them last.
+   *
+   * Does NOT union with relationship_notes. This reads comm_messages only.
+   */
+  async lastInteractionFor(
+    entityType: CommEntityType,
+    entityId: string
+  ): Promise<LastInteractionResult> {
+    this.requireEntityType(entityType);
+
+    // Find all logged_contact threads for this entity, then the newest message.
+    const message = await this.prisma.commMessage.findFirst({
+      where: {
+        thread: {
+          entityType,
+          entityId,
+          kind: CommThreadKind.logged_contact,
+          archivedAt: null
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true } },
+        thread: { select: { entityType: true, entityId: true } }
+      }
+    });
+
+    if (!message) return null;
+
+    return {
+      entityType: message.thread.entityType,
+      entityId: message.thread.entityId,
+      lastMessageAt: message.createdAt,
+      loggedBy: message.author
+    };
+  }
+
+  /**
+   * CRM-S7: Batch last-interaction lookup for a list of (entityType, entityId)
+   * pairs. Used by the Tenders Register to populate Last interaction + Logged
+   * by in a single round-trip instead of N serial calls.
+   *
+   * Returns a Map keyed by `${entityType}:${entityId}`.
+   * Entries absent from the map have no logged contact (render "—").
+   */
+  async lastInteractionBatch(
+    pairs: Array<{ entityType: CommEntityType; entityId: string }>
+  ): Promise<Map<string, LastInteractionResult>> {
+    if (pairs.length === 0) return new Map();
+
+    // Collect all entity ids per type so the WHERE can be tight.
+    const entityIds = [...new Set(pairs.map((p) => p.entityId))];
+    const entityTypes = [...new Set(pairs.map((p) => p.entityType))];
+
+    const messages = await this.prisma.commMessage.findMany({
+      where: {
+        thread: {
+          entityType: { in: entityTypes },
+          entityId: { in: entityIds },
+          kind: CommThreadKind.logged_contact,
+          archivedAt: null
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true } },
+        thread: { select: { entityType: true, entityId: true } }
+      }
+    });
+
+    // For each (entityType, entityId) pair, keep only the newest message.
+    const result = new Map<string, LastInteractionResult>();
+    for (const msg of messages) {
+      const key = `${msg.thread.entityType}:${msg.thread.entityId}`;
+      if (!result.has(key)) {
+        result.set(key, {
+          entityType: msg.thread.entityType,
+          entityId: msg.thread.entityId,
+          lastMessageAt: msg.createdAt,
+          loggedBy: msg.author
+        });
+      }
+    }
+
+    return result;
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

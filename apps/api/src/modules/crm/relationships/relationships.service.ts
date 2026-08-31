@@ -3,16 +3,32 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { InteractionChannel, Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+export { InteractionChannel };
+
+/**
+ * The finite set of valid channel values. Mirrors the InteractionChannel enum
+ * so the controller layer can validate without importing Prisma directly.
+ */
+export const INTERACTION_CHANNELS = [
+  "phone",
+  "email",
+  "meeting",
+  "site_visit",
+  "other"
+] as const;
 
 export type CreateNoteInput = {
   accountId?: string | null;
   contactId?: string | null;
   authorId: string;
   body: string;
+  /** CRM-S7: communication medium. Omit/null for historic or channel-unknown notes. */
+  channel?: InteractionChannel | null;
 };
 
 export type UpdateNoteInput = {
@@ -70,7 +86,8 @@ export class RelationshipsService {
         accountId: input.accountId ?? null,
         contactId: input.contactId ?? null,
         authorId: input.authorId,
-        body: input.body.trim()
+        body: input.body.trim(),
+        channel: input.channel ?? null
       },
       include: this.noteInclude()
     });

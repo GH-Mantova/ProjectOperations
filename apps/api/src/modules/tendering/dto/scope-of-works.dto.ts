@@ -20,8 +20,9 @@ import {
 } from "../../personas/definitions/disciplines";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
+// scope-subcontracted order 2 (2026-08-31) — added SUB (5-code system).
 // Single source of truth: apps/api/src/modules/personas/definitions/disciplines.ts
-/** Canonical 4-code discipline tuple (DEM/CIV/ASB/Other) — re-exported from IS_DISCIPLINE_CODES. */
+/** Canonical 5-code discipline tuple (DEM/CIV/ASB/SUB/Other) -- re-exported from IS_DISCIPLINE_CODES. */
 export const DISCIPLINES = IS_DISCIPLINE_CODES;
 // Row-type slugs accepted by the API. The first six entries are the legacy
 // names (kept so historical rows keep passing validation); the rest are the
@@ -48,7 +49,7 @@ export const STATUSES = ["draft", "confirmed", "excluded"] as const;
 /** Shift tags accepted on labour-bearing scope items. */
 export const SHIFTS = ["Day", "Night", "Weekend"] as const;
 
-/** Union of the four canonical discipline codes — alias for IsDisciplineCode. */
+/** Union of the five canonical discipline codes -- alias for IsDisciplineCode. */
 export type Discipline = IsDisciplineCode;
 /** Union of accepted row-type slugs (legacy + redesign). */
 export type RowType = (typeof ROW_TYPES)[number];

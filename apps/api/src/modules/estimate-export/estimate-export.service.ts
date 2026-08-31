@@ -31,6 +31,7 @@ export const DISCIPLINE_LABEL: Record<IsDisciplineCode, string> = {
   DEM: "Demolition",
   CIV: "Civil Works",
   ASB: "Asbestos Removal",
+  SUB: "Subcontracted Works",
   Other: "Other (Provisional Sums, Options, Adjustments)"
 };
 
@@ -157,6 +158,7 @@ export type ExportPayload = {
     DEM: { itemCount: number; subtotal: number; withMarkup: number };
     CIV: { itemCount: number; subtotal: number; withMarkup: number };
     ASB: { itemCount: number; subtotal: number; withMarkup: number };
+    SUB: { itemCount: number; subtotal: number; withMarkup: number };
     Other: { itemCount: number; subtotal: number; withMarkup: number };
     cutting: { itemCount: number; subtotal: number };
     tenderPrice: number;
@@ -346,6 +348,7 @@ export class EstimateExportService {
       DEM: { itemCount: number; subtotal: number; withMarkup: number };
       CIV: { itemCount: number; subtotal: number; withMarkup: number };
       ASB: { itemCount: number; subtotal: number; withMarkup: number };
+      SUB: { itemCount: number; subtotal: number; withMarkup: number };
       Other: { itemCount: number; subtotal: number; withMarkup: number };
       cutting: { itemCount: number; subtotal: number };
       tenderPrice: number;
@@ -397,6 +400,7 @@ export class EstimateExportService {
         DEM: discBucket("DEM"),
         CIV: discBucket("CIV"),
         ASB: discBucket("ASB"),
+        SUB: discBucket("SUB"),
         Other: discBucket("Other"),
         cutting: { itemCount: summaryTyped.cutting.itemCount, subtotal: round2(summaryTyped.cutting.subtotal) },
         tenderPrice: round2(summaryTyped.tenderPrice)

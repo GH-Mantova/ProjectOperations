@@ -44,6 +44,10 @@ const ROW_TYPES_BY_DISCIPLINE: Record<Discipline, string[]> = {
   DEM: ["demolition", "waste-disposal", "plant-only", "general-labour", "cutting"],
   CIV: ["excavation", "earthworks", "waste-disposal", "plant-only", "general-labour", "cutting"],
   ASB: ["asbestos-removal", "enclosure", "waste-disposal", "plant-only", "general-labour"],
+  // SUB carries subcontracted work priced against the quote received.
+  // Row types mirror DEM minus cutting (cutting is typically quoted separately
+  // by the subcontractor and captured as a SUB line).
+  SUB: ["demolition", "waste-disposal", "plant-only", "general-labour"],
   Other: ["waste-disposal", "plant-only", "general-labour", "cutting"]
 };
 

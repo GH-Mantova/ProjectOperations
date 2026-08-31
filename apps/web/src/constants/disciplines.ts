@@ -10,7 +10,7 @@
  *   SO/Str → DEM, Asb → ASB, Civ → CIV, Prv → Other
  */
 
-export const IS_DISCIPLINE_CODES = ["DEM", "CIV", "ASB", "Other"] as const;
+export const IS_DISCIPLINE_CODES = ["DEM", "CIV", "ASB", "Other", "SUB"] as const;
 export type IsDisciplineCode = (typeof IS_DISCIPLINE_CODES)[number];
 
 /** Short display labels used across the web UI. */
@@ -18,5 +18,6 @@ export const IS_DISCIPLINE_LABELS: Record<IsDisciplineCode, string> = {
   DEM: "Demolition",
   CIV: "Civil",
   ASB: "Asbestos",
+  SUB: "Subcontracted",
   Other: "Other"
 };

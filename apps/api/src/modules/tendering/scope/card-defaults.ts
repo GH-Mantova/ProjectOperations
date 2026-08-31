@@ -41,7 +41,8 @@ export const SCOPE_CARD_DEFAULTS: readonly ScopeCardDefault[] = [
   { discipline: "DEM", name: "Demolition", sortOrder: 0, cardNumber: 1 },
   { discipline: "CIV", name: "Civil works", sortOrder: 1, cardNumber: 1 },
   { discipline: "ASB", name: "Asbestos removal", sortOrder: 2, cardNumber: 1 },
-  { discipline: "Other", name: "Other", sortOrder: 3, cardNumber: 1 }
+  { discipline: "Other", name: "Other", sortOrder: 3, cardNumber: 1 },
+  { discipline: "SUB", name: "Subcontracted", sortOrder: 4, cardNumber: 1 }
 ] as const;
 
 /**

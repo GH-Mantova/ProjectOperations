@@ -4,6 +4,11 @@
 // with Tendering S1 so the register isn't capped at the API's 100-per-page
 // ceiling. Row click opens the tender detail page (same target as the
 // Tenders-page register view).
+//
+// CRM-S7: adds "Last interaction" and "Logged by" columns.
+// "Last interaction" = MAX(CommMessage.createdAt) across logged_contact threads
+// anchored to the tender. "Logged by" = the author of that message.
+// Tenders with no logged contact render "—" and sort last in that column.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
@@ -22,6 +27,14 @@ type TenderRow = {
   status: string;
   updatedAt: string;
   tenderClients: Array<{ id: string; clientId: string; client: { id: string; name: string } }>;
+};
+
+/** CRM-S7: Last interaction result returned by POST /crm/comms/last-interaction/batch */
+type LastInteraction = {
+  entityType: string;
+  entityId: string;
+  lastMessageAt: string;
+  loggedBy: { id: string; firstName: string; lastName: string };
 };
 
 const EMPTY_FILTERS: FiltersForQuery = {
@@ -51,6 +64,9 @@ export function TendersRegisterPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [clientFilter, setClientFilter] = useState<string>("");
 
+  /** CRM-S7: keyed by tenderId for O(1) lookup in the render loop. */
+  const [interactions, setInteractions] = useState<Map<string, LastInteraction>>(new Map());
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -62,6 +78,29 @@ export function TendersRegisterPage() {
         setTenders(result.items);
         setTotal(result.total);
         setTruncated(result.truncated);
+
+        // CRM-S7: batch-fetch last interactions for all loaded tenders.
+        if (result.items.length > 0) {
+          const pairs = result.items.map((t) => ({ entityType: "TENDER", entityId: t.id }));
+          try {
+            const resp = await authFetch("/crm/comms/last-interaction/batch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ pairs })
+            });
+            if (resp.ok) {
+              const data: LastInteraction[] = await resp.json();
+              if (!cancelled) {
+                const map = new Map<string, LastInteraction>();
+                for (const item of data) map.set(item.entityId, item);
+                setInteractions(map);
+              }
+            }
+            // On error: silently degrade — columns render "—"
+          } catch {
+            // Interaction data is enhancement-only; do not surface as a page error.
+          }
+        }
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
       } finally {
@@ -184,6 +223,8 @@ export function TendersRegisterPage() {
               <th>Client</th>
               <th>Status</th>
               <th>Updated</th>
+              <th>Last interaction</th>
+              <th>Logged by</th>
             </tr>
           </thead>
           <tbody>
@@ -195,11 +236,13 @@ export function TendersRegisterPage() {
                   <td><Skeleton height={14} /></td>
                   <td><Skeleton height={14} /></td>
                   <td><Skeleton height={14} /></td>
+                  <td><Skeleton height={14} /></td>
+                  <td><Skeleton height={14} /></td>
                 </tr>
               ))
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={5}>
+                <td colSpan={7}>
                   <EmptyState
                     heading="No tenders match these filters"
                     subtext="Adjust filters or clear them to see more results."
@@ -210,6 +253,13 @@ export function TendersRegisterPage() {
               filtered.map((t) => {
                 const primaryClient = t.tenderClients[0]?.client.name ?? "—";
                 const label = TENDER_STATUS_LABEL[t.status as TenderStatus] ?? t.status;
+                const interaction = interactions.get(t.id) ?? null;
+                const lastInteractionLabel = interaction
+                  ? new Date(interaction.lastMessageAt).toLocaleDateString()
+                  : "—";
+                const loggedByLabel = interaction
+                  ? `${interaction.loggedBy.firstName} ${interaction.loggedBy.lastName}`.trim()
+                  : "—";
                 return (
                   <tr
                     key={t.id}
@@ -221,6 +271,8 @@ export function TendersRegisterPage() {
                     <td>{primaryClient}</td>
                     <td>{label}</td>
                     <td>{new Date(t.updatedAt).toLocaleDateString()}</td>
+                    <td aria-label={`Last interaction: ${lastInteractionLabel}`}>{lastInteractionLabel}</td>
+                    <td aria-label={`Logged by: ${loggedByLabel}`}>{loggedByLabel}</td>
                   </tr>
                 );
               })

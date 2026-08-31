@@ -4367,6 +4367,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "kind": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdById": {
           "role": "system",
           "label": null,
@@ -17925,6 +17931,12 @@
           "role": "attribute",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "channel": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         },
         "createdAt": {

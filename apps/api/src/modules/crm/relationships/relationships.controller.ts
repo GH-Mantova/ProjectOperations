@@ -17,13 +17,17 @@ import {
   ApiResponse,
   ApiTags
 } from "@nestjs/swagger";
-import { IsNotEmpty, IsOptional, IsString, Min } from "class-validator";
+import { IsEnum, IsNotEmpty, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { CurrentUser } from "../../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../../common/auth/permissions.decorator";
-import { RelationshipsService } from "./relationships.service";
+import {
+  INTERACTION_CHANNELS,
+  InteractionChannel,
+  RelationshipsService
+} from "./relationships.service";
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -39,6 +43,8 @@ class CreateNoteDto {
   @IsOptional() @IsString() accountId?: string | null;
   @IsOptional() @IsString() contactId?: string | null;
   @IsNotEmpty() @IsString() body!: string;
+  /** CRM-S7: communication medium. Omit or pass null for unknown / not applicable. */
+  @IsOptional() @IsEnum(INTERACTION_CHANNELS) channel?: InteractionChannel | null;
 }
 
 class UpdateNoteDto {
@@ -91,7 +97,10 @@ export class RelationshipsController {
 
   @Post("notes")
   @RequirePermissions("crm.manage")
-  @ApiOperation({ summary: "Create a relationship note against an account and/or contact." })
+  @ApiOperation({
+    summary:
+      "Create a relationship note against an account and/or contact. Optionally include a channel (phone|email|meeting|site_visit|other)."
+  })
   @ApiResponse({ status: 201, description: "Note created." })
   @ApiResponse({ status: 400, description: "Validation error." })
   createNote(@Body() dto: CreateNoteDto, @CurrentUser() actor: { sub: string }) {
@@ -99,7 +108,8 @@ export class RelationshipsController {
       accountId: dto.accountId,
       contactId: dto.contactId,
       authorId: actor.sub,
-      body: dto.body
+      body: dto.body,
+      channel: dto.channel ?? null
     });
   }
 

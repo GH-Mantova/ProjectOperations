@@ -38,8 +38,14 @@ assume the two agree.
 **All layers drift independently, and a stale instruction reads exactly like a current one.** Measured
 the same day: four account skills carried "web_fetch the blob URL; the raw CDN lags" - advice this
 pipeline had already disproved and removed from `sot/` in PRs #1298/#1299. The `machine-minder` skill
-named the wrong watcher launcher and called it "the REAL launcher path". And `02-board-driver`'s
-scheduled file has not been touched since 2026-07-14.
+named the wrong watcher launcher and called it "the REAL launcher path". Neither observation carries a date; re-measure before repeating either.
+
+**Measure a bootstrap's currency — never quote this file for it.**
+`(Get-Item "C:\Users\Marco\Claude\Scheduled\<task>\SKILL.md").LastWriteTimeUtc`
+This paragraph used to end *"and `02-board-driver`'s scheduled file has not been touched since
+2026-07-14"*. MEASURED 2026-08-31 (Station 04): all five bootstraps were rewritten in ONE batch at
+`2026-08-24T22:54:22Z`, so that line was six weeks stale — inside the very paragraph warning that a
+stale instruction reads exactly like a current one. **Instructions live here; state does not.**
 
 
 ---
@@ -143,7 +149,7 @@ lane discipline breaks (LL-38).
 
 `C:\ProjectOperations2` (dev tree / QUEUE - the tree the watcher globs) ·
 `C:\po-watcher` and `C:\po-watcher\ProjectOperations` (build CLONE - where builds run) ·
-`C:\po-sup-fix-scripts` (scratch `.ps1`) · `C:\po-worktrees`, `C:\po-wt`, `C:\po-wt-h`,
+`C:\po-sup-fix-scripts` (scratch `.ps1`) · `C:\po-worktrees`, `C:\po-wt`,
 `C:\po-watcher-worktrees` · plus several `po-*` fix trees.
 
 ⚠️ The mapping governs the **device bridge only**, not Desktop Commander (§3).

@@ -398,3 +398,65 @@ watcher        RESTARTED ~04:25Z; startup verdict-archive sweep archived=37 kept
 
 The watcher restart at 04:25Z is the loop the prompt I armed exists to close: `archived=37` on a
 startup sweep, which is exactly the tracked-file count that makes the clone dirty at every launch.
+
+---
+
+## SECOND CORRECTION, 04:33Z — there was no watcher restart. I walked into RULE 2 having just quoted it.
+
+**RETRACTED:** *"watcher RESTARTED ~04:25Z; startup verdict-archive sweep archived=37"*, and the
+sentence above it reading *"The watcher restart at 04:25Z..."*. Both are **false**. Left in place
+rather than edited away, because the way I got them wrong is the finding.
+
+**What is actually true.** `[MEASURED]`
+
+```
+Get-CimInstance Win32_Process ... -match 'pr-watcher[\\/]index\.mjs'
+  pid=6388  started=2026-08-30T21:25:04Z
+```
+
+The watcher node has been up for **seven hours**. It is the same pid 6388 the 04:09Z sweep reported,
+and `restart-watcher-if-wedged.ps1` independently returns `restart churn: 0 cycle(s) in 20 min
+(starts=0 exits=0)` with `VERDICT: HEALTHY`.
+
+**How I got it wrong.** I inferred a restart from two things, neither of which says what I read into
+it:
+
+1. `watcher-launch.log` / `ensure-watcher.log` had `LastWriteTimeUtc` of 04:25Z — but that is the
+   *running* watcher appending to its log, not a launch.
+2. The launcher line `[launcher-single] starting supervise-watcher at
+   2026-08-31T07:25:02.85+10:00`. That is **21:25:02Z yesterday** — the launch that produced pid
+   6388. I read a `+10:00`-stamped line next to a UTC file mtime and let "07:25 / 04:25" feel close
+   enough to be the same event.
+
+This is DOCTRINE's RULE 2 — *"the logs are UTC, the machine is Brisbane (UTC+10), never compare them
+raw"* — which I had already quoted in this very run. Knowing a trap is not the same as running the
+check that catches it. The check that would have caught it costs one command and is definitive:
+**ask the process when it started.** A log line is a claim about an event; a process start time is
+the event.
+
+**The one real fact underneath the wrong claim, and it sharpens the prompt I armed.** `[MEASURED]`
+The `verdict-archive: moved ... archived=37 kept=1 skipped=0` sweep at 04:25Z happened on a
+**rescan**, seven hours after launch — not on a startup. `pr-watcher-verdict-sweep-skips-tracked`
+currently states the opposite in its evidence: *"`archived=35` appears only on the three lines that
+follow a launch, while the 5-minutely rescan sweeps in steady state report `archived=0 kept=1`. One
+cycle per watcher start, not per rescan."*
+
+That measurement was taken on 2026-08-30 and is incomplete. The 21:25:04Z pre-flight autostash
+restored the tracked files, and a **rescan** has now moved them out again. So the loop turns more
+often than once per launch, which makes the fix worth more, not less — the prompt's `Do` section is
+unaffected and the arm stands. Only its *"one cycle per watcher start"* sentence and the
+`Verification` expectation of seeing the counter on a *startup* line need widening to "any sweep".
+
+**DISPATCHED** → whichever agent builds `pr-watcher-verdict-sweep-skips-tracked`: do not treat a
+`tracked=N` counter appearing on a rescan line rather than a startup line as a failed verification.
+Also fold the correction back into the prompt's evidence section as you go.
+
+### Method note, third correction in one run
+
+Two of this run's three corrections (`prompt arms = 1`, and this one) are claims I wrote down
+*without running the cheap definitive check first* — the filesystem census, and the process start
+time. Both checks cost one command. The pattern is that I ran rigorous controls on the things I
+expected to be hard (the merge resolution, the arming detector, the premise) and none at all on the
+things that felt like background facts. **A claim being incidental to the report is not evidence
+that it is true**, and an incidental claim is the one most likely to be quoted later by someone who
+assumes it was measured with the same care as the headline.

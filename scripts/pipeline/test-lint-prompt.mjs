@@ -905,6 +905,183 @@ run("block-scalar-literal-pipe",
   "  Step 1: revert the migration\n" +
   "  Step 2: re-deploy the previous release", 0);
 
+// ── NOT_A_PROMPT: breadcrumb files (00-*.md) get their own verdict ──────────
+// A station breadcrumb is not a prompt missing its front matter; it is a
+// different kind of document with its own validator, check-breadcrumb.mjs.
+// Answering NO_FRONT_MATTER on a breadcrumb told the reader a lie and let a
+// false lint-pass be reported on the strength of the wrong instrument.
+// Contract: single-file mode REJECTs (exit 1) so arm-prompt.ps1 keeps refusing;
+// --all sweep tallies the breadcrumbs separately and does NOT let them mask a
+// genuine REJECT nor manufacture one when no real prompt is broken.
+
+// Small helper: write a raw file (no auto front-matter wrap) then run linter.
+function runRaw(name, rawContent, expectedExit, opts) {
+  opts = opts || {};
+  const file = join(dir, name);
+  writeFileSync(file, rawContent, "utf8");
+  let code = 0;
+  let out = "";
+  try {
+    out = execFileSync("node", [LINT, file], { cwd: REPO, encoding: "utf8" });
+  } catch (e) {
+    code = e.status;
+    out = String(e.stdout || "") + String(e.stderr || "");
+  }
+  const ok = code === expectedExit;
+  console.log((ok ? "PASS " : "FAIL ") + name + "  (exit " + code + ", wanted " + expectedExit + ")");
+  if (!ok) console.log("      " + out.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+  return out;
+}
+
+console.log("\n=== exit 1 REJECT: single breadcrumb (00-*.md) -> NOT_A_PROMPT (not NO_FRONT_MATTER)");
+{
+  const out = runRaw("00-04-scanner-2026-08-31-example.md",
+    "# 04-scanner breadcrumb\n\nno front matter, five sections instead.\n", 1);
+  if (!/NOT_A_PROMPT/.test(out)) {
+    console.log("      FAIL expected NOT_A_PROMPT in output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  if (/NO_FRONT_MATTER/.test(out)) {
+    console.log("      FAIL must NOT emit NO_FRONT_MATTER on a breadcrumb. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  if (!/check-breadcrumb\.mjs/.test(out)) {
+    console.log("      FAIL message must name check-breadcrumb.mjs as the correct validator. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 1 REJECT: DISARMED pr-* file with no front matter -> still NO_FRONT_MATTER (path-class scope)");
+// The one non-breadcrumb file in the queue lacking front matter is
+// pr-settings-home-slice0-DISARMED-premise-dead-2026-08-18.md. It must keep
+// answering NO_FRONT_MATTER — the new NOT_A_PROMPT branch must not widen.
+{
+  const out = runRaw("pr-settings-home-slice0-DISARMED-premise-dead-2026-08-18.md",
+    "# disarmed\n\nno front matter here either.\n", 1);
+  if (!/NO_FRONT_MATTER/.test(out)) {
+    console.log("      FAIL expected NO_FRONT_MATTER on DISARMED pr-* file. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  if (/NOT_A_PROMPT/.test(out)) {
+    console.log("      FAIL must NOT widen NOT_A_PROMPT beyond 00-*.md. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+// Helper: run --all against a sweep dir with a bag of pre-written files.
+// Returns { code, out } so callers can assert on both.
+function runAllSweep(name, files, expectedExit) {
+  const isoDir = mkdtempSync(join(tmpdir(), "lint-sweep-"));
+  for (const fname of Object.keys(files)) {
+    writeFileSync(join(isoDir, fname), files[fname], "utf8");
+  }
+  let code = 0;
+  let out = "";
+  try {
+    out = execFileSync("node", [LINT, "--all", isoDir], { cwd: REPO, encoding: "utf8" });
+  } catch (e) {
+    code = e.status;
+    out = String(e.stdout || "") + String(e.stderr || "");
+  }
+  const ok = code === expectedExit;
+  console.log((ok ? "PASS " : "FAIL ") + name + "  (exit " + code + ", wanted " + expectedExit + ")");
+  if (!ok) console.log("      " + out.trim().split("\n").join("\n      "));
+  ok ? pass++ : fail++;
+  rmSync(isoDir, { recursive: true, force: true });
+  return out;
+}
+
+console.log("\n=== exit 0 ADMIT: --all sweep of clean prompts + breadcrumbs -> breadcrumbs tallied separately, real prompts still admit");
+{
+  const cleanFm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n# body\n";
+  const crumb = "# breadcrumb\n\nno front matter, five sections.\n";
+  const out = runAllSweep("sweep-clean-plus-breadcrumbs", {
+    "pr-a-ready.md": cleanFm,
+    "pr-b-ready.md": cleanFm,
+    "00-04-scanner-2026-08-31-a.md": crumb,
+    "00-00-supervisor-2026-08-31-b.md": crumb,
+  }, 0);
+  if (!/NOT_A_PROMPT/.test(out)) {
+    console.log("      FAIL expected NOT_A_PROMPT lines in sweep output. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  if (!/not-a-prompt\s+.*2/.test(out)) {
+    console.log("      FAIL expected 'not-a-prompt 2' in tally. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  // Breadcrumbs must NOT be counted in rejected — the tally line must show rejected 0.
+  if (!/rejected\s+.*0/.test(out)) {
+    console.log("      FAIL breadcrumbs must not inflate rejected count. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 1 REJECT: --all sweep with one genuinely broken pr-* alongside breadcrumbs -> breadcrumbs cannot mask the real failure");
+{
+  const cleanFm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n# body\n";
+  // Broken: size exceeds MAX_SIZE — deterministic REJECT with no dependency on git.
+  const brokenFm =
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "done_when: pnpm build\nsize: 48\ngate_allow: none\n---\n\n# body\n";
+  const crumb = "# breadcrumb\n";
+  const out = runAllSweep("sweep-broken-plus-breadcrumbs", {
+    "pr-good-ready.md": cleanFm,
+    "pr-oversize-ready.md": brokenFm,
+    "00-04-scanner-2026-08-31-c.md": crumb,
+    "00-00-supervisor-2026-08-31-d.md": crumb,
+  }, 1);
+  if (!/NOT_A_PROMPT/.test(out)) {
+    console.log("      FAIL breadcrumbs still expected as NOT_A_PROMPT lines. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+  if (!/SIZE_TOO_LARGE/.test(out)) {
+    console.log("      FAIL real REJECT must still surface. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+console.log("\n=== exit 0 ADMIT: --all sweep of only breadcrumbs -> tallied, does NOT manufacture exit 1");
+// The alternative "skip breadcrumbs to exit 0" shape was rejected because it
+// makes safety depend on arm-prompt.ps1 and lint-prompt.mjs staying in agreement
+// across two languages. This test guards the sweep-mode invariant: in --all,
+// breadcrumbs alone do not drive exit 1 (only rejected does).
+{
+  const crumb = "# breadcrumb\n";
+  const out = runAllSweep("sweep-breadcrumbs-only", {
+    "00-04-scanner-2026-08-31-e.md": crumb,
+    "00-00-supervisor-2026-08-31-f.md": crumb,
+  }, 0);
+  if (!/not-a-prompt\s+.*2/.test(out)) {
+    console.log("      FAIL expected 'not-a-prompt 2' in tally. got:\n      " +
+      out.trim().split("\n").join("\n      "));
+    fail++; pass--;
+  }
+}
+
+// Regression guard: a single stale prompt still exits 3. Existing test at the
+// top of this file already covers this; re-asserted here to prove the exit-line
+// mode-dependency did not regress under the new (rejected || (notPrompt &&
+// single-file)) shape.
+console.log("\n=== exit 3 STALE: single stale prompt regression guard (mode-dependency intact)");
+run("stale-mode-regression",
+  "premise: 'false'\npremise_means: forces stale\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none", 3);
+
 rmSync(dir, { recursive: true, force: true });
 console.log("\n=== " + pass + " passed, " + fail + " failed");
 process.exit(fail > 0 ? 1 : 0);

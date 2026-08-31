@@ -13,10 +13,30 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTriageBody,
+  captureLead,
+  listOpenLeads,
+  triageLead,
   type CaptureLeadBody,
   type IntakeLead,
   type TriageLeadBody
 } from "../crm-api";
+
+// A fake authFetch that records the URL and init it was called with and returns
+// a well-formed JSON response. This is what makes the URL assertions real: the
+// previous version of Test 1 built the URL string inside the test body and
+// asserted on its own literal, so it passed no matter what crm-api.ts did.
+function spyFetch(payload: unknown = { id: "x" }) {
+  const seen: { url?: string; init?: RequestInit } = {};
+  const fn = async (url: string, init?: RequestInit) => {
+    seen.url = url;
+    seen.init = init;
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+  return { seen, fn: fn as unknown as Parameters<typeof triageLead>[0] };
+}
 
 // ── Test 1 — Triage URL is /crm/intake/:id/triage, NOT /crm/entries ──────────
 //
@@ -43,14 +63,31 @@ describe("Triage URL contract (CRM S10 Test 1)", () => {
     expect(body.dropReasonId).toBe("reason-1");
   });
 
-  it("the triage URL pattern contains /crm/intake/, not /crm/entries", () => {
-    // Pin the URL template the triageLead helper builds.
-    // If this ever changes to /crm/entries the test fails loudly.
-    const id = "lead-99";
-    const url = `/crm/intake/${id}/triage`;
-    expect(url).toContain("/crm/intake/");
-    expect(url).not.toContain("/crm/entries");
-    expect(url).toContain("/triage");
+  it("triageLead REALLY posts to /crm/intake/:id/triage, not /crm/entries", async () => {
+    const { seen, fn } = spyFetch();
+    await triageLead(fn, "lead-99", { action: "tender", siteId: "site-1" });
+    expect(seen.url).toBe("/crm/intake/lead-99/triage");
+    expect(seen.url).not.toContain("/crm/entries");
+    expect(seen.init?.method).toBe("POST");
+    expect(JSON.parse(String(seen.init?.body))).toEqual({ action: "tender", siteId: "site-1" });
+  });
+
+  it("captureLead REALLY posts to /crm/intake", async () => {
+    const { seen, fn } = spyFetch();
+    await captureLead(fn as never, { title: "t", clientId: "c", captureChannel: "email" });
+    expect(seen.url).toBe("/crm/intake");
+    expect(seen.url).not.toContain("/crm/entries");
+    expect(seen.init?.method).toBe("POST");
+  });
+
+  it("listOpenLeads REALLY gets /crm/intake/open and passes its filters", async () => {
+    const { seen, fn } = spyFetch({ items: [], total: 0, page: 1, limit: 25 });
+    await listOpenLeads(fn as never, { page: 2, limit: 25, captureChannel: "phone", accountId: "acc-1" });
+    expect(seen.url).toContain("/crm/intake/open?");
+    expect(seen.url).not.toContain("/crm/entries");
+    expect(seen.url).toContain("page=2");
+    expect(seen.url).toContain("captureChannel=phone");
+    expect(seen.url).toContain("accountId=acc-1");
   });
 });
 
@@ -105,30 +142,32 @@ describe("No-account lead still produces a valid triage body (CRM S10 Test 3)", 
     client: { id: "client-2", name: "Acme Corp" }
   };
 
-  it("triage body for a no-account lead is identical to a lead with an account", () => {
-    const withAccount: Partial<IntakeLead> = {
-      ...noAccountLead,
-      account: { id: "acc-1", lifecycleStatus: "PROSPECT" }
-    };
-
+  it("a no-account lead still submits a valid triage request", async () => {
     const triage: TriageLeadBody = {
       action: "dont_pursue",
       dropReasonId: "reason-2",
       dropReasonDetail: "Budget not confirmed"
     };
 
+    // The previous version of this assertion called buildTriageBody twice with
+    // the SAME input and compared the results - trivially equal, and it proved
+    // nothing about accounts. Drive the real submit path instead and assert the
+    // request a no-account lead produces.
+    const { seen, fn } = spyFetch();
+    await triageLead(fn, noAccountLead.id as string, triage);
+    expect(seen.url).toBe("/crm/intake/lead-no-account/triage");
+    const sent = JSON.parse(String(seen.init?.body)) as Record<string, unknown>;
+    expect(sent).toEqual({
+      action: "dont_pursue",
+      dropReasonId: "reason-2",
+      dropReasonDetail: "Budget not confirmed"
+    });
+    expect(Object.prototype.hasOwnProperty.call(sent, "accountId")).toBe(false);
     const bodyNoAccount = buildTriageBody(triage);
-    const bodyWithAccount = buildTriageBody(triage);
-
-    // Both bodies are structurally identical — accountId is not part of triage.
-    expect(bodyNoAccount).toEqual(bodyWithAccount);
     // The no-account variant does not inject an accountId.
     expect(Object.prototype.hasOwnProperty.call(bodyNoAccount, "accountId")).toBe(false);
     // The lead id is in the URL, not the body — confirm it is absent from the body.
     expect(Object.prototype.hasOwnProperty.call(bodyNoAccount, "id")).toBe(false);
-    // Confirm neither lead shape changes the triage body.
-    void noAccountLead; // referenced to satisfy lint
-    void withAccount;   // referenced to satisfy lint
   });
 
   it("create-intent state is detectable from account===null on the lead row", () => {

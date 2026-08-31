@@ -92,12 +92,16 @@ class ListTasksQueryDto {
   @IsOptional() @Type(() => Number) limit?: number;
 }
 
-/** CRM-S7: Log a contact interaction on a tender or opportunity. */
+/** CRM-S7/S8: Log a contact interaction on a tender or opportunity. */
 class LogContactDto {
   @IsIn(COMM_ENTITY_TYPES as unknown as string[]) entityType!: string;
   @IsNotEmpty() @IsString() entityId!: string;
   @IsNotEmpty() @IsString() subject!: string;
   @IsNotEmpty() @IsString() body!: string;
+  /** CRM-S8: optional next-action due date (ISO string). Creates a CommTask in the same transaction. */
+  @IsOptional() @IsString() nextActionAt?: string | null;
+  /** CRM-S8: optional next-action note / title. Defaults to "Follow up" when nextActionAt is set but note is absent. */
+  @IsOptional() @IsString() nextActionNote?: string | null;
 }
 
 /** CRM-S7: Query params for last-interaction single lookup. */
@@ -278,7 +282,9 @@ export class CommsController {
       entityId: dto.entityId,
       subject: dto.subject,
       body: dto.body,
-      createdById: actor.sub
+      createdById: actor.sub,
+      nextActionAt: dto.nextActionAt ?? null,
+      nextActionNote: dto.nextActionNote ?? null
     });
   }
 

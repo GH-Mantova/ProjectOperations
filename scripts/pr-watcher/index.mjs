@@ -1130,6 +1130,27 @@ export function checkRequiresOnMain(raw, fileContent) {
   return { met: false, reason: "string " + JSON.stringify(parsed.needle) + " not found in \"" + parsed.filePath + "\" on origin/main" };
 }
 
+// hasDeclaredDependencies — dispatch-time predicate: does this prompt declare
+// ANY watcher dependency gate that must be evaluated before it fires?
+//
+// This exists because the dispatch loop used to inline the condition and it
+// omitted `requiresOnMain`. Every other layer of requires_on_main support was
+// correct and tested (parser, unmetDependencies, checkRequiresOnMain, lint),
+// but the dispatch site never called into any of them for a requires_on_main-
+// only prompt, so such a prompt was dispatched ungated. If a future fourth
+// dependency key is added, add it HERE too or the same silent hole reopens.
+//
+// The predicate must tolerate null / undefined / partial objects: it is called
+// on the hot dispatch path and a throw here takes the watcher down.
+export function hasDeclaredDependencies(deps) {
+  if (!deps) return false;
+  return (
+    (deps.requiresMerged?.length ?? 0) > 0 ||
+    (deps.requiresFilesOnMain?.length ?? 0) > 0 ||
+    (deps.requiresOnMain?.length ?? 0) > 0
+  );
+}
+
 // Returns a list of human-readable unmet-dependency reasons (empty = go).
 // A gh/git error counts as unmet — fail closed, re-check next rescan.
 async function unmetDependencies(deps) {
@@ -2189,7 +2210,7 @@ async function drain() {
   // The file is NOT consumed — it leaves `seen` so the periodic rescan
   // re-checks it on the next walk.
   const deps = parseWatcherFrontMatter(promptBody);
-  if (deps.requiresMerged.length > 0 || deps.requiresFilesOnMain.length > 0) {
+  if (hasDeclaredDependencies(deps)) {
     const unmet = await unmetDependencies(deps);
     if (unmet.length > 0) {
       log("deps", `${name} deferred: ${unmet.join("; ")} — re-check next rescan`);
@@ -2201,7 +2222,7 @@ async function drain() {
       return;
     }
     deferredNames.delete(name); // gate opened — no longer deferred
-    log("deps", `${name}: all dependencies met (merged: [${deps.requiresMerged.join(", ")}], files: ${deps.requiresFilesOnMain.length})`);
+    log("deps", `${name}: all dependencies met (merged: [${deps.requiresMerged.join(", ")}], files: ${deps.requiresFilesOnMain.length}, on-main: ${deps.requiresOnMain.length})`);
   }
 
   if (DRY_RUN) {

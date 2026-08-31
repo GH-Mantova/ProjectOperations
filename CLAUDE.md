@@ -13,6 +13,13 @@ conventions, git/PR rules, Prisma/seed discipline, and business logic — lives 
 Before diagnosing any operational, CI, git, or database issue, check
 **`/sot/05-decisions-and-lessons.md`** (incident ledger) for a matching playbook.
 
+🏭 **THE PIPELINE AND THE BOARD.** Before touching the PR queue, arming a prompt, or merging
+anything, read **`docs/pipeline/DOCTRINE.md`** — binding on every station and every chat. §5 holds
+the hard stops, §7 says your instrument lies, §9 names the measured traps, and **§10 governs second
+lanes**: a cloud session or any other actor that opens a PR without the watcher. §10.1 is a safety
+rule — a PR the watcher did not open carries no RULE-2 verdict, and that absence must never be read
+as "cleared for merge".
+
 Repo: `GH-Mantova/ProjectOperations` · Local: `C:\ProjectOperations2`
 Seed login: `admin@projectops.local` / `Password123!` (all seed users share `Password123!`).
 Never commit directly to `main`. `pnpm build` + `pnpm lint` must pass before any PR.

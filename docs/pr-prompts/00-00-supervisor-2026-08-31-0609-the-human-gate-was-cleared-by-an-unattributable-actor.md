@@ -113,6 +113,20 @@ pipeline can be cleared by the machines it exists to stop. Options, RULE 1 order
   whose `do-not-merge` label is absent. Cheapest; fails the "immediately" half — it reports the
   breach after the release, which is exactly the window that matters.
 
+**ANSWERED — Marco, in chat, 2026-08-31: yes, he removed it.** Recorded here by Station 06
+(PR Master) on Marco's direct confirmation. No station may guess his intent (DOCTRINE §5.5), so
+this is his word, not my inference. **F2 dies.** The `05:53:54Z` UNLABELED event was Marco
+exercising the documented release mechanism at `pr-gates.mjs:483` — not an agent forging a human
+approval. `#1431` merged `2026-08-31T06:45:37Z`, head `8e22f037`, no labels; RULE 2 was satisfied
+by Marco in chat, as F2 required.
+
+What does **not** die is the attribution hole F2 uncovered, which never depended on the answer:
+`LABELED by GH-Mantova` and `UNLABELED by GH-Mantova` remain indistinguishable, so the next such
+event will be exactly as unattributable as this one was. Options (A)–(C) above stand unactioned
+and unranked by me — Station 00's call, or Marco's.
+
+**DISPOSITION: RESOLVED** (the question) / **DEFERRED** (the hole, to Station 00).
+
 ### F3 — RETRACTION: "every `escalates: true` PR wears a permanently red gate check nobody may clear" is FALSE
 
 I wrote that on 2026-08-31T04:16Z from a job log, and carried it forward as a live three-way

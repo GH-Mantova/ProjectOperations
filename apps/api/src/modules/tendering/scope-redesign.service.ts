@@ -869,7 +869,12 @@ export class ScopeRedesignService {
     // to an EstimateItem.
     const items = await this.prisma.scopeOfWorksItem.findMany({
       where: { tenderId, status: { not: "excluded" } },
-      include: { card: true }
+      include: {
+        card: true,
+        // scope-subcontracted order 4 — needed for double-count guard and SUB
+        // line quote pricing.
+        subLineQuotes: { where: { isSelected: true }, select: { amount: true } }
+      }
     });
     // rates-consumers SLICE 2 — route through RateResolverService.
     // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
@@ -921,11 +926,42 @@ export class ScopeRedesignService {
       bucket.itemCount += 1;
       const effectiveMarkup =
         item.card?.markupOverride != null ? Number(item.card.markupOverride) : tenderMarkup;
-      const totals = computeScopeItemTotal(
-        toPricingInput(item, itemDiscipline),
-        rateMaps,
-        effectiveMarkup
-      );
+
+      let totals: { lineTotal: number; lineTotalWithMarkup: number };
+
+      // SUB_LINE_PRICES_LINKED_ITEM — double-count guard (scope-subcontracted order 4).
+      //
+      // Two complementary rules ensure the same work is never priced twice:
+      //
+      // Rule A — a COVERED item (pricedBySubItemId is set) contributes ZERO
+      // labour and plant to its discipline bucket. It still appears in the
+      // scope, carries its description and measurements, and counts in
+      // itemCount. Only its money is zeroed. Waste and cutting are NOT zeroed
+      // — they are separate cost streams billed independently of the labour
+      // contract (see prompt §3).
+      //
+      // Rule B — a SUB discipline line's own price is the selected quote
+      // (amount where isSelected). When no quote is selected the line prices
+      // at zero (visibly incomplete, not silently free).
+      if (item.pricedBySubItemId != null) {
+        // Rule A: this item's work is covered by a SUB line — zero labour/plant.
+        const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
+        totals = { lineTotal: 0, lineTotalWithMarkup: 0 * markupFactor };
+      } else if (itemDiscipline === "SUB") {
+        // Rule B: SUB line — price is the selected quote or zero.
+        const selectedQuote = item.subLineQuotes[0];
+        const quoteAmount = selectedQuote ? Number(selectedQuote.amount) : 0;
+        const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
+        totals = { lineTotal: quoteAmount, lineTotalWithMarkup: quoteAmount * markupFactor };
+      } else {
+        const computed = computeScopeItemTotal(
+          toPricingInput(item, itemDiscipline),
+          rateMaps,
+          effectiveMarkup
+        );
+        totals = { lineTotal: computed.lineTotal, lineTotalWithMarkup: computed.lineTotalWithMarkup };
+      }
+
       // A line is provisional if it has isProvisional===true OR its discipline
       // is "Other". This keeps existing Other rows in the provisional block
       // without any backfill.
@@ -1183,5 +1219,224 @@ export class ScopeRedesignService {
       map.set(item.id, labour + plant + equip + waste + cutting);
     }
     return map;
+  }
+
+  // ── SUB line linkage (scope-subcontracted order 4) ───────────────────
+
+  /**
+   * Link a scope item (coveredItemId) to a SUB line (subItemId).
+   * Validates:
+   *  - Both items belong to the same tender.
+   *  - The target (subItemId) is a SUB-discipline item.
+   *  - The source and target are not the same item.
+   * @throws BadRequestException on any validation failure
+   * @throws NotFoundException when either item or the tender is not found
+   */
+  async linkItemToSubLine(tenderId: string, coveredItemId: string, subItemId: string) {
+    await this.requireTender(tenderId);
+    const [covered, subLine] = await Promise.all([
+      this.prisma.scopeOfWorksItem.findUnique({
+        where: { id: coveredItemId },
+        include: { card: true }
+      }),
+      this.prisma.scopeOfWorksItem.findUnique({
+        where: { id: subItemId },
+        include: { card: true }
+      })
+    ]);
+    if (!covered) throw new NotFoundException(`Scope item ${coveredItemId} not found.`);
+    if (!subLine) throw new NotFoundException(`Scope item ${subItemId} not found.`);
+    if (covered.tenderId !== tenderId || subLine.tenderId !== tenderId) {
+      throw new BadRequestException("Both items must belong to the specified tender.");
+    }
+    if (coveredItemId === subItemId) {
+      throw new BadRequestException("An item cannot be linked to itself.");
+    }
+    if (subLine.card?.discipline !== "SUB") {
+      throw new BadRequestException(
+        `Target item ${subItemId} is not a SUB-discipline item (discipline: ${subLine.card?.discipline ?? "unknown"}).`
+      );
+    }
+    return this.prisma.scopeOfWorksItem.update({
+      where: { id: coveredItemId },
+      data: { pricedBySubItemId: subItemId }
+    });
+  }
+
+  /**
+   * Unlink a scope item from its SUB line (set pricedBySubItemId to null).
+   * @throws NotFoundException when the item or tender is not found
+   */
+  async unlinkItemFromSubLine(tenderId: string, coveredItemId: string) {
+    await this.requireTender(tenderId);
+    const item = await this.prisma.scopeOfWorksItem.findUnique({
+      where: { id: coveredItemId },
+      select: { id: true, tenderId: true }
+    });
+    if (!item) throw new NotFoundException(`Scope item ${coveredItemId} not found.`);
+    if (item.tenderId !== tenderId) {
+      throw new BadRequestException("Item does not belong to the specified tender.");
+    }
+    return this.prisma.scopeOfWorksItem.update({
+      where: { id: coveredItemId },
+      data: { pricedBySubItemId: null }
+    });
+  }
+
+  /**
+   * Add a quote to a SUB line scope item.
+   * @throws BadRequestException when the item is not a SUB-discipline item
+   * @throws NotFoundException when the item or tender is not found
+   */
+  async addSubLineQuote(
+    tenderId: string,
+    scopeItemId: string,
+    dto: {
+      subcontractorSupplierId?: string | null;
+      supplierNameFallback?: string | null;
+      amount: number;
+      receivedAt?: Date | null;
+      notes?: string | null;
+      tenderDocumentLinkId?: string | null;
+    }
+  ) {
+    await this.requireTender(tenderId);
+    const item = await this.prisma.scopeOfWorksItem.findUnique({
+      where: { id: scopeItemId },
+      include: { card: true }
+    });
+    if (!item) throw new NotFoundException(`Scope item ${scopeItemId} not found.`);
+    if (item.tenderId !== tenderId) {
+      throw new BadRequestException("Item does not belong to the specified tender.");
+    }
+    if (item.card?.discipline !== "SUB") {
+      throw new BadRequestException(
+        `Item ${scopeItemId} is not a SUB-discipline item — quotes can only be added to SUB lines.`
+      );
+    }
+    return this.prisma.subLineQuote.create({
+      data: {
+        scopeItemId,
+        subcontractorSupplierId: dto.subcontractorSupplierId ?? null,
+        supplierNameFallback: dto.supplierNameFallback ?? null,
+        amount: new Prisma.Decimal(dto.amount.toFixed(2)),
+        isSelected: false,
+        receivedAt: dto.receivedAt ?? null,
+        notes: dto.notes ?? null,
+        tenderDocumentLinkId: dto.tenderDocumentLinkId ?? null
+      }
+    });
+  }
+
+  /**
+   * Update a sub line quote (amount, notes, receivedAt, tenderDocumentLinkId,
+   * supplier). Does not change isSelected (use selectSubLineQuote).
+   */
+  async updateSubLineQuote(
+    tenderId: string,
+    quoteId: string,
+    dto: {
+      subcontractorSupplierId?: string | null;
+      supplierNameFallback?: string | null;
+      amount?: number;
+      receivedAt?: Date | null;
+      notes?: string | null;
+      tenderDocumentLinkId?: string | null;
+    }
+  ) {
+    const quote = await this.prisma.subLineQuote.findUnique({
+      where: { id: quoteId },
+      include: { scopeItem: { select: { tenderId: true } } }
+    });
+    if (!quote) throw new NotFoundException(`SubLineQuote ${quoteId} not found.`);
+    if (quote.scopeItem.tenderId !== tenderId) {
+      throw new BadRequestException("Quote does not belong to the specified tender.");
+    }
+    return this.prisma.subLineQuote.update({
+      where: { id: quoteId },
+      data: {
+        ...(dto.subcontractorSupplierId !== undefined && {
+          subcontractorSupplierId: dto.subcontractorSupplierId
+        }),
+        ...(dto.supplierNameFallback !== undefined && {
+          supplierNameFallback: dto.supplierNameFallback
+        }),
+        ...(dto.amount !== undefined && {
+          amount: new Prisma.Decimal(dto.amount.toFixed(2))
+        }),
+        ...(dto.receivedAt !== undefined && { receivedAt: dto.receivedAt }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.tenderDocumentLinkId !== undefined && {
+          tenderDocumentLinkId: dto.tenderDocumentLinkId
+        })
+      }
+    });
+  }
+
+  /**
+   * Delete a sub line quote. Deselects any other selected quote if the deleted
+   * one was selected (by cascading the DB row removal — the partial unique index
+   * then naturally allows a new selection).
+   */
+  async deleteSubLineQuote(tenderId: string, quoteId: string) {
+    const quote = await this.prisma.subLineQuote.findUnique({
+      where: { id: quoteId },
+      include: { scopeItem: { select: { tenderId: true } } }
+    });
+    if (!quote) throw new NotFoundException(`SubLineQuote ${quoteId} not found.`);
+    if (quote.scopeItem.tenderId !== tenderId) {
+      throw new BadRequestException("Quote does not belong to the specified tender.");
+    }
+    return this.prisma.subLineQuote.delete({ where: { id: quoteId } });
+  }
+
+  /**
+   * Select a quote for a SUB line. Deselects any currently-selected quote
+   * for the same scope item in the same transaction, then marks this one
+   * selected. The partial unique index (scope_item_id WHERE is_selected)
+   * is the DB-level guard; the in-transaction deselect prevents a conflict.
+   *
+   * @throws BadRequestException when the quote is not found on this tender
+   */
+  async selectSubLineQuote(tenderId: string, quoteId: string) {
+    const quote = await this.prisma.subLineQuote.findUnique({
+      where: { id: quoteId },
+      include: { scopeItem: { select: { tenderId: true, id: true } } }
+    });
+    if (!quote) throw new NotFoundException(`SubLineQuote ${quoteId} not found.`);
+    if (quote.scopeItem.tenderId !== tenderId) {
+      throw new BadRequestException("Quote does not belong to the specified tender.");
+    }
+    const scopeItemId = quote.scopeItem.id;
+    // Transactionally deselect any existing selected quote then select this one.
+    return this.prisma.$transaction([
+      this.prisma.subLineQuote.updateMany({
+        where: { scopeItemId, isSelected: true, id: { not: quoteId } },
+        data: { isSelected: false }
+      }),
+      this.prisma.subLineQuote.update({
+        where: { id: quoteId },
+        data: { isSelected: true }
+      })
+    ]);
+  }
+
+  /**
+   * List all quotes for a SUB scope line.
+   */
+  async listSubLineQuotes(tenderId: string, scopeItemId: string) {
+    await this.requireTender(tenderId);
+    const item = await this.prisma.scopeOfWorksItem.findUnique({
+      where: { id: scopeItemId },
+      select: { id: true, tenderId: true }
+    });
+    if (!item) throw new NotFoundException(`Scope item ${scopeItemId} not found.`);
+    if (item.tenderId !== tenderId) {
+      throw new BadRequestException("Item does not belong to the specified tender.");
+    }
+    return this.prisma.subLineQuote.findMany({
+      where: { scopeItemId },
+      orderBy: { createdAt: "asc" }
+    });
   }
 }

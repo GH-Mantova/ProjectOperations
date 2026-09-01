@@ -34,6 +34,7 @@ import { QuoteProposalsController } from "./scope/quote-proposals.controller";
 import { QuoteProposalsService } from "./scope/quote-proposals.service";
 import { ClarificationProposalsController } from "./scope/clarification-proposals.controller";
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
+import { ScopeSubLinkedItemController } from "./scope/scope-cards.controller";
 import { AllocationService } from "./allocation.service";
 import { CapacityService } from "./capacity.service";
 
@@ -60,7 +61,8 @@ import { CapacityService } from "./capacity.service";
     ProposalsController,
     EstimateProposalsController,
     QuoteProposalsController,
-    ClarificationProposalsController
+    ClarificationProposalsController,
+    ScopeSubLinkedItemController
   ],
   providers: [
     TenderingService,

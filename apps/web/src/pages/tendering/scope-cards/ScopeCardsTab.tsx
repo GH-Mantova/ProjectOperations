@@ -18,6 +18,7 @@ import {
 import { ScopeWasteTab } from "../ScopeWasteTab";
 import { ScopeCuttingSheet } from "../ScopeCuttingSheet";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS, formatPlantSummary, type PlantSummaryGroup } from "./utils/card-display";
+import { DisciplineSummaryBar, computeCardBarStats } from "./DisciplineSummaryBar";
 
 // PR B1.5 — main Scope of Works container. Replaces the legacy
 // ScopeOfWorksTab + ScopeDisciplineBar combo. Card tabs drive the
@@ -301,6 +302,17 @@ export function ScopeCardsTab({
 
       {activeCard ? (
         <div>
+          {/* SCOPE_DISCBAR_V1 — discipline summary bar (slice 1 of scope-card redesign).
+              Sits between the tab strip and the card controls. Stats are computed from
+              cardItems using the same formula as ScopeQuantitiesTable's footer so the
+              total figures are byte-identical. */}
+          <DisciplineSummaryBar
+            card={activeCard}
+            stats={computeCardBarStats(cardItems)}
+            labourDays={cardSummary?.overrides.labourDaysOverride ?? cardSummary?.computed.labourDays ?? 0}
+            plantDays={cardSummary?.computed.duration ?? 0}
+            disciplineLabel={DISCIPLINE_LABELS[activeCard.discipline] ?? activeCard.discipline}
+          />
           <div
             style={{
               display: "flex",

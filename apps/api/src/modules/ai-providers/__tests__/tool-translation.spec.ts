@@ -41,7 +41,7 @@ describe("toolsToOpenAIFormat", () => {
 });
 
 describe("propose_scope_items tool schema", () => {
-  it("constrains discipline to DEM/CIV/ASB/Other (PR A1)", () => {
+  it("constrains discipline to DEM/CIV/ASB/Other/SUB (PR A1; SUB added 2026-08-31)", () => {
     const itemsSchema = (
       proposeScopeItemsTool.inputSchema.properties.proposals as {
         items?: { properties?: { discipline?: { enum?: string[] } } };
@@ -51,7 +51,8 @@ describe("propose_scope_items tool schema", () => {
       "DEM",
       "CIV",
       "ASB",
-      "Other"
+      "Other",
+      "SUB"
     ]);
   });
 

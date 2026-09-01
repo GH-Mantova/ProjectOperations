@@ -13,12 +13,12 @@ import { buildScopeItemWithCard } from "./test-utils/build-scope-item-with-card"
 // the SQL migration's hardcoded values.
 
 describe("SCOPE_CARD_DEFAULTS (PR A2)", () => {
-  it("has exactly 4 entries, one per IS_DISCIPLINE_CODES entry", () => {
+  it("has exactly 5 entries, one per IS_DISCIPLINE_CODES entry", () => {
     expect(SCOPE_CARD_DEFAULTS).toHaveLength(IS_DISCIPLINE_CODES.length);
-    expect(SCOPE_CARD_DEFAULTS).toHaveLength(4);
+    expect(SCOPE_CARD_DEFAULTS).toHaveLength(5);
   });
 
-  it("orders DEM=0, CIV=1, ASB=2, Other=3 (matches SQL migration sortOrder)", () => {
+  it("orders DEM=0, CIV=1, ASB=2, Other=3, SUB=4 (matches SQL migration sortOrder)", () => {
     const byCode = Object.fromEntries(
       SCOPE_CARD_DEFAULTS.map((c) => [c.discipline, c.sortOrder])
     );
@@ -26,6 +26,7 @@ describe("SCOPE_CARD_DEFAULTS (PR A2)", () => {
     expect(byCode.CIV).toBe(1);
     expect(byCode.ASB).toBe(2);
     expect(byCode.Other).toBe(3);
+    expect(byCode.SUB).toBe(4);
   });
 
   it("matches the SQL migration's discipline → friendly-name mapping", () => {

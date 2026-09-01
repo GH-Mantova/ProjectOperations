@@ -20,6 +20,7 @@ function baseSummary() {
     DEM: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     CIV: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     ASB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+    SUB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     Other: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     cutting: { itemCount: 0, subtotal: 0 },
     tenderPrice: 0
@@ -295,8 +296,8 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     expect(payload.summary.tenderPrice).toBe(21900);
   });
 
-  it("exposes DISCIPLINE_ORDER in the canonical DEM-CIV-ASB-Other sequence", () => {
-    expect([...DISCIPLINE_ORDER]).toEqual(["DEM", "CIV", "ASB", "Other"]);
+  it("exposes DISCIPLINE_ORDER in the canonical DEM-CIV-ASB-Other-SUB sequence", () => {
+    expect([...DISCIPLINE_ORDER]).toEqual(["DEM", "CIV", "ASB", "Other", "SUB"]);
   });
 
   it("pipes the payload through HTML renderer without throwing (integration smoke)", async () => {

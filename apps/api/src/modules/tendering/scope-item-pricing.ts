@@ -26,6 +26,11 @@ export const DEFAULT_ROLE_BY_DISCIPLINE: Record<Discipline, string> = {
   DEM: "Demolition labourer",
   CIV: "Machine operator",
   ASB: "Asbestos labourer",
+  // SUB lines carry no in-house labour by default; an explicit entry makes
+  // that intent readable (rather than a silent gap that prices $0 with no error).
+  // The labour role here still resolves via buildRateMaps — if a SUB card has
+  // men/days filled in, it will price correctly against this role.
+  SUB: "Demolition labourer",
   Other: "Demolition labourer"
 };
 

@@ -258,7 +258,7 @@ Reading config already committed to the repo is fine. Mutating tenant state is n
   MAIN, and the remedy is a single fixes_pr prompt, not N per-PR fixes.
 - After any scripts/pr-watcher/** change merges to main, the running watcher still executes the
   OLD code. A restart is required to adopt it: wait for an idle window (no in-progress run), stop
-  the WRAPPER first, then the node, then relaunch DETACHED via C:\po-watcher\watcher-launcher.ps1
+  the WRAPPER first, then the node, then relaunch DETACHED via C:\po-watcher\watcher-launcher-singlelane.ps1 (source of truth: `ensure-watcher.ps1:10`; the non-singlelane wrapper exists on disk but the `PO Watcher Keepalive` task does not use it)
   and verify the chain survives 40s+ and the clone is 0-behind.
 
 ---

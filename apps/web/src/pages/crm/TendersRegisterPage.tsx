@@ -60,7 +60,19 @@ type NextAction = {
   title: string;
 };
 
-type Tab = "register" | "followups";
+export type TendersRegisterTab = "register" | "followups";
+type Tab = TendersRegisterTab;
+
+/** CRM UIFIX S1: props for outer-shell composition. */
+export type TendersRegisterPageProps = {
+  /**
+   * When provided, the page is a CONTROLLED subview: the outer TendersPage tab
+   * bar decides the tab and the page renders no inner tab bar. When absent,
+   * the page falls back to its previous "register" default (kept only so any
+   * standalone caller in tests or storybook still works).
+   */
+  activeTab?: Tab;
+};
 
 // Won & lost statuses for the Follow-ups "Won & lost" toggle.
 const WON_LOST_STATUSES = new Set<string>(["AWARDED", "CONTRACT_ISSUED", "LOST"]);
@@ -323,11 +335,16 @@ const ghostBtnStyle: React.CSSProperties = {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function TendersRegisterPage() {
+export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<Tab>("register");
+  // CRM UIFIX S1: the outer TendersPage tab bar drives the tab through a prop.
+  // Two tab bars used to render on this screen (an outer at TendersPage and an
+  // inner here) — the outer advertised an S8-empty-state stub while S8 was
+  // already shipped inside this page. The inner tablist is removed; the tab is
+  // now controlled from above.
+  const tab: Tab = props.activeTab ?? "register";
   const [tenders, setTenders] = useState<TenderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -643,7 +660,15 @@ export function TendersRegisterPage() {
   const handleApplyView = (view: SavedView) => {
     setFilters(view.filters);
     setFollowUpToggles(view.toggles);
-    setTab(view.tab);
+    // CRM UIFIX S1: the tab now lives in the URL (outer TendersPage tab bar).
+    // A saved view that carries a tab navigates the browser so the outer bar
+    // updates in step with the filters. Falls back to /crm/register for the
+    // default view.
+    if (view.tab === "followups") {
+      navigate("/crm/register?tab=follow-ups");
+    } else if (tab !== "register") {
+      navigate("/crm/register");
+    }
   };
 
   const handleDeleteView = (id: string) => {
@@ -676,35 +701,12 @@ export function TendersRegisterPage() {
         </p>
       </header>
 
-      {/* Tab bar */}
-      <div
-        role="tablist"
-        aria-label="Register view"
-        style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid #e5e7eb" }}
-      >
-        {(["register", "followups"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: "8px 18px",
-              border: "none",
-              background: "transparent",
-              fontSize: 14,
-              fontWeight: tab === t ? 600 : 400,
-              color: tab === t ? "var(--brand-primary, #005B61)" : "#6b7280",
-              borderBottom: tab === t ? "2px solid var(--brand-primary, #005B61)" : "none",
-              cursor: "pointer",
-              marginBottom: -2
-            }}
-          >
-            {t === "register" ? "Register" : "Follow-ups"}
-          </button>
-        ))}
-      </div>
+      {/* CRM UIFIX S1: the inner Register/Follow-ups tablist that used to live
+          here is gone. The outer TendersPage tab bar (?tab=register|follow-ups)
+          drives which view renders — one tab bar per page, one URL contract.
+          Removing this fixed the "two tab bars on Tenders" defect where the
+          outer bar advertised an S8-empty-state stub for work already
+          shipped in this page. */}
 
       {/* Follow-ups toggle row */}
       {tab === "followups" && (

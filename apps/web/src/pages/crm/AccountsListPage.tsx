@@ -5,6 +5,13 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
 import { AccountLinkPreview } from "./AccountLinkPreview";
 import { buildCreateNoteBody } from "./RelationshipsPage";
+import { CRM_COLD_V2 } from "./crm-cold";
+
+// Re-exported so the existing computeGoingCold callers (and its dedicated
+// vitest suite in AccountsListPage.test.ts) can keep importing CRM_COLD_V2
+// from this module. The constant itself lives at ./crm-cold to keep it off
+// the circular-import path with RelationshipsPage.
+export { CRM_COLD_V2 };
 import {
   createAccount,
   validateCreateAccountForm,
@@ -37,10 +44,10 @@ export type AccountSummaryRow = {
  * Mirrors the server-side deriveGoingCold — exported so the vitest suite
  * can assert the four cases without a DOM or fetch mock.
  *
- * Rules:
- *   - lifecycle === "PAST"  → never cold
- *   - lastContactedAt null  → not cold (no evidence)
- *   - lastContactedAt > 14 days ago + lifecycle !== PAST → cold
+ * CRM_COLD_V2 rules (2026-09-01):
+ *   - lifecycle === "PAST"        → never cold
+ *   - lastContactedAt null        → COLD (if non-PAST) — never-contacted is coldest
+ *   - lastContactedAt > 60 days   → cold
  */
 export function computeGoingCold(
   lifecycle: string,
@@ -48,14 +55,14 @@ export function computeGoingCold(
   nowMs = Date.now()
 ): boolean {
   if (lifecycle === "PAST") return false;
-  if (!lastContactedAt) return false;
+  if (!lastContactedAt) return CRM_COLD_V2.NULL_IS_COLD;
   const ts =
     typeof lastContactedAt === "string"
       ? new Date(lastContactedAt).getTime()
       : lastContactedAt.getTime();
   if (!Number.isFinite(ts)) return false;
   const diffDays = (nowMs - ts) / (1000 * 60 * 60 * 24);
-  return diffDays > 14;
+  return diffDays > CRM_COLD_V2.THRESHOLD_DAYS;
 }
 
 // ── New-account modal ─────────────────────────────────────────────────────────

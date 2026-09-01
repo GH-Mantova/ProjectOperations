@@ -6,6 +6,24 @@ import { entityLabel, sortThreadsByActivity } from "./comms-inbox.helpers";
 import { AnchorPicker, buildCreateThreadBody, mapTypeToServer, type PickerSelection } from "./AnchorPicker";
 import { CommsInboxTriage } from "./CommsInboxTriage";
 
+/**
+ * CRM UIFIX S1 (2026-09-01): the unanchored inbox's tab is CONTROLLED from
+ * the outer CommsPage (?tab=inbox|threads|todos). This is the single source of
+ * truth for which tab renders — CommsInboxPage no longer keeps its own state
+ * or draws its own tab buttons. Two tab bars (outer nav shell + inner) used to
+ * render on /crm/comms; the outer advertised an S10-empty-state stub while S10
+ * was already shipped in the inner. One tab bar per page.
+ */
+export type CommsInnerTab = "inbox" | "threads" | "tasks";
+
+export type CommsHubPageProps = {
+  /**
+   * Which unanchored inbox tab is active. Ignored in anchored mode (entityType
+   * + entityId query string). Optional so existing callers stay working.
+   */
+  activeInnerTab?: CommsInnerTab;
+};
+
 // CRM-4: Comms hub surface — internal threads + To-Do.
 // Anchored to a CRM record via ?entityType=ACCOUNT|TENDER|JOB|CONTRACT&entityId=…
 // The decoupled sub-module surfaces two tabs (threads + tasks) so it can
@@ -117,12 +135,13 @@ const INBOX_PAGE_SIZE = 25;
 // Clicking a thread navigates to the anchored view (?entityType=…&entityId=…)
 // so there is one conversation UI, not two.
 
-function CommsInboxPage() {
+function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
   const { authFetch, user } = useAuth();
   const navigate = useNavigate();
 
-  // CRM-S10: three tabs — Inbox (lead triage), Threads, My to-dos.
-  const [inboxTab, setInboxTab] = useState<"inbox" | "threads" | "tasks">("inbox");
+  // CRM UIFIX S1: the tab is CONTROLLED by the outer CommsPage via URL. The
+  // former useState + inner tab bar caused the "two tab bars on Comms" defect.
+  const inboxTab = activeTab;
 
   // CRM-S9: New-thread composer for the unanchored inbox.
   // Before S9, /crm/comms was a closed loop on an empty system — createThread
@@ -287,22 +306,9 @@ function CommsInboxPage() {
         )}
       </div>
 
-      <div style={s.tabs}>
-        {(["inbox", "threads", "tasks"] as const).map((t) => (
-          <button
-            key={t}
-            style={{
-              ...s.tab,
-              background: inboxTab === t ? "#6366f1" : "#f3f4f6",
-              color: inboxTab === t ? "#fff" : "#374151",
-              fontWeight: inboxTab === t ? 700 : 400
-            }}
-            onClick={() => setInboxTab(t)}
-          >
-            {t === "inbox" ? "Inbox" : t === "threads" ? `Threads (${inboxThreadsTotal})` : `My to-dos (${inboxTasksTotal})`}
-          </button>
-        ))}
-      </div>
+      {/* CRM UIFIX S1: the inner Inbox/Threads/To-dos tablist that used to live
+          here is gone. The outer CommsPage tab bar drives which tab renders,
+          via URL (?tab=inbox|threads|todos). One tab bar per page. */}
 
       {/* CRM-S10: Inbox tab — lead intake's screen inside the Comms hub window.
           Boundary rule: CommsInboxTriage calls /crm/intake/* only.
@@ -481,11 +487,13 @@ export function buildCreateTaskBody(args: {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function CommsHubPage() {
+export function CommsHubPage(props: CommsHubPageProps = {}) {
   const { authFetch, user } = useAuth();
   const [params] = useSearchParams();
   const entityType = params.get("entityType") ?? "ACCOUNT";
   const entityId = params.get("entityId") ?? "";
+  // CRM UIFIX S1: outer CommsPage controls the unanchored inbox's tab.
+  const unanchoredTab: CommsInnerTab = props.activeInnerTab ?? "inbox";
 
   const [tab, setTab] = useState<"threads" | "tasks">("threads");
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -619,8 +627,9 @@ export function CommsHubPage() {
 
   // When there is no anchor, render the unanchored inbox.
   // This replaces the former error-only early-return (CRM-4 / NAV-4 reconciliation).
+  // CRM UIFIX S1: pass the outer-controlled tab down.
   if (!anchored) {
-    return <CommsInboxPage />;
+    return <CommsInboxPage activeTab={unanchoredTab} />;
   }
 
   return (

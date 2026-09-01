@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { AccountsService, deriveGoingCold } from "../accounts.service";
+import { AccountsService, CRM_COLD_V2, deriveGoingCold } from "../accounts.service";
 
 // ── Mock Prisma ───────────────────────────────────────────────────────────────
 
@@ -306,58 +306,65 @@ describe("AccountsService.getAccount360", () => {
   });
 });
 
-// ── deriveGoingCold (NAV-2) ───────────────────────────────────────────────────
+// ── deriveGoingCold — CRM_COLD_V2 (CRM UIFIX S1, 2026-09-01) ─────────────────
+// Marco's decisions (2026-09-01):
+//   - Default threshold is 60 days.
+//   - lastContactedAt === null counts as COLD (if non-PAST). Never-contacted is
+//     the coldest state in the system, not the warmest. The prior contract was
+//     14 days + null-is-not-cold, which read 0 on the KPI tile while the
+//     relationships tab (30 days + null-is-cold) listed 9 rows off the same
+//     data. CRM_COLD_V2 is the ONE contract now.
 
-describe("deriveGoingCold (NAV-2 accounts summary)", () => {
+describe("deriveGoingCold — CRM_COLD_V2 contract", () => {
   // NOW is a FIXED instant and is injected into the function under test.
-  // It must never be compared against the real wall clock: `daysAgo(1)` is a
-  // literal date, so a spec that let deriveGoingCold read Date.now() passed in
-  // CI until exactly 2026-08-27T12:00:00Z and failed permanently from then on
-  // (14 days + 1 after NOW). The clock is now pinned on BOTH sides.
   const NOW = new Date("2026-08-14T12:00:00Z");
   const NOW_MS = NOW.getTime();
   const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
 
-  // Case 1: >14 days + non-PAST → cold. Now assertable, because the clock is injected.
-  it("returns true when lastContactedAt is >14 days ago and lifecycle is ACTIVE", () => {
-    expect(deriveGoingCold("ACTIVE", daysAgo(15), NOW_MS)).toBe(true);
-    expect(deriveGoingCold("PROSPECT", daysAgo(15), NOW_MS)).toBe(true);
-    expect(deriveGoingCold("PAST", daysAgo(15), NOW_MS)).toBe(false);   // PAST → never cold
-    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(false);        // null → not cold
-    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(false);      // null → not cold
+  // CRM_COLD_V2 pins the default. Assert the NUMBER (not just the constant
+  // name) so a silent drift to a different literal fails CI.
+  it("CRM_COLD_V2.THRESHOLD_DAYS is 60 and CRM_COLD_V2.NULL_IS_COLD is true", () => {
+    expect(CRM_COLD_V2.THRESHOLD_DAYS).toBe(60);
+    expect(CRM_COLD_V2.NULL_IS_COLD).toBe(true);
   });
 
-  // Case 1b: the boundary itself — exactly 14 days is NOT cold, 14 days + 1ms is.
-  it("treats exactly 14 days as not cold, and one millisecond past it as cold", () => {
-    expect(deriveGoingCold("ACTIVE", daysAgo(14), NOW_MS)).toBe(false);
-    const justOver = new Date(daysAgo(14).getTime() - 1);
+  // Case A: past the 60-day threshold + non-PAST → cold.
+  it("returns true when lastContactedAt is >60 days ago and lifecycle is ACTIVE or PROSPECT", () => {
+    expect(deriveGoingCold("ACTIVE", daysAgo(61), NOW_MS)).toBe(true);
+    expect(deriveGoingCold("PROSPECT", daysAgo(120), NOW_MS)).toBe(true);
+  });
+
+  // Case B: PAST is never cold, regardless of the date or of null.
+  it("returns false for PAST lifecycle even with a very old lastContactedAt or null", () => {
+    expect(deriveGoingCold("PAST", daysAgo(365), NOW_MS)).toBe(false);
+    expect(deriveGoingCold("PAST", daysAgo(1), NOW_MS)).toBe(false);
+    expect(deriveGoingCold("PAST", null, NOW_MS)).toBe(false);
+  });
+
+  // Case C — the null-rule inversion. Never-contacted counts as COLD now.
+  it("returns true when lastContactedAt is null and lifecycle is PROSPECT or ACTIVE", () => {
+    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(true);
+    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(true);
+  });
+
+  // Case D: the 60-day boundary itself.
+  it("treats exactly 60 days as not cold, and one millisecond past it as cold", () => {
+    expect(deriveGoingCold("ACTIVE", daysAgo(60), NOW_MS)).toBe(false);
+    const justOver = new Date(daysAgo(60).getTime() - 1);
     expect(deriveGoingCold("ACTIVE", justOver, NOW_MS)).toBe(true);
   });
 
-  // Case 2: PAST lifecycle → never cold regardless of date
-  it("returns false for PAST lifecycle even with a very old lastContactedAt", () => {
-    expect(deriveGoingCold("PAST", daysAgo(365), NOW_MS)).toBe(false);
-    expect(deriveGoingCold("PAST", daysAgo(1), NOW_MS)).toBe(false);
-  });
-
-  // Case 3: null lastContactedAt → not cold
-  it("returns false when lastContactedAt is null", () => {
-    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(false);
-    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(false);
-  });
-
-  // Case 4: very fresh contact → not cold
+  // Case E: fresh contact → not cold.
   it("returns false when lastContactedAt is very recent (1 day ago)", () => {
-    // A date 1 day ago is well within the 14-day window.
     expect(deriveGoingCold("ACTIVE", daysAgo(1), NOW_MS)).toBe(false);
   });
 
-  // Case 5: the DEFAULT clock still works — no caller has to pass nowMs.
+  // Case F: the DEFAULT clock still works — no caller has to pass nowMs.
   it("defaults to the real wall clock when nowMs is omitted", () => {
     const oneDayAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
-    const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    const seventyDaysAgo = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000);
     expect(deriveGoingCold("ACTIVE", oneDayAgo)).toBe(false);
-    expect(deriveGoingCold("ACTIVE", twentyDaysAgo)).toBe(true);
+    expect(deriveGoingCold("ACTIVE", seventyDaysAgo)).toBe(true);
   });
 });
 
@@ -391,7 +398,8 @@ describe("AccountsService.listAccountSummaries", () => {
 
   it("returns summary DTO shape with winRate, openOpportunitiesCount, lastContactedAt, goingCold", async () => {
     const prisma = makePrisma();
-    const pastContact = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+    // CRM_COLD_V2: threshold is 60 days. 90 days is past it → goingCold=true.
+    const pastContact = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     prisma.account.findMany.mockResolvedValue([
       makeAccountRow({ lastContactedAt: pastContact })
     ]);
@@ -409,11 +417,11 @@ describe("AccountsService.listAccountSummaries", () => {
     expect(typeof row.winRate).toBe("number");
     expect(row).toHaveProperty("openOpportunitiesCount", 3);
     expect(row).toHaveProperty("lastContactedAt");
-    // 30 days ago → goingCold should be true (>14 days, ACTIVE)
+    // 90 days ago → goingCold should be true (>60 days, ACTIVE).
     expect(row).toHaveProperty("goingCold", true);
   });
 
-  it("goingCold is false when lastContactedAt is null", async () => {
+  it("goingCold is TRUE when lastContactedAt is null (CRM_COLD_V2: never-contacted is coldest)", async () => {
     const prisma = makePrisma();
     prisma.account.findMany.mockResolvedValue([
       makeAccountRow({ lastContactedAt: null, noteCreatedAt: null })
@@ -422,7 +430,7 @@ describe("AccountsService.listAccountSummaries", () => {
     const service = makeService(prisma);
     const summaries = await service.listAccountSummaries();
 
-    expect(summaries[0].goingCold).toBe(false);
+    expect(summaries[0].goingCold).toBe(true);
     expect(summaries[0].lastContactedAt).toBeNull();
   });
 

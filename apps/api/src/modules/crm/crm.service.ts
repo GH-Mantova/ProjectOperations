@@ -867,7 +867,13 @@ export class CrmService {
       include: { _count: { select: { opportunities: true, archivedOpportunities: true } } }
     });
     if (!existing) throw new NotFoundException(`DropReason ${id} not found.`);
-    const totalUsage = existing._count.opportunities + existing._count.archivedOpportunities;
+    // `?? 0` is load-bearing, not defensive noise. If either key is absent from the shape the
+    // caller supplied, `n + undefined` is NaN, `NaN > 0` is FALSE, and this guard FAILS OPEN --
+    // a referenced DropReason would delete silently. That is exactly how
+    // crm.service.drop-reason.spec.ts started failing the moment archivedOpportunities was added
+    // to the select: its mock still returned only { opportunities }, so the count went NaN.
+    const totalUsage =
+      (existing._count.opportunities ?? 0) + (existing._count.archivedOpportunities ?? 0);
     if (totalUsage > 0) {
       throw new ConflictException(
         `DropReason ${id} is referenced by ${totalUsage} opportunity(s) and cannot be deleted.`

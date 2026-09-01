@@ -1655,10 +1655,11 @@ model TenderDocumentLink {
   fileLinkId   String?               @map("file_link_id")
   createdAt    DateTime              @default(now()) @map("created_at")
   updatedAt    DateTime              @updatedAt @map("updated_at")
-  tender       Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  project      Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  folderLink   SharePointFolderLink? @relation(fields: [folderLinkId], references: [id], onDelete: SetNull)
-  fileLink     SharePointFileLink?   @relation(fields: [fileLinkId], references: [id], onDelete: SetNull)
+  tender        Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  project       Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  folderLink    SharePointFolderLink? @relation(fields: [folderLinkId], references: [id], onDelete: SetNull)
+  fileLink      SharePointFileLink?   @relation(fields: [fileLinkId], references: [id], onDelete: SetNull)
+  subLineQuotes SubLineQuote[]        @relation("SubLineQuoteDocument")
 
   @@index([tenderId, category])
   @@index([projectId])
@@ -3666,13 +3667,63 @@ model ScopeOfWorksItem {
   createdById    String  @map("created_by_id")
   createdBy      User    @relation("ScopeOfWorksCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
+  // scope-subcontracted order 4 — SUB line linkage.
+  // pricedBySubItemId: the SUB line that prices this item's work.
+  // When set, this item contributes zero labour/plant to its discipline bucket
+  // (the subcontractor's quote covers it). One SUB line may cover multiple items.
+  // The FK lives on the COVERED item and points at the SUB line so that
+  // cardinality is correct: one SUB line → many covered items.
+  // onDelete: SetNull — deleting the SUB line un-links rather than cascading.
+  pricedBySubItemId String?            @map("priced_by_sub_item_id")
+  pricedBySubItem   ScopeOfWorksItem?  @relation("SubCovers", fields: [pricedBySubItemId], references: [id], onDelete: SetNull)
+  covers            ScopeOfWorksItem[] @relation("SubCovers")
+
+  // Back-relation: quotes received for this item when it is a SUB line.
+  subLineQuotes SubLineQuote[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([tenderId, itemNumber])
   @@index([tenderId, status])
   @@index([cardId])
+  @@index([pricedBySubItemId])
   @@map("scope_of_works_items")
+}
+
+// scope-subcontracted order 4 — quotes received against a SUB scope line.
+// Each row is one subcontractor quote for one SUB-discipline scope item.
+// EXACTLY ONE quote per SUB line may be selected (isSelected=true). Prisma
+// cannot express a partial unique index, so the constraint is enforced in the
+// migration SQL:
+//   CREATE UNIQUE INDEX uq_sub_line_quotes_selected
+//     ON sub_line_quotes (scope_item_id) WHERE is_selected;
+// Do NOT remove that comment -- the next `prisma migrate dev` would not know
+// the index exists and would attempt to create a conflicting one.
+model SubLineQuote {
+  id                      String                 @id @default(cuid())
+  scopeItemId             String                 @map("scope_item_id")
+  scopeItem               ScopeOfWorksItem       @relation(fields: [scopeItemId], references: [id], onDelete: Cascade)
+  // Supplier FK — nullable: a quote can arrive before the vendor is in the directory.
+  subcontractorSupplierId String?                @map("subcontractor_supplier_id")
+  subcontractorSupplier   SubcontractorSupplier? @relation("SubLineQuoteSupplier", fields: [subcontractorSupplierId], references: [id], onDelete: SetNull)
+  // Free-text fallback for when the vendor is not yet in the directory.
+  supplierNameFallback    String?                @map("supplier_name_fallback")
+  amount                  Decimal                @db.Decimal(12, 2)
+  // Only one quote per SUB line may be selected. The partial unique index
+  // (scope_item_id WHERE is_selected) is in the migration SQL, not here.
+  isSelected              Boolean                @default(false) @map("is_selected")
+  receivedAt              DateTime?              @map("received_at")
+  notes                   String?
+  // Optional reference to an attached tender document (the quote document).
+  // Uses TenderDocumentLink so no separate upload path is needed.
+  tenderDocumentLinkId    String?                @map("tender_document_link_id")
+  tenderDocumentLink      TenderDocumentLink?    @relation("SubLineQuoteDocument", fields: [tenderDocumentLinkId], references: [id], onDelete: SetNull)
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
+
+  @@index([scopeItemId])
+  @@map("sub_line_quotes")
 }
 
 // Scope redesign v2 (PR #71). Waste rows move off the scope item row and
@@ -4683,6 +4734,7 @@ model SubcontractorSupplier {
   commitments        Commitment[]
   prequalRequests    PrequalificationRequest[]
   subcontractorRates SubcontractorRate[]
+  subLineQuotes      SubLineQuote[]            @relation("SubLineQuoteSupplier")
 
   @@index([entityType])
   @@index([prequalStatus])

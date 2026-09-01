@@ -155,13 +155,18 @@ export type ExportPayload = {
   exclusions: Array<{ text: string }>;
   tandc: { clauses: TcClause[] };
   summary: {
-    DEM: { itemCount: number; subtotal: number; withMarkup: number };
-    CIV: { itemCount: number; subtotal: number; withMarkup: number };
-    ASB: { itemCount: number; subtotal: number; withMarkup: number };
-    SUB: { itemCount: number; subtotal: number; withMarkup: number };
-    Other: { itemCount: number; subtotal: number; withMarkup: number };
+    // scope-subcontracted order 3 — each discipline bucket carries both
+    // the priced side (subtotal/withMarkup) and the provisional side
+    // (provisionalSubtotal/provisionalWithMarkup). tenderPrice is the
+    // priced-side total only; provisionalTotal is the provisional side.
+    DEM: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+    CIV: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+    ASB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+    SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+    Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
     cutting: { itemCount: number; subtotal: number };
     tenderPrice: number;
+    provisionalTotal: number;
   };
 };
 
@@ -344,19 +349,24 @@ export class EstimateExportService {
     // result, but TypeScript loses that relationship through the spread.
     // Cast to the shape we know is returned so the builders get a stable
     // contract.
+    // scope-subcontracted order 3 — each disc bucket now carries
+    // provisionalSubtotal + provisionalWithMarkup alongside the priced pair.
     const summaryTyped = summary as unknown as {
-      DEM: { itemCount: number; subtotal: number; withMarkup: number };
-      CIV: { itemCount: number; subtotal: number; withMarkup: number };
-      ASB: { itemCount: number; subtotal: number; withMarkup: number };
-      SUB: { itemCount: number; subtotal: number; withMarkup: number };
-      Other: { itemCount: number; subtotal: number; withMarkup: number };
+      DEM: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+      CIV: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+      ASB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+      SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+      Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
       cutting: { itemCount: number; subtotal: number };
       tenderPrice: number;
+      provisionalTotal: number;
     };
     const discBucket = (code: Discipline) => ({
       itemCount: summaryTyped[code].itemCount,
       subtotal: round2(summaryTyped[code].subtotal),
-      withMarkup: round2(summaryTyped[code].withMarkup)
+      withMarkup: round2(summaryTyped[code].withMarkup),
+      provisionalSubtotal: round2(summaryTyped[code].provisionalSubtotal),
+      provisionalWithMarkup: round2(summaryTyped[code].provisionalWithMarkup)
     });
 
     return {
@@ -403,7 +413,8 @@ export class EstimateExportService {
         SUB: discBucket("SUB"),
         Other: discBucket("Other"),
         cutting: { itemCount: summaryTyped.cutting.itemCount, subtotal: round2(summaryTyped.cutting.subtotal) },
-        tenderPrice: round2(summaryTyped.tenderPrice)
+        tenderPrice: round2(summaryTyped.tenderPrice),
+        provisionalTotal: round2(summaryTyped.provisionalTotal)
       }
     };
   }

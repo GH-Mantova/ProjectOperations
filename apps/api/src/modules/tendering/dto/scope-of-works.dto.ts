@@ -125,6 +125,11 @@ class ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @IsString() plantAssetId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() wasteGroup?: string | null;
 
+  // scope-subcontracted order 3 — per-line provisional flag. When true,
+  // this item's cost lands below the tender price as a provisional sum.
+  // Applies to every discipline. Defaults false (item is priced).
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isProvisional?: boolean;
+
   // Provisional sum amount (discipline=Prv only; ignored otherwise).
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() provisionalAmount?: number | null;
 

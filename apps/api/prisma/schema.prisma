@@ -3641,6 +3641,15 @@ model ScopeOfWorksItem {
   quantity     Decimal? @db.Decimal(12, 3)
   factor       Decimal? @db.Decimal(12, 6)
 
+  // scope-subcontracted order 3 — per-line provisional flag. When true,
+  // this item's cost lands in provisionalSubtotal / provisionalWithMarkup
+  // rather than the priced side, and is excluded from tenderPrice.
+  // Applies to every discipline (not only Other/SUB). The rule is:
+  //   line is provisional if isProvisional === true OR discipline === "Other"
+  // so existing Other rows keep printing in the provisional block without
+  // a backfill. DEFAULT false means all existing rows are priced (current
+  // behaviour unchanged).
+  isProvisional     Boolean  @default(false) @map("is_provisional")
   // Provisional sum amount (discipline=Prv only). Final price = this value,
   // no markup applied. Ignored for non-Prv rows.
   provisionalAmount Decimal? @map("provisional_amount") @db.Decimal(12, 2)

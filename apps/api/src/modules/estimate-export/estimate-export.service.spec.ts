@@ -5,6 +5,7 @@ import {
 } from "./estimate-export.service";
 import type { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import type { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
+import { makeSummary } from "./test-support/make-summary";
 
 // These tests hit the pure fetch + shape path of fetchTenderForExport by
 // feeding fake Prisma and ScopeRedesignService instances. We don't spin up a
@@ -15,16 +16,12 @@ function makeDecimal(v: number) {
   return { toString: () => String(v) } as unknown as { toString(): string };
 }
 
+// Was a hand-built literal that no longer matched ExportPayload["summary"]:
+// it had no provisionalSubtotal / provisionalWithMarkup / provisionalTotal, and
+// because it carried no type annotation TypeScript never said so. The fake was
+// quietly feeding these tests a shape production does not produce.
 function baseSummary() {
-  return {
-    DEM: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    CIV: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    ASB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    SUB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    Other: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    cutting: { itemCount: 0, subtotal: 0 },
-    tenderPrice: 0
-  };
+  return makeSummary();
 }
 
 type FakeTender = {

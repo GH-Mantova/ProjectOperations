@@ -9,6 +9,7 @@ import {
 import { PdfRendererService } from "../../pdf-renderer.service";
 import type { ExportPayload } from "../../../estimate-export/estimate-export.service";
 import { parseDefaultClauses } from "../../../quote/tc-parser";
+import { makeSummary } from "../../../estimate-export/test-support/make-summary";
 
 function basePayload(
   partial: Partial<ExportPayload> = {},
@@ -73,16 +74,16 @@ function basePayload(
     assumptions: [{ text: "Access via loading dock" }],
     exclusions: [{ text: "Asbestos removal" }],
     tandc: { clauses: parseDefaultClauses() },
-    summary: {
-      DEM: { itemCount: 1, subtotal: 10000, withMarkup: 13000, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
-      CIV: { itemCount: 0, subtotal: 0, withMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
-      ASB: { itemCount: 0, subtotal: 0, withMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
-      SUB: { itemCount: 0, subtotal: 0, withMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
-      Other: { itemCount: 0, subtotal: 0, withMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
-      cutting: { itemCount: 0, subtotal: 0 },
+    summary: makeSummary({
+      DEM: {
+        itemCount: 1,
+        subtotal: 10000,
+        withMarkup: 13000,
+        provisionalSubtotal: 0,
+        provisionalWithMarkup: 0,
+      },
       tenderPrice: 13000,
-      provisionalTotal: 0,
-    },
+    }),
     ...partial,
   };
 }

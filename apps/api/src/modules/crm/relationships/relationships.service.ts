@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { InteractionChannel, Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
+import { CRM_COLD_V2 } from "../accounts/accounts.service";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,8 +44,13 @@ export type ListNotesQuery = {
   limit?: number;
 };
 
-/** Default threshold (days) for the "going cold" nudge. */
-const GOING_COLD_DAYS_DEFAULT = 30;
+/**
+ * Default threshold (days) for the "going cold" nudge.
+ * Sourced from CRM_COLD_V2 so the KPI tile (accounts summary) and this list
+ * ALWAYS agree. Do NOT redeclare a local literal here — the tile once read 14
+ * while this read 30, so the tile showed 0 while the tab listed 9 rows.
+ */
+const GOING_COLD_DAYS_DEFAULT = CRM_COLD_V2.THRESHOLD_DAYS;
 
 // ── Service ──────────────────────────────────────────────────────────────────
 

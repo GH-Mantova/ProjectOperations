@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { formatWinRate } from "./formatWinRate";
+import { CRM_COLD_V2 } from "./crm-cold";
+
+// CRM UIFIX S1 (2026-09-01): the going-cold threshold selector for this page.
+// Kept next to the panel so a future 45-day option lands in one place. The
+// default is CRM_COLD_V2.THRESHOLD_DAYS so the tab and the KPI tile agree
+// out of the gate — the user can widen or narrow the view without changing
+// the tile.
+export const GOING_COLD_THRESHOLD_OPTIONS = [30, 60, 90] as const;
+export type GoingColdThresholdDays = (typeof GOING_COLD_THRESHOLD_OPTIONS)[number];
+export const GOING_COLD_DEFAULT_THRESHOLD: GoingColdThresholdDays =
+  CRM_COLD_V2.THRESHOLD_DAYS as GoingColdThresholdDays;
 
 // CRM-2: Relationship intelligence page.
 // Surfaces three panels:
@@ -86,11 +98,13 @@ function fmtDate(iso: string | null | undefined): string {
   }
 }
 
-function fmtPct(val: string | null | undefined): string {
-  if (val == null) return "—";
-  const num = parseFloat(val);
-  return Number.isFinite(num) ? `${(num * 100).toFixed(0)}%` : "—";
-}
+// CRM UIFIX S1 (2026-09-01): the private fmtPct helper is gone. #1322 already
+// fixed win-rate rendering across the CRM by clamping in formatWinRate.ts and
+// documenting "do NOT multiply by one-hundred here" — but a private copy on
+// this page multiplied the stored value again and rendered 20000%. The
+// server stores win_rate as an already-multiplied percentage. Two wins over
+// one tender stored 200 and rendered 20000%. Import the shared helper; never
+// introduce a second one.
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(await readApiErrorMessage(res));
@@ -341,12 +355,21 @@ function GoingColdPanel() {
   const [accounts, setAccounts] = useState<ColdAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // CRM UIFIX S1: threshold is user-selectable; default matches CRM_COLD_V2
+  // so the tab and the KPI tile agree at first render.
+  const [thresholdDays, setThresholdDays] = useState<GoingColdThresholdDays>(
+    GOING_COLD_DEFAULT_THRESHOLD
+  );
 
   useEffect(() => {
     let mounted = true;
+    setLoading(true);
+    setError(null);
     (async () => {
       try {
-        const res = await authFetch("/crm/relationships/going-cold?thresholdDays=30");
+        const res = await authFetch(
+          `/crm/relationships/going-cold?thresholdDays=${thresholdDays}`
+        );
         const data = await jsonOrThrow<ColdAccount[]>(res);
         if (mounted) setAccounts(data);
       } catch (err) {
@@ -356,47 +379,75 @@ function GoingColdPanel() {
       }
     })();
     return () => { mounted = false; };
-  }, [authFetch]);
+  }, [authFetch, thresholdDays]);
 
-  if (loading) return <div style={s.empty}>Loading…</div>;
-  if (error) return <div style={s.err}>{error}</div>;
+  const selector = (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <label htmlFor="going-cold-threshold" style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>
+        Threshold:
+      </label>
+      <select
+        id="going-cold-threshold"
+        aria-label="Going-cold threshold in days"
+        value={thresholdDays}
+        onChange={(e) => setThresholdDays(Number(e.target.value) as GoingColdThresholdDays)}
+        style={{
+          padding: "6px 10px",
+          border: "1px solid #d1d5db",
+          borderRadius: 6,
+          fontSize: 13,
+          background: "#fff"
+        }}
+      >
+        {GOING_COLD_THRESHOLD_OPTIONS.map((n) => (
+          <option key={n} value={n}>{n} days</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  if (loading) return <>{selector}<div style={s.empty}>Loading…</div></>;
+  if (error) return <>{selector}<div style={s.err}>{error}</div></>;
   if (accounts.length === 0)
-    return <div style={s.empty}>No accounts going cold right now.</div>;
+    return <>{selector}<div style={s.empty}>No accounts going cold right now.</div></>;
 
   return (
-    <table style={s.table}>
-      <thead>
-        <tr>
-          <th style={s.th}>Account</th>
-          <th style={s.th}>Status</th>
-          <th style={s.th}>Owner</th>
-          <th style={s.th}>Cold contacts</th>
-          <th style={s.th}>Cold since</th>
-        </tr>
-      </thead>
-      <tbody>
-        {accounts.map((acc) => (
-          <tr key={acc.id}>
-            <td style={s.td}>{acc.client?.name ?? "(no client)"}</td>
-            <td style={s.td}>{acc.lifecycleStatus}</td>
-            <td style={s.td}>
-              {acc.owner ? `${acc.owner.firstName} ${acc.owner.lastName}` : "—"}
-            </td>
-            <td style={s.td}>
-              {acc.contacts.map((c) => (
-                <div key={c.id} style={{ fontSize: 12 }}>
-                  {c.firstName} {c.lastName}
-                  {c.lastContactedAt
-                    ? ` (last: ${fmtDate(c.lastContactedAt)})`
-                    : " (never contacted)"}
-                </div>
-              ))}
-            </td>
-            <td style={s.td}>{fmtDate(acc.coldSince)}</td>
+    <>
+      {selector}
+      <table style={s.table}>
+        <thead>
+          <tr>
+            <th style={s.th}>Account</th>
+            <th style={s.th}>Status</th>
+            <th style={s.th}>Owner</th>
+            <th style={s.th}>Cold contacts</th>
+            <th style={s.th}>Cold since</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {accounts.map((acc) => (
+            <tr key={acc.id}>
+              <td style={s.td}>{acc.client?.name ?? "(no client)"}</td>
+              <td style={s.td}>{acc.lifecycleStatus}</td>
+              <td style={s.td}>
+                {acc.owner ? `${acc.owner.firstName} ${acc.owner.lastName}` : "—"}
+              </td>
+              <td style={s.td}>
+                {acc.contacts.map((c) => (
+                  <div key={c.id} style={{ fontSize: 12 }}>
+                    {c.firstName} {c.lastName}
+                    {c.lastContactedAt
+                      ? ` (last: ${fmtDate(c.lastContactedAt)})`
+                      : " (never contacted)"}
+                  </div>
+                ))}
+              </td>
+              <td style={s.td}>{fmtDate(acc.coldSince)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
@@ -456,7 +507,7 @@ function RepeatBusinessPanel() {
               ) : "—"}
             </td>
             <td style={s.td}>{acc.client?.tenderCount ?? "—"}</td>
-            <td style={s.td}>{fmtPct(acc.client?.winRate)}</td>
+            <td style={s.td}>{formatWinRate(acc.client?.winRate)}</td>
             <td style={s.td}>{fmtDate(acc.client?.lastWonAt)}</td>
           </tr>
         ))}

@@ -1,9 +1,71 @@
 # Tender Reminders Plan — Scheduled Quote-Due + Follow-Up Reminder & Escalation Engine
 
-**Cluster prefix:** TR  
-**Plan status:** SLICE-0 (plan only — no product code in this PR)  
-**Authored:** 2026-08-13  
+**Cluster prefix:** TR
+**Plan status:** SLICE-0 (plan only — no product code in this PR)
+**Authored:** 2026-08-13
 **Decisions locked by:** Marco (PR-Master panel, 2026-08-12)
+**Re-scoped:** 2026-09-01 — see §0 `TR_SCOPE_CRM` decision block below. The whole cluster now
+targets the **CRM** surface, not the Tendering surface. All references to
+`apps/web/src/pages/tendering/**` and `apps/api/src/modules/tendering/**` further down this file
+are historical — read them for original intent, but the CRM re-scope in §0 governs.
+
+---
+
+## 0. TR_SCOPE_CRM — 2026-09-01 re-scope decision
+
+**Marco's 2026-08-20 ruling** put follow-up and chasing in the CRM. Since the original plan was
+authored, two CRM slices have shipped that consumed the "reminder" surface area:
+
+- **CRM-S7** (`b63af33e`, PR #1431) — the interaction log. `RelationshipNote`
+  (Account/Contact anchor) and `CommThread`+`CommMessage` (Tender/Opportunity anchor), plus the
+  `InteractionChannel` enum and `CommThreadKind = logged_contact`. "Logging an interaction records
+  channel, author and body AND sets the next action in the same write" — decision 5 of
+  `crm-build-order-plan.md`. `CommTask` (already on main from CRM-4) is where the next action
+  lands (`dueAt`, `status`, `assigneeId`).
+- **CRM-S8** (`3985d74f`, PR #1447) — `TendersRegisterPage` V2. Full filter set + column sort,
+  CSV export, `Last interaction` / `Logged by` / `Next action` columns with overdue/due-soon
+  chips, single Log-action modal that writes `CommThread`+`CommMessage`+`CommTask` atomically
+  (via `comms.service.logContact({ nextActionAt, nextActionNote })`), and a **Follow-ups tab that
+  is the same list with amber toggles on and On track off**. Saved views persisted to
+  localStorage.
+
+Consequences that bind this cluster:
+
+1. **Next actions live in `CommTask` (via `comms.service.logContact`), not `TenderEntry`.** The
+   `TenderEntry` reminder surface named throughout the historical plan below is NOT the store the
+   CRM uses. Do NOT wire the reminder engine against `TenderEntry` `follow_up` / `self_reminder`
+   rows. Scan `CommTask` (`dueAt`, `status`, `assigneeId`, `entityType`, `entityId`).
+2. **The Follow-ups worklist is already shipped as the S8 tab.** There is no separate
+   "Tenders Attention Worklist" screen to build. TR-4 as originally described **duplicates S8 and
+   is retired-in-place** (see §4 TR-4 note and the SUPERSEDED-BY header in
+   `pr-tr-s4-attention-worklist-HOLD.md`).
+3. **The reminder services live in the CRM module, not tendering.** New location:
+   `apps/api/src/modules/crm/reminders/` (create the sub-module; sits next to
+   `apps/api/src/modules/crm/comms/`). Admin config surface is a CRM admin route, not a Tendering
+   admin route.
+4. **What TR still owns that S7/S8 do NOT:**
+   - **Scheduling** — a cron that fires when no user is present. S8 renders amber chips when the
+     Follow-ups tab is open; nothing pushes a notification overnight when a `CommTask.dueAt`
+     lapses, and nothing scans tenders for approaching quote `dueDate` or long-idle post-submission
+     tenders. That gap remains.
+   - **Escalation** — routing to a manager when an action stays overdue past a configured window.
+     `CommTask` has `assigneeId` but no escalation path. That gap remains.
+
+**Marker in this file:** `TR_SCOPE_CRM` — the CI premise for CRM-S12 asserts this literal is
+present. Do not delete the marker.
+
+**What did NOT change:**
+- The idempotency requirement (a cron that fires the same reminder every tick is a bug).
+- The reuse-not-rebuild discipline. The CRM comms sub-module (`apps/api/src/modules/crm/comms/`)
+  and `NotificationsService` are the seams to reuse. Do not build a parallel channel.
+- The anti-fatigue digest requirement (one notification per user per run, listing affected items).
+- The out-of-scope list in §6 (no client emails, no Azure/Entra/SharePoint, no edits to `/sot/`).
+
+**Open question deferred to the next slice, not to this re-scope:** whether historical PRE-DUE
+quote-due reminders (a scheduled fire N days before `Tender.dueDate` for the estimator, before any
+CRM action has been logged) should stay in this cluster or become a Tendering-side concern. This
+plan keeps them in-cluster for now — the cron already has to run against `Tender.dueDate` for the
+post-submission chase, so bundling PRE-DUE is a smaller surface than splitting the cron in two.
 
 ---
 
@@ -78,6 +140,17 @@ Each slice is independently deployable and gated on the previous slice's primary
 
 **Prompt file:** `docs/pr-prompts/pr-tr-s1-reminder-policy-HOLD.md`
 
+> **TR_SCOPE_CRM re-scope (2026-09-01):** the two new models and the CRUD service move to
+> `apps/api/src/modules/crm/reminders/` (new sub-module). Admin route becomes
+> `/crm/admin/reminder-policy` (super-user gated via existing `crm.admin` or equivalent —
+> the prompt grep-locates the correct permission key). `TenderReminderLog` becomes polymorphic:
+> `subjectType` (`"Tender" | "CommTask"`) + `subjectId` + `triggerKey`, so the same idempotency
+> table serves both scheduled tender chases and overdue `CommTask` reminders. Naming: keep
+> `TenderReminderPolicy` / `TenderReminderLog` for now (rename would break the migration name and
+> is a separate slice if wanted). The `stageIdleThresholds` migration step is DROPPED — the
+> Follow-ups tab (S8) uses S7's `nextActionAt`/`CommTask.dueAt` and does not read those
+> per-stage thresholds; keeping them in the policy is dead config until a caller emerges.
+
 **What it builds:**
 
 - `model TenderReminderPolicy` — admin-configurable settings table:
@@ -110,6 +183,16 @@ seed update for TenderReminderPolicy defaults)
 
 **Prompt file:** `docs/pr-prompts/pr-tr-s2-reminder-engine-HOLD.md`
 
+> **TR_SCOPE_CRM re-scope (2026-09-01):** service moves to
+> `apps/api/src/modules/crm/reminders/comms-reminder.service.ts`. The FOLLOW-UP TRACK no longer
+> scans `TenderEntry`; it scans `CommTask WHERE status = 'OPEN' AND dueAt <= today + policy.daysBefore`
+> and notifies `assigneeId` (falling back to a sensible default only if unset). PRE-DUE and
+> POST-SUBMISSION tracks still anchor on `Tender.dueDate` and `Tender.submittedAt`. The
+> "outcome recorded" check for POST-SUBMISSION becomes: any `CommThread` of kind
+> `logged_contact` written against the tender since `submittedAt` **counts as a chase already
+> logged**, so the cron does not chase behind a user who already actioned it. Cron still fires
+> at `0 21 * * *` UTC. Wire into `crm.module.ts` (new `RemindersModule` under CRM).
+
 **What it builds:**
 
 - `apps/api/src/modules/tendering/tender-reminder.service.ts` — the cron service, mirroring
@@ -138,6 +221,14 @@ seed update for TenderReminderPolicy defaults)
 
 **Prompt file:** `docs/pr-prompts/pr-tr-s3-manager-escalation-HOLD.md`
 
+> **TR_SCOPE_CRM re-scope (2026-09-01):** service moves to
+> `apps/api/src/modules/crm/reminders/comms-reminder-escalation.service.ts`. "Actioned" now
+> means: the `CommTask` row is `status = DONE` OR a newer `CommThread`/`CommMessage` (kind
+> `logged_contact`) has been written against the same anchor since the reminder log's
+> `firedAt`. Manager lookup still reuses the existing permissions registry — grep for the
+> CRM manage permission first, fall back to `tenders.manage` only if no CRM-specific one
+> exists (the prompt records which was chosen and why).
+
 **What it builds:**
 
 - `apps/api/src/modules/tendering/tender-reminder-escalation.service.ts` — escalation layer:
@@ -155,9 +246,20 @@ seed update for TenderReminderPolicy defaults)
 
 **Size:** 4 files (escalation.service.ts, spec, tendering.module.ts update, minor helper)
 
-### TR-4 (S4) — "Needs attention" worklist UI
+### TR-4 (S4) — "Needs attention" worklist UI  **[RETIRED-IN-PLACE — superseded by CRM-S8]**
 
 **Prompt file:** `docs/pr-prompts/pr-tr-s4-attention-worklist-HOLD.md`
+
+> **TR_SCOPE_CRM re-scope (2026-09-01) — RETIRED:** CRM-S8 (`3985d74f`, PR #1447) shipped
+> `TendersRegisterPage` V2 with a Follow-ups tab that IS this worklist — same list, amber
+> toggles on, On track off; overdue/due-soon chips on Next action; per-row Log-action modal;
+> saved views. Building `TendersAttentionWorklist.tsx` on the Tendering page would ship a
+> second screen that does the same job on a different surface (Tendering vs CRM) against a
+> different data source (`TenderEntry` vs `CommTask`).
+>
+> **Do NOT build TR-4.** The prompt file is left on disk with a SUPERSEDED-BY header so the
+> history is intact. If a gap in the Follow-ups tab surfaces later (e.g. a snooze action that
+> S8 does not yet cover), open a targeted CRM slice against S8, not against this file.
 
 **What it builds:**
 
@@ -181,16 +283,27 @@ unit/vitest test, minor type additions to tendering-page-helpers or api types if
 
 ## 5. Slice dependency chain
 
+**Post-`TR_SCOPE_CRM` chain (governs):**
+
 ```
-TR-0 (this plan PR)
-  └─ TR-1: reminder-policy.service.ts + TenderReminderPolicy/TenderReminderLog schema
-       └─ TR-2: tender-reminder.service.ts (cron)
-            └─ TR-3: tender-reminder-escalation.service.ts
-                 └─ TR-4: TendersAttentionWorklist.tsx (UI)
+CRM-S12 (this re-scope PR)
+  └─ TR-1 (CRM): reminders/reminder-policy.service.ts + TenderReminderPolicy/TenderReminderLog (polymorphic)
+       └─ TR-2 (CRM): reminders/comms-reminder.service.ts (cron scans CommTask + Tender)
+            └─ TR-3 (CRM): reminders/comms-reminder-escalation.service.ts
+                 └─ (TR-4 retired — CRM-S8's Follow-ups tab is the worklist)
 ```
 
 Each slice is gated on its predecessor's primary artifact being on `origin/main` via
-`requires_file_on_main`.
+`requires_on_main`.
+
+**Historical chain (superseded — kept for context):**
+
+```
+TR-0 → TR-1 (tendering/reminder-policy.service.ts)
+     → TR-2 (tendering/tender-reminder.service.ts)
+     → TR-3 (tendering/tender-reminder-escalation.service.ts)
+     → TR-4 (web/tendering/TendersAttentionWorklist.tsx)
+```
 
 ---
 
@@ -208,7 +321,18 @@ Each slice is gated on its predecessor's primary artifact being on `origin/main`
 
 ## 7. File path summary for cross-slice references
 
-| Slice | Primary artifact (used as `requires_file_on_main` by next slice) |
+**Post-`TR_SCOPE_CRM` paths (govern):**
+
+| Slice | Primary artifact (used as `requires_on_main` by next slice) |
+|---|---|
+| TR-1 | `apps/api/src/modules/crm/reminders/reminder-policy.service.ts` |
+| TR-2 | `apps/api/src/modules/crm/reminders/comms-reminder.service.ts` |
+| TR-3 | `apps/api/src/modules/crm/reminders/comms-reminder-escalation.service.ts` |
+| TR-4 | RETIRED — CRM-S8's Follow-ups tab is the worklist (`apps/web/src/pages/crm/TendersRegisterPage.tsx :: FOLLOWUPS_DEFAULT_TOGGLES`) |
+
+**Historical paths (superseded):**
+
+| Slice | Original artifact (do NOT build) |
 |---|---|
 | TR-1 | `apps/api/src/modules/tendering/reminder-policy.service.ts` |
 | TR-2 | `apps/api/src/modules/tendering/tender-reminder.service.ts` |

@@ -1,28 +1,45 @@
 ---
-premise: '! test -f apps/web/src/pages/tendering/TendersAttentionWorklist.tsx'
-premise_means: No "needs attention" worklist UI exists on the Tenders page — estimators have no consolidated urgency-sorted surface for dismissing, snoozing, or actioning tender reminders.
-scope:
-  - apps/web/src/pages/tendering/TendersAttentionWorklist.tsx
-  - apps/web/src/pages/tendering/useTendersAttention.ts
-  - apps/web/src/pages/tendering/TenderingPage.tsx
-  - apps/web/src/pages/tendering-page-helpers.ts
-  - apps/web/src/pages/tendering/__tests__/TendersAttentionWorklist.test.tsx
-  - apps/api/src/modules/tendering/tendering.controller.ts
-done_when: pnpm build && pnpm lint && test -f apps/web/src/pages/tendering/TendersAttentionWorklist.tsx && grep -q "useTendersAttention" apps/web/src/pages/tendering/TendersAttentionWorklist.tsx
-size: 6
+premise: '! grep -q "FOLLOWUPS_DEFAULT_TOGGLES" apps/web/src/pages/crm/tendersRegisterPage.helpers.ts'
+premise_means: TR-4 is SUPERSEDED by CRM-S8. This premise is stale-by-design — the Follow-ups tab (marker FOLLOWUPS_DEFAULT_TOGGLES) is on main, so the premise fails and the linter bins any attempt to arm this. Building TR-4 would ship a second screen that does the same job on the wrong surface, against a store (TenderEntry) the CRM does not read.
+scope: []
+done_when: 'true'
+size: 0
 gate_allow: none
 seed_only: false
 escalates: false
-requires_file_on_main: apps/api/src/modules/tendering/tender-reminder-escalation.service.ts
+superseded_by: 'apps/web/src/pages/crm/TendersRegisterPage.tsx :: FOLLOWUPS_DEFAULT_TOGGLES (CRM-S8, PR #1447, merged 2026-08-31)'
 ---
 
-# TR-4: "Needs attention" worklist UI on the Tenders page
+<!-- SUPERSEDED-BY-CRM-S8 (2026-09-01): TR_SCOPE_CRM re-scope retired this slice in-place. -->
+<!-- The Follow-ups tab in TendersRegisterPage.tsx already delivers: -->
+<!--   * same list as the Register, amber toggles on / On track off (decision 6) -->
+<!--   * overdue / due-soon chips on Next action -->
+<!--   * per-row Log-action modal (writes CommThread + CommMessage + CommTask atomically) -->
+<!--   * saved views persisted to localStorage -->
+<!-- Building TendersAttentionWorklist.tsx on the Tendering page would ship a second screen -->
+<!-- that does the same job on the wrong surface, against a store (TenderEntry) the CRM does -->
+<!-- not read. If a gap surfaces in the S8 Follow-ups tab, open a new CRM slice against S8. -->
 
-**Binding plan:** `docs/plans/tender-reminders-plan.md` (read sections 2, 4, and 7 in full before
-starting). This is the fourth and final slice of the tender reminders cluster.
+# TR-4: RETIRED — superseded by CRM-S8 Follow-ups tab
 
-**Gate:** TR-3 (manager escalation) must be on main. Verify that
-`apps/api/src/modules/tendering/tender-reminder-escalation.service.ts` exists before starting.
+**This prompt is left on disk for history. It must NOT be armed.** If the pipeline tries to
+arm it, the premise (`grep -q "FOLLOWUPS_DEFAULT_TOGGLES" apps/web/src/pages/crm/tendersRegisterPage.helpers.ts`)
+returns success on any current main and the linter should refuse the arm.
+
+**Binding plan:** `docs/plans/tender-reminders-plan.md` — see §0 `TR_SCOPE_CRM` and §4 TR-4
+note for the retirement rationale.
+
+**Superseded by:** CRM-S8 (`3985d74f`, PR #1447 — merged 2026-08-31). See
+`apps/web/src/pages/crm/TendersRegisterPage.tsx` and
+`apps/web/src/pages/crm/tendersRegisterPage.helpers.ts` (`FOLLOWUPS_DEFAULT_TOGGLES`,
+`sortCrmRow`, chip logic).
+
+---
+
+## Historical body (do NOT execute)
+
+The original TR-4 spec follows for context. Do NOT build it. See §0 of the plan for the
+re-scope decision and the CRM-S8 replacement.
 
 ## Context — grounded against origin/main (REUSE — do NOT rebuild)
 

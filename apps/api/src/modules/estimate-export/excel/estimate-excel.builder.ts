@@ -127,9 +127,19 @@ export async function buildEstimateExcel(
     rowIdx += 1;
   }
 
-  // Provisional / Other row — shown as its own block below the main total.
-  const prv = payload.summary.Other;
-  const hasProv = prv && (prv.itemCount > 0 || prv.subtotal > 0);
+  // Provisional / Other block — shown below TOTAL (ex-GST).
+  // scope-subcontracted order 3: aggregate provisionalWithMarkup across ALL
+  // disciplines (not just Other). An Other-discipline row with isProvisional=false
+  // is still provisional (the discipline rule is additive, not replaced).
+  // The total we print is the sum of all per-discipline provisionalWithMarkup
+  // values exposed via payload.summary.provisionalTotal.
+  const provisionalTotal = payload.summary.provisionalTotal ?? 0;
+  // Provisional item count: sum itemCount for Other + count of isProvisional
+  // items in other disciplines. The payload does not yet carry a per-disc
+  // provisional item count, so use the Other itemCount as a proxy for the
+  // label. The hasProv gate uses the dollar figure because that is what the
+  // user cares about.
+  const hasProv = provisionalTotal > 0;
 
   const total = summary.getRow(rowIdx);
   total.getCell(1).value = "TOTAL (ex-GST)";
@@ -144,10 +154,12 @@ export async function buildEstimateExcel(
   if (hasProv) {
     rowIdx += 1;
     const prvRow = summary.getRow(rowIdx);
-    prvRow.getCell(1).value = "Other";
-    prvRow.getCell(2).value = "Other (Provisional Sums, Options, Adjustments)";
-    prvRow.getCell(3).value = prv.itemCount;
-    prvRow.getCell(4).value = prv.subtotal;
+    prvRow.getCell(1).value = "Provisional / Other";
+    prvRow.getCell(2).value = "Provisional sums, options, adjustments (not in tender price)";
+    // Item count cell intentionally left blank — the provisional block can
+    // span multiple disciplines and a single count would be misleading.
+    prvRow.getCell(3).value = null;
+    prvRow.getCell(4).value = provisionalTotal;
     prvRow.getCell(4).numFmt = CURRENCY_FMT;
     prvRow.eachCell({ includeEmpty: false }, (cell) => {
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORANGE_ARGB } };

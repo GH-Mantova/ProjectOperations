@@ -294,3 +294,30 @@ inside its own run's PR, which is the preferred of the two correct homes.
 **Breadcrumb validator:** run in the PR's own `pipeline-tests` job — `check-breadcrumb.mjs` reported
 `CLEAN`, exit 0, on the three breadcrumbs already present at 00:2xZ. This one is validated by CI on
 this PR, not by me quoting a pre-run result.
+
+---
+
+### ADDENDUM 2026-09-01T00:19Z — the board grew by one while this breadcrumb was being written
+
+**"Four open PRs" above decayed inside this run.** [MEASURED] at 00:19:36Z the open board is **six**:
+#1443, #1457, #1463, #1464, **#1466 (new)**, and #1467 (this PR).
+
+**#1466** was created at **00:16:55Z** — during this run, minutes after #1464's 00:03Z push. It
+touches exactly one file, `scripts/pipeline/status-sweep.ps1`, which is outside `^(tests|docs)/`, so
+by `classifyPolicyFiles`' own rule it is **`[NO LANE VERDICT — hand-classified]` ⇒ MARCO'S**.
+So the count changes and the conclusion does not: **every open PR except this one is Marco's, and
+the queue grew again while a station watched.** That is F3's escalation restated with a fresh
+data point, not a new finding.
+
+⚠️ **Two instrument notes from the same minute, both §9.5:**
+
+1. `Get-ChildItem -Filter *-ready.md` returned **1**, which reads as *"someone armed a prompt during
+   this run."* It is `rev-1466-ready.md` — an **auto-generated REVIEW JOB, not a prompt**. **Real
+   armed count is still 0.** Anyone quoting a raw `-ready.md` count as "armed" will file a false
+   arming report; exclude `rev-*`.
+2. `git worktree list` shows only the dev tree, while `status-sweep.ps1` reports
+   `C:/po-worktrees/trunk-verdict` as a LIVE STATION WORKTREE. Both are correct: the registry cannot
+   enumerate its own escapees. Do not resolve that disagreement by trusting the registry.
+
+**DISPOSITION: ACTIONED** — recorded here so the next run does not re-derive a board count this run
+already watched go stale.

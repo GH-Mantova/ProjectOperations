@@ -6,6 +6,12 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
 import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
 
+// SCOPE_WBS_TABLE_V1 — slice 2 of scope-card-redesign. Replaces the
+// loose-field card stack with a table whose identity columns (WBS,
+// Description, Markup, Item total) span all rows of a multi-row item.
+// Manpower and plant keep their current inputs in the spanning middle
+// cell. Measurement fields stay in place until slice 5 moves them.
+
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
@@ -175,11 +181,94 @@ function fmtCurrency(n: number): string {
   }).format(n);
 }
 
+// ── Table layout helpers ─────────────────────────────────────────────────
+// SCOPE_WBS_TABLE_V1 — AutoFit layout rule from the mock-up.
+// "AutoFit to contents" then "AutoFit to window": every column shrinks
+// to its content, the description column takes the slack.
+const subtblStyle: CSSProperties = {
+  width: "100%",
+  tableLayout: "auto",
+  borderCollapse: "collapse",
+  fontSize: 13
+};
+
+// Fit cells shrink to content; description cells expand (no fit class).
+const fitCellStyle: CSSProperties = {
+  width: "1%",
+  whiteSpace: "nowrap",
+  padding: "6px 8px",
+  verticalAlign: "top"
+};
+
+const descCellStyle: CSSProperties = {
+  padding: "6px 8px",
+  verticalAlign: "top"
+};
+
+const thStyle: CSSProperties = {
+  ...fitCellStyle,
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: "var(--text-muted, #6b7280)",
+  borderBottom: "1px solid var(--border-default, #e5e7eb)",
+  textAlign: "left"
+};
+
+const thDescStyle: CSSProperties = {
+  ...descCellStyle,
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  color: "var(--text-muted, #6b7280)",
+  borderBottom: "1px solid var(--border-default, #e5e7eb)",
+  textAlign: "left"
+};
+
+const tdBorderStyle: CSSProperties = {
+  borderBottom: "1px solid var(--border-default, #e5e7eb)"
+};
+
+// ── Exported pure helpers (tested by wbs-table-shell.test.tsx) ───────────
+
+/** True when an item with rowCount rows should show the per-row remove button. */
+export function shouldShowPerRowRemove(rowCount: number): boolean {
+  return rowCount > 1;
+}
+
+/** True when a markup value differs from the card default (override active). */
+export function isMarkupOverridden(
+  localMarkup: number | null,
+  cardMarkup: number
+): boolean {
+  return localMarkup !== null && localMarkup !== cardMarkup;
+}
+
+/** Compute the effective markup for display: local override or card default. */
+export function effectiveMarkup(
+  localMarkup: number | null,
+  cardMarkup: number
+): number {
+  return localMarkup !== null ? localMarkup : cardMarkup;
+}
+
+// ── Component state types ────────────────────────────────────────────────
+
+/** Per-item row count (slice 2 shell: stored in local state). */
+type ItemRowCounts = Map<string, number>;
+
+/** Per-item local markup override (null = inheriting card default). */
+type ItemMarkupOverrides = Map<string, number | null>;
+
 type Props = {
   tenderId: string;
   cardId: string;
   discipline: Discipline;
   items: ScopeItem[];
+  /** Effective card-level markup percent (used as the inherited default). */
+  cardMarkup?: number;
   onItemsChanged: () => Promise<void> | void;
 };
 
@@ -188,6 +277,7 @@ export function ScopeQuantitiesTable({
   cardId,
   discipline: _discipline,
   items,
+  cardMarkup = 0,
   onItemsChanged
 }: Props) {
   const { authFetch } = useAuth();
@@ -198,9 +288,58 @@ export function ScopeQuantitiesTable({
   const [plantRates, setPlantRates] = useState<PlantRate[]>([]);
   const [wasteRates, setWasteRates] = useState<WasteRate[]>([]);
   const [materialDensities, setMaterialDensities] = useState<MaterialDensityRate[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // Items created in the current session — auto-expand them on first render.
-  const autoExpandedRef = useRef<Set<string>>(new Set());
+
+  // SCOPE_WBS_TABLE_V1 — per-item row counts (slice 2: local state only;
+  // slices 3/4 will bind each row to an actual manpower/plant record).
+  // Initialised to 1 for every item. When items changes (add/delete),
+  // merge: preserve existing counts for surviving items, seed new ones at 1.
+  const [itemRowCounts, setItemRowCounts] = useState<ItemRowCounts>(new Map());
+
+  // SCOPE_WBS_TABLE_V1 — per-item markup override (null = inherit card).
+  const [itemMarkupOverrides, setItemMarkupOverrides] = useState<ItemMarkupOverrides>(new Map());
+
+  // Sync row counts when items list changes.
+  useEffect(() => {
+    setItemRowCounts((prev) => {
+      const next = new Map<string, number>();
+      for (const item of items) {
+        next.set(item.id, prev.get(item.id) ?? 1);
+      }
+      return next;
+    });
+    setItemMarkupOverrides((prev) => {
+      const next = new Map<string, number | null>();
+      for (const item of items) {
+        if (prev.has(item.id)) next.set(item.id, prev.get(item.id) ?? null);
+      }
+      return next;
+    });
+  }, [items]);
+
+  const addRowToItem = useCallback((itemId: string) => {
+    setItemRowCounts((prev) => {
+      const next = new Map(prev);
+      next.set(itemId, (prev.get(itemId) ?? 1) + 1);
+      return next;
+    });
+  }, []);
+
+  const removeRowFromItem = useCallback((itemId: string) => {
+    setItemRowCounts((prev) => {
+      const next = new Map(prev);
+      const current = prev.get(itemId) ?? 1;
+      if (current > 1) next.set(itemId, current - 1);
+      return next;
+    });
+  }, []);
+
+  const setItemMarkup = useCallback((itemId: string, value: number | null) => {
+    setItemMarkupOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(itemId, value);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,7 +372,7 @@ export function ScopeQuantitiesTable({
     };
   }, [authFetch]);
 
-  // Distinct waste groups + group → items lookup.
+  // Distinct waste groups + group -> items lookup.
   const wasteGroupOptions = useMemo<TooltipSelectOption<string>[]>(
     () =>
       Array.from(new Set(wasteRates.map((w) => w.wasteGroup).filter((g): g is string => !!g)))
@@ -263,9 +402,7 @@ export function ScopeQuantitiesTable({
     [materialDensities]
   );
 
-  // Map materialName → density/unit/kind + default waste for quick lookup
-  // on select. The defaults let the scope card auto-fill wasteGroup/
-  // wasteItem so the per-row pickers can be hidden when a mapping exists.
+  // Map materialName -> density/unit/kind + default waste for quick lookup.
   const materialDensityMap = useMemo(() => {
     const map = new Map<string, MaterialLookup>();
     for (const d of materialDensities) {
@@ -345,6 +482,7 @@ export function ScopeQuantitiesTable({
     }
   };
 
+  // SCOPE_WBS_TABLE_V1 — "+ Add WBS item" replaces the old "+ Add row".
   const addItem = async () => {
     // PR B1.7 — new CreateScopeItemInCardDto accepts an empty body.
     // Server derives discipline from the parent card and defaults
@@ -358,22 +496,12 @@ export function ScopeQuantitiesTable({
       setError(await readApiErrorMessage(response));
       return;
     }
-    // Best-effort grab of the new id so we can auto-expand it on next render.
-    try {
-      const created = (await response.json()) as { id?: string } | null;
-      if (created?.id) autoExpandedRef.current.add(created.id);
-    } catch {
-      // Ignore body-parse failure — auto-expand is a nice-to-have.
-    }
     await onItemsChanged();
   };
 
   const visible = useMemo(() => items.filter((i) => i.status !== "excluded"), [items]);
   const excluded = useMemo(() => items.filter((i) => i.status === "excluded"), [items]);
-  // PR B2 — footer self-sums from the per-row totals (already attached
-  // by the items API in B1.7.1). Each card now manages its own subtotal
-  // independently of the whole-discipline /scope/summary aggregate, so
-  // per-card markup overrides reflect immediately and accurately.
+  // PR B2 — footer self-sums from the per-row totals.
   const subtotal = useMemo(
     () => visible.reduce((sum, i) => sum + (i.lineTotal != null ? Number(i.lineTotal) : 0), 0),
     [visible]
@@ -390,29 +518,6 @@ export function ScopeQuantitiesTable({
     () => [...visible].sort((a, b) => a.itemNumber - b.itemNumber || a.sortOrder - b.sortOrder),
     [visible]
   );
-
-  // Apply auto-expand on next render after addItem.
-  useEffect(() => {
-    if (autoExpandedRef.current.size === 0) return;
-    const next = new Set(expandedIds);
-    let changed = false;
-    for (const id of autoExpandedRef.current) {
-      if (visible.some((i) => i.id === id) && !next.has(id)) {
-        next.add(id);
-        changed = true;
-      }
-    }
-    if (changed) setExpandedIds(next);
-  }, [visible, expandedIds]);
-
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   return (
     <section className="s7-card" style={{ padding: 16 }}>
@@ -434,60 +539,344 @@ export function ScopeQuantitiesTable({
             onClick={() => setError(null)}
             style={{ marginLeft: 8, background: "transparent", border: "none", cursor: "pointer", color: "inherit" }}
           >
-            ✕
+            x
           </button>
         </div>
       ) : null}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {wbsSortedVisible.length === 0 ? (
-          <div
-            style={{
-              padding: 32,
-              textAlign: "center",
-              color: "var(--text-muted)",
-              border: "1px dashed var(--border-default, #e5e7eb)",
-              borderRadius: 8
-            }}
-          >
-            No items yet. Click <strong>+ Add row</strong> below to start.
-          </div>
-        ) : (
-          wbsSortedVisible.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              expanded={expandedIds.has(item.id)}
-              onToggle={() => toggleExpanded(item.id)}
-              plantOptions={plantOptions}
-              plantRates={plantRates}
-              wasteGroupOptions={wasteGroupOptions}
-              wasteItemsByGroup={wasteItemsByGroup}
-              materialOptions={materialOptions}
-              materialDensityMap={materialDensityMap}
-              isPending={pendingIds.has(item.id)}
-              onPatch={(body) => void patchItem(item.id, body)}
-              onConfirm={() => void confirmItem(item.id)}
-              onExclude={() => void excludeItem(item.id)}
-              onDelete={() => deleteItem(item)}
-            />
-          ))
-        )}
-
-        <button
-          type="button"
-          className="s7-btn s7-btn--ghost s7-btn--sm"
-          onClick={() => void addItem()}
+      {wbsSortedVisible.length === 0 ? (
+        <div
           style={{
-            width: "100%",
-            textAlign: "left",
-            padding: "10px 12px",
-            border: "1px dashed var(--border-default, #e5e7eb)"
+            padding: 32,
+            textAlign: "center",
+            color: "var(--text-muted)",
+            border: "1px dashed var(--border-default, #e5e7eb)",
+            borderRadius: 8,
+            marginBottom: 10
           }}
         >
-          + Add row
-        </button>
-      </div>
+          No items yet. Click <strong>+ Add WBS item</strong> below to start.
+        </div>
+      ) : (
+        /* SCOPE_WBS_TABLE_V1 — AutoFit table (Word "AutoFit to contents"
+           then "AutoFit to window"): table-layout:auto, fit columns use
+           width:1%+nowrap so they shrink to content; description has no
+           width constraint so it takes all slack. */
+        <table style={subtblStyle} aria-label="WBS items">
+          <colgroup>
+            {/* Remove slot — always reserved so money column keeps one right edge */}
+            <col />
+            {/* WBS code */}
+            <col />
+            {/* Description — expands */}
+            <col style={{ width: "100%" }} />
+            {/* Manpower + Plant spanning cell */}
+            <col />
+            {/* Markup */}
+            <col />
+            {/* Item total */}
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              {/* Remove slot header — empty, always reserved */}
+              <th style={thStyle} aria-label="Remove" />
+              <th style={thStyle}>WBS</th>
+              <th style={thDescStyle}>Description</th>
+              <th style={{ ...thStyle, textAlign: "center" }}>
+                <span>Manpower</span>
+                {/* Plant header is co-located; slice 4 will split these */}
+                <span style={{ marginLeft: 16 }}>Plant</span>
+              </th>
+              <th style={thStyle}>Markup</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Item total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {wbsSortedVisible.map((item) => {
+              const rowCount = itemRowCounts.get(item.id) ?? 1;
+              const localMarkup = itemMarkupOverrides.get(item.id) ?? null;
+              const overridden = isMarkupOverridden(localMarkup, cardMarkup);
+              const displayMarkup = effectiveMarkup(localMarkup, cardMarkup);
+              const isAi = item.aiProposed && item.status !== "confirmed";
+              const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
+              const isPending = pendingIds.has(item.id);
+
+              // Render rowCount <tr> elements; identity columns span all.
+              return Array.from({ length: rowCount }, (_, rowIdx) => {
+                const isFirstRow = rowIdx === 0;
+                const rowKey = `${item.id}-row-${rowIdx}`;
+                const showPerRowRemove = shouldShowPerRowRemove(rowCount);
+
+                // Last row of the item gets a bottom border to visually
+                // separate items.
+                const isLastRow = rowIdx === rowCount - 1;
+                const rowStyle: CSSProperties = isLastRow
+                  ? { borderBottom: "2px solid var(--border-default, #e5e7eb)" }
+                  : {};
+
+                return (
+                  <tr key={rowKey} style={rowStyle}>
+                    {/* ── Remove slot (always reserved) ─────────────────── */}
+                    <td style={{ ...fitCellStyle, ...tdBorderStyle, verticalAlign: "middle" }}>
+                      {showPerRowRemove ? (
+                        <button
+                          type="button"
+                          aria-label={`Remove row ${rowIdx + 1} from ${item.wbsCode}`}
+                          title="Remove this row"
+                          onClick={() => removeRowFromItem(item.id)}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 999,
+                            border: "1px solid var(--border-default, #e5e7eb)",
+                            background: "transparent",
+                            color: "var(--status-danger, #EF4444)",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            lineHeight: 1,
+                            padding: 0
+                          }}
+                        >
+                          x
+                        </button>
+                      ) : (
+                        /* Always reserve the slot so money column keeps one right edge */
+                        <span style={{ display: "inline-block", width: 18 }} />
+                      )}
+                    </td>
+
+                    {/* ── WBS cell — rowspan across all item rows ──────── */}
+                    {isFirstRow ? (
+                      <td
+                        rowSpan={rowCount}
+                        style={{
+                          ...fitCellStyle,
+                          ...tdBorderStyle,
+                          verticalAlign: "top",
+                          fontFamily: "ui-monospace, monospace",
+                          fontSize: 12,
+                          color: "#005B61",
+                          fontWeight: 500
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                          {isAi ? (
+                            <span
+                              style={{
+                                fontSize: 9,
+                                padding: "1px 5px",
+                                background: "#FEAA6D",
+                                color: "#fff",
+                                borderRadius: 999,
+                                fontWeight: 700
+                              }}
+                            >
+                              AI
+                            </span>
+                          ) : null}
+                          <span title={item.wbsCode}>{item.wbsCode}</span>
+                          {confidence ? (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: "2px 6px",
+                                background: confidence.bg,
+                                color: confidence.fg,
+                                borderRadius: 999,
+                                whiteSpace: "nowrap"
+                              }}
+                            >
+                              {confidence.label}
+                            </span>
+                          ) : null}
+                          {/* Per-item remove button on the WBS cell */}
+                          {isAi ? (
+                            <div style={{ display: "inline-flex", gap: 4, marginTop: 2 }}>
+                              <button
+                                type="button"
+                                className="s7-btn s7-btn--primary s7-btn--sm"
+                                onClick={() => void confirmItem(item.id)}
+                                title="Confirm into estimate"
+                              >
+                                ok
+                              </button>
+                              <button
+                                type="button"
+                                className="s7-btn s7-btn--ghost s7-btn--sm"
+                                onClick={() => void excludeItem(item.id)}
+                                style={{ color: "var(--status-danger, #EF4444)" }}
+                                title="Exclude"
+                              >
+                                x
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="s7-btn s7-btn--ghost s7-btn--sm"
+                              onClick={() => void deleteItem(item)}
+                              aria-label={`Remove item ${item.wbsCode}`}
+                              title="Remove WBS item"
+                              style={{ color: "var(--status-danger, #EF4444)", fontSize: 11, padding: "2px 4px" }}
+                            >
+                              Remove
+                            </button>
+                          )}
+                          {/* Add row to this item */}
+                          {!isAi ? (
+                            <button
+                              type="button"
+                              className="s7-btn s7-btn--ghost s7-btn--sm"
+                              onClick={() => addRowToItem(item.id)}
+                              title="Add a manpower/plant row to this item"
+                              style={{ fontSize: 10, padding: "2px 4px" }}
+                            >
+                              + Row
+                            </button>
+                          ) : null}
+                          {isPending ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>...</span> : null}
+                        </div>
+                      </td>
+                    ) : null}
+
+                    {/* ── Description cell — rowspan, free-text input ──── */}
+                    {isFirstRow ? (
+                      <td rowSpan={rowCount} style={{ ...descCellStyle, ...tdBorderStyle }}>
+                        <input
+                          className="s7-input"
+                          defaultValue={item.description}
+                          disabled={isAi}
+                          placeholder="Description"
+                          onBlur={(e) => {
+                            const v = e.target.value;
+                            if (v !== item.description) void patchItem(item.id, { description: v });
+                          }}
+                          style={{ width: "100%", minWidth: 160 }}
+                          aria-label={`Description for ${item.wbsCode}`}
+                        />
+                        {/* Notes are co-located with description in the table layout */}
+                        <div style={{ marginTop: 6 }}>
+                          <NotesField
+                            value={item.notes}
+                            onSave={(v) => void patchItem(item.id, { notes: v })}
+                            disabled={isAi}
+                            placeholder="Notes for this item..."
+                          />
+                        </div>
+                      </td>
+                    ) : null}
+
+                    {/* ── Manpower + Plant spanning cell (per-row) ──────── */}
+                    <td style={{ ...fitCellStyle, ...tdBorderStyle }}>
+                      <ItemManpowerPlantCell
+                        item={item}
+                        rowIdx={rowIdx}
+                        plantOptions={plantOptions}
+                        plantRates={plantRates}
+                        wasteGroupOptions={wasteGroupOptions}
+                        wasteItemsByGroup={wasteItemsByGroup}
+                        materialOptions={materialOptions}
+                        materialDensityMap={materialDensityMap}
+                        isAi={isAi}
+                        onPatch={(body) => void patchItem(item.id, body)}
+                      />
+                    </td>
+
+                    {/* ── Markup cell — rowspan ─────────────────────────── */}
+                    {isFirstRow ? (
+                      <td rowSpan={rowCount} style={{ ...fitCellStyle, ...tdBorderStyle }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span className="s7-type-label" style={labelStyle}>
+                            Markup %
+                          </span>
+                          <OverrideField
+                            isOverridden={overridden}
+                            onRevert={() => setItemMarkup(item.id, null)}
+                            affordance
+                          >
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step="0.01"
+                              value={localMarkup !== null ? localMarkup : ""}
+                              placeholder={String(cardMarkup)}
+                              className="s7-input"
+                              style={{ width: 64, padding: "2px 6px" }}
+                              aria-label={`Markup for ${item.wbsCode}`}
+                              title={
+                                overridden
+                                  ? "Item markup override active"
+                                  : `Inheriting card markup (${cardMarkup}%)`
+                              }
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                  setItemMarkup(item.id, null);
+                                } else {
+                                  const n = Number(raw);
+                                  if (Number.isFinite(n)) setItemMarkup(item.id, n);
+                                }
+                              }}
+                            />
+                          </OverrideField>
+                          {overridden ? (
+                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                              Card: {cardMarkup}%
+                            </span>
+                          ) : null}
+                          <span
+                            style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}
+                            title="Effective markup percent for this item"
+                          >
+                            {displayMarkup}%
+                          </span>
+                        </div>
+                      </td>
+                    ) : null}
+
+                    {/* ── Item total cell — rowspan ─────────────────────── */}
+                    {isFirstRow ? (
+                      <td
+                        rowSpan={rowCount}
+                        style={{
+                          ...fitCellStyle,
+                          ...tdBorderStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                          color: "var(--text)"
+                        }}
+                        title="Line total (with markup)"
+                      >
+                        {item.lineTotalWithMarkup == null
+                          ? "—"
+                          : fmtCurrency(Number(item.lineTotalWithMarkup))}
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              });
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {/* SCOPE_WBS_TABLE_V1 — "+ Add WBS item" below the table */}
+      <button
+        type="button"
+        className="s7-btn s7-btn--ghost s7-btn--sm"
+        onClick={() => void addItem()}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          padding: "10px 12px",
+          border: "1px dashed var(--border-default, #e5e7eb)",
+          marginTop: 8
+        }}
+      >
+        + Add WBS item
+      </button>
 
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: 16 }}>
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
@@ -534,48 +923,99 @@ export function ScopeQuantitiesTable({
   );
 }
 
-// ── ItemCard ────────────────────────────────────────────────────────────
+// ── ItemManpowerPlantCell ────────────────────────────────────────────────
+// SCOPE_WBS_TABLE_V1: The manpower + plant inputs rendered inside the
+// per-row spanning cell. In this slice they keep their current inputs
+// exactly (men, days, plant clusters, measurement fields). Slices 3 & 4
+// will wire each row to a dedicated manpower/plant record.
 
-type ItemCardProps = {
+type ManpowerPlantCellProps = {
   item: ScopeItem;
-  expanded: boolean;
-  onToggle: () => void;
+  rowIdx: number;
   plantOptions: TooltipSelectOption<string>[];
   plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
   materialDensityMap: Map<string, MaterialLookup>;
-  isPending: boolean;
+  isAi: boolean;
   onPatch: (body: Record<string, unknown>) => void;
-  onConfirm: () => void;
-  onExclude: () => void;
-  onDelete: () => void;
 };
 
-function ItemCard({
+function ItemManpowerPlantCell({
   item,
-  expanded,
-  onToggle,
+  rowIdx,
   plantOptions,
   plantRates,
   wasteGroupOptions,
   wasteItemsByGroup,
   materialOptions,
   materialDensityMap,
-  isPending,
-  onPatch,
-  onConfirm,
-  onExclude,
-  onDelete
-}: ItemCardProps) {
-  // PR feat/scope-each-factor — active kind for row 1. Sourced from
-  // persisted materialKind (set when material is selected); defaults to
-  // VOLUME so existing rows behave identically.
+  isAi,
+  onPatch
+}: ManpowerPlantCellProps) {
+  // Only the first row renders the full manpower/plant/measurement block.
+  // Additional rows (rowIdx > 0) will be wired to individual records in
+  // slices 3 & 4. For now, placeholder so the table stays coherent.
+  if (rowIdx > 0) {
+    return (
+      <div
+        style={{
+          fontSize: 12,
+          color: "var(--text-muted)",
+          padding: "4px 0",
+          whiteSpace: "nowrap"
+        }}
+      >
+        Row {rowIdx + 1} — Manpower/plant (slice 3/4)
+      </div>
+    );
+  }
+
+  return (
+    <ItemBodyInputs
+      item={item}
+      plantOptions={plantOptions}
+      plantRates={plantRates}
+      wasteGroupOptions={wasteGroupOptions}
+      wasteItemsByGroup={wasteItemsByGroup}
+      materialOptions={materialOptions}
+      materialDensityMap={materialDensityMap}
+      isAi={isAi}
+      onPatch={onPatch}
+    />
+  );
+}
+
+// ── ItemBodyInputs ───────────────────────────────────────────────────────
+// The full manpower + plant + measurement block for a scope item's first
+// row. Extracted from the old ItemCard to keep the table cell lean.
+
+type ItemBodyInputsProps = {
+  item: ScopeItem;
+  plantOptions: TooltipSelectOption<string>[];
+  plantRates: PlantRate[];
+  wasteGroupOptions: TooltipSelectOption<string>[];
+  wasteItemsByGroup: Map<string, string[]>;
+  materialOptions: TooltipSelectOption<string>[];
+  materialDensityMap: Map<string, MaterialLookup>;
+  isAi: boolean;
+  onPatch: (body: Record<string, unknown>) => void;
+};
+
+function ItemBodyInputs({
+  item,
+  plantOptions,
+  plantRates,
+  wasteGroupOptions,
+  wasteItemsByGroup,
+  materialOptions,
+  materialDensityMap,
+  isAi,
+  onPatch
+}: ItemBodyInputsProps) {
+  // PR feat/scope-each-factor — active kind for row 1.
   const row1Kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (item.materialKind as "VOLUME" | "AREA" | "EACH" | "FACTOR") ?? "VOLUME";
-  const isAi = item.aiProposed && item.status !== "confirmed";
-  const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
-  const baseBg = isAi ? "#FEF3C7" : "var(--surface-card, #fff)";
 
   const updatePlant = (columnIndex: number, patch: Partial<ScopePlantEntry> | null) => {
     const current = Array.isArray(item.plantItems) ? item.plantItems : [];
@@ -606,10 +1046,6 @@ function ItemCard({
     onPatch({ plantItems: next });
   };
 
-  // PR feat/scope-multi-material — CRUD helpers for the rows-2..N
-  // material array. addMaterial appends an empty entry; updateMaterial
-  // patches by index; removeMaterial drops by index. Backend is an
-  // identity pass-through so the array we ship is exactly what persists.
   const itemMaterialEntries: ScopeMaterialEntry[] = Array.isArray(item.materials)
     ? item.materials
     : [];
@@ -632,12 +1068,6 @@ function ItemCard({
     ? (wasteItemsByGroup.get(item.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
     : [];
 
-  // PR feat/scope-material-waste-autofill — true when the row's selected
-  // material carries a default (wasteGroup, wasteItem) mapping. When
-  // true, the pickers are hidden and a read-only summary is shown;
-  // when false, the pickers stay visible (fallback) with an amber
-  // "no default mapping" hint so nothing silently drops from waste
-  // aggregation.
   const row1MaterialLookup = item.materialType ? materialDensityMap.get(item.materialType) : undefined;
   const row1WasteAutofilled =
     !!row1MaterialLookup?.defaultWasteGroup &&
@@ -645,9 +1075,7 @@ function ItemCard({
     item.wasteGroup === row1MaterialLookup.defaultWasteGroup &&
     item.wasteItem === row1MaterialLookup.defaultWasteItem;
 
-  // PR B4a / B4a.5 — controlled state for the 7 dimension fields.
-  // Held as strings so we can distinguish "" (no value) from "0".
-  // Synced from props whenever the upstream `item` changes.
+  // PR B4a.5 — controlled state for the 7 dimension fields.
   type DimKey = "length" | "height" | "depth" | "sqm" | "m3" | "density" | "tonnes";
   const initDim = (v: string | null) => (v == null ? "" : String(v));
   const [dims, setDims] = useState({
@@ -659,14 +1087,10 @@ function ItemCard({
     density: initDim(item.density),
     tonnes: initDim(item.tonnes)
   });
-  // Track which derived fields hold an explicit override (saved value
-  // differs from what auto-derive would produce from raw inputs alone).
   const [dirty, setDirty] = useState({ sqm: false, m3: false, tonnes: false });
-  // PR feat/scope-each-factor — local state for row-1 EACH/FACTOR scalars.
   const [row1Quantity, setRow1Quantity] = useState(initDim(item.quantity ?? null));
   const [row1Factor, setRow1Factor] = useState(initDim(item.factor ?? null));
 
-  // Re-sync local state when the upstream row is refreshed.
   useEffect(() => {
     setDims({
       length: initDim(item.length),
@@ -677,7 +1101,6 @@ function ItemCard({
       density: initDim(item.density),
       tonnes: initDim(item.tonnes)
     });
-    // PR feat/scope-each-factor — sync row-1 EACH/FACTOR scalars.
     setRow1Quantity(initDim(item.quantity ?? null));
     setRow1Factor(initDim(item.factor ?? null));
 
@@ -702,13 +1125,9 @@ function ItemCard({
     setDims((s) => ({ ...s, [k]: v }));
     setDirty((d) => {
       const next = { ...d };
-      // Editing the field itself makes it a new override.
       if (k === "sqm" || k === "m3" || k === "tonnes") {
         next[k] = true;
       }
-      // Editing an upstream releases all downstream overrides so the
-      // live auto-derive can take over. The user can re-override the
-      // downstream by typing into it again afterward.
       if (k === "length" || k === "height") {
         next.sqm = false;
         next.m3 = false;
@@ -728,10 +1147,6 @@ function ItemCard({
     });
   };
 
-  // Live-derive sqm/m3/tonnes. Only fields the user has explicitly
-  // touched in this session count as overrides; persisted-but-not-
-  // edited values are treated as null (= derive) so cascading
-  // recompute fires when a raw input changes.
   const parsed = useMemo(
     () => ({
       length: dims.length === "" ? null : Number(dims.length),
@@ -741,7 +1156,6 @@ function ItemCard({
       sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
       m3: dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null,
       tonnes: dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : null,
-      // PR feat/scope-each-factor
       kind: row1Kind,
       quantity: row1Quantity === "" ? null : Number(row1Quantity),
       factor: row1Factor === "" ? null : Number(row1Factor)
@@ -750,25 +1164,14 @@ function ItemCard({
   );
   const derived = useMemo(() => computeDerivedDimensions(parsed), [parsed]);
 
-  // PR B4a.5 — send the FULL dimension picture on blur. Backend
-  // persists exactly what we ship (no server-side derive); the value
-  // we send for each derived field is either the user's explicit
-  // override (when dirty) or the live-derived value (when not).
   const persistDims = () => {
     const sqmToSave = dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : derived.sqm;
     const m3ToSave = dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3;
     const tonnesToSave = dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes;
 
-    // PR B4a.6 — client-side overflow guard. The Prisma Decimal columns
-    // have hard precision limits (length/height/depth = Decimal(10,3);
-    // density = Decimal(8,3) after the B4a.6 widening; sqm/m3/tonnes =
-    // Decimal(10,2)). A value past those ceilings throws "numeric field
-    // overflow" on the server and leaves the row in an unsaveable state.
-    // Reject locally instead — the typed value stays in the field so the
-    // user can fix it, but no PATCH fires until it's in range.
-    const MAX_DIM = 9999999; // Decimal(10,3) ceiling for length/height/depth
-    const MAX_DENSITY = 99999; // Decimal(8,3) ceiling for density
-    const MAX_DERIVED = 99999999; // Decimal(10,2) ceiling for sqm/m3/tonnes
+    const MAX_DIM = 9999999;
+    const MAX_DENSITY = 99999;
+    const MAX_DERIVED = 99999999;
     const inRange = (v: number | null, max: number) =>
       v == null || (Number.isFinite(v) && Math.abs(v) < max);
     const valid =
@@ -797,19 +1200,12 @@ function ItemCard({
       sqm: sqmToSave,
       m3: m3ToSave,
       tonnes: tonnesToSave,
-      // PR feat/scope-each-factor — always ship kind/quantity/factor so
-      // the server's stored values stay consistent with the formula in use.
       materialKind: row1Kind,
       quantity: parsed.quantity,
       factor: parsed.factor
     });
   };
 
-  // PR B4a.5 — when the user hasn't touched a derived field this
-  // session, its input shows the LIVE derivation directly (not just
-  // as a placeholder) so cascading recompute is visible. When the
-  // user has typed an explicit override, dims.X holds their value
-  // and gets rendered verbatim.
   const valueFor = (k: "sqm" | "m3" | "tonnes") => {
     if (dirty[k]) return dims[k];
     const d = derived[k];
@@ -821,634 +1217,384 @@ function ItemCard({
   };
 
   return (
-    <article
-      style={{
-        border: "1px solid var(--border-default, #e5e7eb)",
-        borderRadius: 8,
-        background: baseBg,
-        overflow: "hidden"
-      }}
-    >
-      {/* ── Header bar (always visible) ────────────────────────────── */}
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 10px",
-          background: expanded ? "var(--surface-muted, #F6F6F6)" : "transparent",
-          borderBottom: expanded ? "1px solid var(--border-default, #e5e7eb)" : "none"
-        }}
-      >
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={expanded ? "Collapse item" : "Expand item"}
-          title={expanded ? "Collapse" : "Expand"}
-          style={{
-            width: 24,
-            height: 24,
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-muted, #6b7280)",
-            padding: 0
-          }}
-        >
-          <svg
-            aria-hidden
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 120ms ease" }}
-          >
-            <path d="M9 6l6 6l-6 6" />
-          </svg>
-        </button>
-        {isAi ? (
-          <span
-            title="AI-proposed"
-            style={{
-              fontSize: 9,
-              padding: "1px 5px",
-              background: "#FEAA6D",
-              color: "#fff",
-              borderRadius: 999,
-              fontWeight: 700
-            }}
-          >
-            AI
-          </span>
-        ) : null}
-        <span
-          style={{
-            color: "#005B61",
-            fontWeight: 500,
-            fontFamily: "ui-monospace, monospace",
-            fontSize: 12,
-            minWidth: 66
-          }}
-        >
-          {item.wbsCode}
-        </span>
-        {expanded ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 360 }}>
+      {/* Section A: labour + plant */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+        <FieldCell label="Men" width={72}>
           <input
             className="s7-input"
-            defaultValue={item.description}
+            type="number"
+            step="0.01"
+            defaultValue={item.men ?? ""}
             disabled={isAi}
-            placeholder="Description"
+            style={{ width: 72, height: 32 }}
             onBlur={(e) => {
-              const v = e.target.value;
-              if (v !== item.description) onPatch({ description: v });
+              const n = e.target.value === "" ? null : Number(e.target.value);
+              onPatch({ men: n });
             }}
-            style={{ flex: 1 }}
-            aria-label="Description"
           />
-        ) : (
-          <span
-            style={{
-              flex: 1,
-              color: item.description ? "var(--text)" : "var(--text-muted, #9ca3af)",
-              fontSize: 14
+        </FieldCell>
+        <FieldCell label="Days" width={72}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.01"
+            defaultValue={item.days ?? ""}
+            disabled={isAi}
+            style={{ width: 72, height: 32 }}
+            onBlur={(e) => {
+              const n = e.target.value === "" ? null : Number(e.target.value);
+              onPatch({ days: n });
             }}
-          >
-            {item.description || "(no description)"}
-          </span>
-        )}
-        {confidence ? (
-          <span
-            style={{
-              fontSize: 10,
-              padding: "2px 6px",
-              background: confidence.bg,
-              color: confidence.fg,
-              borderRadius: 999,
-              whiteSpace: "nowrap"
-            }}
-          >
-            {confidence.label}
-          </span>
-        ) : null}
-        {isPending ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>···</span> : null}
-        {/* PR B1.7.1 — per-row total wired from the items API. Displays
-            the with-markup value to match the table footer's "with
-            markup" subtotal; "—" only when the API didn't surface a
-            value (older responses, or compute failure). */}
-        <span
-          style={{
-            minWidth: 80,
-            textAlign: "right",
-            fontSize: 13,
-            color: "var(--text)",
-            fontVariantNumeric: "tabular-nums"
-          }}
-          title="Line total (with markup)"
-        >
-          {item.lineTotalWithMarkup == null
-            ? "—"
-            : fmtCurrency(Number(item.lineTotalWithMarkup))}
-        </span>
-        {isAi ? (
-          <div style={{ display: "inline-flex", gap: 4 }}>
-            <button
-              type="button"
-              className="s7-btn s7-btn--primary s7-btn--sm"
-              onClick={onConfirm}
-              title="Confirm into estimate"
-            >
-              ✓
-            </button>
+          />
+        </FieldCell>
+        <TaskHoursHint men={item.men} days={item.days} />
+
+        {itemPlantEntries.map((entry) => (
+          <PlantCluster
+            key={`plant-${entry.columnIndex}`}
+            index={entry.columnIndex}
+            cell={entry}
+            plantOptions={plantOptions}
+            plantRates={plantRates}
+            disabled={isAi}
+            onChange={(patch) => updatePlant(entry.columnIndex, patch)}
+            onRemove={() => removePlant(entry.columnIndex)}
+          />
+        ))}
+        {!isAi ? (
+          <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
             <button
               type="button"
               className="s7-btn s7-btn--ghost s7-btn--sm"
-              onClick={onExclude}
-              style={{ color: "var(--status-danger, #EF4444)" }}
-              title="Exclude"
+              onClick={addPlant}
+              title="Add plant to this item"
+              style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
             >
-              ✕
+              + Plant
             </button>
           </div>
+        ) : null}
+      </div>
+
+      <Divider />
+
+      {/* Section B: Measurement — stays exactly where it is until slice 5 */}
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
+        <FieldCell label="Length" width={70}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            value={dims.length}
+            disabled={isAi}
+            style={{ width: 70, height: 32 }}
+            onChange={(e) => setDim("length", e.target.value)}
+            onBlur={persistDims}
+          />
+        </FieldCell>
+        <FieldCell label="Height" width={70}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            value={dims.height}
+            disabled={isAi}
+            style={{ width: 70, height: 32 }}
+            onChange={(e) => setDim("height", e.target.value)}
+            onBlur={persistDims}
+          />
+        </FieldCell>
+        <FieldCell label="Depth" width={70}>
+          <input
+            className="s7-input"
+            type="number"
+            step="0.001"
+            value={dims.depth}
+            disabled={isAi}
+            style={{ width: 70, height: 32 }}
+            onChange={(e) => setDim("depth", e.target.value)}
+            onBlur={persistDims}
+          />
+        </FieldCell>
+        <FieldCell label="Material" width={140}>
+          <TooltipSelect
+            value={item.materialType}
+            options={materialOptions}
+            onChange={(v) => {
+              const lookup = v ? materialDensityMap.get(v) : undefined;
+              const newDensity = lookup
+                ? (lookup.unit === "kg/m3"
+                    ? Number(lookup.density) / 1000
+                    : Number(lookup.density))
+                : null;
+              const newKind = lookup?.kind ?? "VOLUME";
+              const isSheet = lookup?.unit === "kg/m2";
+              const newParsed = {
+                length: dims.length === "" ? null : Number(dims.length),
+                height: dims.height === "" ? null : Number(dims.height),
+                depth: isSheet ? null : (dims.depth === "" ? null : Number(dims.depth)),
+                density: newDensity,
+                sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
+                m3: isSheet ? null : (dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null),
+                tonnes: null,
+                kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
+                quantity: row1Quantity === "" ? null : Number(row1Quantity),
+                factor: row1Factor === "" ? null : Number(row1Factor)
+              };
+              const rederived = computeDerivedDimensions(newParsed);
+              const wasteDefaults = lookup
+                ? lookup.defaultWasteGroup && lookup.defaultWasteItem
+                  ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
+                  : {}
+                : {};
+              onPatch({
+                materialType: v,
+                materialKind: newKind,
+                density: newDensity,
+                length: newParsed.length,
+                height: newParsed.height,
+                depth: newParsed.depth,
+                sqm: rederived.sqm,
+                m3: rederived.m3,
+                tonnes: rederived.tonnes,
+                quantity: newKind === "EACH" ? newParsed.quantity : null,
+                factor: newKind === "FACTOR" ? newParsed.factor : null,
+                ...wasteDefaults
+              });
+            }}
+            disabled={isAi}
+            ariaLabel="Material type"
+            style={{ height: 32 }}
+          />
+        </FieldCell>
+        {row1Kind === "FACTOR" ? (
+          <FieldCell label="Factor" width={80}>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.0001"
+              value={row1Factor}
+              disabled={isAi}
+              style={{ width: 80, height: 32 }}
+              placeholder="0.0"
+              title="Factor: tonnes = sqm x factor"
+              onChange={(e) => setRow1Factor(e.target.value)}
+              onBlur={persistDims}
+            />
+          </FieldCell>
         ) : (
-          <button
-            type="button"
-            className="s7-btn s7-btn--ghost s7-btn--sm"
-            onClick={onDelete}
-            aria-label="Delete row"
-            title="Delete row"
-            style={{ color: "var(--status-danger, #EF4444)" }}
-          >
-            🗑
-          </button>
+          <FieldCell label={row1Kind === "EACH" ? "kg/item" : "Density (t/m3)"} width={80}>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.001"
+              value={dims.density}
+              disabled={isAi || !!item.materialType}
+              style={{
+                width: 80,
+                height: 32,
+                ...(item.materialType
+                  ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
+                  : {})
+              }}
+              title={
+                item.materialType
+                  ? `Auto-set from ${item.materialType}. Clear material to edit manually.`
+                  : row1Kind === "EACH"
+                    ? "Per-item weight in kg (tonnes = qty x kg/1000)"
+                    : "Manual density (tonnes per m3)"
+              }
+              onChange={(e) => setDim("density", e.target.value)}
+              onBlur={persistDims}
+            />
+          </FieldCell>
         )}
-      </header>
-
-      {/* ── Expanded body ───────────────────────────────────────────── */}
-      {expanded ? (
-        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Section A: labour + plant. Flex-wrap so Plant N clusters
-              wrap onto a new line when the row overflows. */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-            <FieldCell label="Men" width={80}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.01"
-                defaultValue={item.men ?? ""}
-                disabled={isAi}
-                style={{ width: 80, height: 32 }}
-                onBlur={(e) => {
-                  const n = e.target.value === "" ? null : Number(e.target.value);
-                  onPatch({ men: n });
-                }}
-              />
-            </FieldCell>
-            <FieldCell label="Days" width={80}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.01"
-                defaultValue={item.days ?? ""}
-                disabled={isAi}
-                style={{ width: 80, height: 32 }}
-                onBlur={(e) => {
-                  const n = e.target.value === "" ? null : Number(e.target.value);
-                  onPatch({ days: n });
-                }}
-              />
-            </FieldCell>
-            {/* SoT §10 task-time calculator surface (BACKLOG-DECISIONS.md #7).
-                Display-only hint: Σ persons × days × 8h. Matches the
-                summary API's per-item `taskHours` field. Estimators use
-                this to eyeball crew commitment vs. scope quantity. */}
-            <TaskHoursHint men={item.men} days={item.days} />
-
-            {itemPlantEntries.map((entry) => (
-              <PlantCluster
-                key={`plant-${entry.columnIndex}`}
-                index={entry.columnIndex}
-                cell={entry}
-                plantOptions={plantOptions}
-                plantRates={plantRates}
-                disabled={isAi}
-                onChange={(patch) => updatePlant(entry.columnIndex, patch)}
-                onRemove={() => removePlant(entry.columnIndex)}
-              />
-            ))}
-            {!isAi ? (
-              <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={addPlant}
-                  title="Add plant to this item"
-                  style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
-                >
-                  + Plant
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <Divider />
-
-          {/* PR B4a — Quantification section. Four raw dimension inputs
-              (L/H/D/density) drive auto-derivation of sqm/m³/tonnes;
-              user can override any derived value by typing.
-              PR feat/scope-material-inline-waste — the waste-classification
-              cells now live inline on this row (after Tonnes) so that
-              Material 1's classification sits alongside its dimensions
-              rather than in a separate bottom block. flex-wrap is off and
-              the row scrolls horizontally on narrow viewports so the
-              full picture stays on one line. */}
-          <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
-            <FieldCell label="Length" width={70}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.001"
-                value={dims.length}
-                disabled={isAi}
-                style={{ width: 70, height: 32 }}
-                onChange={(e) => setDim("length", e.target.value)}
-                onBlur={persistDims}
-              />
-            </FieldCell>
-            <FieldCell label="Height" width={70}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.001"
-                value={dims.height}
-                disabled={isAi}
-                style={{ width: 70, height: 32 }}
-                onChange={(e) => setDim("height", e.target.value)}
-                onBlur={persistDims}
-              />
-            </FieldCell>
-            <FieldCell label="Depth" width={70}>
-              <input
-                className="s7-input"
-                type="number"
-                step="0.001"
-                value={dims.depth}
-                disabled={isAi}
-                style={{ width: 70, height: 32 }}
-                onChange={(e) => setDim("depth", e.target.value)}
-                onBlur={persistDims}
-              />
-            </FieldCell>
-            <FieldCell label="Material" width={140}>
+        {row1Kind === "EACH" ? (
+          <FieldCell label="Quantity" width={80}>
+            <input
+              className="s7-input"
+              type="number"
+              step="1"
+              value={row1Quantity}
+              disabled={isAi}
+              style={{ width: 80, height: 32 }}
+              placeholder="0"
+              title="Number of items (tonnes = qty x kg/item / 1000)"
+              onChange={(e) => setRow1Quantity(e.target.value)}
+              onBlur={persistDims}
+            />
+          </FieldCell>
+        ) : null}
+        <FieldCell label="Sqm" width={80}>
+          <OverrideField
+            isOverridden={dirty.sqm}
+            onRevert={() => {
+              setDim("sqm", "");
+              setDirty((d) => ({ ...d, sqm: false }));
+            }}
+          >
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              value={valueFor("sqm")}
+              placeholder={placeholderFor("sqm")}
+              disabled={isAi}
+              style={{ width: 80, height: 32 }}
+              title="Auto = length x height. Type to override."
+              onChange={(e) => setDim("sqm", e.target.value)}
+              onBlur={persistDims}
+            />
+          </OverrideField>
+        </FieldCell>
+        <FieldCell label="M3" width={80}>
+          <OverrideField
+            isOverridden={dirty.m3}
+            onRevert={() => {
+              setDim("m3", "");
+              setDirty((d) => ({ ...d, m3: false }));
+            }}
+          >
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              value={valueFor("m3")}
+              placeholder={placeholderFor("m3")}
+              disabled={isAi}
+              style={{ width: 80, height: 32 }}
+              title="Auto = sqm x depth. Type to override."
+              onChange={(e) => setDim("m3", e.target.value)}
+              onBlur={persistDims}
+            />
+          </OverrideField>
+        </FieldCell>
+        <FieldCell label="Tonnes" width={80}>
+          <OverrideField
+            isOverridden={dirty.tonnes}
+            onRevert={() => {
+              setDim("tonnes", "");
+              setDirty((d) => ({ ...d, tonnes: false }));
+            }}
+          >
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              value={valueFor("tonnes")}
+              placeholder={placeholderFor("tonnes")}
+              disabled={isAi}
+              style={{ width: 80, height: 32 }}
+              title="Auto = m3 x density or sqm x density / 1000. Type to override."
+              onChange={(e) => setDim("tonnes", e.target.value)}
+              onBlur={persistDims}
+            />
+          </OverrideField>
+        </FieldCell>
+        {row1WasteAutofilled ? (
+          <FieldCell label="Waste" width={160}>
+            <div
+              style={{
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                fontSize: 11,
+                color: "var(--text-muted)"
+              }}
+              title={`Auto from ${item.materialType}: ${item.wasteGroup} -> ${item.wasteItem}`}
+            >
+              {item.wasteGroup} {"·"} {item.wasteItem}
+            </div>
+          </FieldCell>
+        ) : (
+          <>
+            <FieldCell label="Waste group" width={120}>
               <TooltipSelect
-                value={item.materialType}
-                options={materialOptions}
-                onChange={(v) => {
-                  const lookup = v ? materialDensityMap.get(v) : undefined;
-                  // kg/m³ → t/m³ (÷1000); kg/m² stored as-is (the sqm
-                  // fallback path in computeDerivedDimensions already
-                  // divides by 1000 for sheet materials).
-                  const newDensity = lookup
-                    ? (lookup.unit === "kg/m³"
-                        ? Number(lookup.density) / 1000
-                        : Number(lookup.density))
-                    : null;
-                  // PR feat/scope-each-factor — capture kind from lookup.
-                  const newKind = lookup?.kind ?? "VOLUME";
-
-                  // Recompute derived quantities with the new density so
-                  // sqm/m³/tonnes update immediately.
-                  // For kg/m² (sheet) materials, force m3 to null so
-                  // computeDerivedDimensions falls through to the sqm
-                  // fallback path (sqm × density / 1000) instead of
-                  // incorrectly using m3 × density.
-                  const isSheet = lookup?.unit === "kg/m²";
-                  const newParsed = {
-                    length: dims.length === "" ? null : Number(dims.length),
-                    height: dims.height === "" ? null : Number(dims.height),
-                    depth: isSheet ? null : (dims.depth === "" ? null : Number(dims.depth)),
-                    density: newDensity,
-                    sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
-                    m3: isSheet ? null : (dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null),
-                    tonnes: null, // always rederive tonnes from new density
-                    kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
-                    quantity: row1Quantity === "" ? null : Number(row1Quantity),
-                    factor: row1Factor === "" ? null : Number(row1Factor)
-                  };
-                  const rederived = computeDerivedDimensions(newParsed);
-
-                  // PR feat/scope-material-waste-autofill — apply the
-                  // catalog's default (wasteGroup, wasteItem) when the
-                  // material carries one. If it doesn't, preserve any
-                  // value the user set by hand — the fallback pickers
-                  // stay visible so the row is never dropped from
-                  // aggregation. Empty selection ("no material") clears
-                  // the auto values but not manual ones.
-                  const wasteDefaults = lookup
-                    ? lookup.defaultWasteGroup && lookup.defaultWasteItem
-                      ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
-                      : {} // material chosen, but no mapping → keep manual pickers' values
-                    : {};
-
-                  onPatch({
-                    materialType: v,
-                    materialKind: newKind,
-                    density: newDensity,
-                    length: newParsed.length,
-                    height: newParsed.height,
-                    depth: newParsed.depth,
-                    sqm: rederived.sqm,
-                    m3: rederived.m3,
-                    tonnes: rederived.tonnes,
-                    // Reset quantity/factor when kind changes to avoid
-                    // stale values being used with the wrong formula.
-                    quantity: newKind === "EACH" ? newParsed.quantity : null,
-                    factor: newKind === "FACTOR" ? newParsed.factor : null,
-                    ...wasteDefaults
-                  });
-                }}
+                value={item.wasteGroup}
+                options={wasteGroupOptions}
+                onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
                 disabled={isAi}
-                ariaLabel="Material type"
+                ariaLabel="Waste group"
                 style={{ height: 32 }}
               />
             </FieldCell>
-            {/* PR feat/scope-each-factor — show density (for VOLUME/AREA),
-                or Factor input (for FACTOR), or per-item weight (for EACH).
-                For EACH the density column is relabelled "kg/item" because
-                EstimateMaterialDensity.density holds perItemWeightKg. */}
-            {row1Kind === "FACTOR" ? (
-              <FieldCell label="Factor" width={80}>
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="0.0001"
-                  value={row1Factor}
-                  disabled={isAi}
-                  style={{ width: 80, height: 32 }}
-                  placeholder="0.0"
-                  title="Factor: tonnes = sqm × factor"
-                  onChange={(e) => setRow1Factor(e.target.value)}
-                  onBlur={persistDims}
-                />
-              </FieldCell>
-            ) : (
-              <FieldCell label={row1Kind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="0.001"
-                  value={dims.density}
-                  disabled={isAi || !!item.materialType}
-                  style={{
-                    width: 80,
-                    height: 32,
-                    ...(item.materialType
-                      ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
-                      : {})
-                  }}
-                  title={
-                    item.materialType
-                      ? `Auto-set from ${item.materialType}. Clear material to edit manually.`
-                      : row1Kind === "EACH"
-                        ? "Per-item weight in kg (tonnes = qty × kg/1000)"
-                        : "Manual density (tonnes per m³)"
-                  }
-                  onChange={(e) => setDim("density", e.target.value)}
-                  onBlur={persistDims}
-                />
-              </FieldCell>
-            )}
-            {/* PR feat/scope-each-factor — Quantity input for EACH kind. */}
-            {row1Kind === "EACH" ? (
-              <FieldCell label="Quantity" width={80}>
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="1"
-                  value={row1Quantity}
-                  disabled={isAi}
-                  style={{ width: 80, height: 32 }}
-                  placeholder="0"
-                  title="Number of items (tonnes = qty × kg/item ÷ 1000)"
-                  onChange={(e) => setRow1Quantity(e.target.value)}
-                  onBlur={persistDims}
-                />
-              </FieldCell>
+            <FieldCell label="Waste item" width={140}>
+              <TooltipSelect
+                value={item.wasteItem}
+                options={wasteItemOptions}
+                onChange={(v) => onPatch({ wasteItem: v })}
+                disabled={isAi || !item.wasteGroup}
+                ariaLabel="Waste item"
+                style={{ height: 32 }}
+              />
+            </FieldCell>
+            {item.materialType ? (
+              <div
+                role="note"
+                style={{
+                  fontSize: 11,
+                  color: "var(--status-warning, #B45309)",
+                  alignSelf: "flex-end",
+                  paddingBottom: 8,
+                  maxWidth: 180
+                }}
+              >
+                No default waste mapping for {item.materialType} — set one in Rates &amp; Lists {"→"} Densities.
+              </div>
             ) : null}
-            <FieldCell label="Sqm" width={80}>
-              <OverrideField
-                isOverridden={dirty.sqm}
-                onRevert={() => {
-                  setDim("sqm", "");
-                  setDirty((d) => ({ ...d, sqm: false }));
-                }}
-              >
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="0.01"
-                  value={valueFor("sqm")}
-                  placeholder={placeholderFor("sqm")}
-                  disabled={isAi}
-                  style={{ width: 80, height: 32 }}
-                  title="Auto = length × height. Type to override."
-                  onChange={(e) => setDim("sqm", e.target.value)}
-                  onBlur={persistDims}
-                />
-              </OverrideField>
-            </FieldCell>
-            <FieldCell label="M³" width={80}>
-              <OverrideField
-                isOverridden={dirty.m3}
-                onRevert={() => {
-                  setDim("m3", "");
-                  setDirty((d) => ({ ...d, m3: false }));
-                }}
-              >
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="0.01"
-                  value={valueFor("m3")}
-                  placeholder={placeholderFor("m3")}
-                  disabled={isAi}
-                  style={{ width: 80, height: 32 }}
-                  title="Auto = sqm × depth. Type to override."
-                  onChange={(e) => setDim("m3", e.target.value)}
-                  onBlur={persistDims}
-                />
-              </OverrideField>
-            </FieldCell>
-            <FieldCell label="Tonnes" width={80}>
-              <OverrideField
-                isOverridden={dirty.tonnes}
-                onRevert={() => {
-                  setDim("tonnes", "");
-                  setDirty((d) => ({ ...d, tonnes: false }));
-                }}
-              >
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="0.01"
-                  value={valueFor("tonnes")}
-                  placeholder={placeholderFor("tonnes")}
-                  disabled={isAi}
-                  style={{ width: 80, height: 32 }}
-                  title="Auto = m³ × density or sqm × density / 1000. Type to override."
-                  onChange={(e) => setDim("tonnes", e.target.value)}
-                  onBlur={persistDims}
-                />
-              </OverrideField>
-            </FieldCell>
-            {/* PR feat/scope-material-waste-autofill — waste group/item
-                are now auto-derived from the selected material's
-                defaults on EstimateMaterialDensity. The two pickers
-                only render when the material has no default mapping
-                yet (fallback), so users can still classify the row.
-                The written values on item.wasteGroup/item.wasteItem
-                are unchanged — the sum-from-above aggregator still
-                groups by exactly those fields.
-
-                Aria-labels stay "Waste group"/"Waste item"/"Include
-                in waste summary"/"Include in cutting summary" (no
-                material suffix) so existing acceptance tests that scope
-                to Material 1 keep working. */}
-            {row1WasteAutofilled ? (
-              <FieldCell label="Waste" width={160}>
-                <div
-                  style={{
-                    height: 32,
-                    display: "flex",
-                    alignItems: "center",
-                    fontSize: 11,
-                    color: "var(--text-muted)"
-                  }}
-                  title={`Auto from ${item.materialType}: ${item.wasteGroup} → ${item.wasteItem}`}
-                >
-                  {item.wasteGroup} · {item.wasteItem}
-                </div>
-              </FieldCell>
-            ) : (
-              <>
-                <FieldCell label="Waste group" width={120}>
-                  <TooltipSelect
-                    value={item.wasteGroup}
-                    options={wasteGroupOptions}
-                    onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
-                    disabled={isAi}
-                    ariaLabel="Waste group"
-                    style={{ height: 32 }}
-                  />
-                </FieldCell>
-                <FieldCell label="Waste item" width={140}>
-                  <TooltipSelect
-                    value={item.wasteItem}
-                    options={wasteItemOptions}
-                    onChange={(v) => onPatch({ wasteItem: v })}
-                    disabled={isAi || !item.wasteGroup}
-                    ariaLabel="Waste item"
-                    style={{ height: 32 }}
-                  />
-                </FieldCell>
-                {item.materialType ? (
-                  <div
-                    role="note"
-                    style={{
-                      fontSize: 11,
-                      color: "var(--status-warning, #B45309)",
-                      alignSelf: "flex-end",
-                      paddingBottom: 8,
-                      maxWidth: 180
-                    }}
-                  >
-                    No default waste mapping for {item.materialType} — set one in Rates & Lists → Densities.
-                  </div>
-                ) : null}
-              </>
-            )}
-            <FieldCell label="Waste?" width={54}>
-              <input
-                type="checkbox"
-                checked={item.wasteIncluded === true}
-                disabled={isAi}
-                onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
-                aria-label="Include in waste summary"
-                style={{ width: 20, height: 20, marginBottom: 6 }}
-              />
-            </FieldCell>
-            <FieldCell label="Cutting?" width={62}>
-              <input
-                type="checkbox"
-                checked={item.cuttingIncluded === true}
-                disabled={isAi}
-                onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
-                aria-label="Include in cutting summary"
-                style={{ width: 20, height: 20, marginBottom: 6 }}
-              />
-            </FieldCell>
-          </div>
-
-          {/* PR feat/scope-multi-material — additional material rows
-              (rows 2..N). Row 1 is the block above; each entry below is
-              a full L/H/D + material + density + sqm/m³/tonnes cluster
-              with its own auto-derive via computeDerivedDimensions plus
-              (PR feat/scope-material-inline-waste) inline per-material
-              waste/cutting classification + delete. */}
-          {itemMaterialEntries.map((entry, index) => (
-            <MaterialCluster
-              key={`material-${index}`}
-              index={index}
-              entry={entry}
-              materialOptions={materialOptions}
-              materialDensityMap={materialDensityMap}
-              wasteGroupOptions={wasteGroupOptions}
-              wasteItemsByGroup={wasteItemsByGroup}
-              disabled={isAi}
-              onChange={(patch) => updateMaterial(index, patch)}
-              onRemove={() => removeMaterial(index)}
-            />
-          ))}
-
-          {/* Item total: sum tonnes/m³ across row 1 + every material row.
-              Row 1 uses the live-derived value when the user hasn't
-              overridden it; extras use whatever was persisted on the
-              entry. Also carries the "+ Material" button so the user
-              can always add rows regardless of current material count. */}
-          <ItemMaterialTotals
-            row1Tonnes={dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes}
-            row1M3={dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3}
-            extras={itemMaterialEntries}
-            onAdd={addMaterial}
+          </>
+        )}
+        <FieldCell label="Waste?" width={54}>
+          <input
+            type="checkbox"
+            checked={item.wasteIncluded === true}
             disabled={isAi}
+            onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
+            aria-label="Include in waste summary"
+            style={{ width: 20, height: 20, marginBottom: 6 }}
           />
-
-          <Divider />
-
-          {/* Section C: notes (full width, 4-row textarea + expand modal).
-              PR feat/scope-material-inline-waste — the old bottom
-              Waste group/item/Waste?/Cutting? block was removed here;
-              those controls now render inline per material. */}
-          <NotesField
-            value={item.notes}
-            onSave={(v) => onPatch({ notes: v })}
+        </FieldCell>
+        <FieldCell label="Cutting?" width={62}>
+          <input
+            type="checkbox"
+            checked={item.cuttingIncluded === true}
             disabled={isAi}
-            placeholder="Notes for this item…"
+            onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
+            aria-label="Include in cutting summary"
+            style={{ width: 20, height: 20, marginBottom: 6 }}
           />
-        </div>
-      ) : null}
-    </article>
+        </FieldCell>
+      </div>
+
+      {/* PR feat/scope-multi-material — additional material rows (2..N) */}
+      {itemMaterialEntries.map((entry, index) => (
+        <MaterialCluster
+          key={`material-${index}`}
+          index={index}
+          entry={entry}
+          materialOptions={materialOptions}
+          materialDensityMap={materialDensityMap}
+          wasteGroupOptions={wasteGroupOptions}
+          wasteItemsByGroup={wasteItemsByGroup}
+          disabled={isAi}
+          onChange={(patch) => updateMaterial(index, patch)}
+          onRemove={() => removeMaterial(index)}
+        />
+      ))}
+
+      <ItemMaterialTotals
+        row1Tonnes={dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes}
+        row1M3={dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3}
+        extras={itemMaterialEntries}
+        onAdd={addMaterial}
+        disabled={isAi}
+      />
+    </div>
   );
 }
 
 // ── PlantCluster ────────────────────────────────────────────────────────
-// 280px-wide cluster of [select rate, qty, days] with a "×" remove button.
 
 function PlantCluster({
   index,
@@ -1492,7 +1638,7 @@ function PlantCluster({
               padding: 0
             }}
           >
-            ×
+            x
           </button>
         ) : null}
       </div>
@@ -1550,10 +1696,6 @@ function PlantCluster({
 }
 
 // ── MaterialCluster + ItemMaterialTotals ────────────────────────────────
-// PR feat/scope-multi-material — one repeatable material row (rows 2..N).
-// Layout mirrors the flat row-1 quantification block; each cluster
-// reuses computeDerivedDimensions so the row's own sqm/m³/tonnes fill
-// in as the user types.
 
 function MaterialCluster({
   index,
@@ -1576,7 +1718,6 @@ function MaterialCluster({
   onChange: (patch: Partial<ScopeMaterialEntry>) => void;
   onRemove: () => void;
 }) {
-  // PR feat/scope-each-factor — active kind for this material row.
   const matKind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (entry.kind ?? "VOLUME") as "VOLUME" | "AREA" | "EACH" | "FACTOR";
   const numOrNull = (v: string): number | null => {
     if (v === "") return null;
@@ -1586,11 +1727,6 @@ function MaterialCluster({
   const strOf = (v: number | null | undefined): string =>
     v == null ? "" : String(v);
 
-  // Live re-derive on every render so sqm/m³/tonnes reflect the current
-  // L/H/D + density. Persisted values on `entry` are the source of truth
-  // when the user hasn't touched a field this render.
-  // PR feat/scope-each-factor — pass kind/quantity/factor so EACH/FACTOR
-  // branches fire correctly.
   const derived = computeDerivedDimensions({
     length: entry.length ?? null,
     height: entry.height ?? null,
@@ -1604,14 +1740,10 @@ function MaterialCluster({
     factor: entry.factor ?? null
   });
 
-  // PR feat/scope-material-inline-waste — waste item options for THIS
-  // material's chosen group (independent from Material 1's group).
   const wasteItemOptions: TooltipSelectOption<string>[] = entry.wasteGroup
     ? (wasteItemsByGroup.get(entry.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
     : [];
 
-  // PR feat/scope-material-waste-autofill — mirror row-1: hide the
-  // pickers when the selected material carries a default mapping.
   const entryMaterialLookup = entry.material ? materialDensityMap.get(entry.material) : undefined;
   const entryWasteAutofilled =
     !!entryMaterialLookup?.defaultWasteGroup &&
@@ -1630,14 +1762,7 @@ function MaterialCluster({
         background: "var(--surface-muted, #FAFAFA)"
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: 6
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <span className="s7-type-label" style={{ ...labelStyle, marginBottom: 0 }}>
           Material {materialNo}
         </span>
@@ -1682,16 +1807,13 @@ function MaterialCluster({
             options={materialOptions}
             onChange={(v) => {
               const lookup = v ? materialDensityMap.get(v) : undefined;
-              // Same kg/m³ → t/m³ conversion as the row-1 material
-              // dropdown so both rows share one density convention.
               const newDensity = lookup
-                ? lookup.unit === "kg/m³"
+                ? lookup.unit === "kg/m3"
                   ? Number(lookup.density) / 1000
                   : Number(lookup.density)
                 : null;
-              // PR feat/scope-each-factor — capture kind from lookup.
               const newKind = lookup?.kind ?? "VOLUME";
-              const isSheet = lookup?.unit === "kg/m²";
+              const isSheet = lookup?.unit === "kg/m2";
               const rederived = computeDerivedDimensions({
                 length: entry.length ?? null,
                 height: entry.height ?? null,
@@ -1704,10 +1826,6 @@ function MaterialCluster({
                 quantity: newKind === "EACH" ? entry.quantity ?? null : null,
                 factor: newKind === "FACTOR" ? entry.factor ?? null : null
               });
-              // PR feat/scope-material-waste-autofill — mirror row-1
-              // autofill: apply the density catalog's default waste
-              // when the material has one, otherwise keep whatever the
-              // user set by hand so the fallback pickers preserve state.
               const wasteDefaults = lookup
                 ? lookup.defaultWasteGroup && lookup.defaultWasteItem
                   ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
@@ -1731,8 +1849,6 @@ function MaterialCluster({
             style={{ height: 32 }}
           />
         </FieldCell>
-        {/* PR feat/scope-each-factor — show Factor input (FACTOR kind) or
-            density/kg-per-item (VOLUME/AREA/EACH). */}
         {matKind === "FACTOR" ? (
           <FieldCell label="Factor" width={80}>
             <input
@@ -1743,7 +1859,7 @@ function MaterialCluster({
               disabled={disabled}
               style={{ width: 80, height: 32 }}
               placeholder="0.0"
-              title="Factor: tonnes = sqm × factor"
+              title="Factor: tonnes = sqm x factor"
               onBlur={(e) => {
                 const newFactor = numOrNull(e.target.value);
                 const rederived = computeDerivedDimensions({
@@ -1756,7 +1872,7 @@ function MaterialCluster({
             />
           </FieldCell>
         ) : (
-          <FieldCell label={matKind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
+          <FieldCell label={matKind === "EACH" ? "kg/item" : "Density (t/m3)"} width={80}>
             <input
               className="s7-input"
               type="number"
@@ -1774,14 +1890,13 @@ function MaterialCluster({
                 entry.material
                   ? `Auto-set from ${entry.material}. Clear material to edit manually.`
                   : matKind === "EACH"
-                    ? "Per-item weight in kg (tonnes = qty × kg/1000)"
-                    : "Manual density (tonnes per m³)"
+                    ? "Per-item weight in kg (tonnes = qty x kg/1000)"
+                    : "Manual density (tonnes per m3)"
               }
               onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
             />
           </FieldCell>
         )}
-        {/* PR feat/scope-each-factor — Quantity input for EACH kind. */}
         {matKind === "EACH" ? (
           <FieldCell label="Quantity" width={80}>
             <input
@@ -1792,7 +1907,7 @@ function MaterialCluster({
               disabled={disabled}
               style={{ width: 80, height: 32 }}
               placeholder="0"
-              title="Number of items (tonnes = qty × kg/item ÷ 1000)"
+              title="Number of items (tonnes = qty x kg/item / 1000)"
               onBlur={(e) => {
                 const newQty = numOrNull(e.target.value);
                 const rederived = computeDerivedDimensions({
@@ -1814,11 +1929,11 @@ function MaterialCluster({
             placeholder={derived.sqm == null ? "" : String(derived.sqm)}
             disabled={disabled}
             style={{ width: 80, height: 32 }}
-            title="Auto = length × height. Type to override."
+            title="Auto = length x height. Type to override."
             onBlur={(e) => onChange({ sqm: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="M³" width={80}>
+        <FieldCell label="M3" width={80}>
           <input
             className="s7-input"
             type="number"
@@ -1827,7 +1942,7 @@ function MaterialCluster({
             placeholder={derived.m3 == null ? "" : String(derived.m3)}
             disabled={disabled}
             style={{ width: 80, height: 32 }}
-            title="Auto = sqm × depth. Type to override."
+            title="Auto = sqm x depth. Type to override."
             onBlur={(e) => onChange({ m3: numOrNull(e.target.value) })}
           />
         </FieldCell>
@@ -1840,15 +1955,10 @@ function MaterialCluster({
             placeholder={derived.tonnes == null ? "" : String(derived.tonnes)}
             disabled={disabled}
             style={{ width: 80, height: 32 }}
-            title="Auto = m³ × density or sqm × density / 1000. Type to override."
+            title="Auto = m3 x density or sqm x density / 1000. Type to override."
             onBlur={(e) => onChange({ tonnes: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        {/* PR feat/scope-material-waste-autofill — same rule as row 1:
-            hide the two pickers when the selected material has a
-            default (wasteGroup, wasteItem) mapping. Values are still
-            written to entry.wasteGroup / entry.wasteItem exactly as
-            before so the sum-from-above aggregator is unchanged. */}
         {entryWasteAutofilled ? (
           <FieldCell label="Waste" width={160}>
             <div
@@ -1859,9 +1969,9 @@ function MaterialCluster({
                 fontSize: 11,
                 color: "var(--text-muted)"
               }}
-              title={`Auto from ${entry.material}: ${entry.wasteGroup} → ${entry.wasteItem}`}
+              title={`Auto from ${entry.material}: ${entry.wasteGroup} -> ${entry.wasteItem}`}
             >
-              {entry.wasteGroup} · {entry.wasteItem}
+              {entry.wasteGroup} {"·"} {entry.wasteItem}
             </div>
           </FieldCell>
         ) : (
@@ -1897,7 +2007,7 @@ function MaterialCluster({
                   maxWidth: 180
                 }}
               >
-                No default waste mapping for {entry.material} — set one in Rates & Lists → Densities.
+                No default waste mapping for {entry.material} — set one in Rates &amp; Lists {"→"} Densities.
               </div>
             ) : null}
           </>
@@ -1922,9 +2032,6 @@ function MaterialCluster({
             style={{ width: 20, height: 20, marginBottom: 6 }}
           />
         </FieldCell>
-        {/* PR feat/scope-material-inline-waste — inline delete for
-            Material 2+. Material 1 has no delete (it is the item's
-            primary row); removal fires up through onRemove. */}
         {!disabled ? (
           <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 4 }}>
             <button
@@ -1940,7 +2047,7 @@ function MaterialCluster({
                 height: 32
               }}
             >
-              🗑
+              x
             </button>
           </div>
         ) : null}
@@ -1949,9 +2056,6 @@ function MaterialCluster({
   );
 }
 
-// PR feat/scope-multi-material — per-item tonnes/m³ total across row 1
-// + every extra material row + "+ Material" button. Rendered even when
-// there are no extras so the user always has a way to add a row.
 function ItemMaterialTotals({
   row1Tonnes,
   row1M3,
@@ -1998,7 +2102,7 @@ function ItemMaterialTotals({
             </strong>
             {" · "}
             <strong style={{ color: "var(--text)" }}>
-              {totalM3 == null ? "—" : `${totalM3} m³`}
+              {totalM3 == null ? "—" : `${totalM3} m3`}
             </strong>
           </>
         ) : (
@@ -2041,9 +2145,6 @@ function FieldCell({
   );
 }
 
-// Task-time hint: `qty × days × 8h`. Mirrors the API's `sumLabourTaskHours`
-// which delegates to `taskTimeCalculator(personDays, 1/8)`. Display only —
-// pricing is unchanged.
 function TaskHoursHint({ men, days }: { men: string | null; days: string | null }) {
   const menNum = men === null || men === "" ? null : Number(men);
   const daysNum = days === null || days === "" ? null : Number(days);
@@ -2066,9 +2167,9 @@ function TaskHoursHint({ men, days }: { men: string | null; days: string | null 
         color: "var(--text-muted)",
         whiteSpace: "nowrap"
       }}
-      title="Task hours ≈ persons × days × 8h (SoT §10 task-time calculator)"
+      title="Task hours: persons x days x 8h"
     >
-      ≈ {hours === null ? "—" : `${hours.toFixed(1)} h`}
+      {hours === null ? "—" : `${hours.toFixed(1)} h`}
     </div>
   );
 }
@@ -2091,5 +2192,6 @@ const labelStyle: CSSProperties = {
   fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  color: "var(--text-muted, #6b7280)"
+  color: "var(--text-muted, #6b7280)",
+  marginBottom: 2
 };

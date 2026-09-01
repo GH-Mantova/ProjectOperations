@@ -151,7 +151,14 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
 
     // The new empty card is created with the chosen discipline (code ASB2 —
     // the seed owns ASB1) and becomes the active card.
-    const newCardCode = page.getByText("ASB2", { exact: true });
+    // SCOPE_DISCBAR_V1 (#1473) renders the card code in the discipline summary
+    // bar as well as on the tab, so a bare getByText("ASB2") now resolves to two
+    // elements and fails Playwright strict mode. This test means the TAB - it
+    // hovers it below to reveal the tab's own delete affordance - so scope it
+    // there rather than loosening the assertion with .first().
+    const newCardCode = page
+      .getByTestId("scope-card-tab")
+      .getByText("ASB2", { exact: true });
     await expect(newCardCode).toBeVisible();
     await expect(page.getByRole("heading", { name: "Asbestos removal" })).toBeVisible();
     await expect(page.getByLabel(/Discipline:/)).toHaveValue("ASB");

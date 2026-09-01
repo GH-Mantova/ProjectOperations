@@ -67,6 +67,7 @@ export function ScopeCardTab({ card, active, onSelect, onRename, onDelete, isDra
 
   return (
     <div
+      data-testid="scope-card-tab"
       style={containerStyle}
       onClick={() => {
         if (!editing) onSelect();

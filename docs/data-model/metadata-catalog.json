@@ -7628,6 +7628,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "archivedOpportunities": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -14605,6 +14611,42 @@
           "filterable": false,
           "aggregations": []
         },
+        "archiveReasonId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archiveReason": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "archiveReasonDetail": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "archivedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "convertedTenderId": {
           "role": "attribute",
           "label": null,
@@ -19231,6 +19273,12 @@
           "role": "measure-candidate",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "isProvisional": {
+          "role": "filter",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         },
         "provisionalAmount": {
@@ -26162,6 +26210,12 @@
           "aggregations": []
         },
         "opportunitiesOwned": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "opportunitiesArchivedBy": {
           "role": "system",
           "label": null,
           "filterable": false,

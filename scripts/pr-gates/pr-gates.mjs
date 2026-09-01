@@ -39,7 +39,9 @@
 // section -> SKIP.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+
+import { wasEverEscalated, decideApprovalReceipt } from "./approval-receipt.mjs";
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" });
@@ -480,10 +482,19 @@ function report(level, gate, name, detail) {
 // the point of action, not in the watcher's decision - a filter is one quirk away from being a
 // silent no-op, which is exactly how #552 (the production-data PR) was once selected for merge.
 //
-// Removing the label IS the human's approval: CI re-runs, this gate passes, the PR can merge.
+// Removing the label IS the human's approval, but by itself it is a click that
+// leaves no attributable artefact -- the watcher and Marco both authenticate as
+// `GH-Mantova`. The receipt (docs/decisions/merge-approvals/<pr>.md, committed
+// to the PR branch) turns that click into a diff a reviewer already reads.
+//
+// CP-26 stays advisory (bundled with other gates in the pr-gates job). The
+// enforcement point is the separate `approval-receipt` CI job which runs the
+// same decision function alone, so it can be added to the required-status set
+// without dragging unrelated gates along. See scripts/pr-gates/approval-receipt.mjs.
 {
   if (prNumber) {
     let labels = [];
+    let labelsRead = false;
     try {
       const raw = execFileSync(
         "gh",
@@ -491,20 +502,75 @@ function report(level, gate, name, detail) {
         { encoding: "utf8" }
       );
       labels = raw.split("\n").map((s) => s.trim()).filter(Boolean);
+      labelsRead = true;
     } catch (err) {
       // Fail CLOSED. If we cannot read the labels we cannot prove the PR is releasable.
       report("FAIL", "CP-26", "do-not-merge", `could not read labels: ${err.message}`);
     }
-    if (labels.includes("do-not-merge")) {
-      report(
-        "FAIL",
-        "CP-26",
-        "do-not-merge",
-        "PR carries the do-not-merge label (escalates:true). A human must review and REMOVE " +
-          "the label; removing it is what releases the merge."
-      );
-    } else {
-      report("PASS", "CP-26", "do-not-merge", "label absent");
+
+    if (labelsRead) {
+      const labelPresent = labels.includes("do-not-merge");
+
+      let events = [];
+      let eventsRead = false;
+      try {
+        const raw = execFileSync(
+          "gh",
+          [
+            "api",
+            "--paginate",
+            "--slurp",
+            `repos/{owner}/{repo}/issues/${prNumber}/events`,
+          ],
+          { encoding: "utf8" }
+        );
+        const pages = JSON.parse(raw);
+        events = Array.isArray(pages) ? pages.flat() : [];
+        eventsRead = true;
+      } catch (err) {
+        // Fail CLOSED. Without events history we cannot tell released-with-receipt from never-escalated.
+        report("FAIL", "CP-26", "do-not-merge", `could not read events: ${err.message}`);
+      }
+
+      if (eventsRead) {
+        const everLabeled = wasEverEscalated(events);
+
+        const receiptRel = `docs/decisions/merge-approvals/${prNumber}.md`;
+        let receiptInDiff = false;
+        let receiptBody = null;
+        try {
+          const changed = git("diff", "--name-only", base, "HEAD")
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          receiptInDiff = changed.includes(receiptRel);
+          if (receiptInDiff && existsSync(receiptRel)) {
+            receiptBody = readFileSync(receiptRel, "utf8");
+          }
+        } catch (err) {
+          report("FAIL", "CP-26", "do-not-merge", `could not diff for receipt: ${err.message}`);
+        }
+
+        const decision = decideApprovalReceipt({
+          labelPresent,
+          everLabeled,
+          receiptInDiff,
+          receiptBody,
+          prNumber: Number(prNumber),
+        });
+
+        // Byte-preserve the two pre-existing output strings that downstream
+        // tooling greps: LABEL_PRESENT (unchanged text) and NEVER_ESCALATED
+        // (kept as the terse "label absent"). Everything else uses the pure
+        // module's message.
+        if (decision.code === "LABEL_PRESENT") {
+          report("FAIL", "CP-26", "do-not-merge", decision.message);
+        } else if (decision.code === "NEVER_ESCALATED") {
+          report("PASS", "CP-26", "do-not-merge", "label absent");
+        } else {
+          report(decision.verdict, "CP-26", "do-not-merge", decision.message);
+        }
+      }
     }
   } else {
     report("SKIP", "CP-26", "do-not-merge", "no PR_NUMBER (local run)");

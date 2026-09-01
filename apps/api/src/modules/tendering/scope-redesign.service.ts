@@ -892,8 +892,28 @@ export class ScopeRedesignService {
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
     // PR B2 — markup resolves per-card: card.markupOverride ?? tenderMarkup.
-    const perDiscipline: Record<string, { itemCount: number; subtotal: number; withMarkup: number }> = {};
-    for (const d of DISCIPLINES) perDiscipline[d] = { itemCount: 0, subtotal: 0, withMarkup: 0 };
+    // scope-subcontracted order 3 — each bucket gains provisionalSubtotal /
+    // provisionalWithMarkup. A line is provisional when isProvisional===true
+    // OR its discipline is "Other". Provisional lines add to the provisional
+    // side; priced lines add to subtotal / withMarkup as before.
+    const perDiscipline: Record<
+      string,
+      {
+        itemCount: number;
+        subtotal: number;
+        withMarkup: number;
+        provisionalSubtotal: number;
+        provisionalWithMarkup: number;
+      }
+    > = {};
+    for (const d of DISCIPLINES)
+      perDiscipline[d] = {
+        itemCount: 0,
+        subtotal: 0,
+        withMarkup: 0,
+        provisionalSubtotal: 0,
+        provisionalWithMarkup: 0
+      };
     for (const item of items) {
       const itemDiscipline = (item.card?.discipline ?? "") as Discipline;
       const bucket = perDiscipline[itemDiscipline];
@@ -906,8 +926,17 @@ export class ScopeRedesignService {
         rateMaps,
         effectiveMarkup
       );
-      bucket.subtotal += totals.lineTotal;
-      bucket.withMarkup += totals.lineTotalWithMarkup;
+      // A line is provisional if it has isProvisional===true OR its discipline
+      // is "Other". This keeps existing Other rows in the provisional block
+      // without any backfill.
+      const isProvisionalLine = item.isProvisional === true || itemDiscipline === "Other";
+      if (isProvisionalLine) {
+        bucket.provisionalSubtotal += totals.lineTotal;
+        bucket.provisionalWithMarkup += totals.lineTotalWithMarkup;
+      } else {
+        bucket.subtotal += totals.lineTotal;
+        bucket.withMarkup += totals.lineTotalWithMarkup;
+      }
     }
 
     // Per-section markup — waste + cutting are independent cost
@@ -971,7 +1000,14 @@ export class ScopeRedesignService {
       wasteWithMarkup += subtotal * (1 + rate / 100);
     }
 
+    // scope-subcontracted order 3 — tenderPrice sums the priced (withMarkup)
+    // side only. provisionalTotal sums the provisionalWithMarkup side across
+    // all disciplines.
     const scopeWithMarkupTotal = Object.values(perDiscipline).reduce((s, v) => s + v.withMarkup, 0);
+    const provisionalTotal = Object.values(perDiscipline).reduce(
+      (s, v) => s + v.provisionalWithMarkup,
+      0
+    );
     // Grand total = the three independently-marked-up streams. Never
     // fold a bare subtotal in — that was the bug the invariant guards.
     const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup;
@@ -990,7 +1026,8 @@ export class ScopeRedesignService {
         subtotal: Number(wasteTotal.toFixed(2)),
         withMarkup: Number(wasteWithMarkup.toFixed(2))
       },
-      tenderPrice: Number(tenderPrice.toFixed(2))
+      tenderPrice: Number(tenderPrice.toFixed(2)),
+      provisionalTotal: Number(provisionalTotal.toFixed(2))
     };
   }
 

@@ -27,6 +27,20 @@ function zeroBucket(): DisciplineBucket {
   };
 }
 
+/**
+ * A single discipline bucket, with every field defaulted to zero.
+ *
+ * `makeSummary` only protects a caller that replaces a WHOLE bucket. A caller
+ * that hand-builds a partial bucket - `DEM: { itemCount, subtotal, withMarkup }`
+ * - reintroduces exactly the breakage this file exists to stop, and that is how
+ * three call sites in estimate-export.service.spec.ts went red when
+ * provisionalSubtotal / provisionalWithMarkup were added. Override a bucket
+ * through this function, never with a literal.
+ */
+export function bucket(overrides: Partial<DisciplineBucket> = {}): DisciplineBucket {
+  return { ...zeroBucket(), ...overrides };
+}
+
 export function makeSummary(overrides: Partial<Summary> = {}): Summary {
   return {
     DEM: zeroBucket(),

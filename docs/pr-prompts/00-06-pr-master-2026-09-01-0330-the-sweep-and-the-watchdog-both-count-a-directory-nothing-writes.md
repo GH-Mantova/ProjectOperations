@@ -85,8 +85,12 @@ the `requires_on_main` lines stripped it lints `ADMIT (size 2)`.
 **F3 — `pr-statussweep-orphan-worktree-dirs-HOLD.md` has a premise that can never die.** Its work
 shipped in #1460 under different identifiers, so arming it rebuilds a shipped scan and collides with
 F1's sweep prompt. This is LL-54 inverted: the fix landed, the premise greps a token the fix never
-used. **DISPOSITION: ESCALATED** — retiring a queued prompt is a queue mutation. Raised with Marco
-2026-09-01T03:2xZ; he elected to handle it directly.
+**DISPOSITION: ACTIONED** — retiring a queued prompt is a queue mutation and sits outside Station
+06's standing authority, so it was raised with Marco at 2026-09-01T03:2xZ. He instructed me to carry
+it out at 03:50Z. Retired by MOVE (never delete) to
+`docs/pr-prompts/superseded/cleared-2026-09-01-shipped-as-1460/`, with the measurement recorded in a
+README alongside it. Verified by read-back: absent from the queue root on `origin/main`, present at
+the new path.
 
 **F4 — `PROMPT-SCHEMA.md:186` says "the human" where every other binding doc says only Marco.**
 The label has been removed by an unattributable actor six-plus times on record; Marco has confirmed

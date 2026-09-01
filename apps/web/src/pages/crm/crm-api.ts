@@ -27,6 +27,11 @@ export type Entry = {
   convertedTender: { id: string; tenderNumber: string; status: string } | null;
   dropReason: { id: string; label: string } | null;
   dropReasonDetail: string | null;
+  // CRM-S11: archive fields
+  archiveReason: { id: string; label: string } | null;
+  archiveReasonDetail: string | null;
+  archivedAt: string | null;
+  archivedById: string | null;
   createdAt: string;
 };
 
@@ -198,6 +203,39 @@ export async function dontPursue(
     body: JSON.stringify(dto)
   });
   return jsonOrThrow<Entry>(res);
+}
+
+/** POST /crm/entries/:id/archive — archive with a mandatory DropReason. */
+export async function archiveEntry(
+  authFetch: AuthFetch,
+  id: string,
+  dto: { archiveReasonId: string; detail?: string }
+): Promise<Entry> {
+  const res = await authFetch(`/crm/entries/${id}/archive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto)
+  });
+  return jsonOrThrow<Entry>(res);
+}
+
+/** POST /crm/entries/:id/restore — restore an archived entry to open. */
+export async function restoreEntry(authFetch: AuthFetch, id: string): Promise<Entry> {
+  const res = await authFetch(`/crm/entries/${id}/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  return jsonOrThrow<Entry>(res);
+}
+
+/** DELETE /crm/entries/:id — delete an empty entry (no content). */
+export async function deleteEntry(authFetch: AuthFetch, id: string): Promise<void> {
+  const res = await authFetch(`/crm/entries/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const msg = await readApiErrorMessage(res);
+    throw new Error(msg);
+  }
 }
 
 // "Price it" uses the marquee generateDraftTender path (S3 preserved it unbroken).

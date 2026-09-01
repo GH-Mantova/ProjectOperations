@@ -37,6 +37,7 @@ import { UpdateDropReasonDto } from "./dto/update-drop-reason.dto";
 import { CreateEntryDto } from "./dto/create-entry.dto";
 import { UpdateEntryDto } from "./dto/update-entry.dto";
 import { DontPursueDto } from "./dto/dont-pursue.dto";
+import { ArchiveEntryDto } from "./dto/archive-entry.dto";
 
 const LEAD_STATUSES = ["new", "contacted", "qualified", "disqualified", "converted"] as const;
 const OPPORTUNITY_STAGES = ["new", "qualified", "quoting", "won", "lost"] as const;
@@ -369,6 +370,58 @@ export class CrmController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.dontPursue(id, dto, actor.sub);
+  }
+
+  @Post("entries/:id/archive")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "Archive a CRM entry. Requires a DropReason id (same governed list as dont-pursue). " +
+      "Clears no existing data — archive is reversible via /entries/:id/restore."
+  })
+  @ApiParam({ name: "id", description: "Entry id" })
+  @ApiResponse({ status: 201, description: "Entry archived." })
+  @ApiResponse({ status: 400, description: "Missing or invalid archiveReasonId." })
+  @ApiResponse({ status: 404, description: "Entry not found." })
+  archiveEntry(
+    @Param("id") id: string,
+    @Body() dto: ArchiveEntryDto,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.archiveEntry(id, dto, actor.sub);
+  }
+
+  @Post("entries/:id/restore")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "Restore an archived CRM entry to open stage. Clears archive fields. Unrestricted."
+  })
+  @ApiParam({ name: "id", description: "Entry id" })
+  @ApiResponse({ status: 201, description: "Entry restored to open." })
+  @ApiResponse({ status: 400, description: "Entry is not archived." })
+  @ApiResponse({ status: 404, description: "Entry not found." })
+  restoreEntry(@Param("id") id: string) {
+    return this.service.restoreEntry(id);
+  }
+
+  @Delete("entries/:id")
+  @RequirePermissions("crm.manage")
+  @ApiOperation({
+    summary:
+      "Delete an empty CRM entry. Blocked (400) if the entry has a description, contact, " +
+      "account, estimatedValue, dropReason, convertedTender, or any anchored comms thread. " +
+      "Archive (reversible) is the correct action for any record that has content."
+  })
+  @ApiParam({ name: "id", description: "Entry id" })
+  @ApiResponse({ status: 200, description: "Entry deleted." })
+  @ApiResponse({
+    status: 400,
+    description: "Entry has content; the blocking field(s) are named in the error message."
+  })
+  @ApiResponse({ status: 404, description: "Entry not found." })
+  deleteEntry(@Param("id") id: string) {
+    return this.service.deleteEntry(id);
   }
 
   // ── DropReasons ──────────────────────────────────────────────────────────

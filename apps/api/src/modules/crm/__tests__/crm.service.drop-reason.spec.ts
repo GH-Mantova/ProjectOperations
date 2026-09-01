@@ -139,7 +139,7 @@ describe("CrmService — DropReason CRUD", () => {
       prisma.dropReason.findUnique.mockResolvedValue({
         id: "dr-1",
         label: "Price / budget",
-        _count: { opportunities: 3 }
+        _count: { opportunities: 3, archivedOpportunities: 0 }
       });
 
       const service = makeService(prisma);
@@ -155,7 +155,7 @@ describe("CrmService — DropReason CRUD", () => {
       prisma.dropReason.findUnique.mockResolvedValue({
         id: "dr-2",
         label: "Went cold",
-        _count: { opportunities: 0 }
+        _count: { opportunities: 0, archivedOpportunities: 0 }
       });
       prisma.dropReason.delete.mockResolvedValue({ id: "dr-2" });
 
@@ -163,6 +163,24 @@ describe("CrmService — DropReason CRUD", () => {
       await service.deleteDropReason("dr-2");
 
       expect(prisma.dropReason.delete).toHaveBeenCalledWith({ where: { id: "dr-2" } });
+    });
+
+    it("throws ConflictException when only ARCHIVED opportunities reference the reason", async () => {
+      // The behaviour crm-s11 introduces: an archived entry holds its DropReason, so a reason
+      // used only by archived entries must still refuse to delete. Untested before this.
+      const prisma = makePrisma();
+      prisma.dropReason.findUnique.mockResolvedValue({
+        id: "dr-3",
+        label: "Lost on price",
+        _count: { opportunities: 0, archivedOpportunities: 2 }
+      });
+
+      const service = makeService(prisma);
+      await expect(
+        service.deleteDropReason("dr-3")
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(prisma.dropReason.delete).not.toHaveBeenCalled();
     });
 
     it("throws NotFoundException when id does not exist", async () => {

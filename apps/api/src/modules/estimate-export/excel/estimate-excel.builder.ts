@@ -190,7 +190,12 @@ export async function buildEstimateExcel(
     r.getCell(8).value = item.measurementQty ? Number(item.measurementQty) : null;
     r.getCell(9).value = item.measurementUnit;
     r.getCell(10).value = item.material;
-    r.getCell(11).value = item.notes;
+    // scope-subcontracted order 4 — when this item's work is priced by a SUB
+    // line, annotate the Notes column so the reader can see why a row with
+    // real scope carries no money. Free-text notes are appended after a
+    // separator so neither is silently dropped.
+    const subNote = item.pricedOnSubWbsCode ? `priced on ${item.pricedOnSubWbsCode}` : null;
+    r.getCell(11).value = [subNote, item.notes].filter(Boolean).join(" | ") || null;
     sRow += 1;
   }
   autoFit(scopeSheet, [10, 10, 32, 14, 8, 8, 10, 14, 10, 14, 20]);

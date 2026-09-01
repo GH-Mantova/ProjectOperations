@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -346,4 +347,45 @@ export class ReorderScopeCardsDto {
   @ArrayMinSize(1)
   @IsString({ each: true })
   cardIds!: string[];
+}
+
+// ── scope-subcontracted order 4 — SUB line linkage + quote DTOs ──────────
+
+/** Body for linking a scope item to a SUB line that prices it. */
+export class LinkToSubLineDto {
+  @ApiProperty({
+    description: "ID of the SUB-discipline scope item that prices the covered item."
+  })
+  @IsString() @IsNotEmpty() subItemId!: string;
+}
+
+/** Body for creating a quote on a SUB scope line. */
+export class CreateSubLineQuoteDto {
+  @ApiPropertyOptional({ description: "SubcontractorSupplier.id for the quoting vendor (nullable: vendor may not be in the directory yet)." })
+  @IsOptional() @IsString() subcontractorSupplierId?: string | null;
+
+  @ApiPropertyOptional({ description: "Free-text supplier name when the vendor is not yet in the directory." })
+  @IsOptional() @IsString() @MaxLength(200) supplierNameFallback?: string | null;
+
+  @ApiProperty({ description: "Quote amount in AUD." })
+  @Type(() => Number) @IsNumber() @Min(0) amount!: number;
+
+  @ApiPropertyOptional({ description: "Date the quote was received." })
+  @IsOptional() @IsDateString() receivedAt?: string | null;
+
+  @ApiPropertyOptional({ description: "Internal notes on this quote." })
+  @IsOptional() @IsString() @MaxLength(2000) notes?: string | null;
+
+  @ApiPropertyOptional({ description: "TenderDocumentLink.id for the attached quote document." })
+  @IsOptional() @IsString() tenderDocumentLinkId?: string | null;
+}
+
+/** Partial-update body for a sub line quote. */
+export class UpdateSubLineQuoteDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() subcontractorSupplierId?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) supplierNameFallback?: string | null;
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() @Min(0) amount?: number;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() receivedAt?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) notes?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() tenderDocumentLinkId?: string | null;
 }

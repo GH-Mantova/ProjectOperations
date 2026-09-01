@@ -23,6 +23,7 @@ import {
   type RateRow
 } from "./ratesListsHelpers";
 import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
+import { ChargeStepsEditor } from "./ChargeStepsEditor";
 
 // ── Types coming off the API ─────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ type RateTableSummary = {
   columns: RateColumn[];
 };
 
-type RateTableFull = RateTableSummary & { rows: RateRow[] };
+type RateTableFull = RateTableSummary & { rows: RateRow[]; chargeSteps?: unknown };
 
 type ListSummary = {
   id: string;
@@ -1137,6 +1138,15 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
       </div>
 
       <ColumnsCard columns={table.columns} onAdd={handleAddColumn} onDelete={handleDeleteColumn} />
+
+      <ChargeStepsEditor
+        tableId={table.id}
+        tableName={table.name}
+        isReference={table.isReference}
+        columns={table.columns.map((c) => ({ id: c.id, name: c.name, dataType: c.dataType, role: c.role }))}
+        rows={table.rows.map((r) => ({ id: r.id, cells: r.cells as Record<string, unknown> }))}
+        onSaved={() => void onChanged()}
+      />
 
       <RowsCard
         columns={table.columns}

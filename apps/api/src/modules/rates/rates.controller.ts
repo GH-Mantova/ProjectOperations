@@ -35,6 +35,7 @@ import { UpdateRateTableDto } from "./dto/update-rate-table.dto";
 import { CreateRateColumnDto, UpdateRateColumnDto } from "./dto/rate-column.dto";
 import { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
 import { RatesImportApplyDto } from "./dto/rates-import.dto";
+import { PatchChargeStepsDto } from "./dto/charge-steps.dto";
 import { RateTablesService } from "./rate-tables.service";
 import { RateResolverService } from "./rate-resolver.service";
 import { RatesExportService } from "./rates-export.service";
@@ -356,5 +357,34 @@ export class RatesController {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", String(buffer.length));
     res.end(buffer);
+  }
+
+  // ── Charge steps ──────────────────────────────────────────────────────
+
+  @Get("tables/:id/charge-steps")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({ summary: "Get the charge-step list and open-tender impact for a rate table." })
+  @ApiResponse({ status: 200, description: "{ chargeSteps, openTenderCount }" })
+  @ApiResponse({ status: 404, description: "Rate table not found." })
+  getChargeSteps(@Param("id") id: string) {
+    return this.tables.getChargeStepsInfo(id);
+  }
+
+  @Patch("tables/:id/charge-steps")
+  @RequirePermissions("rates.manage")
+  @ApiOperation({
+    summary:
+      "Replace the charge-step list for a rate table. " +
+      "Validated server-side: first step must be 'start', ops must be known, field references must exist on the table."
+  })
+  @ApiResponse({ status: 200, description: "Updated RateTable." })
+  @ApiResponse({ status: 400, description: "Validation error — unknown op, missing field, or first step not start." })
+  @ApiResponse({ status: 404, description: "Rate table not found." })
+  patchChargeSteps(
+    @Param("id") id: string,
+    @Body() dto: PatchChargeStepsDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    return this.tables.patchChargeSteps(actor.sub, id, dto.steps);
   }
 }

@@ -12,6 +12,7 @@ import type { CreateRateTableDto } from "./dto/create-rate-table.dto";
 import type { UpdateRateTableDto } from "./dto/update-rate-table.dto";
 import type { CreateRateColumnDto, UpdateRateColumnDto } from "./dto/rate-column.dto";
 import type { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
+import { type ChargeStep } from "./rate-step-evaluator";
 
 @Injectable()
 export class RateTablesService {
@@ -298,6 +299,157 @@ export class RateTablesService {
       where: { id: rowId },
       data: { isActive: false }
     });
+  }
+
+  // ── Charge steps ──────────────────────────────────────────────────────
+
+  /**
+   * Return the count of open (non-locked) tenders that price against this
+   * table, plus the raw chargeSteps JSON stored on the table.
+   */
+  async getChargeStepsInfo(tableId: string) {
+    const table = await this.getTable(tableId);
+    const openTenderCount = await this.prisma.tenderRateEntry.count({
+      where: { rateTableId: tableId }
+    });
+    return {
+      chargeSteps: table.chargeSteps ?? null,
+      openTenderCount
+    };
+  }
+
+  /**
+   * Replace the charge-step list for a rate table.
+   *
+   * Validation (applied before the write):
+   *  - steps must be a non-empty array
+   *  - steps[0].op must be "start"
+   *  - every step.op must be a recognised operation
+   *  - field names used in arithmetic or conditions must exist on the table
+   *    (numeric literals are always allowed)
+   */
+  async patchChargeSteps(actorId: string, tableId: string, steps: unknown[]) {
+    const table = await this.getTable(tableId);
+    validateChargeSteps(steps, table.columns.map((c) => c.name));
+
+    const updated = await this.prisma.rateTable.update({
+      where: { id: tableId },
+      data: {
+        chargeSteps: steps as unknown as Prisma.InputJsonValue,
+        updatedById: actorId
+      }
+    });
+    await this.auditService.write({
+      actorId,
+      action: "rateTable.patchChargeSteps",
+      entityType: "RateTable",
+      entityId: tableId,
+      metadata: { stepCount: steps.length }
+    });
+    return updated;
+  }
+}
+
+// ── Charge-step validation ────────────────────────────────────────────────
+
+const KNOWN_OPS = new Set([
+  "start",
+  "multiply",
+  "divide",
+  "add",
+  "subtract",
+  "round",
+  "floor",
+  "cap"
+]);
+
+/**
+ * Validate a raw step list before persisting.  Throws BadRequestException on
+ * any structural violation so the controller can surface a 400.
+ */
+function validateChargeSteps(steps: unknown[], columnNames: string[]): asserts steps is ChargeStep[] {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    throw new BadRequestException("steps must be a non-empty array.");
+  }
+
+  const columnSet = new Set(columnNames);
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (typeof step !== "object" || step === null || !("op" in step)) {
+      throw new BadRequestException(`Step ${i}: must be an object with an "op" property.`);
+    }
+
+    const op = (step as Record<string, unknown>)["op"];
+    if (typeof op !== "string" || !KNOWN_OPS.has(op)) {
+      throw new BadRequestException(
+        `Step ${i}: unknown op "${String(op)}". Allowed: ${[...KNOWN_OPS].join(", ")}.`
+      );
+    }
+
+    if (i === 0 && op !== "start") {
+      throw new BadRequestException(`Step 0: first step must have op "start" (got "${op}").`);
+    }
+
+    const s = step as Record<string, unknown>;
+
+    // Validate field references for ops that use a field operand
+    if (["start", "multiply", "divide", "add", "subtract"].includes(op)) {
+      const field = s["field"];
+      if (field === undefined) {
+        throw new BadRequestException(`Step ${i} (op: ${op}): missing "field" property.`);
+      }
+      if (typeof field === "string" && !columnSet.has(field)) {
+        throw new BadRequestException(
+          `Step ${i} (op: ${op}): field "${field}" is not a column on this table.`
+        );
+      }
+    }
+
+    // Validate round step
+    if (op === "round") {
+      const direction = s["direction"];
+      if (!["nearest", "up", "down"].includes(String(direction))) {
+        throw new BadRequestException(
+          `Step ${i} (op: round): direction must be "nearest", "up", or "down".`
+        );
+      }
+      const interval = s["interval"];
+      if (typeof interval !== "number" || interval <= 0) {
+        throw new BadRequestException(
+          `Step ${i} (op: round): interval must be a positive number.`
+        );
+      }
+    }
+
+    // Validate floor/cap value
+    if (op === "floor" || op === "cap") {
+      const value = s["value"];
+      if (typeof value !== "number") {
+        throw new BadRequestException(`Step ${i} (op: ${op}): "value" must be a number.`);
+      }
+    }
+
+    // Validate condition field reference
+    const when = s["when"];
+    if (when !== undefined && when !== null) {
+      if (typeof when !== "object" || !("field" in (when as object))) {
+        throw new BadRequestException(`Step ${i}: "when" must be a condition object with a "field" property.`);
+      }
+      const condField = (when as Record<string, unknown>)["field"];
+      if (typeof condField === "string" && !columnSet.has(condField)) {
+        throw new BadRequestException(
+          `Step ${i}: condition field "${condField}" is not a column on this table.`
+        );
+      }
+      const cmp = (when as Record<string, unknown>)["cmp"];
+      const allowedCmps = ["is", "is not", ">", "<", ">=", "<="];
+      if (typeof cmp !== "string" || !allowedCmps.includes(cmp)) {
+        throw new BadRequestException(
+          `Step ${i}: condition cmp must be one of: ${allowedCmps.join(", ")}.`
+        );
+      }
+    }
   }
 }
 

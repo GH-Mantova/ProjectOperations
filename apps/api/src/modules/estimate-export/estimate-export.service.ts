@@ -71,6 +71,9 @@ export type ScopeRow = {
   provisionalAmount: string | null;
   notes: string | null;
   sortOrder: number;
+  // scope-subcontracted order 4 — when set, this item's work is priced by
+  // a SUB line. The builder prints "priced on <wbsCode>" in the Notes column.
+  pricedOnSubWbsCode: string | null;
 };
 
 export type SawCutRow = {
@@ -214,8 +217,13 @@ export class EstimateExportService {
         scopeItems: {
           where: { status: { not: "excluded" } },
           orderBy: [{ sortOrder: "asc" }, { itemNumber: "asc" }],
-          // PR A2.5 — discipline now read from card relation
-          include: { card: { select: { discipline: true } } }
+          // PR A2.5 — discipline now read from card relation.
+          // scope-subcontracted order 4 — include pricedBySubItemId so the
+          // builder can print "priced on <wbsCode>" in the Notes column.
+          include: {
+            card: { select: { discipline: true } },
+            pricedBySubItem: { select: { wbsCode: true } }
+          }
         },
         cuttingSheetItems: {
           orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
@@ -290,7 +298,10 @@ export class EstimateExportService {
         wasteLoads: i.wasteLoads,
         provisionalAmount: toStr(i.provisionalAmount),
         notes: i.notes,
-        sortOrder: i.sortOrder
+        sortOrder: i.sortOrder,
+        // scope-subcontracted order 4 — carry the SUB line's wbsCode so the
+        // builder can annotate the Notes column.
+        pricedOnSubWbsCode: i.pricedBySubItem?.wbsCode ?? null
       }));
 
     const sawCuts: SawCutRow[] = tender.cuttingSheetItems

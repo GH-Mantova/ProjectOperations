@@ -106,6 +106,29 @@ Station 06 will not merge it. It needs Marco or auto-merge.
 **DISPOSITION: ESCALATED** — Marco: merge `#1477`, or tell me to close it and let the fixture keep
 breaking once per field. There is no third option that leaves the spec type-checked.
 
+### F5 - Marco overrode F1 once, deliberately, for `pr-gates-approval-receipt`
+
+At 09:07Z Marco instructed Station 06 to arm `pr-gates-approval-receipt`. That contradicts F1 above,
+which he himself ruled 20 minutes earlier, so it was put back to him before acting rather than done
+quietly - a rule recorded in a breadcrumb and broken within the hour is worse than no rule. He
+confirmed the override in the same exchange. [MEASURED - the arming log line below]
+
+```
+2026-09-01T09:07:42Z  ARMED  pr-gates-approval-receipt  escalates=true
+lint: ADMIT (size 6)   sweep immediately prior: SAFE TO ACT   index clean after
+```
+
+**Scope of the override: this one prompt.** F1 stands for everything else - Station 06 still arms
+nothing and merges nothing. The seven `pr-cardui-*` slices, `pr-cardui-s8` and `pr-scopesub-s5`
+remain Station 00's to arm. Station 06 merged nothing this run and still has not.
+
+Why this prompt and not another: it is option (A) from the 2026-08-31 attribution escalation, and
+withdrawing the auto-merge grant in F2 makes it more load-bearing, not less. It is the change that
+turns a merge approval into a reviewable commit at `docs/decisions/merge-approvals/<pr>.md` instead
+of a label click nobody can attribute - the hole that has now recurred twice on this board.
+
+**DISPOSITION: ACTIONED** - armed on Marco's explicit confirmation, scope stated, F1 otherwise intact.
+
 ## WHAT I DID NOT DO
 
 - **Did not un-arm `pr-cardui-s2` or `pr-scopesub-s4`.** See F3 — the duplicate-PR hazard is worse

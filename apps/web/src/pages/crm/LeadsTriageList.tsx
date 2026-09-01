@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useConfirm } from "../../hooks/useConfirm";
 import type { Entry } from "./crm-api";
-import { filterByStage, makeArchiveHandler } from "./LeadsTriageList.helpers";
+import { filterByStage } from "./LeadsTriageList.helpers";
 
 // Re-export pure helpers so consumers can import them from either path.
 export { filterByStage, makeArchiveHandler } from "./LeadsTriageList.helpers";
@@ -13,6 +12,7 @@ type Props = {
   onDontPursue: (id: string) => void;
   onArchive: (id: string) => void;
   onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
 };
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -38,14 +38,23 @@ function ownerLabel(owner: Entry["owner"]): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue, onArchive, onRestore }: Props) {
+/** Returns true when the entry has no content that would block deletion. */
+function isEntryEmpty(entry: Entry): boolean {
+  return (
+    !entry.description &&
+    !entry.contact &&
+    !entry.estimatedValue &&
+    !entry.dropReason &&
+    !entry.convertedTender
+  );
+}
+
+export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue, onArchive, onRestore, onDelete }: Props) {
   const open = filterByStage(entries, "open");
   const notPursued = filterByStage(entries, "not_pursued");
   const archived = filterByStage(entries, "archived");
 
   const [archivedExpanded, setArchivedExpanded] = useState(false);
-
-  const confirm = useConfirm();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -66,7 +75,7 @@ export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue, onAr
                 onOpen={() => onOpen(e.id)}
                 onPriceIt={() => onPriceIt(e.id)}
                 onDontPursue={() => onDontPursue(e.id)}
-                onArchive={makeArchiveHandler(e.id, onArchive, confirm)}
+                onArchive={() => onArchive(e.id)}
               />
             ))}
           </div>
@@ -116,6 +125,7 @@ export function LeadsTriageList({ entries, onOpen, onPriceIt, onDontPursue, onAr
                   entry={e}
                   onOpen={() => onOpen(e.id)}
                   onRestore={() => onRestore(e.id)}
+                  onDelete={isEntryEmpty(e) ? () => onDelete(e.id) : undefined}
                 />
               ))}
             </div>
@@ -198,7 +208,7 @@ function TriageRow({
           Don't pursue
         </button>
         <button
-          onClick={() => void onArchive()}
+          onClick={onArchive}
           aria-label="Archive"
           style={{
             padding: "4px 10px",
@@ -252,11 +262,13 @@ function NotPursuedRow({ entry, onOpen }: { entry: Entry; onOpen: () => void }) 
 function ArchivedRow({
   entry,
   onOpen,
-  onRestore
+  onRestore,
+  onDelete
 }: {
   entry: Entry;
   onOpen: () => void;
   onRestore: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <div
@@ -273,25 +285,50 @@ function ArchivedRow({
       <div style={{ flex: 1, cursor: "pointer" }} onClick={onOpen}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2 }}>
           <span style={{ fontWeight: 600, color: "var(--text-muted, #666)" }}>{entry.title}</span>
+          {entry.archiveReason && (
+            <span style={{ background: "#f3f4f6", color: "#374151", borderRadius: 4, padding: "2px 7px", fontSize: 12 }}>
+              {entry.archiveReason.label}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 12, color: "var(--text-muted, #999)" }}>
           {entry.client?.name ?? "-"} · Owner: {ownerLabel(entry.owner)}
         </div>
       </div>
-      <button
-        onClick={onRestore}
-        style={{
-          padding: "4px 10px",
-          borderRadius: 6,
-          border: "1px solid #e5e7eb",
-          background: "transparent",
-          cursor: "pointer",
-          fontSize: 12,
-          color: "var(--text-muted, #555)"
-        }}
-      >
-        Restore
-      </button>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <button
+          onClick={onRestore}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 6,
+            border: "1px solid #e5e7eb",
+            background: "transparent",
+            cursor: "pointer",
+            fontSize: 12,
+            color: "var(--text-muted, #555)"
+          }}
+        >
+          Restore
+        </button>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            aria-label="Delete empty entry"
+            title="Delete — only available for empty entries"
+            style={{
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: "1px solid #fca5a5",
+              background: "transparent",
+              cursor: "pointer",
+              fontSize: 12,
+              color: "#dc2626"
+            }}
+          >
+            Delete
+          </button>
+        )}
+      </div>
     </div>
   );
 }

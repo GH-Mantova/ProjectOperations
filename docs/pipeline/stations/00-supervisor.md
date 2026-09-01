@@ -481,7 +481,7 @@ Run this every cycle. You run ON the Windows box, so a LOCAL process check is al
     $node = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
               Where-Object { $_.CommandLine -match 'pr-watcher[\\/]index\.mjs' })
     $wrap = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-              Where-Object { $_.CommandLine -match '-File.*(supervise-watcher|watcher-launcher-singlelane)\.ps1' })
+              Where-Object { $_.CommandLine -match '(supervise-watcher|watcher-launcher(-singlelane)?)\.ps1' })
     if ($wrap.Count -eq 0) {
         Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
           '-File','C:\ProjectOperations2\scripts\pr-watcher\supervise-watcher.ps1'
@@ -490,12 +490,21 @@ Run this every cycle. You run ON the Windows box, so a LOCAL process check is al
         Write-Output "ENSURE-UP: wrapper present (node=$($node.Count) wrapper=$($wrap.Count)) - no action."
     }
 
-🔴 **The probe above matches BOTH wrapper names deliberately.** MEASURED 2026-08-29T20:21Z: the
-three live wrappers on this box are all `-File "C:\po-watcher\watcher-launcher-singlelane.ps1"`,
-and **zero** match `supervise-watcher.ps1`. Matching only the latter reported a healthy,
-triple-supervised watcher as an ORPHANED NODE — a fault that does not exist, whose "fix" is to
-start a fourth supervisor family. `status-sweep.ps1` counted the three correctly the same minute;
-when two instruments disagree about the machinery, resolve it by reading the COMMAND LINES.
+🔴 **A COMMAND-LINE PROBE CANNOT SEE A SUPERVISOR INVOKED WITH `&`. Widening the name list does
+not fix that.** MEASURED 2026-09-01T08:12Z: this probe returned `wrapper=0` while the watcher was
+fully supervised three deep — `13464 watcher-launcher.ps1` -> `19200 start-watcher.ps1` ->
+`2292 node index.mjs`. `watcher-launcher.ps1` runs `& "…\supervise-watcher.ps1"`, the **call
+operator**, so the supervisor executes INSIDE PID 13464 and appears in no process command line at
+all. The alternation above now also matches `watcher-launcher`, which catches this box today —
+but that is a patch on a vocabulary, and the 2026-08-29 entry it replaces was the same patch on the
+same vocabulary one launcher name earlier.
+
+🔴 **So treat `wrapper=0` as a QUESTION, never as a verdict. Before relaunching anything, resolve
+the node's PARENT CHAIN** (`Get-CimInstance Win32_Process` -> `ParentProcessId`, walked up from the
+`index.mjs` PID) **and cross it against `restart-watcher-if-wedged.ps1`, which returned `OK` the
+same minute both times this fired.** A relaunch on a false `wrapper=0` starts an additional
+supervisor family against a healthy machine; when two instruments disagree, the parent chain is the
+one that cannot be fooled by how a script was invoked.
 
 Then **re-check after ~30s that the wrapper is still alive** - see the trap below.
 

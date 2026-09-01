@@ -66,6 +66,7 @@ function basePayload(
         provisionalAmount: null,
         notes: "Standard strip",
         sortOrder: 0,
+        pricedOnSubWbsCode: null,
       },
     ],
     cuttingItems: { sawCuts: [], coreHoles: [], otherRates: [] },
@@ -234,6 +235,7 @@ describe("Quote HTML builder", () => {
           provisionalAmount: "5000",
           notes: null,
           sortOrder: 1,
+          pricedOnSubWbsCode: null,
         },
       ],
     });

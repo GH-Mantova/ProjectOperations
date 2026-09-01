@@ -1,19 +1,29 @@
-// CRM S2: Tenders landing page — tab shell.
+// CRM S2 (+ CRM UIFIX S1): Tenders landing page — tab shell.
 // Renders two URL-keyed tabs so the tab is linkable and shareable:
-//   ?tab=register     (default) → existing TendersRegisterPage content unchanged
-//   ?tab=follow-ups             → empty state (filled by S8)
+//   ?tab=register     (default) → Register view of TendersRegisterPage
+//   ?tab=follow-ups             → Follow-ups view of TendersRegisterPage
 //
-// Data fetching, filters, and content of TendersRegisterPage are untouched.
+// CRM UIFIX S1 (2026-09-01) — the outer tab bar is the design. The
+// Follow-ups branch used to render an "S8 empty state" stub while the real
+// S8 work already shipped inside TendersRegisterPage (which drew its own
+// second tab bar). We now pass the tab down as a prop and
+// TendersRegisterPage renders no inner tablist. One tab bar per page, one
+// URL contract.
 
 import { useSearchParams, NavLink } from "react-router-dom";
-import { TendersRegisterPage } from "./TendersRegisterPage";
+import { TendersRegisterPage, type TendersRegisterTab } from "./TendersRegisterPage";
 
-type TabId = "register" | "follow-ups";
+export type TendersOuterTabId = "register" | "follow-ups";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "register", label: "Register" },
-  { id: "follow-ups", label: "Follow-ups" }
+export const TENDERS_TABS: { id: TendersOuterTabId; label: string; inner: TendersRegisterTab }[] = [
+  { id: "register", label: "Register", inner: "register" },
+  { id: "follow-ups", label: "Follow-ups", inner: "followups" }
 ];
+
+/** Resolve the outer URL tab id to the inner TendersRegisterPage tab. */
+export function resolveTendersInnerTab(outer: TendersOuterTabId): TendersRegisterTab {
+  return outer === "follow-ups" ? "followups" : "register";
+}
 
 const tabBarStyle: React.CSSProperties = {
   display: "flex",
@@ -38,39 +48,18 @@ function tabStyle(active: boolean): React.CSSProperties {
   };
 }
 
-function FollowUpsEmptyState() {
-  return (
-    <div
-      style={{
-        padding: "48px 24px",
-        textAlign: "center",
-        color: "#6b7280",
-        maxWidth: 480,
-        margin: "0 auto"
-      }}
-    >
-      <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: "#374151", marginBottom: 8 }}>
-        Follow-ups coming in S8
-      </h2>
-      <p style={{ fontSize: 14, lineHeight: 1.6 }}>
-        The Follow-ups tab will surface tender-level follow-up actions and next-action tracking.
-        This is delivered in <strong>CRM S8 — Register & Follow-ups, one screen</strong>.
-      </p>
-    </div>
-  );
-}
-
 export function TendersPage() {
   const [searchParams] = useSearchParams();
-  const activeTab: TabId = (searchParams.get("tab") as TabId) ?? "register";
-  const validTab = TABS.some((t) => t.id === activeTab) ? activeTab : "register";
+  const raw = (searchParams.get("tab") as TendersOuterTabId | null) ?? "register";
+  const validTab: TendersOuterTabId =
+    TENDERS_TABS.some((t) => t.id === raw) ? raw : "register";
+  const innerTab = resolveTendersInnerTab(validTab);
 
   return (
     <div>
-      {/* CRM_NAV_TABS — tenders tab bar (S2, 2026-08-28). */}
+      {/* CRM_NAV_TABS — tenders tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01). */}
       <div style={tabBarStyle} role="tablist" aria-label="Tenders sections">
-        {TABS.map((tab) => (
+        {TENDERS_TABS.map((tab) => (
           <NavLink
             key={tab.id}
             to={tab.id === "register" ? "/crm/register" : `/crm/register?tab=${tab.id}`}
@@ -82,8 +71,7 @@ export function TendersPage() {
           </NavLink>
         ))}
       </div>
-      {validTab === "register" && <TendersRegisterPage />}
-      {validTab === "follow-ups" && <FollowUpsEmptyState />}
+      <TendersRegisterPage activeTab={innerTab} />
     </div>
   );
 }

@@ -1,21 +1,33 @@
-// CRM S2: Comms hub landing page — tab shell.
+// CRM S2 (+ CRM UIFIX S1): Comms hub landing page — tab shell.
 // Renders three URL-keyed tabs so each tab is linkable and shareable:
-//   ?tab=inbox        (default) → existing CommsHubPage content unchanged
-//   ?tab=threads                → empty state (filled by S10)
-//   ?tab=todos                  → empty state (filled by S10)
+//   ?tab=inbox    (default) → CommsHubPage inbox view
+//   ?tab=threads            → CommsHubPage threads view
+//   ?tab=todos              → CommsHubPage my-to-dos view
 //
-// Data fetching, filters, and content of CommsHubPage are untouched.
+// CRM UIFIX S1 (2026-09-01) — CommsHubPage used to keep its own inboxTab state
+// and draw its own tab bar, so the /crm/comms screen carried TWO tab bars —
+// the outer here (advertising an "S10 empty state" for work already shipped)
+// and the inner in CommsHubPage. We now pass the tab down as a prop and
+// CommsHubPage renders no inner tablist. One tab bar per page, one URL
+// contract. Anchored /crm/comms?entityType=…&entityId=… links still open the
+// anchored view inside CommsHubPage unchanged.
 
 import { useSearchParams, NavLink } from "react-router-dom";
-import { CommsHubPage } from "./CommsHubPage";
+import { CommsHubPage, type CommsInnerTab } from "./CommsHubPage";
 
-type TabId = "inbox" | "threads" | "todos";
+export type CommsOuterTabId = "inbox" | "threads" | "todos";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "inbox", label: "Inbox" },
-  { id: "threads", label: "Threads" },
-  { id: "todos", label: "To-dos" }
+export const COMMS_TABS: { id: CommsOuterTabId; label: string; inner: CommsInnerTab }[] = [
+  { id: "inbox", label: "Inbox", inner: "inbox" },
+  { id: "threads", label: "Threads", inner: "threads" },
+  { id: "todos", label: "To-dos", inner: "tasks" }
 ];
+
+/** Resolve the outer URL tab id to the inner CommsHubPage tab. */
+export function resolveCommsInnerTab(outer: CommsOuterTabId): CommsInnerTab {
+  const entry = COMMS_TABS.find((t) => t.id === outer);
+  return entry ? entry.inner : "inbox";
+}
 
 const tabBarStyle: React.CSSProperties = {
   display: "flex",
@@ -40,62 +52,18 @@ function tabStyle(active: boolean): React.CSSProperties {
   };
 }
 
-function ThreadsEmptyState() {
-  return (
-    <div
-      style={{
-        padding: "48px 24px",
-        textAlign: "center",
-        color: "#6b7280",
-        maxWidth: 480,
-        margin: "0 auto"
-      }}
-    >
-      <div style={{ fontSize: 40, marginBottom: 16 }}>💬</div>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: "#374151", marginBottom: 8 }}>
-        Threads coming in S10
-      </h2>
-      <p style={{ fontSize: 14, lineHeight: 1.6 }}>
-        The Threads tab will surface anchored conversation threads from across the CRM.
-        This is delivered in <strong>CRM S10 — Inbox tab</strong>.
-      </p>
-    </div>
-  );
-}
-
-function TodosEmptyState() {
-  return (
-    <div
-      style={{
-        padding: "48px 24px",
-        textAlign: "center",
-        color: "#6b7280",
-        maxWidth: 480,
-        margin: "0 auto"
-      }}
-    >
-      <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: "#374151", marginBottom: 8 }}>
-        To-dos coming in S10
-      </h2>
-      <p style={{ fontSize: 14, lineHeight: 1.6 }}>
-        The To-dos tab will surface CRM task management across all record types.
-        This is delivered in <strong>CRM S10 — Inbox tab</strong>.
-      </p>
-    </div>
-  );
-}
-
 export function CommsPage() {
   const [searchParams] = useSearchParams();
-  const activeTab: TabId = (searchParams.get("tab") as TabId) ?? "inbox";
-  const validTab = TABS.some((t) => t.id === activeTab) ? activeTab : "inbox";
+  const raw = (searchParams.get("tab") as CommsOuterTabId | null) ?? "inbox";
+  const validTab: CommsOuterTabId =
+    COMMS_TABS.some((t) => t.id === raw) ? raw : "inbox";
+  const innerTab = resolveCommsInnerTab(validTab);
 
   return (
     <div>
-      {/* CRM_NAV_TABS — comms-hub tab bar (S2, 2026-08-28). */}
+      {/* CRM_NAV_TABS — comms-hub tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01). */}
       <div style={tabBarStyle} role="tablist" aria-label="Comms hub sections">
-        {TABS.map((tab) => (
+        {COMMS_TABS.map((tab) => (
           <NavLink
             key={tab.id}
             to={tab.id === "inbox" ? "/crm/comms" : `/crm/comms?tab=${tab.id}`}
@@ -107,9 +75,7 @@ export function CommsPage() {
           </NavLink>
         ))}
       </div>
-      {validTab === "inbox" && <CommsHubPage />}
-      {validTab === "threads" && <ThreadsEmptyState />}
-      {validTab === "todos" && <TodosEmptyState />}
+      <CommsHubPage activeInnerTab={innerTab} />
     </div>
   );
 }

@@ -60,19 +60,35 @@ export type AccountSummary = {
 // Opportunity stages that count as "open" for the summary.
 const OPEN_OPPORTUNITY_STAGES = ["new", "qualified", "quoting", "open"] as const;
 
-// Days of silence before an account is considered "going cold".
-const GOING_COLD_THRESHOLD_DAYS = 14;
+/**
+ * CRM_COLD_V2 — the ONE going-cold contract, shared by the accounts summary
+ * (KPI tile) and the relationships /going-cold list (tab). Before this, the
+ * KPI tile used 14 days and treated null as NOT cold, while the tab used 30
+ * days and treated null as cold, so the tile read 0 while the tab below it
+ * listed 9 rows off the same data.
+ *
+ * Marco's decisions (2026-09-01):
+ *   - Default threshold is 60 days (user-selectable at the tab).
+ *   - An account with NO logged contact at all counts as COLD. Never-contacted
+ *     is the coldest state in the system, not the warmest.
+ *
+ * DO NOT introduce a second threshold or a second null-rule. If a caller
+ * wants a different threshold it must pass it in explicitly (only the
+ * /going-cold tab does — via ?thresholdDays=).
+ */
+export const CRM_COLD_V2 = {
+  THRESHOLD_DAYS: 60 as number,
+  NULL_IS_COLD: true as const
+} as const;
 
 /**
- * Derives the "going cold" flag for an account.
- * An account is going cold when:
- *   - its lifecycle is not PAST
- *   - lastContactedAt is a real date (not null)
- *   - that date is more than GOING_COLD_THRESHOLD_DAYS ago
- * Null lastContactedAt is NOT cold (we have no evidence either way).
+ * Derives the "going cold" flag for an account. CRM_COLD_V2 contract:
+ *   - lifecycle === "PAST"     → never cold
+ *   - lastContactedAt === null → COLD (if non-PAST) — never-contacted is coldest
+ *   - lastContactedAt older than CRM_COLD_V2.THRESHOLD_DAYS → cold
  *
  * `nowMs` is an OPTIONAL injected clock, defaulting to the real wall clock.
- * Every existing caller is unaffected. It exists so the 14-day boundary can be
+ * Every existing caller is unaffected. It exists so the boundary can be
  * asserted against a FIXED instant: a spec that pins `lastContactedAt` to a
  * literal date while the function reads `Date.now()` is a time bomb that goes
  * green in CI and turns red, permanently, on a date nobody chose.
@@ -83,10 +99,10 @@ export function deriveGoingCold(
   nowMs: number = Date.now()
 ): boolean {
   if (lifecycle === "PAST") return false;
-  if (!lastContactedAt) return false;
+  if (!lastContactedAt) return CRM_COLD_V2.NULL_IS_COLD;
   const diffMs = nowMs - lastContactedAt.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  return diffDays > GOING_COLD_THRESHOLD_DAYS;
+  return diffDays > CRM_COLD_V2.THRESHOLD_DAYS;
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────

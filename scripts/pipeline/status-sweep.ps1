@@ -201,7 +201,15 @@ foreach ($wtRoot in $worktreeRoots) {
     if (-not $inRegistry) {
       $escapeeCount++
       $escapeeAge = [int]((Get-Date).ToUniversalTime() - $subdir.LastWriteTimeUtc).TotalMinutes
-      $escapeeSize = (Get-ChildItem $subdir.FullName -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+      # -File is load-bearing, not tidiness. Without it this pipes DirectoryInfo objects into
+      # Measure-Object -Property Length; directories have no Length, so PS 5.1 throws
+      # "The property Length cannot be found in the input for any objects" and $escapeeSize
+      # comes back $null -> the line below prints size=0KB. Measured 2026-09-01:
+      # C:\po-worktrees\fix-followup-notes holds 6215 entries and 0 files, and was the only
+      # escapee of nine that threw -- so the sweep reported a 15-day-old tree as "0KB", which
+      # reads as empty and harmless to whoever decides what to prune. -ErrorAction
+      # SilentlyContinue alone would silence the message and KEEP the wrong number.
+      $escapeeSize = (Get-ChildItem $subdir.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
       $escapeeKB = if ($escapeeSize) { [int]($escapeeSize / 1024) } else { 0 }
       $hasLock = Test-Path (Join-Path $subdir.FullName ".git\index.lock")
       Line "LIVE" ("   REGISTRY-ESCAPEE: " + $subdir.FullName + "  size=" + $escapeeKB + "KB  age=" + $escapeeAge + "min  .lock=" + $hasLock)

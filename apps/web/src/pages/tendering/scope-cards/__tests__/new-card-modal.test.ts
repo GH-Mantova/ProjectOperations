@@ -8,9 +8,9 @@ import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "../utils/card-display";
 // covered by the visual smoke test and E2E.
 
 describe("NewCardModal data contract (PR 5A)", () => {
-  it("DISCIPLINE_CODES lists exactly 4 entries in expected order", () => {
-    expect(DISCIPLINE_CODES).toEqual(["DEM", "CIV", "ASB", "Other"]);
-    expect(DISCIPLINE_CODES.length).toBe(4);
+  it("DISCIPLINE_CODES lists exactly 5 entries in expected order", () => {
+    expect(DISCIPLINE_CODES).toEqual(["DEM", "CIV", "ASB", "Other", "SUB"]);
+    expect(DISCIPLINE_CODES.length).toBe(5);
   });
 
   it("every DISCIPLINE_CODE has a human label", () => {
@@ -26,6 +26,7 @@ describe("NewCardModal data contract (PR 5A)", () => {
     expect(DISCIPLINE_LABELS["CIV"]).toBe("Civil works");
     expect(DISCIPLINE_LABELS["ASB"]).toBe("Asbestos removal");
     expect(DISCIPLINE_LABELS["Other"]).toBe("Other");
+    expect(DISCIPLINE_LABELS["SUB"]).toBe("Subcontracted");
   });
 
   it("default card name derives from discipline label (creation contract)", () => {
@@ -35,7 +36,8 @@ describe("NewCardModal data contract (PR 5A)", () => {
       DEM: "Demolition",
       CIV: "Civil works",
       ASB: "Asbestos removal",
-      Other: "Other"
+      Other: "Other",
+      SUB: "Subcontracted"
     };
     for (const code of DISCIPLINE_CODES) {
       const name = DISCIPLINE_LABELS[code] ?? code;

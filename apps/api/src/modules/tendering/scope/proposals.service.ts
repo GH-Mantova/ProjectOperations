@@ -13,6 +13,7 @@ import { getScopeCardDefault } from "./card-defaults";
 
 // PR A1 (2026-05-16) — the AI-facing discipline vocabulary now matches the
 // internal scope-of-works discipline column (4-code system: DEM/CIV/ASB/Other).
+// scope-subcontracted order 2 (2026-08-31) — added SUB (5-code system).
 // The propose_scope_items tool enforces the codes via its enum, so no
 // translation is required at this layer. Default row-type mapping kept
 // per-discipline below.
@@ -20,6 +21,7 @@ const DEFAULT_ROW_TYPE_BY_DISCIPLINE: Record<IsDisciplineCode, string> = {
   DEM: "demolition",
   CIV: "general-labour",
   ASB: "asbestos-removal",
+  SUB: "general-labour",
   Other: "general-labour"
 };
 

@@ -77,6 +77,7 @@ function basePayload(
       DEM: { itemCount: 1, subtotal: 10000, withMarkup: 13000 },
       CIV: { itemCount: 0, subtotal: 0, withMarkup: 0 },
       ASB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
+      SUB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
       Other: { itemCount: 0, subtotal: 0, withMarkup: 0 },
       cutting: { itemCount: 0, subtotal: 0 },
       tenderPrice: 13000,

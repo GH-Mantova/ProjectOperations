@@ -5,6 +5,7 @@ import {
 } from "./estimate-export.service";
 import type { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import type { PdfRendererService } from "../pdf-rendering/pdf-renderer.service";
+import { bucket, makeSummary } from "./test-support/make-summary";
 
 // These tests hit the pure fetch + shape path of fetchTenderForExport by
 // feeding fake Prisma and ScopeRedesignService instances. We don't spin up a
@@ -15,16 +16,12 @@ function makeDecimal(v: number) {
   return { toString: () => String(v) } as unknown as { toString(): string };
 }
 
+// Was a hand-built literal that no longer matched ExportPayload["summary"]:
+// it had no provisionalSubtotal / provisionalWithMarkup / provisionalTotal, and
+// because it carried no type annotation TypeScript never said so. The fake was
+// quietly feeding these tests a shape production does not produce.
 function baseSummary() {
-  return {
-    DEM: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    CIV: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    ASB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    SUB: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    Other: { itemCount: 0, subtotal: 0, withMarkup: 0 },
-    cutting: { itemCount: 0, subtotal: 0 },
-    tenderPrice: 0
-  };
+  return makeSummary();
 }
 
 type FakeTender = {
@@ -281,13 +278,12 @@ describe("EstimateExportService.fetchTenderForExport", () => {
   });
 
   it("reuses ScopeRedesignService.summary for the cost summary (no local recalculation)", async () => {
-    const summary = {
-      ...baseSummary(),
-      DEM: { itemCount: 2, subtotal: 10000, withMarkup: 13000 },
-      CIV: { itemCount: 1, subtotal: 5000, withMarkup: 6500 },
+    const summary = makeSummary({
+      DEM: bucket({ itemCount: 2, subtotal: 10000, withMarkup: 13000 }),
+      CIV: bucket({ itemCount: 1, subtotal: 5000, withMarkup: 6500 }),
       cutting: { itemCount: 3, subtotal: 2400 },
       tenderPrice: 21900
-    };
+    });
     const svc = makeService(baseTender(), summary);
     const payload = await svc.fetchTenderForExport("t-1");
     expect(payload.summary.DEM.withMarkup).toBe(13000);
@@ -304,11 +300,10 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     const tender = baseTender({
       scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
     });
-    const summary = {
-      ...baseSummary(),
-      DEM: { itemCount: 1, subtotal: 1000, withMarkup: 1300 },
+    const summary = makeSummary({
+      DEM: bucket({ itemCount: 1, subtotal: 1000, withMarkup: 1300 }),
       tenderPrice: 1300
-    };
+    });
     const svc = makeService(tender, summary);
     const { buffer, filename } = await svc.exportPdf("t-1", "u-1");
     expect(Buffer.isBuffer(buffer)).toBe(true);
@@ -321,11 +316,10 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     const tender = baseTender({
       scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
     });
-    const summary = {
-      ...baseSummary(),
-      DEM: { itemCount: 1, subtotal: 1000, withMarkup: 1300 },
+    const summary = makeSummary({
+      DEM: bucket({ itemCount: 1, subtotal: 1000, withMarkup: 1300 }),
       tenderPrice: 1300
-    };
+    });
     const svc = makeService(tender, summary);
     const { buffer, filename } = await svc.exportExcel("t-1", "u-1");
     expect(Buffer.isBuffer(buffer)).toBe(true);

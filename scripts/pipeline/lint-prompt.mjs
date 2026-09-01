@@ -1202,6 +1202,23 @@ export function lint(file, opts) {
   const dequeue = opts && opts.dequeue;
   const repoRoot = (opts && opts.repoRoot) || process.cwd();
   const name = basename(file);
+
+  // NOT_A_PROMPT — breadcrumb files (basename `00-*.md`) are station handoff
+  // reports, not prompts. They intentionally carry no YAML front-matter; their
+  // contract is a five-section report enforced by check-breadcrumb.mjs. Answering
+  // NO_FRONT_MATTER on a breadcrumb tells the reader a lie (that a breadcrumb is a
+  // malformed prompt) and lets a false lint-pass be reported on the strength of
+  // the wrong instrument. Return a distinct verdict, keep exit 1 in single-file
+  // mode so arm-prompt.ps1 still refuses to arm the file.
+  if (/^00-.*\.md$/i.test(name)) {
+    return {
+      ok: false, notPrompt: true, code: "NOT_A_PROMPT", name,
+      msg: "This file is a station breadcrumb, not a prompt.\n" +
+        "        Breadcrumbs are validated by scripts/pipeline/check-breadcrumb.mjs\n" +
+        "        (five-section report contract), not by this linter.",
+    };
+  }
+
   // A prompt filename ending -HOLD.md is by definition parked waiting for its
   // gate. When its gate is found satisfied on origin/main, the file-gate and
   // content-gate probes emit GATE_RELEASED (ADMIT + promotion signal) instead
@@ -1600,12 +1617,13 @@ let files = [];
 let dequeue = false;
 
 if (args[0] === "--all") {
-  // Include both -ready.md (armed) and -HOLD.md (parked) so a HOLD whose gate
-  // has just RELEASED surfaces as a PROMOTE line in the same sweep. Without
-  // -HOLD.md coverage here, GATE_RELEASED events would never be visible from
-  // --all and the guardrail count comparison could not be executed.
+  // Include -ready.md (armed), -HOLD.md (parked) and 00-*.md (station
+  // breadcrumbs) so a sweep gives the truth about every file in the queue
+  // directory. HOLD coverage surfaces GATE_RELEASED as a PROMOTE line; 00-*.md
+  // coverage surfaces NOT_A_PROMPT as its own tally bucket so ~120 breadcrumbs
+  // cannot drown a real REJECT under a wall of NO_FRONT_MATTER lies.
   files = readdirSync(args[1])
-    .filter((f) => f.endsWith("-ready.md") || f.endsWith("-HOLD.md"))
+    .filter((f) => f.endsWith("-ready.md") || f.endsWith("-HOLD.md") || /^00-.*\.md$/i.test(f))
     .map((f) => join(args[1], f));
 } else if (args[0] === "--dequeue") {
   dequeue = true;
@@ -1618,6 +1636,7 @@ let admitted = 0;
 let promoted = 0;
 let rejected = 0;
 let stale = 0;
+let notPrompt = 0;
 
 for (const f of files) {
   if (!existsSync(f)) {
@@ -1642,6 +1661,12 @@ for (const f of files) {
   } else if (r.stale) {
     console.log(YELLOW + "STALE  " + RESET + " " + r.name + "\n        " + r.msg);
     stale++;
+  } else if (r.notPrompt) {
+    // Distinct line so a --all sweep of ~120 breadcrumbs does not read as 120
+    // rejections. Printed in every mode; contributes to exit 1 only in single-file
+    // mode (see exit line below).
+    console.log(YELLOW + "SKIP   " + RESET + " " + r.name + "  [" + r.code + "]\n        " + r.msg);
+    notPrompt++;
   } else {
     console.log(RED + "REJECT " + RESET + " " + r.name + "  [" + r.code + "]\n        " + r.msg);
     rejected++;
@@ -1654,9 +1679,23 @@ if (files.length > 1) {
     "admitted " + GREEN + admitted + RESET +
     " (of which promote " + CYAN + promoted + RESET + ")" +
     " | stale " + YELLOW + stale + RESET +
-    " | rejected " + RED + rejected + RESET
+    " | rejected " + RED + rejected + RESET +
+    " | not-a-prompt " + YELLOW + notPrompt + RESET
   );
 }
 
-process.exit(stale > 0 && files.length === 1 ? 3 : rejected > 0 ? 1 : 0);
+// Exit code contract mirrors the existing stale-in-sweep precedent: a state that
+// is only ever an actionable exit in single-file mode (`stale > 0 && files.length
+// === 1 ? 3`) is otherwise tallied. Breadcrumbs follow the same shape — a
+// breadcrumb is a hard refusal when arm-prompt.ps1 passes a single file (so the
+// arming path still refuses to arm it), but in --all it is counted and the real
+// rejected/stale signals still drive the exit code. Codes 0/1/3 are documented in
+// SCRIPT-REGISTRY.md, ARMING.md, 04-scanner.md and 06-pr-master.md — do not add a
+// fourth. Reusing 3 for breadcrumbs would be wrong: 3 means "already done, BIN
+// IT", and binning a breadcrumb is exactly the wrong move.
+process.exit(
+  stale > 0 && files.length === 1 ? 3
+  : (rejected > 0 || (notPrompt > 0 && files.length === 1)) ? 1
+  : 0
+);
 }

@@ -85,11 +85,47 @@ if ($ghOk) {
   # is the TRUNK green?
   # Fix: use --json and read conclusion field only -- prevents commit titles containing
   # "failure"/"cancelled" from being counted as failed runs. (trunk-conclusion)
-  $mainRunsJson = gh run list --branch main --limit 3 --json conclusion,displayTitle 2>$null
-  $mainRuns = @($mainRunsJson | ConvertFrom-Json)
-  $mfail = @($mainRuns | Where-Object { $_.conclusion -ne "success" -and $_.conclusion -ne "" -and $null -ne $_.conclusion }).Count
-  $mok = @($mainRuns | Where-Object { $_.conclusion -eq "success" }).Count
-  Line "LIVE" ("main branch CI (last 3 runs): " + $mok + " success / " + $mfail + " not-success" + $(if ($mfail -gt 0) { "  <-- TRUNK IS RED" } else { "  (trunk green)" }))
+  # ASK ABOUT THE COMMIT, NOT THE BRANCH. Two defects were measured here on 2026-09-01T00:1xZ and
+  # both are fixed below.
+  #   1. "--branch main --limit 3" samples an arbitrary mix of WORKFLOWS across DIFFERENT COMMITS,
+  #      so the verdict is unstable minute to minute. It printed "TRUNK IS RED" while every one of
+  #      the last 12 runs on main was a success. DOCTRINE 9.4 already requires the full 40-char SHA.
+  #   2. A run in flight has conclusion "" and is correctly not counted as a failure -- but when
+  #      EVERY run was in flight, mfail was 0, mok was 0, and the old line printed
+  #      "0 success / 0 not-success  (trunk green)": green asserted on ZERO concluded evidence.
+  #      That is DOCTRINE 9.6 inside the sweep's own trunk check. Green now REQUIRES a success.
+  # "skipped" is a path-filter skip, not a failure, and is no longer counted as one.
+  $mainSha = (git rev-parse origin/main 2>$null | Select-Object -First 1)
+  if (-not $mainSha) {
+    Line "LIVE" "main CI: [CANNOT MEASURE] cannot resolve origin/main"
+  } else {
+    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name 2>$null | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($mainRunsRaw) -or $mainRunsRaw -eq "[]") {
+      # ConvertFrom-Json on "[]" puts something on the pipeline that @() counts as ONE. Test the
+      # RAW string first, or an empty board reads as a single mystery run.
+      Line "LIVE" ("main CI on " + $mainSha.Substring(0,8) + ": [CANNOT MEASURE] gh returned no runs for this commit")
+    } else {
+      # ASSIGN THEN FOREACH (DOCTRINE 9.4). On PS 5.1 "@($raw | ConvertFrom-Json)" wraps the whole
+      # parsed ARRAY as a SINGLE element: .Count reads 1 and $_.conclusion member-enumerates into
+      # " success success success". Measured here 2026-09-01 against a commit with 4 real runs --
+      # it reported mok=1. The original line carried this same collapse.
+      $mainParsed = $mainRunsRaw | ConvertFrom-Json
+      $mainRuns = @()
+      foreach ($r in $mainParsed) { $mainRuns += $r }
+      $mfail = 0; $mok = 0; $mpend = 0
+      foreach ($r in $mainRuns) {
+        if (-not $r.conclusion) { $mpend++ }
+        elseif ($r.conclusion -eq "success") { $mok++ }
+        elseif ($r.conclusion -eq "skipped") { }
+        else { $mfail++ }
+      }
+      $mverdict = if ($mfail -gt 0) { "  <-- TRUNK IS RED" }
+                  elseif ($mok -gt 0 -and $mpend -eq 0) { "  (trunk green)" }
+                  elseif ($mok -gt 0) { "  (no failure so far, but " + $mpend + " still running -- not yet green)" }
+                  else { "  <-- [CANNOT MEASURE] nothing has concluded on this commit; NOT a green trunk" }
+      Line "LIVE" ("main CI on " + $mainSha.Substring(0,8) + ": " + $mok + " success / " + $mfail + " failed / " + $mpend + " running" + $mverdict)
+    }
+  }
 } else {
   Line "BROKEN" "SKIPPED -- gh positive control failed above."
 }

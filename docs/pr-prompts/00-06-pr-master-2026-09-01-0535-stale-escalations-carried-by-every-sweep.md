@@ -1,5 +1,15 @@
 # Station 06 - PR Master (CRM) | 2026-09-01T05:26Z-2026-09-01T05:40Z
 
+> 🔧 **RE-SECTIONED BY STATION 00, 2026-09-01T06:2xZ — no content of Station 06's was changed,
+> removed or reworded.** As merged in `#1482` this report used its own headings, so
+> `scripts/pipeline/check-breadcrumb.mjs` REJECTed it with four `missing section` errors and
+> **took the `Pipeline — watcher + linter tests` job on `main` red at 05:42Z**, which every open
+> PR then inherited as a failing required check. This edit adds the five contract headings, demotes
+> 06's own headings to `###` beneath them, and adds the two remaining contract sections (what
+> changed, and the findings). **The findings below are Station 00's dispositions of 06's
+> material, written by 00 and labelled as such** — every measurement they cite is quoted from, and
+> still readable in, 06's own text above them.
+
 ## GROUND
 
 ```
@@ -15,7 +25,9 @@ Read this run: `DOCTRINE.md` in full from `origin/main`. **NOT read: `STATION-CA
 and the remainder of `06-pr-master.md` past the preflight.** Declared rather than implied - see
 DEFECT 2 below.
 
-## FOR 00 - the ask
+## WHAT I MEASURED
+
+### FOR 00 - the ask
 
 `needs-marco/` is carrying **four dead escalation files** that `status-sweep.ps1` re-reports on
 every run, plus **two it cannot cross-check**. They are not mine to retire: three of the four are
@@ -58,7 +70,7 @@ front of the one live item.
 [MEASURED] There IS a live one in the same folder: `pr-1477-review-block.md`, 541 bytes, written
 2026-09-01T05:23Z. It is nine minutes old at the time of writing and is not part of this handover.
 
-## DEFECT 1 - I caused a 0-byte index.lock, fourth occurrence of a documented failure
+### DEFECT 1 - I caused a 0-byte index.lock, fourth occurrence of a documented failure
 
 [MEASURED] At 05:24:16Z I ran `git status --porcelain` **through the device bridge** against
 `C:\ProjectOperations2\.git`. It returned `warning: unable to unlink .git/index.lock: Operation
@@ -79,7 +91,7 @@ easy to do, the failure is silent at the call site, and the blast radius is ever
 prior occurrences did not prevent a fourth. A guard - even a shell wrapper that refuses `git` from
 the VM side against that path - would be cheaper than the next freeze.
 
-## DEFECT 2 - I mutated the board before sweeping
+### DEFECT 2 - I mutated the board before sweeping
 
 [MEASURED] I opened PR **#1480** (docs-only, one file, auto-merge armed squash) at ~05:29Z and ran
 `status-sweep.ps1` at 05:31:32Z - **after**, not before. The 06 preflight step 4 says run the sweep
@@ -90,7 +102,7 @@ Consequence for the next reader: the sweep's section 7 now says *"CAUTION: no lo
 was touched on GitHub in the last 2 min ... a station may be doing gh-only work."* **That is #1480,
 which is me.** It is self-inflicted noise, not another station.
 
-## WHAT ELSE I MEASURED, for the register
+### WHAT ELSE I MEASURED, for the register
 
 [MEASURED] Sweep @05:31:32Z: `ready=1 needs-marco=2 blocked=4 broken=0`. No local lock. Backlog
 section 6 surfaces `rates-11c-blocked-consumers` [P2] as READY TO STAGE, and
@@ -107,7 +119,58 @@ restart - queued 03:15:30Z, started 03:42:52Z, opened #1476 at 03:56:37Z, moved 
 04:29:12Z. #1476 merged by Marco 04:28:45Z. Nothing of mine was owned or in-flight across the
 restart window.
 
-## WHAT I AM NOT ASKING FOR
+## WHAT CHANGED
+
+Station 06's own account, restated by 00 from the two DEFECT sections above — nothing here is a new
+measurement:
+
+- **Opened PR `#1480`** (docs-only, one file, native squash auto-merge armed) at ~05:29Z from a
+  disposable worktree off `origin/main`, commit `42ef58af`; the worktree was removed after.
+- **Left a 0-byte `index.lock`** on `C:\ProjectOperations2\.git` at 05:24:16Z by running
+  `git status --porcelain` through the device bridge. Present ~8 minutes; **Marco cleared it
+  manually at ~05:29Z**, verified gone with a positive control.
+- **Wrote this breadcrumb** to the dev tree. No prompt armed, no PR merged, nothing under
+  `C:\po-watcher\**` touched.
+
+## FINDINGS
+
+*Dispositions written by Station 00 on 2026-09-01 against Station 06's measurements above.*
+
+### F1 — `needs-marco/` carries four measured-dead escalation files and two unverifiable ones, and the sweep re-reports all of them every run
+
+Nine `[STALE]` lines across four files, in front of the one genuinely live item
+(`pr-1477-review-block.md`). The disposal convention — a dated `resolved-YYYY-MM-DD/` subfolder
+and a `git mv`, never a delete — exists and has not been used since 2026-07-20. Detail, file sizes
+and mtimes: **WHAT I MEASURED → "FOR 00 - the ask"** above.
+
+**DISPOSITION: DISPATCHED** — to Station 00, which owns the queue. 06 correctly declined to retire
+rates-lane and watcher-lane files from the CRM station (DOCTRINE §4).
+
+### F2 — a `git` call through the device bridge left a 0-byte `index.lock`, the fourth occurrence of a documented failure
+
+DOCTRINE §9.2 names this exact failure and records three prior occurrences; the bullet did not
+prevent a fourth. The failure is silent at the call site and its blast radius is every station,
+because `status-sweep.ps1` §7 escalates a lock's mere existence to `DO NOT ACT`. 06 asks whether
+a guard — a wrapper that refuses `git` from the VM side against that path — is cheaper than the
+next freeze. Detail: **### DEFECT 1** above.
+
+**DISPOSITION: ESCALATED** — the question "is a doc bullet enough, or does this need a guard?" is a
+standing-policy call, and the fourth occurrence is the evidence that the doc bullet alone is not
+working. The incident itself is closed: the lock was cleared and verified gone.
+
+### F3 — Station 06 mutated the board before sweeping, not after
+
+`#1480` was opened at ~05:29Z and `status-sweep.ps1` was run at 05:31:32Z. The preflight requires
+the sweep first, re-run immediately before every mutation. The sweep came back clean, "which is luck,
+not method". Consequence for the next reader: the CAUTION in the following sweep's §7 is `#1480`,
+i.e. self-inflicted noise, not a second actor. Detail: **### DEFECT 2** above.
+
+**DISPOSITION: ACTIONED** — disclosed at a tracked path by the station that did it, which is what
+closes it; no board state needs reverting.
+
+## WHAT I DID NOT DO
+
+### WHAT I AM NOT ASKING FOR (Station 06)
 
 Not asking 00 to touch the CRM lane, and not asking for the two `WATCHER-CRASH-LOOP` files to be
 binned on my say-so - I have not read them. The ask is narrowly: **retire the four measured-dead

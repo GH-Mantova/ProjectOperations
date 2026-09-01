@@ -1845,6 +1845,24 @@ async function syncMain() {
   }
 }
 
+// Advance the clone's base without letting a failure end the run.
+//
+// syncMain() used to be reachable ONLY from the auto-merge success branch, so
+// on a board where every PR routes to Marco (RULE 2 sends anything touching a
+// path outside tests/ or docs/) the clone's local main never moved. The next
+// review agent then ran against a stale base and its verdict cited files that
+// are on main but not in the clone, which verdict-guard correctly rejects —
+// the prompt lands in blocked/ and the loop tightens as the queue grows.
+// Measured 2026-08-31: 9 guard-blocks, 4 of them inside one day, while the
+// clone sat on a PR feature branch instead of main.
+async function syncMainQuietly(context) {
+  try {
+    await syncMain();
+  } catch (err) {
+    log("sync", `WARNING: main sync after ${context} failed: ${err.message} — clone stays on its current base`);
+  }
+}
+
 // --- Lockfile helpers ---
 
 // Read the command line for a PID. Returns "" if it cannot be determined
@@ -2805,6 +2823,10 @@ async function drain() {
           // tests-docs: PR doesn't qualify for auto-merge — leave it open for
           // Marco, file the prompt as processed (the agent's work succeeded).
           log("merge", `${name}: PR #${prNumber} stays for Marco (${result.reason})`);
+          // The PR stays open, but the clone must still come back to main —
+          // otherwise it is pinned to an old base for as long as the queue is
+          // Marco's, and every later review verdict is guard-blocked.
+          await syncMainQuietly("Marco routing");
         } else if (!result.ok && (result.ci || result.reason?.startsWith("ci-"))) {
           // CI landed red — failure quarantine (one transient retry first).
           let checksOut = "";
@@ -2843,6 +2865,7 @@ async function drain() {
           } catch (err) {
             log("error", `move blocked: ${err.message}`);
           }
+          await syncMainQuietly("blocked outcome");
           seen.delete(name);
           await pauseQueue(`PR #${prNumber} blocked: ${result.reason}`);
           running = false;

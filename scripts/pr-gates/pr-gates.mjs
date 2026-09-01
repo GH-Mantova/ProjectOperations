@@ -39,7 +39,9 @@
 // section -> SKIP.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+
+import { wasEverEscalated, decideApprovalReceipt } from "./approval-receipt.mjs";
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" });
@@ -469,21 +471,35 @@ function report(level, gate, name, detail) {
 }
 
 
-// CP-26 - do-not-merge label. The `escalates: true` front-matter flag means a human decides the
-// merge. Until 2026-08-17 that was enforced by NOTHING: the watcher ran `gh pr merge --auto` on
-// every PR it opened, the string "escalates" appeared nowhere in it, and no gate anywhere looked
-// at the `do-not-merge` label - which already existed, described as "escalates:true - Marco merges
-// this, not automation (DOCTRINE 5b)", and was simply never applied or checked. That is the OPS-6
-// near-miss mechanism: a destructive migration one green build away from merging itself.
+// CP-26 - do-not-merge label + approval-receipt. The `escalates: true` front-matter flag means a
+// human decides the merge. Until 2026-08-17 that was enforced by NOTHING: the watcher ran
+// `gh pr merge --auto` on every PR it opened, the string "escalates" appeared nowhere in it, and
+// no gate anywhere looked at the `do-not-merge` label - which already existed, described as
+// "escalates:true - Marco merges this, not automation (DOCTRINE 5b)", and was simply never
+// applied or checked. That is the OPS-6 near-miss mechanism: a destructive migration one green
+// build away from merging itself.
 //
 // The watcher now applies the label; this gate is what gives it teeth. Enforcement lives HERE, at
 // the point of action, not in the watcher's decision - a filter is one quirk away from being a
 // silent no-op, which is exactly how #552 (the production-data PR) was once selected for merge.
 //
-// Removing the label IS the human's approval: CI re-runs, this gate passes, the PR can merge.
+// Removing the label IS the human's approval. But the removal is recorded as
+// `UNLABELED by GH-Mantova` - the same actor string the watcher writes when it APPLIES the
+// label, because the watcher and Marco share that identity today. So the label alone cannot say
+// WHO released the gate. This gate now additionally requires a receipt file at
+// docs/decisions/merge-approvals/<pr>.md, committed to the PR branch, whenever a PR was ever
+// escalated. See scripts/pr-gates/approval-receipt.mjs for the truth table and the sibling
+// approval-receipt-check.mjs CI job for the enforcement point - THIS block is advisory (pr-gates
+// is not a required check today); the enforcement is the separate `approval-receipt` job in
+// .github/workflows/ci.yml.
+//
+// A receipt is a detection-and-attribution improvement, NOT an authentication one - anyone with
+// write access can still commit one. See sot/05 for why (A) alone is not enough and (B) - a
+// separate GitHub App identity for the watcher - remains open.
 {
   if (prNumber) {
     let labels = [];
+    let labelReadFailed = false;
     try {
       const raw = execFileSync(
         "gh",
@@ -493,18 +509,83 @@ function report(level, gate, name, detail) {
       labels = raw.split("\n").map((s) => s.trim()).filter(Boolean);
     } catch (err) {
       // Fail CLOSED. If we cannot read the labels we cannot prove the PR is releasable.
+      labelReadFailed = true;
       report("FAIL", "CP-26", "do-not-merge", `could not read labels: ${err.message}`);
     }
-    if (labels.includes("do-not-merge")) {
-      report(
-        "FAIL",
-        "CP-26",
-        "do-not-merge",
-        "PR carries the do-not-merge label (escalates:true). A human must review and REMOVE " +
-          "the label; removing it is what releases the merge."
-      );
-    } else {
-      report("PASS", "CP-26", "do-not-merge", "label absent");
+    if (!labelReadFailed) {
+      // Fetch the events log so we can tell "never escalated" from "escalated and released".
+      // Fail CLOSED here too - a silent failure to read events would let a released escalation
+      // slip through as if it had never been escalated. This is the exact class of bug the
+      // whole slice exists to prevent.
+      let events = [];
+      let eventsReadFailed = false;
+      try {
+        // Repo path derived from `gh` so the check works regardless of remote name.
+        const ownerRepo = execFileSync(
+          "gh",
+          ["repo", "view", "--json", "owner,name", "-q", ".owner.login + \"/\" + .name"],
+          { encoding: "utf8" }
+        ).trim();
+        const raw = execFileSync(
+          "gh",
+          [
+            "api",
+            "-H", "Accept: application/vnd.github+json",
+            "/repos/" + ownerRepo + "/issues/" + prNumber + "/events",
+            "--paginate",
+          ],
+          { encoding: "utf8" }
+        );
+        events = JSON.parse(raw);
+      } catch (err) {
+        eventsReadFailed = true;
+        report("FAIL", "CP-26", "approval-receipt", `could not read events: ${err.message}`);
+      }
+
+      if (!eventsReadFailed) {
+        const labelPresent = labels.includes("do-not-merge");
+        const everLabeled = wasEverEscalated(events);
+
+        // Look for the receipt in this PR's diff against origin/main - a receipt sitting on
+        // main from an earlier PR does not count.
+        const receiptPath = "docs/decisions/merge-approvals/" + prNumber + ".md";
+        let receiptInDiff = false;
+        let receiptBody = null;
+        try {
+          const changed = git("diff", "--name-only", base, "HEAD").split("\n").filter(Boolean);
+          receiptInDiff = changed.includes(receiptPath);
+          if (receiptInDiff && existsSync(receiptPath)) {
+            receiptBody = readFileSync(receiptPath, "utf8");
+          }
+        } catch (err) {
+          receiptInDiff = false;
+          receiptBody = null;
+        }
+
+        const decision = decideApprovalReceipt({
+          labelPresent,
+          everLabeled,
+          receiptInDiff,
+          receiptBody,
+          prNumber: Number(prNumber),
+        });
+
+        // Preserve the byte-identical PASS/FAIL strings the earlier CP-26 emitted for the two
+        // cases it already handled. Other tooling greps this output.
+        if (decision.code === "LABEL_PRESENT") {
+          report("FAIL", "CP-26", "do-not-merge", decision.message);
+        } else if (decision.code === "NEVER_ESCALATED") {
+          report("PASS", "CP-26", "do-not-merge", decision.message);
+        } else {
+          // RECEIPT_MISSING | RECEIPT_MALFORMED | RECEIPT_VALID
+          report(
+            decision.verdict,
+            "CP-26",
+            "approval-receipt",
+            "[" + decision.code + "] " + decision.message
+          );
+        }
+      }
     }
   } else {
     report("SKIP", "CP-26", "do-not-merge", "no PR_NUMBER (local run)");

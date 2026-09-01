@@ -145,6 +145,36 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
 
+  approval-receipt:
+    # CP-26 enforcement point. `pr-gates` above ALSO reports on the receipt for local visibility,
+    # but pr-gates is not on the required-status-checks list. THIS job is what would block a
+    # merge, once Marco adds "Approval receipt (CP-26)" to ruleset 15532058. Until he does the
+    # check runs and reports but blocks nothing.
+    #
+    # THREE load-bearing properties (do NOT copy-paste this job elsewhere without keeping them):
+    #   1. No `needs:` on the changes-filter, no path filter. A required check that skips leaves
+    #      the PR pending forever — exactly the failure `pipeline-tests` documents. Every PR
+    #      must reach a verdict; the ordinary "never escalated" path is two API calls and an
+    #      early PASS.
+    #   2. fetch-depth: 0. `receiptInDiff` is computed against merge-base with origin/main; a
+    #      shallow checkout has no merge-base and the check would silently degrade to "no diff
+    #      seen -> receipt missing" or to a git error, neither of which is the truth.
+    #   3. Its own thin entry point. Decision logic lives in approval-receipt.mjs so the unit
+    #      tests test the decision, not the shell-out.
+    name: Approval receipt (CP-26)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      - run: node scripts/pr-gates/approval-receipt-check.mjs
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+
   pipeline-tests:
     name: Pipeline — watcher + linter tests
     # UNCONDITIONAL — no `needs: changes` gate. A PR touching scripts/pr-watcher/**
@@ -172,6 +202,7 @@ jobs:
       # file paths, which Node --test accepts correctly.
       - run: node --test "scripts/pr-watcher/__tests__/*.mjs"
       - run: node --test "scripts/pipeline/__tests__/*.mjs"
+      - run: node --test "scripts/pr-gates/__tests__/*.mjs"
       - run: node scripts/pipeline/test-lint-prompt.mjs
       # Station instruction docs get the same treatment the prompt queue gets.
       # Before this gate, five pasted copies of station behaviour drifted for weeks and

@@ -32,6 +32,7 @@ describe("card-display utilities (PR B1.5)", () => {
       expect(disciplineColor("CIV")).toBe(DISCIPLINE_COLORS.CIV);
       expect(disciplineColor("ASB")).toBe(DISCIPLINE_COLORS.ASB);
       expect(disciplineColor("Other")).toBe(DISCIPLINE_COLORS.Other);
+      expect(disciplineColor("SUB")).toBe(DISCIPLINE_COLORS.SUB);
     });
 
     it("falls back to a neutral grey for unknown codes", () => {
@@ -134,14 +135,25 @@ describe("card-display utilities (PR B1.5)", () => {
   });
 
   describe("DISCIPLINE_CODES + DISCIPLINE_LABELS", () => {
-    it("exposes exactly 4 canonical codes", () => {
-      expect([...DISCIPLINE_CODES]).toEqual(["DEM", "CIV", "ASB", "Other"]);
+    it("exposes exactly 5 canonical codes", () => {
+      expect([...DISCIPLINE_CODES]).toEqual(["DEM", "CIV", "ASB", "Other", "SUB"]);
     });
 
     it("provides a label for every code", () => {
       for (const code of DISCIPLINE_CODES) {
         expect(DISCIPLINE_LABELS[code]).toBeDefined();
         expect(DISCIPLINE_LABELS[code].length).toBeGreaterThan(0);
+      }
+    });
+
+    // Regression guard for PR #1443: adding "SUB" to IS_DISCIPLINE_CODES left
+    // DISCIPLINE_COLORS without an entry, so the new tab silently rendered the
+    // #666 unknown-code fallback. A missing colour must fail here, not on screen.
+    it("provides a real colour for every code, never the unknown fallback", () => {
+      for (const code of DISCIPLINE_CODES) {
+        expect(DISCIPLINE_COLORS[code]).toBeDefined();
+        expect(disciplineColor(code)).toBe(DISCIPLINE_COLORS[code]);
+        expect(disciplineColor(code)).not.toBe("#666");
       }
     });
   });

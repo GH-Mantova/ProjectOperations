@@ -109,7 +109,20 @@ export function ScopeCardTab({ card, active, onSelect, onRename, onDelete, isDra
         </span>
       )}
       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({card.itemCount})</span>
-      {hovered && !editing && card.itemCount === 0 ? (
+      {/*
+        The delete affordance is MOUNTED whenever the card is empty and only its
+        VISIBILITY changes on hover. It used to be mounted on hover, which changed
+        the tab's width the instant the pointer arrived. Once the tab strip is wide
+        enough to wrap (a fifth discipline, SUB, put it on two rows) that width
+        change reflows the strip, moves the tab out from under the pointer, fires
+        mouseleave, and unmounts the button mid-click - then the tab shrinks back
+        under the pointer and the whole cycle repeats. Playwright recorded the loop
+        as "103 x element was detached from the DOM, retrying" on
+        tests/e2e/pr-acceptance/batch8-misc.spec.ts:161. Reserving the space makes
+        the tab's width independent of hover, so no layout change can destroy the
+        element being clicked - for this card and for every future one.
+      */}
+      {!editing && card.itemCount === 0 ? (
         <button
           type="button"
           onClick={(e) => {
@@ -125,7 +138,8 @@ export function ScopeCardTab({ card, active, onSelect, onRename, onDelete, isDra
             color: "var(--text-muted)",
             padding: "0 4px",
             fontSize: 14,
-            lineHeight: 1
+            lineHeight: 1,
+            visibility: hovered ? "visible" : "hidden"
           }}
         >
           ×

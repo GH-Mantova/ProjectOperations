@@ -10,6 +10,20 @@ contract_version: 1
 
 # Station 02 — Board Driver
 
+> 🔻 **FOLDED INTO STATION 00 on 2026-09-02 (Marco).** This is no longer a station that runs. It is the
+> **board-driving procedure**, and Station 00 owns and executes it — see `00-supervisor.md`, *BOARD
+> DRIVING — the four conditions*. Nothing below is retired: the rules are the accumulated cost of
+> real incidents and they still bind whoever drives the board, which is now 00. Read "you" as 00.
+>
+> **Why.** 02's only trigger was dispatch from 00, and a dispatch is a line in a breadcrumb, not a
+> spawn — so for seven weeks dispatches to 02 went to a queue with no consumer while 00 did the work
+> under its own fallback. Measured 2026-09-01: the #1483 e2e work was dispatched to "01/02" at 18:09Z
+> and 20:09Z and was still undone eight hours later. Do not re-schedule 02 to fix this: a second board
+> actor on a shared git index is LL-38.
+>
+> The bootstrap at `C:\Users\Marco\Claude\Scheduled\02-board-driver\` should be retired to
+> `_retired-<date>\` — it is not deleted, and it never fired.
+
 ## PREFLIGHT — run this before anything else
 
 <!-- CANONICAL-BLOCK: station-contract v1 — byte-identical in every station doc.
@@ -138,8 +152,9 @@ your job ends at writing the breadcrumb.
 
 ## AUTHORITY — what this station may and may not do
 
-**You drive open PRs to merged. You have no schedule of your own** — you run only when Station 00
-dispatches you. If you cannot name the dispatch, you are not supposed to be running: say so and stop.
+**This procedure drives open PRs to merged, and Station 00 executes it.** 02 has no schedule and is
+not dispatched to any more (2026-09-02). If you are an agent that believes it *is* Station 02, you are
+running something that no longer exists: say so and stop.
 
 - You create PRs and merge dispatched work. **You never arm a prompt.**
 - Merges go through `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Never by hand.

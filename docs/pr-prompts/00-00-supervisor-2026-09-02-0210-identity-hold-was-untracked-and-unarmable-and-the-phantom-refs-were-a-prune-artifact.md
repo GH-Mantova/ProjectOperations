@@ -158,3 +158,76 @@ are.** Do not discharge it.
 - **Did not edit DOCTRINE §9.2.** The bullet is correct as written; only the state figure attached
   to it in memory was wrong, and state does not belong in an instruction document.
 - **Did not touch `/sot/`, Azure, Entra or SharePoint.**
+
+## ADDENDUM — same run, 02:2x–02:4xZ: Station 04 filed MID-RUN and I collected it
+
+At 02:09Z `check-breadcrumb.mjs --freshness` said `CLEAN` and no breadcrumb was newer than my
+predecessor's 00:08Z run. **Station 04 then wrote
+`00-04-scanner-2026-09-02-0210-instruction-drift-sweep.md` at 02:20Z, inside my own window** — the
+second consecutive cadence in which 04 has filed mid-run. **A COLLECT taken at the top of the run is
+not final; re-check the queue root before you close.** I would have shipped a run reporting "nothing
+new to collect" while a seven-finding breadcrumb sat one directory away.
+
+### 04's seven findings, dispositioned
+
+**04-F1 — `SCRIPT-REGISTRY.md` names a launcher that is not the one running.** Re-measured by me
+independently, not inherited: `Get-CimInstance Win32_Process` filtered to command lines containing
+`watcher` returns `30600 powershell -File "C:\po-watcher\watcher-launcher-singlelane.ps1"` →
+`34332 start-watcher.ps1` → `28400 node index.mjs`. `SCRIPT-REGISTRY.md:94` and `:120` both name
+`pr-watcher\watcher-launcher.ps1` and call it the thing that starts the watcher. Every station doc
+tells the reader to trust the registry **over** the filename, so the registry was actively steering
+stations to the wrong file.
+**DISPOSITION: ACTIONED** — both sites corrected in this PR: the Watcher-internal note now names
+`C:\po-watcher\watcher-launcher-singlelane.ps1` and marks it UNTRACKED, and the table carries the
+live launcher plus a struck-through SUPERSEDED row for the tracked one.
+
+**04-F6 — the rotation advance is documented but structurally cannot land.** `04-scanner.md:149`
+told 04 to *"commit that file with your breadcrumb"*, but the authority matrix gives 04
+*Create a PR: NO* / *Mutate the board: read-only*, and the dev tree sits on `main`. The instruction
+asked 04 to do the one thing 04 is forbidden to do, so the advance survived only because a working
+copy happened to persist — and **two consecutive advances were sitting uncommitted** when I arrived
+(`git diff --numstat` = `2 2`, 04's advance written over the 22:10Z run's).
+**DISPOSITION: ACTIONED, both halves.** (1) `docs/pipeline/sweep-rotation.json` is committed in this
+PR — `last_index` 1→3, `last_run_utc` → `2026-09-02T02:10:25Z`, carrying both runs forward.
+(2) `04-scanner.md` now reads *"LEAVE IT DIRTY … Station 00 commits it, because you may not"*, which
+matches the authority matrix and what actually happens.
+⚠️ Recorded, not fixed: `next-sweep.mjs --advance` rewrites those two lines at **column 0**, losing
+the file's 2-space indent. Valid JSON, cosmetic only, and re-fixing it would just be undone by the
+next advance — a lead for whoever next touches `next-sweep.mjs`, not a finding.
+
+**04-F5 — `weekly-security-audit` has been `enabled: false` for 15 days** (`lastRunAt`
+2026-08-18T08:18:52Z), its bootstrap and `scripts/security-audit.ps1` both present and healthy, and
+it appears in no cadence table so nothing would ever notice.
+**DISPOSITION: ESCALATED → Marco** (04 raised it; I am carrying it, not re-raising it). Its option
+(A) — re-enable **and** add a row to `STATION-CAPABILITIES.md` §6 so a disabled schedule becomes
+visible to the next drift sweep — is the one that passes both halves of RULE 1, and I agree with
+04's framing. The question is whether it was switched off deliberately, which is RULE 3 and is his.
+
+**04-F3 — 05's bootstrap cites `pr-gates.mjs:327` with no directory, and understates CP-24's
+`codeRe`.** Not my lane: 04 dispatched it to Station 05, whose own doc is the durable place for the
+full path (`scripts/pr-gates/pr-gates.mjs`) and the complete prefix list.
+**DISPOSITION: DISPATCHED → Station 05** (confirmed, not re-routed). 05's cadence is daily and it
+last filed 12h ago, so it will pick this up on its next run without further action from me.
+
+**04-F2 (`ensure-watcher.ps1` not in the repo) and 04-F4 (three untracked-and-un-ignored state
+files)** are second, independent measurements of open escalations **#19** and **#18**. 04 correctly
+declined to re-open either. F4 adds one fact worth keeping: the population is **three** files
+(`queue-watch-state.md`, `AWAITING-MARCO-DECISION.md`, `triage-state.md`), not one.
+**DISPOSITION: DEFERRED** to #19 and #18, which already carry Marco's A/B/C options.
+
+**04-F7 — the instruction-drift sweep's own premise is satisfied.** Five bootstraps byte-identical
+but for five station-specific lines each, one batch, zero disproved advice, `U+FFFD=0` on all five.
+**DISPOSITION: DEFERRED** to the next `instruction-drift` rotation, as 04 proposed. The `_why` text
+should describe what it now watches for rather than a cured incident, but rewriting it now would
+churn a file two stations are already writing to this hour.
+
+### One more instrument lesson, mine, measured this run
+
+**Never print `Win32_Process.CommandLine` unfiltered.** Verifying 04-F1 I dumped every command line
+matching `watcher`; a Teams WebView2 process and this session's own `claude.exe` invocation matched
+incidentally and cost roughly ten thousand tokens of context for a three-line answer. The correct
+probe filters the *output*, not just the process set:
+`... | Where-Object { $_.CommandLine -match 'pr-watcher|watcher-launcher|start-watcher' } |
+Select-Object ProcessId, @{n='Cmd';e={ $_.CommandLine.Substring(0, [Math]::Min(120, $_.CommandLine.Length)) }}`.
+This is DOCTRINE §7's shape with the sign flipped — not a lying instrument, an honest one aimed too
+wide, which costs a scheduled run its budget just as effectively.

@@ -15,13 +15,20 @@ done_when: pnpm build && pnpm lint && test -f apps/api/src/modules/crm/reminders
 size: 9
 gate_allow: migrations
 seed_only: false
-escalates: false
+escalates: true
 backfill: false
 requires_on_main: docs/plans/tender-reminders-plan.md :: TR_SCOPE_CRM
 rollback_strategy: Both new models are purely additive (CREATE TABLE only, no existing rows modified, all columns have defaults). Safe to leave on main if the run is capped before the code lands. To revert, remove TenderReminderPolicy and TenderReminderLog from schema.prisma and drop the corresponding migration — no UPDATE ... SET, no NOT NULL backfill on existing rows.
 ---
 <!-- gate dropped 2026-08-19: docs/plans/tender-reminders-plan.md landed on main; the gate was a no-op. -->
 <!-- re-scoped 2026-09-01: TR_SCOPE_CRM — CRM surface, not Tendering. See docs/plans/tender-reminders-plan.md §0. -->
+<!-- escalates false -> true, 2026-09-02, Marco's call (Station 00, 03:2xZ). This prompt carries
+     gate_allow: migrations at size 9, and with escalates: false the watcher applies NO
+     do-not-merge label, so nothing would have held its PR: arming it would have AUTO-MERGED a
+     schema migration unattended. Every prompt armed to date has been docs- or web-only. The flag
+     gates the MERGE, not the RUN (DOCTRINE §5b) — this prompt still runs and still opens its PR;
+     the PR now waits for Marco. Additive: it adds a gate, removes none, and touches no data path. -->
+
 
 # TR-1: Reminder policy/config + reminder-log (schema, CRUD, idempotency) — **CRM surface**
 

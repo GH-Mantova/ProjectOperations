@@ -385,8 +385,7 @@ processing (LOOP), silent no-ops, needs-marco backlog, orphaned worktrees, open 
 Read all of these. If another agent already found or escalated something, **add signal, not noise.**
 
 - `docs/pr-prompts/shepherd-state.md` - what the shepherd did, merged, escalated
-- ~~docs/pr-prompts/triage-state.md~~ - REMOVED: this file does not exist on main (checked 2026-08-24).
-- docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there - **your own prior runs.** Never act twice on one signal.
+- `docs/pr-prompts/00-*-*.md` - the breadcrumbs: **your own prior runs, and every other station's.** They are tracked on main, so a clone, CI and any cloud-fired station read exactly what you read. Never act twice on one signal.
 - `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (`.gitignore:108`)** - it is absent from a
   clean checkout, so read it if present but never treat its silence as evidence, and never send a
   station there to report.
@@ -426,7 +425,7 @@ State plainly:
 
 - The board: which PRs are open, dirty, failing, clean.
 - The machinery: watcher alive / wedged / down; agents running.
-- What is genuinely NEW since your last run (diff against `queue-watch-state.md`).
+- What is genuinely NEW since your last run (diff against your own breadcrumbs, `docs/pr-prompts/00-00-supervisor-*.md` and their copies under `archive/`).
 - What another agent is already handling, or has already escalated.
 - **The single most important thing blocking progress right now.**
 
@@ -546,7 +545,8 @@ suggesting deletion.** Never delete unsupervised.
 
 # PHASE 4 - REPORT
 
-Append to docs/pr-prompts/queue-watch-state.md ⚠️ **UNTRACKED** — it exists only on the box that wrote it, so a clone, CI and any cloud-fired station see nothing there with a UTC timestamp:
+Write your breadcrumb at the tracked path this document's REPORT CONTRACT names -
+`docs/pr-prompts/00-00-supervisor-<YYYY-MM-DD>-<HHMM>-<slug>.md` - carrying a UTC timestamp and:
 
 - the verdict from each check
 - what you FIXED, and the **evidence** it worked (new PID, green check, queue moved)

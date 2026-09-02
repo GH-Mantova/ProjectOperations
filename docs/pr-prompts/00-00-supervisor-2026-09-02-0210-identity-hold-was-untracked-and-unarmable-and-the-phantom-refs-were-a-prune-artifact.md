@@ -231,3 +231,77 @@ probe filters the *output*, not just the process set:
 Select-Object ProcessId, @{n='Cmd';e={ $_.CommandLine.Substring(0, [Math]::Min(120, $_.CommandLine.Length)) }}`.
 This is DOCTRINE §7's shape with the sign flipped — not a lying instrument, an honest one aimed too
 wide, which costs a scheduled run its budget just as effectively.
+
+## ADDENDUM 2 — 03:03–03:15Z: `#1483` merged, the board is EMPTY, and a stale dev tree nearly armed a duplicate
+
+**`#1483` MERGED 2026-09-02T02:46:46Z**, merge commit `fa16ead5`, `mergedBy=GH-Mantova`,
+`autoMergeRequest=false`, labels `[]`. Timeline: `do-not-merge` applied 09-01T05:46:45Z, removed
+09-01T08:51:48Z (the seventh occurrence already on record — the one CP-26 caught), merged 34 hours
+later with no auto-merge. **[INFERRED]** that is Marco merging by hand, and he confirmed it in chat,
+which is the RULE-2 clearance the rule asks for — *cleared by Marco, in chat, for that PR*. It is
+**not** a tenth unattributable merge. I still cannot **prove** the actor, for the same shared-identity
+reason as every previous case. `docs/decisions/merge-approvals/1483.md` landed with it.
+
+**[MEASURED 03:06:40Z] The board is EMPTY and the sweep says `SAFE TO ACT`:**
+0 open PRs · armed 0 · in-progress prompts 0 · no `index.lock` · 0 git processes · no PR touched in
+2 min · watcher node 28400 alive, wrapper alive, clone `main` dirty=0. Trunk CI on the full 40-char
+`fa16ead5`: **Push on main / CI / Deploy / Tendering Browser Smoke — all four `success`.** The
+acceptance-suite migration `#1483` carried in-chain landed clean.
+
+### 🔴 NEW INSTRUMENT TRAP, measured with a before/after — a STALE DEV TREE REPORTS A SPENT PROMPT AS ARMABLE
+
+`lint-prompt.mjs` evaluates a `premise:` like
+`! grep -q "SCOPE_WBS_TABLE_V1" apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx` against the
+**working tree**, not against `origin/main`. The `requires_*` gates read `origin/main`; the premise
+does not. So with the dev tree at `1239c33a` and `origin/main` at `fa16ead5`:
+
+| | dev tree `1239c33a` | after `--ff-only` to `fa16ead5` |
+|---|---|---|
+| `pr-cardui-s2-wbs-table-shell-HOLD.md` | **ADMIT** (exit 0) — listed under *GATES SATISFIED* | **STALE / SPENT** (exit 3) — *"The work is ALREADY DONE. Binned before spawning an agent."* |
+| `triage-holds.ps1` totals | `spent=1  gates-satisfied=40` | `spent=2  gates-satisfied=39` |
+
+**Arming from the stale reading would have opened a second PR for the work `#1483` had just merged** —
+the exact duplicate-run failure the lint exists to prevent, reintroduced by a stale checkout rather
+than by a bad prompt. Memory had flagged this prompt as *"must not be armed while `#1483` is open"*;
+the reason has now inverted — it must not be armed because `#1483` is **closed**.
+
+🔴 **THE RULE: `git fetch --prune` AND `git merge --ff-only origin/main` BEFORE any HOLD triage or
+arming decision. A `triage-holds.ps1` / `lint-prompt.mjs` verdict taken against a dev tree behind
+`origin/main` is not a verdict about the board.** This is the second armability instrument in one run
+to give a confident wrong answer — the first was `PROMOTE` on an untracked file.
+
+### FINDINGS
+
+**F7 — `pr-cardui-s2-wbs-table-shell-HOLD.md` is SPENT and was sitting armable on an empty board.**
+**DISPOSITION: ACTIONED** — `git mv`'d to `docs/pr-prompts/superseded/` in this PR, per
+`triage-holds.ps1`'s own instruction (*"Retire them to docs/pr-prompts/superseded/ in a board PR. Do
+NOT arm."*). ⚠️ An uncommitted 56-line local amendment to it existed in the dev tree (Station 06
+adding the three `tests/e2e/pr-acceptance/*.spec.ts` files to `scope` and `size: 8`→`10`). It is
+**moot, not lost**: `#1483` shipped exactly that acceptance-suite move in-chain. `pr-cardui-s8`'s
+uncommitted +41 is a different case — s8 is still `GATE_NOT_RELEASED`, so I left it untouched.
+
+**F8 — `pr-cardui-s3-manpower-columns-HOLD.md`'s gate RELEASED when `#1483` merged.**
+`requires_on_main: 'apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx :: SCOPE_WBS_TABLE_V1'` is
+now satisfied on `fa16ead5`. `size: 6`, `gate_allow: none`, `escalates: true` — no migration, and its
+PR would be labelled `do-not-merge` and left for Marco. It is the natural continuation of the chain.
+**DISPOSITION: DEFERRED — put to Marco rather than armed.** The board is SAFE and armed is 0, so
+arming is permitted; but the standing rule is to ask whether to arm at all, and he is present.
+
+**F9 — `pr-tr-s1-reminder-policy-HOLD.md` is in the ADMIT list and would AUTO-MERGE A SCHEMA
+MIGRATION UNATTENDED.** Re-measured this run: `size: 9`, `gate_allow: migrations`, **`escalates:
+false`**, `backfill: false`. `escalates: false` means no `do-not-merge` label, so nothing would hold
+its PR. Everything armed for Marco to date has been docs- or web-only.
+**DISPOSITION: ESCALATED → Marco.** Do not arm it without him saying so explicitly. Under RULE 1 the
+complete-and-additive correction is to set `escalates: true` on it so the human gate is structural
+rather than dependent on whoever next reads the queue — it removes nothing and damages no data path.
+Leaving it as-is fails the *future* half: the next SAFE-to-act window is one `git mv` away from an
+unattended migration.
+
+**F10 — both non-main worktrees are now ORPHANED.** `C:/po-1483-fix` (newest file 02:27:30Z,
+`dirty=0`, branch `fix1483`, whose remote head was deleted when `#1483` merged) has flipped from
+LIVE STATION WORKTREE to orphaned now that its PR has landed; `C:/po-work/s2-e2e` (newest 00:31:41Z,
+`dirty=0`) was already orphaned. **DISPOSITION: DISPATCHED → Station 03**, folded into the existing
+clone-hygiene dispatch alongside the 11 registry escapees and the stray `origin/origin` ref. Use
+Station 04's option (A): annotated `abandoned/<name>@<sha>` tag, push tags, **then** delete. Both are
+`dirty=0`, so nothing is at risk, but the tag costs nothing and the sweep has been wrong about
+liveness in both directions today.

@@ -669,3 +669,46 @@ burns a slice and then waits on Marco anyway.
 (RULE 3). `PROMPT-SCHEMA.md` already requires an executable premise; an unsettled interface decision
 is a premise that cannot execute. Take it to him as a decision with options and the measured evidence
 for each, not as a status update.
+
+## 10.5 An artifact carries ONE identity for its whole life
+
+Added 2026-09-02. **Ruled by Marco**, after the register became unreadable.
+
+Published artifacts are a second lane in the same sense as §10.1: they reach Marco without passing
+through the repo, and unlike a PR they carry **no history he can read** — an artifact shows only its
+current content and its title. On 2026-09-02 his register held **24 artifacts with at least four
+near-duplicate pairs**, and nothing on any page said which member of a pair was live.
+
+🔴 **The thing that forks an artifact is the SOURCE FILE PATH, not the title.**
+
+- Republishing the **same** file path (or passing the artifact's `url`) updates that artifact **in
+  place, at the same URL**. This is what improvement looks like.
+- Publishing a **different** file path mints a **brand-new artifact** — even when the title is
+  byte-identical. Nothing warns you; the publish succeeds and returns a new URL.
+- Changing the **title** forks nothing. But it **hides a fork that already happened**, because the
+  two pages stop sorting next to each other in the gallery. The rename is the camouflage, not the
+  wound.
+
+**THE RULE.**
+
+1. **The name is fixed at first publish.** Never rename an artifact. If the name has stopped fitting,
+   say so to Marco — that usually means the scope drifted — but the name still does not change. He
+   navigates the register by it.
+2. **The source file is fixed at first publish.** Keep editing that exact path. Never
+   `-v2`, `-final`, `-wbs`, `-new` or any other filename for the same subject.
+3. **The favicon is fixed too.** Omit it on every redeploy. A changed icon reads as a different page.
+4. **A new artifact requires a new SUBJECT** — never a better version of an existing one. If you
+   cannot tell whether the subject is new, it is not (RULE 3: ask).
+5. **Before publishing anything this conversation did not itself publish:** list the register, look
+   for **near**-matches rather than exact title matches — the whole failure mode is that the older
+   page is named something slightly different — then read that artifact and republish to its `url`.
+   If the local source file is gone, recover the content by reading the artifact; do not rebuild it
+   under a new filename.
+6. **Superseded artifacts are never deleted and their URLs never break.** Republish the retired page
+   with a banner at the top naming its replacement and linking to it, so anyone opening the old link
+   is told immediately that it is not current.
+
+⚠️ **Worked example — this rule exists because of a measured failure, not a hypothetical.** On
+2026-09-02 a chat lane published `punch-list.html` as *"PR Master Punch List"*, improved the same
+work, and published the improvement as `wbs.html` titled *"ProjectOperations Work Breakdown"*. Two
+artifacts, one subject, no signal which was current. Rules 1 and 2 each independently prevent it.

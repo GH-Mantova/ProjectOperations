@@ -305,3 +305,45 @@ clone-hygiene dispatch alongside the 11 registry escapees and the stray `origin/
 Station 04's option (A): annotated `abandoned/<name>@<sha>` tag, push tags, **then** delete. Both are
 `dirty=0`, so nothing is at risk, but the tag costs nothing and the sweep has been wrong about
 liveness in both directions today.
+
+## ADDENDUM 3 — 03:30Z: the gate census, and 04-F5 answered
+
+**F11 — 04-F5 is ANSWERED and must not be re-raised.** Marco, in chat, 2026-09-02:
+`weekly-security-audit` has been `enabled: false` for 15 days **deliberately**. It is not a fault, it
+is not to be re-enabled, and option (A) is declined. ⚠️ **It will keep presenting as a finding** —
+a healthy task, with a present bootstrap and a present `scripts/security-audit.ps1`, switched off and
+absent from `STATION-CAPABILITIES.md` §6 — so any future drift sweep that measures schedules will
+surface it again unless it reads this. **DISPOSITION: ESCALATED → ANSWERED, closed.**
+
+**F12 — the gate census: exactly ONE prompt has a released gate and is not armed.** [MEASURED at
+`45bbfa14`, one `lint-prompt.mjs` run per file over all **68** `-HOLD.md` at depth 1, classified by
+exit code plus the presence of a `GATE_RELEASED` line — script kept at
+`C:\po-sup-fix-scripts\00-gate-open-not-armed-v2-2026-09-02.ps1`.]
+
+| bucket | count | meaning |
+|---|---|---|
+| **PROMOTE** | **1** | had a gate, gate has **RELEASED**, still on HOLD — `pr-cardui-s3-manpower-columns` |
+| ADMIT | 37 | never gated; lint-clean and armable any time |
+| STALE/SPENT (exit 3) | 1 | `pr-station04-qa-audit-marker-contradiction` — retired in this PR |
+| REJECT (exit 1) | 29 | still gated or human-gated; correctly on hold |
+
+**The distinction matters and the raw `triage-holds.ps1` total hides it.** That script's
+*GATES SATISFIED* bucket is `lint exit 0`, which merges PROMOTE and ADMIT into one number — 38 here.
+Read as "38 prompts whose gates are open" it wildly overstates what `#1483` unblocked; the true
+answer is **one**. ⚠️ **Do not quote `gates-satisfied` as a count of released gates.**
+
+⚠️ **First-attempt instrument failure worth recording:** my first version of that script classified
+by `-match '(?m)^PROMOTE'` against lint's stdout and put **all 68 rows in the UNPARSED bucket**.
+Cause: PS 5.1 does not support the `` `e `` escape, so the ANSI-strip regex never matched and every
+line still began with `ESC[36m`, not a letter. The fix that is robust regardless of colour codes is
+to classify by **exit code** (0 / 1 / 3) and use the text only to distinguish PROMOTE from ADMIT.
+A total of 68 UNPARSED is a loud failure; a total of 0 PROMOTE would have been a silent one.
+
+**F13 — three of the 37 ADMITs are fixes for defects measured this very run**, and are worth naming
+so they are not lost in a 37-line list: `pr-devtree-sync-ff-only-guard` (size 2) — the stale-dev-tree
+trap from ADDENDUM 2; `pr-queue-armed-tracked-detector` (size 3) — the armed-but-untracked class that
+made the identity HOLD unarmable; `pr-pipeline-nodrift-agents-write-sweep-commits` (size 4) — 04-F6's
+rotation-commit problem. All three: `escalates: false`, `gate_allow: none`.
+**DISPOSITION: DEFERRED** — RULE 4 is one at a time and `pr-watcher-identity-app-auth` is armed and
+unconsumed. They are the strongest candidates after `pr-cardui-s3`, and their being small and
+migration-free is the reason to prefer them over the rest of the backlog.

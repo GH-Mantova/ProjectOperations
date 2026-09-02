@@ -408,6 +408,61 @@ arm, not after it.** Idle window, wrapper first then node, relaunch DETACHED via
 that name), and read back the new PID. An arm placed on a stale watcher is the one case where this
 costs something real. What would make it urgent sooner: any further `scripts/pr-watcher/**` merge.
 
+### F10 — SECOND COLLECT: Station 04 filed at 06:10Z, inside my window [MEASURED]
+
+`00-04-scanner-2026-09-02-0610-gate-liveness-clean-clone-5-behind.md` appeared as `??` in the dev
+tree only after my closing fast-forward, together with a dirty `docs/pipeline/sweep-rotation.json`.
+**A collect at the top of a run is not final** — the same lesson the 04:26Z addendum recorded, now
+with a second instance. Its five findings, dispositioned:
+
+- **04-F1 — `next-sweep.mjs --advance` prints `COMMIT THIS FILE with your breadcrumb`, an imperative
+  ordering 04 to do the one thing the authority matrix forbids it.** The station doc was corrected
+  for this in #1505; **the script's stdout was not.** Two layers, one fixed. 04 dispatched it to me
+  and suggested I carry it in this PR.
+  **DEFERRED, and here is why I did not carry it.** `scripts/pipeline/next-sweep.mjs` is outside
+  `^(tests|docs)/`, so adding it re-classifies this PR as **MARCO'S** under `classifyPolicyFiles` —
+  which would strand 04's rotation advance and 04's own breadcrumb behind a human gate, for a
+  one-line string. 04 could not have known that; the classification is a property of the PR, not of
+  the change. It goes in the next `scripts/`-scoped PR, or 00 stages it as a size-1 prompt next
+  cycle. Exact edit: `ROTATION ADVANCED. Leave this file dirty and name it in your breadcrumb —
+  Station 00 commits it.`
+- **04-F2 — the watcher clone is 5 commits behind and its own cached `origin/main` equals its HEAD**,
+  so `git status` inside it reads clean and current while it is stale. **DISPATCHED → 03**, folded
+  into the clone-hygiene dispatch. 🔴 This compounds my F9: a restart adopts nothing, so the clone
+  must be fast-forwarded *before* the pre-arm restart, or the restart changes nothing.
+- **04-F3 — 64 stashes in the clone**, newest from the most recent launcher preflight, oldest from
+  the #545 era; dev tree 11. **DISPATCHED → 03**, same dispatch. Independently measured by me (F7).
+- **04-F4 — two uncommitted dev-tree edits are corrupting `lint-prompt.mjs` for every chat in this
+  tree.** Dispatched to me, and it splits in two:
+  - ` D pr-schema-label-removal-is-marcos-HOLD.md` — **ACTIONED.** Verified first:
+    `git ls-tree -r origin/main` still lists the HOLD, and `gh pr view 1514 --json state,files` is
+    `MERGED` with **one** file, `docs/pr-prompts/PROMPT-SCHEMA.md` — **the PR did not delete its own
+    prompt.** That is the *"an armed prompt whose PR does not delete it stays armable forever"*
+    defect, now its **third** measured instance after `pr-gates-approval-receipt` and
+    `pr-cardui-s3`. This PR `git mv`s it to `docs/pr-prompts/superseded/` — the #1506/#1509 pattern,
+    reversible, and read back in this PR's diff. It removes the duplicate-arm hazard *and* the
+    `MISSING` lint verdict 04 nearly filed as a 31st REJECT.
+  - ` M pr-cardui-s8-waste-section-HOLD.md` — **DEFERRED, deliberately untouched.** It is not
+    litter: `git diff` shows substantive authoring in progress — `size: 6 → 9`, five paths added to
+    `scope` including `.github/workflows/ci.yml`, and a new *"restoration ratchet"* section. That is
+    **Station 06's lane** (stage `-HOLD` only), mid-edit, uncommitted. Committing another lane's
+    half-finished prompt is worse than the lint noise it causes. What it exposes is the durable
+    point: **an uncommitted prompt edit in the shared dev tree is invisible off this box and makes
+    the linter lie about that one prompt for every chat.** Named for 06; if it is still dirty and
+    unchanged in 24 h, it is abandoned and 00 should ask Marco whose it is.
+- **04-F5 — three RESOLVED escalations still registered** (`clients-perms-namespace`,
+  `smoke-gate-nonfunctional`, `queue-armed-by-commit-noop`); `check-escalations.mjs` itself says to
+  clear them. **DEFERRED** — real, low severity, and it belongs with the eight dead `needs-marco/`
+  files already in 03's dispatch rather than as a separate errand.
+
+🟢 **04's run independently reproduces F5 of this report**: it too found the Desktop Commander tools
+deferred and had to `ToolSearch` them before its first call. **Two stations, two independent runs,
+same hour, same trap.** #1519 is not a nice-to-have.
+
+**ACTIONED** — 04's breadcrumb and its rotation advance are both committed by this PR.
+`sweep-rotation.json` read back: `last_index: 0`, `last_run_utc: 2026-09-02T06:10:43Z`, so the next
+04 run takes `instrument-honesty` and the rotation does not stall.
+
 ## WHAT I DID NOT DO
 
 - **Did not restart the watcher**, even though #1520 landed watcher code inside my window — nothing

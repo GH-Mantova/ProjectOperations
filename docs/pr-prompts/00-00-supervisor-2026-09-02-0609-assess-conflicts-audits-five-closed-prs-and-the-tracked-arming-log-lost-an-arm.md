@@ -145,8 +145,15 @@ that prompt is gated on #1519 landing (`requires_on_main: 00-supervisor.md :: mc
 
 1. Dev tree fast-forwarded `acaad4de` → `d3b603e4`; the pre-existing untracked
    `docs/pr-prompts/.arming-log.txt` moved aside to `.arming-log.txt.localbak-20260902`.
-2. This PR: this breadcrumb, the two collected breadcrumbs archived, and the one missing line
-   restored to the tracked arming log (F2).
+2. This PR (**#1522**): this breadcrumb, the two collected breadcrumbs archived, and the one missing
+   line restored to the tracked arming log (F2).
+3. Native squash auto-merge enabled on **#1522 only** — my own new, docs-only, verdict-free PR, which
+   hand-classifies as NOT Marco's (every path under `docs/`). The residual CAUTION at the end of this
+   run is caused by #1522 itself being under two minutes old; the escape CAUTION allows is *"an
+   ISOLATED worktree, touching only NEW branches/PRs"*, and #1522 is exactly that. I did **not** run
+   `enable-automerge.ps1` — see F8.
+4. `C:\po-fix` worktree created (by `assess-conflicts.ps1`, F1), reused for this PR, and **removed**;
+   `git worktree list` read back as the dev tree plus the two orphans that are Station 03's.
 
 **Nothing merged. Nothing armed. No label added or removed. No prompt moved. `/sot/` untouched.
 No Azure/Entra/SharePoint. No `git` write in `C:\po-watcher\ProjectOperations`.**
@@ -304,6 +311,72 @@ shows `C:/po-1483-fix` and `C:/po-work/s2-e2e`, both orphaned, both `dirty=0`; t
 new one — third restatement. Use 04's option (A): annotated tag `abandoned/<branch>@<sha>`, push tags,
 **then** delete, so the deletion is recoverable. Add the stash count to that dispatch: `git stash
 drop`, **never `pop`**. I did not delete anything; deletion is irreversible and is 03's lane.
+
+### F8 — `enable-automerge.ps1` reads NO labels and NO watcher verdict; only ONE of 00's two binding merge gates has a machine behind it [MEASURED]
+
+I went to `scripts/pipeline/enable-automerge.ps1` — SCRIPT-REGISTRY lists it under **"Mutating — your
+own hands"** — to arm auto-merge on my own PR, and read it first. Its entire selection filter is:
+
+```
+$NEVER = @()                                            # empty, and correct per its own header
+$raw = gh pr list --state open --limit 40 --json number,title,mergeStateStatus
+foreach ($p in $raw) { if ($NEVER -contains $n) {...} ; if ($p.mergeStateStatus -eq "DIRTY") {...} ; $safe += $p }
+...
+$out = gh pr merge $n --squash --auto --delete-branch
+```
+
+`Select-String -SimpleMatch 'label'` over the file returns **0**. Positive control on
+`scripts/pr-watcher/merge-queue.mjs`, which DOCTRINE §8.3a rule 2 says does read labels per-PR:
+**32**. So the instrument works and the zero is real: **it does not request the `labels` field, and
+nothing else in its 75 lines looks at one.** With `-Execute` it enables auto-merge on every open,
+non-DIRTY PR — today that is #1520 (already auto-merging) and #1522 (mine), so the blast radius is
+nil *this hour*, which is exactly the condition under which a latent defect stays latent.
+
+STATION-CAPABILITIES §5 names **two independent gates, both binding on 00**. They are not equally
+defended, and this is the finding:
+
+| gate | what enforces it in CI | verdict |
+|---|---|---|
+| 1. the `do-not-merge` label | `Approval receipt (CP-26)`, a **required** check | 🟢 **covered** |
+| 2. the watcher's `marco:true` routing | — | 🔴 **nothing** |
+
+Gate 1, measured — and it also corrects a standing memory clause. `scripts/pr-gates/approval-receipt.mjs:82-90`:
+`if (labelPresent) return { verdict: "FAIL", code: "LABEL_PRESENT" }`. A labelled PR therefore **fails
+a required check and GitHub auto-merge cannot merge it**. (The clause *"removing the label IS the
+documented clearance"* was true of the old advisory step inside `pr-gates.mjs`; since #1492 the
+label's real effect is FAIL-while-present, then RELEASED_NO_RECEIPT once removed. Both halves are now
+recorded.)
+
+Gate 2, measured: `Select-String -SimpleMatch 'marco'` across `scripts/pr-gates/*.mjs` and
+`.github/workflows/*.yml` returns **6 hits, and all six are prose in comments** — two in
+`approval-receipt.mjs`/`pr-gates.mjs` headers, two more at `pr-gates.mjs:477,486`, two in `deploy.yml`
+about Azure. Positive control: `scripts/pr-watcher/index.mjs` contains **35**. **No CI gate reads
+`docs/pr-prompts/processed/*.log`, so a PR the watcher routed to Marco but never labelled is green to
+GitHub and would be auto-merged by this script.** That is the RULE-2 bar, and it currently lives only
+in an agent's discipline.
+
+**RULE 1.** *Complete and additive, no risk to data entry:* **`enable-automerge.ps1` must refuse on the
+same two gates `merge-queue.mjs` already refuses on** — add `labels` to the `gh pr list --json` fields
+and refuse any PR carrying `do-not-merge` / `needs-marco` / `hold` (a label-read FAILURE being a
+refusal, not a pass — LL-47), **and** refuse any PR named by a `marco.:true` line in
+`processed/*.md.log`. It adds refusals only; it can never cause a merge that does not happen today.
+*(b)* "rely on CP-26" fails the *complete* half — it covers gate 1 only, and gate 2 is the one that
+has actually stopped nine PRs. *(c)* "delete the script and always use `gh pr merge --auto` by hand"
+fails the *future* half: the next station writes the same loop again, unguarded.
+
+⚠️ Second, smaller defect in the same file: on a `BEHIND`/`BLOCKED` PR it calls
+`gh pr update-branch $n`, which **moves the PR head under whoever is reading it** — the same hazard
+memory records for `PR_WATCHER_AUTO_UPDATE`. And its closing line still reads *"The 5 DIRTY PRs still
+need conflict resolution"*, the same frozen July snapshot as F1. Two of 00's own mutating primitives
+carry a hard-coded picture of a board from seven weeks ago.
+
+**DISPATCHED** → Station 06 (PR Master), to stage with F1 as one prompt or two. Scope is
+`scripts/pipeline/enable-automerge.ps1` plus a test that a labelled PR and a `marco:true` PR are both
+REFUSED (positive control: an unlabelled, verdict-free PR is admitted). Routes to Marco (`scripts/`);
+keep it small. ⚠️ **06 has no cadence** — if unstaged by the next supervisor cycle, 00 stages it.
+
+**I did not run `enable-automerge.ps1`.** I used the targeted, station-doc-sanctioned form on my own
+PR only: `gh pr merge 1522 --auto --squash --delete-branch`.
 
 ## WHAT I DID NOT DO
 

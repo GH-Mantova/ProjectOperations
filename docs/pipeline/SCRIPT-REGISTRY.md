@@ -91,10 +91,17 @@ stages prompts — that is the whole job.
 `pr-watcher\index.mjs` · `merge-queue.mjs` · `start-watcher.ps1` · `start-nightly.ps1` ·
 `supervise-watcher.ps1`
 
-The watcher owns its own lifecycle. **`watcher-launcher.ps1` must be started detached via
-`Win32_Process.Create`** — launched as a child of Claude Desktop it dies when Claude does (twice:
-2026-07-14, 2026-07-20). The supervisor's only touch-points are `restart-watcher-if-wedged.ps1`
-and the ensure-up block in its own brief.
+The watcher owns its own lifecycle. **The launcher that actually runs is
+`C:\po-watcher\watcher-launcher-singlelane.ps1` — it is UNTRACKED and lives outside this repo.**
+Measured 2026-09-02 by Station 04 and re-measured by Station 00 the same run: the live chain is
+`30600 watcher-launcher-singlelane.ps1` → `34332 start-watcher.ps1` → `28400 node index.mjs`, and
+`C:\po-watcher\ensure-watcher.ps1:10` names the same file as its launcher. The tracked
+`scripts/pr-watcher/watcher-launcher.ps1` is **SUPERSEDED** — it contains no reference to
+`start-watcher`, `index.mjs` or `singlelane`, and it is in no running process. Do not start it.
+
+Whichever launcher is used, **it must be started detached via `Win32_Process.Create`** — launched as
+a child of Claude Desktop it dies when Claude does (twice: 2026-07-14, 2026-07-20). The supervisor's
+only touch-points are `restart-watcher-if-wedged.ps1` and the ensure-up block in its own brief.
 
 ---
 
@@ -117,7 +124,8 @@ Launcher: **`scripts\marco.ps1`**
 | `pipeline\make-sot-patch.ps1` | Same tree, same reason. Captures a PATCH, not a copy — his tree is behind main. | Captures uncommitted `sot/` edits. |
 | `pipeline\rebase-and-open-sot-pr.ps1` | Follows the two above. | Rebases the sot branch and opens the PR. |
 | `pipeline\install-agents.ps1` | Changes what every future agent IS. | Installs the stations into `.claude/agents`. |
-| `pr-watcher\watcher-launcher.ps1` | Must be detached via `Win32_Process.Create`, which is a desktop-session action. | Starts the watcher so it outlives Claude. |
+| `C:\po-watcher\watcher-launcher-singlelane.ps1` **(UNTRACKED — not in this repo)** | Must be detached via `Win32_Process.Create`, which is a desktop-session action. | **The live launcher.** Starts the watcher so it outlives Claude. |
+| ~~`pr-watcher\watcher-launcher.ps1`~~ **SUPERSEDED** | — | Tracked but not in the running chain; see the Watcher-internal note above. |
 | `rescue-watcher-repo.ps1` | Repo surgery on an abandoned mid-merge. Irreversible if wrong. | Rescues `C:\po-watcher` from a half-finished merge. |
 
 ---

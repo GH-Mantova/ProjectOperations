@@ -623,9 +623,35 @@ The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MER
 and `classifyPolicyFiles` admits a diff confined to `tests/**` + `docs/**` with no `migrations/` path.
 **42 PRs have merged with no human through that gate.** It works.
 
-🔴 **But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to Marco.** Not
-because the gate is blocked: because docs work is hand-landed in a disposable worktree instead of
-armed as a prompt, so it never reaches the gate. Hand-landing is legitimate (00 may merge a docs-only
+🔴 **But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to Marco.**
+
+⚠️ **This paragraph used to continue "Not because the gate is blocked: because docs work is
+hand-landed … so it never reaches the gate." THAT CAUSE IS REFUTED — measured 2026-09-01/02 by
+direct experiment.** Station 00 armed a docs-only prompt precisely to test it. The work DID reach
+the gate, and the gate still did not fire. **The measured cause is CI-creation latency outrunning
+the merge window:**
+
+| | [MEASURED] |
+|---|---|
+| `#1500` opened | 2026-09-01T20:18:43Z |
+| its first CI run **created** | 2026-09-01T23:51:20Z — **212.6 min later**, `run_attempt=1` (not a re-run) |
+| merge window | `MERGE_TIMEOUT_MS` = **90 min** (`index.mjs:129-130`), expired at about 21:48Z |
+| controls, same window | `#1502` 0.0 min · `#1501` 0.0 (opened 8 s after #1500) · `#1499` 0.0 · `#1498` 0.0 · `#1497` 0.0 |
+
+`index.mjs:1753-1757` needs `checks.length > 0 && checks.every(SUCCESS|NEUTRAL|SKIPPED)` before it
+will enable auto-merge. With **zero checks in existence** `allGreen` is false for the whole window,
+so the lane falls out at `:1774` and records `marco: true` at `:1776`.
+
+🔴🔴 **A TIMEOUT IS THEREFORE WRITTEN IN THE BYTE-IDENTICAL FORMAT TO A GENUINE POLICY ROUTING.**
+`{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}` is
+indistinguishable, to every later reader and to RULE 2, from a policy verdict meaning "this one is
+Marco's to decide". A docs-only PR the lane would have merged with no human becomes **permanently
+human-gated** — and RULE 2 correctly forbids any station from clearing it, since a provably-weak
+routing reason does not clear a verdict. **The lane built to remove work from Marco silently
+creates it.** Open with Marco as of 2026-09-02; the falsifying probe is the table above — re-run
+it and this note dies.
+
+Hand-landing is a **contributing** factor, not the cause: Hand-landing is legitimate (00 may merge a docs-only
 PR itself) and it does not consume Marco — but it produces **no review**, and it is how a docs change
 lands with nobody but its author having read it.
 

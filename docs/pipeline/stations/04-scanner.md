@@ -146,7 +146,13 @@ your job ends at writing the breadcrumb.
   first on a list — a fresh run has no memory, so choosing narrows coverage without rotating it.
   **Run `node scripts/pipeline/next-sweep.mjs`**; it reads `docs/pipeline/sweep-rotation.json` and
   tells you. When the sweep is done, **`node scripts/pipeline/next-sweep.mjs --advance --utc <the
-  timestamp you measured>`** and commit that file with your breadcrumb — if you skip this, the next
+  timestamp you measured>`**. Then LEAVE IT DIRTY in the dev tree and NAME IT IN YOUR
+  BREADCRUMB — **Station 00 commits it, because you may not.** The authority matrix gives 04
+  *Create a PR: NO* and *Mutate the board: NO, read-only*, and the dev tree is on `main`, which
+  nobody commits to directly. This line used to read "and commit that file with your breadcrumb",
+  which asked 04 to do the one thing 04 is forbidden to do; the advance then survived only because
+  the working copy happened to persist between runs, and two consecutive advances sat uncommitted
+  (measured 2026-09-02, 04's F6). The advance itself still matters — if you skip this, the next
   run repeats your sweep and the rotation silently stops. A shallow pass over everything is why
   findings rot; a rotation that never turns is the same failure wearing a different hat.
 - 🔴 **THE BOARD TRAP.** `*-ready.md` can be tracked on `origin/main` while the watcher retires the

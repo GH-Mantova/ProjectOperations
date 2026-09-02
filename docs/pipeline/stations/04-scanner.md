@@ -12,13 +12,25 @@ contract_version: 1
 
 ## PREFLIGHT — run this before anything else
 
-<!-- CANONICAL-BLOCK: station-contract v1 — byte-identical in every station doc.
-     lint-station.mjs fails on any edit. Change it once, re-record the hash, ship all six together. -->
+<!-- CANONICAL-BLOCK: station-contract v2 — byte-identical in every station doc.
+     lint-station.mjs fails on any edit. Change it once, re-record the hash, ship all seven together. -->
 
 **Four steps, in order. If step 1 fails, you stop.**
 
-**1. Prove you can reach the box.** Start a shell on the Windows host (`start_process`, shell
-`powershell.exe`). If Desktop Commander is absent or the call fails:
+**1. Prove you can reach the box.**
+
+🔴 **Load the tool schema FIRST. A validation error is not blindness.** The device tools arrive
+**deferred** — their schemas are not in your prompt until you ask for them. `ToolSearch` with
+`select:mcp__remote-devices__plugin_desktop-commander_desktop-commander__start_process,mcp__remote-devices__device_bash`
+must run *before* either is called. Called cold they fail with `InputValidationError`, or an error
+saying no such tool is available — **that is an unloaded schema, not an unreachable machine.**
+Measured 2026-09-02: an agent that loaded the schemas first reached the box three ways in one turn
+(`node --version` → `v24.14.1`; `device_bash` listed the mounts; `get_device_info` returned the
+device name). **Declaring blindness without loading first is a §7 instrument lie, in the one step
+every run begins with** — and the contract below then makes you stop on it.
+
+Then start a shell on the Windows host (`start_process`, shell `powershell.exe`). If Desktop
+Commander is absent, or the call fails **after** the load:
 
 > **STOP.** Write one paragraph saying you are blind, name what you could not reach, and end the run.
 > Do **NOT** substitute GitHub-side reads and present them as coverage — `origin/main` is not the tree
@@ -134,7 +146,7 @@ pasted into an instruction document.
 its last run and dispositions each finding — that is the only channel that closes. If you are not 00,
 your job ends at writing the breadcrumb.
 
-<!-- END-CANONICAL-BLOCK: station-contract v1 -->
+<!-- END-CANONICAL-BLOCK: station-contract v2 -->
 
 ## AUTHORITY — what this station may and may not do
 

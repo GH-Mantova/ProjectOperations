@@ -622,6 +622,40 @@ function reviewJobPrNumber(name) {
 // reads only the PR body (`gh pr view --json body`). Verdict content can
 // safely contain checklist text or GATE-ALLOW mentions without tripping
 // CP-22/CP-09 on re-runs.
+// Build the header that goes above a mirrored verdict. Pure, exported, tested.
+//
+// Two things were wrong with the old one-line header, both measured on #1507:
+//  1. It cited docs/pr-reviews/pr-N-review.md as the source. That file is local to
+//     the watcher clone, and archiveSettledVerdicts() MOVES it once the PR settles -
+//     so for every reader who is not on that box it names a path they cannot open.
+//     The comment is the durable copy; say so.
+//  2. A review job can finish AFTER its PR has merged. #1507 merged at 03:20:18Z and
+//     its verdict was mirrored at 03:21:28Z - 70 seconds later - carrying the text
+//     "Recommendation: Merge after Marco confirms". A record that reads like a gate
+//     is a lie about its own authority. State which it is.
+//
+// prState is { state, mergedAt } from `gh pr view --json state,mergedAt`, or null when
+// that read failed. A FAILED READ IS NOT A PASS: it says so, and never claims the
+// verdict gated anything (DOCTRINE 7 - never let a failed call flow into a comparison).
+// ASCII only: this string is passed through a shell-spawned gh on Windows.
+export function buildVerdictHeader({ verdictRel, prState }) {
+  let posture;
+  if (!prState || typeof prState !== "object") {
+    posture = "POSITION UNKNOWN - the PR state could not be read. Do NOT assume this verdict gated the merge.";
+  } else if (prState.mergedAt) {
+    posture = `POST-MERGE RECORD - this PR was already merged at ${prState.mergedAt}. This verdict did NOT gate that merge.`;
+  } else if (String(prState.state || "").toUpperCase() === "CLOSED") {
+    posture = "POST-CLOSE RECORD - this PR was already closed when the verdict was written.";
+  } else {
+    posture = "PRE-MERGE REVIEW - the PR was still open when this verdict was written.";
+  }
+  return (
+    `[watcher verdict] ${posture}\n` +
+    `Source: ${verdictRel} - local to the watcher clone and archived once the PR settles, ` +
+    `so this comment is the durable copy.\n\n`
+  );
+}
+
 async function mirrorVerdictToPr(name) {
   const prNumber = reviewJobPrNumber(name);
   if (prNumber == null) {
@@ -637,9 +671,17 @@ async function mirrorVerdictToPr(name) {
     log("review", `verdict mirror skipped: ${verdictRel} not found`);
     return;
   }
+  // Ask whether this verdict is arriving before or after the decision it describes.
+  // Best-effort by design: the mirror must never fail over its own header.
+  let prState = null;
+  try {
+    prState = await runGh(["pr", "view", String(prNumber), "--json", "state,mergedAt"], { json: true });
+  } catch (err) {
+    log("review", `verdict mirror: PR state unreadable for #${prNumber}: ${err.message}`);
+  }
   // ASCII-only header — the comment passes through a shell-spawned gh on
   // Windows (spawn shell:true), where non-ASCII can mangle.
-  const header = `[watcher verdict] mirrored from ${verdictRel}\n\n`;
+  const header = buildVerdictHeader({ verdictRel, prState });
   // --body-file with a temp file avoids quoting hell entirely.
   const tmpFile = path.join(__dirname, `.verdict-comment-${prNumber}.tmp.md`);
   try {

@@ -37,6 +37,14 @@ async function openCivCuttingSheet(page: Page): Promise<void> {
   await page.goto(`/tenders/${TEMPLATE_TENDER_ID}/scope`);
   await expect(page.getByRole("heading", { name: "Scope of Works" })).toBeVisible();
   await page.getByText("Civil works", { exact: true }).first().click();
+  // ScopeCardsTab renders ScopeCuttingSheet on every non-ASB card, so the
+  // "Concrete cutting" heading is ALREADY visible on DEM before the switch.
+  // Waiting on it therefore proves nothing and returns immediately, and the
+  // caller's next click on "+ Add saw cut" can land on the still-mounted DEM
+  // sheet - which posts the row against DEM, leaves CIV showing 0, and strands
+  // a stray saw cut on DEM for the rest of the run. Wait for the CIV-only
+  // scope line first; it is the same string the discipline-scoping test uses.
+  await expect(page.getByText(/Showing items linked to CIV scope/)).toBeVisible();
   await expect(page.getByText("Concrete cutting")).toBeVisible();
 }
 

@@ -44,7 +44,9 @@ const FORBIDDEN_OUTPUTS = ['docs/qa/qa-findings.md', 'docs/qa/qa-checklist.md'];
 // A path is REAL only if git tracks it. `existsSync` passes for untracked and gitignored files
 // that exist on one machine and nowhere else — which is precisely the defect this catches: the
 // supervisor brief named docs/pr-prompts/queue-watch-state.md, present on Marco's disk, absent from
-// every clone, from CI, and from any cloud-fired station reading the same instruction.
+// every clone, from CI, and from any cloud-fired station reading the same instruction. Retired
+// 2026-09-02: the station briefs now point at the tracked breadcrumbs instead. The check stays -
+// it is what would catch the next one.
 let TRACKED = null;
 function isTracked(p) {
   if (TRACKED === null) {

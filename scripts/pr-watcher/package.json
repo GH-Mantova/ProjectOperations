@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Watches docs/pr-prompts/*-ready.md and runs each prompt headlessly via Claude Code. Zero dependencies.",
   "scripts": {
-    "start": "node index.mjs"
+    "start": "node index.mjs",
+    "test": "node --test \"__tests__/*.mjs\""
   }
 }

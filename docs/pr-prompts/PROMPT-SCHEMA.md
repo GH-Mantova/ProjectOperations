@@ -183,9 +183,10 @@ Two mechanisms now enforce it, deliberately in different places:
    quirk away from being a silent no-op — which is how #552, the production-data PR, was once
    selected for merge. CP-26 also fails **closed** if the labels cannot be read.
 
-**Removing the label is the human's act of approval.** Review the PR, remove `do-not-merge`, CI
-re-runs, CP-26 passes, and the PR becomes mergeable. Nothing else is required, and nothing can
-merge it while the label is on.
+**Removing the label is the act of approval, and only Marco does it.** Marco reviews the PR,
+removes `do-not-merge`, CI re-runs, CP-26 passes, and the PR becomes mergeable. Nothing else is
+required, and nothing can merge it while the label is on. No station and no automation removes
+this label; see `docs/pipeline/STATION-CAPABILITIES.md` §5 for the authority.
 
 #### Destructive / backfill / NOT-NULL / DROP / DELETE / TRUNCATE slices MUST set `escalates: true`
 

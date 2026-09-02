@@ -10,6 +10,20 @@ contract_version: 1
 
 # Station 02 — Board Driver
 
+> 🔻 **FOLDED INTO STATION 00 on 2026-09-02 (Marco).** This is no longer a station that runs. It is the
+> **board-driving procedure**, and Station 00 owns and executes it — see `00-supervisor.md`, *BOARD
+> DRIVING — the four conditions*. Nothing below is retired: the rules are the accumulated cost of
+> real incidents and they still bind whoever drives the board, which is now 00. Read "you" as 00.
+>
+> **Why.** 02's only trigger was dispatch from 00, and a dispatch is a line in a breadcrumb, not a
+> spawn — so for seven weeks dispatches to 02 went to a queue with no consumer while 00 did the work
+> under its own fallback. Measured 2026-09-01: the #1483 e2e work was dispatched to "01/02" at 18:09Z
+> and 20:09Z and was still undone eight hours later. Do not re-schedule 02 to fix this: a second board
+> actor on a shared git index is LL-38.
+>
+> The bootstrap at `C:\Users\Marco\Claude\Scheduled\02-board-driver\` should be retired to
+> `_retired-<date>\` — it is not deleted, and it never fired.
+
 ## PREFLIGHT — run this before anything else
 
 <!-- CANONICAL-BLOCK: station-contract v1 — byte-identical in every station doc.
@@ -138,8 +152,9 @@ your job ends at writing the breadcrumb.
 
 ## AUTHORITY — what this station may and may not do
 
-**You drive open PRs to merged. You have no schedule of your own** — you run only when Station 00
-dispatches you. If you cannot name the dispatch, you are not supposed to be running: say so and stop.
+**This procedure drives open PRs to merged, and Station 00 executes it.** 02 has no schedule and is
+not dispatched to any more (2026-09-02). If you are an agent that believes it *is* Station 02, you are
+running something that no longer exists: say so and stop.
 
 - You create PRs and merge dispatched work. **You never arm a prompt.**
 - Merges go through `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Never by hand.
@@ -254,7 +269,7 @@ Each run:
 
 4. DEFAULT = VERIFY-THEN-MERGE (Marco 2026-07-07): every open PR should flow to a squash-merge on its own — run its smoke (rule 6) / apitest (rule 6b), fix-forward a failure, then merge. PRs are expensive to design; once one exists it must not just sit. A body that says "do NOT auto-merge", "Marco to review", or "smoke it manually", and any unticked Marco smoke/test checklist, is an INSTRUCTION TO VERIFY — NOT a stop. You run that verification yourself and merge on PASS. Marco is involved ONLY for the narrow ESCALATE set below.
 
-   ESCALATE-TO-MARCO — the ONLY cases that stop autonomous merge. Escalate = leave open, write docs/pr-prompts/needs-marco/pr-{n}-{reason}.md, and list it on AWAITING-MARCO-DECISION.md (rule 6c). Escalate ONLY when:
+   ESCALATE-TO-MARCO — the ONLY cases that stop autonomous merge. Escalate = leave open, write docs/pr-prompts/needs-marco/pr-{n}-{reason}.md, and name it in your breadcrumb (rule 6c). Escalate ONLY when:
    - IRREVERSIBLE / DESTRUCTIVE: body or title references B-P0a-6, B-P0a-8, B-P0a-9, snapshot-gated, or "destructive"; OR a migration that DROPs / renames / retypes a column or table holding data (possible data loss). Additive migrations (new tables/columns/enums, nullable adds) are NOT destructive — they merge via 6b.
    - PRODUCTION AUTH / SECURITY that cannot be auto-verified: changes to auth-token signing, password hashing, session/JWT enforcement, or secrets (check get_files). If green tests + apitest cover it, merge; escalate only if it cannot be safely verified by automation.
    - PRODUCTION DATA WRITES: any migration that UPDATEs/INSERTs production business or authorization data (e.g. granting a user super-user). Always Marco's.
@@ -316,7 +331,7 @@ Each run:
    - On FAIL — FIRST distinguish TEST-PLAN-WRONG from CODE-DEFECT: if an item fails ONLY because the PR body's own test-plan INPUT is impossible or wrong while the code is correct for a VALID input, that is NOT a code defect — correct the test-plan wording in the PR body via `gh pr edit`, re-verify the item with a valid input, and proceed to merge; do NOT flag it to Marco. A genuine defect (valid input, wrong output) uses the same FIX-BEFORE-FLAG logic as rule 6: stage a bounded rev-{n}-fix-ready.md for a clear-cut in-scope failure (1 attempt/SHA); otherwise flag via docs/pr-prompts/needs-marco/pr-{n}-apitest-fail.md. Never tick or merge a failed PR.
    - Max 2 apitest-verify per run. If a PR has BOTH a UI smoke checklist and a backend test plan, take the UI smoke path (rule 6) this run and the backend path a later run.
 
-6c. AWAITING-MARCO DECISION QUEUE: this queue holds ONLY genuine escalations — a PR that hit the rule-4 ESCALATE set (irreversible/destructive, unverifiable prod-auth, PRODUCTION DATA WRITES, deploy/infra, open design QUESTION, major-version bump) OR is VERIFICATION-EXHAUSTED. Overwrite docs/pr-prompts/AWAITING-MARCO-DECISION.md ⚠️ **UNTRACKED and NOT gitignored** — it exists only on the box that wrote it, so a clone, CI and every cloud-fired station see nothing there. It is a local convenience, NOT the escalation channel: the escalation itself is the file in `docs/pr-prompts/needs-marco/` plus your breadcrumb. each run with a short table (PR # | title | which escalate reason | since). If empty, write "None — all open PRs are flowing through verify-then-merge; nothing needs Marco." Name any such PRs in the <run-summary>. Do NOT merge escalated PRs yourself.
+6c. ESCALATION IS A FILE IN `needs-marco/`, AND NOTHING ELSE. DOCTRINE §5b: **location is the contract.** An escalation is `docs/pr-prompts/needs-marco/pr-{n}-{reason}.md` plus a line in your breadcrumb naming the PR, the escalate reason, and how long it has been waiting. There is no second list. `AWAITING-MARCO-DECISION.md` never existed on main or on any disk, and a competing queue is precisely the "one stop beats two, because agents end up trusting the weaker one" failure §5b forbids. Only genuine escalations qualify: a PR that hit the rule-4 ESCALATE set (irreversible/destructive, unverifiable prod-auth, PRODUCTION DATA WRITES, deploy/infra, open design QUESTION, major-version bump) OR is VERIFICATION-EXHAUSTED. If there are none, say so in the <run-summary>: "None — all open PRs are flowing through verify-then-merge; nothing needs Marco." Do NOT merge escalated PRs yourself.
 
 7. After staging, update shepherd-state.md and finish. Silent run — no visible chat message unless a merge you previously staged FAILED or something looks wrong on main (then one short message). End with <run-summary>one sentence: PRs examined, actions staged, HOLDs released</run-summary>.
 

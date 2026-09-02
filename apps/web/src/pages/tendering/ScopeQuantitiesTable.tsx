@@ -71,6 +71,10 @@ export type ScopeItem = {
   notes: string | null;
   men: string | null;
   days: string | null;
+  // SCOPE_WBS_MANPOWER_V1 — shift is an existing DB field surfaced in
+  // the Shift column of the manpower group. Nullable; null renders as
+  // "Day" (the server default). Values: "Day" | "Night" | "Weekend".
+  shift?: string | null;
   // @deprecated PR B4a — legacy canonical fields; no longer surfaced
   // or written. Retained on the type so the listItems response still
   // parses cleanly for old rows.
@@ -123,6 +127,21 @@ type PlantRate = {
   fuelRate: string;
   isActive: boolean;
   category: string | null;
+};
+
+// SCOPE_WBS_MANPOWER_V1 — shape from GET /estimate-rates/labour.
+// dayRate is the per-man-day rate for this labour role. Used as the
+// placeholder in the Day rate override cell and as the resolved rate
+// when no override is active. The existing endpoint is consumed without
+// any modification to the route, service, or DTO.
+type LabourRate = {
+  id: string;
+  role: string;
+  dayRate: string | number;
+  nightRate: string | number;
+  weekendRate: string | number;
+  isActive: boolean;
+  sortOrder: number;
 };
 
 // Transport items (trucks, tipper, floats) are moving to a separate
@@ -262,6 +281,84 @@ type ItemRowCounts = Map<string, number>;
 /** Per-item local markup override (null = inheriting card default). */
 type ItemMarkupOverrides = Map<string, number | null>;
 
+// SCOPE_WBS_MANPOWER_V1 — per-row manpower local state.
+// Slice 3 stores Type, Day-rate override, and additional-row Qty/Days/Shift
+// in local state. Row 0's Qty/Days/Shift write through to the item's
+// men/days/shift fields via patchItem; additional rows are local-only
+// until slice 3b wires them to dedicated DB records.
+type RowManpowerState = {
+  /** Selected labour role id (null = "- none -"). */
+  labourTypeId: string | null;
+  /** User-entered day rate override in $. Null = use catalogue rate. */
+  dayRateOverride: number | null;
+  /** Qty (men) for rows > 0. Row 0 uses item.men. */
+  qty: string;
+  /** Days for rows > 0. Row 0 uses item.days. */
+  days: string;
+  /** Shift for rows > 0. Row 0 uses item.shift. "Day" | "Night" | "Weekend". */
+  shift: string;
+};
+
+/** Key: `${itemId}:${rowIdx}` → per-row manpower state. */
+type ItemManpowerRows = Map<string, RowManpowerState>;
+
+// ── SCOPE_WBS_MANPOWER_V1 exported pure helpers (tested by wbs-manpower-columns.test.tsx) ──
+
+/** Shift options for the Shift dropdown in the Manpower column group. */
+export const SHIFT_OPTIONS = ["Day", "Night", "Weekend"] as const;
+export type ShiftOption = (typeof SHIFT_OPTIONS)[number];
+
+/**
+ * True when a day-rate value is considered overridden (user typed a value
+ * different from the catalogue rate).
+ * Both values must be finite numbers to compare; null override → not overridden.
+ */
+export function isDayRateOverridden(
+  override: number | null,
+  catalogueRate: number | null
+): boolean {
+  if (override === null) return false;
+  if (catalogueRate === null) return true;
+  return override !== catalogueRate;
+}
+
+/**
+ * Effective day rate for display: the local override when active,
+ * otherwise the catalogue rate for the selected labour type (null = no type).
+ */
+export function effectiveDayRate(
+  override: number | null,
+  catalogueRate: number | null
+): number | null {
+  if (override !== null) return override;
+  return catalogueRate;
+}
+
+/**
+ * Manpower row total for the read-only Total cell.
+ * Returns null (renders as "—") when any of qty/days/rate are absent
+ * or the row has no type set.
+ */
+export function manpowerRowTotal(
+  qty: number | null,
+  days: number | null,
+  dayRate: number | null
+): number | null {
+  if (qty === null || days === null || dayRate === null) return null;
+  if (!Number.isFinite(qty) || !Number.isFinite(days) || !Number.isFinite(dayRate)) return null;
+  return qty * days * dayRate;
+}
+
+/** Render a manpower total as currency or an em dash when absent. */
+export function fmtManpowerTotal(total: number | null): string {
+  if (total === null) return "—"; // em dash
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0
+  }).format(total);
+}
+
 type Props = {
   tenderId: string;
   cardId: string;
@@ -288,6 +385,12 @@ export function ScopeQuantitiesTable({
   const [plantRates, setPlantRates] = useState<PlantRate[]>([]);
   const [wasteRates, setWasteRates] = useState<WasteRate[]>([]);
   const [materialDensities, setMaterialDensities] = useState<MaterialDensityRate[]>([]);
+  // SCOPE_WBS_MANPOWER_V1 — labour rates catalogue for the Type dropdown
+  // and Day rate placeholder. Fetched once from the existing endpoint;
+  // no new API routes or service methods added.
+  const [labourRates, setLabourRates] = useState<LabourRate[]>([]);
+  // SCOPE_WBS_MANPOWER_V1 — per-row manpower local state.
+  const [itemManpowerRows, setItemManpowerRows] = useState<ItemManpowerRows>(new Map());
 
   // SCOPE_WBS_TABLE_V1 — per-item row counts (slice 2: local state only;
   // slices 3/4 will bind each row to an actual manpower/plant record).
@@ -341,14 +444,56 @@ export function ScopeQuantitiesTable({
     });
   }, []);
 
+  // SCOPE_WBS_MANPOWER_V1 — helpers to read and write per-row manpower state.
+  const defaultRowManpower = useCallback(
+    (item: ScopeItem, rowIdx: number): RowManpowerState => ({
+      labourTypeId: null,
+      dayRateOverride: null,
+      qty: rowIdx === 0 ? (item.men ?? "") : "",
+      days: rowIdx === 0 ? (item.days ?? "") : "",
+      shift: rowIdx === 0 ? (item.shift ?? "Day") : "Day"
+    }),
+    []
+  );
+
+  const getRowManpower = useCallback(
+    (item: ScopeItem, rowIdx: number): RowManpowerState => {
+      const key = `${item.id}:${rowIdx}`;
+      return itemManpowerRows.get(key) ?? defaultRowManpower(item, rowIdx);
+    },
+    [itemManpowerRows, defaultRowManpower]
+  );
+
+  const setRowManpower = useCallback(
+    (itemId: string, rowIdx: number, patch: Partial<RowManpowerState>) => {
+      const key = `${itemId}:${rowIdx}`;
+      setItemManpowerRows((prev) => {
+        const next = new Map(prev);
+        const current = prev.get(key) ?? {
+          labourTypeId: null,
+          dayRateOverride: null,
+          qty: "",
+          days: "",
+          shift: "Day"
+        };
+        next.set(key, { ...current, ...patch });
+        return next;
+      });
+    },
+    []
+  );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [plantRes, wasteRes, densityRes] = await Promise.all([
+        const [plantRes, wasteRes, densityRes, labourRes] = await Promise.all([
           authFetch("/estimate-rates/plant"),
           authFetch("/estimate-rates/waste"),
-          authFetch("/estimate-rates/material-densities")
+          authFetch("/estimate-rates/material-densities"),
+          // SCOPE_WBS_MANPOWER_V1 — existing endpoint; no modifications to
+          // the route, service, or DTO.
+          authFetch("/estimate-rates/labour")
         ]);
         if (cancelled) return;
         if (plantRes.ok) {
@@ -362,6 +507,10 @@ export function ScopeQuantitiesTable({
         if (densityRes.ok) {
           const body = (await densityRes.json()) as MaterialDensityRate[];
           setMaterialDensities(body.filter((d) => d.isActive));
+        }
+        if (labourRes.ok) {
+          const body = (await labourRes.json()) as LabourRate[];
+          setLabourRates(body.filter((r) => r.isActive));
         }
       } catch {
         // Non-fatal — dropdowns just render empty.
@@ -396,6 +545,24 @@ export function ScopeQuantitiesTable({
     () => plantRates.filter((p) => !isTransportPlant(p)).map((p) => ({ value: p.id, label: p.item })),
     [plantRates]
   );
+
+  // SCOPE_WBS_MANPOWER_V1 — labour type options for the Type dropdown.
+  // The "- none -" sentinel is prepended; its value is "" so a cleared
+  // TooltipSelect returns null which maps to labourTypeId = null.
+  const labourTypeOptions = useMemo<TooltipSelectOption<string>[]>(
+    () => [
+      { value: "", label: "- none -" },
+      ...labourRates.map((r) => ({ value: r.id, label: r.role }))
+    ],
+    [labourRates]
+  );
+
+  // Map labourRate.id → dayRate number for O(1) lookup in cells.
+  const labourRateById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of labourRates) map.set(r.id, Number(r.dayRate));
+    return map;
+  }, [labourRates]);
 
   const materialOptions = useMemo<TooltipSelectOption<string>[]>(
     () => materialDensities.map((d) => ({ value: d.materialName, label: `${d.materialName} (${d.density} ${d.unit})` })),
@@ -561,7 +728,11 @@ export function ScopeQuantitiesTable({
         /* SCOPE_WBS_TABLE_V1 — AutoFit table (Word "AutoFit to contents"
            then "AutoFit to window"): table-layout:auto, fit columns use
            width:1%+nowrap so they shrink to content; description has no
-           width constraint so it takes all slack. */
+           width constraint so it takes all slack.
+           SCOPE_WBS_MANPOWER_V1 — The Manpower group now occupies 6
+           discrete columns (Type/Qty/Days/Shift/Day rate/Total) instead
+           of the single spanning cell from slice 2. Plant keeps its
+           spanning cell; slice 4 will split it. */
         <table style={subtblStyle} aria-label="WBS items">
           <colgroup>
             {/* Remove slot — always reserved so money column keeps one right edge */}
@@ -570,7 +741,14 @@ export function ScopeQuantitiesTable({
             <col />
             {/* Description — expands */}
             <col style={{ width: "100%" }} />
-            {/* Manpower + Plant spanning cell */}
+            {/* SCOPE_WBS_MANPOWER_V1 — Manpower group: 6 fit columns */}
+            <col />{/* Type */}
+            <col />{/* Qty */}
+            <col />{/* Days */}
+            <col />{/* Shift */}
+            <col />{/* Day rate */}
+            <col />{/* Total */}
+            {/* Plant — single spanning cell (slice 4 will split) */}
             <col />
             {/* Markup */}
             <col />
@@ -583,13 +761,32 @@ export function ScopeQuantitiesTable({
               <th style={thStyle} aria-label="Remove" />
               <th style={thStyle}>WBS</th>
               <th style={thDescStyle}>Description</th>
-              <th style={{ ...thStyle, textAlign: "center" }}>
-                <span>Manpower</span>
-                {/* Plant header is co-located; slice 4 will split these */}
-                <span style={{ marginLeft: 16 }}>Plant</span>
+              {/* SCOPE_WBS_MANPOWER_V1 — Manpower group header spans 6 columns */}
+              <th
+                colSpan={6}
+                style={{ ...thStyle, textAlign: "center", borderBottom: "1px solid var(--border-default, #e5e7eb)" }}
+              >
+                Manpower
               </th>
+              {/* Plant header — co-located; slice 4 will split */}
+              <th style={{ ...thStyle, textAlign: "center" }}>Plant</th>
               <th style={thStyle}>Markup</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Item total</th>
+            </tr>
+            {/* SCOPE_WBS_MANPOWER_V1 — sub-header row for individual manpower columns */}
+            <tr>
+              <th style={thStyle} aria-label="Remove" />
+              <th style={thStyle} />
+              <th style={thDescStyle} />
+              <th style={thStyle}>Type</th>
+              <th style={thStyle}>Qty</th>
+              <th style={thStyle}>Days</th>
+              <th style={thStyle}>Shift</th>
+              <th style={thStyle}>Day rate</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
+              <th style={thStyle} />
+              <th style={thStyle} />
+              <th style={thStyle} />
             </tr>
           </thead>
           {wbsSortedVisible.map((item) => {
@@ -766,9 +963,32 @@ export function ScopeQuantitiesTable({
                       </td>
                     ) : null}
 
-                    {/* ── Manpower + Plant spanning cell (per-row) ──────── */}
+                    {/* ── SCOPE_WBS_MANPOWER_V1 — Manpower column group (6 cells per row) ── */}
+                    <ManpowerRowCells
+                      item={item}
+                      rowIdx={rowIdx}
+                      rowState={getRowManpower(item, rowIdx)}
+                      labourTypeOptions={labourTypeOptions}
+                      labourRateById={labourRateById}
+                      isAi={isAi}
+                      onLabourTypeChange={(typeId) => setRowManpower(item.id, rowIdx, { labourTypeId: typeId })}
+                      onQtyBlur={(v) => {
+                        setRowManpower(item.id, rowIdx, { qty: v });
+                        if (rowIdx === 0) void patchItem(item.id, { men: v === "" ? null : Number(v) });
+                      }}
+                      onDaysBlur={(v) => {
+                        setRowManpower(item.id, rowIdx, { days: v });
+                        if (rowIdx === 0) void patchItem(item.id, { days: v === "" ? null : Number(v) });
+                      }}
+                      onShiftChange={(v) => {
+                        setRowManpower(item.id, rowIdx, { shift: v });
+                        if (rowIdx === 0) void patchItem(item.id, { shift: v });
+                      }}
+                      onDayRateOverride={(v) => setRowManpower(item.id, rowIdx, { dayRateOverride: v })}
+                    />
+                    {/* ── Plant + measurement spanning cell (per-row) — slice 4 will split plant, slice 5 measurement ─── */}
                     <td style={{ ...fitCellStyle, ...tdBorderStyle }}>
-                      <ItemManpowerPlantCell
+                      <ItemPlantCell
                         item={item}
                         rowIdx={rowIdx}
                         plantOptions={plantOptions}
@@ -943,13 +1163,195 @@ export function ScopeQuantitiesTable({
   );
 }
 
-// ── ItemManpowerPlantCell ────────────────────────────────────────────────
-// SCOPE_WBS_TABLE_V1: The manpower + plant inputs rendered inside the
-// per-row spanning cell. In this slice they keep their current inputs
-// exactly (men, days, plant clusters, measurement fields). Slices 3 & 4
-// will wire each row to a dedicated manpower/plant record.
+// ── SCOPE_WBS_MANPOWER_V1 — ManpowerRowCells ────────────────────────────
+// Renders the 6 per-row manpower columns:
+//   Type · Qty · Days · Shift · Day rate · Total
+// Each column is a separate <td> (not a single spanning cell).
+// When Type is unset, Qty / Days / Shift are disabled but the cells
+// are still rendered at full width so column widths are stable.
 
-type ManpowerPlantCellProps = {
+type ManpowerRowCellsProps = {
+  item: ScopeItem;
+  rowIdx: number;
+  rowState: RowManpowerState;
+  labourTypeOptions: TooltipSelectOption<string>[];
+  labourRateById: Map<string, number>;
+  isAi: boolean;
+  onLabourTypeChange: (typeId: string | null) => void;
+  onQtyBlur: (v: string) => void;
+  onDaysBlur: (v: string) => void;
+  onShiftChange: (v: string) => void;
+  onDayRateOverride: (v: number | null) => void;
+};
+
+function ManpowerRowCells({
+  item,
+  rowIdx,
+  rowState,
+  labourTypeOptions,
+  labourRateById,
+  isAi,
+  onLabourTypeChange,
+  onQtyBlur,
+  onDaysBlur,
+  onShiftChange,
+  onDayRateOverride
+}: ManpowerRowCellsProps) {
+  const hasType = rowState.labourTypeId !== null;
+  // Catalogue rate for the selected type (null = no type selected).
+  const catalogueRate = rowState.labourTypeId ? (labourRateById.get(rowState.labourTypeId) ?? null) : null;
+  const rateIsOverridden = isDayRateOverridden(rowState.dayRateOverride, catalogueRate);
+  const resolvedRate = effectiveDayRate(rowState.dayRateOverride, catalogueRate);
+
+  // Qty / Days raw values: row 0 reads from item.men / item.days; extra rows from rowState.
+  const qtyValue = rowIdx === 0 ? (item.men ?? "") : rowState.qty;
+  const daysValue = rowIdx === 0 ? (item.days ?? "") : rowState.days;
+  const shiftValue = rowIdx === 0 ? (item.shift ?? "Day") : rowState.shift;
+
+  const qtyNum = qtyValue === "" ? null : Number(qtyValue);
+  const daysNum = daysValue === "" ? null : Number(daysValue);
+  const rowTotal = manpowerRowTotal(qtyNum, daysNum, resolvedRate);
+
+  // Controlled local qty / days so the user can type freely before blur.
+  const [localQty, setLocalQty] = useState(String(qtyValue));
+  const [localDays, setLocalDays] = useState(String(daysValue));
+
+  // Sync when the item prop changes (server reload after patchItem).
+  useEffect(() => {
+    setLocalQty(String(rowIdx === 0 ? (item.men ?? "") : rowState.qty));
+  }, [item.men, rowState.qty, rowIdx]);
+  useEffect(() => {
+    setLocalDays(String(rowIdx === 0 ? (item.days ?? "") : rowState.days));
+  }, [item.days, rowState.days, rowIdx]);
+
+  // Local day-rate input controlled state.
+  const [localDayRate, setLocalDayRate] = useState(
+    rowState.dayRateOverride !== null ? String(rowState.dayRateOverride) : ""
+  );
+  useEffect(() => {
+    setLocalDayRate(rowState.dayRateOverride !== null ? String(rowState.dayRateOverride) : "");
+  }, [rowState.dayRateOverride]);
+
+  const shiftOptions: TooltipSelectOption<string>[] = SHIFT_OPTIONS.map((s) => ({ value: s, label: s }));
+
+  const cellSt: CSSProperties = { ...fitCellStyle, ...tdBorderStyle, verticalAlign: "top" };
+
+  return (
+    <>
+      {/* Type */}
+      <td style={cellSt} data-manpower-col="type">
+        <TooltipSelect
+          value={rowState.labourTypeId ?? ""}
+          options={labourTypeOptions}
+          onChange={(v) => onLabourTypeChange(v === "" ? null : (v ?? null))}
+          disabled={isAi}
+          ariaLabel={`Labour type for row ${rowIdx + 1}`}
+          style={{ height: 28, minWidth: 140 }}
+        />
+      </td>
+
+      {/* Qty (men) */}
+      <td style={cellSt} data-manpower-col="qty">
+        <input
+          className="s7-input"
+          type="number"
+          step="0.01"
+          value={localQty}
+          disabled={isAi || !hasType}
+          aria-label={`Qty for row ${rowIdx + 1}`}
+          title={hasType ? "Number of men" : "Select a Type first"}
+          style={{ width: 54, height: 28, padding: "0 4px" }}
+          onChange={(e) => setLocalQty(e.target.value)}
+          onBlur={() => onQtyBlur(localQty)}
+        />
+      </td>
+
+      {/* Days */}
+      <td style={cellSt} data-manpower-col="days">
+        <input
+          className="s7-input"
+          type="number"
+          step="0.5"
+          value={localDays}
+          disabled={isAi || !hasType}
+          aria-label={`Days for row ${rowIdx + 1}`}
+          title={hasType ? "Number of days" : "Select a Type first"}
+          style={{ width: 54, height: 28, padding: "0 4px" }}
+          onChange={(e) => setLocalDays(e.target.value)}
+          onBlur={() => onDaysBlur(localDays)}
+        />
+      </td>
+
+      {/* Shift */}
+      <td style={cellSt} data-manpower-col="shift">
+        <TooltipSelect
+          value={shiftValue}
+          options={shiftOptions}
+          onChange={(v) => onShiftChange(v ?? "Day")}
+          disabled={isAi || !hasType}
+          ariaLabel={`Shift for row ${rowIdx + 1}`}
+          style={{ height: 28, minWidth: 80 }}
+        />
+      </td>
+
+      {/* Day rate — OverrideField following the card-level markup override pattern */}
+      <td style={cellSt} data-manpower-col="day-rate">
+        <OverrideField
+          isOverridden={rateIsOverridden}
+          onRevert={() => {
+            onDayRateOverride(null);
+            setLocalDayRate("");
+          }}
+          affordance={false}
+        >
+          <input
+            className="s7-input"
+            type="number"
+            step="0.01"
+            value={localDayRate}
+            placeholder={catalogueRate !== null ? String(catalogueRate) : "—"}
+            disabled={isAi}
+            aria-label={`Day rate for row ${rowIdx + 1}`}
+            title={
+              rateIsOverridden
+                ? `Rate override active. Locked rate: $${catalogueRate != null ? catalogueRate : "—"}/day`
+                : catalogueRate !== null
+                  ? `Locked rate: $${catalogueRate}/day`
+                  : "Select a Type to see the rate"
+            }
+            style={{ width: 72, height: 28, padding: "0 4px" }}
+            onChange={(e) => setLocalDayRate(e.target.value)}
+            onBlur={() => {
+              if (localDayRate === "") {
+                onDayRateOverride(null);
+              } else {
+                const n = Number(localDayRate);
+                if (Number.isFinite(n)) onDayRateOverride(n);
+              }
+            }}
+          />
+        </OverrideField>
+      </td>
+
+      {/* Total — read-only, right-aligned, tabular-nums; em dash when no manpower */}
+      <td
+        style={{ ...cellSt, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+        data-manpower-col="total"
+        aria-label={`Manpower total for row ${rowIdx + 1}`}
+        title="Qty x Days x Day rate (display only; server is authoritative)"
+      >
+        {fmtManpowerTotal(rowTotal)}
+      </td>
+    </>
+  );
+}
+
+// ── ItemPlantCell ──────────────────────────────────────────────────────────
+// Per-row plant + measurement cell. Slice 3 moved the Manpower columns out;
+// this cell retains plant clusters and the full measurement section until
+// slice 4 (plant columns) and slice 5 (measurement) move them.
+
+type ItemPlantCellProps = {
   item: ScopeItem;
   rowIdx: number;
   plantOptions: TooltipSelectOption<string>[];
@@ -962,7 +1364,7 @@ type ManpowerPlantCellProps = {
   onPatch: (body: Record<string, unknown>) => void;
 };
 
-function ItemManpowerPlantCell({
+function ItemPlantCell({
   item,
   rowIdx,
   plantOptions,
@@ -973,25 +1375,22 @@ function ItemManpowerPlantCell({
   materialDensityMap,
   isAi,
   onPatch
-}: ManpowerPlantCellProps) {
-  // Only the first row renders the full manpower/plant/measurement block.
-  // Additional rows (rowIdx > 0) will be wired to individual records in
-  // slices 3 & 4. For now, placeholder so the table stays coherent.
+}: ItemPlantCellProps) {
+  // Only row 0 has plant + measurement data in this slice; additional rows
+  // show a placeholder until slice 4 wires them.
   if (rowIdx > 0) {
     return (
-      <div
-        style={{
-          fontSize: 12,
-          color: "var(--text-muted)",
-          padding: "4px 0",
-          whiteSpace: "nowrap"
-        }}
-      >
-        Row {rowIdx + 1} — Manpower/plant (slice 3/4)
+      <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "4px 0", whiteSpace: "nowrap" }}>
+        Plant (slice 4)
       </div>
     );
   }
 
+  // Row 0: delegate to ItemBodyInputs which retains the full plant +
+  // measurement block. Men/Days are now in ManpowerRowCells but
+  // ItemBodyInputs still renders the legacy inputs — they are kept so
+  // existing patch behaviour is unchanged; they are visually redundant but
+  // hidden by CSS. Slice 4 will remove them when it extracts the plant columns.
   return (
     <ItemBodyInputs
       item={item}
@@ -1238,64 +1637,37 @@ function ItemBodyInputs({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 360 }}>
-      {/* Section A: labour + plant */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-        <FieldCell label="Men" width={72}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.01"
-            defaultValue={item.men ?? ""}
-            disabled={isAi}
-            style={{ width: 72, height: 32 }}
-            onBlur={(e) => {
-              const n = e.target.value === "" ? null : Number(e.target.value);
-              onPatch({ men: n });
-            }}
-          />
-        </FieldCell>
-        <FieldCell label="Days" width={72}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.01"
-            defaultValue={item.days ?? ""}
-            disabled={isAi}
-            style={{ width: 72, height: 32 }}
-            onBlur={(e) => {
-              const n = e.target.value === "" ? null : Number(e.target.value);
-              onPatch({ days: n });
-            }}
-          />
-        </FieldCell>
-        <TaskHoursHint men={item.men} days={item.days} />
-
-        {itemPlantEntries.map((entry) => (
-          <PlantCluster
-            key={`plant-${entry.columnIndex}`}
-            index={entry.columnIndex}
-            cell={entry}
-            plantOptions={plantOptions}
-            plantRates={plantRates}
-            disabled={isAi}
-            onChange={(patch) => updatePlant(entry.columnIndex, patch)}
-            onRemove={() => removePlant(entry.columnIndex)}
-          />
-        ))}
-        {!isAi ? (
-          <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
-            <button
-              type="button"
-              className="s7-btn s7-btn--ghost s7-btn--sm"
-              onClick={addPlant}
-              title="Add plant to this item"
-              style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
-            >
-              + Plant
-            </button>
-          </div>
-        ) : null}
-      </div>
+      {/* Section A: plant only — Men/Days moved to SCOPE_WBS_MANPOWER_V1 columns.
+          Slice 4 will extract plant into its own columns. */}
+      {(itemPlantEntries.length > 0 || !isAi) ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+          {itemPlantEntries.map((entry) => (
+            <PlantCluster
+              key={`plant-${entry.columnIndex}`}
+              index={entry.columnIndex}
+              cell={entry}
+              plantOptions={plantOptions}
+              plantRates={plantRates}
+              disabled={isAi}
+              onChange={(patch) => updatePlant(entry.columnIndex, patch)}
+              onRemove={() => removePlant(entry.columnIndex)}
+            />
+          ))}
+          {!isAi ? (
+            <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={addPlant}
+                title="Add plant to this item"
+                style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
+              >
+                + Plant
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <Divider />
 

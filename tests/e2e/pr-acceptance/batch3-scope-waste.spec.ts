@@ -54,7 +54,12 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
     await page.getByRole("button", { name: "+ Add waste row" }).click();
 
     // The new row is the one whose Group select lists every waste group.
-    const row = page
+    // SCOPE_WBS_TABLE_V1: the WBS item table now renders a per-item
+    // "Waste group" select from the same wasteGroupOptions, so a page-wide
+    // getByRole("row") matches scope-item rows as well as waste rows.
+    // Scope to the waste subtable - the table that is not "WBS items".
+    const wasteTable = page.locator('table:not([aria-label="WBS items"])');
+    const row = wasteTable
       .getByRole("row")
       .filter({ has: page.getByRole("option", { name: "Vegetation" }) });
     await expect(row).toBeVisible();

@@ -42,19 +42,20 @@ async function openScopeTab(page: Page): Promise<void> {
 }
 
 /**
- * Expands the item card matching `desc` and returns a locator for the
- * EXPANDED card. Re-locating is required: an expanded card moves its
- * description into an <input>, so `filter({ hasText: desc })` stops
- * matching the article the moment it expands. Tests expand exactly one
- * card at a time, so "the article holding the Collapse button" is unique.
+ * Returns the row group for the WBS item whose description is `desc`.
+ *
+ * SCOPE_WBS_TABLE_V1 replaced the expanding item CARD with a WBS table. An
+ * item is now a run of <tr>s tied together by rowspan and wrapped in its own
+ * <tbody data-testid="wbs-item">. There is no expand/collapse any more: every
+ * control the expanded card used to reveal is rendered on the row group, so
+ * this is a pure lookup - no click, and no re-location afterwards.
+ *
+ * Matched on data-item-description rather than hasText because the
+ * description renders into an <input>, and an input's value is not text
+ * content - a hasText filter would silently match nothing.
  */
-async function expandItem(page: Page, desc: string) {
-  await page.getByRole("article").filter({ hasText: desc }).getByLabel("Expand item").click();
-  const expanded = page
-    .getByRole("article")
-    .filter({ has: page.getByLabel("Collapse item") });
-  await expect(expanded).toHaveCount(1);
-  return expanded;
+function itemGroup(page: Page, desc: string) {
+  return page.locator(`[data-testid="wbs-item"][data-item-description="${desc}"]`);
 }
 
 test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #176, #180, #241)", () => {
@@ -79,7 +80,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
       "Slab removal",
       "Masonry demolition"
     ]) {
-      const article = page.getByRole("article").filter({ hasText: desc }).first();
+      const article = itemGroup(page, desc);
       await expect(article).toContainText(/\$[\d,]+(?:\.\d{2})?/);
     }
 
@@ -98,7 +99,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
         const withMarkup = Number(m[2].replace(/,/g, ""));
         if (withMarkup <= 0) return "footer is zero";
         let sum = 0;
-        for (const article of await page.getByRole("article").all()) {
+        for (const article of await page.getByTestId("wbs-item").all()) {
           const text = (await article.textContent()) ?? "";
           const amounts = [...text.matchAll(/\$([\d,]+(?:\.\d+)?)/g)];
           if (amounts.length > 0) {
@@ -113,8 +114,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
     // provisionalAmount as the row total (seeded "Provisional sum" items).
     await page.getByText("Other", { exact: true }).first().click();
     const provisional = page
-      .getByRole("article")
-      .filter({ hasText: "Provisional sum" })
+      .locator('[data-testid="wbs-item"][data-item-description*="Provisional sum"]')
       .first();
     await expect(provisional).toContainText(/\$[\d,]+/);
   });
@@ -135,7 +135,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
     });
     try {
       await openScopeTab(page);
-      const article = await expandItem(page, desc);
+      const article = itemGroup(page, desc);
 
       const sqm = article.getByRole("spinbutton", { name: SQM_NAME });
       const m3 = article.getByRole("spinbutton", { name: M3_NAME });
@@ -167,7 +167,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
         .toBe(8);
 
       await page.reload();
-      const reloaded = await expandItem(page, desc);
+      const reloaded = itemGroup(page, desc);
       const sqmAfter = reloaded.getByRole("spinbutton", { name: SQM_NAME });
       await expect(sqmAfter).toHaveValue("8");
       await expect(reloaded.getByRole("spinbutton", { name: M3_NAME })).toHaveValue("4");
@@ -196,7 +196,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
     });
     try {
       await openScopeTab(page);
-      const article = await expandItem(page, desc);
+      const article = itemGroup(page, desc);
 
       // PR #60 — quantification/classification cells render editable.
       await expect(article.getByLabel("Material type")).toBeEnabled();
@@ -237,7 +237,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
         })
         .toBe(`${desc}-edited`);
       await page.reload();
-      await expect(page.getByRole("article").filter({ hasText: `${desc}-edited` })).toBeVisible();
+      await expect(itemGroup(page, `${desc}-edited`)).toBeVisible();
     } finally {
       await deleteScopeItem(request, token, itemId);
     }
@@ -262,7 +262,7 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
     });
     try {
       await openScopeTab(page);
-      const article = await expandItem(page, desc);
+      const article = itemGroup(page, desc);
 
       const isScopeItemPatch = (r: import("@playwright/test").Response) =>
         r.request().method() === "PATCH" &&

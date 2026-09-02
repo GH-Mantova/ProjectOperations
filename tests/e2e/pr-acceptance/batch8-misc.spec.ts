@@ -23,13 +23,21 @@ async function openScopeTab(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Scope of Works" })).toBeVisible();
 }
 
-/** Expands the item card matching `desc` (batch 3 pattern — re-locating is
- * required because expansion moves the description into an input). */
-async function expandItem(page: Page, desc: string) {
-  await page.getByRole("article").filter({ hasText: desc }).getByLabel("Expand item").click();
-  const expanded = page.getByRole("article").filter({ has: page.getByLabel("Collapse item") });
-  await expect(expanded).toHaveCount(1);
-  return expanded;
+/**
+ * Returns the row group for the WBS item whose description is `desc`.
+ *
+ * SCOPE_WBS_TABLE_V1 replaced the expanding item CARD with a WBS table. An
+ * item is now a run of <tr>s tied together by rowspan and wrapped in its own
+ * <tbody data-testid="wbs-item">. There is no expand/collapse any more: every
+ * control the expanded card used to reveal is rendered on the row group, so
+ * this is a pure lookup - no click, and no re-location afterwards.
+ *
+ * Matched on data-item-description rather than hasText because the
+ * description renders into an <input>, and an input's value is not text
+ * content - a hasText filter would silently match nothing.
+ */
+function itemGroup(page: Page, desc: string) {
+  return page.locator(`[data-testid="wbs-item"][data-item-description="${desc}"]`);
 }
 
 test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #182, #178, #177, #27, #14)", () => {
@@ -88,23 +96,31 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
     );
   });
 
-  test("item cards render collapsed by default; chargeBy is gone from the card UI (PRs #172, #182)", async ({
+  test("WBS items render as one addressable row group each; chargeBy is gone (PRs #172, #182)", async ({
     page
   }) => {
     await openScopeTab(page);
 
-    // Every card starts collapsed — Expand affordances only.
+    // SCOPE_WBS_TABLE_V1 - the expanding item card is gone. The original
+    // assertion here ("every card starts collapsed, Expand affordances only")
+    // tested a concept the redesign deliberately removed, so it is replaced
+    // rather than repaired: what must now be true is that items render as a
+    // WBS table, one addressable row group per item, with no expand/collapse
+    // left behind.
+    await expect(page.getByRole("table", { name: "WBS items" })).toBeVisible();
+    await expect(page.getByTestId("wbs-item").first()).toBeVisible();
+    await expect(page.getByLabel("Expand item")).toHaveCount(0);
     await expect(page.getByLabel("Collapse item")).toHaveCount(0);
-    await expect(page.getByLabel("Expand item").first()).toBeVisible();
 
-    // PR #182 removed the chargeBy field — it must not return when expanded.
-    const article = await expandItem(page, "Internal strip-out");
+    // PR #182 removed the chargeBy field. That still has teeth: the table
+    // rewrite must not reintroduce it.
+    const article = itemGroup(page, "Internal strip-out");
     await expect(article.getByText(/charge ?by/i)).toHaveCount(0);
   });
 
   test("item notes expand modal cancels via Escape without saving (PR #172)", async ({ page }) => {
     await openScopeTab(page);
-    const article = await expandItem(page, "Internal strip-out");
+    const article = itemGroup(page, "Internal strip-out");
 
     const inlineNotes = article.getByPlaceholder("Notes for this item…");
     await expect(inlineNotes).toBeVisible();

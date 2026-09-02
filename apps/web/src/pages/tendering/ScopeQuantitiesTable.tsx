@@ -592,8 +592,7 @@ export function ScopeQuantitiesTable({
               <th style={{ ...thStyle, textAlign: "right" }}>Item total</th>
             </tr>
           </thead>
-          <tbody>
-            {wbsSortedVisible.map((item) => {
+          {wbsSortedVisible.map((item) => {
               const rowCount = itemRowCounts.get(item.id) ?? 1;
               const localMarkup = itemMarkupOverrides.get(item.id) ?? null;
               const overridden = isMarkupOverridden(localMarkup, cardMarkup);
@@ -603,7 +602,7 @@ export function ScopeQuantitiesTable({
               const isPending = pendingIds.has(item.id);
 
               // Render rowCount <tr> elements; identity columns span all.
-              return Array.from({ length: rowCount }, (_, rowIdx) => {
+              const rows = Array.from({ length: rowCount }, (_, rowIdx) => {
                 const isFirstRow = rowIdx === 0;
                 const rowKey = `${item.id}-row-${rowIdx}`;
                 const showPerRowRemove = shouldShowPerRowRemove(rowCount);
@@ -761,7 +760,7 @@ export function ScopeQuantitiesTable({
                             value={item.notes}
                             onSave={(v) => void patchItem(item.id, { notes: v })}
                             disabled={isAi}
-                            placeholder="Notes for this item..."
+                            placeholder="Notes for this item…"
                           />
                         </div>
                       </td>
@@ -857,8 +856,29 @@ export function ScopeQuantitiesTable({
                   </tr>
                 );
               });
+
+              // SCOPE_WBS_TABLE_V1 — one <tbody> per WBS item. The rowspan
+              // already asserts that these <tr>s are a single item; giving
+              // each item its own tbody makes that grouping addressable to
+              // assistive tech and to the acceptance suite, which until this
+              // slice scoped itself to the card <article> that the table
+              // replaced. Multiple tbody elements in one table are valid.
+              //
+              // The description renders into an <input>, and an input's value
+              // is not text content — so neither a screen reader walking the
+              // group nor a test can find an item by the words in it. Carry
+              // it on the group as data-item-description.
+              return (
+                <tbody
+                  key={item.id}
+                  data-testid="wbs-item"
+                  data-wbs-code={item.wbsCode}
+                  data-item-description={item.description}
+                >
+                  {rows}
+                </tbody>
+              );
             })}
-          </tbody>
         </table>
       )}
 

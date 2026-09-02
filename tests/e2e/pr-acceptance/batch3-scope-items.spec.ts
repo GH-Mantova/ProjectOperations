@@ -50,12 +50,16 @@ async function openScopeTab(page: Page): Promise<void> {
  * control the expanded card used to reveal is rendered on the row group, so
  * this is a pure lookup - no click, and no re-location afterwards.
  *
- * Matched on data-item-description rather than hasText because the
+ * Matched on a SUBSTRING of data-item-description (*=): the seeded rows
+ * carry long descriptions ("Internal strip-out - remove partitions, ...")
+ * and the card lookup this replaced used filter({ hasText }), which was
+ * also a substring match. An exact match here finds nothing.
+ * Matched on the attribute rather than hasText because the
  * description renders into an <input>, and an input's value is not text
  * content - a hasText filter would silently match nothing.
  */
 function itemGroup(page: Page, desc: string) {
-  return page.locator(`[data-testid="wbs-item"][data-item-description="${desc}"]`);
+  return page.locator(`[data-testid="wbs-item"][data-item-description*="${desc}"]`);
 }
 
 test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #176, #180, #241)", () => {

@@ -1343,13 +1343,19 @@ function ItemBodyInputs({
             options={materialOptions}
             onChange={(v) => {
               const lookup = v ? materialDensityMap.get(v) : undefined;
+              // kg/m³ → t/m³ (÷1000); kg/m² is stored as-is (the sqm fallback
+              // in computeDerivedDimensions already divides by 1000 for sheets).
+              // NOTE: these unit strings are DATA, not copy - they must match the
+              // values seeded in apps/api/prisma/seed-initial-services.ts exactly,
+              // superscripts included. A flattened ASCII form never matches, silently
+              // skips the ÷1000 and overstates tonnage 1000x.
               const newDensity = lookup
-                ? (lookup.unit === "kg/m3"
+                ? (lookup.unit === "kg/m³"
                     ? Number(lookup.density) / 1000
                     : Number(lookup.density))
                 : null;
               const newKind = lookup?.kind ?? "VOLUME";
-              const isSheet = lookup?.unit === "kg/m2";
+              const isSheet = lookup?.unit === "kg/m²";
               const newParsed = {
                 length: dims.length === "" ? null : Number(dims.length),
                 height: dims.height === "" ? null : Number(dims.height),
@@ -1398,13 +1404,13 @@ function ItemBodyInputs({
               disabled={isAi}
               style={{ width: 80, height: 32 }}
               placeholder="0.0"
-              title="Factor: tonnes = sqm x factor"
+              title="Factor: tonnes = sqm × factor"
               onChange={(e) => setRow1Factor(e.target.value)}
               onBlur={persistDims}
             />
           </FieldCell>
         ) : (
-          <FieldCell label={row1Kind === "EACH" ? "kg/item" : "Density (t/m3)"} width={80}>
+          <FieldCell label={row1Kind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
             <input
               className="s7-input"
               type="number"
@@ -1422,8 +1428,8 @@ function ItemBodyInputs({
                 item.materialType
                   ? `Auto-set from ${item.materialType}. Clear material to edit manually.`
                   : row1Kind === "EACH"
-                    ? "Per-item weight in kg (tonnes = qty x kg/1000)"
-                    : "Manual density (tonnes per m3)"
+                    ? "Per-item weight in kg (tonnes = qty × kg/1000)"
+                    : "Manual density (tonnes per m³)"
               }
               onChange={(e) => setDim("density", e.target.value)}
               onBlur={persistDims}
@@ -1440,7 +1446,7 @@ function ItemBodyInputs({
               disabled={isAi}
               style={{ width: 80, height: 32 }}
               placeholder="0"
-              title="Number of items (tonnes = qty x kg/item / 1000)"
+              title="Number of items (tonnes = qty × kg/item ÷ 1000)"
               onChange={(e) => setRow1Quantity(e.target.value)}
               onBlur={persistDims}
             />
@@ -1462,13 +1468,13 @@ function ItemBodyInputs({
               placeholder={placeholderFor("sqm")}
               disabled={isAi}
               style={{ width: 80, height: 32 }}
-              title="Auto = length x height. Type to override."
+              title="Auto = length × height. Type to override."
               onChange={(e) => setDim("sqm", e.target.value)}
               onBlur={persistDims}
             />
           </OverrideField>
         </FieldCell>
-        <FieldCell label="M3" width={80}>
+        <FieldCell label="M³" width={80}>
           <OverrideField
             isOverridden={dirty.m3}
             onRevert={() => {
@@ -1484,7 +1490,7 @@ function ItemBodyInputs({
               placeholder={placeholderFor("m3")}
               disabled={isAi}
               style={{ width: 80, height: 32 }}
-              title="Auto = sqm x depth. Type to override."
+              title="Auto = sqm × depth. Type to override."
               onChange={(e) => setDim("m3", e.target.value)}
               onBlur={persistDims}
             />
@@ -1506,7 +1512,7 @@ function ItemBodyInputs({
               placeholder={placeholderFor("tonnes")}
               disabled={isAi}
               style={{ width: 80, height: 32 }}
-              title="Auto = m3 x density or sqm x density / 1000. Type to override."
+              title="Auto = m³ × density or sqm × density / 1000. Type to override."
               onChange={(e) => setDim("tonnes", e.target.value)}
               onBlur={persistDims}
             />
@@ -1827,13 +1833,19 @@ function MaterialCluster({
             options={materialOptions}
             onChange={(v) => {
               const lookup = v ? materialDensityMap.get(v) : undefined;
+              // kg/m³ → t/m³ (÷1000); kg/m² is stored as-is (the sqm fallback
+              // in computeDerivedDimensions already divides by 1000 for sheets).
+              // NOTE: these unit strings are DATA, not copy - they must match the
+              // values seeded in apps/api/prisma/seed-initial-services.ts exactly,
+              // superscripts included. A flattened ASCII form never matches, silently
+              // skips the ÷1000 and overstates tonnage 1000x.
               const newDensity = lookup
-                ? lookup.unit === "kg/m3"
+                ? lookup.unit === "kg/m³"
                   ? Number(lookup.density) / 1000
                   : Number(lookup.density)
                 : null;
               const newKind = lookup?.kind ?? "VOLUME";
-              const isSheet = lookup?.unit === "kg/m2";
+              const isSheet = lookup?.unit === "kg/m²";
               const rederived = computeDerivedDimensions({
                 length: entry.length ?? null,
                 height: entry.height ?? null,
@@ -1879,7 +1891,7 @@ function MaterialCluster({
               disabled={disabled}
               style={{ width: 80, height: 32 }}
               placeholder="0.0"
-              title="Factor: tonnes = sqm x factor"
+              title="Factor: tonnes = sqm × factor"
               onBlur={(e) => {
                 const newFactor = numOrNull(e.target.value);
                 const rederived = computeDerivedDimensions({
@@ -1892,7 +1904,7 @@ function MaterialCluster({
             />
           </FieldCell>
         ) : (
-          <FieldCell label={matKind === "EACH" ? "kg/item" : "Density (t/m3)"} width={80}>
+          <FieldCell label={matKind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
             <input
               className="s7-input"
               type="number"
@@ -1910,8 +1922,8 @@ function MaterialCluster({
                 entry.material
                   ? `Auto-set from ${entry.material}. Clear material to edit manually.`
                   : matKind === "EACH"
-                    ? "Per-item weight in kg (tonnes = qty x kg/1000)"
-                    : "Manual density (tonnes per m3)"
+                    ? "Per-item weight in kg (tonnes = qty × kg/1000)"
+                    : "Manual density (tonnes per m³)"
               }
               onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
             />
@@ -1927,7 +1939,7 @@ function MaterialCluster({
               disabled={disabled}
               style={{ width: 80, height: 32 }}
               placeholder="0"
-              title="Number of items (tonnes = qty x kg/item / 1000)"
+              title="Number of items (tonnes = qty × kg/item ÷ 1000)"
               onBlur={(e) => {
                 const newQty = numOrNull(e.target.value);
                 const rederived = computeDerivedDimensions({
@@ -1949,11 +1961,11 @@ function MaterialCluster({
             placeholder={derived.sqm == null ? "" : String(derived.sqm)}
             disabled={disabled}
             style={{ width: 80, height: 32 }}
-            title="Auto = length x height. Type to override."
+            title="Auto = length × height. Type to override."
             onBlur={(e) => onChange({ sqm: numOrNull(e.target.value) })}
           />
         </FieldCell>
-        <FieldCell label="M3" width={80}>
+        <FieldCell label="M³" width={80}>
           <input
             className="s7-input"
             type="number"
@@ -1962,7 +1974,7 @@ function MaterialCluster({
             placeholder={derived.m3 == null ? "" : String(derived.m3)}
             disabled={disabled}
             style={{ width: 80, height: 32 }}
-            title="Auto = sqm x depth. Type to override."
+            title="Auto = sqm × depth. Type to override."
             onBlur={(e) => onChange({ m3: numOrNull(e.target.value) })}
           />
         </FieldCell>
@@ -1975,7 +1987,7 @@ function MaterialCluster({
             placeholder={derived.tonnes == null ? "" : String(derived.tonnes)}
             disabled={disabled}
             style={{ width: 80, height: 32 }}
-            title="Auto = m3 x density or sqm x density / 1000. Type to override."
+            title="Auto = m³ × density or sqm × density / 1000. Type to override."
             onBlur={(e) => onChange({ tonnes: numOrNull(e.target.value) })}
           />
         </FieldCell>
@@ -2187,7 +2199,7 @@ function TaskHoursHint({ men, days }: { men: string | null; days: string | null 
         color: "var(--text-muted)",
         whiteSpace: "nowrap"
       }}
-      title="Task hours: persons x days x 8h"
+      title="Task hours: persons × days × 8h"
     >
       {hours === null ? "—" : `${hours.toFixed(1)} h`}
     </div>

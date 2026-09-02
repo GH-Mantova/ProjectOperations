@@ -378,9 +378,42 @@ keep it small. ⚠️ **06 has no cadence** — if unstaged by the next supervis
 **I did not run `enable-automerge.ps1`.** I used the targeted, station-doc-sanctioned form on my own
 PR only: `gh pr merge 1522 --auto --squash --delete-branch`.
 
+### F9 — #1520 merged INSIDE my window; it is watcher code, so the running watcher is now stale [MEASURED]
+
+`gh pr view 1520 --json state,mergedAt` at 06:23:55Z → **`state=MERGED mergedAt=2026-09-02T06:22:50Z`**,
+on the auto-merge Marco enabled at 06:11:49Z. Two consequences, and they point opposite ways.
+
+🟢 **It is NOT a tenth unattributable merge, and this is the first time that could be said with
+evidence rather than by assumption.** The chain is complete and each link is measured: the CP-26
+receipt `docs/decisions/merge-approvals/1520.md` was committed by `committer.login = web-flow`
+(browser, 05:52:01Z), a web-flow "Update branch" followed at 06:09:19Z, auto-merge was enabled at
+06:11:49Z, and GitHub merged it when the last check went green. Contrast the *code* commits on the
+same branch at 05:16:53/55Z, two seconds apart, committed as `GH-Mantova` — a scripted push. **A
+second lane wrote it; a human at github.com approved and merged it.** See F3.
+
+🔴 **#1520 changes `scripts/pr-watcher/index.mjs`, so the watcher now running is the OLD code.** The
+FIX-LANE rule and DOCTRINE §9.5 both say a restart is required for a `scripts/pr-watcher/**` merge to
+take effect, and that a restart changes nothing unless the clone is fast-forwarded first —
+`C:\po-watcher\ProjectOperations` measured `eacf09ac` against `origin/main` `d3b603e4` **before**
+#1520 even landed, so it is now further behind.
+
+I did **not** restart it, deliberately: **nothing is armed** (`restart-watcher-if-wedged.ps1` →
+`OK - nothing armed and the watcher is alive`, pid 28400), so the stale code cannot execute, and
+killing a healthy wrapper+node pair for zero present benefit is the trade DOCTRINE §3 and the
+"never restart on BUSY" rule exist to prevent.
+
+**DEFERRED**, with a hard precondition rather than a date: 🔴 **restart the watcher BEFORE the next
+arm, not after it.** Idle window, wrapper first then node, relaunch DETACHED via
+`C:\po-watcher\watcher-launcher-singlelane.ps1` (`ensure-watcher.ps1:10` is the source of truth for
+that name), and read back the new PID. An arm placed on a stale watcher is the one case where this
+costs something real. What would make it urgent sooner: any further `scripts/pr-watcher/**` merge.
+
 ## WHAT I DID NOT DO
 
-- **Did not merge anything.** #1520 has Marco's own auto-merge and receipt; #1519 is DIRTY, labelled
+- **Did not restart the watcher**, even though #1520 landed watcher code inside my window — nothing
+  is armed, so the stale code cannot run. **The next run must restart it BEFORE arming** (F9).
+- **Did not merge any board PR.** #1520 merged itself on Marco's own auto-merge and receipt at
+  06:22:50Z; #1519 is DIRTY, labelled
   `do-not-merge`, and hand-classified MARCO'S. Both are second lanes with **no** RULE-2 verdict, and
   an empty probe is never "checked, and not Marco's".
 - **Did not author a `merge-approvals/<N>.md`.** Permanently forbidden to every agent.
@@ -390,8 +423,11 @@ PR only: `gh pr merge 1522 --auto --squash --delete-branch`.
   the next arms once the board clears and the sweep reads SAFE.
 - **Did not resolve #1519's conflict**, and did not push to any existing branch — F4 gives the three
   stacked reasons and the exact resolution.
-- **Did not restart the watcher.** `OK`, pid 28400 unchanged, nothing under `scripts/pr-watcher/**`
-  merged since the clone's head.
+- **Corrected one of my own lines mid-run.** The watcher bullet first read *"nothing under
+  `scripts/pr-watcher/**` merged since the clone's head"* — true when written at 06:15Z, FALSE eight
+  minutes later when #1520 landed at 06:22:50Z. Rewritten rather than left standing: a claim that
+  outlives its own measurement is what DOCTRINE §7.1 exists to stop, and §4's `[LIVE]` rule applies
+  to a report's own sentences too.
 - **Did not touch `/sot/`, Azure, Entra or SharePoint**, and ran no `git` write in the watcher clone.
 - **Did not delete the two orphaned worktrees, the 11 registry escapees, or the 64 stashes** — 03's
   lane, and irreversible.

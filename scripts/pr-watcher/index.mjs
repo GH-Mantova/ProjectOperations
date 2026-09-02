@@ -47,6 +47,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getToken as getAppInstallationToken, isAuthLive } from "./app-auth.mjs";
 import { validateVerdict } from "./verdict-guard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -107,6 +108,15 @@ const RESCAN_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_TURNS = Number(process.env.PR_WATCHER_MAX_TURNS ?? 120);
 const CLAUDE_BIN = process.env.PR_WATCHER_CLAUDE_BIN ?? "claude";
 const GH_BIN = process.env.PR_WATCHER_GH_BIN ?? "gh";
+
+// WATCHER_APP_AUTH_V1 — GitHub App identity for the watcher. Opt-in via
+// PO_WATCHER_APP_KEY: when set, every `gh` invocation runs as
+// `projectops-watcher[bot]` instead of ambient GH-Mantova (see
+// docs/runbooks/watcher-identity-github-app.md and scripts/pr-watcher/app-auth.mjs).
+// Fails CLOSED — if minting fails, main() refuses to start and runGh refuses
+// to invoke `gh`. There is deliberately no fallback to ambient keyring auth.
+const APP_AUTH_ENABLED = !!process.env.PO_WATCHER_APP_KEY;
+const APP_AUTH_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 // Auto-merge policy — opt-in only. The review-gated workflow runs with this
 // OFF. Values:
@@ -851,13 +861,30 @@ function enqueue(name, { source = "watch" } = {}) {
 // Run `gh` and return parsed JSON or raw stdout. With allowNonZero, a
 // non-zero exit still resolves stdout (gh pr checks exits 8 when any check
 // is failing — exactly the case where we want its output for a report).
-function runGh(args, { json = false, allowNonZero = false } = {}) {
+//
+// WATCHER_APP_AUTH_V1: when PO_WATCHER_APP_KEY is set, mint a fresh App
+// installation token (cached, refreshed at ~50 min) and pass it as GH_TOKEN
+// in the child environment. GH_TOKEN takes precedence over the keyring, so
+// every gh call becomes attributable to projectops-watcher[bot]. On mint
+// failure we throw BEFORE spawning gh — no fallback to keyring auth, ever.
+async function runGh(args, { json = false, allowNonZero = false } = {}) {
+  let childEnv = process.env;
+  if (APP_AUTH_ENABLED) {
+    let token;
+    try {
+      token = await getAppInstallationToken();
+    } catch (err) {
+      throw new Error(`gh call refused — watcher app-auth failed-closed: ${err.message}`);
+    }
+    childEnv = { ...process.env, GH_TOKEN: token };
+  }
   return new Promise((resolve, reject) => {
     const out = [];
     const err = [];
     const child = spawn(GH_BIN, args, {
       cwd: REPO_ROOT,
       shell: true,
+      env: childEnv,
     });
     child.stdout.on("data", (c) => out.push(c));
     child.stderr.on("data", (c) => err.push(c));
@@ -3070,6 +3097,33 @@ async function main() {
   log("watcher", `pattern:     (pr|rev)-*-ready.md`);
   log("watcher", `claude:      ${CLAUDE_BIN}`);
   log("watcher", `gh:          ${GH_BIN}`);
+  // WATCHER_APP_AUTH_V1 — preflight-mint the installation token. If minting
+  // fails we exit before starting the watch loop, so no `gh` call is ever
+  // attempted under ambient GH-Mantova auth. This is the whole design.
+  if (APP_AUTH_ENABLED) {
+    try {
+      await getAppInstallationToken();
+      log("watcher", `app-auth:    gh[installation] (projectops-watcher[bot], WATCHER_APP_AUTH_V1)`);
+    } catch (err) {
+      log("error", `app-auth FAILED-CLOSED at startup: ${err.message}`);
+      log("error", `watcher refuses to run with ambient keyring auth — exiting`);
+      releaseLock();
+      process.exit(1);
+    }
+    const authRefreshTimer = setInterval(async () => {
+      try {
+        await getAppInstallationToken();
+      } catch (err) {
+        // Do not exit — the cache is already cleared and subsequent runGh
+        // calls will fail-closed on their next invocation. Log and let the
+        // supervisor / operator notice.
+        log("error", `app-auth refresh failed: ${err.message} (auth-live: ${isAuthLive()})`);
+      }
+    }, APP_AUTH_REFRESH_INTERVAL_MS);
+    authRefreshTimer.unref();
+  } else {
+    log("watcher", `app-auth:    OFF (PO_WATCHER_APP_KEY unset — running as ambient GH-Mantova)`);
+  }
   log("watcher", `max-turns:   ${MAX_TURNS}`);
   log("watcher", `merge-pol:   ${AUTO_MERGE_POLICY}`);
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);

@@ -389,7 +389,14 @@ here now because they are true for **every** station.
   without `--prune` never deletes a tracking ref, so branches GitHub deleted on merge live on
   locally forever — **54 reported against 21 real, measured 2026-08-29.** Cross-referencing that
   list against the GitHub API inherits the error and dresses it as a finding. **Ask the remote:
-  `git ls-remote --heads origin`.** Separately, `git branch -r --merged origin/main` is blind to
+  `git ls-remote --heads origin`.** 🔴 **AND `--prune` DOES NOT CURE IT — `refs/remotes/` can hold
+  refs NO REFSPEC OWNS.** Measured 2026-09-03 immediately after `git fetch origin --prune`:
+  `git branch -r` = **12** against `git ls-remote --heads origin` = **7**, and prune had worked
+  perfectly — all seven `origin/*` heads matched the remote exactly. The five extras were
+  `refs/remotes/pr/1477`, `pr/1478`, `pr/1483`, `pr/1487` and `pr1273`, hand-made by
+  `git fetch origin pull/N/head:refs/remotes/pr/N`. `remote.origin.fetch =
+  refs/heads/*:refs/remotes/origin/*` does not cover them, so **`--prune` can never remove them,
+  and a pruned cache is still not authoritative.** Ask the remote, pruned or not. Separately, `git branch -r --merged origin/main` is blind to
   squash merges, which is every merge in this repo, and `gh pr list --limit N` silently TRUNCATES
   at N — `--limit 600` returned 600 rows and a different, wrong answer from `--limit 2000`.
 
@@ -442,6 +449,16 @@ here now because they are true for **every** station.
   `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach**, because piping a JSON
   array straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge
   queue select **#552 — the production-data PR.**
+- 🔴 **`@(ConvertFrom-Json …).Count` answers `1` for an EMPTY array and `1` for a
+  forty-element one.** PS 5.1 emits a parsed JSON array as a **single object**, so an array
+  subexpression wrapping the call — inline or piped — counts one item regardless of length.
+  Measured 2026-09-03 on 5.1.26100.9168: `@(ConvertFrom-Json '[]').Count` → **1** (truth 0)
+  and `@(ConvertFrom-Json '[{..}x4]').Count` → **1** (truth 4); the pipeline form gives 1 and 1
+  too. **Always assign first, then count:** `$rows = ConvertFrom-Json $raw; @($rows).Count`
+  → **0** and **4**, correct in both directions. This is the counting twin of the
+  `Where-Object` collapse above, and it is worse, because it silently *refutes* a true finding:
+  it turned `gh run list --commit <short>` → `[]` and `--commit <full>` → 4 runs into the
+  identical reading `1 / 1`, i.e. "§9.4’s short-SHA trap no longer reproduces."
 - ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
   **per-commit**.
 - 🔴 **...and `gh run list --commit <SHA>` answers `[]` for a SHORT sha, exit 0.** Measured

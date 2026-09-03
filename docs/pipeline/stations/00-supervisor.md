@@ -163,6 +163,29 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
   station is not a quiet one** — either it did not run, or it ran and did not report, and both are
   defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
+- **THEN CROSS THE FRESHNESS TABLE AGAINST `lastRunAt`. THE BREADCRUMB IS ONE INSTRUMENT AND IT
+  CANNOT NAME THE CAUSE.** `check-breadcrumb.mjs` compares breadcrumb dates and nothing else, so the
+  three failures below are identical to it — and two of them print `ok`. Call `list_scheduled_tasks`
+  (scheduled-tasks MCP) and compare each station's `lastRunAt` to its newest breadcrumb:
+
+  | `lastRunAt` vs newest breadcrumb | What happened | How to confirm |
+  |---|---|---|
+  | `lastRunAt` older than one cadence | **the occurrence never fired** — nothing ran | `cronExpression` / `nextRunAt`; was the desktop app up? |
+  | `lastRunAt` fresh, no breadcrumb | **it started and died, or ran and did not report** | read the session transcript — the only channel that names the cause |
+  | both fresh and aligned | healthy | nothing further |
+
+  🔴 **A run can be recorded in `lastRunAt` having executed NOTHING.** MEASURED 2026-09-03:
+  `04-scanner` (`14:10:20Z`) and `05-sot-keeper` (`14:11:26Z`) each returned `API Error: 529
+  Overloaded` **on the first assistant turn, before STEP 1**. Zero instructions ran, a breadcrumb was
+  impossible, and `lastRunAt` updated anyway — so the MCP read healthy while `--freshness` read
+  `05 … 49.0h ago SILENT`. **A transient 529 silently consumes a whole cadence**, and the cron does
+  not retry: on a daily station that is 24 h of coverage lost with no defect anywhere to find.
+  🔴 **So `ok` is not an all-clear either.** The same run `03-machine-minder` printed
+  `40.1h ago (cadence 24h) ok` while having missed its 09-02 occurrence outright — twice a 24 h
+  cadence makes exactly one missed run invisible.
+  **Read the transcript before dispositioning any station as SILENT** (`list_sessions` →
+  `read_transcript`, newest session whose title matches the station). Calling a station stopped when
+  infrastructure killed it is a §7 false alarm, and a false alarm licenses destructive action.
 - **ARCHIVE WHAT YOU HAVE COLLECTED.** Once every finding in a breadcrumb carries a
   disposition, `git mv` it to `docs/pr-prompts/archive/` in the same board PR. On
   2026-08-30 the queue root was **159 breadcrumbs to 59 live `-HOLD.md`** and growing

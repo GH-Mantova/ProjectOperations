@@ -552,6 +552,27 @@ here now because they are true for **every** station.
   therefore safe, but "it counts by basename" is true of freshness and **false** of the structure
   pass — do not quote the one result as covering both.
 
+- 🔴 **RULE 2's ONLY PROBE HAS TWO HOMES, BOTH ANSWER, AND THE DEAD ONE'S POSITIVE CONTROL
+  PASSES.** The `marco:true` probe reads `docs/pr-prompts/processed/*.log`. That path resolves in
+  **two** trees, and the watcher clone holds a dead DECOY copy of the same directory. Measured
+  2026-09-03T20:1xZ at `054dccd4`:
+  `C:\\ProjectOperations2\\docs\\pr-prompts\\processed` = **1864** logs, newest
+  `2026-09-03T17:20:00Z`, `marco.:true` → **606**; `C:\\po-watcher\\ProjectOperations\\docs\\pr-prompts\\processed`
+  = **21** logs, newest **2026-08-17T14:28:09Z** — seventeen days stale — `marco.:true` → **10**.
+  🔴 **The decoy therefore passes the mandated positive control**: POS=10 (>0), NEG=0, exactly the
+  shape the standing rule asks for — and then returns *no verdict* for every PR opened since
+  17 August. A run that probes the clone reads all four of today's open PRs as carrying no Marco
+  routing, i.e. **RULE 2 fails OPEN on the one gate that exists to stop an agent merging Marco's
+  work.** This was reached by a `Test-Path`-with-fallback that preferred the clone; it is not a
+  typo, it is a plausible path expression that silently selects the corpse.
+  🔧 **Pin the tree: the live probe directory is `C:\\ProjectOperations2\\docs\\pr-prompts\\processed`,
+  and NEVER the watcher clone.** POS>0 is not sufficient on its own — **also assert the newest log is
+  younger than the oldest open PR**, which is the only control that separates the two directories.
+  ⚠️ **And the log is keyed by PROMPT NAME, not PR number**, so match `PR #<n>` in the log BODY;
+  a filename search returns a uniform zero. **Control it against a PR you know the watcher did NOT
+  open** — e.g. a station's own docs PR — which must read `NO LOG`, proving `NO LOG` means
+  *second lane* (§10) and not *probe broken*.
+
 ## 9.6 The rule behind all of them
 
 🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is

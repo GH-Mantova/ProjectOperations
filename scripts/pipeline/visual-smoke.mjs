@@ -13,6 +13,7 @@
  *   node scripts/pipeline/visual-smoke.mjs \
  *     --pr <n> \
  *     [--base http://localhost:5174] \
+ *     [--out <dir>] \
  *     --screens <path/to/screens.json>
  *
  * screens.json shape:
@@ -22,16 +23,19 @@
  *   ]
  *
  * Output: docs/pr-reviews/pr-{n}-smoke/{name}.png (one file per entry, in input order).
+ *   With --out <dir> the PNGs land in <dir> instead. The summary line names the
+ *   resolved directory either way.
  *
  * Exit codes:
  *   0  every screen captured
  *   1  bad arguments / screens file
  *   2  login failed
- *   3  capture failed on any screen (the rest are still attempted, but exit non-zero)
+ *   3  capture failed on any screen (the rest are still attempted, but exit non-zero).
+ *      An OVERSIZE PNG (> MAX_PNG_BYTES) is deleted and counted as a capture failure.
  */
 
 import { chromium } from "playwright";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,6 +44,11 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ADMIN_EMAIL = "admin@projectops.local";
 const ADMIN_PASSWORD = "Password123!";
 
+// A full-page screenshot of an unbounded list can be enormous. Cap it, so a single
+// runaway render cannot commit a 40 MB PNG into the repo. Cross this and the file is
+// deleted and the screen counts as a capture failure (exit 3).
+const MAX_PNG_BYTES = 2_000_000;
+
 function parseArgs(argv) {
   const out = { base: "http://localhost:5174" };
   for (let i = 2; i < argv.length; i++) {
@@ -47,6 +56,7 @@ function parseArgs(argv) {
     if (a === "--pr") out.pr = argv[++i];
     else if (a === "--base") out.base = argv[++i];
     else if (a === "--screens") out.screens = argv[++i];
+    else if (a === "--out") out.out = argv[++i];
     else if (a === "--help" || a === "-h") out.help = true;
     else {
       console.error(`visual-smoke: unknown arg: ${a}`);
@@ -58,7 +68,7 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(
-    "Usage: node scripts/pipeline/visual-smoke.mjs --pr <n> [--base <url>] --screens <file>"
+    "Usage: node scripts/pipeline/visual-smoke.mjs --pr <n> [--base <url>] [--out <dir>] --screens <file>"
   );
 }
 
@@ -80,6 +90,12 @@ async function captureOne(page, baseUrl, entry, outDir) {
   }
   const outPath = join(outDir, `${entry.name}.png`);
   await page.screenshot({ path: outPath, fullPage: true });
+  const { size } = statSync(outPath);
+  if (size > MAX_PNG_BYTES) {
+    unlinkSync(outPath);
+    console.error(`OVERSIZE ${entry.name}: ${size} > MAX_PNG_BYTES, not kept`);
+    throw new Error(`oversize (${size} > ${MAX_PNG_BYTES})`);
+  }
   return outPath;
 }
 
@@ -118,7 +134,9 @@ async function main() {
     }
   }
 
-  const outDir = join(REPO_ROOT, "docs", "pr-reviews", `pr-${args.pr}-smoke`);
+  const outDir = args.out
+    ? resolve(args.out)
+    : join(REPO_ROOT, "docs", "pr-reviews", `pr-${args.pr}-smoke`);
   mkdirSync(outDir, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });

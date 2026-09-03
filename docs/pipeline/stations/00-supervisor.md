@@ -57,6 +57,17 @@ stations in one day were served a superseded copy of their own binding instructi
 claim `origin/main` records as REFUTED. If you must fetch over the network instead, append
 **`?plain=1`** to the blob URL — a bare blob URL can return a stale rendered copy.
 
+🔴 **Run that `git show` in the DEV TREE, `C:\ProjectOperations2` — never in the watcher clone.**
+`origin/main` is a **per-tree** remote-tracking ref, and the clone's is fetched only when the watcher
+launches, so it pins to whatever `main` was at launch. MEASURED 2026-09-03T23:0xZ by Station 03:
+`git show origin/main:docs/pipeline/DOCTRINE.md | git hash-object --stdin` returned `0e9e14d9` in
+`C:\po-watcher\ProjectOperations` and `860b5e32` in `C:\ProjectOperations2` — ten commits and fourteen hours
+apart. Both exit 0, neither warns, and the stale answer is a plausible, well-formed document rather
+than an empty one, so §9.6's *"an empty result is not an empty world"* does not even fire. **The cure
+then serves a superseded copy of the very file it exists to keep current.** In any tree but the dev
+tree, run `git fetch origin +refs/heads/main:refs/remotes/origin/main` FIRST — and say in your
+GROUND block which tree you read in.
+
 **3. Stamp the ground.** Your report opens with exactly these lines:
 
 ```

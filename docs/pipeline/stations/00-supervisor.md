@@ -243,11 +243,38 @@ isolated worktree off `origin/main` (regenerate generated files, never hand-merg
 re-verify. Conflicts and behind-branches are work, not blockers to hand back.
 
 **3. Smoke test, including UI/UX.** You may run smoke tests to prove a PR before merge:
-`scripts/pipeline/smoke-pr.ps1` (the EXIT CODE decides, never your reading of the log; a FAIL whose
-only failure is `auth.setup.ts` verified nothing - the acceptance tests never ran). This includes
-UI/UX / e2e Playwright smokes where the change touches the web app. If a smoke needs a real human
-identity or real shared-PC state you cannot provide, get it green-and-mergeable otherwise, then
-escalate that one gap - do not fake the identity.
+`scripts/pipeline/smoke-pr.ps1` (the EXIT CODE of `smoke-pr.ps1` decides, never your reading of
+its log; a FAIL whose only failure is `auth.setup.ts` verified nothing - the acceptance tests never
+ran). This includes UI/UX / e2e Playwright smokes where the change touches the web app. If a smoke
+needs a real human identity or real shared-PC state you cannot provide, get it
+green-and-mergeable otherwise, then escalate that one gap - do not fake the identity.
+
+**VISION REVIEW (UI PRs, `apps/web/**`).** The functional smoke above proves behaviour; it does
+not prove *appearance*. After the functional smoke on a PR that touches `apps/web/**`, capture the
+PR's declared visual acceptance screens and JUDGE them yourself. This is the one place in this
+station where the agent's own reading **is** the verdict, because `scripts/pipeline/visual-smoke.mjs`
+deliberately asserts nothing - it just writes PNGs. The "EXIT CODE decides" rule scopes to
+`smoke-pr.ps1`; it does NOT apply here.
+
+   - **Capture.** Write a small `screens.json` inside the smoke worktree - one
+     `{ name, path, waitFor? }` per screen the PR body names as visual acceptance - then run
+     `node scripts/pipeline/visual-smoke.mjs --pr {n} --base http://localhost:5174 --screens <screens.json>`.
+     It re-logs in as the seed admin (`admin@projectops.local`), drives each route, and writes
+     deterministic full-page PNGs at 1440x900 to `docs/pr-reviews/pr-{n}-smoke/{name}.png`.
+   - **Judge.** OPEN each PNG and READ it against the PR's stated visual acceptance criteria:
+     layout intact (no overlap, no cut-off, no blank region where the PR claims content); the
+     elements the PR body says are present are visibly present; nav and shell render; spacing and
+     colours plausibly match the design tokens.
+   - **Record.** Add a per-screen row to the same PASS table you post as the smoke comment:
+     `screen | PASS/FAIL | reason` (one line each).
+   - **A visual FAIL is a SMOKE FAIL** - route it through the FAIL branch of the smoke rule
+     (reproduce-first + fix-forward, or escalate if exhausted). Do NOT merge on a visual FAIL.
+   - **Escalate to Marco ONLY on a genuinely ambiguous aesthetic judgement** - a novel design
+     token, a brand-guideline call, a subjective density/hierarchy question. Never escalate a
+     screen that is clearly right or clearly wrong; deciding those is the whole point of this step.
+
+The full rule-6 vision contract also lives at `docs/pipeline/stations/02-board-driver.md` (rule 6)
+and the two must not silently drift - keep them in sync when either changes.
 
 **4. Chained PRs - arm a HOLD only when its gates are CLEARED.** PRs are now chained. Arm
 (`*-HOLD.md` -> `*-ready.md`) ONLY when the prompt has no gates, OR every gate is unblocked, verified

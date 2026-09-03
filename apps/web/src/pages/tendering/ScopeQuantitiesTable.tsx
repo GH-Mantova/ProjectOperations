@@ -619,6 +619,11 @@ export function ScopeQuantitiesTable({
     return map;
   }, [wasteRates]);
 
+  const plantOptions = useMemo<TooltipSelectOption<string>[]>(
+    () => plantRates.filter((p) => !isTransportPlant(p)).map((p) => ({ value: p.id, label: p.item })),
+    [plantRates]
+  );
+
   // SCOPE_WBS_MANPOWER_V1 — labour type options for the Type dropdown.
   // The "- none -" sentinel is prepended; its value is "" so a cleared
   // TooltipSelect returns null which maps to labourTypeId = null.
@@ -1181,6 +1186,8 @@ export function ScopeQuantitiesTable({
                       <ItemMeasurementCell
                         item={item}
                         rowIdx={rowIdx}
+                        plantOptions={plantOptions}
+                        plantRates={plantRates}
                         wasteGroupOptions={wasteGroupOptions}
                         wasteItemsByGroup={wasteItemsByGroup}
                         materialOptions={materialOptions}
@@ -1795,6 +1802,8 @@ function PlantRowCells({
 type ItemMeasurementCellProps = {
   item: ScopeItem;
   rowIdx: number;
+  plantOptions: TooltipSelectOption<string>[];
+  plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
@@ -1806,6 +1815,8 @@ type ItemMeasurementCellProps = {
 function ItemMeasurementCell({
   item,
   rowIdx,
+  plantOptions,
+  plantRates,
   wasteGroupOptions,
   wasteItemsByGroup,
   materialOptions,
@@ -1822,6 +1833,8 @@ function ItemMeasurementCell({
   return (
     <ItemBodyInputs
       item={item}
+      plantOptions={plantOptions}
+      plantRates={plantRates}
       wasteGroupOptions={wasteGroupOptions}
       wasteItemsByGroup={wasteItemsByGroup}
       materialOptions={materialOptions}
@@ -1839,6 +1852,8 @@ function ItemMeasurementCell({
 
 type ItemBodyInputsProps = {
   item: ScopeItem;
+  plantOptions: TooltipSelectOption<string>[];
+  plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
@@ -1849,6 +1864,8 @@ type ItemBodyInputsProps = {
 
 function ItemBodyInputs({
   item,
+  plantOptions,
+  plantRates,
   wasteGroupOptions,
   wasteItemsByGroup,
   materialOptions,
@@ -1858,6 +1875,35 @@ function ItemBodyInputs({
 }: ItemBodyInputsProps) {
   // PR feat/scope-each-factor — active kind for row 1.
   const row1Kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (item.materialKind as "VOLUME" | "AREA" | "EACH" | "FACTOR") ?? "VOLUME";
+
+  const updatePlant = (columnIndex: number, patch: Partial<ScopePlantEntry> | null) => {
+    const current = Array.isArray(item.plantItems) ? item.plantItems : [];
+    let next: ScopePlantEntry[];
+    if (patch === null) {
+      next = current.filter((p) => p.columnIndex !== columnIndex);
+    } else {
+      const existing = current.find((p) => p.columnIndex === columnIndex);
+      next = existing
+        ? current.map((p) => (p.columnIndex === columnIndex ? { ...p, ...patch } : p))
+        : [...current, { columnIndex, ...patch }];
+    }
+    onPatch({ plantItems: next });
+  };
+
+  const itemPlantEntries: ScopePlantEntry[] = Array.isArray(item.plantItems)
+    ? [...item.plantItems].sort((a, b) => a.columnIndex - b.columnIndex)
+    : [];
+
+  const addPlant = () => {
+    const maxIndex = itemPlantEntries.reduce((m, p) => Math.max(m, p.columnIndex), 0);
+    const newEntry: ScopePlantEntry = { columnIndex: maxIndex + 1 };
+    onPatch({ plantItems: [...(item.plantItems ?? []), newEntry] });
+  };
+
+  const removePlant = (columnIndex: number) => {
+    const next = (item.plantItems ?? []).filter((p) => p.columnIndex !== columnIndex);
+    onPatch({ plantItems: next });
+  };
 
   const itemMaterialEntries: ScopeMaterialEntry[] = Array.isArray(item.materials)
     ? item.materials
@@ -2031,8 +2077,46 @@ function ItemBodyInputs({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 360 }}>
-      {/* SCOPE_WBS_PLANT_V1 — plant section extracted to PlantRowCells columns. */}
-      {/* Measurement — stays exactly where it is until slice 5 */}
+      {/* SCOPE_WBS_PLANT_V1 — the new plant COLUMN GROUP lives in PlantRowCells.
+          These legacy cells are retained deliberately: they are the only plant UI
+          that persists to plantItems, and batch3-scope-items.spec.ts:256 covers
+          that persistence (PRs #241, #72). Remove them in the slice that wires
+          the new columns to the server, and port the e2e in that same slice. */}
+      {/* Section A: plant only — Men/Days moved to SCOPE_WBS_MANPOWER_V1 columns.
+          Slice 4 will extract plant into its own columns. */}
+      {(itemPlantEntries.length > 0 || !isAi) ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+          {itemPlantEntries.map((entry) => (
+            <PlantCluster
+              key={`plant-${entry.columnIndex}`}
+              index={entry.columnIndex}
+              cell={entry}
+              plantOptions={plantOptions}
+              plantRates={plantRates}
+              disabled={isAi}
+              onChange={(patch) => updatePlant(entry.columnIndex, patch)}
+              onRemove={() => removePlant(entry.columnIndex)}
+            />
+          ))}
+          {!isAi ? (
+            <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={addPlant}
+                title="Add plant to this item"
+                style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
+              >
+                + Plant
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Divider />
+
+      {/* Section B: Measurement — stays exactly where it is until slice 5 */}
       <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
         <FieldCell label="Length" width={70}>
           <input
@@ -2349,6 +2433,107 @@ function ItemBodyInputs({
         onAdd={addMaterial}
         disabled={isAi}
       />
+    </div>
+  );
+}
+
+// ── PlantCluster ────────────────────────────────────────────────────────
+
+function PlantCluster({
+  index,
+  cell,
+  plantOptions,
+  plantRates,
+  disabled,
+  onChange,
+  onRemove
+}: {
+  index: number;
+  cell: ScopePlantEntry | undefined;
+  plantOptions: TooltipSelectOption<string>[];
+  plantRates: PlantRate[];
+  disabled: boolean;
+  onChange: (patch: Partial<ScopePlantEntry> | null) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 280 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span className="s7-type-label" style={labelStyle}>
+          Plant {index}
+        </span>
+        {!disabled ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove Plant ${index}`}
+            title={`Remove Plant ${index}`}
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 999,
+              border: "1px solid var(--border-default, #e5e7eb)",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 10,
+              lineHeight: 1,
+              padding: 0
+            }}
+          >
+            x
+          </button>
+        ) : null}
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <TooltipSelect
+          value={cell?.plantRateId}
+          options={plantOptions}
+          onChange={(v) => {
+            if (!v) {
+              onChange(null);
+              return;
+            }
+            const rate = plantRates.find((p) => p.id === v);
+            onChange({
+              plantRateId: v,
+              description: rate?.item ?? "",
+              unit: rate?.unit ?? "day"
+            });
+          }}
+          disabled={disabled}
+          ariaLabel={`Plant ${index} rate`}
+          style={{ flex: 1, minWidth: 0, height: 32 }}
+        />
+        <input
+          className="s7-input"
+          type="number"
+          step="1"
+          placeholder="qty"
+          defaultValue={cell?.qty ?? ""}
+          disabled={disabled}
+          style={{ width: 64, height: 32, padding: "0 6px" }}
+          title="Quantity"
+          onBlur={(e) => {
+            const v = e.target.value === "" ? undefined : Number(e.target.value);
+            if (cell) onChange({ qty: v });
+          }}
+        />
+        <input
+          className="s7-input"
+          type="number"
+          step="0.5"
+          placeholder="days"
+          defaultValue={cell?.days ?? ""}
+          disabled={disabled}
+          style={{ width: 64, height: 32, padding: "0 6px" }}
+          title="Days"
+          onBlur={(e) => {
+            const v = e.target.value === "" ? undefined : Number(e.target.value);
+            if (cell) onChange({ days: v });
+          }}
+        />
+      </div>
     </div>
   );
 }

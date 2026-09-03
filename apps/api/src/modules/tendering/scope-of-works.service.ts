@@ -322,10 +322,13 @@ export class ScopeOfWorksService {
       this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
     ]);
     // Adapt ListedRate → the shapes buildRateMaps expects.
-    // Labour: one entry per (role, shift); we need only shift==="day" for dayRate.
-    const labourRates = labourListed
-      .filter((r) => r.keys["shift"] === "day")
-      .map((r) => ({ role: String(r.keys["role"] ?? ""), dayRate: new Prisma.Decimal(r.value) }));
+    // Labour: one entry per (role, shift); pass ALL shifts so buildRateMaps
+    // can resolve night/weekend rates via labourRateForShift (WBS-SHIFT-S2).
+    const labourRates = labourListed.map((r) => ({
+      role: String(r.keys["role"] ?? ""),
+      shift: String(r.keys["shift"] ?? "day"),
+      rate: new Prisma.Decimal(r.value)
+    }));
     // Plant: one entry per item; rowId maps to EstimatePlantRate.id.
     const plantRates = plantListed.map((r) => ({
       id: r.rowId,

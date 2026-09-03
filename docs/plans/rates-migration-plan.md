@@ -5,14 +5,24 @@ Escalates: yes — every code sub-slice touches live pricing and opens for Marco
 
 ## Problem
 
-Production runs `RATES_CANONICAL_SOURCE=ratetable`, so the app prices jobs from
-the canonical `RateTable` model. But the legacy admin screen
-`EstimateRatesAdminPage` (`/admin/estimate-rates`) still reads and writes the
-eight legacy `Estimate*Rate` tables via `/estimate-rates/*`. The result is a
-**partial dead-edit trap**: edits to the six priced categories (labour, plant,
-waste, cutting, core-hole, fuel) never reach pricing, while enclosure,
-other-rates, and material-densities still resolve from legacy via the resolver's
-fallback and remain authoritative. Two editing surfaces, silently divergent.
+The production deployment is on `legacy` because `RATES_CANONICAL_SOURCE` is
+set in no environment — the only assignment in the repo is `.env.example:209`, a template
+that is never loaded, and `.github/workflows/deploy.yml` sets no app settings,
+so `app.config.ts:16` resolves the unset value to `legacy`. The resolver is
+legacy-first for all eight priced slugs, and pricing reads from the eight
+legacy `Estimate*Rate` tables via `EstimateRatesAdminPage`
+(`/admin/estimate-rates`). The result is a **dead-edit trap on the new
+reference-data screen** (`RatesListsAdminPage`, `/settings/reference-data`):
+edits to the six priced categories (labour, plant, waste, cutting, core-hole,
+fuel) seeded byte-identically into `RateTable` never reach pricing, while
+enclosure, other-rates, and material-densities also resolve from legacy and
+remain authoritative there. Two editing surfaces, silently divergent.
+
+The 11c precondition further down this document — *"a full real pricing cycle
+has run on `ratetable`"* — is therefore **still unmet**. This is a second,
+independent bar on 11c alongside the map-locations decision.
+
+Corrected 2026-09-03: measured, the variable is set in no environment.
 
 ## Goal
 

@@ -442,7 +442,9 @@ predates them. SLICE 20's reconcile must reflect THIS state, not the original te
   11a build+migrate enclosure/other-rates/material-densities into RateTable (densities as a
   reference table) + parity proof; 11b retire `/admin/estimate-rates`; 11c drop the legacy
   tables/API/fallback (permanent — opens as a **DRAFT**, hard-locked for Marco + DB backup).
-  Prod runs `RATES_CANONICAL_SOURCE=ratetable`. Staged via arming PR #970 (+ #974 draft-lock).
+  Production is on `legacy` because `RATES_CANONICAL_SOURCE` is unset; flipping it is a
+  deploy-time change only Marco can make on the App Service. Staged via arming PR #970 (+ #974 draft-lock).
+  Corrected 2026-09-03: measured, the variable is set in no environment.
 
 - **SLICE 17 = per-screen permissions.** `AdminOnly` route guards → specific codes:
   users.view, roles.view, audit.view, sharepoint.view, automations.view; new **`system.manage`**

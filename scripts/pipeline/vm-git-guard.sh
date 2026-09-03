@@ -14,6 +14,8 @@
 #   bash "$HOME/mnt/ProjectOperations2/scripts/pipeline/vm-git-guard.sh"
 # UNINSTALL:
 #   rm -f "$HOME/.local/bin/git"
+#   sed -i '/^export PATH="\$HOME\/.local\/bin:\$PATH"$/d' "$HOME/.bashrc"
+#   [ -f "$HOME/.profile" ] && sed -i '/^export PATH="\$HOME\/.local\/bin:\$PATH"$/d' "$HOME/.profile"
 set -euo pipefail
 
 BIN="${HOME}/.local/bin"
@@ -56,10 +58,32 @@ SHIM
 
 chmod +x "${BIN}/git"
 
-case ":${PATH}:" in
-  *":${BIN}:"*) ;;
-  *) echo "NOTE: ${BIN} is not on PATH. Add it first:  export PATH=\"${BIN}:\$PATH\"" ;;
-esac
+ensure_on_path() {
+  local export_line='export PATH="$HOME/.local/bin:$PATH"'
+  local touched=""
+
+  if ! grep -Fxq "$export_line" "${HOME}/.bashrc" 2>/dev/null; then
+    echo "$export_line" >> "${HOME}/.bashrc"
+    touched="${touched} ~/.bashrc"
+  fi
+
+  if [ -f "${HOME}/.profile" ]; then
+    if ! grep -Fxq "$export_line" "${HOME}/.profile" 2>/dev/null; then
+      echo "$export_line" >> "${HOME}/.profile"
+      touched="${touched} ~/.profile"
+    fi
+  fi
+
+  if [ -n "$touched" ]; then
+    echo "ensure_on_path: appended PATH export to:${touched}"
+  else
+    echo "ensure_on_path: both ~/.bashrc and ~/.profile (if present) were already correct"
+  fi
+
+  export PATH="${BIN}:${PATH}"
+}
+
+ensure_on_path
 
 # positive control - the guard must REFUSE a mounted path and ALLOW one outside it
 if PATH="${BIN}:${PATH}" git -C "${HOME}/mnt" status >/dev/null 2>&1; then
@@ -68,4 +92,19 @@ fi
 if ! PATH="${BIN}:${PATH}" git --version >/dev/null 2>&1; then
   echo "FAIL: guard blocked a call that targets nothing mounted"; exit 1
 fi
+
+# persistence controls - re-running must not grow .bashrc; login shell must resolve shim
+HASH_BEFORE="$(md5sum "${HOME}/.bashrc" | awk '{print $1}')"
+bash "${BASH_SOURCE[0]}" 2>/dev/null || true
+HASH_AFTER="$(md5sum "${HOME}/.bashrc" | awk '{print $1}')"
+if [ "$HASH_BEFORE" != "$HASH_AFTER" ]; then
+  echo "FAIL: re-running the installer grew ~/.bashrc (not idempotent)"; exit 1
+fi
+
+RESOLVED="$(bash -lc 'command -v git' 2>/dev/null || true)"
+if [ "$RESOLVED" != "${BIN}/git" ]; then
+  echo "FAIL: bash -lc 'command -v git' resolved to '${RESOLVED}', expected '${BIN}/git'"; exit 1
+fi
+
 echo "vm-git-guard installed at ${BIN}/git - refuses mounted paths, allows everything else (both controls passed)"
+echo "persistence controls passed: .bashrc byte-identical on re-run; login shell resolves shim"

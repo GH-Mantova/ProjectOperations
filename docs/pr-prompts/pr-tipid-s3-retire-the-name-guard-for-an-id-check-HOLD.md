@@ -7,7 +7,10 @@ premise_means: >-
   (D3, option d) that the link becomes an id, at which point the name guard is the wrong instrument.
   This slice retires it and replaces it with an integrity check on the id. It is deliberately the
   LAST slice - the guard protects the legacy table that still prices every job.
-requires_on_main: scripts/rates/backfill-waste-map-location-ids.mjs :: NO MATCH
+requires_on_main:
+  - scripts/rates/backfill-waste-map-location-ids.mjs :: NO MATCH
+  - docs/audits/waste-map-location-backfill.md :: BACKFILL_UNMATCHED_ZERO
+  - docs/data-model/rates-migration/STEP-11C-DONE.md :: ESTIMATE_WASTE_RATES_DROPPED
 scope:
   - apps/api/src/modules/map-locations/map-locations.service.ts
   - apps/api/src/modules/map-locations/__tests__/map-locations.service.spec.ts
@@ -29,22 +32,43 @@ ruling, option (d).
 
 `escalates: true` — this removes a live safety check. Open the PR and leave it unmerged.
 
-## 🔴 HARD STOP — TWO PRECONDITIONS, AND ONE OF THEM IS NOT A MACHINE GATE
+## 🔴 HARD STOP — ENFORCED BY THREE MACHINE GATES, NOT BY THIS PARAGRAPH
 
-**Do not arm this slice until both are true. Marco confirms both, in chat.**
+<!-- watcher: do-not-arm -->
 
-1. **Every waste row resolves.** TIP-ID-S2's backfill has been run with `--apply` against
-   production and its summary reports `unmatched: 0`. Paste that line.
-2. 🔴 **The legacy `EstimateWasteRate` table is being dropped, or has been.** This is the one the
-   `requires_on_main` gate cannot express. **Today production prices from `legacy`, not `ratetable`**
-   — `RATES_CANONICAL_SOURCE` is set in no environment, so `app.config.ts:16` resolves unset to
-   `legacy`. While that is true, `EstimateWasteRate` is the table that prices every job and the
-   rename guard is protecting the thing that matters. **Removing it before the flip is option (c),
-   "drop the guard and hope", wearing option (d)'s clothes.**
+**This prompt cannot be armed while the marker above is present.** `lint-prompt.mjs:728` matches it
+and returns `HUMAN_GATE_PRESENT`, and it fires **before** the premise is evaluated, so no amount of
+"the work still looks needed" gets past it. `arm-prompt.ps1` runs the lint and refuses on a non-zero
+exit. **Removing that one line is itself a reviewable PR** — which is the point: the decision to make
+this slice armable becomes a diff with a name on it, instead of a judgement call at 2am.
 
-The natural home for this slice is **inside or immediately after 11c**, which is itself barred twice
-over: by this decision, and because its own precondition — a full real pricing cycle on
-`ratetable` — has never been met. If 11c is not moving, **this slice waits, and that is correct.**
+Underneath the marker, three `requires_on_main` gates encode the preconditions. They are checked
+**even after arming** — `lint-prompt.mjs:808`, `ARMED_GATE_STILL_CHECKED`: *"a gate check gated on
+filename would strip the moment the prompt could actually run, which is precisely when the gate
+matters most."* So this is a runtime block, not a triage hint.
+
+| Gate | Releases when | Why it is the right probe |
+|---|---|---|
+| `backfill-waste-map-location-ids.mjs :: NO MATCH` | TIP-ID-S2 has landed | the predecessor exists at all |
+| `waste-map-location-backfill.md :: BACKFILL_UNMATCHED_ZERO` | a **real** `--apply` run wrote a receipt with **zero** unmatched rows | the token is written only on `unmatched === 0`; a partial backfill writes `BACKFILL_UNMATCHED_NONZERO` and this gate stays shut |
+| `STEP-11C-DONE.md :: ESTIMATE_WASTE_RATES_DROPPED` | 11c has actually dropped the legacy table | 🔴 the condition that cannot be inferred from this repo any other way |
+
+⚠️ **Why each gate names a token and not just a file.** The `STEP-*-DONE.md` convention has already
+failed once in this project: a **one-line stub** was enough to arm a destructive successor, because
+the gate checked existence rather than content. Every gate here carries a `::` needle, so an empty or
+placeholder marker releases nothing.
+
+🔴 **The third gate is the one that matters and the one that was prose until now.** Today production
+prices from `legacy` — `RATES_CANONICAL_SOURCE` is set in no environment, so `app.config.ts:16`
+resolves unset to `legacy`. While that holds, `EstimateWasteRate` is the table that prices every job
+and this guard is protecting the thing that matters. **Removing it before the flip is option (c),
+"drop the guard and hope", wearing option (d)'s clothes.** 11c is itself barred twice over — by this
+decision, and because its own precondition (a full real pricing cycle on `ratetable`) has never been
+met.
+
+**Marco, when you are ready to release this slice:** delete the `<!-- watcher: do-not-arm -->` line
+above in a PR. The three gates will still hold it until the receipt and the 11c marker are genuinely
+on `main`. Both layers have to clear — a human intent, and a measured reality.
 
 ## Why the guard cannot simply be deleted early
 

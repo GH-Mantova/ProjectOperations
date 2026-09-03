@@ -60,8 +60,19 @@ in `scope` is therefore a **new file you create**, not one you edit.
      regression.
    - **Refuse to overwrite a non-null `mapLocationId` that differs**, unless `--force`. A second run
      must be a no-op, not a re-decision.
-   - Print a JSON summary line at the end — `{ examined, matched, unmatched, written }` — so S3's
-     precondition can be evidenced by pasting output rather than by assertion.
+   - Print a JSON summary line at the end — `{ examined, matched, unmatched, written }`.
+   - 🔴 **On `--apply`, write a tracked receipt to `docs/audits/waste-map-location-backfill.md`.**
+     It must contain the run's UTC timestamp, the summary counts, every unmatched facility by name,
+     and — **only when `unmatched` is exactly 0** — the literal token `BACKFILL_UNMATCHED_ZERO` on a
+     line of its own. When `unmatched` is non-zero it must write `BACKFILL_UNMATCHED_NONZERO`
+     instead. **The token is the assertion, not the prose around it.** TIP-ID-S3 gates on that exact
+     string via `requires_on_main`, so a partial backfill physically cannot release it.
+   - Tell the operator, in the script's own final line, that the receipt must be committed before
+     S3 can be armed. A receipt written and never committed gates nothing.
+   - **Do NOT create the receipt file in this PR**, and do not ship a template of it. It is written
+     by a real `--apply` run against a real database. A stub receipt containing the token would
+     release S3's gate while nothing had actually been backfilled — the exact defect the
+     `STEP-*-DONE.md` convention has already produced once.
    - 🔴 **Report any facility string with NO TIP.** The residual unknown in the D3 register is exactly
      this: such a row renders nowhere on the Map locations screen, so the UI cannot rule it out. This
      script is the first instrument that can. Name them in the output.

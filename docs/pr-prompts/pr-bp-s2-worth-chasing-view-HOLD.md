@@ -10,6 +10,7 @@ size: 5
 gate_allow: none
 seed_only: false
 escalates: false
+requires_on_main: 'apps/api/src/modules/tendering/tendering.controller.ts :: priority-ranking'
 ---
 
 # BP-2 — Web "worth chasing" ranked view
@@ -41,7 +42,7 @@ ask a question or "stand by" for approval. Read the CI job log before diagnosing
 
 ## Grounded state on main (read before coding)
 
-- **BP-1 is merged** (gated by `requires_file_on_main` above). The endpoint is:
+- **BP-1 is merged** (gated by `requires_on_main` above). The endpoint is:
   `GET /tenders/priority-ranking` — returns `BidPriorityItem[]` (fields: `tenderId`, `title`,
   `client`, `estimatedValue`, `dueDate`, `pointEstimate`, `confidence`, `expectedValueScore`,
   `whyFactors`, `insufficientData`).
@@ -108,4 +109,4 @@ column does not exist yet, add a "Win-likelihood" column showing `pointEstimate`
 - Do NOT show a fake score of 0 for null/UNKNOWN inputs — show "Insufficient data".
 - Do NOT touch `/sot/`, Azure/Entra/SharePoint, `schema.prisma`, or any API-layer file.
 - Do NOT exceed 5 files.
-- Do NOT use `requires_merged` — dependency is declared via `requires_file_on_main` above.
+- Do NOT use `requires_merged` — dependency is declared via `requires_on_main` above.

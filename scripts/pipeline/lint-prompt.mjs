@@ -203,6 +203,96 @@ function validateDepKeyValues(fm, file) {
 }
 
 // ---------------------------------------------------------------------------
+// VS-S3: design_ref — a UI prompt must name the design it came from
+// ---------------------------------------------------------------------------
+
+/**
+ * Marco designs a screen in an artifact or mock-up, has Station 06 turn it into a
+ * PR, then checks the result against that same artifact. Until this rule shipped,
+ * that link lived only in his head — a reviewer could not find the design, and the
+ * vision review (VS-S1) had to judge against whatever prose the PR body carried.
+ *
+ * Two accepted shapes for the value (single-line string):
+ *   - artifact URL:  https://claude.ai/code/artifact/<uuid>
+ *   - repo-relative: Claude Design/<path>  (gitignored — do NOT check existence)
+ *
+ * The check is INTENTIONALLY shape-only. An artifact URL is not reachable from CI,
+ * and a Claude Design/ path is gitignored so `git cat-file` would fail on a file
+ * that is genuinely there. Existence-checking here would turn every correct prompt
+ * into a false-positive REJECT.
+ *
+ * Two rejection codes:
+ *   DESIGN_REF_MALFORMED       — key is set but neither shape matches
+ *   UI_PROMPT_NEEDS_DESIGN_REF — scope touches apps/web/ AND design_ref is missing/
+ *                                empty AND no fixes_pr is set (fix-forward exception)
+ */
+const DESIGN_REF_URL_RE = /^https:\/\/claude\.ai\/code\/artifact\/[A-Za-z0-9_-]+/;
+const DESIGN_REF_PATH_RE = /^Claude Design\/\S/;
+
+function validateDesignRef(fm) {
+  const raw = fm.design_ref;
+  const isSet =
+    raw !== undefined &&
+    raw !== "" &&
+    !(Array.isArray(raw) && raw.length === 0);
+
+  const scopeList = Array.isArray(fm.scope)
+    ? fm.scope
+    : (fm.scope != null && fm.scope !== "" ? [fm.scope] : []);
+  const scopeTouchesWeb = scopeList.some((s) =>
+    /^apps[\\/]web[\\/]/.test(String(s).trim()),
+  );
+  const hasFixesPr =
+    fm.fixes_pr !== undefined &&
+    fm.fixes_pr !== "" &&
+    !(Array.isArray(fm.fixes_pr) && fm.fixes_pr.length === 0);
+
+  if (isSet) {
+    if (Array.isArray(raw)) {
+      return {
+        ok: false, code: "DESIGN_REF_MALFORMED",
+        msg:
+          "design_ref must be a single-line string, not a list.\n" +
+          "        Expected one of:\n" +
+          "          design_ref: https://claude.ai/code/artifact/<uuid>\n" +
+          "          design_ref: Claude Design/<path>",
+      };
+    }
+    const val = String(raw).trim();
+    if (!DESIGN_REF_URL_RE.test(val) && !DESIGN_REF_PATH_RE.test(val)) {
+      return {
+        ok: false, code: "DESIGN_REF_MALFORMED",
+        msg:
+          "design_ref=" + JSON.stringify(val) + " does not match either accepted shape.\n" +
+          "        Expected one of:\n" +
+          "          design_ref: https://claude.ai/code/artifact/<uuid>\n" +
+          "          design_ref: Claude Design/<path>\n" +
+          "        Existence is deliberately NOT checked — the artifact URL is unreachable\n" +
+          "        from CI and the Claude Design/ path is gitignored. Shape only.",
+      };
+    }
+    return { ok: true };
+  }
+
+  if (scopeTouchesWeb && !hasFixesPr) {
+    return {
+      ok: false, code: "UI_PROMPT_NEEDS_DESIGN_REF",
+      msg:
+        "scope touches apps/web/ but no design_ref is set.\n" +
+        "        A UI prompt must name the design it was built from so the vision review\n" +
+        "        (VS-S1) and any human reviewer can compare the PR against the mock-up.\n" +
+        "        Cite one of:\n" +
+        "          design_ref: https://claude.ai/code/artifact/<uuid>\n" +
+        "          design_ref: Claude Design/<path>\n" +
+        "        Exception: a fix-forward prompt (fixes_pr: N) is exempt — a red-board fix\n" +
+        "        must never be blocked for want of a design citation.",
+    };
+  }
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Cluster-chaining SLICE 3: cluster metadata and the rules that police it
 // ---------------------------------------------------------------------------
 
@@ -1267,6 +1357,15 @@ export function lint(file, opts) {
   {
     const depResult = validateDepKeyValues(fm, file);
     if (!depResult.ok) return fail(depResult.code, depResult.msg);
+  }
+
+  // VS-S3: design_ref shape + apps/web/ requirement.
+  // Runs BEFORE the premise (cheap, deterministic), and before cluster/gate
+  // probes so a malformed key surfaces its own message rather than a downstream
+  // MISSING_FIELD or gate-probe confusion.
+  {
+    const drRes = validateDesignRef(fm);
+    if (!drRes.ok) return fail(drRes.code, drRes.msg);
   }
 
   // CLUSTER-CHAINING SLICE 3: cluster metadata + graph rules.

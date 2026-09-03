@@ -15,6 +15,7 @@ rollback_strategy: >-
   Additive: the default path is a preset upsert into seed.ts with no
   UPDATE ... SET and no migration. Revert the PR to remove the preset row; no
   existing dashboard, report definition or user data is touched either way.
+requires_on_main: 'apps/api/src/modules/reporting/estimating-analytics-report.definitions.ts :: estimator-turnaround'
 ---
 <!-- escalates was false until 2026-08-23. lint-prompt.mjs DESTRUCTIVE_MUST_ESCALATE fires
      because `scope` reaches apps/api/prisma/seed.ts AND the body mentions "backfill" in the
@@ -90,7 +91,7 @@ The default plan is that this preset lands as **an idempotent upsert added to
 - **Report widget factories** — `apps/web/src/dashboards/widgets/reportRegistry.ts`
   factory-generates `report:table:<reportKey>` and `report:chart:<reportKey>` widgets
   from `ReportDefinitionSummary[]`.
-- **EA-1 is merged** (gated by `requires_file_on_main` above). Report keys available:
+- **EA-1 is merged** (gated by `requires_on_main` above). Report keys available:
   `estimator-turnaround`, `estimator-qty-vs-value`.
 - **Existing shipped report keys** to assemble (do NOT rebuild):
   `tender-winloss-by-estimator`, `tender-winloss-by-client`,
@@ -183,5 +184,5 @@ needs to pass the right params:
   registries accept.
 - Do NOT touch `/sot/`, Azure/Entra/SharePoint, or any file outside declared scope.
 - Do NOT exceed 9 files.
-- Do NOT use `requires_merged` — the dependency is declared via `requires_file_on_main`
+- Do NOT use `requires_merged` — the dependency is declared via `requires_on_main`
   above.

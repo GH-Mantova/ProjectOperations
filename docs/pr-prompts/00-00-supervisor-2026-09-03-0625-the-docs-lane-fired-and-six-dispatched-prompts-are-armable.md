@@ -218,3 +218,46 @@ command line. Nothing was restarted.
 - **Did not touch `/sot/`, Azure, Entra, SharePoint, production data, or any `do-not-merge` label.**
 - **Did not act on `pr-524-rates-b-slice2-canonical-HOLD.md`** beyond using it as the positive control
   for the marker grep. It is an irreversible table drop and forbids batch arming in its own body.
+
+---
+
+## ADDENDUM 06:35Z — merging my own board PR would have manufactured the `marco:true` timeout I was measuring
+
+Added after `#1532` (this PR) came back `CLEAN`, `pending=0`, `failing=0`, three docs-only files.
+The obvious next move was to merge it. **That would have been a mistake, and the mechanism is worth
+recording because it will recur on every future 00 run that opens a board PR while the docs lane is
+waiting.**
+
+**Lane classification for `#1532`, done by hand:** `[NO LANE VERDICT — hand-classified]`. I opened it,
+not the watcher, so no `processed/*.md.log` will ever name it and probing for one returns empty —
+DOCTRINE §10.1, an empty result that is indistinguishable from *"checked, not Marco's"*. Applying
+`classifyPolicyFiles` by hand: all three paths are under `docs/`, none matches `(^|/)migrations/`,
+so it is **NOT Marco's** and I am free to merge it.
+
+**Why I did not.** `[MEASURED]` `#1531` was still `OPEN` / `CLEAN` at 06:35Z, inside its
+`tests-docs` merge window (expires ≈07:40Z). Merging `#1532` puts `#1531` **BEHIND**. And
+`PR_WATCHER_AUTO_UPDATE` is `"true"` at `start-watcher.ps1:159` — `pollForBehindPrs()` rebases every
+BEHIND PR on a timer. So the chain would have been:
+
+```
+merge #1532  →  #1531 goes BEHIND  →  watcher rebases #1531  →  NEW head, ZERO checks
+             →  index.mjs:1753 needs checks.length > 0 && every(SUCCESS|…)
+             →  allGreen FALSE for as long as CI takes to re-create
+             →  window expires  →  :1776 writes {"ok":false,"marco":true,"reason":"timeout…"}
+```
+
+That is escalation #21 exactly — a docs-only PR the lane would have merged with no human becoming
+**permanently human-gated**, and RULE 2 then correctly forbidding every station from clearing it.
+I would have caused it, while writing the report about it. The same coupling is already measured in
+the other direction: on 2026-09-03T02:59Z merging `#1524` caused the watcher to rebase `#1523` at
+03:01:50Z and **cancelled an in-flight CI re-run**.
+
+🔴 **THE GENERAL RULE, for every future run:** *do not merge a board PR while another PR is inside
+its `tests-docs` merge window.* A board PR is never urgent; the window is 90 minutes and cannot be
+extended. Merge order is **the waiting PR first, the board PR second.** This is the merge-ORDER rule
+(producers before consumers) applied to a dependency that is not in any diff — `#1532` does not
+reference `#1531` at all, and the coupling is entirely via rebase-on-behind.
+
+**DISPOSITION: ACTIONED** — `#1532` is left OPEN and green, deliberately, to be merged after `#1531`
+lands. It is not blocked, it is *sequenced*. If a later run finds `#1532` still open, merging it is
+correct the moment `#1531` is no longer waiting.

@@ -9072,7 +9072,7 @@ master; substantive text is unchanged. Historic file paths reference the earlier
 
 ## Module Build Log (original 16-module baseline + post-module hardening + V2 improvements)
 
-_Source: `docs/module-build-log.md` — module-by-module build narrative for the original
+_Source: `docs/module-build-log.md` — module-by-module build narrative for the original <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 16 modules plus Module 17 hardening, post-module Tendering hardening notes, and the
 nine-section V2 improvement pass (April 2026)._
 
@@ -9676,12 +9676,12 @@ page is reachable under `/{route}/legacy`.
   `apps/web/src/components`, and `packages/ui/src`.
 - Migration audit: `20260418_s4_sso_user_flag` is the only schema change from
   the v2 cycle and is present and applied.
-- `docs/module-build-log.md` (this file) and `docs/architecture-overview.md`
+- `docs/module-build-log.md` (this file) and `docs/architecture-overview.md` <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
   refreshed to describe the v2 state.
 
 ## Project History: Sprints 1 to 12
 
-_Source: `docs/Project-History-Sprints-1-to-12.md` — consolidated management/technical
+_Source: `docs/Project-History-Sprints-1-to-12.md` — consolidated management/technical <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 narrative of the twelve-sprint Tendering CRM transformation. Date prepared: 2026-04-14.
 Workspace: `C:\Dev\ProjectOperations`. Source material: the original `Sprint1.md` through
 `Sprint12.md` handover files, deleted on 2026-06-19 after their full content was confirmed
@@ -10293,7 +10293,7 @@ If a shorter operational handover is needed, the best companion files are:
 
 ## Continuation Log (operational handover, 2026-04-14 → 2026-04-16)
 
-_Source: `docs/continuation-log.md` — operational source-of-truth handover log for the
+_Source: `docs/continuation-log.md` — operational source-of-truth handover log for the <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 Tendering CRM work and the subsequent workflow-spine / ownership / coordination-engine
 passes. Last updated header: 2026-04-14 (latest session, post-merge handover), with
 appended 2026-04-16 update blocks preserved below. Workspace: `C:\Dev\ProjectOperations`._
@@ -10691,7 +10691,7 @@ pnpm test:tendering:e2e
   - `pnpm dev:web:e2e`
   - `pnpm test:tendering:e2e:reuse`
 - Default Playwright startup is now aligned with those same scripts in [playwright.config.ts](C:\Dev\ProjectOperations\playwright.config.ts).
-- Only update `docs/continuation-log.md` when the user explicitly asks.
+- Only update `docs/continuation-log.md` when the user explicitly asks. <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 
 ### Command To The Next AI Agent
 

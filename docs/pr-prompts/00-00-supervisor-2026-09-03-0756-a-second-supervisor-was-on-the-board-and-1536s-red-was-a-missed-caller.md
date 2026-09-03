@@ -148,3 +148,52 @@ act on the 06:25Z breadcrumb's "WHAT I DID NOT DO" bullet about it.
 - 🔧 **Noted, not actioned:** `pr-cardui-s2-wbs-table-shell`'s never-arm condition was *"while `#1483` is
   open"*, and **`#1483` merged on 2026-09-02** — the condition has expired and that memory entry should
   be discharged rather than carried forward as live.
+
+---
+
+## ADDENDUM 08:00Z — the DEV TREE was checked out onto a feature branch by an actor I cannot name
+
+Found while tearing down my last worktree, from `git worktree list`:
+
+```
+C:/ProjectOperations2   45829294  [feat/wbs-shift-s2-labour-shift-pricing]     <- expected: main
+```
+
+`[MEASURED]` `git reflog` names the operation exactly:
+`45829294 HEAD@{0}: checkout: moving from main to feat/wbs-shift-s2-labour-shift-pricing`, sitting
+directly on top of my own `5072f3f6 HEAD@{1}: merge origin/main: Fast-forward`. **I did not do this** —
+every branch I touched this run was in a disposable worktree under `C:\po-worktrees\`, which has its own
+HEAD and cannot move the dev tree's.
+
+**Why this matters more than "off main is not broken."** That section of the station doc is about the
+**watcher's clone**, where a feature-branch checkout is the normal working state. This is the **dev
+tree** — the queue the watcher globs and, critically, the tree `lint-prompt.mjs` greps `premise:`
+against (only `requires_*` read `origin/main`). A dev tree parked on a feature branch answers arming
+questions about *that branch's* content while every reader assumes `main`. That is the
+stale-dev-tree trap with a sharper edge: not merely behind, but on a different line of development.
+
+**It was NOT corrupt** — measured before touching anything: no `MERGE_HEAD`, no `rebase-merge` /
+`rebase-apply`, `git diff --diff-filter=U` returned **0** unmerged paths, and both `-ready.md` prompts
+were still on disk (they are gitignored, so a branch switch never sees them).
+
+**Cure applied:** a plain `git checkout main` — a branch switch, which is **not** one of the four
+forbidden recoveries (`checkout .`, `reset --hard`, `stash pop`, `git clean`) that resurrect consumed
+prompts. Read back: `branch=main HEAD=5072f3f6`, both `-ready.md` still present, and all seven dirty
+working-tree entries preserved byte-for-byte, including the two ` D` HOLD deletions and Station 06's
+mid-edit `pr-cardui-s8-waste-section-HOLD.md`. Verified nothing was mid-run first — watcher `HEALTHY`,
+heartbeat 1 min, and no build worktree registered in the dev tree.
+
+🔴 **This is the THIRD unattributed actor event today**, and it is a different and worse class than the
+first two. Escalation **#22** currently covers four unattributed *arms* — writes to the queue. This is an
+unattributed **branch checkout of the shared dev tree**, which changes what every subsequent
+`lint-prompt.mjs` premise resolves against. `.arming-log.txt` would not record it; nothing would. Had a
+station armed a prompt in that window, its ADMIT would have been computed against
+`feat/wbs-shift-s2-labour-shift-pricing`.
+
+**DISPOSITION: ESCALATED — fold into #22, do not open a new escalation.** #22 asks whether to attribute
+board actors; this widens its scope from "who armed" to "who moved the shared tree", and it strengthens
+option (A) in F1 above: a `board-actor.lock` that PREFLIGHT reads would have caught this one too,
+whereas an arming-log-only fix would not. **The falsifying probe, for whoever picks this up:**
+`git reflog` in `C:\ProjectOperations2` — if `checkout: moving from main to <anything>` appears again
+with no station owning it, the tree has a second writer and RULE 4's instruments are being computed
+against unknown content.

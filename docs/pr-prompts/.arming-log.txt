@@ -33,3 +33,4 @@
 2026-09-02T03:19:06Z  ARMED  pr-watcher-identity-app-auth  escalates=true  by=Marco@  pid=26652  caller=powershell.exe:29028
 2026-09-02T03:36:50Z  ARMED  pr-cardui-s3-manpower-columns  escalates=true  by=Marco@  pid=25208  caller=powershell.exe:17512
 2026-09-02T04:16:09Z  ARMED  pr-schema-label-removal-is-marcos  escalates=false  by=Marco@  pid=2308  caller=powershell.exe:12912
+2026-09-02T06:31:37Z  ARMED  pr-cardui-s4-plant-columns  escalates=true  by=Marco@  pid=34304  caller=powershell.exe:19616

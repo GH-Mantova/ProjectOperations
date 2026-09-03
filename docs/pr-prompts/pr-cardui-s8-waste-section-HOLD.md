@@ -9,8 +9,13 @@ scope:
   - apps/web/src/pages/tendering/ScopeWasteTab.tsx
   - apps/web/src/pages/tendering/scope-cards/ScopeCardsTab.tsx
   - apps/web/src/pages/tendering/__tests__/waste-section.test.tsx
+  - tests/e2e/pr-acceptance/batch3-scope-items.spec.ts
+  - tests/e2e/pr-acceptance/batch3-scope-waste.spec.ts
+  - tests/e2e/pr-acceptance/batch8-misc.spec.ts
+  - scripts/pr-gates/e2e-restoration-markers.mjs
+  - .github/workflows/ci.yml
 done_when: pnpm build && pnpm lint && grep -rq "SCOPE_WASTE_SECTION_V1" apps/web/src/pages/tendering
-size: 6
+size: 9
 gate_allow: none
 seed_only: false
 escalates: true
@@ -94,3 +99,38 @@ this runs. Put it in that position and say in the PR body that you checked the r
 
 You have STANDING AUTHORITY to finish the work, commit, push and open the PR. Do not ask.
 `escalates: true` gates the MERGE, not the RUN - open the PR and leave it unmerged for Marco.
+
+## The restoration ratchet - this slice closes the coverage debt it inherited
+
+Slice 2 migrated the acceptance suite onto the WBS table and could not keep every assertion,
+because the affordances they exercised had not been built yet. Each dropped assertion was left
+marked with the plant constant of the slice that would restore it:
+
+```ts
+// TODO(SCOPE_WBS_PLANT_V1): restore the plant-pill assertions when slice 4 lands the column group.
+```
+
+**This is the last slice in the chain, so this is where the debt has to be zero.**
+
+1. **Restore the outstanding assertions.** Walk every remaining `TODO(SCOPE_*)` in
+   `tests/e2e/pr-acceptance/` and reinstate the assertion against the finished UI. If an
+   assertion is genuinely obsolete because the redesign removed the behaviour it tested - say
+   so in the PR body and delete it with a one-line reason. Silent deletion is the failure mode
+   this whole mechanism exists to prevent.
+
+2. **Add `scripts/pr-gates/e2e-restoration-markers.mjs`.** It scans
+   `tests/e2e/pr-acceptance/**` for `TODO(SCOPE_` and:
+   - exits 0 while `SCOPE_WASTE_SECTION_V1` is NOT yet on `origin/main` (the chain is still
+     running - outstanding markers are expected and correct);
+   - exits 1 once it IS, listing every file and line still carrying a marker.
+
+   Wire it as its own CI job named `E2E restoration markers`. It must be a separate job, not a
+   line inside the diff-checks script: CP-26 already demonstrated that folding a new assertion
+   into `pr-gates.mjs` makes one failure surface as two red checks and obscures which one broke.
+
+3. **The check must fail loudly on its own trigger.** Do not gate it behind a label, an opt-in
+   front-matter key or a changed-path filter. A ratchet that only runs when someone remembers to
+   run it is not a ratchet.
+
+Marco: this job is advisory until you add it to ruleset 15532058's required checks, the same way
+`Approval receipt (CP-26)` is advisory today.

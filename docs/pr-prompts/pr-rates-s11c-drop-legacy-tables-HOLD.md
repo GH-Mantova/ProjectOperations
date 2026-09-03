@@ -1,9 +1,10 @@
 ---
 premise: 'grep -q "model EstimateLabourRate" apps/api/prisma/schema.prisma'
 premise_means: >-
-  The legacy Estimate*Rate / EstimateMaterialDensity models are still in
-  schema.prisma; the permanent removal of the legacy rates tables, API, and
-  resolver fallback has not been done.
+  The legacy Estimate*Rate models are still in schema.prisma; the permanent
+  removal of the legacy rates tables, API, and resolver fallback has not been
+  done. NOTE: EstimateMaterialDensity is explicitly OUT OF SCOPE — see
+  "EstimateMaterialDensity is NOT dropped" below.
 scope:
   - apps/api/src/**
   - apps/api/prisma/**
@@ -32,8 +33,7 @@ GitHub itself refuses the merge until Marco explicitly marks it ready — this i
 the hard, automation-proof lock. Do NOT arm auto-merge. The PR MUST also be
 labelled **do-not-merge** and left for Marco. Do NOT merge it — and Marco must
 not mark it ready / merge it — until BOTH are true:
-1. A production DB backup of the `Estimate*Rate` + `EstimateMaterialDensity`
-   tables has been taken.
+1. A production DB backup of the `Estimate*Rate` tables has been taken.
 2. A full real pricing cycle has run on `RATES_CANONICAL_SOURCE=ratetable` and
    `node scripts/rates/fallback-audit.mjs` shows ZERO fallbacks.
 The slice may RUN and go green (proving the drop compiles/passes) while staying
@@ -44,10 +44,11 @@ Read `docs/plans/rates-migration-plan.md` (section "11c") first. Gated on 11b
 (STEP-11B-DONE.md on main).
 
 ## Do
-1. Migration dropping the eight legacy `Estimate*Rate` tables and
-   `EstimateMaterialDensity`, and removing those models from `schema.prisma`
-   (regenerate the client; update sot/04 references via the normal spec update
-   in-scope — do NOT edit /sot/ directly, note it for a doc-reconcile).
+1. Migration dropping the eight legacy `Estimate*Rate` tables, and removing
+   those models from `schema.prisma` (regenerate the client; update sot/04
+   references via the normal spec update in-scope — do NOT edit /sot/ directly,
+   note it for a doc-reconcile). **Do NOT touch `EstimateMaterialDensity`** —
+   see the section below.
 2. Delete the `/estimate-rates/*` controller + service and their tests.
 3. Remove the resolver's `tryLegacy` path and the ratetable-miss → legacy
    fallback in `rate-resolver.service.ts`; a genuine miss now throws (as designed).
@@ -61,6 +62,44 @@ Read `docs/plans/rates-migration-plan.md` (section "11c") first. Gated on 11b
 - Do NOT open as a normal (non-draft) PR. Do NOT arm auto-merge. Do NOT merge
   (see HARD STOP). Do NOT skip the backup.
 - Do NOT change any surviving rate value.
+- **Do NOT drop, alter, or empty `EstimateMaterialDensity`, and do NOT remove
+  its admin surface.** See below.
+
+## 🛑 `EstimateMaterialDensity` is NOT dropped — scope correction
+
+**Decided by Marco, 2026-09-02.** Earlier versions of this prompt listed
+`EstimateMaterialDensity` alongside the eight legacy `Estimate*Rate` tables in
+instruction 1 and in the HARD STOP backup list. That was wrong and has been
+removed. This resolves the conflict raised in
+`docs/pr-prompts/needs-marco/CONFLICT-materialdensity-524-vs-11c-2026-08-26.md`
+in favour of `pr-524-rates-b-slice2-canonical-HOLD.md`, whose `done_when`
+already requires the model to survive.
+
+Why it stays:
+
+1. **It is not a `$` rate.** It is a physics lookup — 39 rows of material →
+   density (kg/m³, or kg/m² for sheet goods) — that converts a measured volume
+   or area into the tonnage the tip bills by. Nothing in it is a price, so it
+   is not part of the RateTable projection story this slice exists to finish.
+2. **It carries waste classification.** `defaultWasteGroup` /
+   `defaultWasteItem` auto-classify a scope row's waste stream when a material
+   is picked, feeding the scope-waste aggregator's `(wasteGroup, wasteItem)`
+   grouping.
+3. **It has live consumers on both sides.** Measured 2026-09-02: 47 files
+   reference it, 20 of them live — including
+   `apps/api/src/modules/estimates/estimate-calculators.ts`,
+   `estimates.service.ts`, `apps/api/src/modules/rates/rate-resolver.service.ts`,
+   `apps/api/prisma/seed-initial-services.ts`, canonical test
+   `CP-08-seed-idempotency.spec.ts`, and
+   `apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx` (Scope of Works).
+4. **It is named in four `sot/` documents** — `02-roadmap-and-status.md`,
+   `03-progress-log.md`, `04-data-model.md`, `06-active-specs.md`. Dropping it
+   would require a Station 05 reconcile across all four, which is not in this
+   slice's scope.
+
+The density path — model, rows, admin surface, and the resolver's
+`listMaterialDensities` / `resolveMaterialDensity` read seam — is to be left
+exactly as-is by this slice.
 
 ## Verify
 - `pnpm build`; parity/fallback audit still green; full API + e2e suites green;

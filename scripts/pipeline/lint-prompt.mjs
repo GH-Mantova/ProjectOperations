@@ -1245,30 +1245,6 @@ export function lint(file, opts) {
     if (!gateRes.ok) return fail(gateRes.code, gateRes.msg);
   }
 
-  // MISSING_STANDING_AUTHORITY — WARN-ONLY diagnostic (does not affect exit code).
-  //
-  // On 2026-08-20 three armed prompts exited 0 without opening a PR; none granted the agent
-  // authority to push. A survey of 75 top-level prompts split the corpus three ways:
-  //   A — grant present in body                                       (37)
-  //   B — heading `## STANDING AUTHORITY` present but grant absent    (17 imposters)
-  //   C — no standing-authority text at all                           (21)
-  // Populations B and C both produce silent exit-0 runs. This warning surfaces both classes so
-  // Marco can see them without touching the exit code. Flipping to REJECT would MALFORM 38 of
-  // 75 live prompts at once and stall queue arming; that is a later slice, on Marco's call.
-  {
-    const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
-    const body = bodyMatch ? bodyMatch[1] : "";
-    const GRANT = "STANDING AUTHORITY to finish the work, commit, push";
-    if (!body.includes(GRANT)) {
-      const hasHeading = /^##\s+STANDING\s+AUTHORITY\b/im.test(body);
-      const detail = hasHeading ? "(heading present, grant absent)" : "(no standing-authority text)";
-      process.stderr.write(
-        "WARN  " + name + "  MISSING_STANDING_AUTHORITY " + detail +
-        " — body grants no authority to push; this run may exit 0 without opening a PR.\n"
-      );
-    }
-  }
-
   // CLUSTER-CHAINING SLICE 1: validate dependency keys.
   // (a) Reject any unrecognised requires* key — catches hyphen vs. underscore, plural vs.
   //     singular, and other near-misses that parseFrontMatter silently ignores.
@@ -1584,6 +1560,53 @@ export function lint(file, opts) {
            "        The work is ALREADY DONE. Binned before spawning an agent.\n" +
            "        " + GREEN + "This is the lint working." + RESET + " 34 historical runs were burned on exactly this.",
     };
+  }
+
+  // MISSING_STANDING_AUTHORITY — REJECT (exit 1). Was WARN-only from 2026-08-20 to 2026-09-03.
+  //
+  // On 2026-08-20 three armed prompts exited 0 without opening a PR; none granted the agent
+  // authority to push. A survey of 75 top-level prompts split the corpus three ways:
+  //   A — grant present in body                                       (37)
+  //   B — heading `## STANDING AUTHORITY` present but grant absent    (17 imposters)
+  //   C — no standing-authority text at all                           (21)
+  // Populations B and C both produce silent exit-0 runs. The check was deliberately left
+  // WARN-only, because flipping it would have MALFORMED 38 of 75 live prompts at once and
+  // stalled queue arming. That was the right call then.
+  //
+  // [MEASURED 2026-09-03] That reason no longer holds. The check was re-run over the whole
+  // live corpus, not a sample:
+  //     76 top-level HOLDs            → 2 hits
+  //     54 parked (paused + blocked)  → 0 hits
+  //   ------------------------------------------
+  //    130 prompts checked            → 2 hits
+  // Both hits are prompts that must not arm silently. One is already STALE and returns above
+  // this line (exit 3, "already done, BIN IT") so its verdict is unchanged. The other writes
+  // into production SharePoint under an escalates:true / do-not-merge header and needs a human
+  // to grant the push. Net prompts newly blocked that would otherwise have RUN: zero.
+  //
+  // PLACEMENT IS LAST, AND DELIBERATELY SO. This runs after the premise evaluation so a stale
+  // prompt still reports STALE rather than being masked by a malformed-body rejection — "the
+  // work is already done, bin it" is strictly better information than "your body is missing a
+  // sentence". Only a prompt that would otherwise ADMIT or PROMOTE is refused here.
+  {
+    const bodyMatch = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
+    const body = bodyMatch ? bodyMatch[1] : "";
+    const GRANT = "STANDING AUTHORITY to finish the work, commit, push";
+    if (!body.includes(GRANT)) {
+      const hasHeading = /^##\s+STANDING\s+AUTHORITY\b/im.test(body);
+      return fail("MISSING_STANDING_AUTHORITY",
+        (hasHeading
+          ? "A `## STANDING AUTHORITY` heading is present, but the grant sentence is not.\n"
+          : "The body carries no standing-authority text at all.\n") +
+        "        An agent armed from this prompt has no authority to push. It does the work,\n" +
+        "        exits 0, and opens NO PR — and a silent exit 0 is byte-identical to success\n" +
+        "        in every log and to every later reader. Three runs were lost this way on\n" +
+        "        2026-08-20 before anyone noticed.\n" +
+        "        Add this sentence to the body, verbatim:\n" +
+        "          " + GRANT + ", and OPEN THE PR. Do not ask.\n" +
+        "        REJECT (exit 1), not WARN: a warning nobody reads costs a whole run and\n" +
+        "        reports green while doing it.");
+    }
   }
 
   return { ok: true, name, size, premise: String(fm.premise), released };

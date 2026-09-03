@@ -25,9 +25,15 @@ const dir = mkdtempSync(join(tmpdir(), "lint-test-"));
 let pass = 0;
 let fail = 0;
 
+// Every fixture body carries the standing-authority grant. As of 2026-09-03 a body
+// without it is a hard REJECT (MISSING_STANDING_AUTHORITY), so a fixture that omits it
+// would be testing the grant check rather than whatever it means to test. The three
+// tests that DO exercise the grant check build their bodies inline, below.
+const BODY = "\n# body\n\n## STANDING AUTHORITY\n\n" + "> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**\n";
+
 function run(name, frontMatter, expectedExit) {
   const file = join(dir, name + "-ready.md");
-  writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
+  writeFileSync(file, "---\n" + frontMatter + "\n---\n" + BODY, "utf8");
 
   let code = 0;
   let out = "";
@@ -289,7 +295,7 @@ function runIsolated(name, frontMatter, expectedExit, opts) {
   // so the test harness must be able to write either.
   const suffix = opts.hold ? "-HOLD.md" : "-ready.md";
   const file = join(isoDir, name + suffix);
-  writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
+  writeFileSync(file, "---\n" + frontMatter + "\n---\n" + BODY, "utf8");
 
   const env = Object.assign({}, process.env, opts.env || {});
   let code = 0;
@@ -385,7 +391,7 @@ console.log("\n=== exit 1 REJECT: two-prompt cycle -> CLUSTER_CYCLE names both")
     "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: cycle-test\ncluster_order: 2\n" +
-    "requires_file_on_main: cycle-b-ready.md\n---\n# body\n";
+    "requires_file_on_main: cycle-b-ready.md\n---\n" + BODY;
   const out = runIsolated("cycle-b",
     "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
@@ -456,7 +462,7 @@ console.log("\n=== exit 0 ADMIT: foreign-cwd, no LINT_REPO_ROOT -> premise auto-
 
   // Run from foreign cwd with NO LINT_REPO_ROOT -- should ADMIT (exit 0) via auto-detect.
   const fileInForeign = join(foreignDir, "foreign-cwd-ready.md");
-  writeFileSync(fileInForeign, "---\n" + fixtureFm + "\n---\n\n# body\n", "utf8");
+  writeFileSync(fileInForeign, "---\n" + fixtureFm + "\n---\n" + BODY, "utf8");
 
   const envWithoutPin = Object.assign({}, process.env);
   delete envWithoutPin.LINT_REPO_ROOT;
@@ -720,13 +726,15 @@ runIsolated("armed-cluster-order-3-file-gate-dead",
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY\n" +
   "requires_file_on_main: scripts/pipeline/lint-prompt.mjs", 1);
 
-// ── MISSING_STANDING_AUTHORITY (WARN-ONLY) ──────────────────────────────────
-// A prompt whose body does not grant push authority still lints ADMIT (exit 0),
-// but a diagnostic line goes to stderr. The rule is WARN-only on purpose:
-// flipping to REJECT would MALFORM 38 of 75 live prompts at once and stall the
-// queue. Two directions to cover: warns when the grant is absent, silent when
-// the grant is present. `spawnSync` because the existing `run()` helper only
-// captures stderr on non-zero exit, and this check must not change exit code.
+// ── MISSING_STANDING_AUTHORITY (REJECT since 2026-09-03) ──────────────────
+// A prompt whose body does not grant push authority now REJECTS (exit 1). It was
+// WARN-only from 2026-08-20 because flipping it would have malformed 38 of 75 live
+// prompts at once and stalled the queue. Re-measured 2026-09-03 over the whole live
+// corpus — 76 top-level HOLDs plus 54 parked, 130 files — it had 2 hits, and neither
+// was a prompt that should arm. Net newly-blocked work: zero.
+//
+// Three directions to cover: absent grant rejects, imposter heading rejects and says
+// which class it is, and a body carrying the grant still admits silently.
 
 function runCaptureStderr(fileText, name) {
   const file = join(dir, name + "-ready.md");
@@ -735,54 +743,51 @@ function runCaptureStderr(fileText, name) {
   return { code: r.status, stdout: String(r.stdout || ""), stderr: String(r.stderr || "") };
 }
 
-console.log("\n=== WARN: body without the grant -> exit 0 (warn-only) AND stderr contains MISSING_STANDING_AUTHORITY");
+const SA_FM =
+  "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n";
+
+console.log("\n=== exit 1 REJECT: body without the grant -> MISSING_STANDING_AUTHORITY");
 {
-  const fm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
-    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n" +
-    "# body\n\nno standing-authority text of any kind here.\n";
-  const r = runCaptureStderr(fm, "no-authority-warn");
-  const okExit = r.code === 0;
-  const okWarn = r.stderr.includes("MISSING_STANDING_AUTHORITY");
-  const okDetail = r.stderr.includes("(no standing-authority text)");
-  const ok = okExit && okWarn && okDetail;
-  console.log((ok ? "PASS " : "FAIL ") + "no-authority-warn  (exit " + r.code +
-    ", warned=" + okWarn + ", detail=" + okDetail + ")");
-  if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
+  const r = runCaptureStderr(
+    SA_FM + "# body\n\nno standing-authority text of any kind here.\n", "no-authority-reject");
+  const all = r.stdout + r.stderr;
+  const okExit = r.code === 1;
+  const okCode = all.includes("MISSING_STANDING_AUTHORITY");
+  const okDetail = all.includes("no standing-authority text at all");
+  const ok = okExit && okCode && okDetail;
+  console.log((ok ? "PASS " : "FAIL ") + "no-authority-reject  (exit " + r.code +
+    ", code=" + okCode + ", detail=" + okDetail + ")");
+  if (!ok) console.log("      " + all.trim().split("\n").join("\n      "));
   ok ? pass++ : fail++;
 }
 
-console.log("\n=== WARN: heading present but grant absent -> stderr distinguishes the imposter class");
+console.log("\n=== exit 1 REJECT: heading present but grant absent -> names the imposter class");
 {
-  const fm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
-    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n" +
-    "## STANDING AUTHORITY\n\nDocumentation corrections only. Stop and report rather than widening scope.\n";
-  const r = runCaptureStderr(fm, "imposter-heading");
-  const okExit = r.code === 0;
-  const okWarn = r.stderr.includes("MISSING_STANDING_AUTHORITY");
-  const okDetail = r.stderr.includes("(heading present, grant absent)");
-  const ok = okExit && okWarn && okDetail;
+  const r = runCaptureStderr(
+    SA_FM + "## STANDING AUTHORITY\n\nDocumentation corrections only. Stop and report rather than widening scope.\n",
+    "imposter-heading");
+  const all = r.stdout + r.stderr;
+  const okExit = r.code === 1;
+  const okCode = all.includes("MISSING_STANDING_AUTHORITY");
+  const okDetail = all.includes("heading is present");
+  const ok = okExit && okCode && okDetail;
   console.log((ok ? "PASS " : "FAIL ") + "imposter-heading  (exit " + r.code +
-    ", warned=" + okWarn + ", detail=" + okDetail + ")");
-  if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
+    ", code=" + okCode + ", detail=" + okDetail + ")");
+  if (!ok) console.log("      " + all.trim().split("\n").join("\n      "));
   ok ? pass++ : fail++;
 }
 
-console.log("\n=== quiet: body with the grant -> exit 0 AND stderr must not contain MISSING_STANDING_AUTHORITY");
+console.log("\n=== exit 0 ADMIT: body with the grant -> admits, and says nothing about authority");
 {
-  const fm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
-    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n" +
-    "## STANDING AUTHORITY\n\n" +
-    "> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**\n";
-  const r = runCaptureStderr(fm, "with-authority-quiet");
-  const okExit = r.code === 0;
-  const okQuiet = !r.stderr.includes("MISSING_STANDING_AUTHORITY");
-  const ok = okExit && okQuiet;
-  console.log((ok ? "PASS " : "FAIL ") + "with-authority-quiet  (exit " + r.code +
-    ", quiet=" + okQuiet + ")");
-  if (!ok) console.log("      stderr: " + r.stderr.trim().split("\n").join("\n      "));
+  const r = runCaptureStderr(
+    SA_FM + "## STANDING AUTHORITY\n\n" +
+    "> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**\n",
+    "with-authority-quiet");
+  const all = r.stdout + r.stderr;
+  const ok = r.code === 0 && !all.includes("MISSING_STANDING_AUTHORITY");
+  console.log((ok ? "PASS " : "FAIL ") + "with-authority-quiet  (exit " + r.code + ")");
+  if (!ok) console.log("      " + all.trim().split("\n").join("\n      "));
   ok ? pass++ : fail++;
 }
 
@@ -802,7 +807,7 @@ function runWithBacklog(name, frontMatter, backlogText, expectedExit) {
   const backlogPath = join(isoDir, "BACKLOG.yaml");
   writeFileSync(backlogPath, backlogText, "utf8");
   const file = join(isoDir, name + "-ready.md");
-  writeFileSync(file, "---\n" + frontMatter + "\n---\n\n# body\n", "utf8");
+  writeFileSync(file, "---\n" + frontMatter + "\n---\n" + BODY, "utf8");
   const env = Object.assign({}, process.env, { LINT_BACKLOG_PATH: backlogPath });
   let code = 0;
   let out = "";
@@ -1001,7 +1006,7 @@ console.log("\n=== exit 0 ADMIT: --all sweep of clean prompts + breadcrumbs -> b
 {
   const cleanFm =
     "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
-    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n# body\n";
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n" + BODY;
   const crumb = "# breadcrumb\n\nno front matter, five sections.\n";
   const out = runAllSweep("sweep-clean-plus-breadcrumbs", {
     "pr-a-ready.md": cleanFm,
@@ -1031,11 +1036,11 @@ console.log("\n=== exit 1 REJECT: --all sweep with one genuinely broken pr-* alo
 {
   const cleanFm =
     "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
-    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n# body\n";
+    "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n" + BODY;
   // Broken: size exceeds MAX_SIZE — deterministic REJECT with no dependency on git.
   const brokenFm =
     "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
-    "done_when: pnpm build\nsize: 48\ngate_allow: none\n---\n\n# body\n";
+    "done_when: pnpm build\nsize: 48\ngate_allow: none\n---\n" + BODY;
   const crumb = "# breadcrumb\n";
   const out = runAllSweep("sweep-broken-plus-breadcrumbs", {
     "pr-good-ready.md": cleanFm,

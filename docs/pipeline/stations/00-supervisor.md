@@ -183,6 +183,19 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   🔴 **So `ok` is not an all-clear either.** The same run `03-machine-minder` printed
   `40.1h ago (cadence 24h) ok` while having missed its 09-02 occurrence outright — twice a 24 h
   cadence makes exactly one missed run invisible.
+  🔴 **`lastRunAt` HOLDS ONLY THE MOST RECENT RUN, SO IT CAN NEVER ANSWER "DID AN *EARLIER*
+  OCCURRENCE FIRE?"** — and on 2026-09-03T15:1xZ that limit produced a wrong refutation: a run read
+  `05 lastRunAt = 2026-09-03T14:11:26Z`, concluded "05 did fire", and struck the finding that 05 had
+  *also* missed its **09-02** occurrence. Those are claims about two different days, and `lastRunAt`
+  speaks to neither but the latest. **A third instrument answers it: the session directory.** Every
+  scheduled run creates `…\local-agent-mode-sessions\<a>\<b>\local_<uuid>\`, whose `CreationTimeUtc`
+  is the fire time to the second. MEASURED 2026-09-03T18:2xZ: **1301** directories retained; 05 has
+  exactly two, `2026-09-01T14:11:31Z` and `2026-09-03T14:11:26Z`, and **none on 09-02** — the whole
+  of 09-02 holds 7 sessions with a **17.8 h hole from `06:10:27Z` to `23:58:18Z`**, which is the
+  already-escalated all-stations outage, not a station defect. **Positive control:** 05's 09-01
+  directory is still on disk two days later, so an absent directory is a real absence and not
+  retention. **Group the directories by `CreationTimeUtc` day before calling any single occurrence
+  lost** — and re-run that grouping to falsify this note.
   **Read the transcript before dispositioning any station as SILENT** (`list_sessions` →
   `read_transcript`, newest session whose title matches the station). Calling a station stopped when
   infrastructure killed it is a §7 false alarm, and a false alarm licenses destructive action.

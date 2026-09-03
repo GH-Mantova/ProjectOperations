@@ -305,3 +305,54 @@ dispatch rather than raised as a new one. Note for 03: you do not run again unti
   it), `pr-rates-s11c-drop-legacy-tables-HOLD.md`, or the untracked `Claude outputs/` directory in
   the repo root — all dirty in the shared dev tree and none of them mine. This PR was built in a
   disposable worktree off `origin/main` precisely so none of them could be swept in.
+
+---
+
+## ADDENDUM 2026-09-03T08:30Z — I CLOSED MARCO'S PR #1536 BY MERGING A BREADCRUMB THAT SAID "Fixed #1536"
+
+This addendum is later than the sections above and supersedes any impression they give that the run
+was clean. **A mutation I made had an effect I did not intend, and I found it only because I
+re-listed the board afterwards.**
+
+### F8. A breadcrumb narrating "Fixed #N" is a GitHub CLOSING KEYWORD. It closed a Marco-gated PR.
+
+**What happened.** [MEASURED] At 08:20:29Z `#1538` (the previous run's breadcrumb, whose auto-merge I
+armed at 08:19Z) squash-merged as `de9b51f9`. **Two seconds later, at 08:20:31Z, `#1536` — Marco's
+WBS-SHIFT-S2 PR, `escalates:true`, labelled `do-not-merge` — was CLOSED UNMERGED**, actor
+`GH-Mantova`, `commit_id = de9b51f9`.
+
+**Cause, proven.** `git log -1 --format=%B de9b51f9` contains the literal
+`Fixed #1536's API red (4d70e476)`. A regex scan of that message for
+`(?i)\b(clos(e|es|ed)|fix(|es|ed)|resolv(e|es|ed))\s+#\d+` returns
+**`KEYWORD MATCH: Fixed #1536`**. GitHub parsed the breadcrumb's own prose as
+`Fixed #1536` and auto-closed the issue when the commit landed on the default branch.
+
+The sentence was true and well-intentioned — the 07:06Z run *had* fixed #1536's red. **Narrating a
+fix in a commit message is indistinguishable, to GitHub, from declaring the PR resolved.**
+
+**Blast radius, measured before acting.**
+- `git merge-base --is-ancestor 4d70e476 origin/main` -> **exit 1**: the WBS-SHIFT-S2 code did NOT
+  reach `main`. Positive control `0edff318` -> exit 0. **No unapproved code landed.**
+- `git ls-remote --heads origin feat/wbs-shift-s2-labour-shift-pricing` ->
+  `407ceeebc99da4b7d68ee24e1d07232db2c576bb`. **The branch survived**, so nothing was lost. Had the
+  branch also been deleted, the branch is the only copy of a closed-unmerged PR's work.
+
+**Fixed.** `gh pr reopen 1536`. **Read back:** `state=OPEN mergeState=BEHIND
+labels=[do-not-merge] head=407ceeebc99da4b7d68ee24e1d07232db2c576bb`. The label survived the
+close/reopen, so the human gate is intact and nothing about RULE 2 changed.
+
+**Verified this PR cannot repeat it.** Regex scan of #1539's title + body -> **0 matches**, with the
+positive control (`"Fixed #1536's API red"`) -> **1**. The scanner is calibrated and this PR is clean.
+
+**The standing rule this earns.** 🔴 **Never write `fix/fixes/fixed/close/closes/closed/resolve/
+resolves/resolved` immediately before a `#NNNN` in a commit message, PR title, or PR body — a
+breadcrumb reporting on a PR is exactly where this reads naturally and is exactly where it is
+lethal.** Write `#1536's red was fixed`, `the red on #1536`, or `PR 1536` instead. The squash commit
+message is built from the PR title and the branch's commit messages, so **all three must be scanned,
+not just the body.**
+
+**DISPOSITION: ACTIONED** (reopened, read back, blast radius measured as zero) **and DISPATCHED ->
+Station 06**: stage a prompt adding this scan to the pre-merge path — the natural home is a check in
+`pipeline-lib.ps1`'s merge primitive, refusing a merge whose squash message would close a PR other
+than the one being merged. 🔴 It must NOT be folded into `pr-gates.mjs` (CP-26's failure already
+takes `PR gates - diff checks` down with it).

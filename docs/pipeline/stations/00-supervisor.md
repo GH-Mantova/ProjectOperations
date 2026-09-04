@@ -696,6 +696,42 @@ automation worthless. Marco, directly:
 > "otherwise, there is no much point in us having them."
 
 If you found nothing and fixed nothing, say so in one line and stop.
+## 🧹 AFTER YOUR BOARD PR MERGES, DELETE THE UNTRACKED DISK COPY OF YOUR BREADCRUMB
+
+**Measured 2026-09-04T14:1xZ.** A breadcrumb written to `C:\ProjectOperations2\docs\pr-prompts\` is
+untracked. When your own board PR then lands that exact path on `main`, the dev tree is holding an
+**untracked file at a path the next fast-forward must create** — and `git merge --ff-only` refuses:
+
+    error: The following untracked working tree files would be overwritten by merge:
+    	docs/pr-prompts/00-00-supervisor-<date>-<time>-<slug>.md
+    Please move or remove them before you merge.
+    Aborting
+
+The tree is otherwise **clean** — `git diff --numstat` and `git diff --cached --name-status` both
+returned EMPTY — so every instrument that looks for a *modification* reports nothing wrong, and the
+FF failure gets re-diagnosed from first principles every run. Four consecutive runs have paid for it.
+
+**The cure, in order of preference:**
+
+1. **Write the breadcrumb inside your own run's PR worktree.** The REPORT CONTRACT already calls that
+   the best home. Then no loose copy is ever left in the dev tree and this cannot happen at all.
+2. If you did write it to the dev tree: once your board PR has merged, **prove the disk copy is
+   byte-identical to the committed blob, then delete it.** `git rev-parse origin/main:<path>` against
+   `git hash-object <path>` (never a piped hash — PREFLIGHT step 2); equal ⇒ `Remove-Item <path>`,
+   then `git merge --ff-only origin/main`, then read back `git rev-list --left-right --count
+   HEAD...origin/main` = `0 0`. **Never `git clean`, never `git checkout .`** (DOCTRINE §9.2 —
+   consumed prompts come back armed).
+
+⚠️ **Do not diagnose this as a `.gitattributes` line-ending smudge.** That was the recorded cause on
+the morning of 2026-09-04. On the 14:0xZ run the smudge was absent — `git diff --numstat` EMPTY — and
+the fast-forward still refused, on this cause alone. **Read the error text; it names the file.**
+
+⚠️ **This is not specific to Station 00.** Every station that writes a breadcrumb into the dev tree
+and lands it in a PR creates the same blocker for whoever fast-forwards next. Folding the rule into
+the `station-contract` canonical block would fix it for all seven at once — deliberately DEFERRED
+here, because a canonical-block change must be re-recorded and shipped across all seven docs in one
+PR, which is more than a collect run should carry.
+
 ---
 
 # MANDATORY ANSWER SHEET - you FAILED your first run without this

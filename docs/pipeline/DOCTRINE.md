@@ -541,9 +541,24 @@ here now because they are true for **every** station.
   station is told it can trust.
 
 - 🔴 **AN ARMED `-ready.md`'s mtime DATES ITS AUTHORSHIP, NOT ITS ARMING — `git mv` preserves mtime.**
-  The only clock that dates an arm is the arming log `.arming-log.txt` in the queue folder — which is
-  itself **UNTRACKED**, so it exists on the box that armed and nowhere else; a clone, CI and any
-  cloud-fired station are blind to it and must not infer arm age at all. Measured 2026-08-31 by
+  The only clock that dates an arm is the arming log `.arming-log.txt` in the queue folder.
+  🔴 **CORRECTED 2026-09-04: that log is TRACKED, and has been since #1512 (2026-09-02,
+  "track the arming log"). This bullet asserted it was UNTRACKED and that a clone, CI and any
+  cloud-fired station "must not infer arm age at all" — both halves are false.** It also already
+  carries the actor fields escalation #22 asks for: `by=`, `pid=` and `caller=<parent cmdline>`
+  on every row, so that half of #22's option (A) is built and merged, not open.
+  🔴 **What IS true is worse, because it wears the same symptom: NOTHING COMMITS IT.**
+  [MEASURED] 2026-09-04T12:2xZ at `6c7e94c5`, with controls (`git ls-files --error-unmatch` on the
+  log → exit 0; on a nonexistent path → exit 1): `git show origin/main:docs/pr-prompts/.arming-log.txt`
+  is **37** lines ending `2026-09-03T03:40:31Z`, the working copy is **50** lines ending
+  `2026-09-04T11:29:24Z` — **13 arms published nowhere.** A clone therefore reads a STALE arm history
+  rather than none, which is the more dangerous shape: it answers, and its answer is a day and a half
+  old. The four commits that ever carried it were board PRs that happened to sweep it in.
+  🔧 **The falsifying probe for this bullet is that two-line-count comparison — re-run it before
+  quoting either half.** Until the counts agree: any run that arms something MUST commit the arming
+  log in its board PR, and an arm age read from `origin/main` is a LOWER bound, never the answer.
+  The 2026-08-31 measurement below still stands as written; only the tracked/untracked claim changed.
+  Measured 2026-08-31 by
   Station 04: at 18:14Z `pr-lint-not-a-prompt-ready.md` sat on disk with mtime **2026-08-28T08:12:35Z**
   — 3.4 days old — while the arming log recorded `2026-08-31T18:13:56Z ARMED pr-lint-not-a-prompt`,
   **two minutes earlier.** The file is gitignored at `.gitignore:75`, so `git status` shows only the

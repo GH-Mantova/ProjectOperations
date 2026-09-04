@@ -20,6 +20,7 @@ gate_allow: none
 seed_only: false
 escalates: true
 backfill: false
+design_ref: https://claude.ai/code/artifact/1c1d373e-dd9c-472b-9063-d74529da1035
 cluster: scope-card-redesign
 cluster_order: 8
 requires_on_main: 'apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx :: SCOPE_CUTTING_V1'

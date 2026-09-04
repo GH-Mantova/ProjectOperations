@@ -44,7 +44,7 @@ describe("DEFAULT_ROLE_BY_DISCIPLINE -- SUB entry", () => {
     expect(typeof subRole).toBe("string");
     expect(subRole.length).toBeGreaterThan(0);
 
-    const labourRates = [{ role: subRole, dayRate: new Prisma.Decimal(500) }];
+    const labourRates = [{ role: subRole, shift: "day", rate: new Prisma.Decimal(500) }];
     const maps = buildRateMaps(labourRates, []);
     // If SUB were absent from DEFAULT_ROLE_BY_DISCIPLINE the loop in buildRateMaps
     // would never call labourByRole.get(undefined) and the map would have no SUB entry.
@@ -81,7 +81,7 @@ describe("computeScopeItemTotal -- SUB discipline", () => {
   it("SUB item with a labour rate produces a non-zero lineTotal (not silently $0)", () => {
     const subRole = DEFAULT_ROLE_BY_DISCIPLINE[SUB];
     const labourRates = [
-      { role: subRole, dayRate: new Prisma.Decimal(1000) }
+      { role: subRole, shift: "day", rate: new Prisma.Decimal(1000) }
     ];
     const maps = buildRateMaps(labourRates, []);
     const result = computeScopeItemTotal(
@@ -108,7 +108,7 @@ describe("computeScopeItemTotal -- SUB discipline", () => {
 
   it("SUB item with markup produces lineTotalWithMarkup correctly", () => {
     const subRole = DEFAULT_ROLE_BY_DISCIPLINE[SUB];
-    const labourRates = [{ role: subRole, dayRate: new Prisma.Decimal(1000) }];
+    const labourRates = [{ role: subRole, shift: "day", rate: new Prisma.Decimal(1000) }];
     const maps = buildRateMaps(labourRates, []);
     const result = computeScopeItemTotal(
       { discipline: SUB, men: 2, days: 3, plantItems: null, provisionalAmount: null },
@@ -127,7 +127,7 @@ describe("computeScopeItemTotal -- SUB discipline", () => {
     // ignores men/days/plant and returns provisionalAmount instead.
     // SUB must NOT hit that path.
     const subRole = DEFAULT_ROLE_BY_DISCIPLINE[SUB];
-    const labourRates = [{ role: subRole, dayRate: new Prisma.Decimal(500) }];
+    const labourRates = [{ role: subRole, shift: "day", rate: new Prisma.Decimal(500) }];
     const plantRates = [{ id: "plant-1", rate: new Prisma.Decimal(200) }];
     const maps = buildRateMaps(labourRates, plantRates);
     const result = computeScopeItemTotal(

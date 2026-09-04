@@ -637,7 +637,44 @@ probe is well calibrated for watcher-opened PRs and says nothing whatsoever abou
 2. No log names that PR ⇒ **it did not come through the watcher.** The absence proves nothing about
    its risk. Apply the policy gate BY HAND — `classifyPolicyFiles` in `index.mjs` is the definition:
    any path outside `^(tests|docs)/`, or any path matching `(^|/)migrations/`, means **it is Marco's**.
-3. Never record "no verdict found" as "not routed to Marco". Write `[NO LANE VERDICT — hand-classified]`
+3. **EXCEPTION - a KNOWN STATION LANE is classified by the authority matrix, not by
+   `classifyPolicyFiles`.** A PR opened by a station acting inside its own recorded authority
+   (`STATION-CAPABILITIES.md` section 5) is classified by that matrix, and the PR body must NAME
+   ITS LANE so the claim is checkable by the next reader. A PR that strays outside its station's
+   lane falls through to step 2 unchanged. **Marco's ruling, 2026-09-04**, on escalation
+   `needs-marco/sot-only-pr-merge-authority-conflict-2026-09-03.md`; first applied to #1554.
+
+   **Why the exception is needed at all.** `classifyPolicyFiles` answers ONE question: *may this
+   merge with no human judgement applied?* Its three rejections - empty diff, migration file,
+   outside `tests|docs` - are reasons to WITHHOLD AUTOMATION. None of them is evidence about
+   WHICH human. Step 2 borrowed that function to answer a different question - *whose* judgement
+   is required - and the only vocabulary the function has is "not the automatic lane", which step
+   2 then read as "Marco". For a watcher-opened PR that inference is sound: the watcher's routing
+   has exactly one human in it (`{ ok: false, marco: true }`). For a station acting inside its own
+   lane it is a category error, because section 5 has already named a competent authority who is
+   not Marco.
+
+   **This removes no gate.** The `do-not-merge` label still binds absolutely - only Marco removes
+   it. A real watcher `marco:true` verdict still binds absolutely: step 1 runs first and wins.
+   Migrations are untouched - they fail `classifyPolicyFiles` on their own clause, and no station
+   lane covers them.
+
+   **In practice this is ONE lane today.** 00's lane is `docs/` and 06 stages under
+   `docs/pr-prompts/` - both already inside `^(tests|docs)/` and already passing step 2
+   unaided. (02 is deliberately not listed: it has no schedule of its own, and its board file
+   is not tracked, so it has no lane a classifier could check.) The only lane step 2 rejects is
+   **05 -> `sot/`**. The wording is general so that the next lane does not reopen the argument,
+   but the live scope of this exception is one station and one directory.
+
+   > **A NEW lane outside `tests|docs` may NOT be added to the section 5 matrix without a CI gate
+   > that proves the lane's boundary.** 05's lane already has one: **CP-24** in
+   > `scripts/pr-gates/pr-gates.mjs` hard-blocks any PR mixing `sot/` with `apps/`, `scripts/`,
+   > `.github/`, `packages/`, `package.json` or `pnpm-lock.yaml`, with no escape hatch (sot/05
+   > LL-36, PR #543 on 2026-07-13). That gate is what makes "05 doc-reconcile" a MEASURED claim
+   > rather than a self-declaration. **A lane with no such gate is self-declaration, and
+   > self-declaration is not classification.**
+
+4. Never record "no verdict found" as "not routed to Marco". Write `[NO LANE VERDICT — hand-classified]`
    and give the classification.
 
 ⚠️ **The probe must be written without a quote character**: `-Pattern 'marco.:true'` (regex, `.` matches

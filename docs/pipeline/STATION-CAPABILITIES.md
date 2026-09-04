@@ -220,6 +220,14 @@ bootstrap, or the table in section 6.
    a human-review gate, separate from the label. Not overridden by green, unlabelled, or a verified
    diff - only by an explicit instruction from Marco naming that PR.
 
+
+**This table is the classifier for a station-lane PR.** `DOCTRINE.md` section 10.1 step 3 defers to
+it by name: a PR opened by a station inside its own recorded authority is classified HERE, not by
+`classifyPolicyFiles`. The two documents contradicted each other from 2026-08-31 (when 10.1 was
+written) until 2026-09-04, and PR #1554 sat open on the difference. If you change this row, change
+10.1 in the same PR - and note that adding a NEW lane outside `tests|docs` requires a CI gate
+proving the lane's boundary, the way CP-24 proves 05's.
+
 00 may merge docs-only and `sot/`-only PRs, queue/staging PRs, and anything not watcher-routed - via
 `pipeline-lib`: **`Assert-SmokedOrEscalate` then `Merge-Pr`**, never by hand.
 ⚠️ The watcher **auto-merges docs PRs itself** under the `tests-docs` policy, so an unmerged docs PR

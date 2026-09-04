@@ -6,17 +6,33 @@ disagrees with this file, **measure before believing either** - and fix the lose
 
 ---
 
-## 1. Every station has FOUR layers. Know which one actually governs you.
+## 1. Every station has FIVE layers. Know which one actually governs you.
 
 **Corrected 2026-08-24 by measurement.** This section previously said three, and named the Cowork
 account skill as the thin bootstrap. That was wrong for scheduled runs.
+**Corrected again 2026-09-03**: it said FOUR and omitted the agent definitions - see the row below
+and the incident that row records.
 
 | Layer | Where it lives | Who changes it | Governs a scheduled run? |
 |---|---|---|---|
 | **The scheduled-task file** | `C:\Users\Marco\Claude\Scheduled\<task>\SKILL.md` on the box | Marco, by pasting | YES - **this is the one** |
+| **The agent definition** | `.claude/agents/<NN>-<name>.md` in this repo | any station, by ordinary PR | YES for an agent spawned via the Task tool - it sets `tools:`, `model:`, `isolation:`, `maxTurns:` |
 | **The Cowork account skill** | e.g. `supervisor`, in the Skills UI | Marco, in the Skills UI - an agent cannot edit it | **NO - never invoked** |
 | **The station doc** | `docs/pipeline/stations/0N-*.md` in this repo | any station, by ordinary docs PR | only if the run reads it |
 | **This file** | `docs/pipeline/STATION-CAPABILITIES.md` | any station, by ordinary docs PR | only if the run reads it |
+
+🔴 **`.claude/` is gitignored WHOLESALE (`.gitignore:28`); the agent definitions are force-added
+exceptions.** So anything added under `.claude/` in future is invisible to `git status` by default,
+and `.claude/agents/pr-tester.md` already exists on disk untracked. Measured 2026-09-03 (Station 04):
+`git check-ignore -v .claude/agents/pr-tester.md` -> `.gitignore:28:.claude/`, exit 0, against the
+positive control `git ls-files --error-unmatch .claude/agents/pr-fix-reviewer.md` -> found, exit 0.
+
+⚠️ **This omission is not academic - it is why the 2026-09-01 damage went unseen.** PR #1465 rewrote
+six agent definitions through a CP1252 double-encoder, putting 203 damaged sequences on `main`. Every
+encoding sweep this pipeline runs was pointed at `sot/` and `docs/pipeline/`, because those are the
+layers this table named. **A layer that is not in the map does not get swept.** Repaired and gated in
+CI on 2026-09-03 (`lint-station.mjs` now scans `.claude/agents/*.md`), but the general lesson is the
+reason this row exists: when a layer is added, add it here first.
 
 **MEASURED 2026-08-24, 12 consecutive scheduled runs** (00-supervisor, 04-scanner, 05-sot-keeper),
 560 tool calls in total: the `Skill` tool **was advertised in every one of them and invoked ZERO
@@ -158,15 +174,30 @@ lane discipline breaks (LL-38).
 
 ## 5. Authority matrix - who may do what
 
-| | 00 Supervisor | 02 Board-driver | 03 Machine-minder | 04 Scanner | 05 SoT-keeper | 06 PR Master |
-|---|---|---|---|---|---|---|
-| **Arm a prompt** | ✅ **only 00** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Merge a PR** | ✅ (limits below) | ✅ dispatched | ❌ | ❌ | ❌ | ❌ |
-| **Create a PR** | ❌ | ✅ | ❌ | ❌ | ✅ doc-reconcile only | ✅ staging only |
-| **Edit `/sot/`** | ❌ | ❌ | ❌ | ❌ | ✅ **only 05** | ❌ |
-| **Repair the machines** | ❌ dispatches 03 | ❌ | ⚠️ **report-only** | ❌ | ❌ | ❌ |
-| **Mutate the board** | ✅ | ✅ dispatched | ❌ | ❌ read-only | ❌ | stage `-HOLD` only |
-| **Azure / Entra / SharePoint** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ **absolute, all stations** |
+| | 00 Supervisor | 01 Code-writer | 02 Board-driver | 03 Machine-minder | 04 Scanner | 05 SoT-keeper | 06 PR Master |
+|---|---|---|---|---|---|---|---|
+| **Arm a prompt** | ✅ **only 00** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Merge a PR** | ✅ (limits below) | ❌ | ✅ dispatched | ❌ | ❌ | ❌ | ❌ |
+| **Create a PR** | ✅ board PRs | ✅ its own build only | ✅ | ❌ | ❌ | ✅ doc-reconcile only | ✅ staging only |
+| **Edit `/sot/`** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **only 05** | ❌ |
+| **Repair the machines** | ❌ dispatches 03 | ❌ | ❌ | ⚠️ **report-only** | ❌ | ❌ | ❌ |
+| **Mutate the board** | ✅ | ❌ | ✅ dispatched | ❌ | ❌ read-only | ❌ | stage `-HOLD` only |
+| **Azure / Entra / SharePoint** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ **absolute, all stations** |
+
+**Station 01 was missing from this matrix until 2026-09-03**, although it has a contract-linted
+station doc (`docs/pipeline/stations/01-code-writer.md`, `station_doc_version: 1`), is named on
+`origin/main` by `00-supervisor.md`, `sot/README.md` and `scripts/pr-watcher/index.mjs`, and the
+canonical-block comment in every station doc says *"ship all seven together"* - seven docs against
+six columns. 01 runs **only** as the watcher's code-writer, inside its own disposable worktree, on an
+armed prompt. It never arms, never merges, and never touches `/sot/`.
+
+⚠️ **The 00 "Create a PR" cell read ❌ until 2026-09-03 and was wrong in practice for seven weeks.**
+Station 02 was folded into 00 on 2026-09-02, and 00 had already been opening its own board PRs long
+before that (#1535, #1538, #1539, #1540, #1542 are all 00's). Corrected here rather than left to be
+re-derived: this file is the one that is supposed to settle a capability dispute.
+
+**Station 01 has NO schedule of its own** - it runs only when the watcher builds an armed prompt,
+inside its own disposable worktree.
 
 **Station 02 has NO schedule of its own** - it runs only when 00 dispatches it. That is deliberate:
 two things independently mutating git and the queue is the collision LL-38 records - and since
@@ -201,6 +232,7 @@ is not automatically waiting on a human.
 | Station | Cadence | Call it when |
 |---|---|---|
 | **00 Supervisor** | every 2 h | anything needs deciding, dispatching, arming or merging; and to COLLECT what 03/04/05 reported |
+| **01 Code-writer** | no cadence - the watcher invokes it | never called by hand; it is what builds an armed prompt |
 | **02 Board-driver** | on dispatch only | merges, rebases, conflicts, reading CI job logs |
 | **03 Machine-minder** | 4 h or manual | watcher health, locks, worktrees, clone drift, restarter presence; after any crash or reboot |
 | **04 Scanner** | every 4 h | "is anything rotting?" - drift, dead gates, regressions, instruments that lie |

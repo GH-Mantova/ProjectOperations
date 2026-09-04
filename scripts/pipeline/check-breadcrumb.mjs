@@ -45,7 +45,7 @@ const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];
 // missing sections nobody ever flagged. Measured 2026-08-29: 37 of 149 `00-*` files on main
 // failed this pattern. A validator that skips the reports its own authors SHOUTED is worse
 // than no validator, because its CLEAN reads as coverage. Widened, never narrowed.
-const NAME_RE = /^00-(\d\d)-([A-Za-z0-9-]+)-(\d{4}-\d{2}-\d{2})-(\d{4})-([A-Za-z0-9-]+)\.md$/;
+export const NAME_RE = /^00-(\d\d)-([A-Za-z0-9-]+)-(\d{4}-\d{2}-\d{2})-(\d{4})-([A-Za-z0-9-]+)\.md$/;
 
 // The gitignored-sink gate. A finding is only routed into a gitignored channel when the
 // path is preceded by a routing verb + destination preposition — writing/reporting/logging
@@ -106,6 +106,53 @@ function tracked() {
   return null;
 }
 
+// A breadcrumb inside an OPEN PR is in neither of the other two inputs, and that is not a
+// corner case - it is the normal life of a breadcrumb. MEASURED 2026-09-04: files do not enter
+// a working tree when they are written; they arrive when a board PR merges and the tree syncs.
+// Four breadcrumbs named 0109/0209/0309/0409 carried dev-tree mtimes of 02:15/04:11/04:11/04:21
+// - two names an hour apart sharing one mtime to the second is a BATCH ARRIVAL, not authoring.
+// So `onDisk` runs on the same merge clock as `origin/main`, just a little later, and on
+// 2026-09-04T00:09Z BOTH were blind to 05's 21:54 breadcrumb: it reached main at 01:55 inside
+// #1554. Station 05 was reported SILENT at 58h while healthy, twice, and two supervisor runs
+// were preparing to escalate a stopped station. A false SILENT licenses destructive action
+// (DOCTRINE 7), and the error is UNBOUNDED - a breadcrumb held in an open PR ages its station
+// forever. The station contract calls "inside your own run's PR" the BEST home for a
+// breadcrumb, so obeying the contract is what caused the false alarm.
+//
+// Marco's ruling 2026-09-04, option (a) on escalation
+// `needs-marco/discharged/freshness-silent-is-merge-latency-2026-09-04.md`.
+//
+// `gh pr list --json files` is used rather than `git ls-tree <headRef>` ON PURPOSE: a head ref
+// that has never been fetched is not in this tree, so the git form would reproduce the same
+// per-tree blindness one level down. This asks GitHub, which always knows.
+//
+// FRESHNESS ONLY. CI runs this script with no --freshness and has no `gh` auth; widening the
+// set there would buy nothing and add a failure mode to a required check.
+export function breadcrumbsFromPrFiles(prs, dir, nameRe) {
+  const out = [];
+  for (const pr of Array.isArray(prs) ? prs : []) {
+    for (const f of Array.isArray(pr && pr.files) ? pr.files : []) {
+      const path = typeof f === 'string' ? f : (f && f.path);
+      if (typeof path !== 'string' || !path.startsWith(dir + '/')) continue;
+      const base = path.slice(path.lastIndexOf('/') + 1);
+      if (nameRe.test(base)) out.push(base);
+    }
+  }
+  return out;
+}
+
+// Impure wrapper. ANY failure - gh absent, unauthenticated, rate-limited, offline, bad JSON -
+// degrades to [], i.e. exactly today's behaviour. It must never turn a working check into a
+// failing one; a widened set is an improvement, not a dependency.
+function fromOpenPrs() {
+  try {
+    const raw = execSync('gh pr list --state open --limit 100 --json files', {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024,
+    });
+    return breadcrumbsFromPrFiles(JSON.parse(raw), DIR, NAME_RE);
+  } catch { return []; }
+}
+
 function checkOne(file, name) {
   const fails = [];
   const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
@@ -161,7 +208,10 @@ const onDisk = readdirSync(DIR).filter((f) => NAME_RE.test(f));
 const fromMain = trackedSet
   ? [...trackedSet].map((p) => p.slice(p.lastIndexOf('/') + 1)).filter((f) => NAME_RE.test(f))
   : [];
-const all = [...new Set([...onDisk, ...fromMain])];
+// Structural checks still run only on files present on disk (the loop skips anything absent):
+// a file we cannot read cannot be validated. Only the FRESHNESS set widens.
+const fromPrs = freshness ? fromOpenPrs() : [];
+const all = [...new Set([...onDisk, ...fromMain, ...fromPrs])];
 const newest = new Map();
 let bad = 0, checked = 0, skipped = 0;
 

@@ -219,3 +219,26 @@ change it describes and needs nobody to sweep it up.
 - **Did not clear the two modified files in the shared dev tree** (`docs/data-model/metadata-catalog.json`,
   `docs/pr-prompts/.arming-log.txt`). The index is shared with other chats and neither is mine.
 - **Did not archive dispositioned breadcrumbs.** The current cycle is still live.
+
+## ADDENDUM — board at exit, 2026-09-04T01:20Z (two PRs appeared after the census above)
+
+The census under WHAT I MEASURED was taken at 01:12Z and read **four** open PRs. By exit there are
+**six**. Recorded here so a reader an hour from now does not read the four-row table as a claim that
+still holds — it was true when measured (FINDING 3, same lesson).
+
+| PR | opened | lane probe | classification | state |
+|---|---|---|---|---|
+| #1560 | `01:15:42Z` — **during this run**, branch `fb/generator-only` | **NO LOG** | `[NO LANE VERDICT — hand-classified]` `scripts/pipeline/**` outside `^(tests\|docs)/` ⇒ **MARCO'S** | BLOCKED |
+| #1561 | `01:19Z` — this run's own breadcrumb PR | n/a (mine) | `docs/**` only | BLOCKED, checks pending |
+
+**[MEASURED]** `#1560` is `feat(pipeline): the feature board generator, without the wiring that would
+publish it`, two files, both `scripts/pipeline/**`. Its branch `fb/generator-only` is the same branch
+checked out in the pre-existing worktree `C:\po-queue` that `git worktree list` reported at run start
+— so a second actor was live in a working tree throughout this run and opened a PR from it three
+minutes before exit. That is direct confirmation of the reasoning in WHAT I DID NOT DO: BOARD DRIVING
+condition 3 was the correct call, not an over-cautious one.
+
+**[MEASURED]** `#1544` at exit: no red checks; `tendering-e2e` and `API — lint, test, compliance
+smoke` still running; every required pipeline gate `SUCCESS`. Left for Marco (FINDING 2).
+
+**DISPOSITION: ACTIONED** — recorded; no action taken on either PR.

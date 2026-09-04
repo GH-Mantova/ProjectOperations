@@ -1509,7 +1509,7 @@ Both Strip-outs and Structural collapse into Demolition (DEM). Other catches Pro
 
 \- Database enum migration with data remap
 
-\- All persona system prompts that reference IS scope codes (`apps/api/src/modules/personas/definitions/tendering.persona.ts`, `apps/api/src/modules/personas/definitions/shared-prompts.ts`, `apps/api/src/modules/tendering/tender-scope-drafting.service.ts`) need updating to use the new 4-code system
+\- All persona system prompts that reference IS scope codes (`apps/api/src/modules/personas/definitions/tendering.persona.ts`, `apps/api/src/modules/personas/definitions/shared-prompts.ts`) need updating to use the new 4-code system. The third prompt holder, `tender-scope-drafting.service.ts`, was RETIRED by PR #212 (commit fc53b24b, 2026-05-24) and needs no update
 
 \- Tender reports / dashboards that filter by discipline get new options
 
@@ -1903,7 +1903,7 @@ The Tendering Assistant persona (system prompts, tool definitions, scope items) 
 
 \- `apps/api/src/modules/personas/definitions/shared-prompts.ts` — `GLOBAL\_RATE\_FABRICATION\_PROHIBITION` (no discipline mentions, no change needed)
 
-\- `apps/api/src/modules/tendering/tender-scope-drafting.service.ts` — has its own `SYSTEM\_PROMPT` const, references IS scope codes — needs DEM/CIV/ASB/Other
+\- `tender-scope-drafting.service.ts` — RETIRED by PR #212 (commit fc53b24b, 2026-05-24): it had its own `SYSTEM\_PROMPT` const referencing IS scope codes, but the legacy scope-drafting path was removed, so no DEM/CIV/ASB/Other update is needed
 
 \- `propose\_scope\_items` tool input schema — discipline enum
 

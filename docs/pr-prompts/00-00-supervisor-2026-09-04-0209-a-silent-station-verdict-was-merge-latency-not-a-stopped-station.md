@@ -236,3 +236,51 @@ or an arm it cannot account for), not the mere overlap.
 - **Did not restart or touch the watcher.** `restart-watcher-if-wedged.ps1`'s inputs all read
   healthy: node RUNNING pid 24744, wrapper alive, heartbeat 4 min, 0 armed at the time of the sweep.
 - **Did not touch `/sot/`, Azure/Entra/SharePoint, production data, or the watcher clone's git.**
+
+## ADDENDUM — 2026-09-04T02:31Z, after the board PR was opened
+
+The prompt armed at 02:18Z was consumed and built. **`#1563` — "docs(pipeline): DOCTRINE 9.5 cite
+the symbol, not the line number"** opened at `2026-09-04T02:21:34Z`, head
+`fix/doctrine-9-5-cite-symbol` @ `20a2e9e8`, touching exactly the two declared paths
+(`docs/pipeline/DOCTRINE.md`, `docs/pipeline/stations/_canonical-blocks.json`), labels `[]`.
+Three minutes from arm to open.
+
+**[MEASURED] The §10.3 CI-creation-latency cause does NOT reproduce on this PR.**
+`gh run list --commit 20a2e9e8389ebc7a4c5feefbe8c170c611dff0d0` (FULL 40-char sha — the short form
+returns `[]` at exit 0) → **3 runs**, all `attempt=1`, all `completed / success`:
+
+| run | created | lag from PR open |
+|---|---|---|
+| `33829221467` PR #1563 (CodeQL) | 2026-09-04T02:21:36Z | **0.0 min** |
+| `33829223151` CI | 2026-09-04T02:21:37Z | **0.1 min** |
+| `33829223189` Tendering Browser Smoke | 2026-09-04T02:21:37Z | **0.1 min** |
+
+Negative control: `gh run list --commit 0000…0000` → **0 runs**, so an empty answer here would have
+been distinguishable from a broken query. At 02:29Z `gh pr view 1563` reads `mergeState=CLEAN`,
+**14 checks, 0 not-green**.
+
+Against `#1500`'s measured **212.6 min**, this is ~6 seconds. So `MERGE_TIMEOUT_MS` (90 min, expiring
+about **03:51Z**) is not being outrun by check creation on this PR, and `allGreen` was satisfiable
+within four minutes of opening.
+
+**This makes `#1563` a clean discriminator for the open `tests-docs` deadlock escalation**, and the
+next Station 00 run should read it as one:
+
+- **If `#1563` auto-merges** → the lane works, and cause (b) — CI-creation latency — is the whole of
+  the deadlock. The escalation narrows to "latency only", and the cure is a longer or
+  latency-aware `MERGE_TIMEOUT_MS`.
+- **If `#1563` times out with all 14 checks green and CI created in 6 seconds** → cause (b) is
+  REFUTED for this case and the deadlock is somewhere else entirely — the verdict-reader anchor
+  (`verdictApproves`, `/^VERDICT:\s*MERGE\b/m` at column 0) and the verdict-guard path extractor are
+  the two remaining candidates, and both are already staged.
+- Either way the probe is: `docs/pr-prompts/processed/pr-doctrine-s95-cite-symbol-not-line-ready.md.log`,
+  matching `PR #1563` in the BODY, against the pinned live tree.
+
+**I deliberately did NOT hand-merge `#1563`, and did NOT merge my own `#1564` this run.** The
+standing rule is that a watcher-opened docs PR inside its 90-minute window goes first, and
+hand-landing this one would destroy the only clean measurement of the deadlock the board has
+produced since `#1500`. `#1564` waits behind it.
+
+**DISPOSITION (addendum): DEFERRED to the next Station 00 run** — with the exact probe, the exact
+window (`03:51Z`), and both branches of the outcome written down so that run does not have to
+re-derive any of it.

@@ -325,6 +325,19 @@ here now because they are true for **every** station.
   carrying a value you never wrote, and exits 0** — the silent-wrong-value case is the dangerous one.
   `interact_with_process` does NOT do this (measured 2026-08-29, control `CTRL=42`).
   **Anything containing `$` goes in a `.ps1` file run with `-File`.**
+  🔴 **AND THE CURE HIDES THE TRAP FROM ITS OWN CONTROL — run the discriminating control through
+  `-Command`, NEVER through `-File`.** MEASURED 2026-09-04T15:1xZ by Station 00, both forms minutes
+  apart inside ONE scheduled Cowork session, same machine, same shell, control `$CTRL=42` (undefined
+  at expansion time, so it MUST print empty if a pre-expansion layer exists):
+  `start_process` with **`-File <script.ps1>`** → `CTRL-literal-is:42` — **no expansion**;
+  `start_process` with **`-Command "..."`** → the assignment arrives as bare `=42`
+  (`CommandNotFoundException`), `$env:USERNAME` arrives already substituted as `Marco`, and `$true`
+  as `True` — **expansion, exactly as this bullet describes.** Only the invocation differs.
+  ⚠️ **So a station that follows the cure and then measures the cure reports "the trap does not
+  reproduce".** That is what Station 04 reported on 2026-09-04T14:09Z (breadcrumb
+  `00-04-scanner-2026-09-04-1409-doctrine-s9-anchors-have-drifted-ninety-lines-under-the-arming-markers.md`,
+  finding F3, dispatched to 00 as a possible retirement). **It is a measurement of the cure working,
+  not a non-reproduction: this bullet stands UNQUALIFIED.**
 - ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
   **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
   the first read), but early returns are real — one was observed the same run on a line with no `#`.
@@ -475,30 +488,43 @@ here now because they are true for **every** station.
 
 ## 9.5 The pipeline's own instruments
 
+- 🔴 **ANCHOR BY SYMBOL, NEVER BY LINE NUMBER — and this section violated its own rule sixteen
+  times.** MEASURED 2026-09-04T14:1xZ by Station 04 against `origin/main:scripts/pipeline/lint-prompt.mjs`
+  (now 1824 lines): **16 of 17** line-number citations in this section were wrong, all drifting the
+  same ~90 lines, consistent with ONE insertion above the first of them. `:728`/`:730`/`:732` — the
+  three arming markers RULE 4's detector is built on — held `try {`, `} catch (_) {` and `}`. Nobody
+  edited a claim; the file moved underneath every claim at once, silently, which is the §7 shape.
+  **The available conclusion was wrong in the dangerous direction** (*"the linter does not gate
+  arming"*), and that reasoning ends in arming a never-arm prompt. Every citation below is now a
+  **symbol or fixed-comment anchor**, which cannot rot the same way. The reasoning in this section
+  was verified sound by symbol at the same time and needed no correction. 🔧 **A line number into a
+  file outside this document is invalidated by any edit above it — if you find yourself writing one,
+  write the symbol instead.**
+
 - 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
-  `gh`.** `readFromOriginMain` (`lint-prompt.mjs:439-459`) runs
+  `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs
   `execFileSync(process.env.LINT_GIT_BIN || "git", ["show", "origin/main:<path>"])` and on failure
-  `return null; // git broken - skip check, fail SAFE`, and it feeds all five gate probes (`:492`,
-  `:563`, `:826`, `:865`, `:903`). **The five GATE probes use `git` only**, so the old advice — *"confirm `gh`
+  `return null; // git broken - skip check, fail SAFE`, and it feeds all five gate probes (anchor: the five
+  `readFromOriginMain(` call sites). **The five GATE probes use `git` only**, so the old advice — *"confirm `gh`
   resolves"* — proves nothing about them. 🔴 **But `gh` is NOT absent from the file, and this
-  bullet said it was until 2026-08-31.** `lint-prompt.mjs:1164` reads
-  `process.env.LINT_GH_BIN || "gh"` and `:1165` shells `gh pr view <n> --json state` inside
+  bullet said it was until 2026-08-31.** `lint-prompt.mjs` reads
+  `process.env.LINT_GH_BIN || "gh"` (anchor: `LINT_GH_BIN`) and shells `gh pr view <n> --json state` inside
   `ghFetchPrState`, reached from the exported `checkFixesPrTargetOpen` (the comment
   `// Cheaper than the premise (single gh call, no shell subprocess), so run` above the
   `checkFixesPrTargetOpen({ fixesPr, fetchState: fetch })` call site names it that). **A `fixes_pr`
   verdict therefore DOES depend on `gh`** — confirm it resolves before trusting one. (Found by
   Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour — `Select-String LINT_GH_BIN`
-  returns exactly one hit, line 1164.) **A line-number citation into a file outside this document
+  returns exactly one hit.) **A line-number citation into a file outside this document
   is invalidated by any edit above it — prefer a symbol name or a fixed comment string as the
   anchor.** **Confirm `git` resolves AND read its stderr before believing any ADMIT.** And "fail
   SAFE" is safe only against wrongly *binning* a prompt: with respect to **arming** it fails
   **OPEN**, because a skipped gate reads as an ADMIT — including for prompts that drop database
   tables.
 - 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see **three**
-  literal markers — `DO_NOT_ARM_COMMENT` (`lint-prompt.mjs:728`, case-insensitive),
-  `DO_NOT_ARM_CAPS` (`:730`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/` (`:732`,
+  literal markers — `DO_NOT_ARM_COMMENT` (anchor: `DO_NOT_ARM_COMMENT =`, case-insensitive),
+  `DO_NOT_ARM_CAPS` (anchor: `DO_NOT_ARM_CAPS =`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/` (anchor: `ARM_ONLY =`,
   conditional arming), which this bullet omitted until 2026-08-31** — and reports
-  `HUMAN_GATE_PRESENT: line N contains` at `:743`, `:755` and `:767`. **RULE 4's arming detector
+  `HUMAN_GATE_PRESENT: line N contains` at its three report sites (anchor: `HUMAN_GATE_PRESENT: line`). **RULE 4's arming detector
   greps the union of these markers as its second instrument, so a two-marker grep under-reports
   which prompts the linter actually gates** (Station 04, 2026-08-31; re-measured by 00 the same
   hour, with the control that `"Arm ONLY"` occurred 0 times in this document). **The advice survives the fix:** a **prose** human gate matches neither regex,
@@ -508,7 +534,7 @@ here now because they are true for **every** station.
   gate; and `pr-dns-s5-checker-flip-to-fail-HOLD` carried **neither** marker until #1400
   (2026-08-30) put `<!-- watcher: do-not-arm -->` on it — `lint-prompt.mjs` now REJECTs it
   `[HUMAN_GATE_PRESENT]` at exit 1. **Adding the literal marker is the cure for any future
-  never-arm prompt**, and it fires at `:728` before the premise is ever evaluated. The general
+  never-arm prompt**, and it fires at the `DO_NOT_ARM_COMMENT` test before the premise is ever evaluated. The general
   warning stands: a **prose** human gate matches neither regex and is invisible to both the
   linter and any grep built on them.
 - 🟢 **LANDED 2026-08-31T01:21:53Z — `parseFrontMatter` now FOLDS block scalars, so the LL-29 rollback
@@ -550,10 +576,16 @@ here now because they are true for **every** station.
   🔴 **What IS true is worse, because it wears the same symptom: NOTHING COMMITS IT.**
   [MEASURED] 2026-09-04T12:2xZ at `6c7e94c5`, with controls (`git ls-files --error-unmatch` on the
   log → exit 0; on a nonexistent path → exit 1): `git show origin/main:docs/pr-prompts/.arming-log.txt`
-  is **37** lines ending `2026-09-03T03:40:31Z`, the working copy is **50** lines ending
-  `2026-09-04T11:29:24Z` — **13 arms published nowhere.** A clone therefore reads a STALE arm history
-  rather than none, which is the more dangerous shape: it answers, and its answer is a day and a half
-  old. The four commits that ever carried it were board PRs that happened to sweep it in.
+  🟢 **THE GAP IS CLOSED AND THE "13 ARMS PUBLISHED NOWHERE" FIGURE IS RETIRED — do not quote it
+  again.** It was [MEASURED] 2026-09-04T12:2xZ at `6c7e94c5` as `origin/main` **37** lines against a
+  **50**-line working copy. Station 04 re-ran this bullet's own falsifying probe at 14:1xZ and
+  Station 00 confirmed it at 15:2xZ: **both sides are 50 lines** and end on the identical row
+  `2026-09-04T11:29:24Z ARMED pr-lint-gate-path-space ... by=Marco@ pid=31616`. Controls unchanged
+  (`git ls-files --error-unmatch` on the log → exit 0, on a nonexistent path → exit 1).
+  🔴 **The DEFECT is untouched and it is the half that matters: NOTHING COMMITS THE LOG ON
+  PURPOSE.** The only commits that have ever carried it were board PRs that happened to sweep it in,
+  so the gap closes and re-opens by luck. When it is open a clone reads a STALE arm history rather
+  than none, which is the more dangerous shape: it answers, and its answer can be a day and a half old.
   🔧 **The falsifying probe for this bullet is that two-line-count comparison — re-run it before
   quoting either half.** Until the counts agree: any run that arms something MUST commit the arming
   log in its board PR, and an arm age read from `origin/main` is a LOWER bound, never the answer.
@@ -581,10 +613,11 @@ here now because they are true for **every** station.
 - ⚠️ **QUARANTINED ledger rows are recorded but NOT binding.** Citing one as authority is an error.
 - ⚠️ **`check-breadcrumb.mjs` measures two different sets, and only ONE of them sees `archive/`.**
   **Freshness is recursive**: `trackedSet` comes from `git ls-tree -r --name-only origin/main -- docs/pr-prompts`
-  (`:98`) and is matched by **basename** (`:162`), so archiving a station's newest breadcrumb does
+  (anchor: the `ls-tree -r` call) and is matched by **trailing path segment** (anchor:
+  `p.lastIndexOf('/')` — the token `basename` does not occur in that file at all), so archiving a station's newest breadcrumb does
   **not** make it read SILENT — measured 2026-08-30 archiving 152 files, with `03` (15.1h) and `05`
   (24.0h) unchanged across the move. **Structure is depth-1 only**: it iterates `readdirSync(DIR)`
-  at `:160`, so the same move took `structure: 122 checked` to `11`. Both exited 0. Archiving is
+  (anchor: `readdirSync(DIR)`), so the same move took `structure: 122 checked` to `11`. Both exited 0. Archiving is
   therefore safe, but "it counts by basename" is true of freshness and **false** of the structure
   pass — do not quote the one result as covering both.
 

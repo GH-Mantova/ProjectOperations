@@ -4,6 +4,14 @@
 //   submission columns (Last interaction, Logged by, Next action with overdue
 //   chip), Log action (interaction + next action in one step), Follow-ups tab
 //   (same list, amber toggles on, On track off), Saved views.
+// CRM_REGISTER_V3 — row composition brought onto the approved mock-up:
+//   Tender (number + title + "Submitted …" sub-line) | Client | Status | Value |
+//   Last interaction (relative time) | Logged by | Next action | Actions.
+//   Adds the money column, folds Title into the Tender cell, drops the Updated
+//   column (it duplicated Last interaction as a bare date), and adds a Columns
+//   picker persisted under its own localStorage key.
+//   NO-OP (see the PR body): the mock-up's channel and one-line-summary halves
+//   of the Last interaction cell are NOT built — the comms API sends neither.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
@@ -21,9 +29,20 @@ import {
   validateLogPayload,
   sortCrmRow,
   FOLLOWUPS_DEFAULT_TOGGLES,
+  formatMoneyAUD,
+  formatRelativeTime,
+  formatSubmittedLabel,
+  normalizeColumnVisibility,
+  visibleRegisterColumns,
+  DEFAULT_COLUMN_VISIBILITY,
+  EM_RULE,
+  REGISTER_COLUMNS,
+  REGISTER_COLUMNS_STORAGE_KEY,
   type FollowUpToggles,
   type CrmColumnKey,
-  type LogPayload
+  type LogPayload,
+  type RegisterColumnId,
+  type RegisterColumnVisibility
 } from "./tendersRegisterPage.helpers";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +55,12 @@ type TenderRow = {
   title: string;
   status: string;
   updatedAt: string;
+  /**
+   * CRM_REGISTER_V3: rides back on the same `include: tenderInclude` fetch —
+   * it is a scalar on Tender, so no API change was needed to read it.
+   * Renders as the "Submitted 12 Aug" sub-line under the tender number.
+   */
+  submittedAt?: string | null;
   dueDate?: string | null;
   estimatedValue?: string | null;
   probability?: number | null;
@@ -127,6 +152,32 @@ function persistSavedViews(views: SavedView[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(views));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CRM_REGISTER_V3: Columns picker persistence.
+// Same shape as the saved-views helpers above, but a SIBLING key — toggling a
+// column must never rewrite `crm-register-saved-views:v1`.
+// ---------------------------------------------------------------------------
+
+function loadColumnVisibility(): RegisterColumnVisibility {
+  if (typeof window === "undefined") return DEFAULT_COLUMN_VISIBILITY;
+  try {
+    const raw = window.localStorage.getItem(REGISTER_COLUMNS_STORAGE_KEY);
+    if (!raw) return DEFAULT_COLUMN_VISIBILITY;
+    return normalizeColumnVisibility(JSON.parse(raw) as unknown);
+  } catch {
+    return DEFAULT_COLUMN_VISIBILITY;
+  }
+}
+
+function persistColumnVisibility(visibility: RegisterColumnVisibility): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REGISTER_COLUMNS_STORAGE_KEY, JSON.stringify(visibility));
   } catch {
     // ignore storage errors
   }
@@ -331,6 +382,35 @@ const ghostBtnStyle: React.CSSProperties = {
   cursor: "pointer"
 };
 
+/**
+ * CRM_REGISTER_V3 cell styles.
+ *
+ * Every colour here is read from a design token that already exists
+ * (`--text-muted`, defined for both themes in styles/tokens.css) or is
+ * inherited from the table. This slice introduces no colour literal of its own.
+ */
+const registerCellStyle = {
+  tenderTitle: { cursor: "pointer", marginTop: 2 },
+  tenderSubLine: { fontSize: 11, color: "var(--text-muted)", marginTop: 2 },
+  money: { textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" },
+  relativeTime: { whiteSpace: "nowrap" },
+  columnsPanel: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    border: "1px solid",
+    borderColor: "var(--text-muted)",
+    fontSize: 12
+  },
+  columnsCheckbox: { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" },
+  /** A column switched off in the Columns picker. */
+  hiddenCell: { display: "none" }
+} satisfies Record<string, React.CSSProperties>;
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -371,6 +451,12 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   const [savedViews, setSavedViews] = useState<SavedView[]>(loadSavedViews());
   const [viewNameInput, setViewNameInput] = useState("");
   const [showSaveView, setShowSaveView] = useState(false);
+
+  // CRM_REGISTER_V3: Columns picker. Persisted under its own key, read once on
+  // mount so a column switched off stays off across a reload.
+  const [columnVisibility, setColumnVisibility] =
+    useState<RegisterColumnVisibility>(loadColumnVisibility);
+  const [showColumns, setShowColumns] = useState(false);
 
   // Users for "Mine only" filter
   const currentUserId = (user as { id?: string } | null)?.id ?? null;
@@ -681,6 +767,28 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   // Render
   // ---------------------------------------------------------------------------
 
+  const visibleColumns = useMemo(
+    () => visibleRegisterColumns(columnVisibility),
+    [columnVisibility]
+  );
+
+  /** Style for a body cell: its own style, plus display:none when hidden. */
+  const cellStyle = (
+    id: RegisterColumnId,
+    base?: React.CSSProperties
+  ): React.CSSProperties | undefined => {
+    if (columnVisibility[id]) return base;
+    return { ...base, ...registerCellStyle.hiddenCell };
+  };
+
+  const toggleColumn = (id: RegisterColumnId) => {
+    setColumnVisibility((prev) => {
+      const next = normalizeColumnVisibility({ ...prev, [id]: !prev[id] });
+      persistColumnVisibility(next);
+      return next;
+    });
+  };
+
   const clientOptions = useMemo(() =>
     Array.from(
       new Map(
@@ -901,11 +1009,39 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           <button type="button" onClick={exportCsv} style={ghostBtnStyle}>
             Export CSV
           </button>
+          {/* CRM_REGISTER_V3: Columns picker (mock-up's filter-bar control). */}
+          <button
+            type="button"
+            onClick={() => setShowColumns((v) => !v)}
+            style={ghostBtnStyle}
+            aria-expanded={showColumns}
+            aria-label="Choose visible columns"
+          >
+            Columns
+          </button>
           <button type="button" onClick={() => setShowSaveView((v) => !v)} style={ghostBtnStyle}>
             Save view
           </button>
         </div>
       </div>
+
+      {/* CRM_REGISTER_V3: Columns panel. The two anchor columns (Tender, Actions)
+          are not hideable — a row with no identity and no action is not a row. */}
+      {showColumns && (
+        <div role="group" aria-label="Visible columns" style={registerCellStyle.columnsPanel}>
+          {REGISTER_COLUMNS.filter((col) => col.hideable).map((col) => (
+            <label key={col.id} style={registerCellStyle.columnsCheckbox}>
+              <input
+                type="checkbox"
+                checked={columnVisibility[col.id]}
+                onChange={() => toggleColumn(col.id)}
+                aria-label={`Show ${col.label} column`}
+              />
+              {col.label}
+            </label>
+          ))}
+        </div>
+      )}
 
       {/* Save view panel */}
       {showSaveView && (
@@ -1013,51 +1149,49 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         <table className="s7-table">
           <thead>
             <tr>
-              {(
-                [
-                  ["tenderNumber", "Tender #"],
-                  ["title", "Title"],
-                  ["client", "Client"],
-                  ["status", "Status"],
-                  ["updatedAt", "Updated"],
-                  ["lastInteraction", "Last interaction"],
-                  [null, "Logged by"],
-                  ["nextAction", "Next action"],
-                  [null, "Actions"]
-                ] as Array<[CrmColumnKey | null, string]>
-              ).map(([key, label]) => (
-                <th
-                  key={label}
-                  onClick={key ? () => handleSort(key) : undefined}
-                  style={key ? { cursor: "pointer", userSelect: "none" } : undefined}
-                  aria-sort={
-                    key && sortBy === key
-                      ? sortDir === "asc"
-                        ? "ascending"
-                        : "descending"
-                      : key
-                      ? "none"
-                      : undefined
-                  }
-                >
-                  {label}
-                  {key ? sortIndicator(key) : null}
-                </th>
-              ))}
+              {/* CRM_REGISTER_V3: header sequence comes from REGISTER_COLUMNS —
+                  Tender | Client | Status | Value | Last interaction |
+                  Logged by | Next action | Actions. */}
+              {REGISTER_COLUMNS.map((col) => {
+                const key: CrmColumnKey | null = col.sortKey;
+                return (
+                  <th
+                    key={col.id}
+                    onClick={key ? () => handleSort(key) : undefined}
+                    style={{
+                      ...(key ? { cursor: "pointer", userSelect: "none" } : null),
+                      ...(col.align === "right" ? { textAlign: "right" } : null),
+                      ...(columnVisibility[col.id] ? null : registerCellStyle.hiddenCell)
+                    }}
+                    aria-sort={
+                      key && sortBy === key
+                        ? sortDir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : key
+                        ? "none"
+                        : undefined
+                    }
+                  >
+                    {col.label}
+                    {key ? sortIndicator(key) : null}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`sk-${i}`}>
-                  {Array.from({ length: 9 }).map((__, j) => (
+                  {Array.from({ length: visibleColumns.length }).map((__, j) => (
                     <td key={j}><Skeleton height={14} /></td>
                   ))}
                 </tr>
               ))
             ) : sortedRows.length === 0 ? (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={visibleColumns.length}>
                   <EmptyState
                     heading={
                       tab === "followups"
@@ -1070,22 +1204,31 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
               </tr>
             ) : (
               sortedRows.map((t) => {
-                const primaryClient = t.tenderClients[0]?.client.name ?? "—";
+                const primaryClient = t.tenderClients[0]?.client.name ?? EM_RULE;
                 const statusLabel = TENDER_STATUS_LABEL[t.status as TenderStatus] ?? t.status;
                 const interaction = interactions.get(t.id) ?? null;
-                const lastInteractionLabel = interaction
+                // CRM_REGISTER_V3: the mock-up's "4 days ago" half. The channel
+                // and the one-line summary are NOT rendered — see the NO-OPs at
+                // the top of this file; the API sends neither.
+                const lastInteractionLabel = formatRelativeTime(
+                  interaction?.lastMessageAt ?? null,
+                  now.current
+                );
+                const lastInteractionExact = interaction
                   ? new Date(interaction.lastMessageAt).toLocaleDateString()
-                  : "—";
+                  : undefined;
+                const submittedLabel = formatSubmittedLabel(t.submittedAt);
+                const valueLabel = formatMoneyAUD(t.estimatedValue);
                 const loggedByLabel = interaction
                   ? `${interaction.loggedBy.firstName} ${interaction.loggedBy.lastName}`.trim()
-                  : "—";
+                  : EM_RULE;
                 const nextAction = nextActions.get(t.id) ?? null;
                 const naClass = classifyNextAction(nextAction?.dueAt ?? null, now.current);
                 const naLabel = nextAction
                   ? nextAction.dueAt
                     ? new Date(nextAction.dueAt).toLocaleDateString()
                     : nextAction.title
-                  : "—";
+                  : EM_RULE;
 
                 return (
                   <tr key={t.id}>
@@ -1097,21 +1240,34 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                       >
                         {t.tenderNumber}
                       </button>
+                      <div
+                        style={registerCellStyle.tenderTitle}
+                        onClick={() => navigate(`/tenders/${t.id}`)}
+                      >
+                        {t.title}
+                      </div>
+                      {submittedLabel && (
+                        <div style={registerCellStyle.tenderSubLine}>{submittedLabel}</div>
+                      )}
+                    </td>
+                    <td style={cellStyle("client")}>{primaryClient}</td>
+                    <td style={cellStyle("status")}>{statusLabel}</td>
+                    <td
+                      style={cellStyle("value", registerCellStyle.money)}
+                      aria-label={`Value: ${valueLabel}`}
+                    >
+                      {valueLabel}
                     </td>
                     <td
-                      style={{ cursor: "pointer" }}
-                      onClick={() => navigate(`/tenders/${t.id}`)}
+                      style={cellStyle("lastInteraction")}
+                      aria-label={`Last interaction: ${lastInteractionLabel}`}
                     >
-                      {t.title}
+                      <span style={registerCellStyle.relativeTime} title={lastInteractionExact}>
+                        {lastInteractionLabel}
+                      </span>
                     </td>
-                    <td>{primaryClient}</td>
-                    <td>{statusLabel}</td>
-                    <td>{new Date(t.updatedAt).toLocaleDateString()}</td>
-                    <td aria-label={`Last interaction: ${lastInteractionLabel}`}>
-                      {lastInteractionLabel}
-                    </td>
-                    <td aria-label={`Logged by: ${loggedByLabel}`}>{loggedByLabel}</td>
-                    <td aria-label={`Next action: ${naLabel}`}>
+                    <td style={cellStyle("loggedBy")} aria-label={`Logged by: ${loggedByLabel}`}>{loggedByLabel}</td>
+                    <td style={cellStyle("nextAction")} aria-label={`Next action: ${naLabel}`}>
                       <span>
                         {nextAction ? (
                           <>

@@ -356,6 +356,27 @@ export function effectiveDayRate(
 }
 
 /**
+ * WBS-SHIFT-S1: Given the three catalogue rates for a labour type and the
+ * shift the estimator picked, return the applicable rate as a number.
+ *
+ * Shift matching is case-sensitive against the SHIFT_OPTIONS values
+ * ("Day" | "Night" | "Weekend"). Any absent, null, or unrecognised shift
+ * defaults to the day rate so an unset shift behaves identically to today.
+ *
+ * Export so it can be unit-tested without rendering.
+ */
+export function resolveRateForShift(
+  rates: { day: number; night: number; weekend: number } | null | undefined,
+  shift: string | null | undefined
+): number | null {
+  if (rates == null) return null;
+  if (shift === "Night") return rates.night;
+  if (shift === "Weekend") return rates.weekend;
+  // "Day", null, undefined, or any unrecognised value all fall back to day rate.
+  return rates.day;
+}
+
+/**
  * Manpower row total for the read-only Total cell.
  * Returns null (renders as "—") when any of qty/days/rate are absent
  * or the row has no type set.
@@ -635,10 +656,19 @@ export function ScopeQuantitiesTable({
     [labourRates]
   );
 
-  // Map labourRate.id → dayRate number for O(1) lookup in cells.
+  // Map labourRate.id → { day, night, weekend } numbers for O(1) lookup in cells.
+  // WBS-SHIFT-S1: all three rates are stored so the cell can resolve the right
+  // one from the shift the estimator picked, instead of always showing dayRate.
   const labourRateById = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of labourRates) map.set(r.id, Number(r.dayRate));
+    const map = new Map<string, { day: number; night: number; weekend: number }>();
+    for (const r of labourRates) {
+      const toNum = (v: string | number) => Number(v);
+      map.set(r.id, {
+        day: toNum(r.dayRate),
+        night: toNum(r.nightRate),
+        weekend: toNum(r.weekendRate)
+      });
+    }
     return map;
   }, [labourRates]);
 
@@ -873,7 +903,7 @@ export function ScopeQuantitiesTable({
            width:1%+nowrap so they shrink to content; description has no
            width constraint so it takes all slack.
            SCOPE_WBS_MANPOWER_V1 — The Manpower group now occupies 6
-           discrete columns (Type/Qty/Days/Shift/Day rate/Total) instead
+           discrete columns (Type/Qty/Days/Shift/Rate/Total) instead
            of the single spanning cell from slice 2.
            SCOPE_WBS_PLANT_V1 — Plant group now occupies 5 discrete
            columns (Type/Qty/Days/Day rate/Total) instead of the single
@@ -892,7 +922,7 @@ export function ScopeQuantitiesTable({
             <col />{/* Qty */}
             <col />{/* Days */}
             <col />{/* Shift */}
-            <col />{/* Day rate */}
+            <col />{/* Rate (shift-resolved) */}
             <col />{/* Total */}
             {/* SCOPE_WBS_PLANT_V1 — Plant group: 5 fit columns */}
             <col />{/* Type */}
@@ -942,13 +972,13 @@ export function ScopeQuantitiesTable({
               <th style={thStyle}>Qty</th>
               <th style={thStyle}>Days</th>
               <th style={thStyle}>Shift</th>
-              <th style={thStyle}>Day rate</th>
+              <th style={thStyle}>Rate</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
               {/* SCOPE_WBS_PLANT_V1 — plant sub-headers */}
               <th style={thStyle}>Type</th>
               <th style={thStyle}>Qty</th>
               <th style={thStyle}>Days</th>
-              <th style={thStyle}>Day rate</th>
+              <th style={thStyle}>Rate</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
               <th style={thStyle} />
               <th style={thStyle} />
@@ -1360,7 +1390,9 @@ export function ScopeQuantitiesTable({
 
 // ── SCOPE_WBS_MANPOWER_V1 — ManpowerRowCells ────────────────────────────
 // Renders the 6 per-row manpower columns:
-//   Type · Qty · Days · Shift · Day rate · Total
+//   Type · Qty · Days · Shift · Rate · Total
+// WBS-SHIFT-S1: the Rate cell now shows the catalogue rate for the shift
+// the estimator picked (Night/Weekend/Day), not always the day rate.
 // Each column is a separate <td> (not a single spanning cell).
 // When Type is unset, Qty / Days / Shift are disabled but the cells
 // are still rendered at full width so column widths are stable.
@@ -1370,7 +1402,7 @@ type ManpowerRowCellsProps = {
   rowIdx: number;
   rowState: RowManpowerState;
   labourTypeOptions: TooltipSelectOption<string>[];
-  labourRateById: Map<string, number>;
+  labourRateById: Map<string, { day: number; night: number; weekend: number }>;
   isAi: boolean;
   onLabourTypeChange: (typeId: string | null) => void;
   onQtyBlur: (v: string) => void;
@@ -1393,15 +1425,20 @@ function ManpowerRowCells({
   onDayRateOverride
 }: ManpowerRowCellsProps) {
   const hasType = rowState.labourTypeId !== null;
-  // Catalogue rate for the selected type (null = no type selected).
-  const catalogueRate = rowState.labourTypeId ? (labourRateById.get(rowState.labourTypeId) ?? null) : null;
-  const rateIsOverridden = isDayRateOverridden(rowState.dayRateOverride, catalogueRate);
-  const resolvedRate = effectiveDayRate(rowState.dayRateOverride, catalogueRate);
 
   // Qty / Days raw values: row 0 reads from item.men / item.days; extra rows from rowState.
   const qtyValue = rowIdx === 0 ? (item.men ?? "") : rowState.qty;
   const daysValue = rowIdx === 0 ? (item.days ?? "") : rowState.days;
   const shiftValue = rowIdx === 0 ? (item.shift ?? "Day") : rowState.shift;
+
+  // WBS-SHIFT-S1: look up all three rates for the selected type, then
+  // resolve the one that matches the estimator's chosen shift. Defaults to
+  // the day rate when shift is absent or unrecognised (preserves prior behaviour).
+  const labourRates3 = rowState.labourTypeId ? (labourRateById.get(rowState.labourTypeId) ?? null) : null;
+  // catalogueRate is the shift-resolved rate (not always the day rate).
+  const catalogueRate = resolveRateForShift(labourRates3, shiftValue);
+  const rateIsOverridden = isDayRateOverridden(rowState.dayRateOverride, catalogueRate);
+  const resolvedRate = effectiveDayRate(rowState.dayRateOverride, catalogueRate);
 
   const qtyNum = qtyValue === "" ? null : Number(qtyValue);
   const daysNum = daysValue === "" ? null : Number(daysValue);
@@ -1489,7 +1526,9 @@ function ManpowerRowCells({
         />
       </td>
 
-      {/* Day rate — OverrideField following the card-level markup override pattern */}
+      {/* Rate — OverrideField following the card-level markup override pattern.
+          WBS-SHIFT-S1: placeholder and locked-rate title now reflect the
+          shift-resolved catalogue rate, not always the day rate. */}
       <td style={cellSt} data-manpower-col="day-rate">
         <OverrideField
           isOverridden={rateIsOverridden}
@@ -1506,12 +1545,12 @@ function ManpowerRowCells({
             value={localDayRate}
             placeholder={catalogueRate !== null ? String(catalogueRate) : "—"}
             disabled={isAi}
-            aria-label={`Day rate for row ${rowIdx + 1}`}
+            aria-label={`Rate for row ${rowIdx + 1}`}
             title={
               rateIsOverridden
-                ? `Rate override active. Locked rate: $${catalogueRate != null ? catalogueRate : "—"}/day`
+                ? `Rate override active. Locked ${shiftValue} rate: $${catalogueRate != null ? catalogueRate : "—"}/day`
                 : catalogueRate !== null
-                  ? `Locked rate: $${catalogueRate}/day`
+                  ? `Locked ${shiftValue} rate: $${catalogueRate}/day`
                   : "Select a Type to see the rate"
             }
             style={{ width: 72, height: 28, padding: "0 4px" }}

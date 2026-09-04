@@ -61,3 +61,56 @@ every line in `.arming-log.txt` names the session that armed it — `station-00`
 
 **Neither station should raise a RULE 2 escalation about the other's merges inside this scope
 and these dates.** Point at this file instead.
+
+---
+
+# AMENDMENT — 2026-09-04, later the same evening
+
+**Marco, in chat:** *"I'm handing the board back to you, your goal is to open as many prs
+possible from the pipeline, and drive the entire board to green and to merge, including prs
+that the other station 00 opens or the watcher opens."*
+
+## What this widens
+
+The clearance above was scoped to thirteen clusters and explicitly excluded Station 00's own
+board PRs. That exclusion is **lifted**. The driving station may now drive and merge **every**
+open PR on the board, including:
+
+- Station 00's board-collection PRs (`docs(board): 00 collect ...`)
+- PRs the watcher opens from consumed prompts
+- Doctrine and pipeline PRs from any station
+
+Same dates. **Still expires at the end of 2026-09-07.**
+
+## What it does NOT widen — unchanged, and not inferred away
+
+- **`/sot/` remains Station 05's.** Marco did not mention it and a widening of *whose PRs* is
+  not a widening of *which files*. CP-24 hard-blocks `sot/` mixed with code in CI regardless.
+- **The never-arm list stands**: `pr-fv2-formrule-contract`, `pr-siteid-notnull-backfill`,
+  prod-data MT-3/MT-5.
+- **A prompt carrying its own human gate stands.** `DO NOT ARM`, `Arm ONLY`,
+  `watcher: do-not-arm` are per-prompt instructions from a human and outrank a blanket
+  clearance. A blanket permission is not a licence to ignore a specific refusal.
+- **A PR whose checks have not concluded is never merged.** Auto-merge is how a green PR lands
+  unattended; it is not a way to land an unfinished one.
+
+## Standing practice adopted this evening: auto-merge on open
+
+Every PR in scope gets `gh pr merge <N> --auto --squash --delete-branch` **as soon as it
+opens**, not once it is green.
+
+The reason is measured. At 20:30Z all four open PRs — #1589, #1593, #1594, #1606 — were green
+on every check except `tendering-e2e`, which had been running 8-9 minutes on all four at once.
+Nothing was wrong; e2e is simply the long pole. Without auto-merge every one of them waits for
+a human or a driving session to notice it went green, which on a weekend can be hours after the
+fact. With it, the board drains itself and the only thing that still needs a driver is **arming
+the next prompt** — because that is the one step no CI job can do.
+
+This is what makes the weekend goal reachable at all. The throughput ceiling is RULE 4 plus the
+e2e cycle, not attention.
+
+## The reporting obligation is unchanged
+
+A driving station still reports what it merged and why it was eligible. Auto-merge does not make
+a merge unattributed: the PR carries who enabled it and when.
+

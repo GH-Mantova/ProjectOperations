@@ -34,14 +34,21 @@ contract_version: 1
 **1. Prove you can reach the box.**
 
 🔴 **Load the tool schema FIRST. A validation error is not blindness.** The device tools arrive
-**deferred** — their schemas are not in your prompt until you ask for them. `ToolSearch` with
-`select:mcp__remote-devices__plugin_desktop-commander_desktop-commander__start_process,mcp__remote-devices__device_bash`
-must run *before* either is called. Called cold they fail with `InputValidationError`, or an error
-saying no such tool is available — **that is an unloaded schema, not an unreachable machine.**
-Measured 2026-09-02: an agent that loaded the schemas first reached the box three ways in one turn
-(`node --version` → `v24.14.1`; `device_bash` listed the mounts; `get_device_info` returned the
-device name). **Declaring blindness without loading first is a §7 instrument lie, in the one step
-every run begins with** — and the contract below then makes you stop on it.
+**deferred** — their schemas are not in your prompt until you ask for them. `ToolSearch` must run
+*before* any of them is called. Called cold they fail with `InputValidationError`, or an error
+saying no such tool is available — **that is an unloaded schema, not an unreachable machine.** Only
+a failure **after** a successful load is blindness.
+
+🔴 **Find the ids; do not assume them.** The exact tool identifiers for Desktop Commander are
+**environment-specific** — the `mcp__...__` prefix and the set of tools offered both differ between
+the scheduled Cowork session and the interactive one, so a literal `select:` argument that names
+them by full id will succeed in the environment that authored it and fail in every other. MEASURED
+2026-09-02T05:5xZ from inside a live scheduled Station 00 run: ids this block had previously
+hard-coded returned "no such tool", while the tool that actually starts the shell was there under a
+different id. A keyword `ToolSearch` for `desktop-commander` returns whatever the current session
+offers — load them in ONE call, then use the ids the search reported. **Declaring blindness without
+loading first is a §7 instrument lie, in the one step every run begins with** — and the contract
+below then makes you stop on it.
 
 Then start a shell on the Windows host (`start_process`, shell `powershell.exe`). If Desktop
 Commander is absent, or the call fails **after** the load:

@@ -179,3 +179,133 @@ test("unmatched list is sorted and deduplicated", () => {
   assert.equal(result.ok, false);
   assert.deepEqual(result.unmatched, ["apps/a/b.ts", "apps/z/c.ts"]);
 });
+
+// ---------------------------------------------------------------------------
+// IN-SCOPE NARROWING (2026-09-04)
+//
+// A verdict cites paths for two reasons and only one is a claim about the diff.
+// "In scope: <path>" asserts the PR changed that file. Everything else - the test
+// cases exercised, the traps checked, the originating prompt - is EVIDENCE, and
+// those paths are SUPPOSED to be absent from the diff.
+//
+// Scanning the whole document conflated them and blocked eight real PRs
+// (#1542 #1543 #1544 #1545 #1561 #1563 #1564 #1572); #1543 and #1544 then waited
+// ~15 h for a human. The incentive ran backwards: a verdict saying only "looks
+// fine" passed, one that showed its work was blocked.
+//
+// The narrowing FAILS CLOSED - no in-scope line means the whole document is
+// scanned, exactly as before.
+// ---------------------------------------------------------------------------
+
+// The real #1572 verdict, trimmed to the shape that mattered. One file in the PR;
+// three cited paths that are correctly absent from it.
+test("real-case regression #1572: evidence paths outside the claim do not block", () => {
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "Scope compliance:",
+    "- In scope: scripts/pr-watcher/index.mjs constant rename and comment enhancement (1 file, +9/-6)",
+    "- Out of scope: none",
+    "",
+    "Originating prompt: `pr-watcher-merge-policy-nested-test-paths-LOOPING.md`",
+    "",
+    "Self-verification claims:",
+    "- Test case PR #1374 (scripts/pipeline/__tests__/check-breadcrumb.gitignored-sink.test.mjs) passes",
+    "- Test case substring trap (apps/api/src/rates/latest-rates.ts) refuses",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["scripts/pr-watcher/index.mjs"],
+  });
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test("the claim itself is still guarded: an in-scope path absent from the PR blocks", () => {
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "Scope compliance:",
+    "- In scope: `apps/api/src/ghost.ts` rewritten",
+    "",
+    "Self-verification claims:",
+    "- Exercised apps/api/src/__tests__/ghost.spec.ts",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["apps/api/src/real.ts"],
+  });
+
+  assert.equal(result.ok, false);
+  // Only the CLAIM is reported - the evidence path is not dragged in.
+  assert.deepEqual(result.unmatched, ["apps/api/src/ghost.ts"]);
+});
+
+test("FAILS CLOSED: a verdict with no in-scope line is still scanned whole", () => {
+  // Byte-identical in shape to the free-prose regression above, which must keep
+  // blocking. This is the property that makes the narrowing safe to ship.
+  const verdictText = [
+    "VERDICT: FIX",
+    "",
+    "The spec at `apps/api/src/modules/tendering/__tests__/allocation.service.spec.ts`",
+    "covers the happy path but not the error branch.",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["docs/pipeline/foo.md"],
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unmatched, [
+    "apps/api/src/modules/tendering/__tests__/allocation.service.spec.ts",
+  ]);
+});
+
+test("'Out of scope:' paths are never required to be present", () => {
+  // A path named out-of-scope is being declared ABSENT from the diff. Requiring
+  // it to be present would invert the check.
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "- In scope: apps/web/src/Kept.tsx",
+    "- Out of scope: apps/web/src/Untouched.tsx (deliberately not modified)",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["apps/web/src/Kept.tsx"],
+  });
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test("recognises the formatting variants a reviewer actually writes", () => {
+  for (const heading of ["In scope:", "**In scope**:", "- In Scope:", "in_scope:", "> In-scope:"]) {
+    const result = validateVerdict({
+      verdictText: `VERDICT: MERGE\n\n${heading} apps/api/src/foo.ts\n\nNotes: see apps/api/src/other.ts`,
+      prFiles: ["apps/api/src/foo.ts"],
+    });
+    assert.deepEqual(result, { ok: true }, `heading form failed: ${heading}`);
+  }
+});
+
+test("several in-scope lines: every one is checked, only the bad one is named", () => {
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "- In scope: apps/api/src/a.ts",
+    "- In scope: apps/api/src/b.ts",
+    "- In scope: apps/api/src/missing.ts",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["apps/api/src/a.ts", "apps/api/src/b.ts"],
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unmatched, ["apps/api/src/missing.ts"]);
+});

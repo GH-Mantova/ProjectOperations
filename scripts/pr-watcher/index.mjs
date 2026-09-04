@@ -1388,13 +1388,25 @@ export function startHeartbeat(name, getLastLine, onRunTimeout, _opts = {}) {
 // --- Policy auto-merge helpers ---
 
 // tests-docs policy: the diff must touch ONLY tests/** and/or docs/**, and
-// must not contain migration files.
+// must not contain migration files. NESTED_TEST_PATHS: tests in this repo
+// live in nested __tests__/ folders and in .test/.spec files beside their
+// source, so isTestOrDocsPath accepts those forms as well.
+const NESTED_TEST_PATH_PATTERNS = [
+  /^(tests|docs)\//,
+  /(^|\/)__tests__\//,
+  /\.(test|spec)\.[cm]?[jt]sx?$/,
+];
+
+function isTestOrDocsPath(p) {
+  return NESTED_TEST_PATH_PATTERNS.some((re) => re.test(p));
+}
+
 export function classifyPolicyFiles(files) {
   const paths = (files ?? []).map((f) => (typeof f === "string" ? f : f.path));
   if (paths.length === 0) return { ok: false, reason: "empty diff" };
   const migration = paths.find((p) => /(^|\/)migrations\//.test(p));
   if (migration) return { ok: false, reason: `migration file: ${migration}` };
-  const outside = paths.find((p) => !/^(tests|docs)\//.test(p));
+  const outside = paths.find((p) => !isTestOrDocsPath(p));
   if (outside) return { ok: false, reason: `outside tests/ or docs/: ${outside}` };
   return { ok: true };
 }

@@ -237,7 +237,7 @@ or an arm it cannot account for), not the mere overlap.
   healthy: node RUNNING pid 24744, wrapper alive, heartbeat 4 min, 0 armed at the time of the sweep.
 - **Did not touch `/sot/`, Azure/Entra/SharePoint, production data, or the watcher clone's git.**
 
-## ADDENDUM — 2026-09-04T02:31Z, after the board PR was opened
+## ADDENDUM — 2026-09-04T02:25Z, after the board PR was opened
 
 The prompt armed at 02:18Z was consumed and built. **`#1563` — "docs(pipeline): DOCTRINE 9.5 cite
 the symbol, not the line number"** opened at `2026-09-04T02:21:34Z`, head
@@ -284,3 +284,25 @@ produced since `#1500`. `#1564` waits behind it.
 **DISPOSITION (addendum): DEFERRED to the next Station 00 run** — with the exact probe, the exact
 window (`03:51Z`), and both branches of the outcome written down so that run does not have to
 re-derive any of it.
+
+**[MEASURED] The lane is still holding the prompt — this is what "in the window" looks like on disk.**
+At 02:25Z `pr-doctrine-s95-cite-symbol-not-line-**ready**.md` is still in the queue root and
+`docs/pr-prompts/processed/*doctrine-s95*` is **empty**: the watcher has opened the PR and is in
+`waitForPolicyMerge`, so the log that RULE 2 probes does not exist yet and will not until the lane
+either merges or times out. **Do not read that absence as "no verdict, therefore free to merge"** —
+it is a verdict still being computed.
+
+Two live confirmations of standing traps, in passing:
+
+- **`armed` read `2`, and the real count is `1`.** The second file is `rev-1563-ready.md`, an
+  auto-generated REVIEW JOB with no front matter by design (DOCTRINE §9.5). Counting it would have
+  reported an arm this station did not make.
+- **The armed prompt's mtime is `2026-09-01T00:38:06Z`** — 3.1 days old — because `git mv` preserves
+  mtime. It was armed at `02:18:14Z`, seven minutes before this reading. The only clock that dates
+  an arm is `.arming-log.txt`, and that file is untracked, so it exists on this box and nowhere else.
+
+**Also not done, and deliberately: project memory was NOT edited this run.** The correction it wants
+(a SILENT verdict can be pure merge latency) is real, but `MEMORY.md` is at its stated read limit and
+`project_memory_index_editing_rules.md` is 73 KB that this run did not read. Editing a load-bearing
+index against rules I have not read is the shape of mutation this pipeline punishes. The finding is
+durable without it: it is in this breadcrumb, on the tracked channel, inside `#1564`.

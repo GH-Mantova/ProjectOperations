@@ -1,3 +1,5 @@
+// CRM_ACCOUNTS_LIST_V2
+// design_ref: https://claude.ai/code/artifact/3372e3ff-b041-47cd-a47e-d5897f06a62c
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
@@ -29,8 +31,10 @@ import {
 export type AccountSummaryRow = {
   id: string;
   name: string;
+  abn: string | null;
   type: string;
   lifecycle: "PROSPECT" | "ACTIVE" | "PAST";
+  owner: { id: string; firstName: string; lastName: string } | null;
   winRate: number | null;
   openOpportunitiesCount: number;
   lastContactedAt: string | null;
@@ -315,15 +319,6 @@ const LIFECYCLE_COLOUR: Record<string, string> = {
   PAST: "#9ca3af"
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  CLIENT: "Client",
-  PROSPECT: "Prospect",
-  HEAD_CONTRACTOR: "Head contractor",
-  SUBCONTRACTOR: "Subcontractor",
-  PARTNER: "Partner",
-  OTHER: "Other"
-};
-
 // ── Format helpers ────────────────────────────────────────────────────────────
 
 function fmtRelative(iso: string | null): string {
@@ -345,7 +340,17 @@ function fmtRelative(iso: string | null): string {
 
 // ── Stat tile helper ──────────────────────────────────────────────────────────
 
-function StatTile({ label, value, accent }: { label: string; value: string | number; accent?: boolean }) {
+function StatTile({
+  label,
+  value,
+  subLine,
+  accent
+}: {
+  label: string;
+  value: string | number;
+  subLine?: string;
+  accent?: boolean;
+}) {
   return (
     <div
       style={{
@@ -353,11 +358,14 @@ function StatTile({ label, value, accent }: { label: string; value: string | num
         border: `1px solid ${accent ? "#fed7aa" : "#e5e7eb"}`,
         borderRadius: 8,
         padding: 16,
-        minWidth: 120
+        minWidth: 140
       }}
     >
       <div style={{ fontSize: 12, color: "var(--text-muted, #6b7280)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, color: accent ? "#ea580c" : "#111827" }}>{value}</div>
+      {subLine && (
+        <div style={{ fontSize: 11, color: "var(--text-muted, #9ca3af)", marginTop: 2 }}>{subLine}</div>
+      )}
     </div>
   );
 }
@@ -490,6 +498,37 @@ function LogContactModal({
   );
 }
 
+// ── CSV export ────────────────────────────────────────────────────────────────
+
+/**
+ * Exports the currently filtered rows as a client-side CSV.
+ * Column order matches the rendered table:
+ * Account, ABN, Lifecycle, Owner, Open opps, Win rate, Last contact
+ */
+function exportCsv(filtered: AccountSummaryRow[]): void {
+  const header = ["Account", "ABN", "Lifecycle", "Owner", "Open opps", "Win rate", "Last contact"];
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const rows = filtered.map((r) => [
+    esc(r.name),
+    esc(r.abn ?? ""),
+    esc(LIFECYCLE_LABEL[r.lifecycle] ?? r.lifecycle),
+    esc(r.owner ? `${r.owner.firstName} ${r.owner.lastName}` : ""),
+    String(r.openOpportunitiesCount),
+    esc(formatWinRate(r.winRate)),
+    esc(fmtRelative(r.lastContactedAt))
+  ]);
+  const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "accounts.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function AccountsListPage() {
@@ -509,6 +548,11 @@ export function AccountsListPage() {
 
   // CRM-S6: log-contact modal — stores the account row being contacted.
   const [logContactRow, setLogContactRow] = useState<{ id: string; name: string } | null>(null);
+
+  // Filter state — client-side over the already-loaded rows.
+  const [searchText, setSearchText] = useState("");
+  const [lifecycleFilter, setLifecycleFilter] = useState<string>("ALL");
+  const [ownerFilter, setOwnerFilter] = useState<string>("ALL");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -538,9 +582,38 @@ export function AccountsListPage() {
   // ── Derived stat tiles ─────────────────────────────────────────────────────
 
   const totalAccounts = rows.length;
-  const activeCount = rows.filter((r) => r.lifecycle === "ACTIVE").length;
-  const prospectCount = rows.filter((r) => r.lifecycle === "PROSPECT").length;
+  const openOppsTotal = rows.reduce((sum, r) => sum + r.openOpportunitiesCount, 0);
   const goingColdCount = rows.filter((r) => r.goingCold).length;
+  // unlinkedCount comes from the link-preview fetch.
+
+  // ── Client-side filtering ──────────────────────────────────────────────────
+
+  const filteredRows = rows.filter((r) => {
+    if (searchText.trim()) {
+      const term = searchText.trim().toLowerCase();
+      if (!r.name.toLowerCase().includes(term)) return false;
+    }
+    if (lifecycleFilter !== "ALL" && r.lifecycle !== lifecycleFilter) return false;
+    if (ownerFilter !== "ALL") {
+      if (ownerFilter === "UNASSIGNED") {
+        if (r.owner !== null) return false;
+      } else {
+        if (r.owner?.id !== ownerFilter) return false;
+      }
+    }
+    return true;
+  });
+
+  // Distinct owner list built from the loaded rows (no extra API call).
+  const ownerOptions = Array.from(
+    new Map(
+      rows
+        .filter((r) => r.owner !== null)
+        .map((r) => [r.owner!.id, r.owner!])
+    ).values()
+  ).sort((a, b) =>
+    `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -588,17 +661,18 @@ export function AccountsListPage() {
         </h1>
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            onClick={() => void load()}
+            onClick={() => exportCsv(filteredRows)}
             style={{
               padding: "10px 18px",
               borderRadius: 6,
               border: "1px solid #ccc",
               background: "#fff",
               cursor: "pointer",
-              minHeight: 44
+              minHeight: 44,
+              fontSize: 14
             }}
           >
-            Refresh
+            Export
           </button>
           <button
             onClick={() => setShowNewAccount(true)}
@@ -640,12 +714,22 @@ export function AccountsListPage() {
 
       {!loading && !error && (
         <>
-          {/* Stat tiles */}
+          {/* Stat tiles — mock-up's four */}
           <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-            <StatTile label="Total accounts" value={totalAccounts} />
-            <StatTile label="Active" value={activeCount} />
-            <StatTile label="Prospects" value={prospectCount} />
-            <StatTile label="Going cold" value={goingColdCount} accent={goingColdCount > 0} />
+            <StatTile label="Accounts" value={totalAccounts} subLine="all non-archived" />
+            <StatTile label="Open opportunities" value={openOppsTotal} subLine="across all accounts" />
+            <StatTile
+              label="Going cold"
+              value={goingColdCount}
+              subLine={`no contact in ${CRM_COLD_V2.THRESHOLD_DAYS} days`}
+              accent={goingColdCount > 0}
+            />
+            <StatTile
+              label="Unlinked clients"
+              value={unlinkedCount ?? 0}
+              subLine="no account row yet"
+              accent={(unlinkedCount ?? 0) > 0}
+            />
           </div>
 
           {/* CRM-S4: banner — shown when clients exist with no account.
@@ -687,6 +771,57 @@ export function AccountsListPage() {
             </div>
           )}
 
+          {/* Filter row — search + lifecycle + owner */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <input
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search accounts"
+              style={{
+                flex: "1 1 200px",
+                padding: "8px 10px",
+                borderRadius: 6,
+                border: "1px solid #d1d5db",
+                fontSize: 13,
+                background: "#fff"
+              }}
+            />
+            <select
+              value={lifecycleFilter}
+              onChange={(e) => setLifecycleFilter(e.target.value)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 6,
+                border: "1px solid #d1d5db",
+                fontSize: 13,
+                background: "#fff"
+              }}
+            >
+              <option value="ALL">Lifecycle: All</option>
+              {LIFECYCLE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <select
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 6,
+                border: "1px solid #d1d5db",
+                fontSize: 13,
+                background: "#fff"
+              }}
+            >
+              <option value="ALL">Owner: All</option>
+              <option value="UNASSIGNED">Unassigned</option>
+              {ownerOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.firstName} {o.lastName}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Empty state */}
           {rows.length === 0 ? (
             <div
@@ -717,7 +852,8 @@ export function AccountsListPage() {
               </button>
             </div>
           ) : (
-            /* Accounts table */
+            /* Accounts table — columns per mock-up:
+               Account (name + ABN) | Lifecycle | Owner | Open opps | Win rate | Last contact | [Log contact] */
             <div
               style={{
                 background: "#fff",
@@ -729,18 +865,17 @@ export function AccountsListPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#f6f6f6", textAlign: "left" }}>
-                    <th style={thStyle}>Name</th>
-                    <th style={thStyle}>Type</th>
+                    <th style={thStyle}>Account</th>
                     <th style={thStyle}>Lifecycle</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Win rate</th>
+                    <th style={thStyle}>Owner</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Open opps</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Win rate</th>
                     <th style={thStyle}>Last contact</th>
-                    <th style={thStyle}>Status</th>
                     <th style={thStyle}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {filteredRows.map((row) => (
                     <tr
                       key={row.id}
                       onClick={() => navigate(`/crm/accounts/${row.id}`)}
@@ -756,7 +891,7 @@ export function AccountsListPage() {
                         (e.currentTarget as HTMLTableRowElement).style.background = "";
                       }}
                     >
-                      {/* Name — linked */}
+                      {/* Account — name + ABN sub-line */}
                       <td style={tdStyle}>
                         <span
                           style={{ color: "#6366f1", fontWeight: 600, textDecoration: "underline", cursor: "pointer" }}
@@ -767,9 +902,12 @@ export function AccountsListPage() {
                         >
                           {row.name}
                         </span>
+                        {row.abn && (
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                            ABN {row.abn}
+                          </div>
+                        )}
                       </td>
-                      {/* Type */}
-                      <td style={tdStyle}>{TYPE_LABEL[row.type] ?? row.type}</td>
                       {/* Lifecycle badge */}
                       <td style={tdStyle}>
                         <span
@@ -786,19 +924,26 @@ export function AccountsListPage() {
                           {LIFECYCLE_LABEL[row.lifecycle] ?? row.lifecycle}
                         </span>
                       </td>
-                      {/* Win rate */}
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{formatWinRate(row.winRate)}</td>
+                      {/* Owner */}
+                      <td style={tdStyle}>
+                        {row.owner
+                          ? `${row.owner.firstName} ${row.owner.lastName}`
+                          : <span style={{ color: "#9ca3af" }}>—</span>
+                        }
+                      </td>
                       {/* Open opportunities */}
                       <td style={{ ...tdStyle, textAlign: "right" }}>{row.openOpportunitiesCount}</td>
-                      {/* Last contact */}
-                      <td style={tdStyle}>{fmtRelative(row.lastContactedAt)}</td>
-                      {/* Going cold chip */}
+                      {/* Win rate */}
+                      <td style={{ ...tdStyle, textAlign: "right" }}>{formatWinRate(row.winRate)}</td>
+                      {/* Last contact — with GOING COLD chip inside the cell */}
                       <td style={tdStyle}>
+                        <div>{fmtRelative(row.lastContactedAt)}</div>
                         {row.goingCold && (
                           <span
                             aria-label="Going cold"
                             style={{
                               display: "inline-block",
+                              marginTop: 4,
                               padding: "2px 10px",
                               borderRadius: 12,
                               background: "#fff7ed",

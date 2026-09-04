@@ -2387,6 +2387,41 @@ export async function clearConflictEntry(prNum, {
   }
 }
 
+// NEVER REBASE A PR WHOSE CHECKS ARE STILL RUNNING.
+//
+// `gh pr update-branch` rewrites the head, which CANCELS every in-flight check and
+// starts them again. Doing that mid-run throws away the minutes already spent and
+// leaves CANCELLED conclusions behind, which read as failures to anyone skimming.
+// With Station 00 landing a board PR on a cadence, every open PR goes BEHIND on that
+// cadence, so this fires against whatever happens to be mid-CI at the time.
+//
+// DELIBERATELY NARROWER THAN THE ESCALATION ASKED FOR. The request was to skip a PR
+// whose checks are RED *or* RUNNING. Only RUNNING is implemented, because skipping RED
+// is not obviously right: a PR can be red *because* it is behind - main may carry the
+// very fix it needs - and refusing to update it would strand it red forever. A red PR
+// also stops being BEHIND the moment it is updated, so it is re-run when main moves,
+// not every poll. Running checks have no such argument on the other side: cancelling
+// work in progress is a loss with no upside.
+//
+// SHAPE VERIFIED against live `gh pr list --json statusCheckRollup` on 2026-09-04:
+// entries carry { __typename, name, status, conclusion, startedAt, completedAt,
+// detailsUrl, workflowName } and every one this repo produces is a CheckRun.
+//
+// KNOWN GAP, left open on purpose: a legacy StatusContext entry carries `state`, not
+// `status`, so an in-flight one would not be seen here. That fails OPEN - back to
+// today's behaviour of rebasing anyway - which is the safe direction for a guard whose
+// only job is to avoid waste. Closing it would mean guessing at a shape this repo does
+// not currently emit.
+// Exported for unit testing: the decision is pure, the gh call is not.
+export function shouldSkipUpdate(statusCheckRollup) {
+  const checks = Array.isArray(statusCheckRollup) ? statusCheckRollup : [];
+  const running = checks.find((c) => c && c.status && c.status !== "COMPLETED");
+  if (running) {
+    return { skip: true, reason: "checks in flight", check: running.name ?? "(unknown)" };
+  }
+  return { skip: false };
+}
+
 // Auto-update-branch: bring our own open PRs that fell BEHIND main up to
 // date. Conflicting PRs (mergeStateStatus DIRTY) get a one-time human
 // notification after two consecutive DIRTY observations; then we move on.
@@ -2396,7 +2431,7 @@ async function pollForBehindPrs() {
   try {
     prs = await runGh(
       ["pr", "list", "--author", "@me", "--state", "open", "--json",
-        "number,title,mergeStateStatus,headRefOid"],
+        "number,title,mergeStateStatus,headRefOid,statusCheckRollup"],
       { json: true },
     );
   } catch (err) {
@@ -2459,6 +2494,15 @@ async function pollForBehindPrs() {
     }
 
     if (pr.mergeStateStatus !== "BEHIND") continue;
+
+    // Rebasing now would cancel work already in progress. Leave it; it will still be
+    // BEHIND on the next poll, by which time its checks have concluded.
+    const gate = shouldSkipUpdate(pr.statusCheckRollup);
+    if (gate.skip) {
+      log("update", `PR #${pr.number} is BEHIND but ${gate.reason} (${gate.check}) — not rebasing`);
+      continue;
+    }
+
     if (DRY_RUN) {
       log("dry-run", `PR #${pr.number} is BEHIND — would run gh pr update-branch ${pr.number}`);
       continue;

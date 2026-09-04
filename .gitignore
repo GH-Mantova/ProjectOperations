@@ -100,7 +100,15 @@ apps/api/scripts/xero-import-report.md
 # and creates a single junk folder at repo root like "C:ProjectOperations2docs...").
 # Watcher sweeps these at startup; gitignore prevents accidental commit.
 /C:*
-Claude Design/
+# Claude Design: the WRITTEN half is tracked and reviewable; the 65 mock-ups,
+# the 194 KB styles.css copy and the assets are not.
+Claude Design/*
+!Claude Design/README.md
+!Claude Design/docs/
+!Claude Design/assets/
+Claude Design/assets/*
+!Claude Design/assets/routes.js
+!Claude Design/proposed/
 
 # Overnight-QA scheduled task - local-only run state (durable, always-mounted location).
 # The Master Plan doc stays committable; these transient state files do not dirty the tree.

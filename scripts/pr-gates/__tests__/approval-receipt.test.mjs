@@ -80,6 +80,27 @@ test("wasEverEscalated: ignores labels that only differ in case (do-not-merge is
   assert.equal(wasEverEscalated(events), false);
 });
 
+test("wasEverEscalated: tolerates primitive rows (bare string / number) without throwing", () => {
+  // Main's existing tolerance test uses object/nullish rows; a bare string or
+  // number takes a different path through the `typeof e !== "object"` guard.
+  const events = [
+    "garbage",
+    42,
+    { event: "labeled", label: { name: "do-not-merge" } },
+  ];
+  assert.equal(wasEverEscalated(events), true);
+});
+
+test("wasEverEscalated: plain object (not array) with a matching-looking label still returns false", () => {
+  // Distinct from the existing `{ event: "labeled" }` non-array fixture: that
+  // one has no matching label, so it does not actually prove the Array.isArray
+  // guard is what stops the traversal. This fixture WOULD register as an
+  // escalation if the guard were removed and iteration somehow succeeded, so
+  // it isolates the array-guard rule specifically.
+  const notAnArray = { event: "labeled", label: { name: "do-not-merge" } };
+  assert.equal(wasEverEscalated(notAnArray), false);
+});
+
 // -----------------------------------------------------------------------------
 // decideApprovalReceipt -- primary truth table
 // -----------------------------------------------------------------------------
@@ -95,6 +116,22 @@ test("labelPresent -> FAIL LABEL_PRESENT (unchanged pre-existing behaviour)", ()
   assert.equal(d.verdict, "FAIL");
   assert.equal(d.code, "LABEL_PRESENT");
   assert.match(d.message, /do-not-merge label/);
+});
+
+test("labelPresent: label present overrides a valid receipt (short-circuits ahead of everything else)", () => {
+  // Nothing else in the suite proves a valid receipt cannot release a PR whose
+  // label is still on. The label check must short-circuit at the top of the
+  // decision so a receipt cannot pre-clear the escalation before the label is
+  // removed.
+  const d = decideApprovalReceipt({
+    labelPresent: true,
+    everLabeled: true,
+    receiptInDiff: true,
+    receiptBody: receipt(),
+    prNumber: PR,
+  });
+  assert.equal(d.verdict, "FAIL");
+  assert.equal(d.code, "LABEL_PRESENT");
 });
 
 test("!labelPresent && !everLabeled -> PASS NEVER_ESCALATED (ordinary PR)", () => {
@@ -138,6 +175,22 @@ test("released with a valid receipt -> PASS RECEIPT_VALID", () => {
 // -----------------------------------------------------------------------------
 // Malformed-receipt cases -- each failure mode gets its own test.
 // -----------------------------------------------------------------------------
+
+test("receiptInDiff=true with receiptBody=null (unreadable file) -> FAIL RECEIPT_MALFORMED_FRONT_MATTER", () => {
+  // Callers set receiptInDiff=true when the receipt path appears in the diff
+  // but pass receiptBody=null when the file could not be read (e.g. deleted in
+  // this PR, or a read error). This must reach the empty/missing branch of
+  // parseReceipt rather than short-circuiting elsewhere.
+  const d = decideApprovalReceipt({
+    labelPresent: false,
+    everLabeled: true,
+    receiptInDiff: true,
+    receiptBody: null,
+    prNumber: PR,
+  });
+  assert.equal(d.verdict, "FAIL");
+  assert.equal(d.code, "RECEIPT_MALFORMED_FRONT_MATTER");
+});
 
 test("receipt missing front matter -> FAIL RECEIPT_MALFORMED_FRONT_MATTER", () => {
   const d = decideApprovalReceipt({

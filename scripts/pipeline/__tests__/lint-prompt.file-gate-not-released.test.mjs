@@ -55,7 +55,7 @@ function runLint(fileText, opts) {
 const BASE_FM_FIELDS =
   "premise: 'true'\n" +
   "premise_means: always-true sentinel\n" +
-  "scope:\n  - apps/web/src/**\n" +
+  "scope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\n" +
   "size: 3\n" +
   "gate_allow: none";

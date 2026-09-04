@@ -57,39 +57,39 @@ function run(name, frontMatter, expectedExit) {
 console.log("=== exit 0 ADMIT: premise always-true (well-formed prompt is admitted)");
 run("admit",
   "premise: 'true'\n" +
-  "premise_means: always-true sentinel\nscope:\n  - apps/web/src/**\n" +
+  "premise_means: always-true sentinel\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
 console.log("\n=== exit 3 STALE: premise false (shell__collapse-toggle DOES exist -> work done)");
 run("stale",
   "premise: '! grep -q \"shell__collapse-toggle\" apps/web/src/components/ShellLayout.tsx'\n" +
-  "premise_means: the toggle class does not exist yet\nscope:\n  - apps/web/src/**\n" +
+  "premise_means: the toggle class does not exist yet\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 3);
 
 console.log("\n=== exit 1 REJECT (NOT 3!): premise is BROKEN, not false. Must never be binned.");
 run("broken-cmd",
   "premise: 'thiscommanddoesnotexist --wat'\n" +
-  "premise_means: nonsense\nscope:\n  - apps/web/src/**\n" +
+  "premise_means: nonsense\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 1);
 
 run("broken-file",
   "premise: 'grep -q \"x\" apps/web/src/NoSuchFile.tsx'\n" +
-  "premise_means: file that does not exist\nscope:\n  - apps/web/src/**\n" +
+  "premise_means: file that does not exist\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 1);
 
 console.log("\n=== exit 1 REJECT: oversized (pr-replace-native-browser-dialogs = 48 files, 240 turns)");
 run("too-big",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 48\ngate_allow: none", 1);
 
 console.log("\n=== exit 1 REJECT: gate_allow declares migrations but scope has none (CP-11 would fail)");
 run("gate-mismatch",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: migrations", 1);
 
 console.log("\n=== exit 1 REJECT: missing required field");
 run("missing-field",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\ngate_allow: none", 1);
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\ngate_allow: none", 1);
 
 console.log("\n=== exit 1 REJECT: migration scope with no rollback_strategy (LL-29)");
 run("migration-no-rollback",
@@ -110,7 +110,7 @@ run("migration-with-rollback",
 
 console.log("\n=== exit 0 ADMIT: non-migration prompt without rollback_strategy (still optional)");
 run("non-migration-no-rollback",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
 console.log("\n=== exit 1 REJECT: migration scope, no test file in scope, no backfill:false (BACKFILL_TEST_REQUIRED)");
@@ -162,12 +162,12 @@ run("not-null-no-escalate",
 
 console.log("\n=== exit 0 ADMIT: ordinary non-destructive prompt (no destructive signal, no escalation needed)");
 run("ordinary-prompt-no-destructive",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/components/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nescalates: false", 0);
 
 console.log("\n=== exit 0 ADMIT: prompt containing 'delete' inside a longer identifier (no false-positive)");
 run("delete-in-identifier-no-false-positive",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/pages/SoftDeletePage.tsx\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/SoftDeletePage.tsx\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nescalates: false", 0);
 
 // ── Tier 2 scope-gating (2026-08-17) ────────────────────────────────────────
@@ -205,47 +205,47 @@ run("migration-scoped-backfill-still-caught",
 
 console.log("\n=== exit 1 REJECT: requires-merged (hyphen) → UNKNOWN_KEY");
 run("dep-hyphen-merged",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires-merged: 42", 1);
 
 console.log("\n=== exit 1 REJECT: requires_files_on_main (plural) → UNKNOWN_KEY, suggests singular");
 run("dep-plural-files-on-main",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_files_on_main: apps/foo.ts", 1);
 
 console.log("\n=== exit 1 REJECT: requires_merged: 0 → REQUIRES_MERGED_INVALID");
 run("dep-merged-zero",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged: 0", 1);
 
 console.log("\n=== exit 1 REJECT: requires_merged: -1 → REQUIRES_MERGED_INVALID");
 run("dep-merged-negative",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged: -1", 1);
 
 console.log("\n=== exit 1 REJECT: requires_merged: abc → REQUIRES_MERGED_INVALID");
 run("dep-merged-abc",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged: abc", 1);
 
 console.log("\n=== exit 1 REJECT: requires_merged: (empty) → REQUIRES_MERGED_INVALID");
 run("dep-merged-empty",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_merged:", 1);
 
 console.log("\n=== exit 1 REJECT: requires_file_on_main: (empty) → REQUIRES_PATH_EMPTY");
 run("dep-file-on-main-empty",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_file_on_main:", 1);
 
 console.log("\n=== exit 1 REJECT: requires_on_main: (empty) → REQUIRES_PATH_EMPTY");
 run("dep-on-main-empty",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_on_main:", 1);
 
 console.log("\n=== exit 0 ADMIT: requires_merged well-formed → admitted (no path-gate check)");
 run("dep-all-keys-well-formed",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_merged: 42", 0);
 
@@ -255,7 +255,7 @@ run("dep-all-keys-well-formed",
 // broken git binary so it warns-and-skips fail-safe. The parser-shape check still runs and admits.
 console.log("\n=== exit 0 ADMIT: requires_on_main path-only shape accepted (git broken -> gate probe skipped)");
 runIsolated("dep-on-main-path-only",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_on_main: apps/foo.ts",
   0,
@@ -263,7 +263,7 @@ runIsolated("dep-on-main-path-only",
 
 console.log("\n=== exit 0 ADMIT: requires_on_main path :: fixed-string shape accepted (git broken -> gate probe skipped)");
 runIsolated("dep-on-main-path-and-string",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_on_main: apps/foo.ts :: some fixed string",
   0,
@@ -271,7 +271,7 @@ runIsolated("dep-on-main-path-and-string",
 
 console.log("\n=== exit 0 ADMIT: prompt with NONE of the dep keys → unchanged behaviour (MOST important)");
 run("dep-none-present",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
 // ── Cluster-chaining SLICE 3: cluster metadata + graph rules ────────────────
@@ -317,13 +317,13 @@ function runIsolated(name, frontMatter, expectedExit, opts) {
 
 console.log("\n=== exit 0 ADMIT: cluster + cluster_order:1, no dep key -> first slice legal");
 run("cluster-first-slice",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: 1", 0);
 
 console.log("\n=== exit 1 REJECT: cluster_order:2 with NO dep key -> CLUSTER_NO_DEP");
 run("cluster-order-2-no-dep",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: 2", 1);
 
@@ -333,7 +333,7 @@ console.log("\n=== exit 0 ADMIT: HOLD cluster_order:2 with unmet dep (git broken
 // runs on a HOLD (which historically admitted this shape as "parked, waiting for the needle") and
 // with a broken git binary so the gate probe warns-and-skips fail-safe.
 runIsolated("cluster-order-2-with-dep",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: 2\n" +
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_XYZ_1234567890",
@@ -342,43 +342,43 @@ runIsolated("cluster-order-2-with-dep",
 
 console.log("\n=== exit 1 REJECT: cluster_order:0 -> CLUSTER_ORDER_INVALID");
 run("cluster-order-zero",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: 0", 1);
 
 console.log("\n=== exit 1 REJECT: cluster_order:-1 -> CLUSTER_ORDER_INVALID");
 run("cluster-order-negative",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: -1", 1);
 
 console.log("\n=== exit 1 REJECT: cluster_order:two -> CLUSTER_ORDER_INVALID");
 run("cluster-order-nonnumeric",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: my-cluster\ncluster_order: two", 1);
 
 console.log("\n=== exit 1 REJECT: cluster slug Bad_Slug (uppercase + underscore) -> CLUSTER_BAD_SLUG");
 run("cluster-slug-bad-uppercase",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: Bad_Slug\ncluster_order: 1", 1);
 
 console.log("\n=== exit 1 REJECT: cluster slug 'ab' (too short) -> CLUSTER_BAD_SLUG");
 run("cluster-slug-too-short",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: ab\ncluster_order: 1", 1);
 
 console.log("\n=== exit 1 REJECT: cluster slug 42 chars (over 41-char cap) -> CLUSTER_BAD_SLUG");
 run("cluster-slug-too-long",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: aaaaaaaaaa-aaaaaaaaaa-aaaaaaaaaa-aaaaaaaaaa1\ncluster_order: 1", 1);
 
 console.log("\n=== exit 1 REJECT: cluster_order present, cluster absent -> CLUSTER_ORDER_NO_CLUSTER");
 run("cluster-order-without-cluster",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster_order: 1", 1);
 
@@ -388,12 +388,12 @@ run("cluster-order-without-cluster",
 console.log("\n=== exit 1 REJECT: two-prompt cycle -> CLUSTER_CYCLE names both");
 {
   const cycleOtherFm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: cycle-test\ncluster_order: 2\n" +
     "requires_file_on_main: cycle-b-ready.md\n---\n" + BODY;
   const out = runIsolated("cycle-b",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: cycle-test\ncluster_order: 2\n" +
     "requires_file_on_main: cycle-a-ready.md",
@@ -409,7 +409,7 @@ console.log("\n=== exit 1 REJECT: two-prompt cycle -> CLUSTER_CYCLE names both")
 
 console.log("\n=== exit 0 ADMIT: malformed sibling in same dir -> warning, good prompt still admitted");
 runIsolated("good-with-bad-sibling",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: sibling-test\ncluster_order: 1",
   0,
@@ -421,14 +421,14 @@ console.log("\n=== exit 1 REJECT: requires_on_main needle already on origin/main
 // is a chain successor whose satisfied gate means the predecessor landed — that is GATE_RELEASED,
 // not a dead gate. See the cluster-order-3-successor-satisfied test below.
 runIsolated("cluster-dead-gate",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: dead-gate-test\ncluster_order: 1\n" +
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY", 1);
 
 console.log("\n=== exit 0 ADMIT: git unavailable during dead-gate probe -> warning, admitted");
 runIsolated("cluster-dead-gate-git-broken",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: dead-gate-safe\ncluster_order: 1\n" +
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
@@ -438,7 +438,7 @@ runIsolated("cluster-dead-gate-git-broken",
 console.log("\n=== exit 0 ADMIT: prompt with NONE of the cluster keys -> unchanged behaviour");
 // Regression guard: every existing queue prompt must still pass.
 run("cluster-none-present",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 0);
 
 // ── Regression: foreign-cwd premise resolution (fix: queue-sync-pin-lint-repo-root) ──────────
@@ -492,7 +492,7 @@ console.log("\n=== exit 0 ADMIT: foreign-cwd, no LINT_REPO_ROOT -> premise auto-
 console.log("\n=== exit 1 REJECT: requires_file_on_main path already on origin/main -> FILE_GATE_DEAD");
 // scripts/pipeline/lint-prompt.mjs has been on origin/main since long before this test file.
 runIsolated("file-gate-dead-scalar",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_file_on_main: scripts/pipeline/lint-prompt.mjs", 1);
 
@@ -500,13 +500,13 @@ console.log("\n=== exit 1 REJECT: armed requires_file_on_main path NOT on origin
 // Post-ARMED_GATE_STILL_CHECKED: an armed prompt whose existence gate is unmet REJECTS. Under the
 // previous behavior this admitted as a bare ADMIT because checkGateNotReleased was HOLD-only.
 runIsolated("file-gate-live",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_file_on_main: apps/api/src/does-not-exist-abcxyz-1234567890.ts", 1);
 
 console.log("\n=== exit 1 REJECT: list form with one dead entry among live ones -> FILE_GATE_DEAD");
 runIsolated("file-gate-dead-list",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_file_on_main:\n" +
   "  - apps/api/src/does-not-exist-abcxyz-1234567890.ts\n" +
@@ -517,7 +517,7 @@ console.log("\n=== exit 0 ADMIT: git unavailable during file-gate probe -> warni
 // Mirrors the CLUSTER_DEAD_GATE fail-safe test: an unreachable git binary
 // must WARN and SKIP, never reject. One broken tool must not bin the queue.
 runIsolated("file-gate-dead-git-broken",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
   0,
@@ -538,7 +538,7 @@ runIsolated("file-gate-dead-git-broken",
 console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main released -> GATE_RELEASED (PROMOTE)");
 {
   const out = runIsolated("hold-file-gate-released",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "requires_file_on_main: scripts/pipeline/lint-prompt.mjs",
     0, { hold: true });
@@ -556,7 +556,7 @@ console.log("\n=== exit 0 ADMIT: HOLD + requires_file_on_main released -> GATE_R
 console.log("\n=== exit 1 REJECT: HOLD + requires_file_on_main unmet -> FILE_GATE_NOT_RELEASED");
 {
   const out = runIsolated("hold-file-gate-unmet",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "requires_file_on_main: apps/api/src/does-not-exist-hold-xyz-9876543210.ts",
     1, { hold: true });
@@ -574,7 +574,7 @@ console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle released -> G
   // present on origin/main today, else the test is a chicken-and-egg problem.
   // UNKNOWN_KEY has been on origin/main since cluster-chaining SLICE 1.
   const out = runIsolated("hold-content-gate-released",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: hold-released-test\ncluster_order: 2\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
@@ -592,7 +592,7 @@ console.log("\n=== exit 0 ADMIT: HOLD + requires_on_main :: needle released -> G
 console.log("\n=== exit 1 REJECT: HOLD + requires_on_main :: needle unmet -> GATE_NOT_RELEASED (not bare ADMIT)");
 {
   const out = runIsolated("hold-content-gate-unmet",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: hold-unmet-test\ncluster_order: 2\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_HOLD_XYZ_1234567890",
@@ -616,7 +616,7 @@ console.log("\n=== exit 1 REJECT: HOLD + requires_on_main :: needle unmet -> GAT
 console.log("\n=== exit 1 REJECT: ARMED requires_file_on_main path absent -> FILE_GATE_NOT_RELEASED (the fix)");
 {
   const out = runIsolated("armed-file-gate-unmet",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "requires_file_on_main: apps/api/src/does-not-exist-armed-xyz-1234567890.ts",
     1);
@@ -630,7 +630,7 @@ console.log("\n=== exit 1 REJECT: ARMED requires_file_on_main path absent -> FIL
 console.log("\n=== exit 1 REJECT: ARMED requires_on_main :: needle absent -> GATE_NOT_RELEASED (the fix)");
 {
   const out = runIsolated("armed-content-gate-unmet",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: armed-unmet-test\ncluster_order: 2\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_ARMED_XYZ_1234567890",
@@ -645,7 +645,7 @@ console.log("\n=== exit 1 REJECT: ARMED requires_on_main :: needle absent -> GAT
 console.log("\n=== exit 1 REJECT: HOLD version of same body still rejects (regression guard)");
 {
   const out = runIsolated("held-file-gate-unmet-symmetry",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "requires_file_on_main: apps/api/src/does-not-exist-symmetry-xyz-1234567890.ts",
     1, { hold: true });
@@ -659,7 +659,7 @@ console.log("\n=== exit 1 REJECT: HOLD version of same body still rejects (regre
 console.log("\n=== exit 1 REJECT: HOLD version of unmet content gate still rejects (regression guard)");
 {
   const out = runIsolated("held-content-gate-unmet-symmetry",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: held-unmet-symmetry\ncluster_order: 2\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: NEEDLE_DEFINITELY_NOT_ON_MAIN_SYMMETRY_XYZ_1234567890",
@@ -674,14 +674,14 @@ console.log("\n=== exit 1 REJECT: HOLD version of unmet content gate still rejec
 console.log("\n=== exit 0 ADMIT: armed prompt with satisfied requires_merged only, no clusters (regression guard)");
 // The ARMED_GATE_STILL_CHECKED fix must not regress the plain armed-with-no-content-gate case.
 run("armed-no-content-gate-admits",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "requires_merged: 42", 0);
 
 console.log("\n=== exit 1 REJECT: ARMED cluster_order:1 needle already on main -> CLUSTER_DEAD_GATE (decorative-gate case survives)");
 {
   const out = runIsolated("armed-cluster-order-1-dead-gate",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: armed-order-1-dead\ncluster_order: 1\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
@@ -699,7 +699,7 @@ console.log("\n=== exit 0 ADMIT: ARMED cluster_order:3 chain successor with sati
   // A chain successor's satisfied gate means the predecessor SHIPPED — precondition for arming,
   // not a defect. UNKNOWN_KEY is on origin/main:scripts/pipeline/lint-prompt.mjs.
   const out = runIsolated("armed-cluster-order-3-successor-satisfied",
-    "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
     "cluster: armed-order-3-satisfied\ncluster_order: 3\n" +
     "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY",
@@ -720,7 +720,7 @@ console.log("\n=== exit 1 REJECT: ARMED cluster_order:3 requires_file_on_main pa
 // Step 5 in the fix: `requires_file_on_main` carries no ordering semantics, so a path present at
 // author-time is still a dead gate regardless of cluster position.
 runIsolated("armed-cluster-order-3-file-gate-dead",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
   "cluster: armed-order-3-file-dead\ncluster_order: 3\n" +
   "requires_on_main: scripts/pipeline/lint-prompt.mjs :: UNKNOWN_KEY\n" +
@@ -744,7 +744,7 @@ function runCaptureStderr(fileText, name) {
 }
 
 const SA_FM =
-  "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "---\npremise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n\n";
 
 console.log("\n=== exit 1 REJECT: body without the grant -> MISSING_STANDING_AUTHORITY");
@@ -828,7 +828,7 @@ function runWithBacklog(name, frontMatter, backlogText, expectedExit) {
 console.log("\n=== exit 1 REJECT: stale prompt whose basename appears in a BACKLOG.yaml discharge line -> ORPHANED_DISCHARGE");
 {
   const out = runWithBacklog("pr-orphan-example",
-    "premise: 'false'\npremise_means: forces stale (premise always false)\nscope:\n  - apps/web/src/**\n" +
+    "premise: 'false'\npremise_means: forces stale (premise always false)\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none",
     "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-orphan-example-ready.md\n",
     1);
@@ -840,21 +840,21 @@ console.log("\n=== exit 1 REJECT: stale prompt whose basename appears in a BACKL
 
 console.log("\n=== exit 3 STALE: ordinary stale, basename appears nowhere in BACKLOG.yaml (34 historical runs saved)");
 runWithBacklog("pr-ordinary-stale",
-  "premise: 'false'\npremise_means: forces stale\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'false'\npremise_means: forces stale\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none",
   "items:\n  # nothing named here mentions the linted prompt\n",
   3);
 
 console.log("\n=== exit 0 ADMIT: live prompt named in a discharge line -> guard only fires on the stale path");
 runWithBacklog("pr-live-and-discharged",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none",
   "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-live-and-discharged-ready.md\n",
   0);
 
 console.log("\n=== exit 3 STALE: substring safety - pr-foo-HOLD-ready.md must not match pr-foo-extended-HOLD-ready.md");
 runWithBacklog("pr-foo-HOLD",
-  "premise: 'false'\npremise_means: forces stale\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'false'\npremise_means: forces stale\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none",
   "items:\n  # DISCHARGED 2026-07-23 (04-scanner): STAGED as pr-foo-extended-HOLD-ready.md\n",
   3);
@@ -895,7 +895,7 @@ console.log("\n=== block scalar: exit 1 REJECT: folded done_when with DROP TABLE
 // Before the fix the corpus received ">-" which does not match DROP TABLE.
 // After the fix the real body text reaches the corpus and DESTRUCTIVE_MUST_ESCALATE fires.
 run("block-scalar-done-when-drop-table",
-  "premise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: >-\n" +
   "  pnpm build && DROP TABLE legacy_rates\nsize: 3\ngate_allow: none\nescalates: false", 1);
 
@@ -1005,7 +1005,7 @@ function runAllSweep(name, files, expectedExit) {
 console.log("\n=== exit 0 ADMIT: --all sweep of clean prompts + breadcrumbs -> breadcrumbs tallied separately, real prompts still admit");
 {
   const cleanFm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n" + BODY;
   const crumb = "# breadcrumb\n\nno front matter, five sections.\n";
   const out = runAllSweep("sweep-clean-plus-breadcrumbs", {
@@ -1035,11 +1035,11 @@ console.log("\n=== exit 0 ADMIT: --all sweep of clean prompts + breadcrumbs -> b
 console.log("\n=== exit 1 REJECT: --all sweep with one genuinely broken pr-* alongside breadcrumbs -> breadcrumbs cannot mask the real failure");
 {
   const cleanFm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 3\ngate_allow: none\n---\n" + BODY;
   // Broken: size exceeds MAX_SIZE — deterministic REJECT with no dependency on git.
   const brokenFm =
-    "---\npremise: 'true'\npremise_means: always\nscope:\n  - apps/web/src/**\n" +
+    "---\npremise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\nsize: 48\ngate_allow: none\n---\n" + BODY;
   const crumb = "# breadcrumb\n";
   const out = runAllSweep("sweep-broken-plus-breadcrumbs", {
@@ -1084,7 +1084,7 @@ console.log("\n=== exit 0 ADMIT: --all sweep of only breadcrumbs -> tallied, doe
 // single-file)) shape.
 console.log("\n=== exit 3 STALE: single stale prompt regression guard (mode-dependency intact)");
 run("stale-mode-regression",
-  "premise: 'false'\npremise_means: forces stale\nscope:\n  - apps/web/src/**\n" +
+  "premise: 'false'\npremise_means: forces stale\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none", 3);
 
 rmSync(dir, { recursive: true, force: true });

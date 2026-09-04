@@ -45,7 +45,7 @@ function fm(premise) {
   return "---\n" +
     "premise: '" + (premise || "true") + "'\n" +
     "premise_means: always-true sentinel for tests\n" +
-    "scope:\n  - apps/web/src/**\n" +
+    "scope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\n" +
     "size: 3\n" +
     "gate_allow: none\n" +

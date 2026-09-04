@@ -108,5 +108,15 @@ as released/promotable. Quote both readings in the PR body.
 
 - Do not rename `Claude Design/` or any file inside it. #1573 deliberately un-ignored that
   directory; renaming it to dodge the space would leave the defect live for every future path.
-- Do not arm or promote `pr-claudedesign-s2-spec-regeneration-plan-HOLD.md` as part of this PR.
-  Releasing its gate is Station 00's call on Marco's authority.
+- Leave `pr-claudedesign-s2-spec-regeneration-plan-HOLD.md` alone — do not promote or release it as
+  part of this PR. Releasing its gate is Station 00's call on Marco's authority.
+
+  <!-- Worded this way deliberately, and the wording is load-bearing. The never-arm marker phrase
+       (the three words D-O N-O-T A-R-M, run together) is a HUMAN GATE wherever it appears in a
+       prompt body: `arm-prompt.ps1:229` uses `-match`, which is case-insensitive in PowerShell, and
+       `lint-prompt.mjs:728` matches it case-insensitively too. Neither cares that the sentence is
+       about a DIFFERENT prompt. This prompt carries STANDING AUTHORITY above and is meant to be
+       armed; the original phrasing made it permanently unarmable. Do not reintroduce that phrase
+       here — say "promote" or "release" instead. See Station 00's 2026-09-04T11:09Z breadcrumb,
+       finding F7. -->
+

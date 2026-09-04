@@ -216,13 +216,14 @@ process.stderr.write(
   "  entry in docs/pr-prompts/.arming-log.txt.\n\n" +
   "  A bare `git mv` bypasses arm-prompt.ps1, takes no lock, and writes nothing to\n" +
   "  the audit log.  This hook refuses it as a backstop.\n\n" +
-  "  To fix: un-stage and re-arm each prompt via the wrapper:\n\n"
+  "  To fix: un-stage and re-arm each prompt via the wrapper.  -Actor is mandatory and\n" +
+  "  names WHICH session is arming (e.g. station-00, station-06, marco):\n\n"
 );
 for (const slug of unloggedSlugs) {
   process.stderr.write(
     `    git restore --staged docs/pr-prompts/${slug}-HOLD.md docs/pr-prompts/${slug}-ready.md\n` +
     `    git restore docs/pr-prompts/${slug}-ready.md   # undo the filesystem rename\n` +
-    `    scripts/pipeline/arm-prompt.ps1 -Name ${slug}\n\n`
+    `    scripts/pipeline/arm-prompt.ps1 -Name ${slug} -Actor <who>\n\n`
   );
 }
 process.stderr.write(

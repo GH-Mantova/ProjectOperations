@@ -1387,14 +1387,27 @@ export function startHeartbeat(name, getLastLine, onRunTimeout, _opts = {}) {
 
 // --- Policy auto-merge helpers ---
 
-// tests-docs policy: the diff must touch ONLY tests/** and/or docs/**, and
-// must not contain migration files.
+// tests-docs policy: the diff must touch ONLY tests or docs, and must not
+// contain migration files. "Tests" here is not top-level tests/ only — this
+// repo keeps tests in nested __tests__/ directories and in .test/.spec files
+// beside their source, so anchoring on /^(tests|docs)\// classifies every
+// real test-only PR as "outside" and routes it to Marco. NESTED_TEST_PATHS
+// enumerates the three accepted forms; the substring "test" alone is not
+// enough (apps/api/src/rates/latest-rates.ts contains it).
+const NESTED_TEST_PATHS = [
+  /^(tests|docs)\//,
+  /(^|\/)__tests__\//,
+  /\.(test|spec)\.[cm]?[jt]sx?$/,
+];
+function isTestOrDocsPath(p) {
+  return NESTED_TEST_PATHS.some((re) => re.test(p));
+}
 export function classifyPolicyFiles(files) {
   const paths = (files ?? []).map((f) => (typeof f === "string" ? f : f.path));
   if (paths.length === 0) return { ok: false, reason: "empty diff" };
   const migration = paths.find((p) => /(^|\/)migrations\//.test(p));
   if (migration) return { ok: false, reason: `migration file: ${migration}` };
-  const outside = paths.find((p) => !/^(tests|docs)\//.test(p));
+  const outside = paths.find((p) => !isTestOrDocsPath(p));
   if (outside) return { ok: false, reason: `outside tests/ or docs/: ${outside}` };
   return { ok: true };
 }

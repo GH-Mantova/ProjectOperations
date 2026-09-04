@@ -159,6 +159,40 @@ your job ends at writing the breadcrumb.
 
 <!-- END-CANONICAL-BLOCK: station-contract v2 -->
 
+## CATCH UP A MISSED OCCURRENCE — before you start today's work
+
+You run once a day, and **nothing retries a lost occurrence.** The cron does not re-fire, and
+`lastRunAt` updates even when the run died on its first assistant turn — so the scheduler reads
+healthy while a whole day of `sot/` keeping is simply gone.
+
+**[MEASURED 2026-09-04]** Every 05 breadcrumb from 08-25 to 09-01 is stamped `1411Z` or `1412Z`,
+dead on the cron. **09-02 and 09-03 have none at that minute**: both occurrences died on
+`API Error: 529 Overloaded` on turn one, before any instruction ran. The only 05 work in that
+window is an off-cron `2154Z` run a human drove by hand. Two days of keeping, silently.
+
+**So, before today's work: check whether you owe a day.**
+
+1. Run `node scripts/pipeline/check-breadcrumb.mjs --freshness --station 05`.
+2. **Read the AGE it prints, not its `ok` / `SILENT` verdict.** The detector alarms only past
+   **2×** cadence, so a single missed daily occurrence still prints `ok` at up to 48 h — that is
+   escalation #23, open with Marco. Your own threshold here is **one** cadence: older than ~24 h
+   means you missed at least one.
+3. If you did, name the missed date in `## GROUND`.
+4. Do the missed work **as well as** today's, in the same run. The burn-down is one entry at a
+   time and nothing stops a catch-up taking two.
+5. Record it in `## WHAT CHANGED` as two dated units of work, not one, so the next reader can tell
+   a catch-up from a busy day.
+
+**This is not a retry, and it cannot be one.** The failure happens on the first assistant turn,
+before anything in this file executes — there is nothing running to catch it. Catching up on the
+NEXT occurrence is the only remedy that lives inside this station's own control.
+
+⚠️ **A missed occurrence is a FINDING, not just a chore.** Two in a row at the same minute is not
+random. Stations 04 and 05 fire **66 seconds apart by construction** (`0 */4` +571 s jitter against
+`10 0` +37 s), so one bad minute costs both — and 04 is missing its `1410Z` slot on exactly the same
+two days. If you are catching up, put it in `## FINDINGS` with a DISPOSITION: it is evidence about
+the schedule, and 00 is the only station that collects it.
+
 ## SOT-REFS BURN-DOWN — your primary housekeeping obligation
 
 `docs/qa/sot-refs-baseline.json` records the dangling references inside `sot/*.md` that existed when

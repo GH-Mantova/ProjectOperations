@@ -250,3 +250,64 @@ observable in a single command pair, `--freshness` beside `list_scheduled_tasks`
 - **Did not touch** `/sot/`, Azure, Entra, SharePoint, production data, or `git` in the watcher clone.
 - **Did not archive any breadcrumb.** All five collected here are today's cycle, and the station
   contract says the current cycle stays in the queue root.
+
+---
+
+## ADDENDUM 2026-09-04T08:4xZ — the PR landed, so F4's precondition was met inside this run; and four watcher fixes merged today are not running
+
+### 1. F4 is SUPERSEDED: ACTIONED, not DISPATCHED
+
+F4 above dispatched the arm to the next run because the candidate's scope was this run's diff. **That
+collision ended when the PR merged**, so the handover's own precondition (1) was satisfied 18 minutes
+later and there was no reason to bill another run for it.
+
+[MEASURED] `#1578` MERGED `2026-09-04T08:27:04Z`, squash `d055c726`, read back on `origin/main`:
+`d055c726 docs(pipeline): the freshness probe is unsound in PowerShell, and NO LOG has two causes (#1578)`.
+Dev tree fast-forwarded to `d055c726`; the FF aborted first on four untracked breadcrumb copies and a
+dirty `sweep-rotation.json`, each proved byte-identical to `origin/main` with the run's **new** probe
+(`git rev-parse origin/main:<path>` vs `git hash-object <path>` → SAME on all five) before being
+removed or restored by pathspec. The board was then **empty — 0 open PRs.**
+
+F2's restated trigger, re-measured immediately before the arm: real armed **0** (`rev-1578-ready.md`
+excluded as a review job); `status-sweep` section 3 clean — `index.lock` False/False, git processes 0,
+no PR touched in 2 min; watcher `VERDICT: HEALTHY`. RULE 4's three-marker detector on the candidate:
+**0 / 0 / 0**, with `pr-524-rates-b-slice2-canonical-HOLD.md` as the **positive control firing 0 / 1 / 1**.
+Premise re-verified alive on `origin/main`. `lint-prompt.mjs` → **ADMIT (size 3), exit 0**.
+
+**ARMED** via `arm-prompt.ps1` at **08:29:37Z**, exit 0. Read back: `-ready.md` present, `-HOLD.md` gone,
+`git diff --cached` **empty**. The watcher took it 23 seconds later —
+`[08:30:00.210Z] [start] pr-preflight-tool-names-are-environment-specific-ready.md` — and did **not**
+crash, unlike the 06:19Z arm. **DISPOSITION OF F4, SUPERSEDING THE ONE ABOVE: ACTIONED.**
+
+### 2. FINDING 8 (NEW) — four `scripts/pr-watcher/**` PRs merged today are not the code that is running, and one of them just failed visibly
+
+[MEASURED] The live watcher is **pid 2572, started `2026-09-04T06:25:08Z`**. Merged after it started,
+all touching `scripts/pr-watcher/**`: **#1570** (06:40:28Z), **#1572** (07:22:09Z), **#1574**
+(07:59:33Z), **#1577** (08:15:06Z). A running watcher executes the code it was launched with, so
+**none of those four fixes is in effect.**
+
+This is not an inference. `#1574` is titled *"the verdict guard blocked reviews for showing their
+work"*. At **08:29:58Z**, thirty minutes after it merged, the running watcher logged:
+
+```
+[2026-09-04T08:29:58.447Z] [verdict-guard] PR #1578: verdict cites files not in PR — blocking mirror, moving to blocked/
+```
+
+— the exact behaviour #1574 removes, on a review whose verdict was **MERGE** for an already-merged PR.
+Harmless this time; not harmless in general. By the same token `#1577` (*never rebase a PR whose checks
+are still running*) is also not live, so the `PR_WATCHER_AUTO_UPDATE` churn that cancels in-flight CI
+is still armed.
+
+**DISPOSITION: DEFERRED, with a trigger and an explicit bar.** The cure is the one the station brief
+and the FIX LANE both name: an **idle-window** restart — kill the wrapper first, then the node, relaunch
+DETACHED via `C:\po-watcher\watcher-launcher-singlelane.ps1`. **I did not do it, and no run may do it
+until the queue is empty:** at the moment I measured this the watcher was mid-build on the prompt armed
+above, and *"never restart mid-run"* is not a preference — killing a healthy agent mid-merge is worse
+than the staleness it fixes. **Trigger: the next run that finds `armed = 0`, no in-progress prompt and a
+`HEALTHY` verdict restarts it and reads back the new PID.** It becomes urgent sooner if any review is
+seen blocked by `verdict-guard`, or if a PR's CI is cancelled by an auto-update rebase, since both are
+fixed on `main` and only on `main`.
+
+Worth recording as a pattern rather than an incident: **four watcher-code PRs merged in under two hours
+and the restart that makes any of them real has no owner and no cadence.** Every one of those merges
+read as "shipped" on the board while changing nothing about how the board actually behaves.

@@ -72,6 +72,15 @@ const ABSENT_PATH = "docs/approvals/definitely-not-a-real-file-fgnr-9876543210.m
 /** A path guaranteed to be PRESENT on origin/main (lint-prompt.mjs itself). */
 const PRESENT_PATH = "scripts/pipeline/lint-prompt.mjs";
 
+/**
+ * A path PRESENT on origin/main whose name CONTAINS A SPACE. Landed in #1573
+ * (CD-S1) on 2026-09-04. Previously, readFromOriginMain() passed shell:true on
+ * Windows, so this path was re-split at the space and reported ABSENT even
+ * though it is on main — silently turning GATE_RELEASED into
+ * FILE_GATE_NOT_RELEASED.
+ */
+const PRESENT_PATH_WITH_SPACE = "Claude Design/docs/01-commercial.md";
+
 function makeHoldPrompt(extraFmLines) {
   return "---\n" + BASE_FM_FIELDS + "\n" + extraFmLines + "\n---\n\n" + GOOD_BODY;
 }
@@ -100,6 +109,25 @@ describe("FILE_GATE_NOT_RELEASED — requires_file_on_main", () => {
   test("HOLD with requires_file_on_main pointing at present path → exit 0, GATE_RELEASED (negative control)", () => {
     const prompt = makeHoldPrompt("requires_file_on_main: " + PRESENT_PATH);
     const r = runLint(prompt, { hold: true, name: "fgnr-rfom-present" });
+    assert.strictEqual(r.code, 0, "should exit 0 (ADMIT); got stdout: " + r.stdout);
+    assert.ok(
+      r.stdout.includes("GATE_RELEASED"),
+      "should include GATE_RELEASED; got: " + r.stdout
+    );
+  });
+
+  // Regression: a gate path containing a space that IS on origin/main must NOT be
+  // reported as FILE_GATE_NOT_RELEASED. Pre-fix, readFromOriginMain() ran with
+  // shell:true on Windows and Node's argv concatenation (DEP0190) split the path
+  // at the space, making git report "does not exist" — which the catch reads as
+  // absent. The originating prompt greps for the exact phrase in this test name.
+  test("HOLD with requires_file_on_main gate path containing a space that is on main → GATE_RELEASED (regression)", () => {
+    const prompt = makeHoldPrompt("requires_file_on_main: \"" + PRESENT_PATH_WITH_SPACE + "\"");
+    const r = runLint(prompt, { hold: true, name: "fgnr-rfom-space-present" });
+    assert.ok(
+      !r.stdout.includes("FILE_GATE_NOT_RELEASED"),
+      "spaced path present on main must NOT report FILE_GATE_NOT_RELEASED; got: " + r.stdout
+    );
     assert.strictEqual(r.code, 0, "should exit 0 (ADMIT); got stdout: " + r.stdout);
     assert.ok(
       r.stdout.includes("GATE_RELEASED"),

@@ -10,7 +10,13 @@
 // TendersRegisterPage renders no inner tablist. One tab bar per page, one
 // URL contract.
 
+import { useEffect, useState } from "react";
 import { useSearchParams, NavLink } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
+import {
+  countDistinctOverdueTenders,
+  type CrmOverdueTaskRow
+} from "../../components/ShellLayout";
 import { TendersRegisterPage, type TendersRegisterTab } from "./TendersRegisterPage";
 
 export type TendersOuterTabId = "register" | "follow-ups";
@@ -48,16 +54,77 @@ function tabStyle(active: boolean): React.CSSProperties {
   };
 }
 
+// CRM_CHROME_V1 — plain grey tab figure, colour read back off the existing
+// tabStyle() so it can never drift from the inactive tab text.
+const tabCountStyle: React.CSSProperties = {
+  marginLeft: 6,
+  fontSize: 12,
+  fontWeight: 400,
+  color: tabStyle(false).color
+};
+
+// CRM_CHROME_V1 — the attention count is a pill, not a plain figure. Amber
+// with black text, straight off the shared design tokens (--status-warning is
+// the mock-up's amber); no colour literal is introduced here.
+const tabPillStyle: React.CSSProperties = {
+  marginLeft: 6,
+  display: "inline-block",
+  padding: "1px 7px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 600,
+  background: "var(--status-warning)",
+  color: "var(--text-primary)"
+};
+
 export function TendersPage() {
   const [searchParams] = useSearchParams();
+  const { authFetch } = useAuth();
   const raw = (searchParams.get("tab") as TendersOuterTabId | null) ?? "register";
   const validTab: TendersOuterTabId =
     TENDERS_TABS.some((t) => t.id === raw) ? raw : "register";
   const innerTab = resolveTendersInnerTab(validTab);
 
+  // CRM_CHROME_V1 — Register count from GET /tenders?pageSize=1 (`total`).
+  // Follow-ups is the distinct-overdue-tender derivation shared with the
+  // sidebar badge, off the same request TendersRegisterPage already issues.
+  // Null means "loading or the request failed" — the label renders alone.
+  const [registerCount, setRegisterCount] = useState<number | null>(null);
+  const [followUpCount, setFollowUpCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/tenders?pageSize=1");
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { total?: number };
+        if (!cancelled && typeof body.total === "number") setRegisterCount(body.total);
+      } catch {
+        // A tab must never break because a count did not arrive.
+      }
+    })();
+    (async () => {
+      try {
+        const res = await authFetch("/crm/comms/tasks?entityType=TENDER&status=OPEN&limit=200");
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { items?: CrmOverdueTaskRow[] };
+        if (!cancelled) {
+          setFollowUpCount(countDistinctOverdueTenders(body.items ?? [], Date.now()));
+        }
+      } catch {
+        // A tab must never break because a count did not arrive.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
+
   return (
     <div>
-      {/* CRM_NAV_TABS — tenders tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01). */}
+      {/* CRM_NAV_TABS — tenders tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01;
+          CRM_CHROME_V1 counts, 2026-09-04). */}
       <div style={tabBarStyle} role="tablist" aria-label="Tenders sections">
         {TENDERS_TABS.map((tab) => (
           <NavLink
@@ -68,6 +135,12 @@ export function TendersPage() {
             aria-selected={validTab === tab.id}
           >
             {tab.label}
+            {tab.id === "register" && registerCount !== null ? (
+              <span style={tabCountStyle}>{registerCount}</span>
+            ) : null}
+            {tab.id === "follow-ups" && followUpCount !== null ? (
+              <span style={tabPillStyle}>{followUpCount}</span>
+            ) : null}
           </NavLink>
         ))}
       </div>

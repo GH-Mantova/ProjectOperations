@@ -403,3 +403,42 @@ inexact, and that is recorded here rather than left in a PR body.
    present. **Delete it once the `-ready.md` is gone from `docs/pr-prompts/`, and not before.**
 3. **Read `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md`** before touching
    any watcher-opened `tests-docs` PR, and re-run its falsifying probe rather than quoting it.
+
+---
+
+## ADDENDUM 2 — 2026-09-04T10:4xZ. Handover item 2 is DISCHARGED by this run, not the next one.
+
+The board reached zero in both directions after #1582 merged (`10:38:59Z`), and the watcher then
+swept `pr-approval-receipt-test-gaps-ready.md` into `processed/`. **[MEASURED]** at 10:41Z:
+`gh pr list --state open` → **0**; `*-ready.md` in `docs/pr-prompts/` → **none**;
+`[watcher] merge result for PR #1583: {"ok":true}` in the processed log — **no false `marco:true`
+was ever written.**
+
+That satisfies F2's ordering constraint exactly: the `-ready.md` is gone, so the twin
+`check-armed-tracked.mjs` rule 2 needs is no longer needed, and the spent HOLD can be removed
+without breaking the gate. **[MEASURED]** the residue is real and has the signature F2 predicts:
+`git ls-tree origin/main -- …pr-approval-receipt-test-gaps-HOLD.md` returns a blob
+(`ad377c0a`), `Test-Path` on the same path returns **False**, and
+`lint-prompt.mjs` on it returns **`MISSING`, exit 1**. Tracked on `main`, absent from disk — a spent
+prompt that nothing in the shipping PR removed, for the fourth time today.
+
+**This PR deletes it.** Handover item 2 is closed; the next run should not repeat it. Items 1 and 3
+stand as written.
+
+**And the mechanism in F6 is now confirmed from the other side.** [MEASURED] from
+`watcher-launch.log`, after I merged #1583 at `10:34:00Z` and freed the single-lane worker:
+
+```
+[10:36:50.483Z] [review] verdict mirrored to PR #1582 as a comment
+[10:36:50.486Z] [ok] rev-1582-ready.md → processed/
+[10:36:50.656Z] [start] rev-1583-ready.md (max-turns=240)
+[10:39:19.602Z] [review] verdict mirrored to PR #1583 as a comment
+[10:39:19.605Z] [ok] rev-1583-ready.md → processed/
+```
+
+Both review jobs had sat queued `busy` with no `[start]` since 10:22:20Z and 10:23:49Z. **They ran
+within seconds of the wait ending, and not before.** `rev-1583`'s verdict is **MERGE** — and it was
+written *after* the PR it gates had already been merged, by hand, by me. **The review the auto-merge
+condition requires cannot exist until the thing it gates is already done.** That is the cycle stated
+as plainly as the evidence allows, and it is why option (a) in
+`needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md` is the one that is complete.

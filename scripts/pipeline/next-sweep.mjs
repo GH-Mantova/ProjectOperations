@@ -73,5 +73,9 @@ if (advance) {
   writeFileSync(FILE, out, 'utf8');
   console.log('');
   console.log(`advanced: last_index=${next} last_run_utc=${stampArg}`);
-  console.log('COMMIT THIS FILE with your breadcrumb, or the next run repeats this sweep.');
+  // This line used to read "COMMIT THIS FILE with your breadcrumb". 04-scanner.md:162-164 was
+  // corrected to say the opposite — 04 leaves it dirty and Station 00 commits it — but the tool
+  // was not, so the last line on 04's screen told it to do the one thing it is forbidden to do.
+  console.log('LEFT DIRTY: name this file in your breadcrumb. Station 00 commits it with the next');
+  console.log('board PR — the station that ran this sweep must not commit to the shared dev tree.');
 }

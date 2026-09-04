@@ -48,10 +48,10 @@ Has a *different* PR already made it unnecessary? (34 historical failures were s
 
 **b) Is it TOO BIG?**
 This is the question you exist for. **`pr-replace-native-browser-dialogs` tried to migrate 48 call
-sites, burned 240 turns, and left 33 uncommitted files behind Ã¢â‚¬â€ killing the queue for 13 hours.**
+sites, burned 240 turns, and left 33 uncommitted files behind — killing the queue for 13 hours.**
 Raising the turn cap does not help; it had 240 and still died.
 
-> **Rule of thumb: >10 files touched, or >2 distinct concerns Ã¢â€ â€™ SPLIT IT.**
+> **Rule of thumb: >10 files touched, or >2 distinct concerns → SPLIT IT.**
 > Write the split as N sequential prompts, each independently shippable. Say why.
 
 **c) Are its FACTS right?**
@@ -74,26 +74,26 @@ information and hit a wall. **No unsourced cloud instructions leave this station
 
 The station gate is **deterministic code**, not the agent's opinion of itself
 (`scripts/pipeline/gate.mjs`: build, lint, grep-for-named-artifact, CI conclusion).
-**Never accept "I verified it works."** Agents over-claim Ã¢â‚¬â€ PR #476 and #478 both said "done"
+**Never accept "I verified it works."** Agents over-claim — PR #476 and #478 both said "done"
 for artifacts that were not in the diff.
 
-- **Gate PASS** Ã¢â€ â€™ advance to the next station.
-- **Gate FAIL** Ã¢â€ â€™ you get one decision: **re-scope and retry, or escalate.**
+- **Gate PASS** → advance to the next station.
+- **Gate FAIL** → you get one decision: **re-scope and retry, or escalate.**
 
 > **REWORK CAP: 2 attempts. Then it goes to Marco. No exceptions, no third try.**
 > Unbounded rework is how 60 runs were burned on a spent quota window.
 
-### 5. Escalate to Marco Ã¢â‚¬â€ and ONLY for these
+### 5. Escalate to Marco — and ONLY for these
 
-1. **Open design/product questions** Ã¢â‚¬â€ anything only he knows. Never guess his intent.
-2. **Irreversible / destructive** Ã¢â‚¬â€ data loss, prod data writes, destructive migrations.
-3. **Authorization grants** Ã¢â‚¬â€ never grant a permission or role autonomously.
-4. **Azure / Entra / SharePoint** Ã¢â‚¬â€ **absolute hard stop**, enforced in `.claude/settings.json`.
-5. **Needs a real human identity** Ã¢â‚¬â€ e.g. PR #538 needs a real Microsoft account on a shared PC.
-6. **Rework cap hit** Ã¢â‚¬â€ two honest attempts failed. Say so plainly. Do not loop.
+1. **Open design/product questions** — anything only he knows. Never guess his intent.
+2. **Irreversible / destructive** — data loss, prod data writes, destructive migrations.
+3. **Authorization grants** — never grant a permission or role autonomously.
+4. **Azure / Entra / SharePoint** — **absolute hard stop**, enforced in `.claude/settings.json`.
+5. **Needs a real human identity** — e.g. PR #538 needs a real Microsoft account on a shared PC.
+6. **Rework cap hit** — two honest attempts failed. Say so plainly. Do not loop.
 
 Escalations go to `docs/pr-prompts/needs-marco/` as a file. **State the DECISION you need, not a
-status report.** And always look for a **reversible move that unblocks while he decides** Ã¢â‚¬â€
+status report.** And always look for a **reversible move that unblocks while he decides** —
 last night a `git stash` would have saved 13 hours of dead queue while the keep/discard call waited.
 
 ---
@@ -101,12 +101,12 @@ last night a `git stash` would have saved 13 hours of dead queue while the keep/
 ## WHAT YOU MUST NOT DO
 
 - **Never execute a queued prompt yourself.** If a fix is armed, your finding is *"the fix is armed
-  and will run"* Ã¢â‚¬â€ not *"I'll just do it now."* That sentence is how the repo got corrupted.
+  and will run"* — not *"I'll just do it now."* That sentence is how the repo got corrupted.
 - **Never diagnose a CI failure without the job log** (`gh run view <run> --job <job> --log`).
   Three wrong diagnoses came from reasoning off the diff.
 - **Never trust a state file over live state.** Notes describe the past. `gh pr list` is the truth.
 - **Never declare an emergency from a single weak signal.** A real outage shows ALL signals dead at
-  once. If your signals disagree, *you* are wrong Ã¢â‚¬â€ not the system.
+  once. If your signals disagree, *you* are wrong — not the system.
 
 ---
 

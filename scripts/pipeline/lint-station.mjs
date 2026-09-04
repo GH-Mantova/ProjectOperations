@@ -228,7 +228,50 @@ if (contractV && off.length) {
   console.log(C.dim('          the scheduled-task bootstrap must declare the same number, or the run goes read-only'));
 }
 
+// ---------------------------------------------------------------------------
+// AGENT DEFINITIONS — the instruction layer nothing was sweeping.
+//
+// `.claude/agents/*.md` are the runtime configs that decide what each station agent
+// IS: its `tools:`, `model:`, `isolation:` and `maxTurns:` front matter, and the prose
+// limits it runs under. On 2026-09-01, PR #1465 rewrote six of them through a CP1252
+// double-encoder and put 203 damaged sequences on `main` — eight days after the same
+// writer bug had already damaged five station docs. Nobody saw it for two days,
+// because every encoding sweep this pipeline runs points at `sot/` and `docs/pipeline/`,
+// and a layer that is not in the map does not get swept.
+//
+// The damage is *valid* UTF-8 carrying the wrong characters (DOCTRINE §9.3), so no
+// validity check and no `U+FFFD` scan can see it — only the signature can. Damage inside
+// a fenced command or a path is not visible as damage; it is a wrong instruction that
+// reads as a right one. This gate is what catches the third occurrence.
+//
+// The two needles below are the forms actually MEASURED on 2026-09-03, each verified
+// against a positive fixture and a negative control before being written here.
+const AGENT_DIR = '.claude/agents';
+const MOJIBAKE_SIG = /â€[”“™œ]|Ã¢â‚¬/g;
+const REPLACEMENT_CHAR = /�/g;
+
+let agentBad = 0;
+let agentSeen = 0;
+if (existsSync(AGENT_DIR)) {
+  for (const f of readdirSync(AGENT_DIR).filter((n) => n.endsWith('.md')).sort()) {
+    const p = `${AGENT_DIR}/${f}`;
+    const text = readFileSync(p, 'utf8');
+    const sigs = (text.match(MOJIBAKE_SIG) || []).length;
+    const fffd = (text.match(REPLACEMENT_CHAR) || []).length;
+    agentSeen++;
+    if (!sigs && !fffd) continue;
+    agentBad++;
+    console.log(C.red('REJECT') + `  ${p}`);
+    if (sigs) console.log(`          ${C.red('x')} ${sigs} CP1252 double-encode sequence(s) — re-decode and rewrite with node; never Set-Content/Out-File -Encoding UTF8 (DOCTRINE §9.3)`);
+    if (fffd) console.log(`          ${C.red('x')} ${fffd} U+FFFD replacement character(s)`);
+  }
+  if (!agentBad) console.log(C.grn('ADMIT ') + `  ${AGENT_DIR}/*.md` + C.dim(`  (${agentSeen} agent definitions, encoding clean)`));
+} else {
+  console.log(C.yel('NOTE  ') + `  ${AGENT_DIR} is absent — agent-definition encoding gate did not run`);
+}
+
 console.log('');
 if (TRACKED === false) console.log(C.yel('NOTE  ') + '  git ls-files was unavailable — fell back to filesystem existence, which is weaker');
 console.log(bad ? C.red(`REJECT: ${bad} of ${targets.length} docs failed`) : C.grn(`ADMIT: all ${targets.length} docs clean`));
-process.exit(bad ? 1 : 0);
+if (agentBad) console.log(C.red(`REJECT: ${agentBad} of ${agentSeen} agent definitions are encoding-damaged`));
+process.exit(bad || agentBad ? 1 : 0);

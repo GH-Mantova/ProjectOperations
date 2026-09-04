@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
+import { buildCreateNoteBody } from "./RelationshipsPage";
+import { classifyNextAction, type NextActionClass } from "./tendersRegisterPage.helpers";
 import {
   archiveAccount,
   buildPatchAccountBody,
@@ -144,6 +146,102 @@ type Account360 = {
   };
 };
 
+// ── CRM_ACCOUNT360_V2 — pure helpers (exported for the unit suite) ────────────
+//
+// The 360 payload caps three of its roll-up arrays server-side
+// (accounts.service.ts: tenders take 20, jobs take 20, contracts take 50).
+// `tenderTotal` is an uncapped count, so the Tenders tile is exact. Jobs and
+// Contracts have no uncapped count on the payload, so rather than print a
+// number that is silently wrong for a large client, the tile discloses the cap
+// ("20+") the moment the array is full. That is the "label it as capped"
+// option the prompt offers, taken for both tiles.
+
+export const ACCOUNT360_ROLLUP_CAPS = {
+  JOBS: 20,
+  CONTRACTS: 50
+} as const;
+
+/**
+ * Renders a capped array's length. At the cap the true figure is unknown, so
+ * the tile says "20+" rather than "20". Below the cap the length is exact.
+ */
+export function formatCappedCount(length: number, cap: number): string {
+  return length >= cap ? `${cap}+` : String(length);
+}
+
+/**
+ * Last contact = the newest of the account's newest relationship note and its
+ * newest comms thread. Both lists arrive ordered createdAt desc from the
+ * server, so element 0 of each is the true newest even though both lists are
+ * capped — this figure is exact, not an approximation of a capped window.
+ */
+export function deriveLastContactAt(
+  relationshipNotes: Array<{ createdAt: string }>,
+  commThreads: Array<{ createdAt: string }>
+): string | null {
+  const candidates = [relationshipNotes[0]?.createdAt, commThreads[0]?.createdAt]
+    .filter((iso): iso is string => typeof iso === "string" && iso.length > 0);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((newest, iso) =>
+    new Date(iso).getTime() > new Date(newest).getTime() ? iso : newest
+  );
+}
+
+/**
+ * Short relative age, the way the mock-up writes it: "4d", not a date.
+ * Sub-hour reads "now"; a year or more reads in years so the tile never grows
+ * a four-digit number.
+ */
+export function formatRelativeAge(iso: string | null, now: Date = new Date()): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "—";
+  const ms = now.getTime() - then;
+  if (ms < 0) return "now";
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours < 1) return "now";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 365) return `${days}d`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+export type Account360Task = {
+  id: string;
+  entityId: string;
+  title: string;
+  status: string;
+  dueAt: string | null;
+  assignee: OwnerLite | null;
+};
+
+/**
+ * The next action for an account is its earliest-due open CommTask — the same
+ * rule the tenders register applies per tender (TendersRegisterPage.tsx:426-460).
+ * Tasks with no due date sort last, so a dated commitment always wins.
+ */
+export function pickNextAction(
+  tasks: Account360Task[],
+  accountId: string
+): Account360Task | null {
+  const mine = tasks
+    .filter((t) => t.entityId === accountId && t.status === "OPEN")
+    .sort((a, b) => {
+      const aMs = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      const bMs = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      return aMs - bMs;
+    });
+  return mine[0] ?? null;
+}
+
+/** Initials for the header avatar. No image, no upload, no dependency. */
+export function initialsFor(name: string | null | undefined): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 const LIFECYCLE_LABEL: Record<string, string> = {
   PROSPECT: "Prospect",
   ACTIVE: "Active",
@@ -188,7 +286,7 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { padding: "24px", maxWidth: 900, margin: "0 auto" },
+  page: { padding: "24px", maxWidth: 1240, margin: "0 auto" },
   header: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 },
   backBtn: {
     background: "none",
@@ -221,6 +319,33 @@ const s: Record<string, React.CSSProperties> = {
   th: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e5e7eb", color: "#6b7280", fontWeight: 600 },
   td: { padding: "6px 8px", borderBottom: "1px solid #f3f4f6", color: "#111827" },
   empty: { color: "#9ca3af", fontSize: 13, padding: "12px 0" },
+  // CRM_ACCOUNT360_V2 — main column + 320px rail, per the mock-up. Wrapping
+  // (not a media query) does the collapse: below roughly 900px the rail no
+  // longer fits beside a 560px main column and drops under it.
+  body: { display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" },
+  mainCol: { flex: "1 1 560px", minWidth: 0 },
+  rail: { flex: "0 1 320px", minWidth: 280, maxWidth: 320 },
+  tileRow: { display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" },
+  tile: {
+    flex: "1 1 140px",
+    minWidth: 130,
+    padding: "12px 16px",
+    borderRadius: 8
+  },
+  tileValue: { fontSize: 22, fontWeight: 700, lineHeight: 1.15 },
+  tileNote: { fontSize: 11, marginTop: 2 },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    fontWeight: 700,
+    flex: "0 0 auto"
+  },
+  headerMeta: { fontSize: 12 },
   archivedBanner: {
     background: "#fef3c7",
     border: "1px solid #fbbf24",
@@ -231,6 +356,107 @@ const s: Record<string, React.CSSProperties> = {
     color: "#92400e"
   }
 };
+
+// ── CRM_ACCOUNT360_V2 — tones ────────────────────────────────────────────────
+//
+// Every value here is READ from a style object already defined above. This
+// slice introduces no colour of its own: the "overdue" chip is the archived
+// banner's own amber used as a fill, "due soon" is that same amber outlined,
+// and "on track" is the card's neutral border over the card surface. If the
+// app's palette moves, these move with it.
+const A360_SURFACE = s.card.background;
+const A360_BORDER = s.card.border;
+const A360_MUTED = s.label.color;
+const A360_INK = s.value.color;
+const A360_ACCENT = s.backBtn.color;
+const A360_ON_ACCENT = s.badge.color;
+const A360_WARN_FILL = s.archivedBanner.background;
+const A360_WARN_EDGE = s.archivedBanner.border;
+const A360_WARN_INK = s.archivedBanner.color;
+
+const NEXT_ACTION_CHIP: Record<NextActionClass, React.CSSProperties> = {
+  overdue: { background: A360_WARN_INK, color: A360_ON_ACCENT, border: A360_WARN_EDGE },
+  due_soon: { background: A360_WARN_FILL, color: A360_WARN_INK, border: A360_WARN_EDGE },
+  on_track: { background: A360_SURFACE, color: A360_MUTED, border: A360_BORDER },
+  none: { background: A360_SURFACE, color: A360_MUTED, border: A360_BORDER }
+};
+
+const NEXT_ACTION_CHIP_LABEL: Record<NextActionClass, string> = {
+  overdue: "Overdue",
+  due_soon: "Due soon",
+  on_track: "On track",
+  none: "No due date"
+};
+
+/** One KPI tile. `note` carries a cap disclosure when the figure is capped. */
+function KpiTile({
+  label,
+  value,
+  note
+}: {
+  label: string;
+  value: string;
+  note?: string;
+}) {
+  return (
+    <div style={{ ...s.tile, background: A360_SURFACE, border: A360_BORDER }}>
+      <div style={{ ...s.label, marginBottom: 4 }}>{label}</div>
+      <div style={{ ...s.tileValue, color: A360_INK }}>{value}</div>
+      {note && <div style={{ ...s.tileNote, color: A360_MUTED }}>{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * The Next-action card. The due classification is IMPORTED from
+ * tendersRegisterPage.helpers — a second copy of the overdue / due-soon
+ * thresholds is how this card and the register start disagreeing.
+ */
+function NextActionCard({
+  task,
+  loading
+}: {
+  task: Account360Task | null;
+  loading: boolean;
+}) {
+  const klass: NextActionClass = classifyNextAction(task?.dueAt ?? null, new Date());
+  return (
+    <div style={s.card}>
+      <div style={s.cardTitle}>Next action</div>
+      {loading ? (
+        <div style={s.empty}>Loading…</div>
+      ) : !task ? (
+        <div style={s.empty}>No open task for this account.</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 14, fontWeight: 600, color: A360_INK, marginBottom: 8 }}>
+            {task.title}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span
+              style={{
+                ...s.badge,
+                ...NEXT_ACTION_CHIP[klass],
+                borderStyle: "solid"
+              }}
+            >
+              {NEXT_ACTION_CHIP_LABEL[klass]}
+            </span>
+            <span style={{ fontSize: 12, color: A360_MUTED }}>
+              {task.dueAt ? fmtDate(task.dueAt) : "no due date"}
+            </span>
+          </div>
+          <div style={{ ...s.label, marginTop: 12 }}>Owner</div>
+          <div style={{ fontSize: 13, color: A360_INK }}>
+            {task.assignee
+              ? `${task.assignee.firstName} ${task.assignee.lastName}`
+              : "Unassigned"}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function AccountDetailPage() {
   const { authFetch } = useAuth();
@@ -253,6 +479,11 @@ export function AccountDetailPage() {
   const [archiveConfirm, setArchiveConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
+  // CRM_ACCOUNT360_V2: the account's open CommTasks, for the Next-action card.
+  const [tasks, setTasks] = useState<Account360Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [logOpen, setLogOpen] = useState(false);
+
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -269,6 +500,29 @@ export function AccountDetailPage() {
   }, [authFetch, id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // CRM_ACCOUNT360_V2: open tasks anchored to this account. Same read the
+  // tenders register uses per tender (TendersRegisterPage.tsx:426-460), with
+  // entityType=ACCOUNT. Enhancement-only: a failure never becomes a page error.
+  const loadTasks = useCallback(async () => {
+    if (!id) return;
+    setTasksLoading(true);
+    try {
+      const res = await authFetch(
+        `/crm/comms/tasks?entityType=ACCOUNT&entityId=${encodeURIComponent(id)}&status=OPEN&limit=100`
+      );
+      if (res.ok) {
+        const body = await res.json() as { items: Account360Task[] };
+        setTasks(body.items ?? []);
+      }
+    } catch {
+      // Next-action data is enhancement-only.
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [authFetch, id]);
+
+  useEffect(() => { void loadTasks(); }, [loadTasks]);
 
   // CRM-S5: open the edit form, seeded from current account data.
   function openEdit() {
@@ -348,14 +602,30 @@ export function AccountDetailPage() {
 
   const { client, owner, rollUps } = account;
 
+  // CRM_ACCOUNT360_V2 — tile figures.
+  const nextAction = pickNextAction(tasks, account.id);
+  const lastContactAt = deriveLastContactAt(rollUps.relationshipNotes, rollUps.commThreads);
+  const jobsCapped = rollUps.jobs.length >= ACCOUNT360_ROLLUP_CAPS.JOBS;
+  const contractsCapped = rollUps.contracts.length >= ACCOUNT360_ROLLUP_CAPS.CONTRACTS;
+
   return (
     <div style={s.page}>
-      {/* Header */}
-      <div style={s.header}>
+      {/* Header — CRM_ACCOUNT360_V2: identity on the left, the mock-up's three
+          actions on the right. */}
+      <div style={{ ...s.header, flexWrap: "wrap" }}>
         <button style={s.backBtn} onClick={() => navigate(-1)}>← Back</button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
-          {client?.name ?? "Unnamed Account"}
-        </h1>
+        <div style={{ ...s.avatar, background: A360_ACCENT, color: A360_ON_ACCENT }} aria-hidden="true">
+          {initialsFor(client?.name)}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
+            {client?.name ?? "Unnamed Account"}
+          </h1>
+          <div style={{ ...s.headerMeta, color: A360_MUTED }}>
+            {ACCOUNT_TYPE_LABEL[account.accountType] ?? account.accountType}
+            {client?.abn ? ` · ABN ${client.abn}` : ""}
+          </div>
+        </div>
         <span
           style={{
             ...s.badge,
@@ -367,6 +637,52 @@ export function AccountDetailPage() {
         {account.archivedAt && (
           <span style={{ ...s.badge, background: "#9ca3af" }}>Archived</span>
         )}
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {!account.archivedAt && (
+            <button
+              onClick={() => setLogOpen(true)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: A360_BORDER, background: A360_SURFACE, cursor: "pointer", fontSize: 12 }}
+            >
+              Log contact
+            </button>
+          )}
+          {/* CRM-S9: the anchored Comms-hub deep link. The mock-up calls this
+              control "New thread"; the entityType=ACCOUNT anchor contract behind
+              it is unchanged — only the label moves. */}
+          <Link
+            to={`/crm/comms?entityType=ACCOUNT&entityId=${encodeURIComponent(account.id)}`}
+            style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${A360_ACCENT}`, background: A360_SURFACE, color: A360_ACCENT, cursor: "pointer", fontSize: 12, textDecoration: "none" }}
+          >
+            New thread
+          </Link>
+          {!editing && !account.archivedAt && (
+            <button
+              onClick={openEdit}
+              style={{ padding: "4px 12px", borderRadius: 6, border: A360_BORDER, background: A360_SURFACE, cursor: "pointer", fontSize: 12 }}
+            >
+              Edit account
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* KPI tile row — CRM_ACCOUNT360_V2, the mock-up's row under the name.
+          "Value" is absent by design: see the NO-OP note in the PR body. */}
+      <div style={s.tileRow}>
+        <KpiTile label="Tenders" value={String(rollUps.tenderTotal)} />
+        <KpiTile label="Win rate" value={formatWinRate(client?.winRate ?? null)} />
+        <KpiTile
+          label="Jobs"
+          value={formatCappedCount(rollUps.jobs.length, ACCOUNT360_ROLLUP_CAPS.JOBS)}
+          note={jobsCapped ? `capped at ${ACCOUNT360_ROLLUP_CAPS.JOBS} by the 360 payload` : undefined}
+        />
+        <KpiTile
+          label="Contracts"
+          value={formatCappedCount(rollUps.contracts.length, ACCOUNT360_ROLLUP_CAPS.CONTRACTS)}
+          note={contractsCapped ? `capped at ${ACCOUNT360_ROLLUP_CAPS.CONTRACTS} by the 360 payload` : undefined}
+        />
+        <KpiTile label="Last contact" value={formatRelativeAge(lastContactAt)} />
       </div>
 
       {account.archivedAt && (
@@ -378,26 +694,18 @@ export function AccountDetailPage() {
         </div>
       )}
 
+      {/* CRM_ACCOUNT360_V2 — main column + 320px rail. The rail wraps under
+          the main column on a narrow viewport. */}
+      <div style={s.body}>
+        <div style={s.mainCol}>
       {/* Account details — inline-editable (CRM-S5) */}
       <div style={s.card}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={s.cardTitle as React.CSSProperties & { marginBottom: 0 }}>Account</div>
           <div style={{ display: "flex", gap: 8 }}>
-            {/* CRM-S9: deep-link into anchored Comms hub for this account. */}
-            <Link
-              to={`/crm/comms?entityType=ACCOUNT&entityId=${encodeURIComponent(account.id)}`}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #6366f1", background: "#eef2ff", color: "#3730a3", cursor: "pointer", fontSize: 12, textDecoration: "none" }}
-            >
-              Open comms →
-            </Link>
-            {!editing && !account.archivedAt && (
-              <button
-                onClick={openEdit}
-                style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}
-              >
-                Edit
-              </button>
-            )}
+            {/* CRM_ACCOUNT360_V2: "Open comms" and "Edit" moved to the page
+                header, where the mock-up puts them. Archive stays here — it is
+                not one of the mock-up's three header actions. */}
             {/* Archive / Unarchive */}
             {!account.archivedAt ? (
               <button
@@ -856,6 +1164,149 @@ export function AccountDetailPage() {
               </table>
             )
         )}
+      </div>
+        </div>
+
+        <aside style={s.rail}>
+          <NextActionCard task={nextAction} loading={tasksLoading} />
+        </aside>
+      </div>
+
+      {logOpen && client && (
+        <LogContactModal
+          accountId={account.id}
+          accountName={client.name}
+          onClose={() => setLogOpen(false)}
+          onSaved={() => { setLogOpen(false); void load(); void loadTasks(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Log-contact modal (CRM_ACCOUNT360_V2) ────────────────────────────────────
+//
+// The Accounts list has had this control on every row since CRM-S6; the 360
+// page for the same account did not. The note BODY BUILDER is imported from
+// RelationshipsPage — `buildCreateNoteBody` — so there is exactly one place
+// that decides what a relationship note looks like on the wire. Only the form
+// shell is local, because the list's shell is not exported and this slice may
+// not touch that file.
+
+function LogContactModal({
+  accountId,
+  accountName,
+  onClose,
+  onSaved
+}: {
+  accountId: string;
+  accountName: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { authFetch } = useAuth();
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const payload = buildCreateNoteBody({ body: body.trim(), accountId });
+      const res = await authFetch("/crm/relationships/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      onSaved();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save note.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Log contact for ${accountName}`}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          background: A360_SURFACE,
+          borderRadius: 10,
+          padding: 28,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.18)"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Log contact — {accountName}</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: A360_MUTED, padding: "0 4px" }}
+          >
+            &times;
+          </button>
+        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)}>
+          <label style={{ display: "block", marginBottom: 14 }}>
+            <span style={{ ...s.label, fontWeight: 600, display: "block", marginBottom: 4 }}>Note</span>
+            <textarea
+              ref={textareaRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={4}
+              required
+              style={{ ...detailFieldStyle, resize: "vertical", boxSizing: "border-box" }}
+              placeholder="Call summary, meeting notes, email follow-up…"
+            />
+          </label>
+
+          {saveError && (
+            <div role="alert" style={{ ...s.archivedBanner, marginBottom: 12 }}>{saveError}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ padding: "6px 16px", borderRadius: 6, border: A360_BORDER, background: A360_SURFACE, cursor: "pointer", fontSize: 13 }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !body.trim()}
+              style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: A360_ACCENT, color: A360_ON_ACCENT, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontSize: 13 }}
+            >
+              {saving ? "Saving…" : "Save note"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

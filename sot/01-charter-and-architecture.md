@@ -6,7 +6,7 @@ conventions, git/PR discipline, business logic (estimating / Cutrite schedule / 
 module registry, and integration detail. Read this before writing any code.
 
 > **Merged from** (sot-consolidation, 2026-07-08): primary `project_instructions.md` §1–§16,
-> plus the conventions of root `CLAUDE.md` and `docs/architecture-overview.md` (folded into the
+> plus the conventions of root `CLAUDE.md` and `docs/architecture-overview.md` (folded into the <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 > appendix below §16). The SSO / SharePoint / dev-to-prod **runbooks stay operational under
 > `docs/`** (not SoT) and are linked from the appendix, not embedded. The old chat-routing header and §17 (support-chat
 > roles) / §18 (main-chat operating rules) now live in **`sot/README.md`**; §19 (Cowork local

@@ -4166,7 +4166,7 @@ authoritative reference for those.
 
 **`WorkerProfile` survives as the staff spine. `Worker` is folded into it and
 retired.** This is locked per the Master QA plan — "P0b — Make `WorkerProfile`
-canonical, fold `Worker` in" (`docs/qa/Master-QA-and-Consolidation-Program-Plan.md`
+canonical, fold `Worker` in" (`docs/qa/Master-QA-and-Consolidation-Program-Plan.md` <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 L189) — and the IA map's ownership table, which marks `WorkerProfile` as
 "canonical per B-P0b" and freezes the legacy trio `Worker` / `WorkerCompetency`
 / `Crew` with "Do not add writers"
@@ -4467,7 +4467,7 @@ default the plan assumes if you simply say "defaults fine".
 - Eligibility bridge — `scheduler/schedule-allocation.service.ts` L103-126 (JobRoleRequirement competency codes vs `WorkerQualification.qualType`).
 - `WorkerProfile` writer — `workers/workers.service.ts` L120 (create), L152 (update), L183 (soft delete), L226-231 (`provisionMobileAccess`).
 - Legacy `Worker` clients — `master-data.service.ts` L371, L405-406; `resources.service.ts` L37, L97, L109; `scheduler.service.ts` L206, L373, L552; `global-lists.service.ts` L267.
-- Locked decision — `docs/qa/Master-QA-and-Consolidation-Program-Plan.md` L189; `sot/04-data-model.md (this doc)` L70-71, L267-268.
+- Locked decision — `docs/qa/Master-QA-and-Consolidation-Program-Plan.md` L189; `sot/04-data-model.md (this doc)` L70-71, L267-268. <!-- sot-ref-allow: consolidation provenance - target is a predecessor-workspace document (C:\Dev\ProjectOperations) with 0 commits in this repo; nothing to repoint to -->
 - Crew deferral + `/resources` legacy — sot/04-data-model.md (this doc) L374-375, L357-358; GAP-1 L424.
 
 ---

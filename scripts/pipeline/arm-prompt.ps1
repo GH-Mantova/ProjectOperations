@@ -23,6 +23,19 @@
 .PARAMETER Name
     The prompt slug (without suffix). The script expects docs/pr-prompts/<Name>-HOLD.md to exist.
 
+.PARAMETER Actor
+    WHO is arming this. Mandatory. Free text, no spaces, e.g. `station-00`, `station-06`, `marco`.
+
+    The log already recorded `by=<user>@<host>`, `pid=` and `caller=<parent process>`. Every
+    Cowork chat and every station agent on this machine produces the SAME values for all three
+    (`by=Marco@`, `caller=powershell.exe:<pid>`), so the audit trail could say a machine armed
+    something but never WHICH session did. On 2026-09-04 three Station 00 sessions were alive at
+    once and one of them armed a prompt mid-run; the log could not say which. This parameter is
+    the one fact the script cannot derive for itself, so it has to be told.
+
+    Where several sessions of one role can be alive together, discriminate:
+    `station-00.a3f1`. See docs/pipeline/ARMING.md.
+
 .PARAMETER WhatIf
     Dry-run: check everything, print the plan, touch nothing. Exits 0 if all checks would pass.
 
@@ -31,14 +44,18 @@
     Exposed for testability so tests can use a short timeout without waiting 60 s.
 
 .EXAMPLE
-    arm-prompt.ps1 -Name pr-foo-bar
-    arm-prompt.ps1 -Name pr-foo-bar -WhatIf
+    arm-prompt.ps1 -Name pr-foo-bar -Actor station-06
+    arm-prompt.ps1 -Name pr-foo-bar -Actor station-06 -WhatIf
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Name,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$Actor,
 
     [switch]$WhatIf,
 
@@ -83,6 +100,26 @@ function Invoke-Git {
     $stdout = $result | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
               ForEach-Object { "$_".Trim() }
     return $stdout
+}
+
+# ---------------------------------------------------------------------------
+# Step 0 — validate the actor, before anything is locked or touched
+# ---------------------------------------------------------------------------
+# Deliberately the FIRST check. An arm that cannot be attributed should not
+# acquire the lock, should not run the linter, and should not appear in the log
+# at all — a half-written audit trail is worse than an obvious refusal.
+#
+# No spaces: the log line is space-delimited and every reader of it (including
+# the pre-commit hook) splits on whitespace. An actor containing a space would
+# silently shift every field to its right.
+$ACTOR_RE = '^[A-Za-z0-9][A-Za-z0-9._:/-]{1,63}$'
+if ($Actor -notmatch $ACTOR_RE) {
+    Write-Fail "-Actor '$Actor' is not a usable name."
+    Write-Host "  Use a short identifier: letters, digits, and . _ : / - only; 2-64 chars; no spaces."
+    Write-Host "  Examples: station-00   station-00.a3f1   station-06   marco"
+    Write-Host "  This names WHICH session armed the prompt. It is the one fact the script"
+    Write-Host "  cannot work out for itself — see docs/pipeline/ARMING.md."
+    exit 1
 }
 
 # ---------------------------------------------------------------------------
@@ -278,6 +315,7 @@ if ($WhatIf) {
     Write-Host "[arm-prompt] PLAN — would stage exactly:"
     Write-Host "  D  $expectedHold"
     Write-Host "  A  $expectedReady"
+    Write-Host "  and log actor=$Actor"
     Write-Host ""
     Write-Host "[arm-prompt] WhatIf: all checks pass. No files touched."
     exit 0
@@ -402,7 +440,15 @@ try {
             Set-Content -LiteralPath $armLog -Value $header -Encoding ASCII -NoNewline
             Add-Content -LiteralPath $armLog -Value "" -Encoding ASCII
         }
-        $line = "$stamp  ARMED  $Name  escalates=$esc  by=$env:USERNAME@$env:COMPUTERNAME  pid=$PID  caller=$caller"
+        # $env:COMPUTERNAME comes back empty under some hosts — every line in the log
+        # before 2026-09-04 reads `by=Marco@` with nothing after the @. Fall back rather
+        # than write a field that looks populated and is not.
+        $hostName = $env:COMPUTERNAME
+        if (-not $hostName) { try { $hostName = [System.Net.Dns]::GetHostName() } catch { } }
+        if (-not $hostName) { $hostName = "unknown-host" }
+        # actor= comes FIRST of the identity fields because it is the only one that
+        # distinguishes two sessions on the same machine. The rest corroborate it.
+        $line = "$stamp  ARMED  $Name  escalates=$esc  actor=$Actor  by=$env:USERNAME@$hostName  pid=$PID  caller=$caller"
         Add-Content -LiteralPath $armLog -Value $line -Encoding ASCII
         Write-Step "Audit line written to .arming-log.txt"
     } catch {

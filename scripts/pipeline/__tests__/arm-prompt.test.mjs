@@ -268,6 +268,10 @@ function runArmPromptSimple(repoDir, slug, args = [], opts = {}) {
   try {
     const psArgs = ["-NoProfile", "-NonInteractive", "-File", tmpFile, "-Name", slug,
       "-LockTimeoutSeconds", String(lockTimeoutSeconds)];
+    // -Actor is MANDATORY on the script. Every test that is not specifically testing
+    // the refusal path supplies one, so these tests exercise the same call shape a
+    // real caller must use. opts.omitActor drops it; opts.actor overrides the value.
+    if (!opts.omitActor) psArgs.push("-Actor", opts.actor != null ? opts.actor : "test-suite");
     if (args.includes("-WhatIf") || opts.whatIf) psArgs.push("-WhatIf");
 
     const result = spawnSync(PWSH, psArgs, {
@@ -723,8 +727,12 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
 
     let res;
     try {
+      // -Actor is mandatory on the script. This runner is separate from
+      // runArmPromptSimple and has to supply it too, or PowerShell refuses the call
+      // before the script's own Step 0 is ever reached - which is a parameter-binding
+      // failure, not the release failure this test is about.
       const psArgs = ["-NoProfile", "-NonInteractive", "-File", tmpFile, "-Name", slug,
-        "-LockTimeoutSeconds", "5"];
+        "-Actor", "test-suite", "-LockTimeoutSeconds", "5"];
       const spawnResult = spawnSync(PWSH, psArgs, { encoding: "utf8", timeout: 30000 });
       res = { status: spawnResult.status == null ? -1 : spawnResult.status, stdout: spawnResult.stdout || "", stderr: spawnResult.stderr || "" };
     } finally {
@@ -746,4 +754,86 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
     assert.ok(existsSync(readyPath), "ready file must be on disk even when index release failed");
   });
 
+  // -------------------------------------------------------------------------
+  // ATTRIBUTION — -Actor names WHICH session armed the prompt.
+  //
+  // `by=`, `pid=` and `caller=` are identical for every Cowork chat and station
+  // agent on this machine, so before this the log could say the machine armed
+  // something but never which session. On 2026-09-04 three Station 00 sessions
+  // were alive at once and one armed a prompt mid-run; the log could not say
+  // which one. -Actor is the fact the script cannot derive for itself.
+  // -------------------------------------------------------------------------
+
+  test("refuses to arm with no -Actor, and touches nothing", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-actor-missing";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug, [], { omitActor: true });
+
+    assert.notEqual(res.status, 0, "a mandatory parameter must not be satisfiable by omission");
+    // The rename must not have happened.
+    assert.ok(existsSync(join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`)), "HOLD must survive");
+    assert.ok(!existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "must not arm");
+    assert.equal(gitStatus(repo), "", "the tree must be untouched");
+  });
+
+  test("refuses an actor containing a space — it would shift every log field", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-actor-spaces";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug, [], { actor: "station 00" });
+
+    assert.equal(res.status, 1);
+    assert.match(res.stdout + res.stderr, /is not a usable name/);
+    assert.ok(!existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "must not arm");
+  });
+
+  test("refuses an empty actor", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-actor-empty";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug, [], { actor: "" });
+
+    assert.notEqual(res.status, 0);
+    assert.ok(!existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "must not arm");
+  });
+
+  test("the audit line carries actor= and a non-empty host", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-actor-logged";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug, [], { actor: "station-00.a3f1" });
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+
+    const logPath = join(repo, "docs", "pr-prompts", ".arming-log.txt");
+    assert.ok(existsSync(logPath), ".arming-log.txt must exist after arming");
+    const line = readFileSync(logPath, "utf8")
+      .split("\n")
+      .map((l) => l.trim()) // Add-Content writes CRLF; a trailing \r breaks the $ anchor below
+      .filter((l) => l.includes("ARMED") && l.includes(slug))
+      .pop();
+    assert.ok(line, "an ARMED line for this slug must exist");
+    assert.match(line, /\bactor=station-00\.a3f1\b/);
+    // by= used to read "Marco@" with nothing after the @ when COMPUTERNAME was empty.
+    assert.match(line, /\bby=[^\s]*@[^\s]+/, "the host half of by= must not be empty");
+    // The actor must not have broken the field layout for anything downstream.
+    assert.match(line, /^\S+  ARMED  \S+  escalates=\S+  actor=\S+  by=\S+  pid=\S+  caller=\S+$/);
+  });
+
+  test("-WhatIf names the actor in the plan and still arms nothing", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-actor-whatif";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug, [], { whatIf: true, actor: "station-06" });
+
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /actor=station-06/);
+    assert.ok(!existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "WhatIf must not arm");
+    assert.equal(gitStatus(repo), "", "WhatIf must leave the tree clean");
+  });
 });

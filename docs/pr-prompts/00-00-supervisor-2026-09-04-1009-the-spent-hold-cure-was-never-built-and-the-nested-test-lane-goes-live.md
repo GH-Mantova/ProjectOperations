@@ -274,3 +274,132 @@ CAUTION on a dead worktree, and a verdict that is always CAUTION is a verdict no
   measured, and it is not this run's work.
 - **Did not archive `00-0809`, `00-0908` or `00-04-scanner-0610`.** They are this cycle.
 - **Did not touch** `/sot/`, Azure, Entra, SharePoint, or production data.
+
+---
+
+## ADDENDUM — 2026-09-04T10:2xZ, same station, same run, later measurement
+
+Written after the sections above and after this run's board PR was opened, per the standing lesson
+that *a breadcrumb dates the moment it was written, not the run*, and a run that mutates or measures
+after writing one must append to it.
+
+### F3 is ANSWERED, and it splits into a confirmation and a new escalation
+
+**[MEASURED] #1570 is confirmed live.** The watcher opened the armed prompt's PR at
+`10:20:36.961Z`: `[merge] pr-approval-receipt-test-gaps-ready.md: opened PR #1583,
+policy=tests-docs, waiting…`. `gh pr view 1583 --json files` returns exactly one path,
+`scripts/pr-gates/__tests__/approval-receipt.test.mjs`. **A `scripts/`-rooted, test-only diff
+classified into the AUTOMATIC lane** — which the old `/^(tests|docs)\//` anchor could never have
+done, and which the prompt's own `## Gate routing` paragraph predicted would route to Marco. #1570
+does what its code says. **Do not re-derive this; it is measured.**
+
+### F6 — 🔴 The `tests-docs` lane cannot self-resolve: the review job that gates the merge is queued BEHIND the merge wait, on the same single-lane worker
+
+This is the second, independent cause the `0908` run named and could not prove. **It reproduced, and
+the trace is unambiguous.** [MEASURED] from `C:\po-watcher\watcher-launch.log`:
+
+```
+[10:20:36.961Z] [merge] pr-approval-receipt-test-gaps-ready.md: opened PR #1583, policy=tests-docs, waiting…
+[10:22:19.362Z] [review] enqueued review for PR #1582 … → rev-1582-ready.md
+[10:22:20.173Z] [queue] rev-1582-ready.md (depth: 1, busy, source: watch)
+[10:23:49.010Z] [review] enqueued review for PR #1583 … → rev-1583-ready.md
+[10:23:49.820Z] [queue] rev-1583-ready.md (depth: 2, busy, source: watch)
+```
+
+**Two review jobs queued `busy`, neither with a matching `[start]`.** At the same moment
+`gh pr view 1583` returns `autoMergeRequest: null` with all fourteen checks passing or skipping.
+
+The cycle, stated exactly:
+
+1. The watcher opens #1583 and enters `waiting…`. That wait **occupies the single-lane worker.**
+2. `index.mjs`'s auto-merge condition is `!mergeEnabled && allGreen && await verdictApproves(...)`.
+   `verdictApproves` requires `docs/pr-reviews/pr-1583-review.md`.
+3. That file is produced by `rev-1583-ready.md`, which is queued `busy` — **behind the wait in 1**.
+4. So `verdictApproves` can never become true while the wait is running, and the wait cannot end
+   until `verdictApproves` becomes true.
+
+It is broken only from outside — by a supervisor merging the PR, which is exactly what freed
+`rev-1580` at 09:33:05Z in the `0908` run, and what I did here.
+
+🔴 **The failure mode if nobody is outside.** `MERGE_TIMEOUT_MS` is 90 min, so #1583's wait would
+have expired at about **`11:50:36Z`** and written
+`{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}`. DOCTRINE
+§10.3 records that this string is **byte-identical to a genuine policy routing**. A one-file,
+test-only PR would then be permanently human-gated, RULE 2 would correctly forbid every station from
+clearing it, and Marco would inherit work the lane exists to take off him. **The lane built to remove
+work from Marco manufactures it, deterministically, on every PR it opens.**
+
+**This upgrades §10.3's note.** §10.3 currently describes the timeout as *latent and intermittent*,
+caused by CI-creation latency outrunning the window (the `#1500` measurement, 212.6 min to first
+run). **That cause is real and separate. This one is structural**: it does not need slow CI, it needs
+only that the review job and the merge wait share one worker — which is always true. Every
+watcher-opened PR in the `tests-docs` policy hits it.
+
+**DISPOSITION: ESCALATED — Marco. NEW escalation, not a recurrence of #23 and not the discharged
+"lane is deadlocked" claim** (that one was refuted on the premise that 139 of 157 waits were
+sub-second, and its named cause — `verdict-guard.mjs` — really was fixed in #1574 and really is
+running now; this is a different mechanism that the discharge did not examine). Written to
+`docs/pr-prompts/needs-marco/`.
+
+**RULE 1 options — the complete-and-additive one first:**
+
+- **(a) Give the review job its own lane, so the merge wait cannot starve it.** Run `rev-*` jobs on a
+  worker separate from the prompt/merge worker, or let `waitForPolicyMerge` yield the lane while it
+  polls. **Complete** — it fixes every watcher-opened PR, now and future, and it also removes the
+  ordering hazard for any other job type that a wait could starve. **Additive** — it adds concurrency
+  for a job that writes only `docs/pr-reviews/`, touches no shared git index, and damages no existing
+  or future data. This is the only option that passes both halves.
+- **(b) Enqueue and RUN the `rev-<N>` job before entering the merge wait.** Complete for this cycle,
+  additive, and much smaller than (a) — but it fails *complete* in the general case: it fixes only
+  the ordering that exists today, and any future job the wait depends on reintroduces the same
+  starvation under a different name.
+- **(c) Drop `verdictApproves` from the auto-merge condition and merge on green checks alone.**
+  Additive to nothing and **fails the damage half**: it removes the only review a docs/tests PR ever
+  gets, which is the gap §10.3 already names ("it produces no review, and it is how a docs change
+  lands with nobody but its author having read it").
+- **(d) Do nothing and let the supervisor break each cycle by hand.** Fails *complete* outright, and
+  it is worse than it looks: 00 runs hourly and the window is 90 minutes, so a single missed or blind
+  occurrence lets the timeout write a false `marco:true` that no station may then clear.
+
+**Falsifying probe, so this note cannot outlive its truth:** open a watcher-built `tests-docs` PR and
+leave it alone. If `docs/pr-reviews/pr-<N>-review.md` appears and `autoMergeRequest` reaches
+`ENABLED` with no supervisor touching it, this finding is dead — delete it.
+
+### F6, continued — how I broke the cycle, and why I did not let it run to timeout
+
+I merged **#1583** rather than leaving it to prove the point. **[MEASURED]** at `10:33:40Z`, 13
+minutes into the wait: `mergeStateStatus: CLEAN`, **zero pending checks**, `autoMergeRequest: null`.
+That is the diagnostic state in its purest form — `allGreen` is unambiguously true, so the only term
+that can still be false is `verdictApproves`, and its input was queued `busy` behind the wait. **The
+probe had already answered; letting the remaining 77 minutes elapse would have added no evidence and
+written a false `marco:true` on a one-file test PR.**
+
+Merged under the standing rule the `0908` run applied to #1580 — *merge a green watcher-opened docs
+PR while it is in `waiting…`; the PR inside the window goes FIRST* — with the lane established from
+the watcher's own `policy=tests-docs` line, a positive routing statement rather than a `NO LOG`
+absence.
+
+[MEASURED] single-actor gate re-read immediately before: in-progress prompts **0**, `index.lock`
+dev/clone **False / False**, git processes **0**. `Assert-SmokedOrEscalate -PR 1583` → **True**;
+`Merge-Pr -PR 1583` → **True**. Read back: `state: MERGED`, `mergedAt 2026-09-04T10:34:00Z`,
+`origin/main` **`aac5e187` → `8eadf482`**.
+
+**What #1583 actually shipped**, since a test slice is worth reading: the four CP-26 branches #1493
+covered and #1492 did not, on `scripts/pr-gates/__tests__/approval-receipt.test.mjs`, with both
+load-bearing proofs run as DOCTRINE §7 guard 1 requires. The code-writer also reported a correction
+to the prompt's own claim: removing the `Array.isArray` guard makes **main's existing** non-array
+test fail too (`for..of null` throws), where the prompt asserted it would still pass. The new fixture
+is still the better test — it fails for the intended reason — but the prompt's stated contrast was
+inexact, and that is recorded here rather than left in a PR body.
+
+## HANDOVER — what the next run must do
+
+1. **#1582 (this PR)** — if it is still open, it is BEHIND `8eadf482` and needs an update, green
+   checks, then `Assert-SmokedOrEscalate` → `Merge-Pr`. It is 00's own lane, one file under
+   `docs/pr-prompts/`, `[NO LANE VERDICT — hand-classified]`.
+2. **`pr-approval-receipt-test-gaps-HOLD.md` is now a spent HOLD tracked on `origin/main`** (F2).
+   Its `-ready.md` had not yet been swept to `processed/` when this run ended, so deleting the HOLD
+   was **not** safe yet — `check-armed-tracked.mjs` rule 2 needs the twin while the `-ready.md` is
+   present. **Delete it once the `-ready.md` is gone from `docs/pr-prompts/`, and not before.**
+3. **Read `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md`** before touching
+   any watcher-opened `tests-docs` PR, and re-run its falsifying probe rather than quoting it.

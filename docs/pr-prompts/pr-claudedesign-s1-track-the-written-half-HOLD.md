@@ -19,7 +19,7 @@ scope:
   - Claude Design/docs/06-field-portal-auth.md
   - Claude Design/proposed/README.md
 done_when: >-
-  ! git check-ignore -q "Claude Design/docs/00-design-system.md" && git ls-files --error-unmatch "Claude Design/docs/01-commercial.md" && git ls-files --error-unmatch "Claude Design/assets/routes.js"
+  ! git check-ignore -q "Claude Design/docs/00-design-system.md" && git ls-files --error-unmatch "Claude Design/docs/01-commercial.md" && git ls-files --error-unmatch "Claude Design/assets/routes.js" && git ls-files --error-unmatch "Claude Design/proposed/README.md" && git check-ignore -q "Claude Design/mockups/tenders.html" && git check-ignore -q "Claude Design/assets/styles.css"
 size: 10
 gate_allow: none
 seed_only: false
@@ -64,10 +64,15 @@ state where the docs are visible but silently dated.
    !Claude Design/assets/
    Claude Design/assets/*
    !Claude Design/assets/routes.js
+   !Claude Design/proposed/
    ```
 
-   Verify with `git check-ignore -v` on one file from **each** category before committing. Getting
-   this wrong in the permissive direction commits a 194 KB stylesheet and 65 HTML files.
+   Verify with `git check-ignore -v` on one file from **each of the four** categories before
+   committing - a tracked doc, `assets/routes.js`, `proposed/README.md`, and one of `mockups/`
+   or `assets/styles.css`. **Use the FILE form, never the directory form**: `check-ignore` on a
+   directory prints nothing and exits 1 whether or not a rule ignores its contents, so the
+   directory form carries no information at all (DOCTRINE 9.2). Getting this wrong in the
+   permissive direction commits a 194 KB stylesheet and 65 HTML files.
 2. **`Claude Design/assets/routes.js` must remain tracked, at the same path, unchanged.** It is
    Station 04's ground truth (`04-scanner.md:198`). Confirm with `git ls-files --error-unmatch`
    after the `.gitignore` change. If it drops out of the index, the change is wrong — fix the

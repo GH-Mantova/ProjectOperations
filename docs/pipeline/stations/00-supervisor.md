@@ -344,6 +344,16 @@ LIVE (not from a note):
    - every `requires_file_on_main` path is present on `origin/main`.
 Never arm a HOLD with an unmet gate. Never-arm list still stands: `pr-fv2-formrule-contract`,
 `pr-siteid-notnull-backfill`, and any prod-data prompt (MT-3/MT-5) - those are Marco-run.
+**TEMPORARY, 2026-09-04: also `pr-claudedesign-s1-track-the-written-half`.** It lints ADMIT, has
+no gate and is not `escalates: true`, so nothing else would stop you arming it. Its prescribed
+`.gitignore` block has no re-include for `Claude Design/proposed/`, so its own step 5 would create
+`proposed/README.md` as a file git cannot see - the exact defect the slice exists to fix - and its
+`done_when` asserts nothing about that path, nor anything that would fail if the pattern were
+written too permissively. Measured in clean throwaway repos built from the real 81-file layout:
+as prescribed the gate PASSES with `proposed/` invisible, and PASSES again with 65 mock-ups and a
+194 KB stylesheet committed. A Station 06 Phase-6 amendment is drafted. **Delete this paragraph
+the moment `!Claude Design/proposed/` appears in the prompt body** - that is the only condition it
+waits on.
 Before arming, ALSO check the prompt is not already SHIPPED: a queue-arm chore or a slice prompt
 whose feature already merged under a different PR is a DUPLICATE. Grep the MERGED board (`gh pr list
 --state merged`), not just open PRs, and the code on `origin/main` - a premise like `! test -f X` or

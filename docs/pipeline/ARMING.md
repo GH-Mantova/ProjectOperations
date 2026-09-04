@@ -62,15 +62,46 @@ The `-WhatIf` flag runs steps 2 and 3 and prints the plan without touching anyth
 ## Usage
 
 ```powershell
-scripts\pipeline\arm-prompt.ps1 -Name <prompt-slug>
-scripts\pipeline\arm-prompt.ps1 -Name <prompt-slug> -WhatIf
+scripts\pipeline\arm-prompt.ps1 -Name <prompt-slug> -Actor <who>
+scripts\pipeline\arm-prompt.ps1 -Name <prompt-slug> -Actor <who> -WhatIf
 ```
 
 The slug is the file stem without the `-HOLD.md` suffix. Example:
 
 ```powershell
-scripts\pipeline\arm-prompt.ps1 -Name pr-arm-lock-s1-serialize-arming
+scripts\pipeline\arm-prompt.ps1 -Name pr-arm-lock-s1-serialize-arming -Actor station-06
 ```
+
+## `-Actor` — who armed it
+
+**Mandatory.** The script refuses before it takes the lock if it is missing or malformed.
+
+The audit log already carried `by=<user>@<host>`, `pid=` and `caller=<parent process>`. Every
+Cowork chat and every station agent on this machine produces the *same* values for all three —
+in practice `by=Marco@` (the host half came back empty) and `caller=powershell.exe:<pid>` — so
+the log could say the machine armed something but never **which session**. On 2026-09-04 three
+Station 00 sessions were alive at once and one of them armed a prompt mid-run, and the log could
+not say which. The actor is the one fact the script cannot work out for itself, so it has to be
+told.
+
+| Actor | Use it when |
+|---|---|
+| `station-00` … `station-06` | A station agent is arming as part of its own run. |
+| `station-00.a3f1` | Several sessions of one station can be alive together — add a short discriminator so two of them are distinguishable in the log. |
+| `marco` | Marco armed it by hand. |
+
+Rules: 2–64 characters, `A-Z a-z 0-9 . _ : / -` only, must start with a letter or digit, **no
+spaces** — the log line is space-delimited and every reader of it splits on whitespace, so an
+actor with a space in it would silently shift every field to its right.
+
+The line it produces:
+
+```
+2026-09-04T07:11:03Z  ARMED  pr-foo-bar  escalates=false  actor=station-06  by=Marco@LAPTOP-E6NHU4E4  pid=1234  caller=powershell.exe:5678
+```
+
+`actor=` is first of the identity fields because it is the only one that separates two sessions
+on the same machine. The rest corroborate it.
 
 ## Lint codes that block arming
 

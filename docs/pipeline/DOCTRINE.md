@@ -431,6 +431,25 @@ here now because they are true for **every** station.
   plain `Set-Content` still rewrites line endings. A `--numstat` reading far larger than your
   intended change is the symptom; check it before you commit.
 
+- 🔴 **...AND NODE HAS ITS OWN TRAP IN THE CURE: `String.replace()` READS `$` IN THE REPLACEMENT AS A
+  SUBSTITUTION PATTERN.** `$&`, `` $` ``, `$'`, `$1` and `$$` are all live in a replacement **string**,
+  and `` $` `` means *"insert everything before the match"*. MEASURED 2026-09-04T19:2xZ by Station 00,
+  editing the project-memory index: a replacement whose text ended `...[cm]?[jt]sx?$` immediately
+  followed by a closing backtick — a regex being **quoted as documentation**, which is the likely way
+  to meet this — injected **7,734 bytes**, the entire preceding file, into the middle of one line. The
+  file went 24.9 KB → **33,801 B**, and the escalation header, a section heading and a whole open
+  escalation were silently duplicated.
+  🔴 **EVERY READ-BACK PASSED.** `old_text_gone=true`, `new_text_present=true`, negative control `0` —
+  all three true, all three worthless, because none of them asks *"is anything ELSE now in the file?"*
+  This is §9.6 inverted: not an empty result read as an empty world, but a **fuller** result read as a
+  correct one. It was found only by measuring the file's byte size, then its per-line sizes.
+  🔧 **The cure is unconditional: never pass a replacement STRING. Pass a FUNCTION** —
+  `s.replace(OLD, () => NEW)` — which disables `$` handling entirely, **or build the result by
+  concatenation** (`pre + NEW + suf`), which is what the repair used.
+  🔧 **And assert the BYTE DELTA on every doc edit:** `after - before` must equal
+  `NEW.length - OLD.length` ± the change you intended. A read-back that only looks for what you wrote
+  cannot see what you spilled. The same assertion catches the `Set-Content` line-ending rewrite in the
+  bullet above, which is why `--numstat` is named there — this is the node-side half of the same rule.
 - 🔴 **PowerShell's `>` redirection writes UTF-16LE in PS 5.1.** `git show <ref>:<path> > file`
   produces a file **twice the size**, starting `FF FE`, that no byte-wise or hash comparison will
   ever match the UTF-8 original — while `git diff` correctly reports no difference. Measured

@@ -483,13 +483,17 @@ here now because they are true for **every** station.
   resolves"* — proves nothing about them. 🔴 **But `gh` is NOT absent from the file, and this
   bullet said it was until 2026-08-31.** `lint-prompt.mjs:1164` reads
   `process.env.LINT_GH_BIN || "gh"` and `:1165` shells `gh pr view <n> --json state` inside
-  `ghFetchPrState`, reached from the exported `checkFixesPrTargetOpen` (`:1518` calls it *"a single
-  gh call"*). **A `fixes_pr` verdict therefore DOES depend on `gh`** — confirm it resolves before
-  trusting one. (Found by Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour —
-  `Select-String LINT_GH_BIN` returns exactly one hit, line 1164.) **Confirm `git` resolves AND read its stderr before believing any
-  ADMIT.** And "fail SAFE" is safe only against wrongly *binning* a prompt: with respect to
-  **arming** it fails **OPEN**, because a skipped gate reads as an ADMIT — including for prompts
-  that drop database tables.
+  `ghFetchPrState`, reached from the exported `checkFixesPrTargetOpen` (the comment
+  `// Cheaper than the premise (single gh call, no shell subprocess), so run` above the
+  `checkFixesPrTargetOpen({ fixesPr, fetchState: fetch })` call site names it that). **A `fixes_pr`
+  verdict therefore DOES depend on `gh`** — confirm it resolves before trusting one. (Found by
+  Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour — `Select-String LINT_GH_BIN`
+  returns exactly one hit, line 1164.) **A line-number citation into a file outside this document
+  is invalidated by any edit above it — prefer a symbol name or a fixed comment string as the
+  anchor.** **Confirm `git` resolves AND read its stderr before believing any ADMIT.** And "fail
+  SAFE" is safe only against wrongly *binning* a prompt: with respect to **arming** it fails
+  **OPEN**, because a skipped gate reads as an ADMIT — including for prompts that drop database
+  tables.
 - 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see **three**
   literal markers — `DO_NOT_ARM_COMMENT` (`lint-prompt.mjs:728`, case-insensitive),
   `DO_NOT_ARM_CAPS` (`:730`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/` (`:732`,

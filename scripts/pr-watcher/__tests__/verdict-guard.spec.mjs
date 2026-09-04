@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { validateVerdict } from "../verdict-guard.mjs";
+import { validateVerdict, looksLikeCommand } from "../verdict-guard.mjs";
 
 // (a) Verdict names one file that IS in prFiles → ok:true
 test("returns ok:true when the only cited file is in prFiles", () => {
@@ -308,4 +308,88 @@ test("several in-scope lines: every one is checked, only the bad one is named", 
 
   assert.equal(result.ok, false);
   assert.deepEqual(result.unmatched, ["apps/api/src/missing.ts"]);
+});
+
+// ---------------------------------------------------------------------------
+// COMMANDS ARE EVIDENCE, NOT SCOPE CLAIMS
+//
+// A verdict shows its working, and the guard was reading the working as a claim.
+// MEASURED 2026-09-04: 39 of the 117 files in docs/pr-prompts/blocked/ are
+// verdict-guard blocks, NINE of them that day, and the three sampled name only
+// commands the reviewer ran. #1574 narrowed WHICH text is scanned; these cover
+// WHAT counts as a claim inside it.
+// ---------------------------------------------------------------------------
+
+const PR_FILES = ["scripts/pr-watcher/index.mjs"];
+
+test("looksLikeCommand: a command word followed by an argument", () => {
+  assert.equal(looksLikeCommand("node scripts/pipeline/lint-station.mjs"), true);
+  assert.equal(looksLikeCommand("pnpm --filter api test"), true);
+  assert.equal(looksLikeCommand("gh pr view 1580 --json files"), true);
+});
+
+test("looksLikeCommand: a flag, a quote, a pipe, a redirect or an &&", () => {
+  assert.equal(looksLikeCommand("something --json"), true);
+  assert.equal(looksLikeCommand('grep -c "device_bash" docs/pipeline/x.md'), true);
+  assert.equal(looksLikeCommand("a | b"), true);
+  assert.equal(looksLikeCommand("a > b"), true);
+  assert.equal(looksLikeCommand("a && b"), true);
+});
+
+test("looksLikeCommand: a plain path is not a command", () => {
+  assert.equal(looksLikeCommand("apps/api/src/foo.ts"), false);
+  assert.equal(looksLikeCommand("scripts/pr-watcher/index.mjs:42"), false);
+});
+
+// A space alone must not condemn a span. `Claude Design/` is a real folder in this
+// repo, and Station 04 flagged space-bearing paths as a live defect the same morning.
+test("looksLikeCommand: a real path containing a space is not a command", () => {
+  assert.equal(looksLikeCommand("Claude Design/assets/routes.js"), false);
+});
+
+test("the shape that blocked rev-1580 now passes", () => {
+  const verdictText = [
+    "MERGE",
+    "",
+    'Checked with `grep -c "device_bash" docs/pipeline/STATION-CAPABILITIES.md`',
+    "and `node scripts/pipeline/lint-station.mjs`, both clean.",
+    "The change itself is in `scripts/pr-watcher/index.mjs`.",
+  ].join("\n");
+  assert.deepEqual(validateVerdict({ verdictText, prFiles: PR_FILES }), { ok: true });
+});
+
+test("a fenced transcript is not mined for paths", () => {
+  const verdictText = [
+    "MERGE",
+    "",
+    "```",
+    "$ node scripts/pipeline/check-breadcrumb.mjs",
+    "apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx  ok",
+    "```",
+    "",
+    "Only `scripts/pr-watcher/index.mjs` changed.",
+  ].join("\n");
+  assert.deepEqual(validateVerdict({ verdictText, prFiles: PR_FILES }), { ok: true });
+});
+
+// The guard must still do its job. Narrowing what counts as a claim must not let a
+// genuine over-claim through.
+test("a genuine over-claim in backticks still blocks", () => {
+  const verdictText =
+    "MERGE. This changes `apps/api/src/modules/rates/rate-resolver.service.ts`.";
+  const result = validateVerdict({ verdictText, prFiles: PR_FILES });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unmatched, [
+    "apps/api/src/modules/rates/rate-resolver.service.ts",
+  ]);
+});
+
+test("a bare path outside any fence or command still blocks", () => {
+  const verdictText =
+    "MERGE. Touches apps/web/src/pages/admin/RatesListsAdminPage.tsx as well.";
+  const result = validateVerdict({ verdictText, prFiles: PR_FILES });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unmatched, [
+    "apps/web/src/pages/admin/RatesListsAdminPage.tsx",
+  ]);
 });

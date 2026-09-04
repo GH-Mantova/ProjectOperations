@@ -102,6 +102,51 @@ function pathMatches(candidate, prSet, prArr) {
   return prArr.some((pf) => pf === candidate || pf.endsWith("/" + candidate));
 }
 
+// WHICH LINES ASSERT WHAT THE PR CHANGED.
+//
+// A verdict cites paths for two different reasons, and only one of them is a claim
+// about the diff:
+//
+//   - "In scope: scripts/pr-watcher/index.mjs"  <- an ASSERTION. If that file is not
+//     in the PR the reviewer is describing work it did not review, which is the whole
+//     reason this guard exists.
+//   - "Test case PR #1374 (scripts/pipeline/__tests__/check-breadcrumb...)"  <- EVIDENCE.
+//     The reviewer is naming what it exercised. Those files are SUPPOSED to be absent
+//     from the diff.
+//
+// Scanning the whole document conflates the two, and the incentive runs backwards: a
+// verdict that says only "looks fine" passes, while one that shows its work is blocked.
+// MEASURED 2026-09-04: eight PRs blocked this way - #1542 #1543 #1544 #1545 #1561 #1563
+// #1564 #1572 - and #1543/#1544 then sat ~15 h waiting for a human. #1572's verdict was
+// correct: it cited index.mjs (in the PR) plus a test case, a substring trap and its
+// originating prompt (all correctly absent).
+//
+// FAILS CLOSED. A verdict with no in-scope line is scanned WHOLE, exactly as before, so
+// free-prose verdicts keep their existing protection. Narrowing only ever applies where
+// the verdict has explicitly stated its claim.
+const IN_SCOPE_LINE_RE = /^[\s>*+-]*(?:\*\*)?in[ _-]?scope(?:\*\*)?\s*:(.*)$/gim;
+
+/**
+ * Return only the text of the verdict's in-scope assertions, or null when the
+ * verdict makes none (in which case the caller scans the whole document).
+ *
+ * `Out of scope:` lines are deliberately NOT collected: a path named there is being
+ * declared ABSENT from the diff, so requiring it to be present would invert the check.
+ *
+ * @param {string} text
+ * @returns {string|null}
+ */
+function inScopeAssertions(text) {
+  const lines = [];
+  let m;
+  IN_SCOPE_LINE_RE.lastIndex = 0;
+  while ((m = IN_SCOPE_LINE_RE.exec(text)) !== null) {
+    if (/^[\s>*+-]*(?:\*\*)?out[ _-]?of[ _-]?scope/i.test(m[0])) continue;
+    lines.push(m[1]);
+  }
+  return lines.length ? lines.join("\n") : null;
+}
+
 /**
  * Validate a review verdict against the actual list of files in the PR.
  *
@@ -115,7 +160,9 @@ export function validateVerdict({ verdictText, prFiles }) {
   const prNorm = (prFiles ?? []).map(normPath);
   const prSet = new Set(prNorm);
 
-  const candidates = extractPaths(verdictText ?? "");
+  // Narrow to the verdict's own claim when it makes one; otherwise scan it all.
+  const claims = inScopeAssertions(verdictText ?? "");
+  const candidates = extractPaths(claims ?? verdictText ?? "");
 
   // Filter out paths that are legitimately not in prFiles (review/prompt files
   // written by the watcher itself — the agent won't have touched those).

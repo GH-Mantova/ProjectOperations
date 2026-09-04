@@ -124,15 +124,16 @@ its chat report plus a breadcrumb are then the only channels, and Station 00 mus
   `read_process_output` with explicit offsets until it reports `0 remaining`.
 - ⚠️ Blocked commands include `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
-### The device bridge (`device_bash`, `device_stage_files`, `device_commit_files`)
+### No second transport
 
-Runs in the user's local **Linux VM** with mapped folders under `$HOME/mnt/`. Useful as a **fallback
-when Desktop Commander is absent**, for read-only checks only.
-
-🔴 **NEVER run `git` through it against the Windows `.git`.** MEASURED, three occurrences: a
-cut-short VM-side git call leaves a **0-byte `index.lock` with NO Windows process**, so "zero git
-processes" reads true forever, the lock never expires, and `status-sweep.ps1` §7 escalates it to
-`DO NOT ACT` - freezing every station.
+Desktop Commander is the **only** transport onto the Windows host. Earlier revisions of this file
+offered a Linux-VM "device bridge" as a fallback when Desktop Commander was absent; MEASURED
+2026-09-04T06:1xZ from inside a live scheduled Cowork session, none of the tools that bridge
+exposed is offered in that environment's inventory. **A fallback that does not exist is not a
+fallback** — a station that reaches for one because the primary is absent is a station presenting
+no-coverage as coverage, which the contract forbids. When Desktop Commander cannot be reached the
+run is **blind** and stops (§2, and the PREFLIGHT block in every station doc). Do not invent a
+replacement.
 
 ### GitHub
 
@@ -168,7 +169,8 @@ lane discipline breaks (LL-38).
 `C:\po-sup-fix-scripts` (scratch `.ps1`) · `C:\po-worktrees`, `C:\po-wt`,
 `C:\po-watcher-worktrees` · plus several `po-*` fix trees.
 
-⚠️ The mapping governs the **device bridge only**, not Desktop Commander (§3).
+⚠️ Desktop Commander is not restricted by this mapping — see §3, "NOT limited to the session's
+mapped folders". The mapping only describes which folders a Cowork session lists as its own.
 
 ---
 

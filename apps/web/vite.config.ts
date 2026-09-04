@@ -138,6 +138,15 @@ export default defineConfig({
         __dirname,
         "../../packages/config/src/forms-rule-definition.ts"
       ),
+      // Same reason as above, for the shared charge-step semantics. Subpath
+      // aliases MUST stay ahead of the bare "@project-ops/config" entry below:
+      // alias matching is prefix-based and first-match-wins, so without this
+      // line the bare entry rewrites the import to src/index.ts/charge-step-
+      // semantics and resolution fails.
+      "@project-ops/config/charge-step-semantics": resolve(
+        __dirname,
+        "../../packages/config/src/charge-step-semantics.ts"
+      ),
       "@project-ops/config": resolve(__dirname, "../../packages/config/src/index.ts")
     }
   },

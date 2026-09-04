@@ -714,8 +714,35 @@ probe is well calibrated for watcher-opened PRs and says nothing whatsoever abou
 1. `docs/pr-prompts/processed/*.md.log` contains a verdict naming that PR ⇒ obey it. `marco:true` ⇒
    **RULE 2 applies, do not merge.**
 2. No log names that PR ⇒ **it did not come through the watcher.** The absence proves nothing about
-   its risk. Apply the policy gate BY HAND — `classifyPolicyFiles` in `index.mjs` is the definition:
-   any path outside `^(tests|docs)/`, or any path matching `(^|/)migrations/`, means **it is Marco's**.
+   its risk. Apply the policy gate BY HAND — `classifyPolicyFiles` in `index.mjs` is the definition,
+   and 🔴 **READ THE FUNCTION, NOT THIS SENTENCE.** It refuses an empty diff, refuses any path
+   matching `(^|/)migrations/`, and then refuses the first path that is not test-or-docs — where
+   test-or-docs is `NESTED_TEST_PATHS` (anchor: `const NESTED_TEST_PATHS`), which as of
+   2026-09-04 accepts **THREE** forms, not one:
+
+   ```js
+   const NESTED_TEST_PATHS = [
+     /^(tests|docs)\//,
+     /(^|\/)__tests__\//,
+     /\.(test|spec)\.[cm]?[jt]sx?$/,
+   ];
+   ```
+
+   **So a PR touching only `scripts/pipeline/__tests__/backlog-parser.test.mjs`, or
+   `apps/api/src/bootstrap/dev-helper.spec.ts`, is TESTS — not Marco's** (both paths are real and
+   tracked, so this example is checkable). Anything outside those three forms is Marco's.
+   ⚠️ **This shorthand had already outgrown its symbol once.** From 2026-08-31 to 2026-09-04 it read
+   *"any path outside `^(tests|docs)/`"*, while the function had been widened precisely because that
+   single regex *"classifies every real test-only PR as 'outside' and routes it to Marco"* (its own
+   comment, still there). Over-routing fails **SAFE** — nothing of Marco's could merge on it — which
+   is why it survived four days unnoticed: it silently manufactured the human decisions this lane
+   exists to remove. That is §9.5's closing bullet, in §10's own text.
+   🔧 **The falsifying probe for this paragraph is the array itself:**
+   `git show origin/main:scripts/pr-watcher/index.mjs | Select-String 'NESTED_TEST_PATHS'`
+   (POSITIVE CONTROL `classifyPolicyFiles`; NEGATIVE `zzzNoSuchTokenZzz` → 0). If the array is gone
+   and the single regex is back, **this paragraph is wrong again** — read the function and correct it
+   here. Found by Station 04 2026-09-04T18:1xZ (F3); confirmed against `origin/main` and landed by
+   Station 00 at 2026-09-04T19:1xZ.
 3. **EXCEPTION - a KNOWN STATION LANE is classified by the authority matrix, not by
    `classifyPolicyFiles`.** A PR opened by a station acting inside its own recorded authority
    (`STATION-CAPABILITIES.md` section 5) is classified by that matrix, and the PR body must NAME

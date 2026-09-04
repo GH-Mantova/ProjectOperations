@@ -727,8 +727,12 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
 
     let res;
     try {
+      // -Actor is mandatory on the script. This runner is separate from
+      // runArmPromptSimple and has to supply it too, or PowerShell refuses the call
+      // before the script's own Step 0 is ever reached - which is a parameter-binding
+      // failure, not the release failure this test is about.
       const psArgs = ["-NoProfile", "-NonInteractive", "-File", tmpFile, "-Name", slug,
-        "-LockTimeoutSeconds", "5"];
+        "-Actor", "test-suite", "-LockTimeoutSeconds", "5"];
       const spawnResult = spawnSync(PWSH, psArgs, { encoding: "utf8", timeout: 30000 });
       res = { status: spawnResult.status == null ? -1 : spawnResult.status, stdout: spawnResult.stdout || "", stderr: spawnResult.stderr || "" };
     } finally {

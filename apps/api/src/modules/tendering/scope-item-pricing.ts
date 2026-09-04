@@ -1,18 +1,16 @@
 // PR B1.7.1 (waste removed in B1.7.2) — pure pricing function for
 // canonical (B1.6+) scope items.
 //
-// Reads only the canonical fields (men, days, plantItems, provisional
-// Amount) plus the rate-card maps supplied by the caller. Doesn't
-// touch Prisma, so every branch is unit-testable without a DB.
+// Reads only the canonical fields (men, days, shift, plantItems,
+// provisionalAmount) plus the rate-card maps supplied by the caller.
+// Doesn't touch Prisma, so every branch is unit-testable without a DB.
 //
 // Per the design doc, waste belongs to the auto-generated WASTE
 // SUMMARY SUBTABLE — scope items themselves never reflect waste $.
 // B1.7.1 mistakenly included a waste leg here; B1.7.2 removed it.
 // B3 will rewire the proper waste calc on the dedicated subtable.
 //
-// Open caveats (revisited in PR B3):
-//   - Shift is currently always "Day" (legacy field, not surfaced in
-//     the canonical UI). nightRate/weekendRate ignored.
+// WBS-SHIFT-S2: shift is read from item.shift, defaulting to Day.
 
 import { Prisma } from "@prisma/client";
 import { Discipline, DISCIPLINES } from "./dto/scope-of-works.dto";
@@ -56,14 +54,26 @@ export type ScopeItemPricingInput = {
   discipline: Discipline;
   men: number | null;
   days: number | null;
+  /** Labour shift: "Day" | "Night" | "Weekend". null/absent defaults to "Day". */
+  shift?: string | null;
   plantItems: ReadonlyArray<ScopePlantEntryInput> | null;
   provisionalAmount: number | null;
 };
 
 /** Pre-built rate lookups (see buildRateMaps) so pricing stays a pure function. */
 export type RateMaps = {
-  /** Maps discipline → day rate in $/man-day. */
+  /**
+   * Maps discipline → day rate in $/man-day.
+   * Retained for backward compatibility; use `labourRateForShift` for
+   * shift-aware pricing.
+   */
   labourRateByDiscipline: Map<Discipline, number>;
+  /**
+   * Maps `${discipline}:${shift}` → rate in $/man-day, where shift is the
+   * lowercase canonical value ("day" | "night" | "weekend"). Populated by
+   * buildRateMaps from all three shift columns.
+   */
+  labourRateByDisciplineShift: Map<string, number>;
   /** Maps EstimatePlantRate.id → rate in $/day. */
   plantRateById: Map<string, number>;
 };
@@ -89,28 +99,63 @@ export function decToNum(value: Prisma.Decimal | number | null | undefined): num
 }
 
 /**
- * Build the rate-lookup maps consumed by computeScopeItemTotal. Labour
- * rate is resolved via discipline → role → EstimateLabourRate.dayRate;
- * shift defaults to Day (night/weekend not yet surfaced).
+ * Build the rate-lookup maps consumed by computeScopeItemTotal and
+ * labourRateForShift.
+ *
+ * Accepts all shift rows (day / night / weekend) from listRates. Each
+ * entry carries `{ role, shift, rate }` where shift is the lowercase
+ * canonical value. Populates both `labourRateByDiscipline` (day-rate
+ * backward-compat map) and `labourRateByDisciplineShift` (the full
+ * shift-aware map keyed `${discipline}:${shift}`).
  */
 export function buildRateMaps(
-  labourRates: ReadonlyArray<{ role: string; dayRate: Prisma.Decimal }>,
+  labourRates: ReadonlyArray<{ role: string; shift: string; rate: Prisma.Decimal }>,
   plantRates: ReadonlyArray<{ id: string; rate: Prisma.Decimal }>
 ): RateMaps {
-  const labourByRole = new Map<string, number>();
-  for (const r of labourRates) labourByRole.set(r.role, Number(r.dayRate));
+  // Build a map of role:shift → rate for all three shift variants.
+  const labourByRoleShift = new Map<string, number>();
+  for (const r of labourRates) {
+    labourByRoleShift.set(`${r.role}:${r.shift}`, Number(r.rate));
+  }
 
   const labourRateByDiscipline = new Map<Discipline, number>();
+  const labourRateByDisciplineShift = new Map<string, number>();
   for (const d of DISCIPLINE_ORDER) {
     const role = DEFAULT_ROLE_BY_DISCIPLINE[d];
-    const rate = labourByRole.get(role);
-    if (rate != null) labourRateByDiscipline.set(d, rate);
+    for (const shift of ["day", "night", "weekend"] as const) {
+      const rate = labourByRoleShift.get(`${role}:${shift}`);
+      if (rate != null) {
+        labourRateByDisciplineShift.set(`${d}:${shift}`, rate);
+        if (shift === "day") labourRateByDiscipline.set(d, rate);
+      }
+    }
   }
 
   const plantRateById = new Map<string, number>();
   for (const p of plantRates) plantRateById.set(p.id, Number(p.rate));
 
-  return { labourRateByDiscipline, plantRateById };
+  return { labourRateByDiscipline, labourRateByDisciplineShift, plantRateById };
+}
+
+/**
+ * Resolve the effective labour rate for a (discipline, shift) pair.
+ *
+ * Normalises the shift string to lowercase; any unrecognised value
+ * (including null / undefined / empty) falls back to "day". Returns 0
+ * when no rate is found (same as the legacy path for an unknown role).
+ *
+ * Exported so WBS-SHIFT-S1 (web display) and any future consumer can
+ * depend on exactly this resolver without re-implementing the fallback.
+ */
+export function labourRateForShift(
+  discipline: Discipline,
+  shift: string | null | undefined,
+  rates: RateMaps
+): number {
+  const VALID_SHIFTS = new Set(["day", "night", "weekend"]);
+  const normalised = (shift ?? "").toLowerCase();
+  const effectiveShift = VALID_SHIFTS.has(normalised) ? normalised : "day";
+  return rates.labourRateByDisciplineShift.get(`${discipline}:${effectiveShift}`) ?? 0;
 }
 
 /**
@@ -130,6 +175,7 @@ export function toPricingInput(
     discipline,
     men: decToNum(item.men),
     days: decToNum(item.days),
+    shift: item.shift ?? null,
     plantItems,
     provisionalAmount: decToNum(item.provisionalAmount)
   };
@@ -178,7 +224,7 @@ export function computeScopeItemTotal(
     };
   }
 
-  const dayRate = rates.labourRateByDiscipline.get(item.discipline) ?? 0;
+  const dayRate = labourRateForShift(item.discipline, item.shift, rates);
   const labour = n(item.men) * n(item.days) * dayRate;
 
   let plant = 0;

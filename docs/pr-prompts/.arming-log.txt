@@ -48,3 +48,4 @@
 2026-09-04T08:29:37Z  ARMED  pr-preflight-tool-names-are-environment-specific  escalates=false  by=Marco@  pid=27152  caller=powershell.exe:33280
 2026-09-04T10:15:53Z  ARMED  pr-approval-receipt-test-gaps  escalates=false  by=Marco@  pid=34112  caller=powershell.exe:34788
 2026-09-04T11:29:24Z  ARMED  pr-lint-gate-path-space  escalates=false  by=Marco@  pid=31616  caller=powershell.exe:19060
+2026-09-04T19:32:17Z  ARMED  pr-wbsshift-s1-web-rate-follows-shift  escalates=false  by=Marco@  pid=35044  caller=powershell.exe:28352

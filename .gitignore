@@ -141,3 +141,10 @@ docs/data-model/relationship-graph.html
 # `graphify update .` (AST-only, offline, no LLM). See docs/runbooks/graphify-setup.md.
 graphify-out/
 graphify-extract.log
+
+# Cowork desktop writes chat deliverables (patches, drafts, reports) into
+# "<repo>/Claude outputs/" automatically. They are session artefacts, not repo
+# content, and they appear as untracked files at the repo root where a sweep or
+# an `add -A` can pick them up. Deliberately NOT "Claude*" — "Claude Design/"
+# is a real tracked folder and must not be caught by a wildcard here.
+Claude outputs/

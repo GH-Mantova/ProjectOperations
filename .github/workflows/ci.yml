@@ -238,6 +238,15 @@ jobs:
       # recorded in docs/qa/sot-refs-baseline.json. That file may only SHRINK — the
       # ratchet step below rejects any PR that adds an entry. Burn-down is Station 05's.
       - run: node scripts/pipeline/check-sot-refs.mjs
+      # check-armed-tracked: fails when a docs/pr-prompts/*-ready.md exists in the
+      # working tree but git does not track it — i.e. .gitignore:75 swallowed it
+      # because the prompt was authored fresh instead of armed by `git mv` from
+      # its -HOLD.md counterpart. Such a file is invisible to every station and
+      # one `git clean` from gone; three sets have already been rescued by hand.
+      # Value is on developer and watcher machines and as a standing statement of
+      # the rule. In CI the working tree is a fresh checkout so this normally has
+      # zero top-level *-ready.md files and passes quietly. That is expected.
+      - run: node scripts/pipeline/check-armed-tracked.mjs
       # RATCHET: docs/qa/sot-refs-baseline.json may only shrink.
       # Any PR that adds a "missing_path" entry (i.e. appends a new dangling reference
       # to the baseline rather than fixing it) is rejected here. Removals stay allowed.

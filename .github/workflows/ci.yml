@@ -130,6 +130,12 @@ jobs:
         # cannot resolve a model/enum reference in schema.prisma.
         run: node scripts/data-model/build-relationship-map.mjs --check
 
+  # NOTE: the `name:` below lists CP-09-13, CP-17, CP-22, CP-23 - but pr-gates.mjs ALSO runs
+  # CP-24 (sot purity, HARD BLOCK), CP-25 (failure honesty) and CP-26 (advisory copy). The name
+  # is deliberately NOT updated: it is a required status context, and renaming a required check
+  # stops it matching, which is how #544 sat green-but-unmergeable forever. Read the script for
+  # the real list, never this label. (2026-09-04: a reader took the name for the list and
+  # reported CP-24 as unenforced.)
   pr-gates:
     name: PR gates — diff checks (CP-09–13, CP-17, CP-22, CP-23)
     if: github.event_name == 'pull_request'

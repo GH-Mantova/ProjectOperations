@@ -315,3 +315,100 @@ whose reversal nobody can review, which is exactly the shape §5 hard stop 4 is 
 - **Did not touch** `/sot/`, Azure, Entra, SharePoint, or production data.
 - **Did not read `docs/qa/qa-findings.md` as evidence of anything** — it is gitignored
   (`.gitignore:108`) and its silence proves nothing.
+
+---
+
+## ADDENDUM — 2026-09-04T11:2xZ–11:3xZ, same station, same run, later measurement
+
+Written after the sections above and after this run's board PR merged, per the standing lesson that a
+breadcrumb dates the moment it was written, not the run: **a run that acts after writing one must
+append to it.** Everything below happened after the FINDINGS section was sealed.
+
+### Effects, read back
+
+- **#1585** — `chore(pipeline): preserve check-pipeline-heartbeat.mjs …`. **OPEN, Marco's.** No
+  auto-merge, no labels. Blob on the remote read back as `9c4587fb…`, identical to the source. F1 is
+  ACTIONED whatever Marco decides, because preservation completed at `git push`.
+- **#1586** — this run's board PR. **MERGED** at ~11:2xZ, all checks pass, on `main` as `afd72aa2`.
+  Auto-merge armed at `11:20:47Z` (SQUASH) and it landed itself.
+- **#1587** — `docs(pr-prompts): reword the never-arm collision …`. **MERGED**, on `main` as
+  `979a1468`. See F7.
+- **ARMED, one, per RULE 4:** `pr-lint-gate-path-space-ready.md` at **`11:29:24Z`**, via
+  `arm-prompt.ps1` (never a bare `git mv`), `ARM_EXIT=0`. Read back: `armed now: 1`, the HOLD is gone
+  from disk, and `.arming-log.txt` — the only clock that dates an arm — carries
+  `2026-09-04T11:29:24Z ARMED pr-lint-gate-path-space escalates=false pid=31616`.
+  **F2's "DEFERRED to the next run for the arm" is therefore superseded by this addendum: it is armed
+  now.** The next run should expect the watcher's PR for it, and must NOT merge that PR — the fix
+  touches `scripts/`, so it is Marco's (DOCTRINE §10.1 step 2).
+
+### F7 — S2 — A prompt that says "do not arm &lt;some other prompt&gt;" makes ITSELF unarmable, forever, silently
+
+This is new, it was found by trying, and it is the reason #1587 exists.
+
+`pr-lint-gate-path-space-HOLD.md` landed on `main` in #1586 and I moved to arm it. **The sanctioned
+primitive refused**, and it was right to:
+
+```
+[arm-prompt] Running lint-prompt.mjs on docs/pr-prompts/pr-lint-gate-path-space-HOLD.md ...
+ADMIT   pr-lint-gate-path-space-HOLD.md  (size 2)
+[arm-prompt] FAIL: HOLD file body contains 'DO NOT ARM' on a line. Not arming.
+```
+
+[MEASURED] the trigger was **line 111** of the prompt — *"Do not arm or promote
+`pr-claudedesign-s2-spec-regeneration-plan-HOLD.md` as part of this PR."* — a scope restriction about
+a **different** prompt, in the prompt's ordinary "## Do not" section. `arm-prompt.ps1:229` matches
+with PowerShell `-match`, which is **case-insensitive**, and `lint-prompt.mjs:728` matches
+case-insensitively too. **Neither can tell a rule about *this* prompt from a mention of *another*
+one.** The same file carries `## STANDING AUTHORITY … Do not ask` two sections earlier, so its author
+plainly meant it to be armed; as written it could never be.
+
+**My own RULE 4 detector missed this, and the primitive caught it.** [MEASURED] I ran the union grep
+as `Select-String -Pattern 'watcher: do-not-arm','DO NOT ARM','Arm ONLY' -CaseSensitive` → **0**, with
+a working positive control (`pr-524-rates-b-slice2-canonical-HOLD.md` → 2). The error is mine and it
+is precise: DOCTRINE §9.5 records that **only `DO_NOT_ARM_CAPS` (`:730`) is case-sensitive** —
+`DO_NOT_ARM_COMMENT` (`:728`) is not, and neither is `arm-prompt.ps1`. I applied `-CaseSensitive` to
+all three. Case-insensitively the same file returns **1**. **A detector that is stricter than the
+guard it models under-reports, and reads as a clean bill of health.** This is the clearest
+justification yet for *never hand-roll a board operation*: the hand-rolled check said arm, the
+primitive said no, and the primitive was right.
+
+**And the trap closes on the cure.** My first attempt at the explanatory HTML comment in #1587
+*quoted the phrase* to explain it — and the probe still returned **1**. The comment would have
+re-armed the very gate it documented. That is why the landed wording spells the phrase out letter by
+letter instead of quoting it, and it is the sharpest available proof that the guard matches text, not
+meaning.
+
+**DISPOSITION: ACTIONED for this one prompt (#1587, merged, and the arm succeeded), ESCALATED for the
+general defect.** The narrow question for Marco: **should the never-arm gate be a scoped MARKER
+rather than a bare phrase match?** RULE 1 options:
+
+- **(a) Match only the documented marker `&lt;!-- watcher: do-not-arm --&gt;`, and treat a bare phrase as
+  a WARNING that names the line and requires an explicit override.** COMPLETE and ADDITIVE, therefore
+  first. Complete: it fixes both directions at once — prose about another prompt stops gating this
+  one, and a genuine gate stays absolutely binding because the marker is unambiguous. It also closes
+  the mirror hole DOCTRINE §9.5 already records, that a **prose** gate matches no regex and is
+  invisible. Additive: the marker form already exists and is already documented as the cure for any
+  future never-arm prompt (#1400 put it on `pr-dns-s5-checker-flip-to-fail`), so nothing is
+  invented and no existing gate is weakened — every prompt carrying the marker keeps gating exactly
+  as it does today.
+- **(b) Keep the phrase match and forbid the phrase in prompt bodies by a lint rule.** Fails
+  *complete*: it moves the collision from arming-time to lint-time and still cannot express
+  "do not arm THAT one", which is a thing prompts legitimately need to say — as this one did.
+- **(c) Reword each prompt as it is hit, the way #1587 just did.** Fails *future*: it is a manual fix
+  re-made by whichever run trips over it next, and the failure is silent until someone tries to arm.
+  This run only found it because the arm was attempted; a run that had merely deferred the arm would
+  have reported the board healthy.
+
+⚠️ **For the next run, and for Station 06 when it stages work:** this defect is invisible to
+`triage-holds.ps1` and to any lint pass, because `lint-prompt.mjs` returns **ADMIT** on the affected
+prompt. **ADMIT is necessary, not sufficient** — DOCTRINE §9.5 says exactly this, and F7 is a fresh
+instance of it. There may be other prompts among the 74 remaining depth-1 HOLDs with the same
+collision; **nobody has counted, and I deliberately did not**, because a census is 04's lane and
+because counting them is not the same as fixing the guard.
+
+### Board state at the close of this run
+
+[MEASURED] 11:3xZ: `origin/main` = **`979a1468`** · open PRs **1** (#1585, Marco's, untouched by me) ·
+armed **1** (`pr-lint-gate-path-space-ready.md`, armed 11:29:24Z) · watcher node pid **20000** alive
+with its wrapper · dev tree `main @ 979a1468`, converged, index clean. The board is no longer idle:
+there is exactly one piece of work in flight and one PR waiting on Marco.

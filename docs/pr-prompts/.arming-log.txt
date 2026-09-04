@@ -35,3 +35,16 @@
 2026-09-02T04:16:09Z  ARMED  pr-schema-label-removal-is-marcos  escalates=false  by=Marco@  pid=2308  caller=powershell.exe:12912
 2026-09-02T06:31:37Z  ARMED  pr-cardui-s4-plant-columns  escalates=true  by=Marco@  pid=34304  caller=powershell.exe:19616
 2026-09-03T03:40:31Z  ARMED  pr-vmguard-s1-persist-and-repo-param  escalates=false  by=Marco@  pid=26376  caller=powershell.exe:34348
+2026-09-03T06:05:18Z  ARMED  pr-plandocs-s1-prod-runs-legacy-not-ratetable  escalates=false  by=Marco@  pid=24924  caller=powershell.exe:10648
+2026-09-03T06:32:42Z  ARMED  pr-artifactregister-s1-track-the-brief-index  escalates=false  by=Marco@  pid=17292  caller=powershell.exe:26664
+2026-09-03T07:03:21Z  ARMED  pr-wbsshift-s2-api-pricing-reads-shift  escalates=true  by=Marco@  pid=34284  caller=powershell.exe:31756
+2026-09-03T07:24:12Z  ARMED  pr-visualreview-s1-restore-vision-review-to-00  escalates=false  by=Marco@  pid=26748  caller=powershell.exe:31016
+2026-09-03T09:12:50Z  ARMED  pr-visualreview-s2-keep-the-screenshots  escalates=false  by=Marco@  pid=11676  caller=powershell.exe:22372
+2026-09-03T10:12:47Z  ARMED  pr-visualreview-s3-design-ref-frontmatter  escalates=false  by=Marco@  pid=31528  caller=powershell.exe:14216
+2026-09-04T02:18:14Z  ARMED  pr-doctrine-s95-cite-symbol-not-line  escalates=false  by=Marco@  pid=32688  caller=powershell.exe:12492
+2026-09-04T04:15:30Z  ARMED  pr-queue-armed-tracked-detector  escalates=false  by=Marco@  pid=20292  caller=powershell.exe:12532
+2026-09-04T06:19:49Z  ARMED  pr-watcher-merge-policy-nested-test-paths  escalates=true  by=Marco@  pid=14292  caller=powershell.exe:28128
+2026-09-04T06:41:04Z  ARMED  pr-claudedesign-s1-track-the-written-half  escalates=false  by=Marco@  pid=16540  caller=powershell.exe:21120
+2026-09-04T08:29:37Z  ARMED  pr-preflight-tool-names-are-environment-specific  escalates=false  by=Marco@  pid=27152  caller=powershell.exe:33280
+2026-09-04T10:15:53Z  ARMED  pr-approval-receipt-test-gaps  escalates=false  by=Marco@  pid=34112  caller=powershell.exe:34788
+2026-09-04T11:29:24Z  ARMED  pr-lint-gate-path-space  escalates=false  by=Marco@  pid=31616  caller=powershell.exe:19060

@@ -47,6 +47,7 @@ Owns **board mutation** and **watcher health**. Nothing else may merge or restar
 | `watcher-loop-check.ps1` (root) | Read-only stall check across watcher + queue. Touches nothing. | Watcher looks idle. |
 | `pipeline\find-watcher.ps1` | Identify the watcher by COMMAND LINE, never "it's a node process". | Before any watcher judgement. |
 | `pipeline\preflight.ps1` | Pre-flight before touching a staged prompt, branch or PR. | Before mutating anything. |
+| `pipeline\check-pipeline-heartbeat.mjs` | Has **any** station reported in the last 6h? Not per-station - `check-breadcrumb.mjs --freshness` answers that. Run by CI every 3h (`.github/workflows/pipeline-heartbeat.yml`) on GitHub's clock, so the act that disables the stations cannot reach it. Silence it deliberately with `docs/pipeline/pause.json`. | Read its CI verdict every cycle. |
 
 ### Mutating — the supervisor's own hands
 

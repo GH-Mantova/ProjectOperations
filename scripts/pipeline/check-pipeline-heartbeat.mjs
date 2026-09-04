@@ -40,6 +40,10 @@ import { readFileSync, existsSync, readdirSync } from "node:fs";
 
 export const DEFAULT_THRESHOLD_HOURS = 6;
 export const PAUSE_FILE = "docs/pipeline/pause.json";
+// A pause may not exceed this. An UNBOUNDED pause is an off switch, and an off switch
+// behind a JSON file is how an alarm dies quietly: `"until": "2099-01-01"` would silence
+// this check forever and nothing would ever say so. Chosen to cover a long weekend.
+export const MAX_PAUSE_HOURS = 72;
 const DIR = "docs/pr-prompts";
 
 // Same shape lint-station and check-breadcrumb use. Kept local rather than imported so
@@ -71,13 +75,17 @@ export function newestBreadcrumb(filenames) {
  * @param {string|null} text
  * @returns {{ untilMs: number, reason: string } | null}
  */
-export function parsePause(text) {
+export function parsePause(text, nowMs = Date.now()) {
   if (typeof text !== "string" || !text.trim()) return null;
   let j;
   try { j = JSON.parse(text); } catch { return null; }
-  if (!j || typeof j !== "object") return null;
+  if (!j || typeof j !== "object" || Array.isArray(j)) return null;
   const untilMs = Date.parse(j.until);
   if (Number.isNaN(untilMs)) return null;
+  // Bounded, for the reason given at MAX_PAUSE_HOURS. Out of range is treated exactly
+  // like malformed: NO pause. Failing towards "the alarm stays armed" is the whole
+  // contract of this function.
+  if (untilMs - nowMs > MAX_PAUSE_HOURS * 3.6e6) return null;
   return { untilMs, reason: typeof j.reason === "string" ? j.reason : "(no reason given)" };
 }
 

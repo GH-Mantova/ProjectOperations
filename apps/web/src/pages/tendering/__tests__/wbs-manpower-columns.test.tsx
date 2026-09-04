@@ -23,7 +23,8 @@ import {
   effectiveDayRate,
   manpowerRowTotal,
   fmtManpowerTotal,
-  SHIFT_OPTIONS
+  SHIFT_OPTIONS,
+  resolveRateForShift
 } from "../ScopeQuantitiesTable";
 
 // ── isDayRateOverridden ──────────────────────────────────────────────────────
@@ -250,5 +251,68 @@ describe("day-rate override lifecycle", () => {
   it("revert restores the EXACT locked rate, not an approximation", () => {
     const rate = effectiveDayRate(null, lockedRate);
     expect(rate).toStrictEqual(lockedRate);
+  });
+});
+
+// ── resolveRateForShift (WBS-SHIFT-S1) ──────────────────────────────────────
+// The rate the manpower cell shows must follow the shift the estimator picked.
+// These cases are the regression guard: without them a later refactor can
+// reintroduce a silent zero (always showing dayRate regardless of shift).
+//
+// rates shape mirrors LabourRate: { dayRate, nightRate, weekendRate } from the
+// API, mapped to { day, night, weekend } by labourRateById in the component.
+// The helper operates on the already-converted numbers so it stays pure.
+
+describe("resolveRateForShift", () => {
+  // dayRate=800 / nightRate=1000 / weekendRate=1200 (matching API field names)
+  const rates = { day: 800, night: 1000, weekend: 1200 };
+
+  it("Day shift resolves the day rate", () => {
+    expect(resolveRateForShift(rates, "Day")).toBe(800);
+  });
+
+  it("Night shift resolves the night rate", () => {
+    expect(resolveRateForShift(rates, "Night")).toBe(1000);
+  });
+
+  it("Weekend shift resolves the weekend rate", () => {
+    expect(resolveRateForShift(rates, "Weekend")).toBe(1200);
+  });
+
+  it("null shift falls back to the day rate (unset shift = Day behaviour)", () => {
+    expect(resolveRateForShift(rates, null)).toBe(800);
+  });
+
+  it("undefined shift falls back to the day rate", () => {
+    expect(resolveRateForShift(rates, undefined)).toBe(800);
+  });
+
+  it("unrecognised shift string falls back to the day rate (regression guard)", () => {
+    // Any future value that is not 'Night' or 'Weekend' must not silently zero.
+    expect(resolveRateForShift(rates, "Unknown")).toBe(800);
+  });
+
+  it("returns null when rates is null (no type selected)", () => {
+    expect(resolveRateForShift(null, "Night")).toBeNull();
+  });
+
+  it("returns null when rates is undefined (no type selected)", () => {
+    expect(resolveRateForShift(undefined, "Day")).toBeNull();
+  });
+
+  it("explicit override still beats the shift-resolved rate (override wins)", () => {
+    // The shift-resolved catalogue rate is the placeholder; the override
+    // is what effectiveDayRate returns when set. Verify the chain works.
+    const nightCatalogueRate = resolveRateForShift(rates, "Night"); // 1000
+    expect(effectiveDayRate(700, nightCatalogueRate)).toBe(700);
+    expect(isDayRateOverridden(700, nightCatalogueRate)).toBe(true);
+  });
+
+  it("revert after override restores the shift-resolved rate, not always day rate", () => {
+    // After reverting on a Night row, the effective rate must be the night
+    // catalogue rate, not the day rate.
+    const nightCatalogueRate = resolveRateForShift(rates, "Night"); // 1000
+    // Revert sets override to null; effectiveDayRate returns catalogue rate.
+    expect(effectiveDayRate(null, nightCatalogueRate)).toBe(1000);
   });
 });

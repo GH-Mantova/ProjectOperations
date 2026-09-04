@@ -529,12 +529,16 @@ function findCycleInCluster(graph, slug) {
 function readFromOriginMain(path, repoRoot) {
   const gitBin = process.env.LINT_GIT_BIN || "git";
   try {
+    // NEVER pass shell:true here. With shell:true on Windows, Node concatenates
+    // argv without escaping (DEP0190), so a gate path containing a space is
+    // re-split into two shell words and git returns "does not exist" — which
+    // the catch below then reports as absent, silently. git is a real .exe and
+    // resolves without a shell on every platform CI uses.
     return execFileSync(gitBin, ["show", "origin/main:" + path], {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf-8",
       timeout: 10000,
-      shell: process.platform === "win32",
     });
   } catch (err) {
     // Distinguish "file not on main" (path-doesnotexist error) from "git broken".

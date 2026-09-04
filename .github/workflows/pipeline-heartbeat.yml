@@ -1,0 +1,48 @@
+name: Pipeline heartbeat
+
+# Is the pipeline reporting AT ALL?
+#
+# check-breadcrumb.mjs --freshness answers "is station NN late?" — but its only consumer
+# is Station 00, and on 2026-09-02 Station 00 was one of the disabled tasks. The pipeline
+# asks "is anything failing to run?" only from INSIDE a run. Switch the runs off and the
+# question stops being asked. That is the 16.6-hour hole this fills.
+#
+# So it must not run on the same machine or the same scheduler. It runs here, on GitHub's
+# clock, where the act that disables the stations cannot reach it.
+#
+# A FAILING RUN HERE MEANS THE PIPELINE IS QUIET, NOT THAT CI IS BROKEN.
+#
+# To silence it deliberately, commit docs/pipeline/pause.json with an `until` inside 72h.
+# A malformed pause file does not pause, and neither does an unbounded one — by design.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    # Every 3 hours: half the 6h window, so a stall is seen within one window of crossing
+    # it rather than one window plus a full interval.
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Window in hours (default 6)'
+        required: false
+        default: '6'
+
+concurrency:
+  group: pipeline-heartbeat
+  cancel-in-progress: true
+
+jobs:
+  heartbeat:
+    name: Pipeline heartbeat
+    runs-on: ubuntu-latest
+    steps:
+      # depth 1 is enough: the check reads filenames in docs/pr-prompts on the checked-out
+      # tree and never shells out to git.
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      - name: Has any station reported?
+        run: node scripts/pipeline/check-pipeline-heartbeat.mjs --hours "${{ github.event.inputs.hours || '6' }}"

@@ -49,8 +49,10 @@ export type ListAccountsQuery = {
 export type AccountSummary = {
   id: string;
   name: string;
+  abn: string | null;
   type: string;
   lifecycle: "PROSPECT" | "ACTIVE" | "PAST";
+  owner: { id: string; firstName: string; lastName: string } | null;
   winRate: number | null;
   openOpportunitiesCount: number;
   lastContactedAt: Date | null;
@@ -559,8 +561,13 @@ export class AccountsService {
         client: {
           select: {
             name: true,
+            abn: true,
             winRate: true
           }
+        },
+        // CRM_ACCOUNTS_LIST_V2: owner added for the Owner column.
+        owner: {
+          select: { id: true, firstName: true, lastName: true }
         },
         // Count open opportunities directly on the account.
         _count: {
@@ -611,8 +618,10 @@ export class AccountsService {
       return {
         id: acct.id,
         name: acct.client?.name ?? "Unnamed",
+        abn: acct.client?.abn ?? null,
         type: acct.accountType,
         lifecycle: acct.lifecycleStatus as "PROSPECT" | "ACTIVE" | "PAST",
+        owner: acct.owner ?? null,
         winRate,
         openOpportunitiesCount: acct._count.opportunities,
         lastContactedAt,

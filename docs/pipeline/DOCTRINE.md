@@ -702,7 +702,31 @@ The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MER
 and `classifyPolicyFiles` admits a diff confined to `tests/**` + `docs/**` with no `migrations/` path.
 **42 PRs have merged with no human through that gate.** It works.
 
-🔴 **But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to Marco.**
+🟢🟢 **REFUTED 2026-09-04T03:1xZ by Station 00 — the lane is NOT dead, and has not been for three days.**
+This paragraph read *“But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to
+Marco”* from 2026-09-01 until this correction. It was already false when it was written.
+**[MEASURED]** `Select-String -Path docs\pr-prompts\processed\*.log -Pattern 'merge result for PR #(\d+): \{"ok":true'`,
+run against the LIVE tree `C:\ProjectOperations2` and never the clone (§9.5), returns **48** `ok:true`
+watcher merge verdicts, negative control (`\{"ok":zzzNoSuchZzz`) **0**. **Six of the 48 are after #1400:**
+#1476 (2026-09-01T04:29Z) · #1514 (09-02T04:49Z) · #1531 (09-03T06:29Z) · #1534 (09-03T07:02Z) ·
+#1537 (09-03T08:18Z) · **#1563 (09-04T03:10Z)**.
+
+**Worked instance — #1563**, `docs/pipeline/DOCTRINE.md` + `docs/pipeline/stations/_canonical-blocks.json`,
+both under `docs/`: opened `02:21:34Z`; the watcher enabled native squash auto-merge at `03:09:09Z`;
+**merged `03:10:30Z`**; its log carries `[watcher] merge result for PR #1563: {"ok":true}`. Open-to-enable
+was **47.6 min**, inside the 90-min `MERGE_TIMEOUT_MS` window. Nobody reviewed it and nobody merged it by hand.
+
+🔴 **What survives, and it is the half that matters: the MECHANISM below is untouched.** CI creation
+*can* outrun `MERGE_TIMEOUT_MS`, and when it does the timeout is written **byte-identically** to a genuine
+policy routing (§10.3 table, and the `marco: true` at `index.mjs:1776`). That is a **latent, intermittent**
+defect — not a stopped lane — and the distinction changes what you may conclude from one `marco:true`:
+**a single routing verdict on a docs-only PR is evidence of a timeout at least as much as of a policy
+decision, and neither reading clears it for merge** (RULE 2 still binds).
+
+⚠️ **The falsifying probe for THIS paragraph is the `ok:true` count above.** Re-run it before quoting
+either half. The reason the old sentence outlived its truth by three days is that it named no probe —
+the exact failure §9.5's closing bullet records, one section earlier, about a claim in a document every
+station is told it can trust.
 
 ⚠️ **This paragraph used to continue "Not because the gate is blocked: because docs work is
 hand-landed … so it never reaches the gate." THAT CAUSE IS REFUTED — measured 2026-09-01/02 by

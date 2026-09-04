@@ -40,6 +40,62 @@ const PATH_TOKEN_RE = /[^\s`'"<>()[\]{}|,;]+\/[^\s`'"<>()[\]{}|,;]+\.[a-zA-Z0-9]
 // review/prompt files themselves, written by the watcher).
 const IGNORED_PREFIXES = ["docs/pr-reviews/", "docs/pr-prompts/"];
 
+// A verdict shows its working. `node scripts/pipeline/lint-station.mjs` in a review is the
+// reviewer telling you HOW it checked, not claiming the PR touched that file — and the guard
+// was reading it as the second thing. MEASURED 2026-09-04: 39 of the 117 files in `blocked/`
+// are verdict-guard blocks, nine of them that day, and the three sampled name only commands:
+//
+//     - node scripts/pipeline/lint-station.mjs
+//     - grep -c "device_bash" docs/pipeline/STATION-CAPABILITIES.md
+//     - node scripts/pipeline/check-breadcrumb.mjs
+//
+// Pass 1 accepted the WHOLE backtick span as one path, leading verb and all, so the
+// candidate was literally `node scripts/pipeline/lint-station.mjs` — a string no PR file
+// list can ever contain. The incentive ran backwards: a review that names the commands it
+// ran is blocked, a review that asserts without evidence passes.
+//
+// #1574 narrowed WHICH text is scanned (in-scope lines, falling back to the whole
+// document). It did not fix WHAT counts as a claim inside that text. This does.
+//
+// STRIPPING THE VERB IS NOT ENOUGH, and that is worth stating because it is the obvious
+// move: `scripts/pipeline/lint-station.mjs` is a real repo path, and it is still not in the
+// PR, so the block would recur. A command is not a mis-typed claim — it is evidence, and
+// evidence is not in scope. The whole span is dropped.
+//
+// This can only ever REDUCE what the guard rejects. No verdict that passes today can start
+// failing because of it.
+const COMMAND_WORDS = new Set([
+  "node", "npm", "npx", "pnpm", "yarn", "git", "gh", "bash", "sh", "zsh",
+  "pwsh", "powershell", "python", "python3", "grep", "rg", "sed", "awk",
+  "cat", "head", "tail", "ls", "find", "diff", "wc", "sort", "uniq", "cut",
+  "tr", "xargs", "jq", "curl", "test", "echo", "cp", "mv", "mkdir", "tee",
+]);
+
+/**
+ * Is this backtick span a shell command rather than a path?
+ *
+ * Any ONE of these is enough, and each is a thing a real repo path never contains:
+ *  - it begins with a known command word followed by whitespace
+ *  - it carries a flag  (` -c`, ` --json`)
+ *  - it carries a quote (a path with a space is written bare: `Claude Design/x.js`)
+ *  - it carries a pipe, redirect, or `&&`
+ *
+ * Deliberately NOT "contains a space": `Claude Design/assets/routes.js` is a real path in
+ * this repo, and Station 04 flagged space-bearing paths as a live defect elsewhere on the
+ * same morning. Spans with spaces stay eligible unless one of the tests above fires.
+ *
+ * @param {string} span  the text between backticks, already trimmed
+ * @returns {boolean}
+ */
+export function looksLikeCommand(span) {
+  const first = span.split(/\s+/)[0];
+  if (COMMAND_WORDS.has(first) && /\s/.test(span)) return true;
+  if (/(^|\s)--?[A-Za-z]/.test(span)) return true;
+  if (/["']/.test(span)) return true;
+  if (/(\||>|<|&&)/.test(span)) return true;
+  return false;
+}
+
 /**
  * Extract every path-shaped token from a verdict text.
  *
@@ -61,6 +117,8 @@ function extractPaths(text) {
   let btMatch;
   while ((btMatch = btRe.exec(text)) !== null) {
     const inner = btMatch[1].trim();
+    // A command is evidence, not a claim. Drop the whole span — see COMMAND_WORDS above.
+    if (looksLikeCommand(inner)) continue;
     // Must look path-like: contains `/` and has an extension
     if (/\//.test(inner) && /\.[a-zA-Z0-9]{1,10}(:\d+(-\d+)?)?$/.test(inner)) {
       const stripped = normPath(stripSuffix(inner));
@@ -69,8 +127,15 @@ function extractPaths(text) {
   }
 
   // Pass 2: bare path tokens (avoid re-extracting what's already in backticks
-  // by searching a copy with backtick spans blanked out)
-  const blanked = text.replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length));
+  // by searching a copy with backtick spans blanked out).
+  //
+  // FENCED BLOCKS ARE BLANKED FIRST, and that is the other half of the same defect: a
+  // ```-fenced block in a verdict is pasted terminal output or a diff — the reviewer's
+  // evidence — and pass 2 was mining it for paths because the inline-span regex cannot
+  // match across newlines. Blanked, not parsed: nothing inside a transcript is a claim.
+  const blanked = text
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length));
   let tokenMatch;
   PATH_TOKEN_RE.lastIndex = 0;
   while ((tokenMatch = PATH_TOKEN_RE.exec(blanked)) !== null) {

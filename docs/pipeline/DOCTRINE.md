@@ -671,11 +671,30 @@ here now because they are true for **every** station.
   human gate died in transit. The probe was well controlled — 1881 logs, newest inside the hour,
   `marco.:true` → 608, and #1573 as the negative control returning a real verdict — and it still
   could not tell the two apart.
-  🔧 **So `NO LOG` obliges you to ask WHICH absence.** Before hand-classifying under §10.1
-  step 2, check whether any prompt in `docs/pr-prompts/processed/` names that PR’s branch or
-  scope, and read `.arming-log.txt` for an arm inside the PR’s window. **A watcher-opened PR with
-  no verdict is RULE 2 at its most binding, not its least** — the crash silently downgraded an
-  escalating prompt to an ordinary one, and nothing on the PR shows it.
+  🔧 **So `NO LOG` obliges you to ask WHICH absence — and BOTH probes this bullet used to
+  prescribe are broken. MEASURED 2026-09-04T20:1xZ at `fafd5057`, with controls.**
+  🔴 **(a) THE BRANCH NEEDLE IS GUARANTEED EMPTY.** This bullet read *"check whether any prompt
+  in `docs/pr-prompts/processed/` names that PR’s branch or scope"*. Searching the WHOLE directory
+  for the head branch of **#1606 — a PR the watcher DID open** — returns **0**, while that PR’s own
+  merge verdict sits in the same directory in `pr-wbsshift-s1-web-rate-follows-shift-ready.md.log`.
+  The watcher never writes a head branch name into any processed artefact, so the branch form has
+  **no positive control that can pass** and answers *second lane* for every PR that exists.
+  **Never match on the branch.**
+  🔴 **(b) A BARE `PR #<n>` MATCH OVER `processed\*.log` ALSO HITS SECOND-LANE PRs**, because
+  `rev-<n>-ready.md.log` — the auto-generated REVIEW JOB (§9.5, above) — names the PR by number and
+  by scope, and the review lane reviews PRs the watcher never opened. MEASURED the same run: a
+  `rev-<n>-ready.md.log` exists for **all four** open PRs (#1589 · #1593 · #1594 · #1606), i.e. for
+  BOTH lanes — so its presence carries **zero** lane information, and #1594’s only `PR #1594` hit in
+  `processed\*.log` is that review log.
+  🔧 **The discriminator that works is the PROMPT logs alone — exclude `rev-*`:**
+  `Select-String -Path docs\pr-prompts\processed\pr-*.log -Pattern 'PR #<n>\b'`.
+  MEASURED at `fafd5057`: **#1606 → 2** and **#1589 → 1**, both of which also carry a real
+  `merge result for PR #N: {"ok":false,"marco":true,…}`; **#1593 → 0** and **#1594 → 0**, both
+  second lane and hand-classified as Marco’s under §10.1 step 2; NEGATIVE control `PR #999999`
+  → **0**. Then cross it with `.arming-log.txt` for an arm inside the PR’s window — that half was
+  always sound and stands. **A watcher-opened PR with no verdict is RULE 2 at its most binding, not
+  its least** — the crash silently downgraded an escalating prompt to an ordinary one, and nothing
+  on the PR shows it.
 
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read

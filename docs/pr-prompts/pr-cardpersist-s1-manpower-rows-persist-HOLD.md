@@ -18,6 +18,7 @@ backfill: false
 design_ref: https://claude.ai/code/artifact/1c1d373e-dd9c-472b-9063-d74529da1035
 cluster: scope-card-persistence
 cluster_order: 1
+requires_on_main: 'apps/api/src/modules/tendering/scope-of-works.service.ts :: SCOPE_ITEM_LABOUR_STORE_V1'
 rollback_strategy: >-
   Web-only, one component plus its tests. No API, no schema, no migration, no new dependency. Every
   change is a `patchItem` call added to a handler that already exists. Revert and the Manpower

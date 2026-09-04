@@ -196,9 +196,22 @@ Station 02 was folded into 00 on 2026-09-02, and 00 had already been opening its
 before that (#1535, #1538, #1539, #1540, #1542 are all 00's). Corrected here rather than left to be
 re-derived: this file is the one that is supposed to settle a capability dispute.
 
-**Stations 01, 02 and 03 have NO schedule of their own** - 01 runs when the watcher builds an armed
-prompt; 02 and 03 run only when 00 dispatches them. That is deliberate: two things independently
-mutating git and the queue is the collision LL-38 records.
+**Station 01 has NO schedule of its own** - it runs only when the watcher builds an armed prompt,
+inside its own disposable worktree.
+
+**Station 02 has NO schedule of its own** - it runs only when 00 dispatches it. That is deliberate:
+two things independently mutating git and the queue is the collision LL-38 records - and since
+2026-09-02 02's contract is folded into 00 anyway. MEASURED 2026-09-03 from the scheduled-tasks MCP:
+a `02-board-driver` folder exists under `Scheduled\` and there is **no live task behind it** -
+which is section 1's rule that a folder is not a task.
+
+🔴 **Station 03 IS self-scheduled. This sentence read "02 and 03" until 2026-09-03, and half of it
+was refuted.** MEASURED the same run: `03-machine-minder` is **enabled** in the MCP, and its 23:01Z
+run fired from that schedule with **no dispatch from 00**. Half-true is the worst shape a binding
+line can take - a reader who checks 02 confirms it and generalises to 03. ⚠️ **03's live cron and its
+own bootstrap disagree about the cadence** (the bootstrap says every 4 hours; the cron does not), and
+which one is right is open with Marco - so read 03's cadence from the MCP, never from this file, that
+bootstrap, or the table in section 6.
 
 ### Merging - two independent gates, both binding on 00
 

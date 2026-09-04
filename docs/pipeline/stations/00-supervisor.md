@@ -57,6 +57,17 @@ stations in one day were served a superseded copy of their own binding instructi
 claim `origin/main` records as REFUTED. If you must fetch over the network instead, append
 **`?plain=1`** to the blob URL — a bare blob URL can return a stale rendered copy.
 
+🔴 **Run that `git show` in the DEV TREE, `C:\ProjectOperations2` — never in the watcher clone.**
+`origin/main` is a **per-tree** remote-tracking ref, and the clone's is fetched only when the watcher
+launches, so it pins to whatever `main` was at launch. MEASURED 2026-09-03T23:0xZ by Station 03:
+`git show origin/main:docs/pipeline/DOCTRINE.md | git hash-object --stdin` returned `0e9e14d9` in
+`C:\po-watcher\ProjectOperations` and `860b5e32` in `C:\ProjectOperations2` — ten commits and fourteen hours
+apart. Both exit 0, neither warns, and the stale answer is a plausible, well-formed document rather
+than an empty one, so §9.6's *"an empty result is not an empty world"* does not even fire. **The cure
+then serves a superseded copy of the very file it exists to keep current.** In any tree but the dev
+tree, run `git fetch origin +refs/heads/main:refs/remotes/origin/main` FIRST — and say in your
+GROUND block which tree you read in.
+
 **3. Stamp the ground.** Your report opens with exactly these lines:
 
 ```
@@ -163,6 +174,42 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
   station is not a quiet one** — either it did not run, or it ran and did not report, and both are
   defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
+- **THEN CROSS THE FRESHNESS TABLE AGAINST `lastRunAt`. THE BREADCRUMB IS ONE INSTRUMENT AND IT
+  CANNOT NAME THE CAUSE.** `check-breadcrumb.mjs` compares breadcrumb dates and nothing else, so the
+  three failures below are identical to it — and two of them print `ok`. Call `list_scheduled_tasks`
+  (scheduled-tasks MCP) and compare each station's `lastRunAt` to its newest breadcrumb:
+
+  | `lastRunAt` vs newest breadcrumb | What happened | How to confirm |
+  |---|---|---|
+  | `lastRunAt` older than one cadence | **the occurrence never fired** — nothing ran | `cronExpression` / `nextRunAt`; was the desktop app up? |
+  | `lastRunAt` fresh, no breadcrumb | **it started and died, or ran and did not report** | read the session transcript — the only channel that names the cause |
+  | both fresh and aligned | healthy | nothing further |
+
+  🔴 **A run can be recorded in `lastRunAt` having executed NOTHING.** MEASURED 2026-09-03:
+  `04-scanner` (`14:10:20Z`) and `05-sot-keeper` (`14:11:26Z`) each returned `API Error: 529
+  Overloaded` **on the first assistant turn, before STEP 1**. Zero instructions ran, a breadcrumb was
+  impossible, and `lastRunAt` updated anyway — so the MCP read healthy while `--freshness` read
+  `05 … 49.0h ago SILENT`. **A transient 529 silently consumes a whole cadence**, and the cron does
+  not retry: on a daily station that is 24 h of coverage lost with no defect anywhere to find.
+  🔴 **So `ok` is not an all-clear either.** The same run `03-machine-minder` printed
+  `40.1h ago (cadence 24h) ok` while having missed its 09-02 occurrence outright — twice a 24 h
+  cadence makes exactly one missed run invisible.
+  🔴 **`lastRunAt` HOLDS ONLY THE MOST RECENT RUN, SO IT CAN NEVER ANSWER "DID AN *EARLIER*
+  OCCURRENCE FIRE?"** — and on 2026-09-03T15:1xZ that limit produced a wrong refutation: a run read
+  `05 lastRunAt = 2026-09-03T14:11:26Z`, concluded "05 did fire", and struck the finding that 05 had
+  *also* missed its **09-02** occurrence. Those are claims about two different days, and `lastRunAt`
+  speaks to neither but the latest. **A third instrument answers it: the session directory.** Every
+  scheduled run creates `…\local-agent-mode-sessions\<a>\<b>\local_<uuid>\`, whose `CreationTimeUtc`
+  is the fire time to the second. MEASURED 2026-09-03T18:2xZ: **1301** directories retained; 05 has
+  exactly two, `2026-09-01T14:11:31Z` and `2026-09-03T14:11:26Z`, and **none on 09-02** — the whole
+  of 09-02 holds 7 sessions with a **17.8 h hole from `06:10:27Z` to `23:58:18Z`**, which is the
+  already-escalated all-stations outage, not a station defect. **Positive control:** 05's 09-01
+  directory is still on disk two days later, so an absent directory is a real absence and not
+  retention. **Group the directories by `CreationTimeUtc` day before calling any single occurrence
+  lost** — and re-run that grouping to falsify this note.
+  **Read the transcript before dispositioning any station as SILENT** (`list_sessions` →
+  `read_transcript`, newest session whose title matches the station). Calling a station stopped when
+  infrastructure killed it is a §7 false alarm, and a false alarm licenses destructive action.
 - **ARCHIVE WHAT YOU HAVE COLLECTED.** Once every finding in a breadcrumb carries a
   disposition, `git mv` it to `docs/pr-prompts/archive/` in the same board PR. On
   2026-08-30 the queue root was **159 breadcrumbs to 59 live `-HOLD.md`** and growing
@@ -260,7 +307,20 @@ deliberately asserts nothing - it just writes PNGs. The "EXIT CODE decides" rule
      `{ name, path, waitFor? }` per screen the PR body names as visual acceptance - then run
      `node scripts/pipeline/visual-smoke.mjs --pr {n} --base http://localhost:5174 --screens <screens.json>`.
      It re-logs in as the seed admin (`admin@projectops.local`), drives each route, and writes
-     deterministic full-page PNGs at 1440x900 to `docs/pr-reviews/pr-{n}-smoke/{name}.png`.
+     deterministic full-page PNGs at 1440x900 to `docs/pr-reviews/pr-{n}-smoke/{name}.png` inside the
+     smoke worktree. `visual-smoke.mjs` also accepts `--out <dir>` if you need them somewhere else,
+     but for this flow the default path is what you want - the next step commits from there.
+   - **Keep.** Before the smoke worktree is torn down, commit the PNGs onto the PR's own branch so
+     the reviewer's evidence outlives the worktree that made it. From inside the smoke worktree:
+     `git add -f docs/pr-reviews/pr-{n}-smoke/`, commit with the fixed subject
+     `chore(smoke): visual acceptance screens for #{n}`, then push to the PR branch. The `-f` is
+     harmless today (the path is not gitignored) and survives a future ignore rule. **If the push
+     fails, that is a smoke NOTE, not a smoke FAIL** - say so explicitly in the comment. Losing the
+     pictures must never turn a green PR red: the review already happened, and the PASS/FAIL rows
+     below are in the comment either way. The reason the PNGs are committed at all: evidence a
+     reviewer cannot re-open is not evidence. The cost is repo size, which is why only the screens
+     the PR body **declares** are captured, and why `visual-smoke.mjs` refuses any single PNG larger
+     than `MAX_PNG_BYTES` (2 MB) - an oversize screen is deleted and counted as a capture failure.
    - **Judge.** OPEN each PNG and READ it against the PR's stated visual acceptance criteria:
      layout intact (no overlap, no cut-off, no blank region where the PR claims content); the
      elements the PR body says are present are visibly present; nav and shell render; spacing and
@@ -284,6 +344,16 @@ LIVE (not from a note):
    - every `requires_file_on_main` path is present on `origin/main`.
 Never arm a HOLD with an unmet gate. Never-arm list still stands: `pr-fv2-formrule-contract`,
 `pr-siteid-notnull-backfill`, and any prod-data prompt (MT-3/MT-5) - those are Marco-run.
+**TEMPORARY, 2026-09-04: also `pr-claudedesign-s1-track-the-written-half`.** It lints ADMIT, has
+no gate and is not `escalates: true`, so nothing else would stop you arming it. Its prescribed
+`.gitignore` block has no re-include for `Claude Design/proposed/`, so its own step 5 would create
+`proposed/README.md` as a file git cannot see - the exact defect the slice exists to fix - and its
+`done_when` asserts nothing about that path, nor anything that would fail if the pattern were
+written too permissively. Measured in clean throwaway repos built from the real 81-file layout:
+as prescribed the gate PASSES with `proposed/` invisible, and PASSES again with 65 mock-ups and a
+194 KB stylesheet committed. A Station 06 Phase-6 amendment is drafted. **Delete this paragraph
+the moment `!Claude Design/proposed/` appears in the prompt body** - that is the only condition it
+waits on.
 Before arming, ALSO check the prompt is not already SHIPPED: a queue-arm chore or a slice prompt
 whose feature already merged under a different PR is a DUPLICATE. Grep the MERGED board (`gh pr list
 --state merged`), not just open PRs, and the code on `origin/main` - a premise like `! test -f X` or

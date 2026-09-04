@@ -389,7 +389,14 @@ here now because they are true for **every** station.
   without `--prune` never deletes a tracking ref, so branches GitHub deleted on merge live on
   locally forever — **54 reported against 21 real, measured 2026-08-29.** Cross-referencing that
   list against the GitHub API inherits the error and dresses it as a finding. **Ask the remote:
-  `git ls-remote --heads origin`.** Separately, `git branch -r --merged origin/main` is blind to
+  `git ls-remote --heads origin`.** 🔴 **AND `--prune` DOES NOT CURE IT — `refs/remotes/` can hold
+  refs NO REFSPEC OWNS.** Measured 2026-09-03 immediately after `git fetch origin --prune`:
+  `git branch -r` = **12** against `git ls-remote --heads origin` = **7**, and prune had worked
+  perfectly — all seven `origin/*` heads matched the remote exactly. The five extras were
+  `refs/remotes/pr/1477`, `pr/1478`, `pr/1483`, `pr/1487` and `pr1273`, hand-made by
+  `git fetch origin pull/N/head:refs/remotes/pr/N`. `remote.origin.fetch =
+  refs/heads/*:refs/remotes/origin/*` does not cover them, so **`--prune` can never remove them,
+  and a pruned cache is still not authoritative.** Ask the remote, pruned or not. Separately, `git branch -r --merged origin/main` is blind to
   squash merges, which is every merge in this repo, and `gh pr list --limit N` silently TRUNCATES
   at N — `--limit 600` returned 600 rows and a different, wrong answer from `--limit 2000`.
 
@@ -442,6 +449,16 @@ here now because they are true for **every** station.
   `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach**, because piping a JSON
   array straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge
   queue select **#552 — the production-data PR.**
+- 🔴 **`@(ConvertFrom-Json …).Count` answers `1` for an EMPTY array and `1` for a
+  forty-element one.** PS 5.1 emits a parsed JSON array as a **single object**, so an array
+  subexpression wrapping the call — inline or piped — counts one item regardless of length.
+  Measured 2026-09-03 on 5.1.26100.9168: `@(ConvertFrom-Json '[]').Count` → **1** (truth 0)
+  and `@(ConvertFrom-Json '[{..}x4]').Count` → **1** (truth 4); the pipeline form gives 1 and 1
+  too. **Always assign first, then count:** `$rows = ConvertFrom-Json $raw; @($rows).Count`
+  → **0** and **4**, correct in both directions. This is the counting twin of the
+  `Where-Object` collapse above, and it is worse, because it silently *refutes* a true finding:
+  it turned `gh run list --commit <short>` → `[]` and `--commit <full>` → 4 runs into the
+  identical reading `1 / 1`, i.e. "§9.4’s short-SHA trap no longer reproduces."
 - ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
   **per-commit**.
 - 🔴 **...and `gh run list --commit <SHA>` answers `[]` for a SHORT sha, exit 0.** Measured
@@ -551,6 +568,27 @@ here now because they are true for **every** station.
   at `:160`, so the same move took `structure: 122 checked` to `11`. Both exited 0. Archiving is
   therefore safe, but "it counts by basename" is true of freshness and **false** of the structure
   pass — do not quote the one result as covering both.
+
+- 🔴 **RULE 2's ONLY PROBE HAS TWO HOMES, BOTH ANSWER, AND THE DEAD ONE'S POSITIVE CONTROL
+  PASSES.** The `marco:true` probe reads `docs/pr-prompts/processed/*.log`. That path resolves in
+  **two** trees, and the watcher clone holds a dead DECOY copy of the same directory. Measured
+  2026-09-03T20:1xZ at `054dccd4`:
+  `C:\\ProjectOperations2\\docs\\pr-prompts\\processed` = **1864** logs, newest
+  `2026-09-03T17:20:00Z`, `marco.:true` → **606**; `C:\\po-watcher\\ProjectOperations\\docs\\pr-prompts\\processed`
+  = **21** logs, newest **2026-08-17T14:28:09Z** — seventeen days stale — `marco.:true` → **10**.
+  🔴 **The decoy therefore passes the mandated positive control**: POS=10 (>0), NEG=0, exactly the
+  shape the standing rule asks for — and then returns *no verdict* for every PR opened since
+  17 August. A run that probes the clone reads all four of today's open PRs as carrying no Marco
+  routing, i.e. **RULE 2 fails OPEN on the one gate that exists to stop an agent merging Marco's
+  work.** This was reached by a `Test-Path`-with-fallback that preferred the clone; it is not a
+  typo, it is a plausible path expression that silently selects the corpse.
+  🔧 **Pin the tree: the live probe directory is `C:\\ProjectOperations2\\docs\\pr-prompts\\processed`,
+  and NEVER the watcher clone.** POS>0 is not sufficient on its own — **also assert the newest log is
+  younger than the oldest open PR**, which is the only control that separates the two directories.
+  ⚠️ **And the log is keyed by PROMPT NAME, not PR number**, so match `PR #<n>` in the log BODY;
+  a filename search returns a uniform zero. **Control it against a PR you know the watcher did NOT
+  open** — e.g. a station's own docs PR — which must read `NO LOG`, proving `NO LOG` means
+  *second lane* (§10) and not *probe broken*.
 
 ## 9.6 The rule behind all of them
 

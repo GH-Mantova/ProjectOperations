@@ -54,7 +54,7 @@ function runLint(fileText, opts) {
 const GOOD_FM =
   "premise: 'true'\n" +
   "premise_means: always-true sentinel\n" +
-  "scope:\n  - apps/web/src/**\n" +
+  "scope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\n" +
   "size: 3\n" +
   "gate_allow: none";
@@ -234,7 +234,7 @@ describe("GATE_NOT_RELEASED", () => {
   const holdFmWithAbsentNeedle =
     "premise: 'true'\n" +
     "premise_means: always-true sentinel\n" +
-    "scope:\n  - apps/web/src/**\n" +
+    "scope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\n" +
     "size: 3\n" +
     "gate_allow: none\n" +
@@ -245,7 +245,7 @@ describe("GATE_NOT_RELEASED", () => {
   const holdFmWithPresentNeedle =
     "premise: 'true'\n" +
     "premise_means: always-true sentinel\n" +
-    "scope:\n  - apps/web/src/**\n" +
+    "scope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\n" +
     "size: 3\n" +
     "gate_allow: none\n" +
@@ -300,7 +300,7 @@ describe("TIER-1 destructive check with code-context stripping", () => {
   const MIGRATION_FM =
     "premise: 'true'\n" +
     "premise_means: always-true sentinel\n" +
-    "scope:\n  - apps/web/src/**\n" +
+    "scope:\n  - scripts/pipeline/**\n" +
     "done_when: pnpm build\n" +
     "size: 3\n" +
     "gate_allow: none\n" +

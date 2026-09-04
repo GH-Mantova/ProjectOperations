@@ -478,6 +478,40 @@ completely ungated -- silently losing its ordering gate. Common traps:
 the real key. `requires_files_on_main` (plural) looks plausible, passes a spell-check,
 but the watcher never sees it and the gate silently disappears. The linter now catches it.
 
+## Optional: `design_ref` — the mock-up a UI prompt was built from
+
+Marco designs a screen in an artifact or mock-up, has Station 06 turn it into a PR,
+then checks the result against the same artifact. Until this key existed, that link
+lived only in his head — a reviewer could not find the design, and the vision review
+(VS-S1) had to judge against whatever prose the PR body happened to carry.
+
+```yaml
+---
+design_ref: https://claude.ai/code/artifact/<uuid>
+# or
+design_ref: Claude Design/proposed/scope-card-v3.html
+---
+```
+
+**Two accepted shapes, as a single-line string:**
+
+| Shape | Example |
+|---|---|
+| Artifact URL | `https://claude.ai/code/artifact/<uuid>` |
+| Repo-relative path under `Claude Design/` | `Claude Design/proposed/scope-card-v3.html` |
+
+Anything else is rejected with `DESIGN_REF_MALFORMED`.
+
+**Required for UI prompts.** If any `scope` entry begins `apps/web/`, a missing or empty
+`design_ref` REJECTs with `UI_PROMPT_NEEDS_DESIGN_REF`. The one deliberate exception is
+`fixes_pr:` — a fix-forward on a red board must never be blocked for want of a design
+citation.
+
+**Existence is deliberately NOT checked.** An artifact URL is not reachable from CI, and
+a `Claude Design/` path is gitignored — `git cat-file` would fail on a file that is
+genuinely there. Shape only. Turning this into an existence gate would false-positive on
+every correct prompt.
+
 ## Optional: `fixes_pr` — the fix lane
 
 When a merged regression or a red PR blocks other work, a fix-forward prompt for
@@ -533,6 +567,8 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `CLUSTER_CYCLE` | Two or more prompts in the same cluster reference each other's files. The error names the cycle path. |
 | `CLUSTER_DEAD_GATE` | A `requires_on_main` needle is already on `origin/main` at intake - the ordering gate is a no-op. Only checked for cluster prompts. |
 | `FILE_GATE_DEAD` | A `requires_file_on_main` path is already on `origin/main` at intake - the gate can never fail, so the slice would dispatch ungated. Applies to ALL prompts (cluster or not). Fail-safe on git errors: WARN and skip. |
+| `DESIGN_REF_MALFORMED` | `design_ref` is set but does not match either accepted shape (`https://claude.ai/code/artifact/<uuid>` or `Claude Design/<path>`). Shape only — existence is not checked. |
+| `UI_PROMPT_NEEDS_DESIGN_REF` | `scope` touches `apps/web/` but `design_ref` is missing/empty. Cite the artifact URL or the `Claude Design/` path the screen was drawn from. Exception: prompts with `fixes_pr:` are exempt (red-board fix). |
 
 ---
 

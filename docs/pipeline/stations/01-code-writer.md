@@ -99,6 +99,27 @@ then serves a superseded copy of the very file it exists to keep current.** In a
 tree, run `git fetch origin +refs/heads/main:refs/remotes/origin/main` FIRST — and say in your
 GROUND block which tree you read in.
 
+🔴 **DO NOT compare a piped hash against anything but another piped hash.** `git show
+<ref>:<path> | git hash-object --stdin` is UNSOUND in `powershell.exe` — the shell step 1
+tells you to start. MEASURED 2026-09-04T06:1xZ by Station 04 on `docs/pipeline/DOCTRINE.md`, at a
+commit where `HEAD == origin/main` and `git diff --numstat` was EMPTY: the piped form returned
+`be52d8b9`, the true blob is `e3a1b3bd`, and the raw CRLF bytes on disk are `6f7bfc5e`. PowerShell
+decodes the native command's stdout to strings and re-emits it re-encoded; `--stdin` has no path,
+so no `text=auto` filter runs to undo it. The identical pipeline under `cmd /c` returns the true
+blob. Both forms exit 0 and both print a well-formed 40-hex SHA, so **nothing warns**, and §9.6
+does not fire because nothing is empty. Two stations in one hour read all three of their own
+binding documents as stale on this. **Use these instead, and quote the one you used:**
+
+```
+git rev-parse origin/main:<path>          # which blob origin/main holds - no pipe, no re-encode
+git hash-object <path>                    # which blob the working copy is - clean filter applied
+git diff --numstat origin/main -- <path>  # EMPTY output = not different. This is the real answer.
+```
+
+The tree-to-tree measurement recorded above still stands - it compared the same transform on both
+sides. What is unsound is comparing the piped value against a true SHA, against `git rev-parse`,
+against a value taken in bash, node or CI, or against a value recorded on another day.
+
 **3. Stamp the ground.** Your report opens with exactly these lines:
 
 ```

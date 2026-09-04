@@ -594,6 +594,37 @@ here now because they are true for **every** station.
   open** — e.g. a station's own docs PR — which must read `NO LOG`, proving `NO LOG` means
   *second lane* (§10) and not *probe broken*.
 
+- 🔴 **`NO LOG` HAS TWO CAUSES, AND THE DANGEROUS ONE LOOKS EXACTLY LIKE THE BENIGN ONE.**
+  The control above proves `NO LOG` is not a *broken probe*. It does **not** prove *second lane*.
+  MEASURED 2026-09-04T08:2xZ at `99451d99`: **#1570 was opened BY THE WATCHER**, from the prompt
+  `pr-watcher-merge-policy-nested-test-paths`, whose front matter reads `escalates: true` — and the
+  probe returns `NO LOG` for it. The watcher crashed (`raw node exit: -1`) between opening the PR
+  and writing the merge verdict, so the verdict line was never written at all. One reading, two
+  opposite meanings: a second-lane PR that no human ever routed, and an escalating watcher PR whose
+  human gate died in transit. The probe was well controlled — 1881 logs, newest inside the hour,
+  `marco.:true` → 608, and #1573 as the negative control returning a real verdict — and it still
+  could not tell the two apart.
+  🔧 **So `NO LOG` obliges you to ask WHICH absence.** Before hand-classifying under §10.1
+  step 2, check whether any prompt in `docs/pr-prompts/processed/` names that PR’s branch or
+  scope, and read `.arming-log.txt` for an arm inside the PR’s window. **A watcher-opened PR with
+  no verdict is RULE 2 at its most binding, not its least** — the crash silently downgraded an
+  escalating prompt to an ordinary one, and nothing on the PR shows it.
+
+- ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
+  "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read
+  `running` — `local_38901e4d` (created `04:08:48Z`, whose own report declares it ended `04:25Z`,
+  newest file write `05:15:26Z`) and `local_a03e81fe` (created `2026-09-03T21:08:45Z`, newest file
+  write `03:59:32Z`). Nearly three hours and over four hours of zero filesystem activity, both
+  still `running`, against a 00 run that takes 15–25 minutes. **Two runs have already read that
+  flag as a live-actor signal and stood down on it**, and one made *"no other 00 supervisor in
+  `running` state"* a precondition for arming — a precondition a flag that never clears can never
+  satisfy, which livelocks the fix it was gating.
+  🔧 **The single-actor question is answered by `status-sweep.ps1` section 3** — in-progress
+  prompts, `index.lock` in both trees, running `git` processes, and any PR touched in the last two
+  minutes — cross-checked against the session directory’s newest file write. Use those.
+  `list_sessions` is sound for *which* sessions exist and as the way into `read_transcript`; its
+  state field is not a lock.
+
 ## 9.6 The rule behind all of them
 
 🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is

@@ -19,9 +19,11 @@ scope:
   - docs/pipeline/stations/05-sot-keeper.md
   - docs/pipeline/stations/06-pr-master.md
   - docs/pipeline/stations/_canonical-blocks.json
+  - docs/pipeline/STATION-CAPABILITIES.md
 done_when: >-
   ! grep -q "mcp__remote-devices__" docs/pipeline/stations/00-supervisor.md && grep -q "ToolSearch"
-  docs/pipeline/stations/00-supervisor.md && node scripts/pipeline/lint-station.mjs
+  docs/pipeline/stations/00-supervisor.md && ! grep -q "device_bash"
+  docs/pipeline/STATION-CAPABILITIES.md && node scripts/pipeline/lint-station.mjs
 size: 3
 gate_allow: none
 seed_only: false
@@ -102,12 +104,30 @@ and commit the resulting `_canonical-blocks.json` in the same PR. `done_when` ru
 - Do not touch anything outside the canonical block, and do not fold in the Station 02 merge or any
   other v2 change. This prompt corrects one paragraph.
 
+## The missed caller — `STATION-CAPABILITIES.md` (added 2026-09-04 by Station 00, from Station 04's F2)
+
+The seven station docs are not the only place these ids appear. `docs/pipeline/STATION-CAPABILITIES.md`
+heads a section **"The device bridge (`device_bash`, `device_stage_files`, `device_commit_files`)"**
+and describes it as a live capability — *"Useful as a fallback when Desktop Commander is absent, for
+read-only checks only."* [MEASURED 2026-09-04T06:1xZ, Station 04] **none of those three tools exists
+in the scheduled Cowork session's tool inventory.** So fixing only the station docs would leave two
+binding documents disagreeing about which tools exist, and would leave a station whose Desktop
+Commander has failed hunting a fallback that is not there — or, worse, presenting device-bridge reads
+as coverage, which the contract forbids.
+
+**What to do there:** delete or rewrite that section so it no longer offers `device_bash` /
+`device_stage_files` / `device_commit_files` as an available fallback. State plainly that when
+Desktop Commander cannot be reached there is **no** second transport, and the run is blind and stops.
+Do not invent a replacement fallback. `done_when` now asserts `device_bash` is absent from that file.
+
 ## Verification
 
 - [ ] `grep -c "mcp__remote-devices__" docs/pipeline/stations/*.md` returns 0 across all seven.
 - [ ] The block still contains the words `ToolSearch` and the not-blindness sentence.
 - [ ] `node scripts/pipeline/lint-station.mjs` exits 0 with the re-recorded hash committed.
-- [ ] `git diff --stat` shows exactly the seven station docs plus `_canonical-blocks.json`.
+- [ ] `grep -c "device_bash" docs/pipeline/STATION-CAPABILITIES.md` returns 0.
+- [ ] `git diff --stat` shows the seven station docs, `_canonical-blocks.json`, and
+      `STATION-CAPABILITIES.md`.
 - [ ] No front-matter version field changed: `grep -h "_version" docs/pipeline/stations/*.md` shows
       `1` throughout.
 

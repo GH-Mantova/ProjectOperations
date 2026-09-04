@@ -307,7 +307,20 @@ deliberately asserts nothing - it just writes PNGs. The "EXIT CODE decides" rule
      `{ name, path, waitFor? }` per screen the PR body names as visual acceptance - then run
      `node scripts/pipeline/visual-smoke.mjs --pr {n} --base http://localhost:5174 --screens <screens.json>`.
      It re-logs in as the seed admin (`admin@projectops.local`), drives each route, and writes
-     deterministic full-page PNGs at 1440x900 to `docs/pr-reviews/pr-{n}-smoke/{name}.png`.
+     deterministic full-page PNGs at 1440x900 to `docs/pr-reviews/pr-{n}-smoke/{name}.png` inside the
+     smoke worktree. `visual-smoke.mjs` also accepts `--out <dir>` if you need them somewhere else,
+     but for this flow the default path is what you want - the next step commits from there.
+   - **Keep.** Before the smoke worktree is torn down, commit the PNGs onto the PR's own branch so
+     the reviewer's evidence outlives the worktree that made it. From inside the smoke worktree:
+     `git add -f docs/pr-reviews/pr-{n}-smoke/`, commit with the fixed subject
+     `chore(smoke): visual acceptance screens for #{n}`, then push to the PR branch. The `-f` is
+     harmless today (the path is not gitignored) and survives a future ignore rule. **If the push
+     fails, that is a smoke NOTE, not a smoke FAIL** - say so explicitly in the comment. Losing the
+     pictures must never turn a green PR red: the review already happened, and the PASS/FAIL rows
+     below are in the comment either way. The reason the PNGs are committed at all: evidence a
+     reviewer cannot re-open is not evidence. The cost is repo size, which is why only the screens
+     the PR body **declares** are captured, and why `visual-smoke.mjs` refuses any single PNG larger
+     than `MAX_PNG_BYTES` (2 MB) - an oversize screen is deleted and counted as a capture failure.
    - **Judge.** OPEN each PNG and READ it against the PR's stated visual acceptance criteria:
      layout intact (no overlap, no cut-off, no blank region where the PR claims content); the
      elements the PR body says are present are visibly present; nav and shell render; spacing and

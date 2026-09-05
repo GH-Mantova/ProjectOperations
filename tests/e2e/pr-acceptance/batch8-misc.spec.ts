@@ -44,6 +44,38 @@ function itemGroup(page: Page, desc: string) {
   return page.locator(`[data-testid="wbs-item"][data-item-description*="${desc}"]`);
 }
 
+/**
+ * Returns the tab for discipline `code` in the scope tab strip.
+ *
+ * SCOPE_DISCIPLINE_STACK_V1 made the strip one tab per DISCIPLINE instead of
+ * one tab per card, so a tab is addressed by its discipline code and never by
+ * a card code. `data-discipline` is the attribute the component exposes for
+ * exactly this; selection state is on `aria-pressed`.
+ */
+function disciplineTab(page: Page, code: string) {
+  return page.locator(`[data-testid="scope-discipline-tab"][data-discipline="${code}"]`);
+}
+
+/**
+ * Returns the stack entry for the card whose code is `code` (e.g. "ASB2").
+ *
+ * SCOPE_DISCIPLINE_STACK_V1 stacks every card of the selected discipline down
+ * the page, each in its own <section data-testid="scope-card-stack-entry">, so
+ * per-card controls that used to be unique on screen (the card name heading,
+ * the Discipline select, the markup input) now repeat once per card and must
+ * be scoped to one entry.
+ *
+ * Keyed off the collapse toggle's accessible name rather than `data-card-id`,
+ * because the card id is a cuid the test cannot know, while the code is
+ * derived from (discipline, cardNumber) and is what the test already reasons
+ * about. Anchored ^...$ so "ASB1" cannot match "ASB10".
+ */
+function cardEntry(page: Page, code: string) {
+  return page
+    .getByTestId("scope-card-stack-entry")
+    .filter({ has: page.getByLabel(new RegExp(`^(Collapse|Expand) card ${code}$`)) });
+}
+
 test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #182, #178, #177, #27, #14)", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
@@ -149,11 +181,18 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
   }) => {
     await openScopeTab(page);
 
-    // Self-heal an orphan empty ASB2 card left by a crashed previous run.
-    const orphan = page.getByText("ASB2", { exact: true });
+    // SCOPE_DISCIPLINE_STACK_V1 — only the SELECTED discipline's cards are
+    // mounted, so an ASB card is not on the page at all until the ASB tab is
+    // open. The seed owns ASB1, so that tab always exists.
+    await disciplineTab(page, "ASB").click();
+
+    // Self-heal an orphan empty ASB2 card left by a crashed previous run. The
+    // delete affordance moved from the card tab to the card's own header in
+    // the stack and is mounted unconditionally there, so the hover step the
+    // old tab required is gone.
+    const orphan = cardEntry(page, "ASB2");
     if (await orphan.isVisible()) {
-      await orphan.hover();
-      await page.getByLabel("Delete card Asbestos removal").click();
+      await orphan.getByLabel("Delete card Asbestos removal").click();
       await expect(orphan).toHaveCount(0);
     }
 
@@ -170,24 +209,35 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
     await expect(modal).toHaveCount(0);
 
     // The new empty card is created with the chosen discipline (code ASB2 —
-    // the seed owns ASB1) and becomes the active card.
-    // SCOPE_DISCBAR_V1 (#1473) renders the card code in the discipline summary
-    // bar as well as on the tab, so a bare getByText("ASB2") now resolves to two
-    // elements and fails Playwright strict mode. This test means the TAB - it
-    // hovers it below to reveal the tab's own delete affordance - so scope it
-    // there rather than loosening the assertion with .first().
-    const newCardCode = page
-      .getByTestId("scope-card-tab")
-      .getByText("ASB2", { exact: true });
-    await expect(newCardCode).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Asbestos removal" })).toBeVisible();
-    await expect(page.getByLabel(/Discipline:/)).toHaveValue("ASB");
+    // the seed owns ASB1) and its DISCIPLINE becomes the selected tab.
+    //
+    // Before SCOPE_DISCIPLINE_STACK_V1 a card had a tab of its own and was the
+    // only card on screen, so "ASB2 is on the tab strip" was how this test said
+    // "the card exists and is showing". Cards have no tabs any more: the same
+    // claim is now that the ASB tab is selected and ASB2 is in its stack —
+    // next to ASB1, which is the whole point of stacking.
+    await expect(disciplineTab(page, "ASB")).toHaveAttribute("aria-pressed", "true");
+    const asb2 = cardEntry(page, "ASB2");
+    await expect(asb2).toBeVisible();
+    await expect(cardEntry(page, "ASB1")).toBeVisible();
 
-    // Clean up: empty cards expose a delete affordance on hover.
-    await newCardCode.hover();
-    await page.getByLabel("Delete card Asbestos removal").click();
+    // Same two assertions as before, now scoped to the new card's own entry:
+    // NewCardModal names a card after its discipline label, so ASB1 and ASB2
+    // BOTH render an "Asbestos removal" heading and BOTH render a Discipline
+    // select. Unscoped, either lookup would match two elements and fail
+    // Playwright strict mode.
+    await expect(asb2.getByRole("heading", { name: "Asbestos removal" })).toBeVisible();
+    await expect(asb2.getByLabel(/Discipline:/)).toHaveValue("ASB");
+
+    // The seeded ASB1 has items, so it exposes no delete control — the
+    // empty-card-only rule the cleanup below depends on. Only assertable now
+    // that a populated and an empty card are on screen together.
+    await expect(cardEntry(page, "ASB1").getByLabel(/^Delete card /)).toHaveCount(0);
+
+    // Clean up: an empty card's delete control sits in its own stack header.
+    await asb2.getByLabel("Delete card Asbestos removal").click();
     await expect(page.getByText("Card deleted")).toBeVisible();
-    await expect(newCardCode).toHaveCount(0);
+    await expect(asb2).toHaveCount(0);
   });
 
   test("per-card markup override: set, recompute, clear via × and Reset this card (PRs #177, #178)", async ({

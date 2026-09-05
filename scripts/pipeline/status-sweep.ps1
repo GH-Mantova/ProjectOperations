@@ -155,10 +155,19 @@ if (Test-Path (Join-Path $WatcherClone ".git")) {
 
 # worktree-liveness: classify each non-main worktree as LIVE or orphaned based on dirty state
 # and age. Do NOT use node.exe process presence as the liveness signal (DOCTRINE 9.5).
-# Liveness rules:
-#   dirty (any uncommitted files)  => LIVE STATION WORKTREE regardless of age
-#   clean AND touched < 30 min ago => LIVE STATION WORKTREE (station may just be starting/finishing)
-#   clean AND touched >= 30 min ago => orphaned -- aborted run leftover, investigate/prune
+# Liveness rules -- RECENCY decides, dirtiness does not (corrected 2026-09-05):
+#   touched < 30 min ago  => LIVE STATION WORKTREE, dirty or clean (a live station writes constantly)
+#   touched >= 30 min ago => orphaned -- aborted run leftover, investigate/prune
+#                            ...and if it is ALSO dirty it holds UNCOMMITTED WORK: preserve first.
+#
+# Why this is not "dirty => LIVE regardless of age" any more. That rule had no expiry: the 30-minute
+# recency test was reachable only for a CLEAN tree, so it could never rescue a dirty one. An aborted
+# run that left a single untracked file behind therefore pinned LIVE forever, and section 7 emitted a
+# board-wide "CAUTION ... prefer to wait and re-run" on EVERY sweep until a human noticed. Measured
+# 2026-09-04 by Station 03: C:/po-vg held one untracked file, 15.2 h of zero filesystem activity, and
+# was still classified LIVE. That is the same never-clearing-flag shape DOCTRINE 9.5 records for
+# list_sessions -- and status-sweep.ps1 is the instrument 9.5 names as the CURE for it.
+# Dirtiness is not discarded, it is re-aimed: it no longer blocks the board, it warns before a prune.
 $wt = @(git worktree list 2>$null | Where-Object { $_ -notmatch "\[main\]$" -and $_ -notmatch [regex]::Escape($Repo) })
 $liveWorktrees = @()
 if ($wt.Count -gt 0) {
@@ -174,7 +183,7 @@ if ($wt.Count -gt 0) {
       $lastWrite = (Get-Item $wtPath).LastWriteTimeUtc
       $ageMinutes = [int]((Get-Date).ToUniversalTime() - $lastWrite).TotalMinutes
     }
-    $isLive = ($dirtyCount -gt 0) -or ($ageMinutes -ge 0 -and $ageMinutes -lt 30)
+    $isLive = ($ageMinutes -ge 0 -and $ageMinutes -lt 30)
     if ($isLive) {
       $liveWorktrees += $wtPath
       Line "LIVE" ("   LIVE STATION WORKTREE: " + $wtLine)
@@ -182,6 +191,12 @@ if ($wt.Count -gt 0) {
     } else {
       Line "LIVE" ("   orphaned worktree (aborted run leftover -- investigate/prune): " + $wtLine)
       Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min")
+      if ($dirtyCount -gt 0) {
+        # Orphaned but dirty: safe to prune ONLY after the uncommitted work is preserved.
+        # This is the half of the old rule worth keeping -- it warns, it no longer blocks the board.
+        Line "LIVE" ("      <-- HOLDS UNCOMMITTED WORK (" + $dirtyCount + " file(s)). PRESERVE OR COMMIT BEFORE PRUNING; 'git worktree remove' will refuse, and --force would discard it.")
+        Line "LIVE" ("          list it first: git -C " + $wtPath + " status --porcelain")
+      }
     }
   }
 } else { Line "LIVE" "non-main worktrees: none" }

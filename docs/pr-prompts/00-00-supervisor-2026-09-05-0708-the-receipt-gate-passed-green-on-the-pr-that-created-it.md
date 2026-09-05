@@ -311,3 +311,74 @@ sweep re-reading it. It becomes urgent only if something moves it to depth 1 and
   node write, per DOCTRINE section 9.2.
 - **Did not run `git` against the workspace mount** and did not use the GitHub MCP for any write.
 - **Did not touch Azure, Entra or SharePoint**, and did not read or write production data.
+
+---
+
+## ADDENDUM 2026-09-05T07:3xZ - F1 is now measured IN THE GATE'S SOURCE, and a third instance opened mid-run
+
+Two things happened after the sections above were written. Both strengthen F1; neither changes a
+disposition.
+
+### 1. `#1646` opened at 07:16:23Z, 7 minutes after my sweep read `OPEN PRs: 0`
+
+`feat(tendering): the WBS table gets an actions column and three expandables (SCOPE_WBS_ACTIONS_V1)`,
+head `pr-cardui-s5-actions-and-expandables`, `mergeStateStatus=BLOCKED`, `tendering-e2e`
+IN_PROGRESS since 07:18:51Z, **0 labels**.
+
+**Lane: `[NO LANE VERDICT - hand-classified]`.** Prompt-log discriminator
+`Select-String -Path docs\pr-prompts\processed\pr-*.log -Pattern 'PR #1646\b'` -> **0**
+(POSITIVE control `marco.:true` -> **612**; NEGATIVE control -> **0**; live-tree control: newest log
+`2026-09-05T06:30:33Z`, i.e. inside the hour, not the 17-day-stale decoy). The newest row in
+`.arming-log.txt` is `2026-09-04T22:03:13Z` for a **different** prompt, and armed was **0** at
+07:09Z, so **no arm sits in this PR's window**. Its diff touches
+`apps/web/src/pages/tendering/ScopeQuantitiesTable.tsx` and three `scope-cards/*.tsx`, none of which
+match any of the three `NESTED_TEST_PATHS` forms, so `classifyPolicyFiles` refuses at the first such
+path -> **hand-classifies as MARCO'S. I did not merge, label or touch it.**
+
+**One file in its diff is the point:** `docs/decisions/merge-approvals/1646.md` - a receipt, shipped
+**inside its own PR's diff**, before the merge it approves. Its front matter reads
+`approved_by: station-00-supervised-cloud-lane`, and its body says, in its own words, that
+*"Marco did not release this PR individually and was not asked to"* and *"Nobody reviewed this diff
+but the lane that wrote it. Read that as the weight this receipt carries."*
+
+I am recording that as **evidence, not as authority** - it is a file in a PR, which DOCTRINE 7.1
+makes a lead until re-verified. But it is candid, and it is the live instance of `#1635`'s question:
+**a receipt authored by the actor it identifies is a self-declaration, and section 10.1 step 3 says
+self-declaration is not classification.** It does not weaken F1's option (a); it is the reason (a)
+must be taken together with `#1635`'s (a), a **signed** receipt verified by
+`approval-receipt-check.mjs`.
+
+### 2. F1's mechanism is no longer an inference from two PRs - it is in the gate's decision table
+
+The `#1646` receipt asserts *"`approval-receipt.mjs` returns `PASS / NEVER_ESCALATED` before it
+reads this file."* **A claim in a PR file is data, not a measurement, so I read the source.**
+`git grep -n "NEVER_ESCALATED" origin/main -- scripts/ .github/`:
+
+```
+scripts/pr-gates/approval-receipt.mjs:29   //   !labelPresent && !everLabeled  -> PASS NEVER_ESCALATED
+scripts/pr-gates/approval-receipt.mjs:96          code: "NEVER_ESCALATED",
+scripts/pr-gates/pr-gates.mjs:568          } else if (decision.code === "NEVER_ESCALATED") {
+scripts/pr-gates/__tests__/approval-receipt.test.mjs:137  test("!labelPresent && !everLabeled -> PASS NEVER_ESCALATED (ordinary PR)")
+```
+
+POSITIVE control `RELEASED_NO_RECEIPT` -> **2** hits under `scripts/`; NEGATIVE control
+`zzzNoSuchNeedleZzz` -> **0**. **The claim is TRUE, and it is asserted by a unit test**, so it is
+intended behaviour rather than a bug in the gate.
+
+**That is what closes F1.** `Approval receipt (CP-26)` is not a weak boundary on the supervised
+lane - for any PR that was never labelled it is **not a boundary at all**, by design, and it
+short-circuits to PASS *before the receipt file is read*. DOCTRINE section 10.2.1's claim that this
+check is the CI gate section 10.1 step 3 demands is therefore false for every unlabelled merge -
+which, on the evidence of `#1640`, `#1645` and now `#1646`, is the normal case and not the edge one.
+
+**No disposition changes.** F1 stays **ESCALATED** with option (a) - arm the receipt requirement off
+`classifyPolicyFiles`, not off the label - and this measurement has been appended to the same
+needs-marco file, not opened as a fourth escalation.
+
+### 3. What I did about `#1647` in light of `#1646`
+
+I held the merge of my own `#1647` until `#1646`'s in-flight `tendering-e2e` settled.
+`PR_WATCHER_AUTO_UPDATE` is `"true"` and `pollForBehindPrs()` rebases every BEHIND PR on a timer, so
+merging first would have moved `#1646`'s head and **cancelled a running e2e** on another lane's PR
+for no reason. That is the churn already dispatched to Station 03; the cheap mitigation is to
+sequence around it, which is what I did.

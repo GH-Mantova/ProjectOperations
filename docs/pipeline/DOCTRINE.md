@@ -748,6 +748,19 @@ here now because they are true for **every** station.
   `list_sessions` is sound for *which* sessions exist and as the way into `read_transcript`; its
   state field is not a lock.
 
+- 🔴 **`docs/pr-reviews/` IN THE DEV TREE IS A STALE MIRROR, NOT THE REVIEW LANE’S OUTPUT.** The
+  `rev-<N>` review job runs in the watcher’s clone and writes there. MEASURED 2026-09-05T19:2xZ by
+  Station 00: the dev tree’s newest review file was `pr-1669-review.md` (14:33:29Z), which reads as
+  *"the review lane stopped producing artifacts at 14:33Z"* — a clean, five-in-a-row false finding.
+  The artifacts existed the whole time in `C:\po-watcher\ProjectOperations\docs\pr-reviews\`
+  (`pr-1675-review.md` 19:03:00Z, `pr-1676-review.md` 19:05:52Z), with older ones relocated to
+  `C:\po-watcher\verdicts-archive\`; NEGATIVE control, a minted needle over the same recursive search
+  → **0**. **Probe the clone and that archive before concluding the review lane is dead** — §9.6, an
+  empty result read as an empty world.
+  ⚠️ **And the `SessionEnd hook … Hook cancelled` line in a `rev-*` log is NOT the discriminator**:
+  `rev-1660` and `rev-1662` carry it and produced their files; `rev-1674` and `rev-1676` do not carry
+  it and did not.
+
 ## 9.6 The rule behind all of them
 
 🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is
@@ -756,6 +769,21 @@ query that answered confidently and wrongly.
 
 ⚠️ **"No process is holding it" is only evidence when you know WHERE the process would have run.** A
 lock left by a destroyed Linux VM has no Windows process by construction, forever.
+
+🔴 **A NEGATIVE CONTROL YOU WROTE DOWN IS A POSITIVE.** MEASURED 2026-09-05T18:1xZ by Station 04
+over `docs/pr-prompts/**` (depth 1 + `archive/` + `needs-marco/`): the two needles this pipeline has
+been prescribing for weeks — `zzz`+`NoSuchNeedleZzz` and `zzz`+`NoSuchTokenZzz`, written split here
+so this bullet does not add to the count it reports — returned **40** and **36** hits. A negative
+control that returns 36 tells its reader the query is broken while the query is working perfectly,
+and 04 hit exactly that live: a *"has this been reported before?"* search read
+`slug → 3, POSITIVE → 14, NEGATIVE → 36`. The contamination is self-inflicted and strictly
+monotonic — every run that quotes its control in a breadcrumb makes the next run’s control worse —
+and it is worst over exactly the corpus stations search most.
+🔧 **MINT A FRESH NEEDLE EVERY RUN.** Station 04 used `zzQqNeedle04b20260906` → 0 over that corpus;
+Station 00 used `zzQq00Needle20260905T2008` → 0 at 20:1xZ. **Both are now written down too, so
+neither is usable again** — which is the rule, not an oversight: a needle is spent the moment it
+lands in a tracked file.
+⚠️ **Those hit counts are STATE — re-measure them, never quote them.**
 
 <!-- END-CANONICAL-BLOCK: instruments v2 -->
 
@@ -1022,6 +1050,40 @@ human-gated** — and RULE 2 correctly forbids any station from clearing it, sin
 routing reason does not clear a verdict. **The lane built to remove work from Marco silently
 creates it.** Open with Marco as of 2026-09-02; the falsifying probe is the table above — re-run
 it and this note dies.
+
+🔴🔴 **THE REASON STRING HAS TWO CONJUNCTS, AND ONLY ONE OF THEM HAS A RECORDED CAUSE.**
+`"timeout waiting for green checks + MERGE verdict"` fires if EITHER half misses the window, and the
+table above measures the FIRST half only — CI-creation latency, on `#1500`. **[MEASURED]
+2026-09-05T19:1xZ by Station 00 on `#1675` — the first instance run to completion with no supervisor
+touching it, and one where the first half is 0% of the failure:**
+
+| | [MEASURED] |
+|---|---|
+| armed | `2026-09-05T16:16:51Z` (`.arming-log.txt`) |
+| watcher opened it | `17:27:48Z` — `opened PR #1675, policy=tests-docs, waiting…` |
+| all 3 CI runs **created** | `17:29:33–17:29:35Z` — **2.3 min** after open |
+| all 3 CI runs **success** | `17:31:04Z` — **3.75 min** after open |
+| 90-min `MERGE_TIMEOUT_MS` window | expires ≈ `18:57:48Z` |
+| `rev-1675` review job **started** | **`19:00:48Z`** — 93.5 min after open, 3 min AFTER the window closed |
+| its verdict | `Verdict: MERGE for PR #1675` |
+| watcher’s recorded result | `{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}` |
+
+**A reader who applies the table above to `#1675` finds CI healthy and concludes the mechanism does
+not reproduce — retiring a live RULE-2-affecting defect.** It reproduced. The starved conjunct was
+the MERGE verdict, which `verdictApproves` requires at `docs/pr-reviews/pr-<N>-review.md` and which
+the single-lane worker cannot produce while the merge waiter holds the lane. That starvation is the
+open escalation `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md`, whose own
+falsifying probe — *"leave a watcher-built `tests-docs` PR alone; if the review appears and
+auto-merge enables with nobody touching it, this escalation is dead"* — was run unattended today
+and the escalation **SURVIVED it**.
+
+⚠️ **The falsifying probe for THIS paragraph is per-PR, not the `ok:true` count**: for a docs PR
+that timed out, check whether its `docs/pr-reviews/pr-<N>-review.md` was written BEFORE the window
+closed. If it was, this conjunct was not the cause on that PR.
+🔴 **And do not read the six-minute miss as a margin.** The gap between the verdict (19:00:48Z) and
+the window (18:57:48Z) is small only because this PR’s CI was fast; the delay underneath it is 93.5
+minutes of queueing. **Raising `MERGE_TIMEOUT_MS` is not a fix** — a longer wait occupies the single
+lane for longer, which is the defect itself.
 
 Hand-landing is a **contributing** factor, not the cause: Hand-landing is legitimate (00 may merge a docs-only
 PR itself) and it does not consume Marco — but it produces **no review**, and it is how a docs change

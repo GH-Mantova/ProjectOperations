@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 import { readApiErrorMessage } from "../../../lib/api-errors";
-import { EmptyState, Skeleton } from "@project-ops/ui";
+import { Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../../auth/AuthContext";
 import { useConfirm } from "../../../hooks/useConfirm";
 import { OverrideField } from "../../../components";
 import { ScopeCardTabsRow } from "./ScopeCardTabsRow";
 import { ScopeCardEmptyState } from "./ScopeCardEmptyState";
 import { ChangeDisciplineModal } from "./ChangeDisciplineModal";
-import { useScopeCards, type ScopeCard } from "./useScopeCards";
+import { useScopeCards, type ScopeCard, type ScopeCardSummary } from "./useScopeCards";
 import { useTenderEstimate } from "./useTenderEstimate";
 import {
   ScopeQuantitiesTable,
@@ -18,14 +19,44 @@ import {
 } from "../ScopeQuantitiesTable";
 import { ScopeWasteTab } from "../ScopeWasteTab";
 import { ScopeCuttingSheet } from "../ScopeCuttingSheet";
-import { DISCIPLINE_CODES, DISCIPLINE_LABELS, formatPlantSummary, type PlantSummaryGroup } from "./utils/card-display";
-import { DisciplineSummaryBar, computeCardBarStats } from "./DisciplineSummaryBar";
+import {
+  DISCIPLINE_CODES,
+  DISCIPLINE_LABELS,
+  formatCardCode,
+  formatPlantSummary,
+  type PlantSummaryGroup
+} from "./utils/card-display";
+import {
+  DisciplineSummaryBar,
+  computeCardBarStats,
+  fmtCurrency,
+  type CardBarStats
+} from "./DisciplineSummaryBar";
+import {
+  cardsInDiscipline,
+  resolveDisciplineFromParam,
+  rollUpDiscipline,
+  toCardRollupInput
+} from "./utils/discipline-rollup";
 
-// PR B1.5 — main Scope of Works container. Replaces the legacy
-// ScopeOfWorksTab + ScopeDisciplineBar combo. Card tabs drive the
-// active filter; the existing ScopeQuantitiesTable, ScopeWasteTab,
-// and ScopeCuttingSheet components are reused as-is, scoped per card
-// via cardId / wbsRef filtering.
+// SCOPE_DISCIPLINE_STACK_V1 — main Scope of Works container.
+//
+// Marco, 2026-09-04, Decision 4(a): one tab per DISCIPLINE; every card in
+// that discipline stacks down the page, each card independently collapsible,
+// with a discipline roll-up bar above the stack and a card total on each
+// card. This replaces PR B1.5's one-tab-per-card / one-card-visible screen —
+// an estimator could not see the three stages of one demolition programme
+// together, and nothing told them what the discipline as a whole cost.
+//
+// The domain fact the roll-up rests on: cards inside a discipline are STAGES
+// OF THE SAME JOB and run ALWAYS SEQUENTIALLY. Peak crew and peak plant are
+// therefore a MAX across the stack and never a sum; days and money are sums.
+// The arithmetic lives in utils/discipline-rollup.ts as a pure function so it
+// is unit-testable without rendering, and this file only feeds it.
+//
+// The existing ScopeQuantitiesTable, ScopeWasteTab and ScopeCuttingSheet are
+// still reused as-is, scoped per card via cardId / wbsRef filtering — now
+// once per card in the stack instead of once for the single active card.
 
 type ListResponse = {
   items: Array<TableItem & { cardId: string | null; card?: { discipline: string } | null }>;
@@ -61,7 +92,7 @@ export function ScopeCardsTab({
   const { markup: tenderMarkup, saveMarkup: saveTenderMarkup } = useTenderEstimate(tenderId);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeCardIdFromUrl = searchParams.get("card");
+  const cardParam = searchParams.get("card");
 
   const [items, setItems] = useState<ListResponse["items"]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
@@ -71,6 +102,9 @@ export function ScopeCardsTab({
     card: ScopeCard;
     newDiscipline: string;
   } | null>(null);
+  // Per-card collapse. Local UI state, per card and per viewer — it is never
+  // sent to the server and no card model field backs it.
+  const [collapsedCardIds, setCollapsedCardIds] = useState<Record<string, boolean>>({});
 
   const loadItems = useCallback(async () => {
     setLoadingItems(true);
@@ -103,24 +137,21 @@ export function ScopeCardsTab({
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  // Resolve the active card. Prefer the URL param; fall back to the first
-  // card in sort order. If the URL points at a deleted/missing card, fall
-  // back gracefully.
-  const activeCard = useMemo<ScopeCard | null>(() => {
-    if (cards.length === 0) return null;
-    if (activeCardIdFromUrl) {
-      const found = cards.find((c) => c.id === activeCardIdFromUrl);
-      if (found) return found;
-    }
-    return cards[0] ?? null;
-  }, [cards, activeCardIdFromUrl]);
+  // Resolve the visible DISCIPLINE. `?card=` used to name a card; it now
+  // selects a discipline, and a card id is still accepted as an inbound
+  // value so an existing deep link lands on that card's discipline rather
+  // than on an empty screen.
+  const activeDiscipline = useMemo(
+    () => resolveDisciplineFromParam(cardParam, cards, DISCIPLINE_CODES),
+    [cardParam, cards]
+  );
 
-  const setActiveCard = useCallback(
-    (cardId: string) => {
+  const setActiveDiscipline = useCallback(
+    (discipline: string) => {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          next.set("card", cardId);
+          next.set("card", discipline);
           return next;
         },
         { replace: true }
@@ -135,42 +166,138 @@ export function ScopeCardsTab({
     await Promise.all([loadItems(), reloadCards()]);
   }, [loadItems, reloadCards]);
 
-  // Card-header summary — auto-derived values + user overrides.
-  type CardSummaryData = {
-    computed: {
-      peakCrew: number;
-      labourDays: number;
-      plantSummary: PlantSummaryGroup[];
-      duration: number;
-    };
-    overrides: {
-      peakCrewOverride: number | null;
-      labourDaysOverride: number | null;
-      plantSummaryOverride: string | null;
-      durationOverride: number | null;
-    };
-  };
-  const [cardSummary, setCardSummary] = useState<CardSummaryData | null>(null);
+  // ── The stack: every card in the visible discipline, in sort order ────
+  const disciplineCards = useMemo(
+    () => (activeDiscipline ? cardsInDiscipline(cards, activeDiscipline) : []),
+    [cards, activeDiscipline]
+  );
+  // Stable primitive key so the summary effect re-runs when the SET of cards
+  // changes but not on every re-render that rebuilds the array identity.
+  const disciplineCardIdKey = useMemo(
+    () => disciplineCards.map((c) => c.id).join(","),
+    [disciplineCards]
+  );
+
+  // ── One summary per card in the visible discipline ───────────────────
+  // getCardSummary used to be fetched for the active card only. The roll-up
+  // needs every stage's figures, so one call per card in the discipline is
+  // folded client-side. NO-OP: no new endpoint — `gate_allow` is `none`, and
+  // a batch route would be an API change this slice is not allowed to make.
+  const [cardSummaries, setCardSummaries] = useState<Record<string, ScopeCardSummary>>({});
   useEffect(() => {
-    if (!activeCard) { setCardSummary(null); return; }
-    void getCardSummary(activeCard.id).then(setCardSummary).catch(() => setCardSummary(null));
-  }, [activeCard?.id, getCardSummary, items]);
+    const ids = disciplineCardIdKey ? disciplineCardIdKey.split(",") : [];
+    if (ids.length === 0) {
+      setCardSummaries({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      ids.map(async (id) => {
+        try {
+          return [id, await getCardSummary(id)] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, ScopeCardSummary> = {};
+      for (const [id, summary] of entries) if (summary) next[id] = summary;
+      setCardSummaries(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [disciplineCardIdKey, getCardSummary, items]);
 
-  // Items filtered to the active card. Synthesize a `discipline` field on
-  // each item from the card's discipline (the legacy ScopeQuantitiesTable
-  // type still references item.discipline; populating it here keeps the
-  // table happy without an internal rewrite).
-  const cardItems = useMemo<TableItem[]>(() => {
-    if (!activeCard) return [];
-    return items
-      .filter((i) => i.cardId === activeCard.id)
-      .map((i) => ({
-        ...(i as TableItem),
-        discipline: activeCard.discipline
-      }));
-  }, [items, activeCard]);
+  const refreshCardSummary = useCallback(
+    async (cardId: string) => {
+      try {
+        const fresh = await getCardSummary(cardId);
+        setCardSummaries((prev) => ({ ...prev, [cardId]: fresh }));
+      } catch {
+        /* leave the previous figures in place rather than blanking the card */
+      }
+    },
+    [getCardSummary]
+  );
 
-  const cardWbsRefs = useMemo(() => cardItems.map((i) => i.wbsCode), [cardItems]);
+  // Items bucketed per card — one pass over `items` for the whole stack
+  // instead of one filter for one active card. The card's discipline reaches
+  // ScopeQuantitiesTable through its own `discipline` prop, so nothing is
+  // stamped onto the items themselves.
+  const itemsByCard = useMemo(() => {
+    const byCard = new Map<string, TableItem[]>();
+    for (const card of disciplineCards) byCard.set(card.id, []);
+    for (const item of items) {
+      if (!item.cardId) continue;
+      byCard.get(item.cardId)?.push(item as TableItem);
+    }
+    return byCard;
+  }, [items, disciplineCards]);
+
+  const statsByCard = useMemo(() => {
+    const byCard = new Map<string, CardBarStats>();
+    for (const card of disciplineCards) {
+      byCard.set(card.id, computeCardBarStats(itemsByCard.get(card.id) ?? []));
+    }
+    return byCard;
+  }, [disciplineCards, itemsByCard]);
+
+  // ── The roll-up ──────────────────────────────────────────────────────
+  // Peak crew and peak plant are a MAX across the stack; days and money are
+  // sums. See utils/discipline-rollup.ts for why, and for the tests that pin
+  // it. Collapse state is deliberately NOT an input here: collapsing a card
+  // hides its body and moves no figure in the bar.
+  const rollup = useMemo(
+    () =>
+      rollUpDiscipline(
+        disciplineCards.map((card) =>
+          toCardRollupInput(
+            card.id,
+            cardSummaries[card.id],
+            statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 }
+          )
+        )
+      ),
+    [disciplineCards, cardSummaries, statsByCard]
+  );
+
+  const toggleCollapsed = useCallback((cardId: string) => {
+    setCollapsedCardIds((prev) => ({ ...prev, [cardId]: !prev[cardId] }));
+  }, []);
+
+  /**
+   * Move a card one place earlier or later inside its discipline.
+   *
+   * The stack IS the stage sequence, so reorder had to survive the tab
+   * strip losing its @dnd-kit sortable. Cards of one discipline keep their
+   * relative order inside the tender's global list, so swapping the two
+   * cards' GLOBAL positions swaps them inside the discipline too. The full
+   * tender card-id list is sent: reorderCards rebuilds its state from
+   * exactly the ids it is handed, so a partial list would drop the rest.
+   */
+  const moveCardWithinDiscipline = useCallback(
+    async (cardId: string, delta: -1 | 1) => {
+      const globalIndex = cards.findIndex((c) => c.id === cardId);
+      if (globalIndex < 0) return;
+      const siblings = cardsInDiscipline(cards, cards[globalIndex].discipline);
+      const withinIndex = siblings.findIndex((c) => c.id === cardId);
+      const neighbour = siblings[withinIndex + delta];
+      if (!neighbour) return;
+      const neighbourIndex = cards.findIndex((c) => c.id === neighbour.id);
+      if (neighbourIndex < 0) return;
+      const nextOrder = cards.map((c) => c.id);
+      nextOrder[globalIndex] = neighbour.id;
+      nextOrder[neighbourIndex] = cardId;
+      try {
+        await reorderCards(nextOrder);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [cards, reorderCards]
+  );
 
   if (cardsLoading && cards.length === 0) {
     return (
@@ -206,8 +333,8 @@ export function ScopeCardsTab({
         <ScopeCardEmptyState
           onCreate={async (name, discipline) => {
             try {
-              const card = await createCard(name, discipline);
-              setActiveCard(card.id);
+              await createCard(name, discipline);
+              setActiveDiscipline(discipline);
             } catch (err) {
               setError((err as Error).message);
             }
@@ -268,183 +395,89 @@ export function ScopeCardsTab({
 
       <ScopeCardTabsRow
         cards={cards}
-        activeCardId={activeCard?.id ?? null}
-        onSelectCard={setActiveCard}
+        activeDiscipline={activeDiscipline}
+        onSelectDiscipline={setActiveDiscipline}
         onCreateCard={async (name, discipline) => {
           try {
-            const card = await createCard(name, discipline);
-            setActiveCard(card.id);
-          } catch (err) {
-            setError((err as Error).message);
-          }
-        }}
-        onRenameCard={renameCard}
-        onDeleteCard={async (cardId) => {
-          try {
-            await deleteCard(cardId);
-            // After delete, if the active card is gone, switch to first.
-            if (cardId === activeCard?.id) {
-              const next = cards.find((c) => c.id !== cardId);
-              if (next) setActiveCard(next.id);
-            }
-            setToast("Card deleted");
-          } catch (err) {
-            setToast((err as Error).message);
-          }
-        }}
-        onReorder={async (ids) => {
-          try {
-            await reorderCards(ids);
+            await createCard(name, discipline);
+            setActiveDiscipline(discipline);
           } catch (err) {
             setError((err as Error).message);
           }
         }}
       />
 
-      {activeCard ? (
+      {activeDiscipline ? (
         <div>
-          {/* SCOPE_DISCBAR_V1 — discipline summary bar (slice 1 of scope-card redesign).
-              Sits between the tab strip and the card controls. Stats are computed from
-              cardItems using the same formula as ScopeQuantitiesTable's footer so the
-              total figures are byte-identical. */}
+          {/* One roll-up bar above the stack. Not a card bar: it carries no
+              card id, and its "Discipline total" is finally the discipline's. */}
           <DisciplineSummaryBar
-            card={activeCard}
-            stats={computeCardBarStats(cardItems)}
-            labourDays={cardSummary?.overrides.labourDaysOverride ?? cardSummary?.computed.labourDays ?? 0}
-            plantDays={cardSummary?.computed.duration ?? 0}
-            disciplineLabel={DISCIPLINE_LABELS[activeCard.discipline] ?? activeCard.discipline}
+            disciplineCode={activeDiscipline}
+            disciplineLabel={DISCIPLINE_LABELS[activeDiscipline] ?? activeDiscipline}
+            rollup={rollup}
           />
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 12,
-              gap: 16,
-              flexWrap: "wrap"
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: 16 }}>{activeCard.name}</h3>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <CardMarkupOverride
-                value={activeCard.markupOverride}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {disciplineCards.map((card, index) => (
+              <ScopeCardStackEntry
+                key={card.id}
+                card={card}
+                stageIndex={index}
+                stageCount={disciplineCards.length}
+                collapsed={collapsedCardIds[card.id] === true}
+                onToggleCollapsed={() => toggleCollapsed(card.id)}
+                onMove={(delta) => void moveCardWithinDiscipline(card.id, delta)}
+                stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 }}
+                summary={cardSummaries[card.id] ?? null}
+                cardItems={itemsByCard.get(card.id) ?? []}
+                loadingItems={loadingItems}
+                tenderId={tenderId}
                 tenderMarkup={tenderMarkup}
-                onSave={async (next) => {
+                onRename={async (name) => {
                   try {
-                    await setCardMarkupOverride(activeCard.id, next);
+                    await renameCard(card.id, name);
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                }}
+                onDelete={async () => {
+                  try {
+                    await deleteCard(card.id);
+                    setToast("Card deleted");
+                  } catch (err) {
+                    setToast((err as Error).message);
+                  }
+                }}
+                onRequestDisciplineChange={(newDiscipline) =>
+                  setDisciplineChange({ card, newDiscipline })
+                }
+                onSetMarkupOverride={async (next) => {
+                  try {
+                    await setCardMarkupOverride(card.id, next);
                     await reloadEverything();
                   } catch (err) {
                     setError((err as Error).message);
                   }
                 }}
+                onHeaderOverride={async (patch) => {
+                  try {
+                    await updateCardHeaderOverrides(card.id, patch);
+                    await refreshCardSummary(card.id);
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                }}
+                onSetCardNotes={async (patch) => {
+                  await setCardNotes(card.id, patch);
+                }}
+                onSetSectionMarkup={async (section, next) => {
+                  await setCardSectionMarkupOverride(card.id, section, next);
+                  await reloadEverything();
+                }}
+                onItemsChanged={reloadEverything}
               />
-              {activeCard.markupOverride != null ? (
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={async () => {
-                    try {
-                      await setCardMarkupOverride(activeCard.id, null);
-                      await reloadEverything();
-                    } catch (err) {
-                      setError((err as Error).message);
-                    }
-                  }}
-                  title="Clear this card's markup override (inherit tender markup)"
-                >
-                  Reset this card
-                </button>
-              ) : null}
-              <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Discipline:&nbsp;
-                <select
-                  value={activeCard.discipline}
-                  onChange={(e) => {
-                    const newDiscipline = e.target.value;
-                    if (newDiscipline === activeCard.discipline) return;
-                    setDisciplineChange({ card: activeCard, newDiscipline });
-                  }}
-                  style={{ padding: "2px 6px" }}
-                >
-                  {DISCIPLINE_CODES.map((d) => (
-                    <option key={d} value={d}>
-                      {DISCIPLINE_LABELS[d]} ({d})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            ))}
           </div>
-
-          {cardSummary ? (
-            <CardHeaderSummary
-              summary={cardSummary}
-              onOverride={async (patch) => {
-                try {
-                  await updateCardHeaderOverrides(activeCard.id, patch);
-                  const fresh = await getCardSummary(activeCard.id);
-                  setCardSummary(fresh);
-                } catch (err) {
-                  setError((err as Error).message);
-                }
-              }}
-            />
-          ) : null}
-
-          {loadingItems && cardItems.length === 0 ? (
-            <Skeleton width="100%" height={140} />
-          ) : (
-            <ScopeQuantitiesTable
-              tenderId={tenderId}
-              cardId={activeCard.id}
-              discipline={activeCard.discipline as TableDiscipline}
-              items={cardItems}
-              /* SCOPE_WBS_INPUTS_V2 — cardMarkup was never passed, so every WBS
-                 row read the prop's old `= 0` default and claimed to inherit
-                 0%. Both halves of the chain were already here: the card's own
-                 override, then the tender markup — the same order CardMarkupOverride
-                 states in its "Inherits tender markup (N%)" tooltip below. */
-              cardMarkup={resolveCardMarkup(activeCard.markupOverride, tenderMarkup)}
-              onItemsChanged={reloadEverything}
-            />
-          )}
-
-          <ScopeWasteTab
-            tenderId={tenderId}
-            discipline={activeCard.discipline}
-            wbsRefs={cardWbsRefs}
-            canManage={true}
-            wasteNotes={activeCard.wasteNotes}
-            onWasteNotesChange={async (v) => {
-              await setCardNotes(activeCard.id, { wasteNotes: v });
-            }}
-            cardId={activeCard.id}
-            tenderMarkup={tenderMarkup}
-            sectionMarkupOverride={activeCard.wasteMarkupOverride}
-            onSectionMarkupChange={async (next) => {
-              await setCardSectionMarkupOverride(activeCard.id, "waste", next);
-              await reloadEverything();
-            }}
-          />
-
-          {activeCard.discipline !== "ASB" ? (
-            <ScopeCuttingSheet
-              tenderId={tenderId}
-              wbsRefs={cardWbsRefs}
-              canManage={true}
-              cuttingNotes={activeCard.cuttingNotes}
-              onCuttingNotesChange={async (v) => {
-                await setCardNotes(activeCard.id, { cuttingNotes: v });
-              }}
-              cardId={activeCard.id}
-              tenderMarkup={tenderMarkup}
-              sectionMarkupOverride={activeCard.cuttingMarkupOverride}
-              onSectionMarkupChange={async (next) => {
-                await setCardSectionMarkupOverride(activeCard.id, "cutting", next);
-                await reloadEverything();
-              }}
-            />
-          ) : null}
         </div>
       ) : null}
 
@@ -472,10 +505,10 @@ export function ScopeCardsTab({
             position: "fixed",
             bottom: 24,
             right: 24,
-            background: "#005B61",
-            color: "#fff",
+            background: "var(--brand-primary)",
+            color: "var(--text-inverse)",
             padding: "8px 16px",
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             zIndex: 200
           }}
         >
@@ -510,6 +543,360 @@ export function ScopeCardsTab({
         />
       ) : null}
     </div>
+  );
+}
+
+// ── One card in the discipline stack ───────────────────────────────────
+
+type StackEntryProps = {
+  card: ScopeCard;
+  stageIndex: number;
+  stageCount: number;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  onMove: (delta: -1 | 1) => void;
+  stats: CardBarStats;
+  summary: ScopeCardSummary | null;
+  cardItems: TableItem[];
+  loadingItems: boolean;
+  tenderId: string;
+  tenderMarkup: number;
+  onRename: (name: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onRequestDisciplineChange: (discipline: string) => void;
+  onSetMarkupOverride: (next: number | null) => Promise<void>;
+  onHeaderOverride: (patch: Record<string, number | string | null>) => Promise<void>;
+  onSetCardNotes: (patch: { cuttingNotes?: string | null; wasteNotes?: string | null }) => Promise<void>;
+  onSetSectionMarkup: (section: "waste" | "cutting", next: number | null) => Promise<void>;
+  onItemsChanged: () => Promise<void>;
+};
+
+function ScopeCardStackEntry({
+  card,
+  stageIndex,
+  stageCount,
+  collapsed,
+  onToggleCollapsed,
+  onMove,
+  stats,
+  summary,
+  cardItems,
+  loadingItems,
+  tenderId,
+  tenderMarkup,
+  onRename,
+  onDelete,
+  onRequestDisciplineChange,
+  onSetMarkupOverride,
+  onHeaderOverride,
+  onSetCardNotes,
+  onSetSectionMarkup,
+  onItemsChanged
+}: StackEntryProps) {
+  const cardWbsRefs = useMemo(() => cardItems.map((i) => i.wbsCode), [cardItems]);
+  const cardCode = formatCardCode(card.discipline, card.cardNumber);
+  const bodyId = `scope-card-body-${card.id}`;
+
+  const shellStyle: CSSProperties = {
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-card)",
+    overflow: "hidden"
+  };
+
+  const headerStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    padding: "10px 12px",
+    background: "var(--surface-subtle)",
+    borderBottom: collapsed ? "none" : "1px solid var(--border-default)"
+  };
+
+  return (
+    <section style={shellStyle} data-testid="scope-card-stack-entry" data-card-id={card.id}>
+      <div style={headerStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-controls={bodyId}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} card ${cardCode}`}
+            title={collapsed ? "Expand this card" : "Collapse this card"}
+            style={{
+              border: "1px solid var(--border-default)",
+              background: "var(--surface-card)",
+              borderRadius: "var(--radius-sm)",
+              cursor: "pointer",
+              color: "var(--text-secondary)",
+              width: 24,
+              height: 24,
+              lineHeight: 1,
+              padding: 0,
+              flexShrink: 0
+            }}
+          >
+            {collapsed ? "▸" : "▾"}
+          </button>
+          <span
+            style={{
+              fontFamily: "Syne, sans-serif",
+              fontWeight: 800,
+              fontSize: 15,
+              letterSpacing: "-0.01em",
+              whiteSpace: "nowrap"
+            }}
+          >
+            {cardCode}
+          </span>
+          <CardNameHeading name={card.name} onRename={onRename} />
+          <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+            Stage {stageIndex + 1} of {stageCount} · {stats.itemCount} item
+            {stats.itemCount === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 500,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em"
+              }}
+            >
+              Card total
+            </span>
+            <span
+              data-testid="scope-card-total"
+              style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}
+            >
+              {fmtCurrency(stats.subtotalWithMarkup)}
+            </span>
+          </div>
+          <div style={{ display: "inline-flex", gap: 4 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => onMove(-1)}
+              disabled={stageIndex === 0}
+              aria-label={`Move card ${cardCode} earlier in the sequence`}
+              title="Move this stage earlier"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => onMove(1)}
+              disabled={stageIndex === stageCount - 1}
+              aria-label={`Move card ${cardCode} later in the sequence`}
+              title="Move this stage later"
+            >
+              ↓
+            </button>
+          </div>
+          {card.itemCount === 0 ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => void onDelete()}
+              aria-label={`Delete card ${card.name}`}
+              title="Delete empty card"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {collapsed ? null : (
+        <div id={bodyId} style={{ padding: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              marginBottom: 12,
+              gap: 16,
+              flexWrap: "wrap"
+            }}
+          >
+            <CardMarkupOverride
+              value={card.markupOverride}
+              tenderMarkup={tenderMarkup}
+              onSave={onSetMarkupOverride}
+            />
+            {card.markupOverride != null ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => void onSetMarkupOverride(null)}
+                title="Clear this card's markup override (inherit tender markup)"
+              >
+                Reset this card
+              </button>
+            ) : null}
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Discipline:&nbsp;
+              <select
+                value={card.discipline}
+                onChange={(e) => {
+                  const newDiscipline = e.target.value;
+                  if (newDiscipline === card.discipline) return;
+                  onRequestDisciplineChange(newDiscipline);
+                }}
+                style={{ padding: "2px 6px" }}
+              >
+                {DISCIPLINE_CODES.map((d) => (
+                  <option key={d} value={d}>
+                    {DISCIPLINE_LABELS[d]} ({d})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {summary ? <CardHeaderSummary summary={summary} onOverride={onHeaderOverride} /> : null}
+
+          {loadingItems && cardItems.length === 0 ? (
+            <Skeleton width="100%" height={140} />
+          ) : (
+            <ScopeQuantitiesTable
+              tenderId={tenderId}
+              cardId={card.id}
+              discipline={card.discipline as TableDiscipline}
+              items={cardItems}
+              /* SCOPE_WBS_INPUTS_V2 — cardMarkup was never passed, so every WBS
+                 row read the prop's old `= 0` default and claimed to inherit
+                 0%. Both halves of the chain were already here: the card's own
+                 override, then the tender markup — the same order CardMarkupOverride
+                 states in its "Inherits tender markup (N%)" tooltip below. */
+              cardMarkup={resolveCardMarkup(card.markupOverride, tenderMarkup)}
+              onItemsChanged={onItemsChanged}
+            />
+          )}
+
+          <ScopeWasteTab
+            tenderId={tenderId}
+            discipline={card.discipline}
+            wbsRefs={cardWbsRefs}
+            canManage={true}
+            wasteNotes={card.wasteNotes}
+            onWasteNotesChange={async (v) => {
+              await onSetCardNotes({ wasteNotes: v });
+            }}
+            cardId={card.id}
+            tenderMarkup={tenderMarkup}
+            sectionMarkupOverride={card.wasteMarkupOverride}
+            onSectionMarkupChange={async (next) => {
+              await onSetSectionMarkup("waste", next);
+            }}
+          />
+
+          {card.discipline !== "ASB" ? (
+            <ScopeCuttingSheet
+              tenderId={tenderId}
+              wbsRefs={cardWbsRefs}
+              canManage={true}
+              cuttingNotes={card.cuttingNotes}
+              onCuttingNotesChange={async (v) => {
+                await onSetCardNotes({ cuttingNotes: v });
+              }}
+              cardId={card.id}
+              tenderMarkup={tenderMarkup}
+              sectionMarkupOverride={card.cuttingMarkupOverride}
+              onSectionMarkupChange={async (next) => {
+                await onSetSectionMarkup("cutting", next);
+              }}
+            />
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** The card's name in its stack header. Double-click to rename — the same
+ *  affordance the card TAB carried before the tabs became disciplines. */
+function CardNameHeading({
+  name,
+  onRename
+}: {
+  name: string;
+  onRename: (name: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(name);
+  }, [name, editing]);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== name) {
+      setSaving(true);
+      try {
+        await onRename(trimmed);
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      setDraft(name);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        disabled={saving}
+        aria-label="Card name"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void commit();
+          if (e.key === "Escape") {
+            setDraft(name);
+            setEditing(false);
+          }
+        }}
+        style={{
+          fontSize: 14,
+          padding: "2px 4px",
+          border: "1px solid var(--brand-primary)",
+          borderRadius: "var(--radius-sm)",
+          minWidth: 120
+        }}
+      />
+    );
+  }
+
+  return (
+    <h3
+      onDoubleClick={() => setEditing(true)}
+      title="Double-click to rename"
+      style={{
+        margin: 0,
+        fontSize: 15,
+        fontWeight: 600,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        cursor: "text"
+      }}
+    >
+      {name}
+    </h3>
   );
 }
 
@@ -603,7 +990,7 @@ function CardMarkupOverride({
         style={{
           width: 70,
           padding: "2px 6px",
-          borderColor: hasOverride ? "var(--brand-accent, #FEAA6D)" : undefined,
+          borderColor: hasOverride ? "var(--brand-accent)" : undefined,
           borderStyle: hasOverride ? "solid" : undefined,
           borderWidth: hasOverride ? 1 : undefined
         }}
@@ -621,7 +1008,7 @@ function CardMarkupOverride({
             width: 18,
             height: 18,
             borderRadius: 999,
-            border: "1px solid var(--border-default, #e5e7eb)",
+            border: "1px solid var(--border-default)",
             background: "transparent",
             color: "var(--text-muted)",
             cursor: "pointer",
@@ -670,12 +1057,17 @@ function CardHeaderSummary({
 
   return (
     <div
+      data-testid="scope-card-header-summary"
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
+        // Duration joins Peak crew / Labour days / Plant. It was missing even
+        // though computed.duration was already in this component's data and
+        // has its own durationOverride field — and the discipline bar's old
+        // "Plant days" chip was quietly showing it instead.
+        gridTemplateColumns: "repeat(4, 1fr)",
         gap: 4,
-        background: "var(--surface-muted, #F6F6F6)",
-        borderRadius: "var(--radius-sm, 4px)",
+        background: "var(--surface-subtle)",
+        borderRadius: "var(--radius-sm)",
         padding: 6,
         marginBottom: 12,
         fontSize: 12
@@ -683,6 +1075,7 @@ function CardHeaderSummary({
     >
       <div style={labelStyle}>Peak crew</div>
       <div style={labelStyle}>Labour days</div>
+      <div style={labelStyle}>Duration</div>
       <div style={labelStyle}>Plant</div>
 
       <div style={valStyle}>
@@ -708,6 +1101,19 @@ function CardHeaderSummary({
             value={overrides.labourDaysOverride ?? computed.labourDays}
             placeholder={String(computed.labourDays)}
             onCommit={(v) => void onOverride({ labourDaysOverride: v })}
+          />
+        </OverrideField>
+      </div>
+      <div style={valStyle}>
+        <OverrideField
+          isOverridden={overrides.durationOverride != null}
+          onRevert={() => void onOverride({ durationOverride: null })}
+          affordance
+        >
+          <EditableNum
+            value={overrides.durationOverride ?? computed.duration}
+            placeholder={String(computed.duration)}
+            onCommit={(v) => void onOverride({ durationOverride: v })}
           />
         </OverrideField>
       </div>
@@ -762,9 +1168,9 @@ function EditablePlant({
         style={{
           width: "100%",
           padding: "1px 4px",
-          border: "1px solid var(--border, #e5e7eb)",
+          border: "1px solid var(--border-default)",
           borderRadius: 3,
-          background: "var(--surface-card, #fff)",
+          background: "var(--surface-card)",
           fontWeight: 600,
           fontSize: 12,
           fontFamily: "inherit",

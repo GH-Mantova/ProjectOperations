@@ -1,12 +1,17 @@
 // SCOPE_DISCBAR_V1 — unit tests for computeCardBarStats.
+// SCOPE_DISCIPLINE_STACK_V1 — plus the rebuilt bar's own markup.
 //
 // The web workspace has no @testing-library / jsdom set up (all existing
-// tests follow the no-render pattern; see card-display.test.ts). This file
-// tests the pure helper that drives the bar's three numeric columns.
-// Visual layout is covered by the PR smoke / E2E suite.
+// tests follow the no-render pattern; see card-display.test.ts). The stats
+// half of this file tests the pure helper that drives the bar's per-card
+// numbers. Where markup itself has to be asserted — "the roll-up bar is no
+// longer keyed by a card id" is a claim about the DOM, not about a number —
+// renderToStaticMarkup from react-dom/server is used, which needs no DOM.
 
 import { describe, expect, it } from "vitest";
-import { computeCardBarStats, type CardBarStats } from "../DisciplineSummaryBar";
+import { renderToStaticMarkup } from "react-dom/server";
+import { DisciplineSummaryBar, computeCardBarStats, type CardBarStats } from "../DisciplineSummaryBar";
+import { rollUpDiscipline, type CardRollupInput } from "../utils/discipline-rollup";
 import type { ScopeItem } from "../../ScopeQuantitiesTable";
 
 // ── Minimal factory — fill only fields needed for computeCardBarStats ──
@@ -155,5 +160,111 @@ describe("computeCardBarStats", () => {
       makeItem({ status: "excluded" })
     ];
     expect(computeCardBarStats(items).itemCount).toBe(3);
+  });
+});
+
+// ── SCOPE_DISCIPLINE_STACK_V1 — the rebuilt bar ────────────────────────
+
+function stageCard(overrides: Partial<CardRollupInput> & { cardId: string }): CardRollupInput {
+  return {
+    itemCount: 0,
+    peakCrew: 0,
+    labourDays: 0,
+    duration: 0,
+    subtotal: 0,
+    subtotalWithMarkup: 0,
+    plantSummary: [],
+    ...overrides
+  };
+}
+
+// The same three sequential demolition stages the roll-up spec works through.
+const DEM_STAGES: CardRollupInput[] = [
+  stageCard({
+    cardId: "dem1", itemCount: 4, peakCrew: 6, labourDays: 5, duration: 5,
+    subtotal: 40_000, subtotalWithMarkup: 46_000,
+    plantSummary: [{ category: "Excavator", items: [{ variant: "20t", peakQty: 2, peakDays: 5 }] }]
+  }),
+  stageCard({
+    cardId: "dem2", itemCount: 3, peakCrew: 10, labourDays: 4, duration: 4,
+    subtotal: 60_000, subtotalWithMarkup: 69_000,
+    plantSummary: [{ category: "Excavator", items: [{ variant: "20t", peakQty: 3, peakDays: 4 }] }]
+  }),
+  stageCard({
+    cardId: "dem3", itemCount: 5, peakCrew: 8, labourDays: 6, duration: 6,
+    subtotal: 30_000, subtotalWithMarkup: 34_500,
+    plantSummary: [{ category: "Excavator", items: [{ variant: "20t", peakQty: 1, peakDays: 6 }] }]
+  })
+];
+
+function renderBar(cards: CardRollupInput[]): string {
+  return renderToStaticMarkup(
+    <DisciplineSummaryBar
+      disciplineCode="DEM"
+      disciplineLabel="Demolition"
+      rollup={rollUpDiscipline(cards)}
+    />
+  );
+}
+
+describe("DisciplineSummaryBar markup", () => {
+  const html = renderBar(DEM_STAGES);
+
+  it("carries NO data-card-id — it is not a card bar any more", () => {
+    // Finding 9.3.5: the bar used to be keyed data-card-id={card.id} while
+    // wearing a "Discipline total" label.
+    expect(html).not.toContain("data-card-id");
+  });
+
+  it("is identified by data-discipline instead", () => {
+    expect(html).toContain('data-discipline="DEM"');
+    expect(html).toContain('data-testid="discipline-summary-bar"');
+  });
+
+  it("shows the discipline label and the stage count", () => {
+    expect(html).toContain("Demolition");
+    expect(html).toContain("3 stages");
+    expect(renderBar([DEM_STAGES[0]])).toContain("1 stage");
+  });
+
+  it("renders the DISCIPLINE total — the sum of the three card totals", () => {
+    // 46,000 + 69,000 + 34,500 = 149,500.
+    expect(html).toContain("Discipline total");
+    expect(html).toContain("$149,500");
+    // ...and not any single card's total.
+    expect(html).not.toContain("$69,000");
+  });
+
+  it("renders peak crew as the MAX of the stages, never the sum", () => {
+    expect(html).toContain("Peak crew");
+    expect(html).toContain(">10<"); // max(6, 10, 8)
+    expect(html).not.toContain(">24<"); // 6 + 10 + 8
+  });
+
+  it("renders duration as the sum and person-days as the sum", () => {
+    expect(html).toContain("Duration");
+    expect(html).toContain("Person-days");
+    expect(html).toContain(">118<"); // 6x5 + 10x4 + 8x6
+  });
+
+  it("labels the plant chip as a peak, and carries the peak quantity in its title", () => {
+    // The old bar had a "Plant days" chip that was being handed the card's
+    // DURATION. The chip is now Peak plant, with max(peakQty) = 3.
+    expect(html).toContain("Peak plant");
+    expect(html).not.toContain("Plant days");
+    expect(html).toContain("Excavator 20t: 3");
+  });
+
+  it("renders an all-zero discipline without crashing or inventing figures", () => {
+    const empty = renderBar([]);
+    expect(empty).toContain('data-discipline="DEM"');
+    expect(empty).toContain("$0");
+    expect(empty).toContain("0 stages");
+  });
+
+  it("is unaffected by which cards a viewer has collapsed", () => {
+    // Collapse is local UI state in the container and is NOT an input to the
+    // fold, so the same stack yields the same bar however it is displayed.
+    expect(renderBar([...DEM_STAGES])).toBe(html);
   });
 });

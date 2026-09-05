@@ -32,6 +32,36 @@ export type ScopeCard = {
   updatedAt: string;
 };
 
+/**
+ * SCOPE_DISCIPLINE_STACK_V1 — the shape `getCardSummary` returns.
+ *
+ * Lifted out of the callback's inline return type and named, because the
+ * discipline stack now holds one of these PER CARD rather than one for the
+ * single active card, and the container plus the roll-up helper both need
+ * to name the shape. Nothing about the request or the response changed.
+ *
+ * `computed.plantSummary` is per (category, variant); `duration` is days.
+ * Person-days is NOT on this surface — per card it is peakCrew × labourDays
+ * (see utils/discipline-rollup.ts).
+ */
+export type ScopeCardSummary = {
+  computed: {
+    peakCrew: number;
+    labourDays: number;
+    plantSummary: Array<{
+      category: string;
+      items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
+    }>;
+    duration: number;
+  };
+  overrides: {
+    peakCrewOverride: number | null;
+    labourDaysOverride: number | null;
+    plantSummaryOverride: string | null;
+    durationOverride: number | null;
+  };
+};
+
 export type ChangeDisciplineResult = {
   card: ScopeCard;
   itemsRenumbered: number;
@@ -254,24 +284,7 @@ export function useScopeCards(tenderId: string) {
     async (cardId: string) => {
       const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}/summary`);
       if (!res.ok) throw new Error(await readApiErrorMessage(res));
-      return res.json() as Promise<{
-        computed: {
-          peakCrew: number;
-          labourDays: number;
-          plantSummary: Array<{
-            category: string;
-            items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
-          }>;
-
-          duration: number;
-        };
-        overrides: {
-          peakCrewOverride: number | null;
-          labourDaysOverride: number | null;
-          plantSummaryOverride: string | null;
-          durationOverride: number | null;
-        };
-      }>;
+      return res.json() as Promise<ScopeCardSummary>;
     },
     [authFetch, tenderId]
   );

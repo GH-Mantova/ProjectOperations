@@ -1,8 +1,17 @@
-// SCOPE_DISCBAR_V1 — Slice 1 of the scope-card redesign.
-// Presentational bar that sits on --brand-primary with white text:
-//   Left:   card code (Syne 800) + card name + muted meta line
-//   Middle: stat chips (item count, manpower days, plant days)
-//   Right:  discipline total (label above, figure below in tabular-nums)
+// SCOPE_DISCIPLINE_STACK_V1 — the bar above a discipline's card stack.
+//
+// It was SCOPE_DISCBAR_V1, a CARD bar wearing a discipline label: it was
+// keyed `data-card-id`, its right-hand figure was one card's
+// `subtotalWithMarkup` under the label "Discipline total", and its "Plant
+// days" chip was actually being handed the card's DURATION. Finding 9.3.5
+// is fixed here rather than in a separate pass, because relabelling the bar
+// and then rebuilding around it is two passes over one component for one
+// outcome.
+//
+// It now takes a DisciplineRollup — the fold of every card in the visible
+// discipline, computed by the pure function in utils/discipline-rollup.ts —
+// and is identified by `data-discipline` (the discipline code), not by a
+// card id. Nothing on it belongs to a single card any more.
 //
 // Design rules (permanent — sot/01 §5):
 //   - Brand tokens ONLY. No hardcoded colour values.
@@ -13,8 +22,8 @@
 //     Dark theme does NOT lighten --status-active; brand palette is locked.
 
 import type { CSSProperties } from "react";
-import { formatCardCode } from "./utils/card-display";
-import type { ScopeCard } from "./useScopeCards";
+import { formatPlantSummary } from "./utils/card-display";
+import type { DisciplineRollup } from "./utils/discipline-rollup";
 import type { ScopeItem } from "../ScopeQuantitiesTable";
 
 // ── Pure computation helper ─────────────────────────────────────────────
@@ -24,6 +33,10 @@ import type { ScopeItem } from "../ScopeQuantitiesTable";
 // is the source of divergence described in the design requirement — this
 // function does NOT do that; it sums the server-computed per-row totals
 // already present on every item.
+//
+// It stays a PER-CARD helper. The discipline figure is the fold of these
+// per-card stats in utils/discipline-rollup.ts, so a card's total and the
+// discipline total can never come from two different formulas.
 
 export type CardBarStats = {
   /** Number of non-excluded items (matches the visible-row count in the table). */
@@ -49,7 +62,7 @@ export function computeCardBarStats(items: ScopeItem[]): CardBarStats {
 
 // ── Formatting helpers ──────────────────────────────────────────────────
 
-function fmtCurrency(n: number): string {
+export function fmtCurrency(n: number): string {
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD",
@@ -57,11 +70,18 @@ function fmtCurrency(n: number): string {
   }).format(n);
 }
 
+/** Day/crew figures: "—" for nothing, otherwise the number without a
+ *  trailing ".0" (the API already rounds days to 1dp). */
+function fmtFigure(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return "—";
+  return String(Math.round(n * 10) / 10);
+}
+
 // ── Sub-components ──────────────────────────────────────────────────────
 
 const CHIP_BG = "rgba(255,255,255,.14)";
 
-function StatChip({ label, value }: { label: string; value: string }) {
+function StatChip({ label, value, title }: { label: string; value: string; title?: string }) {
   const chipStyle: CSSProperties = {
     display: "inline-flex",
     flexDirection: "column",
@@ -73,7 +93,7 @@ function StatChip({ label, value }: { label: string; value: string }) {
     flexShrink: 0
   };
   return (
-    <div style={chipStyle}>
+    <div style={chipStyle} title={title}>
       <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.78, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
         {label}
       </span>
@@ -87,26 +107,20 @@ function StatChip({ label, value }: { label: string; value: string }) {
 // ── Main component ──────────────────────────────────────────────────────
 
 export type DisciplineSummaryBarProps = {
-  card: ScopeCard;
-  /** Non-excluded item count + totals — call computeCardBarStats(cardItems). */
-  stats: CardBarStats;
-  /** Computed manpower (labour) days from the card summary API. */
-  labourDays: number;
-  /** Computed duration (plant days) from the card summary API. */
-  plantDays: number;
+  /** Discipline code, e.g. "DEM". Identifies the bar in place of the old
+   *  `data-card-id`. */
+  disciplineCode: string;
   /** Human-readable discipline label (e.g. "Demolition"). */
   disciplineLabel: string;
+  /** The fold of every card in this discipline — rollUpDiscipline(...). */
+  rollup: DisciplineRollup;
 };
 
 export function DisciplineSummaryBar({
-  card,
-  stats,
-  labourDays,
-  plantDays,
-  disciplineLabel
+  disciplineCode,
+  disciplineLabel,
+  rollup
 }: DisciplineSummaryBarProps) {
-  const cardCode = formatCardCode(card.discipline, card.cardNumber);
-
   const barStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -116,12 +130,12 @@ export function DisciplineSummaryBar({
     borderRadius: "var(--radius-md)",
     background: "var(--brand-primary)",
     color: "var(--text-inverse)",
-    marginBottom: 8,
+    marginBottom: 12,
     flexWrap: "wrap",
     minWidth: 0
   };
 
-  // Left section: card code + name + meta line
+  // Left section: discipline identity
   const leftStyle: CSSProperties = {
     display: "flex",
     flexDirection: "column",
@@ -161,8 +175,8 @@ export function DisciplineSummaryBar({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    flex: "0 0 auto",
-    flexWrap: "nowrap"
+    flex: "0 1 auto",
+    flexWrap: "wrap"
   };
 
   // Right section: total
@@ -193,28 +207,57 @@ export function DisciplineSummaryBar({
     whiteSpace: "nowrap"
   };
 
+  const plantLines = formatPlantSummary(rollup.plantSummary);
+  const plantText = plantLines.join("\n");
+  const plantChipValue = plantLines.length === 1 ? plantLines[0] : `${plantLines.length} types`;
+
+  const stageWord = rollup.cardCount === 1 ? "stage" : "stages";
+
   return (
-    <div className="discbar" style={barStyle} data-card-id={card.id} data-testid="discipline-summary-bar">
-      {/* Left: identity */}
+    <div
+      className="discbar"
+      style={barStyle}
+      data-discipline={disciplineCode}
+      data-testid="discipline-summary-bar"
+    >
+      {/* Left: identity — the DISCIPLINE, not a card */}
       <div style={leftStyle}>
-        <div style={codeStyle}>{cardCode}</div>
-        <div style={nameStyle} title={card.name}>
-          {card.name}
+        <div style={codeStyle}>{disciplineCode}</div>
+        <div style={nameStyle} title={disciplineLabel}>
+          {disciplineLabel}
         </div>
-        <div style={metaStyle}>{disciplineLabel}</div>
+        <div style={metaStyle}>
+          {rollup.cardCount} {stageWord} · sequential
+        </div>
       </div>
 
-      {/* Middle: stat chips */}
+      {/* Middle: roll-up chips. Peak crew and peak plant are MAX across the
+          stages (they never run at once); days and money are sums. */}
       <div style={chipsStyle}>
-        <StatChip label="Items" value={String(stats.itemCount)} />
-        <StatChip label="Manpower days" value={labourDays === 0 ? "—" : String(labourDays)} />
-        <StatChip label="Plant days" value={plantDays === 0 ? "—" : String(plantDays)} />
+        <StatChip label="Items" value={String(rollup.itemCount)} />
+        <StatChip
+          label="Peak crew"
+          value={fmtFigure(rollup.peakCrew)}
+          title="Largest single stage's crew — stages run sequentially, so this is a max, not a sum."
+        />
+        <StatChip label="Person-days" value={fmtFigure(rollup.personDays)} />
+        <StatChip label="Labour days" value={fmtFigure(rollup.labourDays)} />
+        <StatChip
+          label="Duration"
+          value={fmtFigure(rollup.duration)}
+          title="Sum of every stage's duration — the stages run end to end."
+        />
+        <StatChip
+          label="Peak plant"
+          value={plantChipValue}
+          title={`Peak quantity per plant type across the stages (a max, not a sum):\n${plantText}`}
+        />
       </div>
 
-      {/* Right: card total */}
+      {/* Right: the discipline total its label has always claimed */}
       <div style={rightStyle}>
         <span style={totalLabelStyle}>Discipline total</span>
-        <span style={totalFigureStyle}>{fmtCurrency(stats.subtotalWithMarkup)}</span>
+        <span style={totalFigureStyle}>{fmtCurrency(rollup.subtotalWithMarkup)}</span>
       </div>
     </div>
   );

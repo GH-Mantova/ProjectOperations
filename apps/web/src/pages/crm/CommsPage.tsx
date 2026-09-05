@@ -12,7 +12,9 @@
 // contract. Anchored /crm/comms?entityType=…&entityId=… links still open the
 // anchored view inside CommsHubPage unchanged.
 
+import { useEffect, useState } from "react";
 import { useSearchParams, NavLink } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 import { CommsHubPage, type CommsInnerTab } from "./CommsHubPage";
 
 export type CommsOuterTabId = "inbox" | "threads" | "todos";
@@ -52,16 +54,75 @@ function tabStyle(active: boolean): React.CSSProperties {
   };
 }
 
+// CRM_CHROME_V1 — plain grey tab figure, colour read back off the existing
+// tabStyle() so it can never drift from the inactive tab text.
+const tabCountStyle: React.CSSProperties = {
+  marginLeft: 6,
+  fontSize: 12,
+  fontWeight: 400,
+  color: tabStyle(false).color
+};
+
+// CRM_CHROME_V1 — Inbox is the attention count: a red pill with white text,
+// straight off the shared design tokens (--status-danger is the mock-up's
+// red); no colour literal is introduced here.
+const tabPillStyle: React.CSSProperties = {
+  marginLeft: 6,
+  display: "inline-block",
+  padding: "1px 7px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 600,
+  background: "var(--status-danger)",
+  color: "var(--text-inverse)"
+};
+
 export function CommsPage() {
   const [searchParams] = useSearchParams();
+  const { authFetch, user } = useAuth();
   const raw = (searchParams.get("tab") as CommsOuterTabId | null) ?? "inbox";
   const validTab: CommsOuterTabId =
     COMMS_TABS.some((t) => t.id === raw) ? raw : "inbox";
   const innerTab = resolveCommsInnerTab(validTab);
 
+  // CRM_CHROME_V1 — three tab counts, each off an existing route that already
+  // returns a `total`. Null means "loading or the request failed", and the
+  // label then renders alone: a tab must never break because a count did not
+  // arrive.
+  const userId = user?.id;
+  const [counts, setCounts] = useState<Record<CommsOuterTabId, number | null>>({
+    inbox: null,
+    threads: null,
+    todos: null
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (tab: CommsOuterTabId, url: string) => {
+      try {
+        const res = await authFetch(url);
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { total?: number };
+        if (cancelled || typeof body.total !== "number") return;
+        setCounts((current) => ({ ...current, [tab]: body.total as number }));
+      } catch {
+        // A tab must never break because a count did not arrive.
+      }
+    };
+    void load("inbox", "/crm/intake/open?limit=1");
+    void load("threads", "/crm/comms/threads?limit=1");
+    if (userId) {
+      void load("todos", `/crm/comms/tasks?assigneeId=${encodeURIComponent(userId)}&limit=1`);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, userId]);
+
   return (
     <div>
-      {/* CRM_NAV_TABS — comms-hub tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01). */}
+      {/* CRM_NAV_TABS — comms-hub tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01;
+          CRM_CHROME_V1 counts, 2026-09-04). */}
       <div style={tabBarStyle} role="tablist" aria-label="Comms hub sections">
         {COMMS_TABS.map((tab) => (
           <NavLink
@@ -72,6 +133,11 @@ export function CommsPage() {
             aria-selected={validTab === tab.id}
           >
             {tab.label}
+            {counts[tab.id] === null ? null : tab.id === "inbox" ? (
+              <span style={tabPillStyle}>{counts.inbox}</span>
+            ) : (
+              <span style={tabCountStyle}>{counts[tab.id]}</span>
+            )}
           </NavLink>
         ))}
       </div>

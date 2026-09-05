@@ -1,34 +1,57 @@
-// SCOPE_DISCIPLINE_STACK_V1 — pure discipline roll-up arithmetic.
+// SCOPE_STAGE_AWARE_V1 — pure discipline roll-up arithmetic.
 //
-// THE DOMAIN FACT THIS FILE ENCODES (Marco, 2026-09-04, Decision 4):
-// cards inside one discipline are STAGES OF THE SAME JOB and they run
-// ALWAYS SEQUENTIALLY. DEM1, DEM2, DEM3 are one demolition programme in
-// sequence, not three parallel work fronts. Everything below follows from
-// that single fact:
+// THE MODEL. A discipline is an ordered list of STAGES. A stage holds one
+// or more cards. Cards in the SAME stage run AT THE SAME TIME; stages run
+// ONE AFTER ANOTHER. Every rule below follows from that single idea:
 //
-//   Peak crew   → max() across the cards. NEVER a sum. The stages never
-//                 run at once, so the job never needs more than the
-//                 largest stage's crew. Summing a three-stage demolition
-//                 claims roughly triple the real peak.
-//   Peak plant  → max() of peakQty per (category, variant). Never a sum:
-//                 the same machine moves from stage to stage.
-//   Person-days → sum. Every stage's work is really done.
-//   Labour days → sum.
-//   Duration    → sum. Stages run end to end, so the programme is as long
-//                 as all of them together.
-//   Money       → sum. Money is money.
+//   figure                   within a stage          across stages
+//   ---------------------------------------------------------------------
+//   Peak crew                SUM — they are on       MAX — the stages
+//                            site together            never coincide
+//   Peak plant, per          SUM — two jobs at       MAX — the machine
+//     (category, variant)    once need two            moves stage to stage
+//                            machines
+//   Duration                 MAX — concurrent        SUM — the stages run
+//                            cards finish when        end to end
+//                            the longest does
+//   Person-days              SUM                     SUM
+//   Labour days              SUM                     SUM
+//   Plant days               SUM                     SUM
+//   Money                    SUM                     SUM
 //
-// Plant DAYS are a duration, not a peak, so they follow the Duration rule
-// and sum: one excavator moving through three stages is on hire for the
-// three stages' days added together, while only ever being ONE excavator.
+// Plant DAYS are a duration, not a peak, so they sum in BOTH directions:
+// one excavator moving through three stages is on hire for the three
+// stages' days added together, while only ever being ONE excavator.
 //
-// No stage-order field and no dates are needed — sequence is a property of
-// the job, not data to be captured. Overlapping stages are explicitly not
-// built for.
+// WHERE THE MODEL CAME FROM.
+//   Marco, 2026-09-04 (Decision 4): cards inside one discipline are stages
+//     of the same job and they run ALWAYS SEQUENTIALLY. DEM1, DEM2, DEM3
+//     are one demolition programme in sequence, not three parallel work
+//     fronts. Peak crew was therefore a flat max across the cards and
+//     duration a flat sum, and concurrency was explicitly not built for.
+//   Marco, 2026-09-05: that is NO LONGER a permanent property of the
+//     domain. Jobs may run concurrently at some point, and the arithmetic
+//     should be able to say so now rather than be retrofitted onto a live
+//     estimate later. Sequential is still what happens today — it is just
+//     no longer welded into the fold.
+//
+// WHAT IS TRUE TODAY: EVERY CARD IS ITS OWN STAGE. Nothing in the schema,
+// the API or the UI can put two cards into one stage yet, so every stage
+// is a singleton. SUM within a singleton stage is just that card's own
+// figure, and the table above collapses to exactly the 2026-09-04
+// behaviour: peak crew is a MAX over the cards, duration a sum over them.
+// That equivalence is pinned field by field, including plantSummary, in
+// utils/__tests__/discipline-rollup.test.ts, and it must stay true for as
+// long as nothing can group cards. Read this before changing any figure
+// below: getting the arithmetic wrong here misprices a tender.
+//
+// Stage ORDER is not a separate concept and needs no field of its own: it
+// is the card order the caller already passes (the tender's sortOrder).
 //
 // This module is deliberately dependency-free (no React, no API client) so
 // the table above is checkable by unit test without rendering anything —
-// see __tests__/discipline-rollup.test.ts.
+// see __tests__/discipline-rollup.test.ts for the pinned flat-fold figures
+// and utils/__tests__/discipline-rollup.test.ts for the stage model.
 
 /** One plant line as `getCardSummary` returns it: per (category, variant). */
 export type RollupPlantItem = {
@@ -90,27 +113,47 @@ export type CardRollupInput = {
   subtotal: number;
   subtotalWithMarkup: number;
   plantSummary: RollupPlantGroup[];
+  /**
+   * Which stage this card runs in. Cards that share a stage key run AT THE
+   * SAME TIME as one another; `null` — or the field being absent, which is
+   * the only thing that happens today — means "a stage of its own".
+   *
+   * Optional on purpose: nothing can set it to a non-null value yet, so
+   * leaving it off means every existing caller keeps compiling and keeps
+   * getting exactly the figures it got before. See the header.
+   */
+  stageKey?: string | null;
 };
+
+/** One stage: the cards that run at the same time, in card order. */
+export type DisciplineStage = readonly CardRollupInput[];
 
 export type DisciplineRollup = {
   /** How many cards were folded — the stack's length. */
   cardCount: number;
   /** Non-excluded items across every card in the discipline. */
   itemCount: number;
-  /** MAX of the per-card peak crews. Never a sum. */
+  /** MAX over the stages of the sum of the crews within each stage. With
+   *  every card in its own stage — which is every card today — that is
+   *  exactly the max of the per-card peak crews. Never a flat sum. */
   peakCrew: number;
-  /** Σ (card peak crew × card labour days). Person-days is not on the API
-   *  surface; per card it is exactly peakCrew × labourDays because
-   *  getCardSummary defines labourDays = totalPersonDays / peakCrew. */
+  /** Sum of (card peak crew × card labour days). Person-days is not on the
+   *  API surface; per card it is exactly peakCrew × labourDays because
+   *  getCardSummary defines labourDays = totalPersonDays / peakCrew.
+   *  Accumulated per CARD, never per stage: the work is really done under
+   *  either model, so this figure is identical in both. */
   personDays: number;
-  /** Σ of the per-card labourDays the API already returned. Deliberately
+  /** Sum of the per-card labourDays the API already returned. Deliberately
    *  NOT re-derived as personDays / peakCrew — dividing a discipline's
-   *  person-days by the discipline's MAX peak crew understates the days
-   *  badly. */
+   *  person-days by the discipline's peak crew understates the days
+   *  badly. The stage model does not change that. */
   labourDays: number;
-  /** Σ of the per-card durations. */
+  /** Sum over the stages of the MAX duration within each stage. With every
+   *  card in its own stage that is exactly the sum of the per-card
+   *  durations. */
   duration: number;
-  /** Per (category, variant): max(peakQty), Σ(peakDays). */
+  /** Per (category, variant): peakQty is the MAX over stages of the sum
+   *  within a stage; peakDays is a plain sum (days are a duration). */
   plantSummary: RollupPlantGroup[];
   subtotal: number;
   subtotalWithMarkup: number;
@@ -119,7 +162,10 @@ export type DisciplineRollup = {
 /** Day figures come off the API already rounded to 1dp; summing them can
  *  reintroduce binary-float noise (0.1 + 0.2 = 0.30000000000000004), so
  *  every day figure is re-rounded the same way the API rounds. Money is
- *  NOT rounded here — the bar formats it. */
+ *  NOT rounded here — the bar formats it. Per-stage subtotals are left
+ *  UNROUNDED and only the discipline figure is rounded, so introducing a
+ *  stage boundary can never add a rounding step the flat fold did not
+ *  have. */
 export function round1(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 10) / 10;
@@ -153,6 +199,9 @@ export function cardPersonDays(peakCrew: number, labourDays: number): number {
  * A missing summary (still loading, or the fetch failed) contributes zero
  * crew/day figures but keeps its money, which comes from items the screen
  * has already loaded and does not depend on the summary call.
+ *
+ * No `stageKey` is set: nothing can group cards yet, and an absent key
+ * already means "a stage of its own".
  */
 export function toCardRollupInput(
   cardId: string,
@@ -186,19 +235,101 @@ export const EMPTY_DISCIPLINE_ROLLUP: DisciplineRollup = {
 };
 
 /**
- * Fold every card of ONE discipline into a single roll-up.
+ * Group a flat, ordered card list into stages.
+ *
+ * A card with no `stageKey` — every card today — gets a stage of its own.
+ * Cards sharing a non-null key land in ONE stage, which takes the position
+ * of the first card carrying that key: stage order is the card order, not
+ * a separate field.
+ */
+export function groupCardsIntoStages(cards: readonly CardRollupInput[]): DisciplineStage[] {
+  const stages: CardRollupInput[][] = [];
+  const byKey = new Map<string, CardRollupInput[]>();
+
+  for (const card of cards) {
+    const key = card.stageKey ?? null;
+    if (key === null) {
+      stages.push([card]);
+      continue;
+    }
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.push(card);
+      continue;
+    }
+    const stage = [card];
+    byKey.set(key, stage);
+    stages.push(stage);
+  }
+
+  return stages;
+}
+
+/** One (category, variant) line mid-fold. `peakQty` means whatever the
+ *  level doing the folding needs it to mean — a card's own peak, a stage's
+ *  concurrent total, or the discipline's max across stages. */
+type VariantAccum = { variant: string | null; peakQty: number; totalDays: number };
+
+/** category -> (variant ?? "") -> accumulator. Nested rather than a joined
+ *  string key so no category/variant pair can ever collide with another. */
+type PlantAccumMap = Map<string, Map<string, VariantAccum>>;
+
+/** Find or create the accumulator for one (category, variant). The FIRST
+ *  variant value seen for a key wins, which is how the flat fold behaved
+ *  when a null variant and an empty-string variant shared a key. */
+function plantAccum(
+  map: PlantAccumMap,
+  category: string,
+  variantKey: string,
+  variant: string | null
+): VariantAccum {
+  let variants = map.get(category);
+  if (!variants) {
+    variants = new Map<string, VariantAccum>();
+    map.set(category, variants);
+  }
+  let accum = variants.get(variantKey);
+  if (!accum) {
+    accum = { variant, peakQty: 0, totalDays: 0 };
+    variants.set(variantKey, accum);
+  }
+  return accum;
+}
+
+/**
+ * Fold ONE card's plant summary down to that card's own peak per
+ * (category, variant).
+ *
+ * A card that lists the same (category, variant) twice peaks at the LARGER
+ * of the two — that is one card's own peak, not two machines — while its
+ * days add. This is precisely what the flat fold did within a single card,
+ * pulled out here so that a stage of one card contributes exactly what it
+ * contributed before stages existed.
+ */
+function foldCardPlant(card: CardRollupInput): PlantAccumMap {
+  const out: PlantAccumMap = new Map();
+  for (const group of card.plantSummary ?? []) {
+    for (const item of group.items ?? []) {
+      const accum = plantAccum(out, group.category, item.variant ?? "", item.variant);
+      if (item.peakQty > accum.peakQty) accum.peakQty = item.peakQty;
+      accum.totalDays += item.peakDays;
+    }
+  }
+  return out;
+}
+
+/**
+ * Fold the STAGES of ONE discipline into a single roll-up. This is the
+ * stage-aware core; `rollUpDiscipline` is the flat-list wrapper over it.
  *
  * The caller filters to a discipline first — this function is
- * discipline-agnostic and folds exactly the cards it is handed. A card id
- * that appears twice in the input is folded once: double-counting a stage
- * is the failure mode this slice exists to prevent, and silently doubling
- * a discipline's money is worse than ignoring a duplicate.
+ * discipline-agnostic and folds exactly the stages it is handed. A card id
+ * that appears twice ANYWHERE in the input is folded once: double-counting
+ * a stage is the failure mode this module exists to prevent, and silently
+ * doubling a discipline's money is worse than ignoring a duplicate.
  */
-export function rollUpDiscipline(cards: readonly CardRollupInput[]): DisciplineRollup {
-  if (cards.length === 0) return { ...EMPTY_DISCIPLINE_ROLLUP, plantSummary: [] };
-
-  type VariantAccum = { variant: string | null; peakQty: number; totalDays: number };
-  const plant = new Map<string, Map<string, VariantAccum>>();
+export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): DisciplineRollup {
+  const plant: PlantAccumMap = new Map();
   const seen = new Set<string>();
 
   let cardCount = 0;
@@ -210,34 +341,51 @@ export function rollUpDiscipline(cards: readonly CardRollupInput[]): DisciplineR
   let subtotal = 0;
   let subtotalWithMarkup = 0;
 
-  for (const card of cards) {
-    if (seen.has(card.cardId)) continue;
-    seen.add(card.cardId);
-    cardCount += 1;
+  for (const stage of stages) {
+    // WITHIN a stage: crew and plant quantity SUM (the cards are on site
+    // together) and duration MAXES (the stage ends when its longest card
+    // ends). Every other figure sums the same way within a stage as it
+    // does across stages, so it goes straight into the discipline total.
+    let stageCrew = 0;
+    let stageDuration = 0;
+    const stagePlant: PlantAccumMap = new Map();
 
-    itemCount += card.itemCount;
-    // max — NEVER a sum. See the header comment.
-    if (card.peakCrew > peakCrew) peakCrew = card.peakCrew;
-    personDays += cardPersonDays(card.peakCrew, card.labourDays);
-    labourDays += card.labourDays;
-    duration += card.duration;
-    subtotal += card.subtotal;
-    subtotalWithMarkup += card.subtotalWithMarkup;
+    for (const card of stage) {
+      if (seen.has(card.cardId)) continue;
+      seen.add(card.cardId);
+      cardCount += 1;
 
-    for (const group of card.plantSummary ?? []) {
-      let variants = plant.get(group.category);
-      if (!variants) {
-        variants = new Map<string, VariantAccum>();
-        plant.set(group.category, variants);
+      itemCount += card.itemCount;
+      stageCrew += card.peakCrew;
+      if (card.duration > stageDuration) stageDuration = card.duration;
+
+      personDays += cardPersonDays(card.peakCrew, card.labourDays);
+      labourDays += card.labourDays;
+      subtotal += card.subtotal;
+      subtotalWithMarkup += card.subtotalWithMarkup;
+
+      for (const [category, variants] of foldCardPlant(card)) {
+        for (const [variantKey, cardLine] of variants) {
+          const accum = plantAccum(stagePlant, category, variantKey, cardLine.variant);
+          // Concurrent cards each need their own machine, so quantities add.
+          accum.peakQty += cardLine.peakQty;
+          // Days are a duration: they sum within a stage AND across stages.
+          accum.totalDays += cardLine.totalDays;
+        }
       }
-      for (const item of group.items ?? []) {
-        const key = item.variant ?? "";
-        const accum = variants.get(key) ?? { variant: item.variant, peakQty: 0, totalDays: 0 };
-        // max — the same machine moves from stage to stage.
-        if (item.peakQty > accum.peakQty) accum.peakQty = item.peakQty;
-        // sum — the machine is on hire for every stage's days.
-        accum.totalDays += item.peakDays;
-        variants.set(key, accum);
+    }
+
+    // ACROSS stages: crew and plant quantity MAX (the stages never
+    // coincide, so the job never needs more than its biggest stage) and
+    // duration SUMS (the stages run end to end).
+    if (stageCrew > peakCrew) peakCrew = stageCrew;
+    duration += stageDuration;
+
+    for (const [category, variants] of stagePlant) {
+      for (const [variantKey, stageLine] of variants) {
+        const accum = plantAccum(plant, category, variantKey, stageLine.variant);
+        if (stageLine.peakQty > accum.peakQty) accum.peakQty = stageLine.peakQty;
+        accum.totalDays += stageLine.totalDays;
       }
     }
   }
@@ -270,6 +418,19 @@ export function rollUpDiscipline(cards: readonly CardRollupInput[]): DisciplineR
     subtotal,
     subtotalWithMarkup
   };
+}
+
+/**
+ * Fold every card of ONE discipline into a single roll-up.
+ *
+ * This is the flat-list signature every call site already uses. It groups
+ * the cards into stages by their `stageKey` and defers to
+ * `rollUpDisciplineStages`. With no card carrying a stage key — which is
+ * every card today — each card becomes its own singleton stage, and this
+ * returns field for field exactly what the pre-stage flat fold returned.
+ */
+export function rollUpDiscipline(cards: readonly CardRollupInput[]): DisciplineRollup {
+  return rollUpDisciplineStages(groupCardsIntoStages(cards));
 }
 
 // ── Discipline grouping (drives the tab strip) ──────────────────────────

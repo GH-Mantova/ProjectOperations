@@ -16,6 +16,11 @@
  *     measurement, and en-AU dollars from the step where a CURRENCY column
  *     first enters the sum. Presentation only: what the card computes is
  *     CHARGE_STEP_PARITY_V1's and is untouched here.
+ *   - CHARGE_STEP_GUARDS_V1: step 1 is pinned. A reorder into slot 0 keeps
+ *     `start` there, step 1 has no remove control (and `removeStep` refuses
+ *     index 0), and a non-empty list is never offered a second `start`. The
+ *     validation rules are untouched — the state they reject is simply no
+ *     longer reachable from the card.
  *   - "Add step" form below the list
  *   - Collapsed "Show as formula" disclosure (read-only)
  *   - Impact line: open tender count + snapshot note
@@ -383,6 +388,118 @@ export function validateSteps(
   return errors;
 }
 
+// ── CHARGE_STEP_GUARDS_V1: step 1 is pinned ───────────────────────────────
+//
+// `validateSteps` above (and the identical rule in
+// `apps/api/src/modules/rates/rate-tables.service.ts`) says the first step
+// must have op "start". Neither rule is relaxed here. These helpers make the
+// state they reject UNREACHABLE from the card: every mutator that can write
+// index 0 goes through one of them, and each returns the list it was given —
+// by identity — when the move it was asked for would break the rule.
+
+/**
+ * Steps that can lead the list. Only the arithmetic ops carry an operand
+ * (`field`), and only an operand can seed a running total — `round`, `floor`
+ * and `cap` adjust a total that, in slot 0, does not exist yet.
+ */
+export function canLeadStepList(
+  step: ChargeStep
+): step is Extract<ChargeStep, { field: string | number }> {
+  return ARITHMETIC_OPS.includes(step.op as StepOp);
+}
+
+/**
+ * The operations the add form may offer, given how many steps the list
+ * already has.
+ *
+ * An empty list can only take a `start`, because any other first step is the
+ * error above. A non-empty list can take anything BUT a `start`: a second
+ * `start` passes both validators (each only looks at index 0) and then
+ * silently discards everything computed before it, because the `start` case
+ * assigns the running total rather than combining with it.
+ */
+export function addableOps(stepCount: number): StepOp[] {
+  return stepCount === 0 ? ["start"] : KNOWN_OPS.filter((o) => o !== "start");
+}
+
+/** Step 1 has no remove control: removing it is the one move that cannot be undone. */
+export function canRemoveStep(index: number): boolean {
+  return index > 0;
+}
+
+/**
+ * Remove a step. Index 0 is refused: `appendStep` only ever appends, so once
+ * the `start` is gone there is no way to put one back at the front, and the
+ * list cannot be saved empty either (`canSave` requires `steps.length > 0`).
+ * To change step 1, add the replacement and move it to the top — the reorder
+ * below makes it the `start` — then remove the old one.
+ */
+export function removeStepAt(steps: ChargeStep[], index: number): ChargeStep[] {
+  if (!canRemoveStep(index)) return steps;
+  return steps.filter((_, i) => i !== index);
+}
+
+/** Append a step, refusing what `addableOps` does not offer for this list. */
+export function appendStep(steps: ChargeStep[], step: ChargeStep): ChargeStep[] {
+  if (!addableOps(steps.length).includes(step.op as StepOp)) return steps;
+  return [...steps, step];
+}
+
+/** Build an arithmetic step of a known op — the union needs one literal each. */
+function operandStep(
+  op: "multiply" | "divide" | "add" | "subtract",
+  field: string | number
+): ChargeStep {
+  switch (op) {
+    case "multiply":
+      return { op: "multiply", field };
+    case "divide":
+      return { op: "divide", field };
+    case "add":
+      return { op: "add", field };
+    default:
+      return { op: "subtract", field };
+  }
+}
+
+/**
+ * Swap two adjacent steps, keeping `start` in slot 0.
+ *
+ * A plain swap is what the card used to do, and it is what makes the list
+ * unsaveable: move a "Multiply by" to the top and index 0 is no longer a
+ * `start`. So when a swap touches slot 0 the two steps exchange OPERANDS and
+ * slot 0 keeps its operator: `1 Start with Depth, 2 Multiply by Holes`
+ * becomes `1 Start with Holes, 2 Multiply by Depth` — the same arithmetic,
+ * still saveable, and with no second `start` left behind.
+ *
+ * A step with no operand (`round`, `floor`, `cap`) cannot lead the list, so a
+ * swap that would put one in slot 0 is refused and the original list is
+ * returned; the matching control is disabled, so nothing offers the move.
+ */
+export function reorderSteps(steps: ChargeStep[], from: number, to: number): ChargeStep[] {
+  if (from === to) return steps;
+  if (from < 0 || to < 0 || from >= steps.length || to >= steps.length) return steps;
+
+  const next = [...steps];
+  [next[from], next[to]] = [next[to], next[from]];
+
+  // Slot 0 untouched: an ordinary swap, and index 0 is whatever it already was.
+  if (from !== 0 && to !== 0) return next;
+
+  const other = from === 0 ? to : from;
+  const incoming = next[0];
+  const displaced = next[other];
+  if (!canLeadStepList(incoming)) return steps;
+
+  next[0] = { op: "start", field: incoming.field };
+  if (displaced.op === "start") {
+    // The step leaving slot 0 takes the incoming step's operator, so the list
+    // keeps its arithmetic and gains no second `start`.
+    next[other] = operandStep(incoming.op === "start" ? "multiply" : incoming.op, displaced.field);
+  }
+  return next;
+}
+
 /**
  * Evaluate steps against a values map and return the per-step trail.
  *
@@ -511,26 +628,28 @@ export function ChargeStepsEditor({
     setDirty(true);
   };
 
+  // CHARGE_STEP_GUARDS_V1 — every mutator that can write index 0 delegates to
+  // a guard above. Each returns the same list by identity when it refuses, so
+  // a refused move changes nothing and does not even mark the card dirty.
+
   const moveUp = (index: number) => {
-    if (index === 0) return;
-    const next = [...steps];
-    [next[index - 1], next[index]] = [next[index], next[index - 1]];
-    updateSteps(next);
+    const next = reorderSteps(steps, index, index - 1);
+    if (next !== steps) updateSteps(next);
   };
 
   const moveDown = (index: number) => {
-    if (index === steps.length - 1) return;
-    const next = [...steps];
-    [next[index], next[index + 1]] = [next[index + 1], next[index]];
-    updateSteps(next);
+    const next = reorderSteps(steps, index, index + 1);
+    if (next !== steps) updateSteps(next);
   };
 
   const removeStep = (index: number) => {
-    updateSteps(steps.filter((_, i) => i !== index));
+    const next = removeStepAt(steps, index);
+    if (next !== steps) updateSteps(next);
   };
 
   const addStep = (step: ChargeStep) => {
-    updateSteps([...steps, step]);
+    const next = appendStep(steps, step);
+    if (next !== steps) updateSteps(next);
   };
 
   const save = async () => {
@@ -729,7 +848,7 @@ export function ChargeStepsEditor({
                   <button
                     type="button"
                     aria-label={`Move step ${i + 1} up`}
-                    disabled={i === 0}
+                    disabled={i === 0 || (i === 1 && !canLeadStepList(step))}
                     onClick={() => moveUp(i)}
                     style={reorderBtnStyle}
                   >
@@ -738,7 +857,7 @@ export function ChargeStepsEditor({
                   <button
                     type="button"
                     aria-label={`Move step ${i + 1} down`}
-                    disabled={i === steps.length - 1}
+                    disabled={i === steps.length - 1 || (i === 0 && !canLeadStepList(steps[1]))}
                     onClick={() => moveDown(i)}
                     style={reorderBtnStyle}
                   >
@@ -792,16 +911,21 @@ export function ChargeStepsEditor({
                   </span>
                 ) : null}
 
-                {/* Remove */}
-                <button
-                  type="button"
-                  aria-label={`Remove step ${i + 1}`}
-                  onClick={() => removeStep(i)}
-                  style={removeBtnStyle}
-                  data-testid={`remove-step-${i}`}
-                >
-                  ×
-                </button>
+                {/* Remove — CHARGE_STEP_GUARDS_V1: step 1 gets no control. The
+                    spacer keeps the column aligned down the list. */}
+                {canRemoveStep(i) ? (
+                  <button
+                    type="button"
+                    aria-label={`Remove step ${i + 1}`}
+                    onClick={() => removeStep(i)}
+                    style={removeBtnStyle}
+                    data-testid={`remove-step-${i}`}
+                  >
+                    ×
+                  </button>
+                ) : (
+                  <span aria-hidden="true" style={removeSpacerStyle} />
+                )}
               </li>
             );
           })}
@@ -832,6 +956,7 @@ export function ChargeStepsEditor({
         numericCols={numericCols}
         allCols={allCols}
         onAdd={addStep}
+        stepCount={steps.length}
       />
 
       {/* Formula disclosure */}
@@ -875,13 +1000,26 @@ export function ChargeStepsEditor({
 function AddStepForm({
   numericCols,
   allCols,
-  onAdd
+  onAdd,
+  stepCount
 }: {
   numericCols: string[];
   allCols: string[];
   onAdd: (step: ChargeStep) => void;
+  /** CHARGE_STEP_GUARDS_V1 — how many steps the list already has, which is
+   *  what decides whether `start` is an operation that can be added. */
+  stepCount: number;
 }) {
-  const [op, setOp] = useState<StepOp>("start");
+  // CHARGE_STEP_GUARDS_V1 — the menu offers only what this list can take, and
+  // the form defaults to the first of those: `start` while the list is empty,
+  // and the first op that is not `start` once it is not.
+  const ops = useMemo(() => addableOps(stepCount), [stepCount]);
+  const [op, setOp] = useState<StepOp>(() => addableOps(stepCount)[0]);
+
+  useEffect(() => {
+    if (!ops.includes(op)) setOp(ops[0]);
+  }, [ops, op]);
+
   const [fieldMode, setFieldMode] = useState<"column" | "number">("column");
   const [fieldCol, setFieldCol] = useState(numericCols[0] ?? "");
   const [fieldNum, setFieldNum] = useState("");
@@ -983,7 +1121,7 @@ function AddStepForm({
             style={selectStyle}
             aria-label="Step operation"
           >
-            {KNOWN_OPS.map((o) => (
+            {ops.map((o) => (
               <option key={o} value={o}>{OP_LABELS[o]}</option>
             ))}
           </select>
@@ -1172,6 +1310,13 @@ const reorderBtnStyle: CSSProperties = {
   color: "var(--text-muted)",
   padding: "0 2px",
   lineHeight: 1
+};
+
+/** CHARGE_STEP_GUARDS_V1 — holds the remove column open on step 1, which has
+ *  no remove control. */
+const removeSpacerStyle: CSSProperties = {
+  display: "inline-block",
+  width: 18
 };
 
 const removeBtnStyle: CSSProperties = {

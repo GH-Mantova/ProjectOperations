@@ -285,11 +285,17 @@ export const EM_RULE = "—";
  * other columns use for absent data. It is NEVER rendered as "$0": a tender
  * with no estimate and a tender worth nothing are different facts.
  */
-export function formatMoneyAUD(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return EM_RULE;
-  if (typeof value === "string" && value.trim() === "") return EM_RULE;
+export function parseMoney(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
   const num = typeof value === "string" ? parseFloat(value) : value;
-  if (!Number.isFinite(num)) return EM_RULE;
+  if (!Number.isFinite(num)) return null;
+  return num;
+}
+
+export function formatMoneyAUD(value: string | number | null | undefined): string {
+  const num = parseMoney(value);
+  if (num === null) return EM_RULE;
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD",
@@ -356,6 +362,8 @@ export function formatSubmittedLabel(iso: string | null | undefined): string | n
 
 export type RegisterColumnId =
   | "tender"
+  /** CRM_FOLLOWUPS_V2: the Type chip column — Follow-ups only. */
+  | "type"
   | "client"
   | "status"
   | "value"
@@ -402,11 +410,56 @@ export const REGISTER_COLUMNS: readonly RegisterColumnDef[] = [
   { id: "actions", label: "Actions", sortKey: null, hideable: false, align: "left" }
 ];
 
+/**
+ * CRM_FOLLOWUPS_V2: the Type chip column.
+ *
+ * Follow-ups deliberately spans submitted tenders, opportunities and leads
+ * (decision 6: one list, toggleable filters), so a Lead row and a Tender row
+ * are otherwise visually identical. The chip is derived from the SAME status
+ * groups as the entity-type toggles — `ENTITY_TYPES` below — so "what kind of
+ * thing is this row" has one definition, not two.
+ *
+ * It is a Follow-ups column only: `REGISTER_COLUMNS` is the settled slice-1
+ * sequence and is unchanged.
+ */
+export const TYPE_COLUMN: RegisterColumnDef = {
+  id: "type",
+  label: "Type",
+  sortKey: null,
+  hideable: true,
+  align: "left"
+};
+
+/**
+ * The Follow-ups column sequence: the register's, with Type inserted directly
+ * after Tender so the row says what it is before it says anything else.
+ */
+export const FOLLOWUPS_COLUMNS: readonly RegisterColumnDef[] = [
+  REGISTER_COLUMNS[0],
+  TYPE_COLUMN,
+  ...REGISTER_COLUMNS.slice(1)
+];
+
+/**
+ * Every column either tab can render. The visibility map is keyed over this
+ * union so a Follow-ups column switched off is still a known id when the
+ * register reads the same stored blob back.
+ */
+export const ALL_REGISTER_COLUMNS: readonly RegisterColumnDef[] = [
+  ...REGISTER_COLUMNS,
+  TYPE_COLUMN
+];
+
+/** The column sequence for a tab. Register keeps its own column set. */
+export function columnsForTab(tab: "register" | "followups"): readonly RegisterColumnDef[] {
+  return tab === "followups" ? FOLLOWUPS_COLUMNS : REGISTER_COLUMNS;
+}
+
 export type RegisterColumnVisibility = Record<RegisterColumnId, boolean>;
 
 /** Every column on. */
 export const DEFAULT_COLUMN_VISIBILITY: RegisterColumnVisibility =
-  REGISTER_COLUMNS.reduce((acc, col) => {
+  ALL_REGISTER_COLUMNS.reduce((acc, col) => {
     acc[col.id] = true;
     return acc;
   }, {} as RegisterColumnVisibility);
@@ -428,12 +481,12 @@ export function normalizeColumnVisibility(raw: unknown): RegisterColumnVisibilit
   const out: RegisterColumnVisibility = { ...DEFAULT_COLUMN_VISIBILITY };
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const source = raw as Record<string, unknown>;
-    for (const col of REGISTER_COLUMNS) {
+    for (const col of ALL_REGISTER_COLUMNS) {
       const value = source[col.id];
       if (typeof value === "boolean") out[col.id] = value;
     }
   }
-  for (const col of REGISTER_COLUMNS) {
+  for (const col of ALL_REGISTER_COLUMNS) {
     if (!col.hideable) out[col.id] = true;
   }
   return out;
@@ -445,3 +498,226 @@ export function visibleRegisterColumns(
 ): RegisterColumnDef[] {
   return REGISTER_COLUMNS.filter((col) => visibility[col.id]);
 }
+
+/**
+ * CRM_FOLLOWUPS_V2: the columns to render for a tab, in mock-up sequence.
+ * `visibleRegisterColumns` keeps its exact register-only contract — this is a
+ * sibling, not a replacement.
+ */
+export function visibleColumnsForTab(
+  tab: "register" | "followups",
+  visibility: RegisterColumnVisibility
+): RegisterColumnDef[] {
+  return columnsForTab(tab).filter((col) => visibility[col.id]);
+}
+
+// ---------------------------------------------------------------------------
+// CRM_FOLLOWUPS_V2 — entity-type status groups
+// ---------------------------------------------------------------------------
+
+/**
+ * The five status groups that back the Follow-ups entity-type control.
+ *
+ * These were declared in TendersRegisterPage.tsx with a comment each naming
+ * the toggle they back, and — measured before this slice — every one of them
+ * had exactly one reference in the repo: its own declaration line. The
+ * vocabulary was written and the control never arrived. They keep their names
+ * and their membership; they moved here so the toggle predicate and the Type
+ * chip can be unit-tested without React, and so there is ONE definition of
+ * "what kind of thing is this row" rather than one per consumer.
+ */
+
+/** "Won & lost" toggle. */
+export const WON_LOST_STATUSES: ReadonlySet<string> = new Set<string>([
+  "AWARDED",
+  "CONTRACT_ISSUED",
+  "LOST"
+]);
+/** "Submitted tenders" toggle. */
+export const SUBMITTED_STATUSES: ReadonlySet<string> = new Set<string>(["SUBMITTED"]);
+/** "Opportunities" toggle — the active pipeline. */
+export const OPPORTUNITY_STATUSES: ReadonlySet<string> = new Set<string>(["IN_PROGRESS"]);
+/** "Leads" toggle. */
+export const LEAD_STATUSES: ReadonlySet<string> = new Set<string>(["DRAFT"]);
+/**
+ * Withdrawn. The approved mock-up has NO toggle for it, so it belongs to no
+ * entity-type group: a withdrawn tender renders no Type chip, and it is
+ * filtered out whenever any entity-type toggle is on. Left declared and
+ * exported exactly as it was, so the vocabulary stays complete if a fifth
+ * toggle is ever approved.
+ */
+export const WITHDRAWN_STATUSES: ReadonlySet<string> = new Set<string>(["WITHDRAWN"]);
+
+export type EntityTypeId = "submitted" | "opportunity" | "lead" | "wonLost";
+
+export type EntityTypeDef = {
+  id: EntityTypeId;
+  /** Toggle label, verbatim from the mock-up. */
+  label: string;
+  /** The Type column's chip text — shorter, it sits inside a table cell. */
+  chipLabel: string;
+  statuses: ReadonlySet<string>;
+};
+
+/** The four entity-type toggles, in the mock-up's order. */
+export const ENTITY_TYPES: readonly EntityTypeDef[] = [
+  {
+    id: "submitted",
+    label: "Submitted tenders",
+    chipLabel: "Tender",
+    statuses: SUBMITTED_STATUSES
+  },
+  {
+    id: "opportunity",
+    label: "Opportunities",
+    chipLabel: "Opportunity",
+    statuses: OPPORTUNITY_STATUSES
+  },
+  { id: "lead", label: "Leads", chipLabel: "Lead", statuses: LEAD_STATUSES },
+  { id: "wonLost", label: "Won & lost", chipLabel: "Won / lost", statuses: WON_LOST_STATUSES }
+];
+
+export type EntityTypeToggles = Record<EntityTypeId, boolean>;
+
+/**
+ * All four off — which, by the same convention `nextActionPassesFilter` uses,
+ * means "no entity-type filter applied". Follow-ups therefore opens showing
+ * exactly the rows it showed before this slice; the control adds a way to
+ * narrow, it does not silently narrow on arrival.
+ */
+export const DEFAULT_ENTITY_TYPE_TOGGLES: EntityTypeToggles = {
+  submitted: false,
+  opportunity: false,
+  lead: false,
+  wonLost: false
+};
+
+/** Which entity-type group a status belongs to, or null when none claims it. */
+export function classifyEntityType(status: string): EntityTypeId | null {
+  for (const def of ENTITY_TYPES) {
+    if (def.statuses.has(status)) return def.id;
+  }
+  return null;
+}
+
+/** The Type column's chip text for a status, or null when no group claims it. */
+export function entityTypeChipLabel(status: string): string | null {
+  const id = classifyEntityType(status);
+  if (!id) return null;
+  return ENTITY_TYPES.find((def) => def.id === id)?.chipLabel ?? null;
+}
+
+/**
+ * Returns true when the row's status matches the active entity-type toggles.
+ * All four off → every row passes.
+ *
+ * This is a STATUS filter and composes with `nextActionPassesFilter`: a row
+ * must satisfy both to render. The two groups never replace one another.
+ */
+export function entityTypePassesFilter(status: string, toggles: EntityTypeToggles): boolean {
+  const anyOn = ENTITY_TYPES.some((def) => toggles[def.id]);
+  if (!anyOn) return true;
+  const id = classifyEntityType(status);
+  if (!id) return false;
+  return toggles[id];
+}
+
+// ---------------------------------------------------------------------------
+// CRM_FOLLOWUPS_V2 — the four KPI cards
+// ---------------------------------------------------------------------------
+
+/**
+ * The "Due this week" card's window: SEVEN days.
+ *
+ * Deliberately a separate constant from `DUE_SOON_MS` (three days), which
+ * belongs to the "Due soon" toggle and is shared with AccountDetailPage
+ * through `classifyNextAction`. The card and the toggle answer different
+ * questions and must be pinnable independently — forking one into the other
+ * is how the register and the account page start disagreeing.
+ */
+export const DUE_THIS_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * True when a next action falls inside the coming seven days.
+ *
+ * Uses the same boundary as `classifyNextAction`: a task due exactly at `now`
+ * is already overdue, so it is counted by the Overdue card and not here. The
+ * two cards are disjoint by construction — a row is never in both.
+ */
+export function isDueThisWeek(dueAt: string | null | undefined, now: Date): boolean {
+  if (!dueAt) return false;
+  const due = new Date(dueAt).getTime();
+  if (isNaN(due)) return false;
+  const nowMs = now.getTime();
+  if (due <= nowMs) return false;
+  return due <= nowMs + DUE_THIS_WEEK_MS;
+}
+
+/** The three row fields the KPI cards read. Every one is already loaded. */
+export type RegisterKpiRow = {
+  /** Decimal-as-string from the tender fetch. */
+  estimatedValue?: string | null;
+  /** From the last-interaction batch map — null means never logged. */
+  lastInteractionAt?: string | null;
+  /** From the open-CommTask map. */
+  nextActionAt?: string | null;
+};
+
+export type RegisterKpis = {
+  overdue: number;
+  dueThisWeek: number;
+  neverLogged: number;
+  /**
+   * Sum of `estimatedValue` over the overdue rows, or null when not one
+   * overdue row carries a parseable estimate. Null renders as the em-rule:
+   * "no overdue tender has an estimate" and "the overdue pile is worth
+   * nothing" are different facts, and the register never prints $0 for the
+   * first one.
+   */
+  valueAtRisk: number | null;
+};
+
+/**
+ * Derive the four KPI figures from the rows CURRENTLY IN SCOPE.
+ *
+ * Every figure comes out of `enrichedRows` after the active filters have been
+ * applied — no fetch, no endpoint — so the cards and the list beneath them can
+ * never disagree. Pure and `now`-injected, pinned against a fixed instant in
+ * the unit tests the way `classifyNextAction` is.
+ */
+export function computeRegisterKpis(rows: readonly RegisterKpiRow[], now: Date): RegisterKpis {
+  let overdue = 0;
+  let dueThisWeek = 0;
+  let neverLogged = 0;
+  let valueAtRisk = 0;
+  let valuedOverdueRows = 0;
+
+  for (const row of rows) {
+    const nextActionAt = row.nextActionAt ?? null;
+    if (classifyNextAction(nextActionAt, now) === "overdue") {
+      overdue += 1;
+      const value = parseMoney(row.estimatedValue);
+      if (value !== null) {
+        valueAtRisk += value;
+        valuedOverdueRows += 1;
+      }
+    }
+    if (isDueThisWeek(nextActionAt, now)) dueThisWeek += 1;
+    if (!row.lastInteractionAt) neverLogged += 1;
+  }
+
+  return {
+    overdue,
+    dueThisWeek,
+    neverLogged,
+    valueAtRisk: valuedOverdueRows > 0 ? valueAtRisk : null
+  };
+}
+
+/** The four card labels, in the mock-up's order. */
+export const KPI_CARD_LABELS = [
+  "Overdue",
+  "Due this week",
+  "Never logged",
+  "Value at risk"
+] as const;

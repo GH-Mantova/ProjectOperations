@@ -483,6 +483,20 @@ here now because they are true for **every** station.
   errors push in opposite directions and can cancel, so a matching length is not a match. Found by
   Station 04 2026-09-05T10:10Z (F4), dispatched to 00, deferred by 00's 10:35Z run for a PR of its
   own, landed here.
+- 🔴 **`| Measure-Object -Line` SILENTLY DROPS BLANK LINES, and it is the instrument several of the
+  probes in this section prescribe.** It counts lines *within each pipeline element*, and an empty
+  string contributes **zero** - so the number you get is the **non-blank** line count, off by exactly
+  the file's blank-line count, at exit 0 with no warning. MEASURED 2026-09-05T22:2xZ by Station 04 on
+  `origin/main:scripts/pipeline/lint-prompt.mjs`, dumped with `cmd /c` so the `>` trap above is
+  excluded: node LF count **1827** - node blank lines **121** - node non-blank **1706** -
+  `(Get-Content ...) | Measure-Object -Line`.Lines **1706** (WRONG) - `(Get-Content ...) | Measure-Object`.Count
+  **1827** (correct). 04 hit it live twice in one run: it read the file as 1706 lines against §9.5's
+  "(now 1824 lines)" and nearly filed *"the file shrank 118 lines, §9.5 has drifted"* - a confident,
+  coherent, wrong finding about the one document every station is told to trust; and it under-reports
+  BOTH sides of §9.5's `.arming-log.txt` two-line-count comparison, which is that bullet's own
+  **falsifying probe**, so a gap there can be hidden or manufactured by the instrument meant to keep
+  it honest. 🔧 **Never `Measure-Object -Line`. Count with `(Get-Content <path>).Count`, or in node
+  with `split('\n')` - and control any line count against a file whose blank-line count you know.**
 - 🔴 **`Select-String -SimpleMatch` takes a LITERAL, so `[regex]::Escape()` must NEVER be applied
   to its pattern.** The escaped form `reminder-policy\.service\.ts` is searched *with the
   backslashes*, matches nothing, and exits 0 — an absent-needle reading that is really an unusable
@@ -755,11 +769,42 @@ here now because they are true for **every** station.
   The artifacts existed the whole time in `C:\po-watcher\ProjectOperations\docs\pr-reviews\`
   (`pr-1675-review.md` 19:03:00Z, `pr-1676-review.md` 19:05:52Z), with older ones relocated to
   `C:\po-watcher\verdicts-archive\`; NEGATIVE control, a minted needle over the same recursive search
-  → **0**. **Probe the clone and that archive before concluding the review lane is dead** — §9.6, an
+  → **0**. **Probe ALL THREE HOMES - the clone, `C:\po-watcher\verdicts-archive\` AND the dev tree - and take the NEWEST (CORRECTED 2026-09-05T23:3xZ; see the correction immediately below)** — §9.6, an
   empty result read as an empty world.
   ⚠️ **And the `SessionEnd hook … Hook cancelled` line in a `rev-*` log is NOT the discriminator**:
   `rev-1660` and `rev-1662` carry it and produced their files; `rev-1674` and `rev-1676` do not carry
   it and did not.
+  🔴🔴 **CORRECTED 2026-09-05T23:3xZ - THE DIRECTION ABOVE WENT STALE IN FOUR HOURS, AND FOLLOWING IT
+  NOW MANUFACTURES THE FALSE FINDING IT EXISTS TO PREVENT.** The bullet was authored 19:2xZ. MEASURED
+  the same day by Station 04 (22:2xZ, F1) and Station 03 (23:0xZ, F1/F2), independently: the dev tree
+  was **2 h 43 m AHEAD** of the clone, and **nine of the twelve review verdicts produced on
+  2026-09-05 exist ONLY in the dev tree** - `pr-1646 1651 1654 1660 1662 1669 1677 1680 1682`, with
+  `pr-1682-review.md` (2475 B, 22:37:16Z) written **16 seconds before** the watcher's mirror step
+  logged `verdict mirror skipped: docs/pr-reviews/pr-1682-review.md not found`. Newest per home at
+  23:0xZ: dev tree `pr-1682` 22:37:16Z - archive `pr-1681` 22:09:18Z - clone `pr-1675` 19:03:00Z.
+  **The leader is whichever home the last job happened to write to, and on 2026-09-05 it was never
+  the clone.**
+  🔧 **The sound rule is not a direction at all: probe all three, take the newest.** `verdicts-archive`
+  is not a tiebreaker either - at 22:2xZ it held `pr-1681-review.md` (22:09:18Z), newer than either
+  tree.
+  🔴 **The CAUSE is a live S1 defect, not a documentation slip** (Station 03, 2026-09-05T23:0xZ, F1,
+  DISPATCHED to 00). `verdict mirror skipped` appears **68** times in `watcher-launch.log`
+  (POSITIVE control `verdict mirrored to PR` -> **262**), twelve of them on 2026-09-05 alone, and
+  **every one was then filed `[ok] -> processed/`**. Two causes wear that one line: **(a) WRONG TREE**
+  - nine of twelve, the review job wrote into the dev tree while the mirror step reads the clone; and
+  **(b) THE ARCHIVE SWEEP RACES THE MIRROR** - one of twelve, `#1679` was archived at 21:22:23.331Z
+  and the mirror declared it missing **16 seconds later** at 21:22:39.711Z (positive control `#1681`,
+  same two steps in the opposite order, verdict reached the PR). Two more (`pr-1652`, `pr-1672`) are
+  in no home at all and **[CANNOT MEASURE]** which cause they were.
+  🔴 **This is a NEW measured cause for the SECOND conjunct of §10.3**, and it is not the one on file:
+  `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md` attributes the starvation to
+  QUEUE LATENCY (93.5 min on `#1675`). `#1682`'s review job started 33 s after enqueue and finished
+  in 4.5 min - no starvation; the verdict simply went where `verdictApproves` does not read. **A
+  reader who checks only the queueing table finds `#1682` healthy and concludes the mechanism did not
+  reproduce. It reproduced twelve times that day, by a different route.**
+  ⚠️ **Until the mirror step is made tree-agnostic and archive-aware, treat "no verdict for PR N" as
+  UNMEASURED until all three homes have been checked** - and never as evidence the review lane is dead.
+
 
 ## 9.6 The rule behind all of them
 

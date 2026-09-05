@@ -21,6 +21,28 @@ import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimens
 // every row inheriting a silent 0%, and the Cutting tick is gated on the
 // same discipline condition that gates the sheet it feeds.
 
+// SCOPE_MANPOWER_PERSIST_V1 — slice 1 of scope-card-persistence. Every
+// Manpower field on EVERY row now round-trips through the server instead of
+// dying in local state on reload: the labour type, the qty, the days, the
+// shift, the day-rate override, and the row count itself.
+//
+// The store is ScopeOfWorksItem.labourItems (JSONB), landed by the API slice
+// SCOPE_ITEM_LABOUR_STORE_V1. It mirrors plantItems exactly, and the server's
+// precedence rule is the reason this slice is safe to ship on live data: a
+// NON-EMPTY labourItems array wins over the men/days/shift scalars, while
+// NULL or [] falls back to them. An item nobody has touched still holds
+// labourItems = NULL and still prices from men x days x the discipline's
+// default role, to the cent.
+//
+// Two contracts govern what is sent, both of them the server's, not ours:
+//   1. updateItem persists exactly what the DTO carries. A SHORT array
+//      REPLACES the stored one, so every write ships EVERY row of the item —
+//      see buildLabourItems / manpowerPatchBody below, which is why each
+//      handler materialises the whole row list before patching.
+//   2. computeScopeItemTotal prices a row from `role` (the rate-card role
+//      string), not from `labourTypeId`. The id is stored so the dropdown can
+//      re-select on reload; the role is stored because it is what prices.
+
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
@@ -34,6 +56,37 @@ export type ScopePlantEntry = {
   qty?: number;
   days?: number;
   unit?: string;
+};
+
+// SCOPE_MANPOWER_PERSIST_V1 — one row of ScopeOfWorksItem.labourItems.
+//
+// Field-for-field the shape the API slice documented on the column and reads
+// in scope-item-pricing.ts (ScopeLabourEntryInput): every key optional there,
+// every key written explicitly here so a partially-filled row is never
+// ambiguous on the wire.
+//
+//   rowIdx          position in the item's row list (0-based, dense).
+//   labourTypeId    EstimateLabourRate.id — display identity, re-selects the
+//                   Type dropdown on reload. NOT what the server prices from.
+//   role            the rate-card role string. THIS is what the server prices
+//                   from (labourRateForRow -> labourRateByRoleShift). null =
+//                   no role picked, and the server falls back to the
+//                   discipline's default role, which is exactly the legacy
+//                   men/days behaviour.
+//   shift           stored value: "Day" | "Night" | "Weekend" (never the
+//                   "Weekday" LABEL — see shiftLabel).
+//   qty             headcount for this row.
+//   days            days for this row.
+//   dayRateOverride per-row $/day. null = use the catalogue rate; a stored 0
+//                   is a real override the server honours.
+export type ScopeLabourEntry = {
+  rowIdx: number;
+  labourTypeId: string | null;
+  role: string | null;
+  shift: string | null;
+  qty: number | null;
+  days: number | null;
+  dayRateOverride: number | null;
 };
 
 // PR feat/scope-multi-material — additional material row on a scope item.
@@ -112,6 +165,12 @@ export type ScopeItem = {
   materialType: string | null;
   cuttingIncluded: boolean;
   plantItems: ScopePlantEntry[] | null;
+  // SCOPE_MANPOWER_PERSIST_V1 — the per-row manpower store. Optional and
+  // nullable because it genuinely is: every item written before the
+  // labour_items column existed reads back NULL, and NULL is the signal to
+  // fall back to the men/days/shift scalars above rather than a missing value
+  // to paper over. Never write [] here (see manpowerPatchBody).
+  labourItems?: ScopeLabourEntry[] | null;
   // PR feat/scope-multi-material — rows 2..N (row 1 lives on the flat
   // dimension columns above). Null/undefined = no extra materials.
   materials?: ScopeMaterialEntry[] | null;
@@ -424,21 +483,36 @@ type ItemRowCounts = Map<string, number>;
 type ItemMarkupOverrides = Map<string, number | null>;
 
 // SCOPE_WBS_MANPOWER_V1 — per-row manpower local state.
-// Slice 3 stores Type, Day-rate override, and additional-row Qty/Days/Shift
-// in local state. Row 0's Qty/Days/Shift write through to the item's
-// men/days/shift fields via patchItem; additional rows are local-only
-// until slice 3b wires them to dedicated DB records.
-type RowManpowerState = {
-  /** Selected labour role id (null = "- none -"). */
+// SCOPE_MANPOWER_PERSIST_V1 — this is now the OPTIMISTIC mirror of one
+// labourItems entry, not the only copy. Every field on it is written through
+// to the server by commitManpowerRow; the map is what the cell renders while
+// the PATCH is in flight and what onItemsChanged() then reconciles against.
+// Row 0 no longer reads item.men / item.days / item.shift directly at the
+// cell: defaultManpowerRow seeds row 0 from those scalars when the item has
+// no stored labour rows, so the fallback lives in exactly one place.
+//
+// Exported (with ItemManpowerRows) so the persistence helpers below can be
+// unit-tested against the real state shape rather than a stand-in.
+export type RowManpowerState = {
+  /** Selected labour rate id (null = "- none -"). Display identity only. */
   labourTypeId: string | null;
+  /**
+   * SCOPE_MANPOWER_PERSIST_V1 — the rate-card role string for labourTypeId.
+   * Carried in row state because it is what the SERVER prices from
+   * (labourRateForRow keys on `${role}:${shift}`); the id means nothing to
+   * pricing. Kept in step with labourTypeId by the Type-change handler, and
+   * hydrated straight off the stored row on reload, so a rates fetch that
+   * fails can never silently rewrite a saved role to null.
+   */
+  role: string | null;
   /** User-entered day rate override in $. Null = use catalogue rate. */
   dayRateOverride: number | null;
-  /** Qty (men) for rows > 0. Row 0 uses item.men. */
+  /** Qty (men) for this row. Row 0 seeds from item.men. */
   qty: string;
-  /** Days for rows > 0. Row 0 uses item.days. */
+  /** Days for this row. Row 0 seeds from item.days. */
   days: string;
   /**
-   * Shift for rows > 0. Row 0 uses item.shift.
+   * Shift for this row. Row 0 seeds from item.shift.
    * Stored values are "Day" | "Night" | "Weekend"; SCOPE_WBS_INPUTS_V2
    * renders the "Day" value with the label "Weekday" (rate-card wording).
    */
@@ -446,7 +520,7 @@ type RowManpowerState = {
 };
 
 /** Key: `${itemId}:${rowIdx}` → per-row manpower state. */
-type ItemManpowerRows = Map<string, RowManpowerState>;
+export type ItemManpowerRows = Map<string, RowManpowerState>;
 
 // SCOPE_WBS_PLANT_V1 — per-row plant local state.
 // Slice 4 stores Type (plantRateId or custom description), Day-rate override,
@@ -617,6 +691,208 @@ export function fmtManpowerTotal(total: number | null): string {
   }).format(total);
 }
 
+// ── SCOPE_MANPOWER_PERSIST_V1 exported pure helpers ─────────────────────────
+// (tested by wbs-manpower-persist.test.tsx)
+//
+// Everything that decides WHAT GOES ON THE WIRE lives here as a pure function
+// of row state. The component only decides WHEN to call it. That split is
+// deliberate: the payload shape is the whole risk in this slice — the server
+// contract is already merged and is the authority — so the payload is testable
+// without a render, a fetch or a database.
+
+/**
+ * Parse a row-state number input to `number | null`.
+ *
+ * Empty string and anything non-finite are null (absent). Used for the
+ * men / days SCALARS, where null-on-blank is the exact expression the
+ * component has always sent and changing it would rewrite stored data.
+ */
+export function manpowerNumOrNull(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Parse a row-state number input to a number, treating blank as 0.
+ *
+ * Used for the qty/days INSIDE labourItems, and the difference from
+ * manpowerNumOrNull is load-bearing money, not style:
+ *
+ * scope-item-pricing.ts prices a row as `qty = row.qty == null ? 1 : n(row.qty)`
+ * — an ABSENT qty means "the estimator picked a role but typed no headcount"
+ * and defaults to ONE person. A blank Qty box is not that. On screen a blank
+ * Qty renders the row total as an em dash (manpowerRowTotal returns null), and
+ * on the legacy scalar path a null `men` prices as `n(null) = 0`. Sending null
+ * would make the server disagree with both — a shift change on a row with days
+ * but no qty would silently add a person's worth of money. Sending 0 says what
+ * the blank box says: no men costed. The server documents a stored 0 as a real
+ * value, so this is the supported way to state it.
+ */
+export function manpowerNumOrZero(raw: string): number {
+  const n = Number(raw.trim() === "" ? "0" : raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * SCOPE_MANPOWER_PERSIST_V1 — the precedence predicate, web side.
+ *
+ * Deliberately the same rule as `hasLabourRows` in scope-item-pricing.ts:
+ * a non-empty array wins; null / undefined / not-an-array / [] falls back to
+ * the men/days/shift scalars. Asked here once so the hydration path and the
+ * row-count path cannot drift from each other or from the server.
+ */
+export function hasStoredLabourRows(
+  labourItems: ScopeLabourEntry[] | null | undefined
+): labourItems is ScopeLabourEntry[] {
+  return Array.isArray(labourItems) && labourItems.length > 0;
+}
+
+/**
+ * How many manpower rows an item has ACCORDING TO THE SERVER.
+ *
+ * This is the answer to "persist the row count by persisting the rows": the
+ * count is not a field, it is the length of the stored array. An item with no
+ * stored rows has exactly one row, which is what the table has always
+ * rendered for a fresh item.
+ */
+export function manpowerRowCountFromItem(
+  item: Pick<ScopeItem, "labourItems">
+): number {
+  return hasStoredLabourRows(item.labourItems) ? item.labourItems.length : 1;
+}
+
+/** Hydrate one row of local state from one stored labourItems entry. */
+export function rowManpowerFromLabourEntry(entry: ScopeLabourEntry): RowManpowerState {
+  return {
+    labourTypeId: entry.labourTypeId ?? null,
+    role: entry.role ?? null,
+    dayRateOverride: entry.dayRateOverride ?? null,
+    qty: entry.qty == null ? "" : String(entry.qty),
+    days: entry.days == null ? "" : String(entry.days),
+    shift: entry.shift ?? "Day"
+  };
+}
+
+/**
+ * The row state a cell shows when the local map holds nothing for it.
+ *
+ * Order of resolution:
+ *   1. the stored labourItems entry at this index, when the item has rows;
+ *   2. for row 0 only, the legacy men/days/shift scalars — which is what the
+ *      table rendered before this slice and is still the ONLY thing a
+ *      never-saved item has;
+ *   3. empty.
+ *
+ * Rows 1..N of an item with no stored array are empty, exactly as today: an
+ * item that predates the labour_items column has no second row to restore.
+ */
+export function defaultManpowerRow(
+  item: Pick<ScopeItem, "men" | "days" | "shift" | "labourItems">,
+  rowIdx: number
+): RowManpowerState {
+  if (hasStoredLabourRows(item.labourItems)) {
+    const stored = item.labourItems[rowIdx];
+    if (stored) return rowManpowerFromLabourEntry(stored);
+  }
+  return {
+    labourTypeId: null,
+    role: null,
+    dayRateOverride: null,
+    qty: rowIdx === 0 ? (item.men ?? "") : "",
+    days: rowIdx === 0 ? (item.days ?? "") : "",
+    shift: rowIdx === 0 ? (item.shift ?? "Day") : "Day"
+  };
+}
+
+/**
+ * Turn the item's WHOLE row list into the labourItems array to send.
+ *
+ * `rowIdx` is re-derived from the array position rather than carried through,
+ * so the stored array is always dense and 0-based even after a middle row is
+ * removed. The server tolerates gaps; the dropdown-by-index hydration above
+ * does not, and one of the two has to be strict.
+ */
+export function buildLabourItems(rows: RowManpowerState[]): ScopeLabourEntry[] {
+  return rows.map((row, rowIdx) => ({
+    rowIdx,
+    labourTypeId: row.labourTypeId,
+    role: row.role,
+    // Stored value, never the "Weekday" label. An empty shift is "Day",
+    // which is what the server normalises an absent shift to anyway.
+    shift: row.shift === "" ? "Day" : row.shift,
+    qty: manpowerNumOrZero(row.qty),
+    days: manpowerNumOrZero(row.days),
+    dayRateOverride: row.dayRateOverride
+  }));
+}
+
+/**
+ * The PATCH body for a manpower edit. THIS is the payload of this slice.
+ *
+ * Sends four keys:
+ *   labourItems — every row of the item, always. The DTO warns that a short
+ *                 array REPLACES the stored one, so a partial write would
+ *                 delete rows; there is no incremental form of this call.
+ *   men / days  — row 0's qty/days as the legacy scalars, using exactly the
+ *                 `v === "" ? null : Number(v)` expression the component sent
+ *                 before this slice. They no longer drive pricing while
+ *                 labourItems is non-empty, but keeping them truthful means
+ *                 the item still describes itself if the array is ever
+ *                 cleared, and it leaves the scalar readers unchanged.
+ *   shift       — row 0's shift, same reasoning. "Day" and a stored NULL
+ *                 normalise to the same rate on the server, so writing "Day"
+ *                 over a NULL cannot move money.
+ *
+ * `labourItems` is OMITTED, not sent as [], when there are no rows. An empty
+ * array and a NULL price identically today, but they are not the same
+ * statement, and writing [] over a NULL would turn "never touched" into
+ * "touched, and empty" for every later reader. The table never renders zero
+ * rows, so this branch is a guard rather than a path.
+ */
+export function manpowerPatchBody(rows: RowManpowerState[]): Record<string, unknown> {
+  const first = rows[0];
+  const body: Record<string, unknown> = {
+    men: first ? manpowerNumOrNull(first.qty) : null,
+    days: first ? manpowerNumOrNull(first.days) : null,
+    shift: first && first.shift !== "" ? first.shift : "Day"
+  };
+  if (rows.length > 0) body.labourItems = buildLabourItems(rows);
+  return body;
+}
+
+/**
+ * Write a full row list into the per-item local state map.
+ *
+ * Sets `${itemId}:${i}` for every row and DELETES every key for this item at
+ * an index past the end, so a removal cannot leave an orphaned row behind to
+ * be resurrected the next time the list is materialised. Other items' keys
+ * are untouched.
+ */
+export function writeManpowerRows(
+  prev: ItemManpowerRows,
+  itemId: string,
+  rows: RowManpowerState[]
+): ItemManpowerRows {
+  const next = new Map(prev);
+  const prefix = `${itemId}:`;
+  for (const key of prev.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const idx = Number(key.slice(prefix.length));
+    if (Number.isInteger(idx) && idx >= rows.length) next.delete(key);
+  }
+  rows.forEach((row, idx) => next.set(`${prefix}${idx}`, row));
+  return next;
+}
+
+/** Drop one row from a materialised row list (index-aware, order preserved). */
+export function removeManpowerRowAt(
+  rows: RowManpowerState[],
+  rowIdx: number
+): RowManpowerState[] {
+  return rows.filter((_, i) => i !== rowIdx);
+}
+
 // ── SCOPE_WBS_PLANT_V1 exported pure helpers (tested by wbs-plant-columns.test.tsx) ──
 
 /**
@@ -733,11 +1009,21 @@ export function ScopeQuantitiesTable({
   const [itemMarkupOverrides, setItemMarkupOverrides] = useState<ItemMarkupOverrides>(new Map());
 
   // Sync row counts when items list changes.
+  // SCOPE_MANPOWER_PERSIST_V1 — the count is no longer purely local: it is
+  // max(what we are already showing, what the server stored). The server side
+  // of the max is what makes a reload come back with three rows instead of
+  // one. The local side is what stops an unsaved "+ Row" on item A from
+  // vanishing when an edit to item B triggers a refetch.
+  //
+  // A removal shrinks the local count synchronously BEFORE its PATCH is sent,
+  // so by the time the refetch lands both sides of the max already agree —
+  // and if the PATCH failed, the server's larger count correctly puts the row
+  // back rather than pretending the deletion stuck.
   useEffect(() => {
     setItemRowCounts((prev) => {
       const next = new Map<string, number>();
       for (const item of items) {
-        next.set(item.id, prev.get(item.id) ?? 1);
+        next.set(item.id, Math.max(prev.get(item.id) ?? 1, manpowerRowCountFromItem(item)));
       }
       return next;
     });
@@ -750,37 +1036,6 @@ export function ScopeQuantitiesTable({
     });
   }, [items]);
 
-  const addRowToItem = useCallback((itemId: string) => {
-    setItemRowCounts((prev) => {
-      const next = new Map(prev);
-      next.set(itemId, (prev.get(itemId) ?? 1) + 1);
-      return next;
-    });
-  }, []);
-
-  // SCOPE_WBS_GROUPRULES_V1 — remove the row that was clicked, not the last
-  // one. The row count shrinks by one and both per-row local-state maps are
-  // spliced so rows above the removed index keep their values as they shift
-  // down. No patchItem call: row state above index 0 is local-only until the
-  // persistence cluster lands. (Row 0's Qty/Days/Shift still read from
-  // item.men/days/shift, so removing row 0 shifts the local maps but leaves
-  // those three server-backed fields where they are — unchanged behaviour,
-  // and out of scope for this slice.)
-  const removeRowFromItem = useCallback(
-    (itemId: string, rowIdx: number) => {
-      const current = itemRowCounts.get(itemId) ?? 1;
-      if (!canRemoveRowAt(current, rowIdx)) return;
-      setItemRowCounts((prev) => {
-        const next = new Map(prev);
-        next.set(itemId, nextRowCountAfterRemove(prev.get(itemId) ?? current, rowIdx));
-        return next;
-      });
-      setItemManpowerRows((prev) => spliceRowState(prev, itemId, rowIdx, current));
-      setItemPlantRows((prev) => spliceRowState(prev, itemId, rowIdx, current));
-    },
-    [itemRowCounts]
-  );
-
   const setItemMarkup = useCallback((itemId: string, value: number | null) => {
     setItemMarkupOverrides((prev) => {
       const next = new Map(prev);
@@ -790,42 +1045,26 @@ export function ScopeQuantitiesTable({
   }, []);
 
   // SCOPE_WBS_MANPOWER_V1 — helpers to read and write per-row manpower state.
-  const defaultRowManpower = useCallback(
-    (item: ScopeItem, rowIdx: number): RowManpowerState => ({
-      labourTypeId: null,
-      dayRateOverride: null,
-      qty: rowIdx === 0 ? (item.men ?? "") : "",
-      days: rowIdx === 0 ? (item.days ?? "") : "",
-      shift: rowIdx === 0 ? (item.shift ?? "Day") : "Day"
-    }),
-    []
-  );
-
+  // SCOPE_MANPOWER_PERSIST_V1 — the local map is now a cache over the stored
+  // rows, not the store. A key that is missing falls through to
+  // defaultManpowerRow, which reads item.labourItems first and only then the
+  // legacy scalars, so a reload renders the server's rows without any
+  // hydration effect to race with the user's typing.
   const getRowManpower = useCallback(
     (item: ScopeItem, rowIdx: number): RowManpowerState => {
       const key = `${item.id}:${rowIdx}`;
-      return itemManpowerRows.get(key) ?? defaultRowManpower(item, rowIdx);
+      return itemManpowerRows.get(key) ?? defaultManpowerRow(item, rowIdx);
     },
-    [itemManpowerRows, defaultRowManpower]
+    [itemManpowerRows]
   );
 
-  const setRowManpower = useCallback(
-    (itemId: string, rowIdx: number, patch: Partial<RowManpowerState>) => {
-      const key = `${itemId}:${rowIdx}`;
-      setItemManpowerRows((prev) => {
-        const next = new Map(prev);
-        const current = prev.get(key) ?? {
-          labourTypeId: null,
-          dayRateOverride: null,
-          qty: "",
-          days: "",
-          shift: "Day"
-        };
-        next.set(key, { ...current, ...patch });
-        return next;
-      });
-    },
-    []
+  // SCOPE_MANPOWER_PERSIST_V1 — materialise EVERY row of an item, whether or
+  // not the user has touched it. Required by the DTO's replace-not-merge
+  // contract: a write that omitted the untouched rows would delete them.
+  const materialiseManpowerRows = useCallback(
+    (item: ScopeItem, rowCount: number): RowManpowerState[] =>
+      Array.from({ length: rowCount }, (_, i) => getRowManpower(item, i)),
+    [getRowManpower]
   );
 
   useEffect(() => {
@@ -916,6 +1155,17 @@ export function ScopeQuantitiesTable({
         weekend: toNum(r.weekendRate)
       });
     }
+    return map;
+  }, [labourRates]);
+
+  // SCOPE_MANPOWER_PERSIST_V1 — labourRate.id → the rate-card ROLE string.
+  // labourRateById above answers "what does this cost"; this answers "what is
+  // it called on the rate card", which is the key the server prices a stored
+  // labour row from (labourRateByRoleShift in scope-item-pricing.ts). The id
+  // is meaningless to pricing, so the role has to travel with it.
+  const labourRoleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of labourRates) map.set(r.id, r.role);
     return map;
   }, [labourRates]);
 
@@ -1029,6 +1279,87 @@ export function ScopeQuantitiesTable({
       }
     },
     [authFetch, tenderId, onItemsChanged]
+  );
+
+  // ── SCOPE_MANPOWER_PERSIST_V1 — the write path ─────────────────────────
+  // Defined after patchItem on purpose: a useCallback declared above it would
+  // evaluate `patchItem` in its dependency array while the binding is still
+  // in the temporal dead zone.
+
+  /**
+   * Apply a patch to ONE row and write the item's whole row list through.
+   *
+   * The local map is updated first (optimistic, so the cell does not flicker
+   * back to its old value while the request is in flight) and the PATCH then
+   * carries every row, per the DTO's replace-not-merge contract. patchItem
+   * awaits onItemsChanged(), which refetches; the refetched rows are what
+   * defaultManpowerRow reads on the next mount.
+   */
+  const commitManpowerRow = useCallback(
+    (item: ScopeItem, rowIdx: number, patch: Partial<RowManpowerState>) => {
+      const rowCount = itemRowCounts.get(item.id) ?? 1;
+      const rows = materialiseManpowerRows(item, rowCount);
+      if (rowIdx < 0 || rowIdx >= rows.length) return;
+      rows[rowIdx] = { ...rows[rowIdx], ...patch };
+      setItemManpowerRows((prev) => writeManpowerRows(prev, item.id, rows));
+      void patchItem(item.id, manpowerPatchBody(rows));
+    },
+    [itemRowCounts, materialiseManpowerRows, patchItem]
+  );
+
+  /**
+   * SCOPE_MANPOWER_PERSIST_V1 — "+ Row" now persists the row it adds.
+   *
+   * The row count IS the array length, so an added row only survives a reload
+   * if it is written. The appended row is blank, and a blank row is priced by
+   * the server as qty 0 x days 0 = $0, so adding a row to an item that has
+   * never been saved through this path writes a labourItems array whose row 0
+   * carries that item's existing men/days/shift and whose role is null — which
+   * is the discipline default role, the same rate the scalars priced at. The
+   * item total does not move.
+   */
+  const addRowToItem = useCallback(
+    (item: ScopeItem) => {
+      const rowCount = itemRowCounts.get(item.id) ?? 1;
+      const rows = [...materialiseManpowerRows(item, rowCount), defaultManpowerRow(item, rowCount)];
+      setItemRowCounts((prev) => {
+        const next = new Map(prev);
+        next.set(item.id, rows.length);
+        return next;
+      });
+      setItemManpowerRows((prev) => writeManpowerRows(prev, item.id, rows));
+      void patchItem(item.id, manpowerPatchBody(rows));
+    },
+    [itemRowCounts, materialiseManpowerRows, patchItem]
+  );
+
+  // SCOPE_WBS_GROUPRULES_V1 — remove the row that was clicked, not the last
+  // one. The row count shrinks by one and both per-row local-state maps are
+  // spliced so rows above the removed index keep their values as they shift
+  // down.
+  //
+  // SCOPE_MANPOWER_PERSIST_V1 — the removal is now persisted, and it is done
+  // against the MATERIALISED row list rather than by splicing the sparse local
+  // map. That distinction is the bug this slice would otherwise ship: rows
+  // hydrated from the server have no entry in the local map, so splicing the
+  // map alone would leave them rendering at their old indices and the write
+  // would delete the wrong row. Plant keeps the index-aware splice — its rows
+  // are still local-only and belong to pr-cardpersist-s2.
+  const removeRowFromItem = useCallback(
+    (item: ScopeItem, rowIdx: number) => {
+      const current = itemRowCounts.get(item.id) ?? 1;
+      if (!canRemoveRowAt(current, rowIdx)) return;
+      const rows = removeManpowerRowAt(materialiseManpowerRows(item, current), rowIdx);
+      setItemRowCounts((prev) => {
+        const next = new Map(prev);
+        next.set(item.id, nextRowCountAfterRemove(prev.get(item.id) ?? current, rowIdx));
+        return next;
+      });
+      setItemManpowerRows((prev) => writeManpowerRows(prev, item.id, rows));
+      setItemPlantRows((prev) => spliceRowState(prev, item.id, rowIdx, current));
+      void patchItem(item.id, manpowerPatchBody(rows));
+    },
+    [itemRowCounts, materialiseManpowerRows, patchItem]
   );
 
   const confirmItem = async (id: string) => {
@@ -1353,7 +1684,7 @@ export function ScopeQuantitiesTable({
                             <button
                               type="button"
                               className="s7-btn s7-btn--ghost s7-btn--sm"
-                              onClick={() => addRowToItem(item.id)}
+                              onClick={() => addRowToItem(item)}
                               title="Add a manpower/plant row to this item"
                               style={{ fontSize: 10, padding: "2px 4px" }}
                             >
@@ -1401,34 +1732,37 @@ export function ScopeQuantitiesTable({
                       labourRateById={labourRateById}
                       isAi={isAi}
                       showRemove={showPerRowRemove}
-                      onRemoveRow={() => removeRowFromItem(item.id, rowIdx)}
+                      onRemoveRow={() => removeRowFromItem(item, rowIdx)}
+                      // SCOPE_MANPOWER_PERSIST_V1 — all five handlers go through
+                      // commitManpowerRow, which writes local state AND patches
+                      // the whole labourItems array. The `rowIdx === 0` guards
+                      // that used to sit on three of them are gone: they were the
+                      // bug. Every row, every field, one call site each.
+                      //
                       // SCOPE_WBS_INPUTS_V2 — changing the role releases a stale
                       // rate override. This is not a new rule: onPlantTypeChange
                       // twenty lines below already clears dayRateOverride the same
                       // way. A rate typed against Labourer must not survive onto
-                      // Supervisor. Local row state only — the patchItem calls in
-                      // this block are untouched.
+                      // Supervisor. The cascade helpers are unchanged; the role
+                      // string is resolved alongside them because the server
+                      // prices from the role, not from the id.
                       onLabourTypeChange={(typeId) =>
-                        setRowManpower(item.id, rowIdx, manpowerPatchForTypeChange(typeId))
+                        commitManpowerRow(item, rowIdx, {
+                          ...manpowerPatchForTypeChange(typeId),
+                          role: typeId === null ? null : (labourRoleById.get(typeId) ?? null)
+                        })
                       }
-                      onQtyBlur={(v) => {
-                        setRowManpower(item.id, rowIdx, { qty: v });
-                        if (rowIdx === 0) void patchItem(item.id, { men: v === "" ? null : Number(v) });
-                      }}
-                      onDaysBlur={(v) => {
-                        setRowManpower(item.id, rowIdx, { days: v });
-                        if (rowIdx === 0) void patchItem(item.id, { days: v === "" ? null : Number(v) });
-                      }}
-                      onShiftChange={(v) => {
+                      onQtyBlur={(v) => commitManpowerRow(item, rowIdx, { qty: v })}
+                      onDaysBlur={(v) => commitManpowerRow(item, rowIdx, { days: v })}
+                      onShiftChange={(v) =>
                         // SCOPE_WBS_INPUTS_V2 — same cascade release as the role
                         // change above: the catalogue rate is shift-resolved, so a
                         // rate typed against the Weekday shift is stale the moment
-                        // the row goes Night. patchItem still sends exactly the
-                        // stored shift string it sent before.
-                        setRowManpower(item.id, rowIdx, manpowerPatchForShiftChange(v));
-                        if (rowIdx === 0) void patchItem(item.id, { shift: v });
-                      }}
-                      onDayRateOverride={(v) => setRowManpower(item.id, rowIdx, { dayRateOverride: v })}
+                        // the row goes Night. The stored shift string is unchanged
+                        // ("Day", never the "Weekday" label).
+                        commitManpowerRow(item, rowIdx, manpowerPatchForShiftChange(v))
+                      }
+                      onDayRateOverride={(v) => commitManpowerRow(item, rowIdx, { dayRateOverride: v })}
                     />
                     {/* ── SCOPE_WBS_PLANT_V1 — Plant column group (5 cells per row) ── */}
                     <PlantRowCells
@@ -1683,10 +2017,14 @@ function ManpowerRowCells({
 }: ManpowerRowCellsProps) {
   const hasType = rowState.labourTypeId !== null;
 
-  // Qty / Days raw values: row 0 reads from item.men / item.days; extra rows from rowState.
-  const qtyValue = rowIdx === 0 ? (item.men ?? "") : rowState.qty;
-  const daysValue = rowIdx === 0 ? (item.days ?? "") : rowState.days;
-  const shiftValue = rowIdx === 0 ? (item.shift ?? "Day") : rowState.shift;
+  // SCOPE_MANPOWER_PERSIST_V1 — every row, row 0 included, now reads its
+  // Qty / Days / Shift from rowState. The row-0-reads-item.men special case
+  // moved up into defaultManpowerRow, which is also where the stored
+  // labourItems row is read; keeping the fallback in one place is what stops
+  // row 0 from showing the legacy scalar after the array has superseded it.
+  const qtyValue = rowState.qty;
+  const daysValue = rowState.days;
+  const shiftValue = rowState.shift;
 
   // WBS-SHIFT-S1: look up all three rates for the selected type, then
   // resolve the one that matches the estimator's chosen shift. Defaults to
@@ -1705,13 +2043,16 @@ function ManpowerRowCells({
   const [localQty, setLocalQty] = useState(String(qtyValue));
   const [localDays, setLocalDays] = useState(String(daysValue));
 
-  // Sync when the item prop changes (server reload after patchItem).
+  // Sync when the row's resolved state changes (server reload after
+  // patchItem, or a revert). rowState is recomputed from the refetched item
+  // whenever the local map holds nothing for this row, so depending on it
+  // alone covers both the optimistic write and the server reconciliation.
   useEffect(() => {
-    setLocalQty(String(rowIdx === 0 ? (item.men ?? "") : rowState.qty));
-  }, [item.men, rowState.qty, rowIdx]);
+    setLocalQty(rowState.qty);
+  }, [rowState.qty]);
   useEffect(() => {
-    setLocalDays(String(rowIdx === 0 ? (item.days ?? "") : rowState.days));
-  }, [item.days, rowState.days, rowIdx]);
+    setLocalDays(rowState.days);
+  }, [rowState.days]);
 
   // Local day-rate input controlled state.
   const [localDayRate, setLocalDayRate] = useState(

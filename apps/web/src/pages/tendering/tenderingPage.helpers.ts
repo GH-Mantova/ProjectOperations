@@ -3,14 +3,53 @@
  * be unit-tested without React or the full component tree.
  */
 
-// Pipeline board = in-flight tenders only.
-//   DRAFT · IN_PROGRESS (Estimating) · WITHDRAWN (pending review)
-// SUBMITTED and confirmed-WITHDRAWN leave the board and appear on the CRM
-// Tenders Register (read-only). A WITHDRAWN tender only shows on the board
-// while withdrawalState = PENDING_REVIEW — once a reviewer confirms it, it
-// exits to the register.
-export const PIPELINE_STAGES = ["DRAFT", "IN_PROGRESS", "WITHDRAWN"] as const;
+// Pipeline board = the submission funnel. Four columns, in this order:
+//   DRAFT · IN_PROGRESS (Estimating) · SUBMITTED · WITHDRAWN (pending review)
+//
+// Marco, 2026-08-20: Submitted is the finish line, not a disappearance. A
+// submitted tender STAYS on the board as the terminal column so the board can
+// answer "what did we get out the door". PR #1122 read "exit the Pipeline" as
+// "vanish from the board" and cut the column; this restores it.
+//
+// SUBMITTED and WITHDRAWN are COUNT_ONLY: their header still shows the count
+// and the currency total, but the cards themselves are not rendered — the
+// tenders are worked from the CRM Tenders Register from there on. See
+// boardColumnView below, which is the single seam that keeps the count and
+// the rendered card list from ever disagreeing.
+//
+// A WITHDRAWN tender is only counted while withdrawalState = PENDING_REVIEW.
+// Once a reviewer CONFIRMS it, it exits the board entirely (Marco 2026-08-20:
+// *confirmed* withdrawal is what "archived" means) — see groupByPipelineStage.
+export const PIPELINE_STAGES = ["DRAFT", "IN_PROGRESS", "SUBMITTED", "WITHDRAWN"] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+// Stages whose column renders a header (label · count · total) but no cards.
+// Both are one-way exits from the board: there is no card to drag back out.
+// Recovery lives off-board — see the PR body for the un-submit paths.
+export const COUNT_ONLY_STAGES = ["SUBMITTED", "WITHDRAWN"] as const;
+export type CountOnlyStage = (typeof COUNT_ONLY_STAGES)[number];
+
+/** True when `stage` renders as a count-only (card-less) board column. */
+export function isCountOnlyStage(stage: string): boolean {
+  return (COUNT_ONLY_STAGES as readonly string[]).includes(stage);
+}
+
+/**
+ * The render model for one board column.
+ *
+ * `count` is ALWAYS `items.length` and `cards` is the subset actually drawn.
+ * Both are derived from the same array in the same call, so a column can never
+ * show a number that disagrees with the cards beneath it: for a count-only
+ * stage `cards` is empty while `count` is unchanged. Every column in
+ * TenderingPage goes through here — that is the point of the seam.
+ */
+export function boardColumnView<T>(
+  stage: string,
+  items: T[]
+): { countOnly: boolean; count: number; cards: T[] } {
+  const countOnly = isCountOnlyStage(stage);
+  return { countOnly, count: items.length, cards: countOnly ? [] : items };
+}
 
 // ---------------------------------------------------------------------------
 // TenderListItem — minimal shape required by buildRegisterCsv.
@@ -145,9 +184,14 @@ export type StagedItem = { status: string; withdrawalState?: string | null };
 
 /**
  * Group items by their pipeline stage. Items whose status is NOT one of the
- * three in-flight stages (DRAFT / IN_PROGRESS / WITHDRAWN) are intentionally
- * excluded — outcome statuses and confirmed-withdrawn tenders live on the
- * Register, not the board.
+ * four board stages (DRAFT / IN_PROGRESS / SUBMITTED / WITHDRAWN) are
+ * intentionally excluded — outcome statuses (AWARDED / CONTRACT_ISSUED / LOST
+ * / CONVERTED) are Register-only and the board ends at SUBMITTED.
+ *
+ * Confirmed-withdrawn tenders are dropped too. That matters more now that
+ * WITHDRAWN is a count-only column: if a confirmed row were still bucketed it
+ * would inflate a header count nobody can click through to inspect, and the
+ * number would be a lie.
  */
 export function groupByPipelineStage<T extends StagedItem>(
   items: T[]
@@ -155,6 +199,7 @@ export function groupByPipelineStage<T extends StagedItem>(
   const groups: Record<PipelineStage, T[]> = {
     DRAFT: [],
     IN_PROGRESS: [],
+    SUBMITTED: [],
     WITHDRAWN: []
   };
   for (const item of items) {

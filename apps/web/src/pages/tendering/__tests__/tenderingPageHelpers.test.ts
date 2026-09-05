@@ -3,6 +3,7 @@
  *
  * Covers the three defects addressed in the S1 slice:
  * 1. groupByPipelineStage — boards only the four submission stages
+ *    (DRAFT / IN_PROGRESS / SUBMITTED / WITHDRAWN, Marco 2026-08-20)
  * 2. fetchAllPages — accumulates all pages for a >100-row dataset
  * 3. Independent filter states — register filters do not affect pipeline
  *    filters and vice-versa (tested via the EMPTY_FILTERS default + no
@@ -36,10 +37,10 @@ describe("groupByPipelineStage", () => {
     expect(result.WITHDRAWN).toHaveLength(0);
   });
 
-  it("buckets items into the three in-flight pipeline stages correctly", () => {
-    // Pipeline is DRAFT / IN_PROGRESS / WITHDRAWN (pending review) only.
-    // SUBMITTED and confirmed-WITHDRAWN are Register-only and must be
-    // dropped from the board.
+  it("buckets items into the four board stages correctly", () => {
+    // Pipeline is DRAFT / IN_PROGRESS / SUBMITTED / WITHDRAWN (pending
+    // review). SUBMITTED is the terminal column (Marco 2026-08-20) — it is
+    // bucketed, not dropped. Only confirmed-WITHDRAWN exits the board.
     const items: StagedItem[] = [
       { status: "DRAFT" },
       { status: "IN_PROGRESS" },
@@ -51,12 +52,11 @@ describe("groupByPipelineStage", () => {
     const result = groupByPipelineStage(items);
     expect(result.DRAFT).toHaveLength(1);
     expect(result.IN_PROGRESS).toHaveLength(2);
+    expect(result.SUBMITTED).toHaveLength(1);
     // WITHDRAWN with no withdrawalState (pre-migration/legacy) is treated as
     // pending-review — it stays on the board so nothing silently disappears.
     // The CONFIRMED row is dropped.
     expect(result.WITHDRAWN).toHaveLength(1);
-    // SUBMITTED must NOT appear as a pipeline key
-    expect("SUBMITTED" in result).toBe(false);
   });
 
   it("drops confirmed-withdrawn from the board (exits to Register)", () => {
@@ -69,11 +69,30 @@ describe("groupByPipelineStage", () => {
     expect(result.WITHDRAWN[0].withdrawalState).toBe("PENDING_REVIEW");
   });
 
-  it("excludes SUBMITTED — moved to Register-only in the lifecycle slice", () => {
+  it("puts a SUBMITTED tender in the SUBMITTED group", () => {
+    // Restored 2026-08-20. #1122 dropped SUBMITTED from the board entirely,
+    // which made a tender vanish from Tendering the moment it was submitted.
+    // Submitted is the finish line of the submission funnel, so it is boarded
+    // — as a count-only column (see boardColumnView), but boarded.
     const items: StagedItem[] = [{ status: "SUBMITTED" }, { status: "DRAFT" }];
     const result = groupByPipelineStage(items);
-    expect("SUBMITTED" in result).toBe(false);
+    expect(result.SUBMITTED).toHaveLength(1);
     expect(result.DRAFT).toHaveLength(1);
+  });
+
+  it("still drops WITHDRAWN + CONFIRMED while boarding SUBMITTED", () => {
+    // Regression guard on the withdrawn-review workflow: restoring the
+    // SUBMITTED column must not re-admit confirmed withdrawals. Marco
+    // 2026-08-20 — *confirmed* withdrawal is what "archived" means.
+    const items: StagedItem[] = [
+      { status: "SUBMITTED" },
+      { status: "WITHDRAWN", withdrawalState: "PENDING_REVIEW" },
+      { status: "WITHDRAWN", withdrawalState: "CONFIRMED" }
+    ];
+    const result = groupByPipelineStage(items);
+    expect(result.SUBMITTED).toHaveLength(1);
+    expect(result.WITHDRAWN).toHaveLength(1);
+    expect(result.WITHDRAWN[0].withdrawalState).toBe("PENDING_REVIEW");
   });
 
   it("excludes AWARDED — outcome status, not a board column", () => {
@@ -324,14 +343,21 @@ describe("independent per-view filter defaults", () => {
     expect(pipelineFilters.search).toBe("");
   });
 
-  it("PIPELINE_STAGES contains exactly the three in-flight stages", () => {
-    // SUBMITTED exited the board with the withdrawn-review lifecycle slice —
-    // it now lives on the CRM Tenders Register alongside confirmed-WITHDRAWN.
-    expect([...PIPELINE_STAGES]).toEqual(["DRAFT", "IN_PROGRESS", "WITHDRAWN"]);
+  it("PIPELINE_STAGES contains exactly the four board stages, Submitted third", () => {
+    // Marco, 2026-08-20: the Pipeline board is the submission funnel and
+    // SUBMITTED is its finish line, so it is a column — third, immediately
+    // before WITHDRAWN. #1122 cut it to three on a misreading of "exit the
+    // Pipeline" as "vanish from the board"; a submitted tender then dropped
+    // out of Tendering the moment it was submitted. Order is asserted, not
+    // just membership: the columns render in PIPELINE_STAGES order.
+    expect([...PIPELINE_STAGES]).toEqual(["DRAFT", "IN_PROGRESS", "SUBMITTED", "WITHDRAWN"]);
   });
 
   it("PIPELINE_STAGES does NOT include outcome or Register-only statuses", () => {
-    const nonBoardStatuses = ["SUBMITTED", "AWARDED", "CONTRACT_ISSUED", "LOST", "CONVERTED"];
+    // SUBMITTED is deliberately absent from this list — it is a board column
+    // again. AWARDED / CONTRACT_ISSUED / LOST / CONVERTED genuinely are not:
+    // the board ends at Submitted.
+    const nonBoardStatuses = ["AWARDED", "CONTRACT_ISSUED", "LOST", "CONVERTED"];
     for (const status of nonBoardStatuses) {
       expect((PIPELINE_STAGES as readonly string[]).includes(status)).toBe(false);
     }

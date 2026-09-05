@@ -1,5 +1,10 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { AccountsService, CRM_COLD_V2, deriveGoingCold } from "../accounts.service";
+import {
+  AccountsService,
+  CRM_COLD_V3,
+  deriveContactState,
+  deriveGoingCold
+} from "../accounts.service";
 
 // ── Mock Prisma ───────────────────────────────────────────────────────────────
 
@@ -306,65 +311,128 @@ describe("AccountsService.getAccount360", () => {
   });
 });
 
-// ── deriveGoingCold — CRM_COLD_V2 (CRM UIFIX S1, 2026-09-01) ─────────────────
-// Marco's decisions (2026-09-01):
-//   - Default threshold is 60 days.
-//   - lastContactedAt === null counts as COLD (if non-PAST). Never-contacted is
-//     the coldest state in the system, not the warmest. The prior contract was
-//     14 days + null-is-not-cold, which read 0 on the KPI tile while the
-//     relationships tab (30 days + null-is-cold) listed 9 rows off the same
-//     data. CRM_COLD_V2 is the ONE contract now.
+// ── deriveContactState — CRM_COLD_V3 (2026-09-04) ────────────────────────────
+// Marco's ruling (2026-09-04): never-contacted becomes its OWN state and "cold"
+// goes back to meaning WAS WARM, WENT QUIET. Under the previous contract null
+// counted as the coldest state; with no contact ever logged that made all 175
+// accounts cold and the KPI tile read "Going cold 175" out of 175 — a number
+// that is always the total is a number nobody reads.
+//
+// The four rules, in the order the function tests them:
+//
+//   lifecycle === "PAST"                        -> "PAST"
+//   lastContactedAt === null                    -> "NEVER_CONTACTED"
+//   older than CRM_COLD_V3.THRESHOLD_DAYS       -> "COLD"
+//   otherwise                                   -> "IN_CONTACT"
 
-describe("deriveGoingCold — CRM_COLD_V2 contract", () => {
-  // NOW is a FIXED instant and is injected into the function under test.
+describe("deriveContactState — CRM_COLD_V3 contract", () => {
+  // NOW is a FIXED instant and is injected into the function under test, so
+  // the boundary assertions below can never rot into a date nobody chose.
   const NOW = new Date("2026-08-14T12:00:00Z");
   const NOW_MS = NOW.getTime();
   const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
 
-  // CRM_COLD_V2 pins the default. Assert the NUMBER (not just the constant
-  // name) so a silent drift to a different literal fails CI.
-  it("CRM_COLD_V2.THRESHOLD_DAYS is 60 and CRM_COLD_V2.NULL_IS_COLD is true", () => {
-    expect(CRM_COLD_V2.THRESHOLD_DAYS).toBe(60);
-    expect(CRM_COLD_V2.NULL_IS_COLD).toBe(true);
+  // Assert the NUMBER, not just the constant name, so a silent drift to a
+  // different literal fails CI.
+  it("CRM_COLD_V3.THRESHOLD_DAYS is 60", () => {
+    expect(CRM_COLD_V3.THRESHOLD_DAYS).toBe(60);
   });
 
-  // Case A: past the 60-day threshold + non-PAST → cold.
-  it("returns true when lastContactedAt is >60 days ago and lifecycle is ACTIVE or PROSPECT", () => {
-    expect(deriveGoingCold("ACTIVE", daysAgo(61), NOW_MS)).toBe(true);
-    expect(deriveGoingCold("PROSPECT", daysAgo(120), NOW_MS)).toBe(true);
+  // ── The four boundaries, each against the FIXED instant above ──────────────
+
+  it("BOUNDARY 1 — PAST + any date returns PAST, and wins over every later rule", () => {
+    expect(deriveContactState("PAST", daysAgo(365), NOW_MS)).toBe("PAST");
+    expect(deriveContactState("PAST", daysAgo(1), NOW_MS)).toBe("PAST");
+    // PAST is checked FIRST, so a PAST account with no contact is PAST, not
+    // NEVER_CONTACTED. Rule order is part of the contract.
+    expect(deriveContactState("PAST", null, NOW_MS)).toBe("PAST");
   });
 
-  // Case B: PAST is never cold, regardless of the date or of null.
-  it("returns false for PAST lifecycle even with a very old lastContactedAt or null", () => {
+  it("BOUNDARY 2 — null returns NEVER_CONTACTED, not COLD", () => {
+    expect(deriveContactState("ACTIVE", null, NOW_MS)).toBe("NEVER_CONTACTED");
+    expect(deriveContactState("PROSPECT", null, NOW_MS)).toBe("NEVER_CONTACTED");
+  });
+
+  it("BOUNDARY 3 — exactly 60 days ago returns IN_CONTACT (the > is strict)", () => {
+    expect(deriveContactState("ACTIVE", daysAgo(60), NOW_MS)).toBe("IN_CONTACT");
+  });
+
+  it("BOUNDARY 4 — 60 days plus one millisecond returns COLD", () => {
+    const justOver = new Date(daysAgo(60).getTime() - 1);
+    expect(deriveContactState("ACTIVE", justOver, NOW_MS)).toBe("COLD");
+  });
+
+  // ── Ordinary cases either side of the boundary ─────────────────────────────
+
+  it("returns COLD well past the threshold for non-PAST lifecycles", () => {
+    expect(deriveContactState("ACTIVE", daysAgo(61), NOW_MS)).toBe("COLD");
+    expect(deriveContactState("PROSPECT", daysAgo(120), NOW_MS)).toBe("COLD");
+  });
+
+  it("returns IN_CONTACT for a recent contact", () => {
+    expect(deriveContactState("ACTIVE", daysAgo(1), NOW_MS)).toBe("IN_CONTACT");
+    expect(deriveContactState("PROSPECT", daysAgo(30), NOW_MS)).toBe("IN_CONTACT");
+  });
+
+  it("returns exactly one of the four states for every input it is given", () => {
+    const states = ["PAST", "NEVER_CONTACTED", "COLD", "IN_CONTACT"];
+    for (const lifecycle of ["ACTIVE", "PROSPECT", "PAST"]) {
+      for (const date of [null, daysAgo(0), daysAgo(60), daysAgo(61), daysAgo(365)]) {
+        expect(states).toContain(deriveContactState(lifecycle, date, NOW_MS));
+      }
+    }
+  });
+
+  it("defaults to the real wall clock when nowMs is omitted", () => {
+    const oneDayAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+    const seventyDaysAgo = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000);
+    expect(deriveContactState("ACTIVE", oneDayAgo)).toBe("IN_CONTACT");
+    expect(deriveContactState("ACTIVE", seventyDaysAgo)).toBe("COLD");
+  });
+});
+
+// ── deriveGoingCold — the boolean wrapper over deriveContactState ─────────────
+
+describe("deriveGoingCold — boolean wrapper, CRM_COLD_V3", () => {
+  const NOW = new Date("2026-08-14T12:00:00Z");
+  const NOW_MS = NOW.getTime();
+  const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
+
+  // THE RULING, pinned. This assertion is the whole slice: the same call
+  // returned TRUE before 2026-09-04 and returns FALSE after. It is Marco's
+  // decision landing, not a regression — a never-contacted account is now
+  // NEVER_CONTACTED and is counted separately.
+  it("returns FALSE for a null date, where it returned TRUE under the old contract", () => {
+    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(false);
+    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(false);
+    expect(deriveContactState("ACTIVE", null, NOW_MS)).toBe("NEVER_CONTACTED");
+  });
+
+  it("is true exactly when deriveContactState says COLD, and never otherwise", () => {
+    const cases: Array<[string, Date | null]> = [
+      ["ACTIVE", daysAgo(61)],
+      ["ACTIVE", daysAgo(60)],
+      ["ACTIVE", null],
+      ["PROSPECT", daysAgo(120)],
+      ["PAST", daysAgo(365)],
+      ["PAST", null]
+    ];
+    for (const [lifecycle, date] of cases) {
+      expect(deriveGoingCold(lifecycle, date, NOW_MS)).toBe(
+        deriveContactState(lifecycle, date, NOW_MS) === "COLD"
+      );
+    }
+  });
+
+  it("still returns false for PAST and true past the threshold", () => {
     expect(deriveGoingCold("PAST", daysAgo(365), NOW_MS)).toBe(false);
-    expect(deriveGoingCold("PAST", daysAgo(1), NOW_MS)).toBe(false);
-    expect(deriveGoingCold("PAST", null, NOW_MS)).toBe(false);
+    expect(deriveGoingCold("ACTIVE", daysAgo(61), NOW_MS)).toBe(true);
   });
 
-  // Case C — the null-rule inversion. Never-contacted counts as COLD now.
-  it("returns true when lastContactedAt is null and lifecycle is PROSPECT or ACTIVE", () => {
-    expect(deriveGoingCold("PROSPECT", null, NOW_MS)).toBe(true);
-    expect(deriveGoingCold("ACTIVE", null, NOW_MS)).toBe(true);
-  });
-
-  // Case D: the 60-day boundary itself.
   it("treats exactly 60 days as not cold, and one millisecond past it as cold", () => {
     expect(deriveGoingCold("ACTIVE", daysAgo(60), NOW_MS)).toBe(false);
     const justOver = new Date(daysAgo(60).getTime() - 1);
     expect(deriveGoingCold("ACTIVE", justOver, NOW_MS)).toBe(true);
-  });
-
-  // Case E: fresh contact → not cold.
-  it("returns false when lastContactedAt is very recent (1 day ago)", () => {
-    expect(deriveGoingCold("ACTIVE", daysAgo(1), NOW_MS)).toBe(false);
-  });
-
-  // Case F: the DEFAULT clock still works — no caller has to pass nowMs.
-  it("defaults to the real wall clock when nowMs is omitted", () => {
-    const oneDayAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
-    const seventyDaysAgo = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000);
-    expect(deriveGoingCold("ACTIVE", oneDayAgo)).toBe(false);
-    expect(deriveGoingCold("ACTIVE", seventyDaysAgo)).toBe(true);
   });
 });
 
@@ -398,7 +466,7 @@ describe("AccountsService.listAccountSummaries", () => {
 
   it("returns summary DTO shape with winRate, openOpportunitiesCount, lastContactedAt, goingCold", async () => {
     const prisma = makePrisma();
-    // CRM_COLD_V2: threshold is 60 days. 90 days is past it → goingCold=true.
+    // CRM_COLD_V3: threshold is 60 days. 90 days is past it → COLD.
     const pastContact = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     prisma.account.findMany.mockResolvedValue([
       makeAccountRow({ lastContactedAt: pastContact })
@@ -417,11 +485,13 @@ describe("AccountsService.listAccountSummaries", () => {
     expect(typeof row.winRate).toBe("number");
     expect(row).toHaveProperty("openOpportunitiesCount", 3);
     expect(row).toHaveProperty("lastContactedAt");
-    // 90 days ago → goingCold should be true (>60 days, ACTIVE).
+    // 90 days ago → COLD (>60 days, ACTIVE). The row carries BOTH shapes:
+    // the boolean it always had, and the new state it is derived from.
     expect(row).toHaveProperty("goingCold", true);
+    expect(row).toHaveProperty("contactState", "COLD");
   });
 
-  it("goingCold is TRUE when lastContactedAt is null (CRM_COLD_V2: never-contacted is coldest)", async () => {
+  it("a null lastContactedAt is NEVER_CONTACTED and NOT goingCold (CRM_COLD_V3)", async () => {
     const prisma = makePrisma();
     prisma.account.findMany.mockResolvedValue([
       makeAccountRow({ lastContactedAt: null, noteCreatedAt: null })
@@ -430,8 +500,28 @@ describe("AccountsService.listAccountSummaries", () => {
     const service = makeService(prisma);
     const summaries = await service.listAccountSummaries();
 
-    expect(summaries[0].goingCold).toBe(true);
+    // This is the ruling on the summary row: the state that used to make all
+    // 175 accounts cold now has a name of its own, and the tile counts it
+    // separately instead of reporting it as an alarm.
+    expect(summaries[0].contactState).toBe("NEVER_CONTACTED");
+    expect(summaries[0].goingCold).toBe(false);
     expect(summaries[0].lastContactedAt).toBeNull();
+  });
+
+  it("keeps goingCold on the DTO and derives it from the same state", async () => {
+    const prisma = makePrisma();
+    prisma.account.findMany.mockResolvedValue([
+      makeAccountRow({ lastContactedAt: null, noteCreatedAt: null })
+    ]);
+
+    const service = makeService(prisma);
+    const [row] = await service.listAccountSummaries();
+
+    // The DTO is additive: no consumer of `goingCold` breaks, and the two
+    // fields can never disagree because one derive call feeds both.
+    expect(row).toHaveProperty("goingCold");
+    expect(row).toHaveProperty("contactState");
+    expect(row.goingCold).toBe(row.contactState === "COLD");
   });
 
   it("goingCold is false for PAST lifecycle even with old lastContactedAt", async () => {

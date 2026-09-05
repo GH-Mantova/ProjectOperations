@@ -29,7 +29,7 @@ import {
   GOING_COLD_THRESHOLD_OPTIONS,
   type AccountSummaryLite
 } from "../RelationshipsPage";
-import { CRM_COLD_V2 } from "../crm-cold";
+import { CRM_COLD_V3 } from "../crm-cold";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PAGE_SRC = readFileSync(
@@ -157,9 +157,9 @@ describe("formatColdDuration — the going-cold days chip", () => {
   });
 
   it("never-contacted (null coldSince) reads 'never contacted', not '0 days'", () => {
-    // CRM_COLD_V2.NULL_IS_COLD — never-contacted is the coldest state, so the
-    // chip must not read as the freshest number on the card.
-    expect(CRM_COLD_V2.NULL_IS_COLD).toBe(true);
+    // CRM_COLD_V3 gave never-contacted a state of its own, which is exactly
+    // what this chip has always said in words — the chip must not read as the
+    // freshest number on the card.
     expect(formatColdDuration(null, NOW)).toBe("never contacted");
   });
 
@@ -321,8 +321,8 @@ describe("going-cold threshold selector — unchanged by CRM_RELATIONSHIPS_V2", 
     expect(GOING_COLD_THRESHOLD_OPTIONS).toEqual([30, 60, 90]);
   });
 
-  it("still defaults to CRM_COLD_V2.THRESHOLD_DAYS — no second constant", () => {
-    expect(GOING_COLD_DEFAULT_THRESHOLD).toBe(CRM_COLD_V2.THRESHOLD_DAYS);
+  it("still defaults to CRM_COLD_V3.THRESHOLD_DAYS — no second constant", () => {
+    expect(GOING_COLD_DEFAULT_THRESHOLD).toBe(CRM_COLD_V3.THRESHOLD_DAYS);
     expect(GOING_COLD_DEFAULT_THRESHOLD).toBe(60);
   });
 });

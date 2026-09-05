@@ -4,6 +4,10 @@ import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
+// SCOPE_PLANT_PICKER_V2 — the grouped-option type comes straight from the
+// component file: components/index.ts is outside this slice's scope, so the
+// barrel is left exactly as it is rather than re-exporting one more type.
+import type { TooltipSelectOptionGroup } from "../../components/TooltipSelect";
 import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
 
 // SCOPE_WBS_TABLE_V1 — slice 2 of scope-card-redesign. Replaces the
@@ -98,6 +102,38 @@ import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimens
 // This slice also RETIRES that legacy cluster from the Measurement cell. It
 // was retained deliberately as the only plant UI that reached the database;
 // now that the columns save, keeping it would show plant twice on row 0.
+
+// SCOPE_PLANT_PICKER_V2 — slice 3 of scope-card-corrections. The plant Type
+// dropdown stops being one flat list in API order and becomes the grouped one
+// the mock-up shows, and the manual-entry escape hatch is finally emitted.
+//
+// Two things change and nothing else does:
+//   1. The list is GROUPED. The old memo built a category -> rates Map, threw
+//      the grouping away, and flattened it back out with the category glued
+//      onto every label as `${cat}: ${item}`. It now emits one <optgroup> per
+//      category — Excavator, Bobcat, Crane, Truck, Other first (the mock-up's
+//      order), then any other category the API returns, appended in the order
+//      it first appears. NOTHING IS DROPPED for having an unexpected, empty or
+//      null category: EstimatePlantRate.category is `String?` free text with no
+//      enum, so the five are a preference, not a guarantee. A null or blank
+//      category reads as "Other" (unchanged from before); anything else keeps
+//      its own name and gets its own group at the end. The label no longer
+//      repeats the category — the group heading carries it.
+//   2. The manual-entry option is EMITTED. `__custom__` was handled by the
+//      Type onChange handler and put in the list by nobody, so isCustom was
+//      never true and the whole custom-plant feature — the free-text name, its
+//      revert control and the unlocked rate cell — was unreachable dead code.
+//      It is now the final option, under its own trailing "Not in the list"
+//      group. This is WIRING, not new behaviour: the existing handler branch
+//      is exercised as it stands, and no second branch was written beside it.
+//
+// What this slice deliberately does NOT touch: isTransportPlant and both of
+// its call sites (see the open question in the PR body), and the plant
+// PERSISTENCE payload. Picking the manual-entry option routes to the
+// onCustomDescription handler SCOPE_PLANT_PERSIST_V1 already wired, so it
+// commits through commitPlantRow/plantPatchBody like every other plant edit;
+// buildPlantItems sends the same keys it sent before, and `__custom__` itself
+// is a UI sentinel that never reaches the wire.
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
@@ -1466,6 +1502,128 @@ export function removePlantRowAt(rows: RowPlantState[], rowIdx: number): RowPlan
   return rows.filter((_, i) => i !== rowIdx);
 }
 
+// ── SCOPE_PLANT_PICKER_V2 exported pure helpers ─────────────────────────────
+// (tested by wbs-plant-picker-groups.test.tsx)
+//
+// The grouping is a pure function of the rate list so the one thing that can
+// go silently wrong here — a rate vanishing from the list because its category
+// was not one the code expected — is asserted without a render. The tests pin
+// both halves of that: an unrecognised, empty and null category each land
+// somewhere reachable, and the option count is identical before and after
+// grouping.
+
+/**
+ * The category order the approved mock-up renders, and the only opinion this
+ * module holds about categories.
+ *
+ * `EstimatePlantRate.category` is `String?` in apps/api/prisma/schema.prisma —
+ * nullable, free text, no enum — so these five are a PREFERENCE. They sort
+ * first when present; every other category the API returns is appended after
+ * them. "Truck" is kept in the list even though isTransportPlant currently
+ * filters trucks out of this picker: the order is the mock-up's, and if that
+ * filter is ever lifted (see the open question) trucks land in the right place
+ * rather than at the end.
+ */
+export const PLANT_CATEGORY_ORDER = ["Excavator", "Bobcat", "Crane", "Truck", "Other"] as const;
+
+/** The category a rate with no usable category of its own is filed under. */
+export const PLANT_CATEGORY_FALLBACK = "Other";
+
+/**
+ * The sentinel value of the manual-entry option.
+ *
+ * It is a UI sentinel and NOT a plantRateId: the Type onChange handler
+ * intercepts it and routes to onCustomDescription, so it never reaches
+ * plantPatchForTypeChange, buildPlantItems or the wire.
+ */
+export const PLANT_CUSTOM_VALUE = "__custom__";
+
+/** Heading of the trailing group the manual-entry option sits under. */
+export const PLANT_CUSTOM_GROUP_LABEL = "Not in the list";
+
+/** Label of the manual-entry option itself, exactly as the mock-up renders it. */
+export const PLANT_CUSTOM_OPTION_LABEL = "✎ Type it manually…";
+
+/** The fields of a plant rate the picker reads. */
+export type PlantPickerRate = {
+  id: string;
+  item: string;
+  category: string | null;
+};
+
+/**
+ * The group heading a rate belongs under.
+ *
+ * null, undefined, "" and whitespace all read as "Other" — the same
+ * substitution the flat list already made for a null. A category that matches
+ * one of the mock-up's five apart from case or padding is normalised onto the
+ * canonical spelling so "excavator" and "Excavator" cannot open two groups;
+ * anything else is kept verbatim and becomes its own group.
+ */
+export function plantCategoryLabel(category: string | null | undefined): string {
+  const trimmed = (category ?? "").trim();
+  if (trimmed === "") return PLANT_CATEGORY_FALLBACK;
+  const canonical = PLANT_CATEGORY_ORDER.find(
+    (c) => c.toLowerCase() === trimmed.toLowerCase()
+  );
+  return canonical ?? trimmed;
+}
+
+/**
+ * Turn the plant rate list into the picker's `<optgroup>` list.
+ *
+ * Ordering: the mock-up's five categories first (only those that actually have
+ * a rate — an empty group is not emitted), then every other category in the
+ * order it first appeared in `rates`, then the manual-entry group last.
+ * Within a group the rates keep the order they arrived in.
+ *
+ * TOTAL-PRESERVING BY CONSTRUCTION: every rate produces exactly one option and
+ * the groups are assembled from the same Map the rates were bucketed into, so
+ * the option count is `rates.length + 1` (the +1 being the manual entry) for
+ * any input whatsoever, including categories nobody anticipated.
+ */
+export function groupPlantTypeOptions(
+  rates: ReadonlyArray<PlantPickerRate>
+): TooltipSelectOptionGroup<string>[] {
+  const buckets = new Map<string, TooltipSelectOption<string>[]>();
+  for (const p of rates) {
+    const cat = plantCategoryLabel(p.category);
+    const arr = buckets.get(cat) ?? [];
+    // The label no longer carries `${cat}: ` — the group heading says it once.
+    arr.push({ value: p.id, label: p.item });
+    buckets.set(cat, arr);
+  }
+
+  const groups: TooltipSelectOptionGroup<string>[] = [];
+  const taken = new Set<string>();
+  for (const cat of PLANT_CATEGORY_ORDER) {
+    const options = buckets.get(cat);
+    if (!options || options.length === 0) continue;
+    groups.push({ label: cat, options });
+    taken.add(cat);
+  }
+  // Map iteration is insertion order, i.e. the order the API returned the
+  // categories. Nothing is filtered here: this loop is what guarantees an
+  // unexpected category is appended rather than dropped.
+  for (const [cat, options] of buckets) {
+    if (taken.has(cat)) continue;
+    groups.push({ label: cat, options });
+  }
+
+  groups.push({
+    label: PLANT_CUSTOM_GROUP_LABEL,
+    options: [{ value: PLANT_CUSTOM_VALUE, label: PLANT_CUSTOM_OPTION_LABEL }]
+  });
+  return groups;
+}
+
+/** Total selectable options across every group (the manual entry included). */
+export function countPlantPickerOptions(
+  groups: ReadonlyArray<TooltipSelectOptionGroup<string>>
+): number {
+  return groups.reduce((n, g) => n + g.options.length, 0);
+}
+
 type Props = {
   tenderId: string;
   cardId: string;
@@ -1719,24 +1877,16 @@ export function ScopeQuantitiesTable({
   // same reason as the labour list: TooltipSelect already renders one empty
   // option, and the wording now rides on placeholder="- none -" at the call
   // site. A cleared select still maps to plantRateId = null.
-  const plantTypeOptions = useMemo<TooltipSelectOption<string>[]>(() => {
-    const nonTransport = plantRates.filter((p) => !isTransportPlant(p));
-    // Group by category; uncategorised items surface under their own name.
-    const grouped = new Map<string, PlantRate[]>();
-    for (const p of nonTransport) {
-      const cat = p.category ?? "Other";
-      const arr = grouped.get(cat) ?? [];
-      arr.push(p);
-      grouped.set(cat, arr);
-    }
-    const result: TooltipSelectOption<string>[] = [];
-    for (const [cat, items] of grouped) {
-      for (const p of items) {
-        result.push({ value: p.id, label: `${cat}: ${p.item}` });
-      }
-    }
-    return result;
-  }, [plantRates]);
+  // SCOPE_PLANT_PICKER_V2 — the memo used to bucket by category and then throw
+  // the buckets away, flattening back to one list with `${cat}: ` prefixed onto
+  // every label. It now hands the buckets to the select as <optgroup>s and ends
+  // the list with the manual-entry option, which nothing emitted before. The
+  // transport filter on the line below is UNCHANGED and deliberately so — see
+  // the SCOPE_PLANT_PICKER_V2 note at the top of the file.
+  const plantTypeGroups = useMemo<TooltipSelectOptionGroup<string>[]>(
+    () => groupPlantTypeOptions(plantRates.filter((p) => !isTransportPlant(p))),
+    [plantRates]
+  );
 
   // Map plantRate.id → { rate, unit } for O(1) lookup in cells.
   const plantRateById = useMemo(() => {
@@ -2413,7 +2563,7 @@ export function ScopeQuantitiesTable({
                       item={item}
                       rowIdx={rowIdx}
                       rowState={getRowPlant(item, rowIdx)}
-                      plantTypeOptions={plantTypeOptions}
+                      plantTypeGroups={plantTypeGroups}
                       plantRateById={plantRateById}
                       isAi={isAi}
                       // SCOPE_PLANT_PERSIST_V1 — all six handlers go through
@@ -2891,7 +3041,8 @@ type PlantRowCellsProps = {
   item: ScopeItem;
   rowIdx: number;
   rowState: RowPlantState;
-  plantTypeOptions: TooltipSelectOption<string>[];
+  /** SCOPE_PLANT_PICKER_V2 — grouped catalogue + the trailing manual entry. */
+  plantTypeGroups: TooltipSelectOptionGroup<string>[];
   plantRateById: Map<string, { rate: number; unit: string; item: string }>;
   isAi: boolean;
   onPlantTypeChange: (plantRateId: string | null) => void;
@@ -2906,7 +3057,7 @@ function PlantRowCells({
   item: _item,
   rowIdx,
   rowState,
-  plantTypeOptions,
+  plantTypeGroups,
   plantRateById,
   isAi,
   onPlantTypeChange,
@@ -2983,11 +3134,17 @@ function PlantRowCells({
         ) : (
           <TooltipSelect
             value={rowState.plantRateId ?? ""}
-            options={plantTypeOptions}
+            optionGroups={plantTypeGroups}
             onChange={(v) => {
               if (v === "" || v == null) {
                 onPlantTypeChange(null);
-              } else if (v === "__custom__") {
+              } else if (v === PLANT_CUSTOM_VALUE) {
+                // SCOPE_PLANT_PICKER_V2 — this branch is UNCHANGED; it is only
+                // now reachable, because groupPlantTypeOptions finally emits
+                // the option that carries this value. Blank description +
+                // customDescription "" is what makes isCustom true, which
+                // swaps this select for the free-text input above and the
+                // Day rate cell for the unlocked one below.
                 onCustomDescription("");
               } else {
                 onPlantTypeChange(v);

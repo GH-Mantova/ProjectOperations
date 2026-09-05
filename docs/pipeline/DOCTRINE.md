@@ -1084,3 +1084,38 @@ near-duplicate pairs**, and nothing on any page said which member of a pair was 
 2026-09-02 a chat lane published `punch-list.html` as *"PR Master Punch List"*, improved the same
 work, and published the improvement as `wbs.html` titled *"ProjectOperations Work Breakdown"*. Two
 artifacts, one subject, no signal which was current. Rules 1 and 2 each independently prevent it.
+
+## 10.6 A second-lane PR does not consume the prompt that describes the same work
+
+Added 2026-09-05. **The watcher deletes a prompt when it builds it. A second lane does not**, because
+it never reads the queue (§10.2). So work that reaches the board through a second lane leaves its
+`-HOLD.md` sitting there with its premise intact and its gates satisfied — and `triage-holds.ps1`
+lists it under **GATES SATISFIED — CANDIDATES**, which is exactly where an arming decision goes
+looking.
+
+🔴 **The premise dies on MERGE, not on OPEN.** For the whole time a second-lane PR waits on Marco,
+its prompt is `ADMIT` and reads as fresh work. Arming it opens a SECOND PR for work already open.
+
+**[MEASURED] 2026-09-05T15:2xZ at `52232fec` — two live instances at once**, each an exact scope
+match to an open PR, both sitting in that run's `ADMIT` bucket of 40:
+
+| `ADMIT` prompt | `scope:` entries | open PR | PR files | matched |
+|---|---|---|---|---|
+| `pr-plantdays-retire-and-drop-HOLD.md` | 6 | **#1662** | 6 | 6 of 6 |
+| `pr-scopecosts-s1-operational-cost-lines-api-HOLD.md` | 8 | **#1665** | 8 | 8 of 8 |
+
+🔧 **The test to run before arming ANY `ADMIT` is the `scope:` list, not the head branch.** Cross
+the prompt's `scope:` entries against `gh pr list --state open --json number,files`. A head-branch
+match happens to catch both instances above, because this second lane names its branch after the
+prompt slug (`pr-plantdays-retire-and-drop`, `pr-scopecosts-s1-operational-cost-lines-api`) — but
+that is the *other lane's naming convention*, not a property of the prompt.
+[MEASURED] `Select-String -Pattern 'branch|headRef'` over both prompt files returns **0**: the
+prompt carries no branch information at all, so a branch test is checking something the prompt never
+asserted and can stop working without anything warning you. **The scope list is what the prompt does
+assert.**
+
+⚠️ **Same defect as the never-retired-HOLD case, reached from the other side.** There an armed
+prompt outlives its own build because the PR does not delete it; here the prompt was never built at
+all. Both end with an armable duplicate, and neither is visible to `lint-prompt.mjs`, whose gates
+ask only whether the premise still holds — which, until the PR merges, it does.
+

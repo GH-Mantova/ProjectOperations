@@ -365,6 +365,12 @@ export function measurementRemovalPatch(
  * An item nobody has measured already has an addressable empty slot — its flat
  * columns — so the first click opens the block onto that slot and writes
  * nothing. A second measurement is a real append to `materials`.
+ *
+ * SCOPE_WBS_REVEAL_V1 — this function answers "what would an add write?" and
+ * nothing more. WHETHER the click adds at all is decided before it is called,
+ * by revealOrAddPatch in ScopeQuantitiesTable: a click on a shut block reveals
+ * and never gets here. Both nulls mean "send no PATCH"; they are simply
+ * reached for different reasons.
  */
 export function measurementAddPatch(item: MeasurementSource): Record<string, unknown> | null {
   const rows = measurementsFromItem(item);

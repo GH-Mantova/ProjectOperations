@@ -18,8 +18,8 @@
 
 import {
   evaluateSteps,
-  StepArithmeticTypeError,
   type ChargeStep,
+  type ChargeStepIssue,
   type TrailEntry,
 } from "../rate-step-evaluator";
 
@@ -27,12 +27,22 @@ import {
 // Helper
 // ---------------------------------------------------------------------------
 
-function totalOf(steps: ChargeStep[], values: Record<string, number | string>): number {
+function totalOf(
+  steps: ChargeStep[],
+  values: Record<string, number | string>
+): number | null {
   return evaluateSteps(steps, values).total;
 }
 
 function trailOf(steps: ChargeStep[], values: Record<string, number | string>): TrailEntry[] {
   return evaluateSteps(steps, values).trail;
+}
+
+function issuesOf(
+  steps: ChargeStep[],
+  values: Record<string, number | string>
+): ChargeStepIssue[] {
+  return evaluateSteps(steps, values).issues;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,9 +60,16 @@ describe("start", () => {
     expect(totalOf(steps, {})).toBe(100);
   });
 
-  it("treats missing field as 0", () => {
+  it("reports a missing field instead of silently resolving it to 0", () => {
     const steps: ChargeStep[] = [{ op: "start", field: "Missing" }];
-    expect(totalOf(steps, {})).toBe(0);
+    // Before CHARGE_STEP_PARITY_V1 this resolved to 0 on the server and to a
+    // silent no-op in the editor preview. Now both name the step.
+    expect(totalOf(steps, {})).toBeNull();
+    const issues = issuesOf(steps, {});
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("missing-operand");
+    expect(issues[0].stepIndex).toBe(0);
+    expect(issues[0].field).toBe("Missing");
   });
 });
 
@@ -91,9 +108,28 @@ describe("divide", () => {
     expect(totalOf(steps, { Divisor: 5 })).toBe(20);
   });
 
-  it("throws on divide-by-zero", () => {
+  it("reports divide-by-zero against the step rather than throwing", () => {
     const steps: ChargeStep[] = [...base, { op: "divide", field: 0 }];
-    expect(() => totalOf(steps, {})).toThrow("divide by zero");
+    expect(() => totalOf(steps, {})).not.toThrow();
+    expect(totalOf(steps, {})).toBeNull();
+    const issues = issuesOf(steps, {});
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("divide-by-zero");
+    expect(issues[0].stepIndex).toBe(1);
+    expect(issues[0].message).toBe("Cannot divide by zero.");
+  });
+
+  it("reports divide-by-zero when the divisor field resolves to zero", () => {
+    const steps: ChargeStep[] = [...base, { op: "divide", field: "Divisor" }];
+    const issues = issuesOf(steps, { Divisor: 0 });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("divide-by-zero");
+    expect(totalOf(steps, { Divisor: 0 })).toBeNull();
+  });
+
+  it("treats negative zero as zero", () => {
+    const steps: ChargeStep[] = [...base, { op: "divide", field: "Divisor" }];
+    expect(issuesOf(steps, { Divisor: -0 })[0].code).toBe("divide-by-zero");
   });
 });
 
@@ -317,45 +353,253 @@ describe("condition: not met", () => {
 // ---------------------------------------------------------------------------
 
 describe("text-in-arithmetic rejection", () => {
-  it("throws StepArithmeticTypeError naming the field when start uses a string field", () => {
+  const TEXT_MESSAGE = "Text belongs in the 'only when' part of a step, not in the sum.";
+
+  it("names the step when start uses a text field", () => {
     const steps: ChargeStep[] = [{ op: "start", field: "Elevation" }];
-    let caught: unknown;
-    try {
-      totalOf(steps, { Elevation: "Inverted" });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(StepArithmeticTypeError);
-    expect((caught as StepArithmeticTypeError).fieldName).toBe("Elevation");
+    const issues = issuesOf(steps, { Elevation: "Inverted" });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("text-operand");
+    expect(issues[0].stepIndex).toBe(0);
+    expect(issues[0].field).toBe("Elevation");
+    expect(issues[0].text).toBe("Inverted");
+    expect(issues[0].message).toBe(TEXT_MESSAGE);
+    expect(totalOf(steps, { Elevation: "Inverted" })).toBeNull();
   });
 
-  it("throws StepArithmeticTypeError naming the field when multiply uses a string field", () => {
+  it("names the step when multiply uses a text field", () => {
     const steps: ChargeStep[] = [
       { op: "start", field: 10 },
       { op: "multiply", field: "Elevation" },
     ];
-    let caught: unknown;
-    try {
-      totalOf(steps, { Elevation: "Inverted" });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(StepArithmeticTypeError);
-    expect((caught as StepArithmeticTypeError).fieldName).toBe("Elevation");
-    expect((caught as StepArithmeticTypeError).message).toContain('"Elevation"');
+    const issues = issuesOf(steps, { Elevation: "Inverted" });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("text-operand");
+    expect(issues[0].stepIndex).toBe(1);
+    expect(totalOf(steps, { Elevation: "Inverted" })).toBeNull();
   });
 
-  it("does NOT throw when a string field appears only in a condition (not the operand)", () => {
-    // Condition references "Elevation" (string), but the multiply operand is a literal.
+  it("rejects a numeric-looking string in an arithmetic slot (a TEXT column is not arithmetic)", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: 10 },
+      { op: "multiply", field: "Grade" },
+    ];
+    // The preview used to coerce "150" with Number() and multiply by 150 while
+    // the server threw. Both now report the same issue.
+    const issues = issuesOf(steps, { Grade: "150" });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("text-operand");
+    expect(totalOf(steps, { Grade: "150" })).toBeNull();
+  });
+
+  it("treats an empty-string cell as text, not as zero", () => {
+    const steps: ChargeStep[] = [{ op: "start", field: "Note" }];
+    expect(issuesOf(steps, { Note: "" })[0].code).toBe("text-operand");
+  });
+
+  it("does NOT complain when a text field appears only in a condition", () => {
     const steps: ChargeStep[] = [
       { op: "start", field: 10 },
       { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
     ];
-    expect(() => totalOf(steps, { Elevation: "Inverted" })).not.toThrow();
+    expect(issuesOf(steps, { Elevation: "Inverted" })).toHaveLength(0);
+    expect(totalOf(steps, { Elevation: "Inverted" })).toBe(20);
+  });
+
+  it("does NOT complain about a step whose condition is not met, even with a broken operand", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: 10 },
+      { op: "multiply", field: "Gone", when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+    ];
+    expect(issuesOf(steps, { Elevation: "Floor" })).toHaveLength(0);
+    expect(totalOf(steps, { Elevation: "Floor" })).toBe(10);
   });
 });
 
 // ---------------------------------------------------------------------------
+// 10b. Unresolvable steps poison the running total (CHARGE_STEP_PARITY_V1)
+// ---------------------------------------------------------------------------
+
+describe("unresolvable steps", () => {
+  it("start Depth / multiply Holes with Holes absent yields no total at all", () => {
+    // The worked example from the slice: the editor used to keep printing a
+    // running total as if the multiply had multiplied by 1, and the server
+    // used to multiply by 0. Neither number was real.
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Depth" },
+      { op: "multiply", field: "Holes" },
+    ];
+    const { total, trail, issues } = evaluateSteps(steps, { Depth: 150 });
+    expect(trail[0].runningTotal).toBe(150);
+    expect(trail[1].runningTotal).toBeNull();
+    expect(total).toBeNull();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("missing-operand");
+    expect(issues[0].stepIndex).toBe(1);
+    expect(issues[0].field).toBe("Holes");
+  });
+
+  it("every step after the broken one also reports no running total", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Depth" },
+      { op: "multiply", field: "Holes" },
+      { op: "add", field: 5 },
+      { op: "round", direction: "nearest", interval: 1 },
+      { op: "floor", value: 10 },
+      { op: "cap", value: 1000 },
+    ];
+    const { trail, total } = evaluateSteps(steps, { Depth: 150 });
+    expect(total).toBeNull();
+    for (const entry of trail.slice(1)) {
+      expect(entry.runningTotal).toBeNull();
+    }
+  });
+
+  it("reports every broken step in the list, in step order", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Depth" },
+      { op: "multiply", field: "Holes" },
+      { op: "divide", field: 0 },
+      { op: "subtract", field: "Note" },
+    ];
+    const issues = issuesOf(steps, { Depth: 1, Note: "n/a" });
+    expect(issues.map((i) => i.code)).toEqual([
+      "missing-operand",
+      "divide-by-zero",
+      "text-operand",
+    ]);
+    expect(issues.map((i) => i.stepIndex)).toEqual([1, 2, 3]);
+  });
+
+  it("a later start re-seeds a total an earlier broken step made unknowable", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Gone" },
+      { op: "start", field: 42 },
+      { op: "multiply", field: 2 },
+    ];
+    expect(totalOf(steps, {})).toBe(84);
+  });
+
+  it("rejects a round interval of zero instead of producing NaN", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: 10 },
+      { op: "round", direction: "nearest", interval: 0 },
+    ];
+    const issues = issuesOf(steps, {});
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("bad-round-interval");
+    expect(issues[0].stepIndex).toBe(1);
+    expect(totalOf(steps, {})).toBeNull();
+  });
+
+  it("rejects a negative round interval", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: 10 },
+      { op: "round", direction: "up", interval: -5 },
+    ];
+    expect(issuesOf(steps, {})[0].code).toBe("bad-round-interval");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10c. The comparison rule (CHARGE_STEP_PARITY_V1)
+// ---------------------------------------------------------------------------
+
+describe("comparison rule: is / is not", () => {
+  const withCondition = (cmp: "is" | "is not", value: string | number): ChargeStep[] => [
+    { op: "start", field: 100 },
+    { op: "add", field: 50, when: { field: "Grade", cmp, value } },
+  ];
+
+  it("matches a TEXT cell holding 150 against the numeric condition value 150", () => {
+    // AddStepForm stores a numeric-looking condition value with Number(), while
+    // the scenario map holds a TEXT cell as a string. Before parity this matched
+    // in the preview (200) and never on the server (100).
+    expect(totalOf(withCondition("is", 150), { Grade: "150" })).toBe(150);
+  });
+
+  it("matches a NUMBER cell holding 150 against the string condition value \"150\"", () => {
+    expect(totalOf(withCondition("is", "150"), { Grade: 150 })).toBe(150);
+  });
+
+  it("ignores case: cell Inverted matches the condition value inverted", () => {
+    expect(totalOf(withCondition("is", "inverted"), { Grade: "Inverted" })).toBe(150);
+  });
+
+  it("still matches when the case is identical", () => {
+    expect(totalOf(withCondition("is", "Inverted"), { Grade: "Inverted" })).toBe(150);
+  });
+
+  it("does not match a genuinely different value", () => {
+    expect(totalOf(withCondition("is", "Inverted"), { Grade: "Floor" })).toBe(100);
+  });
+
+  it("a field with no value in the row never `is` anything", () => {
+    expect(totalOf(withCondition("is", "Inverted"), {})).toBe(100);
+  });
+
+  it("`is not` is exactly the negation of `is` (case)", () => {
+    expect(totalOf(withCondition("is not", "inverted"), { Grade: "Inverted" })).toBe(100);
+  });
+
+  it("`is not` is exactly the negation of `is` (cross-type)", () => {
+    expect(totalOf(withCondition("is not", 150), { Grade: "150" })).toBe(100);
+  });
+
+  it("`is not` applies when the field has no value in the row", () => {
+    expect(totalOf(withCondition("is not", "Inverted"), {})).toBe(150);
+  });
+
+  it("does not match on a substring", () => {
+    expect(totalOf(withCondition("is", "Invert"), { Grade: "Inverted" })).toBe(100);
+  });
+
+  it("does not treat surrounding whitespace as equal", () => {
+    expect(totalOf(withCondition("is", "Inverted"), { Grade: " Inverted" })).toBe(100);
+  });
+
+  it("0 and \"0\" are equal, and neither matches an empty cell", () => {
+    expect(totalOf(withCondition("is", 0), { Grade: "0" })).toBe(150);
+    expect(totalOf(withCondition("is", 0), { Grade: "" })).toBe(100);
+  });
+});
+
+describe("comparison rule: ordering comparators are unchanged", () => {
+  const withCondition = (
+    cmp: ">" | "<" | ">=" | "<=",
+    value: string | number
+  ): ChargeStep[] => [
+    { op: "start", field: 100 },
+    { op: "add", field: 50, when: { field: "Qty", cmp, value } },
+  ];
+
+  it("coerces a numeric string on the left with Number", () => {
+    expect(totalOf(withCondition(">", 5), { Qty: "10" })).toBe(150);
+  });
+
+  it("coerces a numeric string on the right with Number", () => {
+    expect(totalOf(withCondition(">=", "10"), { Qty: 10 })).toBe(150);
+  });
+
+  it("is false when the cell is not a number", () => {
+    expect(totalOf(withCondition(">", 5), { Qty: "heavy" })).toBe(100);
+    expect(totalOf(withCondition("<", 5), { Qty: "heavy" })).toBe(100);
+    expect(totalOf(withCondition(">=", 5), { Qty: "heavy" })).toBe(100);
+    expect(totalOf(withCondition("<=", 5), { Qty: "heavy" })).toBe(100);
+  });
+
+  it("is false when the field has no value in the row", () => {
+    expect(totalOf(withCondition(">", 5), {})).toBe(100);
+    expect(totalOf(withCondition("<=", 5), {})).toBe(100);
+  });
+
+  it("handles negative and zero boundaries", () => {
+    expect(totalOf(withCondition(">=", 0), { Qty: 0 })).toBe(150);
+    expect(totalOf(withCondition(">", 0), { Qty: 0 })).toBe(100);
+    expect(totalOf(withCondition("<", 0), { Qty: -1 })).toBe(150);
+  });
+});
+
 // 11. trail length equals step count
 // ---------------------------------------------------------------------------
 

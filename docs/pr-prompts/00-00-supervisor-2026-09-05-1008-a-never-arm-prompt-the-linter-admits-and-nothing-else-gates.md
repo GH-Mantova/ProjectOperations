@@ -321,6 +321,54 @@ quoting the sweep: `(Get-ChildItem docs\pr-prompts\*-ready.md).Count` is **0**, 
 
 **DISPOSITION: ACTIONED** — recorded as the run's verdict. No action was required and none was taken.
 
+
+### F6 — Two instrument lies inside one read-back, and the first nearly made me rewrite a correct PR body
+
+I created `#1653` with `gh pr create --body-file` (the standing rule: `--body` with backticks fails
+silently), then read the body back per §1. It reported **65** — against a 3897-byte source file — and
+a substring check for the body's own table heading returned **False**. Read literally, the write had
+failed and the correct response was to rewrite it. Both readings were wrong, and in the §7 shape:
+*correct answers to the wrong quantity.*
+
+**[MEASURED] (a) `gh --json <f> --jq '.<f>'` captured into a PowerShell variable is an `Object[]`,
+not a string** — PowerShell splits native stdout on newlines. So `.Length` returns the **line
+count**, and `.Contains(x)` is `[Array]::Contains` — **exact element equality**, not substring — so
+a substring test silently returns `False` for text that is demonstrably present.
+
+```
+$arr = gh pr view 1653 --json body --jq '.body'
+  $arr.GetType().Name -> Object[]      $arr.Length -> 65        <- lines, not characters
+  $arr.Contains('do-not-arm comment')  -> False                 <- WRONG, the text is there
+
+$body = (gh pr view 1653 --json body | ConvertFrom-Json).body
+  $body.GetType().Name -> String       $body.Length -> 3897     <- == the source file's 3897 bytes
+  $body.Contains('do-not-arm comment') -> True
+  $body.Contains('Assert-SmokedOrEscalate') -> True             <- POS
+  $body.Contains('qqzNeedleNotInThisBodyzqq') -> False          <- NEG
+```
+
+This is the same family as §9.4's *assign-then-foreach* and *`@(ConvertFrom-Json).Count` answers 1
+for an empty array* — the PS 5.1 collection traps — but it is a **different** one: those are about
+JSON arrays collapsing, this is about a multi-line **string** being split into an array before you
+ever touch it. Nothing in §9.4 covers the `.Contains()` half, which is the dangerous one, because
+its failure direction is a **false negative on a verification step**. The rule already on `main` —
+"take raw `--json` and `ConvertFrom-Json`" — happens to cure it, but it is written as advice about
+`--jq` quoting, so a reader who is not quoting anything will not think it applies to them.
+
+**[MEASURED] (b) My own negative control was contaminated, and it passed as a positive.**
+`$body.Contains('zzzNoSuchNeedleZzz')` returned **True** — because the PR body I had just written
+*documents* that needle ("with a negative control (`zzzNoSuchNeedleZzz` → 0)"). The canonical NEG
+token is now common enough in this repo's prose to appear inside the very artifact under test.
+**A negative control must use a needle that cannot occur in the corpus** — re-run with
+`qqzNeedleNotInThisBodyzqq`, which returned `False` correctly.
+
+**DISPOSITION: DISPATCHED — Station 06 (PR Master),** folded into F1's dispatch as a second, smaller
+prompt: add (a) to DOCTRINE §9.4 as its own bullet with the two-line contrast above, and (b) as a
+one-clause amendment to §9.6 ("a NEG needle that the corpus itself documents is not a control").
+Both are canonical-block edits and need the hash re-recorded, which is why they are staged rather
+than done here. I did not re-verify against the live `index.mjs`/`lint-prompt.mjs` symbols — neither
+claim touches them.
+
 ## WHAT I DID NOT DO
 
 - **I did not arm anything.** F4 — the trigger my predecessor set is measurably unmet, and the one

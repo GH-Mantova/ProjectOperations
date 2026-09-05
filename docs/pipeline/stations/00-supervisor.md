@@ -755,8 +755,51 @@ FF failure gets re-diagnosed from first principles every run. Four consecutive r
    and this note is the price of taking it.
 
 ⚠️ **Do not diagnose this as a `.gitattributes` line-ending smudge.** That was the recorded cause on
-the morning of 2026-09-04. On the 14:0xZ run the smudge was absent — `git diff --numstat` EMPTY — and
-the fast-forward still refused, on this cause alone. **Read the error text; it names the file.**
+the morning of 2026-09-04. On the 14:0xZ run the smudge was absent — `git diff --numstat` EMPTY —
+and the fast-forward still refused, on this cause alone. **Read the error text; it names the file.**
+
+🔴 **THE UNTRACKED BREADCRUMB IS NOT THE ONLY THING THAT BLOCKS THE POST-MERGE FF, AND THE
+SECOND CAUSE IS ONE ANOTHER STATION CREATES ON PURPOSE.** MEASURED 2026-09-05T07:3xZ, three
+refused fast-forwards in a row after `#1647` merged. `docs/pipeline/sweep-rotation.json` is a
+**TRACKED** file that Station 04 advances with `next-sweep.mjs --advance` and then, by its own
+station doc's instruction, **leaves dirty in the shared dev tree** for 00 to commit — 04 may not
+commit there. So 00 sweeps it into the board PR, that PR merges, and the fast-forward must now
+update a file the working tree has locally modified:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+	docs/pipeline/sweep-rotation.json
+Please commit your changes or stash them before you merge.
+Aborting
+```
+
+🔴 **The cure for the untracked case does not touch it, and the diagnosis inverts halfway
+through.** Deleting the breadcrumb changes nothing, because the blocker is a *modified tracked*
+file, not an untracked one. Restoring the file to its `origin/main` content does not clear it
+either: git refuses on the working copy differing from **HEAD**, not from the merge target, so a
+file whose bytes already equal what the FF would write is still a blocker. And the moment you
+restore it the *first* diagnosis becomes true — the blob is LF, the checkout smudges to CRLF, so
+`git diff --numstat` reads EMPTY while the FF still refuses. Two different causes, in sequence,
+and the paragraph above tells you to rule the second one out.
+
+🔧 **The order that works, and every step is §9.2-safe:**
+
+1. `git show HEAD:docs/pipeline/sweep-rotation.json` piped to a node write — restore it to
+   **HEAD**, not to `origin/main`. Never `git checkout -- <path>`: it is one typo from
+   `checkout -- <dir>`, which resurrects consumed prompts.
+2. `git add --renormalize docs/pipeline/sweep-rotation.json`, then `git update-index --refresh`.
+   This clears the LF/CRLF smudge that step 1 introduces. Read back `git diff --cached
+   --name-status` — it must be **EMPTY**; if the renormalize staged something, the content really
+   did differ and you have a different problem.
+3. `git merge --ff-only origin/main`.
+4. Restore any breadcrumb you deleted in the untracked cure above, from the **new** HEAD.
+5. Read back all three: `git rev-list --left-right --count HEAD...origin/main` -> `0 0`,
+   `git diff --numstat` -> EMPTY, `git diff --cached --name-status` -> EMPTY. The first alone
+   passes on a dirty tree — that is the trap three paragraphs up.
+
+⚠️ **The general shape: any file another station is told to leave dirty in the shared dev tree
+becomes an FF blocker the moment you land it.** `sweep-rotation.json` is the one that exists
+today. If a second such hand-off is ever added, it inherits this entirely.
 
 ⚠️ **This is not specific to Station 00.** Every station that writes a breadcrumb into the dev tree
 and lands it in a PR creates the same blocker for whoever fast-forwards next. Folding the rule into

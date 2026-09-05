@@ -271,6 +271,34 @@ is not automatically waiting on a human.
 
 ---
 
+
+### Station 00 has TWO modes, and the matrix row above covers both
+
+🔴 **Recorded 2026-09-05 by the supervised cloud lane itself — see the disclosure in `DOCTRINE.md`
+section 10.2.1 before relying on this.**
+
+| | **00 scheduled** (headless, on the box) | **00 supervised** (interactive / cloud, Marco directing) |
+|---|---|---|
+| Arm a prompt | ✅ `arm-prompt.ps1` | ❌ — does not have the script |
+| Merge a PR | ✅ `Assert-SmokedOrEscalate` → `Merge-Pr` | ✅ **only PRs Marco released in chat**, receipt required |
+| Create a PR | ✅ board PRs | ✅ board PRs **and** code PRs he directs |
+| Write `docs/pr-prompts/` | ✅ | ✅ — he directs the prompt in the same turn |
+| Remove `do-not-merge` | ❌ **only Marco** | ❌ **only Marco** |
+| Edit `/sot/` | ❌ | ❌ |
+| Clear a watcher `marco:true` | ❌ | ❌ |
+| Azure / Entra / SharePoint | ❌ | ❌ **absolute** |
+
+The two modes differ in **instruments and supervision**, not in authority: the supervised lane has no
+PowerShell and no queue, and gets its release decisions from Marco live instead of from the label
+timeline. Its boundary is proved in CI by the required check **`Approval receipt (CP-26)`**, which
+fails `RELEASED_NO_RECEIPT` on a released PR carrying no receipt — so a merge by this lane that
+leaves no signature cannot reach `main`. That is the CI gate section 5's own proviso asks for.
+
+⚠️ **A supervised-lane PR names its lane in the receipt, not only in the body.** `mergedBy` reads
+`GH-Mantova` for every merge on this board, agent and human alike, so the receipt is the only
+durable signature. A scheduled run finding an unattributed merge should read that as a **defect in
+this lane**, not as an unknown actor.
+
 ## 6. When each station should be called
 
 | Station | Cadence | Call it when |

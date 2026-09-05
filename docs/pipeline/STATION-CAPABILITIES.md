@@ -345,6 +345,23 @@ MIDNIGHT LOCAL, every night.** [MEASURED] the same run, `lastRunAt`: 00 `14:08:0
 needs an offset of **at least ten minutes**, and the one that must move is **05**, whose slot is the
 fixed one. The cron changes are Marco's — they live in the scheduled-tasks layer, not this repo.
 
+🔴 **AND THE CADENCE IS STORED IN A THIRD PLACE THAT THE CORRECTION DID NOT REACH.**
+`scripts/pipeline/check-breadcrumb.mjs` keeps its own `CADENCE` map, and `00` in it still reads
+**2**. [MEASURED] 2026-09-05T15:1xZ at `52232fec`, anchor `const CADENCE =`:
+`{ '00': 2, '02': null, '03': 24, '04': 4, '05': 24 }`; NEGATIVE control `zzzNoSuchNeedleZzz` over
+the same file -> **0**. The table row above was corrected in **#1670** twenty-four minutes earlier
+and the instrument was not, so `--freshness` -- the probe the COLLECT step is told to *start* with
+-- will not call `00` **SILENT** until **4 h**, i.e. only after **three** consecutive missed hourly
+runs. `03` (`24`) and `04` (`4`) match their live crons; `00` is the only wrong row.
+
+⚠️ **So a green `ok` from `--freshness` is a weaker statement about `00` than about any other
+station**, and it is weak in escalation #23's exact direction -- toward not noticing a missed run.
+Cross it against `lastRunAt` from the scheduled-tasks MCP, which the COLLECT step already requires
+and which this defect does not touch. 🔧 The fix is one character (`'00': 1`), but it is a
+`scripts/` change and therefore outside Station 00's recorded lane to merge; it is filed for Marco
+in the needs-marco queue alongside the `lint-station.mjs` version-field question. **Do not read this
+paragraph as the fix having landed** -- the falsifying probe is the `const CADENCE =` line itself.
+
 ---
 
 ## 7. The reporting chain - and its one working channel

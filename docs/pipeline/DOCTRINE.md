@@ -946,7 +946,9 @@ it waits for Marco. If he does not confirm it, strike this section; the correct 
 **(b)** on `#1644` — the cloud lane stops merging — and not silence, because silence is what cost
 five runs.
 
-**Filed against:** `docs/pr-prompts/00-00-supervisor-2026-09-05-0608-doctrine-forbids-the-cloud-lane-from-merging-and-it-merged-1615-mid-run.md`
+**Filed against:** `docs/pr-prompts/archive/00-00-supervisor-2026-09-05-0608-doctrine-forbids-the-cloud-lane-from-merging-and-it-merged-1615-mid-run.md`
+(moved into `archive/` by the 2026-09-05T11:08Z collect once every finding in it carried a disposition;
+the path is corrected here because `lint-station.mjs` REJECTs this document for naming an untracked repo path)
 F1, option **(a)**, whose wording this section adopts.
 
 ## 10.3 Route docs-and-tests work through the watcher, not around it

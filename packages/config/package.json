@@ -13,6 +13,10 @@
       "types": "./dist/forms-rule-definition.d.ts",
       "default": "./dist/forms-rule-definition.js"
     },
+    "./charge-step-semantics": {
+      "types": "./dist/charge-step-semantics.d.ts",
+      "default": "./dist/charge-step-semantics.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

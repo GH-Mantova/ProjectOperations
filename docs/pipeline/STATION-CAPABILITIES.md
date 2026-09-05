@@ -322,13 +322,28 @@ this lane**, not as an unknown actor.
 
 | Station | Cadence | Call it when |
 |---|---|---|
-| **00 Supervisor** | every 2 h | anything needs deciding, dispatching, arming or merging; and to COLLECT what 03/04/05 reported |
+| **00 Supervisor** | **hourly** — read it from the MCP | anything needs deciding, dispatching, arming or merging; and to COLLECT what 03/04/05 reported |
 | **01 Code-writer** | no cadence - the watcher invokes it | never called by hand; it is what builds an armed prompt |
 | **02 Board-driver** | on dispatch only | merges, rebases, conflicts, reading CI job logs |
 | **03 Machine-minder** | 4 h or manual | watcher health, locks, worktrees, clone drift, restarter presence; after any crash or reboot |
 | **04 Scanner** | every 4 h | "is anything rotting?" - drift, dead gates, regressions, instruments that lie |
 | **05 SoT-keeper** | daily | `/sot/` drift; the only station that may edit it |
 | **06 PR Master** | on demand | design and stage new work; never arms, never merges |
+
+🔴 **A CADENCE IN THIS TABLE IS STATE, AND TWO ROWS HAVE ALREADY ROTTED. READ THE LIVE CRON FROM THE
+SCHEDULED-TASKS MCP, NEVER FROM HERE.** [MEASURED] 2026-09-05T14:1xZ by Station 04: `00-supervisor`
+runs `5 * * * *` — **hourly**, not the "every 2 h" both this table and its bootstrap claimed, an
+error of 2x *in the direction of not noticing a missed run*, which is open escalation #23's exact
+failure mode. `03-machine-minder` runs `0 9 * * *` — daily, against a bootstrap that says 4 h; that
+half is already open with Marco (§5). `04` (`0 */4 * * *`) and `05` (`10 0 * * *`) agree with their
+layers.
+
+⚠️ **And the three-stations-at-once collision has a cause: cron is evaluated in Brisbane local time,
+and 00 (`:05` hourly), 04 (`:00` every 4 h) and 05 (`00:10` daily) all land within ten minutes of
+MIDNIGHT LOCAL, every night.** [MEASURED] the same run, `lastRunAt`: 00 `14:08:04Z`, 04 `14:09:43Z`,
+05 `14:10:49Z` — three stations inside **165 seconds**. The open cron-offset escalation therefore
+needs an offset of **at least ten minutes**, and the one that must move is **05**, whose slot is the
+fixed one. The cron changes are Marco's — they live in the scheduled-tasks layer, not this repo.
 
 ---
 

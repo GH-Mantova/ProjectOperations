@@ -14,7 +14,7 @@ premise_means: >-
 scope:
   - docs/design/ARTIFACT-REGISTER.md
 done_when: >-
-  grep -q "Held outside the tree" docs/design/ARTIFACT-REGISTER.md && grep -q "330c3e98" docs/design/ARTIFACT-REGISTER.md && grep -q "524ef7db" docs/design/ARTIFACT-REGISTER.md && grep -q "theme-system-mockup" docs/design/ARTIFACT-REGISTER.md && test "$(grep -c 'claude.ai/code/artifact/' docs/design/ARTIFACT-REGISTER.md)" -ge 34
+  grep -q "Held outside the tree" docs/design/ARTIFACT-REGISTER.md && grep -q "330c3e98" docs/design/ARTIFACT-REGISTER.md && grep -q "524ef7db" docs/design/ARTIFACT-REGISTER.md && grep -q "theme-system-mockup" docs/design/ARTIFACT-REGISTER.md && grep -q "7c395739" docs/design/ARTIFACT-REGISTER.md && test "$(grep -c 'claude.ai/code/artifact/' docs/design/ARTIFACT-REGISTER.md)" -ge 35
 size: 1
 gate_allow: none
 seed_only: false
@@ -47,12 +47,13 @@ it down or lose it again.
 
 ## Do
 
-### 1. Append two rows to `## Current and load-bearing`
+### 1. Append three rows to `## Current and load-bearing`
 
 Add these at the end of that table, in this order, keeping the existing column shape:
 
     | [Theme Builder](https://claude.ai/code/artifact/330c3e98-e1ae-4120-899b-66960785a112) | `330c3e98` | The Company profile **Brand & theme** tab: named colour schemes, palette editing with live contrast grading, the four `BrandAssetKind` slots, density, and a live preview. Published 2026-09-05 from the spec, then checked against the recovered `erp-theme-builder-mockup.pdf`. Records the schema gap - radius, type scale and spacing are not on `BrandColorScheme`. |
     | [Settings Home](https://claude.ai/code/artifact/524ef7db-7234-4254-8c7f-9e5da3d953c1) | `524ef7db` | The `/settings` landing page: 22 cards, counts computed from the live item list, tab chips, and locked settings shown with the permission each needs. Published 2026-09-05 from the spec, then checked against the recovered `erp-settings-home-mockup.pdf`. Design of record for `pr-settings-home-s1-cards-tabs-counts`. |
+    | [Theme System](https://claude.ai/code/artifact/7c395739-9e3b-46f9-86aa-35fd58447629) | `7c395739` | Four candidate themes applied live to the CRM Accounts screen, with a token readout. The evidence for the theming schema gap: each theme changes `--r-card` (8px / 12px / 4px), font family, tracking and weight, none of which `BrandColorScheme` can store. Published 2026-09-05 from `theme-system-mockup.html` (2026-08-17), unchanged but for the three hosting fixes its own footer records. |
 
 ### 2. Insert a new section immediately BEFORE `## Retired`
 
@@ -70,7 +71,7 @@ Write it exactly as follows:
     |---|---|---|---|
     | `erp-settings-home-mockup.pdf` | `docs/pr-prompts/pr-settings-home-s1-cards-tabs-counts-HOLD.md:31` | A 4-page PDF printed from Chromium 2026-09-01, title "Settings Home - mock-up (§2.2 / §2.3)". Its spec survives in `docs/plans/settings-home-plan.md` (D43-D47) and in the citing prompt, which transcribes the approved description for 19 of the 20 pages. | **Published** as `524ef7db`. |
     | `erp-theme-builder-mockup.pdf` | the branding slices of `docs/plans/theme-system-plan.md` | A 3-page PDF printed from Chromium 2026-09-01, title "Brand & theme - settings mock-up". Its spec survives in D38/D39 (`ca8d9c08`) and in `BrandColorScheme` / `BrandAssetKind` in `apps/api/prisma/schema.prisma`. | **Published** as `330c3e98`. |
-    | `theme-system-mockup.html` | referenced in conversation; no tracked citation found | A single-file HTML mock-up dated 2026-08-17, the predecessor of the Brand & theme design. | **Open** - not yet published; register it here if it is. |
+    | `theme-system-mockup.html` | referenced in conversation; no tracked citation found | A single-file HTML mock-up dated 2026-08-17, the predecessor of the Brand & theme design. Four themes applied live to a real screen. | **Published** as `7c395739`, unchanged but for three hosting fixes it records in its own footer. |
 
     **A rebuild is not a scan of the original.** Both published pages were built from the written
     spec and then checked against the recovered PDF; where one disagrees with a stale number or tab
@@ -95,7 +96,7 @@ renumbering it to 33 or 35 destroys the finding.
 - Do NOT paste any artifact's or any PDF's content into the register. It is an index of pointers.
 - Do NOT add a row for a Downloads path as though it were a location the repo can read.
 - Do NOT go looking for the three named files, and do NOT write a script to enumerate artifacts.
-  Nothing on this box can read the gallery; all three searches are recorded above.
+  Nothing on this box can read the gallery; all three searches are recorded above, and all three files are now published.
 - Do NOT reproduce client names or personal names.
 - Do NOT touch `sot/` - CP-24 hard-fails a PR that mixes `sot/` with anything else.
 - Do NOT edit anything under `docs/pr-prompts/`, including the prompt that cites the settings PDF.

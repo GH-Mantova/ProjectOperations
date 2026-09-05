@@ -791,6 +791,34 @@ and the paragraph above tells you to rule the second one out.
    This clears the LF/CRLF smudge that step 1 introduces. Read back `git diff --cached
    --name-status` — it must be **EMPTY**; if the renormalize staged something, the content really
    did differ and you have a different problem.
+
+   🔴 **THAT LAST SENTENCE IS FALSE ON `docs/pr-prompts/.arming-log.txt`, AND EVERY RUN THAT ARMS
+   SOMETHING NOW TAKES THIS PATH.** MEASURED 2026-09-05T16:2xZ at `a051c6e2`, immediately after
+   `#1672`. Step 1 was performed exactly as written — `git show HEAD:docs/pr-prompts/.arming-log.txt`
+   written to disk with node, **7014 bytes, byte-exact from the blob**. Step 2 then staged a
+   **`53 53`** rewrite of a 53-line file: every line, changed, on a restore that could not have
+   changed one. The blob `b3ea9f15` stores **CRLF** while the file's attributes are
+   `text: auto, eol: unspecified`, so `--renormalize` strips the CRs the blob itself contains and
+   stages the LF form as a genuine content change (`git hash-object` on the restored file →
+   `917b1245` ≠ `b3ea9f15`).
+
+   **So the read-back fires, and its own explanation sends you to look for a content difference that
+   does not exist.** That is §7's shape inside the cure for a §7 trap: a correct reading of the wrong
+   quantity, with a prescribed misinterpretation attached.
+
+   🔧 **The cure is to UNDO step 2 rather than diagnose it: `git restore --staged <path>`** —
+   index-only, and specifically **not** `git checkout -- <path>` (§9.2). Measured the same run: after
+   the restore, `git diff --cached --name-status` and `git diff --numstat` were **both EMPTY** — the
+   byte-exact file from step 1 was correct all along and needed no normalization. Then step 3
+   fast-forwarded cleanly and all three read-backs in step 5 passed (`0 0`, EMPTY, EMPTY).
+
+   ⚠️ **Do not generalise this into "skip step 2".** It is still right for
+   `docs/pipeline/sweep-rotation.json`, the file it was written for, whose smudge is real. The
+   discriminator is whether step 1 restored the bytes **byte-exact from `git show HEAD:`** — if it
+   did, a non-empty `--cached` after `--renormalize` is the renormalize talking, not the content.
+   🔧 **This path is no longer rare.** DOCTRINE §9.5 requires any run that arms a prompt to commit
+   `.arming-log.txt` in its board PR, so every arming run now lands that file and meets this on the
+   fast-forward afterwards.
 3. `git merge --ff-only origin/main`.
 4. Restore any breadcrumb you deleted in the untracked cure above, from the **new** HEAD.
 5. Read back all three: `git rev-list --left-right --count HEAD...origin/main` -> `0 0`,

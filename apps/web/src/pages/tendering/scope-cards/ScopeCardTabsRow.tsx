@@ -1,121 +1,64 @@
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  horizontalListSortingStrategy,
-  sortableKeyboardCoordinates,
-  useSortable
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { ScopeCardTab } from "./ScopeCardTab";
 import { ScopeCardCreateTab } from "./ScopeCardCreateTab";
+import { DISCIPLINE_CODES, DISCIPLINE_LABELS } from "./utils/card-display";
+import { cardsInDiscipline, disciplinesWithCards } from "./utils/discipline-rollup";
 import type { ScopeCard } from "./useScopeCards";
 
-// PR B1.5 — horizontal tab row with @dnd-kit sortable. Pointer activation
-// constraint `distance: 8` matters: without it every click on a tab
-// triggers drag-mode and prevents normal click-to-select.
-
-type SortableTabProps = {
-  card: ScopeCard;
-  active: boolean;
-  onSelect: () => void;
-  onRename: (newName: string) => Promise<void>;
-  onDelete: () => Promise<void>;
-};
-
-function SortableTab(props: SortableTabProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: props.card.id
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      {...attributes}
-      {...listeners}
-    >
-      <ScopeCardTab {...props} isDragging={isDragging} />
-    </div>
-  );
-}
+// SCOPE_DISCIPLINE_STACK_V1 — one tab per DISCIPLINE that has at least one
+// card, replacing PR B1.5's one-tab-per-card strip.
+//
+// The strip lost its @dnd-kit sortable wrapper along with the card tabs.
+// Dragging a discipline is meaningless — the codes have a canonical order
+// (DISCIPLINE_CODES, re-exported from constants/disciplines.ts, the single
+// source of truth; no second list is built here). Card order still matters,
+// because cards in a discipline are the stages of one job in sequence, so
+// the reorder affordance moved onto the card headers in the stack, where
+// what is being reordered is visible while you reorder it.
 
 type Props = {
   cards: ScopeCard[];
-  activeCardId: string | null;
-  onSelectCard: (cardId: string) => void;
+  /** Discipline code of the visible tab, e.g. "DEM". */
+  activeDiscipline: string | null;
+  onSelectDiscipline: (discipline: string) => void;
   onCreateCard: (name: string, discipline: string) => Promise<void>;
-  onRenameCard: (cardId: string, name: string) => Promise<void>;
-  onDeleteCard: (cardId: string) => Promise<void>;
-  onReorder: (cardIds: string[]) => Promise<void>;
 };
 
 export function ScopeCardTabsRow({
   cards,
-  activeCardId,
-  onSelectCard,
-  onCreateCard,
-  onRenameCard,
-  onDeleteCard,
-  onReorder
+  activeDiscipline,
+  onSelectDiscipline,
+  onCreateCard
 }: Props) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = cards.findIndex((c) => c.id === active.id);
-      const newIndex = cards.findIndex((c) => c.id === over.id);
-      if (oldIndex >= 0 && newIndex >= 0) {
-        const newOrder = arrayMove(cards, oldIndex, newIndex).map((c) => c.id);
-        void onReorder(newOrder);
-      }
-    }
-  };
+  const disciplines = disciplinesWithCards(cards, DISCIPLINE_CODES);
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
+    <div
+      role="group"
+      aria-label="Scope disciplines"
+      style={{
+        display: "flex",
+        gap: 4,
+        alignItems: "flex-end",
+        borderBottom: "1px solid var(--border-default)",
+        marginBottom: 16,
+        flexWrap: "wrap"
+      }}
     >
-      <SortableContext
-        items={cards.map((c) => c.id)}
-        strategy={horizontalListSortingStrategy}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            alignItems: "flex-end",
-            borderBottom: "1px solid var(--border, #e5e7eb)",
-            marginBottom: 16,
-            flexWrap: "wrap"
-          }}
-        >
-          {cards.map((card) => (
-            <SortableTab
-              key={card.id}
-              card={card}
-              active={card.id === activeCardId}
-              onSelect={() => onSelectCard(card.id)}
-              onRename={(name) => onRenameCard(card.id, name)}
-              onDelete={() => onDeleteCard(card.id)}
-            />
-          ))}
-          <ScopeCardCreateTab onCreate={onCreateCard} />
-        </div>
-      </SortableContext>
-    </DndContext>
+      {disciplines.map((code) => {
+        const inDiscipline = cardsInDiscipline(cards, code);
+        return (
+          <ScopeCardTab
+            key={code}
+            code={code}
+            label={DISCIPLINE_LABELS[code] ?? code}
+            cardCount={inDiscipline.length}
+            itemCount={inDiscipline.reduce((sum, c) => sum + c.itemCount, 0)}
+            active={code === activeDiscipline}
+            onSelect={() => onSelectDiscipline(code)}
+          />
+        );
+      })}
+      <ScopeCardCreateTab onCreate={onCreateCard} />
+    </div>
   );
 }

@@ -1,10 +1,18 @@
 // crmui-accounts-list-s1 — CRM_ACCOUNTS_LIST_V2 pure logic assertions.
 //
-// Verifies the filtering logic and the computeGoingCold contract as they
-// stand after the S1 layout overhaul. No jsdom; pure unit tests only.
+// Verifies the filtering logic and the contact-state contract as they stand
+// after the S1 layout overhaul. No jsdom; pure unit tests only.
+//
+// S2 (CRM_COLD_V3, 2026-09-04) renamed computeGoingCold to computeContactState
+// and made never-contacted its own state; the S1 layout assertions below are
+// otherwise untouched.
 
 import { describe, expect, it } from "vitest";
-import { computeGoingCold, CRM_COLD_V2, type AccountSummaryRow } from "../AccountsListPage";
+import {
+  computeContactState,
+  CRM_COLD_V3,
+  type AccountSummaryRow
+} from "../AccountsListPage";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +32,7 @@ function makeRow(overrides: Partial<AccountSummaryRow> = {}): AccountSummaryRow 
     openOpportunitiesCount: 0,
     lastContactedAt: null,
     goingCold: false,
+    contactState: "NEVER_CONTACTED",
     ...overrides
   };
 }
@@ -53,50 +62,49 @@ describe("AccountSummaryRow — CRM_ACCOUNTS_LIST_V2 fields present", () => {
   });
 });
 
-// ── CRM_COLD_V2 contract mirror ───────────────────────────────────────────────
+// ── CRM_COLD_V3 contract mirror ───────────────────────────────────────────────
 
-describe("CRM_COLD_V2 — S1 contract unchanged", () => {
-  it("THRESHOLD_DAYS is 60", () => {
-    expect(CRM_COLD_V2.THRESHOLD_DAYS).toBe(60);
-  });
-
-  it("NULL_IS_COLD is true", () => {
-    expect(CRM_COLD_V2.NULL_IS_COLD).toBe(true);
+describe("CRM_COLD_V3 — threshold unchanged by S2", () => {
+  it("THRESHOLD_DAYS is still 60", () => {
+    expect(CRM_COLD_V3.THRESHOLD_DAYS).toBe(60);
   });
 });
 
-// ── computeGoingCold — going-cold sub-line driven by CRM_COLD_V2 ──────────────
+// ── computeContactState — drives the going-cold chip ──────────────────────────
 
-describe("computeGoingCold — CRM_ACCOUNTS_LIST_V2 going-cold chip", () => {
-  it("chip shows for ACTIVE account with null lastContactedAt", () => {
-    expect(computeGoingCold("ACTIVE", null, NOW)).toBe(true);
+describe("computeContactState — CRM_ACCOUNTS_LIST_V2 going-cold chip", () => {
+  it("the ORANGE chip no longer shows for a null lastContactedAt (CRM_COLD_V3)", () => {
+    // S1 rendered GOING COLD here. S2 gives never-contacted its own quieter
+    // chip instead — this is the ruling, and the reason the tile stopped
+    // reading 175 of 175.
+    expect(computeContactState("ACTIVE", null, NOW)).toBe("NEVER_CONTACTED");
   });
 
   it("chip shows for PROSPECT with contact 61 days ago", () => {
-    expect(computeGoingCold("PROSPECT", daysAgo(61), NOW)).toBe(true);
+    expect(computeContactState("PROSPECT", daysAgo(61), NOW)).toBe("COLD");
   });
 
-  it("chip does not show for PAST lifecycle regardless of contact age", () => {
-    expect(computeGoingCold("PAST", null, NOW)).toBe(false);
-    expect(computeGoingCold("PAST", daysAgo(365), NOW)).toBe(false);
+  it("no cold chip for PAST lifecycle regardless of contact age", () => {
+    expect(computeContactState("PAST", null, NOW)).toBe("PAST");
+    expect(computeContactState("PAST", daysAgo(365), NOW)).toBe("PAST");
   });
 
-  it("chip does not show when contact is within threshold (30 days)", () => {
-    expect(computeGoingCold("ACTIVE", daysAgo(30), NOW)).toBe(false);
+  it("no chip when contact is within threshold (30 days)", () => {
+    expect(computeContactState("ACTIVE", daysAgo(30), NOW)).toBe("IN_CONTACT");
   });
 
   it("threshold is exclusive — exactly 60 days is NOT cold", () => {
-    expect(computeGoingCold("ACTIVE", daysAgo(60), NOW)).toBe(false);
+    expect(computeContactState("ACTIVE", daysAgo(60), NOW)).toBe("IN_CONTACT");
   });
 
-  it("sub-line threshold text is driven by CRM_COLD_V2.THRESHOLD_DAYS", () => {
-    // The StatTile sub-line is built as:
-    //   `no contact in ${CRM_COLD_V2.THRESHOLD_DAYS} days`
+  it("sub-line threshold text is driven by CRM_COLD_V3.THRESHOLD_DAYS", () => {
+    // The StatTile sub-line's first clause is built as:
+    //   `no contact in ${CRM_COLD_V3.THRESHOLD_DAYS} days`
     // This test pins the rendered value so any drift in THRESHOLD_DAYS
     // fails here AND in the server-side mirror test.
-    const subLine = `no contact in ${CRM_COLD_V2.THRESHOLD_DAYS} days`;
+    const subLine = `no contact in ${CRM_COLD_V3.THRESHOLD_DAYS} days`;
     expect(subLine).toBe("no contact in 60 days");
-    expect(CRM_COLD_V2.THRESHOLD_DAYS).toBe(60);
+    expect(CRM_COLD_V3.THRESHOLD_DAYS).toBe(60);
   });
 });
 

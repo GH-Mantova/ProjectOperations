@@ -5,17 +5,17 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
-import { CRM_COLD_V2 } from "./crm-cold";
+import { CRM_COLD_V3 } from "./crm-cold";
 
 // CRM UIFIX S1 (2026-09-01): the going-cold threshold selector for this page.
 // Kept next to the panel so a future 45-day option lands in one place. The
-// default is CRM_COLD_V2.THRESHOLD_DAYS so the tab and the KPI tile agree
+// default is CRM_COLD_V3.THRESHOLD_DAYS so the tab and the KPI tile agree
 // out of the gate — the user can widen or narrow the view without changing
 // the tile.
 export const GOING_COLD_THRESHOLD_OPTIONS = [30, 60, 90] as const;
 export type GoingColdThresholdDays = (typeof GOING_COLD_THRESHOLD_OPTIONS)[number];
 export const GOING_COLD_DEFAULT_THRESHOLD: GoingColdThresholdDays =
-  CRM_COLD_V2.THRESHOLD_DAYS as GoingColdThresholdDays;
+  CRM_COLD_V3.THRESHOLD_DAYS as GoingColdThresholdDays;
 
 // CRM_RELATIONSHIPS_V2 (2026-09-04): one screen, four panels — not three tabs.
 //
@@ -630,7 +630,7 @@ function GoingColdPanel({
   const [accounts, setAccounts] = useState<ColdAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // CRM UIFIX S1: threshold is user-selectable; default matches CRM_COLD_V2
+  // CRM UIFIX S1: threshold is user-selectable; default matches CRM_COLD_V3
   // so the tab and the KPI tile agree at first render. CRM_RELATIONSHIPS_V2
   // only moves the control into the card header — behaviour is unchanged.
   const [thresholdDays, setThresholdDays] = useState<GoingColdThresholdDays>(

@@ -52,3 +52,4 @@
 2026-09-04T20:24:20Z  ARMED  pr-crmui-accounts-list-s1-columns-tiles-and-filters  escalates=false  by=Marco@  pid=20340  caller=powershell.exe:21252
 2026-09-04T22:03:13Z  ARMED  pr-crmui-account360-s1-tiles-and-next-action  escalates=false  by=Marco@  pid=13788  caller=powershell.exe:19360
 2026-09-05T16:16:51Z  ARMED  pr-claudedesign-s2-spec-regeneration-plan  escalates=false  actor=station-00-scheduled-1608Z  by=Marco@LAPTOP-E6NHU4E4  pid=35980  caller=powershell.exe:7452
+2026-09-05T21:33:19Z  ARMED  pr-deps-s1-fasturi-browserslist-overrides  escalates=false  actor=marco-delegated  by=Marco@LAPTOP-E6NHU4E4  pid=33192  caller=powershell.exe:19064

@@ -19245,6 +19245,24 @@
           "filterable": false,
           "aggregations": []
         },
+        "labourItems": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "markupOverride": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "materials": {
           "role": "system",
           "label": null,

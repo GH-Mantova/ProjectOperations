@@ -182,6 +182,45 @@ class ScopeItemFieldsBase {
   @IsArray()
   measurements?: unknown;
 
+  // CARD-API SLICE 1 (SCOPE_ITEM_LABOUR_STORE_V1) — per-row labour store.
+  // Mirrors plantItems above in name, shape and validation strategy:
+  //   labourItems: [{ rowIdx, labourTypeId, role, shift, qty, days, dayRateOverride }]
+  //
+  // This field HAS to be declared here to exist at all: the global
+  // ValidationPipe runs whitelist AND forbidNonWhitelisted, so an
+  // undeclared property is a 400 and never reaches the service.
+  //
+  // Validation follows the plantItems precedent exactly — @IsArray() and
+  // no @ValidateNested. The element shape is documented in schema.prisma
+  // and the backend is an identity pass-through; per-element validators
+  // would reject rows written by an older client. Pricing is defensive
+  // about element shape instead (see scope-item-pricing.ts).
+  //
+  // PARTIAL-UPDATE WARNING (see scope-update-item-preserve.spec.ts):
+  // updateItem persists exactly what the DTO sends. Omitting the key
+  // leaves the stored array untouched; sending a SHORT array REPLACES
+  // the whole array. Clients must always ship every labour row they
+  // intend to keep, the same contract plantItems and materials carry.
+  @ApiPropertyOptional({ type: "array", items: { type: "object" } })
+  @IsOptional()
+  @IsArray()
+  labourItems?: unknown;
+
+  // CARD-API SLICE 1 — item-level markup % override. null clears the
+  // override and the item inherits the card's markupOverride, which in
+  // turn falls back to TenderEstimate.markup (one shared expression:
+  // resolveEffectiveMarkup in scope-item-pricing.ts). 0 is a real
+  // override (0% markup), not an absence. Same 0-100 validator bound as
+  // UpdateScopeCardDto.markupOverride; the column is Decimal(5,2).
+  @ApiPropertyOptional({
+    nullable: true,
+    minimum: 0,
+    maximum: 100,
+    description:
+      "Per-item markup % override. Null = inherit the card's markup (then the tender's). 0-100."
+  })
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
+
   // PR feat/scope-multi-material — additional material rows (rows 2..N).
   // Row 1 stays on the flat materialType + L/H/D + density/sqm/m3/tonnes
   // columns; this array carries the extras. Each element:

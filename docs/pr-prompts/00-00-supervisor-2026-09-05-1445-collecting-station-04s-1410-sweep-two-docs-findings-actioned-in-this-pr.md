@@ -140,7 +140,7 @@ for.
 - ⚠️ **`#1669` — this line said "left for the next run" when written at 14:45Z, and that reason
   expired before this PR was merged. Corrected rather than left standing.** Station 05's reconcile
   was opened 14:33Z with its checks unsettled, which was the whole of my reason for standing off. At
-  14:52Z it read **9 SUCCESS / 5 SKIPPED / 0 failing**, so the reason was gone. **[MEASURED]** it
+  14:4xZ it read **9 SUCCESS / 5 SKIPPED / 0 failing**, so the reason was gone. **[MEASURED]** it
   carries `labels: []`, `author GH-Mantova`, `mergeStateStatus CLEAN`, and **0** hits in
   `docs/pr-prompts/processed/pr-*.log` (negative control `PR #999999` -> 0) ⇒
   `[NO LANE VERDICT — hand-classified]`, classified by the **authority matrix** under §10.1 step 3,

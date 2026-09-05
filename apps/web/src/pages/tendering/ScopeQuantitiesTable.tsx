@@ -12,6 +12,15 @@ import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimens
 // Manpower and plant keep their current inputs in the spanning middle
 // cell. Measurement fields stay in place until slice 5 moves them.
 
+// SCOPE_WBS_INPUTS_V2 — slice 2 of scope-card-corrections. The row inputs
+// are brought back into line with the rate card and with the card they sit
+// on: the Day shift is LABELLED Weekday (its stored value is untouched),
+// each Type dropdown offers exactly one empty option, both money columns
+// are right-aligned and carry cents, changing a role or a shift releases a
+// stale rate override, the card's markup is actually passed down instead of
+// every row inheriting a silent 0%, and the Cutting tick is gated on the
+// same discipline condition that gates the sheet it feeds.
+
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
@@ -72,8 +81,11 @@ export type ScopeItem = {
   men: string | null;
   days: string | null;
   // SCOPE_WBS_MANPOWER_V1 — shift is an existing DB field surfaced in
-  // the Shift column of the manpower group. Nullable; null renders as
-  // "Day" (the server default). Values: "Day" | "Night" | "Weekend".
+  // the Shift column of the manpower group. Nullable; null falls back to
+  // "Day" (the server default). Stored values: "Day" | "Night" | "Weekend".
+  // SCOPE_WBS_INPUTS_V2 — the stored value "Day" is LABELLED "Weekday" in
+  // the dropdown to match the rate card. The value on the wire is unchanged;
+  // see SHIFT_OPTIONS / shiftLabel below.
   shift?: string | null;
   // @deprecated PR B4a — legacy canonical fields; no longer surfaced
   // or written. Retained on the type so the listItems response still
@@ -364,6 +376,45 @@ export function effectiveMarkup(
   return localMarkup !== null ? localMarkup : cardMarkup;
 }
 
+/**
+ * SCOPE_WBS_INPUTS_V2 — the markup a WBS row inherits when it has no override
+ * of its own. This is the middle link of the chain the card already states in
+ * words ("Inherits tender markup (N%)") but never handed to the table:
+ *
+ *     item override  ->  card override  ->  tender markup  ->  0
+ *      (effectiveMarkup)   (here)            (here)
+ *
+ * Zero is a real override at every link. A card explicitly set to 0% inherits
+ * 0%, not the tender's 8%; a tender genuinely on 0% resolves to 0%. Only
+ * null/undefined — and a non-finite number, which is what an empty or garbled
+ * input parses to — count as absence and fall through to the next link.
+ *
+ * The final 0 is the floor for a tender whose markup has not loaded yet; it is
+ * reached only when neither link supplied a number, never by a stated zero.
+ */
+export function resolveCardMarkup(
+  cardOverride: number | null | undefined,
+  tenderMarkup: number | null | undefined
+): number {
+  if (typeof cardOverride === "number" && Number.isFinite(cardOverride)) return cardOverride;
+  if (typeof tenderMarkup === "number" && Number.isFinite(tenderMarkup)) return tenderMarkup;
+  return 0;
+}
+
+/**
+ * SCOPE_WBS_INPUTS_V2 — true when the Cutting? tick should render for a card
+ * of this discipline. It is the SAME condition ScopeCardsTab uses to decide
+ * whether to render <ScopeCuttingSheet> at all; on an ASB card the sheet the
+ * tick feeds does not exist, so the tick has nowhere to be priced.
+ *
+ * Render-gate only. A cuttingIncluded value already stored against an ASB item
+ * is left exactly as it is — clearing it is a data change and belongs to the
+ * persistence cluster.
+ */
+export function showsCuttingColumn(discipline: Discipline): boolean {
+  return discipline !== "ASB";
+}
+
 // ── Component state types ────────────────────────────────────────────────
 
 /** Per-item row count (slice 2 shell: stored in local state). */
@@ -386,7 +437,11 @@ type RowManpowerState = {
   qty: string;
   /** Days for rows > 0. Row 0 uses item.days. */
   days: string;
-  /** Shift for rows > 0. Row 0 uses item.shift. "Day" | "Night" | "Weekend". */
+  /**
+   * Shift for rows > 0. Row 0 uses item.shift.
+   * Stored values are "Day" | "Night" | "Weekend"; SCOPE_WBS_INPUTS_V2
+   * renders the "Day" value with the label "Weekday" (rate-card wording).
+   */
   shift: string;
 };
 
@@ -416,9 +471,35 @@ type ItemPlantRows = Map<string, RowPlantState>;
 
 // ── SCOPE_WBS_MANPOWER_V1 exported pure helpers (tested by wbs-manpower-columns.test.tsx) ──
 
-/** Shift options for the Shift dropdown in the Manpower column group. */
+/**
+ * Shift options for the Shift dropdown in the Manpower column group.
+ *
+ * These are the STORED values. They are the strings `patchItem` sends and the
+ * strings `resolveRateForShift` matches on, so they must not change: rows on
+ * main already hold the literal "Day" and renaming the value would orphan them
+ * (TooltipSelect selects by value — an unmatched value falls through to the
+ * blank option and silently reads as unset).
+ */
 export const SHIFT_OPTIONS = ["Day", "Night", "Weekend"] as const;
 export type ShiftOption = (typeof SHIFT_OPTIONS)[number];
+
+/**
+ * SCOPE_WBS_INPUTS_V2 — display label for a stored shift value.
+ *
+ * The rate card calls the ordinary shift "Weekday"; the column stores it as
+ * "Day". Splitting label from value fixes the wording without touching a
+ * single stored string: a row saved before this PR still holds "Day", still
+ * matches an option, and still sends "Day" on its next shift change — it just
+ * reads "Weekday" on screen.
+ *
+ * Any value with no entry here is returned unchanged, so an unrecognised
+ * stored shift stays visible rather than rendering blank.
+ */
+const SHIFT_LABELS: Record<string, string> = { Day: "Weekday" };
+
+export function shiftLabel(value: string): string {
+  return SHIFT_LABELS[value] ?? value;
+}
 
 /**
  * True when a day-rate value is considered overridden (user typed a value
@@ -468,6 +549,41 @@ export function resolveRateForShift(
 }
 
 /**
+ * SCOPE_WBS_INPUTS_V2 — the local row-state patch a role or shift change
+ * carries. Both release the row's stale day-rate override.
+ *
+ * This is not a new rule. onPlantTypeChange already writes
+ * `{ plantRateId, customDescription: null, dayRateOverride: null }` — the
+ * manpower side simply never did the same, so a rate typed against one role
+ * stayed on screen after the role changed to another, and a rate typed for the
+ * Weekday shift survived onto Night even though the catalogue rate is
+ * shift-resolved. Both are stale by construction: the number on screen was
+ * derived from a locked rate that is no longer the row's locked rate.
+ *
+ * Releasing means dropping back to the fallback (the catalogue rate for the new
+ * role/shift), not writing a zero — `dayRateOverride: null` is absence, and
+ * effectiveDayRate(null, catalogueRate) returns the catalogue rate exactly.
+ *
+ * Local state only: no patchItem call is added, removed or re-pointed here.
+ */
+export type ManpowerCascadePatch = {
+  labourTypeId?: string | null;
+  shift?: string;
+  /** Always null — the cascade releases, it never substitutes a value. */
+  dayRateOverride: null;
+};
+
+/** Row-state patch for a labour-role change: set the role, release the override. */
+export function manpowerPatchForTypeChange(typeId: string | null): ManpowerCascadePatch {
+  return { labourTypeId: typeId, dayRateOverride: null };
+}
+
+/** Row-state patch for a shift change: set the shift, release the override. */
+export function manpowerPatchForShiftChange(shift: string): ManpowerCascadePatch {
+  return { shift, dayRateOverride: null };
+}
+
+/**
  * Manpower row total for the read-only Total cell.
  * Returns null (renders as "—") when any of qty/days/rate are absent
  * or the row has no type set.
@@ -482,13 +598,22 @@ export function manpowerRowTotal(
   return qty * days * dayRate;
 }
 
-/** Render a manpower total as currency or an em dash when absent. */
+/**
+ * Render a manpower total as currency or an em dash when absent.
+ *
+ * SCOPE_WBS_INPUTS_V2 — money in this column carries cents. Both the minimum
+ * and the maximum are pinned to 2: raising only the maximum renders $1,234.5
+ * for a total of 1234.5, which is not a money string. A null total is still
+ * the em dash and must never become "$0.00" — an unset row has no total, and
+ * a genuinely zero total ($0.00) is a different statement.
+ */
 export function fmtManpowerTotal(total: number | null): string {
   if (total === null) return "—"; // em dash
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD",
-    maximumFractionDigits: 0
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(total);
 }
 
@@ -537,13 +662,19 @@ export function plantRowTotal(
   return qty * days * dayRate;
 }
 
-/** Render a plant total as currency or an em dash when absent. */
+/**
+ * Render a plant total as currency or an em dash when absent.
+ *
+ * SCOPE_WBS_INPUTS_V2 — cents, same rule as fmtManpowerTotal: min AND max
+ * fraction digits are both 2, and null stays the em dash.
+ */
 export function fmtPlantTotal(total: number | null): string {
   if (total === null) return "—"; // em dash — NEVER "$0.00" for an unset row
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD",
-    maximumFractionDigits: 0
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(total);
 }
 
@@ -552,19 +683,29 @@ type Props = {
   cardId: string;
   discipline: Discipline;
   items: ScopeItem[];
-  /** Effective card-level markup percent (used as the inherited default). */
-  cardMarkup?: number;
+  /**
+   * Effective card-level markup percent (used as the inherited default).
+   * SCOPE_WBS_INPUTS_V2 — required. It used to default to 0 and ScopeCardsTab
+   * never passed it, so every row silently claimed to inherit 0%. Dropping the
+   * default turns a missing prop into a compile error instead of wrong money
+   * on screen. Resolve it with resolveCardMarkup(card.markupOverride, tenderMarkup).
+   */
+  cardMarkup: number;
   onItemsChanged: () => Promise<void> | void;
 };
 
 export function ScopeQuantitiesTable({
   tenderId,
   cardId,
-  discipline: _discipline,
+  discipline,
   items,
-  cardMarkup = 0,
+  cardMarkup,
   onItemsChanged
 }: Props) {
+  // SCOPE_WBS_INPUTS_V2 — the discipline was destructured and discarded. It
+  // now gates the Cutting? tick, computed once here rather than re-derived at
+  // each of the two checkboxes.
+  const showCutting = showsCuttingColumn(discipline);
   const { authFetch } = useAuth();
   const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
@@ -751,13 +892,14 @@ export function ScopeQuantitiesTable({
   );
 
   // SCOPE_WBS_MANPOWER_V1 — labour type options for the Type dropdown.
-  // The "- none -" sentinel is prepended; its value is "" so a cleared
-  // TooltipSelect returns null which maps to labourTypeId = null.
+  // SCOPE_WBS_INPUTS_V2 — the page used to prepend its own
+  // { value: "", label: "- none -" } sentinel on top of the empty option
+  // TooltipSelect always renders, so the dropdown opened with TWO blank
+  // options. The sentinel is gone; the select's own blank option carries the
+  // wording via placeholder="- none -" at the call site. Selecting it still
+  // yields onChange(null) -> labourTypeId = null, exactly as before.
   const labourTypeOptions = useMemo<TooltipSelectOption<string>[]>(
-    () => [
-      { value: "", label: "- none -" },
-      ...labourRates.map((r) => ({ value: r.id, label: r.role }))
-    ],
+    () => labourRates.map((r) => ({ value: r.id, label: r.role })),
     [labourRates]
   );
 
@@ -778,8 +920,11 @@ export function ScopeQuantitiesTable({
   }, [labourRates]);
 
   // SCOPE_WBS_PLANT_V1 — plant type options for the Type dropdown (grouped by
-  // category). The "- none -" sentinel is prepended so a cleared select maps
-  // to plantRateId = null.
+  // category).
+  // SCOPE_WBS_INPUTS_V2 — the prepended "- none -" sentinel is gone for the
+  // same reason as the labour list: TooltipSelect already renders one empty
+  // option, and the wording now rides on placeholder="- none -" at the call
+  // site. A cleared select still maps to plantRateId = null.
   const plantTypeOptions = useMemo<TooltipSelectOption<string>[]>(() => {
     const nonTransport = plantRates.filter((p) => !isTransportPlant(p));
     // Group by category; uncategorised items surface under their own name.
@@ -790,7 +935,7 @@ export function ScopeQuantitiesTable({
       arr.push(p);
       grouped.set(cat, arr);
     }
-    const result: TooltipSelectOption<string>[] = [{ value: "", label: "- none -" }];
+    const result: TooltipSelectOption<string>[] = [];
     for (const [cat, items] of grouped) {
       for (const p of items) {
         result.push({ value: p.id, label: `${cat}: ${p.item}` });
@@ -1081,13 +1226,17 @@ export function ScopeQuantitiesTable({
               <th style={stickyThStyle}>Qty</th>
               <th style={stickyThStyle}>Days</th>
               <th style={stickyThStyle}>Shift</th>
-              <th style={stickyThStyle}>Rate</th>
+              {/* SCOPE_WBS_INPUTS_V2 — money header, right-aligned over its
+                  right-aligned column, the same override the Total header
+                  beside it already carries. */}
+              <th style={{ ...stickyThStyle, textAlign: "right" }}>Rate</th>
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Total</th>
               {/* SCOPE_WBS_PLANT_V1 — plant sub-headers */}
               <th style={{ ...stickyThStyle, ...groupRuleStyle }}>Type</th>
               <th style={stickyThStyle}>Qty</th>
               <th style={stickyThStyle}>Days</th>
-              <th style={stickyThStyle}>Rate</th>
+              {/* SCOPE_WBS_INPUTS_V2 — plant money header, right-aligned. */}
+              <th style={{ ...stickyThStyle, textAlign: "right" }}>Rate</th>
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Total</th>
               {/* Measurement — label stays on the group band above */}
               <th style={stickyThStyle} />
@@ -1253,7 +1402,15 @@ export function ScopeQuantitiesTable({
                       isAi={isAi}
                       showRemove={showPerRowRemove}
                       onRemoveRow={() => removeRowFromItem(item.id, rowIdx)}
-                      onLabourTypeChange={(typeId) => setRowManpower(item.id, rowIdx, { labourTypeId: typeId })}
+                      // SCOPE_WBS_INPUTS_V2 — changing the role releases a stale
+                      // rate override. This is not a new rule: onPlantTypeChange
+                      // twenty lines below already clears dayRateOverride the same
+                      // way. A rate typed against Labourer must not survive onto
+                      // Supervisor. Local row state only — the patchItem calls in
+                      // this block are untouched.
+                      onLabourTypeChange={(typeId) =>
+                        setRowManpower(item.id, rowIdx, manpowerPatchForTypeChange(typeId))
+                      }
                       onQtyBlur={(v) => {
                         setRowManpower(item.id, rowIdx, { qty: v });
                         if (rowIdx === 0) void patchItem(item.id, { men: v === "" ? null : Number(v) });
@@ -1263,7 +1420,12 @@ export function ScopeQuantitiesTable({
                         if (rowIdx === 0) void patchItem(item.id, { days: v === "" ? null : Number(v) });
                       }}
                       onShiftChange={(v) => {
-                        setRowManpower(item.id, rowIdx, { shift: v });
+                        // SCOPE_WBS_INPUTS_V2 — same cascade release as the role
+                        // change above: the catalogue rate is shift-resolved, so a
+                        // rate typed against the Weekday shift is stale the moment
+                        // the row goes Night. patchItem still sends exactly the
+                        // stored shift string it sent before.
+                        setRowManpower(item.id, rowIdx, manpowerPatchForShiftChange(v));
                         if (rowIdx === 0) void patchItem(item.id, { shift: v });
                       }}
                       onDayRateOverride={(v) => setRowManpower(item.id, rowIdx, { dayRateOverride: v })}
@@ -1309,6 +1471,7 @@ export function ScopeQuantitiesTable({
                         materialOptions={materialOptions}
                         materialDensityMap={materialDensityMap}
                         isAi={isAi}
+                        showCutting={showCutting}
                         onPatch={(body) => void patchItem(item.id, body)}
                       />
                     </td>
@@ -1558,7 +1721,12 @@ function ManpowerRowCells({
     setLocalDayRate(rowState.dayRateOverride !== null ? String(rowState.dayRateOverride) : "");
   }, [rowState.dayRateOverride]);
 
-  const shiftOptions: TooltipSelectOption<string>[] = SHIFT_OPTIONS.map((s) => ({ value: s, label: s }));
+  // SCOPE_WBS_INPUTS_V2 — value stays the stored string, label follows the
+  // rate card: the "Day" value reads "Weekday".
+  const shiftOptions: TooltipSelectOption<string>[] = SHIFT_OPTIONS.map((s) => ({
+    value: s,
+    label: shiftLabel(s)
+  }));
 
   const cellSt: CSSProperties = { ...fitCellStyle, ...tdBorderStyle, verticalAlign: "top" };
 
@@ -1573,6 +1741,9 @@ function ManpowerRowCells({
           onChange={(v) => onLabourTypeChange(v === "" ? null : (v ?? null))}
           disabled={isAi}
           ariaLabel={`Labour type for row ${rowIdx + 1}`}
+          /* SCOPE_WBS_INPUTS_V2 — the wording that used to ride on a second,
+             prepended blank option now rides on the select's own one. */
+          placeholder="- none -"
           style={{ height: 28, minWidth: 140 }}
         />
       </td>
@@ -1624,7 +1795,9 @@ function ManpowerRowCells({
       {/* Rate — OverrideField following the card-level markup override pattern.
           WBS-SHIFT-S1: placeholder and locked-rate title now reflect the
           shift-resolved catalogue rate, not always the day rate. */}
-      <td style={cellSt} data-manpower-col="day-rate">
+      {/* SCOPE_WBS_INPUTS_V2 — money column: cell and input both right-aligned,
+          tabular figures so the decimal points line up down the column. */}
+      <td style={{ ...cellSt, textAlign: "right" }} data-manpower-col="day-rate">
         <OverrideField
           isOverridden={rateIsOverridden}
           onRevert={() => {
@@ -1643,12 +1816,18 @@ function ManpowerRowCells({
             aria-label={`Rate for row ${rowIdx + 1}`}
             title={
               rateIsOverridden
-                ? `Rate override active. Locked ${shiftValue} rate: $${catalogueRate != null ? catalogueRate : "—"}/day`
+                ? `Rate override active. Locked ${shiftLabel(shiftValue)} rate: $${catalogueRate != null ? catalogueRate : "—"}/day`
                 : catalogueRate !== null
-                  ? `Locked ${shiftValue} rate: $${catalogueRate}/day`
+                  ? `Locked ${shiftLabel(shiftValue)} rate: $${catalogueRate}/day`
                   : "Select a Type to see the rate"
             }
-            style={{ width: 72, height: 28, padding: "0 4px" }}
+            style={{
+              width: 72,
+              height: 28,
+              padding: "0 4px",
+              textAlign: "right",
+              fontVariantNumeric: "tabular-nums"
+            }}
             onChange={(e) => setLocalDayRate(e.target.value)}
             onBlur={() => {
               if (localDayRate === "") {
@@ -1825,6 +2004,9 @@ function PlantRowCells({
             }}
             disabled={isAi}
             ariaLabel={`Plant type for row ${rowIdx + 1}`}
+            /* SCOPE_WBS_INPUTS_V2 — see the labour Type select: one blank
+               option, and it is the component's own. */
+            placeholder="- none -"
             style={{ height: 28, minWidth: 140 }}
           />
         )}
@@ -1865,10 +2047,14 @@ function PlantRowCells({
       {/* Day rate — for catalogue picks uses OverrideField (amber when overridden,
           revert restores locked rate); for custom machines the input is plain
           (no locked rate to revert to). Rate unit badge shows /day, /hr etc. */}
-      <td style={cellSt} data-plant-col="day-rate">
+      {/* SCOPE_WBS_INPUTS_V2 — money column: right-aligned cell, right-aligned
+          inputs, tabular figures. The flex rows below justify to the end so the
+          input (and the /unit badge) sit against the same right edge as the
+          Total column next door. */}
+      <td style={{ ...cellSt, textAlign: "right" }} data-plant-col="day-rate">
         {isCustom ? (
           /* Custom machine: plain rate input, no locked rate, no revert */
-          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 2 }}>
             <input
               className="s7-input"
               type="number"
@@ -1878,7 +2064,13 @@ function PlantRowCells({
               disabled={isAi}
               aria-label={`Plant day rate for row ${rowIdx + 1}`}
               title="Custom machine — no locked rate. Enter rate manually."
-              style={{ width: 72, height: 28, padding: "0 4px" }}
+              style={{
+                width: 72,
+                height: 28,
+                padding: "0 4px",
+                textAlign: "right",
+                fontVariantNumeric: "tabular-nums"
+              }}
               onChange={(e) => setLocalDayRate(e.target.value)}
               onBlur={() => {
                 if (localDayRate === "") {
@@ -1900,7 +2092,7 @@ function PlantRowCells({
             }}
             affordance={false}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 2 }}>
               <input
                 className="s7-input"
                 type="number"
@@ -1920,7 +2112,13 @@ function PlantRowCells({
                       ? `Locked rate: $${catalogueRate}/${catalogueUnit ?? "day"}`
                       : "Select a Type to see the rate"
                 }
-                style={{ width: 72, height: 28, padding: "0 4px" }}
+                style={{
+                  width: 72,
+                  height: 28,
+                  padding: "0 4px",
+                  textAlign: "right",
+                  fontVariantNumeric: "tabular-nums"
+                }}
                 onChange={(e) => setLocalDayRate(e.target.value)}
                 onBlur={() => {
                   if (localDayRate === "") {
@@ -1977,6 +2175,12 @@ type ItemMeasurementCellProps = {
   materialOptions: TooltipSelectOption<string>[];
   materialDensityMap: Map<string, MaterialLookup>;
   isAi: boolean;
+  /**
+   * SCOPE_WBS_INPUTS_V2 — render the Cutting? tick. Computed once in
+   * ScopeQuantitiesTable from showsCuttingColumn(discipline) and threaded down
+   * so row 1 and every additional material row are gated on the one condition.
+   */
+  showCutting: boolean;
   onPatch: (body: Record<string, unknown>) => void;
 };
 
@@ -1990,6 +2194,7 @@ function ItemMeasurementCell({
   materialOptions,
   materialDensityMap,
   isAi,
+  showCutting,
   onPatch
 }: ItemMeasurementCellProps) {
   // Only row 0 has measurement data; additional rows show a placeholder
@@ -2008,6 +2213,7 @@ function ItemMeasurementCell({
       materialOptions={materialOptions}
       materialDensityMap={materialDensityMap}
       isAi={isAi}
+      showCutting={showCutting}
       onPatch={onPatch}
     />
   );
@@ -2027,6 +2233,12 @@ type ItemBodyInputsProps = {
   materialOptions: TooltipSelectOption<string>[];
   materialDensityMap: Map<string, MaterialLookup>;
   isAi: boolean;
+  /**
+   * SCOPE_WBS_INPUTS_V2 — render the Cutting? tick. Computed once in
+   * ScopeQuantitiesTable from showsCuttingColumn(discipline) and threaded down
+   * so row 1 and every additional material row are gated on the one condition.
+   */
+  showCutting: boolean;
   onPatch: (body: Record<string, unknown>) => void;
 };
 
@@ -2039,6 +2251,7 @@ function ItemBodyInputs({
   materialOptions,
   materialDensityMap,
   isAi,
+  showCutting,
   onPatch
 }: ItemBodyInputsProps) {
   // PR feat/scope-each-factor — active kind for row 1.
@@ -2566,16 +2779,23 @@ function ItemBodyInputs({
             style={{ width: 20, height: 20, marginBottom: 6 }}
           />
         </FieldCell>
-        <FieldCell label="Cutting?" width={62}>
-          <input
-            type="checkbox"
-            checked={item.cuttingIncluded === true}
-            disabled={isAi}
-            onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
-            aria-label="Include in cutting summary"
-            style={{ width: 20, height: 20, marginBottom: 6 }}
-          />
-        </FieldCell>
+        {/* SCOPE_WBS_INPUTS_V2 — the Cutting? tick renders only where the
+            cutting sheet it feeds is rendered (ScopeCardsTab gates
+            <ScopeCuttingSheet> on the same condition). On an ASB card there is
+            nowhere for a ticked value to be priced. Render gate only: an
+            already-stored cuttingIncluded is left untouched. */}
+        {showCutting ? (
+          <FieldCell label="Cutting?" width={62}>
+            <input
+              type="checkbox"
+              checked={item.cuttingIncluded === true}
+              disabled={isAi}
+              onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
+              aria-label="Include in cutting summary"
+              style={{ width: 20, height: 20, marginBottom: 6 }}
+            />
+          </FieldCell>
+        ) : null}
       </div>
 
       {/* PR feat/scope-multi-material — additional material rows (2..N) */}
@@ -2589,6 +2809,7 @@ function ItemBodyInputs({
           wasteGroupOptions={wasteGroupOptions}
           wasteItemsByGroup={wasteItemsByGroup}
           disabled={isAi}
+          showCutting={showCutting}
           onChange={(patch) => updateMaterial(index, patch)}
           onRemove={() => removeMaterial(index)}
         />
@@ -2716,6 +2937,7 @@ function MaterialCluster({
   wasteGroupOptions,
   wasteItemsByGroup,
   disabled,
+  showCutting,
   onChange,
   onRemove
 }: {
@@ -2726,6 +2948,8 @@ function MaterialCluster({
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   disabled: boolean;
+  /** SCOPE_WBS_INPUTS_V2 — same discipline gate as the row-1 tick. */
+  showCutting: boolean;
   onChange: (patch: Partial<ScopeMaterialEntry>) => void;
   onRemove: () => void;
 }) {
@@ -3039,16 +3263,19 @@ function MaterialCluster({
             style={{ width: 20, height: 20, marginBottom: 6 }}
           />
         </FieldCell>
-        <FieldCell label="Cutting?" width={62}>
-          <input
-            type="checkbox"
-            checked={entry.cuttingIncluded === true}
-            disabled={disabled}
-            onChange={(e) => onChange({ cuttingIncluded: e.target.checked })}
-            aria-label={`Material ${materialNo} include in cutting summary`}
-            style={{ width: 20, height: 20, marginBottom: 6 }}
-          />
-        </FieldCell>
+        {/* SCOPE_WBS_INPUTS_V2 — gated on the same condition as row 1's tick. */}
+        {showCutting ? (
+          <FieldCell label="Cutting?" width={62}>
+            <input
+              type="checkbox"
+              checked={entry.cuttingIncluded === true}
+              disabled={disabled}
+              onChange={(e) => onChange({ cuttingIncluded: e.target.checked })}
+              aria-label={`Material ${materialNo} include in cutting summary`}
+              style={{ width: 20, height: 20, marginBottom: 6 }}
+            />
+          </FieldCell>
+        ) : null}
         {!disabled ? (
           <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 4 }}>
             <button

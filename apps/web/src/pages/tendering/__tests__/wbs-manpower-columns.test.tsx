@@ -7,7 +7,8 @@
 //   effectiveDayRate      — the rate shown (override or catalogue fallback)
 //   manpowerRowTotal      — qty × days × dayRate; null when any is absent
 //   fmtManpowerTotal      — currency display or em dash when total is null
-//   SHIFT_OPTIONS         — the fixed shift options array
+//   SHIFT_OPTIONS         — the fixed shift options array (STORED values)
+//   shiftLabel            — SCOPE_WBS_INPUTS_V2 display label for a stored value
 //
 // Column-width stability (disabled-vs-populated widths) is verified by the
 // assertion that disabled inputs receive identical container dimensions — we
@@ -24,6 +25,7 @@ import {
   manpowerRowTotal,
   fmtManpowerTotal,
   SHIFT_OPTIONS,
+  shiftLabel,
   resolveRateForShift
 } from "../ScopeQuantitiesTable";
 
@@ -162,23 +164,38 @@ describe("fmtManpowerTotal", () => {
     expect(fmtManpowerTotal(null)).not.toContain("0.00");
   });
 
-  it("formats a positive total as AUD with no decimal places", () => {
+  // SCOPE_WBS_INPUTS_V2 — these three assertions INVERT. The column used to
+  // round to whole dollars; it now carries cents, so a total of 801.4 reads
+  // $801.40 where it used to read $801.
+
+  it("formats a positive total as AUD with exactly two decimal places", () => {
     const result = fmtManpowerTotal(8000);
     expect(result).toMatch(/8,000|8000/);
     expect(result).toMatch(/\$/);
-    expect(result).not.toContain(".");
+    expect(result).toContain(".00");
   });
 
-  it("formats zero as $0 (valid when qty or days is 0, not when type is absent)", () => {
+  it("formats zero as $0.00 (valid when qty or days is 0, not when type is absent)", () => {
     const result = fmtManpowerTotal(0);
-    expect(result).toMatch(/\$0/);
+    expect(result).toMatch(/\$0\.00/);
   });
 
-  it("rounds to the nearest dollar", () => {
-    // 2 × 0.5 × 801 = 801; fmtManpowerTotal rounds to nearest $
+  it("keeps the cents instead of rounding to the nearest dollar", () => {
+    // 2 × 0.5 × 801.4 = 801.4 — was "$801", now "$801.40".
     const result = fmtManpowerTotal(801.4);
     expect(result).toMatch(/801/);
-    expect(result).not.toContain(".4");
+    expect(result).toContain(".40");
+  });
+
+  it("pads a one-decimal total to two places (min AND max are both 2)", () => {
+    // The regression this guards: raising only maximumFractionDigits renders
+    // "$1,234.5", which is not a money string.
+    expect(fmtManpowerTotal(1234.5)).toContain(".50");
+  });
+
+  it("still renders the em dash, not $0.00, for a null total", () => {
+    expect(fmtManpowerTotal(null)).toBe("—");
+    expect(fmtManpowerTotal(null)).not.toContain("0.00");
   });
 });
 
@@ -186,12 +203,23 @@ describe("fmtManpowerTotal", () => {
 // The Shift dropdown must offer exactly these options in this order.
 
 describe("SHIFT_OPTIONS", () => {
-  it("contains exactly Day, Night, Weekend", () => {
+  // SCOPE_WBS_INPUTS_V2 — the VALUES are deliberately unchanged. "Day" is what
+  // rows on main already hold, what patchItem sends, and what
+  // resolveRateForShift matches on; only the label moved to "Weekday".
+  it("contains exactly the stored values Day, Night, Weekend", () => {
     expect(SHIFT_OPTIONS).toEqual(["Day", "Night", "Weekend"]);
   });
 
-  it("has Day as the first (default) option", () => {
+  it("has Day as the first (default) stored value", () => {
     expect(SHIFT_OPTIONS[0]).toBe("Day");
+  });
+
+  it("labels the three options Weekday / Night / Weekend, matching the rate card", () => {
+    expect(SHIFT_OPTIONS.map(shiftLabel)).toEqual(["Weekday", "Night", "Weekend"]);
+  });
+
+  it("the word Day does not appear as a label", () => {
+    expect(SHIFT_OPTIONS.map(shiftLabel)).not.toContain("Day");
   });
 });
 

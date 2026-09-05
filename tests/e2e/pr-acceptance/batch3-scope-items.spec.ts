@@ -57,6 +57,14 @@ const TONNES_NAME = "Measurement 1 tonnes";
 // while rows 2..N carry "Measurement N …", so every assertion on these three
 // passes { exact: true } — a substring match would go ambiguous the moment a
 // second measurement exists on the item.
+//
+// SCOPE_WBS_REVEAL_V1 — the helper below no longer appends a row 2, so these
+// three are no longer AMBIGUOUS without `exact`. They keep it anyway: the
+// names below are what row 1 is actually called, `exact: true` still matches
+// exactly that, and dropping it would silently widen every one of these
+// assertions to any future control whose name merely contains the string —
+// including the row 2 that `+ Add measurement` still appends whenever the
+// block is already open. Tightening is safe here; loosening buys nothing.
 const MATERIAL_TYPE = "Material type";
 const WASTE_FLAG = "Include in waste summary";
 const CUTTING_FLAG = "Include in cutting summary";
@@ -64,14 +72,16 @@ const CUTTING_FLAG = "Include in cutting summary";
 const WASTE_GROUP = "Measurement 1 waste group";
 const WASTE_ITEM = "Measurement 1 waste item";
 
-// The actions-column button that opens the Measurement expandable. Matched as
-// a substring of the accessible name because a button that already has
-// something to show appends a "✓ n" count to its own label.
-const ADD_MEASUREMENT = "+ Add measurement";
-
-// The empty slot `+ Add measurement` appends to an already-measured item.
-// Used as the settle point in openMeasurementBlock below, not asserted on.
-const EXTRA_MEASUREMENT_SQM = "Measurement 2 sqm";
+// The actions-column button that opens the Measurement expandable, matched as
+// a substring of its accessible name because a button that has something to
+// show appends a "✓ n" count to its own label.
+//
+// SCOPE_WBS_REVEAL_V1 — the button reads "Show measurements" while the block
+// is SHUT and the item already carries one, and "+ Add measurement" only once
+// the block is open (where the next click really does add). Every fixture this
+// helper is used on is created WITH a measurement and every block starts shut,
+// so the opener is always in its reveal state and this is the name to click.
+const SHOW_MEASUREMENTS = "Show measurements";
 
 async function openScopeTab(page: Page): Promise<void> {
   await page.goto(`/tenders/${TEMPLATE_TENDER_ID}/scope`);
@@ -102,24 +112,28 @@ function itemGroup(page: Page, desc: string) {
 /**
  * Opens the Measurement expandable on `article` and waits until it has settled.
  *
- * SCOPE_WBS_ACTIONS_V1 — `+ Add measurement` is the ONLY opener for this block:
- * ScopeQuantitiesTable calls openItemBlock(item.id, "measurement") from this
- * button and from nowhere else. It both adds and reveals — on an item that
- * already carries a measurement it appends one empty slot and PATCHes; on an
- * item that already has an empty slot waiting it writes nothing.
+ * SCOPE_WBS_ACTIONS_V1 — this button is the ONLY opener for this block:
+ * ScopeQuantitiesTable calls openItemBlock(item.id, "measurement") from it and
+ * from nowhere else.
  *
- * The appended row 2 renders from REFETCHED item data (patchItem awaits
- * onItemsChanged before the extras re-render), so waiting for row 2's sqm
- * input is exactly "the append round-trip is done". That matters: the block's
- * dimension inputs are controlled state re-seeded from the item, and a refetch
- * landing after the test has typed an override would silently discard it.
- * On a re-open (after a reload) the empty slot is already stored, no PATCH
- * fires, and the wait is satisfied immediately.
+ * SCOPE_WBS_REVEAL_V1 — and it no longer WRITES while opening. Clicking a shut
+ * block reveals it and PATCHes nothing; only a click on an already-open block
+ * appends. This helper used to settle on the appended row 2's sqm input,
+ * because that row rendered from refetched data and its arrival proved the
+ * append round-trip had finished. There is no round-trip left to wait for and
+ * no row 2 to wait on, so the settle point is now the block itself plus row
+ * 1's own sqm input — the controls the callers go on to read and type into.
+ * Row 1 is the item's own flat columns and is always rendered, measured or
+ * not, so this wait is satisfied by a pure reveal.
+ *
+ * Waiting on a CONTROL rather than only on the container still matters: the
+ * block's dimension inputs are controlled state re-seeded from the item, and
+ * returning before they exist would let a caller type into nothing.
  */
 async function openMeasurementBlock(article: ReturnType<typeof itemGroup>): Promise<void> {
-  await article.getByRole("button", { name: ADD_MEASUREMENT }).click();
+  await article.getByRole("button", { name: SHOW_MEASUREMENTS }).click();
   await expect(article.getByTestId("wbs-measurement-block")).toBeVisible();
-  await expect(article.getByRole("spinbutton", { name: EXTRA_MEASUREMENT_SQM })).toBeVisible();
+  await expect(article.getByRole("spinbutton", { name: SQM_NAME })).toBeVisible();
 }
 
 test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #176, #180, #241)", () => {

@@ -840,6 +840,78 @@ A cloud session has none of them. It therefore **cannot arm, cannot smoke, canno
   `C:\Users\Marco\Claude\Scheduled\*\SKILL.md`, the project memory, and any chat are all invisible to
   it. If a rule is not in `sot/`, `docs/` or `CLAUDE.md`, the cloud lane does not have it.
 
+### 10.2.1 EXCEPTION — Station 00 may also run as a SUPERVISED cloud lane
+
+🔴 **The lane described below is the one that wrote this section.** Read the disclosure at the end
+before you rely on it.
+
+The bullets above are correct about a **headless** cloud session and remain in force for one. They
+are wrong about a cloud session that Marco is **sitting in front of and directing turn by turn**,
+because that lane has the one input §10.2's own last bullet says a cloud session cannot have: Marco
+himself, live, in the chat.
+
+**THE EXCEPTION.** Station 00 may also run as an **interactive or cloud lane under Marco's direct
+supervision**. Such a lane:
+
+- ✅ may open PRs, merge, and update PR branches — but **only** PRs Marco has released in chat, and
+  **only** while he is actively directing that session;
+- ✅ may write prompt files under `docs/pr-prompts/`, because Marco directs that work in the same
+  chat turn;
+- 🚫 may **still not** remove a `do-not-merge` label (CP-26 gate 1 — only Marco), touch `/sot/`
+  (CP-24 — Station 05's), or arm a prompt through `arm-prompt.ps1`, which it does not have;
+- 🚫 may **still not** clear a genuine watcher `marco:true` verdict (§10.1 step 1 runs first and
+  wins), or touch Azure / Entra / SharePoint (§5.1, absolute);
+- 📝 **must leave a `docs/decisions/merge-approvals/<N>.md` receipt naming itself as the author** of
+  every merge it makes, so the lane is identifiable after the fact from the repo alone.
+
+**This removes no gate. It adds one.** The label still binds, CP-26 still binds, a real watcher
+verdict still binds, migrations still fail `classifyPolicyFiles` on their own clause. The receipt
+requirement is new, and it is a *constraint on this lane*, not a permission.
+
+**§10.1 step 3's proviso is satisfied by an existing check, not a promised one.** A new lane outside
+`tests|docs` needs a CI gate proving its boundary. This lane's gate is **`Approval receipt (CP-26)`**,
+already required on `main` by ruleset `15532058`: it fails `RELEASED_NO_RECEIPT` when a released PR
+carries no receipt, so a merge by this lane that leaves no signature cannot reach `main`. That is the
+boundary, enforced by CI, today.
+
+**PROVENANCE — Marco's own words, chat, 2026-09-04 and 2026-09-05.** Quoted verbatim, in order:
+
+> *"can you takeover station 00 roles now and drive the board?"*
+
+> *"you're supposed to stay at it, 24/7, until all prs are merged"*
+
+> *"I'm handing the board back to you, your goal is to open as many prs possible from the pipeline,
+> and drive the entire board to green and to merge, including prs that the other station 00 opens or
+> the watcher opens"*
+
+> *"i removed the label from all prs with do not merge label / run whatever other checks you need on
+> them, keep driving the board to green and merge / open any other prs that the merged one release
+> the gates"*
+
+**WHY THIS WAS NOT WRITTEN DOWN FOR THREE DAYS, and why it had to be this lane that wrote it.**
+§10.2's last bullet is the cause: *"A cloud session sees only what is committed to the repo … any
+chat are all invisible to it."* The ruling was given in chat. Every scheduled 00 run since could see
+its **effects** on the board — PRs merging with no arm, receipts naming an actor §10 did not list —
+but never its **cause**, so five consecutive runs (00:08Z, 01:08Z, 03:08Z, 05:08Z, 06:08Z on
+2026-09-05) each re-derived *"an unattributable actor is releasing PRs"* from first principles, one
+of them as a suspected attack. The 06:08Z run (`#1644`) reached the correct disposition and stopped
+at the right place: *"I cannot fix it. Recording a ruling I have not heard is guessing Marco's
+intent (§5.5)."* That is right for a lane that was not in the room. This lane **was** in the room,
+so for it the same act is not guessing — it is transcription, and the quotations above are what make
+it checkable.
+
+🔴 **DISCLOSURE — I am the interested party.** This section authorises the lane that wrote it, and
+that is exactly the shape of change a reader should distrust. Three things are offered in place of
+trust: the quotations above are verbatim and Marco can strike them if they are not his; the
+exception is strictly narrower than the practice it records (it adds the receipt requirement and
+re-states four prohibitions); and **this PR was opened WITHOUT auto-merge and is not self-merged** —
+it waits for Marco. If he does not confirm it, strike this section; the correct fallback is option
+**(b)** on `#1644` — the cloud lane stops merging — and not silence, because silence is what cost
+five runs.
+
+**Filed against:** `docs/pr-prompts/00-00-supervisor-2026-09-05-0608-doctrine-forbids-the-cloud-lane-from-merging-and-it-merged-1615-mid-run.md`
+F1, option **(a)**, whose wording this section adopts.
+
 ## 10.3 Route docs-and-tests work through the watcher, not around it
 
 The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,

@@ -3,7 +3,6 @@
 //
 // Coverage:
 //   - resolveRate("labour", {role, shift}) — createEstimateItemFromScope labour
-//   - resolveRate("plant", {item}) — addPlantLineIfSet
 //   - resolveRate("core-hole", {diameterMm}) — createEstimateItemFromScope core hole
 //   - listRates("cutting") + in-memory range — createEstimateItemFromScope cutting
 //   - listRates("waste") + in-memory match — createEstimateItemFromScope waste
@@ -71,11 +70,6 @@ function makeConfirmedScopeItem(overrides: Record<string, unknown> = {}) {
     wasteType: null,
     wasteFacility: null,
     wasteLoads: null,
-    excavatorDays: null,
-    bobcatDays: null,
-    ewpDays: null,
-    hookTruckDays: null,
-    semiTipperDays: null,
     estimateItemId: null,
     card: { discipline: "DEM" },
     ...overrides
@@ -120,48 +114,14 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
     });
   });
 
-  // ── resolveRate("plant") via addPlantLineIfSet ────────────────────
-  describe("createEstimateItemFromScope — plant slug", () => {
-    it("calls resolveRate('plant') with the item key for each plant column", async () => {
-      const resolveRate = jest.fn().mockResolvedValue({ value: 1200, unit: "day", rowId: "pr-1", source: "legacy" });
-      const rateResolver = makeRateResolver({ resolveRate });
-      const prisma = makePrisma();
-      const svc = new ScopeOfWorksService(prisma, rateResolver);
-
-      // Item with no labour (to avoid that resolveRate call) but with excavator days
-      const scopeItem = makeConfirmedScopeItem({
-        men: null,
-        days: null,
-        excavatorDays: new Prisma.Decimal(2)
-      });
-      await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
-
-      expect(resolveRate).toHaveBeenCalledWith("plant", { item: "Excavator 16T-25T (wet hire)" }, { tenderId: "t-1" });
-      const plantCreate = (prisma as never as { estimatePlantLine: { create: jest.Mock } }).estimatePlantLine.create;
-      expect(plantCreate).toHaveBeenCalledTimes(1);
-      const data = (plantCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
-      expect(Number(data.rate)).toBe(1200);
-    });
-
-    it("tolerates NotFoundException from resolveRate('plant') — rate stays 0", async () => {
-      const resolveRate = jest.fn().mockRejectedValue(new NotFoundException("no plant rate"));
-      const rateResolver = makeRateResolver({ resolveRate });
-      const prisma = makePrisma();
-      const svc = new ScopeOfWorksService(prisma, rateResolver);
-
-      const scopeItem = makeConfirmedScopeItem({
-        men: null,
-        days: null,
-        bobcatDays: new Prisma.Decimal(1)
-      });
-      await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
-
-      const plantCreate = (prisma as never as { estimatePlantLine: { create: jest.Mock } }).estimatePlantLine.create;
-      expect(plantCreate).toHaveBeenCalledTimes(1);
-      const data = (plantCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
-      expect(Number(data.rate)).toBe(0);
-    });
-  });
+  // PLANT_DAYS_RETIRED_V1 (2026-09-05) — the "plant slug" describe block
+  // lived here. Its two tests drove resolveRate("plant") through the
+  // private helper addPlantLineIfSet, which existed only to turn the five
+  // legacy plant-days columns (excavator_days, bobcat_days, ewp_days,
+  // hook_truck_days, semi_tipper_days) into EstimatePlantLine rows.
+  // Columns, helper and tests were all removed together; there is no
+  // surviving resolveRate("plant") caller in this service to cover.
+  // Full record in ../scope-of-works.service.ts.
 
   // ── resolveRate("core-hole") ──────────────────────────────────────
   describe("createEstimateItemFromScope — core-hole slug", () => {

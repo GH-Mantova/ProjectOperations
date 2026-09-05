@@ -266,6 +266,49 @@ escalation — and a warning that fires 30 times for nothing is a warning nobody
 if a run ever discharges an escalation *on the strength of a `[STALE]` line alone*, this becomes
 urgent and the fix is a §5 that requires the referenced PR to be the escalation's subject.**
 
+### F7 — ARCHIVING A BREADCRUMB BREAKS ANY BINDING DOCUMENT THAT CITES IT BY PATH
+
+Found by my own PR going red, which is the only reason it was found at all.
+
+`#1661` failed `Pipeline — watcher + linter tests`. I read the job log rather than the diff:
+
+```
+REJECT  docs/pipeline/DOCTRINE.md
+  x names a repo path that git does not track:
+    docs/pr-prompts/00-00-supervisor-2026-09-05-0608-doctrine-forbids-the-cloud-lane-from-merging-and-it-merged-1615-mid-run.md
+REJECT: 1 of 8 docs failed
+```
+
+**I caused it.** DOCTRINE §10.2.1 ends `**Filed against:** <that breadcrumb>`, and the archive pass
+in this very PR renamed the file to `docs/pr-prompts/archive/…`. `lint-station.mjs` checks that every
+repo path a station document names is **tracked at that path** — so archiving a cited breadcrumb
+invalidates the citation and reds the document that carries it.
+
+🔴 **The station doc's ARCHIVE instruction says archiving is safe, and its evidence is about a
+different instrument.** It proves the case for `check-breadcrumb.mjs` — freshness matches by trailing
+path segment, so an archived breadcrumb still counts and no station can be made to read SILENT. That
+is true, and it is not the coupling that bites. **`lint-station.mjs` is a second reader of the same
+filenames and it is not mentioned.** DOCTRINE §9.5's own bullet on `check-breadcrumb.mjs` closes with
+*"do not quote the one result as covering both"* — about two passes inside one script. This is the
+same shape one level up: two scripts, one filename, and only one of them surveyed.
+
+**DISPOSITION: ACTIONED.** The complete-and-additive fix, in this same PR (§8.2 — one fix in place):
+§10.2.1's citation now points at `docs/pr-prompts/archive/…` and says in one line why the path moved,
+so the reference survives and archiving stays available to every future run. `lint-station.mjs` →
+`ADMIT: all 8 docs clean`, exit 0. Edited with node and slice-and-concatenate, byte delta asserted:
+`BEFORE=80294 AFTER=80519 DELTA=225 EXPECTED=225 OK=true`, `OLD_GONE=true`, `NEW_ONCE=true`. The
+citation sits at byte 70845, past `END-CANONICAL-BLOCK: instruments v2` at 57987, so no canonical
+re-record was needed — asserted, not assumed.
+
+The alternative — leave that one breadcrumb unarchived — fails RULE 1's future half: it silently
+creates a class of un-archivable breadcrumbs with nothing recording which ones or why, and the next
+run pays the same red to rediscover it.
+
+🔧 **For the next run: before archiving, grep the binding documents for each filename you are about
+to move** — `Select-String -Path docs\pipeline\*.md,docs\pipeline\stations\*.md -Pattern <name>` —
+and repoint any hit in the same PR. One citation existed today; the check is two seconds and the
+alternative is a red board PR.
+
 ## WHAT I DID NOT DO
 
 - **I did not arm anything** — F2, with the measurement that refutes the trigger I was handed.

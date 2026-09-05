@@ -11,8 +11,8 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-09-01 14:15 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `2882e34a59f6`)
+- Last updated: 2026-09-05 14:16 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `c54776fc0cc6`)
 - Models: 293 | Enums: 68 | FK edges: 488 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
@@ -892,7 +892,7 @@ graph LR
 
 ### Model: ScopeOfWorksItem
 
-- Table: `scope_of_works_items` | Domain: Estimating | Fields: 79
+- Table: `scope_of_works_items` | Domain: Estimating | Fields: 81
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete SetNull)
@@ -903,7 +903,7 @@ graph LR
   - `covers` -> **ScopeOfWorksItem**[]
   - `subLineQuotes` -> **SubLineQuote**[]
 - Referenced by: **ScopeOfWorksItem**, **SubLineQuote**
-- Suggested measures: itemNumber, days, value, tonnes, coreHoleQty, wasteTonnes, wasteLoads, measurementQty, quantity, provisionalAmount, excavatorDays, bobcatDays, ewpDays, hookTruckDays, semiTipperDays
+- Suggested measures: itemNumber, days, value, tonnes, coreHoleQty, wasteTonnes, wasteLoads, measurementQty, markupOverride, quantity, provisionalAmount, excavatorDays, bobcatDays, ewpDays, hookTruckDays, semiTipperDays
 - Suggested dimensions: tender, card, rowType, status, materialType, elevation, acmType, acmMaterial, excavationMaterial, wasteType, material, plantAsset, materialKind, createdBy, pricedBySubItem
 
 ### Model: ScopeViewConfig

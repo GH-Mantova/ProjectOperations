@@ -122,6 +122,11 @@ its chat report plus a breadcrumb are then the only channels, and Station 00 mus
   canonical block and cannot drift; a paraphrase here can. So: no paraphrase.** The operative rules
   remain — anything containing `$` goes in a `.ps1` run with `-File`, and you keep calling
   `read_process_output` with explicit offsets until it reports `0 remaining`.
+🔴 **The no-paraphrase rule is scoped to EVERY shell, `git`, `gh` or CLI trap in this file, not
+  only the two under this heading.** The GitHub bullet below was a THIRD restatement, and it sat
+  four sections beneath the rule that forbids restating traps, under a different heading, which is
+  presumably why the earlier no-paraphrase sweep missed it. A trap belongs in DOCTRINE §9, and is
+  POINTED to from here.
 - ⚠️ Blocked commands include `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ### No second transport
@@ -172,8 +177,22 @@ correction the second one was unavailable.
 ### GitHub
 
 `gh` CLI via Desktop Commander is the authority. The **GitHub MCP token cannot merge (403)**.
-⚠️ Read labels by piping `gh pr view N --json labels` into a JSON parser - **a `--jq` string has its
-quotes stripped in transit and prints as `labels=[]`, a broken query that reads as "no labels".**
+⚠️ Label- and `--jq`-reading traps live in **DOCTRINE §9.4 — read them there; this file must
+not restate them.**
+
+🔴 **The bullet that stood here was REFUTED, with both controls, on 2026-09-05 by Station 04,
+and its polarity was the dangerous one.** It read *"a `--jq` string has its quotes stripped in
+transit and prints as `labels=[]`, a broken query that reads as no labels"* — which teaches a
+reader to distrust a **correct** label reading, and to read a genuine empty as a broken
+instrument. Labels are the `do-not-merge` / CP-26 gate, so the reading it taught you to mistrust
+is the one that stops an agent merging Marco's work.
+
+[MEASURED] 2026-09-05, through `-Command`: `gh pr view 1369 --json labels --jq '.labels[].name'`
+printed `do-not-merge` — POSITIVE control, #1369 genuinely carries that label. The same query
+against #1640, which genuinely has none, printed nothing — also correct. Escaped double quotes
+fail **LOUDLY** (`unknown arguments`), never silently. The correction has been on `origin/main` in
+DOCTRINE §9.4 since 2026-08-26 and was never applied here: it is the third paraphrase in this
+file to drift away from §9, which is why the rule above is now scoped to all of them.
 
 ### Other connectors on this account
 

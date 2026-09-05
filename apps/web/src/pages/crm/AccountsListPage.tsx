@@ -7,13 +7,14 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
 import { AccountLinkPreview } from "./AccountLinkPreview";
 import { buildCreateNoteBody } from "./RelationshipsPage";
-import { CRM_COLD_V2 } from "./crm-cold";
+import { CRM_COLD_V3, type ContactState } from "./crm-cold";
 
-// Re-exported so the existing computeGoingCold callers (and its dedicated
-// vitest suite in AccountsListPage.test.ts) can keep importing CRM_COLD_V2
-// from this module. The constant itself lives at ./crm-cold to keep it off
-// the circular-import path with RelationshipsPage.
-export { CRM_COLD_V2 };
+// Re-exported so the existing computeContactState callers (and its dedicated
+// vitest suites) can keep importing CRM_COLD_V3 from this module. The constant
+// itself lives at ./crm-cold to keep it off the circular-import path with
+// RelationshipsPage.
+export { CRM_COLD_V3 };
+export type { ContactState };
 import {
   createAccount,
   validateCreateAccountForm,
@@ -39,34 +40,68 @@ export type AccountSummaryRow = {
   openOpportunitiesCount: number;
   lastContactedAt: string | null;
   goingCold: boolean;
+  contactState: ContactState;
 };
 
-// ── Helper: goingCold logic (pure, exported for unit tests) ───────────────────
+// ── Helper: contact-state logic (pure, exported for unit tests) ───────────────
 
 /**
- * Derives the going-cold flag from a summary row.
- * Mirrors the server-side deriveGoingCold — exported so the vitest suite
- * can assert the four cases without a DOM or fetch mock.
+ * Derives the contact state from a summary row.
+ * Mirrors the server-side deriveContactState — exported so the vitest suites
+ * can assert the four rules without a DOM or fetch mock.
  *
- * CRM_COLD_V2 rules (2026-09-01):
- *   - lifecycle === "PAST"        → never cold
- *   - lastContactedAt null        → COLD (if non-PAST) — never-contacted is coldest
- *   - lastContactedAt > 60 days   → cold
+ * CRM_COLD_V3 rules (2026-09-04), in order:
+ *
+ *   lifecycle === "PAST"                        -> "PAST"
+ *   lastContactedAt === null                    -> "NEVER_CONTACTED"
+ *   older than CRM_COLD_V3.THRESHOLD_DAYS       -> "COLD"
+ *   otherwise                                   -> "IN_CONTACT"
+ *
+ * The boundary is STRICT: contacted exactly THRESHOLD_DAYS ago is still
+ * "IN_CONTACT"; one millisecond past it is "COLD".
  */
-export function computeGoingCold(
+export function computeContactState(
   lifecycle: string,
   lastContactedAt: string | Date | null,
   nowMs = Date.now()
-): boolean {
-  if (lifecycle === "PAST") return false;
-  if (!lastContactedAt) return CRM_COLD_V2.NULL_IS_COLD;
+): ContactState {
+  if (lifecycle === "PAST") return "PAST";
+  if (!lastContactedAt) return "NEVER_CONTACTED";
   const ts =
     typeof lastContactedAt === "string"
       ? new Date(lastContactedAt).getTime()
       : lastContactedAt.getTime();
-  if (!Number.isFinite(ts)) return false;
+  // An unparseable date is not evidence of silence — treat it as in contact,
+  // exactly as the boolean mirror did before this slice.
+  if (!Number.isFinite(ts)) return "IN_CONTACT";
   const diffDays = (nowMs - ts) / (1000 * 60 * 60 * 24);
-  return diffDays > CRM_COLD_V2.THRESHOLD_DAYS;
+  return diffDays > CRM_COLD_V3.THRESHOLD_DAYS ? "COLD" : "IN_CONTACT";
+}
+
+/**
+ * The "Going cold" tile's rendered content. Pure and exported because the web
+ * workspace has no jsdom — every web test here is pure logic, so the tile's
+ * text is built by a function the suite can call directly.
+ *
+ * The value counts COLD only. Never-contacted is a separate number and rides
+ * on a second sub-line clause that is ABSENT when the count is zero, so the
+ * tile never grows a trailing "· 0 never contacted".
+ *
+ * The accent (the tile's attention colour) follows the cold count alone. An
+ * account nobody has contacted yet is a backlog, not an alarm.
+ */
+export function buildGoingColdTile(
+  rows: Array<Pick<AccountSummaryRow, "contactState">>
+): { label: string; value: number; subLine: string; accent: boolean } {
+  const cold = rows.filter((r) => r.contactState === "COLD").length;
+  const never = rows.filter((r) => r.contactState === "NEVER_CONTACTED").length;
+  const base = `no contact in ${CRM_COLD_V3.THRESHOLD_DAYS} days`;
+  return {
+    label: "Going cold",
+    value: cold,
+    subLine: never > 0 ? `${base} · ${never} never contacted` : base,
+    accent: cold > 0
+  };
 }
 
 // ── New-account modal ─────────────────────────────────────────────────────────
@@ -583,7 +618,9 @@ export function AccountsListPage() {
 
   const totalAccounts = rows.length;
   const openOppsTotal = rows.reduce((sum, r) => sum + r.openOpportunitiesCount, 0);
-  const goingColdCount = rows.filter((r) => r.goingCold).length;
+  // CRM_COLD_V3: the tile counts COLD only, and carries the never-contacted
+  // count on a second sub-line clause. buildGoingColdTile owns both.
+  const goingColdTile = buildGoingColdTile(rows);
   // unlinkedCount comes from the link-preview fetch.
 
   // ── Client-side filtering ──────────────────────────────────────────────────
@@ -719,10 +756,10 @@ export function AccountsListPage() {
             <StatTile label="Accounts" value={totalAccounts} subLine="all non-archived" />
             <StatTile label="Open opportunities" value={openOppsTotal} subLine="across all accounts" />
             <StatTile
-              label="Going cold"
-              value={goingColdCount}
-              subLine={`no contact in ${CRM_COLD_V2.THRESHOLD_DAYS} days`}
-              accent={goingColdCount > 0}
+              label={goingColdTile.label}
+              value={goingColdTile.value}
+              subLine={goingColdTile.subLine}
+              accent={goingColdTile.accent}
             />
             <StatTile
               label="Unlinked clients"
@@ -938,7 +975,7 @@ export function AccountsListPage() {
                       {/* Last contact — with GOING COLD chip inside the cell */}
                       <td style={tdStyle}>
                         <div>{fmtRelative(row.lastContactedAt)}</div>
-                        {row.goingCold && (
+                        {row.contactState === "COLD" && (
                           <span
                             aria-label="Going cold"
                             style={{
@@ -954,6 +991,29 @@ export function AccountsListPage() {
                             }}
                           >
                             Going cold
+                          </span>
+                        )}
+                        {/* CRM_COLD_V3: never-contacted is its own state and
+                            reads deliberately quieter than the cold chip —
+                            same slot, same shape, the page's existing muted
+                            grey (the Owner cell's em-dash grey) instead of the
+                            orange alarm set. A backlog, not an alarm. */}
+                        {row.contactState === "NEVER_CONTACTED" && (
+                          <span
+                            aria-label="Never contacted"
+                            style={{
+                              display: "inline-block",
+                              marginTop: 4,
+                              padding: "2px 10px",
+                              borderRadius: 12,
+                              background: "#fff",
+                              border: "1px solid #e5e7eb",
+                              color: "#9ca3af",
+                              fontSize: 11,
+                              fontWeight: 600
+                            }}
+                          >
+                            Never contacted
                           </span>
                         )}
                       </td>

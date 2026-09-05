@@ -14,7 +14,7 @@
 // tests are pure logic). We assert what we can without mounting:
 //   - the shared TAB descriptors exported by TendersPage / CommsPage,
 //   - the outer→inner tab resolution helpers,
-//   - the CRM_COLD_V2 mirror on the client,
+//   - the CRM_COLD_V3 mirror on the client,
 //   - the going-cold threshold selector options,
 //   - and negative regression scans on the RelationshipsPage source text.
 
@@ -29,7 +29,7 @@ import {
   GOING_COLD_THRESHOLD_OPTIONS,
   GOING_COLD_DEFAULT_THRESHOLD
 } from "../RelationshipsPage";
-import { CRM_COLD_V2 } from "../AccountsListPage";
+import { CRM_COLD_V3 } from "../AccountsListPage";
 import { formatWinRate } from "../formatWinRate";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,26 +68,28 @@ describe("win rate — formatWinRate is the ONE formatter (defect 1)", () => {
   });
 });
 
-// ── Defect 4 (surfaced first as a test): CRM_COLD_V2 default numbers ──────────
+// ── Defect 4 (surfaced first as a test): CRM_COLD_V3 default numbers ──────────
 
-describe("CRM_COLD_V2 — one contract for the going-cold threshold (defect 4)", () => {
+describe("CRM_COLD_V3 — one contract for the going-cold threshold (defect 4)", () => {
   // Spec test 4: "Both services report the same threshold default. Assert the
   // number, not the constant name." We can't import the server file from the
   // web test (different tsconfig root), so we pin the number on the web mirror
   // here; the server side is pinned in accounts.service.spec.ts by the same
   // literal — a drift in either fails the corresponding suite.
-  it("web CRM_COLD_V2.THRESHOLD_DAYS is 60", () => {
-    expect(CRM_COLD_V2.THRESHOLD_DAYS).toBe(60);
+  it("web CRM_COLD_V3.THRESHOLD_DAYS is 60", () => {
+    expect(CRM_COLD_V3.THRESHOLD_DAYS).toBe(60);
   });
 
-  it("web CRM_COLD_V2.NULL_IS_COLD is true (never-contacted is coldest)", () => {
-    expect(CRM_COLD_V2.NULL_IS_COLD).toBe(true);
+  // The threshold survived the 2026-09-04 ruling untouched — only the null
+  // rule changed, and it is no longer a flag on this constant at all.
+  it("web CRM_COLD_V3 carries the threshold and nothing else", () => {
+    expect(Object.keys(CRM_COLD_V3)).toEqual(["THRESHOLD_DAYS"]);
   });
 
-  it("the RelationshipsPage threshold selector defaults to CRM_COLD_V2.THRESHOLD_DAYS", () => {
+  it("the RelationshipsPage threshold selector defaults to CRM_COLD_V3.THRESHOLD_DAYS", () => {
     // If the tab defaulted to a different value than the KPI tile the two
     // numbers would immediately diverge on first render.
-    expect(GOING_COLD_DEFAULT_THRESHOLD).toBe(CRM_COLD_V2.THRESHOLD_DAYS);
+    expect(GOING_COLD_DEFAULT_THRESHOLD).toBe(CRM_COLD_V3.THRESHOLD_DAYS);
     expect(GOING_COLD_DEFAULT_THRESHOLD).toBe(60);
   });
 

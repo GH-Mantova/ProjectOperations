@@ -6,6 +6,10 @@
  *   - Scenario picker: select a row to drive the running-total preview
  *   - Numbered step list with up/down reorder, running total beside each step
  *   - Steps whose condition is not met render greyed with "not applied"
+ *   - CHARGE_STEP_PARITY_V1: the preview runs the SAME evaluator as the server
+ *     (`@project-ops/config/charge-step-semantics`), so it cannot show a price
+ *     the server would not produce. A step that cannot be worked out shows the
+ *     reason in place of a running total — never a plausible-looking figure.
  *   - "Add step" form below the list
  *   - Collapsed "Show as formula" disclosure (read-only)
  *   - Impact line: open tender count + snapshot note
@@ -14,6 +18,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  describeChargeStepIssue,
+  evaluateChargeSteps,
+  type ChargeStepTrailEntry
+} from "@project-ops/config/charge-step-semantics";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import type { ChargeStep, Condition, ConditionCmp } from "../../lib/chargeStepTypes";
@@ -21,6 +30,7 @@ import type { ChargeStep, Condition, ConditionCmp } from "../../lib/chargeStepTy
 // ── Re-exported helpers (tested in ChargeStepsEditor.test.tsx) ────────────
 
 export type { ChargeStep, Condition };
+export type { ChargeStepIssue, ChargeStepTrailEntry } from "@project-ops/config/charge-step-semantics";
 
 export const KNOWN_OPS = [
   "start",
@@ -192,98 +202,21 @@ export function validateSteps(
   return errors;
 }
 
-/** Evaluate steps against a values map and return per-step running totals. */
+/**
+ * Evaluate steps against a values map and return the per-step trail.
+ *
+ * CHARGE_STEP_PARITY_V1 — this is a thin call into
+ * `@project-ops/config/charge-step-semantics`, the same function the server
+ * evaluator (`apps/api/src/modules/rates/rate-step-evaluator.ts`) calls. The
+ * preview cannot show a number the server would not produce, and a step that
+ * cannot be worked out carries an `issue` and a `runningTotal` of `null`
+ * instead of a plausible-looking figure.
+ */
 export function evaluateStepsClient(
   steps: ChargeStep[],
   values: Record<string, number | string>
-): Array<{ runningTotal: number | null; skipped: boolean }> {
-  const result: Array<{ runningTotal: number | null; skipped: boolean }> = [];
-  let running: number = 0;
-
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    const condOk = checkCondition((step as { when?: Condition }).when, values);
-
-    if (!condOk) {
-      result.push({ runningTotal: running, skipped: true });
-      continue;
-    }
-
-    try {
-      switch (step.op) {
-        case "start": {
-          const val = resolveNum(step.field, values);
-          running = val ?? 0;
-          break;
-        }
-        case "multiply": {
-          const val = resolveNum(step.field, values);
-          if (val !== null) running *= val;
-          break;
-        }
-        case "divide": {
-          const val = resolveNum(step.field, values);
-          if (val !== null && val !== 0) running /= val;
-          break;
-        }
-        case "add": {
-          const val = resolveNum(step.field, values);
-          if (val !== null) running += val;
-          break;
-        }
-        case "subtract": {
-          const val = resolveNum(step.field, values);
-          if (val !== null) running -= val;
-          break;
-        }
-        case "round":
-          if (step.direction === "nearest") running = Math.round(running / step.interval) * step.interval;
-          else if (step.direction === "up") running = Math.ceil(running / step.interval) * step.interval;
-          else running = Math.floor(running / step.interval) * step.interval;
-          break;
-        case "floor":
-          running = Math.max(running, step.value);
-          break;
-        case "cap":
-          running = Math.min(running, step.value);
-          break;
-      }
-      result.push({ runningTotal: running, skipped: false });
-    } catch {
-      result.push({ runningTotal: null, skipped: false });
-    }
-  }
-  return result;
-}
-
-function resolveNum(
-  field: string | number,
-  values: Record<string, number | string>
-): number | null {
-  if (typeof field === "number") return field;
-  const val = values[field];
-  if (val === undefined || val === null) return null;
-  if (typeof val === "number") return val;
-  const n = Number(val);
-  return isNaN(n) ? null : n;
-}
-
-function checkCondition(
-  when: Condition | undefined,
-  values: Record<string, number | string>
-): boolean {
-  if (!when) return true;
-  const lhs = values[when.field];
-  const rhs = when.value;
-  switch (when.cmp) {
-    case "is": return lhs === rhs || String(lhs) === String(rhs);
-    case "is not": return lhs !== rhs && String(lhs) !== String(rhs);
-    case ">": return Number(lhs) > Number(rhs);
-    case "<": return Number(lhs) < Number(rhs);
-    case ">=": return Number(lhs) >= Number(rhs);
-    case "<=": return Number(lhs) <= Number(rhs);
-    default: return true;
-  }
+): ChargeStepTrailEntry[] {
+  return evaluateChargeSteps(steps, values).trail;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -571,7 +504,9 @@ export function ChargeStepsEditor({
             const trailEntry = trail[i];
             const skipped = trailEntry?.skipped ?? false;
             const runningTotal = trailEntry?.runningTotal ?? null;
+            const stepIssue = trailEntry?.issue ?? null;
             const valError = validationErrors.find((e) => e.index === i);
+            const tinted = stepIssue !== null || valError !== undefined;
 
             return (
               <li
@@ -585,11 +520,11 @@ export function ChargeStepsEditor({
                   borderRadius: 6,
                   background: skipped
                     ? "rgba(148,163,184,0.07)"
-                    : valError
+                    : tinted
                       ? "rgba(239,68,68,0.06)"
                       : "var(--surface-raised, #f8fafc)",
                   opacity: skipped ? 0.6 : 1,
-                  border: valError
+                  border: tinted
                     ? "1px solid rgba(239,68,68,0.25)"
                     : "1px solid var(--border, #e5e7eb)"
                 }}
@@ -627,6 +562,24 @@ export function ChargeStepsEditor({
                     </span>
                   ) : null}
                 </span>
+
+                {/* Why this step could not be worked out — shown instead of a
+                    running total, so the editor never prints a figure the
+                    server would not produce. */}
+                {stepIssue ? (
+                  <span
+                    role="note"
+                    data-testid={`step-issue-${i}`}
+                    style={{
+                      fontSize: 11,
+                      color: "var(--status-danger, #ef4444)",
+                      textAlign: "right",
+                      maxWidth: 260
+                    }}
+                  >
+                    {describeChargeStepIssue(stepIssue)}
+                  </span>
+                ) : null}
 
                 {/* Running total */}
                 {runningTotal !== null ? (

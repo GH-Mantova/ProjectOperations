@@ -461,6 +461,28 @@ here now because they are true for **every** station.
   above, and it corrupts a grep, a line count, a hash or a node read just as readily. **To dump a
   blob, write it with node (`readFileSync`/`writeFileSync`, utf8) — never `>` or `Out-File`. To
   decide whether two files differ, use `git diff`, `git hash-object`, or `Buffer.compare` in node.**
+- 🔴 **AND THE CURE ABOVE HAS ITS OWN READ-BACK TRAP: NEVER COMPARE FILE *LENGTHS* ACROSS A
+  `git show` / WORKING-COPY BOUNDARY.** MEASURED 2026-09-05T10:1xZ by Station 04, comparing the
+  watcher clone's `scripts/pr-watcher/index.mjs` against `origin/main`'s. **Two independent errors
+  stack, both exit 0, both look like measurements**, and together they compose into *"the clone runs
+  different code"* — while the blob hashes were `901ea012…` on both sides the whole time.
+  **(i) A blob is stored LF; a Windows working copy is CRLF**, so the two differ by exactly the
+  file's line count — the measured delta was **3326**, equal to the blob's LF count.
+  **(ii) JavaScript `String.length` counts UTF-16 CODE UNITS, not bytes**, so
+  `readFileSync(p, "utf8").length` under-reports every non-ASCII file — here by **564** on each
+  side. Neither error is visible in the number, and both survive the bullet above: *"read it with
+  node"* is the right cure for the `>` trap, and **comparing lengths is the wrong next step after
+  it.** This is §9.6 in its quietest form — not an empty result read as an empty world, but two
+  well-formed integers that were never measuring the same thing.
+  🔧 **Compare CONTENT, never SIZE, and never across the boundary.** The sound forms, and there
+  is no fourth: `git rev-parse <ref>:<path>` against `git hash-object <path>` (no pipe — §9.1);
+  `git diff --numstat <ref> -- <path>`, where EMPTY output is the real answer; or
+  `Buffer.compare(readFileSync(a), readFileSync(b))` on two files that are on the **same** side of
+  the boundary. If you genuinely want a byte count, read a **Buffer** (`readFileSync(p).length`),
+  never a decoded string. ⚠️ **A size comparison that AGREES proves nothing either** — the two
+  errors push in opposite directions and can cancel, so a matching length is not a match. Found by
+  Station 04 2026-09-05T10:10Z (F4), dispatched to 00, deferred by 00's 10:35Z run for a PR of its
+  own, landed here.
 - 🔴 **`Select-String -SimpleMatch` takes a LITERAL, so `[regex]::Escape()` must NEVER be applied
   to its pattern.** The escaped form `reminder-policy\.service\.ts` is searched *with the
   backslashes*, matches nothing, and exits 0 — an absent-needle reading that is really an unusable

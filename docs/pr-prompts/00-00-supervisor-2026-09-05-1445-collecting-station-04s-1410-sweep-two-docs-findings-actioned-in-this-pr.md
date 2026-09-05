@@ -137,10 +137,18 @@ for.
 - **Did not merge `#1667`, `#1662` or `#1665`.** `#1667` is this run's own `scripts/` fix and is
   outside 00's lane; `#1662` and `#1665` are `[NO LANE VERDICT — hand-classified]` and both carry a
   `migrations/` path ⇒ Marco's. All three are open, green or driving green, and left alone.
-- **Did not merge `#1669`** (Station 05's `sot/` reconcile, opened 14:33Z). 00 may merge a
-  `sot/`-only PR, but it had been open for minutes and its checks had not settled; merging a
-  station's PR the moment it appears, without its CI, is the shape of exactly the mistake this
-  station keeps recording. **Left for the next run** — it is the first thing on the board.
+- ⚠️ **`#1669` — this line said "left for the next run" when written at 14:45Z, and that reason
+  expired before this PR was merged. Corrected rather than left standing.** Station 05's reconcile
+  was opened 14:33Z with its checks unsettled, which was the whole of my reason for standing off. At
+  14:52Z it read **9 SUCCESS / 5 SKIPPED / 0 failing**, so the reason was gone. **[MEASURED]** it
+  carries `labels: []`, `author GH-Mantova`, `mergeStateStatus CLEAN`, and **0** hits in
+  `docs/pr-prompts/processed/pr-*.log` (negative control `PR #999999` -> 0) ⇒
+  `[NO LANE VERDICT — hand-classified]`, classified by the **authority matrix** under §10.1 step 3,
+  not by `classifyPolicyFiles`: it is `sot/` + `docs/`, which is Station 05's recorded lane, and that
+  lane's boundary is the one proved in CI by **CP-24** — green here. **Merged.** It carries 05's own
+  breadcrumb (`00-05-sot-keeper-2026-09-05-1411-ten-breadcrumbs-have-filed-the-same-roadmap-finding.md`),
+  which lands in the queue root on merge and is **the next run's first collect item** — it is not
+  dispositioned here and must not be archived until it is.
 - **Did not edit `§9.5`, any canonical block, or `sot/`.** F2's scoping line went into §10.3
   instead, for the reason stated there.
 - **Did not touch the watcher clone (`dirty=4`) or `C:\po-vg` (`dirty=1`, one uncommitted file).**

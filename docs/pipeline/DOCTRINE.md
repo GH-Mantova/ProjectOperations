@@ -620,9 +620,24 @@ here now because they are true for **every** station.
   `armed: 0` was correct when printed and false three minutes later.
 - ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
   design**. Exclude them from prompt audits instead of reporting them as malformed.
-- ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15.** It is not drift and it is
-  not a stop signal. The real sentinel is `STOP-WATCHER`, and **it cannot stop an already-running
+- ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15, at
+  `C:\po-watcher\STOP-WATCHER-LANE2` — in the `po-watcher` PARENT directory, OUTSIDE both git
+  repos.** It is not drift and it is not a stop signal. The real sentinel is `STOP-WATCHER`,
+  likewise clone-side at `C:\po-watcher\STOP-WATCHER`, and **it cannot stop an already-running
   watcher.**
+  🔴 **The PATH is the load-bearing half of this bullet, and omitting it manufactured the
+  opposite verdict twice.** Without it the obvious probe — a `STOP-WATCHER*` search in
+  `C:\ProjectOperations2` and in `C:\po-watcher\ProjectOperations` — returns **0 and 0**, which
+  reads as *"the documented mechanism is gone"*. That false negative was written into a table of
+  §9 verdicts on 2026-08-26, and **four** separate Station 04 runs (08-25, 08-26, 08-27, 08-28)
+  have since filed the identical one-clause fix, none of which landed. [MEASURED] 2026-09-05T07:2xZ:
+  `C:\po-watcher\STOP-WATCHER-LANE2` present, **1090 bytes**; `C:\po-watcher\STOP-WATCHER`
+  **absent** (`Test-Path` -> False); NEGATIVE control `C:\po-watcher\zzzNoSuchNeedleZzz*` -> 0 files.
+  🔧 **Check the MECHANISM, not the file.** The readers are the launchers in `C:\po-watcher`,
+  **none of which is in this repo**: `ensure-watcher.ps1` (3 hits), `watcher-launcher.ps1` (4),
+  `watcher-launcher-singlelane.ps1` (4), `watcher-launcher-lane2.ps1` (3).
+  `docs/pipeline/stations/03-machine-minder.md` still repeats the pathless form and inherits this
+  trap.
 - ⚠️ **A restart adopts nothing.** The watcher runs `index.mjs` **from the clone**, so the clone must
   be fast-forwarded before a restart changes any behaviour.
 - ⚠️ **The watchdog heartbeat only ticks MID-RUN**, so age alone cannot separate idle from wedged. A

@@ -21,19 +21,19 @@ model HealthcheckSeedMarker {
 // this slice only introduces the table, nullable FKs on the pilot models, and
 // the one seeded default Tenant. No behaviour changes here.
 model Tenant {
-  id        String    @id @default(cuid())
-  name      String
-  code      String?   @unique
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  clients   Client[]
-  workers   Worker[]
-  contacts  Contact[]
-  tenders   Tender[]
-  jobs      Job[]
+  id                   String         @id @default(cuid())
+  name                 String
+  code                 String?        @unique
+  isActive             Boolean        @default(true) @map("is_active")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  clients              Client[]
+  workers              Worker[]
+  contacts             Contact[]
+  tenders              Tender[]
+  jobs                 Job[]
   // MT-2: users whose home company is this tenant
-  homeUsers User[]
+  homeUsers            User[]
   // MT-4 SLICE 1: explicit share grants where this tenant is the grantee
   clientSharesGranted  ClientShare[]
   workerSharesGranted  WorkerShare[]
@@ -55,9 +55,9 @@ model ClientShare {
   grantedAt       DateTime @default(now()) @map("granted_at")
   note            String?
 
-  client       Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client        Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   granteeTenant Tenant @relation(fields: [granteeTenantId], references: [id])
-  grantedBy    User   @relation(fields: [grantedByUserId], references: [id])
+  grantedBy     User   @relation(fields: [grantedByUserId], references: [id])
 
   @@unique([clientId, granteeTenantId])
   @@index([granteeTenantId])
@@ -264,10 +264,10 @@ model User {
   // a user can be the assigned WHS officer, and can create legal-document
   // versions. Both are SetNull on delete so removing a user never orphans
   // company records.
-  companyProfilesAsWhs    CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
-  companyLegalDocsCreated CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
-  assetCheckouts          AssetCheckout[]        @relation("AssetCheckoutHolderUser")
-  assetUsageReadingsRecorded AssetUsageReading[] @relation("AssetUsageReadingRecordedBy")
+  companyProfilesAsWhs       CompanyProfile[]       @relation("CompanyProfileWhsOfficer")
+  companyLegalDocsCreated    CompanyLegalDocument[] @relation("CompanyLegalDocCreatedBy")
+  assetCheckouts             AssetCheckout[]        @relation("AssetCheckoutHolderUser")
+  assetUsageReadingsRecorded AssetUsageReading[]    @relation("AssetUsageReadingRecordedBy")
 
   // Commitments (ERP gap A â€” cost control)
   commitmentsCreated        Commitment[]       @relation("CommitmentCreatedBy")
@@ -287,10 +287,10 @@ model User {
   caseCommentsAuthored CaseComment[] @relation("CaseCommentAuthor")
 
   // CRM â€” Opportunities (unified leads + opportunities pipeline).
-  opportunitiesOwned     Opportunity[] @relation("OpportunityOwner")
+  opportunitiesOwned      Opportunity[] @relation("OpportunityOwner")
   opportunitiesArchivedBy Opportunity[] @relation("OpportunityArchivedBy")
   // Knowledge Base / SOP library (slice 2 â€” KB articles authored by this user).
-  kbArticlesAuthored KbArticle[]   @relation("KbArticleAuthor")
+  kbArticlesAuthored      KbArticle[]   @relation("KbArticleAuthor")
 
   // Universal activity Timeline â€” every note/system entry a user authors.
   activityEntriesAuthored ActivityEntry[] @relation("ActivityEntryAuthor")
@@ -339,22 +339,22 @@ model User {
   emailLogsLogged EmailLog[] @relation("EmailLogLoggedBy")
 
   // SoR S4: Job/tender rate-book snapshots locked by this user.
-  lockedSorSnapshots   JobSorSnapshot[] @relation("SorSnapshotLockedBy")
+  lockedSorSnapshots JobSorSnapshot[] @relation("SorSnapshotLockedBy")
 
   // SoR S7: Agreed Records (dayworks) created / signed by this user.
-  agreedRecordsCreated       AgreedRecord[]           @relation("AgreedRecordCreatedBy")
-  agreedRecordsWorkerSigned  AgreedRecord[]           @relation("AgreedRecordWorkerSigner")
-  agreedRecordAttachments    AgreedRecordAttachment[] @relation("AgreedRecordAttachmentUploader")
+  agreedRecordsCreated      AgreedRecord[]           @relation("AgreedRecordCreatedBy")
+  agreedRecordsWorkerSigned AgreedRecord[]           @relation("AgreedRecordWorkerSigner")
+  agreedRecordAttachments   AgreedRecordAttachment[] @relation("AgreedRecordAttachmentUploader")
 
   // SoR S8: Agreed Record office review / approval by this user.
-  agreedRecordsReviewed      AgreedRecord[]           @relation("AgreedRecordReviewer")
-  agreedRecordsApproved      AgreedRecord[]           @relation("AgreedRecordApprover")
-  agreedRecordPricingLines   AgreedRecordPricingLine[] @relation("AgreedRecordPricingLinesPricedBy")
+  agreedRecordsReviewed    AgreedRecord[]            @relation("AgreedRecordReviewer")
+  agreedRecordsApproved    AgreedRecord[]            @relation("AgreedRecordApprover")
+  agreedRecordPricingLines AgreedRecordPricingLine[] @relation("AgreedRecordPricingLinesPricedBy")
 
   // MT-2: home-tenant assignment. Nullable — unassigned users / Super Users with
   // no active tenant see only shared rows (fail-closed per MT-1 rule).
-  homeTenantId String? @map("home_tenant_id")
-  homeTenant   Tenant? @relation(fields: [homeTenantId], references: [id], onDelete: SetNull)
+  homeTenantId         String?        @map("home_tenant_id")
+  homeTenant           Tenant?        @relation(fields: [homeTenantId], references: [id], onDelete: SetNull)
   // MT-4 SLICE 1: share grants recorded by this user
   clientSharesGranted  ClientShare[]
   workerSharesGranted  WorkerShare[]
@@ -902,40 +902,40 @@ model Client {
 }
 
 model Contact {
-  id                     String         @id @default(cuid())
-  organisationType       String         @map("organisation_type")
-  organisationId         String         @map("organisation_id")
-  firstName              String         @map("first_name")
-  lastName               String         @map("last_name")
+  id                     String             @id @default(cuid())
+  organisationType       String             @map("organisation_type")
+  organisationId         String             @map("organisation_id")
+  firstName              String             @map("first_name")
+  lastName               String             @map("last_name")
   role                   String?
   email                  String?
   phone                  String?
   mobile                 String?
-  isPrimary              Boolean        @default(false) @map("is_primary")
-  isAccountsContact      Boolean        @default(false) @map("is_accounts_contact")
-  isActive               Boolean        @default(true) @map("is_active")
-  hasPortalAccess        Boolean        @default(false) @map("has_portal_access")
+  isPrimary              Boolean            @default(false) @map("is_primary")
+  isAccountsContact      Boolean            @default(false) @map("is_accounts_contact")
+  isActive               Boolean            @default(true) @map("is_active")
+  hasPortalAccess        Boolean            @default(false) @map("has_portal_access")
   notes                  String?
-  createdById            String?        @map("created_by_id")
-  createdBy              User?          @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  includeInInvoiceEmails Boolean        @default(false) @map("include_in_invoice_emails")
-  createdAt              DateTime       @default(now()) @map("created_at")
-  updatedAt              DateTime       @updatedAt @map("updated_at")
+  createdById            String?            @map("created_by_id")
+  createdBy              User?              @relation("ContactCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  includeInInvoiceEmails Boolean            @default(false) @map("include_in_invoice_emails")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
   tenderClients          TenderClient[]
-  opportunities          Opportunity[]  @relation("ContactOpportunities")
+  opportunities          Opportunity[]      @relation("ContactOpportunities")
   // MT-0: nullable tenant scope (additive; NULL = shared / existing company).
-  tenantId               String?        @map("tenant_id")
-  tenant                 Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  tenantId               String?            @map("tenant_id")
+  tenant                 Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   // CRM-2: optional link to the Account that owns this contact.
   // CRM-S3 data migration backfills this for contacts whose organisationType =
   // 'CLIENT' where their Client already has an Account. New contacts are linked
   // at write time via ensureAccountForClient. Null = not yet linked (backward-
   // compatible; no orphan risk).
-  accountId              String?        @map("account_id")
-  account                Account?       @relation("AccountContacts", fields: [accountId], references: [id], onDelete: SetNull)
+  accountId              String?            @map("account_id")
+  account                Account?           @relation("AccountContacts", fields: [accountId], references: [id], onDelete: SetNull)
   // CRM-2: last time someone logged a RelationshipNote against this contact.
   // Drives the "going cold" nudge. Null = never contacted / pre-CRM-2.
-  lastContactedAt        DateTime?      @map("last_contacted_at")
+  lastContactedAt        DateTime?          @map("last_contacted_at")
   // CRM-2: relationship notes authored about this contact.
   relationshipNotes      RelationshipNote[] @relation("RelationshipNoteContact")
   // MT-4 SLICE 1: explicit share grants for this contact record
@@ -1303,98 +1303,98 @@ model LookupValue {
 }
 
 model Tender {
-  id                  String                    @id @default(cuid())
-  tenderNumber        String                    @unique @map("tender_number")
+  id                       String                      @id @default(cuid())
+  tenderNumber             String                      @unique @map("tender_number")
   // G5 Ã¢â‚¬" canonical T{YYMMDD}-{SLUG}-Rev{N}: revision counter + slug frozen
   // at creation (nullable for rows older than the backfill migration).
-  revisionNumber      Int                       @default(1) @map("revision_number")
-  clientSlugSnapshot  String?                   @map("client_slug_snapshot")
-  title               String
-  description         String?
-  estimatorUserId     String?                   @map("estimator_user_id")
-  assignedEstimatorId String?                   @map("assigned_estimator_id")
-  siteId              String                    @map("site_id")
-  status              String                    @default("DRAFT")
-  dueDate             DateTime?                 @map("due_date")
-  proposedStartDate   DateTime?                 @map("proposed_start_date")
-  leadTimeDays        Int?                      @map("lead_time_days")
-  probability         Int?
-  estimatedValue      Decimal?                  @map("estimated_value") @db.Decimal(14, 2)
-  notes               String?
-  submittedAt         DateTime?                 @map("submitted_at")
-  ratesSnapshotAt     DateTime?                 @map("rates_snapshot_at")
-  tenderScoreCounted  Boolean                   @default(false) @map("tender_score_counted")
-  tenderWinCounted   Boolean                   @default(false) @map("tender_win_counted")
-  wonAt               DateTime?                 @map("won_at")
-  lostAt              DateTime?                 @map("lost_at")
+  revisionNumber           Int                         @default(1) @map("revision_number")
+  clientSlugSnapshot       String?                     @map("client_slug_snapshot")
+  title                    String
+  description              String?
+  estimatorUserId          String?                     @map("estimator_user_id")
+  assignedEstimatorId      String?                     @map("assigned_estimator_id")
+  siteId                   String                      @map("site_id")
+  status                   String                      @default("DRAFT")
+  dueDate                  DateTime?                   @map("due_date")
+  proposedStartDate        DateTime?                   @map("proposed_start_date")
+  leadTimeDays             Int?                        @map("lead_time_days")
+  probability              Int?
+  estimatedValue           Decimal?                    @map("estimated_value") @db.Decimal(14, 2)
+  notes                    String?
+  submittedAt              DateTime?                   @map("submitted_at")
+  ratesSnapshotAt          DateTime?                   @map("rates_snapshot_at")
+  tenderScoreCounted       Boolean                     @default(false) @map("tender_score_counted")
+  tenderWinCounted         Boolean                     @default(false) @map("tender_win_counted")
+  wonAt                    DateTime?                   @map("won_at")
+  lostAt                   DateTime?                   @map("lost_at")
   // Withdrawn-review lane. Set only when status = WITHDRAWN.
   //   PENDING_REVIEW: shown on the Pipeline board, awaiting reviewer action.
   //   CONFIRMED:      reviewer accepted the withdrawal; tender exits the
   //                   Pipeline and appears only on the CRM Tenders Register.
   // NULL for every tender not currently in the withdrawn-review workflow
   // (all historical rows; every non-WITHDRAWN status).
-  withdrawalState     String?                   @map("withdrawal_state")
+  withdrawalState          String?                     @map("withdrawal_state")
   // EW-1: allocation lifecycle state — separate from editorial status.
   // UNALLOCATED | ALLOCATED | POOL | CLAIMED | REJECTED
-  allocationState     String                    @default("UNALLOCATED") @map("allocation_state")
+  allocationState          String                      @default("UNALLOCATED") @map("allocation_state")
   // TFM-S2: human-readable project name, used as the stable SharePoint folder
   // name base. Does NOT change when tenderNumber is bumped on revision, which
   // prevents the pre-revision folder being orphaned (stranding-fix invariant).
-  projectName                String?                   @map("project_name")
+  projectName              String?                     @map("project_name")
   // TFM-S5: per-tender SharePoint folder provisioning outcome.
   // "ok" | "partial" | "failed" -- null until first provisioning attempt.
   // folderProvisioningErrors: [{path, message}] for each subfolder that failed.
-  folderProvisioningStatus   String?                   @map("folder_provisioning_status")
-  folderProvisioningErrors   Json?                     @map("folder_provisioning_errors")
-  createdAt           DateTime                  @default(now()) @map("created_at")
-  updatedAt           DateTime                  @updatedAt @map("updated_at")
-  estimator           User?                     @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
-  assignedEstimator   User?                     @relation("TenderAssignedEstimator", fields: [assignedEstimatorId], references: [id], onDelete: SetNull)
-  site                Site                      @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  tenderClients       TenderClient[]
-  tenderNotes         TenderNote[]
-  clarifications      TenderClarification[]
-  pricingSnapshots    TenderPricingSnapshot[]
-  followUps           TenderFollowUp[]
-  outcomes            TenderOutcome[]
-  tenderDocuments     TenderDocumentLink[]
-  sourceJob           Job?
-  jobConversion       JobConversion?
-  estimate            TenderEstimate?
-  clientNotes         TenderClientNote[]
-  scopeRevisions      TenderScopeRevision[]
-  scopeItems          ScopeOfWorksItem[]
-  scopeHeader         ScopeOfWorksHeader?
-  scopeCards          ScopeCard[]
-  estimateExports     EstimateExport[]
-  projects            Project[]
-  clarificationNotes  TenderClarificationNote[]
-  entries             TenderEntry[]
-  cuttingSheetItems   CuttingSheetItem[]
-  scopeViewConfigs    ScopeViewConfig[]
-  tandC               TenderTandC?
-  withdrawalReviews   TenderWithdrawalReview[]
-  assumptions         TenderAssumption[]
-  exclusions          TenderExclusion[]
-  clientQuotes        ClientQuote[]
-  packages            TenderPackage[]
-  wasteItems          ScopeWasteItem[]
-  safetyIncidents     SafetyIncident[]
-  hazardObservations  HazardObservation[]
-  correspondences     CorrespondenceThread[]    @relation("TenderCorrespondence")
-  rateSet             TenderRateSet?
+  folderProvisioningStatus String?                     @map("folder_provisioning_status")
+  folderProvisioningErrors Json?                       @map("folder_provisioning_errors")
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  updatedAt                DateTime                    @updatedAt @map("updated_at")
+  estimator                User?                       @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)
+  assignedEstimator        User?                       @relation("TenderAssignedEstimator", fields: [assignedEstimatorId], references: [id], onDelete: SetNull)
+  site                     Site                        @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  tenderClients            TenderClient[]
+  tenderNotes              TenderNote[]
+  clarifications           TenderClarification[]
+  pricingSnapshots         TenderPricingSnapshot[]
+  followUps                TenderFollowUp[]
+  outcomes                 TenderOutcome[]
+  tenderDocuments          TenderDocumentLink[]
+  sourceJob                Job?
+  jobConversion            JobConversion?
+  estimate                 TenderEstimate?
+  clientNotes              TenderClientNote[]
+  scopeRevisions           TenderScopeRevision[]
+  scopeItems               ScopeOfWorksItem[]
+  scopeHeader              ScopeOfWorksHeader?
+  scopeCards               ScopeCard[]
+  estimateExports          EstimateExport[]
+  projects                 Project[]
+  clarificationNotes       TenderClarificationNote[]
+  entries                  TenderEntry[]
+  cuttingSheetItems        CuttingSheetItem[]
+  scopeViewConfigs         ScopeViewConfig[]
+  tandC                    TenderTandC?
+  withdrawalReviews        TenderWithdrawalReview[]
+  assumptions              TenderAssumption[]
+  exclusions               TenderExclusion[]
+  clientQuotes             ClientQuote[]
+  packages                 TenderPackage[]
+  wasteItems               ScopeWasteItem[]
+  safetyIncidents          SafetyIncident[]
+  hazardObservations       HazardObservation[]
+  correspondences          CorrespondenceThread[]      @relation("TenderCorrespondence")
+  rateSet                  TenderRateSet?
   // CRM â€” a Tender may have been converted from an Opportunity (unique).
-  opportunity         Opportunity?              @relation("OpportunityConvertedTender")
+  opportunity              Opportunity?                @relation("OpportunityConvertedTender")
   // B-HW-5: handover instances initiated from this tender.
-  handovers           Handover[]                @relation("HandoverTender")
+  handovers                Handover[]                  @relation("HandoverTender")
   // SoR S4: locked rate-book snapshots for this tender.
-  sorSnapshots        JobSorSnapshot[]          @relation("TenderSorSnapshots")
+  sorSnapshots             JobSorSnapshot[]            @relation("TenderSorSnapshots")
   // MT-3: required tenant scope (backfilled + enforced NOT NULL by MT-3 migration).
-  tenantId            String                    @map("tenant_id")
-  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId                 String                      @map("tenant_id")
+  tenant                   Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   // EW-1: allocation pool candidates and rejection history.
-  allocationCandidates TenderAllocationCandidate[]
-  allocationRejections TenderAllocationRejection[]
+  allocationCandidates     TenderAllocationCandidate[]
+  allocationRejections     TenderAllocationRejection[]
 
   @@index([status])
   @@index([estimatorUserId])
@@ -1628,16 +1628,16 @@ model TenderOutcome {
 // action (REOPENED / CONFIRMED); the current withdrawalState reflects the
 // latest row for the tender. Never deleted or mutated.
 model TenderWithdrawalReview {
-  id           String   @id @default(cuid())
-  tenderId     String   @map("tender_id")
+  id         String   @id @default(cuid())
+  tenderId   String   @map("tender_id")
   // WITHDRAWN | REOPENED | CONFIRMED. Enforced as a string (no enum) to
   // stay consistent with the platform's other lifecycle statuses.
-  decision     String
-  reviewerId   String?  @map("reviewer_id")
-  reason       String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  reviewer     User?    @relation("TenderWithdrawalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  decision   String
+  reviewerId String?  @map("reviewer_id")
+  reason     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  tender     Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  reviewer   User?    @relation("TenderWithdrawalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
 
   @@index([tenderId])
   @@index([reviewerId])
@@ -1645,16 +1645,16 @@ model TenderWithdrawalReview {
 }
 
 model TenderDocumentLink {
-  id           String                @id @default(cuid())
-  tenderId     String                @map("tender_id")
-  projectId    String?               @map("project_id")
-  category     String
-  title        String
-  description  String?
-  folderLinkId String?               @map("folder_link_id")
-  fileLinkId   String?               @map("file_link_id")
-  createdAt    DateTime              @default(now()) @map("created_at")
-  updatedAt    DateTime              @updatedAt @map("updated_at")
+  id            String                @id @default(cuid())
+  tenderId      String                @map("tender_id")
+  projectId     String?               @map("project_id")
+  category      String
+  title         String
+  description   String?
+  folderLinkId  String?               @map("folder_link_id")
+  fileLinkId    String?               @map("file_link_id")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
   tender        Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   project       Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
   folderLink    SharePointFolderLink? @relation(fields: [folderLinkId], references: [id], onDelete: SetNull)
@@ -2252,62 +2252,62 @@ model FormRule {
 }
 
 model FormSubmission {
-  id                String                @id @default(cuid())
-  templateVersionId String                @map("template_version_id")
-  status            String                @default("SUBMITTED")
-  submittedAt       DateTime              @default(now()) @map("submitted_at")
-  submittedById     String?               @map("submitted_by_id")
-  jobId             String?               @map("job_id")
-  clientId          String?               @map("client_id")
-  assetId           String?               @map("asset_id")
-  workerId          String?               @map("worker_id")
-  siteId            String?               @map("site_id")
-  shiftId           String?               @map("shift_id")
-  supplierName      String?               @map("supplier_name")
-  geolocation       String?
-  summary           String?
-  createdAt         DateTime              @default(now()) @map("created_at")
-  updatedAt         DateTime              @updatedAt @map("updated_at")
-  templateVersion   FormTemplateVersion   @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
-  submittedBy       User?                 @relation(fields: [submittedById], references: [id], onDelete: SetNull)
-  job               Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  client            Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  asset             Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  worker            Worker?               @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  site              Site?                 @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  shift             Shift?                @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  values            FormSubmissionValue[]
-  attachments       FormAttachment[]
-  signatures        FormSignature[]
+  id                 String                @id @default(cuid())
+  templateVersionId  String                @map("template_version_id")
+  status             String                @default("SUBMITTED")
+  submittedAt        DateTime              @default(now()) @map("submitted_at")
+  submittedById      String?               @map("submitted_by_id")
+  jobId              String?               @map("job_id")
+  clientId           String?               @map("client_id")
+  assetId            String?               @map("asset_id")
+  workerId           String?               @map("worker_id")
+  siteId             String?               @map("site_id")
+  shiftId            String?               @map("shift_id")
+  supplierName       String?               @map("supplier_name")
+  geolocation        String?
+  summary            String?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  templateVersion    FormTemplateVersion   @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  submittedBy        User?                 @relation(fields: [submittedById], references: [id], onDelete: SetNull)
+  job                Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  client             Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  asset              Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  worker             Worker?               @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  site               Site?                 @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  shift              Shift?                @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  values             FormSubmissionValue[]
+  attachments        FormAttachment[]
+  signatures         FormSignature[]
   // PR #97 -- auto-populated context blob, GPS lat/lng, approval chain rows,
   // and links back to records auto-created by submit-time actions
-  context           Json                  @default("{}")
-  gpsLat            Decimal?              @map("gps_lat") @db.Decimal(10, 7)
-  gpsLng            Decimal?              @map("gps_lng") @db.Decimal(10, 7)
-  approvals         FormApproval[]
-  triggeredRecords  FormTriggeredRecord[]
-  punchItems        PunchItem[]
-  correctiveActions CorrectiveAction[]
+  context            Json                  @default("{}")
+  gpsLat             Decimal?              @map("gps_lat") @db.Decimal(10, 7)
+  gpsLng             Decimal?              @map("gps_lng") @db.Decimal(10, 7)
+  approvals          FormApproval[]
+  triggeredRecords   FormTriggeredRecord[]
+  punchItems         PunchItem[]
+  correctiveActions  CorrectiveAction[]
   // Inspection scoring (this PR). Computed by FormsEngineService.submitForm
   // from field-level scoreConfig weights and choice-level response-set
   // scores. `score` and `maxScore` are the achieved and possible weighted
   // sums; `scorePct` is (score / maxScore * 100) rounded to two decimals;
   // `outcome` is one of PASS/FAIL/PARTIAL/NA vs the template's
   // `settings.passThresholdPct`. All null when scoring is not configured.
-  score             Decimal?              @db.Decimal(10, 2)
-  maxScore          Decimal?              @map("max_score") @db.Decimal(10, 2)
-  scorePct          Decimal?              @map("score_pct") @db.Decimal(5, 2)
-  outcome           String?
+  score              Decimal?              @db.Decimal(10, 2)
+  maxScore           Decimal?              @map("max_score") @db.Decimal(10, 2)
+  scorePct           Decimal?              @map("score_pct") @db.Decimal(5, 2)
+  outcome            String?
   // PR #621 -- public/kiosk submissions link back to the originating token
-  publicLinkId      String?               @map("public_link_id")
-  publicLink        FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
+  publicLinkId       String?               @map("public_link_id")
+  publicLink         FormPublicLink?       @relation(fields: [publicLinkId], references: [id], onDelete: SetNull)
   // F-7: usage readings sourced from this submission.
-  assetUsageReadings AssetUsageReading[]  @relation("AssetUsageReadingSourceSubmission")
+  assetUsageReadings AssetUsageReading[]   @relation("AssetUsageReadingSourceSubmission")
   // F-5 (Signature v2) â€” set by the submit path when a signature field
   // configured to seal the form is signed. Once sealed, PATCH /values is
   // rejected with 409 so downstream approvals/audits can trust the
   // submission's field state is frozen.
-  sealedAt          DateTime?             @map("sealed_at")
+  sealedAt           DateTime?             @map("sealed_at")
 
   @@index([templateVersionId, submittedAt])
   @@index([jobId])
@@ -3619,6 +3619,29 @@ model ScopeOfWorksItem {
   plantItems   Json? @map("plant_items")
   measurements Json?
 
+  // CARD-API SLICE 1 (SCOPE_ITEM_LABOUR_STORE_V1) — per-row labour store.
+  // Deliberately the same shape and the same name pattern as `plantItems`
+  // above, so both halves of a row are stored and read the same way.
+  //   labourItems: [{ rowIdx, labourTypeId, role, shift, qty, days, dayRateOverride }]
+  // One entry per rendered labour row. `role` is the rate-card labour role
+  // (the same string DEFAULT_ROLE_BY_DISCIPLINE maps a discipline onto);
+  // `shift` is "Day" | "Night" | "Weekend"; `dayRateOverride` wins over the
+  // rate card when present. A stored 0 is a real value, not an absence.
+  //
+  // Precedence (see scope-item-pricing.ts): a NON-EMPTY labourItems array
+  // wins over the men/days/shift scalars; NULL or [] falls back to the
+  // scalars exactly as today. The men/days/shift columns are NOT dropped,
+  // renamed or retyped and are NOT backfilled from here — every row that
+  // existed before this migration reads labourItems = NULL, takes the
+  // fallback, and prices to the same number it did before.
+  labourItems Json? @map("labour_items")
+
+  // CARD-API SLICE 1 — item-level markup % override. Same precision and
+  // the same null-means-inherit semantics as ScopeCard.markupOverride.
+  // Resolution order (one shared expression, resolveEffectiveMarkup):
+  //   item.markupOverride ?? card.markupOverride ?? tenderEstimate.markup
+  markupOverride Decimal? @map("markup_override") @db.Decimal(5, 2)
+
   // PR feat/scope-multi-material â€” additional material rows on this
   // item. Row 1 remains stored on the flat materialType + length/height/
   // depth/density/sqm/m3/tonnes columns above; rows 2..N live here as
@@ -3732,22 +3755,22 @@ model SubLineQuote {
 // wasteLoads / wasteType / wasteFacility columns on ScopeOfWorksItem are
 // retained for backward compat but no longer written by new code.
 model ScopeWasteItem {
-  id                      String             @id @default(cuid())
-  tenderId                String             @map("tender_id")
-  tender                  Tender             @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  id                        String             @id @default(cuid())
+  tenderId                  String             @map("tender_id")
+  tender                    Tender             @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   // PR A2 Ã¢â‚¬" parent card. PR B-followup Ã¢â‚¬" promoted from nullable to
   // required. Per-card subtable became canonical in B3; zero orphan
   // rows existed at promotion time. onDelete changed from SetNull
   // (would violate NOT NULL) to Cascade Ã¢â‚¬" deleting a scope card
   // removes its waste rows.
-  cardId                  String             @map("card_id")
-  card                    ScopeCard          @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  discipline              String
-  wbsRef                  String?            @map("wbs_ref")
-  description             String
-  wasteGroup              String?            @map("waste_group")
-  wasteType               String?            @map("waste_type")
-  wasteFacility           String?            @map("waste_facility")
+  cardId                    String             @map("card_id")
+  card                      ScopeCard          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  discipline                String
+  wbsRef                    String?            @map("wbs_ref")
+  description               String
+  wasteGroup                String?            @map("waste_group")
+  wasteType                 String?            @map("waste_type")
+  wasteFacility             String?            @map("waste_facility")
   // PR B4a Ã¢â‚¬" this column carried the aggregated waste quantity in
   // tonnes; PR B4a made it billable against either tonnes or mÃ‚Â³
   // depending on the facility's rate unit. The name became a lie once
@@ -3755,25 +3778,25 @@ model ScopeWasteItem {
   // now `qty` (chore/schema-hygiene-waste). The `waste_tonnes` DB
   // column was renamed to `qty` in the same PR Ã¢â‚¬" see migration
   // `20260701_chore_schema_hygiene_waste_rename_qty`.
-  qty                     Decimal?           @db.Decimal(10, 3)
+  qty                       Decimal?           @db.Decimal(10, 3)
   // PR B4a Ã¢â‚¬" mÃ‚Â³ companion to `qty` (previously wasteTonnes). Aggregator
   // writes both; facility's rate.unit decides which side the line
   // total bills against.
-  m3                      Decimal?           @db.Decimal(10, 2)
-  wasteLoads              Int?               @map("waste_loads")
+  m3                        Decimal?           @db.Decimal(10, 2)
+  wasteLoads                Int?               @map("waste_loads")
   // PR B3 Ã¢â‚¬" unit drives the facility filter on the summary subtable.
   // PR B4a Ã¢â‚¬" facility filter on the subtable no longer narrows by
   // unit; this column now carries the facility's rate unit forward
   // for display (read-only badge on the row).
-  unit                    String?
+  unit                      String?
   // PR B3 Ã¢â‚¬" true when this row was created by "Sum from above" and
   // can be replaced on regeneration. Manual rows (default false) are
   // preserved across regenerations.
-  autoSummed              Boolean            @default(false) @map("auto_summed")
-  truckDays               Decimal?           @map("truck_days") @db.Decimal(5, 1)
-  ratePerTonne            Decimal?           @map("rate_per_tonne") @db.Decimal(10, 2)
-  ratePerLoad             Decimal?           @map("rate_per_load") @db.Decimal(10, 2)
-  lineTotal               Decimal?           @map("line_total") @db.Decimal(12, 2)
+  autoSummed                Boolean            @default(false) @map("auto_summed")
+  truckDays                 Decimal?           @map("truck_days") @db.Decimal(5, 1)
+  ratePerTonne              Decimal?           @map("rate_per_tonne") @db.Decimal(10, 2)
+  ratePerLoad               Decimal?           @map("rate_per_load") @db.Decimal(10, 2)
+  lineTotal                 Decimal?           @map("line_total") @db.Decimal(12, 2)
   // R3 T-1 (2026-07-20) - waste transport cost engine. All additive
   // and nullable. Legacy /3 truck-days path stays intact; when the new
   // columns are populated the engine derives duration_days + line_total
@@ -3796,33 +3819,33 @@ model ScopeWasteItem {
   //   quotedDisposalRate / quotedFuelPricePerLitre -> price snapshot the
   //                               variance flag compares against the current
   //                               live rate
-  transportRateId         String?            @map("transport_rate_id")
-  transportRate           EstimatePlantRate? @relation("ScopeWasteItemTransportRate", fields: [transportRateId], references: [id], onDelete: SetNull)
-  assetId                 String?            @map("asset_id")
-  asset                   Asset?             @relation("ScopeWasteItemAsset", fields: [assetId], references: [id], onDelete: SetNull)
-  qtyTrucks               Int?               @map("qty_trucks")
-  loadsPerTruckPerDay     Decimal?           @map("loads_per_truck_per_day") @db.Decimal(4, 1)
-  capacityPerLoad         Decimal?           @map("capacity_per_load") @db.Decimal(8, 2)
-  capacityUnit            String?            @map("capacity_unit")
-  dailyKm                 Decimal?           @map("daily_km") @db.Decimal(8, 1)
-  transportCost           Decimal?           @map("transport_cost") @db.Decimal(12, 2)
-  fuelCost                Decimal?           @map("fuel_cost") @db.Decimal(12, 2)
-  disposalCost            Decimal?           @map("disposal_cost") @db.Decimal(12, 2)
-  quotedDisposalRate      Decimal?           @map("quoted_disposal_rate") @db.Decimal(10, 2)
-  quotedFuelPricePerLitre Decimal?           @map("quoted_fuel_price_per_litre") @db.Decimal(6, 3)
+  transportRateId           String?            @map("transport_rate_id")
+  transportRate             EstimatePlantRate? @relation("ScopeWasteItemTransportRate", fields: [transportRateId], references: [id], onDelete: SetNull)
+  assetId                   String?            @map("asset_id")
+  asset                     Asset?             @relation("ScopeWasteItemAsset", fields: [assetId], references: [id], onDelete: SetNull)
+  qtyTrucks                 Int?               @map("qty_trucks")
+  loadsPerTruckPerDay       Decimal?           @map("loads_per_truck_per_day") @db.Decimal(4, 1)
+  capacityPerLoad           Decimal?           @map("capacity_per_load") @db.Decimal(8, 2)
+  capacityUnit              String?            @map("capacity_unit")
+  dailyKm                   Decimal?           @map("daily_km") @db.Decimal(8, 1)
+  transportCost             Decimal?           @map("transport_cost") @db.Decimal(12, 2)
+  fuelCost                  Decimal?           @map("fuel_cost") @db.Decimal(12, 2)
+  disposalCost              Decimal?           @map("disposal_cost") @db.Decimal(12, 2)
+  quotedDisposalRate        Decimal?           @map("quoted_disposal_rate") @db.Decimal(10, 2)
+  quotedFuelPricePerLitre   Decimal?           @map("quoted_fuel_price_per_litre") @db.Decimal(6, 3)
   // Transport-rate snapshot (SLICE 1, 2026-08-19). Added beside the two
   // existing snapshots so the variance flag can compare the rate at quote
   // time against the current EstimatePlantRate.rate. NULL means the row
   // predates this column or was never priced via the transport engine;
   // NULL behaves exactly like the live-lookup path (no data loss on revert).
   // backfill: false -- existing rows intentionally left NULL.
-  quotedTransportRatePerDay Decimal?         @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
-  notes                   String?
-  sortOrder               Int                @default(0) @map("sort_order")
-  createdById             String             @map("created_by_id")
-  createdBy               User               @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt               DateTime           @default(now()) @map("created_at")
-  updatedAt               DateTime           @updatedAt @map("updated_at")
+  quotedTransportRatePerDay Decimal?           @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
+  notes                     String?
+  sortOrder                 Int                @default(0) @map("sort_order")
+  createdById               String             @map("created_by_id")
+  createdBy                 User               @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt                 DateTime           @default(now()) @map("created_at")
+  updatedAt                 DateTime           @updatedAt @map("updated_at")
 
   @@index([tenderId, discipline])
   @@index([cardId])
@@ -4256,27 +4279,27 @@ model Contract {
 }
 
 model Variation {
-  id              String          @id @default(cuid())
-  contractId      String          @map("contract_id")
-  contract        Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  variationNumber String          @unique @map("variation_number")
+  id              String             @id @default(cuid())
+  contractId      String             @map("contract_id")
+  contract        Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  variationNumber String             @unique @map("variation_number")
   description     String
-  status          VariationStatus @default(RECEIVED)
-  requestedBy     String?         @map("requested_by")
-  pricedAmount    Decimal?        @map("priced_amount") @db.Decimal(12, 2)
-  approvedAmount  Decimal?        @map("approved_amount") @db.Decimal(12, 2)
-  receivedDate    DateTime        @default(now()) @map("received_date")
-  pricedDate      DateTime?       @map("priced_date")
-  submittedDate   DateTime?       @map("submitted_date")
-  approvedDate    DateTime?       @map("approved_date")
+  status          VariationStatus    @default(RECEIVED)
+  requestedBy     String?            @map("requested_by")
+  pricedAmount    Decimal?           @map("priced_amount") @db.Decimal(12, 2)
+  approvedAmount  Decimal?           @map("approved_amount") @db.Decimal(12, 2)
+  receivedDate    DateTime           @default(now()) @map("received_date")
+  pricedDate      DateTime?          @map("priced_date")
+  submittedDate   DateTime?          @map("submitted_date")
+  approvedDate    DateTime?          @map("approved_date")
   notes           String?
-  createdById     String          @map("created_by_id")
-  createdBy       User            @relation("VariationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById     String             @map("created_by_id")
+  createdBy       User               @relation("VariationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   claimLineItems  ClaimLineItem[]
   // SoR S6 — desktop-priced VC lines pinned to a locked Job SoR snapshot.
   sorLines        VariationSorLine[]
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
 
   @@index([contractId])
   @@map("variations")
@@ -4288,28 +4311,28 @@ model Variation {
 // A line can be catalog-backed (snapshotRateId is set) or manual
 // (snapshotRateId is null; caller supplies name/category/rate directly).
 model VariationSorLine {
-  id                String    @id @default(cuid())
-  variationId       String    @map("variation_id")
-  variation         Variation @relation(fields: [variationId], references: [id], onDelete: Cascade)
+  id               String      @id @default(cuid())
+  variationId      String      @map("variation_id")
+  variation        Variation   @relation(fields: [variationId], references: [id], onDelete: Cascade)
   // Rate lock — snapshot + version stamp + the copied rate row.
-  jobSorSnapshotId  String    @map("job_sor_snapshot_id")
-  sorVersion        String    @map("sor_version")
+  jobSorSnapshotId String      @map("job_sor_snapshot_id")
+  sorVersion       String      @map("sor_version")
   // Null when the line is a manual add (no matching snapshot rate row).
-  snapshotRateId    String?   @map("snapshot_rate_id")
-  category          SorCategory
-  name              String
-  class             String?
-  unit              String?
+  snapshotRateId   String?     @map("snapshot_rate_id")
+  category         SorCategory
+  name             String
+  class            String?
+  unit             String?
   // ORDINARY | ONE_AND_HALF | DOUBLE — matches JobSorSnapshotRate columns.
-  tier              String    @default("ORDINARY")
+  tier             String      @default("ORDINARY")
   // FROZEN at line create; never re-read from live SorRate on edit.
-  rate              Decimal   @db.Decimal(12, 2)
-  quantity          Decimal   @db.Decimal(12, 2)
-  lineAmount        Decimal   @map("line_amount") @db.Decimal(12, 2)
-  notes             String?
-  sortOrder         Int       @default(0) @map("sort_order")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  rate             Decimal     @db.Decimal(12, 2)
+  quantity         Decimal     @db.Decimal(12, 2)
+  lineAmount       Decimal     @map("line_amount") @db.Decimal(12, 2)
+  notes            String?
+  sortOrder        Int         @default(0) @map("sort_order")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
 
   @@index([variationId])
   @@index([jobSorSnapshotId])
@@ -6795,7 +6818,7 @@ model DropReason {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  opportunities        Opportunity[] @relation("OpportunityDropReason")
+  opportunities         Opportunity[] @relation("OpportunityDropReason")
   archivedOpportunities Opportunity[] @relation("OpportunityArchiveReason")
 
   @@map("drop_reasons")
@@ -6820,8 +6843,8 @@ model Opportunity {
   // Free-text detail for the capture event (e.g. email subject, referrer name).
   captureDetail  String?             @map("capture_detail")
 
-  clientId  String?   @map("client_id")
-  client    Client?   @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
+  clientId  String?  @map("client_id")
+  client    Client?  @relation("ClientOpportunities", fields: [clientId], references: [id], onDelete: Restrict)
   contactId String?  @map("contact_id")
   contact   Contact? @relation("ContactOpportunities", fields: [contactId], references: [id], onDelete: SetNull)
 
@@ -7536,34 +7559,34 @@ model SorClientRateEntry {
 // the successor; its rows are never mutated.
 
 model JobSorSnapshot {
-  id                  String                @id @default(cuid())
+  id                  String               @id @default(cuid())
   // Exactly one of jobId / tenderId is non-null; enforced in service.
-  jobId               String?               @map("job_id")
-  job                 Job?                  @relation("JobSorSnapshots", fields: [jobId], references: [id], onDelete: Cascade)
-  tenderId            String?               @map("tender_id")
-  tender              Tender?               @relation("TenderSorSnapshots", fields: [tenderId], references: [id], onDelete: Cascade)
-  clientId            String                @map("client_id")
-  client              Client                @relation("ClientSorSnapshots", fields: [clientId], references: [id], onDelete: Restrict)
-  sorPeriodId         String                @map("sor_period_id")
-  sorPeriod           SorPeriod             @relation(fields: [sorPeriodId], references: [id], onDelete: Restrict)
-  sorClientRateCardId String?               @map("sor_client_rate_card_id")
-  sorClientRateCard   SorClientRateCard?    @relation(fields: [sorClientRateCardId], references: [id], onDelete: SetNull)
+  jobId               String?              @map("job_id")
+  job                 Job?                 @relation("JobSorSnapshots", fields: [jobId], references: [id], onDelete: Cascade)
+  tenderId            String?              @map("tender_id")
+  tender              Tender?              @relation("TenderSorSnapshots", fields: [tenderId], references: [id], onDelete: Cascade)
+  clientId            String               @map("client_id")
+  client              Client               @relation("ClientSorSnapshots", fields: [clientId], references: [id], onDelete: Restrict)
+  sorPeriodId         String               @map("sor_period_id")
+  sorPeriod           SorPeriod            @relation(fields: [sorPeriodId], references: [id], onDelete: Restrict)
+  sorClientRateCardId String?              @map("sor_client_rate_card_id")
+  sorClientRateCard   SorClientRateCard?   @relation(fields: [sorClientRateCardId], references: [id], onDelete: SetNull)
   // Denormalised so the label survives period rename/expiry.
-  sorPeriodLabel      String                @map("sor_period_label")
+  sorPeriodLabel      String               @map("sor_period_label")
   // Append-only version stamp, format "<year>-<half>-<createdAt-iso>".
-  sorVersion          String                @map("sor_version")
-  lockedAt            DateTime              @default(now()) @map("locked_at")
-  lockedById          String?               @map("locked_by_id")
-  lockedBy            User?                 @relation("SorSnapshotLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
-  status              String                @default("ACTIVE")
+  sorVersion          String               @map("sor_version")
+  lockedAt            DateTime             @default(now()) @map("locked_at")
+  lockedById          String?              @map("locked_by_id")
+  lockedBy            User?                @relation("SorSnapshotLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  status              String               @default("ACTIVE")
   // Self-referential — set to the successor snapshot once this one is reissued.
-  supersededById      String?               @unique @map("superseded_by_id")
-  supersededBy        JobSorSnapshot?       @relation("SorSnapshotSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
-  supersedes          JobSorSnapshot?       @relation("SorSnapshotSupersede")
+  supersededById      String?              @unique @map("superseded_by_id")
+  supersededBy        JobSorSnapshot?      @relation("SorSnapshotSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes          JobSorSnapshot?      @relation("SorSnapshotSupersede")
   rates               JobSorSnapshotRate[]
   // SoR S7: Agreed Records that locked their rate-book from this snapshot.
-  agreedRecords       AgreedRecord[]        @relation("AgreedRecordSnapshot")
-  createdAt           DateTime              @default(now()) @map("created_at")
+  agreedRecords       AgreedRecord[]       @relation("AgreedRecordSnapshot")
+  createdAt           DateTime             @default(now()) @map("created_at")
 
   @@unique([jobId, sorVersion])
   @@unique([tenderId, sorVersion])
@@ -7573,22 +7596,22 @@ model JobSorSnapshot {
 }
 
 model JobSorSnapshotRate {
-  id            String         @id @default(cuid())
-  snapshotId    String         @map("snapshot_id")
-  snapshot      JobSorSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  id           String         @id @default(cuid())
+  snapshotId   String         @map("snapshot_id")
+  snapshot     JobSorSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
   // Nullable: fresh client-added lines have no master row.
-  sourceRateId  String?        @map("source_rate_id")
-  sourceRate    SorRate?       @relation("SorRateSnapshotRates", fields: [sourceRateId], references: [id], onDelete: SetNull)
-  category      SorCategory
-  name          String
-  class         String?
-  unit          String?
-  ordinary      Decimal?       @db.Decimal(12, 2)
-  oneAndHalf    Decimal?       @map("one_and_half") @db.Decimal(12, 2)
-  double        Decimal?       @db.Decimal(12, 2)
-  isReference   Boolean        @default(false) @map("is_reference")
-  comments      String?
-  createdAt     DateTime       @default(now()) @map("created_at")
+  sourceRateId String?        @map("source_rate_id")
+  sourceRate   SorRate?       @relation("SorRateSnapshotRates", fields: [sourceRateId], references: [id], onDelete: SetNull)
+  category     SorCategory
+  name         String
+  class        String?
+  unit         String?
+  ordinary     Decimal?       @db.Decimal(12, 2)
+  oneAndHalf   Decimal?       @map("one_and_half") @db.Decimal(12, 2)
+  double       Decimal?       @db.Decimal(12, 2)
+  isReference  Boolean        @default(false) @map("is_reference")
+  comments     String?
+  createdAt    DateTime       @default(now()) @map("created_at")
 
   @@index([snapshotId, category])
   @@index([sourceRateId])
@@ -7651,7 +7674,7 @@ model Account {
   updatedAt       DateTime               @updatedAt @map("updated_at")
 
   // CRM-2: contacts directly linked to this account.
-  contacts Contact[] @relation("AccountContacts")
+  contacts          Contact[]          @relation("AccountContacts")
   // CRM-2: relationship notes (history entries) against this account.
   relationshipNotes RelationshipNote[] @relation("RelationshipNoteAccount")
 
@@ -7683,23 +7706,23 @@ enum InteractionChannel {
 }
 
 model RelationshipNote {
-  id        String   @id @default(cuid())
+  id        String              @id @default(cuid())
   /// The account this note is filed against. Null = contact-only note.
-  accountId String?  @map("account_id")
-  account   Account? @relation("RelationshipNoteAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  accountId String?             @map("account_id")
+  account   Account?            @relation("RelationshipNoteAccount", fields: [accountId], references: [id], onDelete: SetNull)
   /// The contact this note is filed against. Null = account-only note.
-  contactId String?  @map("contact_id")
-  contact   Contact? @relation("RelationshipNoteContact", fields: [contactId], references: [id], onDelete: SetNull)
+  contactId String?             @map("contact_id")
+  contact   Contact?            @relation("RelationshipNoteContact", fields: [contactId], references: [id], onDelete: SetNull)
   /// The internal user who authored the note.
-  authorId  String   @map("author_id")
-  author    User     @relation("RelationshipNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String              @map("author_id")
+  author    User                @relation("RelationshipNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   /// Free-text body of the note (call summary, meeting minutes, etc.).
   body      String
   /// CRM-S7: communication medium. NULL for historic notes — not backfilled.
   /// UI renders NULL as "—". Do NOT add tenderId/opportunityId here.
   channel   InteractionChannel? @map("channel")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
 
   @@index([accountId])
   @@index([contactId])
@@ -7902,47 +7925,47 @@ model AgreedRecordNumberSequence {
 }
 
 enum AgreedRecordStatus {
-  DRAFT         // worker started but not yet submitted
-  SUBMITTED     // worker submitted with both signatures + photos
+  DRAFT // worker started but not yet submitted
+  SUBMITTED // worker submitted with both signatures + photos
   OFFICE_REVIEW // WHS & CC picked it up (S8 transitions this)
-  PRICED        // priced from locked SoR (S8)
-  APPROVED      // Ops signed off (S8)
-  SENT_BACK     // office rejected — back to worker (S8)
+  PRICED // priced from locked SoR (S8)
+  APPROVED // Ops signed off (S8)
+  SENT_BACK // office rejected — back to worker (S8)
   VOID
 }
 
 model AgreedRecord {
-  id                     String              @id @default(cuid())
-  jobId                  String              @map("job_id")
-  job                    Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  recordNumber           String              @unique @map("record_number")
+  id                     String                   @id @default(cuid())
+  jobId                  String                   @map("job_id")
+  job                    Job                      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  recordNumber           String                   @unique @map("record_number")
   description            String
-  workDate               DateTime            @map("work_date")
-  status                 AgreedRecordStatus  @default(DRAFT)
-  jobSorSnapshotId       String?             @map("job_sor_snapshot_id")
-  jobSorSnapshot         JobSorSnapshot?     @relation("AgreedRecordSnapshot", fields: [jobSorSnapshotId], references: [id], onDelete: SetNull)
-  sorVersion             String?             @map("sor_version")
-  workerSignaturePath    String?             @map("worker_signature_path")
-  workerSignedById       String?             @map("worker_signed_by_id")
-  workerSignedBy         User?               @relation("AgreedRecordWorkerSigner", fields: [workerSignedById], references: [id], onDelete: SetNull)
-  workerSignedAt         DateTime?           @map("worker_signed_at")
-  clientRepName          String?             @map("client_rep_name")
-  clientRepSignaturePath String?             @map("client_rep_signature_path")
-  clientRepSignedAt      DateTime?           @map("client_rep_signed_at")
-  submittedAt            DateTime?           @map("submitted_at")
+  workDate               DateTime                 @map("work_date")
+  status                 AgreedRecordStatus       @default(DRAFT)
+  jobSorSnapshotId       String?                  @map("job_sor_snapshot_id")
+  jobSorSnapshot         JobSorSnapshot?          @relation("AgreedRecordSnapshot", fields: [jobSorSnapshotId], references: [id], onDelete: SetNull)
+  sorVersion             String?                  @map("sor_version")
+  workerSignaturePath    String?                  @map("worker_signature_path")
+  workerSignedById       String?                  @map("worker_signed_by_id")
+  workerSignedBy         User?                    @relation("AgreedRecordWorkerSigner", fields: [workerSignedById], references: [id], onDelete: SetNull)
+  workerSignedAt         DateTime?                @map("worker_signed_at")
+  clientRepName          String?                  @map("client_rep_name")
+  clientRepSignaturePath String?                  @map("client_rep_signature_path")
+  clientRepSignedAt      DateTime?                @map("client_rep_signed_at")
+  submittedAt            DateTime?                @map("submitted_at")
   // SoR S8: office review fields (all nullable — populated on state transitions)
-  reviewerId             String?             @map("reviewer_id")
-  reviewer               User?               @relation("AgreedRecordReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
-  reviewStartedAt        DateTime?           @map("review_started_at")
-  approvedById           String?             @map("approved_by_id")
-  approvedBy             User?               @relation("AgreedRecordApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt             DateTime?           @map("approved_at")
-  totalPricedAmount      Decimal?            @map("total_priced_amount") @db.Decimal(12, 2)
-  sentBackReason         String?             @map("sent_back_reason")
-  createdById            String              @map("created_by_id")
-  createdBy              User                @relation("AgreedRecordCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt              DateTime            @default(now()) @map("created_at")
-  updatedAt              DateTime            @updatedAt @map("updated_at")
+  reviewerId             String?                  @map("reviewer_id")
+  reviewer               User?                    @relation("AgreedRecordReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewStartedAt        DateTime?                @map("review_started_at")
+  approvedById           String?                  @map("approved_by_id")
+  approvedBy             User?                    @relation("AgreedRecordApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt             DateTime?                @map("approved_at")
+  totalPricedAmount      Decimal?                 @map("total_priced_amount") @db.Decimal(12, 2)
+  sentBackReason         String?                  @map("sent_back_reason")
+  createdById            String                   @map("created_by_id")
+  createdBy              User                     @relation("AgreedRecordCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
   lines                  AgreedRecordLine[]
   attachments            AgreedRecordAttachment[]
 
@@ -7986,16 +8009,16 @@ model AgreedRecordAttachment {
 // SoR S8: office pricing record — one per AgreedRecordLine, created when WHS&CC
 // prices the line from the frozen Job SoR snapshot (or via manual override).
 model AgreedRecordPricingLine {
-  id                    String            @id @default(cuid())
-  agreedRecordLineId    String            @unique @map("agreed_record_line_id")
-  agreedRecordLine      AgreedRecordLine  @relation(fields: [agreedRecordLineId], references: [id], onDelete: Cascade)
-  snapshotRateId        String?           @map("snapshot_rate_id")  // null = manual/override
-  tier                  String            @default("ORDINARY")
-  rate                  Decimal           @db.Decimal(12, 2)         // FROZEN at price time
-  lineAmount            Decimal           @map("line_amount") @db.Decimal(12, 2)
-  pricedById            String?           @map("priced_by_id")
-  pricedBy              User?             @relation("AgreedRecordPricingLinesPricedBy", fields: [pricedById], references: [id], onDelete: SetNull)
-  pricedAt              DateTime          @default(now()) @map("priced_at")
+  id                 String           @id @default(cuid())
+  agreedRecordLineId String           @unique @map("agreed_record_line_id")
+  agreedRecordLine   AgreedRecordLine @relation(fields: [agreedRecordLineId], references: [id], onDelete: Cascade)
+  snapshotRateId     String?          @map("snapshot_rate_id") // null = manual/override
+  tier               String           @default("ORDINARY")
+  rate               Decimal          @db.Decimal(12, 2) // FROZEN at price time
+  lineAmount         Decimal          @map("line_amount") @db.Decimal(12, 2)
+  pricedById         String?          @map("priced_by_id")
+  pricedBy           User?            @relation("AgreedRecordPricingLinesPricedBy", fields: [pricedById], references: [id], onDelete: SetNull)
+  pricedAt           DateTime         @default(now()) @map("priced_at")
 
   @@index([agreedRecordLineId])
   @@map("agreed_record_pricing_lines")
@@ -8009,8 +8032,9 @@ model TenderAllocationCandidate {
   estimatorId String    @map("estimator_id")
   offeredAt   DateTime  @default(now()) @map("offered_at")
   claimedAt   DateTime? @map("claimed_at")
-  tender      Tender    @relation(fields: [tenderId],    references: [id], onDelete: Cascade)
+  tender      Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   estimator   User      @relation("TenderPoolCandidate", fields: [estimatorId], references: [id], onDelete: Cascade)
+
   @@unique([tenderId, estimatorId])
   @@index([tenderId])
   @@index([estimatorId])
@@ -8023,8 +8047,9 @@ model TenderAllocationRejection {
   rejectedBy String   @map("rejected_by")
   reason     String
   rejectedAt DateTime @default(now()) @map("rejected_at")
-  tender     Tender   @relation(fields: [tenderId],   references: [id], onDelete: Cascade)
+  tender     Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   rejector   User     @relation("TenderRejector", fields: [rejectedBy], references: [id], onDelete: Restrict)
+
   @@index([tenderId])
   @@map("tender_allocation_rejections")
 }
@@ -8033,9 +8058,10 @@ model EstimatorCapacity {
   id              String   @id @default(cuid())
   userId          String   @unique @map("user_id")
   availabilityPct Int      @default(100) @map("availability_pct")
-  concurrentCap   Int      @default(5)   @map("concurrent_cap")
-  updatedAt       DateTime @updatedAt    @map("updated_at")
+  concurrentCap   Int      @default(5) @map("concurrent_cap")
+  updatedAt       DateTime @updatedAt @map("updated_at")
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("estimator_capacity")
 }
 
@@ -8046,6 +8072,7 @@ model AllocationWeightConfig {
   weight    Decimal  @db.Decimal(5, 2)
   label     String
   updatedAt DateTime @updatedAt @map("updated_at")
+
   @@unique([dimension, key])
   @@index([dimension])
   @@map("allocation_weight_configs")
@@ -8058,8 +8085,9 @@ model AllocatorDelegate {
   startDate   DateTime @map("start_date")
   endDate     DateTime @map("end_date")
   createdAt   DateTime @default(now()) @map("created_at")
-  delegate    User     @relation("AllocatorDelegateUser",    fields: [delegateId],  references: [id], onDelete: Cascade)
+  delegate    User     @relation("AllocatorDelegateUser", fields: [delegateId], references: [id], onDelete: Cascade)
   grantedBy   User     @relation("AllocatorDelegateGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+
   @@index([delegateId])
   @@index([endDate])
   @@map("allocator_delegates")

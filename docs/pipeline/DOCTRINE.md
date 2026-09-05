@@ -973,7 +973,8 @@ was **47.6 min**, inside the 90-min `MERGE_TIMEOUT_MS` window. Nobody reviewed i
 
 🔴 **What survives, and it is the half that matters: the MECHANISM below is untouched.** CI creation
 *can* outrun `MERGE_TIMEOUT_MS`, and when it does the timeout is written **byte-identically** to a genuine
-policy routing (§10.3 table, and the `marco: true` at `index.mjs:1776`). That is a **latent, intermittent**
+policy routing (§10.3 table, and the `marco: true` returned inside `waitForPolicyMerge` — anchor:
+`async function waitForPolicyMerge`). That is a **latent, intermittent**
 defect — not a stopped lane — and the distinction changes what you may conclude from one `marco:true`:
 **a single routing verdict on a docs-only PR is evidence of a timeout at least as much as of a policy
 decision, and neither reading clears it for merge** (RULE 2 still binds).
@@ -993,12 +994,25 @@ the merge window:**
 |---|---|
 | `#1500` opened | 2026-09-01T20:18:43Z |
 | its first CI run **created** | 2026-09-01T23:51:20Z — **212.6 min later**, `run_attempt=1` (not a re-run) |
-| merge window | `MERGE_TIMEOUT_MS` = **90 min** (`index.mjs:129-130`), expired at about 21:48Z |
+| merge window | `MERGE_TIMEOUT_MS` = **90 min** (anchor: `const MERGE_TIMEOUT_MS` in `index.mjs`), expired at about 21:48Z |
 | controls, same window | `#1502` 0.0 min · `#1501` 0.0 (opened 8 s after #1500) · `#1499` 0.0 · `#1498` 0.0 · `#1497` 0.0 |
 
-`index.mjs:1753-1757` needs `checks.length > 0 && checks.every(SUCCESS|NEUTRAL|SKIPPED)` before it
-will enable auto-merge. With **zero checks in existence** `allGreen` is false for the whole window,
-so the lane falls out at `:1774` and records `marco: true` at `:1776`.
+`allGreen` in `index.mjs` (anchor: `const allGreen`) needs `checks.length > 0 &&
+checks.every(SUCCESS|NEUTRAL|SKIPPED)` before it will enable auto-merge. With **zero checks in
+existence** `allGreen` is false for the whole window, so the lane falls out of
+`waitForPolicyMerge` (anchor: `async function waitForPolicyMerge`) and records `marco: true` on
+the timeout path inside it.
+
+⚠️ **Every citation into another file in THIS DOCUMENT is a symbol or fixed-comment anchor, not a
+line number — §9.5's opening bullet, applied document-wide.** That bullet scoped itself to "every
+citation below", so §10.3 was never swept, and on 2026-09-05 all four of its `index.mjs` line
+numbers were found wrong at once: `:129-130` -> `const MERGE_TIMEOUT_MS` is at 139, `:1753-1757` ->
+`const allGreen` is at 1837, `:1774` is the `waitForPolicyMerge` header itself, `:1776` -> the
+`marco: true` returns are at 1789/1793. Nobody edited a claim; the file moved under all four
+together, and the available conclusion — *"the mechanism §10.3 describes is not in this code"* —
+would have retired a live RULE-2-affecting defect as non-reproducing. Found by Station 04
+2026-09-05T14:1xZ (F2), landed by Station 00 at 14:4xZ. **POSITIVE control that the instrument was
+sound: §10.3's other line citation, `start-watcher.ps1:160`, was correct at the same moment.**
 
 🔴🔴 **A TIMEOUT IS THEREFORE WRITTEN IN THE BYTE-IDENTICAL FORMAT TO A GENUINE POLICY ROUTING.**
 `{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}` is

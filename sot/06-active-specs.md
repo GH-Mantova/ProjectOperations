@@ -3940,7 +3940,9 @@ against a seeded database. F1 (global-list creation) and F4 (worker leave / unav
 | POST | `/personas/tendering/quote-proposals/:messageId/accept-all` | — | 200 | 200 | 401 | Conversation-ownership scoped in service (404 for non-owners). |
 | POST | `/personas/tendering/quote-proposals/:messageId/reject-all` | — | 200 | 200 | 401 | Conversation-ownership scoped in service (404 for non-owners). |
 
-### `modules/tendering/tender-client-notes.controller.ts` — guards: JwtAuthGuard, PermissionsGuard
+### `modules/tendering/tender-client-notes.controller.ts` — 🔴 RETIRED, routes no longer exist <!-- sot-ref-allow: controller DELETED (0 insertions / 88 deletions) by eae1c0a8 "retire TenderClientNote code surface (slice 1 of 2)" (#1165, 2026-08-18). Measured 2026-09-05 against origin/main: git grep "clients/:clientId/notes" over apps/api/src + apps/web/src returns ZERO (positive control "quote-proposals" returns 3 files). The rows below are kept as the historical permission record until slice 2 of 2 drops the TenderClientNote model, which is still in schema.prisma. -->
+
+**These three endpoints were removed on 2026-08-18 by #1165 and are recorded here for history only.** The `TenderClientNote` model still exists in `apps/api/prisma/schema.prisma`; slice 2 of 2 (the schema drop) has not landed. Do not treat this table as a live route surface.
 
 | Method | Path | Required permission | Admin | Viewer | Anon | Notes |
 |---|---|---|---|---|---|---|

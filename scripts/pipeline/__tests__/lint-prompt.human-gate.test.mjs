@@ -128,6 +128,18 @@ describe("checkHumanGate markers", () => {
     assert.ok(result.msg.includes("3"), "message should include line number 3");
   });
 
+  test("lowercase 'Arm only' also causes HUMAN_GATE_PRESENT", () => {
+    // Measured 2026-09-05: pr-devtree-sync-ff-only-guard-HOLD.md reads
+    // "Arm only after he answers" and linted ADMIT, because ARM_ONLY was
+    // case-sensitive. A written human gate must not depend on capitalisation.
+    const body = "# Title\n\nArm only after he answers.\n\n## Details\n";
+    const result = checkHumanGate(body);
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.code, "HUMAN_GATE_PRESENT");
+    assert.ok(result.msg.includes("Arm ONLY"), "message should name the matched marker");
+    assert.ok(result.msg.includes("3"), "message should include line number 3");
+  });
+
   test("ordinary prompt body with no marker passes (ok: true)", () => {
     const body = "# Normal prompt\n\nThis is a description of work to be done.\n\n## What to build\n\nBuild the thing.\n";
     const result = checkHumanGate(body);

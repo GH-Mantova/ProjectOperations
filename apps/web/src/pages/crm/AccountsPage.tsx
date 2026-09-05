@@ -6,7 +6,9 @@
 // /crm/relationships redirects here with ?tab=relationships (App.tsx).
 // Data fetching, filters, and content of each page are untouched.
 
+import { useEffect, useState } from "react";
 import { useSearchParams, NavLink } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 import { AccountsListPage } from "./AccountsListPage";
 import { RelationshipsPage } from "./RelationshipsPage";
 
@@ -40,14 +42,46 @@ function tabStyle(active: boolean): React.CSSProperties {
   };
 }
 
+// CRM_CHROME_V1 — plain grey tab figure. The colour is read back off the
+// existing tabStyle() so the count can never drift from the inactive tab text.
+const tabCountStyle: React.CSSProperties = {
+  marginLeft: 6,
+  fontSize: 12,
+  fontWeight: 400,
+  color: tabStyle(false).color
+};
+
 export function AccountsPage() {
   const [searchParams] = useSearchParams();
+  const { authFetch } = useAuth();
   const activeTab: TabId = (searchParams.get("tab") as TabId) ?? "list";
   const validTab = TABS.some((t) => t.id === activeTab) ? activeTab : "list";
 
+  // CRM_CHROME_V1 — List count from GET /crm/accounts?limit=1 (`total`).
+  // Relationships carries no count in the mock-up; do not invent one.
+  // Null means "loading or the request failed" — the label renders alone.
+  const [listCount, setListCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/crm/accounts?limit=1");
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { total?: number };
+        if (!cancelled && typeof body.total === "number") setListCount(body.total);
+      } catch {
+        // A tab must never break because a count did not arrive.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
+
   return (
     <div>
-      {/* CRM_NAV_TABS — accounts tab bar (S2, 2026-08-28). */}
+      {/* CRM_NAV_TABS — accounts tab bar (S2, 2026-08-28; CRM_CHROME_V1 counts). */}
       <div style={tabBarStyle} role="tablist" aria-label="Accounts sections">
         {TABS.map((tab) => (
           <NavLink
@@ -58,6 +92,9 @@ export function AccountsPage() {
             aria-selected={validTab === tab.id}
           >
             {tab.label}
+            {tab.id === "list" && listCount !== null ? (
+              <span style={tabCountStyle}>{listCount}</span>
+            ) : null}
           </NavLink>
         ))}
       </div>

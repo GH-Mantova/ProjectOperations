@@ -822,8 +822,10 @@ export function checkHumanGate(bodyText) {
   const DO_NOT_ARM_COMMENT = /<!--\s*watcher:\s*do-not-arm\s*-->/i;
   // Marker 2: a line containing the EXACT sequence DO NOT ARM (case-sensitive)
   const DO_NOT_ARM_CAPS = /DO NOT ARM/;
-  // Marker 3: a line containing "Arm ONLY" (conditional arming, case-sensitive on "Arm")
-  const ARM_ONLY = /Arm ONLY/;
+  // Marker 3: a line containing "Arm ONLY" (conditional arming, CASE-INSENSITIVE).
+  // Was case-sensitive until 2026-09-05 and admitted a prompt whose body read
+  // "Arm only after he answers" — a written human gate the linter could not see.
+  const ARM_ONLY = /Arm ONLY/i;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

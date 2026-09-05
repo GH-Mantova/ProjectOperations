@@ -57,37 +57,53 @@ export type AccountSummary = {
   openOpportunitiesCount: number;
   lastContactedAt: Date | null;
   goingCold: boolean;
+  contactState: ContactState;
 };
 
 // Opportunity stages that count as "open" for the summary.
 const OPEN_OPPORTUNITY_STAGES = ["new", "qualified", "quoting", "open"] as const;
 
 /**
- * CRM_COLD_V2 — the ONE going-cold contract, shared by the accounts summary
- * (KPI tile) and the relationships /going-cold list (tab). Before this, the
- * KPI tile used 14 days and treated null as NOT cold, while the tab used 30
- * days and treated null as cold, so the tile read 0 while the tab below it
- * listed 9 rows off the same data.
+ * CRM_COLD_V3 — the ONE contact-state contract, shared by the accounts summary
+ * (KPI tile) and the relationships going-cold list. Two contracts ago the tile
+ * used 14 days and treated null as NOT cold while the list used 30 days and
+ * treated null as cold, so the tile read 0 while the list below it showed 9
+ * rows off the same data. One constant, one rule, both surfaces.
  *
- * Marco's decisions (2026-09-01):
- *   - Default threshold is 60 days (user-selectable at the tab).
- *   - An account with NO logged contact at all counts as COLD. Never-contacted
- *     is the coldest state in the system, not the warmest.
+ * Marco's decisions:
+ *   - 2026-09-01: default threshold is 60 days, user-selectable at the
+ *     Relationships going-cold panel (via ?thresholdDays=).
+ *   - 2026-09-04: never-contacted is its OWN state, not the coldest one.
+ *     "Cold" means was warm, went quiet. An account nobody has contacted yet
+ *     is a relationship that has not STARTED — a different job for the
+ *     estimator, so a different number. This retired the null-is-cold rule:
+ *     with no contact ever logged that rule made all 175 accounts cold and the
+ *     tile read "Going cold 175" out of 175, which is a number nobody reads.
  *
- * DO NOT introduce a second threshold or a second null-rule. If a caller
- * wants a different threshold it must pass it in explicitly (only the
- * /going-cold tab does — via ?thresholdDays=).
+ * DO NOT introduce a second threshold or a second null-rule anywhere in the
+ * CRM. If a caller wants a different threshold it must pass it in explicitly.
  */
-export const CRM_COLD_V2 = {
-  THRESHOLD_DAYS: 60 as number,
-  NULL_IS_COLD: true as const
+export const CRM_COLD_V3 = {
+  THRESHOLD_DAYS: 60 as number
 } as const;
 
 /**
- * Derives the "going cold" flag for an account. CRM_COLD_V2 contract:
- *   - lifecycle === "PAST"     → never cold
- *   - lastContactedAt === null → COLD (if non-PAST) — never-contacted is coldest
- *   - lastContactedAt older than CRM_COLD_V2.THRESHOLD_DAYS → cold
+ * The four states an account's contact history can be in. Exactly one applies,
+ * and they are tested in the order deriveContactState checks them.
+ */
+export type ContactState = "PAST" | "NEVER_CONTACTED" | "COLD" | "IN_CONTACT";
+
+/**
+ * Derives the contact state for an account. CRM_COLD_V3 contract, in order:
+ *
+ *   lifecycle === "PAST"                        -> "PAST"
+ *   lastContactedAt === null                    -> "NEVER_CONTACTED"
+ *   older than CRM_COLD_V3.THRESHOLD_DAYS       -> "COLD"
+ *   otherwise                                   -> "IN_CONTACT"
+ *
+ * The threshold boundary is STRICT: an account contacted exactly
+ * THRESHOLD_DAYS ago is still "IN_CONTACT"; at THRESHOLD_DAYS plus one
+ * millisecond it is "COLD".
  *
  * `nowMs` is an OPTIONAL injected clock, defaulting to the real wall clock.
  * Every existing caller is unaffected. It exists so the boundary can be
@@ -95,16 +111,33 @@ export const CRM_COLD_V2 = {
  * literal date while the function reads `Date.now()` is a time bomb that goes
  * green in CI and turns red, permanently, on a date nobody chose.
  */
+export function deriveContactState(
+  lifecycle: string,
+  lastContactedAt: Date | null,
+  nowMs: number = Date.now()
+): ContactState {
+  if (lifecycle === "PAST") return "PAST";
+  if (!lastContactedAt) return "NEVER_CONTACTED";
+  const diffMs = nowMs - lastContactedAt.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays > CRM_COLD_V3.THRESHOLD_DAYS ? "COLD" : "IN_CONTACT";
+}
+
+/**
+ * Boolean convenience wrapper over deriveContactState, so callers that only
+ * want the flag do not re-derive the rule.
+ *
+ * CHANGED 2026-09-04: this returns FALSE for a null `lastContactedAt` where it
+ * returned TRUE before. That is Marco's ruling landing, not a regression — a
+ * never-contacted account is now "NEVER_CONTACTED", a state of its own, and is
+ * counted separately rather than reported as cold.
+ */
 export function deriveGoingCold(
   lifecycle: string,
   lastContactedAt: Date | null,
   nowMs: number = Date.now()
 ): boolean {
-  if (lifecycle === "PAST") return false;
-  if (!lastContactedAt) return CRM_COLD_V2.NULL_IS_COLD;
-  const diffMs = nowMs - lastContactedAt.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  return diffDays > CRM_COLD_V2.THRESHOLD_DAYS;
+  return deriveContactState(lifecycle, lastContactedAt, nowMs) === "COLD";
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -615,6 +648,11 @@ export class AccountsService {
         lastContactedAt = latestNote.createdAt;
       }
 
+      // CRM_COLD_V3: derive ONCE, then serve both shapes from it. The row
+      // keeps `goingCold` for consumers that only want the flag and gains
+      // `contactState` so the tile can count never-contacted separately.
+      const contactState = deriveContactState(acct.lifecycleStatus, lastContactedAt);
+
       return {
         id: acct.id,
         name: acct.client?.name ?? "Unnamed",
@@ -625,7 +663,8 @@ export class AccountsService {
         winRate,
         openOpportunitiesCount: acct._count.opportunities,
         lastContactedAt,
-        goingCold: deriveGoingCold(acct.lifecycleStatus, lastContactedAt)
+        goingCold: contactState === "COLD",
+        contactState
       };
     });
   }

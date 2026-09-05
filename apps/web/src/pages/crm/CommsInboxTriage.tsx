@@ -9,13 +9,23 @@
 //   GET  /crm/intake/open                 — list open leads
 //   POST /crm/intake                      — capture a new lead
 //   POST /crm/intake/:id/triage           — Price it / Don't pursue
+//
+// CRM_CHROME_V1 (2026-09-04) adds Archive and Delete. Those are ENTRY verbs,
+// not intake verbs: an IntakeLead.id IS an Opportunity id (listOpenLeads
+// queries prisma.opportunity with isLead: true), so /crm/entries/:id/archive
+// and DELETE /crm/entries/:id address the very same row. The archive modal,
+// the governed reason list and the client functions all already shipped on
+// /tenders/leads — this mounts them, it does not rebuild them. No second
+// archive path, no second reason list, no second empty-entry rule.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { type PickerSelection } from "./AnchorPicker";
+import { ArchiveEntryModal } from "./ArchiveEntryModal";
 import {
   captureLead,
+  deleteEntry,
   listDropReasons,
   listOpenLeads,
   triageLead,
@@ -106,6 +116,61 @@ function accountChip(lead: IntakeLead): React.ReactNode {
       no match, will create {name}
     </span>
   );
+}
+
+// ── CRM_CHROME_V1 — pure row-action logic ─────────────────────────────────────
+//
+// Exported so the web workspace's pure-unit-test setup (vitest, no jsdom) can
+// pin them without rendering. See
+// components/__tests__/ShellLayout.crm-chrome.test.ts.
+
+/** The subset of an IntakeLead the empty-entry hint can actually see. */
+export type EmptyLeadFields = Pick<IntakeLead, "notes" | "contact" | "account" | "dropReason">;
+
+/**
+ * CRM_CHROME_V1 — is this lead empty enough to offer Delete?
+ *
+ * DELETE /crm/entries/:id is the final word: the server refuses with a 400
+ * naming the blocking field when the entry has a description, contact,
+ * account, estimatedValue, dropReason, convertedTender or any anchored comms
+ * thread. IntakeLead carries only notes, contact, account and dropReason — no
+ * estimatedValue and no convertedTender — so this is a HINT, deliberately
+ * conservative: Delete is offered only when every field the client can see is
+ * empty, and the server's message is surfaced on the row when it still says no.
+ */
+export function isIntakeLeadEmpty(lead: EmptyLeadFields): boolean {
+  return !lead.notes && !lead.contact && !lead.account && !lead.dropReason;
+}
+
+/**
+ * CRM_CHROME_V1 — which action set does a row show?
+ *
+ * An empty lead offers Delete alone; every other untriaged row offers
+ * Archive · Don't pursue · Price it, in the mock-up's order.
+ */
+export function leadRowActionSet(lead: EmptyLeadFields): "triage" | "delete" {
+  return isIntakeLeadEmpty(lead) ? "delete" : "triage";
+}
+
+/**
+ * CRM_CHROME_V1 — oldest-createdAt-first ordering for the Inbox page.
+ *
+ * The header promises "oldest first" and listOpenLeads does not deliver it:
+ * the service sorts [{ nextActionAt: asc, nulls last }, { createdAt: desc }],
+ * i.e. NEWEST first on the tiebreak. This slice is web-only and must not touch
+ * the service, so the promise is kept WITHIN THE PAGE ONLY — it is not a sort
+ * across pages until an API slice adds an order parameter.
+ *
+ * Rows with an equal or unparseable timestamp keep their incoming order; rows
+ * with no timestamp at all sort last, since their age is unknown.
+ */
+export function sortLeadsOldestFirst<T extends { createdAt: string | null }>(rows: T[]): T[] {
+  const keyed = rows.map((row, index) => {
+    const ms = row.createdAt ? new Date(row.createdAt).getTime() : Number.NaN;
+    return { row, index, ms: Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY };
+  });
+  keyed.sort((a, b) => (a.ms === b.ms ? a.index - b.index : a.ms - b.ms));
+  return keyed.map((entry) => entry.row);
 }
 
 // ── Don't-pursue modal ────────────────────────────────────────────────────────
@@ -362,9 +427,26 @@ function LeadRow(props: {
   authFetch: (input: string, init?: RequestInit) => Promise<Response>;
 }) {
   const { lead, reasons, onRefresh } = props;
-  const [dialog, setDialog] = useState<"price" | "dont-pursue" | null>(null);
+  const [dialog, setDialog] = useState<"price" | "dont-pursue" | "archive" | null>(null);
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  const actionSet = leadRowActionSet(lead);
+
+  // CRM_CHROME_V1 — DELETE /crm/entries/:id. The server owns the guard; when
+  // it refuses with a 400 naming the blocking field, that message is shown on
+  // the row verbatim rather than swallowed.
+  const onDelete = useCallback(async () => {
+    setBusy(true);
+    setRowError(null);
+    try {
+      await deleteEntry(props.authFetch, lead.id);
+      onRefresh();
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "Failed to delete.");
+    } finally {
+      setBusy(false);
+    }
+  }, [lead.id, onRefresh, props.authFetch]);
 
   const onPriceConfirm = useCallback(async (siteId: string, title: string) => {
     setBusy(true);
@@ -432,22 +514,54 @@ function LeadRow(props: {
       {rowError && (
         <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 6 }}>{rowError}</div>
       )}
+      {/* CRM_CHROME_V1 — [Archive] [Don't pursue] [Price it] in the mock-up's
+          order; [Delete] alone on an empty lead. */}
       <div style={s.rowActions}>
-        <button
-          style={s.actionBtn}
-          onClick={() => setDialog("price")}
-          disabled={busy}
-        >
-          Price it
-        </button>
-        <button
-          style={s.dontPursueBtn}
-          onClick={() => setDialog("dont-pursue")}
-          disabled={busy}
-        >
-          Don't pursue
-        </button>
+        {actionSet === "delete" ? (
+          <button
+            style={s.dontPursueBtn}
+            onClick={() => void onDelete()}
+            disabled={busy}
+          >
+            Delete
+          </button>
+        ) : (
+          <>
+            <button
+              style={s.secondaryBtn}
+              onClick={() => setDialog("archive")}
+              disabled={busy}
+            >
+              Archive
+            </button>
+            <button
+              style={s.dontPursueBtn}
+              onClick={() => setDialog("dont-pursue")}
+              disabled={busy}
+            >
+              Don't pursue
+            </button>
+            <button
+              style={s.actionBtn}
+              onClick={() => setDialog("price")}
+              disabled={busy}
+            >
+              Price it
+            </button>
+          </>
+        )}
       </div>
+      {dialog === "archive" && (
+        <ArchiveEntryModal
+          entryId={lead.id}
+          entryTitle={lead.title}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
+            onRefresh();
+          }}
+        />
+      )}
       {dialog === "price" && (
         <PriceItDialog
           lead={lead}
@@ -500,6 +614,16 @@ export function CommsInboxTriage(props: {
     ? props.anchorFilter.entityId
     : undefined;
 
+  // CRM_CHROME_V1 — the anchor picker offers six types but listOpenLeads
+  // accepts ownerId, accountId, captureChannel and search and nothing else.
+  // Picking a Tender, Job, Contract or Lead therefore cannot filter this list.
+  // Say so instead of leaving the user with no signal either way; do NOT
+  // invent a query parameter.
+  const unfilterableAnchor =
+    props.anchorFilter?.kind === "entity" && props.anchorFilter.type !== "ACCOUNT"
+      ? props.anchorFilter
+      : null;
+
   const loadLeads = useCallback(async (targetPage: number) => {
     setLoading(true);
     setLoadError(null);
@@ -532,6 +656,11 @@ export function CommsInboxTriage(props: {
 
   const totalPages = Math.ceil(total / INTAKE_PAGE_SIZE) || 1;
 
+  // CRM_CHROME_V1 — the header promises oldest first, so the page keeps it.
+  // Within the page only: listOpenLeads still orders by nextActionAt then
+  // createdAt DESC across pages.
+  const orderedLeads = useMemo(() => sortLeadsOldestFirst(leads), [leads]);
+
   return (
     <div>
       {/* Filters */}
@@ -551,6 +680,11 @@ export function CommsInboxTriage(props: {
             Filtered by account
           </span>
         )}
+        {unfilterableAnchor && (
+          <span style={{ ...s.badge, background: CHANNEL_COLOUR.referral.bg, color: CHANNEL_COLOUR.referral.fg }}>
+            {unfilterableAnchor.label} — the Inbox can only be filtered by account
+          </span>
+        )}
         <span style={{ fontSize: 12, color: "#9ca3af" }}>
           {total} lead{total === 1 ? "" : "s"}
         </span>
@@ -564,8 +698,13 @@ export function CommsInboxTriage(props: {
 
       {/* List */}
       <div style={s.card}>
+        {/* CRM_CHROME_V1 — the mock-up's header. The "oldest first" half is a
+            promise the page keeps via sortLeadsOldestFirst, within the page. */}
         <div style={s.cardTitle}>
-          Open leads — page {page} of {totalPages}
+          Untriaged · oldest first
+          <span style={{ fontWeight: 400, color: s.empty.color, marginLeft: 8 }}>
+            page {page} of {totalPages}
+          </span>
         </div>
 
         {loadError && (
@@ -574,9 +713,9 @@ export function CommsInboxTriage(props: {
 
         {loading
           ? <div style={s.empty}>Loading…</div>
-          : leads.length === 0
+          : orderedLeads.length === 0
             ? <div style={s.empty}>No open leads.</div>
-            : leads.map((lead) => (
+            : orderedLeads.map((lead) => (
                 <LeadRow
                   key={lead.id}
                   lead={lead}

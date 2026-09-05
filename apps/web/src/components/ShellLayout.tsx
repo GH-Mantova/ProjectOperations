@@ -21,12 +21,27 @@ import {
   type ComplianceDashboardData
 } from "../pages/compliance/complianceCounts";
 
+// CRM_CHROME_V1 — a sidebar tab row: the label of a `?tab=` view rendered
+// indented beneath a flat nav item. NOT a NavSubGroup child: the CRM items
+// stay flat links (Marco's decision 2 — nesting happens as tabs inside the
+// page, never as a collapsible sidebar parent).
+export type NavTab = {
+  label: string;
+  to: string;
+};
+
 type NavItem = {
   to: string;
   label: string;
   icon: ReactNode;
   match?: (pathname: string) => boolean;
-  badge?: "safety" | "compliance";
+  // CRM_CHROME_V1 widened this from `"safety" | "compliance"` so a CRM count
+  // badge can exist at all. Both original values render exactly as before.
+  badge?: "safety" | "compliance" | "crm-tenders" | "crm-comms";
+  // CRM_CHROME_V1 — optional `?tab=` rows drawn under the item. Hidden while
+  // the sidebar is collapsed. The FIRST entry is the item's default tab, so a
+  // bare or unrecognised `?tab=` lights up that row (mirrors the tab shells).
+  tabs?: NavTab[];
   // Optional per-item gate. When set, the item is hidden from users who do
   // not have the permission. The route itself still renders a NoAccess page
   // if a user reaches the URL directly (defence-in-depth).
@@ -250,30 +265,50 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         // CRM-1 Accounts — client 360. GET /crm/accounts gates on crm.view.
+        // CRM_CHROME_V1: no badge (the mock-up draws none on Accounts).
         to: "/crm/accounts",
         label: "Accounts",
         icon: ICON_CLIENTS,
         match: (path) => path === "/crm/accounts" || path.startsWith("/crm/accounts/"),
-        requiresPermission: "crm.view"
+        requiresPermission: "crm.view",
+        tabs: [
+          { label: "List", to: "/crm/accounts" },
+          { label: "Relationships", to: "/crm/accounts?tab=relationships" }
+        ]
       },
       {
         // CRM_NAV_TABS — S2 (2026-08-28): renamed from "Tenders register" to
         // "Tenders" to match the three-item CRM group (Accounts · Tenders ·
         // Comms hub). The route /crm/register is unchanged; tabs (Register ·
         // Follow-ups) are rendered inside TendersPage via ?tab=.
+        // CRM_CHROME_V1: amber badge = distinct tenders with an overdue open
+        // TENDER-anchored task (the mock-up's `7` on amber).
         to: "/crm/register",
         label: "Tenders",
         icon: ICON_AUDIT,
         match: (path) => path.startsWith("/crm/register"),
-        requiresPermission: "crm.view"
+        badge: "crm-tenders",
+        requiresPermission: "crm.view",
+        tabs: [
+          { label: "Register", to: "/crm/register" },
+          { label: "Follow-ups", to: "/crm/register?tab=follow-ups" }
+        ]
       },
       {
         // CRM-4 Comms hub (comms.controller.ts). Gate: crm.view.
+        // CRM_CHROME_V1: red badge = untriaged leads + my overdue to-dos
+        // (the mock-up's `15` on red).
         to: "/crm/comms",
         label: "Comms hub",
         icon: ICON_FORMS,
         match: (path) => path.startsWith("/crm/comms"),
-        requiresPermission: "crm.view"
+        badge: "crm-comms",
+        requiresPermission: "crm.view",
+        tabs: [
+          { label: "Inbox", to: "/crm/comms" },
+          { label: "Threads", to: "/crm/comms?tab=threads" },
+          { label: "To-dos", to: "/crm/comms?tab=todos" }
+        ]
       }
       // Pipeline entry removed from CRM group (pipeline-fold, 2026-08-20).
       // The Pipeline nav item now lives under Tendering, pointing to
@@ -458,6 +493,79 @@ export const NAV_GROUPS: NavGroup[] = [
 // filtered groups here.
 export function pickMobileTabItem(group: NavGroup): NavItem | undefined {
   return group.items.find((item) => item.to.startsWith("/"));
+}
+
+// ── CRM_CHROME_V1 — pure count / active-tab logic ─────────────────────────────
+//
+// Exported so the web workspace's pure-unit-test setup (vitest, no jsdom) can
+// pin the arithmetic without rendering anything. See
+// components/__tests__/ShellLayout.crm-chrome.test.ts.
+
+/** The only fields of a CommTask row the Tenders badge derivation reads. */
+export type CrmOverdueTaskRow = {
+  entityId: string;
+  dueAt: string | null;
+};
+
+/**
+ * CRM_CHROME_V1 — the Tenders nav badge figure.
+ *
+ * The register classifies a tender as overdue from its earliest open
+ * TENDER-anchored task, so the badge counts DISTINCT `entityId` values among
+ * the open TENDER tasks whose `dueAt` has passed. Two overdue tasks on one
+ * tender therefore count once, and a task with a null `dueAt` counts zero.
+ *
+ * The `due <= now` comparison mirrors `classifyNextAction` in
+ * tendersRegisterPage.helpers.ts so the badge and the page cannot disagree.
+ */
+export function countDistinctOverdueTenders(rows: CrmOverdueTaskRow[], nowMs: number): number {
+  const overdue = new Set<string>();
+  for (const row of rows) {
+    if (!row.entityId || !row.dueAt) continue;
+    const due = new Date(row.dueAt).getTime();
+    if (!Number.isFinite(due)) continue;
+    if (due <= nowMs) overdue.add(row.entityId);
+  }
+  return overdue.size;
+}
+
+/**
+ * CRM_CHROME_V1 — the Comms hub nav badge figure: untriaged leads plus the
+ * current user's overdue to-dos. Negative or non-finite inputs (a malformed
+ * payload) contribute zero rather than corrupting the sum.
+ */
+export function sumCommsBadgeCount(untriagedTotal: number, overdueTodoTotal: number): number {
+  const safe = (value: number) => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
+  return safe(untriagedTotal) + safe(overdueTodoTotal);
+}
+
+/** The `?tab=` value a sidebar tab row points at; "" for a default tab. */
+export function navTabId(to: string): string {
+  const q = to.indexOf("?");
+  if (q < 0) return "";
+  return new URLSearchParams(to.slice(q + 1)).get("tab") ?? "";
+}
+
+/**
+ * CRM_CHROME_V1 — is this sidebar tab row the active one?
+ *
+ * The pathname must match, and the current `?tab=` must resolve to this row.
+ * A missing or unrecognised `?tab=` resolves to the FIRST entry in `tabs`,
+ * which is exactly how AccountsPage / TendersPage / CommsPage pick their
+ * default tab.
+ */
+export function isNavTabActive(
+  to: string,
+  tabs: NavTab[],
+  pathname: string,
+  search: string
+): boolean {
+  const path = to.split("?")[0];
+  if (pathname !== path) return false;
+  const known = tabs.map((tab) => navTabId(tab.to));
+  const current = new URLSearchParams(search).get("tab") ?? "";
+  const resolved = known.includes(current) ? current : known[0] ?? "";
+  return resolved === navTabId(to);
 }
 
 type SharedFollowUpItem = {
@@ -758,6 +866,7 @@ export function ShellLayout() {
                     item={item}
                     collapsed={collapsed}
                     pathname={location.pathname}
+                    search={location.search}
                   />
                 )
               )}
@@ -933,25 +1042,50 @@ function isItemActive(item: NavItem, pathname: string): boolean {
 function NavLeaf({
   item,
   collapsed,
-  pathname
+  pathname,
+  search = ""
 }: {
   item: NavItem;
   collapsed: boolean;
   pathname: string;
+  search?: string;
 }) {
   const active = isItemActive(item, pathname);
+  const tabs = item.tabs ?? [];
   return (
-    <NavLink
-      to={item.to}
-      className={active ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
-      title={collapsed ? item.label : undefined}
-      end={item.to === "/"}
-    >
-      <span className="shell__nav-icon">{item.icon}</span>
-      <span className="shell__nav-label">{item.label}</span>
-      {item.badge === "safety" ? <SidebarSafetyBadge /> : null}
-      {item.badge === "compliance" ? <SidebarComplianceBadge /> : null}
-    </NavLink>
+    <>
+      <NavLink
+        to={item.to}
+        className={active ? "shell__nav-link shell__nav-link--active" : "shell__nav-link"}
+        title={collapsed ? item.label : undefined}
+        end={item.to === "/"}
+      >
+        <span className="shell__nav-icon">{item.icon}</span>
+        <span className="shell__nav-label">{item.label}</span>
+        {item.badge === "safety" ? <SidebarSafetyBadge /> : null}
+        {item.badge === "compliance" ? <SidebarComplianceBadge /> : null}
+        {item.badge === "crm-tenders" ? <SidebarCrmTendersBadge /> : null}
+        {item.badge === "crm-comms" ? <SidebarCrmCommsBadge /> : null}
+      </NavLink>
+      {/* CRM_CHROME_V1 — tab rows beneath a flat item. Hidden when collapsed. */}
+      {!collapsed && tabs.length > 0
+        ? tabs.map((tab) => (
+            <div key={`${item.to}-tab-${tab.to}`} style={{ paddingLeft: 30 }}>
+              <NavLink
+                to={tab.to}
+                className={
+                  isNavTabActive(tab.to, tabs, pathname, search)
+                    ? "shell__nav-link shell__nav-link--active"
+                    : "shell__nav-link"
+                }
+                style={{ fontSize: 12, paddingTop: 4, paddingBottom: 4 }}
+              >
+                <span className="shell__nav-label">{tab.label}</span>
+              </NavLink>
+            </div>
+          ))
+        : null}
+    </>
   );
 }
 
@@ -1056,6 +1190,95 @@ function SidebarSafetyBadge() {
   }, [authFetch, isAuthenticated, allowed]);
   if (!allowed) return null;
   return <SidebarPill count={count} tone="danger" />;
+}
+
+// CRM_CHROME_V1 — reads the `total` off a paginated CRM list response.
+// Returns 0 on a non-OK response so a badge never surfaces a fetch failure.
+async function readListTotal(
+  authFetch: (input: string, init?: RequestInit) => Promise<Response>,
+  url: string
+): Promise<number> {
+  const res = await authFetch(url);
+  if (!res.ok) return 0;
+  const body = (await res.json()) as { total?: number };
+  return typeof body.total === "number" && Number.isFinite(body.total) ? body.total : 0;
+}
+
+/**
+ * CRM_CHROME_V1 — Tenders nav badge (amber).
+ *
+ * Same request and same 200-row cap TendersRegisterPage already issues, so the
+ * badge and the register cannot disagree. Follows SidebarSafetyBadge exactly:
+ * gate on the permission, poll every 5 minutes, swallow fetch errors, render
+ * nothing when not allowed (and SidebarPill renders nothing at zero).
+ */
+function SidebarCrmTendersBadge() {
+  const { authFetch, isAuthenticated, user } = useAuth();
+  const allowed = can(user, "crm.view");
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated || !allowed) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await authFetch("/crm/comms/tasks?entityType=TENDER&status=OPEN&limit=200");
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { items?: CrmOverdueTaskRow[] };
+        if (!cancelled) setCount(countDistinctOverdueTenders(body.items ?? [], Date.now()));
+      } catch {
+        // best-effort polling — sidebar should not surface fetch errors
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [authFetch, isAuthenticated, allowed]);
+  if (!allowed) return null;
+  return <SidebarPill count={count} tone="warning" title="Tenders with an overdue follow-up" />;
+}
+
+/**
+ * CRM_CHROME_V1 — Comms hub nav badge (red).
+ *
+ * Untriaged leads (`GET /crm/intake/open?limit=1`) plus the current user's
+ * overdue to-dos (`GET /crm/comms/tasks?assigneeId=…&overdueOnly=true&limit=1`,
+ * where `overdueOnly` is applied server-side as `dueAt < now` with status in
+ * OPEN/IN_PROGRESS). Renders nothing at zero.
+ */
+function SidebarCrmCommsBadge() {
+  const { authFetch, isAuthenticated, user } = useAuth();
+  const allowed = can(user, "crm.view");
+  const userId = user?.id;
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated || !allowed) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const untriaged = await readListTotal(authFetch, "/crm/intake/open?limit=1");
+        const overdueTodos = userId
+          ? await readListTotal(
+              authFetch,
+              `/crm/comms/tasks?assigneeId=${encodeURIComponent(userId)}&overdueOnly=true&limit=1`
+            )
+          : 0;
+        if (!cancelled) setCount(sumCommsBadgeCount(untriaged, overdueTodos));
+      } catch {
+        // best-effort polling
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [authFetch, isAuthenticated, allowed, userId]);
+  if (!allowed) return null;
+  return <SidebarPill count={count} tone="danger" title="Untriaged leads plus your overdue to-dos" />;
 }
 
 function SidebarComplianceBadge() {

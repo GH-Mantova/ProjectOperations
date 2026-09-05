@@ -7,6 +7,7 @@ import { DISCIPLINES } from "./dto/scope-of-works.dto";
 import {
   buildRateMaps,
   computeScopeItemTotal,
+  resolveEffectiveMarkup,
   toPricingInput
 } from "./scope-item-pricing";
 
@@ -852,9 +853,10 @@ export class ScopeRedesignService {
   // ── Summary ──────────────────────────────────────────────────────────
   /**
    * Computes the tender pricing rollup: per-discipline scope-item
-   * subtotals (markup resolved per card via markupOverride ?? tender
-   * markup), the cutting subtotal, waste totals by discipline, and the
-   * combined tenderPrice. Excluded scope items are skipped.
+   * subtotals (markup resolved through resolveEffectiveMarkup:
+   * item.markupOverride ?? card.markupOverride ?? tender markup), the
+   * cutting subtotal, waste totals by discipline, and the combined
+   * tenderPrice. Excluded scope items are skipped.
    *
    * @returns per-discipline buckets plus `cutting`, `waste`, and `tenderPrice`
    * @throws NotFoundException when the tender does not exist
@@ -900,7 +902,15 @@ export class ScopeRedesignService {
     const rateMaps = buildRateMaps(labourRates, plantRates);
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
-    // PR B2 — markup resolves per-card: card.markupOverride ?? tenderMarkup.
+    // CARD-PERSIST SLICE 4 — markup resolves over three links, not two:
+    // item.markupOverride ?? card.markupOverride ?? tenderEstimate.markup.
+    // resolveEffectiveMarkup() in scope-item-pricing.ts owns that chain and
+    // is the ONLY place it is written; this loop calls it rather than
+    // inlining, exactly as listItems() in scope-of-works.service.ts does, so
+    // the summary screen and the scope screen cannot show different money for
+    // the same work. `??` and not `||` at every link: a stored 0 is a real
+    // 0% override, not an absence. (Supersedes the PR B2 two-link note, which
+    // read `card.markupOverride ?? tenderMarkup` and skipped the item.)
     // scope-subcontracted order 3 — each bucket gains provisionalSubtotal /
     // provisionalWithMarkup. A line is provisional when isProvisional===true
     // OR its discipline is "Other". Provisional lines add to the provisional
@@ -928,8 +938,11 @@ export class ScopeRedesignService {
       const bucket = perDiscipline[itemDiscipline];
       if (!bucket) continue;
       bucket.itemCount += 1;
-      const effectiveMarkup =
-        item.card?.markupOverride != null ? Number(item.card.markupOverride) : tenderMarkup;
+      const effectiveMarkup = resolveEffectiveMarkup(
+        item.markupOverride != null ? Number(item.markupOverride) : null,
+        item.card?.markupOverride != null ? Number(item.card.markupOverride) : null,
+        tenderMarkup
+      );
 
       let totals: { lineTotal: number; lineTotalWithMarkup: number };
 

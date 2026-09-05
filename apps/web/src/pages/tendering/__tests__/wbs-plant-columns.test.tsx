@@ -19,6 +19,13 @@
 //
 // A custom machine with a typed rate totals correctly; it has no locked rate
 // so no revert-to-locked control appears (isCustom branch skips OverrideField).
+//
+// SCOPE_PLANT_PERSIST_V1 — the row-state literals below gained two fields when
+// the columns learned to save: `description` (the machine's NAME as stored on
+// the plantItems entry — getCardSummary skips an entry without one) and `unit`
+// (the catalogue rate unit, round-tripped so an adopted legacy entry does not
+// lose it). The DISPLAY rules this file covers are unchanged by that slice;
+// the payload those fields feed is covered by wbs-plant-persist.test.tsx.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -262,15 +269,20 @@ describe("catalogue machine pick", () => {
   it("selecting a plantRateId clears customDescription and dayRateOverride", () => {
     // This encodes the onPlantTypeChange callback contract in PlantRowCells:
     // { plantRateId: v, customDescription: null, dayRateOverride: null }
+    // SCOPE_PLANT_PERSIST_V1 — the pick also copies the catalogue NAME and
+    // unit onto the row, because those are what the server stores and reads.
     const newState = {
       plantRateId: "abc-123",
       customDescription: null,
+      description: "Excavator 16T-25T",
+      unit: "day",
       dayRateOverride: null,
       qty: "",
       days: ""
     };
     expect(newState.plantRateId).toBe("abc-123");
     expect(newState.customDescription).toBeNull();
+    expect(newState.description).toBe("Excavator 16T-25T");
     expect(newState.dayRateOverride).toBeNull();
   });
 
@@ -290,12 +302,17 @@ describe("custom machine drop-out", () => {
     const customState = {
       plantRateId: null,
       customDescription: "Liebherr LTM 1200",
+      // SCOPE_PLANT_PERSIST_V1 — a custom machine IS its description; the
+      // typed text is both the row's identity and the stored name.
+      description: "Liebherr LTM 1200",
+      unit: "day",
       dayRateOverride: null,
       qty: "",
       days: ""
     };
     expect(customState.plantRateId).toBeNull();
     expect(customState.customDescription).toBe("Liebherr LTM 1200");
+    expect(customState.description).toBe(customState.customDescription);
   });
 
   it("isCustom = customDescription !== null", () => {
@@ -341,11 +358,14 @@ describe("revert custom machine to list", () => {
     const revertedState = {
       plantRateId: null,
       customDescription: null,
+      description: null,
+      unit: null,
       dayRateOverride: null,
       qty: "1",
       days: "3"
     };
     expect(revertedState.customDescription).toBeNull();
+    expect(revertedState.description).toBeNull();
     expect(revertedState.dayRateOverride).toBeNull();
     expect(revertedState.plantRateId).toBeNull();
   });
@@ -405,9 +425,14 @@ describe("plant day-rate override lifecycle (catalogue machine)", () => {
 // to the server-computed line total. The card subtotal is unaffected.
 //
 // Example card: 1 item with lineTotal = $5000, lineTotalWithMarkup = $5500.
-// After adding the plant column group (slice 4), neither figure changes
-// because the plant columns are LOCAL state only — no API call or server
-// patch is issued for an unset plant row.
+// After adding the plant column group (slice 4), neither figure changes.
+//
+// SCOPE_PLANT_PERSIST_V1 — the reason changed, the figures did not. The plant
+// columns are no longer local-only: an edit to any of them PATCHes the whole
+// plantItems array. But an UNSET row still costs nothing, because the entry it
+// writes carries no plantRateId and no dayRateOverride, and
+// scope-item-pricing.ts skips such an entry outright (`if (rate == null)
+// continue`). A card that uses no plant reads the same two figures as before.
 
 describe("card total unchanged for no-plant card", () => {
   it("plantRowTotal returns null when no plant type is set", () => {

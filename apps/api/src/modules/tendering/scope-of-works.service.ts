@@ -17,8 +17,36 @@ import {
   computeScopeItemTotal,
   DEFAULT_ROLE_BY_DISCIPLINE,
   DISCIPLINE_ORDER,
-  toPricingInput
+  labourCrewAndDaysForItem,
+  resolveEffectiveMarkup,
+  toPricingInput,
+  type ScopeLabourEntryInput
 } from "./scope-item-pricing";
+
+// SCOPE_ITEM_LABOUR_STORE_V1 — CARD-API SLICE 1.
+//
+// ScopeOfWorksItem gained two NULLABLE columns in migration
+// 20260905000000_scope_item_labour_store:
+//
+//   labourItems    Json?           — one entry per rendered labour row:
+//                                    { rowIdx, labourTypeId, role, shift,
+//                                      qty, days, dayRateOverride }.
+//                                    Same shape and name pattern as the
+//                                    pre-existing plantItems column.
+//   markupOverride Decimal(5,2)?   — item-level markup %, null = inherit.
+//
+// PRECEDENCE, stated once and applied everywhere (the predicates live in
+// scope-item-pricing.ts so no reader re-derives them):
+//   - labour: a NON-EMPTY labourItems array wins over the men/days/shift
+//     scalars; NULL or [] falls back to the scalars, exactly as before.
+//     hasLabourRows() / labourCrewAndDaysForItem() own that rule.
+//   - markup: resolveEffectiveMarkup() owns
+//     item.markupOverride ?? card.markupOverride ?? tenderEstimate.markup.
+//
+// men, days and shift are NOT dropped, NOT renamed, NOT retyped and NOT
+// backfilled. Every row that existed before the migration reads both new
+// columns NULL, takes the fallback, and prices to the same number it did
+// before — that is what makes a backfill unnecessary.
 
 // PR B4a.1 — defensive type narrowing for the Prisma.Decimal constructor.
 // CodeQL flagged the previous `value as number` cast as a "type confusion
@@ -144,6 +172,19 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
       dto.plantItems !== undefined ? (dto.plantItems as unknown as Prisma.InputJsonValue) : undefined,
     measurements:
       dto.measurements !== undefined ? (dto.measurements as unknown as Prisma.InputJsonValue) : undefined,
+    // SCOPE_ITEM_LABOUR_STORE_V1 — labourItems is passed through exactly
+    // like plantItems: identity, no re-derivation, shape enforced by the
+    // DTO's @IsArray() hint. `undefined` (key absent from the PATCH body)
+    // means "leave the stored array alone"; an array REPLACES it whole,
+    // which is why the DTO documents that clients must ship every row
+    // they intend to keep.
+    labourItems:
+      dto.labourItems !== undefined ? (dto.labourItems as unknown as Prisma.InputJsonValue) : undefined,
+    // SCOPE_ITEM_LABOUR_STORE_V1 — item-level markup override. Narrowed
+    // at the call site (PR B4a.3 pattern) before reaching the Decimal
+    // sink. An explicit null clears the override; 0 is a real 0% markup.
+    markupOverride:
+      dto.markupOverride !== undefined ? toDecimal(narrowToNumber(dto.markupOverride)) : undefined,
     // PR feat/scope-multi-material — pass-through of the additional
     // materials array. Row 1 stays on flat columns; rows 2..N live
     // here. Backend does not re-derive per-row sqm/m3/tonnes — the
@@ -339,8 +380,13 @@ export class ScopeOfWorksService {
 
     const itemsWithTotals = sorted.map((item) => {
       const discipline = (item.card?.discipline ?? "Other") as Discipline;
-      const effectiveMarkup =
-        item.card?.markupOverride != null ? Number(item.card.markupOverride) : tenderMarkup;
+      // SCOPE_ITEM_LABOUR_STORE_V1 — one shared expression, never inlined:
+      // item.markupOverride ?? card.markupOverride ?? tenderEstimate.markup.
+      const effectiveMarkup = resolveEffectiveMarkup(
+        item.markupOverride != null ? Number(item.markupOverride) : null,
+        item.card?.markupOverride != null ? Number(item.card.markupOverride) : null,
+        tenderMarkup
+      );
       const totals = computeScopeItemTotal(toPricingInput(item, discipline), rateMaps, effectiveMarkup);
       return {
         ...item,
@@ -1067,7 +1113,10 @@ export class ScopeOfWorksService {
    * Compute the auto-derived card-header summary and return it
    * alongside any stored user overrides.
    *
-   * peakCrew = max(men); labourDays = total person-days / peakCrew;
+   * peakCrew = max(per-item crew); labourDays = total person-days /
+   * peakCrew. SCOPE_ITEM_LABOUR_STORE_V1: an item's crew and person-days
+   * come from its labourItems rows (crew = Σ qty, person-days = Σ qty×days)
+   * when it has any, and from men / men×days when it does not.
    * plant entries are grouped by rate-card category with per-variant
    * peakQty and peakDays (= qty-days / peakQty); duration =
    * max(labourDays, longest plant peakDays). Excluded items are
@@ -1083,7 +1132,10 @@ export class ScopeOfWorksService {
       include: {
         scopeItems: {
           where: { status: { not: "excluded" } },
-          select: { men: true, days: true, plantItems: true }
+          // SCOPE_ITEM_LABOUR_STORE_V1 — labourItems joins the select so
+          // peakCrew/labourDays can be derived from the labour rows when
+          // an item has them (see labourCrewAndDaysForItem below).
+          select: { men: true, days: true, labourItems: true, plantItems: true }
         }
       }
     });
@@ -1096,10 +1148,23 @@ export class ScopeOfWorksService {
     const allPlantEntries: PlantEntry[] = [];
 
     for (const item of card.scopeItems) {
-      const men = item.men ? Number(item.men) : 0;
-      const days = item.days ? Number(item.days) : 0;
-      if (men > peakCrew) peakCrew = men;
-      totalPersonDays += men * days;
+      // SCOPE_ITEM_LABOUR_STORE_V1 — with a labour store an item is no
+      // longer described by `men` and `days` alone: a two-row item
+      // (1 labourer + 1 supervisor) is a crew of 2, not a crew of 1.
+      // labourCrewAndDaysForItem applies the same precedence rule the
+      // pricing leg uses — non-empty labourItems wins, NULL/[] falls
+      // back to men/days — so an item written before this column existed
+      // still reports exactly the numbers it reported before.
+      const labourItems = Array.isArray(item.labourItems)
+        ? (item.labourItems as unknown as ScopeLabourEntryInput[])
+        : null;
+      const { crew, personDays } = labourCrewAndDaysForItem({
+        men: item.men ? Number(item.men) : 0,
+        days: item.days ? Number(item.days) : 0,
+        labourItems
+      });
+      if (crew > peakCrew) peakCrew = crew;
+      totalPersonDays += personDays;
 
       const plantItems = item.plantItems as Array<{
         columnIndex: number; plantRateId?: string; description?: string;

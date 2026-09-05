@@ -382,3 +382,58 @@ I held the merge of my own `#1647` until `#1646`'s in-flight `tendering-e2e` set
 merging first would have moved `#1646`'s head and **cancelled a running e2e** on another lane's PR
 for no reason. That is the churn already dispatched to Station 03; the cheap mitigation is to
 sequence around it, which is what I did.
+
+---
+
+## ADDENDUM 2 - 2026-09-05T07:4xZ - the post-merge fast-forward has a SECOND blocker, and this run paid for it
+
+**F8 - `docs/pipeline/sweep-rotation.json` blocks the post-merge FF, and the recorded cure is aimed
+at a different file. S3. ACTIONED.**
+
+After `#1647` merged at 07:33:52Z, `git merge --ff-only origin/main` refused **three times**.
+
+The station doc's FF-trap section describes exactly one cause: an **untracked** breadcrumb sitting at
+a path the fast-forward must create. I applied that cure first - proved the disk copy byte-identical
+to the committed blob (`git rev-parse origin/main:<path>` = `git hash-object <path>` =
+`f7943cbec230d1b9...`, no piped hash) and deleted it. **The FF still refused**, and the error named a
+different file:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+	docs/pipeline/sweep-rotation.json
+```
+
+`sweep-rotation.json` is **tracked**, and Station 04 is instructed by its own station doc to advance
+it and **leave it dirty in the shared dev tree** for 00 to commit, because 04 may not commit there.
+So 00 sweeps it into the board PR, the PR merges, and the FF must now update a file the working tree
+has locally modified. **This is a blocker that the hand-off protocol creates by design, once per
+collect cycle, and it is not in the doc.**
+
+**The diagnosis then inverts halfway through, which is why it cost three attempts.** Restoring the
+file to its `origin/main` content does not help - git refuses on the working copy differing from
+**HEAD**, not from the merge target, so a file whose bytes already equal what the FF would write is
+still a blocker. And the moment it is restored, the *first* diagnosis becomes true: the blob is LF,
+the checkout smudges to CRLF, `git diff --numstat` reads **EMPTY** and the FF still refuses - the
+exact reading the doc tells you to rule out. Two different causes in sequence.
+
+**The order that worked, every step section 9.2-safe** (no `git checkout --` anywhere):
+restore to **HEAD** via `git show HEAD:<path>` piped to a node write -> `git add --renormalize` +
+`git update-index --refresh` (index read back EMPTY) -> `git merge --ff-only` -> restore the deleted
+breadcrumb from the **new** HEAD -> read back all three of
+`git rev-list --left-right --count HEAD...origin/main` = **`0 0`**, `git diff --numstat` = EMPTY,
+`git diff --cached --name-status` = EMPTY. Dev tree ended clean at `8325c5a6`.
+
+**DISPOSITION: ACTIONED** - written into `00-supervisor.md`'s FF-trap section in this PR, with the
+error text, both causes, the five-step order and the note that any future "leave it dirty for 00"
+hand-off inherits the same blocker. `node scripts/pipeline/lint-station.mjs` -> `ADMIT: all 8 docs
+clean`, exit 0 (the edit is outside the `station-contract` canonical block, so no rehash was needed
+- confirmed by the linter, not assumed).
+
+### Closing board state, read back after the merge
+
+`origin/main` **`8325c5a6`**, dev tree clean and equal to it. **1 open PR: `#1646`, BEHIND** - the
+auto-updater will rebase it; it is hand-classified MARCO'S and is not mine to merge.
+`lint-station.mjs` ADMIT exit 0 - `check-breadcrumb.mjs --freshness` CLEAN exit 0, no station SILENT.
+Both fixes verified present on `origin/main` with controls: the refuted `--jq` claim returns **0**
+matches (new no-paraphrase rule **1**, negative control **0**), and the STOP-WATCHER path form
+returns **2**.

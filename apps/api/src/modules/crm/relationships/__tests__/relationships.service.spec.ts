@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { RelationshipsService } from "../relationships.service";
+import { CRM_COLD_V3 } from "../../accounts/accounts.service";
 
 // CRM-S7: channel enum values available without importing Prisma
 const VALID_CHANNELS = ["phone", "email", "meeting", "site_visit", "other"] as const;
@@ -296,6 +297,62 @@ describe("RelationshipsService.getGoingColdAccounts", () => {
 
     const service = makeService(prisma);
     const result = await service.getGoingColdAccounts(30);
+    expect(result).toHaveLength(0);
+  });
+
+  // CRM_COLD_V3 (2026-09-04): this list and the KPI tile must agree. Both
+  // filters used to OR in `{ lastContactedAt: null }`; with no contact ever
+  // logged that listed all 175 accounts under a tile that now reads 0 — the
+  // exact tile-versus-list split the shared contract exists to close.
+  //
+  // findMany is mocked, so nothing but these assertions stops the two null
+  // branches being reintroduced. Pin the shape of BOTH filters.
+  it("never-contacted accounts are NOT selected — no null branch in either filter", async () => {
+    const prisma = makePrisma();
+    prisma.account.findMany.mockResolvedValue([]);
+
+    const service = makeService(prisma);
+    await service.getGoingColdAccounts(30);
+
+    const args = prisma.account.findMany.mock.calls[0][0];
+
+    // Account filter: the single lt-cutoff condition, no OR wrapper.
+    expect(args.where.contacts.some).toEqual({ lastContactedAt: { lt: expect.any(Date) } });
+    expect(args.where.contacts.some.OR).toBeUndefined();
+
+    // Contact sub-select: likewise.
+    expect(args.include.contacts.where).toEqual({ lastContactedAt: { lt: expect.any(Date) } });
+    expect(args.include.contacts.where.OR).toBeUndefined();
+
+    // Belt and braces — the serialised args must not mention a null date at all.
+    expect(JSON.stringify(args)).not.toContain('"lastContactedAt":null');
+  });
+
+  it("leaves take, orderBy and the thresholdDays echo exactly as they were", async () => {
+    const prisma = makePrisma();
+    prisma.account.findMany.mockResolvedValue([]);
+
+    const service = makeService(prisma);
+    await service.getGoingColdAccounts(30);
+
+    const args = prisma.account.findMany.mock.calls[0][0];
+    expect(args.where.archivedAt).toBeNull();
+    expect(args.take).toBe(50);
+    expect(args.orderBy).toEqual({ updatedAt: "asc" });
+    expect(args.include.contacts.take).toBe(3);
+    expect(args.include.contacts.orderBy).toEqual({ lastContactedAt: "asc" });
+  });
+
+  it("defaults to CRM_COLD_V3.THRESHOLD_DAYS when no threshold is passed", async () => {
+    const prisma = makePrisma();
+    prisma.account.findMany.mockResolvedValue([]);
+
+    const service = makeService(prisma);
+    const result = await service.getGoingColdAccounts();
+
+    // The default is sourced from the shared constant, not a local literal —
+    // the tile once read 14 while this read 30.
+    expect(CRM_COLD_V3.THRESHOLD_DAYS).toBe(60);
     expect(result).toHaveLength(0);
   });
 });

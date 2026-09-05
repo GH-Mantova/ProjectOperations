@@ -43,6 +43,34 @@ import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimens
 //      string), not from `labourTypeId`. The id is stored so the dropdown can
 //      re-select on reload; the role is stored because it is what prices.
 
+// SCOPE_ITEM_MARKUP_PERSIST_V1 — slice 3 of scope-card-persistence. The
+// per-item Markup % override now round-trips through the server instead of
+// painting a cell and moving no money. Before this slice the input wrote to a
+// local Map and called no handler at all: the estimator typed 22, the cell
+// went amber, the Item total beside it (the server's lineTotalWithMarkup) did
+// not move, the card subtotal and the discipline summary bar did not move, and
+// the override was gone on the next load.
+//
+// The store already exists on main and this slice adds NO API change. CARD-API
+// SLICE 1 landed all three server pieces: the nullable
+// ScopeOfWorksItem.markupOverride Decimal(5,2) column, the optional
+// markupOverride on ScopeItemFieldsBase (so the PATCH is no longer dropped by
+// validation), and resolveEffectiveMarkup() in scope-item-pricing.ts, which
+// listItems already calls as
+// `item.markupOverride ?? card.markupOverride ?? tenderMarkup`. What was
+// missing was a WRITER. This is the writer.
+//
+// KNOWN GAP, deliberately not fixed here (out of `scope:`, and this slice is
+// forbidden to touch apps/api/): the /scope/summary bucket loop in
+// scope-redesign.service.ts still resolves markup as
+// `item.card?.markupOverride != null ? ... : tenderMarkup` and does NOT read
+// the item's override, so the TENDER-level figure will not move with it. The
+// Item total, the card subtotal and the discipline summary bar all will —
+// they read listItems, which does. See the PR body.
+//
+// The null rule that governs the payload is the opposite of the one the two
+// slices below follow, and is stated in full at markupPatchBody().
+
 // SCOPE_PLANT_PERSIST_V1 — slice 2 of scope-card-persistence. Every Plant
 // field on EVERY row now round-trips through the server instead of dying in
 // local state on reload: the machine type, the free-typed custom description,
@@ -223,6 +251,15 @@ export type ScopeItem = {
   materialKind?: "VOLUME" | "AREA" | "EACH" | "FACTOR" | null;
   quantity?: string | null;
   factor?: string | null;
+  // SCOPE_ITEM_MARKUP_PERSIST_V1 — the per-item markup % override as the
+  // server stores it. Optional and nullable because NULL is a real, reachable
+  // and MEANINGFUL state: null = "inherit the card's markup (then the
+  // tender's)", which is what every item written before the markup_override
+  // column existed reads back as, and what clearing the box writes again.
+  // 0 is NOT that state — it is a stated 0% override. Arrives as a
+  // Decimal(5,2), which serialises over the wire as a string, so the type
+  // admits both and itemMarkupFromItem() is the only thing that reads it.
+  markupOverride?: string | number | null;
   estimateItemId: string | null;
   provisionalAmount: string | null;
   // PR B1.7.1 — per-row totals computed server-side in listItems.
@@ -503,6 +540,126 @@ export function resolveCardMarkup(
   if (typeof cardOverride === "number" && Number.isFinite(cardOverride)) return cardOverride;
   if (typeof tenderMarkup === "number" && Number.isFinite(tenderMarkup)) return tenderMarkup;
   return 0;
+}
+
+// ── SCOPE_ITEM_MARKUP_PERSIST_V1 exported pure helpers ──────────────────────
+// (tested by wbs-item-markup-persist.test.tsx)
+//
+// Slice 3 of scope-card-persistence. Until this slice the Markup % cell wrote
+// to a local Map and called no server handler: the cell went amber, the item
+// total beside it did not move, and the override was gone on the next load.
+//
+// The store it writes to already exists on main — ScopeOfWorksItem
+// .markupOverride Decimal(5,2)?, the optional markupOverride on
+// ScopeItemFieldsBase, and resolveEffectiveMarkup() in scope-item-pricing.ts,
+// all landed by CARD-API SLICE 1. This slice adds the WRITER and nothing else;
+// it changes no API file.
+//
+// THE NULL RULE, which is the whole slice and is the OPPOSITE of the rule
+// SCOPE_MANPOWER_PERSIST_V1 and SCOPE_PLANT_PERSIST_V1 follow:
+//
+//   Those two write a blank box as a real 0, because the server reads an
+//   ABSENT qty as 1 (`qty == null ? 1`) — there, null is a default the user
+//   never asked for, so sending it would invent a quantity.
+//
+//   Markup is the other case. `resolveEffectiveMarkup(item, card, tender)` is
+//   `item.markupOverride ?? card.markupOverride ?? tenderMarkup`, so on THIS
+//   column null is not a default that stands in for a missing answer — it is
+//   the answer "inherit", and it is a state the estimator can actually want
+//   and actually reach, by clearing the box. Writing 0 there would pin the row
+//   at 0% markup and read as deliberate.
+//
+//   blank -> null (inherit)      0 -> 0 (a stated 0% override)
+//
+// Both slices are the same underlying rule — send what the estimator meant,
+// and state absence explicitly rather than by omission — applied to columns
+// whose nulls mean different things.
+
+/**
+ * Read the item's STORED markup override.
+ *
+ * The server's answer, not the local map: this is what makes a reload render
+ * the override instead of losing it. Returns null for "inherit" and a number
+ * for an override, INCLUDING 0 — `??` is deliberate and `||` would be a bug,
+ * because a stored 0 is a 0% override and must not fall through to the card.
+ *
+ * The value arrives as a Decimal(5,2) serialised to a string ("22", "12.50"),
+ * so a string is parsed rather than compared; anything unparseable is treated
+ * as absence, which prices exactly as the row priced before.
+ */
+export function itemMarkupFromItem(item: { markupOverride?: string | number | null }): number | null {
+  const raw = item.markupOverride;
+  if (raw === null || raw === undefined) return null;
+  const parsed = typeof raw === "number" ? raw : Number(String(raw).trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Parse what the estimator typed into the Markup box into what gets stored.
+ *
+ * "" (the cleared box) -> null, meaning inherit. "0" -> 0, a stated override.
+ * Those are different numbers and only one of them is what the estimator
+ * meant, so they take different branches here and nowhere else.
+ *
+ * A garbled value ("--", "1e999") is absence rather than a guess: it parses
+ * non-finite, and pinning a row's margin on a typo is worse than leaving it
+ * inheriting.
+ */
+export function parseMarkupInput(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * True when the row carries an override of its OWN, as opposed to inheriting.
+ *
+ * Identity, not comparison — `stored != null`. This is what
+ * isMarkupOverridden() cannot answer once the value is persisted, and the two
+ * disagree in both directions on purpose:
+ *
+ *   stored 0 against a card on 0%  -> overridden here, "not overridden" there
+ *   stored 22 against a card on 22% -> overridden here, "not overridden" there
+ *
+ * The second case is the one that costs money. An item deliberately pinned at
+ * 22% while the card happens to also be on 22% is still pinned: move the card
+ * to 30% and the item must stay at 22%. A value comparison would have called
+ * it "inheriting", hidden the revert control, and quietly let the row drift
+ * with the card.
+ *
+ * isMarkupOverridden() and effectiveMarkup() are NOT changed by this slice —
+ * they are the display helpers SCOPE_WBS_TABLE_V1 shipped and
+ * wbs-table-shell.test.tsx and wbs-inputs-money-inheritance.test.tsx pin them
+ * to their value-comparison semantics. This is the persistence question, and
+ * it is a different question.
+ */
+export function isStoredMarkupOverride(stored: number | null): boolean {
+  return stored !== null;
+}
+
+/**
+ * The PATCH body for a markup edit. THIS is the payload of this slice.
+ *
+ * Sends exactly ONE key, `markupOverride`, and ALWAYS sends it — including
+ * when the value is null. That is the point: the key's absence is meaningful
+ * on the other side. updateItem reads
+ *
+ *   dto.markupOverride !== undefined ? toDecimal(narrowToNumber(...)) : undefined
+ *
+ * so an OMITTED key leaves the stored value untouched, and there would then be
+ * no way to clear an override at all. `JSON.stringify` drops undefined and
+ * keeps null, so null is the only spelling of "clear this" that survives the
+ * wire.
+ *
+ *   null -> narrowToNumber(null) = null -> toDecimal(null) = null -> NULL
+ *   0    -> narrowToNumber(0)    = 0    -> toDecimal(0) = Decimal(0) -> 0.00
+ *
+ * Nothing else belongs in this body. The manpower and plant writers send whole
+ * arrays for their own columns; a markup write that also carried labourItems
+ * or plantItems could only overwrite them with a staler copy.
+ */
+export function markupPatchBody(value: number | null): Record<string, unknown> {
+  return { markupOverride: value };
 }
 
 /**
@@ -1361,6 +1518,13 @@ export function ScopeQuantitiesTable({
   const [itemRowCounts, setItemRowCounts] = useState<ItemRowCounts>(new Map());
 
   // SCOPE_WBS_TABLE_V1 — per-item markup override (null = inherit card).
+  // SCOPE_ITEM_MARKUP_PERSIST_V1 — this is now the OPTIMISTIC MIRROR of
+  // ScopeOfWorksItem.markupOverride, not the only copy. An entry exists only
+  // for an item the estimator has edited this session; it is what the cell
+  // renders while the PATCH is in flight, and onItemsChanged() then reconciles
+  // it against the server's answer. A key that is ABSENT falls through to
+  // itemMarkupFromItem(item), which is why a reload comes back with the
+  // override instead of a blank box.
   const [itemMarkupOverrides, setItemMarkupOverrides] = useState<ItemMarkupOverrides>(new Map());
 
   // Sync row counts when items list changes.
@@ -1412,6 +1576,22 @@ export function ScopeQuantitiesTable({
       return next;
     });
   }, []);
+
+  /**
+   * SCOPE_ITEM_MARKUP_PERSIST_V1 — read the markup override for one item.
+   *
+   * The local mirror wins while a write is in flight; otherwise the SERVER's
+   * stored value is the answer. `has` rather than `??` because null is a real
+   * entry in this map (the estimator just cleared the box) and must not be
+   * mistaken for "no entry, go ask the item".
+   */
+  const getItemMarkup = useCallback(
+    (item: ScopeItem): number | null =>
+      itemMarkupOverrides.has(item.id)
+        ? (itemMarkupOverrides.get(item.id) ?? null)
+        : itemMarkupFromItem(item),
+    [itemMarkupOverrides]
+  );
 
   // SCOPE_WBS_MANPOWER_V1 — helpers to read and write per-row manpower state.
   // SCOPE_MANPOWER_PERSIST_V1 — the local map is now a cache over the stored
@@ -1658,6 +1838,33 @@ export function ScopeQuantitiesTable({
       void patchItem(item.id, manpowerPatchBody(rows));
     },
     [itemRowCounts, materialiseManpowerRows, patchItem]
+  );
+
+  /**
+   * SCOPE_ITEM_MARKUP_PERSIST_V1 — write the item's markup override through.
+   *
+   * The markup twin of commitManpowerRow / commitPlantRow, and the replacement
+   * for a setItemMarkup that wrote local state and stopped. Same two steps in
+   * the same order: update the mirror first so the cell does not flicker back
+   * to its old value mid-request, then PATCH.
+   *
+   * There is no whole-array materialisation here because there is no array —
+   * markup is one scalar on the item, so the replace-not-merge hazard that
+   * shapes the other two writers does not arise. What DOES have to be exact is
+   * the null: see markupPatchBody.
+   *
+   * patchItem awaits onItemsChanged(), which refetches; listItems recomputes
+   * lineTotal / lineTotalWithMarkup through resolveEffectiveMarkup with the new
+   * override, so the Item total, the card subtotal (which sums those per-row
+   * figures) and the discipline summary bar (computeCardBarStats, same figures)
+   * all move on that refetch. The browser multiplies nothing.
+   */
+  const commitItemMarkup = useCallback(
+    (item: ScopeItem, value: number | null) => {
+      setItemMarkup(item.id, value);
+      void patchItem(item.id, markupPatchBody(value));
+    },
+    [setItemMarkup, patchItem]
   );
 
   /**
@@ -2005,8 +2212,17 @@ export function ScopeQuantitiesTable({
           </thead>
           {wbsSortedVisible.map((item) => {
               const rowCount = itemRowCounts.get(item.id) ?? 1;
-              const localMarkup = itemMarkupOverrides.get(item.id) ?? null;
-              const overridden = isMarkupOverridden(localMarkup, cardMarkup);
+              // SCOPE_ITEM_MARKUP_PERSIST_V1 — the value now comes from the
+              // server (via the in-flight mirror), and "overridden" is asked as
+              // identity, not as a comparison against the card: an item pinned
+              // at 22% while the card also happens to sit at 22% is still
+              // pinned, and must keep its revert control and its own number
+              // when the card moves. displayMarkup still runs through
+              // effectiveMarkup, which is the same item -> card -> tender -> 0
+              // chain SCOPE_WBS_INPUTS_V2 established, reused rather than
+              // re-derived.
+              const localMarkup = getItemMarkup(item);
+              const overridden = isStoredMarkupOverride(localMarkup);
               const displayMarkup = effectiveMarkup(localMarkup, cardMarkup);
               const isAi = item.aiProposed && item.status !== "confirmed";
               const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
@@ -2257,7 +2473,7 @@ export function ScopeQuantitiesTable({
                           </span>
                           <OverrideField
                             isOverridden={overridden}
-                            onRevert={() => setItemMarkup(item.id, null)}
+                            onRevert={() => commitItemMarkup(item, null)}
                             affordance
                           >
                             <input
@@ -2276,13 +2492,11 @@ export function ScopeQuantitiesTable({
                                   : `Inheriting card markup (${cardMarkup}%)`
                               }
                               onChange={(e) => {
-                                const raw = e.target.value;
-                                if (raw === "") {
-                                  setItemMarkup(item.id, null);
-                                } else {
-                                  const n = Number(raw);
-                                  if (Number.isFinite(n)) setItemMarkup(item.id, n);
-                                }
+                                // SCOPE_ITEM_MARKUP_PERSIST_V1 — clearing the
+                                // box writes null (inherit), NOT 0. Both are
+                                // sent; only the key's absence would be silent,
+                                // and parseMarkupInput is where the two part.
+                                commitItemMarkup(item, parseMarkupInput(e.target.value));
                               }}
                             />
                           </OverrideField>

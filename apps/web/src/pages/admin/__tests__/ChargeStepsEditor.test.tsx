@@ -19,6 +19,12 @@
  *     labels, the round wording and the formula tokens. Presentation only —
  *     every figure asserted below is the figure CHARGE_STEP_PARITY_V1 already
  *     produced for the same input.
+ * 11. CHARGE_STEP_GUARDS_V1 — the three guards that pin step 1: a reorder
+ *     into slot 0 keeps `start` there, step 1 has no remove control and
+ *     `removeStep` refuses index 0, and a non-empty list is never offered a
+ *     second `start`. Neither validation rule moved; the state they reject is
+ *     simply not reachable from the card, which the search at the end of this
+ *     file walks exhaustively.
  */
 
 import { describe, expect, it } from "vitest";
@@ -46,7 +52,14 @@ import {
   LINE_TOTAL_UNKNOWN,
   MEASUREMENT,
   OP_LABELS,
-  type RateColumnMeta
+  addableOps,
+  appendStep,
+  canLeadStepList,
+  canRemoveStep,
+  removeStepAt,
+  reorderSteps,
+  type RateColumnMeta,
+  type StepOp
 } from "../ChargeStepsEditor";
 import type { ChargeStep } from "../../../lib/chargeStepTypes";
 
@@ -323,30 +336,29 @@ describe("step array mutations", () => {
   it("add step appends to end", () => {
     const steps = makeSteps();
     const newStep: ChargeStep = { op: "floor", value: 0 };
-    const next = [...steps, newStep];
+    const next = appendStep(steps, newStep);
     expect(next).toHaveLength(4);
     expect(next[3]).toEqual(newStep);
   });
 
   it("remove step drops correct index", () => {
     const steps = makeSteps();
-    const next = steps.filter((_, i) => i !== 1);
+    const next = removeStepAt(steps, 1);
     expect(next).toHaveLength(2);
     expect(next[1]).toEqual({ op: "add", field: 10 });
   });
 
   it("move step up swaps with previous", () => {
-    const steps = makeSteps();
-    const next = [...steps];
-    [next[0], next[1]] = [next[1], next[0]];
-    expect(next[0].op).toBe("multiply");
-    expect(next[1].op).toBe("start");
+    // CHARGE_STEP_GUARDS_V1 — the swap used to hand slot 0 to the multiply,
+    // which is the state the card could not be saved from. The operands trade
+    // instead, so slot 0 is still a `start`.
+    const next = reorderSteps(makeSteps(), 1, 0);
+    expect(next[0]).toEqual({ op: "start", field: "Rate" });
+    expect(next[1]).toEqual({ op: "multiply", field: "Depth" });
   });
 
   it("move step down swaps with next", () => {
-    const steps = makeSteps();
-    const next = [...steps];
-    [next[1], next[2]] = [next[2], next[1]];
+    const next = reorderSteps(makeSteps(), 1, 2);
     expect(next[1].op).toBe("add");
     expect(next[2].op).toBe("multiply");
   });
@@ -991,5 +1003,284 @@ describe("CHARGE_STEP_CARD_V2: the card itself", () => {
 
   it("no longer formats a total to four decimal places", () => {
     expect(CARD_SRC).not.toContain("toFixed(4)");
+  });
+});
+
+// ── 11. CHARGE_STEP_GUARDS_V1 ─────────────────────────────────────────────
+//
+// The card used to be walkable into a state it could not be saved from, and
+// in one case could not be walked back out of. These pin the three guards
+// that close it. Neither validation rule moved: `validateSteps` above and the
+// 400 in apps/api/src/modules/rates/rate-tables.service.ts still reject a
+// first step that is not a `start` — the point is that nothing the card
+// offers can produce one.
+
+const PINNED_COLS: RateColumnMeta[] = [
+  { id: "g1", name: "Depth", dataType: "NUMBER", role: "KEY", unit: "mm" },
+  { id: "g2", name: "Holes", dataType: "NUMBER", role: "KEY" },
+  { id: "g3", name: "Fee", dataType: "CURRENCY", role: "VALUE" }
+];
+const PINNED_COL_NAMES = PINNED_COLS.map((c) => c.name);
+
+/** The prompt's list: 1 Start with Depth, 2 Multiply by Holes, 3 Add Fee. */
+const pinnedSteps = (): ChargeStep[] => [
+  { op: "start", field: "Depth" },
+  { op: "multiply", field: "Holes" },
+  { op: "add", field: "Fee" }
+];
+
+const SCENARIO = { Depth: 2, Holes: 3, Fee: 10 };
+const sentences = (steps: ChargeStep[]) => steps.map((s, i) => stepSentence(s, i));
+const finalTotal = (steps: ChargeStep[]) => {
+  const trail = evaluateStepsClient(steps, SCENARIO);
+  return trail[trail.length - 1].runningTotal;
+};
+
+describe("CHARGE_STEP_GUARDS_V1: a reorder into slot 0 keeps the start there", () => {
+  it("moving step 2 to the top leaves a saveable list", () => {
+    const before = pinnedSteps();
+    const after = reorderSteps(before, 1, 0);
+
+    expect(sentences(after)).toEqual([
+      "1. Start with Holes",
+      "2. Multiply by Depth",
+      "3. Add Fee"
+    ]);
+
+    // The red panel renders when there is at least one validation error, and
+    // Save is enabled on `dirty && no errors && steps.length > 0`.
+    const errors = validateSteps(after, PINNED_COL_NAMES);
+    expect(errors).toEqual([]);
+    const redPanelShown = errors.length > 0;
+    expect(redPanelShown).toBe(false);
+    const dirty = true;
+    const canSave = dirty && errors.length === 0 && after.length > 0;
+    expect(canSave).toBe(true);
+  });
+
+  it("the swap trades operands, so the arithmetic is the one the list already had", () => {
+    const before = pinnedSteps();
+    const after = reorderSteps(before, 1, 0);
+    // 2 × 3 + 10 both ways.
+    expect(finalTotal(before)).toBe(16);
+    expect(finalTotal(after)).toBe(16);
+  });
+
+  it("leaves no second start behind", () => {
+    const after = reorderSteps(pinnedSteps(), 1, 0);
+    expect(after.filter((s) => s.op === "start")).toHaveLength(1);
+    expect(after[0].op).toBe("start");
+  });
+
+  it("moving step 1 down is the same move and lands the same way", () => {
+    expect(reorderSteps(pinnedSteps(), 0, 1)).toEqual(reorderSteps(pinnedSteps(), 1, 0));
+  });
+
+  it("the plain swap this replaced is what made the list unsaveable", () => {
+    const swapped = pinnedSteps();
+    [swapped[0], swapped[1]] = [swapped[1], swapped[0]];
+    expect(validateSteps(swapped, PINNED_COL_NAMES)).toContainEqual({
+      index: 0,
+      message: 'First step must have op "start".'
+    });
+  });
+
+  it("refuses to put a step with no operand in slot 0, and changes nothing", () => {
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Depth" },
+      { op: "round", direction: "nearest", interval: 10 }
+    ];
+    expect(reorderSteps(steps, 1, 0)).toBe(steps);
+    expect(reorderSteps(steps, 0, 1)).toBe(steps);
+    expect(canLeadStepList(steps[1])).toBe(false);
+    expect(canLeadStepList(steps[0])).toBe(true);
+  });
+
+  it("a swap that does not touch slot 0 is an ordinary swap", () => {
+    const after = reorderSteps(pinnedSteps(), 1, 2);
+    expect(sentences(after)).toEqual([
+      "1. Start with Depth",
+      "2. Add Fee",
+      "3. Multiply by Holes"
+    ]);
+  });
+
+  it("refuses an out-of-range or no-op move", () => {
+    const steps = pinnedSteps();
+    expect(reorderSteps(steps, 0, 0)).toBe(steps);
+    expect(reorderSteps(steps, 2, 3)).toBe(steps);
+    expect(reorderSteps(steps, 0, -1)).toBe(steps);
+  });
+});
+
+describe("CHARGE_STEP_GUARDS_V1: step 1 has no remove control", () => {
+  it("renders one fewer remove control than there are steps", () => {
+    const steps = pinnedSteps();
+    const rendered = steps.filter((_, i) => canRemoveStep(i));
+    // Was one per step: 3 -> 2. Step 1 ("Start with Depth") is the one that
+    // loses it.
+    expect(steps).toHaveLength(3);
+    expect(rendered).toHaveLength(2);
+    expect(canRemoveStep(0)).toBe(false);
+    expect(stepSentence(steps[0], 0)).toBe("1. Start with Depth");
+  });
+
+  it("removeStep(0) removes nothing", () => {
+    const steps = pinnedSteps();
+    const next = removeStepAt(steps, 0);
+    expect(next).toHaveLength(3);
+    expect(next).toBe(steps);
+  });
+
+  it("removeStep on any other index still drops that step", () => {
+    const next = removeStepAt(pinnedSteps(), 1);
+    expect(next).toHaveLength(2);
+    expect(sentences(next)).toEqual(["1. Start with Depth", "2. Add Fee"]);
+  });
+
+  it("the card renders the control conditionally, not for every step", () => {
+    expect(CARD_SRC).toContain("{canRemoveStep(i) ? (");
+    expect(CARD_SRC).toContain("data-testid={`remove-step-${i}`}");
+  });
+
+  it("step 1 can still be replaced: add, move to the top, remove the old one", () => {
+    const added = appendStep(pinnedSteps(), { op: "multiply", field: 2 });
+    const promoted = reorderSteps(reorderSteps(reorderSteps(added, 3, 2), 2, 1), 1, 0);
+    const cleaned = removeStepAt(promoted, 1);
+    expect(promoted[0]).toEqual({ op: "start", field: 2 });
+    expect(cleaned).toHaveLength(3);
+    expect(validateSteps(cleaned, PINNED_COL_NAMES)).toEqual([]);
+  });
+});
+
+describe("CHARGE_STEP_GUARDS_V1: no second start", () => {
+  it("offers start only while the list is empty", () => {
+    expect(addableOps(0).map((o) => OP_LABELS[o])).toEqual(["Start with"]);
+    expect(addableOps(3).map((o) => OP_LABELS[o])).toEqual([
+      "Multiply by",
+      "Divide by",
+      "Add",
+      "Subtract",
+      "Round",
+      "Never less than",
+      "Never more than"
+    ]);
+    expect(addableOps(3)).not.toContain("start");
+    expect(addableOps(3)).toHaveLength(KNOWN_OPS.length - 1);
+  });
+
+  it("defaults the form to the first op that can be added", () => {
+    expect(addableOps(0)[0]).toBe("start");
+    expect(addableOps(3)[0]).toBe("multiply");
+    expect(OP_LABELS[addableOps(3)[0]]).toBe("Multiply by");
+  });
+
+  it("the add form is driven by that list, not by every known op", () => {
+    const form = CARD_SRC.slice(CARD_SRC.indexOf("function AddStepForm"));
+    expect(form).toContain("const ops = useMemo(() => addableOps(stepCount), [stepCount]);");
+    expect(form).toContain("{ops.map((o) => (");
+    expect(form).not.toContain("{KNOWN_OPS.map((o) => (");
+  });
+
+  it("refuses a second start even if one is handed to it", () => {
+    const steps = pinnedSteps();
+    expect(appendStep(steps, { op: "start", field: "Fee" })).toBe(steps);
+  });
+
+  it("refuses a first step that is not a start", () => {
+    const empty: ChargeStep[] = [];
+    expect(appendStep(empty, { op: "multiply", field: "Holes" })).toBe(empty);
+    expect(appendStep(empty, { op: "start", field: "Depth" })).toEqual([
+      { op: "start", field: "Depth" }
+    ]);
+  });
+
+  it("still appends anything else to the end", () => {
+    const next = appendStep(pinnedSteps(), { op: "floor", value: 0 });
+    expect(next).toHaveLength(4);
+    expect(next[3]).toEqual({ op: "floor", value: 0 });
+  });
+});
+
+describe("CHARGE_STEP_GUARDS_V1: the error is unreachable, not tolerated", () => {
+  const SAMPLES: Record<StepOp, ChargeStep> = {
+    start: { op: "start", field: "Depth" },
+    multiply: { op: "multiply", field: "Holes" },
+    divide: { op: "divide", field: "Holes" },
+    add: { op: "add", field: "Fee" },
+    subtract: { op: "subtract", field: "Fee" },
+    round: { op: "round", direction: "nearest", interval: 10 },
+    floor: { op: "floor", value: 5 },
+    cap: { op: "cap", value: 100 }
+  };
+
+  /** Every list one card action can produce from this one. */
+  const successors = (steps: ChargeStep[]): ChargeStep[][] => {
+    const out: ChargeStep[][] = [];
+    for (let i = 1; i < steps.length; i++) out.push(reorderSteps(steps, i, i - 1));
+    for (let i = 0; i < steps.length - 1; i++) out.push(reorderSteps(steps, i, i + 1));
+    for (let i = 0; i < steps.length; i++) out.push(removeStepAt(steps, i));
+    if (steps.length < 4) {
+      for (const op of addableOps(steps.length)) out.push(appendStep(steps, SAMPLES[op]));
+    }
+    return out;
+  };
+
+  it("no sequence of card actions reaches a first step that is not a start", () => {
+    const seen = new Set<string>();
+    const queue: ChargeStep[][] = [[], pinnedSteps()];
+    for (const s of queue) seen.add(JSON.stringify(s));
+
+    while (queue.length > 0) {
+      const state = queue.shift() as ChargeStep[];
+      // The rule the API and validateSteps both enforce, checked on every
+      // state the card can be in.
+      if (state.length > 0) {
+        expect(state[0].op).toBe("start");
+        expect(state.filter((s) => s.op === "start")).toHaveLength(1);
+      }
+      expect(
+        validateSteps(state, PINNED_COL_NAMES).some(
+          (e) => e.message === 'First step must have op "start".'
+        )
+      ).toBe(false);
+
+      for (const next of successors(state)) {
+        const key = JSON.stringify(next);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        queue.push(next);
+      }
+    }
+
+    // Every list reachable from an empty card and from the prompt's list, up
+    // to four steps. The figure is the size of the search, not a target.
+    expect(seen.size).toBe(7401);
+  });
+
+  it("every mutator that writes the list goes through a guard", () => {
+    // The only two writers of `steps` state are `load` (server data) and
+    // `updateSteps`; every call of the latter is a guarded delegation.
+    expect(CARD_SRC.match(/setSteps\(/g)).toHaveLength(2);
+    expect(CARD_SRC.match(/updateSteps\(/g)).toHaveLength(4);
+    expect(CARD_SRC.match(/if \(next !== steps\) updateSteps\(next\);/g)).toHaveLength(4);
+    expect(CARD_SRC).toContain("const next = reorderSteps(steps, index, index - 1);");
+    expect(CARD_SRC).toContain("const next = reorderSteps(steps, index, index + 1);");
+    expect(CARD_SRC).toContain("const next = removeStepAt(steps, index);");
+    expect(CARD_SRC).toContain("const next = appendStep(steps, step);");
+  });
+
+  it("neither validation rule was relaxed", () => {
+    expect(validateSteps([{ op: "multiply", field: "Holes" }], PINNED_COL_NAMES)).toContainEqual({
+      index: 0,
+      message: 'First step must have op "start".'
+    });
+    expect(CARD_SRC).toContain(
+      `errors.push({ index: 0, message: 'First step must have op "start".' });`
+    );
+  });
+
+  it("carries the marker", () => {
+    expect(CARD_SRC).toContain("CHARGE_STEP_GUARDS_V1");
   });
 });

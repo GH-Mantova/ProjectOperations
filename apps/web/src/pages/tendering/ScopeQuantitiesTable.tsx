@@ -43,19 +43,64 @@ import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimens
 //      string), not from `labourTypeId`. The id is stored so the dropdown can
 //      re-select on reload; the role is stored because it is what prices.
 
+// SCOPE_PLANT_PERSIST_V1 — slice 2 of scope-card-persistence. Every Plant
+// field on EVERY row now round-trips through the server instead of dying in
+// local state on reload: the machine type, the free-typed custom description,
+// the qty, the days and the per-row day rate override.
+//
+// The store is ScopeOfWorksItem.plantItems (JSONB), which has been on main
+// since 20260425_feat_scope_redesign_v2 and needs no schema change: the DTO
+// field is `plantItems?: unknown` with @IsArray() and NO element validation,
+// and ScopeOfWorksService hands it to Prisma as an InputJsonValue, so an
+// extra key on an element persists like the rest. `dayRateOverride` is that
+// extra key, and scope-item-pricing.ts already reads it.
+//
+// Three contracts govern what is sent, all of them the server's:
+//   1. updateItem persists exactly what the DTO carries. A SHORT array
+//      REPLACES the stored one, so every write ships EVERY row of the item —
+//      see buildPlantItems / plantPatchBody below.
+//   2. computeScopeItemTotal prices a plant row from `dayRateOverride ??
+//      plantRateById[plantRateId]`. A row with neither prices at $0.
+//   3. getCardSummary SKIPS any plant entry with no `description`
+//      (`if (!p.description) continue`), so `description` is written on
+//      every entry — catalogue picks included — not only on custom rows.
+//      That is what the legacy PlantCluster did (rate.item -> description)
+//      and it is why the card's plant days were correct only through it.
+//
+// This slice also RETIRES that legacy cluster from the Measurement cell. It
+// was retained deliberately as the only plant UI that reached the database;
+// now that the columns save, keeping it would show plant twice on row 0.
+
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
 
 // PR B1.6 — Plant cells live on ScopeOfWorksItem.plantItems as a dense
-// array with explicit columnIndex. Plant N reads
-// plantItems.find(p => p.columnIndex === N).
+// array with explicit columnIndex.
+//
+// SCOPE_PLANT_PERSIST_V1 — the array is now the store for the Plant COLUMN
+// GROUP, one entry per rendered row, and `columnIndex` keeps the 1-based
+// numbering the legacy cluster allocated (row 0 -> columnIndex 1) so an
+// entry written by the new columns is shape-identical to one written by the
+// old cluster. Nothing on the server reads columnIndex; the web reads it to
+// order the entries when adopting them into rows.
+//
+// Field types are widened from `string`/`number` to `| null` because the new
+// write path states absence explicitly rather than by omitting a key: a row
+// with no machine picked sends `plantRateId: null`, not a missing key.
 export type ScopePlantEntry = {
   columnIndex: number;
-  plantRateId?: string;
-  description?: string;
-  qty?: number;
-  days?: number;
-  unit?: string;
+  plantRateId?: string | null;
+  description?: string | null;
+  qty?: number | null;
+  days?: number | null;
+  unit?: string | null;
+  /**
+   * SCOPE_PLANT_PERSIST_V1 — per-row $/day override. null = use the
+   * catalogue rate; a stored 0 is a real override the server honours
+   * (scope-item-pricing.ts: `cell.dayRateOverride != null && isFinite(...)`).
+   * It is also the ONLY way a free-typed custom machine prices at all.
+   */
+  dayRateOverride?: number | null;
 };
 
 // SCOPE_MANPOWER_PERSIST_V1 — one row of ScopeOfWorksItem.labourItems.
@@ -523,15 +568,42 @@ export type RowManpowerState = {
 export type ItemManpowerRows = Map<string, RowManpowerState>;
 
 // SCOPE_WBS_PLANT_V1 — per-row plant local state.
-// Slice 4 stores Type (plantRateId or custom description), Day-rate override,
+// Slice 4 stored Type (plantRateId or custom description), Day-rate override,
 // Qty, and Days in local state. Each row is keyed by `${itemId}:${rowIdx}`.
 // Custom plant (no plantRateId) has no locked rate; its Day rate cell is an
 // override by definition with placeholder "rate".
-type RowPlantState = {
+//
+// SCOPE_PLANT_PERSIST_V1 — this is now the OPTIMISTIC MIRROR of one
+// plantItems entry, not the only copy. Every field on it is written through
+// to the server by commitPlantRow; the map is what the cell renders while the
+// PATCH is in flight and what onItemsChanged() then reconciles against. A key
+// that is missing falls through to defaultPlantRow, which reads the stored
+// entry at that index.
+//
+// Exported (with ItemPlantRows) so the persistence helpers below can be
+// unit-tested against the real state shape rather than a stand-in.
+export type RowPlantState = {
   /** Selected plant rate id from catalogue (null = no catalogue pick). */
   plantRateId: string | null;
   /** Free-typed custom machine name when the estimator drops out of the list. */
   customDescription: string | null;
+  /**
+   * SCOPE_PLANT_PERSIST_V1 — the machine's NAME as it is stored on the entry.
+   * Carried in row state for exactly the reason RowManpowerState carries
+   * `role`: the server reads it and the id alone does not carry it.
+   * getCardSummary skips any entry with a falsy `description`, so a catalogue
+   * pick that shipped only a plantRateId would price correctly and still be
+   * invisible to the card's plant days. For a catalogue row this is the
+   * catalogue item name; for a custom row it is the free-typed text.
+   */
+  description: string | null;
+  /**
+   * SCOPE_PLANT_PERSIST_V1 — the catalogue rate unit ("day", "hr", ...) as
+   * the legacy cluster wrote it. Nothing prices from it, but a legacy entry
+   * carries it and adopting a row must not silently drop what is already
+   * stored, so it round-trips.
+   */
+  unit: string | null;
   /** User-entered day rate override in $. Null = use catalogue rate. */
   dayRateOverride: number | null;
   /** Qty for this row. */
@@ -541,7 +613,7 @@ type RowPlantState = {
 };
 
 /** Key: `${itemId}:${rowIdx}` → per-row plant state. */
-type ItemPlantRows = Map<string, RowPlantState>;
+export type ItemPlantRows = Map<string, RowPlantState>;
 
 // ── SCOPE_WBS_MANPOWER_V1 exported pure helpers (tested by wbs-manpower-columns.test.tsx) ──
 
@@ -954,6 +1026,289 @@ export function fmtPlantTotal(total: number | null): string {
   }).format(total);
 }
 
+// ── SCOPE_PLANT_PERSIST_V1 exported pure helpers ────────────────────────────
+// (tested by wbs-plant-persist.test.tsx)
+//
+// Same split as the manpower side: everything that decides WHAT GOES ON THE
+// WIRE is a pure function of row state here, and the component only decides
+// WHEN to call it. The payload shape is the whole risk in this slice — the
+// server contract is already merged and is the authority — so the payload is
+// testable without a render, a fetch or a database.
+
+/**
+ * Parse a plant row-state number input to a number, treating blank as 0.
+ *
+ * The 0-not-null rule is the same load-bearing one SCOPE_MANPOWER_PERSIST_V1
+ * settled, and it is the PLANT loop that states it most plainly:
+ * scope-item-pricing.ts prices a plant row as
+ * `qty = cell.qty == null ? 1 : n(cell.qty)`. An ABSENT qty means "the
+ * estimator picked a machine but typed no quantity" and defaults to ONE
+ * machine. A blank Qty box is not that — on screen it renders the row total
+ * as an em dash (plantRowTotal returns null). Sending null would make the
+ * server silently cost a machine on an unrelated edit (a day-rate change on a
+ * row with days but no qty); sending 0 says what the blank box says.
+ */
+export function plantNumOrZero(raw: string): number {
+  const n = Number(raw.trim() === "" ? "0" : raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * SCOPE_PLANT_PERSIST_V1 — the precedence predicate, plant side.
+ *
+ * Deliberately the same shape as hasStoredLabourRows / hasLabourRows: a
+ * non-empty array means the item has stored plant; null / undefined /
+ * not-an-array / [] means it has none. Plant has no legacy scalars to fall
+ * back to, so "none" simply means every row starts blank.
+ */
+export function hasStoredPlantRows(
+  plantItems: ScopePlantEntry[] | null | undefined
+): plantItems is ScopePlantEntry[] {
+  return Array.isArray(plantItems) && plantItems.length > 0;
+}
+
+/**
+ * The item's stored plant entries in `columnIndex` order.
+ *
+ * THIS is the migration of the legacy data, and it is a read, not a backfill.
+ * Rows written through the retired PlantCluster are keyed by a columnIndex
+ * allocated from 1 upward; the new columns are keyed by rowIdx from 0. Sorting
+ * by columnIndex and adopting position-by-position carries every existing
+ * entry into a row instead of orphaning all but the first. An entry with no
+ * columnIndex sorts as 0 (ahead of the legacy 1..N) rather than being dropped.
+ *
+ * Does not mutate the array it is given.
+ */
+export function sortedPlantEntries(
+  plantItems: ScopePlantEntry[] | null | undefined
+): ScopePlantEntry[] {
+  if (!hasStoredPlantRows(plantItems)) return [];
+  return [...plantItems].sort((a, b) => (a?.columnIndex ?? 0) - (b?.columnIndex ?? 0));
+}
+
+/**
+ * How many plant rows an item has ACCORDING TO THE SERVER.
+ *
+ * The count is not a field, it is the length of the stored array. An item
+ * with no stored entries has exactly one (blank) row, which is what the table
+ * has always rendered for a fresh item — and an item that already holds two
+ * legacy plant entries shows TWO rows after this change, not one with the
+ * second orphaned.
+ */
+export function plantRowCountFromItem(item: Pick<ScopeItem, "plantItems">): number {
+  return hasStoredPlantRows(item.plantItems) ? item.plantItems.length : 1;
+}
+
+/** A blank plant row — the state a row with nothing stored renders. */
+export function blankPlantRow(): RowPlantState {
+  return {
+    plantRateId: null,
+    customDescription: null,
+    description: null,
+    unit: null,
+    dayRateOverride: null,
+    qty: "",
+    days: ""
+  };
+}
+
+/**
+ * True when a row carries nothing the estimator typed.
+ *
+ * Used to decide whether a ROW-COUNT change (which is a manpower action that
+ * happens to move the plant array too) has anything to say about plant at
+ * all. A list of nothing-but-blank rows says nothing that a NULL plantItems
+ * does not already say, and writing it would turn "never touched" into
+ * "touched, and empty".
+ */
+export function isBlankPlantRow(row: RowPlantState): boolean {
+  return (
+    row.plantRateId === null &&
+    row.customDescription === null &&
+    (row.description === null || row.description === "") &&
+    row.dayRateOverride === null &&
+    row.qty.trim() === "" &&
+    row.days.trim() === ""
+  );
+}
+
+/**
+ * Hydrate one row of local state from one stored plantItems entry.
+ *
+ * The catalogue/custom split is re-derived from the stored entry rather than
+ * stored as a flag: an entry WITH a plantRateId is a catalogue pick, and an
+ * entry with no plantRateId but a non-empty description is the free-typed
+ * custom machine (customDescription is what makes isCustom true in the cell).
+ * An entry with neither — which is exactly what the legacy "+ Plant" button
+ * wrote before a machine was picked — hydrates as a blank row.
+ */
+export function rowPlantFromEntry(entry: ScopePlantEntry): RowPlantState {
+  const description = entry.description == null || entry.description === "" ? null : entry.description;
+  const plantRateId = entry.plantRateId ?? null;
+  return {
+    plantRateId,
+    customDescription: plantRateId === null ? description : null,
+    description,
+    unit: entry.unit ?? null,
+    dayRateOverride: entry.dayRateOverride ?? null,
+    qty: entry.qty == null ? "" : String(entry.qty),
+    days: entry.days == null ? "" : String(entry.days)
+  };
+}
+
+/**
+ * The row state a plant cell shows when the local map holds nothing for it:
+ * the stored entry at this index in columnIndex order, or a blank row.
+ *
+ * There is no legacy-scalar branch here (the manpower equivalent has one for
+ * row 0) because plant never had scalars — plantItems has always been the
+ * only place a plant row could live.
+ */
+export function defaultPlantRow(
+  item: Pick<ScopeItem, "plantItems">,
+  rowIdx: number
+): RowPlantState {
+  const stored = sortedPlantEntries(item.plantItems)[rowIdx];
+  return stored ? rowPlantFromEntry(stored) : blankPlantRow();
+}
+
+/**
+ * The row-state patch a plant Type change carries.
+ *
+ * Picking a catalogue machine copies the catalogue NAME into `description` —
+ * step 2 of this slice and the behaviour the legacy cluster already had
+ * (`description: rate?.item`). Without it getCardSummary's
+ * `if (!p.description) continue` makes a catalogue-picked row invisible to
+ * the card's plant days even though it prices correctly.
+ *
+ * Clearing the Type empties the row's identity outright rather than leaving a
+ * stale name behind, and both branches release the day-rate override for the
+ * same reason the manpower cascade does: the number on screen was derived
+ * from a locked rate that is no longer this row's locked rate.
+ */
+export function plantPatchForTypeChange(
+  plantRateId: string | null,
+  catalogue: { item: string; unit: string } | undefined
+): Partial<RowPlantState> {
+  if (plantRateId === null) {
+    return {
+      plantRateId: null,
+      customDescription: null,
+      description: null,
+      unit: null,
+      dayRateOverride: null
+    };
+  }
+  return {
+    plantRateId,
+    customDescription: null,
+    description: catalogue?.item ?? null,
+    // Legacy parity: the cluster wrote `rate?.unit ?? "day"`.
+    unit: catalogue?.unit ?? "day",
+    dayRateOverride: null
+  };
+}
+
+/** Row-state patch for dropping out of the list to a free-typed machine. */
+export function plantPatchForCustomDescription(desc: string): Partial<RowPlantState> {
+  return {
+    plantRateId: null,
+    customDescription: desc,
+    // A custom machine IS its description — it has no catalogue name to copy,
+    // and this is the only identity the card summary can group it under.
+    description: desc,
+    unit: "day"
+  };
+}
+
+/** Row-state patch for reverting a custom machine back to the list. */
+export function plantPatchForRevertToList(): Partial<RowPlantState> {
+  return {
+    plantRateId: null,
+    customDescription: null,
+    description: null,
+    unit: null,
+    dayRateOverride: null
+  };
+}
+
+/**
+ * Turn the item's WHOLE row list into the plantItems array to send.
+ *
+ * `columnIndex` is re-derived from the array position (1-based, matching the
+ * numbering allocated by the retired cluster) rather than carried through, so
+ * the stored array stays dense and ordered even after a middle row is
+ * removed. Nothing on the server reads it; the hydration above does, and one
+ * of the two has to be strict.
+ *
+ * Every key is written explicitly, absence included, so a partially-filled
+ * row is never ambiguous on the wire.
+ */
+export function buildPlantItems(rows: RowPlantState[]): ScopePlantEntry[] {
+  return rows.map((row, i) => ({
+    columnIndex: i + 1,
+    plantRateId: row.plantRateId,
+    // Written on EVERY entry, not only custom ones — see plantPatchForTypeChange.
+    // "" for a row with no machine: getCardSummary skips it exactly as it skips
+    // an absent description, and it prices $0 for want of a rate.
+    description: row.customDescription ?? row.description ?? "",
+    qty: plantNumOrZero(row.qty),
+    days: plantNumOrZero(row.days),
+    unit: row.unit,
+    dayRateOverride: row.dayRateOverride
+  }));
+}
+
+/**
+ * The PATCH body for a plant edit. THIS is the payload of this slice.
+ *
+ * Sends exactly ONE key: `plantItems`, carrying every row of the item. There
+ * are no scalar mirrors to keep truthful the way the manpower body keeps
+ * men/days/shift — plant has never had any — so nothing else belongs here,
+ * and in particular nothing that would collide with a concurrent manpower
+ * write on the same item.
+ *
+ * `plantItems` is OMITTED, not sent as [], when there are no rows. An empty
+ * array and a NULL price identically today, but they are not the same
+ * statement, and writing [] over a NULL would turn "never touched" into
+ * "touched, and empty" for every later reader. The table never renders zero
+ * rows, so this branch is a guard rather than a path.
+ */
+export function plantPatchBody(rows: RowPlantState[]): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (rows.length > 0) body.plantItems = buildPlantItems(rows);
+  return body;
+}
+
+/**
+ * Write a full plant row list into the per-item local state map.
+ *
+ * Sets `${itemId}:${i}` for every row and DELETES every key for this item at
+ * an index past the end, so a removal cannot leave an orphaned row behind to
+ * be resurrected the next time the list is materialised. Other items' keys
+ * are untouched. Returns a new Map; the argument is not mutated.
+ */
+export function writePlantRows(
+  prev: ItemPlantRows,
+  itemId: string,
+  rows: RowPlantState[]
+): ItemPlantRows {
+  const next = new Map(prev);
+  const prefix = `${itemId}:`;
+  for (const key of prev.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const idx = Number(key.slice(prefix.length));
+    if (Number.isInteger(idx) && idx >= rows.length) next.delete(key);
+  }
+  rows.forEach((row, idx) => next.set(`${prefix}${idx}`, row));
+  return next;
+}
+
+/** Drop one plant row from a materialised row list (index-aware, order preserved). */
+export function removePlantRowAt(rows: RowPlantState[], rowIdx: number): RowPlantState[] {
+  return rows.filter((_, i) => i !== rowIdx);
+}
+
 type Props = {
   tenderId: string;
   cardId: string;
@@ -1019,11 +1374,25 @@ export function ScopeQuantitiesTable({
   // so by the time the refetch lands both sides of the max already agree —
   // and if the PATCH failed, the server's larger count correctly puts the row
   // back rather than pretending the deletion stuck.
+  //
+  // SCOPE_PLANT_PERSIST_V1 — the stored PLANT rows join the max. One row
+  // count drives both column groups, so an item that already holds two legacy
+  // plant entries must render two rows or the second entry is orphaned: shown
+  // nowhere, and deleted by the first whole-array write. This is step 4 of the
+  // slice ("grow the item's row count to fit what it already has") and it is
+  // a read of existing data, not a backfill of it.
   useEffect(() => {
     setItemRowCounts((prev) => {
       const next = new Map<string, number>();
       for (const item of items) {
-        next.set(item.id, Math.max(prev.get(item.id) ?? 1, manpowerRowCountFromItem(item)));
+        next.set(
+          item.id,
+          Math.max(
+            prev.get(item.id) ?? 1,
+            manpowerRowCountFromItem(item),
+            plantRowCountFromItem(item)
+          )
+        );
       }
       return next;
     });
@@ -1125,11 +1494,6 @@ export function ScopeQuantitiesTable({
     return map;
   }, [wasteRates]);
 
-  const plantOptions = useMemo<TooltipSelectOption<string>[]>(
-    () => plantRates.filter((p) => !isTransportPlant(p)).map((p) => ({ value: p.id, label: p.item })),
-    [plantRates]
-  );
-
   // SCOPE_WBS_MANPOWER_V1 — labour type options for the Type dropdown.
   // SCOPE_WBS_INPUTS_V2 — the page used to prepend its own
   // { value: "", label: "- none -" } sentinel on top of the empty option
@@ -1201,40 +1565,29 @@ export function ScopeQuantitiesTable({
     return map;
   }, [plantRates]);
 
-  // SCOPE_WBS_PLANT_V1 — helpers to read and write per-row plant state.
-  const defaultRowPlant = useCallback((): RowPlantState => ({
-    plantRateId: null,
-    customDescription: null,
-    dayRateOverride: null,
-    qty: "",
-    days: ""
-  }), []);
-
+  // SCOPE_WBS_PLANT_V1 — helpers to read per-row plant state.
+  // SCOPE_PLANT_PERSIST_V1 — the local map is now a cache over the stored
+  // entries, not the store. A key that is missing falls through to
+  // defaultPlantRow, which reads item.plantItems in columnIndex order, so a
+  // reload renders the server's rows without any hydration effect to race
+  // with the user's typing. The old defaultRowPlant/setRowPlant pair is gone:
+  // setRowPlant wrote local state and STOPPED, which is the bug this slice
+  // fixes. Every write now goes through commitPlantRow.
   const getRowPlant = useCallback(
-    (itemId: string, rowIdx: number): RowPlantState => {
-      const key = `${itemId}:${rowIdx}`;
-      return itemPlantRows.get(key) ?? defaultRowPlant();
+    (item: ScopeItem, rowIdx: number): RowPlantState => {
+      const key = `${item.id}:${rowIdx}`;
+      return itemPlantRows.get(key) ?? defaultPlantRow(item, rowIdx);
     },
-    [itemPlantRows, defaultRowPlant]
+    [itemPlantRows]
   );
 
-  const setRowPlant = useCallback(
-    (itemId: string, rowIdx: number, patch: Partial<RowPlantState>) => {
-      const key = `${itemId}:${rowIdx}`;
-      setItemPlantRows((prev) => {
-        const next = new Map(prev);
-        const current = prev.get(key) ?? {
-          plantRateId: null,
-          customDescription: null,
-          dayRateOverride: null,
-          qty: "",
-          days: ""
-        };
-        next.set(key, { ...current, ...patch });
-        return next;
-      });
-    },
-    []
+  // SCOPE_PLANT_PERSIST_V1 — materialise EVERY row of an item, whether or not
+  // the user has touched it. Required by the DTO's replace-not-merge
+  // contract: a write that omitted the untouched rows would delete them.
+  const materialisePlantRows = useCallback(
+    (item: ScopeItem, rowCount: number): RowPlantState[] =>
+      Array.from({ length: rowCount }, (_, i) => getRowPlant(item, i)),
+    [getRowPlant]
   );
 
   const materialOptions = useMemo<TooltipSelectOption<string>[]>(
@@ -1308,6 +1661,55 @@ export function ScopeQuantitiesTable({
   );
 
   /**
+   * SCOPE_PLANT_PERSIST_V1 — apply a patch to ONE plant row and write the
+   * item's whole plant row list through. The plant twin of commitManpowerRow,
+   * and the replacement for setRowPlant, which wrote local state and stopped.
+   *
+   * The local map is updated first (optimistic, so the cell does not flicker
+   * back to its old value while the request is in flight) and the PATCH then
+   * carries every row, per the DTO's replace-not-merge contract. Nothing about
+   * this depends on rowIdx: there is no row-0 special case on the plant side
+   * and there never was one to remove.
+   */
+  const commitPlantRow = useCallback(
+    (item: ScopeItem, rowIdx: number, patch: Partial<RowPlantState>) => {
+      const rowCount = itemRowCounts.get(item.id) ?? 1;
+      const rows = materialisePlantRows(item, rowCount);
+      if (rowIdx < 0 || rowIdx >= rows.length) return;
+      rows[rowIdx] = { ...rows[rowIdx], ...patch };
+      setItemPlantRows((prev) => writePlantRows(prev, item.id, rows));
+      void patchItem(item.id, plantPatchBody(rows));
+    },
+    [itemRowCounts, materialisePlantRows, patchItem]
+  );
+
+  /**
+   * SCOPE_PLANT_PERSIST_V1 — the plant half of a row-count change.
+   *
+   * "+ Row" and the per-row `x` are one control for BOTH column groups, so a
+   * row change has to move the plant array in step with the labour array or
+   * the two disagree about how many rows the item has — and on a removal the
+   * stored plant entries would stay at their old indices and the wrong plant
+   * would show against the wrong row.
+   *
+   * The plant keys are added only when there is something to say: the item
+   * already has stored plant rows, or one of the rows carries plant the
+   * estimator typed (which covers the window between a plant edit and the
+   * refetch that puts it on `item`). An item whose plantItems is NULL and
+   * whose rows are all blank has nothing to shift and nothing to lose, and
+   * writing an array of blank entries over that NULL would turn "never
+   * touched" into "touched, and empty" — the same statement plantPatchBody
+   * refuses to make with [].
+   */
+  const plantKeysForRowChange = useCallback(
+    (item: ScopeItem, rows: RowPlantState[]): Record<string, unknown> =>
+      hasStoredPlantRows(item.plantItems) || rows.some((r) => !isBlankPlantRow(r))
+        ? plantPatchBody(rows)
+        : {},
+    []
+  );
+
+  /**
    * SCOPE_MANPOWER_PERSIST_V1 — "+ Row" now persists the row it adds.
    *
    * The row count IS the array length, so an added row only survives a reload
@@ -1322,15 +1724,26 @@ export function ScopeQuantitiesTable({
     (item: ScopeItem) => {
       const rowCount = itemRowCounts.get(item.id) ?? 1;
       const rows = [...materialiseManpowerRows(item, rowCount), defaultManpowerRow(item, rowCount)];
+      // SCOPE_PLANT_PERSIST_V1 — the appended row gets a blank plant entry so
+      // the two arrays keep the same length. A blank entry has no plantRateId
+      // and no override, so computeScopeItemTotal's plant loop skips it
+      // outright (`if (rate == null) continue`) and the item total does not
+      // move. Sent in the SAME PATCH as the labour rows — two PATCHes to one
+      // scope item race, and the loser resurrects what the winner deleted.
+      const plantRows = [...materialisePlantRows(item, rowCount), blankPlantRow()];
       setItemRowCounts((prev) => {
         const next = new Map(prev);
         next.set(item.id, rows.length);
         return next;
       });
       setItemManpowerRows((prev) => writeManpowerRows(prev, item.id, rows));
-      void patchItem(item.id, manpowerPatchBody(rows));
+      setItemPlantRows((prev) => writePlantRows(prev, item.id, plantRows));
+      void patchItem(item.id, {
+        ...manpowerPatchBody(rows),
+        ...plantKeysForRowChange(item, plantRows)
+      });
     },
-    [itemRowCounts, materialiseManpowerRows, patchItem]
+    [itemRowCounts, materialiseManpowerRows, materialisePlantRows, plantKeysForRowChange, patchItem]
   );
 
   // SCOPE_WBS_GROUPRULES_V1 — remove the row that was clicked, not the last
@@ -1343,23 +1756,38 @@ export function ScopeQuantitiesTable({
   // map. That distinction is the bug this slice would otherwise ship: rows
   // hydrated from the server have no entry in the local map, so splicing the
   // map alone would leave them rendering at their old indices and the write
-  // would delete the wrong row. Plant keeps the index-aware splice — its rows
-  // are still local-only and belong to pr-cardpersist-s2.
+  // would delete the wrong row.
+  //
+  // SCOPE_PLANT_PERSIST_V1 — plant now takes the same route, for the same
+  // reason. It was still on spliceRowState, which is correct only while every
+  // row is local-only; the moment plant rows hydrate from the server the
+  // splice edits a map that does not contain them, leaves the stored array
+  // untouched, and the next whole-array write ships the rows in their OLD
+  // order. spliceRowState itself is untouched and stays exported —
+  // SCOPE_WBS_GROUPRULES_V1 and wbs-table-chrome.test.tsx own it.
+  //
+  // Both arrays go in ONE PATCH. Two PATCHes to the same scope item race, and
+  // batch3-scope-items.spec.ts documents the exact failure that produced: the
+  // later write resurrects what the earlier one deleted.
   const removeRowFromItem = useCallback(
     (item: ScopeItem, rowIdx: number) => {
       const current = itemRowCounts.get(item.id) ?? 1;
       if (!canRemoveRowAt(current, rowIdx)) return;
       const rows = removeManpowerRowAt(materialiseManpowerRows(item, current), rowIdx);
+      const plantRows = removePlantRowAt(materialisePlantRows(item, current), rowIdx);
       setItemRowCounts((prev) => {
         const next = new Map(prev);
         next.set(item.id, nextRowCountAfterRemove(prev.get(item.id) ?? current, rowIdx));
         return next;
       });
       setItemManpowerRows((prev) => writeManpowerRows(prev, item.id, rows));
-      setItemPlantRows((prev) => spliceRowState(prev, item.id, rowIdx, current));
-      void patchItem(item.id, manpowerPatchBody(rows));
+      setItemPlantRows((prev) => writePlantRows(prev, item.id, plantRows));
+      void patchItem(item.id, {
+        ...manpowerPatchBody(rows),
+        ...plantKeysForRowChange(item, plantRows)
+      });
     },
-    [itemRowCounts, materialiseManpowerRows, patchItem]
+    [itemRowCounts, materialiseManpowerRows, materialisePlantRows, plantKeysForRowChange, patchItem]
   );
 
   const confirmItem = async (id: string) => {
@@ -1768,38 +2196,46 @@ export function ScopeQuantitiesTable({
                     <PlantRowCells
                       item={item}
                       rowIdx={rowIdx}
-                      rowState={getRowPlant(item.id, rowIdx)}
+                      rowState={getRowPlant(item, rowIdx)}
                       plantTypeOptions={plantTypeOptions}
                       plantRateById={plantRateById}
                       isAi={isAi}
+                      // SCOPE_PLANT_PERSIST_V1 — all six handlers go through
+                      // commitPlantRow, which writes local state AND patches
+                      // the whole plantItems array. Every one of them used to
+                      // call setRowPlant and stop, which is why every plant
+                      // field on every row died on reload.
+                      //
+                      // The catalogue NAME and unit are resolved here, from
+                      // plantRateById, for the same reason the manpower Type
+                      // handler resolves the rate-card role here: the server
+                      // reads the name (getCardSummary) and the id alone does
+                      // not carry it.
                       onPlantTypeChange={(plantRateId) =>
-                        setRowPlant(item.id, rowIdx, {
-                          plantRateId,
-                          customDescription: null,
-                          dayRateOverride: null
-                        })
+                        commitPlantRow(
+                          item,
+                          rowIdx,
+                          plantPatchForTypeChange(
+                            plantRateId,
+                            plantRateId ? plantRateById.get(plantRateId) : undefined
+                          )
+                        )
                       }
                       onCustomDescription={(desc) =>
-                        setRowPlant(item.id, rowIdx, { plantRateId: null, customDescription: desc })
+                        commitPlantRow(item, rowIdx, plantPatchForCustomDescription(desc))
                       }
                       onRevertToList={() =>
-                        setRowPlant(item.id, rowIdx, {
-                          plantRateId: null,
-                          customDescription: null,
-                          dayRateOverride: null
-                        })
+                        commitPlantRow(item, rowIdx, plantPatchForRevertToList())
                       }
-                      onQtyBlur={(v) => setRowPlant(item.id, rowIdx, { qty: v })}
-                      onDaysBlur={(v) => setRowPlant(item.id, rowIdx, { days: v })}
-                      onDayRateOverride={(v) => setRowPlant(item.id, rowIdx, { dayRateOverride: v })}
+                      onQtyBlur={(v) => commitPlantRow(item, rowIdx, { qty: v })}
+                      onDaysBlur={(v) => commitPlantRow(item, rowIdx, { days: v })}
+                      onDayRateOverride={(v) => commitPlantRow(item, rowIdx, { dayRateOverride: v })}
                     />
                     {/* ── Measurement spanning cell (per-row) — slice 5 will extract ── */}
                     <td style={{ ...fitCellStyle, ...tdBorderStyle }}>
                       <ItemMeasurementCell
                         item={item}
                         rowIdx={rowIdx}
-                        plantOptions={plantOptions}
-                        plantRates={plantRates}
                         wasteGroupOptions={wasteGroupOptions}
                         wasteItemsByGroup={wasteItemsByGroup}
                         materialOptions={materialOptions}
@@ -2509,8 +2945,6 @@ function PlantRowCells({
 type ItemMeasurementCellProps = {
   item: ScopeItem;
   rowIdx: number;
-  plantOptions: TooltipSelectOption<string>[];
-  plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
@@ -2528,8 +2962,6 @@ type ItemMeasurementCellProps = {
 function ItemMeasurementCell({
   item,
   rowIdx,
-  plantOptions,
-  plantRates,
   wasteGroupOptions,
   wasteItemsByGroup,
   materialOptions,
@@ -2547,8 +2979,6 @@ function ItemMeasurementCell({
   return (
     <ItemBodyInputs
       item={item}
-      plantOptions={plantOptions}
-      plantRates={plantRates}
       wasteGroupOptions={wasteGroupOptions}
       wasteItemsByGroup={wasteItemsByGroup}
       materialOptions={materialOptions}
@@ -2567,8 +2997,6 @@ function ItemMeasurementCell({
 
 type ItemBodyInputsProps = {
   item: ScopeItem;
-  plantOptions: TooltipSelectOption<string>[];
-  plantRates: PlantRate[];
   wasteGroupOptions: TooltipSelectOption<string>[];
   wasteItemsByGroup: Map<string, string[]>;
   materialOptions: TooltipSelectOption<string>[];
@@ -2585,8 +3013,6 @@ type ItemBodyInputsProps = {
 
 function ItemBodyInputs({
   item,
-  plantOptions,
-  plantRates,
   wasteGroupOptions,
   wasteItemsByGroup,
   materialOptions,
@@ -2598,34 +3024,15 @@ function ItemBodyInputs({
   // PR feat/scope-each-factor — active kind for row 1.
   const row1Kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (item.materialKind as "VOLUME" | "AREA" | "EACH" | "FACTOR") ?? "VOLUME";
 
-  const updatePlant = (columnIndex: number, patch: Partial<ScopePlantEntry> | null) => {
-    const current = Array.isArray(item.plantItems) ? item.plantItems : [];
-    let next: ScopePlantEntry[];
-    if (patch === null) {
-      next = current.filter((p) => p.columnIndex !== columnIndex);
-    } else {
-      const existing = current.find((p) => p.columnIndex === columnIndex);
-      next = existing
-        ? current.map((p) => (p.columnIndex === columnIndex ? { ...p, ...patch } : p))
-        : [...current, { columnIndex, ...patch }];
-    }
-    onPatch({ plantItems: next });
-  };
-
-  const itemPlantEntries: ScopePlantEntry[] = Array.isArray(item.plantItems)
-    ? [...item.plantItems].sort((a, b) => a.columnIndex - b.columnIndex)
-    : [];
-
-  const addPlant = () => {
-    const maxIndex = itemPlantEntries.reduce((m, p) => Math.max(m, p.columnIndex), 0);
-    const newEntry: ScopePlantEntry = { columnIndex: maxIndex + 1 };
-    onPatch({ plantItems: [...(item.plantItems ?? []), newEntry] });
-  };
-
-  const removePlant = (columnIndex: number) => {
-    const next = (item.plantItems ?? []).filter((p) => p.columnIndex !== columnIndex);
-    onPatch({ plantItems: next });
-  };
+  // SCOPE_PLANT_PERSIST_V1 — updatePlant / addPlant / removePlant and the
+  // PlantCluster block they drove are gone from this cell. They were the only
+  // plant UI that reached the database, which is why they outlived the new
+  // columns by four slices; now that PlantRowCells persists, keeping them
+  // would render plant twice on row 0 and give the estimator two write paths
+  // into one array. The e2e that covered them
+  // ("plant pills: add a plant cluster, set qty/days, remove it") is ported
+  // onto the columns in tests/e2e/pr-acceptance/batch3-scope-items.spec.ts in
+  // this same PR.
 
   const itemMaterialEntries: ScopeMaterialEntry[] = Array.isArray(item.materials)
     ? item.materials
@@ -2799,45 +3206,10 @@ function ItemBodyInputs({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 360 }}>
-      {/* SCOPE_WBS_PLANT_V1 — the new plant COLUMN GROUP lives in PlantRowCells.
-          These legacy cells are retained deliberately: they are the only plant UI
-          that persists to plantItems, and batch3-scope-items.spec.ts:256 covers
-          that persistence (PRs #241, #72). Remove them in the slice that wires
-          the new columns to the server, and port the e2e in that same slice. */}
-      {/* Section A: plant only — Men/Days moved to SCOPE_WBS_MANPOWER_V1 columns.
-          Slice 4 will extract plant into its own columns. */}
-      {(itemPlantEntries.length > 0 || !isAi) ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-          {itemPlantEntries.map((entry) => (
-            <PlantCluster
-              key={`plant-${entry.columnIndex}`}
-              index={entry.columnIndex}
-              cell={entry}
-              plantOptions={plantOptions}
-              plantRates={plantRates}
-              disabled={isAi}
-              onChange={(patch) => updatePlant(entry.columnIndex, patch)}
-              onRemove={() => removePlant(entry.columnIndex)}
-            />
-          ))}
-          {!isAi ? (
-            <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
-              <button
-                type="button"
-                className="s7-btn s7-btn--ghost s7-btn--sm"
-                onClick={addPlant}
-                title="Add plant to this item"
-                style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px", height: 32 }}
-              >
-                + Plant
-              </button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <Divider />
-
+      {/* SCOPE_PLANT_PERSIST_V1 — the legacy plant cluster and its "+ Plant"
+          button stood here. The Plant COLUMN GROUP (PlantRowCells) now writes
+          to plantItems on every row, so this cell renders measurement only.
+          Section B is unchanged; pr-cardui-s5 owns it. */}
       {/* Section B: Measurement — stays exactly where it is until slice 5 */}
       <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
         <FieldCell label="Length" width={70}>
@@ -3163,107 +3535,6 @@ function ItemBodyInputs({
         onAdd={addMaterial}
         disabled={isAi}
       />
-    </div>
-  );
-}
-
-// ── PlantCluster ────────────────────────────────────────────────────────
-
-function PlantCluster({
-  index,
-  cell,
-  plantOptions,
-  plantRates,
-  disabled,
-  onChange,
-  onRemove
-}: {
-  index: number;
-  cell: ScopePlantEntry | undefined;
-  plantOptions: TooltipSelectOption<string>[];
-  plantRates: PlantRate[];
-  disabled: boolean;
-  onChange: (patch: Partial<ScopePlantEntry> | null) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 280 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span className="s7-type-label" style={labelStyle}>
-          Plant {index}
-        </span>
-        {!disabled ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Remove Plant ${index}`}
-            title={`Remove Plant ${index}`}
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: 999,
-              border: "1px solid var(--border-default, #e5e7eb)",
-              background: "transparent",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 10,
-              lineHeight: 1,
-              padding: 0
-            }}
-          >
-            x
-          </button>
-        ) : null}
-      </div>
-      <div style={{ display: "flex", gap: 4 }}>
-        <TooltipSelect
-          value={cell?.plantRateId}
-          options={plantOptions}
-          onChange={(v) => {
-            if (!v) {
-              onChange(null);
-              return;
-            }
-            const rate = plantRates.find((p) => p.id === v);
-            onChange({
-              plantRateId: v,
-              description: rate?.item ?? "",
-              unit: rate?.unit ?? "day"
-            });
-          }}
-          disabled={disabled}
-          ariaLabel={`Plant ${index} rate`}
-          style={{ flex: 1, minWidth: 0, height: 32 }}
-        />
-        <input
-          className="s7-input"
-          type="number"
-          step="1"
-          placeholder="qty"
-          defaultValue={cell?.qty ?? ""}
-          disabled={disabled}
-          style={{ width: 64, height: 32, padding: "0 6px" }}
-          title="Quantity"
-          onBlur={(e) => {
-            const v = e.target.value === "" ? undefined : Number(e.target.value);
-            if (cell) onChange({ qty: v });
-          }}
-        />
-        <input
-          className="s7-input"
-          type="number"
-          step="0.5"
-          placeholder="days"
-          defaultValue={cell?.days ?? ""}
-          disabled={disabled}
-          style={{ width: 64, height: 32, padding: "0 6px" }}
-          title="Days"
-          onBlur={(e) => {
-            const v = e.target.value === "" ? undefined : Number(e.target.value);
-            if (cell) onChange({ days: v });
-          }}
-        />
-      </div>
     </div>
   );
 }

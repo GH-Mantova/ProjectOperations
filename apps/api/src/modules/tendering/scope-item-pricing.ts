@@ -23,6 +23,24 @@
 //     free-typed custom machine price at all instead of at $0.
 // Nothing here reads or writes men/days/shift differently than before,
 // and there is no backfill — the fallback is what makes one unnecessary.
+//
+// CARD-WEB SLICE 2 (SCOPE_PLANT_PERSIST_V1) needed BOTH plant legs below —
+// `dayRateOverride` beating the catalogue, and a description-only row pricing
+// from that override — and found them already here, landed by CARD-API SLICE
+// 1. No behaviour is added by that slice; this note records that the plant
+// loop now has a WRITER. Until it, the only UI that wrote plantItems was the
+// legacy PlantCluster, which had no rate field at all, so the override leg
+// was unreachable from the product and the custom-machine leg could only ever
+// be reached by a hand-written payload.
+//
+// The array that reaches this function from the Plant column group is, per
+// row, exactly:
+//   { columnIndex, plantRateId, description, qty, days, unit, dayRateOverride }
+// with every key present and absence stated as null (qty/days as 0 — a blank
+// box is "none costed", and `qty == null ? 1` below is why it cannot be sent
+// as null). `columnIndex` and `unit` are stored for the web's benefit and are
+// not read here; `description` is not read here either, but IS read by
+// getCardSummary, which skips any entry without one.
 
 import { Prisma } from "@prisma/client";
 import { Discipline, DISCIPLINES } from "./dto/scope-of-works.dto";

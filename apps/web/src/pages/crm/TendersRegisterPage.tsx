@@ -12,6 +12,15 @@
 //   picker persisted under its own localStorage key.
 //   NO-OP (see the PR body): the mock-up's channel and one-line-summary halves
 //   of the Last interaction cell are NOT built — the comms API sends neither.
+// CRM_FOLLOWUPS_V2 — Follow-ups gets the summary and the controls it was
+//   missing: the four KPI cards (Overdue · Due this week · Never logged ·
+//   Value at risk) above the toggle row, the four entity-type toggles
+//   (Submitted tenders · Opportunities · Leads · Won & lost) whose status Sets
+//   were already in this file and dead, and a Type chip column so a Lead row
+//   and a Tender row are distinguishable on a list that spans both.
+//   Still ONE list, ONE fetch, ONE row pipeline (decision 6): the entity-type
+//   group is a status filter that COMPOSES with the four next-action toggles.
+//   Every KPI figure is derived in the browser from rows already loaded.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
@@ -33,11 +42,17 @@ import {
   formatRelativeTime,
   formatSubmittedLabel,
   normalizeColumnVisibility,
-  visibleRegisterColumns,
   DEFAULT_COLUMN_VISIBILITY,
   EM_RULE,
-  REGISTER_COLUMNS,
   REGISTER_COLUMNS_STORAGE_KEY,
+  columnsForTab,
+  visibleColumnsForTab,
+  computeRegisterKpis,
+  entityTypeChipLabel,
+  entityTypePassesFilter,
+  ENTITY_TYPES,
+  DEFAULT_ENTITY_TYPE_TOGGLES,
+  type EntityTypeToggles,
   type FollowUpToggles,
   type CrmColumnKey,
   type LogPayload,
@@ -99,16 +114,14 @@ export type TendersRegisterPageProps = {
   activeTab?: Tab;
 };
 
-// Won & lost statuses for the Follow-ups "Won & lost" toggle.
-const WON_LOST_STATUSES = new Set<string>(["AWARDED", "CONTRACT_ISSUED", "LOST"]);
-// Submitted statuses for the Follow-ups "Submitted tenders" toggle.
-const SUBMITTED_STATUSES = new Set<string>(["SUBMITTED"]);
-// Active pipeline statuses for "Opportunities" toggle.
-const OPPORTUNITY_STATUSES = new Set<string>(["IN_PROGRESS"]);
-// Lead statuses.
-const LEAD_STATUSES = new Set<string>(["DRAFT"]);
-// Withdrawn status.
-const WITHDRAWN_STATUSES = new Set<string>(["WITHDRAWN"]);
+// CRM_FOLLOWUPS_V2: the five status Sets that used to be declared here — one
+// per Follow-ups toggle, each with exactly one reference in the repo (its own
+// declaration line) — now live in tendersRegisterPage.helpers.ts under the
+// same names, wired to the toggle group and the Type chip through
+// ENTITY_TYPES. They moved rather than being duplicated so "what kind of thing
+// is this row" has one definition, and so the predicate is unit-testable
+// without React. WITHDRAWN_STATUSES stays declared there and belongs to no
+// toggle: the mock-up has no control for it.
 
 const EMPTY_FILTERS: FiltersForQuery = {
   search: "",
@@ -411,6 +424,93 @@ const registerCellStyle = {
   hiddenCell: { display: "none" }
 } satisfies Record<string, React.CSSProperties>;
 
+/**
+ * CRM_FOLLOWUPS_V2 styles.
+ *
+ * Every colour is a design token that already exists in styles/tokens.css and
+ * is defined for BOTH themes (`--surface-card`, `--border-default`,
+ * `--text-primary`, `--text-secondary`, `--surface-subtle`) or is a locked
+ * brand token (`--brand-primary`, `--brand-primary-light`,
+ * `--brand-primary-dark`, §5 BRAND — unchanged across the theme flip by
+ * design). This slice introduces no colour literal of its own.
+ */
+const followUpsStyle = {
+  kpiRow: { marginBottom: 12 },
+  kpiCard: {
+    background: "var(--surface-card)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-lg)",
+    padding: "12px 16px"
+  },
+  kpiLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--text-secondary)"
+  },
+  kpiValue: {
+    fontSize: 22,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    marginTop: 4,
+    fontVariantNumeric: "tabular-nums"
+  },
+  toggleRow: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: "wrap",
+    alignItems: "center"
+  },
+  toggleLabel: { fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 },
+  entityToggleBase: {
+    padding: "4px 10px",
+    borderRadius: 12,
+    border: "1px solid",
+    fontSize: 12,
+    cursor: "pointer"
+  },
+  entityToggleOn: {
+    borderColor: "var(--brand-primary)",
+    background: "var(--brand-primary-light)",
+    color: "var(--brand-primary-dark)"
+  },
+  entityToggleOff: {
+    borderColor: "var(--border-default)",
+    background: "transparent",
+    color: "var(--text-secondary)"
+  },
+  /**
+   * The Type chip. One neutral chip for all four types: the chip TEXT is what
+   * distinguishes a Lead row from a Tender row, and there is no per-type
+   * colour token defined for both themes to reach for. Colouring it would have
+   * meant inventing literals.
+   */
+  typeChip: {
+    display: "inline-block",
+    padding: "1px 8px",
+    borderRadius: 10,
+    border: "1px solid",
+    borderColor: "var(--border-default)",
+    background: "var(--surface-subtle)",
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    fontWeight: 600,
+    whiteSpace: "nowrap"
+  }
+} satisfies Record<string, React.CSSProperties>;
+
+/** CRM_FOLLOWUPS_V2: one KPI card. */
+function KpiCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={followUpsStyle.kpiCard}>
+      <div style={followUpsStyle.kpiLabel}>{label}</div>
+      <div style={followUpsStyle.kpiValue}>{value}</div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -434,6 +534,11 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   const [filters, setFilters] = useState<FiltersForQuery>(EMPTY_FILTERS);
   const [followUpToggles, setFollowUpToggles] =
     useState<FollowUpToggles>(FOLLOWUPS_DEFAULT_TOGGLES);
+  // CRM_FOLLOWUPS_V2: the entity-type (status) toggles. All four default OFF,
+  // which means "no entity-type filter" — Follow-ups opens on exactly the rows
+  // it opened on before this slice.
+  const [entityTypeToggles, setEntityTypeToggles] =
+    useState<EntityTypeToggles>(DEFAULT_ENTITY_TYPE_TOGGLES);
   const [mineOnly, setMineOnly] = useState(false);
 
   const [sortBy, setSortBy] = useState<CrmColumnKey | null>(null);
@@ -608,31 +713,37 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     });
   }, [enrichedRows, filters.search, filters.status, filters.clientId, mineOnly, currentUserId]);
 
-  // Follow-up tab toggle filter (the status and next-action classification gates).
-  // Register tab: no toggle filter applied (all rows visible).
+  // Follow-up tab toggle filter. Register tab: no toggle filter applied.
+  //
+  // CRM_FOLLOWUPS_V2: TWO independent toggle groups, and they COMPOSE — a row
+  // renders only if it passes both.
+  //   · entity type (status)      — Submitted tenders · Opportunities · Leads · Won & lost
+  //   · next action (due-date)    — Overdue · Due soon · No next action · On track
+  // Each group applies no filter at all when every toggle in it is off, so the
+  // default Follow-ups view is unchanged: the three amber next-action toggles
+  // on, On track off, and no entity-type narrowing.
   const tabFiltered = useMemo(() => {
     if (tab === "register") return clientFiltered;
 
-    // Follow-ups: apply status-category toggles.
-    // The four status-group toggles are: Submitted tenders · Opportunities · Leads · Won & lost
-    // All status toggles are always on in this UI — "Won & lost" toggling is handled by
-    // whether tab=followups shows those statuses. Currently per the spec: Follow-ups
-    // shows all statuses with the next-action classification gates applied.
-    // Turning "Won & lost" ON means the full register (i.e. the Register tab itself).
-    // Within the Follow-ups tab we apply the next-action toggle filter.
-    const anyNextActionToggle =
-      followUpToggles.overdue ||
-      followUpToggles.dueSoon ||
-      followUpToggles.noNextAction ||
-      followUpToggles.onTrack;
-
-    if (!anyNextActionToggle) return clientFiltered;
-
     return clientFiltered.filter((t) => {
+      if (!entityTypePassesFilter(t.status, entityTypeToggles)) return false;
       const cls = classifyNextAction(t.nextActionAt, now.current);
       return nextActionPassesFilter(cls, followUpToggles);
     });
-  }, [clientFiltered, tab, followUpToggles]);
+  }, [clientFiltered, tab, followUpToggles, entityTypeToggles]);
+
+  /**
+   * CRM_FOLLOWUPS_V2: the four KPI cards.
+   *
+   * Derived from `tabFiltered` — the rows currently in scope for the active
+   * filters, which is the exact array the list below renders (sorting reorders
+   * it, it never changes its membership). The cards and the list therefore
+   * cannot disagree: change a filter and both move together.
+   */
+  const kpis = useMemo(
+    () => computeRegisterKpis(tabFiltered, now.current),
+    [tabFiltered]
+  );
 
   // Client-side sort.
   const sortedRows = useMemo(() => {
@@ -767,9 +878,13 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   // Render
   // ---------------------------------------------------------------------------
 
+  // CRM_FOLLOWUPS_V2: Register keeps its own column set; Follow-ups adds the
+  // Type chip column. One list, one row pipeline — only the header sequence
+  // and one cell differ.
+  const tabColumns = useMemo(() => columnsForTab(tab), [tab]);
   const visibleColumns = useMemo(
-    () => visibleRegisterColumns(columnVisibility),
-    [columnVisibility]
+    () => visibleColumnsForTab(tab, columnVisibility),
+    [tab, columnVisibility]
   );
 
   /** Style for a body cell: its own style, plus display:none when hidden. */
@@ -815,6 +930,55 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           Removing this fixed the "two tab bars on Tenders" defect where the
           outer bar advertised an S8-empty-state stub for work already
           shipped in this page. */}
+
+      {/* CRM_FOLLOWUPS_V2: the four KPI cards, above the toggle rows.
+          Every figure is computed from the rows in scope for the active
+          filters — no fetch, no endpoint — so the cards and the list beneath
+          them can never disagree. */}
+      {tab === "followups" && (
+        <div
+          className="s7-card-grid s7-card-grid--kpi"
+          style={followUpsStyle.kpiRow}
+          role="group"
+          aria-label="Follow-ups summary"
+        >
+          <KpiCard label="Overdue" value={String(kpis.overdue)} />
+          <KpiCard label="Due this week" value={String(kpis.dueThisWeek)} />
+          <KpiCard label="Never logged" value={String(kpis.neverLogged)} />
+          <KpiCard
+            label="Value at risk"
+            value={kpis.valueAtRisk === null ? EM_RULE : formatMoneyAUD(kpis.valueAtRisk)}
+          />
+        </div>
+      )}
+
+      {/* CRM_FOLLOWUPS_V2: the entity-type toggle group. A STATUS filter, and
+          independent of the four next-action toggles below — the two groups
+          compose. All four default off, i.e. no narrowing. */}
+      {tab === "followups" && (
+        <div style={followUpsStyle.toggleRow} role="group" aria-label="Entity type">
+          <span style={followUpsStyle.toggleLabel}>Type:</span>
+          {ENTITY_TYPES.map((def) => {
+            const on = entityTypeToggles[def.id];
+            return (
+              <button
+                key={def.id}
+                type="button"
+                onClick={() =>
+                  setEntityTypeToggles((prev) => ({ ...prev, [def.id]: !prev[def.id] }))
+                }
+                aria-pressed={on}
+                style={{
+                  ...followUpsStyle.entityToggleBase,
+                  ...(on ? followUpsStyle.entityToggleOn : followUpsStyle.entityToggleOff)
+                }}
+              >
+                {def.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Follow-ups toggle row */}
       {tab === "followups" && (
@@ -1029,7 +1193,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           are not hideable — a row with no identity and no action is not a row. */}
       {showColumns && (
         <div role="group" aria-label="Visible columns" style={registerCellStyle.columnsPanel}>
-          {REGISTER_COLUMNS.filter((col) => col.hideable).map((col) => (
+          {tabColumns.filter((col) => col.hideable).map((col) => (
             <label key={col.id} style={registerCellStyle.columnsCheckbox}>
               <input
                 type="checkbox"
@@ -1149,10 +1313,12 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         <table className="s7-table">
           <thead>
             <tr>
-              {/* CRM_REGISTER_V3: header sequence comes from REGISTER_COLUMNS —
+              {/* CRM_REGISTER_V3: header sequence comes from the column model —
                   Tender | Client | Status | Value | Last interaction |
-                  Logged by | Next action | Actions. */}
-              {REGISTER_COLUMNS.map((col) => {
+                  Logged by | Next action | Actions.
+                  CRM_FOLLOWUPS_V2: on Follow-ups the same model inserts Type
+                  after Tender. */}
+              {tabColumns.map((col) => {
                 const key: CrmColumnKey | null = col.sortKey;
                 return (
                   <th
@@ -1218,6 +1384,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                   ? new Date(interaction.lastMessageAt).toLocaleDateString()
                   : undefined;
                 const submittedLabel = formatSubmittedLabel(t.submittedAt);
+                // CRM_FOLLOWUPS_V2: derived from the SAME status groups as the
+                // entity-type toggles. Null for a status no group claims
+                // (WITHDRAWN) — that row shows the em-rule, not a made-up type.
+                const typeLabel = entityTypeChipLabel(t.status);
                 const valueLabel = formatMoneyAUD(t.estimatedValue);
                 const loggedByLabel = interaction
                   ? `${interaction.loggedBy.firstName} ${interaction.loggedBy.lastName}`.trim()
@@ -1250,6 +1420,15 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                         <div style={registerCellStyle.tenderSubLine}>{submittedLabel}</div>
                       )}
                     </td>
+                    {tab === "followups" && (
+                      <td style={cellStyle("type")} aria-label={`Type: ${typeLabel ?? EM_RULE}`}>
+                        {typeLabel ? (
+                          <span style={followUpsStyle.typeChip}>{typeLabel}</span>
+                        ) : (
+                          EM_RULE
+                        )}
+                      </td>
+                    )}
                     <td style={cellStyle("client")}>{primaryClient}</td>
                     <td style={cellStyle("status")}>{statusLabel}</td>
                     <td

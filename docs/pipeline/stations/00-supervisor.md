@@ -722,6 +722,38 @@ FF failure gets re-diagnosed from first principles every run. Four consecutive r
    HEAD...origin/main` = `0 0`. **Never `git clean`, never `git checkout .`** (DOCTRINE §9.2 —
    consumed prompts come back armed).
 
+   🔴 **STEP 2 IS NOT FINISHED AT `0 0`, AND ITS OWN READ-BACK CANNOT SEE WHAT IT LEFT BEHIND.**
+   MEASURED 2026-09-05T01:3xZ. The fast-forward brings those exact paths in as **tracked** files, and
+   git does **not** write them back to disk — you deleted them a moment earlier and the merge has no
+   reason to restore a path it considers already resolved. So the cure ends with the dev tree holding
+   two **deleted tracked files**:
+
+   ```
+   git rev-list --left-right --count HEAD...origin/main   ->  0	0        <- PASSES
+   git diff --numstat                                     ->  0	363	docs/pr-prompts/00-00-...md
+                                                              0	232	docs/pr-prompts/00-00-...md
+   ```
+
+   **The prescribed read-back is `0 0` and it is TRUE — the tree is at `origin/main` and dirty at the
+   same time.** That is §7's shape exactly: a correct reading of the wrong quantity. The next run
+   then opens on a dirty tree, `git diff --numstat` is non-empty, and the FF-cure precondition three
+   paragraphs up ("`--numstat` EMPTY") fails for a reason that has nothing to do with its own cause.
+
+   🔧 **So step 2 has a fourth action, and the read-back is two commands, not one.** After the
+   fast-forward, restore each file you deleted, the §9.2 way — `git show HEAD:<path>` piped to a
+   write, **never** `git checkout -- <path>`, because the pathspec form is one typo away from
+   `checkout -- <dir>`, which resurrects consumed prompts. Then read back **both**:
+
+   ```
+   git rev-list --left-right --count HEAD...origin/main   ->  0	0
+   git diff --numstat                                     ->  EMPTY
+   git diff --cached --name-status                        ->  EMPTY
+   ```
+
+   ⚠️ **Cure 1 avoids all of this** — write the breadcrumb inside your own run's PR worktree and no
+   loose copy ever exists in the dev tree. Step 2 is the fallback for a run that already wrote one,
+   and this note is the price of taking it.
+
 ⚠️ **Do not diagnose this as a `.gitattributes` line-ending smudge.** That was the recorded cause on
 the morning of 2026-09-04. On the 14:0xZ run the smudge was absent — `git diff --numstat` EMPTY — and
 the fast-forward still refused, on this cause alone. **Read the error text; it names the file.**

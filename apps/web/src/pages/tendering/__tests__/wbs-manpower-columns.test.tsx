@@ -26,7 +26,12 @@ import {
   fmtManpowerTotal,
   SHIFT_OPTIONS,
   shiftLabel,
-  resolveRateForShift
+  resolveRateForShift,
+  // SCOPE_MANPOWER_PERSIST_V1 — imported here, in the COLUMNS suite, on
+  // purpose: the label/value split these tests own is now load-bearing on the
+  // wire, and the seam is only visible from both sides at once.
+  buildLabourItems,
+  type RowManpowerState
 } from "../ScopeQuantitiesTable";
 
 // ── isDayRateOverridden ──────────────────────────────────────────────────────
@@ -342,5 +347,45 @@ describe("resolveRateForShift", () => {
     const nightCatalogueRate = resolveRateForShift(rates, "Night"); // 1000
     // Revert sets override to null; effectiveDayRate returns catalogue rate.
     expect(effectiveDayRate(null, nightCatalogueRate)).toBe(1000);
+  });
+});
+
+// ── SCOPE_MANPOWER_PERSIST_V1 — the label must never reach the store ────────
+// SCOPE_WBS_INPUTS_V2 made the Shift column display "Weekday" for the stored
+// value "Day". Slice 1 of the persistence cluster is the first code that
+// WRITES that column back to the server, which makes the split consequential:
+// the server's rate-card keys are built from the stored values, so a payload
+// carrying the label would resolve no rate and price the row from the
+// discipline default instead — silently, and only for weekday rows.
+
+describe("shift label vs stored value on the wire", () => {
+  function manpowerRow(shift: string): RowManpowerState {
+    return {
+      labourTypeId: "lr-1",
+      role: "Demolition labourer",
+      dayRateOverride: null,
+      qty: "2",
+      days: "3",
+      shift
+    };
+  }
+
+  it("every SHIFT_OPTIONS value round-trips into the payload unchanged", () => {
+    const sent = buildLabourItems(SHIFT_OPTIONS.map((s) => manpowerRow(s)));
+    expect(sent.map((e) => e.shift)).toStrictEqual([...SHIFT_OPTIONS]);
+  });
+
+  it("the payload carries 'Day', never the 'Weekday' label the cell renders", () => {
+    const [entry] = buildLabourItems([manpowerRow("Day")]);
+    expect(shiftLabel("Day")).toBe("Weekday");
+    expect(entry.shift).toBe("Day");
+  });
+
+  it("no shift option's LABEL is ever a valid stored value for another option", () => {
+    // Guard against a future rename that makes label and value collide.
+    const values = new Set<string>(SHIFT_OPTIONS);
+    const relabelled = SHIFT_OPTIONS.filter((s) => shiftLabel(s) !== s).map((s) => shiftLabel(s));
+    expect(relabelled).toStrictEqual(["Weekday"]);
+    expect(relabelled.some((label) => values.has(label))).toBe(false);
   });
 });

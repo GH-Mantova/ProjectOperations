@@ -8,15 +8,35 @@
  * (PRs #177, #178), brand fonts (PR #27), and the notifications bell +
  * Cmd/Ctrl+K command palette (PR #14).
  *
+ * SCOPE_WBS_ACTIONS_V1 (PR #1646) — the per-row notes textarea was relocated
+ * into the `WbsCommentBlock` expandable, opened from the actions column with
+ * `+ Add comment`, and the slice requires that NOTHING opens by default. The
+ * notes-modal test below therefore proves a PAIR: the textarea is absent at
+ * rest, and behaves exactly as it always did once the disclosure is opened.
+ * The field is the same one (ScopeOfWorksItem.notes through the same PATCH)
+ * and the same shared NotesField; only its placeholder and its modal title
+ * changed, because the block labels it as the item's comment.
+ *
  * Residue: none. The discipline-picker test deletes the card it creates;
  * the markup tests clear every override they set (and self-heal a leftover
  * override from a crashed previous run before asserting); the notes-modal
- * test only exercises the Escape-cancel path, which never saves.
+ * test only exercises the Escape-cancel path, which never saves — and
+ * `+ Add comment` is pure view state, it writes nothing.
  */
 
 import { expect, test, type Page } from "@playwright/test";
 import { loginAsAdmin } from "./helpers";
 import { TEMPLATE_TENDER_ID } from "./api-helpers";
+
+/**
+ * The placeholder WbsCommentBlock passes to the shared NotesField.
+ *
+ * Kept as a literal rather than imported from the app: these specs are
+ * black-box and never link app source. Mirrors WBS_COMMENT_PLACEHOLDER in
+ * apps/web/src/pages/tendering/scope-cards/WbsCommentBlock.tsx.
+ */
+const WBS_COMMENT_PLACEHOLDER =
+  "Note against this WBS item — rolls into the card summary, and can be ticked through to the quote or the handover.";
 
 async function openScopeTab(page: Page): Promise<void> {
   await page.goto(`/tenders/${TEMPLATE_TENDER_ID}/scope`);
@@ -158,17 +178,40 @@ test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #1
     await openScopeTab(page);
     const article = itemGroup(page, "Internal strip-out");
 
-    const inlineNotes = article.getByPlaceholder("Notes for this item…");
+    // SCOPE_WBS_ACTIONS_V1 — at rest the item shows `+ Add comment` and NO
+    // note box. Asserted before opening anything: this is the slice's "do not
+    // make any block open by default" requirement, and it is the half of the
+    // pair a test that only opened the disclosure would never catch. The
+    // seeded "Internal strip-out" is the dangerous case — an item that may
+    // already carry a note, and so the one a regression would auto-open.
+    await expect(article.getByTestId("wbs-comment-block")).toHaveCount(0);
+    await expect(article.getByPlaceholder(WBS_COMMENT_PLACEHOLDER)).toHaveCount(0);
+    await expect(article.getByLabel("Expand notes")).toHaveCount(0);
+
+    // `+ Add comment` only reveals — it writes nothing, so this test still
+    // leaves no residue.
+    await article.getByRole("button", { name: "+ Add comment" }).click();
+    await expect(article.getByTestId("wbs-comment-block")).toBeVisible();
+
+    const inlineNotes = article.getByPlaceholder(WBS_COMMENT_PLACEHOLDER);
     await expect(inlineNotes).toBeVisible();
     const original = await inlineNotes.inputValue();
 
+    // The block labels the field per item ("Comment on <wbs code>"), and
+    // NotesField passes its label straight through as the modal's title, so
+    // the dialog is named from the row group's own data-wbs-code rather than
+    // from a hard-coded code the seed is free to renumber.
+    const wbsCode = await article.getAttribute("data-wbs-code");
+    expect(wbsCode).toBeTruthy();
+    const modalTitle = `Comment on ${wbsCode}`;
+
     await article.getByLabel("Expand notes").click();
-    const modal = page.getByRole("dialog", { name: "Notes" });
-    await expect(modal.getByRole("heading", { name: "Notes" })).toBeVisible();
+    const modal = page.getByRole("dialog", { name: modalTitle });
+    await expect(modal.getByRole("heading", { name: modalTitle })).toBeVisible();
     await expect(modal.getByText("⌘/Ctrl + Enter to save · Esc to cancel")).toBeVisible();
 
     // Modal opens pre-filled with the inline text; Esc discards the edit.
-    const modalNotes = modal.getByPlaceholder("Notes for this item…");
+    const modalNotes = modal.getByPlaceholder(WBS_COMMENT_PLACEHOLDER);
     await expect(modalNotes).toHaveValue(original);
     await modalNotes.fill(`${original} e2e-b8-discarded`);
     await modalNotes.press("Escape");

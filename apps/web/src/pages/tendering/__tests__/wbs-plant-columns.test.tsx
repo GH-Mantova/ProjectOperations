@@ -183,23 +183,33 @@ describe("fmtPlantTotal", () => {
     expect(fmtPlantTotal(null)).not.toContain("0.00");
   });
 
-  it("formats a positive total as AUD with no decimal places", () => {
+  // SCOPE_WBS_INPUTS_V2 — these three assertions INVERT: whole dollars became
+  // cents. 600.5 read "$601" (rounded up, half-even away from the real figure);
+  // it now reads "$600.50".
+
+  it("formats a positive total as AUD with exactly two decimal places", () => {
     const result = fmtPlantTotal(12000);
     expect(result).toMatch(/12,000|12000/);
     expect(result).toMatch(/\$/);
-    expect(result).not.toContain(".");
+    expect(result).toContain(".00");
   });
 
-  it("formats zero as $0 (valid when qty or days is 0, not when type is absent)", () => {
+  it("formats zero as $0.00 (valid when qty or days is 0, not when type is absent)", () => {
     const result = fmtPlantTotal(0);
-    expect(result).toMatch(/\$0/);
+    expect(result).toMatch(/\$0\.00/);
   });
 
-  it("rounds to the nearest dollar", () => {
-    // 1 × 0.5 × 1201 = 600.5; fmtPlantTotal rounds to nearest $
+  it("keeps the cents instead of rounding to the nearest dollar", () => {
+    // 1 × 0.5 × 1201 = 600.5 — was "$601", now "$600.50".
     const result = fmtPlantTotal(600.5);
-    expect(result).toMatch(/600|601/);
-    expect(result).not.toContain(".5");
+    expect(result).toMatch(/600/);
+    expect(result).toContain(".50");
+    expect(result).not.toMatch(/^\$601/);
+  });
+
+  it("still renders the em dash, not $0.00, for a null total", () => {
+    expect(fmtPlantTotal(null)).toBe("—");
+    expect(fmtPlantTotal(null)).not.toContain("0.00");
   });
 
   it("em dash is a U+2014 em dash, not a hyphen", () => {

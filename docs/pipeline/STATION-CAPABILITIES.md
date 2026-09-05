@@ -126,7 +126,8 @@ its chat report plus a breadcrumb are then the only channels, and Station 00 mus
 
 ### No second transport
 
-Desktop Commander is the **only** transport onto the Windows host. Earlier revisions of this file
+Desktop Commander is the only transport that can **RUN** anything on the Windows host — no shell, no
+PowerShell script, no `gh`, no `git`, no liveness probe, no smoke, no merge, no arm. Earlier revisions of this file
 offered a Linux-VM "device bridge" as a fallback when Desktop Commander was absent; MEASURED
 2026-09-04T06:1xZ from inside a live scheduled Cowork session, none of the tools that bridge
 exposed is offered in that environment's inventory. **A fallback that does not exist is not a
@@ -134,6 +135,39 @@ fallback** — a station that reaches for one because the primary is absent is a
 no-coverage as coverage, which the contract forbids. When Desktop Commander cannot be reached the
 run is **blind** and stops (§2, and the PREFLIGHT block in every station doc). Do not invent a
 replacement.
+
+🔴 **THE STOP STANDS. WHAT IS FALSE IS "A BLIND RUN CAN SEE NOTHING" — and that error costs every
+blind run its COLLECT.** MEASURED 2026-09-05T05:1xZ by Station 00, twice on two consecutive runs
+(04:0xZ blind, 05:1xZ sighted): the Cowork workspace mount `/sessions/<session-id>/mnt/ProjectOperations2/`
+**IS the live dev tree** — not a copy, not a checkout of `origin/main`.
+
+**Controls, from the sighted run, which is the one that can cross-check both sides.** The Windows
+dev tree was fast-forwarded to `472ae67c` through Desktop Commander; the mount's
+`.git/refs/heads/main` then read `472ae67c8ac6607f87e9599a5c3e2087f6108bcf` — the same commit, read
+by a different transport. A file written to `C:\po-sup-fix-scripts\` through Desktop Commander
+appeared under `/sessions/<id>/mnt/po-sup-fix-scripts/` in the same minute. The blind 04:0xZ run had
+already reached the same conclusion from the other side, by finding its own predecessor's breadcrumb
+and the matching ref in the mount with no Desktop Commander at all.
+
+**So a blind run is not a dead run.** Through the mount it can read the working tree, the queue,
+`docs/pr-prompts/processed/*.log` (the RULE 2 probe), `.arming-log.txt`, every station breadcrumb,
+and the three binding documents — which is the whole of COLLECT and most of PHASE 1.
+
+**The ceiling, and it is why the stop is still correct.** Through the mount a run may NOT:
+
+- run `git` against the Windows `.git` — DOCTRINE §9.2, a cut-short call leaves a 0-byte
+  `index.lock` with no Windows process and freezes every station;
+- run any `.ps1` — so no `status-sweep.ps1`, no `bring-up-to-speed.ps1`, no
+  `restart-watcher-if-wedged.ps1`, no `smoke-pr.ps1`, no `arm-prompt.ps1`, no `pipeline-lib.ps1`;
+- therefore claim ANY liveness, smoke, safe-to-act or merge verdict;
+- mutate the board. The GitHub MCP token is write-403 (§3, GitHub), so a blind run cannot open a PR
+  "instead" — its breadcrumb stays untracked in the dev tree until a sighted run sweeps it up, and
+  it must say so.
+
+🔧 **A blind run therefore reports blindness as loudly as ever, and stops before acting — but it
+COLLECTS first, and says which of the two it did.** "I was blind, so I did nothing" and "I was
+blind, so I read everything readable and acted on none of it" are different reports, and until this
+correction the second one was unavailable.
 
 ### GitHub
 

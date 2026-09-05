@@ -5,7 +5,13 @@
  * seeded T260520-ACME-Rev1 template tender: discipline card tabs, per-item $ totals
  * and footer consistency (B1.7.x), the B4a dimension-derivation chain
  * (L/H/D/density → sqm/m³/tonnes with explicit overrides), editable
- * classification cells, and plant pills.
+ * classification cells, and plant.
+ *
+ * SCOPE_PLANT_PERSIST_V1 — the plant coverage moved off the legacy "plant
+ * pills" (the PlantCluster inside the Measurement cell, retired in
+ * pr-cardpersist-s2) and onto the Plant column group, which is now the only
+ * plant UI and the one that persists. See the ported test at the bottom for
+ * the control-by-control mapping.
  *
  * Selector note: the dimension inputs for Length/Height/Depth have no
  * accessible name (span labels, no title) — fixtures set them via the API
@@ -250,10 +256,28 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
   // De-quarantined 2026-08-03 — flake root cause was two racing PATCHes on the
   // same scope-item: the qty/days blur PATCH and the "Remove Plant" PATCH could
   // arrive at the server in either order, and if the qty/days PATCH landed
-  // second the removed plant was resurrected. Each mutating step now waits on
+  // second the removed plant was resurrected. Each mutating step still waits on
   // its scope-item PATCH response before dispatching the next, which serialises
   // the client and eliminates the race.
-  test("plant pills: add a plant cluster, set qty/days, remove it (PRs #241, #72)", async ({
+  //
+  // SCOPE_PLANT_PERSIST_V1 (pr-cardpersist-s2) — PORTED from the legacy plant
+  // pills onto the Plant COLUMN GROUP, in the same PR that retired the pills.
+  // What moved, control by control:
+  //
+  //   "+ Plant" button            -> gone. Every row of the item already has a
+  //                                  plant Type cell; there is nothing to add.
+  //   getByLabel("Plant 1 rate")  -> getByLabel("Plant type for row 1")
+  //   getByPlaceholder("qty")     -> getByLabel("Plant qty for row 1")
+  //   getByPlaceholder("days")    -> getByLabel("Plant days for row 1")
+  //   "Remove Plant 1" button     -> gone. Clearing the Type empties the row,
+  //                                  which is the same statement the pill's
+  //                                  removal made (an entry with no rate id and
+  //                                  no override prices $0 and is skipped by
+  //                                  getCardSummary for want of a description).
+  //
+  // The reload assertion in the middle is NEW and is the point of the slice:
+  // before it, every one of these fields died in local state.
+  test("plant columns: pick a machine, set qty/days, survive a reload, clear it (PRs #241, #72)", async ({
     page,
     request
   }) => {
@@ -272,34 +296,77 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
         r.request().method() === "PATCH" &&
         /\/tenders\/[^/]+\/scope\/items\/[^/]+(?:\?|$)/.test(r.url());
 
-      await article.getByRole("button", { name: "+ Plant" }).click();
-      const plantSelect = article.getByLabel("Plant 1 rate");
+      // The Measurement cell no longer renders any plant control at all.
+      await expect(article.getByRole("button", { name: "+ Plant" })).toHaveCount(0);
+      await expect(article.getByLabel("Plant 1 rate")).toHaveCount(0);
+
+      const plantSelect = article.getByLabel("Plant type for row 1");
       await expect(plantSelect).toBeVisible();
-      // First real option (index 0 is the "—" placeholder) — seeded plant
-      // rate names embed seed-dependent labels, so select by position.
+      // First real option (index 0 is the blank "- none -" option) — seeded
+      // plant rate names embed seed-dependent labels, so select by position.
       const ratePatch = page.waitForResponse(isScopeItemPatch);
       await plantSelect.selectOption({ index: 1 });
       expect((await ratePatch).ok()).toBeTruthy();
 
-      await article.getByPlaceholder("qty").fill("2");
+      await article.getByLabel("Plant qty for row 1").fill("2");
 
       // Focusing days blurs qty, firing the qty-persist PATCH. Wait for it
       // before triggering the days PATCH so patchItem's refetch has landed
       // and item.plantItems includes qty=2 when the days-blur handler runs.
       const qtyPatch = page.waitForResponse(isScopeItemPatch);
-      await article.getByPlaceholder("days").fill("1.5");
+      await article.getByLabel("Plant days for row 1").fill("1.5");
       expect((await qtyPatch).ok()).toBeTruthy();
 
       const daysPatch = page.waitForResponse(isScopeItemPatch);
-      await article.getByPlaceholder("days").blur();
+      await article.getByLabel("Plant days for row 1").blur();
       expect((await daysPatch).ok()).toBeTruthy();
 
-      // Pill row re-renders cleanly after removal (PR #241 state isolation).
-      // The remove PATCH must not fire until the days PATCH above has
-      // resolved, or a late-arriving days PATCH will resurrect the plant.
-      await article.getByRole("button", { name: "Remove Plant 1" }).click();
-      await expect(article.getByLabel("Plant 1 rate")).toHaveCount(0);
-      await expect(article.getByRole("button", { name: "+ Plant" })).toBeVisible();
+      // The whole point of SCOPE_PLANT_PERSIST_V1: the array actually reached
+      // the database, carries the machine's NAME (not just its rate id — the
+      // card summary skips an entry without one), and the qty/days the
+      // estimator typed.
+      await expect
+        .poll(async () => {
+          const body = await apiFetch<{
+            items: Array<{
+              id: string;
+              plantItems: Array<{
+                plantRateId?: string | null;
+                description?: string | null;
+                qty?: number | null;
+                days?: number | null;
+              }> | null;
+            }>;
+          }>(request, token, "GET", `/tenders/${TEMPLATE_TENDER_ID}/scope/items`);
+          const saved = body.items.find((i) => i.id === itemId);
+          const first = saved?.plantItems?.[0];
+          if (!first) return "no plant entry stored";
+          return [
+            first.plantRateId ? "has-rate-id" : "no-rate-id",
+            first.description ? "has-description" : "no-description",
+            `qty=${first.qty}`,
+            `days=${first.days}`
+          ].join(" ");
+        })
+        .toBe("has-rate-id has-description qty=2 days=1.5");
+
+      // ...and it comes back on the row after a reload, which is what it never
+      // did before this slice.
+      await page.reload();
+      const reloaded = itemGroup(page, desc);
+      await expect(reloaded.getByLabel("Plant qty for row 1")).toHaveValue("2");
+      await expect(reloaded.getByLabel("Plant days for row 1")).toHaveValue("1.5");
+      await expect(reloaded.getByLabel("Plant type for row 1")).not.toHaveValue("");
+
+      // Clearing the Type empties the row — the port of "Remove Plant 1".
+      // The clear PATCH must not fire until the days PATCH above has resolved,
+      // or a late-arriving days PATCH will resurrect the machine.
+      const clearPatch = page.waitForResponse(isScopeItemPatch);
+      await reloaded.getByLabel("Plant type for row 1").selectOption({ index: 0 });
+      expect((await clearPatch).ok()).toBeTruthy();
+      await expect(reloaded.getByLabel("Plant type for row 1")).toHaveValue("");
+      // Qty / Days disable themselves again once the row has no Type.
+      await expect(reloaded.getByLabel("Plant qty for row 1")).toBeDisabled();
     } finally {
       await deleteScopeItem(request, token, itemId);
     }

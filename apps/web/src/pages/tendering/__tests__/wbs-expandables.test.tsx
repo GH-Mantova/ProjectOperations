@@ -12,6 +12,7 @@
 //   measurementsFromItem / measurementCount / measurementPatchBody
 //   measurementAddPatch / measurementRemovalPatch
 //                              — adding and removing a measurement
+//   revealOrAddPatch           — SCOPE_WBS_REVEAL_V1: revealing is not adding
 //   commentCount / hasComment  — the comment tick
 //   acmClassForType / acmClassLabel / acmFactCount
 //                              — the derived ACM class badge
@@ -32,6 +33,7 @@ import {
   openBlock,
   openBlocksFor,
   hasOpenBlock,
+  revealOrAddPatch,
   showsCuttingColumn,
   toggleBlock,
   type Discipline,
@@ -402,6 +404,113 @@ describe("+ Add measurement", () => {
     const item = makeItem({ tonnes: "24", materials: [{ material: "Brick", tonnes: 6 }] });
     const patch = measurementAddPatch(item) as Record<string, unknown>;
     expect(patch.materials).toHaveLength(2);
+  });
+});
+
+// ── SCOPE_WBS_REVEAL_V1 — revealing is not adding ────────────────────────
+// The defect these cases close: the Measurement block starts shut for every
+// item and `+ Add measurement` is its only opener, so LOOKING at the three
+// measurements the button's own tick advertises meant appending a blank
+// fourth one and PATCHing it. Reading wrote. Every case below therefore
+// asserts on the PATCH — that the request was never made — and not merely
+// that the block ended up open, because a fix that opened the block and still
+// wrote would pass the weaker assertion and change the estimator's data.
+
+/**
+ * One click on `+ Add measurement`, exactly as ScopeQuantitiesTable's
+ * revealOrAddBlock performs it: ask revealOrAddPatch what to write, send
+ * whatever comes back, reveal either way. `patches` stands in for the
+ * `void patchItem(item.id, patch)` call — an empty array is "no PATCH was
+ * issued", which is the whole point of the rule.
+ */
+function clickAddMeasurement(map: ItemOpenBlocks, item: ScopeItem) {
+  const patches: Array<Record<string, unknown>> = [];
+  const patch = revealOrAddPatch(openBlocksFor(map, item.id), "measurement", () =>
+    measurementAddPatch(item)
+  );
+  if (patch) patches.push(patch);
+  return { blocks: openBlock(map, item.id, "measurement"), patches };
+}
+
+describe("SCOPE_WBS_REVEAL_V1 — a shut block reveals, an open one adds", () => {
+  it("shut + already measured: the click reveals and issues NO PATCH", () => {
+    // The broken case. Three real measurements, block shut, estimator wants
+    // to read them.
+    const item = makeItem({
+      tonnes: "24",
+      materials: [{ material: "Brick", tonnes: 6 }, { material: "Timber", tonnes: 3.5 }]
+    });
+    expect(measurementCount(item)).toBe(3);
+
+    const before = structuredClone(item);
+    const { blocks, patches } = clickAddMeasurement(new Map(), item);
+
+    expect(patches).toEqual([]);
+    expect(openBlocksFor(blocks, item.id).measurement).toBe(true);
+    // Nothing was written, so nothing about the item can have moved — not the
+    // measurements, and not the waste/cutting flags the price reads.
+    expect(item).toEqual(before);
+  });
+
+  it("shut + unmeasured: the click reveals and issues no PATCH (unchanged)", () => {
+    // Already true before the fix, via measurementAddPatch's own null — the
+    // item's flat columns are an addressable empty slot. It stays true, and
+    // for a second reason now.
+    const item = makeItem();
+    const { blocks, patches } = clickAddMeasurement(new Map(), item);
+
+    expect(patches).toEqual([]);
+    expect(openBlocksFor(blocks, item.id).measurement).toBe(true);
+  });
+
+  it("open + already measured: the click appends and DOES issue a PATCH", () => {
+    // The only state in which "add" is what the estimator means: the block is
+    // in front of them, so they can see what they are adding to.
+    const item = makeItem({ tonnes: "24", materials: [{ material: "Brick", tonnes: 6 }] });
+    const open = openBlock(new Map(), item.id, "measurement");
+
+    const { blocks, patches } = clickAddMeasurement(open, item);
+
+    expect(patches).toHaveLength(1);
+    expect(patches[0].materials).toHaveLength(2);
+    // ...and the item's own measurement rides through the whole-list write
+    // untouched, exactly as it did before the rule existed.
+    expect(patches[0].tonnes).toBe(24);
+    expect(openBlocksFor(blocks, item.id).measurement).toBe(true);
+  });
+
+  it("open + a blank slot already waiting: still no PATCH", () => {
+    // measurementAddPatch's null survives the new rule. An open block with an
+    // empty row on screen does not need a second empty row.
+    const item = makeItem({ tonnes: "24", materials: [{}] });
+    const open = openBlock(new Map(), item.id, "measurement");
+
+    expect(clickAddMeasurement(open, item).patches).toEqual([]);
+  });
+
+  it("a reveal does not change the count on the button", () => {
+    // The tick and the count are what tell the estimator the item is worth
+    // opening. Opening it must not restate them.
+    const item = makeItem({
+      tonnes: "24",
+      materials: [{ material: "Brick", tonnes: 6 }, { material: "Timber", tonnes: 3.5 }]
+    });
+    const countBefore = measurementCount(item);
+
+    const { patches } = clickAddMeasurement(new Map(), item);
+
+    expect(patches).toEqual([]);
+    expect(measurementCount(item)).toBe(countBefore);
+    expect(measurementCount(item)).toBe(3);
+  });
+
+  it("the Comment and ACM buttons write nothing in either state", () => {
+    // They pass no addPatch at all, so the seam they share with the
+    // Measurement button can never make them write.
+    for (const key of ["comment", "acm"] as const) {
+      expect(revealOrAddPatch(NO_BLOCKS_OPEN, key)).toBeNull();
+      expect(revealOrAddPatch({ ...NO_BLOCKS_OPEN, [key]: true }, key)).toBeNull();
+    }
   });
 });
 

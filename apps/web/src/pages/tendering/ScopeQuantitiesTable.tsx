@@ -164,6 +164,18 @@ import { WbsAcmBlock, acmFactCount } from "./scope-cards/WbsAcmBlock";
 //    boxes, where before this slice it showed nine empty measurement fields on
 //    row 0 and a permanently-open notes textarea, for every item on the card.
 //
+// SCOPE_WBS_REVEAL_V1 — a follow-up to the above, and a correction to it.
+// `+ Add measurement` both added and revealed, and it is the only opener the
+// block has. So an estimator who wanted to LOOK at the three measurements the
+// button's own tick and count advertise had to append a blank fourth one and
+// PATCH it: reading required writing. It now REVEALS when the block is shut
+// and ADDS only when the block is already open — the one state in which the
+// estimator can see what they are adding to — and in the reveal state the
+// button says "Show measurements" rather than promising an add it will not
+// do. The rule is revealOrAddPatch, stated once and asked by all three
+// `+ Add …` buttons through revealOrAddBlock. `+ Add comment` and `+ Add
+// enclosure / monitoring` are unaffected: they have never written anything.
+//
 // The Measurement block is a RELOCATION, not a new feature, and it is the risk
 // in this slice. Every measurement an estimator has already entered must still
 // be there, still bound to the same record, and still feeding Waste and
@@ -850,9 +862,8 @@ export function toggleBlock(
 }
 
 /**
- * Open one block of one item. Used by the `+ Add …` buttons, which both add
- * the thing and reveal it — an add that left the box shut would look like it
- * had done nothing.
+ * Open one block of one item. Used by the `+ Add …` buttons, which always
+ * reveal — see revealOrAddPatch for whether the same click also writes.
  */
 export function openBlock(map: ItemOpenBlocks, itemId: string, key: WbsBlockKey): ItemOpenBlocks {
   const current = openBlocksFor(map, itemId);
@@ -860,6 +871,37 @@ export function openBlock(map: ItemOpenBlocks, itemId: string, key: WbsBlockKey)
   const next = new Map(map);
   next.set(itemId, { ...current, [key]: true });
   return next;
+}
+
+/**
+ * SCOPE_WBS_REVEAL_V1 — the one rule every `+ Add …` button obeys, and the
+ * only place it is stated.
+ *
+ * REVEALING IS NOT ADDING. A click on a CLOSED block opens it and writes
+ * NOTHING; only a click on an ALREADY-OPEN block adds, because that is the
+ * only state in which the estimator can see what they are adding to. The
+ * block starts closed for every item (NO_BLOCKS_OPEN) and this button is its
+ * only opener, so before this rule existed an estimator who merely wanted to
+ * LOOK at the three measurements the tick and count advertise had to append a
+ * blank fourth one and PATCH it to the server. Reading wrote.
+ *
+ * Returns the patch the click should send, or null for "send nothing". The
+ * add itself stays with whoever owns the payload — `addPatch` is
+ * measurementAddPatch on the Measurement button, and is absent on the Comment
+ * and ACM buttons, which have never had anything to write.
+ *
+ * Note that a null answer has two quite different causes and both are
+ * correct: this rule (the block was shut), and measurementAddPatch's own
+ * (the item still has its unused flat-column slot, so the first click on an
+ * unmeasured item opens onto that slot rather than appending beside it).
+ */
+export function revealOrAddPatch(
+  blocks: WbsOpenBlocks,
+  key: WbsBlockKey,
+  addPatch?: () => Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!blocks[key]) return null;
+  return addPatch?.() ?? null;
 }
 
 /** True when any of an item's blocks is open (the item needs its extra row). */
@@ -2157,6 +2199,28 @@ export function ScopeQuantitiesTable({
     [authFetch, tenderId, onItemsChanged]
   );
 
+  /**
+   * SCOPE_WBS_REVEAL_V1 — every `+ Add …` button clicks through here.
+   *
+   * All three of them, so "closed reveals, open adds" is asked ONCE rather
+   * than restated at each button, and a fourth expandable added later cannot
+   * quietly get the old behaviour back. The decision itself is
+   * revealOrAddPatch, a pure function up with the other block helpers; this
+   * is only the wiring — resolve the item's current open state, ask, send
+   * whatever comes back, and reveal either way.
+   *
+   * Declared after patchItem for the same temporal-dead-zone reason
+   * commitManpowerRow below is.
+   */
+  const revealOrAddBlock = useCallback(
+    (itemId: string, key: WbsBlockKey, addPatch?: () => Record<string, unknown> | null) => {
+      const patch = revealOrAddPatch(openBlocksFor(itemOpenBlocks, itemId), key, addPatch);
+      if (patch) void patchItem(itemId, patch);
+      openItemBlock(itemId, key);
+    },
+    [itemOpenBlocks, openItemBlock, patchItem]
+  );
+
   // ── SCOPE_MANPOWER_PERSIST_V1 — the write path ─────────────────────────
   // Defined after patchItem on purpose: a useCallback declared above it would
   // evaluate `patchItem` in its dependency array while the binding is still
@@ -2926,26 +2990,33 @@ export function ScopeQuantitiesTable({
                             />
                             <WbsActionButton
                               label="+ Add measurement"
+                              // SCOPE_WBS_REVEAL_V1 — while the block is shut
+                              // this click only reveals, so the button says
+                              // so rather than promising an add it will not
+                              // do. Only shown once the item HAS something to
+                              // reveal; an unmeasured item still reads
+                              // `+ Add measurement`, which is what its first
+                              // click gets it.
+                              revealLabel="Show measurements"
                               count={measurementsHere}
                               expanded={openBlocks.measurement}
                               disabled={isAi}
-                              onClick={() => {
-                                // Both add and reveal. The patch is null when
-                                // the item already has an empty slot waiting —
-                                // its own flat columns — so the first click on
-                                // an unmeasured item opens the block and writes
-                                // nothing.
-                                const patch = measurementAddPatch(item);
-                                if (patch) void patchItem(item.id, patch);
-                                openItemBlock(item.id, "measurement");
-                              }}
+                              onClick={() =>
+                                revealOrAddBlock(item.id, "measurement", () =>
+                                  measurementAddPatch(item)
+                                )
+                              }
                             />
                             <WbsActionButton
                               label="+ Add comment"
                               count={commentsHere}
                               expanded={openBlocks.comment}
                               disabled={isAi}
-                              onClick={() => openItemBlock(item.id, "comment")}
+                              // No addPatch: this button has never written
+                              // anything, open or shut. It goes through the
+                              // same seam so there is one answer to "what
+                              // does a `+ Add …` click do", not three.
+                              onClick={() => revealOrAddBlock(item.id, "comment")}
                             />
                             {/* Asbestos cards only — resolved from
                                 isAsbestosCard(discipline) once, above. */}
@@ -2955,7 +3026,7 @@ export function ScopeQuantitiesTable({
                                 count={acmHere}
                                 expanded={openBlocks.acm}
                                 disabled={isAi}
-                                onClick={() => openItemBlock(item.id, "acm")}
+                                onClick={() => revealOrAddBlock(item.id, "acm")}
                               />
                             ) : null}
                           </div>
@@ -3134,15 +3205,29 @@ export function ScopeQuantitiesTable({
  * a count. `count` is the number of that thing the item ACTUALLY carries, not
  * the number of slots it could have, so a WBS item nobody has measured shows a
  * bare `+ Add measurement` and no tick.
+ *
+ * SCOPE_WBS_REVEAL_V1 — a button whose block is SHUT and whose item already
+ * has some of the thing does not add on click, it reveals (revealOrAddPatch),
+ * and in that one state it shows `revealLabel` instead. `expanded === false`
+ * is the same fact revealOrAddPatch tests — the button is handed the block's
+ * open state, not the map — and this is the only place the label consequence
+ * of it is drawn. Opening the block flips the label back to `label`, which is
+ * then the truth again: the next click on an open block does add.
  */
 function WbsActionButton({
   label,
+  revealLabel,
   count,
   expanded,
   disabled,
   onClick
 }: {
   label: string;
+  /**
+   * Shown instead of `label` while the block is shut and the count is
+   * non-zero. Absent on a button whose click never adds anyway.
+   */
+  revealLabel?: string;
   count: number;
   /** Present on the three buttons that open a block; absent on "+ Row". */
   expanded?: boolean;
@@ -3150,6 +3235,8 @@ function WbsActionButton({
   onClick: () => void;
 }) {
   const has = count > 0;
+  const shownLabel = expanded === false && has && revealLabel ? revealLabel : label;
+  const revealing = shownLabel !== label;
   return (
     <button
       type="button"
@@ -3157,7 +3244,9 @@ function WbsActionButton({
       onClick={onClick}
       disabled={disabled}
       aria-expanded={expanded}
-      title={has ? `${label} (${count} already)` : label}
+      title={
+        revealing ? `${shownLabel} (${count})` : has ? `${label} (${count} already)` : label
+      }
       style={{
         fontSize: 10,
         padding: "3px 6px",
@@ -3169,7 +3258,7 @@ function WbsActionButton({
         justifyContent: "space-between"
       }}
     >
-      <span>{label}</span>
+      <span>{shownLabel}</span>
       {has ? (
         <span
           style={{

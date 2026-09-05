@@ -315,6 +315,190 @@ describe("computeScopeItemTotal (PR B1.7.1 / B1.7.2)", () => {
   });
 });
 
+// ── SCOPE_PLANT_PERSIST_V1: the two plant legs the web now writes ──────────
+//
+// Both legs landed with CARD-API SLICE 1 and are UNCHANGED by the web slice
+// that finally reaches them. These pin them from the perspective of the
+// payload the Plant column group sends, which until now no test did: every
+// key present, absence stated as null, qty/days stated as 0 rather than
+// omitted. If the plant loop ever regresses to "skip anything without a
+// plantRateId, always read the catalogue", a custom machine silently returns
+// to $0 and every typed rate override is silently ignored.
+
+describe("computeScopeItemTotal — plant rows as SCOPE_PLANT_PERSIST_V1 writes them", () => {
+  /** One row exactly as buildPlantItems() emits it: every key, nulls explicit. */
+  const wireRow = (patch: Record<string, unknown> = {}) => ({
+    columnIndex: 1,
+    plantRateId: null,
+    description: "",
+    qty: 0,
+    days: 0,
+    unit: null,
+    dayRateOverride: null,
+    ...patch
+  });
+
+  it("a catalogue row with no override prices off the catalogue, unchanged", () => {
+    // 1 × 5 × $650 = $3250 — the same number this row priced before the web
+    // started sending explicit nulls for the keys it has nothing to say about.
+    const result = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [
+          wireRow({ plantRateId: "plant-excavator", description: "Excavator", qty: 1, days: 5 })
+        ]
+      }),
+      baseRates(),
+      0
+    );
+    expect(result.plant).toBe(3250);
+  });
+
+  it("leg 1 — a typed day rate beats the catalogue rate", () => {
+    // 1 × 2 × $900 (typed), NOT 1 × 2 × $650 (catalogue).
+    const result = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [
+          wireRow({
+            plantRateId: "plant-excavator",
+            description: "Excavator",
+            qty: 1,
+            days: 2,
+            dayRateOverride: 900
+          })
+        ]
+      }),
+      baseRates(),
+      0
+    );
+    expect(result.plant).toBe(1800);
+  });
+
+  it("leg 2 — a free-typed custom machine prices from its override, not $0", () => {
+    // No plantRateId at all: the only rate this row has is the one the
+    // estimator typed. 1 × 4 × $1200 = $4800.
+    const result = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [
+          wireRow({ description: "Hired 30t excavator", qty: 1, days: 4, dayRateOverride: 1200 })
+        ]
+      }),
+      baseRates(),
+      0
+    );
+    expect(result.plant).toBe(4800);
+  });
+
+  it("a typed rate of 0 is a real override (supplied free), not an absence", () => {
+    const result = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [
+          wireRow({
+            plantRateId: "plant-excavator",
+            description: "Excavator",
+            qty: 2,
+            days: 5,
+            dayRateOverride: 0
+          })
+        ]
+      }),
+      baseRates(),
+      0
+    );
+    expect(result.plant).toBe(0);
+  });
+
+  it("an untouched blank row — what '+ Row' appends — contributes exactly 0", () => {
+    // No rate id and no override, so `rate == null` and the loop skips it.
+    // This is what makes adding a row cost nothing.
+    const result = computeScopeItemTotal(emptyItem({ plantItems: [wireRow()] }), baseRates(), 30);
+    expect(result.plant).toBe(0);
+    expect(result.lineTotal).toBe(0);
+    expect(result.lineTotalWithMarkup).toBe(0);
+  });
+
+  it("a blank qty on a priced row costs nothing — 0 is sent, and 0 means zero", () => {
+    // The web sends a blank Qty box as 0, never as null. Had it sent null,
+    // `qty = cell.qty == null ? 1 : n(cell.qty)` would cost ONE machine the
+    // estimator never typed: 1 × 3 × 650 = $1950 instead of $0.
+    const zeroQty = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [wireRow({ plantRateId: "plant-excavator", qty: 0, days: 3 })]
+      }),
+      baseRates(),
+      0
+    );
+    const absentQty = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [{ columnIndex: 1, plantRateId: "plant-excavator", days: 3 }]
+      }),
+      baseRates(),
+      0
+    );
+    expect(zeroQty.plant).toBe(0);
+    expect(absentQty.plant).toBe(1950);
+  });
+
+  it("a multi-row item sums the whole array — every row of the write is priced", () => {
+    // The web ships EVERY row on every edit, so this is the shape of an
+    // ordinary save: three rows, two of them priced.
+    const result = computeScopeItemTotal(
+      emptyItem({
+        plantItems: [
+          wireRow({ columnIndex: 1, plantRateId: "plant-excavator", qty: 1, days: 2 }), // 1300
+          wireRow({ columnIndex: 2, description: "Hired crane", qty: 1, days: 1, dayRateOverride: 700 }), // 700
+          wireRow({ columnIndex: 3 }) // blank -> 0
+        ]
+      }),
+      baseRates(),
+      0
+    );
+    expect(result.plant).toBe(2000);
+  });
+});
+
+// ── Existing-data safety: plantItems still NULL ───────────────────────────────
+// SCOPE_PLANT_PERSIST_V1 adds a writer, not a backfill. An item nobody has
+// touched still reads plantItems = NULL, and NULL must price exactly as it
+// does today — no plant leg, no substituted default, no crash.
+
+describe("an item whose plantItems is NULL prices unchanged", () => {
+  it("NULL contributes no plant at all", () => {
+    const result = computeScopeItemTotal(
+      emptyItem({ men: 2, days: 3, plantItems: null }),
+      baseRates(),
+      0
+    );
+    expect(result.plant).toBe(0);
+    // Labour is untouched: 2 × 3 × $100 = $600, exactly as before.
+    expect(result.labour).toBe(600);
+    expect(result.lineTotal).toBe(600);
+  });
+
+  it("NULL and an empty array price identically", () => {
+    const withNull = computeScopeItemTotal(
+      emptyItem({ men: 2, days: 3, plantItems: null }),
+      baseRates(),
+      30
+    );
+    const withEmpty = computeScopeItemTotal(
+      emptyItem({ men: 2, days: 3, plantItems: [] }),
+      baseRates(),
+      30
+    );
+    expect(withNull).toStrictEqual(withEmpty);
+  });
+
+  it("NULL prices the same with markup as it always did", () => {
+    // 600 × 1.30 = 780.
+    const result = computeScopeItemTotal(
+      emptyItem({ men: 2, days: 3, plantItems: null }),
+      baseRates(),
+      30
+    );
+    expect(result.lineTotalWithMarkup).toBeCloseTo(780, 6);
+  });
+});
+
 describe("labourRateForShift", () => {
   it("returns day rate for shift='Day'", () => {
     expect(labourRateForShift("DEM", "Day", baseRates())).toBe(100);

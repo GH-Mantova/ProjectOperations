@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { InteractionChannel, Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
-import { CRM_COLD_V2 } from "../accounts/accounts.service";
+import { CRM_COLD_V3 } from "../accounts/accounts.service";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,11 +46,11 @@ export type ListNotesQuery = {
 
 /**
  * Default threshold (days) for the "going cold" nudge.
- * Sourced from CRM_COLD_V2 so the KPI tile (accounts summary) and this list
+ * Sourced from CRM_COLD_V3 so the KPI tile (accounts summary) and this list
  * ALWAYS agree. Do NOT redeclare a local literal here — the tile once read 14
  * while this read 30, so the tile showed 0 while the tab listed 9 rows.
  */
-const GOING_COLD_DAYS_DEFAULT = CRM_COLD_V2.THRESHOLD_DAYS;
+const GOING_COLD_DAYS_DEFAULT = CRM_COLD_V3.THRESHOLD_DAYS;
 
 // ── Service ──────────────────────────────────────────────────────────────────
 
@@ -165,9 +165,15 @@ export class RelationshipsService {
   // ── Derived reads ─────────────────────────────────────────────────────────
 
   /**
-   * "Going cold" — accounts whose linked contact(s) have not been contacted
-   * in the last N days (or have never been contacted), and the account itself
-   * has not been archived.
+   * "Going cold" — accounts whose linked contact(s) were contacted at some
+   * point but not within the last N days, and the account itself has not been
+   * archived.
+   *
+   * CRM_COLD_V3 (2026-09-04): never-contacted accounts are NOT listed here.
+   * Cold means was warm, went quiet — on this list and on the KPI tile alike.
+   * Both used to OR in `{ lastContactedAt: null }`; with no contact ever
+   * logged that listed all 175 accounts. A never-contacted account is counted
+   * on the Accounts tile's second sub-line clause instead.
    *
    * Returns accounts ordered by oldest lastContactedAt first so the stalest
    * relationships surface at the top.
@@ -180,12 +186,7 @@ export class RelationshipsService {
       where: {
         archivedAt: null,
         contacts: {
-          some: {
-            OR: [
-              { lastContactedAt: null },
-              { lastContactedAt: { lt: cutoff } }
-            ]
-          }
+          some: { lastContactedAt: { lt: cutoff } }
         }
       },
       orderBy: { updatedAt: "asc" },
@@ -194,12 +195,7 @@ export class RelationshipsService {
         client: { select: { id: true, name: true, code: true, isActive: true } },
         owner: { select: { id: true, firstName: true, lastName: true } },
         contacts: {
-          where: {
-            OR: [
-              { lastContactedAt: null },
-              { lastContactedAt: { lt: cutoff } }
-            ]
-          },
+          where: { lastContactedAt: { lt: cutoff } },
           select: {
             id: true,
             firstName: true,

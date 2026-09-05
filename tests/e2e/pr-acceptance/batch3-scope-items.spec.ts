@@ -13,11 +13,20 @@
  * plant UI and the one that persists. See the ported test at the bottom for
  * the control-by-control mapping.
  *
- * Selector note: the dimension inputs for Length/Height/Depth have no
- * accessible name (span labels, no title) — fixtures set them via the API
- * and the UI assertions read the derived Sqm/M³/Tonnes inputs, which ARE
- * reachable through their title-derived accessible names. Direct UI typing
- * into L/H/D is listed in the PR follow-up as testid-blocked.
+ * SCOPE_WBS_ACTIONS_V1 (PR #1646) — the measurement fields and the item
+ * note are no longer painted on every row. They moved into the
+ * `WbsMeasurementBlock` / `WbsCommentBlock` expandables, opened from the
+ * actions column, and the slice's requirement is that NOTHING opens by
+ * default. So each test below now proves a PAIR: the control is absent at
+ * rest (toHaveCount(0)), and carries exactly the value it always had once
+ * the disclosure is opened. Every expected value is unchanged.
+ *
+ * Selector note: the dimension inputs for Length/Height/Depth used to have
+ * no accessible name and were read through their title attributes. The
+ * relocated block gives every measurement control an explicit, row-numbered
+ * aria-label (`Measurement 1 sqm`, …), so the constants below are those
+ * aria-labels. Same three inputs, same derivation chain — only the name they
+ * answer to changed, and it changed in the component, not here.
  *
  * Residue: none — every fixture item is deleted in a finally block, and
  * `pnpm seed` fully resets T260520-ACME-Rev1 scope items regardless.
@@ -36,11 +45,33 @@ import {
   TEMPLATE_TENDER_ID
 } from "./api-helpers";
 
-// Accessible names of the derived-dimension inputs fall back to their
-// title attributes (no label/aria-label on these cells).
-const SQM_NAME = "Auto = length × height. Type to override.";
-const M3_NAME = "Auto = sqm × depth. Type to override.";
-const TONNES_NAME = "Auto = m³ × density or sqm × density / 1000. Type to override.";
+// Accessible names of the derived-dimension inputs inside the Measurement
+// expandable. Explicit aria-labels on the block's row 1, so they are stable
+// and they do not collide with an extra measurement's row 2 controls.
+const SQM_NAME = "Measurement 1 sqm";
+const M3_NAME = "Measurement 1 m3";
+const TONNES_NAME = "Measurement 1 tonnes";
+
+// Accessible names of the classification controls, also inside the
+// Measurement expandable. Row 1's ticks and material select carry BARE names
+// while rows 2..N carry "Measurement N …", so every assertion on these three
+// passes { exact: true } — a substring match would go ambiguous the moment a
+// second measurement exists on the item.
+const MATERIAL_TYPE = "Material type";
+const WASTE_FLAG = "Include in waste summary";
+const CUTTING_FLAG = "Include in cutting summary";
+// These two ARE row-numbered on row 1, so they are already unambiguous.
+const WASTE_GROUP = "Measurement 1 waste group";
+const WASTE_ITEM = "Measurement 1 waste item";
+
+// The actions-column button that opens the Measurement expandable. Matched as
+// a substring of the accessible name because a button that already has
+// something to show appends a "✓ n" count to its own label.
+const ADD_MEASUREMENT = "+ Add measurement";
+
+// The empty slot `+ Add measurement` appends to an already-measured item.
+// Used as the settle point in openMeasurementBlock below, not asserted on.
+const EXTRA_MEASUREMENT_SQM = "Measurement 2 sqm";
 
 async function openScopeTab(page: Page): Promise<void> {
   await page.goto(`/tenders/${TEMPLATE_TENDER_ID}/scope`);
@@ -66,6 +97,29 @@ async function openScopeTab(page: Page): Promise<void> {
  */
 function itemGroup(page: Page, desc: string) {
   return page.locator(`[data-testid="wbs-item"][data-item-description*="${desc}"]`);
+}
+
+/**
+ * Opens the Measurement expandable on `article` and waits until it has settled.
+ *
+ * SCOPE_WBS_ACTIONS_V1 — `+ Add measurement` is the ONLY opener for this block:
+ * ScopeQuantitiesTable calls openItemBlock(item.id, "measurement") from this
+ * button and from nowhere else. It both adds and reveals — on an item that
+ * already carries a measurement it appends one empty slot and PATCHes; on an
+ * item that already has an empty slot waiting it writes nothing.
+ *
+ * The appended row 2 renders from REFETCHED item data (patchItem awaits
+ * onItemsChanged before the extras re-render), so waiting for row 2's sqm
+ * input is exactly "the append round-trip is done". That matters: the block's
+ * dimension inputs are controlled state re-seeded from the item, and a refetch
+ * landing after the test has typed an override would silently discard it.
+ * On a re-open (after a reload) the empty slot is already stored, no PATCH
+ * fires, and the wait is satisfied immediately.
+ */
+async function openMeasurementBlock(article: ReturnType<typeof itemGroup>): Promise<void> {
+  await article.getByRole("button", { name: ADD_MEASUREMENT }).click();
+  await expect(article.getByTestId("wbs-measurement-block")).toBeVisible();
+  await expect(article.getByRole("spinbutton", { name: EXTRA_MEASUREMENT_SQM })).toBeVisible();
 }
 
 test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #176, #180, #241)", () => {
@@ -147,6 +201,19 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
       await openScopeTab(page);
       const article = itemGroup(page, desc);
 
+      // SCOPE_WBS_ACTIONS_V1 — at rest the row shows the action buttons and
+      // NO measurement boxes. Asserted before opening anything: this is the
+      // slice's "do not make any block open by default" requirement, and it
+      // is the half of the pair that a test which only opened the disclosure
+      // would never catch. An item seeded with L/H/D/density is exactly the
+      // item most likely to be auto-opened by a well-meaning regression.
+      await expect(article.getByTestId("wbs-measurement-block")).toHaveCount(0);
+      await expect(article.getByRole("spinbutton", { name: SQM_NAME })).toHaveCount(0);
+      await expect(article.getByRole("spinbutton", { name: M3_NAME })).toHaveCount(0);
+      await expect(article.getByRole("spinbutton", { name: TONNES_NAME })).toHaveCount(0);
+
+      await openMeasurementBlock(article);
+
       const sqm = article.getByRole("spinbutton", { name: SQM_NAME });
       const m3 = article.getByRole("spinbutton", { name: M3_NAME });
       const tonnes = article.getByRole("spinbutton", { name: TONNES_NAME });
@@ -178,6 +245,12 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
 
       await page.reload();
       const reloaded = itemGroup(page, desc);
+      // A reload closes every block again — the open state is view state and
+      // is deliberately not persisted. Same pair as above, re-proved on an
+      // item that now genuinely HAS a stored override to show.
+      await expect(reloaded.getByTestId("wbs-measurement-block")).toHaveCount(0);
+      await expect(reloaded.getByRole("spinbutton", { name: SQM_NAME })).toHaveCount(0);
+      await openMeasurementBlock(reloaded);
       const sqmAfter = reloaded.getByRole("spinbutton", { name: SQM_NAME });
       await expect(sqmAfter).toHaveValue("8");
       await expect(reloaded.getByRole("spinbutton", { name: M3_NAME })).toHaveValue("4");
@@ -208,11 +281,26 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
       await openScopeTab(page);
       const article = itemGroup(page, desc);
 
+      // SCOPE_WBS_ACTIONS_V1 — the classification controls moved into the
+      // Measurement expandable, so at rest NONE of them is on the row. Same
+      // pair as the dimensions test: absent first, then editable once opened.
+      await expect(article.getByTestId("wbs-measurement-block")).toHaveCount(0);
+      await expect(article.getByLabel(MATERIAL_TYPE, { exact: true })).toHaveCount(0);
+      await expect(article.getByLabel(WASTE_GROUP)).toHaveCount(0);
+      await expect(article.getByLabel(WASTE_FLAG, { exact: true })).toHaveCount(0);
+      await expect(article.getByLabel(CUTTING_FLAG, { exact: true })).toHaveCount(0);
+
+      await openMeasurementBlock(article);
+
       // PR #60 — quantification/classification cells render editable.
-      await expect(article.getByLabel("Material type")).toBeEnabled();
-      await expect(article.getByLabel("Waste group")).toBeEnabled();
-      await expect(article.getByLabel("Include in waste summary")).toBeEnabled();
-      await expect(article.getByLabel("Include in cutting summary")).toBeEnabled();
+      // `exact` on the two ticks and on Material type: the block numbers its
+      // extra rows ("Measurement 2 include in waste summary"), and the
+      // default substring match would make these ambiguous the moment a
+      // second measurement exists.
+      await expect(article.getByLabel(MATERIAL_TYPE, { exact: true })).toBeEnabled();
+      await expect(article.getByLabel(WASTE_GROUP)).toBeEnabled();
+      await expect(article.getByLabel(WASTE_FLAG, { exact: true })).toBeEnabled();
+      await expect(article.getByLabel(CUTTING_FLAG, { exact: true })).toBeEnabled();
 
       await expect(article).toContainText(/\$[\d,]+/);
       const totalBefore = lastMoney(await article.textContent());
@@ -225,10 +313,10 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
       // (check() would fail its immediate post-click verification).
       // Group is Soil (not Rubble) so this transiently flagged fixture can
       // never leak into the waste spec's Rubble aggregation on this card.
-      await article.getByLabel("Include in waste summary").click();
-      await expect(article.getByLabel("Include in waste summary")).toBeChecked();
-      await article.getByLabel("Waste group").selectOption({ label: "Soil" });
-      await article.getByLabel("Waste item").selectOption({ label: "Fill — clean" });
+      await article.getByLabel(WASTE_FLAG, { exact: true }).click();
+      await expect(article.getByLabel(WASTE_FLAG, { exact: true })).toBeChecked();
+      await article.getByLabel(WASTE_GROUP).selectOption({ label: "Soil" });
+      await article.getByLabel(WASTE_ITEM).selectOption({ label: "Fill — clean" });
       await expect.poll(async () => lastMoney(await article.textContent())).toBe(totalBefore);
 
       // PR #44 — cell edits auto-save on blur and survive a reload.

@@ -3,12 +3,23 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
-import { NotesField, OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
+import { OverrideField, TooltipSelect, type TooltipSelectOption } from "../../components";
 // SCOPE_PLANT_PICKER_V2 — the grouped-option type comes straight from the
 // component file: components/index.ts is outside this slice's scope, so the
 // barrel is left exactly as it is rather than re-exporting one more type.
 import type { TooltipSelectOptionGroup } from "../../components/TooltipSelect";
-import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimensions";
+// SCOPE_WBS_ACTIONS_V1 — the three expandables. These import only TYPES back
+// out of this file, so the cycle is erased at compile time and there is no
+// runtime import loop; the discipline gates (showsCuttingColumn /
+// isAsbestosCard) are resolved HERE and threaded down as props, which is what
+// keeps the rule in one place.
+import {
+  WbsMeasurementBlock,
+  measurementAddPatch,
+  measurementCount
+} from "./scope-cards/WbsMeasurementBlock";
+import { WbsCommentBlock, commentCount } from "./scope-cards/WbsCommentBlock";
+import { WbsAcmBlock, acmFactCount } from "./scope-cards/WbsAcmBlock";
 
 // SCOPE_WBS_TABLE_V1 — slice 2 of scope-card-redesign. Replaces the
 // loose-field card stack with a table whose identity columns (WBS,
@@ -134,6 +145,43 @@ import { computeDerivedDimensions, isDimensionOverride } from "./scopeItemDimens
 // commits through commitPlantRow/plantPatchBody like every other plant edit;
 // buildPlantItems sends the same keys it sent before, and `__custom__` itself
 // is a UI sentinel that never reaches the wire.
+
+// SCOPE_WBS_ACTIONS_V1 — slice 5 of scope-card-redesign, and the one that
+// finishes the WBS table. Two things change.
+//
+// 1. THE ACTIONS COLUMN. A collapsible column on the far right, rowspan-ed
+//    across each item's rows, holding `+ Add another row to this WBS`,
+//    `+ Add measurement`, `+ Add comment`, and — on asbestos cards only —
+//    `+ Add enclosure / monitoring`. Each button carries a tick and a count
+//    once the item has that thing. It is the LAST column on purpose: the
+//    header's collapse toggle shrinks it to a single re-open control, and
+//    because it sits outside Markup and Item total, collapsing it cannot move
+//    the right edge of either money column.
+//
+// 2. THE THREE EXPANDABLES. Everything the actions column opens renders in one
+//    extra <tr> under the item, and NOTHING IS OPEN BY DEFAULT — see
+//    NO_BLOCKS_OPEN. An item with nothing in it now shows four buttons and no
+//    boxes, where before this slice it showed nine empty measurement fields on
+//    row 0 and a permanently-open notes textarea, for every item on the card.
+//
+// The Measurement block is a RELOCATION, not a new feature, and it is the risk
+// in this slice. Every measurement an estimator has already entered must still
+// be there, still bound to the same record, and still feeding Waste and
+// Cutting exactly as it did — if one stopped reaching the waste aggregator
+// because it now lives behind a disclosure, the tender price would change and
+// nobody would see it happen. So the fields moved WITHOUT their handlers or
+// their payloads changing: the item's own measurement still writes the flat
+// columns, measurements 2..N still write `materials[]`, and the derived
+// columns are still derived by computeDerivedDimensions, untouched. The proof
+// is wbs-expandables.test.tsx, which prices a card of three measurements
+// across two items before and after the round trip through the new shape and
+// asserts the two figures are identical.
+//
+// What this slice does NOT do: no API route, service method, DTO, schema or
+// migration; no change to ScopeWasteTab, the cutting take-off, or /sot/. The
+// ACM block's four fields are existing columns with an existing DTO and an
+// existing PATCH — see WbsAcmBlock.tsx — and this slice supplies the writer
+// they never had.
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
@@ -273,6 +321,18 @@ export type ScopeItem = {
   chargeBy: string | null;
   materialType: string | null;
   cuttingIncluded: boolean;
+  // SCOPE_WBS_ACTIONS_V1 — the asbestos block's four fields. Every one of them
+  // is an EXISTING column on ScopeOfWorksItem (schema.prisma, "// Asbestos"),
+  // an EXISTING optional field on ScopeItemFieldsBase, and already mapped by
+  // ScopeOfWorksService — listItems spreads the whole row, so they come back
+  // on every read. They were simply never surfaced on this type because
+  // nothing in the web read them. No API change is made by declaring them.
+  // Optional and nullable because that is what they are: an item nobody has
+  // classified reads back null, which is not the same statement as false.
+  acmType?: string | null;
+  acmMaterial?: string | null;
+  enclosureRequired?: boolean | null;
+  airMonitoring?: boolean | null;
   plantItems: ScopePlantEntry[] | null;
   // SCOPE_MANPOWER_PERSIST_V1 — the per-row manpower store. Optional and
   // nullable because it genuinely is: every item written before the
@@ -367,7 +427,10 @@ type MaterialDensityRate = {
 
 // Lookup shape used by the material dropdowns to derive density + waste
 // defaults in a single map read.
-type MaterialLookup = {
+// SCOPE_WBS_ACTIONS_V1 — exported because the material dropdowns now live in
+// WbsMeasurementBlock. Same shape, same single map read; the map itself is
+// still built here, once, and threaded down.
+export type MaterialLookup = {
   density: string;
   unit: string;
   kind: "VOLUME" | "AREA" | "EACH" | "FACTOR";
@@ -489,6 +552,20 @@ const stickyThStyle: CSSProperties = { ...thStyle, ...stickyHeaderStyle };
 const stickyThDescStyle: CSSProperties = { ...thDescStyle, ...stickyHeaderStyle };
 
 // ── Exported pure helpers (tested by wbs-table-shell.test.tsx) ───────────
+
+/**
+ * SCOPE_WBS_ACTIONS_V1 — how many columns a WBS row has, and therefore how far
+ * the expandable row underneath it must span.
+ *
+ *   WBS 1 + Description 1 + Manpower 6 + Plant 5 + Markup 1 + Item total 1
+ *   + Actions 1 = 16.
+ *
+ * A colSpan that is short leaves a gap the blocks fall out of; one that is
+ * long widens the table by a phantom column, which moves the money columns'
+ * right edge — the exact thing the collapse is not allowed to do. Named here
+ * so the number is stated once and can be asserted against the header.
+ */
+export const WBS_COLUMN_COUNT = 16;
 
 /** True when an item with rowCount rows should show the per-row remove button. */
 export function shouldShowPerRowRemove(rowCount: number): boolean {
@@ -710,6 +787,84 @@ export function markupPatchBody(value: number | null): Record<string, unknown> {
  */
 export function showsCuttingColumn(discipline: Discipline): boolean {
   return discipline !== "ASB";
+}
+
+/**
+ * SCOPE_WBS_ACTIONS_V1 — true when the card is an asbestos card.
+ *
+ * The sibling of showsCuttingColumn above, and its exact inverse today. It
+ * exists so that the two asbestos-only pieces this slice adds — the ACM block
+ * and the `+ Add enclosure / monitoring` button that opens it — ask the
+ * question in the positive without any file restating the discipline code.
+ * There is NO per-discipline capability flag anywhere in the ERP (Discipline
+ * is the four-value string union at the top of this file and carries no
+ * fields), so "which cards cut" and "which cards are asbestos" are decided in
+ * these two functions and nowhere else. A fifth discipline that cuts and
+ * handles ACM would be added by editing these two, not by hunting literals.
+ */
+export function isAsbestosCard(discipline: Discipline): boolean {
+  return discipline === "ASB";
+}
+
+// ── SCOPE_WBS_ACTIONS_V1 — the expandable blocks ─────────────────────────
+
+/** The three expandable blocks an item's actions column can open. */
+export type WbsBlockKey = "measurement" | "comment" | "acm";
+
+/** Which of an item's blocks are open. */
+export type WbsOpenBlocks = { measurement: boolean; comment: boolean; acm: boolean };
+
+/**
+ * The state every item starts in, and the answer for any item the map has
+ * never heard of.
+ *
+ * NOTHING OPENS BY DEFAULT. That is the rule this constant enforces and it is
+ * the whole point of the slice: an item with nothing in it shows its action
+ * buttons and no boxes. Frozen so a caller cannot make it lie by mutating the
+ * shared default in place.
+ */
+export const NO_BLOCKS_OPEN: WbsOpenBlocks = Object.freeze({
+  measurement: false,
+  comment: false,
+  acm: false
+});
+
+/** Key: itemId → which of that item's blocks are open. Absent = none. */
+export type ItemOpenBlocks = Map<string, WbsOpenBlocks>;
+
+/** Which blocks are open for one item. An unknown item has none open. */
+export function openBlocksFor(map: ItemOpenBlocks, itemId: string): WbsOpenBlocks {
+  return map.get(itemId) ?? NO_BLOCKS_OPEN;
+}
+
+/** Flip one block of one item, leaving every other item and block alone. */
+export function toggleBlock(
+  map: ItemOpenBlocks,
+  itemId: string,
+  key: WbsBlockKey
+): ItemOpenBlocks {
+  const current = openBlocksFor(map, itemId);
+  const next = new Map(map);
+  next.set(itemId, { ...current, [key]: !current[key] });
+  return next;
+}
+
+/**
+ * Open one block of one item. Used by the `+ Add …` buttons, which both add
+ * the thing and reveal it — an add that left the box shut would look like it
+ * had done nothing.
+ */
+export function openBlock(map: ItemOpenBlocks, itemId: string, key: WbsBlockKey): ItemOpenBlocks {
+  const current = openBlocksFor(map, itemId);
+  if (current[key]) return map;
+  const next = new Map(map);
+  next.set(itemId, { ...current, [key]: true });
+  return next;
+}
+
+/** True when any of an item's blocks is open (the item needs its extra row). */
+export function hasOpenBlock(blocks: WbsOpenBlocks): boolean {
+  return blocks.measurement || blocks.comment || blocks.acm;
 }
 
 // ── Component state types ────────────────────────────────────────────────
@@ -1652,6 +1807,11 @@ export function ScopeQuantitiesTable({
   // now gates the Cutting? tick, computed once here rather than re-derived at
   // each of the two checkboxes.
   const showCutting = showsCuttingColumn(discipline);
+  // SCOPE_WBS_ACTIONS_V1 — the ACM block and its `+ Add enclosure /
+  // monitoring` button are asbestos-only, and this is the positive form of the
+  // same one rule showCutting reads. Resolved once, here, so no block file
+  // states a discipline code of its own.
+  const isAsbestos = isAsbestosCard(discipline);
   const { authFetch } = useAuth();
   const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
@@ -1684,6 +1844,26 @@ export function ScopeQuantitiesTable({
   // itemMarkupFromItem(item), which is why a reload comes back with the
   // override instead of a blank box.
   const [itemMarkupOverrides, setItemMarkupOverrides] = useState<ItemMarkupOverrides>(new Map());
+
+  // SCOPE_WBS_ACTIONS_V1 — which expandables are open, per item. An item with
+  // no entry has NOTHING open, which is every item on every first render: the
+  // map starts empty and openBlocksFor() answers NO_BLOCKS_OPEN for anything
+  // it has not heard of. There is deliberately no effect that opens a block
+  // because an item happens to have data in it — a card of ten measured items
+  // must still open as ten closed rows.
+  const [itemOpenBlocks, setItemOpenBlocks] = useState<ItemOpenBlocks>(new Map());
+
+  // SCOPE_WBS_ACTIONS_V1 — the actions column's own collapse. Whole-table, not
+  // per-item: the column header carries the toggle.
+  const [actionsCollapsed, setActionsCollapsed] = useState(false);
+
+  const toggleItemBlock = useCallback((itemId: string, key: WbsBlockKey) => {
+    setItemOpenBlocks((prev) => toggleBlock(prev, itemId, key));
+  }, []);
+
+  const openItemBlock = useCallback((itemId: string, key: WbsBlockKey) => {
+    setItemOpenBlocks((prev) => openBlock(prev, itemId, key));
+  }, []);
 
   // Sync row counts when items list changes.
   // SCOPE_MANPOWER_PERSIST_V1 — the count is no longer purely local: it is
@@ -1722,6 +1902,19 @@ export function ScopeQuantitiesTable({
       const next = new Map<string, number | null>();
       for (const item of items) {
         if (prev.has(item.id)) next.set(item.id, prev.get(item.id) ?? null);
+      }
+      return next;
+    });
+    // SCOPE_WBS_ACTIONS_V1 — drop the open-block state of items that are gone,
+    // and PRESERVE it for the ones that are not. A refetch fires on every
+    // field edit, so rebuilding this map from scratch would slam shut the very
+    // block the estimator is typing into.
+    setItemOpenBlocks((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map<string, WbsOpenBlocks>();
+      for (const item of items) {
+        const open = prev.get(item.id);
+        if (open) next.set(item.id, open);
       }
       return next;
     });
@@ -2273,12 +2466,15 @@ export function ScopeQuantitiesTable({
            of the single spanning cell from slice 2.
            SCOPE_WBS_PLANT_V1 — Plant group now occupies 5 discrete
            columns (Type/Qty/Days/Day rate/Total) instead of the single
-           spanning cell from slices 2-3. Measurement stays in its own
-           spanning cell until slice 5 moves it.
+           spanning cell from slices 2-3.
            SCOPE_WBS_GROUPRULES_V1 — the leading blank remove column is gone
            (17 columns -> 16); the row-remove `x` now rides in the Manpower
            Total cell, where its slot is always reserved so the money column
-           keeps one right edge. */
+           keeps one right edge.
+           SCOPE_WBS_ACTIONS_V1 — the Measurement spanning cell is GONE (16
+           columns -> 15) and the Actions column takes the far right (-> 16).
+           Measurement now renders in the item's expandable row underneath,
+           which is why nine boxes per item stopped painting themselves. */
         <table style={subtblStyle} aria-label="WBS items">
           <colgroup>
             {/* WBS code */}
@@ -2298,11 +2494,13 @@ export function ScopeQuantitiesTable({
             <col />{/* Days */}
             <col />{/* Day rate */}
             <col />{/* Total */}
-            {/* Measurement — spanning cell; slice 5 will split */}
-            <col />
             {/* Markup */}
             <col />
             {/* Item total */}
+            <col />
+            {/* SCOPE_WBS_ACTIONS_V1 — Actions. LAST, after both money columns,
+                so collapsing it can only ever shrink the table's own right
+                edge — Markup and Item total keep theirs wherever it sits. */}
             <col />
           </colgroup>
           <thead>
@@ -2310,8 +2508,10 @@ export function ScopeQuantitiesTable({
                 live here now: WBS / Description / Markup / Item total moved
                 down onto the label band, level with Type / Qty / Days, and
                 their five blank companions (including the remove slot) are
-                gone. Measurement is untouched — it keeps its position here
-                until pr-cardui-s5 splits it. */}
+                gone.
+                SCOPE_WBS_ACTIONS_V1 — the Measurement title went with the
+                column; the Actions title and its collapse toggle take the
+                far right. */}
             <tr>
               {/* WBS + Description — labels now sit on the lower band */}
               <th style={thStyle} colSpan={2} />
@@ -2323,12 +2523,26 @@ export function ScopeQuantitiesTable({
               <th colSpan={5} style={plantGroupTitleStyle}>
                 Plant
               </th>
-              {/* Measurement header — single spanning cell; slice 5 will split */}
-              <th style={{ ...thStyle, textAlign: "center" }}>Measurement</th>
               {/* Markup + Item total — labels now sit on the lower band. The
                   group rule carries through so the Markup boundary is one
                   unbroken line down the table. */}
               <th style={{ ...thStyle, ...groupRuleStyle }} colSpan={2} />
+              {/* SCOPE_WBS_ACTIONS_V1 — the collapse toggle lives on the
+                  column header. Collapsed, the whole column is one re-open
+                  control and every cell below it goes empty. */}
+              <th style={{ ...thStyle, ...groupRuleStyle, textAlign: "center" }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => setActionsCollapsed((c) => !c)}
+                  aria-expanded={!actionsCollapsed}
+                  aria-label={actionsCollapsed ? "Show item actions" : "Hide item actions"}
+                  title={actionsCollapsed ? "Show item actions" : "Hide item actions"}
+                  style={{ fontSize: 11, padding: "2px 6px", whiteSpace: "nowrap" }}
+                >
+                  {actionsCollapsed ? "«" : "Actions »"}
+                </button>
+              </th>
             </tr>
             {/* SCOPE_WBS_MANPOWER_V1 — sub-header row for individual manpower columns */}
             {/* SCOPE_WBS_PLANT_V1 — sub-header row extended with plant columns */}
@@ -2354,10 +2568,11 @@ export function ScopeQuantitiesTable({
               {/* SCOPE_WBS_INPUTS_V2 — plant money header, right-aligned. */}
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Rate</th>
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Total</th>
-              {/* Measurement — label stays on the group band above */}
-              <th style={stickyThStyle} />
               <th style={{ ...stickyThStyle, ...groupRuleStyle }}>Markup</th>
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Item total</th>
+              {/* SCOPE_WBS_ACTIONS_V1 — Actions label stays on the group band
+                  above, with the toggle. */}
+              <th style={{ ...stickyThStyle, ...groupRuleStyle }} />
             </tr>
           </thead>
           {wbsSortedVisible.map((item) => {
@@ -2377,6 +2592,17 @@ export function ScopeQuantitiesTable({
               const isAi = item.aiProposed && item.status !== "confirmed";
               const confidence = item.aiConfidence ? CONFIDENCE_STYLE[item.aiConfidence] : null;
               const isPending = pendingIds.has(item.id);
+
+              // SCOPE_WBS_ACTIONS_V1 — what this item has, and what of it is
+              // open. The counts drive the tick and the number on each action
+              // button; the open flags decide whether the item gets an
+              // expandable row at all. An item the map has never heard of has
+              // nothing open — that is where "no block opens by default"
+              // actually lives.
+              const openBlocks = openBlocksFor(itemOpenBlocks, item.id);
+              const measurementsHere = measurementCount(item);
+              const commentsHere = commentCount(item);
+              const acmHere = isAsbestos ? acmFactCount(item) : 0;
 
               // Render rowCount <tr> elements; identity columns span all.
               const rows = Array.from({ length: rowCount }, (_, rowIdx) => {
@@ -2505,15 +2731,11 @@ export function ScopeQuantitiesTable({
                           style={{ width: "100%", minWidth: 160 }}
                           aria-label={`Description for ${item.wbsCode}`}
                         />
-                        {/* Notes are co-located with description in the table layout */}
-                        <div style={{ marginTop: 6 }}>
-                          <NotesField
-                            value={item.notes}
-                            onSave={(v) => void patchItem(item.id, { notes: v })}
-                            disabled={isAi}
-                            placeholder="Notes for this item…"
-                          />
-                        </div>
+                        {/* SCOPE_WBS_ACTIONS_V1 — the notes textarea sat here,
+                            open, under every description on the card. It is
+                            the same field (item.notes, same PATCH) and it now
+                            lives in the Comment expandable, reached from
+                            `+ Add comment`. */}
                       </td>
                     ) : null}
 
@@ -2597,20 +2819,12 @@ export function ScopeQuantitiesTable({
                       onDaysBlur={(v) => commitPlantRow(item, rowIdx, { days: v })}
                       onDayRateOverride={(v) => commitPlantRow(item, rowIdx, { dayRateOverride: v })}
                     />
-                    {/* ── Measurement spanning cell (per-row) — slice 5 will extract ── */}
-                    <td style={{ ...fitCellStyle, ...tdBorderStyle }}>
-                      <ItemMeasurementCell
-                        item={item}
-                        rowIdx={rowIdx}
-                        wasteGroupOptions={wasteGroupOptions}
-                        wasteItemsByGroup={wasteItemsByGroup}
-                        materialOptions={materialOptions}
-                        materialDensityMap={materialDensityMap}
-                        isAi={isAi}
-                        showCutting={showCutting}
-                        onPatch={(body) => void patchItem(item.id, body)}
-                      />
-                    </td>
+                    {/* SCOPE_WBS_ACTIONS_V1 — the Measurement spanning cell
+                        stood here, on every row of every item, painting the
+                        full L/H/D/material/waste strip whether or not the item
+                        measured anything. It is now the Measurement expandable
+                        in the item's actions row below. Nothing about what it
+                        writes changed; see WbsMeasurementBlock.tsx. */}
 
                     {/* ── Markup cell — rowspan ─────────────────────────── */}
                     {/* SCOPE_WBS_GROUPRULES_V1 — Markup is the first column of
@@ -2683,9 +2897,148 @@ export function ScopeQuantitiesTable({
                           : fmtCurrency(Number(item.lineTotalWithMarkup))}
                       </td>
                     ) : null}
+
+                    {/* ── SCOPE_WBS_ACTIONS_V1 — Actions cell — rowspan ─── */}
+                    {isFirstRow ? (
+                      <td
+                        rowSpan={rowCount}
+                        style={{
+                          ...fitCellStyle,
+                          ...tdBorderStyle,
+                          ...groupRuleStyle,
+                          verticalAlign: "top"
+                        }}
+                      >
+                        {actionsCollapsed ? null : (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 3,
+                              alignItems: "stretch"
+                            }}
+                          >
+                            <WbsActionButton
+                              label="+ Add another row to this WBS"
+                              count={rowCount}
+                              disabled={isAi}
+                              onClick={() => addRowToItem(item)}
+                            />
+                            <WbsActionButton
+                              label="+ Add measurement"
+                              count={measurementsHere}
+                              expanded={openBlocks.measurement}
+                              disabled={isAi}
+                              onClick={() => {
+                                // Both add and reveal. The patch is null when
+                                // the item already has an empty slot waiting —
+                                // its own flat columns — so the first click on
+                                // an unmeasured item opens the block and writes
+                                // nothing.
+                                const patch = measurementAddPatch(item);
+                                if (patch) void patchItem(item.id, patch);
+                                openItemBlock(item.id, "measurement");
+                              }}
+                            />
+                            <WbsActionButton
+                              label="+ Add comment"
+                              count={commentsHere}
+                              expanded={openBlocks.comment}
+                              disabled={isAi}
+                              onClick={() => openItemBlock(item.id, "comment")}
+                            />
+                            {/* Asbestos cards only — resolved from
+                                isAsbestosCard(discipline) once, above. */}
+                            {isAsbestos ? (
+                              <WbsActionButton
+                                label="+ Add enclosure / monitoring"
+                                count={acmHere}
+                                expanded={openBlocks.acm}
+                                disabled={isAi}
+                                onClick={() => openItemBlock(item.id, "acm")}
+                              />
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
                 );
               });
+
+              // SCOPE_WBS_ACTIONS_V1 — the expandable row. It exists ONLY
+              // while at least one of this item's blocks is open, which for a
+              // freshly-loaded card is never: openBlocksFor answers
+              // NO_BLOCKS_OPEN for every item until the estimator opens one.
+              // It spans the full width so a block is never squeezed into a
+              // money column, and it carries the item's bottom rule so the
+              // group still reads as one item.
+              const expandableRow = hasOpenBlock(openBlocks) ? (
+                <tr key={`${item.id}-blocks`}>
+                  <td
+                    colSpan={WBS_COLUMN_COUNT}
+                    style={{
+                      ...tdBorderStyle,
+                      borderBottom: "2px solid var(--border-default, #e5e7eb)",
+                      padding: "6px 8px",
+                      background: "var(--surface, #fff)"
+                    }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {openBlocks.measurement ? (
+                        <WbsMeasurementBlock
+                          item={item}
+                          wasteGroupOptions={wasteGroupOptions}
+                          wasteItemsByGroup={wasteItemsByGroup}
+                          materialOptions={materialOptions}
+                          materialDensityMap={materialDensityMap}
+                          isAi={isAi}
+                          showCutting={showCutting}
+                          onPatch={(body) => void patchItem(item.id, body)}
+                        />
+                      ) : null}
+                      {openBlocks.comment ? (
+                        <WbsCommentBlock
+                          item={item}
+                          isAi={isAi}
+                          onPatch={(body) => void patchItem(item.id, body)}
+                        />
+                      ) : null}
+                      {/* Gated twice on purpose: the button that opens it is
+                          asbestos-only, and so is the block. A non-asbestos
+                          card cannot reach this branch even with stale open
+                          state left over from a discipline change. */}
+                      {isAsbestos && openBlocks.acm ? (
+                        <WbsAcmBlock
+                          item={item}
+                          isAi={isAi}
+                          onPatch={(body) => void patchItem(item.id, body)}
+                        />
+                      ) : null}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {openBlocks.measurement ? (
+                          <WbsBlockCloseButton
+                            label="Hide measurements"
+                            onClick={() => toggleItemBlock(item.id, "measurement")}
+                          />
+                        ) : null}
+                        {openBlocks.comment ? (
+                          <WbsBlockCloseButton
+                            label="Hide comment"
+                            onClick={() => toggleItemBlock(item.id, "comment")}
+                          />
+                        ) : null}
+                        {isAsbestos && openBlocks.acm ? (
+                          <WbsBlockCloseButton
+                            label="Hide enclosure / monitoring"
+                            onClick={() => toggleItemBlock(item.id, "acm")}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : null;
 
               // SCOPE_WBS_TABLE_V1 — one <tbody> per WBS item. The rowspan
               // already asserts that these <tr>s are a single item; giving
@@ -2706,6 +3059,7 @@ export function ScopeQuantitiesTable({
                   data-item-description={item.description}
                 >
                   {rows}
+                  {expandableRow}
                 </tbody>
               );
             })}
@@ -2770,6 +3124,81 @@ export function ScopeQuantitiesTable({
         </CenteredModal>
       ) : null}
     </section>
+  );
+}
+
+// ── SCOPE_WBS_ACTIONS_V1 — the actions column's controls ────────────────
+
+/**
+ * One action button: the label, and — once the item has the thing — a tick and
+ * a count. `count` is the number of that thing the item ACTUALLY carries, not
+ * the number of slots it could have, so a WBS item nobody has measured shows a
+ * bare `+ Add measurement` and no tick.
+ */
+function WbsActionButton({
+  label,
+  count,
+  expanded,
+  disabled,
+  onClick
+}: {
+  label: string;
+  count: number;
+  /** Present on the three buttons that open a block; absent on "+ Row". */
+  expanded?: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const has = count > 0;
+  return (
+    <button
+      type="button"
+      className="s7-btn s7-btn--ghost s7-btn--sm"
+      onClick={onClick}
+      disabled={disabled}
+      aria-expanded={expanded}
+      title={has ? `${label} (${count} already)` : label}
+      style={{
+        fontSize: 10,
+        padding: "3px 6px",
+        textAlign: "left",
+        whiteSpace: "nowrap",
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        justifyContent: "space-between"
+      }}
+    >
+      <span>{label}</span>
+      {has ? (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 2,
+            fontWeight: 700,
+            color: "var(--status-success, #16A34A)"
+          }}
+        >
+          <span aria-hidden="true">{"✓"}</span>
+          <span>{count}</span>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/** The "hide this block again" control inside an open expandable. */
+function WbsBlockCloseButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="s7-btn s7-btn--ghost s7-btn--sm"
+      onClick={onClick}
+      style={{ fontSize: 10, padding: "2px 6px", color: "var(--text-muted)" }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -3309,1068 +3738,19 @@ function PlantRowCells({
   );
 }
 
-// ── ItemMeasurementCell ────────────────────────────────────────────────────
-// Per-row measurement cell. Slice 4 extracted plant into discrete columns;
-// this cell retains the full measurement section until slice 5 moves it.
+// ── SCOPE_WBS_ACTIONS_V1 — the measurement components moved out ─────────
+//
+// ItemMeasurementCell, ItemBodyInputs, MaterialCluster, ItemMaterialTotals and
+// the FieldCell wrapper the four of them shared stood here, ~1060 lines of
+// them, and they are now scope-cards/WbsMeasurementBlock.tsx. Their handlers
+// and their PATCH payloads went across unchanged — that is what makes this
+// slice a relocation and not a rewrite of how a measurement is priced. The one
+// thing that is genuinely gone is ItemMeasurementCell's `if (rowIdx > 0)
+// return null` guard: measurements no longer hang off a manpower/plant row at
+// all, so there is no row index for them to be wrong about.
 
-type ItemMeasurementCellProps = {
-  item: ScopeItem;
-  rowIdx: number;
-  wasteGroupOptions: TooltipSelectOption<string>[];
-  wasteItemsByGroup: Map<string, string[]>;
-  materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, MaterialLookup>;
-  isAi: boolean;
-  /**
-   * SCOPE_WBS_INPUTS_V2 — render the Cutting? tick. Computed once in
-   * ScopeQuantitiesTable from showsCuttingColumn(discipline) and threaded down
-   * so row 1 and every additional material row are gated on the one condition.
-   */
-  showCutting: boolean;
-  onPatch: (body: Record<string, unknown>) => void;
-};
+// ── TaskHoursHint + Divider ─────────────────────────────────────────────
 
-function ItemMeasurementCell({
-  item,
-  rowIdx,
-  wasteGroupOptions,
-  wasteItemsByGroup,
-  materialOptions,
-  materialDensityMap,
-  isAi,
-  showCutting,
-  onPatch
-}: ItemMeasurementCellProps) {
-  // Only row 0 has measurement data; additional rows show a placeholder
-  // until slice 5 handles them.
-  if (rowIdx > 0) {
-    return null;
-  }
-
-  return (
-    <ItemBodyInputs
-      item={item}
-      wasteGroupOptions={wasteGroupOptions}
-      wasteItemsByGroup={wasteItemsByGroup}
-      materialOptions={materialOptions}
-      materialDensityMap={materialDensityMap}
-      isAi={isAi}
-      showCutting={showCutting}
-      onPatch={onPatch}
-    />
-  );
-}
-
-// ── ItemBodyInputs ───────────────────────────────────────────────────────
-// Measurement-only block for a scope item's first row. Slice 4 extracted
-// plant into PlantRowCells; this component retains the measurement section
-// (L/H/D, material, waste) until slice 5 moves it.
-
-type ItemBodyInputsProps = {
-  item: ScopeItem;
-  wasteGroupOptions: TooltipSelectOption<string>[];
-  wasteItemsByGroup: Map<string, string[]>;
-  materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, MaterialLookup>;
-  isAi: boolean;
-  /**
-   * SCOPE_WBS_INPUTS_V2 — render the Cutting? tick. Computed once in
-   * ScopeQuantitiesTable from showsCuttingColumn(discipline) and threaded down
-   * so row 1 and every additional material row are gated on the one condition.
-   */
-  showCutting: boolean;
-  onPatch: (body: Record<string, unknown>) => void;
-};
-
-function ItemBodyInputs({
-  item,
-  wasteGroupOptions,
-  wasteItemsByGroup,
-  materialOptions,
-  materialDensityMap,
-  isAi,
-  showCutting,
-  onPatch
-}: ItemBodyInputsProps) {
-  // PR feat/scope-each-factor — active kind for row 1.
-  const row1Kind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (item.materialKind as "VOLUME" | "AREA" | "EACH" | "FACTOR") ?? "VOLUME";
-
-  // SCOPE_PLANT_PERSIST_V1 — updatePlant / addPlant / removePlant and the
-  // PlantCluster block they drove are gone from this cell. They were the only
-  // plant UI that reached the database, which is why they outlived the new
-  // columns by four slices; now that PlantRowCells persists, keeping them
-  // would render plant twice on row 0 and give the estimator two write paths
-  // into one array. The e2e that covered them
-  // ("plant pills: add a plant cluster, set qty/days, remove it") is ported
-  // onto the columns in tests/e2e/pr-acceptance/batch3-scope-items.spec.ts in
-  // this same PR.
-
-  const itemMaterialEntries: ScopeMaterialEntry[] = Array.isArray(item.materials)
-    ? item.materials
-    : [];
-
-  const addMaterial = () => {
-    onPatch({ materials: [...itemMaterialEntries, {}] });
-  };
-
-  const updateMaterial = (index: number, patch: Partial<ScopeMaterialEntry>) => {
-    const next = itemMaterialEntries.map((m, i) => (i === index ? { ...m, ...patch } : m));
-    onPatch({ materials: next });
-  };
-
-  const removeMaterial = (index: number) => {
-    const next = itemMaterialEntries.filter((_, i) => i !== index);
-    onPatch({ materials: next });
-  };
-
-  const wasteItemOptions: TooltipSelectOption<string>[] = item.wasteGroup
-    ? (wasteItemsByGroup.get(item.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
-    : [];
-
-  const row1MaterialLookup = item.materialType ? materialDensityMap.get(item.materialType) : undefined;
-  const row1WasteAutofilled =
-    !!row1MaterialLookup?.defaultWasteGroup &&
-    !!row1MaterialLookup?.defaultWasteItem &&
-    item.wasteGroup === row1MaterialLookup.defaultWasteGroup &&
-    item.wasteItem === row1MaterialLookup.defaultWasteItem;
-
-  // PR B4a.5 — controlled state for the 7 dimension fields.
-  type DimKey = "length" | "height" | "depth" | "sqm" | "m3" | "density" | "tonnes";
-  const initDim = (v: string | null) => (v == null ? "" : String(v));
-  const [dims, setDims] = useState({
-    length: initDim(item.length),
-    height: initDim(item.height),
-    depth: initDim(item.depth),
-    sqm: initDim(item.sqm),
-    m3: initDim(item.m3),
-    density: initDim(item.density),
-    tonnes: initDim(item.tonnes)
-  });
-  const [dirty, setDirty] = useState({ sqm: false, m3: false, tonnes: false });
-  const [row1Quantity, setRow1Quantity] = useState(initDim(item.quantity ?? null));
-  const [row1Factor, setRow1Factor] = useState(initDim(item.factor ?? null));
-
-  useEffect(() => {
-    setDims({
-      length: initDim(item.length),
-      height: initDim(item.height),
-      depth: initDim(item.depth),
-      sqm: initDim(item.sqm),
-      m3: initDim(item.m3),
-      density: initDim(item.density),
-      tonnes: initDim(item.tonnes)
-    });
-    setRow1Quantity(initDim(item.quantity ?? null));
-    setRow1Factor(initDim(item.factor ?? null));
-
-    const autoDerived = computeDerivedDimensions({
-      length: item.length == null ? null : Number(item.length),
-      height: item.height == null ? null : Number(item.height),
-      depth: item.depth == null ? null : Number(item.depth),
-      density: item.density == null ? null : Number(item.density),
-      sqm: null,
-      m3: null,
-      tonnes: null
-    });
-
-    setDirty({
-      sqm: isDimensionOverride(item.sqm, autoDerived.sqm),
-      m3: isDimensionOverride(item.m3, autoDerived.m3),
-      tonnes: isDimensionOverride(item.tonnes, autoDerived.tonnes)
-    });
-  }, [item.id, item.length, item.height, item.depth, item.sqm, item.m3, item.density, item.tonnes, item.quantity, item.factor]);
-
-  const setDim = (k: DimKey, v: string) => {
-    setDims((s) => ({ ...s, [k]: v }));
-    setDirty((d) => {
-      const next = { ...d };
-      if (k === "sqm" || k === "m3" || k === "tonnes") {
-        next[k] = true;
-      }
-      if (k === "length" || k === "height") {
-        next.sqm = false;
-        next.m3 = false;
-        next.tonnes = false;
-      } else if (k === "depth") {
-        next.m3 = false;
-        next.tonnes = false;
-      } else if (k === "density") {
-        next.tonnes = false;
-      } else if (k === "sqm") {
-        next.m3 = false;
-        next.tonnes = false;
-      } else if (k === "m3") {
-        next.tonnes = false;
-      }
-      return next;
-    });
-  };
-
-  const parsed = useMemo(
-    () => ({
-      length: dims.length === "" ? null : Number(dims.length),
-      height: dims.height === "" ? null : Number(dims.height),
-      depth: dims.depth === "" ? null : Number(dims.depth),
-      density: dims.density === "" ? null : Number(dims.density),
-      sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
-      m3: dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null,
-      tonnes: dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : null,
-      kind: row1Kind,
-      quantity: row1Quantity === "" ? null : Number(row1Quantity),
-      factor: row1Factor === "" ? null : Number(row1Factor)
-    }),
-    [dims, dirty, row1Kind, row1Quantity, row1Factor]
-  );
-  const derived = useMemo(() => computeDerivedDimensions(parsed), [parsed]);
-
-  const persistDims = () => {
-    const sqmToSave = dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : derived.sqm;
-    const m3ToSave = dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3;
-    const tonnesToSave = dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes;
-
-    const MAX_DIM = 9999999;
-    const MAX_DENSITY = 99999;
-    const MAX_DERIVED = 99999999;
-    const inRange = (v: number | null, max: number) =>
-      v == null || (Number.isFinite(v) && Math.abs(v) < max);
-    const valid =
-      inRange(parsed.length, MAX_DIM) &&
-      inRange(parsed.height, MAX_DIM) &&
-      inRange(parsed.depth, MAX_DIM) &&
-      inRange(parsed.density, MAX_DENSITY) &&
-      inRange(sqmToSave, MAX_DERIVED) &&
-      inRange(m3ToSave, MAX_DERIVED) &&
-      inRange(tonnesToSave, MAX_DERIVED);
-    if (!valid) {
-      console.warn("Dimension PATCH rejected: value out of Decimal range", {
-        parsed,
-        sqmToSave,
-        m3ToSave,
-        tonnesToSave
-      });
-      return;
-    }
-
-    onPatch({
-      length: parsed.length,
-      height: parsed.height,
-      depth: parsed.depth,
-      density: parsed.density,
-      sqm: sqmToSave,
-      m3: m3ToSave,
-      tonnes: tonnesToSave,
-      materialKind: row1Kind,
-      quantity: parsed.quantity,
-      factor: parsed.factor
-    });
-  };
-
-  const valueFor = (k: "sqm" | "m3" | "tonnes") => {
-    if (dirty[k]) return dims[k];
-    const d = derived[k];
-    return d == null ? "" : String(d);
-  };
-  const placeholderFor = (k: "sqm" | "m3" | "tonnes") => {
-    const v = derived[k];
-    return v == null ? "" : String(v);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 360 }}>
-      {/* SCOPE_PLANT_PERSIST_V1 — the legacy plant cluster and its "+ Plant"
-          button stood here. The Plant COLUMN GROUP (PlantRowCells) now writes
-          to plantItems on every row, so this cell renders measurement only.
-          Section B is unchanged; pr-cardui-s5 owns it. */}
-      {/* Section B: Measurement — stays exactly where it is until slice 5 */}
-      <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
-        <FieldCell label="Length" width={70}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            value={dims.length}
-            disabled={isAi}
-            style={{ width: 70, height: 32 }}
-            onChange={(e) => setDim("length", e.target.value)}
-            onBlur={persistDims}
-          />
-        </FieldCell>
-        <FieldCell label="Height" width={70}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            value={dims.height}
-            disabled={isAi}
-            style={{ width: 70, height: 32 }}
-            onChange={(e) => setDim("height", e.target.value)}
-            onBlur={persistDims}
-          />
-        </FieldCell>
-        <FieldCell label="Depth" width={70}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            value={dims.depth}
-            disabled={isAi}
-            style={{ width: 70, height: 32 }}
-            onChange={(e) => setDim("depth", e.target.value)}
-            onBlur={persistDims}
-          />
-        </FieldCell>
-        <FieldCell label="Material" width={140}>
-          <TooltipSelect
-            value={item.materialType}
-            options={materialOptions}
-            onChange={(v) => {
-              const lookup = v ? materialDensityMap.get(v) : undefined;
-              // kg/m³ → t/m³ (÷1000); kg/m² is stored as-is (the sqm fallback
-              // in computeDerivedDimensions already divides by 1000 for sheets).
-              // NOTE: these unit strings are DATA, not copy - they must match the
-              // values seeded in apps/api/prisma/seed-initial-services.ts exactly,
-              // superscripts included. A flattened ASCII form never matches, silently
-              // skips the ÷1000 and overstates tonnage 1000x.
-              const newDensity = lookup
-                ? (lookup.unit === "kg/m³"
-                    ? Number(lookup.density) / 1000
-                    : Number(lookup.density))
-                : null;
-              const newKind = lookup?.kind ?? "VOLUME";
-              const isSheet = lookup?.unit === "kg/m²";
-              const newParsed = {
-                length: dims.length === "" ? null : Number(dims.length),
-                height: dims.height === "" ? null : Number(dims.height),
-                depth: isSheet ? null : (dims.depth === "" ? null : Number(dims.depth)),
-                density: newDensity,
-                sqm: dirty.sqm && dims.sqm !== "" ? Number(dims.sqm) : null,
-                m3: isSheet ? null : (dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : null),
-                tonnes: null,
-                kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
-                quantity: row1Quantity === "" ? null : Number(row1Quantity),
-                factor: row1Factor === "" ? null : Number(row1Factor)
-              };
-              const rederived = computeDerivedDimensions(newParsed);
-              const wasteDefaults = lookup
-                ? lookup.defaultWasteGroup && lookup.defaultWasteItem
-                  ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
-                  : {}
-                : {};
-              onPatch({
-                materialType: v,
-                materialKind: newKind,
-                density: newDensity,
-                length: newParsed.length,
-                height: newParsed.height,
-                depth: newParsed.depth,
-                sqm: rederived.sqm,
-                m3: rederived.m3,
-                tonnes: rederived.tonnes,
-                quantity: newKind === "EACH" ? newParsed.quantity : null,
-                factor: newKind === "FACTOR" ? newParsed.factor : null,
-                ...wasteDefaults
-              });
-            }}
-            disabled={isAi}
-            ariaLabel="Material type"
-            style={{ height: 32 }}
-          />
-        </FieldCell>
-        {row1Kind === "FACTOR" ? (
-          <FieldCell label="Factor" width={80}>
-            <input
-              className="s7-input"
-              type="number"
-              step="0.0001"
-              value={row1Factor}
-              disabled={isAi}
-              style={{ width: 80, height: 32 }}
-              placeholder="0.0"
-              title="Factor: tonnes = sqm × factor"
-              onChange={(e) => setRow1Factor(e.target.value)}
-              onBlur={persistDims}
-            />
-          </FieldCell>
-        ) : (
-          <FieldCell label={row1Kind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
-            <input
-              className="s7-input"
-              type="number"
-              step="0.001"
-              value={dims.density}
-              disabled={isAi || !!item.materialType}
-              style={{
-                width: 80,
-                height: 32,
-                ...(item.materialType
-                  ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
-                  : {})
-              }}
-              title={
-                item.materialType
-                  ? `Auto-set from ${item.materialType}. Clear material to edit manually.`
-                  : row1Kind === "EACH"
-                    ? "Per-item weight in kg (tonnes = qty × kg/1000)"
-                    : "Manual density (tonnes per m³)"
-              }
-              onChange={(e) => setDim("density", e.target.value)}
-              onBlur={persistDims}
-            />
-          </FieldCell>
-        )}
-        {row1Kind === "EACH" ? (
-          <FieldCell label="Quantity" width={80}>
-            <input
-              className="s7-input"
-              type="number"
-              step="1"
-              value={row1Quantity}
-              disabled={isAi}
-              style={{ width: 80, height: 32 }}
-              placeholder="0"
-              title="Number of items (tonnes = qty × kg/item ÷ 1000)"
-              onChange={(e) => setRow1Quantity(e.target.value)}
-              onBlur={persistDims}
-            />
-          </FieldCell>
-        ) : null}
-        <FieldCell label="Sqm" width={80}>
-          <OverrideField
-            isOverridden={dirty.sqm}
-            onRevert={() => {
-              setDim("sqm", "");
-              setDirty((d) => ({ ...d, sqm: false }));
-            }}
-          >
-            <input
-              className="s7-input"
-              type="number"
-              step="0.01"
-              value={valueFor("sqm")}
-              placeholder={placeholderFor("sqm")}
-              disabled={isAi}
-              style={{ width: 80, height: 32 }}
-              title="Auto = length × height. Type to override."
-              onChange={(e) => setDim("sqm", e.target.value)}
-              onBlur={persistDims}
-            />
-          </OverrideField>
-        </FieldCell>
-        <FieldCell label="M³" width={80}>
-          <OverrideField
-            isOverridden={dirty.m3}
-            onRevert={() => {
-              setDim("m3", "");
-              setDirty((d) => ({ ...d, m3: false }));
-            }}
-          >
-            <input
-              className="s7-input"
-              type="number"
-              step="0.01"
-              value={valueFor("m3")}
-              placeholder={placeholderFor("m3")}
-              disabled={isAi}
-              style={{ width: 80, height: 32 }}
-              title="Auto = sqm × depth. Type to override."
-              onChange={(e) => setDim("m3", e.target.value)}
-              onBlur={persistDims}
-            />
-          </OverrideField>
-        </FieldCell>
-        <FieldCell label="Tonnes" width={80}>
-          <OverrideField
-            isOverridden={dirty.tonnes}
-            onRevert={() => {
-              setDim("tonnes", "");
-              setDirty((d) => ({ ...d, tonnes: false }));
-            }}
-          >
-            <input
-              className="s7-input"
-              type="number"
-              step="0.01"
-              value={valueFor("tonnes")}
-              placeholder={placeholderFor("tonnes")}
-              disabled={isAi}
-              style={{ width: 80, height: 32 }}
-              title="Auto = m³ × density or sqm × density / 1000. Type to override."
-              onChange={(e) => setDim("tonnes", e.target.value)}
-              onBlur={persistDims}
-            />
-          </OverrideField>
-        </FieldCell>
-        {row1WasteAutofilled ? (
-          <FieldCell label="Waste" width={160}>
-            <div
-              style={{
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                fontSize: 11,
-                color: "var(--text-muted)"
-              }}
-              title={`Auto from ${item.materialType}: ${item.wasteGroup} -> ${item.wasteItem}`}
-            >
-              {item.wasteGroup} {"·"} {item.wasteItem}
-            </div>
-          </FieldCell>
-        ) : (
-          <>
-            <FieldCell label="Waste group" width={120}>
-              <TooltipSelect
-                value={item.wasteGroup}
-                options={wasteGroupOptions}
-                onChange={(v) => onPatch({ wasteGroup: v, wasteItem: null })}
-                disabled={isAi}
-                ariaLabel="Waste group"
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            <FieldCell label="Waste item" width={140}>
-              <TooltipSelect
-                value={item.wasteItem}
-                options={wasteItemOptions}
-                onChange={(v) => onPatch({ wasteItem: v })}
-                disabled={isAi || !item.wasteGroup}
-                ariaLabel="Waste item"
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            {item.materialType ? (
-              <div
-                role="note"
-                style={{
-                  fontSize: 11,
-                  color: "var(--status-warning, #B45309)",
-                  alignSelf: "flex-end",
-                  paddingBottom: 8,
-                  maxWidth: 180
-                }}
-              >
-                No default waste mapping for {item.materialType} — set one in Rates &amp; Lists {"→"} Densities.
-              </div>
-            ) : null}
-          </>
-        )}
-        <FieldCell label="Waste?" width={54}>
-          <input
-            type="checkbox"
-            checked={item.wasteIncluded === true}
-            disabled={isAi}
-            onChange={(e) => onPatch({ wasteIncluded: e.target.checked })}
-            aria-label="Include in waste summary"
-            style={{ width: 20, height: 20, marginBottom: 6 }}
-          />
-        </FieldCell>
-        {/* SCOPE_WBS_INPUTS_V2 — the Cutting? tick renders only where the
-            cutting sheet it feeds is rendered (ScopeCardsTab gates
-            <ScopeCuttingSheet> on the same condition). On an ASB card there is
-            nowhere for a ticked value to be priced. Render gate only: an
-            already-stored cuttingIncluded is left untouched. */}
-        {showCutting ? (
-          <FieldCell label="Cutting?" width={62}>
-            <input
-              type="checkbox"
-              checked={item.cuttingIncluded === true}
-              disabled={isAi}
-              onChange={(e) => onPatch({ cuttingIncluded: e.target.checked })}
-              aria-label="Include in cutting summary"
-              style={{ width: 20, height: 20, marginBottom: 6 }}
-            />
-          </FieldCell>
-        ) : null}
-      </div>
-
-      {/* PR feat/scope-multi-material — additional material rows (2..N) */}
-      {itemMaterialEntries.map((entry, index) => (
-        <MaterialCluster
-          key={`material-${index}`}
-          index={index}
-          entry={entry}
-          materialOptions={materialOptions}
-          materialDensityMap={materialDensityMap}
-          wasteGroupOptions={wasteGroupOptions}
-          wasteItemsByGroup={wasteItemsByGroup}
-          disabled={isAi}
-          showCutting={showCutting}
-          onChange={(patch) => updateMaterial(index, patch)}
-          onRemove={() => removeMaterial(index)}
-        />
-      ))}
-
-      <ItemMaterialTotals
-        row1Tonnes={dirty.tonnes && dims.tonnes !== "" ? Number(dims.tonnes) : derived.tonnes}
-        row1M3={dirty.m3 && dims.m3 !== "" ? Number(dims.m3) : derived.m3}
-        extras={itemMaterialEntries}
-        onAdd={addMaterial}
-        disabled={isAi}
-      />
-    </div>
-  );
-}
-
-// ── MaterialCluster + ItemMaterialTotals ────────────────────────────────
-
-function MaterialCluster({
-  index,
-  entry,
-  materialOptions,
-  materialDensityMap,
-  wasteGroupOptions,
-  wasteItemsByGroup,
-  disabled,
-  showCutting,
-  onChange,
-  onRemove
-}: {
-  index: number;
-  entry: ScopeMaterialEntry;
-  materialOptions: TooltipSelectOption<string>[];
-  materialDensityMap: Map<string, MaterialLookup>;
-  wasteGroupOptions: TooltipSelectOption<string>[];
-  wasteItemsByGroup: Map<string, string[]>;
-  disabled: boolean;
-  /** SCOPE_WBS_INPUTS_V2 — same discipline gate as the row-1 tick. */
-  showCutting: boolean;
-  onChange: (patch: Partial<ScopeMaterialEntry>) => void;
-  onRemove: () => void;
-}) {
-  const matKind: "VOLUME" | "AREA" | "EACH" | "FACTOR" = (entry.kind ?? "VOLUME") as "VOLUME" | "AREA" | "EACH" | "FACTOR";
-  const numOrNull = (v: string): number | null => {
-    if (v === "") return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-  const strOf = (v: number | null | undefined): string =>
-    v == null ? "" : String(v);
-
-  const derived = computeDerivedDimensions({
-    length: entry.length ?? null,
-    height: entry.height ?? null,
-    depth: entry.depth ?? null,
-    density: entry.density ?? null,
-    sqm: entry.sqm ?? null,
-    m3: entry.m3 ?? null,
-    tonnes: entry.tonnes ?? null,
-    kind: matKind,
-    quantity: entry.quantity ?? null,
-    factor: entry.factor ?? null
-  });
-
-  const wasteItemOptions: TooltipSelectOption<string>[] = entry.wasteGroup
-    ? (wasteItemsByGroup.get(entry.wasteGroup) ?? []).map((w) => ({ value: w, label: w }))
-    : [];
-
-  const entryMaterialLookup = entry.material ? materialDensityMap.get(entry.material) : undefined;
-  const entryWasteAutofilled =
-    !!entryMaterialLookup?.defaultWasteGroup &&
-    !!entryMaterialLookup?.defaultWasteItem &&
-    entry.wasteGroup === entryMaterialLookup.defaultWasteGroup &&
-    entry.wasteItem === entryMaterialLookup.defaultWasteItem;
-
-  const materialNo = index + 2;
-
-  return (
-    <div
-      style={{
-        border: "1px dashed var(--border-default, #e5e7eb)",
-        borderRadius: 6,
-        padding: 8,
-        background: "var(--surface-muted, #FAFAFA)"
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <span className="s7-type-label" style={{ ...labelStyle, marginBottom: 0 }}>
-          Material {materialNo}
-        </span>
-      </div>
-      <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, alignItems: "flex-end", overflowX: "auto" }}>
-        <FieldCell label="Length" width={70}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            defaultValue={strOf(entry.length)}
-            disabled={disabled}
-            style={{ width: 70, height: 32 }}
-            onBlur={(e) => onChange({ length: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
-        <FieldCell label="Height" width={70}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            defaultValue={strOf(entry.height)}
-            disabled={disabled}
-            style={{ width: 70, height: 32 }}
-            onBlur={(e) => onChange({ height: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
-        <FieldCell label="Depth" width={70}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.001"
-            defaultValue={strOf(entry.depth)}
-            disabled={disabled}
-            style={{ width: 70, height: 32 }}
-            onBlur={(e) => onChange({ depth: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
-        <FieldCell label="Material" width={140}>
-          <TooltipSelect
-            value={entry.material ?? null}
-            options={materialOptions}
-            onChange={(v) => {
-              const lookup = v ? materialDensityMap.get(v) : undefined;
-              // kg/m³ → t/m³ (÷1000); kg/m² is stored as-is (the sqm fallback
-              // in computeDerivedDimensions already divides by 1000 for sheets).
-              // NOTE: these unit strings are DATA, not copy - they must match the
-              // values seeded in apps/api/prisma/seed-initial-services.ts exactly,
-              // superscripts included. A flattened ASCII form never matches, silently
-              // skips the ÷1000 and overstates tonnage 1000x.
-              const newDensity = lookup
-                ? lookup.unit === "kg/m³"
-                  ? Number(lookup.density) / 1000
-                  : Number(lookup.density)
-                : null;
-              const newKind = lookup?.kind ?? "VOLUME";
-              const isSheet = lookup?.unit === "kg/m²";
-              const rederived = computeDerivedDimensions({
-                length: entry.length ?? null,
-                height: entry.height ?? null,
-                depth: isSheet ? null : entry.depth ?? null,
-                density: newDensity,
-                sqm: null,
-                m3: isSheet ? null : entry.m3 ?? null,
-                tonnes: null,
-                kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
-                quantity: newKind === "EACH" ? entry.quantity ?? null : null,
-                factor: newKind === "FACTOR" ? entry.factor ?? null : null
-              });
-              const wasteDefaults = lookup
-                ? lookup.defaultWasteGroup && lookup.defaultWasteItem
-                  ? { wasteGroup: lookup.defaultWasteGroup, wasteItem: lookup.defaultWasteItem }
-                  : {}
-                : {};
-              onChange({
-                material: v,
-                kind: newKind as "VOLUME" | "AREA" | "EACH" | "FACTOR",
-                density: newDensity,
-                depth: isSheet ? null : entry.depth ?? null,
-                sqm: rederived.sqm,
-                m3: rederived.m3,
-                tonnes: rederived.tonnes,
-                quantity: newKind === "EACH" ? entry.quantity ?? null : null,
-                factor: newKind === "FACTOR" ? entry.factor ?? null : null,
-                ...wasteDefaults
-              });
-            }}
-            disabled={disabled}
-            ariaLabel={`Material ${materialNo} type`}
-            style={{ height: 32 }}
-          />
-        </FieldCell>
-        {matKind === "FACTOR" ? (
-          <FieldCell label="Factor" width={80}>
-            <input
-              className="s7-input"
-              type="number"
-              step="0.0001"
-              defaultValue={strOf(entry.factor)}
-              disabled={disabled}
-              style={{ width: 80, height: 32 }}
-              placeholder="0.0"
-              title="Factor: tonnes = sqm × factor"
-              onBlur={(e) => {
-                const newFactor = numOrNull(e.target.value);
-                const rederived = computeDerivedDimensions({
-                  sqm: entry.sqm ?? null,
-                  kind: "FACTOR",
-                  factor: newFactor
-                });
-                onChange({ factor: newFactor, tonnes: rederived.tonnes });
-              }}
-            />
-          </FieldCell>
-        ) : (
-          <FieldCell label={matKind === "EACH" ? "kg/item" : "Density (t/m³)"} width={80}>
-            <input
-              className="s7-input"
-              type="number"
-              step="0.001"
-              defaultValue={strOf(entry.density)}
-              disabled={disabled || !!entry.material}
-              style={{
-                width: 80,
-                height: 32,
-                ...(entry.material
-                  ? { backgroundColor: "var(--surface-muted, #f3f4f6)", color: "var(--text-muted, #6b7280)" }
-                  : {})
-              }}
-              title={
-                entry.material
-                  ? `Auto-set from ${entry.material}. Clear material to edit manually.`
-                  : matKind === "EACH"
-                    ? "Per-item weight in kg (tonnes = qty × kg/1000)"
-                    : "Manual density (tonnes per m³)"
-              }
-              onBlur={(e) => onChange({ density: numOrNull(e.target.value) })}
-            />
-          </FieldCell>
-        )}
-        {matKind === "EACH" ? (
-          <FieldCell label="Quantity" width={80}>
-            <input
-              className="s7-input"
-              type="number"
-              step="1"
-              defaultValue={strOf(entry.quantity)}
-              disabled={disabled}
-              style={{ width: 80, height: 32 }}
-              placeholder="0"
-              title="Number of items (tonnes = qty × kg/item ÷ 1000)"
-              onBlur={(e) => {
-                const newQty = numOrNull(e.target.value);
-                const rederived = computeDerivedDimensions({
-                  density: entry.density ?? null,
-                  kind: "EACH",
-                  quantity: newQty
-                });
-                onChange({ quantity: newQty, tonnes: rederived.tonnes });
-              }}
-            />
-          </FieldCell>
-        ) : null}
-        <FieldCell label="Sqm" width={80}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.01"
-            defaultValue={strOf(entry.sqm ?? derived.sqm)}
-            placeholder={derived.sqm == null ? "" : String(derived.sqm)}
-            disabled={disabled}
-            style={{ width: 80, height: 32 }}
-            title="Auto = length × height. Type to override."
-            onBlur={(e) => onChange({ sqm: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
-        <FieldCell label="M³" width={80}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.01"
-            defaultValue={strOf(entry.m3 ?? derived.m3)}
-            placeholder={derived.m3 == null ? "" : String(derived.m3)}
-            disabled={disabled}
-            style={{ width: 80, height: 32 }}
-            title="Auto = sqm × depth. Type to override."
-            onBlur={(e) => onChange({ m3: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
-        <FieldCell label="Tonnes" width={80}>
-          <input
-            className="s7-input"
-            type="number"
-            step="0.01"
-            defaultValue={strOf(entry.tonnes ?? derived.tonnes)}
-            placeholder={derived.tonnes == null ? "" : String(derived.tonnes)}
-            disabled={disabled}
-            style={{ width: 80, height: 32 }}
-            title="Auto = m³ × density or sqm × density / 1000. Type to override."
-            onBlur={(e) => onChange({ tonnes: numOrNull(e.target.value) })}
-          />
-        </FieldCell>
-        {entryWasteAutofilled ? (
-          <FieldCell label="Waste" width={160}>
-            <div
-              style={{
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                fontSize: 11,
-                color: "var(--text-muted)"
-              }}
-              title={`Auto from ${entry.material}: ${entry.wasteGroup} -> ${entry.wasteItem}`}
-            >
-              {entry.wasteGroup} {"·"} {entry.wasteItem}
-            </div>
-          </FieldCell>
-        ) : (
-          <>
-            <FieldCell label="Waste group" width={120}>
-              <TooltipSelect
-                value={entry.wasteGroup ?? null}
-                options={wasteGroupOptions}
-                onChange={(v) => onChange({ wasteGroup: v, wasteItem: null })}
-                disabled={disabled}
-                ariaLabel={`Material ${materialNo} waste group`}
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            <FieldCell label="Waste item" width={140}>
-              <TooltipSelect
-                value={entry.wasteItem ?? null}
-                options={wasteItemOptions}
-                onChange={(v) => onChange({ wasteItem: v })}
-                disabled={disabled || !entry.wasteGroup}
-                ariaLabel={`Material ${materialNo} waste item`}
-                style={{ height: 32 }}
-              />
-            </FieldCell>
-            {entry.material ? (
-              <div
-                role="note"
-                style={{
-                  fontSize: 11,
-                  color: "var(--status-warning, #B45309)",
-                  alignSelf: "flex-end",
-                  paddingBottom: 8,
-                  maxWidth: 180
-                }}
-              >
-                No default waste mapping for {entry.material} — set one in Rates &amp; Lists {"→"} Densities.
-              </div>
-            ) : null}
-          </>
-        )}
-        <FieldCell label="Waste?" width={54}>
-          <input
-            type="checkbox"
-            checked={entry.wasteIncluded === true}
-            disabled={disabled}
-            onChange={(e) => onChange({ wasteIncluded: e.target.checked })}
-            aria-label={`Material ${materialNo} include in waste summary`}
-            style={{ width: 20, height: 20, marginBottom: 6 }}
-          />
-        </FieldCell>
-        {/* SCOPE_WBS_INPUTS_V2 — gated on the same condition as row 1's tick. */}
-        {showCutting ? (
-          <FieldCell label="Cutting?" width={62}>
-            <input
-              type="checkbox"
-              checked={entry.cuttingIncluded === true}
-              disabled={disabled}
-              onChange={(e) => onChange({ cuttingIncluded: e.target.checked })}
-              aria-label={`Material ${materialNo} include in cutting summary`}
-              style={{ width: 20, height: 20, marginBottom: 6 }}
-            />
-          </FieldCell>
-        ) : null}
-        {!disabled ? (
-          <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 4 }}>
-            <button
-              type="button"
-              onClick={onRemove}
-              aria-label={`Remove Material ${materialNo}`}
-              title={`Remove Material ${materialNo}`}
-              className="s7-btn s7-btn--ghost s7-btn--sm"
-              style={{
-                color: "var(--status-danger, #EF4444)",
-                fontSize: 14,
-                padding: "4px 8px",
-                height: 32
-              }}
-            >
-              x
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ItemMaterialTotals({
-  row1Tonnes,
-  row1M3,
-  extras,
-  onAdd,
-  disabled
-}: {
-  row1Tonnes: number | null;
-  row1M3: number | null;
-  extras: ScopeMaterialEntry[];
-  onAdd: () => void;
-  disabled: boolean;
-}) {
-  const sum = (a: number | null, b: number | null | undefined): number | null => {
-    const av = a == null ? 0 : Number(a);
-    const bv = b == null ? 0 : Number(b);
-    if (a == null && (b == null || !Number.isFinite(bv))) return null;
-    return Math.round((av + (Number.isFinite(bv) ? bv : 0)) * 100) / 100;
-  };
-  let totalTonnes: number | null = row1Tonnes;
-  let totalM3: number | null = row1M3;
-  for (const m of extras) {
-    totalTonnes = sum(totalTonnes, m.tonnes ?? null);
-    totalM3 = sum(totalM3, m.m3 ?? null);
-  }
-  const showTotals = extras.length > 0;
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        flexWrap: "wrap",
-        marginTop: 4
-      }}
-    >
-      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        {showTotals ? (
-          <>
-            Item total:{" "}
-            <strong style={{ color: "var(--text)" }}>
-              {totalTonnes == null ? "—" : `${totalTonnes} t`}
-            </strong>
-            {" · "}
-            <strong style={{ color: "var(--text)" }}>
-              {totalM3 == null ? "—" : `${totalM3} m3`}
-            </strong>
-          </>
-        ) : (
-          <span>&nbsp;</span>
-        )}
-      </div>
-      {!disabled ? (
-        <button
-          type="button"
-          className="s7-btn s7-btn--ghost s7-btn--sm"
-          onClick={onAdd}
-          title="Add another material row under this item"
-          style={{ whiteSpace: "nowrap", fontSize: 11, padding: "4px 8px" }}
-        >
-          + Material
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-// ── FieldCell + Divider ─────────────────────────────────────────────────
-
-function FieldCell({
-  label,
-  width,
-  children
-}: {
-  label: string;
-  width?: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, width }}>
-      <span className="s7-type-label" style={labelStyle}>
-        {label}
-      </span>
-      {children}
-    </div>
-  );
-}
 
 function TaskHoursHint({ men, days }: { men: string | null; days: string | null }) {
   const menNum = men === null || men === "" ? null : Number(men);

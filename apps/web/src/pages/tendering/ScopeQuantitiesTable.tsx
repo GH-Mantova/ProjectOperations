@@ -250,11 +250,102 @@ const tdBorderStyle: CSSProperties = {
   borderBottom: "1px solid var(--border-default, #e5e7eb)"
 };
 
+// ── SCOPE_WBS_GROUPRULES_V1 — group chrome ───────────────────────────────
+// Seventeen columns with no boundary read as one wall. The mock-up boxes
+// each group title, rules the first column of every group, and colours the
+// two group titles from the brand tokens.
+//
+// The rule reuses the table's existing border declaration rather than
+// re-stating a colour, so no new colour literal enters this file.
+const GROUP_RULE_BORDER = String(tdBorderStyle.borderBottom);
+
+/** Left rule marking the first column of a column group. */
+const groupRuleStyle: CSSProperties = {
+  borderLeft: GROUP_RULE_BORDER
+};
+
+/** Boxed group-title header cell (Manpower / Plant). */
+const groupTitleStyle: CSSProperties = {
+  ...thStyle,
+  textAlign: "center",
+  border: GROUP_RULE_BORDER
+};
+
+/** Manpower group title — brand primary, per the mock-up. */
+const manpowerGroupTitleStyle: CSSProperties = {
+  ...groupTitleStyle,
+  color: "var(--brand-primary)"
+};
+
+/** Plant group title — brand accent (dark), per the mock-up. */
+const plantGroupTitleStyle: CSSProperties = {
+  ...groupTitleStyle,
+  color: "var(--brand-accent-dark)"
+};
+
+// The lower header row is pinned to the top of the scroll container. It
+// needs an opaque surface or the body rows show through it; --surface-card
+// is the card the table sits on.
+const stickyHeaderStyle: CSSProperties = {
+  position: "sticky",
+  top: 0,
+  zIndex: 2,
+  background: "var(--surface-card)"
+};
+
+/** Pinned fit-width column header. */
+const stickyThStyle: CSSProperties = { ...thStyle, ...stickyHeaderStyle };
+
+/** Pinned description column header (expands, no fit width). */
+const stickyThDescStyle: CSSProperties = { ...thDescStyle, ...stickyHeaderStyle };
+
 // ── Exported pure helpers (tested by wbs-table-shell.test.tsx) ───────────
 
 /** True when an item with rowCount rows should show the per-row remove button. */
 export function shouldShowPerRowRemove(rowCount: number): boolean {
   return rowCount > 1;
+}
+
+// ── SCOPE_WBS_GROUPRULES_V1 — index-aware row removal ───────────────────
+// The old handler decremented the item's row count, so the LAST row
+// disappeared whichever `x` was pressed. These helpers remove the row that
+// was actually clicked. Row state is local (keyed `${itemId}:${rowIdx}`),
+// so removing row i means every row after i shifts down one place — a
+// splice of the key space, not a truncation. Nothing here touches the
+// server; persistence is a separate cluster.
+
+/** True when rowIdx identifies a removable row of an item with rowCount rows. */
+export function canRemoveRowAt(rowCount: number, rowIdx: number): boolean {
+  if (!Number.isInteger(rowIdx)) return false;
+  return rowCount > 1 && rowIdx >= 0 && rowIdx < rowCount;
+}
+
+/** Row count after removing rowIdx. Unchanged when the removal is not legal. */
+export function nextRowCountAfterRemove(rowCount: number, rowIdx: number): number {
+  return canRemoveRowAt(rowCount, rowIdx) ? rowCount - 1 : rowCount;
+}
+
+/**
+ * Re-key a per-row local-state map after row `removedIdx` of `itemId` goes.
+ * Rows above the removed index move down one slot and the now-vacant top
+ * slot is dropped. Other items' keys are carried through untouched.
+ * Returns a new Map; the argument is not mutated.
+ */
+export function spliceRowState<T>(
+  rows: Map<string, T>,
+  itemId: string,
+  removedIdx: number,
+  rowCount: number
+): Map<string, T> {
+  const next = new Map(rows);
+  if (!canRemoveRowAt(rowCount, removedIdx)) return next;
+  for (let i = removedIdx; i < rowCount - 1; i += 1) {
+    const above = rows.get(`${itemId}:${i + 1}`);
+    if (above === undefined) next.delete(`${itemId}:${i}`);
+    else next.set(`${itemId}:${i}`, above);
+  }
+  next.delete(`${itemId}:${rowCount - 1}`);
+  return next;
 }
 
 /** True when a markup value differs from the card default (override active). */
@@ -526,14 +617,28 @@ export function ScopeQuantitiesTable({
     });
   }, []);
 
-  const removeRowFromItem = useCallback((itemId: string) => {
-    setItemRowCounts((prev) => {
-      const next = new Map(prev);
-      const current = prev.get(itemId) ?? 1;
-      if (current > 1) next.set(itemId, current - 1);
-      return next;
-    });
-  }, []);
+  // SCOPE_WBS_GROUPRULES_V1 — remove the row that was clicked, not the last
+  // one. The row count shrinks by one and both per-row local-state maps are
+  // spliced so rows above the removed index keep their values as they shift
+  // down. No patchItem call: row state above index 0 is local-only until the
+  // persistence cluster lands. (Row 0's Qty/Days/Shift still read from
+  // item.men/days/shift, so removing row 0 shifts the local maps but leaves
+  // those three server-backed fields where they are — unchanged behaviour,
+  // and out of scope for this slice.)
+  const removeRowFromItem = useCallback(
+    (itemId: string, rowIdx: number) => {
+      const current = itemRowCounts.get(itemId) ?? 1;
+      if (!canRemoveRowAt(current, rowIdx)) return;
+      setItemRowCounts((prev) => {
+        const next = new Map(prev);
+        next.set(itemId, nextRowCountAfterRemove(prev.get(itemId) ?? current, rowIdx));
+        return next;
+      });
+      setItemManpowerRows((prev) => spliceRowState(prev, itemId, rowIdx, current));
+      setItemPlantRows((prev) => spliceRowState(prev, itemId, rowIdx, current));
+    },
+    [itemRowCounts]
+  );
 
   const setItemMarkup = useCallback((itemId: string, value: number | null) => {
     setItemMarkupOverrides((prev) => {
@@ -908,11 +1013,13 @@ export function ScopeQuantitiesTable({
            SCOPE_WBS_PLANT_V1 — Plant group now occupies 5 discrete
            columns (Type/Qty/Days/Day rate/Total) instead of the single
            spanning cell from slices 2-3. Measurement stays in its own
-           spanning cell until slice 5 moves it. */
+           spanning cell until slice 5 moves it.
+           SCOPE_WBS_GROUPRULES_V1 — the leading blank remove column is gone
+           (17 columns -> 16); the row-remove `x` now rides in the Manpower
+           Total cell, where its slot is always reserved so the money column
+           keeps one right edge. */
         <table style={subtblStyle} aria-label="WBS items">
           <colgroup>
-            {/* Remove slot — always reserved so money column keeps one right edge */}
-            <col />
             {/* WBS code */}
             <col />
             {/* Description — expands */}
@@ -938,51 +1045,54 @@ export function ScopeQuantitiesTable({
             <col />
           </colgroup>
           <thead>
+            {/* SCOPE_WBS_GROUPRULES_V1 — group band. Only the group titles
+                live here now: WBS / Description / Markup / Item total moved
+                down onto the label band, level with Type / Qty / Days, and
+                their five blank companions (including the remove slot) are
+                gone. Measurement is untouched — it keeps its position here
+                until pr-cardui-s5 splits it. */}
             <tr>
-              {/* Remove slot header — empty, always reserved */}
-              <th style={thStyle} aria-label="Remove" />
-              <th style={thStyle}>WBS</th>
-              <th style={thDescStyle}>Description</th>
+              {/* WBS + Description — labels now sit on the lower band */}
+              <th style={thStyle} colSpan={2} />
               {/* SCOPE_WBS_MANPOWER_V1 — Manpower group header spans 6 columns */}
-              <th
-                colSpan={6}
-                style={{ ...thStyle, textAlign: "center", borderBottom: "1px solid var(--border-default, #e5e7eb)" }}
-              >
+              <th colSpan={6} style={manpowerGroupTitleStyle}>
                 Manpower
               </th>
               {/* SCOPE_WBS_PLANT_V1 — Plant group header spans 5 columns */}
-              <th
-                colSpan={5}
-                style={{ ...thStyle, textAlign: "center", borderBottom: "1px solid var(--border-default, #e5e7eb)" }}
-              >
+              <th colSpan={5} style={plantGroupTitleStyle}>
                 Plant
               </th>
               {/* Measurement header — single spanning cell; slice 5 will split */}
               <th style={{ ...thStyle, textAlign: "center" }}>Measurement</th>
-              <th style={thStyle}>Markup</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Item total</th>
+              {/* Markup + Item total — labels now sit on the lower band. The
+                  group rule carries through so the Markup boundary is one
+                  unbroken line down the table. */}
+              <th style={{ ...thStyle, ...groupRuleStyle }} colSpan={2} />
             </tr>
             {/* SCOPE_WBS_MANPOWER_V1 — sub-header row for individual manpower columns */}
             {/* SCOPE_WBS_PLANT_V1 — sub-header row extended with plant columns */}
+            {/* SCOPE_WBS_GROUPRULES_V1 — this is the label band: pinned to the
+                top of the scroll container, and carrying the group rule at the
+                first column of each group (Manpower Type, Plant Type, Markup). */}
             <tr>
-              <th style={thStyle} aria-label="Remove" />
-              <th style={thStyle} />
-              <th style={thDescStyle} />
-              <th style={thStyle}>Type</th>
-              <th style={thStyle}>Qty</th>
-              <th style={thStyle}>Days</th>
-              <th style={thStyle}>Shift</th>
-              <th style={thStyle}>Rate</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
+              <th style={stickyThStyle}>WBS</th>
+              <th style={stickyThDescStyle}>Description</th>
+              <th style={{ ...stickyThStyle, ...groupRuleStyle }}>Type</th>
+              <th style={stickyThStyle}>Qty</th>
+              <th style={stickyThStyle}>Days</th>
+              <th style={stickyThStyle}>Shift</th>
+              <th style={stickyThStyle}>Rate</th>
+              <th style={{ ...stickyThStyle, textAlign: "right" }}>Total</th>
               {/* SCOPE_WBS_PLANT_V1 — plant sub-headers */}
-              <th style={thStyle}>Type</th>
-              <th style={thStyle}>Qty</th>
-              <th style={thStyle}>Days</th>
-              <th style={thStyle}>Rate</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
-              <th style={thStyle} />
-              <th style={thStyle} />
-              <th style={thStyle} />
+              <th style={{ ...stickyThStyle, ...groupRuleStyle }}>Type</th>
+              <th style={stickyThStyle}>Qty</th>
+              <th style={stickyThStyle}>Days</th>
+              <th style={stickyThStyle}>Rate</th>
+              <th style={{ ...stickyThStyle, textAlign: "right" }}>Total</th>
+              {/* Measurement — label stays on the group band above */}
+              <th style={stickyThStyle} />
+              <th style={{ ...stickyThStyle, ...groupRuleStyle }}>Markup</th>
+              <th style={{ ...stickyThStyle, textAlign: "right" }}>Item total</th>
             </tr>
           </thead>
           {wbsSortedVisible.map((item) => {
@@ -1009,34 +1119,8 @@ export function ScopeQuantitiesTable({
 
                 return (
                   <tr key={rowKey} style={rowStyle}>
-                    {/* ── Remove slot (always reserved) ─────────────────── */}
-                    <td style={{ ...fitCellStyle, ...tdBorderStyle, verticalAlign: "middle" }}>
-                      {showPerRowRemove ? (
-                        <button
-                          type="button"
-                          aria-label={`Remove row ${rowIdx + 1} from ${item.wbsCode}`}
-                          title="Remove this row"
-                          onClick={() => removeRowFromItem(item.id)}
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 999,
-                            border: "1px solid var(--border-default, #e5e7eb)",
-                            background: "transparent",
-                            color: "var(--status-danger, #EF4444)",
-                            cursor: "pointer",
-                            fontSize: 11,
-                            lineHeight: 1,
-                            padding: 0
-                          }}
-                        >
-                          x
-                        </button>
-                      ) : (
-                        /* Always reserve the slot so money column keeps one right edge */
-                        <span style={{ display: "inline-block", width: 18 }} />
-                      )}
-                    </td>
+                    {/* SCOPE_WBS_GROUPRULES_V1 — the leading remove column is
+                        gone; the `x` rides in the Manpower Total cell below. */}
 
                     {/* ── WBS cell — rowspan across all item rows ──────── */}
                     {isFirstRow ? (
@@ -1167,6 +1251,8 @@ export function ScopeQuantitiesTable({
                       labourTypeOptions={labourTypeOptions}
                       labourRateById={labourRateById}
                       isAi={isAi}
+                      showRemove={showPerRowRemove}
+                      onRemoveRow={() => removeRowFromItem(item.id, rowIdx)}
                       onLabourTypeChange={(typeId) => setRowManpower(item.id, rowIdx, { labourTypeId: typeId })}
                       onQtyBlur={(v) => {
                         setRowManpower(item.id, rowIdx, { qty: v });
@@ -1228,8 +1314,10 @@ export function ScopeQuantitiesTable({
                     </td>
 
                     {/* ── Markup cell — rowspan ─────────────────────────── */}
+                    {/* SCOPE_WBS_GROUPRULES_V1 — Markup is the first column of
+                        its group, so it carries the left rule. */}
                     {isFirstRow ? (
-                      <td rowSpan={rowCount} style={{ ...fitCellStyle, ...tdBorderStyle }}>
+                      <td rowSpan={rowCount} style={{ ...fitCellStyle, ...tdBorderStyle, ...groupRuleStyle }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span className="s7-type-label" style={labelStyle}>
                             Markup %
@@ -1404,6 +1492,10 @@ type ManpowerRowCellsProps = {
   labourTypeOptions: TooltipSelectOption<string>[];
   labourRateById: Map<string, { day: number; night: number; weekend: number }>;
   isAi: boolean;
+  /** SCOPE_WBS_GROUPRULES_V1 — render the row-remove `x` in the Total cell. */
+  showRemove: boolean;
+  /** SCOPE_WBS_GROUPRULES_V1 — remove THIS row (index-aware). */
+  onRemoveRow: () => void;
   onLabourTypeChange: (typeId: string | null) => void;
   onQtyBlur: (v: string) => void;
   onDaysBlur: (v: string) => void;
@@ -1418,6 +1510,8 @@ function ManpowerRowCells({
   labourTypeOptions,
   labourRateById,
   isAi,
+  showRemove,
+  onRemoveRow,
   onLabourTypeChange,
   onQtyBlur,
   onDaysBlur,
@@ -1470,8 +1564,9 @@ function ManpowerRowCells({
 
   return (
     <>
-      {/* Type */}
-      <td style={cellSt} data-manpower-col="type">
+      {/* Type — SCOPE_WBS_GROUPRULES_V1: first column of the Manpower group,
+          so it carries the left rule that draws the group boundary. */}
+      <td style={{ ...cellSt, ...groupRuleStyle }} data-manpower-col="type">
         <TooltipSelect
           value={rowState.labourTypeId ?? ""}
           options={labourTypeOptions}
@@ -1567,14 +1662,46 @@ function ManpowerRowCells({
         </OverrideField>
       </td>
 
-      {/* Total — read-only, right-aligned, tabular-nums; em dash when no manpower */}
+      {/* Total — read-only, right-aligned, tabular-nums; em dash when no manpower.
+          SCOPE_WBS_GROUPRULES_V1 — the row-remove `x` is appended here rather
+          than getting a column of its own. The slot is always reserved (an
+          empty span when the item has a single row) so the money column keeps
+          one right edge whichever row you are looking at. */}
       <td
         style={{ ...cellSt, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
         data-manpower-col="total"
         aria-label={`Manpower total for row ${rowIdx + 1}`}
         title="Qty x Days x Day rate (display only; server is authoritative)"
       >
-        {fmtManpowerTotal(rowTotal)}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span>{fmtManpowerTotal(rowTotal)}</span>
+          {showRemove ? (
+            <button
+              type="button"
+              aria-label={`Remove row ${rowIdx + 1} from ${item.wbsCode}`}
+              title="Remove this row"
+              onClick={onRemoveRow}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 999,
+                border: "1px solid var(--border-default, #e5e7eb)",
+                background: "transparent",
+                color: "var(--status-danger, #EF4444)",
+                cursor: "pointer",
+                fontSize: 11,
+                lineHeight: 1,
+                padding: 0,
+                flex: "0 0 auto"
+              }}
+            >
+              x
+            </button>
+          ) : (
+            /* Always reserve the slot so the money column keeps one right edge */
+            <span style={{ display: "inline-block", width: 18, flex: "0 0 auto" }} />
+          )}
+        </span>
       </td>
     </>
   );
@@ -1660,8 +1787,10 @@ function PlantRowCells({
 
   return (
     <>
-      {/* Type — catalogue select or custom text input */}
-      <td style={cellSt} data-plant-col="type">
+      {/* Type — catalogue select or custom text input.
+          SCOPE_WBS_GROUPRULES_V1: first column of the Plant group, so it
+          carries the left rule that draws the group boundary. */}
+      <td style={{ ...cellSt, ...groupRuleStyle }} data-plant-col="type">
         {isCustom ? (
           /* Custom machine: free-text input + revert control */
           <OverrideField

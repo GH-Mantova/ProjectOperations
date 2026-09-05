@@ -12,6 +12,7 @@ import { useScopeCards, type ScopeCard } from "./useScopeCards";
 import { useTenderEstimate } from "./useTenderEstimate";
 import {
   ScopeQuantitiesTable,
+  resolveCardMarkup,
   type Discipline as TableDiscipline,
   type ScopeItem as TableItem
 } from "../ScopeQuantitiesTable";
@@ -398,6 +399,12 @@ export function ScopeCardsTab({
               cardId={activeCard.id}
               discipline={activeCard.discipline as TableDiscipline}
               items={cardItems}
+              /* SCOPE_WBS_INPUTS_V2 — cardMarkup was never passed, so every WBS
+                 row read the prop's old `= 0` default and claimed to inherit
+                 0%. Both halves of the chain were already here: the card's own
+                 override, then the tender markup — the same order CardMarkupOverride
+                 states in its "Inherits tender markup (N%)" tooltip below. */
+              cardMarkup={resolveCardMarkup(activeCard.markupOverride, tenderMarkup)}
               onItemsChanged={reloadEverything}
             />
           )}

@@ -23,6 +23,12 @@ backfill: false
 rollback_strategy: "This is a destructive column drop and is deliberately irreversible for the dropped column *values*: an earlier rules-storage slice already backfilled every legacy row (sourceFieldKey, targetFieldKey, operator, comparisonValue, effect) into the richer `definition` Json tree and both evaluators have been reading `definition` exclusively since that slice's soak period began — `definition` is the single source of truth by the time this migration runs, so no runtime code depends on the dropped columns. If a rollback is genuinely needed, add the five columns back as nullable in a follow-up migration and leave them NULL; do NOT attempt to reverse-populate them from `definition` in this PR or any rollback migration — that would reintroduce a second writable rule store and recreate exactly the drift risk section 3.5 eliminated. Confirm with `prisma migrate status` that this is the next unapplied migration before merging (any merge is a separate, later, human-driven step — this PR itself stays unmerged)."
 ---
 
+<!-- watcher: do-not-arm -->
+<!-- Station 00 never-arm list (docs/pipeline/stations/00-supervisor.md): this prompt is
+     Marco-run. The marker above is what makes lint-prompt.mjs REJECT it [HUMAN_GATE_PRESENT]
+     before the premise is evaluated, the same way its list-mate
+     pr-siteid-notnull-backfill-HOLD.md is already gated. -->
+
 # Contract slice — drop legacy FormRule columns after soak
 
 `model FormRule` in `apps/api/prisma/schema.prisma` still carries its original primitive columns

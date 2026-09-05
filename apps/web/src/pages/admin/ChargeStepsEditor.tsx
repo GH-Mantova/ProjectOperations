@@ -10,6 +10,12 @@
  *     (`@project-ops/config/charge-step-semantics`), so it cannot show a price
  *     the server would not produce. A step that cannot be worked out shows the
  *     reason in place of a running total — never a plausible-looking figure.
+ *   - CHARGE_STEP_CARD_V2: the list closes with a LINE TOTAL row, and every
+ *     figure on the card is presented the way the rows table presents a cell —
+ *     two decimal places, the operand column's unit while the total is still a
+ *     measurement, and en-AU dollars from the step where a CURRENCY column
+ *     first enters the sum. Presentation only: what the card computes is
+ *     CHARGE_STEP_PARITY_V1's and is untouched here.
  *   - "Add step" form below the list
  *   - Collapsed "Show as formula" disclosure (read-only)
  *   - Impact line: open tender count + snapshot note
@@ -49,11 +55,42 @@ export const ARITHMETIC_OPS: StepOp[] = ["start", "multiply", "divide", "add", "
 export const CONDITIONAL_OPS: StepOp[] = ["multiply", "divide", "add", "subtract", "floor", "cap"];
 export const CONDITION_CMPS: ConditionCmp[] = ["is", "is not", ">", "<", ">=", "<="];
 
+/**
+ * CHARGE_STEP_CARD_V2 — how an op and a comparator are SPOKEN. Label only: the
+ * stored `op` and `cmp` values are the keys above and are what the `<option>`
+ * value attributes carry, so nothing about a saved step changes.
+ */
+export const OP_LABELS: Record<StepOp, string> = {
+  start: "Start with",
+  multiply: "Multiply by",
+  divide: "Divide by",
+  add: "Add",
+  subtract: "Subtract",
+  round: "Round",
+  floor: "Never less than",
+  cap: "Never more than"
+};
+
+export const CMP_LABELS: Record<ConditionCmp, string> = {
+  is: "is",
+  "is not": "is not",
+  ">": "is more than",
+  "<": "is less than",
+  ">=": "is at least",
+  "<=": "is at most"
+};
+
 export type RateColumnMeta = {
   id: string;
   name: string;
   dataType: string;
   role: string;
+  /**
+   * CHARGE_STEP_CARD_V2 — unit of measure ("mm", "m2"), when the column has
+   * one. The card needs it to say what a running total is measured in. Null
+   * as well as absent, because that is how `RateColumn` carries "no unit".
+   */
+  unit?: string | null;
 };
 
 /** Numeric field options for arithmetic operands (excludes TEXT/LIST_REF columns) */
@@ -65,6 +102,130 @@ export function numericFieldOptions(columns: RateColumnMeta[]): string[] {
 export function allFieldOptions(columns: RateColumnMeta[]): string[] {
   return columns.map((c) => c.name);
 }
+
+// ── CHARGE_STEP_CARD_V2: what a running total IS ──────────────────────────
+
+/**
+ * How one figure on the card should be presented.
+ *
+ * The rule, in one sentence: a running total is only money once a price has
+ * entered it — before that it is still a measurement, and showing it as
+ * dollars misleads.
+ */
+export type TotalPresentation = { money: boolean; unit?: string };
+
+/** A plain, unitless measurement — the presentation before any step runs. */
+export const MEASUREMENT: TotalPresentation = { money: false };
+
+/**
+ * Presentation for the running total after each step, in step order.
+ *
+ * `money` turns on at the step where a CURRENCY column first enters the sum
+ * and stays on. `unit` is the unit the figure is still measured in: `start`
+ * takes it from its operand column, `round` / `floor` / `cap` keep it (they do
+ * not change what the total measures), and any operand that changes the
+ * dimension drops it — a depth times a rate is no longer a depth.
+ *
+ * The trail is read for one thing only: `skipped`. A step that did not run put
+ * nothing into the sum, so a skipped multiply by a price does not make the
+ * total money. NO ARITHMETIC HAPPENS HERE — the figures are
+ * CHARGE_STEP_PARITY_V1's, and this decides only how they are written down.
+ */
+export function stepTotalPresentations(
+  steps: ChargeStep[],
+  columns: RateColumnMeta[],
+  trail: ChargeStepTrailEntry[]
+): TotalPresentation[] {
+  const byName = new Map(columns.map((c) => [c.name, c]));
+  const operandColumn = (field: string | number): RateColumnMeta | undefined =>
+    typeof field === "string" ? byName.get(field) : undefined;
+
+  let money = false;
+  let unit: string | undefined;
+  const out: TotalPresentation[] = [];
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+
+    if (trail[i]?.skipped) {
+      out.push({ money, unit });
+      continue;
+    }
+
+    switch (step.op) {
+      case "start": {
+        // `start` seeds the total, so it also resets what the total IS.
+        const col = operandColumn(step.field);
+        money = col?.dataType === "CURRENCY";
+        unit = money ? undefined : (col?.unit ?? undefined);
+        break;
+      }
+      case "add":
+      case "subtract": {
+        const col = operandColumn(step.field);
+        if (col?.dataType === "CURRENCY") {
+          money = true;
+          unit = undefined;
+        } else if (col && (col.unit ?? undefined) !== unit) {
+          // Adding a different measure: the sum is in neither unit.
+          unit = undefined;
+        }
+        break;
+      }
+      case "multiply":
+      case "divide": {
+        const col = operandColumn(step.field);
+        if (col?.dataType === "CURRENCY") {
+          money = true;
+          unit = undefined;
+        } else if (col) {
+          // A product or quotient of two quantities is measured in neither.
+          unit = undefined;
+        }
+        // A numeric literal is dimensionless and leaves the unit alone.
+        break;
+      }
+      case "round":
+      case "floor":
+      case "cap":
+        break;
+    }
+
+    out.push({ money, unit });
+  }
+
+  return out;
+}
+
+/**
+ * en-AU dollars — the same formatter `renderCellDisplay` uses for a CURRENCY
+ * cell in `RatesListsAdminPage`, so the card and the rows table below it never
+ * disagree about what a dollar looks like.
+ */
+const MONEY_FORMAT = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" });
+
+/**
+ * Write one figure the way the card shows it: dollars once a price has entered
+ * the sum, otherwise a plain measurement to two decimal places carrying its
+ * unit. Whole numbers keep their whole-number form ("18 mm", not "18.00 mm").
+ */
+export function formatStepTotal(value: number, presentation: TotalPresentation): string {
+  if (presentation.money) return MONEY_FORMAT.format(value);
+  const figure = Number.isInteger(value) ? String(value) : value.toFixed(2);
+  return presentation.unit ? `${figure} ${presentation.unit}` : figure;
+}
+
+/** The label on the row that closes the step list. */
+export const LINE_TOTAL_LABEL = "LINE TOTAL";
+
+/** Shown in place of the line total when a step above could not be worked out. */
+export const LINE_TOTAL_UNKNOWN = "No total — a step above could not be worked out";
+
+/**
+ * The running total's name inside the formula view. The shipped card used a
+ * middle dot, which no spreadsheet accepts as an operand.
+ */
+export const FORMULA_TOTAL = "TOTAL";
 
 /** Build a plain-sentence description for one step */
 export function stepSentence(step: ChargeStep, index: number): string {
@@ -81,7 +242,7 @@ export function stepSentence(step: ChargeStep, index: number): string {
     case "subtract":
       return `${prefix} Subtract ${fieldLabel(step.field)}${conditionClause(step.when)}`;
     case "round":
-      return `${prefix} Round ${step.direction} to nearest ${step.interval}`;
+      return `${prefix} ${roundPhrase(step.direction, step.interval)}`;
     case "floor":
       return `${prefix} Floor at ${step.value}${conditionClause(step.when)}`;
     case "cap":
@@ -90,6 +251,21 @@ export function stepSentence(step: ChargeStep, index: number): string {
       const _exhaustive: never = step;
       return `${prefix} Unknown step (${String((_exhaustive as { op: string }).op)})`;
     }
+  }
+}
+
+/**
+ * CHARGE_STEP_CARD_V2 — directional round wording. "Round up to nearest 10"
+ * contradicts itself: rounding up does not go to the nearest anything.
+ */
+function roundPhrase(direction: "nearest" | "up" | "down", interval: number): string {
+  switch (direction) {
+    case "up":
+      return `Round up to the next ${interval}`;
+    case "down":
+      return `Round down to the last ${interval}`;
+    default:
+      return `Round to the nearest ${interval}`;
   }
 }
 
@@ -139,21 +315,26 @@ export function stepsToFormula(steps: ChargeStep[]): string {
             : `− ${fieldLabel(step.field)}`
         );
         break;
-      case "round":
-        parts.push(`[round ${step.direction} to ${step.interval}]`);
+      case "round": {
+        // Real spreadsheet functions: the disclosure exists so an estimator can
+        // read the rule as arithmetic, and `[round up to 10]` is not arithmetic.
+        const fn =
+          step.direction === "up" ? "ROUNDUP" : step.direction === "down" ? "ROUNDDOWN" : "ROUND";
+        parts.push(`${fn}(${FORMULA_TOTAL}, ${step.interval})`);
         break;
+      }
       case "floor":
         parts.push(
           step.when
-            ? `max(·, IF(${step.when.field} ${step.when.cmp} ${step.when.value}, ${step.value}, ·))`
-            : `max(·, ${step.value})`
+            ? `MAX(${FORMULA_TOTAL}, IF(${step.when.field} ${step.when.cmp} ${step.when.value}, ${step.value}, ${FORMULA_TOTAL}))`
+            : `MAX(${FORMULA_TOTAL}, ${step.value})`
         );
         break;
       case "cap":
         parts.push(
           step.when
-            ? `min(·, IF(${step.when.field} ${step.when.cmp} ${step.when.value}, ${step.value}, ·))`
-            : `min(·, ${step.value})`
+            ? `MIN(${FORMULA_TOTAL}, IF(${step.when.field} ${step.when.cmp} ${step.when.value}, ${step.value}, ${FORMULA_TOTAL}))`
+            : `MIN(${FORMULA_TOTAL}, ${step.value})`
         );
         break;
     }
@@ -301,6 +482,20 @@ export function ChargeStepsEditor({
     () => evaluateStepsClient(steps, scenarioValues),
     [steps, scenarioValues]
   );
+
+  // ── CHARGE_STEP_CARD_V2: presentation of those totals ─────────────────
+  // How each figure is written down. The figures themselves come from the
+  // trail above and are not recomputed here.
+
+  const presentations = useMemo(
+    () => stepTotalPresentations(steps, columns, trail),
+    [steps, columns, trail]
+  );
+
+  // The line total IS the last running total — read from the trail, never
+  // summed a second time.
+  const lineTotal = trail.length > 0 ? trail[trail.length - 1].runningTotal : null;
+  const lineTotalPresentation = presentations[presentations.length - 1] ?? MEASUREMENT;
 
   // ── Validation ────────────────────────────────────────────────────────
 
@@ -593,7 +788,7 @@ export function ChargeStepsEditor({
                     }}
                     title="Running total after this step"
                   >
-                    = {formatTotal(runningTotal)}
+                    = {formatStepTotal(runningTotal, presentations[i] ?? MEASUREMENT)}
                   </span>
                 ) : null}
 
@@ -612,6 +807,25 @@ export function ChargeStepsEditor({
           })}
         </ol>
       )}
+
+      {/* CHARGE_STEP_CARD_V2 — the number the card exists to produce. It is
+          the last entry of the trail above; when that entry has no number,
+          the row says so rather than printing a figure nobody can stand
+          behind. */}
+      {!loading && steps.length > 0 ? (
+        <div style={lineTotalRowStyle} data-testid="line-total">
+          <span style={lineTotalLabelStyle}>{LINE_TOTAL_LABEL}</span>
+          {lineTotal === null ? (
+            <span role="note" data-testid="line-total-value" style={lineTotalUnknownStyle}>
+              {LINE_TOTAL_UNKNOWN}
+            </span>
+          ) : (
+            <span data-testid="line-total-value" style={lineTotalValueStyle}>
+              {formatStepTotal(lineTotal, lineTotalPresentation)}
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {/* Add step form */}
       <AddStepForm
@@ -770,7 +984,7 @@ function AddStepForm({
             aria-label="Step operation"
           >
             {KNOWN_OPS.map((o) => (
-              <option key={o} value={o}>{o}</option>
+              <option key={o} value={o}>{OP_LABELS[o]}</option>
             ))}
           </select>
         </label>
@@ -914,7 +1128,9 @@ function AddStepForm({
               style={selectStyle}
               aria-label="Condition comparator"
             >
-              {CONDITION_CMPS.map((c) => <option key={c} value={c}>{c}</option>)}
+              {CONDITION_CMPS.map((c) => (
+                <option key={c} value={c}>{CMP_LABELS[c]}</option>
+              ))}
             </select>
           </label>
           <label style={fieldLabelStyle}>
@@ -984,10 +1200,39 @@ const selectStyle: CSSProperties = {
   minHeight: 32
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// CHARGE_STEP_CARD_V2 — the row that closes the step list. Colours come from
+// real tokens in apps/web/src/styles/tokens.css, so the row flips with the
+// theme instead of relying on a light-only fallback.
 
-function formatTotal(n: number): string {
-  // Plain measurement — no $ sign, to nearest 4dp
-  if (Number.isInteger(n)) return String(n);
-  return n.toFixed(4).replace(/\.?0+$/, "");
-}
+const lineTotalRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "8px 10px",
+  margin: "0 0 12px",
+  borderRadius: 6,
+  borderTop: "2px solid var(--border-default)",
+  background: "var(--surface-subtle)"
+};
+
+const lineTotalLabelStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  color: "var(--text-muted)"
+};
+
+const lineTotalValueStyle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  fontVariantNumeric: "tabular-nums",
+  textAlign: "right",
+  color: "var(--text-primary)"
+};
+
+const lineTotalUnknownStyle: CSSProperties = {
+  fontSize: 12,
+  textAlign: "right",
+  color: "var(--status-danger)"
+};

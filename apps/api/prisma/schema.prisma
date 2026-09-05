@@ -202,6 +202,7 @@ model User {
   tenderFilterPresets        TenderFilterPreset[]
   scopeWasteItemsCreated     ScopeWasteItem[]            @relation("ScopeWasteItemCreatedBy")
   scopeCardsCreated          ScopeCard[]                 @relation("ScopeCardCreatedBy")
+  scopeCostLinesCreated      ScopeOperationalCostLine[]  @relation("ScopeOperationalCostLineCreatedBy")
   subcontractorsCreated      SubcontractorSupplier[]     @relation("SubcontractorCreatedBy")
   subcontractorsArchived     SubcontractorSupplier[]     @relation("SubcontractorArchivedBy")
   subcontractorDocsUploaded  SubcontractorDocument[]     @relation("SubDocUploadedBy")
@@ -2566,18 +2567,21 @@ model EstimateLabourRate {
 }
 
 model EstimatePlantRate {
-  id                  String           @id @default(uuid())
-  item                String           @unique
-  category            String?
-  unit                String           @default("day")
-  rate                Decimal          @db.Decimal(10, 2)
-  fuelRate            Decimal          @default(0) @map("fuel_rate") @db.Decimal(10, 2)
-  isActive            Boolean          @default(true) @map("is_active")
-  sortOrder           Int              @default(0) @map("sort_order")
-  createdAt           DateTime         @default(now()) @map("created_at")
-  updatedAt           DateTime         @updatedAt @map("updated_at")
+  id                   String                     @id @default(uuid())
+  item                 String                     @unique
+  category             String?
+  unit                 String                     @default("day")
+  rate                 Decimal                    @db.Decimal(10, 2)
+  fuelRate             Decimal                    @default(0) @map("fuel_rate") @db.Decimal(10, 2)
+  isActive             Boolean                    @default(true) @map("is_active")
+  sortOrder            Int                        @default(0) @map("sort_order")
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  updatedAt            DateTime                   @updatedAt @map("updated_at")
   // R3 T-1 â€” waste transport lines reference a Transport Fees row here.
-  wasteTransportItems ScopeWasteItem[] @relation("ScopeWasteItemTransportRate")
+  wasteTransportItems  ScopeWasteItem[]           @relation("ScopeWasteItemTransportRate")
+  // SCOPE_OPERATIONAL_COSTS_V1 -- an operational-cost line picked from the
+  // rate library keeps a reference to the row it came from.
+  operationalCostLines ScopeOperationalCostLine[] @relation("ScopeOperationalCostLinePlantRate")
 
   @@map("estimate_plant_rates")
 }
@@ -3494,9 +3498,10 @@ model ScopeCard {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  scopeItems   ScopeOfWorksItem[]
-  wasteItems   ScopeWasteItem[]
-  cuttingItems CuttingSheetItem[]
+  scopeItems           ScopeOfWorksItem[]
+  wasteItems           ScopeWasteItem[]
+  cuttingItems         CuttingSheetItem[]
+  operationalCostLines ScopeOperationalCostLine[]
 
   @@unique([tenderId, discipline, cardNumber])
   @@index([tenderId, sortOrder])
@@ -3854,6 +3859,78 @@ model ScopeWasteItem {
   @@index([transportRateId])
   @@index([assetId])
   @@map("scope_waste_items")
+}
+
+// SCOPE_OPERATIONAL_COSTS_V1 -- other operational costs on a scope card.
+//
+// The card can price manpower, plant and waste and nothing else. Every cost
+// that is neither a crew nor a machine -- permits, traffic control,
+// scaffolding, site fees -- had no home, so it was buried in a WBS item's
+// description or left off the tender. This table is that home.
+//
+// Shape and conventions copied from ScopeWasteItem (the closest existing
+// card-child): cuid id, snake_case @map, Cascade from the card, Restrict on
+// createdBy, SetNull on the rate-library FK, sortOrder + createdAt ordering.
+//
+// Deliberately card-scoped only: there is no tender_id here. ScopeWasteItem
+// carries one because its routes are tender-wide and predate per-card
+// scoping; these rows are only ever addressed through their card, and the
+// tender is reachable in one hop via card.tenderId. A denormalised copy
+// would be a second source of truth for the same fact.
+//
+// NO STORED TOTAL, on purpose. The line total is
+//   qty x (rateOverride ?? rate)
+// and a stored copy would be a second source of truth that drifts the
+// moment either input is edited. Nothing in this slice computes or reads a
+// total -- no pricing path, card subtotal or discipline roll-up touches
+// this table yet.
+model ScopeOperationalCostLine {
+  id           String             @id @default(cuid())
+  // Parent card. Cascade matches ScopeWasteItem.cardId -- deleting a scope
+  // card removes its operational-cost lines.
+  cardId       String             @map("card_id")
+  card         ScopeCard          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  // Free text -- "Traffic control, 3 days".
+  description  String
+  // Precision matched to ScopeWasteItem.qty, the sibling quantity column.
+  qty          Decimal?           @db.Decimal(10, 3)
+  // Free-text unit, same as ScopeWasteItem.unit. Whether the unit is
+  // duration-bearing decides whether `days` may be anything other than 1 --
+  // see DURATION_BEARING_UNITS in dto/scope-costs.dto.ts, which enforces it
+  // at the API boundary rather than trusting the browser.
+  unit         String?
+  // Duration for a duration-bearing unit. Precision matched to the
+  // ScopeOfWorksItem plant-day columns (excavatorDays, bobcatDays, ...),
+  // which are all Decimal(8, 2). Pinned to 1 for a non-duration unit.
+  days         Decimal?           @db.Decimal(8, 2)
+  // The estimator's rate. Precision matched to ScopeWasteItem.ratePerTonne /
+  // ratePerLoad and to EstimatePlantRate.rate, all Decimal(10, 2).
+  rate         Decimal?           @db.Decimal(10, 2)
+  // Per-line override of `rate`, same null-means-inherit semantics as the
+  // dayRateOverride carried inside ScopeOfWorksItem.plantItems /
+  // labourItems: a locked rate shows as placeholder, typing overrides it,
+  // null means inherit. Same precision as `rate` -- an override must be able
+  // to hold anything the rate it replaces can hold. A stored 0 is a real
+  // value ("this line is free"), not an absence.
+  rateOverride Decimal?           @map("rate_override") @db.Decimal(10, 2)
+  // Rate-library provenance, the way ScopeWasteItem.transportRateId works:
+  // a line picked from the library keeps its identity so a later variance
+  // check can find the row it came from. SetNull -- removing a plant rate
+  // leaves the cost line intact with an empty picker.
+  plantRateId  String?            @map("plant_rate_id")
+  plantRate    EstimatePlantRate? @relation("ScopeOperationalCostLinePlantRate", fields: [plantRateId], references: [id], onDelete: SetNull)
+  sortOrder    Int                @default(0) @map("sort_order")
+  createdById  String             @map("created_by_id")
+  createdBy    User               @relation("ScopeOperationalCostLineCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  // Listing is always "the lines on this card, in order" -- one composite
+  // index covers it. ScopeWasteItem indexes cardId alone because it also
+  // lists tender-wide.
+  @@index([cardId, sortOrder])
+  @@index([plantRateId])
+  @@map("scope_operational_cost_lines")
 }
 
 // Client-facing scope table on a ClientQuote Ã¢â‚¬" editable independently of

@@ -1143,7 +1143,15 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
         tableId={table.id}
         tableName={table.name}
         isReference={table.isReference}
-        columns={table.columns.map((c) => ({ id: c.id, name: c.name, dataType: c.dataType, role: c.role }))}
+        columns={table.columns.map((c) => ({
+          id: c.id,
+          name: c.name,
+          dataType: c.dataType,
+          role: c.role,
+          // CHARGE_STEP_CARD_V2 — the card says what a running total is
+          // measured in, so it needs the column's unit.
+          unit: c.unit
+        }))}
         rows={table.rows.map((r) => ({ id: r.id, cells: r.cells as Record<string, unknown> }))}
         onSaved={() => void onChanged()}
       />

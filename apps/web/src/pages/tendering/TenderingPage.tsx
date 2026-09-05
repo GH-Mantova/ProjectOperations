@@ -109,6 +109,7 @@ import {
 import {
   PIPELINE_STAGES,
   type PipelineStage,
+  boardColumnView,
   groupByPipelineStage,
   fetchAllPages,
   daysUntil,
@@ -805,7 +806,10 @@ export function TenderingPage() {
             </p>
           ) : null}
           <div className="tender-kanban">
-            {/* S1 — 4 submission-stage columns only; outcome statuses are NOT rendered */}
+            {/* The submission funnel: Draft · Estimating · Submitted · Withdrawn,
+                in PIPELINE_STAGES order. Outcome statuses (Awarded / Contract /
+                Lost / Converted) are NOT columns — the board ends at Submitted.
+                Submitted and Withdrawn render header-only (see KanbanColumn). */}
             {PIPELINE_STAGES.map((stage) => {
               const items = byStage[stage];
               const stageTotal = items.reduce((sum, tender) => sum + Number(tender.estimatedValue ?? 0), 0);
@@ -822,6 +826,7 @@ export function TenderingPage() {
                   canManage={canManage}
                   registerHighlightRef={registerHighlightRef}
                   isHighlighted={isHighlighted}
+                  onViewRegister={() => setView("register")}
                 />
               );
             })}
@@ -2243,10 +2248,21 @@ type KanbanColumnProps = {
   canManage?: boolean;
   registerHighlightRef: (id: string) => (el: HTMLElement | null) => void;
   isHighlighted: (id: string) => boolean;
+  /** Switches the Tendering page to the Register view (count-only columns). */
+  onViewRegister?: () => void;
 };
 
-function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, canManage, registerHighlightRef, isHighlighted }: KanbanColumnProps) {
+/**
+ * One Pipeline board column.
+ *
+ * Every stage renders the same header (accent · label · count · total) and is
+ * a drop target — dropping onto Submitted or Withdrawn still routes exactly as
+ * it did before. What differs is the body: a count-only stage draws a muted
+ * pointer to the Register instead of cards. See boardColumnView.
+ */
+export function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, canManage, registerHighlightRef, isHighlighted, onViewRegister }: KanbanColumnProps) {
   const [dragOver, setDragOver] = useState(false);
+  const { countOnly, count, cards } = boardColumnView(stage, items);
   return (
     <div
       className={dragOver ? "tender-column tender-column--drag-over" : "tender-column"}
@@ -2265,11 +2281,41 @@ function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, 
       <header className="tender-column__header">
         <span className="tender-column__accent" style={{ background: STAGE_ACCENT[stage] }} aria-hidden />
         <span className="tender-column__title">{STAGE_LABEL[stage]}</span>
-        <span className="tender-column__count">{items.length}</span>
+        <span className="tender-column__count">{count}</span>
         <span className="tender-column__total">{total > 0 ? formatCurrency(total) : "—"}</span>
       </header>
       <div className="tender-column__body">
-        {loading ? (
+        {countOnly ? (
+          // Count-only stage (Submitted / Withdrawn). The header above is
+          // rendered exactly as for a card column — label, count, total — and
+          // the card list is deliberately replaced by one muted line pointing
+          // at the Register. An empty box reads as a bug; this reads as a
+          // decision. `count` and `cards` both come out of boardColumnView, so
+          // the number here can never disagree with what is drawn below it.
+          <p className="tender-column__empty">
+            {loading
+              ? "Loading…"
+              : `${count} ${count === 1 ? "tender" : "tenders"} · worked from the Register`}
+            {loading ? null : " · "}
+            {loading || !onViewRegister ? null : (
+              <button
+                type="button"
+                onClick={onViewRegister}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  font: "inherit",
+                  color: "var(--brand-primary)",
+                  cursor: "pointer",
+                  textDecoration: "underline"
+                }}
+              >
+                view on the Register
+              </button>
+            )}
+          </p>
+        ) : loading ? (
           Array.from({ length: 2 }).map((_, index) => (
             <div key={`col-skel-${stage}-${index}`} className="tender-card tender-card--skel">
               <Skeleton width="70%" height={14} />
@@ -2277,10 +2323,10 @@ function KanbanColumn({ stage, items, total, loading, onDrop, onOpen, onDelete, 
               <Skeleton width="40%" height={12} style={{ marginTop: 8 }} />
             </div>
           ))
-        ) : items.length === 0 ? (
+        ) : cards.length === 0 ? (
           <p className="tender-column__empty">No tenders in this stage.</p>
         ) : (
-          items.map((tender) => (
+          cards.map((tender) => (
             <TenderCard
               key={tender.id}
               tender={tender}

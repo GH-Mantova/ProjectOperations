@@ -345,3 +345,49 @@ back gives the queue a prompt whose premise is still true until `#1692` merges, 
 
 The disposable worktree `C:\po-wt\board0608` is torn down at the end of this run; the branch
 `docs/board-0608-collect` stays on the remote until the PR merges.
+
+### F6 — THREE of the 28 `needs-marco/` files ARE TRACKED, and `git check-ignore` cannot tell you which. The 05:08Z F1 headline is partly REFUTED. **S2 — ACTIONED.**
+
+Found by accident and worth more than the thing that found it. This run appended to
+`needs-marco/watcher-launcher-chain-unversioned-2026-09-04.md` (F3) believing, on the 05:08Z run's
+F1, that the whole folder is invisible to git. The next `git diff --numstat` in the dev tree
+returned `57	0` for that path — **and `git diff` only reports TRACKED files.**
+
+[MEASURED] at `origin/main 42aae6be`, with both controls:
+
+```
+git ls-tree -r --name-only origin/main -- docs/pr-prompts/needs-marco/   ->  3 files
+    agent-authored-rule-2-clearance-2026-09-04.md
+    pr-subbie-rate-cards-scope-pricing-HOLD.md
+    watcher-launcher-chain-unversioned-2026-09-04.md
+files on disk in that folder                                            ->  28
+git ls-files --error-unmatch  watcher-launcher-chain-...      -> exit 0   (POSITIVE)
+git ls-files --error-unmatch  label-removal-is-the-release... -> exit 1   (NEGATIVE)
+```
+
+🔴 **`.gitignore:82` does not un-track a file that was already tracked, and `git check-ignore -v`
+reports a TRACKED file as NOT ignored — exit 1, silent.** On
+`watcher-launcher-chain-unversioned-2026-09-04.md` it exits **1** while on
+`label-removal-is-the-release-path-...` the 05:08Z run measured it exit **0** naming
+`.gitignore:82`. Two files, one directory, opposite answers, and §9.2 already records that
+`check-ignore`'s silence is byte-identical to a true negative. **So `check-ignore` on one file in
+that folder does not generalise to the folder**, and the 05:08Z run — which used it correctly, on a
+FILE, with a positive control — nonetheless generalised from the one file it happened to touch.
+
+**What survives of the 05:08Z F1, and what does not.** The escalation still stands and is still
+Marco's: **25 of 28** open escalations are invisible to a clone, to CI and to the supervised cloud
+lane, which is the substance. What is refuted is the absolute — *"a clone has none of them, CI has
+none of them"* — and the refutation **lowers the cost of its own option (a)**: three files are
+already public repo history, so "escalation text becomes public" is a change of degree, not of
+kind. It also means the 3 tracked ones are the right place to put anything a clone must be able to
+read, which is exactly where F3's addendum went, by luck rather than by design.
+
+🔴 **And it made a tracked file dirty in the shared dev tree — an FF blocker for every other
+station**, the precise hazard the 05:08Z run's blind predecessor had reasoned about and been told
+was not real. **ACTIONED:** the modified file is committed into this PR, byte-identity of the copy
+asserted, so the dev tree returns to holding only the two arming artefacts named above and the
+escalation reaches every reader instead of one machine.
+
+⚠️ **The falsifying probe:** re-run the `ls-tree -r` count above. If it ever returns 28, the
+folder was tracked wholesale and F1's option (a) has landed; if it returns 0, the three were
+removed from the index and F1's headline is true again as written.

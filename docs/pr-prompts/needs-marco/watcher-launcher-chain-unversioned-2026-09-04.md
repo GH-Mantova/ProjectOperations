@@ -94,3 +94,60 @@ you next repaste.
 **Nothing in this file asks you to undo anything, and nothing here is urgent tonight.** The watcher
 is up (pid 20000, 13.4 h, heartbeat 0 min) and the chain is intact. What is missing is not
 reliability — it is reviewability.
+
+---
+
+## ADDENDUM 2026-09-06T06:2xZ — the closing sentence above is now REFUTED. It cost 13 minutes of watcher downtime.
+
+**Appended by Station 00 (scheduled, 06:08Z run) at `origin/main 42aae6be`, collecting the 05:40Z
+addendum breadcrumb `00-00-supervisor-2026-09-06-0540-addendum-the-watcher-died-and-nothing-
+restarted-it-for-eight-minutes.md`, finding F7.** That breadcrumb was UNTRACKED when written; it is
+committed to `docs/pr-prompts/archive/` in this run's board PR, so this addendum and its source can
+be read together.
+
+This file ends: *"What is missing is not reliability - it is reviewability."* On 2026-09-06 it was
+reliability, measured:
+
+| | [MEASURED] by the 05:40Z run |
+|---|---|
+| watcher exited | `05:27:31.250Z` - `Watcher exited with code 1 (raw node exit: -1)` |
+| the wrapper was NOT absent | `watcher-launcher-singlelane.ps1` pid 35328, alive since 2026-09-04T09:37:11Z |
+| documented 60 s auto-restart in `supervise-watcher.ps1` | **did not fire** - no node and no new log line at +98 s, +3 m 22 s, +7 m 06 s |
+| what DID recover it | `ensure-watcher.ps1` at `05:35:03Z` - **7 m 32 s later**, on a 10-minute tick |
+| and it did not hold | relaunched pid 14744 GONE by `05:37:07Z`; stale `.watcher.lock` naming pid 33244 written `05:38:12Z` with no such process |
+| sanctioned verdict | `restart-watcher-if-wedged.ps1` -> `DOWN - no watcher process, but 1 prompts are armed` |
+| recovery | `-Fix` at `05:40:07Z`; read back `05:44:43Z` `VERDICT: OK`, pid 17944 |
+| total downtime | about 13 minutes, of which 7.5 before anything reacted |
+
+Three consequences that belong to THIS escalation, not to a new one:
+
+1. **The documented safety net for the most common failure did not run, and `00-supervisor.md` §3a
+   tells every future run not to duplicate it.** A run that believes §3a and stands down waits for a
+   restart that is not coming. §3a cannot be corrected from evidence, because the file that would
+   explain the failure is the one not in the tree.
+2. **The real recovery mechanism is the unreadable one.** `ensure-watcher.ps1` is what brought the
+   watcher back and it is not in this repository - which is exactly what this file asks about. This
+   is the first measured COST of that gap rather than an argument from principle.
+3. **A watcher relaunched by `ensure-watcher.ps1` is invisible to `watcher-launch.log`** - no line
+   since `05:27:31Z` through two relaunches, a completed review job and an archived verdict at
+   `05:40:18Z`. `restart-watcher-if-wedged.ps1` reads its churn counter from that log, so it
+   reported `1 cycle in 20 min` while at least three starts had occurred. **Every liveness reading
+   this pipeline takes is taken through that log.**
+
+**RULE 1 options are unchanged from F7 and are Marco's** - (a) bring `ensure-watcher.ps1`,
+`watcher-launcher-singlelane.ps1` and `supervise-watcher.ps1` into `scripts/pr-watcher/` and point
+`C:\po-watcher\*` at them, THEN diagnose the exit-1 path (complete and additive: the outage becomes
+diagnosable immediately and the chain becomes reviewable, testable and fixable permanently; touches
+no queue, no prompt, no schema, no gate); (b) fix only the logging (fails the complete half - makes
+the fault visible rather than absent); (c) shorten the tick to 2 minutes (fails both halves - caps
+the outage, touches neither cause, multiplies relaunch churn).
+
+**No station has edited `C:\po-watcher\*.ps1`, and none should:** an unversioned launcher edited by
+hand cannot be reviewed or rolled back.
+
+⚠️ **The falsifying probe for this addendum:** the next `Watcher exited with code 1` in
+`watcher-launch.log` followed within 60 s by a new `[start]` line from the same wrapper pid. If that
+happens, the exit-1 path works and 2026-09-06 was a one-off - say so here.
+
+⚠️ **This file is GITIGNORED (`.gitignore:82`)** - measured by the 05:08Z run, F1. This addendum
+reaches this machine and nothing else until that is decided.

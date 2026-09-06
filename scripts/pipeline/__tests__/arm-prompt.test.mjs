@@ -273,6 +273,9 @@ function runArmPromptSimple(repoDir, slug, args = [], opts = {}) {
     // real caller must use. opts.omitActor drops it; opts.actor overrides the value.
     if (!opts.omitActor) psArgs.push("-Actor", opts.actor != null ? opts.actor : "test-suite");
     if (args.includes("-WhatIf") || opts.whatIf) psArgs.push("-WhatIf");
+    // -Force waives the ALREADY_ARMED refusal (RULE 4). Only the -Force tests
+    // pass this; every other test exercises the refusal path.
+    if (opts.force) psArgs.push("-Force");
 
     const result = spawnSync(PWSH, psArgs, {
       encoding: "utf8",
@@ -607,8 +610,14 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
   // Back-to-back arming: arm A then arm B without an intervening commit.
   // Before Step 7, arm B failed Assert-CleanIndex because arm A left the
   // rename staged. This is the regression that reopened the bypass.
+  //
+  // After the ARMGUARD slice added RULE 4 enforcement, arm B is now refused
+  // FIRST by Assert-NotAlreadyArmed (arm A's ready file is on disk). Passing
+  // -Force lets arm B proceed so this test still exercises what it was written
+  // to prove: that arm A's rename was released from the index by Step 7 and
+  // arm B does not trip Assert-CleanIndex.
   // -------------------------------------------------------------------------
-  test("back-to-back arming succeeds: arm A then arm B without a commit in between", () => {
+  test("back-to-back arming succeeds: arm A then arm B (with -Force) without a commit in between", () => {
     const repo = makeTempRepo();
     const slugA = "pr-test-back-to-back-a";
     const slugB = "pr-test-back-to-back-b";
@@ -623,9 +632,11 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
     assert.equal(resA.status, 0, `arm A expected exit 0\nstdout: ${resA.stdout}\nstderr: ${resA.stderr}`);
     assert.ok(existsSync(readyPathA), "arm A: ready file must exist");
 
-    // Without Step 7, the staged rename from arm A would now make arm B fail
-    // Assert-CleanIndex with exit 2. With Step 7 it must exit 0.
-    const resB = runArmPromptSimple(repo, slugB);
+    // Without Step 7, the staged rename from arm A would make arm B fail
+    // Assert-CleanIndex with exit 2 (the original regression). With Step 7 the
+    // index is clean; -Force waives the new RULE 4 refusal so we still probe
+    // Assert-CleanIndex the way this test was designed to.
+    const resB = runArmPromptSimple(repo, slugB, [], { force: true });
     assert.equal(resB.status, 0,
       `arm B expected exit 0 (back-to-back arming regression)\nstdout: ${resB.stdout}\nstderr: ${resB.stderr}`);
     assert.ok(existsSync(readyPathB), "arm B: ready file must exist");
@@ -835,5 +846,122 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
     assert.match(res.stdout, /actor=station-06/);
     assert.ok(!existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "WhatIf must not arm");
     assert.equal(gitStatus(repo), "", "WhatIf must leave the tree clean");
+  });
+
+  // -------------------------------------------------------------------------
+  // ARMGUARD — RULE 4 pre-flight refuses when another pr-*-ready.md is present.
+  //
+  // Fired for real on 2026-09-06: two paths, five minutes apart, each printed
+  // "already armed = 1" and proceeded. A rule the tool can measure is one the
+  // tool must enforce.
+  // -------------------------------------------------------------------------
+
+  test("refuses to arm when another pr-*-ready.md is already present at depth 1 (ALREADY_ARMED)", () => {
+    const repo = makeTempRepo();
+    const other = "pr-someone-else-s1";
+    const slug  = "pr-test-already-armed";
+
+    // Simulate another prompt already armed at depth 1.
+    writeFileSync(join(repo, "docs", "pr-prompts", `${other}-ready.md`), "already armed\n", "utf8");
+    addHoldFile(repo, slug, validHoldContent());
+
+    const holdPath  = join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`);
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug);
+
+    assert.notEqual(res.status, 0, `expected non-zero exit when already armed, got 0\n${res.stdout}`);
+    const out = res.stdout + res.stderr;
+    assert.match(out, /ALREADY_ARMED/, `output must contain the ALREADY_ARMED token, got:\n${out}`);
+    assert.match(out, new RegExp(`${other}-ready\\.md`), `output must name the offending file, got:\n${out}`);
+
+    // The target must still be a HOLD file — no rename happened.
+    assert.ok(existsSync(holdPath),  "HOLD file must still exist");
+    assert.ok(!existsSync(readyPath), "ready file must not exist");
+    assert.equal(gitDiffCached(repo), "", "index must be clean after refusal");
+
+    // Refusal MUST NOT write an audit line (Step 0-style: no partial trail).
+    const logPath = join(repo, "docs", "pr-prompts", ".arming-log.txt");
+    if (existsSync(logPath)) {
+      const content = readFileSync(logPath, "utf8");
+      assert.ok(!content.includes(`ARMED  ${slug}`),
+        `refused arm must not appear in .arming-log.txt, got:\n${content}`);
+    }
+  });
+
+  test("rev-<n>-ready.md alone does NOT count as an armed prompt — arms normally (DOCTRINE §9.5)", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-rev-not-a-prompt";
+
+    // Only rev-*-ready.md present — these are auto-generated REVIEW JOBS, not prompts.
+    // A recursive or naive `*-ready.md` count would refuse arming here forever.
+    writeFileSync(join(repo, "docs", "pr-prompts", "rev-3-ready.md"), "review job\n", "utf8");
+    writeFileSync(join(repo, "docs", "pr-prompts", "rev-17-ready.md"), "review job\n", "utf8");
+
+    addHoldFile(repo, slug, validHoldContent());
+
+    const holdPath  = join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`);
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug);
+    assert.equal(res.status, 0,
+      `rev-*-ready.md must not block arming\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.ok(!existsSync(holdPath),  "HOLD should have been renamed");
+    assert.ok(existsSync(readyPath), "ready file should exist after arming");
+  });
+
+  test("a *-ready.md in processed/ does NOT count — arms normally (depth-1 guard)", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-test-subdir-not-armed";
+
+    // Populate a subdirectory the way the pipeline actually does. If the check
+    // recursed, this would refuse every arm because processed/ fills up.
+    mkdirSync(join(repo, "docs", "pr-prompts", "processed"), { recursive: true });
+    writeFileSync(
+      join(repo, "docs", "pr-prompts", "processed", "pr-old-done-ready.md"),
+      "archived\n",
+      "utf8"
+    );
+
+    addHoldFile(repo, slug, validHoldContent());
+
+    const holdPath  = join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`);
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug);
+    assert.equal(res.status, 0,
+      `a *-ready.md in a subdirectory must not block arming\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.ok(!existsSync(holdPath),  "HOLD should have been renamed");
+    assert.ok(existsSync(readyPath), "ready file should exist after arming");
+  });
+
+  test("-Force waives the ALREADY_ARMED refusal and the audit line names what it was forced past", () => {
+    const repo = makeTempRepo();
+    const other = "pr-someone-else-s1";
+    const slug  = "pr-test-forced-arm";
+
+    writeFileSync(join(repo, "docs", "pr-prompts", `${other}-ready.md`), "already armed\n", "utf8");
+    addHoldFile(repo, slug, validHoldContent());
+
+    const readyPath = join(repo, "docs", "pr-prompts", `${slug}-ready.md`);
+
+    const res = runArmPromptSimple(repo, slug, [], { force: true });
+    assert.equal(res.status, 0,
+      `-Force must waive ALREADY_ARMED\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.ok(existsSync(readyPath), "ready file must exist after forced arm");
+
+    // The audit line must record the waiver AND the name that was overridden.
+    // A silent waiver is the same blindness in a different place.
+    const logPath = join(repo, "docs", "pr-prompts", ".arming-log.txt");
+    assert.ok(existsSync(logPath), ".arming-log.txt must exist after forced arm");
+    const line = readFileSync(logPath, "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.includes("ARMED") && l.includes(slug))
+      .pop();
+    assert.ok(line, "an ARMED line for the forced arm must exist");
+    assert.match(line, /\bforced=1\b/, `audit line must record forced=1, got:\n${line}`);
+    assert.match(line, new RegExp(`forced_past=[^\\s]*${other.replace(/-/g, "\\-")}`),
+      `audit line must name what was forced past, got:\n${line}`);
   });
 });

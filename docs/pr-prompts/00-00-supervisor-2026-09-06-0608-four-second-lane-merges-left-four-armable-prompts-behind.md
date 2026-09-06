@@ -314,3 +314,34 @@ untracked copy at `docs/pr-prompts/`, and after this PR merges it lands at
 `docs/pr-prompts/archive/`, a **different** path. That is not an FF blocker, and it is also not
 self-cleaning: prove the disk copy byte-identical to `origin/main:docs/pr-prompts/archive/<name>`
 (`git rev-parse` vs `git hash-object`, never a piped hash) and only then remove it.
+
+### 06:3xZ — both PRs are GREEN, and the dev tree is deliberately left holding one modification
+
+[MEASURED] `gh pr checks` on both: **`#1692` 11 pass / 4 skipping / 0 fail**, **`#1693` 11 pass /
+4 skipping / 0 fail**. Every required check is green on both; `Approval receipt (CP-26)`,
+`PR gates — diff checks`, `Pipeline — arm-prompt tests (Windows)` and
+`Pipeline — watcher + linter tests` all pass. **Zero red on the board.**
+
+⚠️ **The dev tree at `C:\ProjectOperations2` is NOT clean, and that is the documented cost of
+arming.** `git diff --numstat` holds exactly two entries: `docs/pr-prompts/.arming-log.txt` (`1 0`,
+the row this run wrote) and the worktree deletion of
+`docs/pr-prompts/pr-artifactregister-s2-name-what-is-missing-HOLD.md` (the arm). `--cached` is
+EMPTY — nothing is staged, so no other chat's commit can pick either of them up.
+
+🔧 **When `#1693` merges, the fast-forward WILL refuse on `.arming-log.txt`** — a modified tracked
+file the merge must update — and it refuses on the working copy differing from **HEAD**, not from
+the merge target, so the fact that the bytes already equal what the merge would write does not
+help. This is the exact path `00-supervisor.md` records: restore it with `git show HEAD:<path>`
+piped to a node write, and then — because that restore is byte-exact from the blob —
+**`git restore --staged` rather than `git add --renormalize`**, which on this file stages a whole-
+file rewrite that is the renormalize talking and not a content difference. Then fast-forward, and
+read back all three: `0	0`, `--numstat` EMPTY, `--cached --name-status` EMPTY.
+
+🔴 **Do NOT restore the deleted `-HOLD.md`.** It was armed, built and is open as `#1692`; putting it
+back gives the queue a prompt whose premise is still true until `#1692` merges, which is DOCTRINE
+§10.6's armable-duplicate exactly. `git show HEAD:` on it, `git checkout -- <path>` on it, and any
+`checkout .` / `reset --hard` / `stash pop` / `git clean` in that tree are all the same mistake
+(§9.2). The deletion lands correctly when `#1693` merges.
+
+The disposable worktree `C:\po-wt\board0608` is torn down at the end of this run; the branch
+`docs/board-0608-collect` stays on the remote until the PR merges.

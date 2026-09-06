@@ -125,7 +125,7 @@ you are about to act on, immediately before acting.
 
 **A report nobody can find is a report that does not exist.** Five consecutive Station 04 runs each
 believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-findings.md`, which is
-**gitignored** at `.gitignore:108`. It sat unread for nine days.
+**gitignored** by its own literal line in `.gitignore`. It sat unread for nine days.
 
 **Every run writes one breadcrumb, at a tracked path:**
 
@@ -133,8 +133,8 @@ believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-f
 docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 ```
 
-`docs/pr-prompts/` is tracked. The gitignored sinks are the five files named at
-`.gitignore:107-111` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
+`docs/pr-prompts/` is tracked. The gitignored sinks are the five files listed under
+the `# Overnight-QA scheduled task` comment in `.gitignore` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
 `docs/qa/qa-test-data-registry.md`, `docs/qa/.qa-run.lock`, and the `docs/qa/qa-run-*.md` pattern —
 plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco|no-pr-opened`
 (`.gitignore:76-83`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
@@ -239,9 +239,9 @@ CONCURRENCY GUARD (FIRST, before anything):
 Find the repo mount: ls -d /sessions/*/mnt/ProjectOperations2. Check docs/qa/.qa-run.lock — if it exists and its epoch timestamp is under 30 minutes old, another run is live: STAND DOWN silently, end with a one-line run-summary. Otherwise claim it (write current epoch from date -u +%s), refresh mid-run, delete it before finishing.
 
 STATE FILES (read in order):
-1. docs/qa/qa-checklist.md — ⚠️ **GITIGNORED (`.gitignore:107`)**, so it is absent from a clean
+1. docs/qa/qa-checklist.md — ⚠️ **GITIGNORED (by its own literal line in `.gitignore`)**, so it is absent from a clean
    checkout and its silence is never evidence. If present, resume at the first [ ] or [~] item. If missing, rebuild from docs/pipeline/stations/04-scanner.md Part 0 (the six sub-checks below) — the file this line used to name, docs/qa/Master-QA-and-Consolidation-Program-Plan.md, was deleted in the 2026-08-17 cleanup and never restored, so the old instruction was an unrunnable rebuild from a file that does not exist ([MEASURED] 2026-08-29, absent from origin/main, from disk, and from .gitignore; present in exactly one commit, the pre-cleanup backup 8e2eba71). Ensure the checklist carries a recurring Part 0 static-audit item covering all six sub-checks; if absent, add it.
-2. docs/qa/qa-findings.md — ⚠️ **GITIGNORED (`.gitignore:108`)**. READ it if present so you do not
+2. docs/qa/qa-findings.md — ⚠️ **GITIGNORED (by its own literal line in `.gitignore`)**. READ it if present so you do not
    re-file a known finding, but 🔴 **DO NOT WRITE YOUR FINDINGS THERE.** Five consecutive runs did
    and the finding sat unread for nine days. Your findings go in the tracked breadcrumb named in the
    REPORT CONTRACT above.
@@ -263,7 +263,7 @@ Record Part 0 findings in your tracked breadcrumb like any other (REPORT CONTRAC
 
 PART 1 — GITHUB RECONCILIATION AUDIT (~15 min):
 Use the github-projectops connector (load via ToolSearch, e.g. "+github list pull request"). READS WORK, WRITES 403 — never attempt MCP writes; no git push creds in the sandbox either. Each run:
-a. Recently merged PRs since the last audit marker — fold the marker into `docs/qa/qa-findings.md` under a `## GITHUB-AUDIT-MARKER` block (that file is gitignored at `.gitignore:108`, so appending is safe; one dated block per run): get_files vs body claims, unaddressed user-test items, LL-30 gaps. Record discrepancies there and cross-post the notable ones in your tracked breadcrumb per the REPORT CONTRACT. Do NOT create a fresh top-level file under `docs/qa/` for this marker — the folder itself is tracked, so any name not on `.gitignore:107-111` would dirty the tree.
+a. Recently merged PRs since the last audit marker — fold the marker into `docs/qa/qa-findings.md` under a `## GITHUB-AUDIT-MARKER` block (that file is gitignored by its own literal line in `.gitignore`, so appending is safe; one dated block per run): get_files vs body claims, unaddressed user-test items, LL-30 gaps. Record discrepancies there and cross-post the notable ones in your tracked breadcrumb per the REPORT CONTRACT. Do NOT create a fresh top-level file under `docs/qa/` for this marker — the folder itself is tracked, so any name not among those five ignored files would dirty the tree.
 b. OPEN PRs: phantom merges (docs claim merged but open), stale-green (>24h all-green no action — the pr-shepherd handles merging; only flag if it seems to have missed it across two of your runs).
 c. Dependabot via Claude in Chrome (load tools in ONE ToolSearch call) at https://github.com/GH-Mantova/ProjectOperations/security/dependabot: new alerts get five-angle verification and at most ONE staged low-risk remediation prompt per run (patch/minor, never major, never build-blockers like esbuild #38).
 
@@ -286,7 +286,7 @@ FIX-PROMPT STAGING RULES:
 - NEVER stage: visual-judgment-only polish (record as finding, Marco decides), prisma migrations/seed/deploy/auth as auto-merge (stage for review only), the B-P0a/B-P0b consolidation areas (owned by their slice chains), anything already covered by an open PR, staged prompt, HOLD file, or existing finding note.
 
 HARD RULES:
-- Tracked-file writes: NONE except staged prompt files and the five ignored docs/qa/ state entries named at `.gitignore:107-111` — `qa-checklist.md`, `qa-findings.md`, `qa-test-data-registry.md`, `.qa-run.lock`, and the `qa-run-*.md` pattern. Anything else under `docs/qa/` is TRACKED (the folder itself is not ignored — e.g. `sot-refs-baseline.json` is checked in and CI ratchets against it), so writing to a fresh path there dirties the tree. Never touch source, sot/*, roadmap.md, progress.md, or run branch-changing git commands (the PR watcher runs here).
+- Tracked-file writes: NONE except staged prompt files and the five ignored docs/qa/ state entries listed under the `# Overnight-QA scheduled task` comment in `.gitignore` — `qa-checklist.md`, `qa-findings.md`, `qa-test-data-registry.md`, `.qa-run.lock`, and the `qa-run-*.md` pattern. Anything else under `docs/qa/` is TRACKED (the folder itself is not ignored — e.g. `sot-refs-baseline.json` is checked in and CI ratchets against it), so writing to a fresh path there dirties the tree. Never touch source, sot/*, roadmap.md, progress.md, or run branch-changing git commands (the PR watcher runs here).
 - Update checklist marks and run log as you go. Work the full budget. Delete the lock file at the end.
 - Silent run — no visible chat message unless S1-critical. End with <run-summary>1-2 sentences: Part 0 sub-checks run + findings, modules patrolled, prompts staged</run-summary>.
 ---

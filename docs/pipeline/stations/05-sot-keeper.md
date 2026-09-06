@@ -125,7 +125,7 @@ you are about to act on, immediately before acting.
 
 **A report nobody can find is a report that does not exist.** Five consecutive Station 04 runs each
 believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-findings.md`, which is
-**gitignored** at `.gitignore:108`. It sat unread for nine days.
+**gitignored** by its own literal line in `.gitignore`. It sat unread for nine days.
 
 **Every run writes one breadcrumb, at a tracked path:**
 
@@ -133,8 +133,8 @@ believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-f
 docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 ```
 
-`docs/pr-prompts/` is tracked. The gitignored sinks are the five files named at
-`.gitignore:107-111` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
+`docs/pr-prompts/` is tracked. The gitignored sinks are the five files listed under
+the `# Overnight-QA scheduled task` comment in `.gitignore` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
 `docs/qa/qa-test-data-registry.md`, `docs/qa/.qa-run.lock`, and the `docs/qa/qa-run-*.md` pattern —
 plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco|no-pr-opened`
 (`.gitignore:76-83`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
@@ -325,7 +325,7 @@ Use sandboxed bash/node; the repo is mounted.
 1. SCHEMA PARSE SANITY: `node scripts/data-model/build-relationship-map.mjs --check`.
    🔴 **CORRECTED 2026-08-25 — this is NOT a drift gate and never was.** `--check` does **not**
    compare against any committed artifact: `relationship-map.md` and `.json` are **gitignored**
-   (`.gitignore:127-128`) because committing them churned every open PR, and the source says so at
+   (each on its own literal line in `.gitignore`, under the `# Data-model artefacts` comment) because committing them churned every open PR, and the source says so at
    `build-relationship-map.mjs:18-19`. All `--check` proves is that `schema.prisma` parses with no
    unresolvable model/enum reference; it `return`s at line 561 **before** writing anything.
    **MEASURED negative control:** a garbage line was prepended to the committed-looking

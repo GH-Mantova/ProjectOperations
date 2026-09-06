@@ -373,7 +373,7 @@ one of exactly four dispositions: **ACTIONED / DISPATCHED / ESCALATED / DEFERRED
 |---|---|
 | **Project memory** | ✅ **primary** - the only one that reliably survives. ⚠️ may be absent in a device task |
 | `docs/pr-prompts/00-*.md` breadcrumbs | ✅ tracked on main as of #1300 (before that: 20 on disk, **0 tracked**) |
-| `docs/qa/qa-findings.md` | 🔴 **GITIGNORED (`.gitignore:108`)** - anything found only there is UNREPORTED. It swallowed a released gate for nine days |
+| `docs/qa/qa-findings.md` | 🔴 **GITIGNORED (by its own literal line in `.gitignore`)** - anything found only there is UNREPORTED. It swallowed a released gate for nine days |
 | Chat | ❌ not durable; no other agent can read it |
 
 ---

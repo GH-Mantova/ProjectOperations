@@ -13,27 +13,38 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { resolveVerdictPath, verdictApproves } from "../index.mjs";
+import { mirrorVerdictToPr, resolveVerdictPath, verdictApproves } from "../index.mjs";
 
 // Create an isolated sandbox with three empty dirs that represent the three homes.
 //
 // resolveVerdictPath({ repoRoot, archiveDir, devTree }) accepts:
-//   repoRoot   — the clone root; verdict is at repoRoot/docs/pr-reviews/pr-N-review.md
+//   repoRoot   — the clone ROOT; verdict is at repoRoot/docs/pr-reviews/pr-N-review.md
 //   archiveDir — the archive dir directly; verdict is at archiveDir/pr-N-review.md
-//   devTree    — the dev-tree reviews dir directly; verdict is at devTree/pr-N-review.md
+//   devTree    — the dev-tree ROOT; verdict is at devTree/docs/pr-reviews/pr-N-review.md
 //
-// Returns { cloneReviews, archiveDir, devReviews, opts } where opts can be
-// passed directly to resolveVerdictPath / verdictApproves.
+// Both tree roots are treated identically: docs/pr-reviews is joined onto each. That
+// is what PR_WATCHER_DEV_TREE's name promises an operator, so the sandbox mirrors it.
+//
+// repoRoot deliberately sits one level under `base` so that dirname(repoRoot) === base:
+// the DERIVED archive location (base/verdicts-archive) is a real, distinct directory a
+// test can write into without injecting archiveDir. See "derived archive" case below.
+//
+// Returns { cloneReviews, archiveDir, derivedArchiveDir, devRoot, devReviews, opts }
+// where opts can be passed directly to resolveVerdictPath / verdictApproves.
 async function makeSandbox(tag) {
   const base = await mkdtemp(path.join(tmpdir(), `vhr-${tag}-`));
   // Clone home: repoRoot/docs/pr-reviews/
   const repoRoot = path.join(base, "clone");
   const cloneReviews = path.join(repoRoot, "docs", "pr-reviews");
-  // Archive home: an explicit directory (not derived from repoRoot parent)
+  // Archive home: an explicit directory (NOT the one the resolver would derive)
   const archiveDir = path.join(base, "archive");
-  // Dev-tree home: the reviews dir directly (matches production VERDICT_DEV_TREE_DEFAULT
-  // which is "C:\ProjectOperations2\docs\pr-reviews" — already the reviews dir)
-  const devReviews = path.join(base, "devtree-reviews");
+  // The archive location the resolver derives when archiveDir is NOT injected:
+  // path.join(path.dirname(repoRoot), "verdicts-archive").
+  const derivedArchiveDir = path.join(base, "verdicts-archive");
+  // Dev-tree home: a tree ROOT, matching production VERDICT_DEV_TREE_DEFAULT
+  // ("C:\ProjectOperations2"); the reviews dir hangs off it.
+  const devRoot = path.join(base, "devtree");
+  const devReviews = path.join(devRoot, "docs", "pr-reviews");
 
   await mkdir(cloneReviews, { recursive: true });
   await mkdir(archiveDir, { recursive: true });
@@ -42,9 +53,9 @@ async function makeSandbox(tag) {
   const opts = {
     repoRoot,
     archiveDir,
-    devTree: devReviews,
+    devTree: devRoot,
   };
-  return { base, repoRoot, cloneReviews, archiveDir, devReviews, opts };
+  return { base, repoRoot, cloneReviews, archiveDir, derivedArchiveDir, devRoot, devReviews, opts };
 }
 
 // Write a file and optionally set its mtime to a specific Date.
@@ -167,4 +178,81 @@ test("case 6b — verdictApproves returns false for FIX verdict in archive", asy
   const approved = await verdictApproves(601, null, opts);
   assert.equal(approved, false,
     "verdictApproves must return false for non-MERGE verdict");
+});
+
+// ─── Case 7: PR_WATCHER_DEV_TREE names the TREE ROOT, not the reviews dir ────
+// The variable's name promises a tree root, and REPO_ROOT's sibling variable
+// (PR_WATCHER_REPO_ROOT) is one. An operator who sets PR_WATCHER_DEV_TREE to the
+// root — the value the name asks for — must get a HIT, not a silent miss.
+// This is the only case that exercises the env var itself; every other case
+// injects devTree directly.
+test("case 7 — PR_WATCHER_DEV_TREE is a tree root: docs/pr-reviews is joined onto it", async () => {
+  const { devRoot, devReviews, repoRoot, archiveDir } = await makeSandbox("c7");
+  await writeVerdict(devReviews, 700, "VERDICT: MERGE\n");
+
+  const before = process.env.PR_WATCHER_DEV_TREE;
+  process.env.PR_WATCHER_DEV_TREE = devRoot;
+  try {
+    // devTree is NOT injected — the env var must supply it, and be read as a root.
+    const result = await resolveVerdictPath(700, { repoRoot, archiveDir });
+    assert.equal(
+      result.path,
+      path.join(devReviews, "pr-700-review.md"),
+      "PR_WATCHER_DEV_TREE must be joined with docs/pr-reviews, not used as the reviews dir",
+    );
+  } finally {
+    if (before === undefined) delete process.env.PR_WATCHER_DEV_TREE;
+    else process.env.PR_WATCHER_DEV_TREE = before;
+  }
+});
+
+// ─── Case 8: the archive path is DERIVED when archiveDir is not injected ────
+// Every case above hands the resolver an explicit archiveDir, so the derivation
+// path.join(path.dirname(repoRoot), "verdicts-archive") is never executed. This
+// case omits archiveDir entirely and writes the verdict ONLY where the derivation
+// points. Checked by inspection against the sweep that puts files there:
+// runArchiveSettledVerdicts uses path.join(REPO_ROOT, "..", "verdicts-archive"),
+// which normalises to the same directory for any resolved REPO_ROOT.
+test("case 8 — archive path is derived from repoRoot's parent when archiveDir is omitted", async () => {
+  const { repoRoot, derivedArchiveDir, devRoot } = await makeSandbox("c8");
+  await mkdir(derivedArchiveDir, { recursive: true });
+  // The ONLY copy lives at dirname(repoRoot)/verdicts-archive — nowhere else.
+  await writeVerdict(derivedArchiveDir, 800, "VERDICT: MERGE\n\nArchived by the sweep.\n");
+
+  // archiveDir deliberately NOT passed: the resolver must derive it.
+  const result = await resolveVerdictPath(800, { repoRoot, devTree: devRoot });
+  assert.equal(
+    result.path,
+    path.join(derivedArchiveDir, "pr-800-review.md"),
+    "resolver must derive dirname(repoRoot)/verdicts-archive — the dir the archive sweep moves verdicts into",
+  );
+
+  // And the derived path must be good enough for the gate that consults it.
+  const approved = await verdictApproves(800, null, { repoRoot, devTree: devRoot });
+  assert.equal(approved, true, "verdictApproves must read the verdict from the DERIVED archive dir");
+});
+
+// ─── Case 9: verdict resolves but cannot be read -> verdictMissing, not [ok] ─
+// The archive sweep runs every five minutes and races the mirror: #1679 was moved
+// 16s before the mirror looked for it. If it moves between the resolver's stat and
+// mirrorVerdictToPr's readFile, the read throws — and the caller in drain() files
+// the job [ok] unless it gets { verdictMissing: true } back. An unread verdict must
+// never be recorded as a delivered one.
+//
+// The race is simulated by making the resolved path stat-able but unreadable: a
+// DIRECTORY named pr-N-review.md. stat() succeeds (the resolver takes the hit),
+// readFile() throws EISDIR. No timing, no injected clock, no gh call — the function
+// returns before it reaches runGh.
+test("case 9 — verdict stat's but fails to read: returns { verdictMissing: true }", async () => {
+  const { repoRoot, archiveDir, devRoot } = await makeSandbox("c9");
+  await mkdir(path.join(archiveDir, "pr-900-review.md"), { recursive: true });
+
+  // Real review-job filename convention (rev-N-ready.md) — reviewJobPrNumber must
+  // parse it, or the function bails before the branch under test.
+  const result = await mirrorVerdictToPr("rev-900-ready.md", { repoRoot, archiveDir, devTree: devRoot });
+  assert.deepEqual(
+    result,
+    { verdictMissing: true },
+    "a resolved-but-unreadable verdict must return the same marker as a not-found-anywhere verdict, or drain() files the job [ok]",
+  );
 });

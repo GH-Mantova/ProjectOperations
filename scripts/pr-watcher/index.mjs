@@ -622,23 +622,27 @@ function reviewJobPrNumber(name) {
 //   1. Clone:    REPO_ROOT/docs/pr-reviews/pr-N-review.md
 //   2. Archive:  parent(REPO_ROOT)/verdicts-archive/pr-N-review.md
 //              (or injected archiveDir for tests)
-//   3. Dev tree: PR_WATCHER_DEV_TREE env (default C:\ProjectOperations2\docs\pr-reviews)
+//   3. Dev tree: PR_WATCHER_DEV_TREE env (default C:\ProjectOperations2) + docs/pr-reviews/pr-N-review.md
 //              (or injected devTree for tests)
 //
 // Returns { path, mtimeMs } for the NEWEST file found, or null if none found.
-const VERDICT_DEV_TREE_DEFAULT = "C:\\ProjectOperations2\\docs\\pr-reviews";
+// PR_WATCHER_DEV_TREE names the TREE ROOT, exactly like PR_WATCHER_REPO_ROOT does -
+// docs/pr-reviews is joined onto it below. Naming the reviews directory here instead
+// would silently miss for any operator who sets the variable to the value its name asks
+// for (PR_WATCHER_DEV_TREE=C:\ProjectOperations2).
+const VERDICT_DEV_TREE_DEFAULT = "C:\\ProjectOperations2";
 
 export async function resolveVerdictPath(prNumber, { repoRoot = REPO_ROOT, archiveDir, devTree } = {}) {
   const fileName = `pr-${prNumber}-review.md`;
   const resolvedArchiveDir = archiveDir ?? path.join(path.dirname(repoRoot), "verdicts-archive");
-  // devTree is the reviews directory itself (the full path that directly contains pr-N-review.md).
-  // The env var and VERDICT_DEV_TREE_DEFAULT both name this full path.
-  const devTreeDir = devTree ?? process.env.PR_WATCHER_DEV_TREE ?? VERDICT_DEV_TREE_DEFAULT;
+  // devTree is the dev TREE ROOT (the sibling checkout), not the reviews directory:
+  // docs/pr-reviews is joined onto it, exactly as it is onto repoRoot above.
+  const resolvedDevTree = devTree ?? process.env.PR_WATCHER_DEV_TREE ?? VERDICT_DEV_TREE_DEFAULT;
 
   const searched = [
     path.join(repoRoot, "docs", "pr-reviews", fileName),
     path.join(resolvedArchiveDir, fileName),
-    path.join(devTreeDir, fileName),
+    path.join(resolvedDevTree, "docs", "pr-reviews", fileName),
   ];
 
   const hits = [];
@@ -700,7 +704,10 @@ export function buildVerdictHeader({ verdictRel, prState }) {
   );
 }
 
-async function mirrorVerdictToPr(name) {
+// VERDICT_HOME_RESOLVER_V1: opts (repoRoot, archiveDir, devTree) are forwarded to
+// resolveVerdictPath so tests can inject temp-dir homes, the same way verdictApproves
+// takes them. Omit opts in production - defaults apply.
+export async function mirrorVerdictToPr(name, opts) {
   const prNumber = reviewJobPrNumber(name);
   if (prNumber == null) {
     log("review", `verdict mirror skipped: no PR number in job name "${name}"`);
@@ -708,7 +715,7 @@ async function mirrorVerdictToPr(name) {
   }
   const verdictRel = `docs/pr-reviews/pr-${prNumber}-review.md`;
   // VERDICT_HOME_RESOLVER_V1: search all three homes before giving up.
-  const { path: verdictPath, searched: verdictSearched } = await resolveVerdictPath(prNumber);
+  const { path: verdictPath, searched: verdictSearched } = await resolveVerdictPath(prNumber, opts ?? {});
   if (verdictPath == null) {
     log(
       "review",
@@ -719,9 +726,16 @@ async function mirrorVerdictToPr(name) {
   let verdict;
   try {
     verdict = await readFile(verdictPath, "utf-8");
-  } catch {
-    log("review", `verdict mirror skipped: ${verdictRel} not found`);
-    return;
+  } catch (err) {
+    // The resolver stat'd this path a moment ago, so a read failure here means the
+    // file moved out from under us - the five-minute archive sweep racing the mirror
+    // is exactly how #1679 was lost. Return the SAME marker the not-found-anywhere
+    // branch returns: an unread verdict must never be filed [ok].
+    log(
+      "review",
+      `verdict mirror skipped: ${verdictRel} vanished between resolve and read (${verdictPath}: ${err.message}). Job will NOT be filed [ok] — re-queue after the verdict file is located.`,
+    );
+    return { verdictMissing: true };
   }
   // Ask whether this verdict is arriving before or after the decision it describes.
   // Best-effort by design: the mirror must never fail over its own header.

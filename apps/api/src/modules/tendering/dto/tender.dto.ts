@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsInt,
   IsNumberString,
   IsOptional,
@@ -11,11 +12,15 @@ import {
   ValidateNested
 } from "class-validator";
 import { Type } from "class-transformer";
+import { TenderClientBidStatus } from "@prisma/client";
 
 class TenderClientInputDto {
   @IsString()
   clientId!: string;
   @IsOptional() @IsString() contactId?: string;
+  // tender-lifecycle S2a - per-client bid intent. Omitted or null means
+  // "not recorded"; it is never coerced to a member.
+  @IsOptional() @IsEnum(TenderClientBidStatus) bidStatus?: TenderClientBidStatus;
   @IsOptional() @IsBoolean() isAwarded?: boolean;
   @IsOptional() @IsString() relationshipType?: string;
   @IsOptional() @IsString() notes?: string;

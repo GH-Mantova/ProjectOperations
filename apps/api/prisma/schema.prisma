@@ -1407,21 +1407,27 @@ model Tender {
 }
 
 model TenderClient {
-  id               String                @id @default(cuid())
-  tenderId         String                @map("tender_id")
-  clientId         String                @map("client_id")
-  contactId        String?               @map("contact_id")
-  isAwarded        Boolean               @default(false) @map("is_awarded")
-  contractIssued   Boolean               @default(false) @map("contract_issued")
-  contractIssuedAt DateTime?             @map("contract_issued_at")
-  submissionDate   DateTime?             @map("submission_date")
-  relationshipType String?               @map("relationship_type")
+  id               String                 @id @default(cuid())
+  tenderId         String                 @map("tender_id")
+  clientId         String                 @map("client_id")
+  contactId        String?                @map("contact_id")
+  // tender-lifecycle S2a - per-client bid intent. NULL = unknown (every row
+  // that predates this column). PRICED = we priced for this builder, NO_BID =
+  // we consciously declined, WATCHING = we are tracking them without pricing.
+  // Deliberately nullable with no default: NULL must stay distinguishable
+  // from a real decision, so no legacy row is retro-labelled.
+  bidStatus        TenderClientBidStatus? @map("bid_status")
+  isAwarded        Boolean                @default(false) @map("is_awarded")
+  contractIssued   Boolean                @default(false) @map("contract_issued")
+  contractIssuedAt DateTime?              @map("contract_issued_at")
+  submissionDate   DateTime?              @map("submission_date")
+  relationshipType String?                @map("relationship_type")
   notes            String?
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
-  tender           Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  client           Client                @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  contact          Contact?              @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+  tender           Tender                 @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  client           Client                 @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  contact          Contact?               @relation(fields: [contactId], references: [id], onDelete: SetNull)
   jobConversion    JobConversion?
   clientPackages   TenderClientPackage[]
 
@@ -1429,6 +1435,15 @@ model TenderClient {
   @@index([clientId])
   @@index([isAwarded])
   @@map("tender_clients")
+}
+
+// tender-lifecycle S2a - per-client bid intent on TenderClient.bidStatus.
+// There is deliberately no UNKNOWN member: "unknown" is the NULL column value,
+// not an enum label, so absence of a decision can never be mistaken for one.
+enum TenderClientBidStatus {
+  PRICED
+  NO_BID
+  WATCHING
 }
 
 enum TenderPricingBasis {
@@ -3711,7 +3726,7 @@ model ScopeOfWorksItem {
   // five. Plant is captured by the plantItems JSONB array; transport
   // plant is priced by the waste transport engine. Full record in
   // src/modules/tendering/scope-of-works.service.ts.
-  assetId        String?  @map("asset_id")
+  assetId String? @map("asset_id")
 
   estimateItemId String? @map("estimate_item_id")
   createdById    String  @map("created_by_id")

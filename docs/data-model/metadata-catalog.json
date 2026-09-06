@@ -23855,6 +23855,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "bidStatus": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "isAwarded": {
           "role": "filter",
           "label": null,

@@ -361,6 +361,23 @@ export class UpdateScopeCardDto {
 
   @ApiPropertyOptional({ nullable: true, description: "Card-header duration override. Null = auto-derived." })
   @IsOptional() @Type(() => Number) @IsNumber() durationOverride?: number | null;
+
+  // SCOPE_STAGE_GROUP_V1 — which stage this card runs in inside its
+  // discipline. Two cards of the SAME discipline sharing the same non-null
+  // value are ONE stage and run concurrently: their crews and plant
+  // quantities add and the stage lasts as long as its longest card.
+  //
+  // null clears the grouping and returns the card to a stage of its own,
+  // which is what every card holds until a human groups two of them. The
+  // value is an OPAQUE group id — it is not a stage index and carries no
+  // ordering; stage order is the card order (sortOrder) that already
+  // exists.
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Opaque stage-group id. Cards of the same discipline sharing a non-null value run CONCURRENTLY (crew and plant quantities add; the stage lasts as long as its longest card). Null = this card is a stage of its own."
+  })
+  @IsOptional() @Type(() => Number) @IsInt() stageGroup?: number | null;
 }
 
 // PR B1.7 — Card-scoped create DTO. Discipline is derived server-side

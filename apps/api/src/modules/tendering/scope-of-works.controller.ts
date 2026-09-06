@@ -264,7 +264,7 @@ export class ScopeOfWorksController {
    *
    * Precedence when multiple fields are sent: discipline >
    * plantColumnCount > cutting/waste notes > markupOverride > header
-   * overrides > name. Discipline change cascades item wbsCode +
+   * overrides > stageGroup > name. Discipline change cascades item wbsCode +
    * cutting/waste wbsRef rewrites.
    *
    * @param rawDto - exactly one logical field group from UpdateScopeCardDto
@@ -323,11 +323,17 @@ export class ScopeOfWorksController {
         durationOverride: dto.durationOverride,
       });
     }
+    // SCOPE_STAGE_GROUP_V1 — put the card into a stage (non-null, shared
+    // with another card of the same discipline = they run concurrently) or
+    // take it out of one (null = a stage of its own).
+    if (dto.stageGroup !== undefined) {
+      return this.service.setCardStageGroup(tenderId, cardId, dto.stageGroup ?? null);
+    }
     if (dto.name !== undefined) {
       return this.service.renameCard(tenderId, cardId, dto.name);
     }
     throw new BadRequestException(
-      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, markupOverride, wasteMarkupOverride, cuttingMarkupOverride, or header overrides."
+      "Provide name, discipline, plantColumnCount, cuttingNotes, wasteNotes, markupOverride, wasteMarkupOverride, cuttingMarkupOverride, stageGroup, or header overrides."
     );
   }
 

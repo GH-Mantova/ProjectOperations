@@ -96,16 +96,17 @@ describe("searchSettings -- label match", () => {
 // ── Description match ─────────────────────────────────────────────────────
 
 describe("searchSettings -- description match", () => {
-  it("searching a description fragment 'default dashboard' surfaces Account", () => {
-    // Account description: "View your profile, choose your default dashboard..."
-    const results = searchSettings(SECTIONS, NO_PERMS_USER, "default dashboard");
+  it("searching a description fragment 'email signature' surfaces Account", () => {
+    // SETTINGS_HOME_S1 replaced the inferred copy with Marco's approved line:
+    // "Your profile: name, contact details, email signature and the theme you see..."
+    const results = searchSettings(SECTIONS, NO_PERMS_USER, "email signature");
     const match = results.find((r) => r.item.to === "/settings/account");
     expect(match).toBeDefined();
   });
 
-  it("searching 'audit log' surfaces Audit via description", () => {
-    // Audit description: "Review the platform audit log..."
-    const results = searchSettings(SECTIONS, SUPER_USER, "audit log");
+  it("searching 'who changed what' surfaces Audit via description", () => {
+    // Approved copy: "A record of who changed what, and when. Read-only."
+    const results = searchSettings(SECTIONS, SUPER_USER, "who changed what");
     const match = results.find((r) => r.item.to === "/settings/administration/audit");
     expect(match).toBeDefined();
   });
@@ -221,8 +222,8 @@ describe("searchSettings -- case-insensitive matching", () => {
   });
 
   it("uppercase query matches a lowercase description word", () => {
-    // "dashboard" is lowercase in the Account description
-    const results = searchSettings(SECTIONS, NO_PERMS_USER, "DASHBOARD");
+    // "signature" is lowercase in the Account description
+    const results = searchSettings(SECTIONS, NO_PERMS_USER, "SIGNATURE");
     const match = results.find((r) => r.item.to === "/settings/account");
     expect(match).toBeDefined();
   });
@@ -233,5 +234,28 @@ describe("searchSettings -- case-insensitive matching", () => {
       (r) => r.item.to === "/settings/company" && r.matchedTab?.id === "branding"
     );
     expect(match).toBeDefined();
+  });
+});
+
+// ── SETTINGS_HOME_S1: the pages outside /settings are searchable too ──────
+
+describe("searchSettings -- the settings that live outside /settings", () => {
+  it("finds Schedule of Rates without settings-search.ts changing", () => {
+    const results = searchSettings(SECTIONS, SUPER_USER, "Schedule of Rates");
+    const match = results.find((r) => r.item.to === "/admin/schedule-of-rates");
+    expect(match).toBeDefined();
+    expect(match?.href).toBe("/admin/schedule-of-rates");
+  });
+
+  it("finds Job roles by a description fragment", () => {
+    const results = searchSettings(SECTIONS, SUPER_USER, "qualifications");
+    const match = results.find((r) => r.item.to === "/workers/job-roles");
+    expect(match).toBeDefined();
+  });
+
+  it("reports them locked for a user without the guard permission", () => {
+    const results = searchSettings(SECTIONS, NO_PERMS_USER, "Job roles");
+    const match = results.find((r) => r.item.to === "/workers/job-roles");
+    expect(match?.locked).toBe(true);
   });
 });

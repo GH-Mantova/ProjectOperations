@@ -10,7 +10,14 @@
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DisciplineSummaryBar, computeCardBarStats, type CardBarStats } from "../DisciplineSummaryBar";
+import {
+  DisciplineSummaryBar,
+  computeCardBarStats,
+  durationTitle,
+  hasConcurrentStages,
+  peakCrewTitle,
+  type CardBarStats
+} from "../DisciplineSummaryBar";
 import { rollUpDiscipline, type CardRollupInput } from "../utils/discipline-rollup";
 import type { ScopeItem } from "../../ScopeQuantitiesTable";
 
@@ -266,5 +273,112 @@ describe("DisciplineSummaryBar markup", () => {
     // Collapse is local UI state in the container and is NOT an input to the
     // fold, so the same stack yields the same bar however it is displayed.
     expect(renderBar([...DEM_STAGES])).toBe(html);
+  });
+});
+
+// ── SCOPE_STAGE_GROUP_V1 — the chips must say what the figure IS ───────
+//
+// Peak crew and Duration used to carry `title` text asserting the
+// sequential rule ("stages run sequentially, so this is a max, not a sum").
+// Cards of one discipline can now share a stage, which RAISES peak crew and
+// LOWERS duration — figures an estimator may already have quoted from — so
+// both tooltips now state how many stages the cards actually formed and, if
+// any stage holds more than one card, that concurrent cards SUM.
+//
+// The same three DEM cards as above, with DEM1 and DEM2 grouped into one
+// stage. Peak crew 10 -> 16, duration 15 -> 11, excavators 3 -> 5.
+
+const DEM_STAGES_GROUPED: CardRollupInput[] = [
+  { ...DEM_STAGES[0], stageKey: "g1" },
+  { ...DEM_STAGES[1], stageKey: "g1" },
+  { ...DEM_STAGES[2], stageKey: null }
+];
+
+describe("chip tooltips describe the stage model that is actually in force", () => {
+  const sequential = rollUpDiscipline(DEM_STAGES);
+  const concurrent = rollUpDiscipline(DEM_STAGES_GROUPED);
+
+  it("knows which discipline has concurrency and which does not", () => {
+    expect(hasConcurrentStages(sequential)).toBe(false);
+    expect(hasConcurrentStages(concurrent)).toBe(true);
+  });
+
+  it("the ungrouped Peak crew tooltip names 3 stages and calls the figure a max", () => {
+    const title = peakCrewTitle(sequential);
+    expect(title).toContain("3 stages");
+    expect(title).toContain("a max, not a sum");
+  });
+
+  it("the grouped Peak crew tooltip names 2 stages, 3 cards, and says crews SUM", () => {
+    const title = peakCrewTitle(concurrent);
+    expect(title).toContain("2 stages");
+    expect(title).toContain("3 cards");
+    expect(title).toContain("SUM");
+    // The stale claim must be gone: it is no longer true that the figure
+    // can only ever be a max over individual cards.
+    expect(title).not.toContain("a max, not a sum");
+  });
+
+  it("the ungrouped Duration tooltip names 3 stages running end to end", () => {
+    const title = durationTitle(sequential);
+    expect(title).toContain("3 stages");
+    expect(title).toContain("end to end");
+  });
+
+  it("the grouped Duration tooltip names 2 stages, 3 cards, and says the stage counts ONCE", () => {
+    const title = durationTitle(concurrent);
+    expect(title).toContain("2 stages");
+    expect(title).toContain("3 cards");
+    expect(title).toContain("ONCE");
+  });
+
+  it("says 'stage' not 'stages' for a one-card discipline", () => {
+    const single = rollUpDiscipline([DEM_STAGES[0]]);
+    expect(peakCrewTitle(single)).toContain("1 stage.");
+    expect(durationTitle(single)).toContain("1 stage ");
+  });
+});
+
+describe("the bar renders the moved figures and counts STAGES, not cards", () => {
+  const html = renderBar(DEM_STAGES_GROUPED);
+
+  it("counts two stages over three cards, and says some are concurrent", () => {
+    expect(html).toContain("2 stages");
+    expect(html).toContain("3 cards, some concurrent");
+    expect(html).not.toContain("3 stages");
+    // "sequential" is only claimed when it is true.
+    expect(html).not.toContain("sequential");
+  });
+
+  it("shows peak crew RISEN to 16 — the grouped crews added", () => {
+    expect(html).toContain(">16<"); // 6 + 10, on site together
+    expect(renderBar(DEM_STAGES)).toContain(">10<"); // was max(6, 10, 8)
+    expect(html).not.toContain(">24<"); // still not a flat sum of all three
+  });
+
+  it("shows duration FALLEN to 11 — the grouped stage counts once", () => {
+    expect(html).toContain(">11<"); // max(5, 4) + 6
+    expect(renderBar(DEM_STAGES)).toContain(">15<"); // was 5 + 4 + 6
+  });
+
+  it("shows the peak plant quantity RISEN to 5 concurrent 20t excavators", () => {
+    expect(html).toContain("Excavator 20t: 5"); // 2 + 3 at once
+    expect(renderBar(DEM_STAGES)).toContain("Excavator 20t: 3"); // was max(2, 3, 1)
+  });
+
+  it("leaves the discipline total exactly where it was — grouping is not a price", () => {
+    expect(html).toContain("$149,500");
+    expect(renderBar(DEM_STAGES)).toContain("$149,500");
+  });
+
+  it("leaves person-days exactly where they were — the work is still done", () => {
+    expect(html).toContain(">118<");
+    expect(renderBar(DEM_STAGES)).toContain(">118<");
+  });
+
+  it("still says 'sequential' for a discipline nobody has grouped", () => {
+    const ungrouped = renderBar(DEM_STAGES);
+    expect(ungrouped).toContain("3 stages");
+    expect(ungrouped).toContain("sequential");
   });
 });

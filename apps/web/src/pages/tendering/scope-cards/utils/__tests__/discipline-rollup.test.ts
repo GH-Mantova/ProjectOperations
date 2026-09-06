@@ -29,9 +29,15 @@ import { describe, expect, it } from "vitest";
 import {
   cardPersonDays,
   groupCardsIntoStages,
+  groupWithPreviousPatches,
+  nextStageGroup,
   rollUpDiscipline,
   rollUpDisciplineStages,
   round1,
+  sharesStageWithPrevious,
+  stageKeyForGroup,
+  toCardRollupInput,
+  ungroupPatches,
   type CardRollupInput,
   type DisciplineRollup,
   type RollupPlantGroup
@@ -115,6 +121,14 @@ function flatFoldAsShippedOnMain(cards: readonly CardRollupInput[]): DisciplineR
 
   return {
     cardCount,
+    // SCOPE_STAGE_GROUP_V1 — `stageCount` is new on DisciplineRollup and is
+    // NOT a figure: no money, crew, day or plant quantity depends on it.
+    // The flat fold had EVERY card in its own stage, so the stage count it
+    // would have reported is exactly its card count — which is the same
+    // claim the module makes for an ungrouped discipline. Stating it here
+    // rather than deleting the whole-object assertion below keeps that
+    // assertion STRICT, so a real figure still cannot escape it.
+    stageCount: cardCount,
     itemCount,
     peakCrew,
     personDays: round1(personDays),
@@ -186,6 +200,7 @@ const DEM_DISCIPLINE = [DEM1, DEM2, DEM3, DEM4];
  *  field that moved instead of dumping two objects. */
 function expectSameRollup(actual: DisciplineRollup, expected: DisciplineRollup): void {
   expect(actual.cardCount).toBe(expected.cardCount);
+  expect(actual.stageCount).toBe(expected.stageCount);
   expect(actual.itemCount).toBe(expected.itemCount);
   expect(actual.peakCrew).toBe(expected.peakCrew);
   expect(actual.personDays).toBe(expected.personDays);
@@ -513,5 +528,298 @@ describe("groupCardsIntoStages", () => {
       { ...DEM2, stageKey: null }
     ];
     expect(groupCardsIntoStages(cards)).toHaveLength(2);
+  });
+});
+
+// ── SCOPE_STAGE_GROUP_V1 — a stage that holds MORE THAN ONE card ───────
+//
+// Slice 1 shipped the stage arithmetic with every card in a stage of its
+// own, so no figure could move. This slice adds `ScopeCard.stageGroup` —
+// the one thing that lets a stage hold two cards — so from here the fold
+// has a second branch to pin: what happens when a human says two cards run
+// at the same time.
+//
+// The discipline below is the FIRST THREE cards of DEM_DISCIPLINE above.
+// It is folded twice: ungrouped (which must equal the flat fold, exactly
+// as it does today) and with DEM1 and DEM2 sharing one stage. Every figure
+// is written out longhand so the arithmetic is checkable by eye, and the
+// two folds are diffed field by field so nothing moves that should not.
+
+const THREE_CARD_DEM = [DEM1, DEM2, DEM3];
+
+/** The same three cards with DEM1 and DEM2 in ONE stage — a human has said
+ *  they run at the same time — and DEM3 still in a stage of its own. */
+const TWO_OF_THREE_GROUPED: CardRollupInput[] = [
+  { ...DEM1, stageKey: "g1" },
+  { ...DEM2, stageKey: "g1" },
+  { ...DEM3, stageKey: null }
+];
+
+describe("grouping two of three cards moves exactly the figures the stage model says", () => {
+  const before = rollUpDiscipline(THREE_CARD_DEM);
+  const after = rollUpDiscipline(TWO_OF_THREE_GROUPED);
+
+  it("BEFORE: three ungrouped cards read exactly as the flat fold does", () => {
+    // The regression guard. If this ever needs editing, an ungrouped
+    // discipline's figures have moved and the slice is wrong.
+    expectSameRollup(before, flatFoldAsShippedOnMain(THREE_CARD_DEM));
+    expect(before.cardCount).toBe(3);
+    expect(before.stageCount).toBe(3); // three cards, three stages
+    expect(before.itemCount).toBe(12); // 4 + 3 + 5
+    expect(before.peakCrew).toBe(10); // max(6, 10, 8)
+    expect(before.duration).toBe(15); // 5 + 4 + 6, end to end
+    expect(before.personDays).toBe(118); // 6x5 + 10x4 + 8x6
+    expect(before.labourDays).toBe(15); // 5 + 4 + 6
+    expect(before.subtotal).toBe(130_000);
+    expect(before.subtotalWithMarkup).toBe(149_500);
+    expect(before.plantSummary).toEqual([
+      { category: "Excavator", items: [{ variant: "20t", peakQty: 3, peakDays: 15 }] }, // max(2,3,1); 5+4+6
+      { category: "Truck", items: [{ variant: null, peakQty: 1, peakDays: 4 }] }
+    ]);
+  });
+
+  it("AFTER: three cards now form TWO stages", () => {
+    expect(after.cardCount).toBe(3); // the cards did not go anywhere
+    expect(after.stageCount).toBe(2); // [DEM1 + DEM2], [DEM3]
+  });
+
+  it("PEAK CREW RISES 10 -> 16: the grouped cards are on site together", () => {
+    // stage 1 = DEM1 + DEM2 = 6 + 10 = 16 crew, on site at once.
+    // stage 2 = DEM3        = 8 crew.
+    // discipline = max(16, 8) = 16. It is NOT 6 + 10 + 8 = 24: the two
+    // stages still never coincide.
+    expect(after.peakCrew).toBe(16);
+    expect(after.peakCrew).toBeGreaterThan(before.peakCrew);
+    expect(after.peakCrew).not.toBe(24);
+  });
+
+  it("DURATION FALLS 15 -> 11: the grouped stage is counted once", () => {
+    // stage 1 = max(5, 4) = 5 days — DEM2 finishes inside DEM1's window.
+    // stage 2 = 6 days.
+    // discipline = 5 + 6 = 11, four days shorter than the sequential 15.
+    expect(after.duration).toBe(11);
+    expect(before.duration - after.duration).toBe(4);
+  });
+
+  it("PLANT QUANTITY RISES 3 -> 5: two concurrent jobs need two machines", () => {
+    // stage 1 excavators = 2 + 3 = 5 twenty-tonners at once.
+    // stage 2 excavators = 1.
+    // discipline peak = max(5, 1) = 5.
+    // Plant DAYS are a duration, not a peak, so they SUM in both
+    // directions and are unchanged at 5 + 4 + 6 = 15 — the machines are on
+    // hire for the same total time either way.
+    expect(after.plantSummary).toEqual([
+      { category: "Excavator", items: [{ variant: "20t", peakQty: 5, peakDays: 15 }] },
+      { category: "Truck", items: [{ variant: null, peakQty: 1, peakDays: 4 }] }
+    ]);
+    const excavatorBefore = before.plantSummary[0].items[0];
+    const excavatorAfter = after.plantSummary[0].items[0];
+    expect(excavatorBefore.peakQty).toBe(3);
+    expect(excavatorAfter.peakQty).toBe(5);
+    expect(excavatorAfter.peakDays).toBe(excavatorBefore.peakDays); // 15, unmoved
+  });
+
+  it("MONEY DOES NOT MOVE — grouping is a programme fact, not a price", () => {
+    expect(after.subtotal).toBe(before.subtotal);
+    expect(after.subtotalWithMarkup).toBe(before.subtotalWithMarkup);
+    expect(after.subtotal).toBe(130_000);
+    expect(after.subtotalWithMarkup).toBe(149_500);
+  });
+
+  it("PERSON-DAYS AND LABOUR DAYS DO NOT MOVE — the work is still done", () => {
+    // Accumulated per CARD, never per stage. Running two cards at once
+    // changes when the work happens, not how much of it there is.
+    expect(after.personDays).toBe(before.personDays);
+    expect(after.labourDays).toBe(before.labourDays);
+    expect(after.personDays).toBe(118);
+    expect(after.labourDays).toBe(15);
+  });
+
+  it("ITEM COUNT DOES NOT MOVE", () => {
+    expect(after.itemCount).toBe(before.itemCount);
+    expect(after.itemCount).toBe(12);
+  });
+
+  it("moves peak crew, duration and plant quantity AND NOTHING ELSE", () => {
+    // The exhaustive version of the six tests above: every field of the
+    // roll-up is compared, and exactly the three the stage model predicts
+    // are allowed to differ.
+    const moved = (Object.keys(before) as Array<keyof DisciplineRollup>).filter(
+      (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])
+    );
+    expect(moved.sort()).toEqual(["duration", "peakCrew", "plantSummary", "stageCount"]);
+  });
+
+  it("ungrouping the pair again restores every figure exactly", () => {
+    const regrouped = TWO_OF_THREE_GROUPED.map((card) => ({ ...card, stageKey: null }));
+    expectSameRollup(rollUpDiscipline(regrouped), before);
+  });
+
+  it("a group of ONE folds identically to no group at all", () => {
+    // A user who ungroups half a pair leaves the other card alone in its
+    // group. That must read exactly as null does, or ungrouping would
+    // half-work.
+    const loner = [{ ...DEM1, stageKey: "g1" }, DEM2, DEM3];
+    expectSameRollup(rollUpDiscipline(loner), before);
+  });
+});
+
+// ── The stageGroup -> stageKey mapping ─────────────────────────────────
+
+describe("stageKeyForGroup", () => {
+  it("maps null and undefined to null — a stage of its own", () => {
+    expect(stageKeyForGroup(null)).toBeNull();
+    expect(stageKeyForGroup(undefined)).toBeNull();
+  });
+
+  it("maps equal group ids to the SAME key, so they share a stage", () => {
+    expect(stageKeyForGroup(4)).toBe(stageKeyForGroup(4));
+    expect(groupCardsIntoStages([
+      { ...DEM1, stageKey: stageKeyForGroup(4) },
+      { ...DEM2, stageKey: stageKeyForGroup(4) }
+    ])).toHaveLength(1);
+  });
+
+  it("maps different group ids to different keys", () => {
+    expect(stageKeyForGroup(4)).not.toBe(stageKeyForGroup(5));
+  });
+
+  it("maps 0 to a real key, not to null — 0 is a group id, not 'ungrouped'", () => {
+    expect(stageKeyForGroup(0)).not.toBeNull();
+  });
+});
+
+describe("toCardRollupInput carries the card's stageGroup through", () => {
+  const stats = { itemCount: 1, subtotal: 10, subtotalWithMarkup: 11 };
+
+  it("gives a card with no stageGroup a stage of its own", () => {
+    expect(toCardRollupInput("c1", null, stats).stageKey).toBeNull();
+    expect(toCardRollupInput("c1", null, stats, null).stageKey).toBeNull();
+  });
+
+  it("turns a non-null stageGroup into a shared stage key", () => {
+    const a = toCardRollupInput("c1", null, stats, 3);
+    const b = toCardRollupInput("c2", null, stats, 3);
+    expect(a.stageKey).toBe(b.stageKey);
+    expect(groupCardsIntoStages([a, b])).toHaveLength(1);
+  });
+});
+
+// ── The grouping control's decision procedure ──────────────────────────
+//
+// "Group this card with the one above it" is the whole feature. These are
+// the rules behind that one button.
+
+describe("nextStageGroup", () => {
+  it("starts at 1 when nothing is grouped", () => {
+    expect(nextStageGroup([{ id: "a" }, { id: "b", stageGroup: null }])).toBe(1);
+    expect(nextStageGroup([])).toBe(1);
+  });
+
+  it("is one past the largest id in use, tender-wide", () => {
+    expect(nextStageGroup([{ id: "a", stageGroup: 3 }, { id: "b", stageGroup: 7 }])).toBe(8);
+  });
+
+  it("never reuses an id already held by a card in another discipline", () => {
+    const tender = [
+      { id: "dem1", stageGroup: 2 },
+      { id: "civ1", stageGroup: 9 } // another discipline entirely
+    ];
+    expect(nextStageGroup(tender)).toBe(10);
+  });
+});
+
+describe("sharesStageWithPrevious", () => {
+  const grouped = [
+    { id: "a", stageGroup: 1 },
+    { id: "b", stageGroup: 1 },
+    { id: "c", stageGroup: null }
+  ];
+
+  it("is false for the first card — there is nothing above it", () => {
+    expect(sharesStageWithPrevious(grouped, "a")).toBe(false);
+  });
+
+  it("is true when this card and the one above hold the same non-null id", () => {
+    expect(sharesStageWithPrevious(grouped, "b")).toBe(true);
+  });
+
+  it("is false when this card is ungrouped", () => {
+    expect(sharesStageWithPrevious(grouped, "c")).toBe(false);
+  });
+
+  it("is false when BOTH are null — two nulls are two stages, not one", () => {
+    expect(
+      sharesStageWithPrevious([{ id: "a" }, { id: "b" }], "b")
+    ).toBe(false);
+  });
+
+  it("is false when the two ids differ", () => {
+    expect(
+      sharesStageWithPrevious([{ id: "a", stageGroup: 1 }, { id: "b", stageGroup: 2 }], "b")
+    ).toBe(false);
+  });
+});
+
+describe("groupWithPreviousPatches", () => {
+  it("writes BOTH cards when neither is grouped yet", () => {
+    const cards = [{ id: "a" }, { id: "b" }];
+    expect(groupWithPreviousPatches(cards, "b", 5)).toEqual([
+      { cardId: "a", stageGroup: 5 },
+      { cardId: "b", stageGroup: 5 }
+    ]);
+  });
+
+  it("writes only THIS card when the one above already has a group", () => {
+    // Adds a third card to an existing pair without disturbing it.
+    const cards = [{ id: "a", stageGroup: 2 }, { id: "b", stageGroup: 2 }, { id: "c" }];
+    expect(groupWithPreviousPatches(cards, "c", 5)).toEqual([{ cardId: "c", stageGroup: 2 }]);
+  });
+
+  it("writes nothing for the first card of a discipline", () => {
+    expect(groupWithPreviousPatches([{ id: "a" }, { id: "b" }], "a", 5)).toEqual([]);
+  });
+
+  it("writes nothing when the cards already share a stage", () => {
+    const cards = [{ id: "a", stageGroup: 1 }, { id: "b", stageGroup: 1 }];
+    expect(groupWithPreviousPatches(cards, "b", 5)).toEqual([]);
+  });
+
+  it("writes nothing for a card that is not in the discipline", () => {
+    expect(groupWithPreviousPatches([{ id: "a" }], "zzz", 5)).toEqual([]);
+  });
+
+  it("produces a grouping the fold actually reads as one stage", () => {
+    // End to end: the patches this returns, applied to the cards, must make
+    // groupCardsIntoStages put the two cards together.
+    const cards = [{ id: "dem1" }, { id: "dem2" }, { id: "dem3" }];
+    const patches = groupWithPreviousPatches(cards, "dem2", nextStageGroup(cards));
+    const byId = new Map(patches.map((p) => [p.cardId, p.stageGroup]));
+    const folded = groupCardsIntoStages(
+      [DEM1, DEM2, DEM3].map((card) => ({
+        ...card,
+        stageKey: stageKeyForGroup(byId.get(card.cardId) ?? null)
+      }))
+    );
+    expect(folded.map((stage) => stage.map((c) => c.cardId))).toEqual([
+      ["dem1", "dem2"],
+      ["dem3"]
+    ]);
+  });
+});
+
+describe("ungroupPatches", () => {
+  it("clears only the card asked for", () => {
+    const cards = [{ id: "a", stageGroup: 1 }, { id: "b", stageGroup: 1 }];
+    expect(ungroupPatches(cards, "b")).toEqual([{ cardId: "b", stageGroup: null }]);
+  });
+
+  it("writes nothing for a card that is already ungrouped", () => {
+    expect(ungroupPatches([{ id: "a", stageGroup: null }], "a")).toEqual([]);
+    expect(ungroupPatches([{ id: "a" }], "a")).toEqual([]);
+  });
+
+  it("writes nothing for an unknown card", () => {
+    expect(ungroupPatches([{ id: "a", stageGroup: 1 }], "zzz")).toEqual([]);
   });
 });

@@ -539,8 +539,13 @@ describe("RateResolverService", () => {
         ]
       });
       prisma.rateRow.findMany.mockResolvedValue([
-        { id: "rr-exc", isActive: true, cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800 } },
-        { id: "rr-doz", isActive: true, cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950 } }
+        // sortOrder is deliberately non-positional (7 at index 0, 3 at index 1)
+        // AND deliberately present: a mocked row that omits it makes the
+        // resolver emit `undefined`, and jest's toEqual treats an undefined
+        // property as absent — so the exhaustive assertions below would pass
+        // while proving nothing about sortOrder at all.
+        { id: "rr-exc", isActive: true, sortOrder: 7, cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800 } },
+        { id: "rr-doz", isActive: true, sortOrder: 3, cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950 } }
       ]);
       const svc = new RateResolverService(prisma as never);
       const out: ListedRate[] = await svc.listRates("plant");
@@ -553,6 +558,7 @@ describe("RateResolverService", () => {
         value: 800,
         unit: "day",
         isActive: true,
+        sortOrder: 7,
         source: "ratetable"
       });
       expect(out[1]).toEqual({
@@ -562,6 +568,7 @@ describe("RateResolverService", () => {
         value: 950,
         unit: "day",
         isActive: true,
+        sortOrder: 3,
         source: "ratetable"
       });
       // Legacy path must NOT be consulted when ratetable answered.
@@ -905,6 +912,211 @@ describe("RateResolverService", () => {
         expect(prisma.cuttingOtherRate.findMany).toHaveBeenCalledWith({
           where: { isActive: true },
           orderBy: { description: "asc" }
+        });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // SLICE 11b3 (prerequisite): ListedRate.sortOrder
+    //
+    // The field REPORTS the source row's sort column. It adds no filter and no
+    // ordering, so every fixture below is adversarial in the way that matters:
+    // rows are mocked in an order that does NOT match their sortOrder values,
+    // and the values are non-sequential and never equal to the array index.
+    //
+    //   - a resolver that DERIVED sortOrder from array position would emit
+    //     0,1,2… and fail every value assertion below;
+    //   - a resolver that SORTED by sortOrder would fail every row-order
+    //     assertion below;
+    //   - a resolver that defaulted it to 0 would fail both.
+    //
+    // Note the assertion style: `toBeNull()` and `typeof === "number"` are used
+    // deliberately alongside toEqual, because jest's toEqual treats an
+    // `undefined` property as absent and would not notice a field that stopped
+    // being populated.
+    // -----------------------------------------------------------------------
+    describe("sortOrder", () => {
+      test("legacy plant: sortOrder is READ FROM THE ROW, never derived from array position", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        // Mocked in the order Prisma returns them (item asc). Their sortOrder
+        // values are 40, 5, 17 — non-sequential, and none equals its index.
+        prisma.estimatePlantRate.findMany.mockResolvedValue([
+          { id: "p-a", item: "Air compressor", rate: "300", unit: "day", category: "Access",     isActive: true, sortOrder: 40 },
+          { id: "p-b", item: "Bobcat",         rate: "500", unit: "day", category: "Earthmoving", isActive: true, sortOrder: 5 },
+          { id: "p-c", item: "Excavator 20t",  rate: "800", unit: "day", category: "Earthmoving", isActive: true, sortOrder: 17 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+
+        // THE point of the slice: position 0 reports 40, not 0.
+        expect(out.map((r) => r.sortOrder)).toEqual([40, 5, 17]);
+        // Row set AND order unchanged — the resolver did not sort by the new
+        // field (sorted would be p-b, p-c, p-a).
+        expect(out.map((r) => r.rowId)).toEqual(["p-a", "p-b", "p-c"]);
+        // toEqual would accept `undefined` for a missing property; this will not.
+        expect(out.every((r) => typeof r.sortOrder === "number")).toBe(true);
+        // No filter and no ordering were pushed into the query.
+        expect(prisma.estimatePlantRate.findMany).toHaveBeenCalledWith({
+          orderBy: { item: "asc" }
+        });
+      });
+
+      test("RateTable path: sortOrder mirrors RateRow.sortOrder and the row order is untouched", async () => {
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY",   unit: null,  sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 2 }
+          ]
+        });
+        // Prisma has already applied `orderBy: { sortOrder: "asc" }`; these are
+        // the rows as they come back. Values are 30/10/22 — the middle one is
+        // out of ascending order on purpose, so an entry that quietly took its
+        // array index (0,1,2) or re-sorted the list is visible here.
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-a", isActive: true, sortOrder: 30, cells: { "c-item": "Excavator 20t", "c-rate": 800 } },
+          { id: "rr-b", isActive: true, sortOrder: 10, cells: { "c-item": "Dozer D6",      "c-rate": 950 } },
+          { id: "rr-c", isActive: true, sortOrder: 22, cells: { "c-item": "Bobcat",        "c-rate": 500 } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+
+        expect(out.map((r) => [r.rowId, r.sortOrder])).toEqual([
+          ["rr-a", 30],
+          ["rr-b", 10],
+          ["rr-c", 22]
+        ]);
+        // The `where` and `orderBy` of the RateTable path are untouched.
+        expect(prisma.rateRow.findMany).toHaveBeenCalledWith({
+          where: { rateTableId: "rt-plant", isActive: true },
+          orderBy: { sortOrder: "asc" }
+        });
+      });
+
+      test("labour fan-out: one row, three entries, all three carrying the row's sortOrder", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimateLabourRate.findMany.mockResolvedValue([
+          { id: "lab-1", role: "Foreman", dayRate: "450", nightRate: "520", weekendRate: "600", isActive: true, sortOrder: 12 },
+          { id: "lab-2", role: "Apprentice", dayRate: "250", nightRate: "300", weekendRate: "340", isActive: true, sortOrder: 3 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("labour");
+
+        expect(out).toHaveLength(6);
+        // Each row's three shift entries share that row's value — and the
+        // entries are NOT numbered 0..5 by position.
+        expect(out.map((r) => r.sortOrder)).toEqual([12, 12, 12, 3, 3, 3]);
+        expect(out.map((r) => r.keys.shift)).toEqual([
+          "day", "night", "weekend", "day", "night", "weekend"
+        ]);
+      });
+
+      test("other-rates: the CURATED business order survives — this is why the field exists", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        // The adapter orders by `description: "asc"`, which is NOT the curated
+        // order. These are four real CuttingOtherRate seed rows, mocked
+        // alphabetically as Prisma returns them, carrying their seeded
+        // sortOrder values.
+        prisma.cuttingOtherRate.findMany.mockResolvedValue([
+          { id: "o-clean", description: "Clean-up time",                        rate: "95",  unit: "hour", isActive: true, sortOrder: 7 },
+          { id: "o-extra", description: "Extra man",                            rate: "110", unit: "hour", isActive: true, sortOrder: 5 },
+          { id: "o-ot",    description: "Overtime hourly charge beyond minimum", rate: "165", unit: "hour", isActive: true, sortOrder: 28 },
+          { id: "o-stand", description: "Stand-down time",                      rate: "85",  unit: "hour", isActive: true, sortOrder: 6 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("other-rates");
+
+        // Alphabetical, exactly as before this slice — nothing was reordered.
+        expect(out.map((r) => r.rowId)).toEqual(["o-clean", "o-extra", "o-ot", "o-stand"]);
+        expect(out.map((r) => r.sortOrder)).toEqual([7, 5, 28, 6]);
+
+        // And the curated order is now rebuildable at the call site, which it
+        // was not before: this is the sort the persona lookup_rate handler
+        // expresses as `orderBy: [{ sortOrder: "asc" }, { description: "asc" }]`.
+        const curated = [...out].sort(
+          (a, b) =>
+            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+            String(a.keys.description).localeCompare(String(b.keys.description))
+        );
+        expect(curated.map((r) => r.keys.description)).toEqual([
+          "Extra man",
+          "Stand-down time",
+          "Clean-up time",
+          "Overtime hourly charge beyond minimum"
+        ]);
+      });
+
+      test("core-hole reports null: EstimateCoreHoleRate has NO sort column and none is invented", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        // Note what is NOT on these rows: there is no sortOrder to read,
+        // because the model does not declare one.
+        prisma.estimateCoreHoleRate.findMany.mockResolvedValue([
+          { id: "h-52",  diameterMm: 52,  ratePerHole: "60", isActive: true },
+          { id: "h-100", diameterMm: 100, ratePerHole: "80", isActive: true }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("core-hole");
+
+        // null, NOT 0 and NOT the array index. toBeNull() fails on undefined,
+        // so this also guards against the field silently disappearing.
+        expect(out[0]!.sortOrder).toBeNull();
+        expect(out[1]!.sortOrder).toBeNull();
+        expect(out.map((r) => r.sortOrder)).toEqual([null, null]);
+        // The property is really there — a caller can distinguish "no curated
+        // order for this kind" from "field not populated".
+        expect(Object.keys(out[0]!)).toContain("sortOrder");
+        expect(prisma.estimateCoreHoleRate.findMany).toHaveBeenCalledWith({
+          orderBy: { diameterMm: "asc" }
+        });
+      });
+
+      test("the remaining legacy adapters report their row's sortOrder verbatim", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimateWasteRate.findMany.mockResolvedValue([
+          { id: "w-1", wasteType: "Concrete", facility: "BMI", wasteGroup: "Inert", unit: "tonne", tonRate: "45", loadRate: "0", isActive: true, sortOrder: 9 }
+        ]);
+        prisma.estimateCuttingRate.findMany.mockResolvedValue([
+          { id: "c-1", equipment: "Ring saw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "120", isActive: true, sortOrder: 14 }
+        ]);
+        prisma.estimateFuelRate.findMany.mockResolvedValue([
+          { id: "f-1", item: "Diesel", rate: "2.1", unit: "L", isActive: true, sortOrder: 2 }
+        ]);
+        prisma.estimateEnclosureRate.findMany.mockResolvedValue([
+          { id: "e-1", enclosureType: "Standard", rate: "300", unit: "each", isActive: true, sortOrder: 33 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+
+        expect((await svc.listRates("waste")).map((r) => r.sortOrder)).toEqual([9]);
+        expect((await svc.listRates("cutting")).map((r) => r.sortOrder)).toEqual([14]);
+        expect((await svc.listRates("fuel")).map((r) => r.sortOrder)).toEqual([2]);
+        expect((await svc.listRates("enclosure")).map((r) => r.sortOrder)).toEqual([33]);
+
+        // Every `where`/`orderBy` in this slice's blast radius, unchanged.
+        expect(prisma.estimateWasteRate.findMany).toHaveBeenCalledWith({
+          orderBy: [{ wasteType: "asc" }, { facility: "asc" }]
+        });
+        expect(prisma.estimateCuttingRate.findMany).toHaveBeenCalledWith({
+          orderBy: [
+            { equipment: "asc" },
+            { elevation: "asc" },
+            { material: "asc" },
+            { depthMm: "asc" }
+          ]
+        });
+        expect(prisma.estimateFuelRate.findMany).toHaveBeenCalledWith({
+          orderBy: { item: "asc" }
+        });
+        expect(prisma.estimateEnclosureRate.findMany).toHaveBeenCalledWith({
+          where: { isActive: true },
+          orderBy: { enclosureType: "asc" }
         });
       });
     });

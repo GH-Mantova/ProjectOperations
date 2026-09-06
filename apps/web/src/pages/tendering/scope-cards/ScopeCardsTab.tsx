@@ -19,6 +19,7 @@ import {
 } from "../ScopeQuantitiesTable";
 import { ScopeWasteTab } from "../ScopeWasteTab";
 import { ScopeCuttingSheet } from "../ScopeCuttingSheet";
+import { OtherOperationalCosts } from "./OtherOperationalCosts";
 import {
   DISCIPLINE_CODES,
   DISCIPLINE_LABELS,
@@ -236,13 +237,45 @@ export function ScopeCardsTab({
     return byCard;
   }, [items, disciplineCards]);
 
+  // SCOPE_OTHER_COSTS_V1 — each card's "Other operational costs" section
+  // reports its own total up to here. The section does NOT compute a card
+  // subtotal; this map is only the section figure, per card.
+  //
+  // A collapsed card unmounts its section, and its entry is deliberately NOT
+  // cleared: collapsing a card hides its body and moves no figure, which is
+  // the rule the roll-up already states for collapse.
+  const [otherCostTotals, setOtherCostTotals] = useState<Record<string, number>>({});
+  const handleOtherCostTotal = useCallback((cardId: string, total: number) => {
+    setOtherCostTotals((prev) => (prev[cardId] === total ? prev : { ...prev, [cardId]: total }));
+  }, []);
+
+  // THE ONE PLACE CARD MONEY IS COMPUTED.
+  //
+  // `computeCardBarStats` sums the server-computed per-row item totals; this
+  // fold is the only consumer of it, and BOTH the card header's "Card total"
+  // AND the slice-1 DisciplineSummaryBar read the result. Adding the
+  // operational-cost section here — rather than summing it a second time next
+  // to either display — is what stops the card and the bar from ever
+  // disagreeing about what the card is worth.
+  //
+  // The section total is added to `subtotal` and `subtotalWithMarkup`
+  // identically, i.e. at cost. There is no markup field on
+  // ScopeOperationalCostLine and this slice may not add one, so applying a
+  // markup here would be inventing a number the server has never seen. Both
+  // figures therefore move by EXACTLY the section total.
   const statsByCard = useMemo(() => {
     const byCard = new Map<string, CardBarStats>();
     for (const card of disciplineCards) {
-      byCard.set(card.id, computeCardBarStats(itemsByCard.get(card.id) ?? []));
+      const fromItems = computeCardBarStats(itemsByCard.get(card.id) ?? []);
+      const otherCosts = otherCostTotals[card.id] ?? 0;
+      byCard.set(card.id, {
+        itemCount: fromItems.itemCount,
+        subtotal: fromItems.subtotal + otherCosts,
+        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts
+      });
     }
     return byCard;
-  }, [disciplineCards, itemsByCard]);
+  }, [disciplineCards, itemsByCard, otherCostTotals]);
 
   // ── The roll-up ──────────────────────────────────────────────────────
   // Peak crew and peak plant are a MAX across the stack; days and money are
@@ -433,6 +466,7 @@ export function ScopeCardsTab({
                 loadingItems={loadingItems}
                 tenderId={tenderId}
                 tenderMarkup={tenderMarkup}
+                onOtherCostTotalChange={handleOtherCostTotal}
                 onRename={async (name) => {
                   try {
                     await renameCard(card.id, name);
@@ -569,6 +603,9 @@ type StackEntryProps = {
   onSetCardNotes: (patch: { cuttingNotes?: string | null; wasteNotes?: string | null }) => Promise<void>;
   onSetSectionMarkup: (section: "waste" | "cutting", next: number | null) => Promise<void>;
   onItemsChanged: () => Promise<void>;
+  /** SCOPE_OTHER_COSTS_V1 — reports the card's operational-cost section total
+   *  up to the single card-money fold. Must be referentially stable. */
+  onOtherCostTotalChange: (cardId: string, total: number) => void;
 };
 
 function ScopeCardStackEntry({
@@ -591,7 +628,8 @@ function ScopeCardStackEntry({
   onHeaderOverride,
   onSetCardNotes,
   onSetSectionMarkup,
-  onItemsChanged
+  onItemsChanged,
+  onOtherCostTotalChange
 }: StackEntryProps) {
   const cardWbsRefs = useMemo(() => cardItems.map((i) => i.wbsCode), [cardItems]);
   const cardCode = formatCardCode(card.discipline, card.cardNumber);
@@ -781,6 +819,17 @@ function ScopeCardStackEntry({
               onItemsChanged={onItemsChanged}
             />
           )}
+
+          {/* SCOPE_OTHER_COSTS_V1 — the mock-up fixes the order inside a card:
+              WBS items -> Other operational costs -> Waste -> Concrete cutting
+              -> + Add WBS item -> subtotal. This is the second of those, and
+              it sits here, between the WBS table above and Waste below. */}
+          <OtherOperationalCosts
+            tenderId={tenderId}
+            cardId={card.id}
+            canManage={true}
+            onSectionTotalChange={onOtherCostTotalChange}
+          />
 
           <ScopeWasteTab
             tenderId={tenderId}

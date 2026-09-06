@@ -10,7 +10,7 @@
  * The single most important assertion here is BROKEN != STALE.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,14 +31,43 @@ let fail = 0;
 // tests that DO exercise the grant check build their bodies inline, below.
 const BODY = "\n# body\n\n## STANDING AUTHORITY\n\n" + "> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**\n";
 
-function run(name, frontMatter, expectedExit) {
+/**
+ * Write a fake `gh` that always answers with one fixed PR state, and return its
+ * path for LINT_GH_BIN.
+ *
+ * PR_GATE_EVALUATED_V1 made `requires_merged` a live gate, so any fixture that
+ * declares one now reaches out to GitHub unless the binary is stubbed. Without
+ * this, two assertions below (`requires_merged: 42`) would silently become a
+ * network, auth and PR-#42-state dependency — a self-test that goes red when the
+ * network does is not a self-test. The stub keeps them deterministic and keeps
+ * them testing what they were written to test: the ADMIT path.
+ *
+ * Cross-platform because Marco's box is Windows and CI is Ubuntu: ghFetchPrState
+ * runs execFileSync with shell:true only on win32, so POSIX needs a real
+ * executable (shebang + mode 0755) and Windows needs a .cmd the shell can run.
+ */
+function makeGhStub(state) {
+  if (process.platform === "win32") {
+    const cmd = join(dir, "gh-stub-" + state + ".cmd");
+    writeFileSync(cmd, '@echo {"state":"' + state + '"}\r\n', "utf8");
+    return cmd;
+  }
+  const sh = join(dir, "gh-stub-" + state + ".sh");
+  writeFileSync(sh, '#!/bin/sh\necho \'{"state":"' + state + '"}\'\n', { encoding: "utf8", mode: 0o755 });
+  chmodSync(sh, 0o755);
+  return sh;
+}
+
+function run(name, frontMatter, expectedExit, opts) {
+  opts = opts || {};
   const file = join(dir, name + "-ready.md");
   writeFileSync(file, "---\n" + frontMatter + "\n---\n" + BODY, "utf8");
 
+  const env = Object.assign({}, process.env, opts.env || {});
   let code = 0;
   let out = "";
   try {
-    out = execFileSync("node", [LINT, file], { cwd: REPO, encoding: "utf8" });
+    out = execFileSync("node", [LINT, file], { cwd: REPO, encoding: "utf8", env });
   } catch (e) {
     code = e.status;
     out = String(e.stdout || "") + String(e.stderr || "");
@@ -243,11 +272,17 @@ run("dep-on-main-empty",
   "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\nrequires_on_main:", 1);
 
-console.log("\n=== exit 0 ADMIT: requires_merged well-formed → admitted (no path-gate check)");
+// PR_GATE_EVALUATED_V1: `requires_merged` is now evaluated, not just shape-checked, so this
+// fixture's PR state has to be pinned. LINT_GH_BIN points at a stub that always answers MERGED,
+// which is the state that makes this assertion mean what it has always meant: a well-formed,
+// SATISFIED requires_merged admits. Do not weaken it to exit 1 and do not delete it — it is the
+// regression test for the admit path. The unmet cases live in
+// __tests__/lint-prompt.requires-merged-gate.test.mjs.
+console.log("\n=== exit 0 ADMIT: requires_merged well-formed and MERGED → admitted (no path-gate check)");
 run("dep-all-keys-well-formed",
   "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "requires_merged: 42", 0);
+  "requires_merged: 42", 0, { env: { LINT_GH_BIN: makeGhStub("MERGED") } });
 
 // requires_on_main / requires_file_on_main with paths ABSENT from origin/main REJECT under the
 // ARMED_GATE_STILL_CHECKED fix (the whole point of the gate is that the prompt cannot run yet).
@@ -673,10 +708,12 @@ console.log("\n=== exit 1 REJECT: HOLD version of unmet content gate still rejec
 
 console.log("\n=== exit 0 ADMIT: armed prompt with satisfied requires_merged only, no clusters (regression guard)");
 // The ARMED_GATE_STILL_CHECKED fix must not regress the plain armed-with-no-content-gate case.
+// PR_GATE_EVALUATED_V1: same pinning as above. "satisfied requires_merged" is now a claim the
+// linter actually checks, so the stub has to make it true instead of leaving it unexamined.
 run("armed-no-content-gate-admits",
   "premise: 'true'\npremise_means: always\nscope:\n  - scripts/pipeline/**\n" +
   "done_when: pnpm build\nsize: 3\ngate_allow: none\n" +
-  "requires_merged: 42", 0);
+  "requires_merged: 42", 0, { env: { LINT_GH_BIN: makeGhStub("MERGED") } });
 
 console.log("\n=== exit 1 REJECT: ARMED cluster_order:1 needle already on main -> CLUSTER_DEAD_GATE (decorative-gate case survives)");
 {

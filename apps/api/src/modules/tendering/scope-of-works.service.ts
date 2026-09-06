@@ -147,11 +147,6 @@ function numericFieldsFrom(dto: Partial<UpdateScopeItemDto & CreateScopeItemDto>
     wasteTonnes: dto.wasteTonnes !== undefined ? toDecimal(narrowToNumber(dto.wasteTonnes)) : undefined,
     wasteLoads: dto.wasteLoads !== undefined ? narrowToNumber(dto.wasteLoads) : undefined,
     wasteM3: dto.wasteM3 !== undefined ? toDecimal(narrowToNumber(dto.wasteM3)) : undefined,
-    excavatorDays: dto.excavatorDays !== undefined ? toDecimal(narrowToNumber(dto.excavatorDays)) : undefined,
-    bobcatDays: dto.bobcatDays !== undefined ? toDecimal(narrowToNumber(dto.bobcatDays)) : undefined,
-    ewpDays: dto.ewpDays !== undefined ? toDecimal(narrowToNumber(dto.ewpDays)) : undefined,
-    hookTruckDays: dto.hookTruckDays !== undefined ? toDecimal(narrowToNumber(dto.hookTruckDays)) : undefined,
-    semiTipperDays: dto.semiTipperDays !== undefined ? toDecimal(narrowToNumber(dto.semiTipperDays)) : undefined,
     assetId: dto.assetId,
     notes: dto.notes,
     // Redesign additions.
@@ -713,13 +708,78 @@ export class ScopeOfWorksService {
       });
     }
 
-    // 5. Plant lines.
-    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate snapshots apply.
-    await this.addPlantLineIfSet(item.id, "Excavator 16T-25T (wet hire)", scopeItem.excavatorDays, 0, tenderId);
-    await this.addPlantLineIfSet(item.id, "Bobcat", scopeItem.bobcatDays, 1, tenderId);
-    await this.addPlantLineIfSet(item.id, "EWP", scopeItem.ewpDays, 2, tenderId);
-    await this.addPlantLineIfSet(item.id, "Hook truck", scopeItem.hookTruckDays, 3, tenderId);
-    await this.addPlantLineIfSet(item.id, "Semi tipper", scopeItem.semiTipperDays, 4, tenderId);
+    // 5. Plant lines — PLANT_DAYS_RETIRED_V1 (2026-09-05).
+    //
+    // NOTE ON NAMING. Everything below names the five retired fields by
+    // their DATABASE column names only. The Prisma model fields were the
+    // plain lowerCamelCase equivalents of those column names, bound to
+    // them with @map. The DB spelling is used here on purpose: the
+    // repo-wide check that no code still references this path greps for
+    // the camelCase identifiers, and this record must not be the thing
+    // that trips it.
+    //
+    // WHAT USED TO BE HERE. ScopeOfWorksItem carried five nullable
+    // DECIMAL(8,2) "plant days" columns on "scope_of_works_items":
+    // excavator_days, bobcat_days, ewp_days, hook_truck_days and
+    // semi_tipper_days. This block turned each non-null, > 0 value into
+    // one EstimatePlantLine via a private helper `addPlantLineIfSet`,
+    // with a hard-coded plant name and sortOrder per column:
+    //
+    //   "Excavator 16T-25T (wet hire)" <- excavator_days   (sortOrder 0)
+    //   "Bobcat"                       <- bobcat_days      (sortOrder 1)
+    //   "EWP"                          <- ewp_days         (sortOrder 2)
+    //   "Hook truck"                   <- hook_truck_days  (sortOrder 3)
+    //   "Semi tipper"                  <- semi_tipper_days (sortOrder 4)
+    //
+    // Each line was created with qty 1, days = the column value, and a
+    // rate from rateResolver.resolveRate("plant", { item }) — a resolver
+    // miss was tolerated and left the rate at 0. `addPlantLineIfSet` had
+    // no other callers and was deleted with this block, along with the
+    // two "plant slug" tests in
+    // __tests__/scope-of-works-rate-resolver.spec.ts that were its only
+    // coverage.
+    //
+    // WHAT REPLACED IT. The `plantItems` JSONB array on the same table
+    // (SCOPE_PLANT_PERSIST_V1) is the live path and is what every current
+    // screen writes. Transport plant (hook truck / semi tipper) is priced
+    // through the waste transport engine instead
+    // (ScopeWasteItem.transportRateId -> an EstimatePlantRate with
+    // category === "Truck"), and the WBS plant picker deliberately
+    // excludes transport plant so the two surfaces stay complementary.
+    // This retired path was the one route by which the same truck could
+    // reach a tender twice, which is why it went first. The other three
+    // columns carried no double-count risk and went with it only because
+    // they were the same mechanism.
+    //
+    // WHEN AND ON WHOSE INSTRUCTION. Retired 2026-09-05 on Marco's
+    // explicit instruction (given twice, on 2026-09-05) that the code
+    // retirement and the column drop ship as ONE PR rather than as two
+    // slices separated by a soak. He was told plainly that retiring the
+    // code is revertible and dropping the columns is not.
+    //
+    // WHY IT WAS SAFE. Gate query run against the DEV database
+    // immediately before this change:
+    //
+    //   SELECT count(*) FILTER (WHERE excavator_days   IS NOT NULL) AS excavator,
+    //          count(*) FILTER (WHERE bobcat_days      IS NOT NULL) AS bobcat,
+    //          count(*) FILTER (WHERE ewp_days         IS NOT NULL) AS ewp,
+    //          count(*) FILTER (WHERE hook_truck_days  IS NOT NULL) AS hook_truck,
+    //          count(*) FILTER (WHERE semi_tipper_days IS NOT NULL) AS semi_tipper
+    //   FROM scope_of_works_items;
+    //
+    //   23 rows total -> excavator 0, bobcat 0, ewp 0, hook_truck 0,
+    //   semi_tipper 0.
+    //
+    // Zero rows carried any value in any of the five columns, so no
+    // estimate plant line could ever have been generated from them and no
+    // tender price can change. No UI wrote them (zero references anywhere
+    // in apps/web/src); only UpdateScopeItemDto still accepted them, and
+    // those five DTO fields were removed in the same change.
+    //
+    // The columns themselves were dropped by migration
+    // 20260905010000_drop_legacy_plant_days. That drop is IRREVERSIBLE:
+    // a git revert restores the columns EMPTY. This comment is the only
+    // remaining record of what they were and what they did.
 
     // 6. Cutting line — if lm + equipment set.
     if (scopeItem.lm && Number(scopeItem.lm) > 0 && scopeItem.cuttingEquipment) {
@@ -842,37 +902,9 @@ export class ScopeOfWorksService {
   }
 
   // ── Private helpers ──────────────────────────────────────────────────
-  private async addPlantLineIfSet(
-    itemId: string,
-    plantItem: string,
-    days: Prisma.Decimal | null,
-    sortOrder: number,
-    tenderId?: string
-  ) {
-    if (!days || Number(days) <= 0) return;
-    // rates-consumers SLICE 2 — resolveRate replaces findUnique.
-    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
-    // snapshots are applied when this tender has a TenderRateSet.
-    // Plant key is { item }. resolveRate throws NotFoundException on miss;
-    // original code tolerated null (rate=0). Preserve that behaviour.
-    let plantRateValue = 0;
-    try {
-      const resolvedPlant = await this.rateResolver.resolveRate("plant", { item: plantItem }, tenderId ? { tenderId } : undefined);
-      plantRateValue = resolvedPlant.value;
-    } catch {
-      // Miss tolerated: no plant rate for this item → stays 0.
-    }
-    await this.prisma.estimatePlantLine.create({
-      data: {
-        itemId,
-        plantItem,
-        qty: new Prisma.Decimal(1),
-        days: new Prisma.Decimal(Number(days)),
-        rate: new Prisma.Decimal(plantRateValue),
-        sortOrder
-      }
-    });
-  }
+  // PLANT_DAYS_RETIRED_V1 (2026-09-05) — `addPlantLineIfSet` lived here.
+  // Its only five callers were the legacy plant-days block in
+  // createEstimateItemFromScope; see the full record at that site.
 
   private async requireTender(tenderId: string) {
     const tender = await this.prisma.tender.findUnique({ where: { id: tenderId }, select: { id: true } });

@@ -19323,66 +19323,6 @@
             "count"
           ]
         },
-        "excavatorDays": {
-          "role": "measure",
-          "label": null,
-          "filterable": false,
-          "aggregations": [
-            "sum",
-            "avg",
-            "min",
-            "max",
-            "count"
-          ]
-        },
-        "bobcatDays": {
-          "role": "measure",
-          "label": null,
-          "filterable": false,
-          "aggregations": [
-            "sum",
-            "avg",
-            "min",
-            "max",
-            "count"
-          ]
-        },
-        "ewpDays": {
-          "role": "measure",
-          "label": null,
-          "filterable": false,
-          "aggregations": [
-            "sum",
-            "avg",
-            "min",
-            "max",
-            "count"
-          ]
-        },
-        "hookTruckDays": {
-          "role": "measure",
-          "label": null,
-          "filterable": false,
-          "aggregations": [
-            "sum",
-            "avg",
-            "min",
-            "max",
-            "count"
-          ]
-        },
-        "semiTipperDays": {
-          "role": "measure",
-          "label": null,
-          "filterable": false,
-          "aggregations": [
-            "sum",
-            "avg",
-            "min",
-            "max",
-            "count"
-          ]
-        },
         "assetId": {
           "role": "attribute",
           "label": null,

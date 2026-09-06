@@ -111,12 +111,11 @@ class ScopeItemFieldsBase {
   // the all-discipline `m3` dimension below.
   @ApiPropertyOptional({ deprecated: true }) @IsOptional() @Type(() => Number) @IsNumber() wasteM3?: number | null;
 
-  // Plant days
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() excavatorDays?: number | null;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() bobcatDays?: number | null;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() ewpDays?: number | null;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() hookTruckDays?: number | null;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() semiTipperDays?: number | null;
+  // PLANT_DAYS_RETIRED_V1 (2026-09-05) — the five legacy plant-days
+  // fields (the camelCase forms of excavator_days, bobcat_days, ewp_days,
+  // hook_truck_days and semi_tipper_days) were removed here so the write
+  // path closes with the read path. Plant is captured through
+  // `plantItems` below. Full record in scope-of-works.service.ts.
   @ApiPropertyOptional() @IsOptional() @IsString() assetId?: string | null;
 
   // Redesign additions — generic measurement/material/plant columns.

@@ -343,6 +343,17 @@ here now because they are true for **every** station.
   the first read), but early returns are real — one was observed the same run on a line with no `#`.
   This is not a hang. Keep calling `read_process_output` with explicit offsets until it
   reports `0 remaining`.
+- 🔴 **`Get-ChildItem <dir> -Recurse -Include '*.log'` RETURNS NOTHING, EXIT 0, UNLESS THE PATH
+  ITSELF ENDS IN A WILDCARD.** In PS 5.1 `-Include` filters the *path* argument, not the recursion,
+  so the directory form silently matches zero items while the identical query with `<dir>\*` works.
+  [MEASURED] 2026-09-06T17:2xZ by Station 00, hunting for a live watcher log: `Get-ChildItem
+  C:\po-watcher -Recurse -Include '*.log'` filtered to the last two hours printed **nothing**, and
+  the available conclusion was *"no log on this machine has been written in two hours"* — while
+  `...\logs\2026-09-06.log` had been written **three minutes earlier**. The same query as
+  `C:\po-watcher\* -Recurse -Include '*.log'` returns it. Nothing warns and nothing is empty in a
+  way §9.6 can see: the cmdlet did exactly what it was asked. 🔧 **Use `-Filter` on a single
+  extension, or put the wildcard in the path** — and control any recursive file search against a
+  file you know is there.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ## 9.2 Git
@@ -790,6 +801,51 @@ here now because they are true for **every** station.
   lane at 13:08Z on the strength of that line's absence, from a log that had recorded no such line
   since 02:01Z. The conclusion survived independent hand-classification by `classifyPolicyFiles`;
   the **evidence** did not. Found by Station 04 2026-09-06T14:2xZ (F1/F2), landed by Station 00.
+
+  🔴🔴 **CORRECTED 2026-09-06T17:5xZ — `watcher-launch.log` IS NOT THE WATCHER'S LOG, SO THE
+  BULLET ABOVE FAILS SAFE INTO PERMANENT BLINDNESS WHILE A LIVE TRANSCRIPT EXISTS.** It is right
+  that the file was frozen and right to refuse `#1723`'s evidence. What it does not say is **which
+  file the `opened PR #<n>` lines are written to today**, and the answer is not that one.
+  [MEASURED] 2026-09-06T17:3xZ by Station 00 at `eef272df`: `watcher-launcher-singlelane.ps1` line
+  27 is `Start-Transcript -Path "C:\po-watcher\watcher-launch.log" -Append -Force` — the file is a
+  **PowerShell transcript of the LAUNCHER process**, not the watcher's output. It therefore dies
+  with the launcher instance that opened it and says nothing whatever about a watcher still running
+  under a different one. Its final line is `Watcher exited with code 1 (raw node exit: -1)` at
+  `05:27:31Z` — **the transcript ends where its owning launcher's node ended** — while the live node
+  (pid 27236, `StartTime` `11:49:57Z`) has been running under a different launcher family since.
+
+  🔧 **The watcher's real transcript is the DAILY CLONE LOG**, written per line as UTF-8 by
+  `scripts/pr-watcher/start-watcher.ps1` (anchors `$LogFile = Join-Path $LogDir` and the
+  `Add-Content -Path $LogFile` that replaced `Tee-Object`):
+  `C:\po-watcher\ProjectOperations\scripts\pr-watcher\logs\<yyyy-MM-dd>.log`. [MEASURED] the same
+  run: `2026-09-06.log`, mtime **17:15:01Z** (three minutes old), **121,518** bytes, **4**
+  `opened PR #` lines — newest `[2026-09-06T10:33:20.879Z] [merge] ... opened PR #1707,
+  policy=tests-docs, waiting.` — POSITIVE control `[merge]` → **8**, NEGATIVE control (a freshly
+  minted needle) → **0**. The frozen launcher transcript and the live clone log were both on disk
+  the whole time.
+
+  ⚠️ **`ensure-watcher.log` is NOT a third candidate.** It is fresher than either (17:05:03Z) and
+  holds only `watcher alive, pid(s) <n>` ping rows: `opened PR #` → **0**, `[merge]` → **0**,
+  `[queue]` → **0**, negative control → **0**. A run that simply reaches for the freshest log in
+  `C:\po-watcher` gets one with no lane information at all and every count zero — §9.6, an empty
+  result read as an empty world, inside the cure for the bullet above.
+
+  🔧 **So the freshness precondition stands, applied to the RIGHT FILE: assert the DAILY CLONE
+  LOG's `LastWriteTimeUtc` is younger than the PR's `createdAt`**, and report `[CANNOT MEASURE]`
+  only when *that* file is stale. **The falsifying probe is the `Start-Transcript` line itself**
+  — if the launcher stops opening that transcript, or `start-watcher.ps1` stops writing the daily
+  log, this correction is wrong and must be re-measured.
+
+  🔴 **This is not academic — the frozen file cost a live finding the same day.** The 16:12Z
+  collect read `watcher-launch.log`, recorded that the verdict-home-resolver prompt "was armed,
+  looped, and left NO LOG ANYWHERE", and dispatched Station 03 to re-arm it. [MEASURED] from the
+  daily clone log and `gh`: it was armed `09:20:50Z`, the watchdog kill loop built it **four**
+  times, it opened **#1703 · #1704 · #1707 · #1708**, three were closed as duplicates at `11:04Z`
+  and **#1704 MERGED at 11:41:36Z**. `git grep -c VERDICT_HOME_RESOLVER origin/main --
+  scripts/pr-watcher/index.mjs` → **6** (POSITIVE control `classifyPolicyFiles` → 2; NEGATIVE
+  control → exit 1), and `scripts/pr-watcher/__tests__/verdict-home-resolver.test.mjs` is tracked
+  on `main`. **The fix had already landed; the dispatch would have built a fifth duplicate of
+  merged work.** Found and landed by Station 00 2026-09-06T17:5xZ.
 
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read

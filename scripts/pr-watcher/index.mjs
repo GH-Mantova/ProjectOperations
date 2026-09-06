@@ -656,15 +656,57 @@ export function buildVerdictHeader({ verdictRel, prState }) {
   );
 }
 
+// VERDICT_HOME_RESOLVER_V1
+// Searches three homes for pr-${prNumber}-review.md and returns the path to
+// the NEWEST hit by mtimeMs, or null if none exist.
+//
+// Homes (in priority order when mtime is equal):
+//   1. Clone:   REPO_ROOT/docs/pr-reviews/ (unchanged behaviour when hit)
+//   2. Archive: sibling verdicts-archive/ of REPO_ROOT (matches runArchiveSettledVerdicts)
+//   3. Dev tree: process.env.PR_WATCHER_DEV_TREE (default C:\ProjectOperations2)
+//
+// Accepts optional { homes, statFn } for testing without touching the real trees.
+export async function resolveVerdictPath(prNumber, { homes, statFn } = {}) {
+  const fileName = `pr-${prNumber}-review.md`;
+  const devTree = process.env.PR_WATCHER_DEV_TREE ?? "C:\\ProjectOperations2";
+  const resolvedHomes = homes ?? [
+    path.join(REPO_ROOT, "docs", "pr-reviews", fileName),
+    path.join(path.dirname(REPO_ROOT), "verdicts-archive", fileName),
+    path.join(devTree, "docs", "pr-reviews", fileName),
+  ];
+  const statImpl = statFn ?? stat;
+
+  let best = null;
+  for (const candidate of resolvedHomes) {
+    try {
+      const info = await statImpl(candidate);
+      if (best === null || info.mtimeMs > best.mtimeMs) {
+        best = { filePath: candidate, mtimeMs: info.mtimeMs };
+      }
+    } catch {
+      // ENOENT or inaccessible — skip this home
+    }
+  }
+  return best ? best.filePath : null;
+}
+
 async function mirrorVerdictToPr(name) {
   const prNumber = reviewJobPrNumber(name);
   if (prNumber == null) {
     log("review", `verdict mirror skipped: no PR number in job name "${name}"`);
     return;
   }
+  const clonePath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  const archivePath = path.join(path.dirname(REPO_ROOT), "verdicts-archive", `pr-${prNumber}-review.md`);
+  const devTree = process.env.PR_WATCHER_DEV_TREE ?? "C:\\ProjectOperations2";
+  const devPath = path.join(devTree, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  const verdictPath = await resolveVerdictPath(prNumber);
   const verdictRel = `docs/pr-reviews/pr-${prNumber}-review.md`;
-  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
   let verdict;
+  if (verdictPath == null) {
+    log("review", `verdict mirror skipped: pr-${prNumber}-review.md not found in any home (searched: ${clonePath}, ${archivePath}, ${devPath})`);
+    return;
+  }
   try {
     verdict = await readFile(verdictPath, "utf-8");
   } catch {
@@ -1427,7 +1469,8 @@ async function prFileList(prNumber) {
 // When prFiles is provided (string[]), the guard also runs: a MERGE verdict
 // that names files not in the PR is rejected even if the text says MERGE.
 async function verdictApproves(prNumber, prFiles) {
-  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  const verdictPath = await resolveVerdictPath(prNumber);
+  if (verdictPath == null) return false;
   try {
     const content = await readFile(verdictPath, "utf-8");
     if (!/^VERDICT:\s*MERGE\b/m.test(content)) return false;
@@ -2755,12 +2798,15 @@ async function drain() {
       if (reviewPrNum != null) {
         try {
           const guardPrFiles = await prFileList(reviewPrNum);
-          const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${reviewPrNum}-review.md`);
+          const verdictPath = await resolveVerdictPath(reviewPrNum);
           let verdictText = "";
           try {
-            verdictText = await readFile(verdictPath, "utf-8");
+            if (verdictPath != null) {
+              verdictText = await readFile(verdictPath, "utf-8");
+            }
+            // verdict file not found in any home — guard cannot run; let mirror proceed
           } catch {
-            // verdict file not found — guard cannot run; let mirror proceed
+            // read error — guard cannot run; let mirror proceed
             verdictText = "";
           }
           if (verdictText) {

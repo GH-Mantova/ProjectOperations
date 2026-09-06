@@ -8,6 +8,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Naming `types:` REPLACES GitHub's default [opened, synchronize, reopened] --
+    # it does NOT extend it. All three defaults MUST stay listed here; dropping
+    # `synchronize` would stop CI running on new commits and leave every PR green
+    # on a stale run. `labeled`/`unlabeled` are added because CP-26 reads the LIVE
+    # `do-not-merge` label (gh pr view) in both directions: without them, removing
+    # the label after a release cannot re-run CI, so the required check keeps
+    # reporting the stale LABEL_PRESENT verdict and the PR stays blocked on a fact
+    # that is no longer true (measured on #1510 and #1511, 2026-09-02).
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 # Cancel a PR's in-flight run when a newer commit is pushed to the same PR.
 # Pushes to main are never cancelled — every trunk commit gets a full run.

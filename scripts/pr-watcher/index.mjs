@@ -656,15 +656,61 @@ export function buildVerdictHeader({ verdictRel, prState }) {
   );
 }
 
+// VERDICT_HOME_RESOLVER_V1 - a review verdict has three homes and the writer picks
+// unpredictably (measured 2026-09-05: 9 of 12 landed in the dev tree, 1 was archived
+// 16s before the mirror ran). Search all three; clone first, so behaviour is unchanged
+// whenever the file is where it used to be. Returns the NEWEST hit, or null.
+//
+// Homes:
+//   (A) Clone:    REPO_ROOT/docs/pr-reviews/pr-N-review.md
+//   (B) Archive:  parent(REPO_ROOT)/verdicts-archive/pr-N-review.md
+//              (or injected archiveDir for tests)
+//   (C) Dev tree: PR_WATCHER_DEV_TREE/docs/pr-reviews/pr-N-review.md
+//              (defaults to C:\ProjectOperations2 so behaviour matches
+//               measured 2026-09-05 reality; injected via devTree for tests)
+//
+// Returns { path, mtimeMs } for the NEWEST hit, or null when no home has it.
+// Opts are injected so tests can point homes at temp dirs:
+//   { repoRoot, archiveDir, devTree }
+export async function resolveVerdictPath(prNumber, { repoRoot = REPO_ROOT, archiveDir, devTree } = {}) {
+  const resolvedArchiveDir = archiveDir ?? path.join(path.dirname(repoRoot), "verdicts-archive");
+  const resolvedDevTree = devTree ?? (process.env.PR_WATCHER_DEV_TREE || "C:\\ProjectOperations2");
+  const filename = `pr-${prNumber}-review.md`;
+  const candidates = [
+    path.join(repoRoot, "docs", "pr-reviews", filename),
+    path.join(resolvedArchiveDir, filename),
+    path.join(resolvedDevTree, "docs", "pr-reviews", filename),
+  ];
+  let best = null;
+  for (const p of candidates) {
+    try {
+      const s = await stat(p);
+      if (best === null || s.mtimeMs > best.mtimeMs) {
+        best = { path: p, mtimeMs: s.mtimeMs };
+      }
+    } catch {
+      // file not in this home — continue
+    }
+  }
+  return best ? { path: best.path, mtimeMs: best.mtimeMs, searched: candidates } : { path: null, mtimeMs: 0, searched: candidates };
+}
+
 async function mirrorVerdictToPr(name) {
   const prNumber = reviewJobPrNumber(name);
   if (prNumber == null) {
     log("review", `verdict mirror skipped: no PR number in job name "${name}"`);
     return;
   }
-  const verdictRel = `docs/pr-reviews/pr-${prNumber}-review.md`;
-  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  // VERDICT_HOME_RESOLVER_V1: search all three homes before giving up.
+  const { path: verdictPath, searched: verdictSearched } = await resolveVerdictPath(prNumber);
+  const verdictRel = verdictPath
+    ? path.relative(REPO_ROOT, verdictPath).replace(/\\/g, "/")
+    : `docs/pr-reviews/pr-${prNumber}-review.md`;
   let verdict;
+  if (!verdictPath) {
+    log("review", `verdict mirror skipped: pr-${prNumber}-review.md not found in any home: ${verdictSearched.join(", ")}`);
+    return;
+  }
   try {
     verdict = await readFile(verdictPath, "utf-8");
   } catch {
@@ -1426,8 +1472,14 @@ async function prFileList(prNumber) {
 // the first line: "VERDICT: MERGE" (or FIX / BLOCK). Only MERGE approves.
 // When prFiles is provided (string[]), the guard also runs: a MERGE verdict
 // that names files not in the PR is rejected even if the text says MERGE.
-async function verdictApproves(prNumber, prFiles) {
-  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+//
+// VERDICT_HOME_RESOLVER_V1: opts (repoRoot, archiveDir, devTree) are forwarded
+// to resolveVerdictPath so tests can inject temp-dir homes without touching
+// REPO_ROOT. In production these are omitted and defaults apply.
+export async function verdictApproves(prNumber, prFiles, opts) {
+  // VERDICT_HOME_RESOLVER_V1: search clone, archive, and dev tree.
+  const { path: verdictPath } = await resolveVerdictPath(prNumber, opts ?? {});
+  if (!verdictPath) return false;
   try {
     const content = await readFile(verdictPath, "utf-8");
     if (!/^VERDICT:\s*MERGE\b/m.test(content)) return false;
@@ -2755,15 +2807,31 @@ async function drain() {
       if (reviewPrNum != null) {
         try {
           const guardPrFiles = await prFileList(reviewPrNum);
-          const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${reviewPrNum}-review.md`);
+          // VERDICT_HOME_RESOLVER_V1: search all three homes for the verdict.
+          const { path: guardVerdictPath, searched: guardVerdictSearched } = await resolveVerdictPath(reviewPrNum);
           let verdictText = "";
-          try {
-            verdictText = await readFile(verdictPath, "utf-8");
-          } catch {
-            // verdict file not found — guard cannot run; let mirror proceed
-            verdictText = "";
+          if (guardVerdictPath) {
+            try {
+              verdictText = await readFile(guardVerdictPath, "utf-8");
+            } catch {
+              verdictText = "";
+            }
           }
-          if (verdictText) {
+          if (!guardVerdictPath || !verdictText) {
+            // Verdict is missing from all three homes after a successful agent run —
+            // filing this [ok] would silently discard the review. Route to failure.
+            guardBlocked = true;
+            log("verdict-guard", `PR #${reviewPrNum}: verdict missing after review agent succeeded — searched: ${(guardVerdictSearched ?? []).join(", ")} — moving to failed/`);
+            const dest = path.join(FAILED_DIR, name);
+            const logDest = path.join(FAILED_DIR, `${name}.log`);
+            try {
+              await mkdir(FAILED_DIR, { recursive: true });
+              await rename(filePath, dest);
+              await writeFile(logDest, logBody, "utf-8");
+            } catch (mvErr) {
+              log("error", `verdict-missing move to failed/ failed: ${mvErr.message}`);
+            }
+          } else if (verdictText) {
             const guardResult = validateVerdict({ verdictText, prFiles: guardPrFiles });
             if (!guardResult.ok) {
               guardBlocked = true;

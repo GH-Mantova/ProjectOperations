@@ -438,16 +438,17 @@ if ($env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -eq '1') { return }
 
 $laneDesc = if ($null -eq $watcherLane) { 'unset (single-lane mode)' } else { "lane=$watcherLane of $watcherLanes" }
 Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail. PR_WATCHER_LANE=$laneDesc"
-Sup-Log "Heartbeat watchdog armed: restart the node if the JUDGED age (WATCHDOG_RESTART_GRACE_V1: the later of heartbeat last write and node process start) is stale > $wdHungMin min while runnable>0 and 0 in-progress (poll ${wdPollSec}s). Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to lane-filtered on-disk count if file is missing or stale."
+Sup-Log "Heartbeat watchdog armed: restart the node if the JUDGED age (WATCHDOG_RESTART_GRACE_V1: the later of heartbeat last write and node process start, or heartbeat-only when the node CreationDate is unreadable) is stale > $wdHungMin min while runnable>0 (poll ${wdPollSec}s). That is the whole test: nothing checks whether a build is in flight, deliberately -- a hung node is one that believes it is building. Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to lane-filtered on-disk count if file is missing or stale."
 
 # WATCHDOG_RESTART_GRACE_V1 -- carry the pure function INTO the watchdog job.
 #
 # Start-Job runs its scriptblock in a FRESH runspace that does NOT inherit this
 # scope's function definitions. A pure helper defined only out here and never
-# reachable from the job would be a decorative guard -- this file already carries
-# one of those (the in-progress\*.md check reads a directory no producer writes),
-# and one is enough. -InitializationScript runs in the JOB's session state before
-# the scriptblock does, so the function it defines is in scope for the poll loop.
+# reachable from the job would be a decorative guard -- this file carried one of
+# those until 2026-09-06 (the in-progress\*.md check read a directory no producer
+# writes; deleted, see the note at the poll site), and one was enough.
+# -InitializationScript runs in the JOB's session state before the scriptblock
+# does, so the function it defines is in scope for the poll loop.
 #
 # The init script's text is READ BACK OFF THE LIVE FUNCTION (FunctionInfo's
 # ScriptBlock is the function body; ToString() is that body's source text) rather
@@ -687,8 +688,26 @@ No prompts were deleted. They sit in docs/pr-prompts/ as *-ready.md files.
                 continue
             }
 
-            $inProg = @(Get-ChildItem (Join-Path $PromptDir 'in-progress\*.md') -File -ErrorAction SilentlyContinue)
-            if ($inProg.Count -gt 0) { continue }                     # a build is running: not hung
+            # --- NO BUILD-IN-FLIGHT GUARD HERE, DELIBERATELY (2026-09-06) ---
+            # Until this date two lines here counted docs/pr-prompts/in-progress\*.md
+            # and skipped the cycle when the count was non-zero ("a build is
+            # running: not hung"). NOTHING has ever written that directory --
+            # index.mjs retires prompts to processed/, failed/, no-pr-opened/,
+            # blocked/ and paused/ and to nothing else, the directory is absent
+            # from origin/main, and queue-sync.ps1 only Test-Paths it. The count
+            # was therefore permanently 0, the guard never once fired, and the
+            # two log lines that advertised it were describing a check that was
+            # not happening.
+            #
+            # DO NOT REINSTATE IT -- not against in-progress\*.md, not against
+            # heartbeat.log, .queue-state.json, or any other signal. A guard that
+            # actually said "a build is running, so do not kill" would DISABLE
+            # this watchdog for the exact failure it exists for: on 2026-08-11
+            # (header note above) the node hung MID-RUN with its heartbeat frozen
+            # ~40 min while 16 prompts sat armed and nothing restarted it. A hung
+            # node is, by definition, a node that believes it is building.
+            #
+            # The staleness test below is the whole test, and it is enough.
             # --- WATCHDOG_RESTART_GRACE_V1 (2026-09-06) ----------------------
             # The heartbeat only ticks MID-RUN, so its age describes the queue's
             # last real run, NOT the process we are about to judge. Judge by the
@@ -743,7 +762,7 @@ No prompts were deleted. They sit in docs/pr-prompts/ as *-ready.md files.
                     WD-Log ("FLAG WRITE FAILED (" + $_.Exception.Message + "). Skipping kill this cycle to avoid the ambiguous-exit deadlock.")
                 }
                 if ($flagWritten) {
-                    WD-Log ("judged age {0} min (heartbeat {1} min, node {2} min old; WATCHDOG_RESTART_GRACE_V1 judges by the later) with armed={3} runnable={4} 0 in-progress -> node HUNG. Sentinel written; killing pid {5}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, [int]$hbAgeMin, [int]$nodeAgeMin, $armed.Count, $runnable, $node[0].ProcessId)
+                    WD-Log ("judged age {0} min (heartbeat {1} min, node {2} min old; WATCHDOG_RESTART_GRACE_V1 judges by the later) with armed={3} runnable={4} -> node HUNG (staleness is the whole test; no build-in-flight check is performed, by design). Sentinel written; killing pid {5}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, [int]$hbAgeMin, [int]$nodeAgeMin, $armed.Count, $runnable, $node[0].ProcessId)
                     foreach ($p in $node) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
                     Start-Sleep -Seconds 150                          # let the supervisor relaunch; avoid a double-kill
                 }

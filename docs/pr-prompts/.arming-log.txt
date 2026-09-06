@@ -56,3 +56,5 @@
 2026-09-06T01:52:59Z  ARMED  pr-tipid-s1-waste-rows-can-carry-a-map-location-id  escalates=false  actor=marco-delegated  by=Marco@LAPTOP-E6NHU4E4  pid=24248  caller=powershell.exe:2012
 2026-09-06T06:16:17Z  ARMED  pr-artifactregister-s2-name-what-is-missing  escalates=false  actor=station-00-scheduled-0608Z  by=Marco@LAPTOP-E6NHU4E4  pid=28372  caller=powershell.exe:29924
 2026-09-06T08:17:13Z  ARMED  pr-scopesub-s6-the-bars-provisional-split  escalates=false  actor=station-00-scheduled-0808Z  by=Marco@LAPTOP-E6NHU4E4  pid=31980  caller=cmd.exe:32292
+2026-09-06T08:22:53Z  ARMED  pr-jobroles-s1-noaccess-instead-of-a-dead-shell  escalates=false  actor=marco-delegated  by=Marco@LAPTOP-E6NHU4E4  pid=5564  caller=powershell.exe:13052
+2026-09-06T09:20:50Z  ARMED  pr-watcher-verdict-home-resolver  escalates=false  actor=station-00-scheduled-0908Z  by=Marco@LAPTOP-E6NHU4E4  pid=24508  caller=cmd.exe:26076

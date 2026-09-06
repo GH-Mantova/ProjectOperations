@@ -53,6 +53,7 @@ function makePlantListedRate(overrides: Partial<{
   category: string;
   unit: string;
   rate: number;
+  isActive: boolean;
 }> = {}): ListedRate {
   return {
     rowId: overrides.rowId ?? "plt-1",
@@ -60,6 +61,10 @@ function makePlantListedRate(overrides: Partial<{
     info: { Category: overrides.category ?? "Excavator", Unit: overrides.unit ?? "day" },
     value: overrides.rate ?? 750,
     unit: overrides.unit ?? "day",
+    // listRates("plant") does NOT filter on isActive — the legacy plant
+    // adapter has no `where`. Default true here because these fixtures
+    // exercise the export's grouping, not the activity flag.
+    isActive: overrides.isActive ?? true,
     source: "legacy"
   };
 }
@@ -73,6 +78,7 @@ function makeWasteListedRate(overrides: Partial<{
   unit: string;
   tonRate: number;
   loadRate: number;
+  isActive: boolean;
 }> = {}): ListedRate {
   return {
     rowId: overrides.rowId ?? "w-1",
@@ -86,6 +92,8 @@ function makeWasteListedRate(overrides: Partial<{
     },
     value: overrides.tonRate ?? 180,
     unit: overrides.unit ?? "tonne",
+    // As above: listRates("waste") returns inactive rows too. Default true.
+    isActive: overrides.isActive ?? true,
     source: "legacy"
   };
 }

@@ -37,9 +37,13 @@ import {
 } from "./DisciplineSummaryBar";
 import {
   cardsInDiscipline,
+  groupWithPreviousPatches,
+  nextStageGroup,
   resolveDisciplineFromParam,
   rollUpDiscipline,
-  toCardRollupInput
+  sharesStageWithPrevious,
+  toCardRollupInput,
+  ungroupPatches
 } from "./utils/discipline-rollup";
 
 // SCOPE_DISCIPLINE_STACK_V1 — main Scope of Works container.
@@ -90,6 +94,7 @@ export function ScopeCardsTab({
     deleteCard,
     reorderCards,
     updateCardHeaderOverrides,
+    setStageGroups,
     getCardSummary
   } = useScopeCards(tenderId);
   const { markup: tenderMarkup, saveMarkup: saveTenderMarkup } = useTenderEstimate(tenderId);
@@ -310,7 +315,11 @@ export function ScopeCardsTab({
           toCardRollupInput(
             card.id,
             cardSummaries[card.id],
-            statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 }
+            statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 },
+            // SCOPE_STAGE_GROUP_V1 — the card's stage. null on every card
+            // until a human groups two, and null is "a stage of its own",
+            // so an ungrouped discipline folds exactly as it did before.
+            card.stageGroup
           )
         )
       ),
@@ -351,6 +360,31 @@ export function ScopeCardsTab({
       }
     },
     [cards, reorderCards]
+  );
+
+  /**
+   * SCOPE_STAGE_GROUP_V1 — say that a card does, or no longer does, run at
+   * the same time as the card directly above it in its discipline.
+   *
+   * This is the whole grouping feature. It is deliberately a toggle on ONE
+   * adjacency and not a stage editor: the decision procedure lives in
+   * utils/discipline-rollup.ts (`groupWithPreviousPatches` /
+   * `ungroupPatches`) and is unit-tested there, so this callback only
+   * chooses which of the two to ask for and hands the result to the hook.
+   */
+  const toggleStageGroupWithPrevious = useCallback(
+    async (cardId: string) => {
+      const siblings = cardsInDiscipline(cards, activeDiscipline ?? "");
+      const patches = sharesStageWithPrevious(siblings, cardId)
+        ? ungroupPatches(siblings, cardId)
+        : groupWithPreviousPatches(siblings, cardId, nextStageGroup(cards));
+      try {
+        await setStageGroups(patches);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [cards, activeDiscipline, setStageGroups]
   );
 
   if (cardsLoading && cards.length === 0) {
@@ -481,6 +515,8 @@ export function ScopeCardsTab({
                 collapsed={collapsedCardIds[card.id] === true}
                 onToggleCollapsed={() => toggleCollapsed(card.id)}
                 onMove={(delta) => void moveCardWithinDiscipline(card.id, delta)}
+                concurrentWithPrevious={sharesStageWithPrevious(disciplineCards, card.id)}
+                onToggleStageGroup={() => void toggleStageGroupWithPrevious(card.id)}
                 stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 }}
                 summary={cardSummaries[card.id] ?? null}
                 cardItems={itemsByCard.get(card.id) ?? []}
@@ -611,6 +647,11 @@ type StackEntryProps = {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onMove: (delta: -1 | 1) => void;
+  /** SCOPE_STAGE_GROUP_V1 — true when this card shares a stage with, and so
+   *  runs at the same time as, the card directly above it. */
+  concurrentWithPrevious: boolean;
+  /** Join this card to the stage above, or take it back out. */
+  onToggleStageGroup: () => void;
   stats: CardBarStats;
   summary: ScopeCardSummary | null;
   cardItems: TableItem[];
@@ -640,6 +681,8 @@ function ScopeCardStackEntry({
   collapsed,
   onToggleCollapsed,
   onMove,
+  concurrentWithPrevious,
+  onToggleStageGroup,
   stats,
   summary,
   cardItems,
@@ -743,6 +786,32 @@ function ScopeCardStackEntry({
               {fmtCurrency(stats.subtotalWithMarkup)}
             </span>
           </div>
+          {/* SCOPE_STAGE_GROUP_V1 — the whole grouping control: one toggle
+              on one adjacency. Hidden on the first card of a discipline,
+              which has nothing above it to run with. Grouping RAISES the
+              discipline's peak crew and LOWERS its duration, so the label
+              and the tooltip both say so before the click. */}
+          {stageIndex > 0 ? (
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={onToggleStageGroup}
+              aria-pressed={concurrentWithPrevious}
+              data-testid="stage-group-toggle"
+              aria-label={
+                concurrentWithPrevious
+                  ? `Make card ${cardCode} run after the card above it instead of at the same time`
+                  : `Make card ${cardCode} run at the same time as the card above it`
+              }
+              title={
+                concurrentWithPrevious
+                  ? "Runs at the same time as the card above. Click to put it back in sequence — the discipline's peak crew falls and its duration grows."
+                  : "Runs after the card above. Click to run them at the same time — their crews add, so the discipline's peak crew rises and its duration falls."
+              }
+            >
+              {concurrentWithPrevious ? "⇉ Concurrent" : "⇢ Sequential"}
+            </button>
+          ) : null}
           <div style={{ display: "inline-flex", gap: 4 }}>
             <button
               type="button"

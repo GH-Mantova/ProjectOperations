@@ -356,8 +356,20 @@ describe("toCardRollupInput", () => {
       duration: 5,
       subtotal: 40_000,
       subtotalWithMarkup: 46_000,
-      plantSummary: summary.computed.plantSummary
+      plantSummary: summary.computed.plantSummary,
+      // SCOPE_STAGE_GROUP_V1 — the card's stage, added by this slice. NOT a
+      // figure: every number above is untouched. A caller that passes no
+      // stageGroup gets null, which means "a stage of its own" and folds
+      // exactly as an absent key does (pinned in
+      // utils/__tests__/discipline-rollup.test.ts, "an explicit null stage
+      // key is the same as no stage key at all").
+      stageKey: null
     });
+  });
+
+  it("still gives an ungrouped card a stage of its own", () => {
+    expect(toCardRollupInput("dem1", summary, stats).stageKey).toBeNull();
+    expect(toCardRollupInput("dem1", summary, stats, null).stageKey).toBeNull();
   });
 
   it("prefers each override over its computed figure", () => {

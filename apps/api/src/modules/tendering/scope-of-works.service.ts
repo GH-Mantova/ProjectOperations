@@ -982,6 +982,11 @@ export class ScopeOfWorksService {
       markupOverride: c.markupOverride !== null ? Number(c.markupOverride) : null,
       wasteMarkupOverride: c.wasteMarkupOverride !== null ? Number(c.wasteMarkupOverride) : null,
       cuttingMarkupOverride: c.cuttingMarkupOverride !== null ? Number(c.cuttingMarkupOverride) : null,
+      // SCOPE_STAGE_GROUP_V1 — null (every card until a human groups two)
+      // means "a stage of its own"; two cards of the same discipline
+      // sharing a non-null value are ONE stage and run concurrently. The
+      // web roll-up folds on this as its stage key.
+      stageGroup: c.stageGroup,
       sortOrder: c.sortOrder,
       itemCount: c._count.scopeItems,
       createdAt: c.createdAt,
@@ -1039,6 +1044,35 @@ export class ScopeOfWorksService {
     return this.prisma.scopeCard.update({
       where: { id: cardId },
       data: { plantColumnCount }
+    });
+  }
+
+  /**
+   * SCOPE_STAGE_GROUP_V1 — put a card into a stage, or take it out of one.
+   *
+   * Two cards of the SAME discipline holding the same non-null `stageGroup`
+   * are ONE stage and run CONCURRENTLY: the web roll-up sums their crews and
+   * their plant quantities and takes the LONGEST of their durations for the
+   * stage. `null` returns the card to a stage of its own, which is what
+   * every card holds until a human deliberately groups two of them.
+   *
+   * The value is an OPAQUE group id. It is not a stage index and it carries
+   * no ordering — stage order is the card order (sortOrder) that already
+   * exists, and adding a second field for it is how this becomes a
+   * scheduler. Nothing is validated beyond "an integer or null": a group id
+   * that no other card shares is simply a stage of one, which folds
+   * identically to null.
+   *
+   * @returns the updated card
+   * @throws NotFoundException when the tender or card does not exist
+   */
+  async setCardStageGroup(tenderId: string, cardId: string, stageGroup: number | null) {
+    await this.requireTender(tenderId);
+    const card = await this.prisma.scopeCard.findFirst({ where: { id: cardId, tenderId } });
+    if (!card) throw new NotFoundException("Card not found.");
+    return this.prisma.scopeCard.update({
+      where: { id: cardId },
+      data: { stageGroup: stageGroup ?? null }
     });
   }
 

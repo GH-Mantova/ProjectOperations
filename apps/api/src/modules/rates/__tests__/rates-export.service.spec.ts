@@ -54,6 +54,7 @@ function makePlantListedRate(overrides: Partial<{
   unit: string;
   rate: number;
   isActive: boolean;
+  sortOrder: number | null;
 }> = {}): ListedRate {
   return {
     rowId: overrides.rowId ?? "plt-1",
@@ -65,6 +66,10 @@ function makePlantListedRate(overrides: Partial<{
     // adapter has no `where`. Default true here because these fixtures
     // exercise the export's grouping, not the activity flag.
     isActive: overrides.isActive ?? true,
+    // The export sheets order themselves (by category, then item); they never
+    // read sortOrder. Defaulted to 0 here only so the fixture satisfies the
+    // ListedRate type — pass an override if a test ever asserts on it.
+    sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
     source: "legacy"
   };
 }
@@ -79,6 +84,7 @@ function makeWasteListedRate(overrides: Partial<{
   tonRate: number;
   loadRate: number;
   isActive: boolean;
+  sortOrder: number | null;
 }> = {}): ListedRate {
   return {
     rowId: overrides.rowId ?? "w-1",
@@ -94,6 +100,9 @@ function makeWasteListedRate(overrides: Partial<{
     unit: overrides.unit ?? "tonne",
     // As above: listRates("waste") returns inactive rows too. Default true.
     isActive: overrides.isActive ?? true,
+    // As above: the waste sheet does its own ordering and never reads
+    // sortOrder. Defaulted to 0 only to satisfy the ListedRate type.
+    sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
     source: "legacy"
   };
 }

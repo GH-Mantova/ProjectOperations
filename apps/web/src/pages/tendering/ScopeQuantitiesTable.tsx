@@ -20,6 +20,28 @@ import {
 } from "./scope-cards/WbsMeasurementBlock";
 import { WbsCommentBlock, commentCount } from "./scope-cards/WbsCommentBlock";
 import { WbsAcmBlock, acmFactCount } from "./scope-cards/WbsAcmBlock";
+// SCOPE_SUB_TAB_V1 — scope-subcontracted slice 5. The two pickers are
+// presentational and auth-free; this file owns authFetch and every one of
+// slice 4's routes, exactly as it already owns the item PATCH the three
+// expandables above send through `onPatch`.
+import {
+  SubLinkPicker,
+  type SubLinkableItem
+} from "./scope-cards/SubLinkPicker";
+import {
+  SubQuotePicker,
+  subLineHasUnselectedQuotes,
+  supplierPickerOptions,
+  type QuoteDocumentOption,
+  type SubLineQuote,
+  type SubLineQuotePatch
+} from "./scope-cards/SubQuotePicker";
+import type { RateLibraryItem } from "./scope-cards/OtherOperationalCosts";
+import {
+  COVERED_ITEM_TOTAL,
+  isCoveredBySubLine,
+  pricedOnLabel
+} from "./scope-cards/utils/card-display";
 
 // SCOPE_WBS_TABLE_V1 — slice 2 of scope-card-redesign. Replaces the
 // loose-field card stack with a table whose identity columns (WBS,
@@ -196,7 +218,15 @@ import { WbsAcmBlock, acmFactCount } from "./scope-cards/WbsAcmBlock";
 // they never had.
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
-export type Discipline = "DEM" | "CIV" | "ASB" | "Other";
+// SCOPE_SUB_TAB_V1 — "SUB" joins the union. It is NOT a new discipline: it has
+// been in IS_DISCIPLINE_CODES, in DISCIPLINE_LABELS and on the tab strip since
+// the cards UI shipped, and ScopeCardsTab has always mounted this table for a
+// SUB card through `card.discipline as TableDiscipline`. The union simply
+// stopped short of naming what was already arriving, so `discipline === "SUB"`
+// — the gate this slice needs — was a type error rather than a question.
+// Naming it changes NO behaviour: showsCuttingColumn("SUB") and
+// isAsbestosCard("SUB") answer exactly what they answered for the cast value.
+export type Discipline = "DEM" | "CIV" | "ASB" | "Other" | "SUB";
 
 // PR B1.6 — Plant cells live on ScopeOfWorksItem.plantItems as a dense
 // array with explicit columnIndex.
@@ -370,6 +400,17 @@ export type ScopeItem = {
   markupOverride?: string | number | null;
   estimateItemId: string | null;
   provisionalAmount: string | null;
+  // SCOPE_SUB_TAB_V1 — scope-subcontracted slice 4 added
+  // `priced_by_sub_item_id` to scope_of_works_items, and listItems returns the
+  // whole row (`...item`), so this field has been arriving on every read since
+  // that migration; it was simply never declared here because nothing in the
+  // web read it. Declaring it adds NO API surface.
+  //
+  // Set = this item's labour and plant are covered by the SUB line whose id
+  // this is, and the server's Rule A zeroes them. Null = the item prices its
+  // own work, which is every item written before slice 4 and every item
+  // nobody has linked.
+  pricedBySubItemId?: string | null;
   // PR B1.7.1 — per-row totals computed server-side in listItems.
   // Both fields are optional so older API responses don't break the
   // type; the header renders "—" when either is null/undefined.
@@ -526,6 +567,31 @@ const GROUP_RULE_BORDER = String(tdBorderStyle.borderBottom);
 /** Left rule marking the first column of a column group. */
 const groupRuleStyle: CSSProperties = {
   borderLeft: GROUP_RULE_BORDER
+};
+
+/**
+ * SCOPE_SUB_TAB_V1 — a covered item's Manpower / Plant column group.
+ *
+ * Greyed, centred, italic, and carrying the words "priced on SUB1.1" where six
+ * inputs used to be. Brand tokens only — `--surface-subtle` and
+ * `--text-secondary` are both redefined by tokens.css under
+ * `[data-theme="dark"]` and under `prefers-color-scheme: dark`, so the state is
+ * legible in either theme without a second colour being written here.
+ *
+ * `whiteSpace: nowrap` is deliberate and is the standing layout rule: the cell
+ * fits its contents and the label never wraps out of its box, while the eleven
+ * columns it spans keep the widths the rows above and below give them.
+ */
+const coveredGroupCellStyle: CSSProperties = {
+  ...tdBorderStyle,
+  padding: "6px 8px",
+  textAlign: "center",
+  verticalAlign: "middle",
+  whiteSpace: "nowrap",
+  fontStyle: "italic",
+  fontSize: 12,
+  color: "var(--text-secondary)",
+  background: "var(--surface-subtle)"
 };
 
 /** Boxed group-title header cell (Manpower / Plant). */
@@ -2047,6 +2113,301 @@ export function ScopeQuantitiesTable({
     };
   }, [authFetch]);
 
+  // ── SCOPE_SUB_TAB_V1 — the SUB tab's data ─────────────────────────────
+  //
+  // Four reads, all of them EXISTING endpoints consumed unchanged. This slice
+  // adds no route, no service method and no DTO; slice 4 finished the server.
+  //
+  //   GET /tenders/:id/scope/items    every item on the tender, with its card
+  //   GET /directory?...              the subcontractor directory
+  //   GET /tenders/:id/documents      the tender's TenderDocumentLink rows
+  //   GET /tenders/:id/scope/items/:itemId/quotes   one SUB line's quotes
+  //
+  // WHY THE WHOLE TENDER AND NOT JUST THIS CARD. The `items` prop is this
+  // card's items and nothing else, and both halves of this slice need to look
+  // outside it. The SUB tab offers items from the OTHER disciplines, and — the
+  // load-bearing half — a DEM row has to print the wbsCode of the SUB line
+  // covering it, which lives on a different card entirely. Without this read a
+  // covered row could only say "priced elsewhere", which is the same as saying
+  // nothing.
+  const [tenderItems, setTenderItems] = useState<SubLinkableItem[]>([]);
+  const [supplierRows, setSupplierRows] = useState<
+    Array<{ id: string; name: string; categories?: string[] | null; isActive?: boolean }>
+  >([]);
+  const [documentOptions, setDocumentOptions] = useState<QuoteDocumentOption[]>([]);
+  const [quotesByItem, setQuotesByItem] = useState<Map<string, SubLineQuote[]>>(new Map());
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+  const isSubCard = discipline === "SUB";
+
+  /**
+   * Every item on the tender, flattened to what the pickers need. The card
+   * relation carries the discipline; `card.discipline` is authoritative
+   * (PR A2.5), so it is read rather than re-derived from the wbsCode prefix.
+   */
+  const loadTenderItems = useCallback(async () => {
+    try {
+      const res = await authFetch(`/tenders/${tenderId}/scope/items`);
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        items?: Array<
+          ScopeItem & { card?: { discipline?: string | null } | null }
+        >;
+      };
+      setTenderItems(
+        (body.items ?? []).map((it) => ({
+          id: it.id,
+          wbsCode: it.wbsCode,
+          description: it.description,
+          discipline: it.card?.discipline ?? "Other",
+          status: it.status,
+          lineTotalWithMarkup: it.lineTotalWithMarkup,
+          pricedBySubItemId: it.pricedBySubItemId ?? null
+        }))
+      );
+    } catch {
+      // Non-fatal — the covered-row label degrades to its unnamed form and the
+      // link picker offers nothing. Neither state invents a price.
+    }
+  }, [authFetch, tenderId]);
+
+  useEffect(() => {
+    void loadTenderItems();
+  }, [loadTenderItems]);
+
+  // The directory and the tender's documents feed the quote rows, so they are
+  // only worth fetching on a SUB card.
+  useEffect(() => {
+    if (!isSubCard) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [dirRes, docRes] = await Promise.all([
+          authFetch("/directory?status=active&type=subcontractor"),
+          authFetch(`/tenders/${tenderId}/documents`)
+        ]);
+        if (cancelled) return;
+        if (dirRes.ok) {
+          const body = (await dirRes.json()) as Array<{
+            id: string;
+            name: string;
+            categories?: string[] | null;
+            isActive?: boolean;
+          }>;
+          setSupplierRows(body);
+        }
+        if (docRes.ok) {
+          const body = (await docRes.json()) as Array<{ id: string; title: string }>;
+          setDocumentOptions(body.map((d) => ({ id: d.id, title: d.title })));
+        }
+      } catch {
+        // Non-fatal — the supplier picker degrades to a typed name, which is
+        // the state slice 4's nullable FK exists for, and the magnifier offers
+        // an empty list rather than blocking the row.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, isSubCard, tenderId]);
+
+  /** The shared picker's option shape. Mapped, never re-shaped upstream. */
+  const supplierOptions = useMemo<RateLibraryItem[]>(
+    () => supplierPickerOptions(supplierRows),
+    [supplierRows]
+  );
+
+  /**
+   * The SUB lines on THIS card — the only items that can hold quotes.
+   *
+   * Carried as a comma-joined KEY rather than as an array, and the array is
+   * rebuilt from the key inside `loadQuotes`. The `items` prop is a fresh array
+   * on every parent render, so a memo keyed on it changes identity whenever the
+   * card re-renders, which would make `loadQuotes` a new function, which would
+   * re-fire its effect, which calls `onItemsChanged` on write and re-renders
+   * the parent. A string compares by VALUE, so the fetch happens when the set
+   * of SUB lines actually changes and not once per render.
+   */
+  const subLineIdsKey = useMemo(
+    () =>
+      isSubCard
+        ? items
+            .filter((i) => i.status !== "excluded")
+            .map((i) => i.id)
+            .join(",")
+        : "",
+    [isSubCard, items]
+  );
+
+  const loadQuotes = useCallback(async () => {
+    const subLineIds = subLineIdsKey === "" ? [] : subLineIdsKey.split(",");
+    if (subLineIds.length === 0) {
+      setQuotesByItem(new Map());
+      return;
+    }
+    setQuotesLoading(true);
+    setSubError(null);
+    try {
+      const results = await Promise.all(
+        subLineIds.map(async (itemId) => {
+          const res = await authFetch(`/tenders/${tenderId}/scope/items/${itemId}/quotes`);
+          if (!res.ok) return [itemId, [] as SubLineQuote[]] as const;
+          return [itemId, (await res.json()) as SubLineQuote[]] as const;
+        })
+      );
+      setQuotesByItem(new Map(results));
+    } catch (err) {
+      setSubError((err as Error).message);
+    } finally {
+      setQuotesLoading(false);
+    }
+  }, [authFetch, tenderId, subLineIdsKey]);
+
+  useEffect(() => {
+    void loadQuotes();
+  }, [loadQuotes]);
+
+  // ── SCOPE_SUB_TAB_V1 — the write path ─────────────────────────────────
+  //
+  // Every one of these is slice 4's own route, called with slice 4's own body.
+  // After a write both the card's items and the tender-wide read are refreshed
+  // so the covered rows on the OTHER tabs and the discipline totals move with
+  // the link rather than after the next reload.
+
+  const afterSubWrite = useCallback(async () => {
+    await Promise.all([Promise.resolve(onItemsChanged()), loadTenderItems()]);
+  }, [onItemsChanged, loadTenderItems]);
+
+  const linkItemToSubLine = useCallback(
+    async (coveredItemId: string, subItemId: string) => {
+      setSubError(null);
+      try {
+        const res = await authFetch(`/tenders/${tenderId}/scope/items/${coveredItemId}/sub-link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subItemId })
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        await afterSubWrite();
+      } catch (err) {
+        setSubError((err as Error).message);
+      }
+    },
+    [authFetch, tenderId, afterSubWrite]
+  );
+
+  const unlinkItemFromSubLine = useCallback(
+    async (coveredItemId: string) => {
+      setSubError(null);
+      try {
+        const res = await authFetch(`/tenders/${tenderId}/scope/items/${coveredItemId}/sub-link`, {
+          method: "DELETE"
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        await afterSubWrite();
+      } catch (err) {
+        setSubError((err as Error).message);
+      }
+    },
+    [authFetch, tenderId, afterSubWrite]
+  );
+
+  const addQuote = useCallback(
+    async (subItemId: string) => {
+      setSubError(null);
+      try {
+        const res = await authFetch(`/tenders/${tenderId}/scope/items/${subItemId}/quotes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // A new quote starts at zero and unselected. It does NOT become the
+          // line's price by arriving: slice 4 selects nothing on create, and a
+          // quote nobody has chosen must not silently move the tender.
+          body: JSON.stringify({ amount: 0 })
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        await loadQuotes();
+      } catch (err) {
+        setSubError((err as Error).message);
+      }
+    },
+    [authFetch, tenderId, loadQuotes]
+  );
+
+  const patchQuote = useCallback(
+    async (quoteId: string, patch: SubLineQuotePatch) => {
+      setSubError(null);
+      try {
+        const res = await authFetch(`/tenders/${tenderId}/scope/quotes/${quoteId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch)
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        await loadQuotes();
+        // An amount change only moves the line's price when that quote is the
+        // selected one, but the card total is the server's answer either way,
+        // so it is re-read rather than guessed at here.
+        await Promise.resolve(onItemsChanged());
+      } catch (err) {
+        setSubError((err as Error).message);
+        void loadQuotes();
+      }
+    },
+    [authFetch, tenderId, loadQuotes, onItemsChanged]
+  );
+
+  const selectQuote = useCallback(
+    async (quoteId: string) => {
+      setSubError(null);
+      try {
+        const res = await authFetch(`/tenders/${tenderId}/scope/quotes/${quoteId}/select`, {
+          method: "POST"
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        await loadQuotes();
+        await Promise.resolve(onItemsChanged());
+      } catch (err) {
+        setSubError((err as Error).message);
+      }
+    },
+    [authFetch, tenderId, loadQuotes, onItemsChanged]
+  );
+
+  const removeQuote = useCallback(
+    async (quoteId: string) => {
+      const ok = await confirm({
+        title: "Delete this quote?",
+        message:
+          "The quote and its supplier, amount and notes are removed from this subcontract line.",
+        confirmLabel: "Delete",
+        variant: "danger"
+      });
+      if (!ok) return;
+      setSubError(null);
+      try {
+        const res = await authFetch(`/tenders/${tenderId}/scope/quotes/${quoteId}`, {
+          method: "DELETE"
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        await loadQuotes();
+        await Promise.resolve(onItemsChanged());
+      } catch (err) {
+        setSubError((err as Error).message);
+      }
+    },
+    [authFetch, tenderId, loadQuotes, onItemsChanged, confirm]
+  );
+
+  /**
+   * id -> wbsCode for every item on the tender, so a covered row can NAME the
+   * SUB line pricing it. This is the whole reason the tender-wide read exists.
+   */
+  const wbsCodeById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of tenderItems) map.set(it.id, it.wbsCode);
+    return map;
+  }, [tenderItems]);
+
   // Distinct waste groups + group -> items lookup.
   const wasteGroupOptions = useMemo<TooltipSelectOption<string>[]>(
     () =>
@@ -2664,6 +3025,14 @@ export function ScopeQuantitiesTable({
               // nothing open — that is where "no block opens by default"
               // actually lives.
               const openBlocks = openBlocksFor(itemOpenBlocks, item.id);
+              // SCOPE_SUB_TAB_V1 — is this item's work priced by a SUB line?
+              // Read, never derived: the flag is the server's own
+              // `pricedBySubItemId`, and the code beside it is the SUB line's
+              // own wbsCode off the tender-wide read.
+              const isCovered = isCoveredBySubLine(item);
+              const coveredByLabel = isCovered
+                ? pricedOnLabel(wbsCodeById.get(item.pricedBySubItemId as string))
+                : "";
               const measurementsHere = measurementCount(item);
               const commentsHere = commentCount(item);
               const acmHere = isAsbestos ? acmFactCount(item) : 0;
@@ -2803,86 +3172,121 @@ export function ScopeQuantitiesTable({
                       </td>
                     ) : null}
 
-                    {/* ── SCOPE_WBS_MANPOWER_V1 — Manpower column group (6 cells per row) ── */}
-                    <ManpowerRowCells
-                      item={item}
-                      rowIdx={rowIdx}
-                      rowState={getRowManpower(item, rowIdx)}
-                      labourTypeOptions={labourTypeOptions}
-                      labourRateById={labourRateById}
-                      isAi={isAi}
-                      showRemove={showPerRowRemove}
-                      onRemoveRow={() => removeRowFromItem(item, rowIdx)}
-                      // SCOPE_MANPOWER_PERSIST_V1 — all five handlers go through
-                      // commitManpowerRow, which writes local state AND patches
-                      // the whole labourItems array. The `rowIdx === 0` guards
-                      // that used to sit on three of them are gone: they were the
-                      // bug. Every row, every field, one call site each.
-                      //
-                      // SCOPE_WBS_INPUTS_V2 — changing the role releases a stale
-                      // rate override. This is not a new rule: onPlantTypeChange
-                      // twenty lines below already clears dayRateOverride the same
-                      // way. A rate typed against Labourer must not survive onto
-                      // Supervisor. The cascade helpers are unchanged; the role
-                      // string is resolved alongside them because the server
-                      // prices from the role, not from the id.
-                      onLabourTypeChange={(typeId) =>
-                        commitManpowerRow(item, rowIdx, {
-                          ...manpowerPatchForTypeChange(typeId),
-                          role: typeId === null ? null : (labourRoleById.get(typeId) ?? null)
-                        })
-                      }
-                      onQtyBlur={(v) => commitManpowerRow(item, rowIdx, { qty: v })}
-                      onDaysBlur={(v) => commitManpowerRow(item, rowIdx, { days: v })}
-                      onShiftChange={(v) =>
-                        // SCOPE_WBS_INPUTS_V2 — same cascade release as the role
-                        // change above: the catalogue rate is shift-resolved, so a
-                        // rate typed against the Weekday shift is stale the moment
-                        // the row goes Night. The stored shift string is unchanged
-                        // ("Day", never the "Weekday" label).
-                        commitManpowerRow(item, rowIdx, manpowerPatchForShiftChange(v))
-                      }
-                      onDayRateOverride={(v) => commitManpowerRow(item, rowIdx, { dayRateOverride: v })}
-                    />
-                    {/* ── SCOPE_WBS_PLANT_V1 — Plant column group (5 cells per row) ── */}
-                    <PlantRowCells
-                      item={item}
-                      rowIdx={rowIdx}
-                      rowState={getRowPlant(item, rowIdx)}
-                      plantTypeGroups={plantTypeGroups}
-                      plantRateById={plantRateById}
-                      isAi={isAi}
-                      // SCOPE_PLANT_PERSIST_V1 — all six handlers go through
-                      // commitPlantRow, which writes local state AND patches
-                      // the whole plantItems array. Every one of them used to
-                      // call setRowPlant and stop, which is why every plant
-                      // field on every row died on reload.
-                      //
-                      // The catalogue NAME and unit are resolved here, from
-                      // plantRateById, for the same reason the manpower Type
-                      // handler resolves the rate-card role here: the server
-                      // reads the name (getCardSummary) and the id alone does
-                      // not carry it.
-                      onPlantTypeChange={(plantRateId) =>
-                        commitPlantRow(
-                          item,
-                          rowIdx,
-                          plantPatchForTypeChange(
-                            plantRateId,
-                            plantRateId ? plantRateById.get(plantRateId) : undefined
+                    {/* ── SCOPE_SUB_TAB_V1 — the covered state ──────────────
+                        THE SINGLE MOST IMPORTANT PIECE OF THIS SLICE.
+
+                        An item whose work a SUB line prices must announce
+                        itself HERE, on its own DEM / CIV / ASB tab, and not
+                        only over on the SUB tab. An estimator watching the
+                        discipline total drop is looking at this row; if it
+                        looks the same as any other row, the double-count guard
+                        slice 4 shipped is invisible, and an invisible guard
+                        reads as a bug.
+
+                        So the two column groups that carry the money — Manpower
+                        and Plant — are replaced by one greyed cell each, and
+                        each says WHICH line took the work: "priced on SUB1.1".
+                        Both cells rowSpan the whole item, because the statement
+                        is about the item, not about one of its rows.
+
+                        The inputs are not disabled-in-place: they are GONE.
+                        A greyed-out day rate still invites a click and still
+                        reads as a number that counts. Nothing on a covered
+                        item's labour or plant counts.
+
+                        Brand tokens only, and both of them flip with the theme
+                        (tokens.css redefines --surface-subtle and
+                        --text-secondary under data-theme="dark" and under
+                        prefers-color-scheme: dark), so the greyed state stays
+                        legible in either. */}
+                    {isCovered ? (
+                      isFirstRow ? (
+                        <CoveredGroupCells rowCount={rowCount} coveredByLabel={coveredByLabel} />
+                      ) : null
+                    ) : (
+                      <>
+                      {/* ── SCOPE_WBS_MANPOWER_V1 — Manpower column group (6 cells per row) ── */}
+                      <ManpowerRowCells
+                        item={item}
+                        rowIdx={rowIdx}
+                        rowState={getRowManpower(item, rowIdx)}
+                        labourTypeOptions={labourTypeOptions}
+                        labourRateById={labourRateById}
+                        isAi={isAi}
+                        showRemove={showPerRowRemove}
+                        onRemoveRow={() => removeRowFromItem(item, rowIdx)}
+                        // SCOPE_MANPOWER_PERSIST_V1 — all five handlers go through
+                        // commitManpowerRow, which writes local state AND patches
+                        // the whole labourItems array. The `rowIdx === 0` guards
+                        // that used to sit on three of them are gone: they were the
+                        // bug. Every row, every field, one call site each.
+                        //
+                        // SCOPE_WBS_INPUTS_V2 — changing the role releases a stale
+                        // rate override. This is not a new rule: onPlantTypeChange
+                        // twenty lines below already clears dayRateOverride the same
+                        // way. A rate typed against Labourer must not survive onto
+                        // Supervisor. The cascade helpers are unchanged; the role
+                        // string is resolved alongside them because the server
+                        // prices from the role, not from the id.
+                        onLabourTypeChange={(typeId) =>
+                          commitManpowerRow(item, rowIdx, {
+                            ...manpowerPatchForTypeChange(typeId),
+                            role: typeId === null ? null : (labourRoleById.get(typeId) ?? null)
+                          })
+                        }
+                        onQtyBlur={(v) => commitManpowerRow(item, rowIdx, { qty: v })}
+                        onDaysBlur={(v) => commitManpowerRow(item, rowIdx, { days: v })}
+                        onShiftChange={(v) =>
+                          // SCOPE_WBS_INPUTS_V2 — same cascade release as the role
+                          // change above: the catalogue rate is shift-resolved, so a
+                          // rate typed against the Weekday shift is stale the moment
+                          // the row goes Night. The stored shift string is unchanged
+                          // ("Day", never the "Weekday" label).
+                          commitManpowerRow(item, rowIdx, manpowerPatchForShiftChange(v))
+                        }
+                        onDayRateOverride={(v) => commitManpowerRow(item, rowIdx, { dayRateOverride: v })}
+                      />
+                      {/* ── SCOPE_WBS_PLANT_V1 — Plant column group (5 cells per row) ── */}
+                      <PlantRowCells
+                        item={item}
+                        rowIdx={rowIdx}
+                        rowState={getRowPlant(item, rowIdx)}
+                        plantTypeGroups={plantTypeGroups}
+                        plantRateById={plantRateById}
+                        isAi={isAi}
+                        // SCOPE_PLANT_PERSIST_V1 — all six handlers go through
+                        // commitPlantRow, which writes local state AND patches
+                        // the whole plantItems array. Every one of them used to
+                        // call setRowPlant and stop, which is why every plant
+                        // field on every row died on reload.
+                        //
+                        // The catalogue NAME and unit are resolved here, from
+                        // plantRateById, for the same reason the manpower Type
+                        // handler resolves the rate-card role here: the server
+                        // reads the name (getCardSummary) and the id alone does
+                        // not carry it.
+                        onPlantTypeChange={(plantRateId) =>
+                          commitPlantRow(
+                            item,
+                            rowIdx,
+                            plantPatchForTypeChange(
+                              plantRateId,
+                              plantRateId ? plantRateById.get(plantRateId) : undefined
+                            )
                           )
-                        )
-                      }
-                      onCustomDescription={(desc) =>
-                        commitPlantRow(item, rowIdx, plantPatchForCustomDescription(desc))
-                      }
-                      onRevertToList={() =>
-                        commitPlantRow(item, rowIdx, plantPatchForRevertToList())
-                      }
-                      onQtyBlur={(v) => commitPlantRow(item, rowIdx, { qty: v })}
-                      onDaysBlur={(v) => commitPlantRow(item, rowIdx, { days: v })}
-                      onDayRateOverride={(v) => commitPlantRow(item, rowIdx, { dayRateOverride: v })}
-                    />
+                        }
+                        onCustomDescription={(desc) =>
+                          commitPlantRow(item, rowIdx, plantPatchForCustomDescription(desc))
+                        }
+                        onRevertToList={() =>
+                          commitPlantRow(item, rowIdx, plantPatchForRevertToList())
+                        }
+                        onQtyBlur={(v) => commitPlantRow(item, rowIdx, { qty: v })}
+                        onDaysBlur={(v) => commitPlantRow(item, rowIdx, { days: v })}
+                        onDayRateOverride={(v) => commitPlantRow(item, rowIdx, { dayRateOverride: v })}
+                      />
+                      </>
+                    )}
                     {/* SCOPE_WBS_ACTIONS_V1 — the Measurement spanning cell
                         stood here, on every row of every item, painting the
                         full L/H/D/material/waste strip whether or not the item
@@ -2945,21 +3349,12 @@ export function ScopeQuantitiesTable({
 
                     {/* ── Item total cell — rowspan ─────────────────────── */}
                     {isFirstRow ? (
-                      <td
-                        rowSpan={rowCount}
-                        style={{
-                          ...fitCellStyle,
-                          ...tdBorderStyle,
-                          textAlign: "right",
-                          fontVariantNumeric: "tabular-nums",
-                          color: "var(--text)"
-                        }}
-                        title="Line total (with markup)"
-                      >
-                        {item.lineTotalWithMarkup == null
-                          ? "—"
-                          : fmtCurrency(Number(item.lineTotalWithMarkup))}
-                      </td>
+                      <WbsItemTotalCell
+                        rowCount={rowCount}
+                        lineTotalWithMarkup={item.lineTotalWithMarkup}
+                        covered={isCovered}
+                        coveredByLabel={coveredByLabel}
+                      />
                     ) : null}
 
                     {/* ── SCOPE_WBS_ACTIONS_V1 — Actions cell — rowspan ─── */}
@@ -3122,15 +3517,70 @@ export function ScopeQuantitiesTable({
               // is not text content — so neither a screen reader walking the
               // group nor a test can find an item by the words in it. Carry
               // it on the group as data-item-description.
+              // SCOPE_SUB_TAB_V1 — the SUB line's own row.
+              //
+              // A subcontract line is not priced by manpower and plant, it is
+              // priced by a quote, and it either describes its own scope or
+              // covers WBS items elsewhere in the tender. Neither of those fits
+              // in a money column, so both live in a full-width row beneath the
+              // line — the same shape the three expandables above already use.
+              // It is not collapsible: a SUB line with no link and no quote is
+              // the state this slice exists to make visible, and hiding it
+              // behind a click would leave the model exactly as unreachable as
+              // it was before.
+              const subQuotes = quotesByItem.get(item.id) ?? [];
+              const subRow = isSubCard ? (
+                <tr key={`${item.id}-sub`}>
+                  <td
+                    colSpan={WBS_COLUMN_COUNT}
+                    style={{
+                      ...tdBorderStyle,
+                      borderBottom: "2px solid var(--border-default, #e5e7eb)",
+                      padding: "8px",
+                      background: "var(--surface-subtle)"
+                    }}
+                    data-testid="sub-line-panel"
+                    data-wbs-code={item.wbsCode}
+                    data-incomplete={subLineHasUnselectedQuotes(subQuotes) ? "true" : "false"}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+                      <SubLinkPicker
+                        subLineId={item.id}
+                        subLineWbsCode={item.wbsCode}
+                        items={tenderItems}
+                        disabled={isAi}
+                        onLink={(coveredItemId) => void linkItemToSubLine(coveredItemId, item.id)}
+                        onUnlink={(coveredItemId) => void unlinkItemFromSubLine(coveredItemId)}
+                      />
+                      <SubQuotePicker
+                        subLineWbsCode={item.wbsCode}
+                        quotes={subQuotes}
+                        supplierOptions={supplierOptions}
+                        documentOptions={documentOptions}
+                        disabled={isAi}
+                        loading={quotesLoading && subQuotes.length === 0}
+                        error={subError}
+                        onPatch={(quoteId, patch) => void patchQuote(quoteId, patch)}
+                        onSelect={(quoteId) => void selectQuote(quoteId)}
+                        onRemove={(quoteId) => void removeQuote(quoteId)}
+                        onAdd={() => void addQuote(item.id)}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ) : null;
+
               return (
                 <tbody
                   key={item.id}
                   data-testid="wbs-item"
                   data-wbs-code={item.wbsCode}
                   data-item-description={item.description}
+                  data-covered={isCovered ? "true" : "false"}
                 >
                   {rows}
                   {expandableRow}
+                  {subRow}
                 </tbody>
               );
             })}
@@ -3299,6 +3749,109 @@ function WbsBlockCloseButton({ label, onClick }: { label: string; onClick: () =>
 // Each column is a separate <td> (not a single spanning cell).
 // When Type is unset, Qty / Days / Shift are disabled but the cells
 // are still rendered at full width so column widths are stable.
+
+// ── SCOPE_SUB_TAB_V1 — the covered-item cells ───────────────────────────
+//
+// Both are EXPORTED for the same reason CuttingSection exports
+// CuttingTakeOffRowView: the container needs an AuthProvider and a
+// ConfirmProvider and the workspace has no jsdom, so the only way to assert
+// what a covered row actually renders is to render the cells themselves. The
+// table above renders THESE — there is no second copy — so what the suite pins
+// is what the estimator sees.
+
+/**
+ * The two greyed cells that stand in for a covered item's Manpower and Plant
+ * column groups: six columns and five, each saying "priced on SUB1.1", each
+ * spanning the whole item because the statement is about the item and not
+ * about one of its rows.
+ */
+export function CoveredGroupCells({
+  rowCount,
+  coveredByLabel
+}: {
+  rowCount: number;
+  /** Already formed by pricedOnLabel — e.g. "priced on SUB1.1". */
+  coveredByLabel: string;
+}) {
+  const subLine = coveredByLabel.replace("priced on ", "");
+  return (
+    <>
+      <td
+        colSpan={6}
+        rowSpan={rowCount}
+        style={coveredGroupCellStyle}
+        data-testid="wbs-covered-manpower"
+        title={`Manpower is priced by the subcontract quote on ${subLine}`}
+      >
+        {coveredByLabel}
+      </td>
+      <td
+        colSpan={5}
+        rowSpan={rowCount}
+        style={{ ...coveredGroupCellStyle, ...groupRuleStyle }}
+        data-testid="wbs-covered-plant"
+        title={`Plant is priced by the subcontract quote on ${subLine}`}
+      >
+        {coveredByLabel}
+      </td>
+    </>
+  );
+}
+
+/**
+ * The Item total cell, and the one distinction this slice turns on.
+ *
+ * An ordinary item with no figure prints an em dash — "there is no number
+ * here". A COVERED item prints `$0.00`, because there is a number, the server
+ * decided it (slice 4, Rule A: a covered item contributes zero labour and
+ * plant to its discipline bucket), and the number is zero. An em dash or a
+ * blank cell would say "nobody has priced this yet" about work that IS priced
+ * — deliberately, at nothing, here — and would leave the double-count guard
+ * looking exactly like a bug.
+ *
+ * Two decimals, from COVERED_ITEM_TOTAL rather than this file's whole-dollar
+ * fmtCurrency, so it cannot be read as a figure that rounded down to nothing.
+ * COVERED_ITEM_TOTAL is a constant string: the client renders the guard's
+ * decision and does not re-implement it.
+ */
+export function WbsItemTotalCell({
+  rowCount,
+  lineTotalWithMarkup,
+  covered,
+  coveredByLabel
+}: {
+  rowCount: number;
+  lineTotalWithMarkup: number | string | null | undefined;
+  covered: boolean;
+  coveredByLabel: string;
+}) {
+  const subLine = coveredByLabel.replace("priced on ", "");
+  return (
+    <td
+      rowSpan={rowCount}
+      style={{
+        ...fitCellStyle,
+        ...tdBorderStyle,
+        textAlign: "right",
+        fontVariantNumeric: "tabular-nums",
+        color: "var(--text)"
+      }}
+      title={
+        covered
+          ? `This item is priced by the subcontract quote on ${subLine}. Its labour and plant add nothing here.`
+          : "Line total (with markup)"
+      }
+      data-testid="wbs-item-total"
+      data-covered={covered ? "true" : "false"}
+    >
+      {covered
+        ? COVERED_ITEM_TOTAL
+        : lineTotalWithMarkup == null
+          ? "—"
+          : fmtCurrency(Number(lineTotalWithMarkup))}
+    </td>
+  );
+}
 
 type ManpowerRowCellsProps = {
   item: ScopeItem;

@@ -125,7 +125,7 @@ you are about to act on, immediately before acting.
 
 **A report nobody can find is a report that does not exist.** Five consecutive Station 04 runs each
 believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-findings.md`, which is
-**gitignored** at `.gitignore:108`. It sat unread for nine days.
+**gitignored** by its own literal line in `.gitignore`. It sat unread for nine days.
 
 **Every run writes one breadcrumb, at a tracked path:**
 
@@ -133,8 +133,8 @@ believed they had "surfaced" a released gate. All five wrote it to `docs/qa/qa-f
 docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 ```
 
-`docs/pr-prompts/` is tracked. The gitignored sinks are the five files named at
-`.gitignore:107-111` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
+`docs/pr-prompts/` is tracked. The gitignored sinks are the five files listed under
+the `# Overnight-QA scheduled task` comment in `.gitignore` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
 `docs/qa/qa-test-data-registry.md`, `docs/qa/.qa-run.lock`, and the `docs/qa/qa-run-*.md` pattern —
 plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco|no-pr-opened`
 (`.gitignore:76-83`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
@@ -522,7 +522,7 @@ Read all of these. If another agent already found or escalated something, **add 
 
 - `docs/pr-prompts/shepherd-state.md` - what the shepherd did, merged, escalated
 - `docs/pr-prompts/00-*-*.md` - the breadcrumbs: **your own prior runs, and every other station's.** They are tracked on main, so a clone, CI and any cloud-fired station read exactly what you read. Never act twice on one signal.
-- `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (`.gitignore:108`)** - it is absent from a
+- `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (by its own literal line in `.gitignore`)** - it is absent from a
   clean checkout, so read it if present but never treat its silence as evidence, and never send a
   station there to report.
 - `docs/pr-reviews/*.md` - reviewer verdicts (MERGE / FIX / BLOCK)

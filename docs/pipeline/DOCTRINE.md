@@ -596,13 +596,21 @@ here now because they are true for **every** station.
   tables.
 - 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see **three**
   literal markers — `DO_NOT_ARM_COMMENT` (anchor: `DO_NOT_ARM_COMMENT =`, case-insensitive),
-  `DO_NOT_ARM_CAPS` (anchor: `DO_NOT_ARM_CAPS =`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/` (anchor: `ARM_ONLY =`,
+  `DO_NOT_ARM_CAPS` (anchor: `DO_NOT_ARM_CAPS =`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/i` (anchor: `ARM_ONLY =`,
   conditional arming), which this bullet omitted until 2026-08-31** — and reports
   `HUMAN_GATE_PRESENT: line N contains` at its three report sites (anchor: `HUMAN_GATE_PRESENT: line`). **RULE 4's arming detector
   greps the union of these markers as its second instrument, so a two-marker grep under-reports
   which prompts the linter actually gates** (Station 04, 2026-08-31; re-measured by 00 the same
   hour, with the control that `"Arm ONLY"` occurred 0 times in this document). **The advice survives the fix:** a **prose** human gate matches neither regex,
   and exactly that burned an arm on 2026-08-28T14:09Z — so still read the BODY before arming.
+  🔴 **CORRECTED 2026-09-06 — `ARM_ONLY` is `/Arm ONLY/i`, so TWO of the three markers are
+  case-INSENSITIVE and only `DO_NOT_ARM_CAPS` is case-sensitive.** [MEASURED] by Station 04 at
+  `d1467428` against `scripts/pipeline/lint-prompt.mjs`, anchors `DO_NOT_ARM_COMMENT =`,
+  `DO_NOT_ARM_CAPS =` and `ARM_ONLY =`. A RULE 4 union grep run `-CaseSensitive` over all three
+  therefore **under-reports**: it misses `ARM only`, `arm ONLY` and `Arm only`, which the linter
+  does gate — and the error runs in the ARMING direction, which is the direction this bullet
+  exists to guard. Grep the comment and conditional markers case-INSENSITIVELY and `DO NOT ARM`
+  case-SENSITIVELY. 🔧 **Falsifying probe: the three anchor lines themselves.**
   Measured 2026-08-30 over the 59 depth-1 `-HOLD`/`-ready` on `origin/main`: the two markers cover
   **7 distinct prompts**; `## STANDING AUTHORITY` appears on **51 of 59** and is boilerplate, not a
   gate; and `pr-dns-s5-checker-flip-to-fail-HOLD` carried **neither** marker until #1400
@@ -765,6 +773,23 @@ here now because they are true for **every** station.
   always sound and stands. **A watcher-opened PR with no verdict is RULE 2 at its most binding, not
   its least** — the crash silently downgraded an escalating prompt to an ordinary one, and nothing
   on the PR shows it.
+
+  🔴 **AND THAT DISCRIMINATOR HAS A FRESHNESS PRECONDITION NOBODY WAS ASSERTING.** The watcher
+  launch log's `opened PR #<n>` line is what separates *second lane* from *a watcher PR still
+  inside its `policy=tests-docs, waiting…` window*. [MEASURED] 2026-09-06T14:2xZ by Station 04:
+  `C:\po-watcher\watcher-launch.log` had recorded nothing since **05:27:31Z** and no `opened PR #`
+  line since **02:01:30Z**, while the watcher node was running with a `StartTime` **six hours
+  later** — and the POSITIVE control this pipeline prescribes for it (`opened PR #` > 0) **passed
+  the whole time**, at 167 lines in that file. A frozen transcript answers *“the watcher did not
+  open this PR”* for every PR, in both lanes, at exit 0. That is §7's shape, not §9.6's — nothing
+  is empty and nothing warns.
+  🔧 **So any run using the `opened PR #<n>` test must FIRST assert that the launch log's
+  `LastWriteTimeUtc` is younger than the PR's `createdAt`, and report `[CANNOT MEASURE]` for any
+  PR opened after it** — never *“no `opened PR #` line”* ⇒ *“second lane”*.
+  ⚠️ **A merged board PR has already spent this.** `#1723` classified seven open PRs as second
+  lane at 13:08Z on the strength of that line's absence, from a log that had recorded no such line
+  since 02:01Z. The conclusion survived independent hand-classification by `classifyPolicyFiles`;
+  the **evidence** did not. Found by Station 04 2026-09-06T14:2xZ (F1/F2), landed by Station 00.
 
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read

@@ -1125,11 +1125,34 @@ supervision**. Such a lane:
 verdict still binds, migrations still fail `classifyPolicyFiles` on their own clause. The receipt
 requirement is new, and it is a *constraint on this lane*, not a permission.
 
-**§10.1 step 3's proviso is satisfied by an existing check, not a promised one.** A new lane outside
-`tests|docs` needs a CI gate proving its boundary. This lane's gate is **`Approval receipt (CP-26)`**,
-already required on `main` by ruleset `15532058`: it fails `RELEASED_NO_RECEIPT` when a released PR
-carries no receipt, so a merge by this lane that leaves no signature cannot reach `main`. That is the
-boundary, enforced by CI, today.
+🔴 **CORRECTION, 2026-09-07 — this section's original enforcement claim was FALSE, and the lane it
+authorises is what disproved it.** The paragraph here used to read: *"This lane's gate is `Approval
+receipt (CP-26)` … a merge by this lane that leaves no signature cannot reach `main`. That is the
+boundary, enforced by CI, today."* **It is not, and it never was.**
+
+`approval-receipt.mjs` returns `PASS / NEVER_ESCALATED` whenever `everLabeled` is false — **before**
+it looks for a receipt. **CP-26 is armed by LABELLING, not by the diff.** The `do-not-merge` label is
+applied by the watcher, and the watcher never sees a PR this lane opens. So for this lane the gate
+has never been able to fire, and the receipt requirement above has been enforced by nothing.
+
+**Measured, and it is this lane's own failure.** Between 2026-09-06T07:47Z and 19:45Z the lane made
+**17 merges and left ONE receipt**. The other sixteen were back-filled on 2026-09-07 and each says so
+on its face. Station 00 found the same hole independently and from the other side — breadcrumb 1930
+finding F7 against `#1730` (*"a green CP-26 on this PR is a statement about a release that never
+happened, not about the merge"*) and breadcrumb 2115 against an unlabelled production migration. The
+standing escalation is
+`needs-marco/cp26-passes-vacuously-on-an-unlabelled-destructive-migration-2026-09-05.md`.
+
+**So §10.1 step 3's proviso is NOT satisfied by an existing check.** Until CP-26 is armed by the
+**diff** — a `(^|/)migrations/` or `apps/api` path demanding a receipt regardless of label history —
+this lane's receipt requirement is a **discipline, not a gate**, and this section must not be read as
+though CI enforces it. The honest boundary today is the instrument: `bd-push-slice.ps1` writes the
+receipt into the PR branch before it arms auto-merge, and refuses to arm without one. That is a
+constraint on one script, which is weaker than CI and must be said plainly rather than dressed up.
+
+**Ruled by Marco, 2026-09-07**, when the conflict between this section and §10.1 was put to him
+directly — may the lane merge `escalates: false` PRs touching `apps/api` and `apps/web`, or is the
+tests-docs boundary the real line? He chose: **the lane merges, but writes a receipt first.**
 
 **PROVENANCE — Marco's own words, chat, 2026-09-04 and 2026-09-05.** Quoted verbatim, in order:
 

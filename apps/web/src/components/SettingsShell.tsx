@@ -5,7 +5,8 @@ import { NoAccess } from "./NoAccess";
 import {
   PERSONAL_ITEMS,
   COMPANY_ITEMS,
-  ADMINISTRATION_ITEMS as ADMINISTRATION_ITEMS_DATA
+  ADMINISTRATION_ITEMS as ADMINISTRATION_ITEMS_DATA,
+  EXTERNAL_ITEMS
 } from "./settings-nav-items";
 
 // SettingsShell — single settings area (feat/settings-shell). Folds the
@@ -40,6 +41,13 @@ export type SettingsNavItem = {
   // Tab ids must match the identifiers the page uses internally so SLICE 3
   // can deep-link via ?tab=<id>.
   tabs?: { id: string; label: string; description: string }[];
+  // SETTINGS_HOME_S1: true for the settings pages that live outside
+  // /settings (Schedule of Rates, Job roles).  Marco decided 2026-09-01 to
+  // link them in place, so this flag NEVER changes how the link is built —
+  // it only drives styling (an "Elsewhere" badge on the home card) and
+  // grouping (they sit in their own section), and it keeps them out of the
+  // SettingsShell sub-nav, which navigates within the shell.
+  external?: boolean;
 };
 
 type NavSection = {
@@ -122,15 +130,29 @@ export const SECTIONS: NavSection[] = [
     id: "administration",
     label: "Administration",
     items: ADMINISTRATION_ITEMS
+  },
+  // SETTINGS_HOME_S1: the two settings pages that live outside /settings.
+  // They are in SECTIONS so the Settings Home cards, the counts line and
+  // settings-search all see them without settings-search.ts changing.
+  {
+    id: "elsewhere",
+    label: "Elsewhere",
+    items: EXTERNAL_ITEMS
   }
 ];
 
 export function SettingsShell() {
   const { user } = useAuth();
 
+  // The shell sub-nav navigates WITHIN the settings shell, so the external
+  // items are excluded here — following one would unmount the very nav that
+  // rendered it.  They are surfaced on the Settings Home card grid instead.
   const visibleSections = SECTIONS.map((section) => ({
     ...section,
-    items: filterSettingsNavItems(section.items, user)
+    items: filterSettingsNavItems(
+      section.items.filter((item) => item.external !== true),
+      user
+    )
   })).filter((section) => section.items.length > 0);
 
   return (

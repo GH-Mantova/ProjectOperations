@@ -26,6 +26,27 @@ export type ResolvedRate = {
  * metadata not used for pricing or key-matching). Always present; `{}`
  * when there are no INFO columns. Keyed by the RateTable column `name`
  * so both adapter paths expose the same key (e.g. `"Category"`).
+ *
+ * `isActive` mirrors the `isActive` column of the row the entry came from —
+ * on every path, for every slug. It is a REPORT of the row's state, never a
+ * filter: adding it changed no `where` clause and no returned row set.
+ *
+ * The two backing paths disagree about which rows they return, and that is
+ * why the field exists. `tryListRateTable` pre-filters on
+ * `isActive: true`, as do the `enclosure` and `other-rates` legacy adapters,
+ * so those three paths only ever emit `isActive: true`. The other six legacy
+ * adapters (labour, plant, waste, cutting, core-hole, fuel) apply no such
+ * filter and emit inactive rows alongside active ones. So the row set of
+ * `listRates(slug)` depends on both the slug and `RATES_CANONICAL_SOURCE`,
+ * and `isActive` is currently the only way a caller can obtain the same
+ * (active-only) row set from either path.
+ *
+ * A consumer that wants active rates only MUST filter explicitly —
+ * `(await listRates(slug)).filter((r) => r.isActive)` — and must not assume
+ * the resolver has already done it. Making the six unfiltered adapters
+ * filter would change what existing consumers see (`rates-export.service.ts`
+ * consumes `listRates("plant")`); that is a product decision filed for Marco
+ * in `needs-marco/rates-11b2-consumer-migration-blockers-2026-08-27.md`.
  */
 export type ListedRate = {
   rowId: string;
@@ -33,6 +54,8 @@ export type ListedRate = {
   info: Record<string, unknown>;
   value: number;
   unit: string;
+  /** The source row's `isActive` column, verbatim. Reported, never filtered on — see above. */
+  isActive: boolean;
   source: RateSource;
 };
 
@@ -581,6 +604,10 @@ export class RateResolverService {
         info,
         value: Number(cells[valueCol.id]),
         unit: valueCol.unit ?? "",
+        // Read from the column, not hard-coded true: the findMany above
+        // pre-filters isActive: true so this is always true today, but the
+        // field stays honest if that `where` is ever relaxed.
+        isActive: row.isActive,
         source: "ratetable" as const
       };
     });
@@ -600,10 +627,12 @@ export class RateResolverService {
         });
         const entries: ListedRate[] = [];
         for (const row of rows) {
+          // All three shift entries come from the same row, so all three
+          // report that row's isActive.
           entries.push(
-            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", source: "legacy" }
+            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, source: "legacy" }
           );
         }
         return entries;
@@ -621,6 +650,7 @@ export class RateResolverService {
           info: { Category: row.category ?? "", Unit: row.unit },
           value: Number(row.rate),
           unit: row.unit,
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }
@@ -639,6 +669,7 @@ export class RateResolverService {
           info: { wasteGroup: row.wasteGroup, loadRate: Number(row.loadRate) },
           value: Number(row.tonRate),
           unit: row.unit,
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }
@@ -662,6 +693,7 @@ export class RateResolverService {
           info: {},
           value: Number(row.ratePerM),
           unit: "m",
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }
@@ -675,6 +707,7 @@ export class RateResolverService {
           info: {},
           value: Number(row.ratePerHole),
           unit: "hole",
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }
@@ -688,6 +721,7 @@ export class RateResolverService {
           info: {},
           value: Number(row.rate),
           unit: row.unit,
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }
@@ -702,6 +736,9 @@ export class RateResolverService {
           info: {},
           value: Number(row.rate),
           unit: row.unit,
+          // Pre-filtered to isActive: true by the `where` above; read from the
+          // column anyway so the field never disagrees with the row.
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }
@@ -716,6 +753,9 @@ export class RateResolverService {
           info: {},
           value: Number(row.rate),
           unit: row.unit,
+          // Pre-filtered to isActive: true by the `where` above; read from the
+          // column anyway so the field never disagrees with the row.
+          isActive: row.isActive,
           source: "legacy" as const
         }));
       }

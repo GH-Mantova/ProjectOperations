@@ -228,7 +228,17 @@ describe("a covered item's Item total reads $0.00 — not an em dash, not blank"
     const cell = coveredHtml.slice(coveredHtml.indexOf("<td"), coveredHtml.indexOf("</td>"));
     expect(cell).not.toMatch(/>\s*$/);
     // The text content between the tags is non-empty and is the figure.
-    const text = coveredHtml.replace(/<[^>]*>/g, "").trim();
+    // Strip the tags to a FIXED POINT, not in one pass. A single
+    // replace(/<[^>]*>/g, "") is incomplete: removing one match can splice
+    // its neighbours into a fresh tag, which is exactly what CodeQL's
+    // js/incomplete-multi-character-sanitization reports. Repeat until the
+    // string stops changing and the strip is complete.
+    let stripped = coveredHtml;
+    for (let previous = null; previous !== stripped; ) {
+      previous = stripped;
+      stripped = stripped.replace(/<[^>]*>/g, "");
+    }
+    const text = stripped.trim();
     expect(text).not.toBe("");
     expect(text).toBe("$0.00");
   });

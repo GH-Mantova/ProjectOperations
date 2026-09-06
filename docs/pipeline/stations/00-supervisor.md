@@ -825,6 +825,27 @@ and the paragraph above tells you to rule the second one out.
    `git diff --numstat` -> EMPTY, `git diff --cached --name-status` -> EMPTY. The first alone
    passes on a dirty tree — that is the trap three paragraphs up.
 
+🔴 **STEP 1 CAN DESTROY ANOTHER ACTOR'S DATA, AND `.arming-log.txt` IS THE FILE IT HAPPENS ON.**
+MEASURED 2026-09-06T08:2xZ. This run armed a prompt at `08:17:13Z` and landed `.arming-log.txt` in
+its board PR; a **second actor** — `actor=marco-delegated`, pid 5564, named by the log's own actor
+field — armed a different prompt at `08:22:53Z`, **43 seconds before that PR merged**. The dev
+tree's copy was then `origin/main`'s content **plus one line that exists nowhere else**, and the
+fast-forward refuses because the file is modified against HEAD. **`git show HEAD:<path>` piped to a
+write — step 1 exactly as written above — silently deletes that line, and every read-back in step 5
+still passes.** It is an append-only audit log, so the loss is unrecoverable and leaves no trace.
+
+🔧 **On an APPEND-ONLY file the sequence is save → restore → FF → REAPPLY, not restore → FF.** Read
+the local copy into memory first; restore to HEAD (still never `git checkout -- <path>`, §9.2);
+fast-forward; then re-append every local line that is absent from the **new** `HEAD:<path>`. Read
+back that the reapplied lines are present **and** that the final byte count equals the original local
+one. Measured here: local **8122 B** → HEAD 7757 B → FF → **8122 B**, one line reapplied, both arms
+present in the result.
+
+⚠️ **The discriminator is `git diff --numstat origin/main -- <path>` showing INSERTIONS with ZERO
+deletions**, which means the working copy is a strict superset of `main` and something in it has
+not landed yet. On that shape, restoring to HEAD is a deletion, not a repair. On any other shape
+(deletions present, or a pure smudge) the two-cause cure above is unchanged.
+
 ⚠️ **The general shape: any file another station is told to leave dirty in the shared dev tree
 becomes an FF blocker the moment you land it.** `sweep-rotation.json` is the one that exists
 today. If a second such hand-off is ever added, it inherits this entirely.

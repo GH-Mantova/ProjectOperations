@@ -77,6 +77,68 @@ function fmtFigure(n: number): string {
   return String(Math.round(n * 10) / 10);
 }
 
+// ── Chip tooltips: what the figure actually is ─────────────────────────
+//
+// SCOPE_STAGE_GROUP_V1. Peak crew and Duration used to describe a rule the
+// domain no longer guarantees ("stages run sequentially, so this is a max,
+// not a sum"). Cards of one discipline CAN now share a stage and run
+// concurrently, which RAISES peak crew and LOWERS duration — and those are
+// figures an estimator may already have quoted from, so they must not move
+// without the bar saying why.
+//
+// Both tooltips therefore state how many stages the cards actually formed
+// and, when any of them holds more than one card, that concurrent cards
+// SUM. A discipline nobody has grouped has one card per stage and reads as
+// the sequential rule it always did.
+//
+// Exported and pure so the wording is unit-testable: the web workspace has
+// no jsdom, so a claim about a string belongs in a function, not a render.
+
+/** "3 stages" / "1 stage". */
+function stagesPhrase(stageCount: number): string {
+  return `${stageCount} ${stageCount === 1 ? "stage" : "stages"}`;
+}
+
+/** True when at least one stage holds more than one card, i.e. something
+ *  in this discipline actually runs concurrently. */
+export function hasConcurrentStages(rollup: DisciplineRollup): boolean {
+  return rollup.stageCount < rollup.cardCount;
+}
+
+/** Tooltip for the Peak crew chip. */
+export function peakCrewTitle(rollup: DisciplineRollup): string {
+  const stages = stagesPhrase(rollup.stageCount);
+  if (!hasConcurrentStages(rollup)) {
+    return (
+      `Largest single stage's crew, over ${stages}. ` +
+      `Every card is its own stage here, so this is the largest card's crew — a max, not a sum. ` +
+      `Group two cards and their crews would ADD into one stage, raising this figure.`
+    );
+  }
+  return (
+    `Largest single stage's crew, over ${stages} holding ${rollup.cardCount} cards. ` +
+    `Cards grouped into one stage are on site together, so their crews SUM; ` +
+    `the stages never coincide, so the discipline takes the biggest stage rather than the total.`
+  );
+}
+
+/** Tooltip for the Duration chip. */
+export function durationTitle(rollup: DisciplineRollup): string {
+  const stages = stagesPhrase(rollup.stageCount);
+  if (!hasConcurrentStages(rollup)) {
+    return (
+      `Sum of every stage's duration, over ${stages} — the stages run end to end. ` +
+      `Every card is its own stage here, so this is the sum of the card durations. ` +
+      `Group two cards and they would run at once, counting once as the longer of the two.`
+    );
+  }
+  return (
+    `Sum of every stage's duration, over ${stages} holding ${rollup.cardCount} cards — ` +
+    `the stages run end to end. Cards grouped into one stage run at the same time, so that ` +
+    `stage is counted ONCE, as its longest card, which shortens this figure.`
+  );
+}
+
 // ── Sub-components ──────────────────────────────────────────────────────
 
 const CHIP_BG = "rgba(255,255,255,.14)";
@@ -211,7 +273,12 @@ export function DisciplineSummaryBar({
   const plantText = plantLines.join("\n");
   const plantChipValue = plantLines.length === 1 ? plantLines[0] : `${plantLines.length} types`;
 
-  const stageWord = rollup.cardCount === 1 ? "stage" : "stages";
+  // The stack's meta line counts STAGES, not cards. They are the same
+  // number for a discipline nobody has grouped; once two cards share a
+  // stage it names the cards separately rather than silently reporting a
+  // smaller stack.
+  const stageWord = rollup.stageCount === 1 ? "stage" : "stages";
+  const concurrent = hasConcurrentStages(rollup);
 
   return (
     <div
@@ -227,7 +294,8 @@ export function DisciplineSummaryBar({
           {disciplineLabel}
         </div>
         <div style={metaStyle}>
-          {rollup.cardCount} {stageWord} · sequential
+          {rollup.stageCount} {stageWord} ·{" "}
+          {concurrent ? `${rollup.cardCount} cards, some concurrent` : "sequential"}
         </div>
       </div>
 
@@ -238,14 +306,14 @@ export function DisciplineSummaryBar({
         <StatChip
           label="Peak crew"
           value={fmtFigure(rollup.peakCrew)}
-          title="Largest single stage's crew — stages run sequentially, so this is a max, not a sum."
+          title={peakCrewTitle(rollup)}
         />
         <StatChip label="Person-days" value={fmtFigure(rollup.personDays)} />
         <StatChip label="Labour days" value={fmtFigure(rollup.labourDays)} />
         <StatChip
           label="Duration"
           value={fmtFigure(rollup.duration)}
-          title="Sum of every stage's duration — the stages run end to end."
+          title={durationTitle(rollup)}
         />
         <StatChip
           label="Peak plant"

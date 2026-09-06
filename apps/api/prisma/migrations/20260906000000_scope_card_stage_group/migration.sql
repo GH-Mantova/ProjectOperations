@@ -1,0 +1,27 @@
+-- SCOPE_STAGE_GROUP_V1 -- two cards of one discipline can say they run at
+-- the same time.
+--
+-- ADDITIVE ONLY. ONE new column on "scope_cards". No existing column is
+-- added to, dropped, renamed or retyped. There is no UPDATE, no INSERT, no
+-- DELETE and no backfill in this file: not one existing row is rewritten.
+--
+-- NULLABLE WITH NO DEFAULT, deliberately, and that is the whole safety
+-- property of this migration. NULL means "this card is a stage of its own",
+-- so every row that already exists is already correct the instant this runs
+-- and every discipline's peak crew, duration and plant quantities read
+-- EXACTLY as they read before. A NOT NULL DEFAULT 0 would instead put every
+-- card of a discipline into a single shared stage, making every card
+-- concurrent with every other on the day it ships and silently multiplying
+-- every discipline's peak crew -- which is why this column has no default.
+--
+-- Two cards of the SAME discipline holding the same non-null value are ONE
+-- stage: their crews and plant quantities add, and the stage lasts as long
+-- as its longest card. The value is an opaque group id -- it carries no
+-- ordering. Stage order is the card order (sort_order) that already exists.
+--
+-- Rollback:
+--   ALTER TABLE "scope_cards" DROP COLUMN "stage_group";
+-- Reverting the code alone leaves the column in place and unread, which is
+-- inert, and any grouping a user has already entered survives for a
+-- re-apply.
+ALTER TABLE "scope_cards" ADD COLUMN "stage_group" INTEGER;

@@ -45,9 +45,28 @@ export type CardBarStats = {
   subtotal: number;
   /** Sum of lineTotalWithMarkup — same value as footer "with markup". */
   subtotalWithMarkup: number;
+  // SCOPE_PROVISIONAL_SPLIT_V1 — provisional slice of the same non-excluded rows,
+  // partitioned by the same predicate the server uses in scope-redesign.service.ts:
+  //   line is provisional if isProvisional===true OR discipline==="Other"
+  // These are the same server-computed numbers the totals are made of, sorted into
+  // two piles — never a recomputed figure.
+  /** Sum of lineTotal across non-excluded PROVISIONAL items. */
+  provisionalSubtotal: number;
+  /** Sum of lineTotalWithMarkup across non-excluded PROVISIONAL items. */
+  provisionalWithMarkup: number;
 };
 
-export function computeCardBarStats(items: ScopeItem[]): CardBarStats {
+/**
+ * Compute the bar stats for one card.
+ *
+ * THE ONE PLACE CARD MONEY IS COMPUTED — see the note in ScopeCardsTab.tsx.
+ *
+ * `discipline` is needed for the "Other" half of the provisional predicate:
+ * schema.prisma states "line is provisional if isProvisional===true OR
+ * discipline==='Other'". Omitting it (or passing undefined) means "flag only",
+ * which is safe for every existing caller that does not know the discipline.
+ */
+export function computeCardBarStats(items: ScopeItem[], discipline?: string): CardBarStats {
   const visible = items.filter((i) => i.status !== "excluded");
   const subtotal = visible.reduce(
     (sum, i) => sum + (i.lineTotal != null ? Number(i.lineTotal) : 0),
@@ -57,7 +76,22 @@ export function computeCardBarStats(items: ScopeItem[]): CardBarStats {
     (sum, i) => sum + (i.lineTotalWithMarkup != null ? Number(i.lineTotalWithMarkup) : 0),
     0
   );
-  return { itemCount: visible.length, subtotal, subtotalWithMarkup };
+  // Provisional partition: same numbers the totals are made of, filtered by the
+  // server's predicate. Passing `discipline` is what makes a card in "Other"
+  // correctly treat every one of its lines as provisional without a flag.
+  const isOtherDiscipline = discipline === "Other";
+  const provisional = visible.filter(
+    (i) => i.isProvisional === true || isOtherDiscipline
+  );
+  const provisionalSubtotal = provisional.reduce(
+    (sum, i) => sum + (i.lineTotal != null ? Number(i.lineTotal) : 0),
+    0
+  );
+  const provisionalWithMarkup = provisional.reduce(
+    (sum, i) => sum + (i.lineTotalWithMarkup != null ? Number(i.lineTotalWithMarkup) : 0),
+    0
+  );
+  return { itemCount: visible.length, subtotal, subtotalWithMarkup, provisionalSubtotal, provisionalWithMarkup };
 }
 
 // ── Formatting helpers ──────────────────────────────────────────────────
@@ -322,10 +356,56 @@ export function DisciplineSummaryBar({
         />
       </div>
 
-      {/* Right: the discipline total its label has always claimed */}
+      {/* Right: the discipline total and, when any line is provisional, the
+          in-quote / provisional split.
+          SCOPE_PROVISIONAL_SPLIT_V1:
+            in the quote = subtotalWithMarkup − provisionalWithMarkup
+            provisional  = provisionalWithMarkup
+            total        = subtotalWithMarkup   ← unchanged from today
+          Deriving "in the quote" by subtraction rather than as a third sum
+          means `in the quote + provisional === total` by construction, so
+          the three figures on the bar can never disagree with one another.
+          It also means this slice cannot move a figure an estimator has
+          already quoted from: the total is exactly what it was before.
+          The split is shown only when there is provisional money — a bar
+          with none would otherwise read "in the quote $X · provisional $0
+          · total $X" on every discipline. */}
       <div style={rightStyle}>
-        <span style={totalLabelStyle}>Discipline total</span>
-        <span style={totalFigureStyle}>{fmtCurrency(rollup.subtotalWithMarkup)}</span>
+        {rollup.provisionalWithMarkup > 0 ? (
+          <>
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                alignItems: "flex-end",
+                flexWrap: "wrap",
+                justifyContent: "flex-end"
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                <span style={totalLabelStyle}>In the quote</span>
+                <span style={{ ...totalFigureStyle, fontSize: 14 }}>
+                  {fmtCurrency(rollup.subtotalWithMarkup - rollup.provisionalWithMarkup)}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                <span style={totalLabelStyle}>Provisional</span>
+                <span style={{ ...totalFigureStyle, fontSize: 14 }}>
+                  {fmtCurrency(rollup.provisionalWithMarkup)}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                <span style={totalLabelStyle}>Discipline total</span>
+                <span style={totalFigureStyle}>{fmtCurrency(rollup.subtotalWithMarkup)}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <span style={totalLabelStyle}>Discipline total</span>
+            <span style={totalFigureStyle}>{fmtCurrency(rollup.subtotalWithMarkup)}</span>
+          </>
+        )}
       </div>
     </div>
   );

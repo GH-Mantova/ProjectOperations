@@ -613,6 +613,60 @@ function reviewJobPrNumber(name) {
   return m ? Number(m[1]) : null;
 }
 
+// VERDICT_HOME_RESOLVER_V1 - a review verdict has three homes and the writer picks
+// unpredictably (measured 2026-09-05: 9 of 12 landed in the dev tree, 1 was archived
+// 16s before the mirror ran). Search all three; clone first, so behaviour is unchanged
+// whenever the file is where it used to be. Returns the NEWEST hit, or null.
+//
+// Homes (in probe order):
+//   1. Clone   — path.join(repoRoot, "docs", "pr-reviews", `pr-${n}-review.md`)
+//   2. Archive — sibling of repoRoot named "verdicts-archive"
+//   3. Dev tree — PR_WATCHER_DEV_TREE env var (defaults to C:\ProjectOperations2\docs\pr-reviews)
+//
+// When more than one home has the file, the one with the newest mtimeMs wins.
+// When no home has it, returns null (never throws).
+//
+// Pure over injected deps so the whole thing is unit-testable without touching
+// real trees. statImpl defaults to node:fs/promises stat.
+export async function resolveVerdictPath(prNumber, {
+  repoRoot = REPO_ROOT,
+  devTree = process.env.PR_WATCHER_DEV_TREE ?? "C:\\ProjectOperations2\\docs\\pr-reviews",
+  statImpl = stat,
+} = {}) {
+  const filename = `pr-${prNumber}-review.md`;
+  const candidates = [
+    path.join(repoRoot, "docs", "pr-reviews", filename),
+    path.join(path.dirname(repoRoot), "verdicts-archive", filename),
+    path.join(devTree, filename),
+  ];
+  const hits = [];
+  for (const p of candidates) {
+    try {
+      const s = await statImpl(p);
+      hits.push({ p, mtimeMs: s.mtimeMs });
+    } catch {
+      // not present in this home — continue
+    }
+  }
+  if (hits.length === 0) return null;
+  hits.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return hits[0].p;
+}
+
+// Synchronous helper used by the "not found" log path: names all three candidate
+// paths so the operator can see where the resolver looked.
+export function verdictCandidatePaths(prNumber, {
+  repoRoot = REPO_ROOT,
+  devTree = process.env.PR_WATCHER_DEV_TREE ?? "C:\\ProjectOperations2\\docs\\pr-reviews",
+} = {}) {
+  const filename = `pr-${prNumber}-review.md`;
+  return [
+    path.join(repoRoot, "docs", "pr-reviews", filename),
+    path.join(path.dirname(repoRoot), "verdicts-archive", filename),
+    path.join(devTree, filename),
+  ];
+}
+
 // Mirror a finished review verdict into a PR comment so it's readable from
 // the GitHub mobile app (the verdict file in docs/pr-reviews/ is local-only).
 // Best-effort: any failure logs and returns — the verdict FILE remains the
@@ -663,12 +717,18 @@ async function mirrorVerdictToPr(name) {
     return;
   }
   const verdictRel = `docs/pr-reviews/pr-${prNumber}-review.md`;
-  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  const verdictPath = await resolveVerdictPath(prNumber);
+  if (!verdictPath) {
+    const searched = verdictCandidatePaths(prNumber).join(", ");
+    log("review", `verdict mirror skipped: ${verdictRel} not found — searched: ${searched}`);
+    return;
+  }
   let verdict;
   try {
     verdict = await readFile(verdictPath, "utf-8");
   } catch {
-    log("review", `verdict mirror skipped: ${verdictRel} not found`);
+    const searched = verdictCandidatePaths(prNumber).join(", ");
+    log("review", `verdict mirror skipped: ${verdictRel} not readable — searched: ${searched}`);
     return;
   }
   // Ask whether this verdict is arriving before or after the decision it describes.
@@ -1427,7 +1487,8 @@ async function prFileList(prNumber) {
 // When prFiles is provided (string[]), the guard also runs: a MERGE verdict
 // that names files not in the PR is rejected even if the text says MERGE.
 async function verdictApproves(prNumber, prFiles) {
-  const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${prNumber}-review.md`);
+  const verdictPath = await resolveVerdictPath(prNumber);
+  if (!verdictPath) return false;
   try {
     const content = await readFile(verdictPath, "utf-8");
     if (!/^VERDICT:\s*MERGE\b/m.test(content)) return false;
@@ -2755,13 +2816,15 @@ async function drain() {
       if (reviewPrNum != null) {
         try {
           const guardPrFiles = await prFileList(reviewPrNum);
-          const verdictPath = path.join(REPO_ROOT, "docs", "pr-reviews", `pr-${reviewPrNum}-review.md`);
+          const verdictPath = await resolveVerdictPath(reviewPrNum);
           let verdictText = "";
-          try {
-            verdictText = await readFile(verdictPath, "utf-8");
-          } catch {
-            // verdict file not found — guard cannot run; let mirror proceed
-            verdictText = "";
+          if (verdictPath) {
+            try {
+              verdictText = await readFile(verdictPath, "utf-8");
+            } catch {
+              // verdict file not readable — guard cannot run; let mirror proceed
+              verdictText = "";
+            }
           }
           if (verdictText) {
             const guardResult = validateVerdict({ verdictText, prFiles: guardPrFiles });

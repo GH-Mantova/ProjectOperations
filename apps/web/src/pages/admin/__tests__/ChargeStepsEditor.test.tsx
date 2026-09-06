@@ -32,8 +32,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import {
+  buildStepValues,
   describeChargeStepIssue,
-  evaluateChargeSteps
+  evaluateChargeSteps,
+  type RateLineField
 } from "@project-ops/config/charge-step-semantics";
 import {
   stepSentence,
@@ -1282,5 +1284,207 @@ describe("CHARGE_STEP_GUARDS_V1: the error is unreachable, not tolerated", () =>
 
   it("carries the marker", () => {
     expect(CARD_SRC).toContain("CHARGE_STEP_GUARDS_V1");
+  });
+});
+
+// ── RATE_LINE_FIELDS_V1 ───────────────────────────────────────────────────
+//
+// A charge step can now name a value the ESTIMATOR enters as well as one the
+// rate table stores. These tests pin the mock-up's four worked examples on the
+// client side; the server side of the same four is in
+// apps/api/src/modules/rates/__tests__/rate-step-evaluator.spec.ts, and both
+// build their values map with the SAME function, so a divergence fails here.
+
+const CORE_COLS: RateColumnMeta[] = [
+  { id: "c-diameter", name: "Diameter", dataType: "NUMBER", role: "KEY", unit: "mm" },
+  { id: "c-rate", name: "Rate", dataType: "CURRENCY", role: "VALUE" }
+];
+
+const CORE_LINE_FIELDS: RateLineField[] = [
+  { name: "Depth", kind: "number", unit: "mm", sample: 18 },
+  { name: "Elevation", kind: "text", options: ["Floor", "Wall", "Inverted"], sample: "Inverted" },
+  { name: "Holes", kind: "number", sample: 12 }
+];
+
+const CORE_STEPS: ChargeStep[] = [
+  { op: "start", field: "Depth" },
+  { op: "divide", field: 10 },
+  { op: "round", direction: "nearest", interval: 1 },
+  { op: "floor", value: 1 },
+  { op: "multiply", field: "Rate" },
+  { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+  { op: "multiply", field: "Holes" }
+];
+
+describe("RATE_LINE_FIELDS_V1: the operand pickers offer line fields", () => {
+  it("a number line field is offered as an arithmetic operand", () => {
+    const result = numericFieldOptions(CORE_COLS, CORE_LINE_FIELDS);
+    expect(result).toEqual(["Diameter", "Rate", "Depth", "Holes"]);
+  });
+
+  it("a text line field is NOT offered as an arithmetic operand", () => {
+    expect(numericFieldOptions(CORE_COLS, CORE_LINE_FIELDS)).not.toContain("Elevation");
+  });
+
+  it("a text line field IS offered as a condition field", () => {
+    expect(allFieldOptions(CORE_COLS, CORE_LINE_FIELDS)).toContain("Elevation");
+  });
+
+  it("declaring no line fields leaves both lists exactly as they were", () => {
+    expect(numericFieldOptions(COLS, [])).toEqual(numericFieldOptions(COLS));
+    expect(allFieldOptions(COLS, [])).toEqual(allFieldOptions(COLS));
+  });
+});
+
+describe("RATE_LINE_FIELDS_V1: validateSteps knows the two mistakes apart", () => {
+  const NAMES = allFieldOptions(CORE_COLS, CORE_LINE_FIELDS);
+  const TEXT_NAMES = ["Elevation"];
+
+  it("accepts the mock-up's Core holes rule", () => {
+    expect(validateSteps(CORE_STEPS, NAMES, TEXT_NAMES)).toEqual([]);
+  });
+
+  it("a name that exists nowhere and text in the sum say different things", () => {
+    const unknown = validateSteps(
+      [{ op: "start", field: "Depht" }],
+      NAMES,
+      TEXT_NAMES
+    );
+    const textInSum = validateSteps(
+      [{ op: "start", field: "Elevation" }],
+      NAMES,
+      TEXT_NAMES
+    );
+    expect(unknown[0].message).toBe(
+      'Field "Depht" is not a column or line field on this table.'
+    );
+    expect(textInSum[0].message).toBe(
+      'Field "Elevation" is text, so it can only be used in an "only when" condition, not in the sum.'
+    );
+    expect(unknown[0].message).not.toBe(textInSum[0].message);
+  });
+
+  it("the first-step-must-be-start rule is untouched", () => {
+    expect(validateSteps([{ op: "multiply", field: "Depth" }], NAMES, TEXT_NAMES)).toContainEqual({
+      index: 0,
+      message: 'First step must have op "start".'
+    });
+  });
+});
+
+describe("RATE_LINE_FIELDS_V1: buildStepValues is the one values map", () => {
+  it("merges the matched row's cells with the declared line fields", () => {
+    expect(
+      buildStepValues(CORE_COLS, { "c-diameter": 32, "c-rate": 1.7 }, CORE_LINE_FIELDS)
+    ).toEqual({ Diameter: 32, Rate: 1.7, Depth: 18, Elevation: "Inverted", Holes: 12 });
+  });
+
+  it("mock-up example 1 — Core holes previews 81.60, the figure the server produces", () => {
+    const values = buildStepValues(
+      CORE_COLS,
+      { "c-diameter": 32, "c-rate": 1.7 },
+      CORE_LINE_FIELDS
+    );
+    const trail = evaluateStepsClient(CORE_STEPS, values);
+    expect(trail.map((t) => t.runningTotal)).toEqual([18, 1.8, 2, 2, 3.4, 6.8, 81.6]);
+    expect(evaluateChargeSteps(CORE_STEPS, values).total).toBeCloseTo(81.6, 10);
+    expect(
+      formatStepTotal(trail[6].runningTotal as number, { money: true })
+    ).toBe("$81.60");
+  });
+
+  it("mock-up example 2 — Saw cuts by depth band previews 454.80", () => {
+    const values = buildStepValues(
+      [{ id: "c-rate", name: "Rate", dataType: "CURRENCY", role: "VALUE" }],
+      { "c-rate": 18.95 },
+      [{ name: "Metres", kind: "number", unit: "m", sample: 24 }]
+    );
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Rate" },
+      { op: "multiply", field: "Metres" }
+    ];
+    expect(evaluateStepsClient(steps, values).at(-1)?.runningTotal).toBeCloseTo(454.8, 10);
+  });
+
+  it("mock-up example 3 — Saw cuts by the millimetre previews 691.20", () => {
+    const values = buildStepValues(
+      [{ id: "c-rate", name: "Rate", dataType: "CURRENCY", role: "VALUE" }],
+      { "c-rate": 18 },
+      [
+        { name: "Depth", kind: "number", unit: "mm", sample: 40 },
+        { name: "Metres", kind: "number", unit: "m", sample: 24 }
+      ]
+    );
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Rate" },
+      { op: "multiply", field: "Depth" },
+      { op: "divide", field: 25 },
+      { op: "floor", value: 18 },
+      { op: "multiply", field: "Metres" }
+    ];
+    expect(evaluateStepsClient(steps, values).map((t) => t.runningTotal)).toEqual([
+      18, 720, 28.8, 28.8, 691.2
+    ]);
+  });
+
+  it("mock-up example 4 — Labour day rates previews 10800", () => {
+    const values = buildStepValues(
+      [{ id: "c-day", name: "Day rate", dataType: "CURRENCY", role: "VALUE" }],
+      { "c-day": 600 },
+      [
+        { name: "Men", kind: "number", sample: 3 },
+        { name: "Days", kind: "number", sample: 6 }
+      ]
+    );
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Day rate" },
+      { op: "multiply", field: "Men" },
+      { op: "multiply", field: "Days" }
+    ];
+    expect(evaluateStepsClient(steps, values).at(-1)?.runningTotal).toBe(10800);
+  });
+
+  it("a line field with no value follows the column rule: missing-operand", () => {
+    const values = buildStepValues(CORE_COLS, { "c-rate": 1.7 }, [
+      { name: "Depth", kind: "number" }
+    ]);
+    const trail = evaluateStepsClient([{ op: "start", field: "Depth" }], values);
+    expect(trail[0].runningTotal).toBeNull();
+    expect(trail[0].issue?.code).toBe("missing-operand");
+  });
+
+  it("a column-only table produces exactly the map the card built before", () => {
+    // The pre-slice builder: cells by column id, numbers kept, everything else
+    // stringified, null and undefined skipped.
+    const cells = { c1: 150, c2: 25, c3: "concrete", c4: null };
+    const legacy: Record<string, number | string> = {};
+    for (const col of COLS) {
+      const raw = (cells as Record<string, unknown>)[col.id];
+      if (raw === null || raw === undefined) continue;
+      legacy[col.name] = typeof raw === "number" ? raw : String(raw);
+    }
+    expect(buildStepValues(COLS, cells, [])).toEqual(legacy);
+  });
+});
+
+describe("RATE_LINE_FIELDS_V1: the card and its mount are wired for line fields", () => {
+  it("the card takes lineFields and builds its values map with the shared builder", () => {
+    expect(CARD_SRC).toContain("lineFields?: readonly RateLineField[];");
+    expect(CARD_SRC).toContain("return buildStepValues(columns, row?.cells, lineFields);");
+    // Exactly one implementation of the map, on this side of the wire.
+    expect(CARD_SRC.match(/buildStepValues\(/g)).toHaveLength(1);
+  });
+
+  it("the card does not send lineFields back — it has no UI to edit them yet", () => {
+    expect(CARD_SRC).toContain("body: JSON.stringify({ steps })");
+  });
+
+  it("the mount passes the table's declared line fields", () => {
+    expect(MOUNT_SRC).toContain("lineFields={table.lineFields ?? []}");
+    expect(MOUNT_SRC).toContain("lineFields?: RateLineField[] | null;");
+  });
+
+  it("carries the marker", () => {
+    expect(CARD_SRC).toContain("RATE_LINE_FIELDS_V1");
   });
 });

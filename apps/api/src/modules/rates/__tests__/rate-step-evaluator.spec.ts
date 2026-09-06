@@ -22,6 +22,10 @@ import {
   type ChargeStepIssue,
   type TrailEntry,
 } from "../rate-step-evaluator";
+import {
+  buildStepValues,
+  type RateLineField
+} from "@project-ops/config/charge-step-semantics";
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -782,5 +786,154 @@ describe("guard rails", () => {
   it("throws when first step is not start", () => {
     const steps: ChargeStep[] = [{ op: "multiply", field: 2 }];
     expect(() => evaluateSteps(steps, {})).toThrow("first step must be op: start");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 14. RATE_LINE_FIELDS_V1 — line fields resolve through the SAME values map
+// ---------------------------------------------------------------------------
+//
+// `rate-step-evaluator.ts` is deliberately unchanged by the line-fields slice:
+// `resolveStepOperand` and `stepConditionMet` key off `values` by name, so a
+// line field resolves the moment `buildStepValues` puts it in the map. These
+// tests prove that, and pin the four worked examples from the approved mock-up.
+//
+// The client preview calls `buildStepValues` too (ChargeStepsEditor.tsx), so
+// the figures asserted here are the figures the card shows — one builder, one
+// evaluator, one number.
+
+describe("RATE_LINE_FIELDS_V1 — buildStepValues + evaluateSteps", () => {
+  const CORE_COLUMNS = [
+    { id: "c-diameter", name: "Diameter" },
+    { id: "c-rate", name: "Rate" }
+  ];
+  const CORE_LINE_FIELDS: RateLineField[] = [
+    { name: "Depth", kind: "number", unit: "mm", sample: 18 },
+    { name: "Elevation", kind: "text", options: ["Floor", "Wall", "Inverted"], sample: "Inverted" },
+    { name: "Holes", kind: "number", sample: 12 }
+  ];
+  const CORE_STEPS: ChargeStep[] = [
+    { op: "start", field: "Depth" },
+    { op: "divide", field: 10 },
+    { op: "round", direction: "nearest", interval: 1 },
+    { op: "floor", value: 1 },
+    { op: "multiply", field: "Rate" },
+    { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+    { op: "multiply", field: "Holes" }
+  ];
+
+  it("mock-up example 1 — Core holes: Diameter 32 / Rate 1.70 totals 81.60", () => {
+    const values = buildStepValues(
+      CORE_COLUMNS,
+      { "c-diameter": 32, "c-rate": 1.7 },
+      CORE_LINE_FIELDS
+    );
+    expect(values).toEqual({
+      Diameter: 32,
+      Rate: 1.7,
+      Depth: 18,
+      Elevation: "Inverted",
+      Holes: 12
+    });
+
+    const { total, trail } = evaluateSteps(CORE_STEPS, values);
+    expect(trail.map((t) => t.runningTotal)).toEqual([18, 1.8, 2, 2, 3.4, 6.8, 81.6]);
+    expect(total).toBeCloseTo(81.6, 10);
+  });
+
+  it("mock-up example 2 — Saw cuts by depth band: Rate 18.95 x Metres 24 = 454.80", () => {
+    const values = buildStepValues(
+      [{ id: "c-rate", name: "Rate" }],
+      { "c-rate": 18.95 },
+      [{ name: "Metres", kind: "number", unit: "m", sample: 24 }]
+    );
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Rate" },
+      { op: "multiply", field: "Metres" }
+    ];
+    expect(evaluateSteps(steps, values).total).toBeCloseTo(454.8, 10);
+  });
+
+  it("mock-up example 3 — Saw cuts by the millimetre: floor 18 then x Metres = 691.20", () => {
+    const values = buildStepValues([{ id: "c-rate", name: "Rate" }], { "c-rate": 18 }, [
+      { name: "Depth", kind: "number", unit: "mm", sample: 40 },
+      { name: "Metres", kind: "number", unit: "m", sample: 24 }
+    ]);
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Rate" },
+      { op: "multiply", field: "Depth" },
+      { op: "divide", field: 25 },
+      { op: "floor", value: 18 },
+      { op: "multiply", field: "Metres" }
+    ];
+    const { total, trail } = evaluateSteps(steps, values);
+    expect(trail.map((t) => t.runningTotal)).toEqual([18, 720, 28.8, 28.8, 691.2]);
+    expect(total).toBeCloseTo(691.2, 10);
+  });
+
+  it("mock-up example 4 — Labour day rates: 600 x 3 men x 6 days = 10800", () => {
+    const values = buildStepValues([{ id: "c-day", name: "Day rate" }], { "c-day": 600 }, [
+      { name: "Men", kind: "number", sample: 3 },
+      { name: "Days", kind: "number", sample: 6 }
+    ]);
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Day rate" },
+      { op: "multiply", field: "Men" },
+      { op: "multiply", field: "Days" }
+    ];
+    expect(evaluateSteps(steps, values).total).toBe(10800);
+  });
+
+  it("an entered line value beats the sample; the sample is only the stand-in", () => {
+    const values = buildStepValues(CORE_COLUMNS, { "c-rate": 1.7 }, CORE_LINE_FIELDS, {
+      Depth: 150,
+      Elevation: "Floor",
+      Holes: 1
+    });
+    expect(values.Depth).toBe(150);
+    // 150 -> 15 -> 15 -> 15 -> 25.50, elevation step skipped, x 1
+    expect(evaluateSteps(CORE_STEPS, values).total).toBeCloseTo(25.5, 10);
+  });
+
+  it("a line field with no value and no sample is `missing-operand` — the column rule", () => {
+    const values = buildStepValues([], {}, [{ name: "Depth", kind: "number" }]);
+    expect(values).toEqual({});
+    const { total, issues } = evaluateSteps([{ op: "start", field: "Depth" }], values);
+    expect(total).toBeNull();
+    expect(issues[0].code).toBe("missing-operand");
+  });
+
+  it("a text line field in the sum is `text-operand` — the TEXT column rule", () => {
+    const values = buildStepValues(CORE_COLUMNS, { "c-rate": 1.7 }, CORE_LINE_FIELDS);
+    const { total, issues } = evaluateSteps(
+      [
+        { op: "start", field: "Rate" },
+        { op: "multiply", field: "Elevation" }
+      ],
+      values
+    );
+    expect(total).toBeNull();
+    expect(issues[0].code).toBe("text-operand");
+  });
+
+  it("a column WINS a name clash, so a column-only step list is untouched", () => {
+    const values = buildStepValues(
+      [{ id: "c-depth", name: "Depth" }],
+      { "c-depth": 150 },
+      [{ name: "Depth", kind: "number", sample: 18 }]
+    );
+    expect(values.Depth).toBe(150);
+  });
+
+  it("declaring no line fields leaves the map exactly as it was", () => {
+    const before = buildStepValues(CORE_COLUMNS, { "c-diameter": 32, "c-rate": 1.7 }, []);
+    expect(before).toEqual({ Diameter: 32, Rate: 1.7 });
+    expect(evaluateSteps(
+      [
+        { op: "start", field: "Rate" },
+        { op: "multiply", field: "Diameter" }
+      ],
+      before
+    ).total).toBe(54.4);
   });
 });

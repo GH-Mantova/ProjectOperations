@@ -103,6 +103,10 @@ export type CardMoneyStats = {
   itemCount: number;
   subtotal: number;
   subtotalWithMarkup: number;
+  // SCOPE_PROVISIONAL_SPLIT_V1 — the provisional slice of the same non-excluded rows.
+  // Partitioned from the same server-computed figures the totals are made of.
+  provisionalSubtotal: number;
+  provisionalWithMarkup: number;
 };
 
 /**
@@ -121,6 +125,9 @@ export type CardRollupInput = {
   duration: number;
   subtotal: number;
   subtotalWithMarkup: number;
+  // SCOPE_PROVISIONAL_SPLIT_V1 — provisional slice carried from CardMoneyStats.
+  provisionalSubtotal: number;
+  provisionalWithMarkup: number;
   plantSummary: RollupPlantGroup[];
   /**
    * Which stage this card runs in. Cards that share a stage key run AT THE
@@ -172,6 +179,10 @@ export type DisciplineRollup = {
   plantSummary: RollupPlantGroup[];
   subtotal: number;
   subtotalWithMarkup: number;
+  // SCOPE_PROVISIONAL_SPLIT_V1 — provisional slice summed per card, then across
+  // cards and stages (money sums in both directions, no stage logic needed).
+  provisionalSubtotal: number;
+  provisionalWithMarkup: number;
 };
 
 /** Day figures come off the API already rounded to 1dp; summing them can
@@ -249,6 +260,10 @@ export function toCardRollupInput(
     duration: overrides?.durationOverride ?? computed?.duration ?? 0,
     subtotal: stats.subtotal,
     subtotalWithMarkup: stats.subtotalWithMarkup,
+    // SCOPE_PROVISIONAL_SPLIT_V1 — pass the provisional figures straight through
+    // from CardMoneyStats; the fold below sums them alongside subtotal.
+    provisionalSubtotal: stats.provisionalSubtotal,
+    provisionalWithMarkup: stats.provisionalWithMarkup,
     plantSummary: computed?.plantSummary ?? [],
     stageKey: stageKeyForGroup(stageGroup)
   };
@@ -264,7 +279,9 @@ export const EMPTY_DISCIPLINE_ROLLUP: DisciplineRollup = {
   duration: 0,
   plantSummary: [],
   subtotal: 0,
-  subtotalWithMarkup: 0
+  subtotalWithMarkup: 0,
+  provisionalSubtotal: 0,
+  provisionalWithMarkup: 0
 };
 
 /**
@@ -374,6 +391,10 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
   let duration = 0;
   let subtotal = 0;
   let subtotalWithMarkup = 0;
+  // SCOPE_PROVISIONAL_SPLIT_V1 — money sums in both directions (within a stage
+  // and across stages), so provisional figures need no stage logic of their own.
+  let provisionalSubtotal = 0;
+  let provisionalWithMarkup = 0;
 
   for (const stage of stages) {
     // WITHIN a stage: crew and plant quantity SUM (the cards are on site
@@ -399,6 +420,9 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
       labourDays += card.labourDays;
       subtotal += card.subtotal;
       subtotalWithMarkup += card.subtotalWithMarkup;
+      // SCOPE_PROVISIONAL_SPLIT_V1 — sums per card, same as subtotal.
+      provisionalSubtotal += card.provisionalSubtotal;
+      provisionalWithMarkup += card.provisionalWithMarkup;
 
       for (const [category, variants] of foldCardPlant(card)) {
         for (const [variantKey, cardLine] of variants) {
@@ -458,7 +482,9 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
     duration: round1(duration),
     plantSummary,
     subtotal,
-    subtotalWithMarkup
+    subtotalWithMarkup,
+    provisionalSubtotal,
+    provisionalWithMarkup
   };
 }
 

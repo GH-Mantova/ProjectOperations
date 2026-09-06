@@ -411,6 +411,17 @@ export type ScopeItem = {
   // own work, which is every item written before slice 4 and every item
   // nobody has linked.
   pricedBySubItemId?: string | null;
+  // SCOPE_PROVISIONAL_SPLIT_V1 — scope-subcontracted slice 3 added
+  // `is_provisional` to scope_of_works_items, and listItems returns the whole
+  // row (`...item`), so this field has been arriving on every read since that
+  // migration; it was simply never declared here because nothing in the web
+  // read it. Declaring it adds NO API surface.
+  //
+  // schema.prisma (line ~3697): "line is provisional if isProvisional === true
+  // OR discipline === 'Other'" — see computeCardBarStats for the web
+  // implementation of the same predicate. DEFAULT false means all existing
+  // rows are priced (current behaviour unchanged).
+  isProvisional?: boolean | null;
   // PR B1.7.1 — per-row totals computed server-side in listItems.
   // Both fields are optional so older API responses don't break the
   // type; the header renders "—" when either is null/undefined.

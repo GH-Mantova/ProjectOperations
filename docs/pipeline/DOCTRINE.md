@@ -839,13 +839,22 @@ here now because they are true for **every** station.
   🔴 **This is not academic — the frozen file cost a live finding the same day.** The 16:12Z
   collect read `watcher-launch.log`, recorded that the verdict-home-resolver prompt "was armed,
   looped, and left NO LOG ANYWHERE", and dispatched Station 03 to re-arm it. [MEASURED] from the
-  daily clone log and `gh`: it was armed `09:20:50Z`, the watchdog kill loop built it **four**
-  times, it opened **#1703 · #1704 · #1707 · #1708**, three were closed as duplicates at `11:04Z`
+  daily clone log and `gh`: it was armed `09:20:50Z`, the watchdog kill loop built it **five**
+  times, it opened **#1703 · #1704 · #1705 · #1707 · #1708** — four closed unmerged (`#1705` at
+  `10:24:07Z`, then `#1703 · #1707 · #1708` together at `11:04:29–35Z`)
   and **#1704 MERGED at 11:41:36Z**. `git grep -c VERDICT_HOME_RESOLVER origin/main --
   scripts/pr-watcher/index.mjs` → **6** (POSITIVE control `classifyPolicyFiles` → 2; NEGATIVE
   control → exit 1), and `scripts/pr-watcher/__tests__/verdict-home-resolver.test.mjs` is tracked
-  on `main`. **The fix had already landed; the dispatch would have built a fifth duplicate of
-  merged work.** Found and landed by Station 00 2026-09-06T17:5xZ.
+  on `main`. **The fix had already landed; the dispatch would have built a SIXTH duplicate of
+  merged work.** Found and landed by Station 00 2026-09-06T17:5xZ. ⚠️ **CORRECTED 2026-09-06T18:3xZ
+  — this paragraph said FOUR builds and named four PRs, and `#1705` was missing.** [MEASURED] by
+  Station 04 and re-measured by Station 00 with `gh pr view <n> --json
+  number,state,title,headRefName,closedAt,mergedAt` on all five: `#1705`
+  (`fix/verdict-home-resolver-v1-impl`, closed `10:24:07Z`) carries the same
+  `VERDICT_HOME_RESOLVER_V1` marker and the same title family, and closed 40 minutes BEFORE the
+  11:04Z batch — so a reader checking only that batch never meets it. **The falsifying probe is
+  the head-branch list**: `git ls-remote --heads origin` still holds all four closed-unmerged
+  branches; if a fifth `*verdict-home-resolver*` head appears, this count is wrong again.
 
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read

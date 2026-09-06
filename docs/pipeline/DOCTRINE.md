@@ -856,6 +856,44 @@ here now because they are true for **every** station.
   the head-branch list**: `git ls-remote --heads origin` still holds all four closed-unmerged
   branches; if a fifth `*verdict-home-resolver*` head appears, this count is wrong again.
 
+  🔴🔴 **CORRECTED 2026-09-06T19:2xZ — THE DAILY CLONE LOG'S `opened PR #<n>` SET IS INCOMPLETE,
+  NOT MERELY FRESH-OR-STALE, AND IT GOES BLIND EXACTLY WHEN LANE CLASSIFICATION MATTERS MOST.**
+  The correction above replaced a frozen file with a live one and left the test itself intact:
+  *"no `opened PR #<n>` line ⇒ second lane."* [MEASURED] 2026-09-06T19:2xZ by Station 00 at
+  `474aa869`, over a byte-for-byte copy of `…\logs\2026-09-06.log` (129,381 B — the live file is
+  held open by the watcher and `Select-String` against it fails *"because it is being used by
+  another process"*, so copy it first):
+
+  | PR | mentions in the daily log | `opened PR #<n>` lines |
+  |---|---|---|
+  | `#1703` | 2 | **0** |
+  | `#1704` | 6 | **0** |
+  | `#1705` | 0 | **0** |
+  | `#1707` | 14 | 1 |
+  | `#1708` | 4 | **0** |
+  | `#1692` · `#1698` · `#1700` — POSITIVE controls | 7 · 12 · 21 | 1 · 1 · 1 |
+
+  NEGATIVE control, a freshly minted needle over the same copy → **0**. All five of the first group
+  are watcher-opened — that is the paragraph directly above, measured from `gh` and the
+  `VERDICT_HOME_RESOLVER_V1` marker — so **four of five watcher-opened PRs hand-classify as SECOND
+  LANE on this test**, at exit 0, while its positive control passes on three other PRs in the same
+  file. `#1705` leaves no trace in the log at all.
+
+  🔧 **The mechanism, and it is why "wait for a fresher log" cannot cure it.** The line is written
+  by the MERGE step, *after* the build: `<prompt>: opened PR #<n>, policy=…, waiting.` A build the
+  watchdog kills before that step has already opened its PR and never logs the line. The kill loop
+  is precisely the condition that produces duplicate PRs — so the instrument goes blind in the one
+  situation where knowing the lane decides whether to build a sixth.
+
+  🔧 **The test is therefore sound in ONE direction only. `opened PR #<n>` PRESENT ⇒
+  watcher-opened. ABSENT ⇒ `[CANNOT MEASURE]`, never ⇒ second lane.** With the line absent,
+  classify under §10.1 step 2 from `classifyPolicyFiles` alone and record it as
+  `[NO LANE VERDICT — hand-classified]`; then corroborate with an instrument the kill loop cannot
+  erase — `.arming-log.txt` (no arm inside the PR's window ⇒ no watcher build could have started),
+  or the PRs' own `createdAt`, since the single-lane watcher cannot open two PRs nine seconds
+  apart. ⚠️ **The falsifying probe is the table above**: re-run it on any PR whose build was killed
+  mid-flight; if that PR's `opened PR #` line is present, this correction is wrong.
+
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read
   `running` — `local_38901e4d` (created `04:08:48Z`, whose own report declares it ended `04:25Z`,

@@ -12,7 +12,7 @@ contract_version: 1
 
 ## PREFLIGHT — run this before anything else
 
-<!-- CANONICAL-BLOCK: station-contract v2 — byte-identical in every station doc.
+<!-- CANONICAL-BLOCK: station-contract v3 — byte-identical in every station doc.
      lint-station.mjs fails on any edit. Change it once, re-record the hash, ship all seven together. -->
 
 **Four steps, in order. If step 1 fails, you stop.**
@@ -35,6 +35,19 @@ different id. A keyword `ToolSearch` for `desktop-commander` returns whatever th
 offers — load them in ONE call, then use the ids the search reported. **Declaring blindness without
 loading first is a §7 instrument lie, in the one step every run begins with** — and the contract
 below then makes you stop on it.
+
+🔴 **Install the device-bridge git guard FIRST — before any VM-side call.** Run
+`scripts/pipeline/vm-git-guard.sh` once, at the top of the run:
+`bash "$HOME/mnt/ProjectOperations2/scripts/pipeline/vm-git-guard.sh"`. It is idempotent, it
+persists itself onto `PATH`, and it refuses `git` **only** against a mounted folder — git elsewhere
+in the VM is untouched. Without it, a cut-short call against the mount leaves a 0-byte `index.lock`
+with no owning Windows process; it never expires, and it freezes every station (DOCTRINE §9.2).
+**Quote the installer's last line under WHAT I MEASURED, pass or fail.** An install nobody can see
+in the report is indistinguishable from one that never ran — which is why the bullets telling
+stations not to run `git` there did not stop the next occurrence. **A failed install is a FINDING,
+not a STOP:** say so and carry on. Widening the stop contract — which belongs to an unreachable
+machine — would turn a missing shell script into a frozen board, the very outcome the guard exists
+to remove. A guard you could not install is never a licence to run your own `git` against the mount.
 
 Then start a shell on the Windows host (`start_process`, shell `powershell.exe`). If Desktop
 Commander is absent, or the call fails **after** the load:
@@ -185,7 +198,7 @@ pasted into an instruction document.
 its last run and dispositions each finding — that is the only channel that closes. If you are not 00,
 your job ends at writing the breadcrumb.
 
-<!-- END-CANONICAL-BLOCK: station-contract v2 -->
+<!-- END-CANONICAL-BLOCK: station-contract v3 -->
 
 ## CATCH UP A MISSED OCCURRENCE — before you start today's work
 

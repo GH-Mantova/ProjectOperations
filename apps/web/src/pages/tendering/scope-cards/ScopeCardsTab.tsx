@@ -926,6 +926,30 @@ function ScopeCardStackEntry({
             onSectionTotalChange={onOtherCostTotalChange}
           />
 
+          {/* SCOPE_WASTE_SECTION_V1 — third in the mock-up's fixed order,
+              between Other operational costs above and Concrete cutting below.
+
+              THIS MOUNT TAKES NO SECTION-TOTAL CALLBACK, AND THAT IS DELIBERATE.
+              Do not add one to "finish" the pattern the two sections either
+              side of it follow. Waste is not missing from the tender price —
+              it is priced as its OWN independently marked-up cost stream, on
+              the server, in scope-redesign.service.ts summary():
+
+                wasteWithMarkup += <ScopeWasteItem.lineTotal per card>
+                                   * (1 + (card.wasteMarkupOverride ?? tenderMarkup)/100)
+                tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup
+
+              and the service states the invariant in the same breath: waste
+              and cutting are independent cost streams "NEVER folded into the
+              scope discipline total". summary-section-markup.spec.ts pins it
+              with asymmetric markups so a combined base cannot coincide.
+
+              The fold below is that scope-discipline total. Adding waste to it
+              would put waste inside the one total the server keeps it out of,
+              and would run money that already carries the waste section's own
+              rate through the scope markup chain a second time. The card
+              subtotal is therefore identical with and without waste lines —
+              by design, not by omission. See the header of ScopeWasteTab.tsx. */}
           <ScopeWasteTab
             tenderId={tenderId}
             discipline={card.discipline}

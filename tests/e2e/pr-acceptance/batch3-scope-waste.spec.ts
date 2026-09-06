@@ -13,6 +13,21 @@
  * are unlabeled inputs; quantities and rates are asserted through the
  * waste REST endpoint the UI itself writes to.
  *
+ * SCOPE_WASTE_SECTION_V1 (slice 8) — the section was rebuilt in the visual
+ * language of the sections either side of it: it is now collapsible, with a
+ * summary that stays readable while shut (line count in words, subtotal, and
+ * the "+ N% markup" figure). The two action buttons were renamed to
+ * "+ add a waste line" and "⇩ Sum from items above", and are addressed here
+ * by data-testid rather than by label, so a future copy change cannot break
+ * the suite the way a renamed label just did.
+ *
+ * What the slice deliberately did NOT change: the money. Waste is priced as
+ * its OWN independently marked-up cost stream on the server
+ * (scope-redesign.service.ts summary(): tenderPrice = scopeWithMarkupTotal +
+ * cuttingWithMarkup + wasteWithMarkup), and is never folded into the scope
+ * discipline total or the card subtotal. No assertion in this file about a
+ * waste figure changed, because no waste figure changed.
+ *
  * Residue: none — waste rows are purged via API before and after each
  * test, fixture scope items are deleted in finally blocks.
  */
@@ -51,7 +66,7 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
     page.on("dialog", (dialog) => void dialog.accept());
 
     await openDemCard(page);
-    await page.getByRole("button", { name: "+ Add waste row" }).click();
+    await page.getByTestId("waste-add-line").click();
 
     // The new row is the one whose Group select lists every waste group.
     // SCOPE_WBS_TABLE_V1: the WBS item table now renders a per-item
@@ -104,6 +119,58 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
     await expect(page.getByLabel("Delete waste row")).toHaveCount(0);
   });
 
+  // SCOPE_WASTE_SECTION_V1 — the section is now collapsible, and the summary
+  // has to stay readable while it is shut. A card that disposes of nothing
+  // should be one folded line, not a screenful of empty fields.
+  test("the waste section folds, and the collapsed summary still carries the line count and both money figures", async ({
+    page,
+    request
+  }) => {
+    const token = await apiToken(request);
+    await purgeWasteRows(request, token, TEMPLATE_CARD_DEM);
+
+    await openDemCard(page);
+
+    const summary = page.getByTestId("waste-section-summary");
+    const caret = page.getByTestId("waste-section-caret");
+    const body = page.locator("#waste-section-body");
+
+    // Opens expanded: the body is there and the caret says so.
+    await expect(summary).toBeVisible();
+    await expect(body).toBeVisible();
+    await expect(caret).toHaveAttribute("aria-expanded", "true");
+
+    // With no lines, the count reads in words rather than "(0 rows)".
+    await expect(page.getByTestId("waste-section-line-count")).toContainText("no lines");
+
+    // Both money figures are present before the fold...
+    const subtotal = page.getByTestId("waste-section-subtotal");
+    const withMarkup = page.getByTestId("waste-section-with-markup");
+    const markupLabel = page.getByTestId("waste-section-markup-label");
+    await expect(subtotal).toBeVisible();
+    await expect(withMarkup).toBeVisible();
+    await expect(markupLabel).toContainText(/^\+ [\d.]+% markup$/);
+    const subtotalText = await subtotal.textContent();
+    const withMarkupText = await withMarkup.textContent();
+
+    // Fold it.
+    await caret.click();
+    await expect(caret).toHaveAttribute("aria-expanded", "false");
+    await expect(body).toHaveCount(0);
+
+    // ...and unchanged after it. This is the whole point of the summary.
+    await expect(summary).toBeVisible();
+    await expect(page.getByTestId("waste-section-line-count")).toContainText("no lines");
+    await expect(subtotal).toHaveText(subtotalText ?? "");
+    await expect(withMarkup).toHaveText(withMarkupText ?? "");
+    await expect(markupLabel).toContainText(/^\+ [\d.]+% markup$/);
+
+    // Unfold restores the body.
+    await caret.click();
+    await expect(caret).toHaveAttribute("aria-expanded", "true");
+    await expect(body).toBeVisible();
+  });
+
   test("Sum from above aggregates flagged items into one AUTO row per (group, item); regeneration preserves manual rows", async ({
     page,
     request
@@ -132,7 +199,7 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
     });
     try {
       await openDemCard(page);
-      await page.getByRole("button", { name: "Sum from above" }).click();
+      await page.getByTestId("waste-sum-from-above").click();
 
       // One AUTO row per (group, item), facility + rate filled, total billed.
       // API assertions filter to THIS test's (Rubble) aggregation so another
@@ -156,17 +223,17 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
       // Add a manual row, regenerate — confirm dialog fires, AUTO rows are
       // rebuilt, the manual row survives (PR #179).
       const firstAutoId = auto[0].id;
-      await page.getByRole("button", { name: "+ Add waste row" }).click();
+      await page.getByTestId("waste-add-line").click();
       await expect
         .poll(async () =>
           (await listWasteRows(request, token, TEMPLATE_CARD_DEM)).filter((r) => !r.autoSummed)
             .length
         )
         .toBe(1);
-      await page.getByRole("button", { name: "Sum from above" }).click();
+      await page.getByTestId("waste-sum-from-above").click();
       // The regeneration confirm is now the in-app ConfirmDialog (useConfirm).
       const regenDialog = page.getByTestId("confirm-dialog");
-      await expect(regenDialog).toContainText("auto-summed waste row");
+      await expect(regenDialog).toContainText("auto-summed waste line");
       await page.getByTestId("confirm-dialog-confirm").click();
       // The confirm resolves BEFORE the regeneration POST lands — wait
       // for the rebuilt AUTO row (new id) so assertions and cleanup can't
@@ -182,6 +249,16 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
         (await listWasteRows(request, token, TEMPLATE_CARD_DEM)).filter((r) => !r.autoSummed)
       ).toHaveLength(1);
       await expect(page.getByText("AUTO", { exact: true }).first()).toBeVisible();
+
+      // SCOPE_WASTE_SECTION_V1 — the second press must not DOUBLE the
+      // tonnage. The aggregator replaces its own rows (deleteMany where
+      // autoSummed=true, then create) rather than appending to them, so
+      // after a regeneration the card still holds ONE Rubble row carrying
+      // 5+7=12 t and 2+3=5 m3 — not two rows, and not 24 t.
+      const afterRegen = await rubbleAuto();
+      expect(afterRegen).toHaveLength(1);
+      expect(Number(afterRegen[0].qty)).toBeCloseTo(12);
+      expect(Number(afterRegen[0].m3)).toBeCloseTo(5);
     } finally {
       await purgeWasteRows(request, token, TEMPLATE_CARD_DEM);
       await deleteScopeItem(request, token, itemA);

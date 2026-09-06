@@ -3492,6 +3492,26 @@ model ScopeCard {
   labourDaysOverride    Decimal? @map("labour_days_override") @db.Decimal(10, 2)
   plantSummaryOverride  String?  @map("plant_summary_override")
   durationOverride      Decimal? @map("duration_override") @db.Decimal(10, 2)
+  // SCOPE_STAGE_GROUP_V1 - which STAGE this card runs in inside its
+  // discipline. Two cards of the SAME discipline holding the same non-null
+  // value are ONE stage and run CONCURRENTLY: their crews and plant
+  // quantities add and the stage lasts as long as its longest card.
+  //
+  // NULL means "a stage of its own", which is what every row written before
+  // this column existed holds, and what every new card gets. That is the
+  // safety property of this column and it is why it is NULLABLE WITH NO
+  // DEFAULT: a non-nullable @default(0) would put every card of a
+  // discipline into one stage on the day it shipped and silently multiply
+  // every discipline's peak crew. There is no backfill and there must never
+  // be one - no discipline's figures move until a human groups two cards.
+  //
+  // Stage ORDER is deliberately NOT stored. It is the card order that
+  // already exists (sortOrder); the group id is opaque and carries no
+  // ordering. Adding a second field here is how this becomes a scheduler.
+  //
+  // Read by the web roll-up as `stageKey`
+  // (apps/web/src/pages/tendering/scope-cards/utils/discipline-rollup.ts).
+  stageGroup            Int?     @map("stage_group")
   sortOrder             Int      @default(0) @map("sort_order")
   createdById           String   @map("created_by_id")
   createdBy             User     @relation("ScopeCardCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

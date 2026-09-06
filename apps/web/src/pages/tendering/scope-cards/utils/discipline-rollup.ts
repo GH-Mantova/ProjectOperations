@@ -35,15 +35,24 @@
 //     estimate later. Sequential is still what happens today — it is just
 //     no longer welded into the fold.
 //
-// WHAT IS TRUE TODAY: EVERY CARD IS ITS OWN STAGE. Nothing in the schema,
-// the API or the UI can put two cards into one stage yet, so every stage
-// is a singleton. SUM within a singleton stage is just that card's own
-// figure, and the table above collapses to exactly the 2026-09-04
-// behaviour: peak crew is a MAX over the cards, duration a sum over them.
-// That equivalence is pinned field by field, including plantSummary, in
-// utils/__tests__/discipline-rollup.test.ts, and it must stay true for as
-// long as nothing can group cards. Read this before changing any figure
-// below: getting the arithmetic wrong here misprices a tender.
+// WHAT IS TRUE TODAY: EVERY CARD IS STILL ITS OWN STAGE UNLESS A HUMAN
+// SAYS OTHERWISE. `ScopeCard.stageGroup` (SCOPE_STAGE_GROUP_V1) is a
+// NULLABLE column with NO DEFAULT, so every card written before it existed
+// and every card created since holds NULL, and NULL means "a stage of its
+// own". A discipline nobody has grouped therefore still folds to exactly
+// the 2026-09-04 behaviour: peak crew a MAX over the cards, duration a sum
+// over them. That equivalence is pinned field by field, including
+// plantSummary, in utils/__tests__/discipline-rollup.test.ts and it must
+// stay true for as long as an ungrouped discipline exists. Read this
+// before changing any figure below: getting the arithmetic wrong here
+// misprices a tender.
+//
+// What CHANGES the moment a human groups two cards, and only then: the
+// discipline's peak crew RISES (the grouped cards are on site together, so
+// their crews add) and its duration FALLS (they run at once, so the stage
+// costs the longer of the two rather than both). That is correct, and it
+// is a figure an estimator may have quoted from, which is why the summary
+// bar's chips say how many stages there are and that concurrent cards sum.
 //
 // Stage ORDER is not a separate concept and needs no field of its own: it
 // is the card order the caller already passes (the tender's sortOrder).
@@ -115,11 +124,12 @@ export type CardRollupInput = {
   plantSummary: RollupPlantGroup[];
   /**
    * Which stage this card runs in. Cards that share a stage key run AT THE
-   * SAME TIME as one another; `null` — or the field being absent, which is
-   * the only thing that happens today — means "a stage of its own".
+   * SAME TIME as one another; `null` — or the field being absent — means "a
+   * stage of its own", which is what an ungrouped card holds.
    *
-   * Optional on purpose: nothing can set it to a non-null value yet, so
-   * leaving it off means every existing caller keeps compiling and keeps
+   * Derived from `ScopeCard.stageGroup` by `stageKeyForGroup` below. Still
+   * OPTIONAL on purpose: leaving it off is the same as `null`, so every
+   * caller that does not know about grouping keeps compiling and keeps
    * getting exactly the figures it got before. See the header.
    */
   stageKey?: string | null;
@@ -131,6 +141,11 @@ export type DisciplineStage = readonly CardRollupInput[];
 export type DisciplineRollup = {
   /** How many cards were folded — the stack's length. */
   cardCount: number;
+  /** How many STAGES those cards formed. Equal to `cardCount` for a
+   *  discipline nobody has grouped (every card its own stage) and smaller
+   *  the moment two cards share a stage. This is what the summary bar
+   *  counts; it moves no money and is not itself a figure. */
+  stageCount: number;
   /** Non-excluded items across every card in the discipline. */
   itemCount: number;
   /** MAX over the stages of the sum of the crews within each stage. With
@@ -186,6 +201,19 @@ export function cardPersonDays(peakCrew: number, labourDays: number): number {
 }
 
 /**
+ * The stage key for a card's `ScopeCard.stageGroup`.
+ *
+ * `null` — every card until a human groups two — maps to `null`, which is
+ * "a stage of its own". A non-null group id becomes a string key so two
+ * cards of one discipline holding the same id land in the SAME stage.
+ * Prefixed rather than stringified bare so a key can never be confused
+ * with anything else that might one day key a stage.
+ */
+export function stageKeyForGroup(stageGroup: number | null | undefined): string | null {
+  return stageGroup == null ? null : `g${stageGroup}`;
+}
+
+/**
  * Resolve one card's summary + money stats into a `CardRollupInput`,
  * applying the user's per-card overrides.
  *
@@ -200,13 +228,16 @@ export function cardPersonDays(peakCrew: number, labourDays: number): number {
  * crew/day figures but keeps its money, which comes from items the screen
  * has already loaded and does not depend on the summary call.
  *
- * No `stageKey` is set: nothing can group cards yet, and an absent key
- * already means "a stage of its own".
+ * `stageGroup` is the card's `ScopeCard.stageGroup`. Omitting it, or
+ * passing null — which is what every card holds until a human groups two —
+ * gives the card a stage of its own and therefore exactly the figures it
+ * had before stages existed.
  */
 export function toCardRollupInput(
   cardId: string,
   summary: CardSummaryEnvelope | null | undefined,
-  stats: CardMoneyStats
+  stats: CardMoneyStats,
+  stageGroup?: number | null
 ): CardRollupInput {
   const computed = summary?.computed;
   const overrides = summary?.overrides;
@@ -218,12 +249,14 @@ export function toCardRollupInput(
     duration: overrides?.durationOverride ?? computed?.duration ?? 0,
     subtotal: stats.subtotal,
     subtotalWithMarkup: stats.subtotalWithMarkup,
-    plantSummary: computed?.plantSummary ?? []
+    plantSummary: computed?.plantSummary ?? [],
+    stageKey: stageKeyForGroup(stageGroup)
   };
 }
 
 export const EMPTY_DISCIPLINE_ROLLUP: DisciplineRollup = {
   cardCount: 0,
+  stageCount: 0,
   itemCount: 0,
   peakCrew: 0,
   personDays: 0,
@@ -333,6 +366,7 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
   const seen = new Set<string>();
 
   let cardCount = 0;
+  let stageCount = 0;
   let itemCount = 0;
   let peakCrew = 0;
   let personDays = 0;
@@ -348,12 +382,14 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
     // does across stages, so it goes straight into the discipline total.
     let stageCrew = 0;
     let stageDuration = 0;
+    let stageCards = 0;
     const stagePlant: PlantAccumMap = new Map();
 
     for (const card of stage) {
       if (seen.has(card.cardId)) continue;
       seen.add(card.cardId);
       cardCount += 1;
+      stageCards += 1;
 
       itemCount += card.itemCount;
       stageCrew += card.peakCrew;
@@ -378,6 +414,11 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
     // ACROSS stages: crew and plant quantity MAX (the stages never
     // coincide, so the job never needs more than its biggest stage) and
     // duration SUMS (the stages run end to end).
+    // A stage every one of whose cards was a duplicate contributed nothing
+    // and is not a stage. Counted here rather than as `stages.length` so
+    // the count can never disagree with what was actually folded.
+    if (stageCards > 0) stageCount += 1;
+
     if (stageCrew > peakCrew) peakCrew = stageCrew;
     duration += stageDuration;
 
@@ -409,6 +450,7 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
 
   return {
     cardCount,
+    stageCount,
     itemCount,
     peakCrew,
     personDays: round1(personDays),
@@ -431,6 +473,100 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
  */
 export function rollUpDiscipline(cards: readonly CardRollupInput[]): DisciplineRollup {
   return rollUpDisciplineStages(groupCardsIntoStages(cards));
+}
+
+// ── Stage grouping (drives the "runs with previous" control) ───────────
+//
+// SCOPE_STAGE_GROUP_V1. The whole feature is "these two adjacent cards run
+// at the same time". These helpers are the entire decision procedure for
+// it, kept here — pure, exported and unit-tested — rather than inline in
+// ScopeCardsTab so that the arithmetic's neighbours are testable without
+// rendering anything.
+//
+// There is no stage ORDER concept and there must not be one: the group id
+// is OPAQUE. It says only "same stage as", never "which stage".
+
+/** Just enough of a ScopeCard to reason about grouping. */
+export type StageGroupedCard = { id: string; stageGroup?: number | null };
+
+/** One card's new `stageGroup`, as the PATCH body wants it. */
+export type StageGroupPatch = { cardId: string; stageGroup: number | null };
+
+/**
+ * A group id no card in the tender is using.
+ *
+ * MAX over every card + 1, starting at 1, and deliberately over the WHOLE
+ * tender rather than one discipline: ids are only ever compared within a
+ * discipline, so a tender-wide allocator is strictly safer than a
+ * per-discipline one and costs nothing.
+ */
+export function nextStageGroup(cards: readonly StageGroupedCard[]): number {
+  let max = 0;
+  for (const card of cards) {
+    const group = card.stageGroup;
+    if (typeof group === "number" && Number.isFinite(group) && group > max) max = group;
+  }
+  return max + 1;
+}
+
+/**
+ * Does this card run at the same time as the card directly above it in its
+ * discipline? Both must carry the SAME NON-NULL group — two nulls are two
+ * separate stages, not one shared one.
+ */
+export function sharesStageWithPrevious(
+  disciplineCards: readonly StageGroupedCard[],
+  cardId: string
+): boolean {
+  const index = disciplineCards.findIndex((c) => c.id === cardId);
+  if (index <= 0) return false;
+  const mine = disciplineCards[index].stageGroup;
+  const theirs = disciplineCards[index - 1].stageGroup;
+  return mine != null && theirs != null && mine === theirs;
+}
+
+/**
+ * The PATCHes that put a card into the SAME stage as the card above it.
+ *
+ * If the card above already belongs to a group, this card joins that group
+ * — so a third card can be added to a pair — and only ONE card is written.
+ * If it does not, both cards move to a freshly allocated id and TWO cards
+ * are written. Returns `[]` for the first card of a discipline (nothing
+ * above it to run with) and for a card that already shares its neighbour's
+ * stage, so the caller never issues a write that changes nothing.
+ */
+export function groupWithPreviousPatches(
+  disciplineCards: readonly StageGroupedCard[],
+  cardId: string,
+  freshGroup: number
+): StageGroupPatch[] {
+  const index = disciplineCards.findIndex((c) => c.id === cardId);
+  if (index <= 0) return [];
+  if (sharesStageWithPrevious(disciplineCards, cardId)) return [];
+  const previous = disciplineCards[index - 1];
+  const existing = previous.stageGroup;
+  if (existing != null) return [{ cardId, stageGroup: existing }];
+  return [
+    { cardId: previous.id, stageGroup: freshGroup },
+    { cardId, stageGroup: freshGroup }
+  ];
+}
+
+/**
+ * The PATCHes that take a card back out to a stage of its own.
+ *
+ * Only this card is cleared. A neighbour left alone in a group of one is
+ * harmless: a group nobody else shares folds exactly as `null` does, so
+ * the discipline reads the same either way and no second write is needed
+ * to keep the figures honest.
+ */
+export function ungroupPatches(
+  disciplineCards: readonly StageGroupedCard[],
+  cardId: string
+): StageGroupPatch[] {
+  const card = disciplineCards.find((c) => c.id === cardId);
+  if (!card || card.stageGroup == null) return [];
+  return [{ cardId, stageGroup: null }];
 }
 
 // ── Discipline grouping (drives the tab strip) ──────────────────────────

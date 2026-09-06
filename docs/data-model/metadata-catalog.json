@@ -18725,6 +18725,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "stageGroup": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "sortOrder": {
           "role": "measure-candidate",
           "label": null,

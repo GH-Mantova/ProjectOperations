@@ -37,6 +37,7 @@ import { QuoteProposalsService } from "./scope/quote-proposals.service";
 import { ClarificationProposalsController } from "./scope/clarification-proposals.controller";
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
 import { ScopeSubLinkedItemController } from "./scope/scope-cards.controller";
+import { AllocationController } from "./allocation.controller";
 import { AllocationService } from "./allocation.service";
 import { CapacityService } from "./capacity.service";
 
@@ -47,6 +48,13 @@ import { CapacityService } from "./capacity.service";
     // GET /tenders/labels hits the static-path handler here, not the greedy
     // GET /tenders/:id inside TenderingController.
     TenderLabelsController,
+    // Same reason as TenderLabelsController: every AllocationController route
+    // sits under the static prefix /tenders/allocations, so it is registered
+    // BEFORE TenderingController and WithdrawalReviewController rather than
+    // relying on none of their :id-scoped routes ever growing a shape that
+    // matches. Its own routes are all parameterized under that prefix, so it
+    // cannot swallow a static sibling in return.
+    AllocationController,
     TenderingController,
     // Withdrawn-review routes live on /tenders/:id/withdraw + /withdrawal/*.
     // Registered after TenderingController so its :id-scoped POSTs don't

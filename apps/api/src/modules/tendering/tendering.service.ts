@@ -825,6 +825,11 @@ export class TenderingService {
               create: source.tenderClients.map((item) => ({
                 client: { connect: { id: item.clientId } },
                 contact: item.contactId ? { connect: { id: item.contactId } } : undefined,
+                // tender-lifecycle S2a - bid intent carries into the copy (a
+                // duplicate re-tenders the same builders). isAwarded and
+                // contractIssued deliberately do NOT: those are outcomes of
+                // the source tender, bid intent is an input to the new one.
+                bidStatus: item.bidStatus ?? null,
                 isAwarded: false,
                 contractIssued: false,
                 relationshipType: item.relationshipType,
@@ -1229,6 +1234,11 @@ export class TenderingService {
               tenderId: id,
               clientId: item.clientId,
               contactId: item.contactId,
+              // tender-lifecycle S2a - this path is delete-then-recreate, so an
+              // omitted bidStatus DROPS whatever was recorded. That matches how
+              // every other field on this row already behaves here; the UI
+              // slice (S2b) must echo the current value back on save.
+              bidStatus: item.bidStatus ?? null,
               isAwarded: item.isAwarded ?? false,
               relationshipType: item.relationshipType,
               notes: item.notes
@@ -1809,6 +1819,9 @@ export class TenderingService {
             create: dto.tenderClients.map((item) => ({
               client: { connect: { id: item.clientId } },
               contact: item.contactId ? { connect: { id: item.contactId } } : undefined,
+              // tender-lifecycle S2a - explicit null, not undefined: an omitted
+              // bid status means "not recorded", never a default member.
+              bidStatus: item.bidStatus ?? null,
               isAwarded: item.isAwarded ?? false,
               relationshipType: item.relationshipType,
               notes: item.notes

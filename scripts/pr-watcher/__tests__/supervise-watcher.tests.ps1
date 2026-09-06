@@ -324,6 +324,169 @@ Describe 'Resolve-WatchdogChurn -- in-loop watchdog-kill churn guard' {
     }
 }
 
+Describe 'Resolve-WatchdogJudgedAgeMinutes -- WATCHDOG_RESTART_GRACE_V1' {
+
+    # 2026-09-06. The heartbeat only ticks MID-RUN (DOCTRINE 9.5), so a node that
+    # has just been launched has not ticked it yet and the file describes the
+    # PREVIOUS node's run. The pre-fix watchdog judged the new process by that
+    # file: a node launched at 09.28.41Z was killed at 09.29.07Z with ageMin=26 --
+    # 26 minutes of staleness attributed to a 26-second-old process. Every restart
+    # died the same way, the churn guard tripped at four kills, and the re-armed
+    # prompt reached the board four times (#1703, #1704, #1707, #1708).
+    #
+    # The rule under test: the staleness clock starts at the LATER of (heartbeat
+    # last write, node process start). All tests use a fixed $wdNow so results are
+    # deterministic, and $wdHung = 15 to match the shipped default.
+
+    $wdNow  = [datetime]'2026-09-06T09:29:07'
+    $wdHung = 15
+
+    Context 'the acceptance table -- row 1 must still kill' {
+
+        It 'row 1: the 2026-08-11 hang (node hours old, heartbeat 40 min frozen) is KILLED' {
+            # The reason this watchdog exists. The node hung mid-run with a frozen
+            # heartbeat while 16 prompts sat armed and nothing restarted it. The
+            # node start is the OLDER clock here, so the heartbeat stays the judge.
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                        -NodeStartUtc ($wdNow.AddHours(-6)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged        | Should Be 40
+            ($judged -gt $wdHung) | Should Be $true
+        }
+
+        It 'row 2: a node relaunched 26 s ago with a 26 min old heartbeat is SPARED' {
+            # The defect, exactly as measured at 09.29.07Z.
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-26)) `
+                        -NodeStartUtc ($wdNow.AddSeconds(-26)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            ($judged -lt 1)       | Should Be $true
+            ($judged -gt $wdHung) | Should Be $false
+        }
+
+        It 'row 3: a node that started fine hours ago then froze 20 min ago is KILLED' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-20)) `
+                        -NodeStartUtc ($wdNow.AddHours(-3)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be 20
+            ($judged -gt $wdHung) | Should Be $true
+        }
+    }
+
+    Context 'the grace is exactly HungMin and then it expires' {
+
+        It 'a node relaunched 16 min ago that never ticked is KILLED (grace is not open-ended)' {
+            # The node start is now the LATER clock, so it is the judge -- and it
+            # is already past the threshold. A node that cannot produce one tick in
+            # $HungMin minutes is hung by this watchdog's own definition.
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                        -NodeStartUtc ($wdNow.AddMinutes(-16)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be 16
+            ($judged -gt $wdHung) | Should Be $true
+        }
+
+        It 'exactly HungMin old is SPARED (the kill test is -gt, not -ge)' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                        -NodeStartUtc ($wdNow.AddMinutes(-$wdHung)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be $wdHung
+            ($judged -gt $wdHung) | Should Be $false
+        }
+    }
+
+    Context 'missing heartbeat -- the file has never been written' {
+
+        It 'a brand new node with no heartbeat file at all is SPARED' {
+            # Pre-fix this returned $HungMin + 1 unconditionally, i.e. an instant
+            # kill for a node that had existed for four seconds.
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc $null `
+                        -NodeStartUtc ($wdNow.AddSeconds(-4)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            ($judged -lt 1)       | Should Be $true
+            ($judged -gt $wdHung) | Should Be $false
+        }
+
+        It 'an hours-old node that has never written a heartbeat is KILLED' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc $null `
+                        -NodeStartUtc ($wdNow.AddHours(-2)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be 120
+            ($judged -gt $wdHung) | Should Be $true
+        }
+
+        It 'neither clock readable falls back to the pre-fix HungMin + 1' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc $null -NodeStartUtc $null `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be ($wdHung + 1)
+            ($judged -gt $wdHung) | Should Be $true
+        }
+    }
+
+    Context 'unreadable node start grants NO grace -- the watchdog keeps its teeth' {
+
+        It 'a null node start with a 40 min stale heartbeat still KILLS' {
+            # Deliberate: an unreadable clock must never be able to make a
+            # genuinely hung node immortal. This is the pre-fix judgement.
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-40)) -NodeStartUtc $null `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be 40
+            ($judged -gt $wdHung) | Should Be $true
+        }
+
+        It 'a non-datetime node start is treated as unreadable, not as an error' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-40)) -NodeStartUtc 'not-a-date' `
+                        -NowUtc $wdNow -HungMin $wdHung
+            [int]$judged          | Should Be 40
+        }
+    }
+
+    Context 'clock skew must not manufacture a kill' {
+
+        It 'a heartbeat timestamped in the future clamps to 0 (spared)' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(5)) `
+                        -NodeStartUtc ($wdNow.AddHours(-6)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            $judged | Should Be 0
+        }
+
+        It 'a node start timestamped in the future clamps to 0 (spared)' {
+            $judged = Resolve-WatchdogJudgedAgeMinutes `
+                        -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                        -NodeStartUtc ($wdNow.AddMinutes(5)) `
+                        -NowUtc $wdNow -HungMin $wdHung
+            $judged | Should Be 0
+        }
+    }
+
+    Context 'purity -- no I/O, no ambient clock, single return value' {
+
+        It 'is deterministic: the same inputs give the same answer twice' {
+            $a = Resolve-WatchdogJudgedAgeMinutes -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                    -NodeStartUtc ($wdNow.AddHours(-6)) -NowUtc $wdNow -HungMin $wdHung
+            $b = Resolve-WatchdogJudgedAgeMinutes -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                    -NodeStartUtc ($wdNow.AddHours(-6)) -NowUtc $wdNow -HungMin $wdHung
+            $a | Should Be $b
+        }
+
+        It 'emits exactly one value (no stray Write-Output to corrupt the caller)' {
+            $out = @(Resolve-WatchdogJudgedAgeMinutes -HeartbeatUtc ($wdNow.AddMinutes(-40)) `
+                        -NodeStartUtc ($wdNow.AddHours(-6)) -NowUtc $wdNow -HungMin $wdHung)
+            $out.Count | Should Be 1
+        }
+    }
+}
+
 # Clean up temp dirs and env vars so a follow-up test run starts fresh.
 Remove-Item -Path $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item Env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -ErrorAction SilentlyContinue

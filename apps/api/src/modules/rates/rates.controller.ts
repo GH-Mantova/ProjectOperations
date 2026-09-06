@@ -374,17 +374,25 @@ export class RatesController {
   @RequirePermissions("rates.manage")
   @ApiOperation({
     summary:
-      "Replace the charge-step list for a rate table. " +
-      "Validated server-side: first step must be 'start', ops must be known, field references must exist on the table."
+      "Replace the charge-step list for a rate table, and optionally the line fields it may name. " +
+      "Validated server-side: first step must be 'start', ops must be known, and field references must " +
+      "name a column on the table or a declared line field."
   })
   @ApiResponse({ status: 200, description: "Updated RateTable." })
-  @ApiResponse({ status: 400, description: "Validation error — unknown op, missing field, or first step not start." })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Validation error — unknown op, first step not start, a field name that is neither a column nor a " +
+      "line field, a text line field used in the sum, or a line-field declaration that clashes with a column."
+  })
   @ApiResponse({ status: 404, description: "Rate table not found." })
   patchChargeSteps(
     @Param("id") id: string,
     @Body() dto: PatchChargeStepsDto,
     @CurrentUser() actor: AuthenticatedUser
   ) {
-    return this.tables.patchChargeSteps(actor.sub, id, dto.steps);
+    // RATE_LINE_FIELDS_V1 — `lineFields` is passed through as given, including
+    // `undefined`, which the service reads as "leave the declaration alone".
+    return this.tables.patchChargeSteps(actor.sub, id, dto.steps, dto.lineFields);
   }
 }

@@ -354,6 +354,28 @@ here now because they are true for **every** station.
   way §9.6 can see: the cmdlet did exactly what it was asked. 🔧 **Use `-Filter` on a single
   extension, or put the wildcard in the path** — and control any recursive file search against a
   file you know is there.
+- 🔴 **A SINGLE-QUOTED PowerShell needle containing `\\` CAN NEVER MATCH A WINDOWS PATH, AND ITS
+  ZERO WEARS AN ABSENCE'S CLOTHES.** PowerShell single quotes do **not** process escapes, so
+  `'C:\\Foo\\Bar'` is searched as a literal *double* backslash and matches nothing on any real path.
+  [MEASURED] 2026-09-06T22:1xZ by Station 04, asking *"do the five scheduled-task bootstraps name the
+  working copy?"* — the question a live escalation turned on:
+
+  | form | result | truth |
+  |---|---|---|
+  | `Select-String -SimpleMatch -Pattern 'C:\\ProjectOperations2\\docs\\pipeline'` | **0** on all five | wrong |
+  | node, counting `C:\ProjectOperations2\docs\pipeline` (single backslash) | **3** on all five | right |
+
+  Both exit 0, neither warns, and §9.6 does not fire because the query *worked*. The trap is specific
+  to this pipeline's habit: Windows paths are written `\\` in JSON, in node source and in half the
+  documents stations read, so copying a needle out of any of them into a single-quoted PowerShell
+  pattern **silently inverts the answer**. Had 04 stopped at that reading it would have filed *"the
+  bootstraps were fixed"* — retiring a live escalation, which is the failure mode this section exists
+  to stop. This is a **different** bullet from the `-Include` and `-SimpleMatch` + `[regex]::Escape()`
+  traps above: those are about the *path argument* and about *escaping a regex*; this one is about
+  the **quoting of the literal itself**.
+  🔧 **Count Windows-path occurrences in node, or put the single-backslash needle in DOUBLE quotes**
+  — and control any path search against a path you know is present. Found by Station 04
+  2026-09-06T22:1xZ (F4), landed by Station 00 at 23:3xZ.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ## 9.2 Git
@@ -893,6 +915,43 @@ here now because they are true for **every** station.
   or the PRs' own `createdAt`, since the single-lane watcher cannot open two PRs nine seconds
   apart. ⚠️ **The falsifying probe is the table above**: re-run it on any PR whose build was killed
   mid-flight; if that PR's `opened PR #` line is present, this correction is wrong.
+
+  🔴🔴 **CORRECTED 2026-09-06T23:0xZ — THE "DAILY CLONE LOG" IS NOT DAILY, AND CONSTRUCTING ITS NAME
+  FROM A DATE PICKS THE DEAD FILE OR AN EMPTY ONE, NEVER RELIABLY THE LIVE ONE.** The correction
+  above names the file `…\logs\<yyyy-MM-dd>.log` and every reader since has built that name. **The
+  name is fixed at LAUNCH from the HOST-LOCAL date, while every line inside the file is stamped UTC,
+  and it never rolls at midnight.** [MEASURED] 2026-09-06T23:09Z by Station 03, anchor
+  `$LogFile = Join-Path $LogDir` in `scripts/pr-watcher/start-watcher.ps1`:
+  `("{0}.log" -f (Get-Date -Format "yyyy-MM-dd"))` — a `Get-Date` with no `-AsUTC`, evaluated once,
+  at launch, on a Brisbane (UTC+10) host.
+
+  | | `2026-09-06.log` | `2026-09-07.log` |
+  |---|---|---|
+  | stamped lines | **1157** | **30** |
+  | last line | `[2026-09-06T23:04:05.228Z]` | `[2026-09-06T23:05:08.638Z]` |
+  | written by | pid 27236, **DEAD** | pid 31660, **LIVE** |
+  | `[merge]` (POSITIVE control) | **11** | **0** |
+  | `opened PR #` | **5** | **0** |
+
+  **Both ways of naming the file are wrong, and they are wrong in opposite directions.** A run that
+  computes the name in **UTC** — the clock every station report is written in — gets the DEAD file,
+  whose positive control PASSES (11 `[merge]` lines, 5 `opened PR #`), so it answers confidently
+  about a process that no longer exists. A run that computes it in **LOCAL** time gets the live file,
+  whose `[merge]` and `opened PR #` counts are both **0**, and concludes the watcher has never merged
+  anything — §9.6 exactly, sitting inside the cure written for it six hours earlier. The window is
+  structural, not a coincidence of one run: at UTC+10 the local date leads the UTC date from 14:00Z
+  to 23:59Z **every day**, ten hours in twenty-four, and a launch inside that window pins the name
+  for the whole life of that watcher.
+
+  🔧 **Take the NEWEST `*.log` in that directory by `LastWriteTimeUtc`, and never construct the name
+  from a date, in either clock.** Everything else above stands: the freshness precondition is
+  unchanged, it simply applies to the file you FOUND by mtime rather than one you NAMED. ⚠️ **A young
+  live log legitimately reads `opened PR #` = 0**, which is the one-directional rule below doing its
+  job — ABSENT ⇒ `[CANNOT MEASURE]`, never ⇒ second lane. **The falsifying probe is the two-file
+  table above:** re-run it after any watcher relaunch, and if a single file ever holds both the
+  newest line and the current-UTC name across a 14:00Z boundary, this correction is wrong and must be
+  re-measured. Found by Station 03 2026-09-06T23:0xZ (F1), landed by Station 00 at 23:3xZ.
+
 
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read

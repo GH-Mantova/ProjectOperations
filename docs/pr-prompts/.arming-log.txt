@@ -58,3 +58,5 @@
 2026-09-06T08:17:13Z  ARMED  pr-scopesub-s6-the-bars-provisional-split  escalates=false  actor=station-00-scheduled-0808Z  by=Marco@LAPTOP-E6NHU4E4  pid=31980  caller=cmd.exe:32292
 2026-09-06T08:22:53Z  ARMED  pr-jobroles-s1-noaccess-instead-of-a-dead-shell  escalates=false  actor=marco-delegated  by=Marco@LAPTOP-E6NHU4E4  pid=5564  caller=powershell.exe:13052
 2026-09-06T09:20:50Z  ARMED  pr-watcher-verdict-home-resolver  escalates=false  actor=station-00-scheduled-0908Z  by=Marco@LAPTOP-E6NHU4E4  pid=24508  caller=cmd.exe:26076
+2026-09-06T22:46:23Z  ARMED  pr-deps-s2-puppeteer-major-drops-extract-zip  escalates=true  actor=marco-delegated  by=Marco@LAPTOP-E6NHU4E4  pid=36504  caller=powershell.exe:26172
+2026-09-06T23:21:19Z  ARMED  pr-armguard-s1-refuse-when-a-prompt-is-already-armed  escalates=false  actor=station-00-scheduled-2308Z  by=Marco@LAPTOP-E6NHU4E4  pid=29612  caller=powershell.exe:36568

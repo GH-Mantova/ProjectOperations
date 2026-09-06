@@ -5967,6 +5967,13 @@ model RateTable {
   isSystem          Boolean                @default(false) @map("is_system")
   isReference       Boolean                @default(false) @map("is_reference")
   chargeSteps       Json?                  @map("charge_steps")
+  // RATE_LINE_FIELDS_V1 — the values an estimator enters on the line
+  // ({ name, kind: "number" | "text", unit?, options?, sample? }[]), which a
+  // charge step may name exactly as it names a column. Stored the same way as
+  // chargeSteps: nothing joins to a line field and nothing references one by
+  // id, so a second table would buy a controller, a DTO pair and a CRUD screen
+  // before a step could name one.
+  lineFields        Json?                  @map("line_fields")
   createdById       String?                @map("created_by_id")
   updatedById       String?                @map("updated_by_id")
   columns           RateColumn[]

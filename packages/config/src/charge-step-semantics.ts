@@ -429,3 +429,94 @@ export function evaluateChargeSteps(
 
   return { total: running, trail, issues };
 }
+
+// ---------------------------------------------------------------------------
+// RATE_LINE_FIELDS_V1 — line fields, and the ONE values map
+// ---------------------------------------------------------------------------
+
+/**
+ * A value the estimator enters on the line, as opposed to one the rate table
+ * stores in a column. Declared on the rate table (`RateTable.lineFields`) and
+ * nameable by a step exactly like a column, because both land in ONE values
+ * map keyed by name.
+ *
+ * `kind: "text"` may carry `options` (a closed list the estimator picks from)
+ * and may be named ONLY by a step condition — text is not arithmetic, which is
+ * the rule `resolveStepOperand` already applies to a TEXT column's value.
+ *
+ * `sample` is the value the preview uses until real line inputs exist; it is
+ * a declaration-time stand-in, never a stored answer.
+ */
+export interface RateLineField {
+  name: string;
+  kind: "number" | "text";
+  unit?: string | null;
+  options?: string[];
+  sample?: number | string;
+}
+
+/** The part of a rate-table column the values map needs. */
+export interface StepValueColumn {
+  id: string;
+  name: string;
+}
+
+/**
+ * Build the values map a step list is evaluated against — the ONE
+ * implementation, called by the admin preview and by any server caller.
+ *
+ * CHARGE_STEP_PARITY_V1 applies to this map: a line field must resolve to the
+ * same value on both sides, and a line field with no value must produce
+ * whatever `evaluateChargeSteps` already produces for a column with no value
+ * (`missing-operand`) — which it does, because an absent value is simply left
+ * out of the map rather than defaulted.
+ *
+ * Two deliberate choices:
+ *
+ *  - Cells are read by column ID ONLY. Some rows in this database are keyed by
+ *    column name instead, and the resolver tolerates that with a fallback; the
+ *    charge-step preview never has, so adding the fallback here would change
+ *    what an existing step list evaluates to. That is a separate fix.
+ *  - A column WINS a name clash. Name collisions are rejected at the API
+ *    boundary (`validateLineFields`), so this can only be reached by data
+ *    stored before that rule existed — and for that data, "columns only" is
+ *    exactly what the map contained before line fields were a thing.
+ */
+export function buildStepValues(
+  columns: readonly StepValueColumn[],
+  cells: Record<string, unknown> | null | undefined,
+  lineFields: readonly RateLineField[] | null | undefined,
+  lineValues?: Record<string, StepValue | null | undefined> | null
+): StepValues {
+  const out: StepValues = {};
+
+  for (const col of columns ?? []) {
+    const raw = cells ? cells[col.id] : undefined;
+    if (raw === null || raw === undefined) continue;
+    out[col.name] = typeof raw === "number" ? raw : String(raw);
+  }
+
+  for (const field of lineFields ?? []) {
+    if (Object.prototype.hasOwnProperty.call(out, field.name)) continue;
+    const entered = lineValues ? lineValues[field.name] : undefined;
+    const raw = entered === null || entered === undefined ? field.sample : entered;
+    if (raw === null || raw === undefined) continue;
+    out[field.name] = typeof raw === "number" ? raw : String(raw);
+  }
+
+  return out;
+}
+
+/** Names a step may use as an arithmetic operand: columns + number line fields. */
+export function numericLineFieldNames(
+  lineFields: readonly RateLineField[] | null | undefined
+): string[] {
+  return (lineFields ?? []).filter((f) => f.kind !== "text").map((f) => f.name);
+}
+
+/** Names a step may use only in a condition: the text line fields. */
+export function textLineFieldNames(
+  lineFields: readonly RateLineField[] | null | undefined
+): string[] {
+  return (lineFields ?? []).filter((f) => f.kind === "text").map((f) => f.name);
+}

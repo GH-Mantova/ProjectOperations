@@ -21,6 +21,13 @@
  *     index 0), and a non-empty list is never offered a second `start`. The
  *     validation rules are untouched — the state they reject is simply no
  *     longer reachable from the card.
+ *   - RATE_LINE_FIELDS_V1: a step may name a LINE FIELD — a value the estimator
+ *     enters on the line — as well as a rate-table column. Both kinds land in
+ *     ONE values map, built by `buildStepValues` in the shared semantics module
+ *     so the preview and the server cannot disagree about what a name resolves
+ *     to. This slice offers them in the add-step form and previews them from
+ *     their declared `sample`; declaring one, editing a step in place and the
+ *     real scenario inputs are slices 2-4.
  *   - "Add step" form below the list
  *   - Collapsed "Show as formula" disclosure (read-only)
  *   - Impact line: open tender count + snapshot note
@@ -30,9 +37,13 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
+  buildStepValues,
   describeChargeStepIssue,
   evaluateChargeSteps,
-  type ChargeStepTrailEntry
+  numericLineFieldNames,
+  textLineFieldNames,
+  type ChargeStepTrailEntry,
+  type RateLineField
 } from "@project-ops/config/charge-step-semantics";
 import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
@@ -41,7 +52,11 @@ import type { ChargeStep, Condition, ConditionCmp } from "../../lib/chargeStepTy
 // ── Re-exported helpers (tested in ChargeStepsEditor.test.tsx) ────────────
 
 export type { ChargeStep, Condition };
-export type { ChargeStepIssue, ChargeStepTrailEntry } from "@project-ops/config/charge-step-semantics";
+export type {
+  ChargeStepIssue,
+  ChargeStepTrailEntry,
+  RateLineField
+} from "@project-ops/config/charge-step-semantics";
 
 export const KNOWN_OPS = [
   "start",
@@ -98,14 +113,39 @@ export type RateColumnMeta = {
   unit?: string | null;
 };
 
-/** Numeric field options for arithmetic operands (excludes TEXT/LIST_REF columns) */
-export function numericFieldOptions(columns: RateColumnMeta[]): string[] {
-  return columns.filter((c) => c.dataType !== "TEXT" && c.dataType !== "LIST_REF").map((c) => c.name);
+/**
+ * Names an arithmetic operand may use.
+ *
+ * RATE_LINE_FIELDS_V1 — a step operand names a value, and a value comes either
+ * from the rate table (a column) or from the estimate line (a line field). Both
+ * are offered here; text is offered by neither, which is the rule this function
+ * already applied to TEXT and LIST_REF columns and now applies to a `text` line
+ * field as well.
+ */
+export function numericFieldOptions(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): string[] {
+  return [
+    ...columns.filter((c) => c.dataType !== "TEXT" && c.dataType !== "LIST_REF").map((c) => c.name),
+    ...numericLineFieldNames(lineFields)
+  ];
 }
 
-/** All column names available as condition fields (including text) */
-export function allFieldOptions(columns: RateColumnMeta[]): string[] {
-  return columns.map((c) => c.name);
+/**
+ * Every name available as a CONDITION field — columns and line fields alike,
+ * text included, because "only when Elevation is Inverted" is exactly what a
+ * text field is for.
+ */
+export function allFieldOptions(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): string[] {
+  return [
+    ...columns.map((c) => c.name),
+    ...numericLineFieldNames(lineFields),
+    ...textLineFieldNames(lineFields)
+  ];
 }
 
 // ── CHARGE_STEP_CARD_V2: what a running total IS ──────────────────────────
@@ -352,10 +392,18 @@ export type StepValidationError = { index: number; message: string };
 
 export function validateSteps(
   steps: ChargeStep[],
-  columnNames: string[]
+  /** Every name a step may use anywhere: columns plus declared line fields. */
+  columnNames: string[],
+  /**
+   * RATE_LINE_FIELDS_V1 — the subset of those names that is TEXT, so it may be
+   * used in a condition but never in the sum. Mirrors the server rule in
+   * `rate-tables.service.ts`, including keeping the two messages distinct.
+   */
+  textFieldNames: string[] = []
 ): StepValidationError[] {
   const errors: StepValidationError[] = [];
   const colSet = new Set(columnNames);
+  const textSet = new Set(textFieldNames);
 
   if (steps.length === 0) return errors;
 
@@ -371,7 +419,15 @@ export function validateSteps(
       if (field === undefined) {
         errors.push({ index: i, message: '"field" is required.' });
       } else if (typeof field === "string" && !colSet.has(field)) {
-        errors.push({ index: i, message: `Field "${field}" is not a column on this table.` });
+        errors.push({
+          index: i,
+          message: `Field "${field}" is not a column or line field on this table.`
+        });
+      } else if (typeof field === "string" && textSet.has(field)) {
+        errors.push({
+          index: i,
+          message: `Field "${field}" is text, so it can only be used in an "only when" condition, not in the sum.`
+        });
       }
     }
 
@@ -380,7 +436,7 @@ export function validateSteps(
       if (typeof when.field === "string" && !colSet.has(when.field)) {
         errors.push({
           index: i,
-          message: `Condition field "${when.field}" is not a column on this table.`
+          message: `Condition field "${when.field}" is not a column or line field on this table.`
         });
       }
     }
@@ -524,12 +580,16 @@ type RateRowShape = {
   cells: Record<string, unknown>;
 };
 
+/** Stable identity, so the default prop does not re-run every memo each render. */
+const EMPTY_LINE_FIELDS: readonly RateLineField[] = [];
+
 export function ChargeStepsEditor({
   tableId,
   tableName,
   isReference,
   columns,
   rows,
+  lineFields = EMPTY_LINE_FIELDS,
   onSaved
 }: {
   tableId: string;
@@ -537,6 +597,13 @@ export function ChargeStepsEditor({
   isReference: boolean;
   columns: RateColumnMeta[];
   rows: RateRowShape[];
+  /**
+   * RATE_LINE_FIELDS_V1 — the line fields declared on this table. Read-only
+   * here: this card offers them as operands and previews them from their
+   * `sample`, and does not send them back on save, so a PATCH from this card
+   * cannot clear a declaration it has no UI to edit.
+   */
+  lineFields?: readonly RateLineField[];
   onSaved?: () => void;
 }) {
   const { authFetch } = useAuth();
@@ -581,17 +648,14 @@ export function ChargeStepsEditor({
 
   // ── Scenario values ───────────────────────────────────────────────────
 
+  // RATE_LINE_FIELDS_V1 — ONE values map, built once, by the same function any
+  // server caller would use (`@project-ops/config/charge-step-semantics`). The
+  // column half is the matched row's cells; the line-field half is each field's
+  // declared `sample`, until slice 4 builds the real scenario inputs.
   const scenarioValues = useMemo<Record<string, number | string>>(() => {
     const row = rows.find((r) => r.id === scenarioRowId);
-    if (!row) return {};
-    const out: Record<string, number | string> = {};
-    for (const col of columns) {
-      const raw = row.cells[col.id];
-      if (raw === null || raw === undefined) continue;
-      out[col.name] = typeof raw === "number" ? raw : String(raw);
-    }
-    return out;
-  }, [rows, scenarioRowId, columns]);
+    return buildStepValues(columns, row?.cells, lineFields);
+  }, [rows, scenarioRowId, columns, lineFields]);
 
   // ── Running totals ────────────────────────────────────────────────────
 
@@ -616,8 +680,17 @@ export function ChargeStepsEditor({
 
   // ── Validation ────────────────────────────────────────────────────────
 
-  const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
-  const validationErrors = useMemo(() => validateSteps(steps, columnNames), [steps, columnNames]);
+  // Every name a step may use, and the subset of it that is text — the same two
+  // sets `validateChargeSteps` builds on the server.
+  const columnNames = useMemo(
+    () => allFieldOptions(columns, lineFields),
+    [columns, lineFields]
+  );
+  const textFieldNames = useMemo(() => textLineFieldNames(lineFields), [lineFields]);
+  const validationErrors = useMemo(
+    () => validateSteps(steps, columnNames, textFieldNames),
+    [steps, columnNames, textFieldNames]
+  );
 
   const canSave = dirty && validationErrors.length === 0 && steps.length > 0;
 
@@ -686,8 +759,8 @@ export function ChargeStepsEditor({
 
   // ── Main render ───────────────────────────────────────────────────────
 
-  const numericCols = numericFieldOptions(columns);
-  const allCols = allFieldOptions(columns);
+  const numericCols = numericFieldOptions(columns, lineFields);
+  const allCols = allFieldOptions(columns, lineFields);
   const formula = stepsToFormula(steps);
 
   return (

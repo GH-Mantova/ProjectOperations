@@ -1240,6 +1240,23 @@ prompt carries no branch information at all, so a branch test is checking someth
 asserted and can stop working without anything warning you. **The scope list is what the prompt does
 assert.**
 
+🔴 **THE CROSS-CHECK IS AGAINST *OPEN* PRs. RUN AGAINST *MERGED* ONES IT IS BOTH REDUNDANT AND
+NOISY.** [MEASURED] 2026-09-06T08:1xZ at `85e70f09` by Station 00, over all **36** `ADMIT` prompts
+`triage-holds.ps1` reported, crossed against the file lists of the **60** most recently merged PRs
+(`gh pr list --state merged --limit 60 --json number,title,mergedAt,files`; POSITIVE control — the
+`-HOLD.md` staged by `#1695` was found in exactly 1 merged PR; NEGATIVE control, a freshly minted
+path, **0**). **Two prompts scored a FULL file match and NEITHER is a duplicate:**
+`pr-vmguard-s2-preflight-installs-guard` **8/8** against `#1694` and `pr-ci-rerun-on-unlabel`
+**1/1** against `#1689` — both because those PRs happened to touch the same files for an unrelated
+reason, and both prompts' premises are still TRUE (`lint-prompt.mjs` **ADMIT**, not exit 3). A merged
+PR's file list carries no information about *why* a file changed, so over merged work the file-overlap
+test has a false-positive rate that swamps it.
+🔧 **Over merged work the PREMISE is the discriminator, and `lint-prompt.mjs` already runs it** — that
+is the SPENT bucket (exit 3), which caught all four instances on 2026-09-06T06:0xZ unaided. **Reserve
+the `scope:` cross-check for OPEN PRs**, where the premise is still alive and the linter therefore
+cannot help. That is what the paragraph above already says; this note exists because a station
+breadcrumb paraphrased it as *"cross against `--state merged`"* and billed the next run to find out.
+
 ⚠️ **Same defect as the never-retired-HOLD case, reached from the other side.** There an armed
 prompt outlives its own build because the PR does not delete it; here the prompt was never built at
 all. Both end with an armable duplicate, and neither is visible to `lint-prompt.mjs`, whose gates

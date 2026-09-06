@@ -169,6 +169,19 @@ and the three binding documents — which is the whole of COLLECT and most of PH
   "instead" — its breadcrumb stays untracked in the dev tree until a sighted run sweeps it up, and
   it must say so.
 
+🔴 **AND THE MOUNT'S FILE TIMES ARE HOST-LOCAL, SURFACED AS UTC — EVERY AGE A BLIND RUN
+COMPUTES FROM `stat` IS WRONG BY THE HOST'S OFFSET, AND NOTHING WARNS.** [MEASURED]
+2026-09-06T11:1xZ by Station 00 from inside a blind run: the watcher clone's `heartbeat.log`
+mtime printed `2026-09-06T21:15` under `TZ=UTC` while its own content, `ensure-watcher.log` and
+the VM clock all read `11:15Z`. Marco's host is Brisbane, UTC+10 — the same offset DOCTRINE §3
+already warns about for watcher logs — so the obvious probe (`stat` the heartbeat, subtract from
+`date -u`, compare against `$wdHungMin`) returns a file **ten hours in the future**, i.e. a
+negative age. There is no error and no empty result, so §9.6 never fires: the reading is a
+well-formed number that was never measuring elapsed time.
+🔧 **Take every timestamp from log CONTENT, never from a mount `stat`** — and say in the report
+which of the two you used. A sighted run is not exposed to this: Desktop Commander reads the
+Windows clock directly.
+
 🔧 **A blind run therefore reports blindness as loudly as ever, and stops before acting — but it
 COLLECTS first, and says which of the two it did.** "I was blind, so I did nothing" and "I was
 blind, so I read everything readable and acted on none of it" are different reports, and until this

@@ -17,6 +17,15 @@
  * and the same shared NotesField; only its placeholder and its modal title
  * changed, because the block labels it as the item's comment.
  *
+ * SCOPE_WASTE_SECTION_V1 (PR slice 8) — the per-card markup tests below
+ * assert the SCOPE markup chain (item -> card -> tender). They are unchanged
+ * by slice 8 and must stay that way: the waste section carries its own
+ * independent markup (ScopeCard.wasteMarkupOverride ?? tender markup) applied
+ * to its own base on the server, and is never folded into the card subtotal
+ * these tests read. If a future slice wires waste into the card fold, these
+ * per-card markup figures move — and that would be a repricing, not a
+ * re-layout. Nothing here changed, because the card subtotal did not.
+ *
  * Residue: none. The discipline-picker test deletes the card it creates;
  * the markup tests clear every override they set (and self-heal a leftover
  * override from a crashed previous run before asserting); the notes-modal

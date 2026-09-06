@@ -391,3 +391,42 @@ jobs:
         with: { node-version: '22' }
       - name: Check for raw-error-envelope call sites
         run: node scripts/pr-gates/check-raw-error-envelope.mjs
+
+  e2e-restoration-markers:
+    # SCOPE_WASTE_SECTION_V1 restoration ratchet.
+    #
+    # Slice 2 of the scope-card redesign dropped acceptance assertions it could
+    # not keep and marked each one `TODO(SCOPE_<constant>)`, naming the slice
+    # that would restore it. This job makes the last of those markers
+    # impossible to leave behind once the chain has landed.
+    #
+    # Contract (scripts/pr-gates/e2e-restoration-markers.mjs):
+    #   exit 0 while SCOPE_WASTE_SECTION_V1 is not yet on origin/main;
+    #   exit 1 once it is, listing every file and line still carrying a marker.
+    #
+    # Three properties are load-bearing:
+    #   1. Its OWN job, not a line inside pr-gates.mjs. CP-26 demonstrated that
+    #      folding a new assertion into that script makes one failure surface as
+    #      two red checks and obscures which one broke.
+    #   2. No `needs:`, no path filter, no label gate, no front-matter opt-in.
+    #      A ratchet that only runs when someone remembers to run it is not a
+    #      ratchet, and a changed-path filter would let a PR that touches no e2e
+    #      file skip the very check that guards the e2e files.
+    #   3. fetch-depth: 0. The arming test greps the tree of origin/main; a
+    #      shallow checkout has no such ref and the script fails closed rather
+    #      than silently degrading.
+    #
+    # ADVISORY ONLY. This check is INERT until Marco adds it to the
+    # required-status-checks of ruleset 15532058 ("Main"), exactly as
+    # `Approval receipt (CP-26)` is advisory today. Until then it reports and
+    # blocks nothing - a red mark here is not a merge gate.
+    name: E2E restoration markers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4.1.0
+        with: { node-version: '22' }
+      - name: Check for outstanding TODO(SCOPE_*) restoration markers
+        run: node scripts/pr-gates/e2e-restoration-markers.mjs

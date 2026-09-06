@@ -1026,6 +1026,130 @@ function checkGateNotReleased(fm, repoRoot, name, isHold) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// PR_GATE_NOT_RELEASED: unmet `requires_merged` PR gate — the third dependency
+// key, previously validated for FORMAT and never evaluated as a GATE
+// ---------------------------------------------------------------------------
+
+/**
+ * PR_GATE_EVALUATED_V1 — `requires_merged` is a GATE, not just a format rule.
+ *
+ * Sibling of checkGateNotReleased. That function owns the two path-shaped keys
+ * (`requires_on_main`, `requires_file_on_main`) and probes them against
+ * origin/main with git. This one owns the third legal dependency key,
+ * `requires_merged`, and probes it against GitHub. It is a separate function
+ * only so checkGateNotReleased stays readable; the contract is identical.
+ *
+ * THE DEFECT THIS CLOSES. validateDepKeyValues rejected `0`, negatives, `abc`
+ * and empty as REQUIRES_MERGED_INVALID — and then nothing in this file ever
+ * asked GitHub what state that PR was in. Measured 2026-09-03 against
+ * origin/main e7f55174, one real prompt copied three times with only the PR
+ * number changed:
+ *
+ *     requires_merged: 1317    (MERGED)              -> lint exit 0
+ *     requires_merged: 1543    (OPEN)                -> lint exit 0
+ *     requires_merged: 999999  (no such PR)          -> lint exit 0
+ *
+ * The MERGED row is the positive control: all three verdicts were identical, so
+ * the ADMIT carried no information about the gate. That breaks the
+ * post-condition checkGateNotReleased's own header states — a bare ADMIT means
+ * all declared gates are satisfied — and it contradicts PROMPT-SCHEMA.md, which
+ * documents `gh pr view N --json state must be MERGED` as though it happened.
+ *
+ * Design choice: REJECT (exit 1), same as GATE_NOT_RELEASED, for the same
+ * reason. `arm-prompt.ps1` gates on this linter and `triage-holds.ps1` files
+ * every exit-0 prompt under the heading "GATES SATISFIED -- lint ADMITs". For a
+ * `requires_merged`-only prompt that heading was a claim the instrument had
+ * never checked.
+ *
+ * ARMED_GATE_STILL_CHECKED: runs for HOLD and armed prompts alike, for the
+ * reason checkGateNotReleased already gives — `isHold` is derived from the
+ * filename, arming renames the file, and a gate that strips on rename strips
+ * exactly when it matters most. `isHold` only picks the wording of stateLine.
+ *
+ * FAIL SAFE when the instrument cannot answer. If the probe throws — no
+ * network, no auth, `gh` absent, PR unknown — WARN to stderr and `continue`,
+ * exactly as the three `readFromOriginMain(...) === null` branches in
+ * checkGateNotReleased do. This is DELIBERATELY THE OPPOSITE of the watcher,
+ * which fails CLOSED at dispatch (scripts/pr-watcher/index.mjs
+ * `unmetDependencies`). The asymmetry is the point: the watcher's failure mode
+ * is "hold the run, try again next tick", which costs one tick; the linter's
+ * failure mode is a verdict a human reads and acts on, and DOCTRINE section 7
+ * forbids a broken instrument from producing a negative finding. An unreachable
+ * GitHub must never bin real work. The WARN is what stops that from being the
+ * silent pass this function exists to eliminate: it names the PR and says in
+ * so many words that the gate was NOT evaluated.
+ *
+ * Pure over an injected `fetchState`, mirroring checkFixesPrTargetOpen, so it
+ * unit-tests without gh. The CLI passes ghFetchPrState, which honours
+ * LINT_GH_BIN. There is deliberately NO env switch that turns the gate off: a
+ * safety gate with an off switch is the gate that is off when it matters.
+ *
+ * @param {object}   args
+ * @param {*}        args.requiresMerged  raw `fm.requires_merged` (scalar or list, may be undefined)
+ * @param {function} args.fetchState      (prNumber) => state string; may throw
+ * @param {string}   args.name            prompt basename, for the WARN line
+ * @param {boolean}  args.isHold          picks the stateLine wording only
+ * @returns {{ok: true}} or {{ok: false, code: "PR_GATE_NOT_RELEASED", msg: string}}
+ */
+export function checkPrGateNotReleased({ requiresMerged, fetchState, name, isHold }) {
+  if (requiresMerged === undefined || requiresMerged === null || requiresMerged === "") {
+    return { ok: true };
+  }
+  const vals = Array.isArray(requiresMerged) ? requiresMerged : [requiresMerged];
+  if (vals.length === 0) return { ok: true };
+
+  const stateLine = isHold
+    ? "        This HOLD is parked waiting for its predecessor slice to land.\n"
+    : "        This armed prompt cannot run yet — its predecessor slice has not landed.\n";
+
+  const warn = (text) =>
+    process.stderr.write(
+      "WARN  " + (name || "<file>") + "  PR_GATE_NOT_RELEASED probe: " + text +
+      "; skipping (fail-safe — not reporting gate as absent).\n" +
+      "      The requires_merged gate was NOT evaluated on this run.\n"
+    );
+
+  for (const raw of vals) {
+    const str = String(raw).trim();
+    // Shape is validateDepKeyValues' job (REQUIRES_MERGED_INVALID) and it runs
+    // first. If anything malformed reaches here, that check owns the message —
+    // do not invent a second verdict for it, and do not hand it to gh.
+    if (str === "") continue;
+    const n = Number(str);
+    if (!Number.isInteger(n) || n <= 0) continue;
+
+    let state;
+    try {
+      state = fetchState(n);
+    } catch (err) {
+      warn("could not read the state of PR #" + n + " (" + (err && err.message ? err.message : String(err)) + ")");
+      continue;
+    }
+
+    // A probe that answered with nothing usable is a probe that did not answer.
+    // Treat it as unreachable, not as "not merged" — same fail-safe rule.
+    if (typeof state !== "string" || state.trim() === "") {
+      warn("PR #" + n + " returned no usable state (" + JSON.stringify(state) + ")");
+      continue;
+    }
+
+    if (state.trim().toUpperCase() === "MERGED") continue; // gate satisfied
+
+    return {
+      ok: false,
+      code: "PR_GATE_NOT_RELEASED",
+      msg:
+        "PR_GATE_NOT_RELEASED: requires_merged: " + n + " — PR #" + n + " is " +
+        state.trim() + ", not MERGED.\n" +
+        stateLine +
+        "        A bare ADMIT would be indistinguishable from a prompt whose gate IS satisfied.",
+    };
+  }
+
+  return { ok: true };
+}
+
 /**
  * Fold a YAML block scalar into a plain string.
  *
@@ -1447,6 +1571,26 @@ export function lint(file, opts) {
   {
     const gnrRes = checkGateNotReleased(fm, repoRoot, name, isHold);
     if (!gnrRes.ok) return fail(gnrRes.code, gnrRes.msg);
+  }
+
+  // PR_GATE_EVALUATED_V1 — the third dependency key, `requires_merged`, evaluated
+  // as a gate rather than only validated for shape. Sits next to
+  // checkGateNotReleased because it completes that function's post-condition: a
+  // bare ADMIT means ALL THREE declared dependency keys are satisfied, not two of
+  // them. Probe failure warns and skips (fail-safe); see the function header for
+  // why that is the opposite of the watcher's fail-closed dispatch gate.
+  //
+  // Runs after validateDepKeyValues (which owns REQUIRES_MERGED_INVALID), so a
+  // malformed value never reaches gh.
+  {
+    const fetchPrState = (opts && opts.fetchPrState) || ghFetchPrState;
+    const prGateRes = checkPrGateNotReleased({
+      requiresMerged: fm.requires_merged,
+      fetchState: fetchPrState,
+      name,
+      isHold,
+    });
+    if (!prGateRes.ok) return fail(prGateRes.code, prGateRes.msg);
   }
 
   const missing = REQUIRED.filter((k) => !fm[k] || (Array.isArray(fm[k]) && fm[k].length === 0));

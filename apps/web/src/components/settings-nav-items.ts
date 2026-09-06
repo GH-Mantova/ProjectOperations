@@ -1,5 +1,5 @@
 // settings-nav-items.ts
-// Populated nav-item declarations for all 20 settings pages.
+// Populated nav-item declarations for every settings page.
 // Extracted from SettingsShell.tsx to keep that file readable now that
 // description and tabs have been added (SLICE 1, settings-home-plan.md).
 //
@@ -7,9 +7,18 @@
 // COMPANY_ITEMS, and ADMINISTRATION_ITEMS so that every existing import of
 // those names from SettingsShell continues to work without change.
 //
-// D47 — descriptions that were inferred from reading the page code rather
-// than from a written spec are marked with a "// GUESS —" comment on the
-// line immediately above the description string.
+// SETTINGS_HOME_S1 (pr-settings-home-s1-cards-tabs-counts): every description
+// below is the copy Marco approved for the settings-home mock-up
+// (erp-settings-home-mockup.pdf 2026-09-01; CRM drop reasons approved
+// 2026-09-05).  The earlier inferred-from-the-page-code wording — and the
+// per-item comments that flagged it as inferred — are gone; this file no
+// longer carries an unapproved description.
+//
+// SETTINGS_HOME_S1 also adds EXTERNAL_ITEMS: two settings pages that live
+// outside /settings.  Marco decided 2026-09-01 to link them in place rather
+// than move them — no new routes, no redirects, no broken bookmarks.  They
+// carry `external: true`, which only affects styling and grouping; the link
+// itself is an ordinary route link.
 
 import type { SettingsNavItem } from "./SettingsShell";
 
@@ -19,28 +28,22 @@ export const PERSONAL_ITEMS: SettingsNavItem[] = [
   {
     to: "/settings/account",
     label: "Account",
-    // GUESS — inferred from UserProfilePage: shows signed-in user info, default
-    // dashboard selection, and links to calendar sync and notification prefs.
-    description: "View your profile, choose your default dashboard, and manage personal preferences.",
+    description:
+      "Your profile: name, contact details, email signature and the theme you see. Also where you view the permissions you hold and request ones you do not.",
     tabs: []
   },
   {
     to: "/settings/notifications",
     label: "Notification preferences",
-    // GUESS — inferred from NotificationPreferencesPage: lets each user mute
-    // or reduce channels (email / in-app) for triggers they are already a
-    // recipient of.  They cannot add themselves to triggers or raise channels
-    // above what the admin has configured.
-    description: "Choose how you receive notifications — mute or reduce channels for each trigger you are subscribed to.",
+    description:
+      "Choose which alerts reach you, and whether each arrives in the app, by email, or both.",
     tabs: []
   },
   {
     to: "/settings/calendar-sync",
     label: "Calendar sync",
-    // GUESS — inferred from CalendarSyncPage: syncs assigned shifts to a
-    // personal calendar via an ICS feed / Microsoft Graph adapter (mock mode
-    // for now).
-    description: "Sync your assigned shifts to your calendar and view the current sync status.",
+    description:
+      "Connect your work calendar so scheduled jobs and leave appear alongside your meetings.",
     tabs: []
   }
 ];
@@ -52,10 +55,8 @@ export const COMPANY_ITEMS: SettingsNavItem[] = [
     to: "/settings/company",
     label: "Company",
     requiresPermission: "platform.admin",
-    // GUESS — inferred from AdminCompanyPage SECTIONS array: covers identity,
-    // contact details, commercial defaults, document numbering, branding,
-    // legal documents, and licences.
-    description: "Configure your company profile, branding, commercial defaults, and legal documents.",
+    description:
+      "The business itself — legal details, addresses, the defaults used when pricing, how documents are numbered, branding, and the licences and insurances you must keep current.",
     tabs: [
       { id: "identity",    label: "Identity",             description: "Legal name, trading name, ABN/ACN, and entity type." },
       { id: "contact",     label: "Contact & address",    description: "Primary email, phone, website, and registered and postal addresses." },
@@ -70,11 +71,8 @@ export const COMPANY_ITEMS: SettingsNavItem[] = [
     to: "/settings/ai",
     label: "AI settings",
     requiresPermission: "platform.admin",
-    // GUESS — inferred from AiSettingsPage and ai-settings-helpers.ts: two
-    // tabs — company-wide AI provider/key/instruction config (super-user only)
-    // and each user's personal provider/instruction override (per persona
-    // permission).
-    description: "Configure AI providers, API keys, and company-wide instructions for AI-powered features.",
+    description:
+      "Which AI provider the assistants use, and the company-wide behaviour of the tendering and forms helpers.",
     tabs: [
       { id: "company", label: "Company",     description: "Company-wide AI provider selection, API keys, and instruction defaults." },
       { id: "mine",    label: "My Settings", description: "Personal AI provider override and instruction customisation." }
@@ -84,9 +82,8 @@ export const COMPANY_ITEMS: SettingsNavItem[] = [
     to: "/settings/reference-data",
     label: "Reference data & Lists",
     requiresAnyPermission: ["rates.manage", "lists.manage"],
-    // GUESS — inferred from RatesListsAdminPage TopTab type and tab buttons:
-    // rate tables, subcontractor rates, supplier rates, and managed lists.
-    description: "Manage rate tables, subcontractor and supplier rates, and system reference lists.",
+    description:
+      "The numbers estimating runs on — rate tables, material densities, waste rates — plus the drop-down lists used across the system.",
     tabs: [
       { id: "rates",           label: "Rate tables",    description: "Create and edit internal labour and material rate tables." },
       { id: "subcontractors",  label: "Subcontractors", description: "Manage subcontractor rate cards and trade categories." },
@@ -98,28 +95,23 @@ export const COMPANY_ITEMS: SettingsNavItem[] = [
     to: "/settings/handover-template",
     label: "Handover template",
     requiresPermission: "handovertemplate.manage",
-    // GUESS — inferred from HandoverTemplatePage comment block: draft/active
-    // editor with sections and fields.  No internal tab strip — it is a
-    // split-pane editor, not a tabbed page.
-    description: "Edit the handover document template — manage sections and fields, and publish new versions.",
+    description:
+      "The template that defines what a job handover must capture before it can be signed off.",
     tabs: []
   },
   {
     to: "/settings/data-model",
     label: "Data model",
     superUserOnly: true,
-    // GUESS — inferred from DataModelMapPage file name and location under admin
-    // pages.  No internal tabs observed.
-    description: "Visual map of the platform data model — entities, relationships, and schema metadata.",
+    description:
+      "A live map of every entity in the system and how they relate. Regenerated automatically on each build.",
     tabs: []
   },
   {
     to: "/settings/field-definitions",
     label: "Field definitions",
     superUserOnly: true,
-    // GUESS — inferred from FieldDefinitionAdminPage TABS: CLIENT, VENDOR, BOTH
-    // — custom field definitions that apply to client records, vendor records, or both.
-    description: "Define and manage custom fields for client and vendor records.",
+    description: "Custom fields available on records, and which of them map to Xero.",
     tabs: [
       { id: "CLIENT", label: "Client", description: "Custom fields that appear on client records." },
       { id: "VENDOR", label: "Vendor", description: "Custom fields that appear on vendor (subcontractor/supplier) records." },
@@ -130,10 +122,8 @@ export const COMPANY_ITEMS: SettingsNavItem[] = [
     to: "/settings/companies",
     label: "Companies",
     superUserOnly: true,
-    // GUESS — inferred from AdminCompaniesPage file name and MT-5 comment in
-    // SettingsShell/App.tsx: create and manage Tenant rows, assign users to
-    // tenants.  No internal tabs observed.
-    description: "Create and manage company tenants and assign users to each company.",
+    description:
+      "Create and manage the companies hosted in this system, and assign people to them.",
     tabs: []
   }
 ];
@@ -145,10 +135,8 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
     to: "/settings/administration/system",
     label: "Admin settings",
     requiresPermission: "system.manage",
-    // GUESS — inferred from AdminSettingsPage TABS const: notifications,
-    // email, access-requests, ai (redirect pointer), integrations/API keys,
-    // site geofences.
-    description: "System-wide configuration — notification triggers, email delivery, API key vault, and site geofences.",
+    description:
+      "System-wide switches: notification triggers, outbound email, access requests awaiting approval, integration keys, and site geofences.",
     tabs: [
       { id: "notifications",    label: "Notifications",      description: "Enable or disable notification triggers and configure recipients and delivery method." },
       { id: "email",            label: "Email",              description: "Configure the outbound email provider, sender address, and test the connection." },
@@ -162,77 +150,108 @@ export const ADMINISTRATION_ITEMS: SettingsNavItem[] = [
     to: "/settings/administration/users",
     label: "Users",
     requiresPermission: "users.view",
-    // GUESS — inferred from AdminUsersTab file name and SLICE 17 comments.
-    description: "View and manage user accounts, roles, and access.",
+    description:
+      "Everyone with a login: invite, deactivate, and set which company and role each person belongs to.",
     tabs: []
   },
   {
     to: "/settings/administration/roles",
     label: "Roles & Permissions",
     requiresPermission: "roles.view",
-    // GUESS — inferred from RolesPermissionsPage file name and SLICE 8 comment
-    // (permissions folded into this page).
-    description: "Define roles and assign permissions — controls what each user group can see and do.",
+    description:
+      "Define what each role can see and do. Changing a role changes it for everyone who holds it.",
     tabs: []
   },
   {
     to: "/settings/administration/audit",
     label: "Audit",
     requiresPermission: "audit.view",
-    // GUESS — inferred from AuditLogsPage file name.
-    description: "Review the platform audit log — a chronological record of significant actions and changes.",
+    description: "A record of who changed what, and when. Read-only.",
     tabs: []
   },
   {
     to: "/settings/administration/platform",
     label: "Platform",
     requiresPermission: "sharepoint.view",
-    // GUESS — inferred from PlatformPage which shows SharePoint config (site
-    // ID, drive ID, root folder) and folder mappings per module.
-    description: "Configure SharePoint integration — site, drive, root folder, and module folder mappings.",
+    description:
+      "SharePoint connection and the folder structure the system creates for tenders and jobs.",
     tabs: []
   },
   {
     to: "/settings/administration/automations",
     label: "Automations",
     requiresPermission: "automations.view",
-    // GUESS — inferred from AutomationsPage file name and SLICE 10 comment.
-    description: "Set up and manage workflow automations that trigger actions based on platform events.",
+    description:
+      "Rules that react to changes — when something happens, notify someone or add a note. Currently limited: only notification events are wired in, so most rules will not fire yet.",
     tabs: []
   },
   {
     to: "/settings/administration/client-versions",
     label: "Client versions",
     requiresPermission: "system.manage",
-    // GUESS — inferred from AdminClientVersionsPage file name and SLICE 14
-    // comment (dissolved from AdminSettingsPage).
-    description: "Manage the list of supported client application versions and minimum required versions.",
+    description:
+      "Which app version each device is running, and the minimum version you will support.",
     tabs: []
   },
   {
     to: "/settings/administration/map-locations",
     label: "Map locations",
     requiresPermission: "system.manage",
-    // GUESS — inferred from MapLocationsPage file name and SLICE 14 comment.
-    description: "Configure named map locations and coordinates used across the platform.",
+    description:
+      "Tips, depots, fuel stops and other places the system uses to work out travel and disposal costs.",
     tabs: []
   },
   {
     to: "/settings/administration/xero-exchange",
     label: "Xero file exchange",
     requiresPermission: "platform.admin",
-    // GUESS — inferred from XeroExchangePage and CFX-4 comment: CSV export of
-    // clients and subcontractor/supplier records into Xero contact-import format.
-    description: "Export client and supplier records as a Xero-compatible contact import CSV.",
+    description:
+      "Import and export the contact and invoice files that move between this system and Xero.",
     tabs: []
   },
   {
     to: "/settings/administration/crm-drop-reasons",
     label: "CRM drop reasons",
     requiresPermission: "crm.manage",
-    // GUESS — inferred from DropReasonAdminPage and CRM SLICE 6 comment:
-    // admin screen to manage the list of CRM opportunity drop reasons.
-    description: "Manage the list of reasons available when marking a CRM opportunity as dropped.",
+    description:
+      "Why an opportunity was dropped — the list your team picks from when they close one out.",
+    tabs: []
+  }
+];
+
+// ── Elsewhere ─────────────────────────────────────────────────────────────
+//
+// Settings that live outside /settings.  They are linked in place; the route
+// is untouched.  The permission on each card is the guard the destination
+// actually enforces, so a card never opens into a 403:
+//
+//   Schedule of Rates — ScheduleOfRatesAdminPage:514 renders
+//     <NoAccess required="rates.manage" /> for a user without rates.manage.
+//   Job roles — JobRolesPage:51 renders <NoAccess required="resources.view" />
+//     (PR #1700), mirroring job-roles.controller.ts:26, which requires
+//     resources.view to read.
+//
+// Neither route is wrapped in RequirePermissions in App.tsx (they are bare
+// <Route> elements at App.tsx:613 and App.tsx:377), which is why the guard
+// has to be read off the page/API rather than the route.
+
+export const EXTERNAL_ITEMS: SettingsNavItem[] = [
+  {
+    to: "/admin/schedule-of-rates",
+    label: "Schedule of Rates",
+    requiresPermission: "rates.manage",
+    external: true,
+    description:
+      "Master schedules of rates and the per-client rate cards priced from them.",
+    tabs: []
+  },
+  {
+    to: "/workers/job-roles",
+    label: "Job roles",
+    requiresPermission: "resources.view",
+    external: true,
+    description:
+      "The roles people are booked as, and the qualifications each role requires before someone can be allocated.",
     tabs: []
   }
 ];

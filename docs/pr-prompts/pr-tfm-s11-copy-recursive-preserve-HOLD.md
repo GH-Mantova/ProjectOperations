@@ -16,7 +16,9 @@ cluster: tender-folder-model
 
 # TFM-S11: recurse into legacy subfolders, preserving the tree verbatim
 
-**Grounded against `origin/main` = `ba1f74a2`, measured 2026-08-19.**
+**Originally grounded against `origin/main` = `ba1f74a2`, measured 2026-08-19.**
+**RE-GROUNDED against `origin/main` = `734ff8c9` on 2026-09-06 by station 06** — see the
+re-grounding note below before arming.
 **Gated on TFM-S10** (`site: tender.site` on `origin/main`) - without S10 the guard
 skips every pre-TFM-S2 tender and this slice has nothing to copy.
 
@@ -172,7 +174,46 @@ the captured plan Marco reviews shows what will actually be copied. Add
   `findMany({ where: { linkedEntityType: "Tender" } })` still returns exactly one row
   per tender.
 
+## RE-GROUNDING NOTE — 2026-09-06, station 06
+
+This prompt sat unarmable for eighteen days: it carried **no standing-authority text at all**, so
+`lint-prompt.mjs` returned `REJECT [MISSING_STANDING_AUTHORITY]` every time. An agent armed from it
+would have done the work, exited 0 and opened no PR. That is now fixed at the bottom of this file.
+Because the prompt was measured three weeks ago against a SHA that has since moved, and because it
+touches production SharePoint, everything it rests on was re-measured first.
+
+**Re-verified against `origin/main` = `734ff8c9`, 2026-09-06:**
+
+| claim | result |
+|---|---|
+| premise still live — `collectLegacyFilesRecursive` absent from the service | **0 occurrences.** The work is not done. |
+| the folder filter still drops folders before the service sees them | `.filter(item => !item.isFolder)` still present in `admin-imports.module.ts` |
+| TFM-S10 gate — `site: tender.site` on main | **present.** `requires_on_main` is satisfied. |
+| all three `scope` paths exist | yes, all three |
+| COPY ONLY still holds in the service | **no `delete`, `move` or `rename` call anywhere in `sharepoint-legacy-copy.service.ts`** |
+
+**One thing could NOT be verified, and it is stated rather than assumed.** There is **no code-level
+"2026 only" guard** in the copy service. Searching `apps/api/src/modules/admin-imports/*.ts` for
+`2026` returns only a spec fixture path (`"2. Quotes/Quotes 2026"`) and unrelated dated comments.
+So *"2026 tenders only"* is an operational rule enforced by **which tenders the job is pointed at**,
+not by an assertion in the code. Do not treat it as machine-enforced, and do not add such a guard in
+this slice — that is a scope change and would need its own brief.
+
 ## Verification
 
 - `pnpm build && pnpm lint`
 - `pnpm --filter @po/api test -- sharepoint-legacy-copy`
+
+## STANDING AUTHORITY
+
+> **You have STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.**
+> **"Do NOT auto-merge" means: open the PR and LEAVE IT UNMERGED.** It does **not** mean "wait for
+> approval before starting", and it does **not** mean "do the work then ask permission to push".
+> There is no human in this run. **Finishing the work and then asking for permission is
+> indistinguishable from failing** — the work is discarded either way.
+
+This authorises **writing code and opening a PR. It authorises nothing else.** Every constraint
+above still binds, and two in particular: the PR is labelled `do-not-merge` and **only Marco removes
+that label (D34)**; and the job this code changes writes into production SharePoint under
+**COPY ONLY — never move, never delete**. A scope limit is not a reason to stop before pushing, and
+standing authority is not permission to widen scope.

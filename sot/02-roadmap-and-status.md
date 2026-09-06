@@ -58,18 +58,27 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (2)
+## 2. 🔧 In-PR — open right now (4)
 
-> Live snapshot read from GitHub at reconcile time (2026-08-04). For richer status/blocker
-> detail run `scripts/pipeline/bring-up-to-speed.ps1` — its `[LIVE]` lines beat this table
-> the moment it drifts.
+> Live snapshot read from GitHub at reconcile time (**2026-09-06T14:20Z**, `origin/main`
+> d1467428). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #895 | feat(api): SLICE-3 backfill ApiCredential vault + flip resolve() to vault-first | do-not-merge; escalates (prod-data backfill) — Marco reviews |
-| #894 | docs(queue): stage Smart Wizard metadata-catalog fix prompts (SLICE 1-3) | docs-only staging |
+| #1719 | feat(ew-2c): allocation rejection, transfer, push-back and stale detection | BLOCKED; CI 14 pass / 0 fail / 1 pending |
+| #1713 | feat(rates): a charge step can name an estimator-entered line field (RATE_LINE_FIELDS_V1) | BLOCKED; CI 13 pass / 0 fail / 2 pending |
+| #1709 | feat(tender-lifecycle): TenderClient.bidStatus — the schema and API foundation | BLOCKED; CI 13 pass / 0 fail / 2 pending |
+| #1699 | fix(rates): give the three unit-less seeded VALUE columns a unit | BLOCKED; CI 12 pass / 2 fail / 1 pending — RED, routed to Marco |
 
-The entire 2026-07-27 In-PR set (#779/#787/#789/#796/#797/#808) has since MERGED. Also in-flight but
+> **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
+> while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z
+> and 05:09:13Z, read live from GitHub). A snapshot that names its own date is still read as
+> current by anyone who does not check the date, so it is refreshed rather than left to rot.
+> **Only the snapshot was refreshed — no roadmap STATUS semantics were changed.**
+
+The entire 2026-07-27 In-PR set (#779/#787/#789/#796/#797/#808) has since MERGED, as have
+#894 and #895 (both 2026-08-04). Also in-flight but
 not yet a PR: `pr-dialogs-prompt-primitive` (the `usePrompt` text-input primitive) — re-armed
 2026-08-04 once its stragglers dependency (#870) landed. Per-PR history lives in `03-progress-log.md`;
 run `bring-up-to-speed.ps1` for the authoritative live list.

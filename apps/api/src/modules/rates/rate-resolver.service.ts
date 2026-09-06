@@ -47,6 +47,35 @@ export type ResolvedRate = {
  * filter would change what existing consumers see (`rates-export.service.ts`
  * consumes `listRates("plant")`); that is a product decision filed for Marco
  * in `needs-marco/rates-11b2-consumer-migration-blockers-2026-08-27.md`.
+ *
+ * `sortOrder` mirrors the source row's sort column. Like `isActive` it is a
+ * REPORT, never a filter and never an `orderBy`: adding it changed no `where`
+ * and no `orderBy`, so `listRates(slug)` returns exactly the row sets, in
+ * exactly the order, it returned before. The entries are NOT sorted by it.
+ *
+ * It exists because the curated business order it carries cannot be rebuilt
+ * at the call site. `CuttingOtherRate`, for example, is seeded "Extra man"
+ * (5), "Stand-down time" (6), "Clean-up time" (7) … "Overtime hourly charge
+ * beyond minimum" (28), and the model carries `@@index([isActive, sortOrder])`
+ * for it; alphabetical is a completely different sequence. A consumer that
+ * wants that order must sort explicitly, exactly as the persona `lookup-rate`
+ * handler's `orderBy: [{ sortOrder: "asc" }, { <field>: "asc" }]` does today.
+ *
+ * WHY IT IS NULLABLE. Eight of the nine backing models declare
+ * `sortOrder Int @default(0) @map("sort_order")`: EstimateLabourRate,
+ * EstimatePlantRate, EstimateWasteRate, EstimateCuttingRate,
+ * EstimateFuelRate, EstimateEnclosureRate, CuttingOtherRate and RateRow.
+ * `EstimateCoreHoleRate` — the `core-hole` slug — has NO sort column at all
+ * (checked against `apps/api/prisma/schema.prisma` and every migration that
+ * touches `estimate_core_hole_rates`). Its entries therefore report `null`,
+ * not `0` and not an ordinal derived from array position: a fabricated order
+ * is worse than an absent one, because the caller cannot tell it is
+ * fabricated. `null` is legible — it says "this kind has no curated order,
+ * use your own tie-break". No consumer needs one there today:
+ * `availableCoreHoleDiameters()` orders by `{ diameterMm: "asc" }`, and is
+ * with `availableCuttingCombinations()` one of only two `available*` helpers
+ * that do not use `sortOrder`. Adding the column to `EstimateCoreHoleRate`
+ * would be a schema change and a migration, which is not this slice.
  */
 export type ListedRate = {
   rowId: string;
@@ -56,6 +85,11 @@ export type ListedRate = {
   unit: string;
   /** The source row's `isActive` column, verbatim. Reported, never filtered on — see above. */
   isActive: boolean;
+  /**
+   * The source row's sort column, verbatim — `null` for `core-hole`, whose
+   * backing model has no such column. Reported, never ordered by — see above.
+   */
+  sortOrder: number | null;
   source: RateSource;
 };
 
@@ -608,6 +642,9 @@ export class RateResolverService {
         // pre-filters isActive: true so this is always true today, but the
         // field stays honest if that `where` is ever relaxed.
         isActive: row.isActive,
+        // RateRow declares `sortOrder Int @default(0)`, and the findMany above
+        // already orders by it; reading the column changes neither.
+        sortOrder: row.sortOrder,
         source: "ratetable" as const
       };
     });
@@ -628,11 +665,11 @@ export class RateResolverService {
         const entries: ListedRate[] = [];
         for (const row of rows) {
           // All three shift entries come from the same row, so all three
-          // report that row's isActive.
+          // report that row's isActive and that row's sortOrder.
           entries.push(
-            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, source: "legacy" }
+            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, source: "legacy" }
           );
         }
         return entries;
@@ -651,6 +688,7 @@ export class RateResolverService {
           value: Number(row.rate),
           unit: row.unit,
           isActive: row.isActive,
+          sortOrder: row.sortOrder,
           source: "legacy" as const
         }));
       }
@@ -670,6 +708,7 @@ export class RateResolverService {
           value: Number(row.tonRate),
           unit: row.unit,
           isActive: row.isActive,
+          sortOrder: row.sortOrder,
           source: "legacy" as const
         }));
       }
@@ -694,6 +733,7 @@ export class RateResolverService {
           value: Number(row.ratePerM),
           unit: "m",
           isActive: row.isActive,
+          sortOrder: row.sortOrder,
           source: "legacy" as const
         }));
       }
@@ -708,6 +748,12 @@ export class RateResolverService {
           value: Number(row.ratePerHole),
           unit: "hole",
           isActive: row.isActive,
+          // EstimateCoreHoleRate is the ONLY backing model with no sort
+          // column — see the ListedRate doc comment. Reported as null rather
+          // than defaulted to 0 or derived from array position, so a caller
+          // can tell there is no curated order here instead of trusting a
+          // fabricated one. Making this a number means a migration.
+          sortOrder: null,
           source: "legacy" as const
         }));
       }
@@ -722,6 +768,7 @@ export class RateResolverService {
           value: Number(row.rate),
           unit: row.unit,
           isActive: row.isActive,
+          sortOrder: row.sortOrder,
           source: "legacy" as const
         }));
       }
@@ -739,6 +786,7 @@ export class RateResolverService {
           // Pre-filtered to isActive: true by the `where` above; read from the
           // column anyway so the field never disagrees with the row.
           isActive: row.isActive,
+          sortOrder: row.sortOrder,
           source: "legacy" as const
         }));
       }
@@ -756,6 +804,7 @@ export class RateResolverService {
           // Pre-filtered to isActive: true by the `where` above; read from the
           // column anyway so the field never disagrees with the row.
           isActive: row.isActive,
+          sortOrder: row.sortOrder,
           source: "legacy" as const
         }));
       }

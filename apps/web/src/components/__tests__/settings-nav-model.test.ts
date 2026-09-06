@@ -1,10 +1,12 @@
 // SLICE 1 (settings-home-plan.md): unit tests for partitionSettingsNavItems.
 //
 // Item counts verified directly from SettingsShell.tsx + settings-nav-items.ts
-// on 2026-08-19:
-//   Personal (3, all ungated) + Company (7, all gated) + Administration (10, all gated)
-//   = 20 total.
-//   A user with no permissions or roles sees 3 open, 17 locked.
+// on 2026-09-06 (SETTINGS_HOME_S1):
+//   Personal (3, all ungated) + Company (7, all gated) + Administration (10,
+//   all gated) + Elsewhere (2, all gated) = 22 total.
+//   A user with no permissions or roles sees 3 open, 19 locked.
+//   "Elsewhere" holds the two settings pages that live outside /settings and
+//   are linked in place: Schedule of Rates and Job roles.
 
 import { describe, expect, it } from "vitest";
 import type { SafeUser } from "../../auth/AuthContext";
@@ -13,6 +15,7 @@ import {
   SECTIONS,
   ADMINISTRATION_ITEMS
 } from "../SettingsShell";
+import { EXTERNAL_ITEMS } from "../settings-nav-items";
 
 // ── Test helpers ──────────────────────────────────────────────────────────
 
@@ -42,11 +45,11 @@ describe("partitionSettingsNavItems", () => {
     expect(open).toHaveLength(ALL_ITEMS.length);
   });
 
-  it("a user with no permissions sees 3 open and 17 locked", () => {
+  it("a user with no permissions sees 3 open and 19 locked", () => {
     const noPermsUser = fakeUser({ isSuperUser: false, permissions: [], roles: [] });
     const { open, locked } = partitionSettingsNavItems(ALL_ITEMS, noPermsUser);
     expect(open).toHaveLength(3);
-    expect(locked).toHaveLength(17);
+    expect(locked).toHaveLength(19);
     // The 3 open items must be the Personal section items.
     expect(open.map((i) => i.to)).toEqual([
       "/settings/account",
@@ -55,10 +58,10 @@ describe("partitionSettingsNavItems", () => {
     ]);
   });
 
-  it("a null user sees 3 open (ungated personal items) and 17 locked", () => {
+  it("a null user sees 3 open (ungated personal items) and 19 locked", () => {
     const { open, locked } = partitionSettingsNavItems(ALL_ITEMS, null);
     expect(open).toHaveLength(3);
-    expect(locked).toHaveLength(17);
+    expect(locked).toHaveLength(19);
   });
 
   it("a user with users.view sees the Users item in open", () => {
@@ -135,5 +138,86 @@ describe("partitionSettingsNavItems", () => {
     const { open } = partitionSettingsNavItems(ALL_ITEMS, superUser);
     const superOnlyOpen = open.filter((i) => i.superUserOnly);
     expect(superOnlyOpen.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ── SETTINGS_HOME_S1: descriptions are the approved copy ──────────────────
+
+describe("settings nav — approved descriptions", () => {
+  it("no item still carries an inferred-from-the-code description marker", () => {
+    // The VERIFY block asserts the same thing with a grep over the file; this
+    // asserts it over the data the app actually renders.
+    for (const item of ALL_ITEMS) {
+      expect(item.description).not.toMatch(/GUESS/i);
+      expect(item.description.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("every description is distinct — no page borrowed another's copy", () => {
+    const descriptions = ALL_ITEMS.map((i) => i.description);
+    expect(new Set(descriptions).size).toBe(descriptions.length);
+  });
+
+  it("CRM drop reasons kept its card and carries the 2026-09-05 approved line", () => {
+    const item = ALL_ITEMS.find((i) => i.to === "/settings/administration/crm-drop-reasons");
+    expect(item).toBeDefined();
+    expect(item!.description).toBe(
+      "Why an opportunity was dropped — the list your team picks from when they close one out."
+    );
+  });
+});
+
+// ── SETTINGS_HOME_S1: the two pages that live outside /settings ───────────
+
+describe("settings nav — EXTERNAL_ITEMS", () => {
+  it("declares exactly the two pages Marco named, at their existing routes", () => {
+    expect(EXTERNAL_ITEMS.map((i) => [i.label, i.to])).toEqual([
+      ["Schedule of Rates", "/admin/schedule-of-rates"],
+      ["Job roles", "/workers/job-roles"]
+    ]);
+  });
+
+  it("each carries the guard its destination actually enforces", () => {
+    // Neither route is wrapped in RequirePermissions (App.tsx:613 and :377 are
+    // bare <Route> elements). The guard lives on the page itself:
+    // ScheduleOfRatesAdminPage:514 renders <NoAccess required="rates.manage" />
+    // and JobRolesPage:51 renders <NoAccess required="resources.view" />
+    // (PR #1700, mirroring job-roles.controller.ts:26). A card must never
+    // advertise a page that would refuse the click.
+    expect(EXTERNAL_ITEMS[0].requiresPermission).toBe("rates.manage");
+    expect(EXTERNAL_ITEMS[1].requiresPermission).toBe("resources.view");
+  });
+
+  it("both are flagged external, and nothing under /settings is", () => {
+    for (const item of EXTERNAL_ITEMS) {
+      expect(item.external).toBe(true);
+      expect(item.to.startsWith("/settings")).toBe(false);
+    }
+    const internal = ALL_ITEMS.filter((i) => i.to.startsWith("/settings"));
+    expect(internal.length).toBe(20);
+    for (const item of internal) {
+      expect(item.external).toBeUndefined();
+    }
+  });
+
+  it("they are reachable through SECTIONS, so search and the counts line see them", () => {
+    const tos = ALL_ITEMS.map((i) => i.to);
+    expect(tos).toContain("/admin/schedule-of-rates");
+    expect(tos).toContain("/workers/job-roles");
+    expect(ALL_ITEMS).toHaveLength(22);
+  });
+
+  it("a user holding only rates.manage can open Schedule of Rates but not Job roles", () => {
+    const ratesUser = fakeUser({ permissions: ["rates.manage"] });
+    const { open, locked } = partitionSettingsNavItems(EXTERNAL_ITEMS, ratesUser);
+    expect(open.map((i) => i.to)).toEqual(["/admin/schedule-of-rates"]);
+    expect(locked.map((i) => i.to)).toEqual(["/workers/job-roles"]);
+  });
+
+  it("a user holding only resources.view can open Job roles but not Schedule of Rates", () => {
+    const resourcesUser = fakeUser({ permissions: ["resources.view"] });
+    const { open, locked } = partitionSettingsNavItems(EXTERNAL_ITEMS, resourcesUser);
+    expect(open.map((i) => i.to)).toEqual(["/workers/job-roles"]);
+    expect(locked.map((i) => i.to)).toEqual(["/admin/schedule-of-rates"]);
   });
 });

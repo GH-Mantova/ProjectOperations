@@ -31,7 +31,11 @@ const EXPECTED_NO_TABS = new Set<string>([
   "/settings/administration/client-versions",
   "/settings/administration/map-locations",
   "/settings/administration/xero-exchange",
-  "/settings/administration/crm-drop-reasons"
+  "/settings/administration/crm-drop-reasons",
+  // Elsewhere — the two settings pages that live outside /settings
+  // (SETTINGS_HOME_S1).  Neither has an internal tab strip.
+  "/admin/schedule-of-rates",
+  "/workers/job-roles"
 ]);
 
 const ALL_ITEMS = SECTIONS.flatMap((s) => s.items);

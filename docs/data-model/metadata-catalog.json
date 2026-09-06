@@ -17845,6 +17845,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "lineFields": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdById": {
           "role": "system",
           "label": null,

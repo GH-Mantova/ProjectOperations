@@ -13,6 +13,11 @@ import type { UpdateRateTableDto } from "./dto/update-rate-table.dto";
 import type { CreateRateColumnDto, UpdateRateColumnDto } from "./dto/rate-column.dto";
 import type { CreateRateRowDto, UpdateRateRowDto } from "./dto/rate-row.dto";
 import { type ChargeStep } from "./rate-step-evaluator";
+import {
+  numericLineFieldNames,
+  textLineFieldNames,
+  type RateLineField
+} from "@project-ops/config/charge-step-semantics";
 
 @Injectable()
 export class RateTablesService {
@@ -319,23 +324,46 @@ export class RateTablesService {
   }
 
   /**
-   * Replace the charge-step list for a rate table.
+   * Replace the charge-step list for a rate table, and optionally the line
+   * fields it may name.
    *
    * Validation (applied before the write):
    *  - steps must be a non-empty array
    *  - steps[0].op must be "start"
    *  - every step.op must be a recognised operation
-   *  - field names used in arithmetic or conditions must exist on the table
-   *    (numeric literals are always allowed)
+   *  - field names used in arithmetic or conditions must exist on the table —
+   *    RATE_LINE_FIELDS_V1: as a COLUMN or as a declared LINE FIELD (numeric
+   *    literals are always allowed, and a text line field may be named by a
+   *    condition but never by an operand)
+   *  - `lineFields`, when supplied, must satisfy `validateLineFields`
+   *
+   * `lineFields` absent means "leave the declared fields as they are": the
+   * charge-steps card in this slice PATCHes steps only, and must not clear a
+   * declaration it has no UI for.
    */
-  async patchChargeSteps(actorId: string, tableId: string, steps: unknown[]) {
+  async patchChargeSteps(
+    actorId: string,
+    tableId: string,
+    steps: unknown[],
+    lineFields?: unknown
+  ) {
     const table = await this.getTable(tableId);
-    validateChargeSteps(steps, table.columns.map((c) => c.name));
+    const columnNames = table.columns.map((c) => c.name);
+
+    const declared =
+      lineFields === undefined
+        ? readStoredLineFields((table as { lineFields?: unknown }).lineFields)
+        : validateLineFields(lineFields, columnNames);
+
+    validateChargeSteps(steps, columnNames, declared);
 
     const updated = await this.prisma.rateTable.update({
       where: { id: tableId },
       data: {
         chargeSteps: steps as unknown as Prisma.InputJsonValue,
+        ...(lineFields === undefined
+          ? {}
+          : { lineFields: declared as unknown as Prisma.InputJsonValue }),
         updatedById: actorId
       }
     });
@@ -344,13 +372,38 @@ export class RateTablesService {
       action: "rateTable.patchChargeSteps",
       entityType: "RateTable",
       entityId: tableId,
-      metadata: { stepCount: steps.length }
+      metadata: { stepCount: steps.length, lineFieldCount: declared.length }
     });
     return updated;
   }
 }
 
 // ── Charge-step validation ────────────────────────────────────────────────
+//
+// RATE_LINE_FIELDS_V1
+//
+// A charge step names one of three things: a numeric literal, a COLUMN on the
+// rate table, or a LINE FIELD the estimator fills in on the line. The first two
+// are all a step could name before this slice, which is why not one of the
+// approved mock-up's four rules could be entered: `Depth / 10 -> round -> x
+// Rate -> x Holes` failed at step 1, because `Depth` is not a column.
+//
+// Both kinds of name land in ONE values map keyed by name
+// (`buildStepValues` in `@project-ops/config/charge-step-semantics`), so:
+//
+//   - a line-field name that duplicates another line field, or collides with a
+//     column name on the same table, is REJECTED — one map cannot hold two
+//     meanings for one key, and silently picking a winner is worse than a 400;
+//   - a TEXT line field may be named by a condition and never by an operand,
+//     which is the rule the editor already applies to TEXT and LIST_REF
+//     columns, and the two mistakes carry DIFFERENT messages, because "you
+//     typed a name that does not exist" and "you put text in the sum" are
+//     different mistakes with different fixes.
+//
+// This slice adds a class of legal name. It relaxes no existing check: the
+// first-step-must-be-start rule, the known-op set and the comparator set are
+// untouched, and a step list naming only columns validates and evaluates to
+// exactly what it did before.
 
 const KNOWN_OPS = new Set([
   "start",
@@ -363,16 +416,202 @@ const KNOWN_OPS = new Set([
   "cap"
 ]);
 
+/** RATE_LINE_FIELDS_V1 — ceilings, matched to what a column already accepts. */
+const LINE_FIELD_NAME_MAX = 120; // CreateRateColumnDto.name
+const LINE_FIELD_UNIT_MAX = 40; // CreateRateColumnDto.unit
+const LINE_FIELD_KINDS = new Set(["number", "text"]);
+
+/**
+ * RATE_LINE_FIELDS_V1 — read the line fields already stored on a table.
+ *
+ * Tolerant by design and never throws: the value it reads was validated by
+ * `validateLineFields` on the way in, and a PATCH that only replaces steps must
+ * not be made to fail by data it is not touching. Anything unrecognisable is
+ * dropped, which lands on `[]` — exactly how the column behaves on a row that
+ * predates it.
+ */
+function readStoredLineFields(raw: unknown): RateLineField[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RateLineField[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e["name"] !== "string" || e["name"].trim() === "") continue;
+    const kind = e["kind"] === "text" ? "text" : "number";
+    const field: RateLineField = { name: e["name"], kind };
+    if (typeof e["unit"] === "string") field.unit = e["unit"];
+    if (Array.isArray(e["options"])) {
+      field.options = (e["options"] as unknown[]).filter(
+        (o): o is string => typeof o === "string"
+      );
+    }
+    if (typeof e["sample"] === "number" || typeof e["sample"] === "string") {
+      field.sample = e["sample"] as number | string;
+    }
+    out.push(field);
+  }
+  return out;
+}
+
+/**
+ * RATE_LINE_FIELDS_V1 — validate a `lineFields` payload before persisting.
+ *
+ * Same contract as `validateChargeSteps`: a BadRequestException on any
+ * structural violation, so the controller surfaces a 400 rather than storing
+ * a declaration the evaluator cannot use.
+ *
+ * The name rules are the point of the function. Names are compared with case
+ * ignored, because the operand picker shows a name to a human and two names
+ * that differ only in case are indistinguishable in a dropdown.
+ */
+function validateLineFields(raw: unknown, columnNames: string[]): RateLineField[] {
+  if (raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new BadRequestException("lineFields must be an array.");
+  }
+
+  const columnByLower = new Map(columnNames.map((n) => [n.toLowerCase(), n]));
+  const seen = new Map<string, string>();
+  const out: RateLineField[] = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i];
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new BadRequestException(`Line field ${i}: must be an object.`);
+    }
+    const e = entry as Record<string, unknown>;
+
+    const rawName = e["name"];
+    if (typeof rawName !== "string") {
+      throw new BadRequestException(`Line field ${i}: "name" must be a string.`);
+    }
+    const name = rawName.trim();
+    if (name === "") {
+      throw new BadRequestException(`Line field ${i}: "name" must not be empty.`);
+    }
+    if (name.length > LINE_FIELD_NAME_MAX) {
+      throw new BadRequestException(
+        `Line field ${i}: "name" must be at most ${LINE_FIELD_NAME_MAX} characters.`
+      );
+    }
+
+    const kind = e["kind"];
+    if (typeof kind !== "string" || !LINE_FIELD_KINDS.has(kind)) {
+      throw new BadRequestException(
+        `Line field "${name}": "kind" must be "number" or "text".`
+      );
+    }
+
+    const lower = name.toLowerCase();
+    const clashColumn = columnByLower.get(lower);
+    if (clashColumn !== undefined) {
+      throw new BadRequestException(
+        `Line field "${name}" clashes with the column "${clashColumn}" on this table. ` +
+          "A step names a column and a line field the same way, so the two names must differ."
+      );
+    }
+    const clashField = seen.get(lower);
+    if (clashField !== undefined) {
+      throw new BadRequestException(
+        `Line field "${name}" is declared twice (already declared as "${clashField}").`
+      );
+    }
+    seen.set(lower, name);
+
+    const field: RateLineField = { name, kind: kind as RateLineField["kind"] };
+
+    const unit = e["unit"];
+    if (unit !== undefined && unit !== null) {
+      if (typeof unit !== "string") {
+        throw new BadRequestException(`Line field "${name}": "unit" must be a string.`);
+      }
+      if (unit.trim().length > LINE_FIELD_UNIT_MAX) {
+        throw new BadRequestException(
+          `Line field "${name}": "unit" must be at most ${LINE_FIELD_UNIT_MAX} characters.`
+        );
+      }
+      field.unit = unit.trim() === "" ? null : unit.trim();
+    }
+
+    const options = e["options"];
+    if (options !== undefined && options !== null) {
+      if (kind !== "text") {
+        throw new BadRequestException(
+          `Line field "${name}": only a "text" line field may carry "options".`
+        );
+      }
+      if (!Array.isArray(options) || options.length === 0) {
+        throw new BadRequestException(
+          `Line field "${name}": "options" must be a non-empty array of strings.`
+        );
+      }
+      const cleaned: string[] = [];
+      for (const opt of options) {
+        if (typeof opt !== "string" || opt.trim() === "") {
+          throw new BadRequestException(
+            `Line field "${name}": every option must be a non-empty string.`
+          );
+        }
+        cleaned.push(opt.trim());
+      }
+      field.options = cleaned;
+    }
+
+    const sample = e["sample"];
+    if (sample !== undefined && sample !== null) {
+      if (kind === "number") {
+        if (typeof sample !== "number" || !Number.isFinite(sample)) {
+          throw new BadRequestException(
+            `Line field "${name}": "sample" must be a finite number for a number field.`
+          );
+        }
+      } else {
+        if (typeof sample !== "string") {
+          throw new BadRequestException(
+            `Line field "${name}": "sample" must be a string for a text field.`
+          );
+        }
+        if (field.options && !field.options.some((o) => o === sample.trim())) {
+          throw new BadRequestException(
+            `Line field "${name}": "sample" must be one of its options ` +
+              `(${field.options.join(", ")}).`
+          );
+        }
+      }
+      field.sample = typeof sample === "string" ? sample.trim() : sample;
+    }
+
+    out.push(field);
+  }
+
+  return out;
+}
+
 /**
  * Validate a raw step list before persisting.  Throws BadRequestException on
  * any structural violation so the controller can surface a 400.
+ *
+ * RATE_LINE_FIELDS_V1 — the name set is built from the table's columns PLUS the
+ * line fields declared on it, and the two failure modes stay distinguishable:
+ * a name that exists nowhere, and a text line field used in the sum.
  */
-function validateChargeSteps(steps: unknown[], columnNames: string[]): asserts steps is ChargeStep[] {
+function validateChargeSteps(
+  steps: unknown[],
+  columnNames: string[],
+  lineFields: readonly RateLineField[] = []
+): asserts steps is ChargeStep[] {
   if (!Array.isArray(steps) || steps.length === 0) {
     throw new BadRequestException("steps must be a non-empty array.");
   }
 
-  const columnSet = new Set(columnNames);
+  // Every name a step may use anywhere. A text line field is in here because a
+  // CONDITION may name it; the operand check below then rejects it separately.
+  const columnSet = new Set([
+    ...columnNames,
+    ...numericLineFieldNames(lineFields),
+    ...textLineFieldNames(lineFields)
+  ]);
+  const textLineFieldSet = new Set(textLineFieldNames(lineFields));
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -401,7 +640,15 @@ function validateChargeSteps(steps: unknown[], columnNames: string[]): asserts s
       }
       if (typeof field === "string" && !columnSet.has(field)) {
         throw new BadRequestException(
-          `Step ${i} (op: ${op}): field "${field}" is not a column on this table.`
+          `Step ${i} (op: ${op}): field "${field}" is not a column or line field on this table.`
+        );
+      }
+      // A DIFFERENT mistake, and a different fix: the name exists, but it names
+      // text, and text belongs in the "only when" part of a step, not the sum.
+      if (typeof field === "string" && textLineFieldSet.has(field)) {
+        throw new BadRequestException(
+          `Step ${i} (op: ${op}): line field "${field}" is text, so it can only be used in ` +
+            'an "only when" condition, not in the sum.'
         );
       }
     }
@@ -439,7 +686,7 @@ function validateChargeSteps(steps: unknown[], columnNames: string[]): asserts s
       const condField = (when as Record<string, unknown>)["field"];
       if (typeof condField === "string" && !columnSet.has(condField)) {
         throw new BadRequestException(
-          `Step ${i}: condition field "${condField}" is not a column on this table.`
+          `Step ${i}: condition field "${condField}" is not a column or line field on this table.`
         );
       }
       const cmp = (when as Record<string, unknown>)["cmp"];

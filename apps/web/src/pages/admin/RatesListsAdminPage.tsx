@@ -24,6 +24,7 @@ import {
 } from "./ratesListsHelpers";
 import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
 import { ChargeStepsEditor } from "./ChargeStepsEditor";
+import type { RateLineField } from "@project-ops/config/charge-step-semantics";
 
 // ── Types coming off the API ─────────────────────────────────────────────
 
@@ -42,7 +43,15 @@ type RateTableSummary = {
   columns: RateColumn[];
 };
 
-type RateTableFull = RateTableSummary & { rows: RateRow[]; chargeSteps?: unknown };
+// RATE_LINE_FIELDS_V1 — `lineFields` is declared on the table beside
+// `chargeSteps` and travels with it: a charge step may name one exactly as it
+// names a column, so the charge-steps card needs both to offer an operand and
+// to preview a running total.
+type RateTableFull = RateTableSummary & {
+  rows: RateRow[];
+  chargeSteps?: unknown;
+  lineFields?: RateLineField[] | null;
+};
 
 type ListSummary = {
   id: string;
@@ -1153,6 +1162,10 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
           unit: c.unit
         }))}
         rows={table.rows.map((r) => ({ id: r.id, cells: r.cells as Record<string, unknown> }))}
+        // RATE_LINE_FIELDS_V1 — the estimator-entered operands this table
+        // declares. `?? []` everywhere: a table that declares none behaves
+        // exactly as it did before the column existed.
+        lineFields={table.lineFields ?? []}
         onSaved={() => void onChanged()}
       />
 

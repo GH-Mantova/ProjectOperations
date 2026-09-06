@@ -187,6 +187,69 @@ describe("Canonical CP-08 — pnpm seed is idempotent", () => {
   });
 });
 
+// VALUE_COLUMNS_HAVE_UNITS — RateValidationService.assertStructure throws
+//   VALUE column "<name>" requires a unit (e.g. hr, m, tonne).
+// for any VALUE column whose unit is null or blank, and BOTH
+// RateTablesService.createColumn and .updateColumn run it over the MERGED
+// column set. So a single unit-less VALUE column blocks every column add and
+// every column edit on its table, not just an edit of the offending column.
+// Three seeded tables shipped in that state (plant / fuel / enclosure).
+//
+// This asserts the invariant rather than those three names, so the next table
+// that forgets a unit is caught here instead of by a user who cannot add a
+// column.
+describe("Canonical CP-08 — VALUE_COLUMNS_HAVE_UNITS", () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = new PrismaClient();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  // Rate tables created by a data migration rather than by the TypeScript seed
+  // are outside the seed's reach. `other-rates` (rt-or, added by
+  // 20260813120000_slice-11a-enclosure-otherrates-densities) is the one such
+  // table whose VALUE column has no unit, and unlike plant/fuel/enclosure that
+  // is NOT a copy-paste omission: its rows price in "per visit", "p/hr",
+  // "p/day", "each", "p/hr/man" and "per 6mm bar diameter", so no single
+  // per-column unit is correct for it. Picking one is a product decision, not
+  // a cleanup, and it is deliberately out of scope here. Entries may only be
+  // REMOVED from this list, never added — a new unit-less VALUE column is the
+  // regression this test exists to catch.
+  const KNOWN_UNITLESS: readonly string[] = ["other-rates/Rate"];
+
+  it("leaves no VALUE column without a unit, beyond the documented gap", async () => {
+    const columns = await prisma.rateColumn.findMany({
+      where: { role: "VALUE" },
+      select: { name: true, unit: true, rateTable: { select: { slug: true } } }
+    });
+
+    // Guard against a vacuous pass on an unseeded database.
+    expect(columns.length).toBeGreaterThan(0);
+
+    const offenders = columns
+      .filter((c) => !c.unit || !c.unit.trim())
+      .map((c) => `${c.rateTable.slug}/${c.name}`)
+      .sort();
+
+    expect(offenders.filter((key) => !KNOWN_UNITLESS.includes(key))).toEqual([]);
+  });
+
+  it("gives the plant, fuel and enclosure Rate columns a unit of 'day'", async () => {
+    for (const slug of ["plant", "fuel", "enclosure"]) {
+      const column = await prisma.rateColumn.findFirst({
+        where: { rateTable: { slug }, name: "Rate", role: "VALUE" },
+        select: { unit: true }
+      });
+      expect(column).not.toBeNull();
+      expect(column!.unit).toBe("day");
+    }
+  });
+});
+
 // G3 (pr-173) — pnpm seed:prod provisions reference data + SSO-only staff
 // users and never creates demo entities. Runs against a scratch schema in the
 // same local server so the dev database is untouched.

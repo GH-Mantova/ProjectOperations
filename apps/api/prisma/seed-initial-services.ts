@@ -3737,7 +3737,7 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
       { key: "item", name: "Item", dataType: "TEXT", role: "KEY", sortOrder: 1 },
       { key: "category", name: "Category", dataType: "TEXT", role: "INFO", sortOrder: 2 },
       { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 3 },
-      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", sortOrder: 4 }
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 4 }
     ],
     rows: plantRows.map((r, idx) => ({
       id: `rr-plt-${rowSlug(r.item)}`,
@@ -3869,7 +3869,7 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
     columns: [
       { key: "item", name: "Item", dataType: "TEXT", role: "KEY", sortOrder: 1 },
       { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 2 },
-      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", sortOrder: 3 }
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 3 }
     ],
     rows: fuelRows.map((r, idx) => ({
       id: `rr-fl-${rowSlug(r.item)}`,
@@ -3890,7 +3890,7 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
     columns: [
       { key: "type", name: "Enclosure type", dataType: "TEXT", role: "KEY", sortOrder: 1 },
       { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 2 },
-      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", sortOrder: 3 }
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 3 }
     ],
     rows: enclosureRows.map((r, idx) => ({
       id: `rr-en-${rowSlug(r.enclosureType)}`,

@@ -51,6 +51,8 @@ function makeCard(overrides: Partial<CardRollupInput> & { cardId: string }): Car
     duration: 0,
     subtotal: 0,
     subtotalWithMarkup: 0,
+    provisionalSubtotal: 0,
+    provisionalWithMarkup: 0,
     plantSummary: [],
     ...overrides
   };
@@ -136,7 +138,13 @@ function flatFoldAsShippedOnMain(cards: readonly CardRollupInput[]): DisciplineR
     duration: round1(duration),
     plantSummary,
     subtotal,
-    subtotalWithMarkup
+    subtotalWithMarkup,
+    // SCOPE_PROVISIONAL_SPLIT_V1 — the test data carries no provisional
+    // figures (all zeros by makeCard's default), so both sides are 0 and
+    // the whole-object comparison in "matches it whole-object too" remains
+    // strict: a field left out of either return would fail that assertion.
+    provisionalSubtotal: 0,
+    provisionalWithMarkup: 0
   };
 }
 
@@ -208,6 +216,11 @@ function expectSameRollup(actual: DisciplineRollup, expected: DisciplineRollup):
   expect(actual.duration).toBe(expected.duration);
   expect(actual.subtotal).toBe(expected.subtotal);
   expect(actual.subtotalWithMarkup).toBe(expected.subtotalWithMarkup);
+  // SCOPE_PROVISIONAL_SPLIT_V1 — the equivalence this module's header demands
+  // covers these new fields: an ungrouped discipline must fold field for field
+  // to the pre-stage figures, provisional figures included.
+  expect(actual.provisionalSubtotal).toBe(expected.provisionalSubtotal);
+  expect(actual.provisionalWithMarkup).toBe(expected.provisionalWithMarkup);
   expect(actual.plantSummary).toEqual(expected.plantSummary);
 }
 
@@ -821,5 +834,81 @@ describe("ungroupPatches", () => {
 
   it("writes nothing for an unknown card", () => {
     expect(ungroupPatches([{ id: "a", stageGroup: 1 }], "zzz")).toEqual([]);
+  });
+});
+
+// ── SCOPE_PROVISIONAL_SPLIT_V1 — provisional fields in the roll-up ──────
+//
+// provisionalSubtotal and provisionalWithMarkup sum per card and across cards
+// and across stages (money sums in both directions — no stage logic needed).
+// The equivalence this module's header demands — ungrouped == flat fold — is
+// already extended to these fields in expectSameRollup above.
+
+const PROV1 = makeCard({
+  cardId: "prov1",
+  subtotal: 100_000,
+  subtotalWithMarkup: 115_000,
+  provisionalSubtotal: 30_000,
+  provisionalWithMarkup: 34_500
+});
+const PROV2 = makeCard({
+  cardId: "prov2",
+  subtotal: 60_000,
+  subtotalWithMarkup: 69_000,
+  provisionalSubtotal: 10_000,
+  provisionalWithMarkup: 11_500
+});
+const PROV3 = makeCard({
+  cardId: "prov3",
+  subtotal: 40_000,
+  subtotalWithMarkup: 46_000,
+  provisionalSubtotal: 40_000,
+  provisionalWithMarkup: 46_000 // all-provisional card
+});
+
+describe("SCOPE_PROVISIONAL_SPLIT_V1 — provisional fields sum across cards", () => {
+  const rollup = rollUpDiscipline([PROV1, PROV2, PROV3]);
+
+  it("provisionalSubtotal sums across cards", () => {
+    // 30000 + 10000 + 40000
+    expect(rollup.provisionalSubtotal).toBe(80_000);
+  });
+
+  it("provisionalWithMarkup sums across cards", () => {
+    // 34500 + 11500 + 46000
+    expect(rollup.provisionalWithMarkup).toBe(92_000);
+  });
+
+  it("provisional <= total — on mixed and all-provisional cards", () => {
+    expect(rollup.provisionalWithMarkup).toBeLessThanOrEqual(rollup.subtotalWithMarkup);
+    expect(rollup.provisionalSubtotal).toBeLessThanOrEqual(rollup.subtotal);
+  });
+
+  it("a card that appears twice is counted ONCE — duplicate guard covers provisional fields", () => {
+    const doubled = rollUpDiscipline([PROV1, PROV2, PROV3, PROV2]);
+    // PROV2 seen twice — must be folded once.
+    expect(doubled.provisionalWithMarkup).toBe(rollup.provisionalWithMarkup);
+    expect(doubled.provisionalSubtotal).toBe(rollup.provisionalSubtotal);
+  });
+
+  it("provisional fields sum across stages exactly as they do across cards", () => {
+    // Group PROV1 and PROV2 into one stage, PROV3 remains its own stage.
+    const grouped = [
+      { ...PROV1, stageKey: "g1" },
+      { ...PROV2, stageKey: "g1" },
+      { ...PROV3, stageKey: null }
+    ];
+    const r = rollUpDiscipline(grouped);
+    // Money (including provisional) sums regardless of stage grouping.
+    expect(r.provisionalSubtotal).toBe(rollup.provisionalSubtotal);
+    expect(r.provisionalWithMarkup).toBe(rollup.provisionalWithMarkup);
+  });
+
+  it("an ungrouped discipline folds field for field to the pre-stage figures", () => {
+    // The module header's equivalence: every card in its own stage == flat fold.
+    // expectSameRollup now covers provisionalSubtotal and provisionalWithMarkup.
+    const allSingleton = rollUpDiscipline([PROV1, PROV2, PROV3]);
+    const flat = rollUpDisciplineStages([[PROV1], [PROV2], [PROV3]]);
+    expectSameRollup(allSingleton, flat);
   });
 });

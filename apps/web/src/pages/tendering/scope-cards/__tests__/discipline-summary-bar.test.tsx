@@ -1,5 +1,7 @@
 // SCOPE_DISCBAR_V1 — unit tests for computeCardBarStats.
 // SCOPE_DISCIPLINE_STACK_V1 — plus the rebuilt bar's own markup.
+// SCOPE_PROVISIONAL_SPLIT_V1 — provisional split: computeCardBarStats,
+//   DisciplineRollup, and the bar's three-figure render.
 //
 // The web workspace has no @testing-library / jsdom set up (all existing
 // tests follow the no-render pattern; see card-display.test.ts). The stats
@@ -27,6 +29,7 @@ function makeItem(
     status?: "draft" | "confirmed" | "excluded";
     lineTotal?: number | null;
     lineTotalWithMarkup?: number | null;
+    isProvisional?: boolean | null;
   } = {}
 ): ScopeItem {
   return {
@@ -61,6 +64,7 @@ function makeItem(
     plantItems: null,
     estimateItemId: null,
     provisionalAmount: null,
+    isProvisional: overrides.isProvisional ?? null,
     lineTotal: overrides.lineTotal ?? null,
     lineTotalWithMarkup: overrides.lineTotalWithMarkup ?? null
   };
@@ -72,6 +76,8 @@ describe("computeCardBarStats", () => {
     expect(stats.itemCount).toBe(0);
     expect(stats.subtotal).toBe(0);
     expect(stats.subtotalWithMarkup).toBe(0);
+    expect(stats.provisionalSubtotal).toBe(0);
+    expect(stats.provisionalWithMarkup).toBe(0);
   });
 
   it("counts only non-excluded items", () => {
@@ -180,6 +186,8 @@ function stageCard(overrides: Partial<CardRollupInput> & { cardId: string }): Ca
     duration: 0,
     subtotal: 0,
     subtotalWithMarkup: 0,
+    provisionalSubtotal: 0,
+    provisionalWithMarkup: 0,
     plantSummary: [],
     ...overrides
   };
@@ -380,5 +388,147 @@ describe("the bar renders the moved figures and counts STAGES, not cards", () =>
     const ungrouped = renderBar(DEM_STAGES);
     expect(ungrouped).toContain("3 stages");
     expect(ungrouped).toContain("sequential");
+  });
+});
+
+// ── SCOPE_PROVISIONAL_SPLIT_V1 — computeCardBarStats provisional partition ──
+//
+// The predicate is: a line is provisional if isProvisional===true OR
+// discipline==="Other" (schema.prisma §3697, reproduced in computeCardBarStats).
+// Excluded items are in neither pile.
+
+describe("computeCardBarStats — provisional split", () => {
+  it("splits a mixed card: flagged rows go to provisional, unflagged to priced", () => {
+    const items = [
+      makeItem({ lineTotal: 1000, lineTotalWithMarkup: 1150, isProvisional: false }),
+      makeItem({ lineTotal: 500,  lineTotalWithMarkup: 575,  isProvisional: true  }),
+      makeItem({ lineTotal: 200,  lineTotalWithMarkup: 230,  isProvisional: true  })
+    ];
+    const stats = computeCardBarStats(items);
+    // The two flagged rows are the provisional slice.
+    expect(stats.provisionalSubtotal).toBe(700);          // 500 + 200
+    expect(stats.provisionalWithMarkup).toBe(805);        // 575 + 230
+    // Total is unaffected — same as without the split.
+    expect(stats.subtotal).toBe(1700);
+    expect(stats.subtotalWithMarkup).toBe(1955);
+    // in the quote = total - provisional, by construction.
+    expect(stats.subtotalWithMarkup - stats.provisionalWithMarkup).toBe(1150);
+  });
+
+  it("discipline 'Other' makes every non-excluded row provisional even with the flag false", () => {
+    const items = [
+      makeItem({ lineTotal: 300, lineTotalWithMarkup: 345, isProvisional: false }),
+      makeItem({ lineTotal: 400, lineTotalWithMarkup: 460, isProvisional: false })
+    ];
+    const stats = computeCardBarStats(items, "Other");
+    // Both rows are provisional because the discipline is "Other".
+    expect(stats.provisionalSubtotal).toBe(700);
+    expect(stats.provisionalWithMarkup).toBe(805);
+    expect(stats.subtotal).toBe(700);
+    expect(stats.subtotalWithMarkup).toBe(805);
+  });
+
+  it("an excluded row is in neither pile", () => {
+    const items = [
+      makeItem({ lineTotal: 1000, lineTotalWithMarkup: 1150, isProvisional: true,  status: "excluded" }),
+      makeItem({ lineTotal: 500,  lineTotalWithMarkup: 575,  isProvisional: true  }),
+      makeItem({ lineTotal: 200,  lineTotalWithMarkup: 230,  isProvisional: false })
+    ];
+    const stats = computeCardBarStats(items);
+    // Excluded row must not appear in either total or provisional.
+    expect(stats.subtotal).toBe(700);
+    expect(stats.subtotalWithMarkup).toBe(805);
+    expect(stats.provisionalSubtotal).toBe(500);
+    expect(stats.provisionalWithMarkup).toBe(575);
+  });
+
+  it("provisional <= total, always — on a mixed card", () => {
+    const items = [
+      makeItem({ lineTotal: 1000, lineTotalWithMarkup: 1150, isProvisional: false }),
+      makeItem({ lineTotal: 500,  lineTotalWithMarkup: 575,  isProvisional: true  })
+    ];
+    const stats = computeCardBarStats(items);
+    expect(stats.provisionalWithMarkup).toBeLessThanOrEqual(stats.subtotalWithMarkup);
+    expect(stats.provisionalSubtotal).toBeLessThanOrEqual(stats.subtotal);
+  });
+
+  it("provisional <= total, always — on an all-provisional card", () => {
+    const items = [
+      makeItem({ lineTotal: 300, lineTotalWithMarkup: 345, isProvisional: true }),
+      makeItem({ lineTotal: 200, lineTotalWithMarkup: 230, isProvisional: true })
+    ];
+    const stats = computeCardBarStats(items);
+    expect(stats.provisionalWithMarkup).toBeLessThanOrEqual(stats.subtotalWithMarkup);
+    // For an all-provisional card they are equal.
+    expect(stats.provisionalWithMarkup).toBe(stats.subtotalWithMarkup);
+    expect(stats.provisionalSubtotal).toBe(stats.subtotal);
+  });
+
+  it("omitting discipline means flag-only — an unflagged item is NOT provisional", () => {
+    const items = [
+      makeItem({ lineTotal: 100, lineTotalWithMarkup: 115, isProvisional: false })
+    ];
+    const stats = computeCardBarStats(items); // no discipline
+    expect(stats.provisionalSubtotal).toBe(0);
+    expect(stats.provisionalWithMarkup).toBe(0);
+  });
+});
+
+// ── SCOPE_PROVISIONAL_SPLIT_V1 — bar renders three figures when provisional ──
+
+function makeProvisionalRollup(
+  subtotalWithMarkup: number,
+  provisionalWithMarkup: number
+) {
+  return rollUpDiscipline([
+    stageCard({
+      cardId: "c1",
+      subtotal: subtotalWithMarkup,
+      subtotalWithMarkup,
+      provisionalSubtotal: provisionalWithMarkup,
+      provisionalWithMarkup
+    })
+  ]);
+}
+
+describe("DisciplineSummaryBar provisional split render", () => {
+  it("renders all three figures when there is provisional money", () => {
+    const rollup = makeProvisionalRollup(75_920, 16_120);
+    const html = renderToStaticMarkup(
+      <DisciplineSummaryBar disciplineCode="SUB" disciplineLabel="Subcontracted" rollup={rollup} />
+    );
+    expect(html).toContain("In the quote");
+    expect(html).toContain("Provisional");
+    expect(html).toContain("Discipline total");
+    // in the quote = 75920 - 16120 = 59800
+    expect(html).toContain("$59,800");
+    expect(html).toContain("$16,120");
+    expect(html).toContain("$75,920");
+  });
+
+  it("the total is unchanged from the no-provisional render of the same total", () => {
+    const withProvisional = makeProvisionalRollup(75_920, 16_120);
+    const withoutProvisional = makeProvisionalRollup(75_920, 0);
+    const htmlWith = renderToStaticMarkup(
+      <DisciplineSummaryBar disciplineCode="SUB" disciplineLabel="Subcontracted" rollup={withProvisional} />
+    );
+    const htmlWithout = renderToStaticMarkup(
+      <DisciplineSummaryBar disciplineCode="SUB" disciplineLabel="Subcontracted" rollup={withoutProvisional} />
+    );
+    // The total figure must appear in both renders.
+    expect(htmlWith).toContain("$75,920");
+    expect(htmlWithout).toContain("$75,920");
+  });
+
+  it("renders exactly one money figure when there is no provisional money", () => {
+    const rollup = makeProvisionalRollup(75_920, 0);
+    const html = renderToStaticMarkup(
+      <DisciplineSummaryBar disciplineCode="DEM" disciplineLabel="Demolition" rollup={rollup} />
+    );
+    // No split shown — same as before this slice.
+    expect(html).toContain("Discipline total");
+    expect(html).not.toContain("In the quote");
+    expect(html).not.toContain("Provisional");
+    expect(html).toContain("$75,920");
   });
 });

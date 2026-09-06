@@ -291,13 +291,20 @@ export function ScopeCardsTab({
   const statsByCard = useMemo(() => {
     const byCard = new Map<string, CardBarStats>();
     for (const card of disciplineCards) {
-      const fromItems = computeCardBarStats(itemsByCard.get(card.id) ?? []);
+      // SCOPE_PROVISIONAL_SPLIT_V1 — pass the discipline so computeCardBarStats
+      // applies both halves of the predicate: isProvisional===true OR discipline==="Other".
+      const fromItems = computeCardBarStats(itemsByCard.get(card.id) ?? [], card.discipline);
       const otherCosts = otherCostTotals[card.id] ?? 0;
       const cutting = cuttingTotals[card.id] ?? 0;
+      // ScopeOperationalCostLine and the cutting take-off have no provisional flag —
+      // they are priced work, always. Pass the provisional figures straight through,
+      // unmodified: otherCosts and cutting go to the priced side only.
       byCard.set(card.id, {
         itemCount: fromItems.itemCount,
         subtotal: fromItems.subtotal + otherCosts + cutting,
-        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts + cutting
+        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts + cutting,
+        provisionalSubtotal: fromItems.provisionalSubtotal,
+        provisionalWithMarkup: fromItems.provisionalWithMarkup
       });
     }
     return byCard;
@@ -315,7 +322,7 @@ export function ScopeCardsTab({
           toCardRollupInput(
             card.id,
             cardSummaries[card.id],
-            statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 },
+            statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
             // SCOPE_STAGE_GROUP_V1 — the card's stage. null on every card
             // until a human groups two, and null is "a stage of its own",
             // so an ungrouped discipline folds exactly as it did before.
@@ -517,7 +524,7 @@ export function ScopeCardsTab({
                 onMove={(delta) => void moveCardWithinDiscipline(card.id, delta)}
                 concurrentWithPrevious={sharesStageWithPrevious(disciplineCards, card.id)}
                 onToggleStageGroup={() => void toggleStageGroupWithPrevious(card.id)}
-                stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0 }}
+                stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 }}
                 summary={cardSummaries[card.id] ?? null}
                 cardItems={itemsByCard.get(card.id) ?? []}
                 loadingItems={loadingItems}

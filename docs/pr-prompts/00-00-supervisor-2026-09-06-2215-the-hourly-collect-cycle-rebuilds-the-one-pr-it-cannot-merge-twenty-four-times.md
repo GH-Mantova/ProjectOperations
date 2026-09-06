@@ -137,6 +137,16 @@ This run is the third consecutive one to find **nothing new to collect** — 03/
 breadcrumbs all predate my 20:15Z run — and each of those runs still landed a board PR, because the
 breadcrumb is the only durable channel and a finding that lives nowhere tracked is unreported.
 
+🔬 **IT REPRODUCED ON THIS PR, DURING THIS RUN — a third instance, and the cleanest.** I opened
+`#1738` at `22:22Z` off `0c227eeb`. `#1737` merged at `22:23:49Z`. At **`22:26:08Z`** — **2 min
+19 s later** — `pollForBehindPrs` pushed `3c8e36cf Merge branch 'main' into board/collect-2215`
+onto **my own branch**, and my next `git push` was **rejected** (`fetch first`) by the mechanism
+this breadcrumb exists to report. So the behaviour is not specific to `#1713` or to a
+migration-carrying PR: **it fires on every open PR, including the board PR that documents it**, and
+each firing costs another full check-suite. [MEASURED] Recovered with a clean `git rebase` onto
+`origin/board/collect-2215` in the disposable worktree — no conflict, no `MERGE_HEAD`, no rebase
+directory left behind.
+
 **Why this is Marco's and not mine to fix (RULE 3):** it is a change to Station 00's own cadence or
 PR policy. I can measure the cost; I cannot decide what the cycle is *for*.
 
@@ -242,6 +252,52 @@ should be measured first.
 **DISPOSITION: DEFERRED** — one board PR of its own, next run, after checking whether 01–06 inherit
 the same wording.
 
+### F6 — ADDENDUM, measured mid-run: a live second lane merged twice while I ran, and it lands the corroboration of F1
+
+At `22:21:15Z` and `22:23:49Z` — **during this run** — two PRs merged that I did not open and no
+armed prompt built. `origin/main` moved `0c227eeb` → `ec184669` → **`b2a39c04`** underneath my own
+board PR, which is why `#1738` reads `BEHIND`. [MEASURED]
+
+- **`#1736`** `docs(merge-approvals): back-fill 17 lane receipts and correct 10.2.1's false
+  enforcement claim` — 19 files, 18 receipts plus `DOCTRINE.md`.
+- **`#1737`** `docs(pr-prompts): stage Marco's two rate-table rulings from 2026-09-07`.
+
+This is the supervised cloud lane of §10.2.1, and **Marco is live in it right now** — `#1737` stages
+rulings he gave dated 2026-09-07, and `#1736`'s body records him answering a direct question.
+
+**Three things in it change what earlier runs recorded, and I am reporting them, not acting on them:**
+
+1. **F1 and the 1930/2115 breadcrumbs are corroborated from the other side, and the correction has
+   landed.** `#1736` states that 10.2.1's claimed enforcement is **FALSE**:
+   `approval-receipt.mjs` returns `PASS/NEVER_ESCALATED` whenever `everLabeled` is false, *before*
+   it looks for a receipt — so `Approval receipt (CP-26)` has **never once been able to fire for the
+   lane it was written to bound.** It names Station 00 as having found the same hole independently,
+   twice in one evening. The receipt requirement is now recorded as a **DISCIPLINE, NOT A GATE**.
+   ⇒ **The `CP-26 is armed by LABELLING, not by the DIFF` finding is no longer mine alone and no
+   longer needs re-deriving. RULE 1 (a) — trigger the receipt check off `classifyPolicyFiles` —
+   remains the open ask, and is now the only thing that would make it a gate again.**
+2. **A new Marco ruling, 2026-09-07: "THE LANE MERGES, BUT WRITES A RECEIPT FIRST."** Put to him as
+   the 10.2.1-vs-10.1 conflict — may the lane merge `escalates:false` PRs touching `apps/api` and
+   `apps/web`, or is `tests-docs` the real line. Enforcement is `bd-push-slice.ps1`, which writes
+   the receipt and refuses to arm auto-merge without it — **one script, outside the repo, weaker
+   than CI, and 10.2.1 now says so** rather than dressing it up.
+3. **`#1709` is attributed at last.** Marco merged it **himself** and confirmed it on 2026-09-07
+   ("Yes, that was me") — a production migration that deployed two seconds after merge with no
+   label, no receipt and a green CP-26. That closes one instance of the long-standing
+   *unattributable releases* question. **It closes one, not the class** — the count is state,
+   re-measure it, never quote it.
+
+⚠️ **The 17 receipts are agent-authored, and a standing rule in project memory says no agent may
+ever author a `merge-approvals/<N>.md`.** That rule is **superseded for this lane by Marco's
+2026-09-07 ruling**, and each back-filled receipt states on its face that it was filed
+retrospectively, that Marco did not see the PR before it merged, and that it records a **standing**
+authorisation rather than a per-PR approval. **DO NOT revert them and DO NOT re-raise them as an
+attack** — same disposition as `#1596`. The distinction those receipts draw is the one the repo
+previously could not express, which is an improvement, not a breach.
+
+**DISPOSITION: ACTIONED** — recorded here so the next run does not re-derive any of it. Verified by
+reading `git show ec184669` directly, not the PR page.
+
 ## WHAT I DID NOT DO
 
 - **Armed nothing, for the fifth consecutive run, and it remains deliberate.** With the clone 29
@@ -262,3 +318,8 @@ the same wording.
   `agent-authored-rule-2-clearance-2026-09-04.md` — that agent-authored blanket clearance is
   **not to be honoured and not to be reverted**.
 - **Did not run `git` against the mount**, and did not treat the guard install as a licence to.
+- **Did not merge my own `#1738` into a live second lane on first sight of green.** BOARD DRIVING
+  condition 3 stops on *"a PR touched in the last ~2 min"*, and at `22:25:16Z` the most recent board
+  merge was `22:23:49Z` — **86 seconds**. Condition 3 is the only thing standing between the
+  single-actor design and LL-38, and it is not waived because my own PR is small, docs-only and
+  green. I waited the window out and re-measured before acting rather than reasoning past it.

@@ -111,6 +111,179 @@ function fmtCurrency(value: string | number | null): string {
   }).format(n);
 }
 
+// ── SCOPE_WASTE_SECTION_V1 ──────────────────────────────────────────────
+//
+// The Waste section, rebuilt in the visual language of the sections either
+// side of it (Other operational costs above, Cutting take-off below): a fold
+// caret, a summary that stays readable while the section is closed, and the
+// same `s7-card` shell and `s7-type-section-heading` the siblings use.
+//
+// WHAT THIS SLICE DELIBERATELY DOES NOT DO — read before adding a total prop.
+//
+// This section reports NO total to the card fold, and that is not an
+// oversight. Waste is ALREADY in the tender price, as its own independently
+// marked-up cost stream, computed on the server:
+//
+//   scope-redesign.service.ts summary()
+//     wasteWithMarkup += <ScopeWasteItem.lineTotal per card> * (1 + rate/100)
+//     tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup
+//
+// with `rate = card.wasteMarkupOverride ?? tenderMarkup`. The server states
+// the invariant in the same breath: waste and cutting are "independent cost
+// streams from the scope-card total ... NEVER folded into the scope
+// discipline total", and summary-section-markup.spec.ts pins it with
+// asymmetric markups so a combined base cannot coincide.
+//
+// The card bar's `subtotal` is the scope-discipline figure. Folding the waste
+// subtotal into it would put waste inside the very total the server says it
+// must stay out of, and would apply the SCOPE markup chain to money that has
+// already been marked up on its own section rate. So the card subtotal is
+// identical before and after this slice, by design.
+//
+// The money figures below are the server's, summed and formatted — never
+// re-derived. `lineTotal` is computed in ScopeWasteService.deriveTotals and
+// the transport rate is snapshotted onto the row as `quotedTransportRatePerDay`;
+// a second implementation in TypeScript is how the screen and the quote start
+// disagreeing.
+
+/** The plant constant for this section, exported so the source marker is
+ *  reachable from a test as a value and not only as a comment. */
+export const SCOPE_WASTE_SECTION_V1 = "SCOPE_WASTE_SECTION_V1";
+
+/** Money in the card's house format — two decimals, matching
+ *  `fmtCuttingMoney` so the sections either side read the same. */
+export function fmtWasteMoney(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = typeof v === "string" ? Number(v) : v;
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(n);
+}
+
+/** The line count in words: "no lines" / "1 line" / "4 lines". A collapsed
+ *  card that disposes of nothing should say so, not show "(0 rows)". */
+export function wasteLineCountPhrase(count: number): string {
+  if (!Number.isFinite(count) || count <= 0) return "no lines";
+  return `${count} line${count === 1 ? "" : "s"}`;
+}
+
+/** Sum of the SERVER's line totals. No rate, no tonnage, no multiplication —
+ *  the same shape as `sumCuttingTakeOff`. */
+export function sumWasteLineTotals(rows: Array<{ lineTotal: string | number | null }>): number {
+  return rows.reduce((sum, r) => {
+    const n = r.lineTotal === null || r.lineTotal === "" ? 0 : Number(r.lineTotal);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+/** "+ 30% markup" — the rate actually in force, override first. */
+export function wasteMarkupPhrase(
+  override: number | null | undefined,
+  tenderMarkup: number
+): string {
+  const rate = override != null ? override : tenderMarkup;
+  return `+ ${rate}% markup`;
+}
+
+/**
+ * SCOPE_WASTE_SECTION_V1 — the fold header.
+ *
+ * Presentational and auth-free so the suite can render it directly (the web
+ * workspace has no jsdom). Everything the estimator needs while the section
+ * is CLOSED lives here: the caret, the title, the line count in words, and
+ * on the right the subtotal and the `+ N% markup` figure. This block renders
+ * identically whether the section is open or closed — only the body below it
+ * is conditional.
+ */
+export function WasteSectionSummary({
+  discipline,
+  lineCount,
+  subtotal,
+  sectionMarkupOverride,
+  tenderMarkup,
+  collapsed,
+  onToggle
+}: {
+  discipline: string;
+  lineCount: number;
+  subtotal: number;
+  sectionMarkupOverride?: number | null;
+  tenderMarkup?: number;
+  collapsed: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap"
+      }}
+      data-testid="waste-section-summary"
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-controls="waste-section-body"
+          aria-label={`${collapsed ? "Expand" : "Collapse"} waste section`}
+          title={collapsed ? "Expand the waste section" : "Collapse the waste section"}
+          data-testid="waste-section-caret"
+          style={{
+            border: "1px solid var(--border-default)",
+            background: "var(--surface-card)",
+            borderRadius: "var(--radius-sm)",
+            cursor: "pointer",
+            color: "var(--text-secondary)",
+            width: 24,
+            height: 24,
+            lineHeight: 1,
+            padding: 0,
+            flexShrink: 0
+          }}
+        >
+          {collapsed ? "▸" : "▾"}
+        </button>
+        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
+          {discipline} — Waste disposal
+          <span
+            style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}
+            data-testid="waste-section-line-count"
+          >
+            ({wasteLineCountPhrase(lineCount)})
+          </span>
+        </h3>
+      </div>
+
+      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+        Subtotal:{" "}
+        <strong style={{ color: "var(--text)" }} data-testid="waste-section-subtotal">
+          {fmtWasteMoney(subtotal)}
+        </strong>
+        {tenderMarkup !== undefined ? (
+          <>
+            <span> · </span>
+            <span data-testid="waste-section-markup-label">
+              {wasteMarkupPhrase(sectionMarkupOverride, tenderMarkup)}
+            </span>
+            :{" "}
+            <strong style={{ color: "var(--text)" }} data-testid="waste-section-with-markup">
+              {fmtWasteMoney(computeWithMarkup(subtotal, sectionMarkupOverride, tenderMarkup))}
+            </strong>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function ScopeWasteTab({
   tenderId,
   discipline,
@@ -152,6 +325,10 @@ export function ScopeWasteTab({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // R3 T-1 - variance check results keyed by row id (populated on expand).
   const [variance, setVariance] = useState<Record<string, VarianceResult>>({});
+  // SCOPE_WASTE_SECTION_V1 — fold state. Starts OPEN so an estimator who
+  // already relies on this section is not surprised by a closed one; the
+  // summary above stays readable either way.
+  const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -282,18 +459,26 @@ export function ScopeWasteTab({
     await load();
   };
 
-  // PR B3 — "Sum from above" handler. Confirm dialog fires only when
+  // PR B3 — "Sum from items above" handler. Confirm dialog fires only when
   // there's at least one autoSummed row already (those will be
   // regenerated). Manual rows are preserved server-side regardless.
+  //
+  // SCOPE_WASTE_SECTION_V1 — what the SECOND press does, stated where the
+  // button is: the server's sumFromAbove opens a transaction, deletes every
+  // `autoSummed: true` row on this card, and recreates them from the current
+  // measurements. It REPLACES; it does not append. Pressing it twice with
+  // unchanged measurements therefore yields the same tonnage and the same
+  // subtotal, and rows the estimator typed by hand (autoSummed: false) are
+  // outside the delete filter and survive untouched.
   const sumFromAbove = async () => {
     if (!canManage || !cardId) return;
     const autoCount = rows.filter((r) => r.autoSummed).length;
     if (autoCount > 0) {
       const ok = await confirm({
-        title: "Sum from above",
-        message: `This will regenerate ${autoCount} auto-summed waste row${
+        title: "Sum from items above",
+        message: `This replaces ${autoCount} auto-summed waste line${
           autoCount === 1 ? "" : "s"
-        }. Manual rows will be preserved. Continue?`,
+        } with a fresh sum of the measurements ticked Waste? above — it does not add to them, so the tonnage will not double. Hand-typed lines are preserved. Continue?`,
         confirmLabel: "Regenerate",
         variant: "danger"
       });
@@ -429,10 +614,9 @@ export function ScopeWasteTab({
     [tipDrawer, rows, patchRow]
   );
 
-  const subtotal = useMemo(
-    () => rows.reduce((sum, r) => sum + (r.lineTotal ? Number(r.lineTotal) : 0), 0),
-    [rows]
-  );
+  // SCOPE_WASTE_SECTION_V1 — one implementation, exported and unit-tested.
+  // A sum of the server's own line totals; nothing is re-derived here.
+  const subtotal = useMemo(() => sumWasteLineTotals(rows), [rows]);
   // SoT §10 waste-weight calculator surface (BACKLOG-DECISIONS.md #7):
   // display-only Σ tonnes across all rows so estimators can eyeball the
   // total waste volume they're pricing against. Pure sum — the server's
@@ -443,50 +627,48 @@ export function ScopeWasteTab({
   );
 
   return (
-    <section className="s7-card" style={{ marginTop: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12
+    <section className="s7-card" style={{ marginTop: 16 }} data-testid="scope-waste-section">
+      {/* SCOPE_WASTE_SECTION_V1 — the fold summary. Always rendered, open or
+          closed: line count in words on the left, subtotal and the
+          "+ N% markup" figure on the right. */}
+      <WasteSectionSummary
+        discipline={discipline}
+        lineCount={rows.length}
+        subtotal={subtotal}
+        sectionMarkupOverride={sectionMarkupOverride}
+        tenderMarkup={tenderMarkup}
+        collapsed={collapsed}
+        onToggle={() => {
+          // Closing the section closes the tip drawer with it — a drawer
+          // anchored to a row nobody can see is a trap.
+          setCollapsed((prev) => {
+            if (!prev) setTipDrawer(null);
+            return !prev;
+          });
         }}
-      >
-        <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
-          {discipline} — Waste disposal
-          <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>
-            ({rows.length} row{rows.length === 1 ? "" : "s"})
-          </span>
-        </h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          {onSectionMarkupChange && tenderMarkup !== undefined ? (
-            <SectionMarkupOverride
-              label="Waste markup:"
-              value={sectionMarkupOverride}
-              tenderMarkup={tenderMarkup}
-              onSave={onSectionMarkupChange}
-              disabled={!canManage}
-            />
-          ) : null}
-          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Total: <strong style={{ color: "var(--text)" }}>{totalTonnes.toFixed(2)} t</strong>
-            <span> · </span>
-            Subtotal: <strong style={{ color: "var(--text)" }}>{fmtCurrency(subtotal)}</strong>
-            {tenderMarkup !== undefined ? (
-              <>
-                <span> · </span>
-                with markup:{" "}
-                <strong style={{ color: "var(--text)" }}>
-                  {fmtCurrency(computeWithMarkup(subtotal, sectionMarkupOverride, tenderMarkup))}
-                </strong>
-              </>
-            ) : null}
-          </div>
+      />
+
+      {collapsed ? null : (
+      <div id="waste-section-body" style={{ marginTop: 12 }}>
+      {onSectionMarkupChange && tenderMarkup !== undefined ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <SectionMarkupOverride
+            label="Waste markup:"
+            value={sectionMarkupOverride}
+            tenderMarkup={tenderMarkup}
+            onSave={onSectionMarkupChange}
+            disabled={!canManage}
+          />
         </div>
-      </div>
+      ) : null}
       <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
         Waste rows live on the tender directly (not inside a scope item) so one WBS ref can
-        have multiple waste streams with different facilities and rates.
+        have multiple waste streams with different facilities and rates. Every figure here is
+        the server&apos;s. This section is priced as its own cost stream, with its own markup —
+        it is not added into the card subtotal above, which carries the scope disciplines.
+        <span> · </span>
+        <strong style={{ color: "var(--text)" }}>{totalTonnes.toFixed(2)} t</strong> across all
+        lines.
       </p>
 
       {error ? <p style={{ color: "var(--status-danger)" }}>{error}</p> : null}
@@ -1083,17 +1265,19 @@ export function ScopeWasteTab({
             type="button"
             className="s7-btn s7-btn--primary"
             onClick={() => void addRow()}
+            data-testid="waste-add-line"
           >
-            + Add waste row
+            + add a waste line
           </button>
           {cardId ? (
             <button
               type="button"
               className="s7-btn s7-btn--ghost"
               onClick={() => void sumFromAbove()}
-              title="Aggregate scope items above (wasteIncluded=true) into auto-summed waste rows"
+              data-testid="waste-sum-from-above"
+              title="Pull every measurement ticked Waste? on this card into auto-summed lines. Hand-typed lines are never touched, and pressing it again replaces the auto-summed lines rather than adding to them."
             >
-              Sum from above
+              ⇩ Sum from items above
             </button>
           ) : null}
         </div>
@@ -1110,6 +1294,8 @@ export function ScopeWasteTab({
           />
         </div>
       ) : null}
+      </div>
+      )}
 
       {/* OPS-M3 — Tip Finder drawer: opens from "Find tip" (beside FACILITY)
           or "Map" (beside dailyKm). Pre-fills from the active row.

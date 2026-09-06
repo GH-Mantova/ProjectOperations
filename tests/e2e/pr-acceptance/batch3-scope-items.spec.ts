@@ -322,6 +322,18 @@ test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #
 
       // PR #176 — flagging the row for waste (with a rated group/item) must
       // NOT add waste $ to the row total; waste bills in the subtable only.
+      //
+      // SCOPE_WASTE_SECTION_V1 (slice 8) re-confirmed this and widened it:
+      // ticking Waste? adds nothing to the row total HERE, and the waste
+      // section it feeds adds nothing to the card subtotal either. Waste is
+      // not unpriced — it is priced as its own independently marked-up
+      // stream on the server (scope-redesign.service.ts summary():
+      // tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup +
+      // wasteWithMarkup, at card.wasteMarkupOverride ?? tenderMarkup).
+      // Folding it into a row total or a card subtotal as well would price
+      // the same disposal twice, which is exactly what this assertion and
+      // the server's "NEVER folded into the scope discipline total"
+      // invariant exist to prevent.
       // Controlled checkbox — its state flips only after the PATCH
       // round-trip refetches the items, so click + polled assertion
       // (check() would fail its immediate post-click verification).

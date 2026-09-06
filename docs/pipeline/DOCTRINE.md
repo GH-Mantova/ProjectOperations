@@ -540,6 +540,25 @@ here now because they are true for **every** station.
 - ⚠️ **`mergeStateStatus: CLEAN` can still be refused** — "the base branch policy prohibits the merge"
   is policy evaluation lagging the rollup. Use `gh pr merge --auto`; never reach for `--admin`.
 - ⚠️ **"Absent from `origin/main`" is NOT "orphaned"** — check open PRs before calling anything dead.
+- 🔴 **`merged` READS FALSE ON EVERY ENTRY OF A PULL-REQUEST *LIST* RESPONSE, INCLUDING PRs
+  THAT ARE MERGED — while `merged_at` in the same payload is populated and correct.** MEASURED
+  2026-09-06T04:1xZ by Station 00 (blind run, GitHub MCP), same PR, two endpoints ~90 s apart:
+  `list_pull_requests(state=closed)` returned `#1685 {"merged": false, "merged_at":
+  "2026-09-06T03:47:00Z"}`, while `pull_request_read(method=get, 1685)` returned
+  `{"merged": true, "merged_at": "2026-09-06T03:47:00Z", "merged_by": "GH-Mantova"}`. **Ten of
+  ten list entries carried `merged: false`**, `#1688` and `#1683` among them — board PRs this
+  pipeline merged itself and holds breadcrumbs for. Both calls exit 0, both payloads are
+  well-formed, and nothing warns, so this is §7's shape rather than a broken call: **a field
+  wearing an answer's clothes.** A run that believes the list field reports the whole recent
+  history as CLOSED-UNMERGED — which is the exact premise of
+  `pr-1612-closed-unmerged-branch-holds-the-only-copy` — so it manufactures a dozen phantom
+  stranded-branch escalations and tells `status-sweep.ps1` §5 the wrong thing about every one.
+  🔧 **Never read `merged` from a list response.** Read **`merged_at`**, which was populated and
+  correct on both endpoints, or re-ask `pull_request_read(method=get)` per PR. From `gh` the
+  sound forms are `gh pr list --state merged` (the filter is applied server-side) and
+  `gh pr view <n> --json mergedAt`. ⚠️ **The falsifying probe is the pair above** — re-run both
+  endpoints on one merged PR; if the list entry ever reads `merged: true`, this bullet is dead.
+  Found by Station 00 2026-09-06T04:2xZ (F2, blind run), landed by 00 at 05:3xZ.
 
 ## 9.5 The pipeline's own instruments
 

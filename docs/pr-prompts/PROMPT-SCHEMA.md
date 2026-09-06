@@ -356,6 +356,35 @@ back-compat) but cannot pass the intake lint -- do not use it in new prompts.
 
 Both list form and inline scalar are accepted for all three keys.
 
+#### Who evaluates each key, and what happens when the probe cannot run
+
+The table above describes **the watcher, at dispatch**. Two instruments read these
+keys and they behave DIFFERENTLY when their probe is broken. Read this before
+concluding anything from a lint verdict:
+
+| Key | Linter (`lint-prompt.mjs`, at arm time) | Watcher (`pr-watcher/index.mjs`, at dispatch) |
+|---|---|---|
+| `requires_merged` | Evaluates it. `gh pr view N --json state` must be `MERGED`, else **REJECT `PR_GATE_NOT_RELEASED`**. Probe broken (no `gh`, no auth, no network, PR unknown) → **WARN on stderr and skip** — fail-safe, admits | Evaluates it. Not `MERGED` → defer. `gh` error → **counts as unmet** — fail-closed, holds the run |
+| `requires_file_on_main` | Evaluates it against `origin/main`. Path absent → **REJECT `FILE_GATE_NOT_RELEASED`**; path already present → **REJECT `FILE_GATE_DEAD`** on an armed prompt, **`GATE_RELEASED`** (admit + promote) on a `-HOLD`. `git` error → **WARN and skip** — fail-safe | Evaluates it. Path absent → defer. `git` error → **counts as unmet** — fail-closed |
+| `requires_on_main` | Same as above, plus the `::` needle. Needle or file absent → **REJECT `GATE_NOT_RELEASED`**. `git` error → **WARN and skip** — fail-safe | Evaluates it, needle included. Absent → defer. `git` error → **counts as unmet** — fail-closed |
+
+**The asymmetry is deliberate.** The watcher's failure mode is "hold the run, try
+again next tick", which costs one tick. The linter's failure mode is a verdict a
+human reads and acts on — `arm-prompt.ps1` gates on it and `triage-holds.ps1`
+files every exit-0 prompt under `GATES SATISFIED -- lint ADMITs` — and DOCTRINE
+section 7 forbids a broken instrument from producing a negative finding. A linter
+that failed closed would bin real work every time GitHub was unreachable.
+
+**What that costs you, stated plainly.** On a box with no `gh`, no auth or no
+network, the linter cannot evaluate `requires_merged` at all and admits. That is
+not a silent pass: it writes `WARN ... The requires_merged gate was NOT evaluated
+on this run` to stderr, naming the PR. **A `requires_merged` ADMIT accompanied by
+that WARN is not evidence the gate is satisfied.** A PR number that does not exist
+lands in the same bucket, because `gh` exits non-zero for "no such PR" and for
+"not authenticated" alike and the linter will not guess between them. The watcher
+still fails closed at dispatch, so an armed prompt with a genuinely unmet gate is
+held rather than run.
+
 A `requires_file_on_main` path that ALREADY exists on `origin/main` at intake is a dead
 gate — the path can never be absent, so the check can never fail, and the slice would
 dispatch alongside its predecessor with no ordering at all. The linter REJECTs this as

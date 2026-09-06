@@ -358,6 +358,79 @@ function Resolve-WatchdogChurn {
     }
 }
 
+# Pure function: WATCHDOG_RESTART_GRACE_V1 (2026-09-06).
+#
+# THE DEFECT IT FIXES. The heartbeat only ticks MID-RUN (DOCTRINE 9.5). A node
+# that has just been launched has, by construction, not ticked it yet -- so the
+# age of heartbeat.log describes THE QUEUE'S LAST REAL RUN, not the process
+# being judged. With a prompt armed and nothing in progress, every freshly
+# launched node therefore satisfied "heartbeat stale AND armed AND runnable>0"
+# the instant it appeared. Station 00 watched a node launched at 2026-09-06
+# 09.28.41Z get killed at 09.29.07Z with ageMin=26 in the kill flag: 26 MINUTES
+# of staleness attributed to a 26-SECOND-old process. The supervisor relaunched,
+# the next node died the same way, the churn guard tripped at four kills, and the
+# loop re-armed one prompt on every restart -- four duplicate PRs of one slice.
+#
+# THE RULE. The staleness clock starts at the LATER of (heartbeat last write,
+# node process start). A new node gets a full $HungMin from ITS OWN start to
+# produce its first tick; after that it is judged on its own heartbeat exactly
+# as before. This does NOT weaken the watchdog -- the 2026-08-11 hang it exists
+# for has a node start HOURS old, so the heartbeat is the later clock and stays
+# the judge:
+#
+#   situation                        node start   heartbeat   judged   outcome
+#   the 2026-08-11 hang              hours ago    40 min ago  40 min   killed
+#   a node relaunched after a kill   26 s ago     26 min ago  26 s     spared
+#   a node that started then froze   hours ago    20 min ago  20 min   killed
+#
+# CONTRACT. Both timestamps are UTC DateTimes or $null; this function does NOT
+# convert time zones -- the caller owns that (Get-Item .LastWriteTimeUtc is
+# already UTC; Win32_Process CreationDate is LOCAL and must be converted).
+#   $HeartbeatUtc = $null  -- no heartbeat file yet ("never ticked").
+#   $NodeStartUtc = $null  -- the node's start time could not be read. NO GRACE
+#                             is granted in that case: judgement falls back to
+#                             the heartbeat alone, i.e. the pre-fix behaviour.
+#                             Deliberate -- an unreadable clock must not be able
+#                             to make a genuinely hung node immortal. The caller
+#                             logs it.
+#   both $null             -- returns $HungMin + 1, the pre-fix "force a kill"
+#                             value, unchanged.
+# A negative age (clock skew, a timestamp in the future) clamps to 0 = "not
+# stale", which is what the pre-fix arithmetic did too (a negative TotalMinutes
+# is never -gt $HungMin).
+#
+# LL (doctrine 7.6): reads no files, no processes, no environment, and writes no
+# output but its return value. The caller owns all logging and all I/O.
+function Resolve-WatchdogJudgedAgeMinutes {
+    param(
+        [object]                               $HeartbeatUtc,
+        [object]                               $NodeStartUtc,
+        [Parameter(Mandatory=$true)][datetime] $NowUtc,
+        [Parameter(Mandatory=$true)][int]      $HungMin
+    )
+
+    $hb = $null
+    if ($HeartbeatUtc -is [datetime]) { $hb = [datetime]$HeartbeatUtc }
+    $ns = $null
+    if ($NodeStartUtc -is [datetime]) { $ns = [datetime]$NodeStartUtc }
+
+    # Neither clock is readable: preserve the pre-fix "treat as stale" value.
+    if ($null -eq $hb -and $null -eq $ns) { return [double]($HungMin + 1) }
+
+    # The staleness clock is the LATER of the two known times.
+    $clock = $hb
+    if ($null -eq $clock) {
+        $clock = $ns
+    }
+    elseif ($null -ne $ns -and $ns -gt $clock) {
+        $clock = $ns
+    }
+
+    $age = ($NowUtc - $clock).TotalMinutes
+    if ($age -lt 0) { return [double]0 }
+    return [double]$age
+}
+
 # TEST HOOK: allow the test harness to dot-source this file for its functions
 # without spinning up the watchdog job, the main while-loop, or Start-Sleep waits.
 # Nothing else is expected to set this variable in production.
@@ -365,14 +438,35 @@ if ($env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -eq '1') { return }
 
 $laneDesc = if ($null -eq $watcherLane) { 'unset (single-lane mode)' } else { "lane=$watcherLane of $watcherLanes" }
 Sup-Log "Supervisor started. soft-wait=$softWaitMin min, crash-wait=$crashWaitSec s, max-identical-failures=$maxSameFail. PR_WATCHER_LANE=$laneDesc"
-Sup-Log "Heartbeat watchdog armed: restart the node if heartbeat is stale > $wdHungMin min while runnable>0 and 0 in-progress (poll ${wdPollSec}s). Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to lane-filtered on-disk count if file is missing or stale."
+Sup-Log "Heartbeat watchdog armed: restart the node if the JUDGED age (WATCHDOG_RESTART_GRACE_V1: the later of heartbeat last write and node process start) is stale > $wdHungMin min while runnable>0 and 0 in-progress (poll ${wdPollSec}s). Node publishes .queue-state.json; watchdog reads it (max age ${wdStateMaxAgeMin} min); falls back to lane-filtered on-disk count if file is missing or stale."
+
+# WATCHDOG_RESTART_GRACE_V1 -- carry the pure function INTO the watchdog job.
+#
+# Start-Job runs its scriptblock in a FRESH runspace that does NOT inherit this
+# scope's function definitions. A pure helper defined only out here and never
+# reachable from the job would be a decorative guard -- this file already carries
+# one of those (the in-progress\*.md check reads a directory no producer writes),
+# and one is enough. -InitializationScript runs in the JOB's session state before
+# the scriptblock does, so the function it defines is in scope for the poll loop.
+#
+# The init script's text is READ BACK OFF THE LIVE FUNCTION (FunctionInfo's
+# ScriptBlock is the function body; ToString() is that body's source text) rather
+# than being a second, hand-copied definition. So there is exactly ONE definition
+# of the rule in this file: edit the function above and the job's copy changes
+# with it. A duplicate would be free to drift -- the same defect in a new costume.
+# -ErrorAction Stop on the lookup means a rename that misses one of the two names
+# fails the supervisor at start-up rather than shipping a watchdog with no grace.
+$wdGraceFnInfo = Get-Command Resolve-WatchdogJudgedAgeMinutes -CommandType Function -ErrorAction Stop
+$wdGraceInit   = [scriptblock]::Create(
+    "function Resolve-WatchdogJudgedAgeMinutes {`n" + $wdGraceFnInfo.ScriptBlock.ToString() + "`n}"
+)
 
 # HEARTBEAT WATCHDOG (2026-08-12) -- additive; the restart-on-exit loop below is
 # UNCHANGED. Runs concurrently for the life of the supervisor. When the node is
 # alive but HUNG (heartbeat frozen while buildable prompts wait) it kills the
 # node so the main loop's exit handling relaunches it fresh (which resets the
 # clone). ASCII only.
-$null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
+$null = Start-Job -Name pr-watcher-heartbeat-watchdog -InitializationScript $wdGraceInit -ScriptBlock {
     param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag, $StateMaxAgeMin,
           $WatcherLane, $WatcherLanes, $LaneClassifyScript, $EscalationDir)
     function WD-Log([string]$m) {
@@ -380,6 +474,20 @@ $null = Start-Job -Name pr-watcher-heartbeat-watchdog -ScriptBlock {
     }
     $laneDesc = if ($null -eq $WatcherLane) { 'unset (single-lane)' } else { "lane=$WatcherLane of $WatcherLanes" }
     WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag stateMaxAgeMin=$StateMaxAgeMin PR_WATCHER_LANE=$laneDesc)"
+
+    # WATCHDOG_RESTART_GRACE_V1 -- prove the carry before the first poll.
+    # Every kill decision below goes through Resolve-WatchdogJudgedAgeMinutes,
+    # which reaches this runspace only via -InitializationScript. If that ever
+    # breaks, the call inside the poll loop would throw CommandNotFoundException
+    # into the loop's own catch and log "poll error" once per poll forever -- a
+    # watchdog that looks armed in the log and is not. Check it once, name it,
+    # and stop: a watchdog that cannot compute its grace must not kill, because
+    # the pre-fix arithmetic is exactly the kill loop this change exists to end.
+    if (-not (Get-Command Resolve-WatchdogJudgedAgeMinutes -CommandType Function -ErrorAction SilentlyContinue)) {
+        WD-Log "FATAL: WATCHDOG_RESTART_GRACE_V1 -- Resolve-WatchdogJudgedAgeMinutes is NOT defined in this job runspace (the -InitializationScript carry failed). Refusing to poll; the watchdog is INERT until this is fixed. No kills will be issued."
+        return
+    }
+    WD-Log "WATCHDOG_RESTART_GRACE_V1 active: judged age = now - max(heartbeat last write, node process start). A node relaunched less than $HungMin min ago is judged on its own start, not on the previous node's heartbeat."
 
     # --- Lane-aware fallback armed-count helper (2026-08-20) -----------------
     # When PR_WATCHER_LANE is set and .queue-state.json is missing/stale, shell
@@ -581,7 +689,46 @@ No prompts were deleted. They sit in docs/pr-prompts/ as *-ready.md files.
 
             $inProg = @(Get-ChildItem (Join-Path $PromptDir 'in-progress\*.md') -File -ErrorAction SilentlyContinue)
             if ($inProg.Count -gt 0) { continue }                     # a build is running: not hung
-            $ageMin = if (Test-Path $Heartbeat) { ((Get-Date).ToUniversalTime() - (Get-Item $Heartbeat).LastWriteTimeUtc).TotalMinutes } else { $HungMin + 1 }
+            # --- WATCHDOG_RESTART_GRACE_V1 (2026-09-06) ----------------------
+            # The heartbeat only ticks MID-RUN, so its age describes the queue's
+            # last real run, NOT the process we are about to judge. Judge by the
+            # LATER of (heartbeat last write, node process start) so a node that
+            # has just been relaunched gets a full $HungMin from its own start to
+            # produce its first tick. A node that started hours ago is still
+            # judged on its frozen heartbeat and still gets killed -- the
+            # 2026-08-11 hang this watchdog exists for is unaffected.
+            #
+            # No new signal is introduced: CreationDate already comes back on the
+            # Win32_Process instances fetched above. When more than one node
+            # matches, take the LATEST start -- the kill below stops ALL of them,
+            # so if any matched process is freshly launched the set is not hung.
+            $hbUtc = $null
+            if (Test-Path $Heartbeat) { $hbUtc = (Get-Item $Heartbeat).LastWriteTimeUtc }
+            $nodeStartUtc = $null
+            foreach ($p in $node) {
+                if ($null -ne $p.CreationDate) {
+                    try {
+                        $cUtc = ([datetime]$p.CreationDate).ToUniversalTime()
+                        if ($null -eq $nodeStartUtc -or $cUtc -gt $nodeStartUtc) { $nodeStartUtc = $cUtc }
+                    } catch {}
+                }
+            }
+            if ($null -eq $nodeStartUtc) {
+                # Do not substitute a different signal (a marker file, a launch
+                # line in the log): every other candidate adds a producer that can
+                # go missing, which is precisely how the in-progress guard died.
+                # Fall back to the heartbeat alone and say so.
+                WD-Log ("WATCHDOG_RESTART_GRACE_V1: CreationDate unreadable on the matched node process(es); judging on the heartbeat alone this cycle (no restart grace).")
+            }
+            $nowUtc = (Get-Date).ToUniversalTime()
+            $ageMin = Resolve-WatchdogJudgedAgeMinutes -HeartbeatUtc $hbUtc -NodeStartUtc $nodeStartUtc -NowUtc $nowUtc -HungMin $HungMin
+            $hbAgeMin   = if ($null -ne $hbUtc)        { ($nowUtc - $hbUtc).TotalMinutes }        else { -1 }
+            $nodeAgeMin = if ($null -ne $nodeStartUtc) { ($nowUtc - $nodeStartUtc).TotalMinutes } else { -1 }
+            if ($ageMin -le $HungMin -and $hbAgeMin -gt $HungMin) {
+                # The spared case. Log it: this line is the live proof that the
+                # grace is in the job path and which clock decided.
+                WD-Log ("WATCHDOG_RESTART_GRACE_V1: SPARED pid {0} -- heartbeat is {1} min stale but the node is only {2} min old; judged age {3} min <= hungMin {4}. This is the restart the pre-fix watchdog killed." -f $node[0].ProcessId, [int]$hbAgeMin, [int]$nodeAgeMin, [int]$ageMin, $HungMin)
+            }
             if ($ageMin -gt $HungMin) {
                 # SENTINEL FIRST, THEN KILL. Order is doctrine, not an opinion. If we
                 # kill first and the write fails, the exit handler reads exit 0 and
@@ -590,13 +737,13 @@ No prompts were deleted. They sit in docs/pr-prompts/ as *-ready.md files.
                 # never manufacture the ambiguous exit.
                 $flagWritten = $false
                 try {
-                    Set-Content -Path $KillFlag -Value ("[{0}] pid={1} armed={2} runnable={3} ageMin={4}" -f (Get-Date -Format o), $node[0].ProcessId, $armed.Count, $runnable, [int]$ageMin) -Encoding UTF8 -ErrorAction Stop
+                    Set-Content -Path $KillFlag -Value ("[{0}] pid={1} armed={2} runnable={3} ageMin={4} hbAgeMin={5} nodeAgeMin={6} grace=WATCHDOG_RESTART_GRACE_V1" -f (Get-Date -Format o), $node[0].ProcessId, $armed.Count, $runnable, [int]$ageMin, [int]$hbAgeMin, [int]$nodeAgeMin) -Encoding UTF8 -ErrorAction Stop
                     $flagWritten = $true
                 } catch {
                     WD-Log ("FLAG WRITE FAILED (" + $_.Exception.Message + "). Skipping kill this cycle to avoid the ambiguous-exit deadlock.")
                 }
                 if ($flagWritten) {
-                    WD-Log ("heartbeat stale {0} min with armed={1} runnable={2} 0 in-progress -> node HUNG. Sentinel written; killing pid {3}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, $armed.Count, $runnable, $node[0].ProcessId)
+                    WD-Log ("judged age {0} min (heartbeat {1} min, node {2} min old; WATCHDOG_RESTART_GRACE_V1 judges by the later) with armed={3} runnable={4} 0 in-progress -> node HUNG. Sentinel written; killing pid {5}. Supervisor exit handler will relaunch via the watchdog-kill branch." -f [int]$ageMin, [int]$hbAgeMin, [int]$nodeAgeMin, $armed.Count, $runnable, $node[0].ProcessId)
                     foreach ($p in $node) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
                     Start-Sleep -Seconds 150                          # let the supervisor relaunch; avoid a double-kill
                 }

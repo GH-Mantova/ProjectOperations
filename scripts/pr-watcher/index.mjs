@@ -1488,6 +1488,75 @@ async function prFileList(prNumber) {
   return files.map((f) => (typeof f === "string" ? f : (f.path ?? "")));
 }
 
+// VERDICT_HEADING_TOLERANT_V1 — the reviewer's output format is not constrained, and it
+// does not always write the verdict bare at column 0. MEASURED over docs/pr-reviews/ in
+// this repo (59 files; 49 contain a MERGE verdict): the old anchored regex
+// /^VERDICT:\s*MERGE\b/m read 47 of them and SILENTLY MISSED pr-762-review.md, whose
+// line 3 is "## VERDICT: MERGE". A missed MERGE is not a soft failure: verdictApproves
+// returns false, the auto-merge branch is skipped, and the job is filed with
+// "timeout waiting for green checks + MERGE verdict" — byte-identical to a genuine
+// policy routing.
+//
+// The heading prefix is OPTIONAL AND MAY MATCH EMPTY, so with no prefix this pattern is
+// character-for-character the old one: every string that approved before still approves.
+//
+// It is deliberately TIGHTER than the obvious widening "#{0,6}[ \t]*", which would have
+// newly approved two things that are NOT verdicts:
+//   - "    VERDICT: MERGE" — four leading spaces is a markdown INDENTED CODE BLOCK, i.e.
+//     a quoted example. "[ \t]*" admits it; requiring the hashes before any space does not.
+//   - "#VERDICT: MERGE" — ATX headings require whitespace after the hashes, so this is not
+//     a heading at all. "[ \t]+" (not "*") after "#{1,6}" rejects it.
+// Seven or more hashes is not a heading either, and "#{1,6}" rejects that.
+//
+// MERGE\b IS UNTOUCHED. A permissive verdict reader is far worse than a strict one, so
+// nothing here relaxes which WORD approves: "VERDICT: MERGED" still returns false.
+const VERDICT_MERGE_RE = /^(?:#{1,6}[ \t]+)?VERDICT:\s*MERGE\b/m;
+
+// A review that DISCUSSES the verdict format quotes it, and a quoted verdict is evidence,
+// not a decision. Fenced spans are blanked before the match for the same reason
+// verdict-guard.mjs blanks them before extracting paths: nothing inside a transcript is a
+// claim. Without this, a review whose real verdict is BLOCK but which shows
+// "## VERDICT: MERGE" inside a ```-fence would arm auto-merge — a failure that opens the
+// gate, which is the direction that matters.
+//
+// ONLY CLOSED FENCES ARE BLANKED. An unclosed fence leaves the rest of the document
+// intact, so a malformed review can never swallow its own real verdict: this reader fails
+// toward READING a verdict, never toward losing one.
+//
+// Fence matching is deliberately approximate (a run of ``` or ~~~ with up to three leading
+// spaces, closed by a run of the same character). It does not implement CommonMark; it
+// only needs to recognise the fences reviewers actually write.
+function blankClosedFences(content) {
+  const lines = content.split(/\r?\n/);
+  const out = lines.slice();
+  let openIdx = -1;
+  let openChar = null;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^ {0,3}(`{3,}|~{3,})/);
+    if (m === null) continue;
+    if (openIdx === -1) {
+      openIdx = i;
+      openChar = m[1][0];
+      continue;
+    }
+    // A ``` line inside a ~~~ block (or vice versa) is content, not a closing fence.
+    if (m[1][0] !== openChar) continue;
+    for (let j = openIdx; j <= i; j++) out[j] = "";
+    openIdx = -1;
+    openChar = null;
+  }
+  // openIdx !== -1 here means the last fence was never closed — those lines are left alone.
+  return out.join("\n");
+}
+
+// Does this verdict TEXT approve? Pure, exported, and the only place the approval pattern
+// lives — verdictApproves() below does the I/O and then calls this. Split out because the
+// predicate was previously inline and therefore untestable: nothing covered it.
+export function verdictTextApproves(content) {
+  if (typeof content !== "string") return false;
+  return VERDICT_MERGE_RE.test(blankClosedFences(content));
+}
+
 // The reviewer writes docs/pr-reviews/pr-{N}-review.md with the verdict on
 // the first line: "VERDICT: MERGE" (or FIX / BLOCK). Only MERGE approves.
 // When prFiles is provided (string[]), the guard also runs: a MERGE verdict
@@ -1502,7 +1571,8 @@ export async function verdictApproves(prNumber, prFiles, opts) {
   if (verdictPath == null) return false;
   try {
     const content = await readFile(verdictPath, "utf-8");
-    if (!/^VERDICT:\s*MERGE\b/m.test(content)) return false;
+    // VERDICT_HEADING_TOLERANT_V1: the approval pattern lives in verdictTextApproves.
+    if (!verdictTextApproves(content)) return false;
     if (prFiles != null) {
       const guardResult = validateVerdict({ verdictText: content, prFiles });
       if (!guardResult.ok) {

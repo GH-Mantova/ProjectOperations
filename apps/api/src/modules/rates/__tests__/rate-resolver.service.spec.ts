@@ -539,8 +539,8 @@ describe("RateResolverService", () => {
         ]
       });
       prisma.rateRow.findMany.mockResolvedValue([
-        { id: "rr-exc", cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800 } },
-        { id: "rr-doz", cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950 } }
+        { id: "rr-exc", isActive: true, cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800 } },
+        { id: "rr-doz", isActive: true, cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950 } }
       ]);
       const svc = new RateResolverService(prisma as never);
       const out: ListedRate[] = await svc.listRates("plant");
@@ -552,6 +552,7 @@ describe("RateResolverService", () => {
         info: { Category: "Excavator", Unit: "day" },
         value: 800,
         unit: "day",
+        isActive: true,
         source: "ratetable"
       });
       expect(out[1]).toEqual({
@@ -560,6 +561,7 @@ describe("RateResolverService", () => {
         info: { Category: "Dozer", Unit: "day" },
         value: 950,
         unit: "day",
+        isActive: true,
         source: "ratetable"
       });
       // Legacy path must NOT be consulted when ratetable answered.
@@ -757,6 +759,154 @@ describe("RateResolverService", () => {
       expect(out[0]!.keys).toEqual({ wasteType: "General waste", facility: "Cleanaway Willawong" });
       expect(out[0]!.value).toBe(180);
       expect(out[0]!.source).toBe("legacy");
+    });
+
+    // -----------------------------------------------------------------------
+    // SLICE 11b2 (prerequisite): ListedRate.isActive
+    //
+    // The field REPORTS the source row's isActive column. It adds no filter,
+    // so every fixture below is adversarial: it mixes active and inactive
+    // rows and asserts BOTH that the row set is unchanged (the "additive"
+    // regression guard) and that each entry's isActive matches its row.
+    // -----------------------------------------------------------------------
+    describe("isActive", () => {
+      test("legacy waste: inactive rows are STILL returned, and isActive mirrors the row", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimateWasteRate.findMany.mockResolvedValue([
+          { id: "w-on",  wasteType: "Concrete",      facility: "BMI Swanbank", wasteGroup: "Inert",   unit: "tonne", tonRate: "45",  loadRate: "0", isActive: true },
+          { id: "w-off", wasteType: "General waste", facility: "Suez",         wasteGroup: "GENERAL", unit: "tonne", tonRate: "210", loadRate: "0", isActive: false }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("waste");
+
+        // Row set unchanged — the inactive row is not filtered out.
+        expect(out).toHaveLength(2);
+        expect(out.map((r) => r.rowId)).toEqual(["w-on", "w-off"]);
+        expect(out[0]!.isActive).toBe(true);
+        expect(out[1]!.isActive).toBe(false);
+        // No isActive filter was pushed into the query.
+        expect(prisma.estimateWasteRate.findMany).toHaveBeenCalledWith({
+          orderBy: [{ wasteType: "asc" }, { facility: "asc" }]
+        });
+      });
+
+      test("legacy plant: same — rates-export.service.ts consumes this list", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimatePlantRate.findMany.mockResolvedValue([
+          { id: "p-on",  item: "Excavator 20t", rate: "800", unit: "day", category: "Excavator", isActive: true },
+          { id: "p-off", item: "Retired dozer", rate: "950", unit: "day", category: "Dozer",     isActive: false }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+
+        expect(out).toHaveLength(2);
+        expect(out.map((r) => [r.rowId, r.isActive])).toEqual([
+          ["p-on", true],
+          ["p-off", false]
+        ]);
+        expect(prisma.estimatePlantRate.findMany).toHaveBeenCalledWith({
+          orderBy: { item: "asc" }
+        });
+      });
+
+      test("RateTable path: the isActive:true `where` is intact and entries report isActive:true", async () => {
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY",   unit: null,  sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 2 }
+          ]
+        });
+        // Prisma has already applied the where — only active rows come back.
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-a", isActive: true, cells: { "c-item": "Excavator 20t", "c-rate": 800 } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+
+        expect(prisma.rateRow.findMany).toHaveBeenCalledWith({
+          where: { rateTableId: "rt-plant", isActive: true },
+          orderBy: { sortOrder: "asc" }
+        });
+        expect(out).toHaveLength(1);
+        expect(out[0]!.isActive).toBe(true);
+        expect(out[0]!.source).toBe("ratetable");
+      });
+
+      test("labour fan-out: one inactive row yields three entries and ALL three report isActive:false", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimateLabourRate.findMany.mockResolvedValue([
+          { id: "lab-off", role: "Retired role", dayRate: "450", nightRate: "520", weekendRate: "600", isActive: false }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("labour");
+
+        expect(out).toHaveLength(3);
+        expect(out.map((r) => r.keys.shift)).toEqual(["day", "night", "weekend"]);
+        expect(out.map((r) => r.isActive)).toEqual([false, false, false]);
+        expect(out.every((r) => r.rowId === "lab-off")).toBe(true);
+      });
+
+      test("the scope-waste filter is now expressible: .filter(r => r.isActive) yields exactly the active rows", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimateWasteRate.findMany.mockResolvedValue([
+          { id: "w-1", wasteType: "Concrete",      facility: "BMI",  wasteGroup: "Inert",   unit: "tonne", tonRate: "45",  loadRate: "0", isActive: true },
+          { id: "w-2", wasteType: "General waste", facility: "Suez", wasteGroup: "GENERAL", unit: "tonne", tonRate: "210", loadRate: "0", isActive: false },
+          { id: "w-3", wasteType: "Asphalt",       facility: "BMI",  wasteGroup: "Inert",   unit: "tonne", tonRate: "95",  loadRate: "0", isActive: true }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+
+        // This is the call scope-waste.service.ts makes in the follow-up slice,
+        // replacing its own `estimateWasteRate.findMany({ where: { isActive: true } })`.
+        const active = (await svc.listRates("waste")).filter((r) => r.isActive);
+        expect(active.map((r) => r.rowId)).toEqual(["w-1", "w-3"]);
+      });
+
+      test("the five remaining legacy adapters report their row's isActive verbatim", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        // Three adapters with NO isActive `where` — inactive rows come through.
+        prisma.estimateCuttingRate.findMany.mockResolvedValue([
+          { id: "c-off", equipment: "Ring saw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "120", isActive: false }
+        ]);
+        prisma.estimateCoreHoleRate.findMany.mockResolvedValue([
+          { id: "h-off", diameterMm: 100, ratePerHole: "80", isActive: false }
+        ]);
+        prisma.estimateFuelRate.findMany.mockResolvedValue([
+          { id: "f-off", item: "Diesel", rate: "2.1", unit: "L", isActive: false }
+        ]);
+        // Two adapters that DO pre-filter — Prisma only ever hands back active rows.
+        prisma.estimateEnclosureRate.findMany.mockResolvedValue([
+          { id: "e-on", enclosureType: "Standard", rate: "300", unit: "each", isActive: true }
+        ]);
+        prisma.cuttingOtherRate.findMany.mockResolvedValue([
+          { id: "o-on", description: "Setup", rate: "150", unit: "each", isActive: true }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+
+        expect((await svc.listRates("cutting")).map((r) => r.isActive)).toEqual([false]);
+        expect((await svc.listRates("core-hole")).map((r) => r.isActive)).toEqual([false]);
+        expect((await svc.listRates("fuel")).map((r) => r.isActive)).toEqual([false]);
+        expect((await svc.listRates("enclosure")).map((r) => r.isActive)).toEqual([true]);
+        expect((await svc.listRates("other-rates")).map((r) => r.isActive)).toEqual([true]);
+
+        // The two pre-filtering adapters keep their `where` — unchanged by this slice.
+        expect(prisma.estimateEnclosureRate.findMany).toHaveBeenCalledWith({
+          where: { isActive: true },
+          orderBy: { enclosureType: "asc" }
+        });
+        expect(prisma.cuttingOtherRate.findMany).toHaveBeenCalledWith({
+          where: { isActive: true },
+          orderBy: { description: "asc" }
+        });
+      });
     });
   });
 });

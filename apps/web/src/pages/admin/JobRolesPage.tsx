@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
+import { can } from "../../auth/permissions";
+import { NoAccess } from "../../components/NoAccess";
 import { useConfirm } from "../../hooks/useConfirm";
 import {
   emptyForm,
@@ -14,8 +16,50 @@ import {
 
 const TOUCH_TARGET: CSSProperties = { minHeight: 44, minWidth: 44 };
 
+// Exported for testing: handles the /job-roles fetch and returns the resolved
+// state so tests can assert fetch counts and error/data discrimination without
+// needing a DOM renderer.
+export type LoadJobRolesResult =
+  | { ok: true; roles: JobRoleRecord[]; competencies: Competency[] }
+  | { ok: false; error: string };
+
+export async function loadJobRoles(
+  authFetch: (input: string, init?: RequestInit) => Promise<Response>
+): Promise<LoadJobRolesResult> {
+  const [rolesRes, compRes] = await Promise.all([
+    authFetch("/job-roles"),
+    authFetch("/competencies?page=1&pageSize=500")
+  ]);
+  if (!rolesRes.ok) {
+    return {
+      ok: false,
+      error: "Failed to load job roles. Check your connection or contact your administrator."
+    };
+  }
+  const roles: JobRoleRecord[] = await rolesRes.json();
+  const compJson = compRes.ok ? await compRes.json() : { items: [] };
+  return { ok: true, roles, competencies: compJson.items ?? [] };
+}
+
 export function JobRolesPage() {
-  const { authFetch } = useAuth();
+  const { authFetch, user } = useAuth();
+  const canView = useMemo(() => can(user, "resources.view"), [user]);
+  const canManage = useMemo(() => can(user, "resources.manage"), [user]);
+
+  // Early return before any fetch — a 403 must not be interpreted as empty data.
+  if (!canView) {
+    return <NoAccess required="resources.view" />;
+  }
+
+  return <JobRolesPageInner authFetch={authFetch} canManage={canManage} />;
+}
+
+type InnerProps = {
+  authFetch: (input: string, init?: RequestInit) => Promise<Response>;
+  canManage: boolean;
+};
+
+function JobRolesPageInner({ authFetch, canManage }: InnerProps) {
   const confirm = useConfirm();
   const [roles, setRoles] = useState<JobRoleRecord[] | null>(null);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
@@ -26,14 +70,15 @@ export function JobRolesPage() {
 
   const load = useCallback(async () => {
     setRoles(null);
-    const [rolesRes, compRes] = await Promise.all([
-      authFetch("/job-roles"),
-      authFetch("/competencies?page=1&pageSize=500")
-    ]);
-    const rolesJson: JobRoleRecord[] = rolesRes.ok ? await rolesRes.json() : [];
-    const compJson = compRes.ok ? await compRes.json() : { items: [] };
-    setRoles(rolesJson);
-    setCompetencies(compJson.items ?? []);
+    setError(null);
+    const result = await loadJobRoles(authFetch);
+    if (!result.ok) {
+      setError(result.error);
+      setRoles([]);
+      return;
+    }
+    setRoles(result.roles);
+    setCompetencies(result.competencies);
   }, [authFetch]);
 
   useEffect(() => {
@@ -143,14 +188,16 @@ export function JobRolesPage() {
             decide who is eligible for a shift.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={startCreate}
-          disabled={editingId !== null}
-          style={{ ...TOUCH_TARGET, padding: "0 16px", borderRadius: "var(--radius-md, 6px)" }}
-        >
-          + New job role
-        </button>
+        {canManage && (
+          <button
+            type="button"
+            onClick={startCreate}
+            disabled={editingId !== null}
+            style={{ ...TOUCH_TARGET, padding: "0 16px", borderRadius: "var(--radius-md, 6px)" }}
+          >
+            + New job role
+          </button>
+        )}
       </header>
 
       {error ? (
@@ -159,7 +206,7 @@ export function JobRolesPage() {
         </div>
       ) : null}
 
-      {editingId ? (
+      {canManage && editingId ? (
         <div
           style={{
             border: "1px solid var(--surface-border, #d0d0d0)",
@@ -272,14 +319,19 @@ export function JobRolesPage() {
 
       {roles === null ? (
         <Skeleton style={{ height: 120 }} />
+      ) : error && roles.length === 0 ? (
+        // error state is already rendered via the alert above; render nothing here
+        null
       ) : roles.length === 0 ? (
         <EmptyState
           heading="No job roles yet"
           subtext="Create the first job role to start building your scheduler eligibility catalogue."
           action={
-            <button type="button" onClick={startCreate} style={{ ...TOUCH_TARGET, padding: "0 16px" }}>
-              + New job role
-            </button>
+            canManage ? (
+              <button type="button" onClick={startCreate} style={{ ...TOUCH_TARGET, padding: "0 16px" }}>
+                + New job role
+              </button>
+            ) : undefined
           }
         />
       ) : (
@@ -289,7 +341,7 @@ export function JobRolesPage() {
               <th style={{ padding: 8 }}>Name</th>
               <th style={{ padding: 8 }}>Description</th>
               <th style={{ padding: 8 }}>Requirements</th>
-              <th style={{ padding: 8 }} aria-label="Actions" />
+              {canManage && <th style={{ padding: 8 }} aria-label="Actions" />}
             </tr>
           </thead>
           <tbody>
@@ -317,22 +369,24 @@ export function JobRolesPage() {
                     .map((r) => competencyById.get(r.competencyId)?.name ?? r.competency.name)
                     .join(", ")}
                 </td>
-                <td style={{ padding: 8, display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => startEdit(rec)}
-                    style={{ ...TOUCH_TARGET, padding: "0 12px" }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(rec.id)}
-                    style={{ ...TOUCH_TARGET, padding: "0 12px" }}
-                  >
-                    Delete
-                  </button>
-                </td>
+                {canManage && (
+                  <td style={{ padding: 8, display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(rec)}
+                      style={{ ...TOUCH_TARGET, padding: "0 12px" }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(rec.id)}
+                      style={{ ...TOUCH_TARGET, padding: "0 12px" }}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

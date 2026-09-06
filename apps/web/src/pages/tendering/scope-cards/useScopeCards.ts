@@ -26,6 +26,12 @@ export type ScopeCard = {
   labourDaysOverride: number | null;
   plantSummaryOverride: string | null;
   durationOverride: number | null;
+  /** SCOPE_STAGE_GROUP_V1 — which stage this card runs in inside its
+   *  discipline. null (every card until a human groups two) means "a stage
+   *  of its own"; two cards of the SAME discipline sharing a non-null value
+   *  are ONE stage and run concurrently. Opaque id — it carries no stage
+   *  ORDER, which is the card order (sortOrder) that already exists. */
+  stageGroup: number | null;
   sortOrder: number;
   itemCount: number;
   createdAt: string;
@@ -280,6 +286,39 @@ export function useScopeCards(tenderId: string) {
     [authFetch, tenderId, load]
   );
 
+  /**
+   * SCOPE_STAGE_GROUP_V1 — write one or more cards' `stageGroup`.
+   *
+   * Takes a LIST because grouping two previously ungrouped cards has to
+   * write both of them (they need a shared id), while joining a card to an
+   * existing group writes only one. The PATCH endpoint is one card per
+   * call, so the writes are issued in order and the card list is reloaded
+   * ONCE at the end: reloading between them would repaint the stack — and
+   * move the discipline bar's peak crew and duration — with only half the
+   * grouping applied.
+   *
+   * An empty list is a no-op and does not even reload: the caller uses it
+   * to say "this click would change nothing".
+   */
+  const setStageGroups = useCallback(
+    async (patches: Array<{ cardId: string; stageGroup: number | null }>): Promise<void> => {
+      if (patches.length === 0) return;
+      for (const patch of patches) {
+        const res = await authFetch(`/tenders/${tenderId}/scope/cards/${patch.cardId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stageGroup: patch.stageGroup })
+        });
+        if (!res.ok) {
+          await load();
+          throw new Error(await readApiErrorMessage(res));
+        }
+      }
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
   const getCardSummary = useCallback(
     async (cardId: string) => {
       const res = await authFetch(`/tenders/${tenderId}/scope/cards/${cardId}/summary`);
@@ -330,6 +369,7 @@ export function useScopeCards(tenderId: string) {
     deleteCard,
     reorderCards,
     updateCardHeaderOverrides,
+    setStageGroups,
     getCardSummary
   };
 }

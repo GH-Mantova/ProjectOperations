@@ -450,6 +450,145 @@ describe("listCards exposes plantColumnCount (PR B1.6)", () => {
   });
 });
 
+// ── SCOPE_STAGE_GROUP_V1 — the stage-group column ──────────────────────
+//
+// `ScopeCard.stageGroup` is NULLABLE WITH NO DEFAULT and that is the whole
+// safety property of the slice: every row that already exists holds NULL,
+// NULL means "a stage of its own", and no discipline's peak crew, duration
+// or plant quantity moves until a human deliberately groups two cards.
+// These tests pin the Prisma payloads that keep that true.
+
+describe("ScopeOfWorksService.setCardStageGroup (SCOPE_STAGE_GROUP_V1)", () => {
+  it("writes the group id into the Prisma payload", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", stageGroup: null }
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await svc.setCardStageGroup("tender-1", "card-1", 7);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      where?: { id?: string };
+      data?: { stageGroup?: number | null };
+    };
+    expect(args.where?.id).toBe("card-1");
+    expect(args.data?.stageGroup).toBe(7);
+  });
+
+  it("writes an explicit NULL to take a card back out to a stage of its own", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", stageGroup: 7 }
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await svc.setCardStageGroup("tender-1", "card-1", null);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: { stageGroup?: number | null };
+    };
+    // NULL, not undefined: undefined would leave the grouping in place and
+    // the card would silently stay concurrent after the user ungrouped it.
+    expect(args.data).toHaveProperty("stageGroup", null);
+    expect(args.data?.stageGroup).toBeNull();
+  });
+
+  it("touches NOTHING but stageGroup — no override, markup or count rides along", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardFindFirst: { id: "card-1", tenderId: "tender-1", stageGroup: null }
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await svc.setCardStageGroup("tender-1", "card-1", 2);
+    const args = (mocks.scopeCardUpdate.mock.calls[0]?.[0] ?? {}) as {
+      data?: Record<string, unknown>;
+    };
+    expect(Object.keys(args.data ?? {})).toEqual(["stageGroup"]);
+  });
+
+  it("throws NotFoundException when the card is not in the tender", async () => {
+    const { prisma } = buildPrismaMock({ scopeCardFindFirst: null });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await expect(svc.setCardStageGroup("tender-1", "missing", 1)).rejects.toBeInstanceOf(
+      NotFoundException
+    );
+  });
+});
+
+describe("createCard leaves stageGroup unset (the no-backfill guarantee)", () => {
+  it("never writes stageGroup, so a new card is a stage of its own", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      scopeCardAggregateMax: { cardNumber: 2, sortOrder: 5 }
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await svc.createCard("tender-1", "user-1", { name: "Demo 3", discipline: "DEM" as never });
+    const args = (mocks.scopeCardCreate.mock.calls[0]?.[0] ?? {}) as {
+      data?: Record<string, unknown>;
+    };
+    // The column is nullable with NO DEFAULT. Not writing it is what makes
+    // a new card NULL — i.e. sequential — rather than concurrent with
+    // whatever else happens to share a default value.
+    expect(args.data).not.toHaveProperty("stageGroup");
+  });
+});
+
+describe("listCards exposes stageGroup (SCOPE_STAGE_GROUP_V1)", () => {
+  it("returns the group id so the web roll-up can fold on it", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindMany: [
+        {
+          id: "c1",
+          tenderId: "tender-1",
+          name: "Demo 1",
+          discipline: "DEM",
+          cardNumber: 1,
+          plantColumnCount: 1,
+          stageGroup: 4,
+          sortOrder: 0,
+          _count: { scopeItems: 2 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        {
+          id: "c2",
+          tenderId: "tender-1",
+          name: "Demo 2",
+          discipline: "DEM",
+          cardNumber: 2,
+          plantColumnCount: 1,
+          stageGroup: 4,
+          sortOrder: 1,
+          _count: { scopeItems: 1 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ]
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const result = await svc.listCards("tender-1");
+    // Same non-null id on both cards = one stage = they run concurrently.
+    expect(result[0]?.stageGroup).toBe(4);
+    expect(result[1]?.stageGroup).toBe(4);
+  });
+
+  it("returns null for an ungrouped card — every card, until somebody groups one", async () => {
+    const { prisma } = buildPrismaMock({
+      scopeCardFindMany: [
+        {
+          id: "c1",
+          tenderId: "tender-1",
+          name: "Demo",
+          discipline: "DEM",
+          cardNumber: 1,
+          plantColumnCount: 1,
+          stageGroup: null,
+          sortOrder: 0,
+          _count: { scopeItems: 0 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ]
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    const result = await svc.listCards("tender-1");
+    expect(result[0]?.stageGroup).toBeNull();
+  });
+});
+
 describe("ScopeOfWorksService.setCardNotes (PR B1.7)", () => {
   it("updates cuttingNotes when supplied alone", async () => {
     const { prisma, mocks } = buildPrismaMock({

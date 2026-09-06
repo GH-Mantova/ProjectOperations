@@ -3683,12 +3683,14 @@ model ScopeOfWorksItem {
   // no markup applied. Ignored for non-Prv rows.
   provisionalAmount Decimal? @map("provisional_amount") @db.Decimal(12, 2)
 
-  // Plant days
-  excavatorDays  Decimal? @map("excavator_days") @db.Decimal(8, 2)
-  bobcatDays     Decimal? @map("bobcat_days") @db.Decimal(8, 2)
-  ewpDays        Decimal? @map("ewp_days") @db.Decimal(8, 2)
-  hookTruckDays  Decimal? @map("hook_truck_days") @db.Decimal(8, 2)
-  semiTipperDays Decimal? @map("semi_tipper_days") @db.Decimal(8, 2)
+  // PLANT_DAYS_RETIRED_V1 (2026-09-05) — five legacy plant-days columns
+  // (excavator_days, bobcat_days, ewp_days, hook_truck_days,
+  // semi_tipper_days; all Decimal? @db.Decimal(8, 2)) were dropped here
+  // by migration 20260905010000_drop_legacy_plant_days, on Marco's
+  // instruction, with every one of the 23 dev-database rows NULL in all
+  // five. Plant is captured by the plantItems JSONB array; transport
+  // plant is priced by the waste transport engine. Full record in
+  // src/modules/tendering/scope-of-works.service.ts.
   assetId        String?  @map("asset_id")
 
   estimateItemId String? @map("estimate_item_id")

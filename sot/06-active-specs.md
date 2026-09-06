@@ -2237,11 +2237,34 @@ versa) is genuinely new UI on top of the existing data layer.
 
 #### 1.4 Quote PDF pipeline (current state)
 
-- File: `apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts` (1173 LOC)
-- Stack: **PDFKit** (per file header: "Server-side PDF builder using PDFKit primitives only. No headless browser, no HTML rendering — intentional for stability.")
-- Reads from: `fetchTenderForExport` — `ScopeOfWorksItem + CuttingSheetItem + TenderTandC + TenderAssumption + TenderExclusion`
+> **RECONCILED 2026-09-06 by Station 05 (doc-reconcile) against `origin/main` d1467428.** The
+> bullets that stood here were a 2026-05-18 probe and had been stale since 2026-05-25.
+> [MEASURED] `git log --all --oneline --diff-filter=D` over the old builder path returns exactly
+> one commit, `4360f149` — "[5A.2] Quote PDF — HTML template + migration (#221)". **The file this
+> section cited was deleted by the very migration this section recorded as "not shipped".** That
+> dangling citation was the last entry in `docs/qa/sot-refs-baseline.json`, cleared in the same PR.
+> The original wording is preserved verbatim under **Superseded snapshot** below; nothing was lost.
+
+- Entry point: `modules/client-quotes/quote-pdf.service.ts` (152 lines) — `QuotePdfService`.
+- Stack: **HTML → PDF via headless Chrome**, not PDFKit. Markup is built by
+  `modules/pdf-rendering/builders/quote-html.builder.ts` (`buildQuoteHtml`, `headerTemplate`,
+  `footerTemplate`) and rendered by `modules/pdf-rendering/pdf-renderer.service.ts`, which
+  launches Puppeteer with `headless: true`. The PDFKit-primitives-only builder no longer exists.
+- Reads from: still `fetchTenderForExport`, now called on
+  `modules/estimate-export/estimate-export.service.ts` (quote-pdf.service.ts line 40).
 - **Reads directly from scope tables**, not from `QuoteScopeItem`. PR D1's job is to rewire this to honour per-quote arrangement.
-- 5A.2 HTML→PDF migration: **not shipped**. Q5 status: OPEN.
+- 5A.2 HTML→PDF migration: **SHIPPED 2026-05-25 in #221** (`4360f149`). Whether Q5 may now be
+  closed is a spec judgement and is deliberately **not** decided by this reconcile — it is raised
+  as a finding in the Station 05 breadcrumb for 2026-09-06.
+
+**Superseded snapshot — the 2026-05-18 probe, retained for provenance. Paths here are
+deliberately un-backticked: the builder file no longer exists on `main`, and re-citing it as a
+path would re-create the dangling reference this reconcile removed.**
+
+> - File: apps/api/src/modules/estimate-export/pdf/quote-pdf.builder.ts (1173 LOC)
+> - Stack: **PDFKit** (per file header: "Server-side PDF builder using PDFKit primitives only. No headless browser, no HTML rendering — intentional for stability.")
+> - Reads from: fetchTenderForExport — ScopeOfWorksItem + CuttingSheetItem + TenderTandC + TenderAssumption + TenderExclusion
+> - 5A.2 HTML→PDF migration: **not shipped**. Q5 status: OPEN.
 
 #### 1.5 Persona implications (current state)
 

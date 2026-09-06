@@ -3767,7 +3767,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
       { key: "type", name: "Waste type", dataType: "TEXT", role: "KEY", sortOrder: 2 },
       { key: "group", name: "Group", dataType: "TEXT", role: "INFO", sortOrder: 3 },
       { key: "ton", name: "Rate per tonne", dataType: "CURRENCY", role: "VALUE", unit: "tonne", sortOrder: 4 },
-      { key: "load", name: "Rate per load", dataType: "CURRENCY", role: "VALUE", unit: "load", sortOrder: 5 }
+      { key: "load", name: "Rate per load", dataType: "CURRENCY", role: "VALUE", unit: "load", sortOrder: 5 },
+      { key: "mapLocationId", name: "Map location", dataType: "TEXT", role: "INFO", sortOrder: 6 }
     ],
     rows: wasteTonne.map((r, idx) => ({
       id: `rr-wst-t-${rowSlug(r.facility, r.wasteType)}`,
@@ -3777,7 +3778,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
         type: r.wasteType,
         group: r.wasteGroup ?? "",
         ton: Number(r.tonRate),
-        load: Number(r.loadRate)
+        load: Number(r.loadRate),
+        mapLocationId: null
       }
     }))
   });
@@ -3790,7 +3792,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
       { key: "facility", name: "Facility", dataType: "TEXT", role: "KEY", sortOrder: 1 },
       { key: "type", name: "Waste type", dataType: "TEXT", role: "KEY", sortOrder: 2 },
       { key: "group", name: "Group", dataType: "TEXT", role: "INFO", sortOrder: 3 },
-      { key: "m3", name: "Rate per m³", dataType: "CURRENCY", role: "VALUE", unit: "m³", sortOrder: 4 }
+      { key: "m3", name: "Rate per m³", dataType: "CURRENCY", role: "VALUE", unit: "m³", sortOrder: 4 },
+      { key: "mapLocationId", name: "Map location", dataType: "TEXT", role: "INFO", sortOrder: 5 }
     ],
     rows: wasteM3.map((r, idx) => ({
       id: `rr-wst-m3-${rowSlug(r.facility, r.wasteType)}`,
@@ -3799,7 +3802,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
         facility: r.facility,
         type: r.wasteType,
         group: r.wasteGroup ?? "",
-        m3: Number(r.tonRate)
+        m3: Number(r.tonRate),
+        mapLocationId: null
       }
     }))
   });

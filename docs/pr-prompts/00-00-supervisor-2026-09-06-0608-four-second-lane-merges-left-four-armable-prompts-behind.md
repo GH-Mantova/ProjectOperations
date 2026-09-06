@@ -268,3 +268,49 @@ diagnose it from scratch.
   hourly poller cadence, the three-homes verdict defect, or `#1635`. All are live and already filed.
 - **Did not run a smoke.** This PR is docs-only and opens no code; `Assert-SmokedOrEscalate` is
   reached at merge, not here.
+
+---
+
+## ADDENDUM 06:2xZ — the arm went end to end, F5 did not fire, and this PR is deliberately left unmerged
+
+Written into this PR before it merged, so the run's own claims are read back rather than left as
+intentions.
+
+**[MEASURED] The arm reached an open PR in 3 m 33 s.** Armed `06:16:17Z` (`.arming-log.txt`);
+`gh pr view 1692 --json createdAt` → **`2026-09-06T06:19:50Z`**, `feat/ar-s2-offline-designs`,
+**one** file, `docs/design/ARTIFACT-REGISTER.md`, `+27 / -0`. Its nine checks were created and
+running within about two minutes of open.
+
+🟢 **That is worth recording against DOCTRINE §10.3.** The two open-to-CI latencies on file are
+`#1500` at **212.6 min** (which is why `MERGE_TIMEOUT_MS` = 90 min expired and wrote a spurious
+`marco:true`) and `#1675`, whose CI was fine but whose review job started **93.5 min** after open.
+Today's instance is neither: CI created at about **+2 min**, so if `#1692` still times out, the
+starved conjunct is the MERGE verdict and not CI creation — which is the per-PR falsifying probe
+§10.3 asks for, set up in advance rather than reconstructed afterwards.
+
+🟢 **F5 did not fire — the prompt's executable gate was satisfied, not its stale prose.**
+[MEASURED] on the PR head (`git fetch origin pull/1692/head`, then `git show pr/1692:<path>`):
+`claude.ai/code/artifact/` → **35** (the gate requires `-ge 35`; the prose Verify section said 34),
+`Held outside the tree` → **1**, and the three artifact ids → **6** occurrences, all three present.
+The code-writer followed the **Do** section's three rows rather than the Verify paragraph's two.
+**F5's disposition stands as DEFERRED and its urgency condition did not occur** — recorded here
+rather than left as an open worry the next run has to re-derive.
+
+🔴 **This PR is NOT merged by this run, on purpose.** `#1692` is a watcher-opened `tests-docs`
+policy PR that opened at `06:19:50Z`, so its 90-minute merge window closes at about `07:49:50Z` and
+its CI is in flight right now. Merging this board PR moves `main`, which puts `#1692` BEHIND and
+cancels those runs — the measured harm behind the standing rule that **the waiter goes first**. A
+cancelled window is written byte-identically to a genuine policy routing
+(`{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}`), and
+RULE 2 then correctly forbids any station from clearing it — so the cost of merging first is a
+docs PR permanently gated on Marco, to save this PR one hour.
+
+🔧 **For the next run (07:07Z):** `#1693` is this station's own docs-only board PR, in its own lane
+(`docs/pr-prompts/**`), unlabelled, with no watcher verdict because no watcher opened it. Merge it
+through `Assert-SmokedOrEscalate` → `Merge-Pr` **once `#1692` has landed or its window has closed**.
+Then delete nothing from the dev tree: this breadcrumb was written inside this PR's worktree (cure
+1), so there is no loose copy to block the fast-forward — but the 05:40Z addendum still has an
+untracked copy at `docs/pr-prompts/`, and after this PR merges it lands at
+`docs/pr-prompts/archive/`, a **different** path. That is not an FF blocker, and it is also not
+self-cleaning: prove the disk copy byte-identical to `origin/main:docs/pr-prompts/archive/<name>`
+(`git rev-parse` vs `git hash-object`, never a piped hash) and only then remove it.

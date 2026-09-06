@@ -13,6 +13,7 @@ scope:
   - docs/data-model/**
 done_when: >-
   pnpm build && ! grep -q "model EstimateLabourRate" apps/api/prisma/schema.prisma
+  && grep -q ESTIMATE_WASTE_RATES_DROPPED docs/data-model/rates-migration/STEP-11C-DONE.md
 size: 8
 gate_allow: migrations
 escalates: true
@@ -57,6 +58,17 @@ Read `docs/plans/rates-migration-plan.md` (section "11c") first. Gated on 11b
 5. Confirm no consumer (scope-item-pricing, scope-waste, scope-of-works,
    tender-rate-set, estimates, lookup-rate, tip-recommendations) reads a legacy
    model.
+6. **On success, write the landed marker** `docs/data-model/rates-migration/STEP-11C-DONE.md`
+   carrying the literal token `ESTIMATE_WASTE_RATES_DROPPED` on a line of its own, the way 11a
+   and 11b already drop `STEP-11A-DONE.md` / `STEP-11B-DONE.md`. `docs/data-model/**` is already
+   in `scope`. **This is not optional bookkeeping:**
+   `pr-tipid-s3-retire-the-name-guard-for-an-id-check-HOLD.md` gates on that exact file AND that
+   exact token via `requires_on_main`, so until this slice writes it, s3 is parked permanently —
+   gates are evaluated before the premise, so it can never surface as SPENT, as a CANDIDATE, or
+   as anything a reader can act on. MEASURED by Station 04, 2026-09-06T10:10Z (F1): nothing in
+   the repository was told to write that file or that token. Note that `STEP-11A-DONE.md` and
+   `STEP-11B-DONE.md` carry prose only (`11b landed`) and no token, so this marker is the first
+   of the series that has to be greppable — write the token on its own line.
 
 ## Do NOT
 - Do NOT open as a normal (non-draft) PR. Do NOT arm auto-merge. Do NOT merge

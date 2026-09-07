@@ -63,6 +63,29 @@ This paragraph used to end *"and `02-board-driver`'s scheduled file has not been
 `2026-08-24T22:54:22Z`, so that line was six weeks stale — inside the very paragraph warning that a
 stale instruction reads exactly like a current one. **Instructions live here; state does not.**
 
+🔴 **AND "THE FIVE BOOTSTRAPS" IS THE WRONG CORPUS — THERE ARE FIVE ENABLED TASKS AND THE FIFTH IS
+NOT A STATION.** [MEASURED] 2026-09-07T06:1xZ by Station 04 from the scheduled-tasks MCP: five
+enabled tasks — `00-supervisor`, `03-machine-minder`, `04-scanner`, `05-sot-keeper` and
+**`weekly-security-audit`** (`30 7 * * 1`, lastRun `2026-09-06T21:32:44Z`, bootstrap mtime
+`2026-08-17T06:37:17Z`) — while `C:\Users\Marco\Claude\Scheduled\` holds **11** `SKILL.md` files.
+Every "the five bootstraps" probe this pipeline runs therefore covers **5 of 11 files and 4 of 5
+live tasks**, including the open escalation
+`docs/pr-prompts/needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md`.
+
+**This is not an actor risk.** `weekly-security-audit`'s bootstrap was read in full: it is read-only
+(*"you never change any GitHub setting, never merge, never touch the board"*), it delegates to
+`scripts/security-audit.ps1` and trusts the exit code, and on DRIFT it escalates to Marco rather
+than fixing. The defect is the **map**, exactly as this section's own rule predicts: a sweep whose
+corpus is defined by a COUNT rather than by the live task list will keep missing it, and the count
+is already wrong.
+
+🔧 **So express every bootstrap sweep's corpus as "every `SKILL.md` behind an ENABLED task in the
+scheduled-tasks MCP", never as "the five".** The MCP is already the prescribed source for cadence
+(§6's red rule), so this adds no new instrument. **Falsifying probe: the enabled-task count from the
+MCP against the number of bootstraps the sweep actually opened.** Found by Station 04
+2026-09-07T06:1xZ (F4), landed by Station 00 at 07:5xZ.
+
+
 
 ---
 
@@ -252,6 +275,16 @@ mapped folders". The mapping only describes which folders a Cowork session lists
 | **Mutate the board** | ✅ | ❌ | ✅ dispatched | ❌ | ❌ read-only | ❌ | stage `-HOLD` only |
 | **Azure / Entra / SharePoint** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ **absolute, all stations** |
 
+⚠️ **A LIVE SCHEDULED TASK EXISTS THAT IS NOT IN THIS MATRIX: `weekly-security-audit`.** It is not a
+station and has no lane on the board — it is READ-ONLY by its own bootstrap (never changes a GitHub
+setting, never merges, never touches the board), delegates to `scripts/security-audit.ps1`, trusts
+that script's exit code, and escalates DRIFT to Marco. It is named here because §1's rule is *"when
+a layer is added, add it here first"*, and because a reader counting rows in this matrix would
+otherwise conclude the live task list is four. **Its authority row is: every ❌ in the mutation
+columns, and Azure / Entra / SharePoint ❌ absolute like everything else.** (Station 04,
+2026-09-07T06:1xZ, F4.)
+
+
 **Station 01 was missing from this matrix until 2026-09-03**, although it has a contract-linted
 station doc (`docs/pipeline/stations/01-code-writer.md`, `station_doc_version: 1`), is named on
 `origin/main` by `00-supervisor.md`, `sot/README.md` and `scripts/pr-watcher/index.mjs`, and the
@@ -342,6 +375,7 @@ this lane**, not as an unknown actor.
 | **04 Scanner** | every 4 h | "is anything rotting?" - drift, dead gates, regressions, instruments that lie |
 | **05 SoT-keeper** | daily | `/sot/` drift; the only station that may edit it |
 | **06 PR Master** | on demand | design and stage new work; never arms, never merges |
+| **`weekly-security-audit`** | weekly, Mon — read it from the MCP | not a station and never called by hand; read-only, escalates DRIFT to Marco |
 
 🔴 **A CADENCE IN THIS TABLE IS STATE, AND TWO ROWS HAVE ALREADY ROTTED. READ THE LIVE CRON FROM THE
 SCHEDULED-TASKS MCP, NEVER FROM HERE.** [MEASURED] 2026-09-05T14:1xZ by Station 04: `00-supervisor`

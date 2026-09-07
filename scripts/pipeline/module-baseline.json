@@ -1,0 +1,125 @@
+{
+  "_readme": "RATCHET. Prompts that were already staged when the `module` gate landed and whose module cannot be derived from `scope`. An entry downgrades MODULE_AMBIGUOUS from a REJECT to a WARNING so the prompt still lints ADMIT and still arms. THIS FILE MAY ONLY SHRINK. Entries may be REMOVED, never ADDED: adding one is the gate failing open, and the correct fix for a new prompt is to add `module: <name>` to its front matter (see docs/pr-prompts/PROMPT-SCHEMA.md#module). MEASURED 2026-09-07 over all 107 tracked -HOLD.md/-ready.md prompts under docs/pr-prompts/ excluding superseded/ and archive/: 64 derive one product module, 13 resolve to a sole incidental destination (prisma/docs/ci/e2e/sot/board) - 77 of 107 (72%) need no author input - and the 30 listed here do not. Keyed by SLUG, not filename: arm-prompt.ps1 renames <slug>-HOLD.md to <slug>-ready.md, so a baseline keyed by the HOLD filename would stop matching at the exact moment of arming and turn an ADMIT into a REJECT during the arm it exists to protect. Shape mirrors docs/qa/sot-refs-baseline.json ({_readme, entries}) so there is one baseline pattern in this repo, not two. NOT YET CI-ENFORCED: there is no check-module-baseline-ratchet.mjs and no ci.yml step comparing this file's entry set against origin/main, so 'may only shrink' is currently a convention a reviewer must enforce by eye. Wiring that (alongside check-sot-baseline-ratchet.mjs, which does exactly this for the sot baseline) is the obvious next slice. Do NOT write a count of remaining entries into this prose: entries.length is the count.",
+  "entries": [
+    {
+      "prompt": "pr-524-rates-b-slice2-canonical",
+      "reason": "ambiguous: estimates, admin"
+    },
+    {
+      "prompt": "pr-company-manage-s2-retire-adminonly",
+      "reason": "unresolvable: no scope path names a module"
+    },
+    {
+      "prompt": "pr-erp-commitments-budget",
+      "reason": "ambiguous: procurement, projects"
+    },
+    {
+      "prompt": "pr-erp-competency-expiry-alerts",
+      "reason": "ambiguous: compliance, workers, email"
+    },
+    {
+      "prompt": "pr-erp-haulage-dockets",
+      "reason": "ambiguous: jobs, field"
+    },
+    {
+      "prompt": "pr-erp-sopa-payment-schedule",
+      "reason": "ambiguous: procurement, projects"
+    },
+    {
+      "prompt": "pr-erp-timesheet-geofencing",
+      "reason": "ambiguous: workers, scheduler"
+    },
+    {
+      "prompt": "pr-forms-submission-pdf",
+      "reason": "ambiguous: forms, pdf-rendering"
+    },
+    {
+      "prompt": "pr-fv2-ai-import",
+      "reason": "ambiguous: personas, forms"
+    },
+    {
+      "prompt": "pr-fv2-output-channels",
+      "reason": "ambiguous: forms, pdf-rendering"
+    },
+    {
+      "prompt": "pr-hr-leave-selfservice",
+      "reason": "ambiguous: workers, field"
+    },
+    {
+      "prompt": "pr-linefields-s1-model-and-validation",
+      "reason": "ambiguous: rates, admin"
+    },
+    {
+      "prompt": "pr-nav-jobs-projects-merge",
+      "reason": "unresolvable: no scope path names a module"
+    },
+    {
+      "prompt": "pr-ops-m2b-tipping-tab-reminder",
+      "reason": "ambiguous: waste-facilities, projects, ops"
+    },
+    {
+      "prompt": "pr-r3-t2-fuel-price-feed",
+      "reason": "ambiguous: estimates, admin-settings"
+    },
+    {
+      "prompt": "pr-rates-consumers-s3-persona-export",
+      "reason": "ambiguous: personas, rates"
+    },
+    {
+      "prompt": "pr-rates-export",
+      "reason": "ambiguous: rates, estimates, admin"
+    },
+    {
+      "prompt": "pr-rates-unit-per-row-columns",
+      "reason": "ambiguous: rates, admin"
+    },
+    {
+      "prompt": "pr-role-default-dashboards",
+      "reason": "ambiguous: dashboards, admin"
+    },
+    {
+      "prompt": "pr-sor-s9b-register-ui",
+      "reason": "unresolvable: no scope path names a module"
+    },
+    {
+      "prompt": "pr-tipid-s2-write-the-ids-backfill-and-admin",
+      "reason": "ambiguous: pipeline, map-locations"
+    },
+    {
+      "prompt": "pr-tipid-s3-retire-the-name-guard-for-an-id-check",
+      "reason": "ambiguous: map-locations, pipeline"
+    },
+    {
+      "prompt": "pr-unified-api-key-vault-slice4c-retire-old-screens",
+      "reason": "unresolvable: no scope path names a module"
+    },
+    {
+      "prompt": "pr-ux-automation-engine",
+      "reason": "ambiguous: platform, admin"
+    },
+    {
+      "prompt": "pr-ux-business-process-flow",
+      "reason": "ambiguous: platform, tendering"
+    },
+    {
+      "prompt": "pr-ux-copilot-assist",
+      "reason": "ambiguous: ai-providers, personas"
+    },
+    {
+      "prompt": "pr-ux-duplicate-detection",
+      "reason": "ambiguous: directory, contacts"
+    },
+    {
+      "prompt": "pr-ux-fluent-look-darkmode",
+      "reason": "unresolvable: no scope path names a module"
+    },
+    {
+      "prompt": "pr-ux-view-switcher",
+      "reason": "unresolvable: no scope path names a module"
+    },
+    {
+      "prompt": "pr-zz-mail-managed-identity",
+      "reason": "ambiguous: email, admin"
+    }
+  ]
+}

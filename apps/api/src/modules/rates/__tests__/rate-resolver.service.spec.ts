@@ -532,10 +532,14 @@ describe("RateResolverService", () => {
         id: "rt-plant",
         slug: "plant",
         columns: [
-          { id: "c-item",     name: "Item",     role: "KEY",   unit: null, sortOrder: 1 },
-          { id: "c-category", name: "Category", role: "INFO",  unit: null, sortOrder: 2 },
-          { id: "c-unit-inf", name: "Unit",     role: "INFO",  unit: null, sortOrder: 3 },
-          { id: "c-rate",     name: "Rate",     role: "VALUE", unit: "day", sortOrder: 4 }
+          { id: "c-item",     name: "Item",      role: "KEY",   unit: null, sortOrder: 1 },
+          { id: "c-category", name: "Category",  role: "INFO",  unit: null, sortOrder: 2 },
+          { id: "c-unit-inf", name: "Unit",      role: "INFO",  unit: null, sortOrder: 3 },
+          { id: "c-rate",     name: "Rate",      role: "VALUE", unit: "day", sortOrder: 4 },
+          // PLANT_FUEL_COLUMN_V1 — the second VALUE column. Present here for
+          // the same reason sortOrder is: a fixture that omits it lets the
+          // exhaustive toEqual below pass while proving nothing about it.
+          { id: "c-fuel",     name: "Fuel rate", role: "VALUE", unit: "day", sortOrder: 5 }
         ]
       });
       prisma.rateRow.findMany.mockResolvedValue([
@@ -543,9 +547,10 @@ describe("RateResolverService", () => {
         // AND deliberately present: a mocked row that omits it makes the
         // resolver emit `undefined`, and jest's toEqual treats an undefined
         // property as absent — so the exhaustive assertions below would pass
-        // while proving nothing about sortOrder at all.
-        { id: "rr-exc", isActive: true, sortOrder: 7, cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800 } },
-        { id: "rr-doz", isActive: true, sortOrder: 3, cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950 } }
+        // while proving nothing about sortOrder at all. The fuel cells are
+        // present and DISTINCT from the rate cells for the same reason.
+        { id: "rr-exc", isActive: true, sortOrder: 7, cells: { "c-item": "Excavator 20t", "c-category": "Excavator", "c-unit-inf": "day", "c-rate": 800, "c-fuel": 140 } },
+        { id: "rr-doz", isActive: true, sortOrder: 3, cells: { "c-item": "Dozer D6",      "c-category": "Dozer",     "c-unit-inf": "day", "c-rate": 950, "c-fuel": 165 } }
       ]);
       const svc = new RateResolverService(prisma as never);
       const out: ListedRate[] = await svc.listRates("plant");
@@ -559,6 +564,7 @@ describe("RateResolverService", () => {
         unit: "day",
         isActive: true,
         sortOrder: 7,
+        fuelRate: 140,
         source: "ratetable"
       });
       expect(out[1]).toEqual({
@@ -569,6 +575,7 @@ describe("RateResolverService", () => {
         unit: "day",
         isActive: true,
         sortOrder: 3,
+        fuelRate: 165,
         source: "ratetable"
       });
       // Legacy path must NOT be consulted when ratetable answered.
@@ -1117,6 +1124,279 @@ describe("RateResolverService", () => {
         expect(prisma.estimateEnclosureRate.findMany).toHaveBeenCalledWith({
           where: { isActive: true },
           orderBy: { enclosureType: "asc" }
+        });
+      });
+    });
+
+    // ── PLANT_FUEL_COLUMN_V1 ────────────────────────────────────────────
+    //
+    // `ListedRate.value` carries one figure; plant is priced on two. The hire
+    // rate is `value`; the running fuel cost is `fuelRate`, and the tendering
+    // persona is told to report BOTH because "the hire rate alone understates
+    // the all-in plant cost".
+    //
+    // Every fixture below states its fuel figure EXPLICITLY, and states one
+    // DISTINCT from the row's rate wherever both are asserted. This is the
+    // trap #1710 and #1715 each found in the RateTable-path test above: a
+    // fixture that omits the field makes the resolver emit `undefined`, jest's
+    // toEqual treats an undefined property as absent, and an exhaustive
+    // assertion passes while proving nothing. `.not.toBeUndefined()` and
+    // `toBeNull()` appear deliberately alongside toEqual for the same reason —
+    // `toEqual({...})` would accept a silently missing `fuelRate`, these do not.
+    describe("fuelRate", () => {
+      test("legacy path: plant reports fuelRate, distinct from the hire rate", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimatePlantRate.findMany.mockResolvedValue([
+          // fuelRate deliberately unequal to rate on every row, so a resolver
+          // that returned the wrong column could not pass.
+          { id: "p-exc", item: "Excavator 20t", rate: "800", unit: "day", category: "Excavator", fuelRate: "140", isActive: true, sortOrder: 17 },
+          { id: "p-doz", item: "Dozer D6",      rate: "950", unit: "day", category: "Dozer",     fuelRate: "165", isActive: true, sortOrder: 3 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+        expect(out.map((r) => [r.value, r.fuelRate])).toEqual([
+          [800, 140],
+          [950, 165]
+        ]);
+        expect(out[0]!.fuelRate).not.toBeUndefined();
+        // The figure is a named field, NOT smuggled into the info bag — info
+        // is documented as metadata "not used for pricing", and a fuel rate is
+        // a priced quantity (Marco, 2026-09-07: a second VALUE column).
+        expect(out[0]!.info).toEqual({ Category: "Excavator", Unit: "day" });
+      });
+
+      test("legacy path: fuelRate 0 is reported as 0, never null — 0 is a real value", async () => {
+        // EstimatePlantRate.fuelRate is `Decimal @default(0)` and NOT
+        // nullable, and estimates.service.ts writes `dto.fuelRate ?? "0"`, so
+        // an item entered with no fuel cost arrives here as 0. `null` on this
+        // path is unreachable by construction; 0 means "no fuel cost", which
+        // is a fact, not an absence.
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimatePlantRate.findMany.mockResolvedValue([
+          { id: "p-att", item: "Attachment 16T-25T", rate: "281", unit: "day", category: "Other", fuelRate: "0", isActive: true, sortOrder: 10 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+        expect(out[0]!.fuelRate).toBe(0);
+        expect(out[0]!.fuelRate).not.toBeNull();
+      });
+
+      test("RateTable path: the fuel cell is read from the VALUE column named \"Fuel rate\"", async () => {
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item",      role: "KEY",   unit: null,  sortOrder: 1 },
+            { id: "c-rate", name: "Rate",      role: "VALUE", unit: "day", sortOrder: 4 },
+            { id: "c-fuel", name: "Fuel rate", role: "VALUE", unit: "day", sortOrder: 5 }
+          ]
+        });
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-exc", isActive: true, sortOrder: 7, cells: { "c-item": "Excavator 20t", "c-rate": 800, "c-fuel": 140 } },
+          { id: "rr-att", isActive: true, sortOrder: 3, cells: { "c-item": "Attachment",    "c-rate": 281, "c-fuel": 0 } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+        expect(out.map((r) => [r.value, r.fuelRate])).toEqual([
+          [800, 140],
+          [281, 0]
+        ]);
+        // `value` still comes from valueCols[0]; the second VALUE column did
+        // not displace it.
+        expect(out[0]!.value).toBe(800);
+        expect(out[0]!.unit).toBe("day");
+        expect(out[1]!.fuelRate).not.toBeNull();
+      });
+
+      test("RateTable path: the column is found by NAME even when its id is a cuid", async () => {
+        // The seed stamps `rt-plt-c-fuel` only in its create branch and upserts
+        // on the unique (rate_table_id, name); a column created through the
+        // admin UI carries a cuid under the same name, and the
+        // 20260907120000_rates_plant_fuel_column migration writes its cells
+        // under THAT id. Matching on the id would report null here.
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY", unit: null, sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 4 },
+            { id: "clz8k2n1v0000abcdxyz9q1w2", name: "Fuel rate", role: "VALUE", unit: "day", sortOrder: 5 }
+          ]
+        });
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-exc", isActive: true, sortOrder: 1, cells: { "c-item": "Excavator 20t", "c-rate": 800, "clz8k2n1v0000abcdxyz9q1w2": 140 } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+        expect(out[0]!.fuelRate).toBe(140);
+      });
+
+      test("RateTable path: a cell keyed by column NAME is read too", async () => {
+        // tryListRateTable's KEY/INFO readers tolerate `cells[col.id] ?? cells[col.name]`;
+        // the fuel reader must not be stricter, or a name-keyed row silently
+        // loses the figure. The migration deliberately skips such rows rather
+        // than writing a second, competing key.
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY", unit: null, sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 4 },
+            { id: "c-fuel", name: "Fuel rate", role: "VALUE", unit: "day", sortOrder: 5 }
+          ]
+        });
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-exc", isActive: true, sortOrder: 1, cells: { "c-item": "Excavator 20t", "c-rate": 800, "Fuel rate": 140 } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+        expect(out[0]!.fuelRate).toBe(140);
+      });
+
+      test("RateTable path: an ABSENT fuel cell reports null, not 0 and not NaN", async () => {
+        // A row added through the admin UI after the migration and left blank.
+        // 0 would fabricate a fuel cost of zero dollars — a claim, not an
+        // absence; NaN would poison any `fuelRate ?? fallback` downstream.
+        // Same reasoning as `sortOrder: null` for core-hole.
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY", unit: null, sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 4 },
+            { id: "c-fuel", name: "Fuel rate", role: "VALUE", unit: "day", sortOrder: 5 }
+          ]
+        });
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-new",  isActive: true, sortOrder: 1, cells: { "c-item": "Uncosted item", "c-rate": 100 } },
+          { id: "rr-null", isActive: true, sortOrder: 2, cells: { "c-item": "Explicit null", "c-rate": 200, "c-fuel": null } },
+          { id: "rr-junk", isActive: true, sortOrder: 3, cells: { "c-item": "Junk cell",     "c-rate": 300, "c-fuel": "not a number" } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("plant");
+        expect(out.map((r) => r.fuelRate)).toEqual([null, null, null]);
+        expect(out[0]!.fuelRate).toBeNull();
+        expect(out[2]!.fuelRate).not.toBeNaN();
+        // The hire rate is untouched by any of it.
+        expect(out.map((r) => r.value)).toEqual([100, 200, 300]);
+      });
+
+      test("every non-plant kind reports fuelRate: null on the legacy path", async () => {
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const prisma = makePrisma();
+        prisma.estimateLabourRate.findMany.mockResolvedValue([
+          { id: "lab-1", role: "Foreman", dayRate: "450", nightRate: "520", weekendRate: "600", isActive: true, sortOrder: 12 }
+        ]);
+        prisma.estimateWasteRate.findMany.mockResolvedValue([
+          { id: "w-1", wasteType: "Concrete", facility: "BMI", wasteGroup: "Inert", unit: "tonne", tonRate: "45", loadRate: "0", isActive: true, sortOrder: 9 }
+        ]);
+        prisma.estimateCuttingRate.findMany.mockResolvedValue([
+          { id: "c-1", equipment: "Ring saw", elevation: "Floor", material: "Concrete", depthMm: 100, ratePerM: "120", isActive: true, sortOrder: 14 }
+        ]);
+        prisma.estimateCoreHoleRate.findMany.mockResolvedValue([
+          { id: "h-1", diameterMm: 52, ratePerHole: "60", isActive: true }
+        ]);
+        prisma.estimateFuelRate.findMany.mockResolvedValue([
+          { id: "f-1", item: "Diesel", rate: "2.1", unit: "L", isActive: true, sortOrder: 2 }
+        ]);
+        prisma.estimateEnclosureRate.findMany.mockResolvedValue([
+          { id: "e-1", enclosureType: "Standard", rate: "300", unit: "each", isActive: true, sortOrder: 33 }
+        ]);
+        prisma.cuttingOtherRate.findMany.mockResolvedValue([
+          { id: "o-1", description: "Setup", rate: "150", unit: "each", isActive: true, sortOrder: 5 }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        // The `fuel` SLUG is diesel-by-the-litre, nothing to do with a plant
+        // item's fuel rate; it reports null like every other non-plant kind.
+        for (const slug of ["labour", "waste", "cutting", "core-hole", "fuel", "enclosure", "other-rates"]) {
+          const out = await svc.listRates(slug);
+          expect(out.length).toBeGreaterThan(0);
+          expect(out.map((r) => r.fuelRate)).toEqual(out.map(() => null));
+          // toEqual would accept `undefined` for a missing property; this will not.
+          for (const r of out) expect(r.fuelRate).toBeNull();
+        }
+        // The labour fan-out emits three entries from one row; all three carry it.
+        expect((await svc.listRates("labour")).map((r) => r.fuelRate)).toEqual([null, null, null]);
+      });
+
+      test("RateTable path: a table with no \"Fuel rate\" column reports null and keeps its own VALUE column", async () => {
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const prisma = makePrisma();
+        prisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-fuel",
+          slug: "fuel",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY",   unit: null, sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "L",  sortOrder: 2 }
+          ]
+        });
+        prisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-diesel", isActive: true, sortOrder: 1, cells: { "c-item": "Diesel", "c-rate": 2.1 } }
+        ]);
+        const svc = new RateResolverService(prisma as never);
+        const out: ListedRate[] = await svc.listRates("fuel");
+        expect(out[0]!.fuelRate).toBeNull();
+        expect(out[0]!.value).toBe(2.1);
+        expect(out[0]!.unit).toBe("L");
+      });
+
+      test("the row set and its order are UNCHANGED on both paths", async () => {
+        // The invariant #1710 and #1715 each carried: not one `where` or
+        // `orderBy` may be added, removed or altered by this slice.
+        delete process.env.RATES_CANONICAL_SOURCE;
+        const legacyPrisma = makePrisma();
+        legacyPrisma.estimatePlantRate.findMany.mockResolvedValue([
+          { id: "p-a", item: "Air compressor", rate: "300", unit: "day", category: "Access",      fuelRate: "35",  isActive: true,  sortOrder: 40 },
+          { id: "p-b", item: "Bobcat",         rate: "500", unit: "day", category: "Earthmoving", fuelRate: "0",   isActive: false, sortOrder: 5 },
+          { id: "p-c", item: "Excavator 20t",  rate: "800", unit: "day", category: "Earthmoving", fuelRate: "140", isActive: true,  sortOrder: 17 }
+        ]);
+        const legacySvc = new RateResolverService(legacyPrisma as never);
+        const legacyOut = await legacySvc.listRates("plant");
+        // Same rows, same order, INCLUDING the inactive one — still no filter.
+        expect(legacyOut.map((r) => r.rowId)).toEqual(["p-a", "p-b", "p-c"]);
+        expect(legacyOut.map((r) => r.isActive)).toEqual([true, false, true]);
+        expect(legacyOut.map((r) => r.fuelRate)).toEqual([35, 0, 140]);
+        expect(legacyPrisma.estimatePlantRate.findMany).toHaveBeenCalledWith({
+          orderBy: { item: "asc" }
+        });
+        expect(legacyPrisma.estimatePlantRate.findMany).toHaveBeenCalledTimes(1);
+
+        process.env.RATES_CANONICAL_SOURCE = "ratetable";
+        const rtPrisma = makePrisma();
+        rtPrisma.rateTable.findUnique.mockResolvedValue({
+          id: "rt-plant",
+          slug: "plant",
+          columns: [
+            { id: "c-item", name: "Item", role: "KEY", unit: null, sortOrder: 1 },
+            { id: "c-rate", name: "Rate", role: "VALUE", unit: "day", sortOrder: 4 },
+            { id: "c-fuel", name: "Fuel rate", role: "VALUE", unit: "day", sortOrder: 5 }
+          ]
+        });
+        rtPrisma.rateRow.findMany.mockResolvedValue([
+          { id: "rr-a", isActive: true, sortOrder: 30, cells: { "c-item": "Excavator 20t", "c-rate": 800, "c-fuel": 140 } },
+          { id: "rr-b", isActive: true, sortOrder: 10, cells: { "c-item": "Dozer D6",      "c-rate": 950, "c-fuel": 165 } }
+        ]);
+        const rtSvc = new RateResolverService(rtPrisma as never);
+        const rtOut = await rtSvc.listRates("plant");
+        expect(rtOut.map((r) => r.rowId)).toEqual(["rr-a", "rr-b"]);
+        expect(rtOut.map((r) => r.fuelRate)).toEqual([140, 165]);
+        expect(rtPrisma.rateRow.findMany).toHaveBeenCalledWith({
+          where: { rateTableId: "rt-plant", isActive: true },
+          orderBy: { sortOrder: "asc" }
+        });
+        expect(rtPrisma.rateTable.findUnique).toHaveBeenCalledWith({
+          where: { slug: "plant" },
+          include: { columns: { orderBy: { sortOrder: "asc" } } }
         });
       });
     });

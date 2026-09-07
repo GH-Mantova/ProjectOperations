@@ -140,6 +140,11 @@ $sup = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-O
 Line "LIVE" ("auto-restart wrapper: " + $(if ($sup.Count) { "alive (" + $sup.Count + ")" } else { "NOT RUNNING -- watcher will not self-restart" }))
 $hb = Join-Path $WatcherClone "scripts\pr-watcher\heartbeat.log"
 if (Test-Path $hb) {
+  # LOCAL vs LOCAL ON PURPOSE -- do NOT "fix" this to LastWriteTimeUtc. Get-Date is local, so the
+  # subtraction is correct only while BOTH sides are local; changing one side alone would put a
+  # 600-minute error into every heartbeat age on a UTC+10 host. The UTC rule applies to RENDERED
+  # timestamps (sections 4B and 4C), not to arithmetic between two same-zone values, and not to the
+  # Sort-Object calls below, which order rather than display.
   $age = [int]((New-TimeSpan -Start (Get-Item $hb).LastWriteTime -End (Get-Date)).TotalMinutes)
   Line "LIVE" ("heartbeat age: " + $age + " min  (ticks only mid-run; stale + empty queue = idle, NOT wedged)")
 }
@@ -299,7 +304,14 @@ foreach ($bucket in @("failed", "no-pr-opened")) {
     if (-not $reason) { $reason = "(no reason captured -- open the file)" }
     $reason = ($reason -replace '[^\x20-\x7E]', ' ')
     if ($reason.Length -gt 100) { $reason = $reason.Substring(0, 100) }
-    Line "LIVE" ("   " + $f.LastWriteTime.ToString("MM-dd HH:mm") + "  " + $f.Name + "  ::  " + $reason)
+    # RENDER IN UTC AND SAY SO. This host runs E. Australia Standard Time (UTC+10), so
+    # .LastWriteTime here printed every file ten hours fresher than it was, unmarked, in a report
+    # whose section 1 and closing line both carry an explicit Z. Measured 2026-09-01: a file whose
+    # LastWriteTimeUtc was 2026-08-31 20:26:21Z printed here as 09-01 06:26, in a report closing
+    # SWEEP COMPLETE 2026-09-01 10:11:36Z -- 13.8 h old, shown as 3.8 h old, beside a UTC line that
+    # invites the comparison. These lines feed freshness judgements, so the error is not cosmetic.
+    # Use .LastWriteTimeUtc and append the Z; never .LastWriteTime in a rendered string.
+    Line "LIVE" ("   " + $f.LastWriteTimeUtc.ToString("MM-dd HH:mm") + "Z  " + $f.Name + "  ::  " + $reason)
   }
 }
 
@@ -322,7 +334,10 @@ if (Test-Path $schedRoot) {
 $stateFiles = @(Get-ChildItem (Join-Path $Queue "*state*.md") -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
 if ($stateFiles.Count -gt 0) {
   $fresh = $stateFiles[0]
-  Line "FILE" ("freshest station summary: " + $fresh.Name + "  (" + $fresh.LastWriteTime.ToString("MM-dd HH:mm") + ") -- a SNAPSHOT by whoever last ran; verify claims against GitHub:")
+  # UTC + explicit Z, same reason as section 4B above. This is the line a station reads to decide
+  # whether the last station summary is worth trusting, so a ten-hour flattery here is the single
+  # most consequential local-time render in the sweep.
+  Line "FILE" ("freshest station summary: " + $fresh.Name + "  (" + $fresh.LastWriteTimeUtc.ToString("MM-dd HH:mm") + "Z) -- a SNAPSHOT by whoever last ran; verify claims against GitHub:")
   Get-Content $fresh.FullName -Tail 22 | Where-Object { $_ -match '\S' } | ForEach-Object {
     $t = ($_ -replace '[^\x20-\x7E]', ' ')
     if ($t.Length -gt 118) { $t = $t.Substring(0, 118) }

@@ -738,6 +738,22 @@ here now because they are true for **every** station.
   be fast-forwarded before a restart changes any behaviour.
 - ⚠️ **The watchdog heartbeat only ticks MID-RUN**, so age alone cannot separate idle from wedged. A
   long-stale heartbeat while a PR is open usually means **merge-wait**, not a hang.
+- ⚠️ **THE VERDICT-ARCHIVE SWEEP USED TO ANSWER AN EMPTY BOARD WITH SILENCE — and silence is the
+  one reading a dead watcher also gives.** `runArchiveSettledVerdicts` (anchor: that symbol in
+  `scripts/pr-watcher/index.mjs`) gated its summary line on a non-zero counter, so when the board
+  emptied at **2026-08-25T07:01Z** the sweep printed nothing inside the same rescan and the log went
+  mute. Two write-ups then had to warn readers not to read that mute log as a death. It now emits
+  **`verdict-archive sweep: idle`** on every sweep that finds no verdict files (anchor:
+  `runVerdictArchiveSweep`), on the same `RESCAN_INTERVAL_MS` cadence as the counted line, so idle
+  is stated rather than inferred. 🔧 **But this line is NOT the freeze probe and must never be wired
+  into one.** A log line proves a **code path ran**; only a GAP catches a freeze. **The authoritative
+  freeze probe remains the `ts` field inside `.queue-state.json`** — sample it **twice, more than
+  five minutes apart**, and compare the delta against `RESCAN_INTERVAL_MS` (5 min): `ts` unchanged
+  across that window is a frozen rescan loop, whatever the log says. ⚠️ **Both observables die
+  together after `pauseQueue`**, which sets `queuePaused` and makes `rescan()` return before both
+  the sweep and `writeQueueState()` — so a PAUSED watcher still reads exactly like a dead one on
+  both. Read from source 2026-09-07, not measured in the field; treat a simultaneous stop of tick
+  and `ts` as *paused or dead*, and resolve it by PID, never by silence.
 - ⚠️ **Never count or kill by image name.** Resolve PIDs and verify command lines — 19 `node.exe` were
   running on 2026-08-24 and exactly one was the watcher.
 - ⚠️ **QUARANTINED ledger rows are recorded but NOT binding.** Citing one as authority is an error.

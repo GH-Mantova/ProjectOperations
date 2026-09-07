@@ -870,7 +870,47 @@ export async function archiveSettledVerdicts({
   return stats;
 }
 
-// Wire archiveSettledVerdicts to the watcher's real REPO_ROOT and gh. Never
+// The verdict-archive sweep's REPORTING half, split out from the wiring below
+// so a test can drive it against a real, empty reviews directory.
+//
+// LIVENESS CONTRACT: this function logs EXACTLY ONE summary line per sweep,
+// unconditionally. Until this change the summary was gated on a non-zero
+// counter, so an empty board printed nothing at all and the watcher's log
+// became byte-for-byte indistinguishable from a dead watcher's. Measured: the
+// board emptied at 2026-08-25T07:01Z and the log went mute inside the same
+// rescan; two write-ups then had to warn readers not to read that silence as
+// a death.
+//
+// The substring `verdict-archive sweep: idle` is load-bearing — humans and
+// log probes grep it. It proves a code path RAN on this rescan; it is NOT a
+// freeze probe, and nothing in this codebase may read it as one. The
+// authoritative freeze probe stays the `ts` field inside .queue-state.json,
+// sampled twice more than five minutes apart and checked for a GAP against
+// RESCAN_INTERVAL_MS. A log line proves a path ran; only the GAP catches a
+// freeze.
+//
+// Never throws into the caller — the sweep is best-effort housekeeping and
+// must not stall startup or the rescan loop. Returns the stats on success and
+// null when the sweep crashed (the crash line is logged, not rethrown).
+export async function runVerdictArchiveSweep({ logger = () => {}, ...sweepOpts } = {}) {
+  try {
+    const stats = await archiveSettledVerdicts({ ...sweepOpts, logger });
+    if (stats.archived + stats.kept + stats.skipped + stats.tracked > 0) {
+      logger(
+        "review",
+        `verdict-archive sweep: archived=${stats.archived} kept=${stats.kept} skipped=${stats.skipped} tracked=${stats.tracked}`,
+      );
+    } else {
+      logger("review", "verdict-archive sweep: idle - 0 verdict files, watcher alive");
+    }
+    return stats;
+  } catch (err) {
+    logger("review", `verdict-archive sweep crashed (swallowed): ${err.message}`);
+    return null;
+  }
+}
+
+// Wire runVerdictArchiveSweep to the watcher's real REPO_ROOT and gh. Never
 // throws into the caller — the sweep is best-effort housekeeping and must
 // not stall startup or the rescan loop.
 async function runArchiveSettledVerdicts() {
@@ -878,48 +918,38 @@ async function runArchiveSettledVerdicts() {
   // Sibling of REPO_ROOT so git never sees it — no gitignore needed, no
   // status noise, no risk of an accidental `git clean` sweeping verdicts.
   const archiveDir = path.join(REPO_ROOT, "..", "verdicts-archive");
-  try {
-    const stats = await archiveSettledVerdicts({
-      reviewsDir,
-      archiveDir,
-      fetchPrState: async (prNumber) => {
-        const json = await runGh(
-          ["pr", "view", String(prNumber), "--json", "state"],
-          { json: true },
-        );
-        return json.state;
-      },
-      // One `git ls-files` process per sweep — no network, no gh quota.
-      // Returns basenames only (the filenames inside docs/pr-reviews/).
-      // On failure the function throws, and archiveSettledVerdicts treats
-      // every file as tracked for that sweep (fail-closed).
-      listTrackedVerdicts: async () => {
-        const { execFile } = await import("node:child_process");
-        const { promisify } = await import("node:util");
-        const execFileAsync = promisify(execFile);
-        const { stdout } = await execFileAsync("git", [
-          "-C",
-          REPO_ROOT,
-          "ls-files",
-          "docs/pr-reviews",
-        ]);
-        return stdout
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((rel) => path.basename(rel));
-      },
-      logger: log,
-    });
-    if (stats.archived + stats.kept + stats.skipped + stats.tracked > 0) {
-      log(
-        "review",
-        `verdict-archive sweep: archived=${stats.archived} kept=${stats.kept} skipped=${stats.skipped} tracked=${stats.tracked}`,
+  await runVerdictArchiveSweep({
+    reviewsDir,
+    archiveDir,
+    fetchPrState: async (prNumber) => {
+      const json = await runGh(
+        ["pr", "view", String(prNumber), "--json", "state"],
+        { json: true },
       );
-    }
-  } catch (err) {
-    log("review", `verdict-archive sweep crashed (swallowed): ${err.message}`);
-  }
+      return json.state;
+    },
+    // One `git ls-files` process per sweep — no network, no gh quota.
+    // Returns basenames only (the filenames inside docs/pr-reviews/).
+    // On failure the function throws, and archiveSettledVerdicts treats
+    // every file as tracked for that sweep (fail-closed).
+    listTrackedVerdicts: async () => {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      const { stdout } = await execFileAsync("git", [
+        "-C",
+        REPO_ROOT,
+        "ls-files",
+        "docs/pr-reviews",
+      ]);
+      return stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((rel) => path.basename(rel));
+    },
+    logger: log,
+  });
 }
 
 function debouncedEnqueue(name) {

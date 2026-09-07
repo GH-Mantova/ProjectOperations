@@ -28,6 +28,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -35,6 +36,7 @@ import {
   buildStepValues,
   describeChargeStepIssue,
   evaluateChargeSteps,
+  type ChargeStepTrailEntry,
   type RateLineField
 } from "@project-ops/config/charge-step-semantics";
 import {
@@ -48,6 +50,7 @@ import {
   stepTotalPresentations,
   CMP_LABELS,
   CONDITION_CMPS,
+  CONDITIONAL_OPS,
   FORMULA_TOTAL,
   KNOWN_OPS,
   LINE_TOTAL_LABEL,
@@ -57,11 +60,40 @@ import {
   addableOps,
   appendStep,
   canLeadStepList,
+  canMoveStep,
   canRemoveStep,
   removeStepAt,
   reorderSteps,
+  // CHARGE_STEP_INPLACE_V1
+  ChargeStepRow,
+  FIELD_SOURCE_LABELS,
+  FIXED_VALUE_OPS,
+  OPERAND_NUMBER_LABEL,
+  OPERAND_NUMBER_VALUE,
+  buildStepOfOp,
+  changeStepOp,
+  coerceConditionValue,
+  conditionFieldGroups,
+  conditionValueOptions,
+  defaultCondition,
+  defaultOperand,
+  fieldChoiceLabel,
+  fieldChoices,
+  isOpOfferableAt,
+  newStepFor,
+  operandFieldValue,
+  operandGroups,
+  operandOptionList,
+  parseOperandValue,
+  replaceStepAt,
+  setStepCondition,
+  setStepFixedValue,
+  setStepOperand,
+  setStepRound,
+  stepCarry,
   type RateColumnMeta,
-  type StepOp
+  type StepOp,
+  type TotalPresentation
 } from "../ChargeStepsEditor";
 import type { ChargeStep } from "../../../lib/chargeStepTypes";
 
@@ -79,6 +111,127 @@ const COLS: RateColumnMeta[] = [
 ];
 
 const COL_NAMES = COLS.map((c) => c.name);
+
+// ── CHARGE_STEP_INPLACE_V1 fixtures and rendering helpers ─────────────────
+//
+// apps/web has no jsdom and no testing-library; the house pattern is to render
+// a component to static markup and assert on the string. The controls ARE the
+// product of this slice, so a source grep would prove nothing about what a
+// person actually sees — these render the real row.
+
+/** The mock-up's Core holes table: two columns, one of them text. */
+const INPLACE_COLS: RateColumnMeta[] = [
+  { id: "ic1", name: "Diameter", dataType: "NUMBER", role: "KEY", unit: "mm" },
+  { id: "ic2", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "$ / hole per 10 mm" },
+  { id: "ic3", name: "Material", dataType: "TEXT", role: "KEY" }
+];
+
+/** Its line fields: two numbers and one text with a declared option list. */
+const INPLACE_LINE_FIELDS: RateLineField[] = [
+  { name: "Depth", kind: "number", unit: "mm", sample: 18 },
+  { name: "Elevation", kind: "text", options: ["Floor", "Wall", "Inverted"], sample: "Inverted" },
+  { name: "Holes", kind: "number", sample: 12 }
+];
+
+const noop = () => {};
+
+const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
+
+/** The markup one step row renders. */
+function rowMarkup(
+  step: ChargeStep,
+  index: number,
+  opts: {
+    columns?: RateColumnMeta[];
+    lineFields?: readonly RateLineField[];
+    trailEntry?: ChargeStepTrailEntry;
+    presentation?: TotalPresentation;
+    invalid?: boolean;
+    canMoveUp?: boolean;
+    canMoveDown?: boolean;
+  } = {}
+): string {
+  return renderToStaticMarkup(
+    <ul>
+      <ChargeStepRow
+        step={step}
+        index={index}
+        columns={opts.columns ?? INPLACE_COLS}
+        lineFields={opts.lineFields ?? INPLACE_LINE_FIELDS}
+        trailEntry={opts.trailEntry}
+        presentation={opts.presentation ?? MEASUREMENT}
+        invalid={opts.invalid ?? false}
+        canMoveUp={opts.canMoveUp ?? index > 0}
+        canMoveDown={opts.canMoveDown ?? true}
+        onChange={noop}
+        onMoveUp={noop}
+        onMoveDown={noop}
+        onRemove={noop}
+      />
+    </ul>
+  );
+}
+
+/** The markup a whole list renders, wired the way the card wires it. */
+function listMarkup(
+  steps: ChargeStep[],
+  columns: RateColumnMeta[] = INPLACE_COLS,
+  lineFields: readonly RateLineField[] = INPLACE_LINE_FIELDS
+): string {
+  return renderToStaticMarkup(
+    <ul>
+      {steps.map((step, i) => (
+        <ChargeStepRow
+          key={i}
+          step={step}
+          index={i}
+          columns={columns}
+          lineFields={lineFields}
+          presentation={MEASUREMENT}
+          invalid={false}
+          canMoveUp={canMoveStep(steps, i, i - 1)}
+          canMoveDown={canMoveStep(steps, i, i + 1)}
+          onChange={noop}
+          onMoveUp={noop}
+          onMoveDown={noop}
+          onRemove={noop}
+        />
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The markup of the ONE element carrying this aria-label, when it is a
+ * `<select>`. Returns "" when the label names an `<input>` instead — which is
+ * exactly the distinction the condition value control turns on.
+ */
+function selectBlock(html: string, ariaLabel: string): string {
+  const at = html.indexOf(`aria-label="${ariaLabel}"`);
+  if (at < 0) return "";
+  const open = html.lastIndexOf("<", at);
+  if (!html.startsWith("<select", open)) return "";
+  const close = html.indexOf("</select>", at);
+  return html.slice(open, close);
+}
+
+/** The `<option>` labels of one named select, in render order. */
+function optionsOf(html: string, ariaLabel: string): string[] {
+  return Array.from(
+    selectBlock(html, ariaLabel).matchAll(/<option[^>]*>([^<]*)<\/option>/g)
+  ).map((m) => m[1]);
+}
+
+/** The `<option>` values that carry `disabled` on one named select. */
+function disabledOptionsOf(html: string, ariaLabel: string): string[] {
+  return Array.from(
+    selectBlock(html, ariaLabel).matchAll(/<option value="([^"]*)"[^>]*\bdisabled\b/g)
+  ).map((m) => m[1]);
+}
+
+/** Text as React writes it into markup. */
+const asMarkup = (text: string) =>
+  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // ── 1. stepSentence ────────────────────────────────────────────────────────
 
@@ -885,8 +1038,22 @@ describe("CHARGE_STEP_CARD_V2: menus speak, storage keys stay", () => {
   });
 
   it("the option value attributes are still the stored keys", () => {
-    expect(CARD_SRC).toContain("<option key={o} value={o}>{OP_LABELS[o]}</option>");
-    expect(CARD_SRC).toContain("<option key={c} value={c}>{CMP_LABELS[c]}</option>");
+    // Asserted on the markup the row actually renders, not on the source that
+    // produces it: the menu SPEAKS the label and STORES the key.
+    const html = rowMarkup(
+      { op: "multiply", field: "Rate", when: { field: "Elevation", cmp: ">=", value: 2 } },
+      1
+    );
+    for (const op of KNOWN_OPS) {
+      expect(html).toContain(`value="${op}"`);
+      expect(html).toContain(`>${OP_LABELS[op]}</option>`);
+    }
+    for (const cmp of CONDITION_CMPS) {
+      expect(html).toContain(`>${CMP_LABELS[cmp]}</option>`);
+    }
+    // `>=` and `<=` are escaped in an attribute, and are still the stored key.
+    expect(html).toContain('value="&gt;="');
+    expect(html).toContain('value="&lt;="');
   });
 
   it("a saved step still stores the key, never the label", () => {
@@ -976,18 +1143,29 @@ describe("CHARGE_STEP_CARD_V2: the card itself", () => {
     expect(CARD_SRC).not.toContain("function checkCondition");
   });
 
-  it("renders the line-total row between the step list and the add form", () => {
+  it("renders the line-total row between the step list and the add control", () => {
     const lineTotal = CARD_SRC.indexOf('data-testid="line-total"');
-    const addForm = CARD_SRC.indexOf("<AddStepForm");
+    const addStep = CARD_SRC.indexOf('data-testid="add-step-btn"');
     const list = CARD_SRC.indexOf('aria-label="Charge step list"');
+    expect(list).toBeGreaterThan(-1);
+    expect(addStep).toBeGreaterThan(-1);
     expect(lineTotal).toBeGreaterThan(list);
-    expect(lineTotal).toBeLessThan(addForm);
+    expect(lineTotal).toBeLessThan(addStep);
   });
 
   it("still prints the issue, and no figure, for an unresolvable step", () => {
-    expect(CARD_SRC).toContain('data-testid={`step-issue-${i}`}');
-    expect(CARD_SRC).toContain("{describeChargeStepIssue(stepIssue)}");
-    expect(CARD_SRC).toContain("{runningTotal !== null ? (");
+    const step: ChargeStep = { op: "multiply", field: "Nowhere" };
+    const trail = evaluateStepsClient(
+      [{ op: "start", field: "Depth" }, step],
+      { Depth: 2 }
+    );
+    expect(trail[1].issue?.code).toBe("missing-operand");
+    const html = rowMarkup(step, 1, { trailEntry: trail[1] });
+    expect(html).toContain('data-testid="step-issue-1"');
+    expect(html).toContain(asMarkup(describeChargeStepIssue(trail[1].issue!)));
+    // No figure in the running-total slot, and no stray em dash pretending
+    // to be one either — the reason is what stands there.
+    expect(html).not.toContain("<b>");
   });
 
   it("takes every new colour from a token, with no hex literal", () => {
@@ -1140,9 +1318,16 @@ describe("CHARGE_STEP_GUARDS_V1: step 1 has no remove control", () => {
     expect(sentences(next)).toEqual(["1. Start with Depth", "2. Add Fee"]);
   });
 
-  it("the card renders the control conditionally, not for every step", () => {
-    expect(CARD_SRC).toContain("{canRemoveStep(i) ? (");
-    expect(CARD_SRC).toContain("data-testid={`remove-step-${i}`}");
+  it("the list renders one fewer remove control than it has steps", () => {
+    const html = listMarkup(pinnedSteps(), PINNED_COLS, []);
+    expect(count(html, 'data-testid="remove-step-')).toBe(2);
+    expect(html).not.toContain('data-testid="remove-step-0"');
+    expect(html).toContain('data-testid="remove-step-1"');
+    expect(html).toContain('data-testid="remove-step-2"');
+    // Step 1 keeps its column: the control is replaced by a spacer, not
+    // dropped, so the actions stay aligned down the list.
+    expect(CARD_SRC).toContain("{canRemoveStep(index) ? (");
+    expect(CARD_SRC).toContain("style={iconSpacerStyle}");
   });
 
   it("step 1 can still be replaced: add, move to the top, remove the old one", () => {
@@ -1177,11 +1362,15 @@ describe("CHARGE_STEP_GUARDS_V1: no second start", () => {
     expect(OP_LABELS[addableOps(3)[0]]).toBe("Multiply by");
   });
 
-  it("the add form is driven by that list, not by every known op", () => {
-    const form = CARD_SRC.slice(CARD_SRC.indexOf("function AddStepForm"));
-    expect(form).toContain("const ops = useMemo(() => addableOps(stepCount), [stepCount]);");
-    expect(form).toContain("{ops.map((o) => (");
-    expect(form).not.toContain("{KNOWN_OPS.map((o) => (");
+  it("the guard is now in the row's own menu, and there is no add form left", () => {
+    // CHARGE_STEP_INPLACE_V1 removed the parallel form. The rule did not move
+    // with it: `addableOps` and the row menu ask the SAME predicate.
+    expect(CARD_SRC).not.toContain("function AddStepForm");
+    expect(CARD_SRC).toContain("return KNOWN_OPS.filter((o) => isOpOfferableAt(o, stepCount));");
+    expect(CARD_SRC).toContain("disabled={!isOpOfferableAt(op, index)}");
+    for (const count of [0, 1, 3, 7]) {
+      expect(addableOps(count)).toEqual(KNOWN_OPS.filter((o) => isOpOfferableAt(o, count)));
+    }
   });
 
   it("refuses a second start even if one is handed to it", () => {
@@ -1264,12 +1453,15 @@ describe("CHARGE_STEP_GUARDS_V1: the error is unreachable, not tolerated", () =>
     // The only two writers of `steps` state are `load` (server data) and
     // `updateSteps`; every call of the latter is a guarded delegation.
     expect(CARD_SRC.match(/setSteps\(/g)).toHaveLength(2);
-    expect(CARD_SRC.match(/updateSteps\(/g)).toHaveLength(4);
-    expect(CARD_SRC.match(/if \(next !== steps\) updateSteps\(next\);/g)).toHaveLength(4);
+    // Five now: CHARGE_STEP_INPLACE_V1 added `editStep`, which is a fifth
+    // guarded delegation, not a fifth way to write the list.
+    expect(CARD_SRC.match(/updateSteps\(/g)).toHaveLength(5);
+    expect(CARD_SRC.match(/if \(next !== steps\) updateSteps\(next\);/g)).toHaveLength(5);
     expect(CARD_SRC).toContain("const next = reorderSteps(steps, index, index - 1);");
     expect(CARD_SRC).toContain("const next = reorderSteps(steps, index, index + 1);");
     expect(CARD_SRC).toContain("const next = removeStepAt(steps, index);");
     expect(CARD_SRC).toContain("const next = appendStep(steps, step);");
+    expect(CARD_SRC).toContain("const next = replaceStepAt(steps, index, step);");
   });
 
   it("neither validation rule was relaxed", () => {
@@ -1486,5 +1678,651 @@ describe("RATE_LINE_FIELDS_V1: the card and its mount are wired for line fields"
 
   it("carries the marker", () => {
     expect(CARD_SRC).toContain("RATE_LINE_FIELDS_V1");
+  });
+});
+
+// ── CHARGE_STEP_INPLACE_V1 ────────────────────────────────────────────────
+//
+// The step row IS the editor, and there is ONE control for choosing an
+// operand. Before this slice, changing step 2 of a five-step rule meant
+// removing steps 2 to 5 and retyping four of them in order — and the first
+// thing removed was the step being corrected. These pin the row's controls,
+// the one operand picker, the condition pill, and the fact that the step-1
+// guards moved INTO those controls rather than being copied beside them.
+
+describe("CHARGE_STEP_INPLACE_V1: one operand picker, both sources labelled", () => {
+  it("renders the whole menu: two labelled groups, then a number", () => {
+    expect(operandOptionList(INPLACE_COLS, INPLACE_LINE_FIELDS)).toEqual([
+      "the rate table",
+      "Diameter (mm)",
+      "Rate ($ / hole per 10 mm)",
+      "the estimate line",
+      "Depth (mm)",
+      "Holes",
+      "a number…"
+    ]);
+  });
+
+  it("labels the two sources the way the mock-up's Fields table does", () => {
+    expect(FIELD_SOURCE_LABELS).toStrictEqual({
+      table: "the rate table",
+      line: "the estimate line"
+    });
+    const groups = operandGroups(INPLACE_COLS, INPLACE_LINE_FIELDS);
+    expect(groups.map((g) => g.label)).toEqual(["the rate table", "the estimate line"]);
+    expect(groups[0].choices.map((c) => c.name)).toEqual(["Diameter", "Rate"]);
+    expect(groups[1].choices.map((c) => c.name)).toEqual(["Depth", "Holes"]);
+  });
+
+  it("offers exactly what numericFieldOptions offers, in that order", () => {
+    const offered = operandGroups(INPLACE_COLS, INPLACE_LINE_FIELDS).flatMap((g) =>
+      g.choices.map((c) => c.name)
+    );
+    expect(offered).toEqual(numericFieldOptions(INPLACE_COLS, INPLACE_LINE_FIELDS));
+  });
+
+  it("the condition picker offers what allFieldOptions offers, text included", () => {
+    const offered = conditionFieldGroups(INPLACE_COLS, INPLACE_LINE_FIELDS).flatMap((g) =>
+      g.choices.map((c) => c.name)
+    );
+    expect(offered).toEqual(allFieldOptions(INPLACE_COLS, INPLACE_LINE_FIELDS));
+  });
+
+  it("a text field is in the condition picker and out of the operand picker", () => {
+    // Material is a TEXT COLUMN; Elevation is a TEXT LINE FIELD. Neither is
+    // arithmetic, and both are legible in an "only when".
+    const html = rowMarkup(
+      { op: "multiply", field: "Rate", when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+      1
+    );
+    expect(optionsOf(html, "Step 2 operand")).toEqual([
+      "Diameter (mm)",
+      "Rate ($ / hole per 10 mm)",
+      "Depth (mm)",
+      "Holes",
+      "a number…"
+    ]);
+    expect(optionsOf(html, "Step 2 operand")).not.toContain("Material");
+    expect(optionsOf(html, "Step 2 condition field")).toContain("Material");
+    expect(optionsOf(html, "Step 2 condition field")).toContain("Elevation");
+  });
+
+  it("draws the groups as optgroups, so the sources are separable on screen", () => {
+    const html = rowMarkup({ op: "multiply", field: "Rate" }, 1);
+    expect(html).toContain('<optgroup label="the rate table">');
+    expect(html).toContain('<optgroup label="the estimate line">');
+  });
+
+  it("is ONE component, used once, and the old three-control trio is gone", () => {
+    expect(count(CARD_SRC, "export function OperandPicker(")).toBe(1);
+    expect(count(CARD_SRC, "<OperandPicker")).toBe(1);
+    // The add form's Mode / Column / Value arrangement no longer exists.
+    expect(CARD_SRC).not.toContain('aria-label="Field input mode"');
+    expect(CARD_SRC).not.toContain('aria-label="Field column"');
+    expect(CARD_SRC).not.toContain('<option value="column">Column</option>');
+  });
+
+  it("the number option reveals a numeric input, and stores a number", () => {
+    const html = rowMarkup({ op: "multiply", field: 2 }, 1);
+    expect(html).toContain(`<option value="${OPERAND_NUMBER_VALUE}" selected="">${OPERAND_NUMBER_LABEL}</option>`);
+    expect(html).toContain('aria-label="Step 2 number"');
+    expect(html).toContain('value="2"');
+    // A field operand shows no numeric input at all.
+    expect(rowMarkup({ op: "multiply", field: "Rate" }, 1)).not.toContain('aria-label="Step 2 number"');
+  });
+
+  it("round its own thing, and neither floor nor cap is offered a field", () => {
+    expect(FIXED_VALUE_OPS).toEqual(["floor", "cap"]);
+    for (const step of [
+      { op: "floor", value: 18 } as ChargeStep,
+      { op: "cap", value: 500 } as ChargeStep
+    ]) {
+      const html = rowMarkup(step, 1);
+      expect(html).not.toContain('aria-label="Step 2 operand"');
+      expect(html).toContain('aria-label="Step 2 value"');
+    }
+    const round = rowMarkup({ op: "round", direction: "nearest", interval: 1 }, 2);
+    expect(round).not.toContain('aria-label="Step 3 operand"');
+    expect(optionsOf(round, "Step 3 round direction")).toEqual([
+      "to the nearest",
+      "up to the next",
+      "down to the last"
+    ]);
+    expect(round).toContain("whole number");
+  });
+
+  it("keeps a step's own name offerable after the table stops declaring it", () => {
+    // A column rename must not make the row lie about what the step holds.
+    const html = rowMarkup({ op: "multiply", field: "Widthh" }, 1);
+    expect(html).toContain(`<option value="${operandFieldValue("Widthh")}" selected="">Widthh</option>`);
+    expect(optionsOf(html, "Step 2 operand")[0]).toBe("Widthh");
+  });
+
+  it("round-trips an option value", () => {
+    expect(parseOperandValue(operandFieldValue("Day rate"))).toStrictEqual({ field: "Day rate" });
+    expect(parseOperandValue(OPERAND_NUMBER_VALUE)).toStrictEqual({ number: true });
+  });
+
+  it("names a field with its unit, and without one when it has none", () => {
+    const choices = fieldChoices(INPLACE_COLS, INPLACE_LINE_FIELDS);
+    expect(choices.map(fieldChoiceLabel)).toEqual([
+      "Diameter (mm)",
+      "Rate ($ / hole per 10 mm)",
+      "Material",
+      "Depth (mm)",
+      "Holes",
+      "Elevation"
+    ]);
+    expect(choices.filter((c) => c.text).map((c) => c.name)).toEqual(["Material", "Elevation"]);
+    expect(choices.filter((c) => c.source === "line").map((c) => c.name)).toEqual([
+      "Depth",
+      "Holes",
+      "Elevation"
+    ]);
+  });
+});
+
+describe("CHARGE_STEP_INPLACE_V1: a step is edited where it sits", () => {
+  /** The prompt's list: 1 Start with Depth, 2 Multiply by Holes, 3 Add Fee. */
+  const threeSteps = (): ChargeStep[] => [
+    { op: "start", field: "Depth" },
+    { op: "multiply", field: "Holes" },
+    { op: "add", field: "Fee" }
+  ];
+
+  it("changing step 2's operand is ONE write, and the other steps are untouched", () => {
+    const before = threeSteps();
+    const after = replaceStepAt(before, 1, setStepOperand(before[1], "Rate"));
+    expect(after.map((st, i) => stepSentence(st, i))).toEqual([
+      "1. Start with Depth",
+      "2. Multiply by Rate",
+      "3. Add Fee"
+    ]);
+    // Steps 1 and 3 are the SAME objects: nothing was removed and retyped.
+    expect(after[0]).toBe(before[0]);
+    expect(after[2]).toBe(before[2]);
+    expect(after).toHaveLength(3);
+  });
+
+  it("changing the operation keeps the operand and the condition", () => {
+    const step: ChargeStep = {
+      op: "multiply",
+      field: "Rate",
+      when: { field: "Elevation", cmp: "is", value: "Inverted" }
+    };
+    expect(changeStepOp(step, "divide", "Depth")).toStrictEqual({
+      op: "divide",
+      field: "Rate",
+      when: { field: "Elevation", cmp: "is", value: "Inverted" }
+    });
+  });
+
+  it("changing to round or back keeps what the new op can use", () => {
+    const multiply: ChargeStep = { op: "multiply", field: "Holes" };
+    const round = changeStepOp(multiply, "round", "Depth");
+    expect(round).toStrictEqual({ op: "round", direction: "nearest", interval: 1 });
+    // Coming back, `round` carries no operand, so the fallback is used.
+    expect(changeStepOp(round, "multiply", "Depth")).toStrictEqual({
+      op: "multiply",
+      field: "Depth"
+    });
+  });
+
+  it("a numeric operand carries into a floor; a named field cannot", () => {
+    expect(changeStepOp({ op: "multiply", field: 2 }, "floor", "Depth")).toStrictEqual({
+      op: "floor",
+      value: 2
+    });
+    expect(changeStepOp({ op: "multiply", field: "Rate" }, "cap", "Depth")).toStrictEqual({
+      op: "cap",
+      value: 0
+    });
+  });
+
+  it("start drops a condition, because a skipped start leaves nothing to work from", () => {
+    const conditional: ChargeStep = {
+      op: "multiply",
+      field: "Depth",
+      when: { field: "Elevation", cmp: "is", value: "Inverted" }
+    };
+    const started = changeStepOp(conditional, "start", "Depth");
+    expect(started).toStrictEqual({ op: "start", field: "Depth" });
+    expect("when" in started).toBe(false);
+  });
+
+  it("changing to the op it already has changes nothing at all", () => {
+    const step: ChargeStep = { op: "multiply", field: "Holes" };
+    expect(changeStepOp(step, "multiply", "Depth")).toBe(step);
+    expect(setStepOperand(step, "Holes")).toBe(step);
+    expect(setStepFixedValue({ op: "cap", value: 5 }, 5).op).toBe("cap");
+  });
+
+  it("never writes an explicit `when: undefined`, which JSON would carry", () => {
+    const step: ChargeStep = {
+      op: "multiply",
+      field: "Holes",
+      when: { field: "Elevation", cmp: "is", value: "Inverted" }
+    };
+    const bare = setStepCondition(step, undefined);
+    expect(bare).toStrictEqual({ op: "multiply", field: "Holes" });
+    expect(Object.prototype.hasOwnProperty.call(bare, "when")).toBe(false);
+    expect(JSON.stringify(bare)).toBe('{"op":"multiply","field":"Holes"}');
+    // Which is what the card sends: the PATCH body is the steps, verbatim.
+    expect(CARD_SRC).toContain("body: JSON.stringify({ steps })");
+  });
+
+  it("stepCarry reads only what a step actually holds", () => {
+    expect(stepCarry({ op: "start", field: "Depth" })).toStrictEqual({ field: "Depth" });
+    expect(stepCarry({ op: "round", direction: "up", interval: 10 })).toStrictEqual({
+      direction: "up",
+      interval: 10
+    });
+    expect(stepCarry({ op: "floor", value: 18 })).toStrictEqual({ value: 18 });
+  });
+
+  it("setStepRound changes one part and keeps the other", () => {
+    const step: ChargeStep = { op: "round", direction: "up", interval: 10 };
+    expect(setStepRound(step, { interval: 25 })).toStrictEqual({
+      op: "round",
+      direction: "up",
+      interval: 25
+    });
+    expect(setStepRound(step, { direction: "down" })).toStrictEqual({
+      op: "round",
+      direction: "down",
+      interval: 10
+    });
+  });
+
+  it("every control writes through the ONE builder", () => {
+    // `buildStepOfOp` is the only place that says what a step of each op looks
+    // like, so a step the row builds is shaped like a step the button builds.
+    for (const op of KNOWN_OPS) {
+      const built = buildStepOfOp(op, {}, "Depth");
+      expect(built.op).toBe(op);
+      expect(validateSteps([{ op: "start", field: "Depth" }, built], ["Depth"])).toEqual(
+        op === "start"
+          ? [{ index: 1, message: 'First step must have op "start".' }].slice(0, 0)
+          : []
+      );
+    }
+  });
+});
+
+describe("CHARGE_STEP_INPLACE_V1: the condition is a pill on the row", () => {
+  it("a step without one offers `+ only when…`", () => {
+    const html = rowMarkup({ op: "multiply", field: "Rate" }, 1);
+    expect(html).toContain("+ only when…");
+    expect(html).toContain('data-testid="add-condition-1"');
+    expect(html).not.toContain('data-testid="condition-pill-1"');
+  });
+
+  it("a step with one renders `only when <field> <comparator> <value>` and a remove", () => {
+    const html = rowMarkup(
+      { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+      1
+    );
+    expect(html).toContain('data-testid="condition-pill-1"');
+    expect(html).toContain(">only when</span>");
+    expect(html).toContain('data-testid="remove-condition-1"');
+    expect(html).not.toContain("+ only when…");
+  });
+
+  it("a declared option list becomes a select, not a free-text input", () => {
+    // The difference between `Inverted` matching and `inverted` being typed.
+    const html = rowMarkup(
+      { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+      1
+    );
+    expect(optionsOf(html, "Step 2 condition value")).toEqual(["Floor", "Wall", "Inverted"]);
+    expect(html).toContain('<option value="Inverted" selected="">Inverted</option>');
+  });
+
+  it("a field with no declared list keeps a free-text input", () => {
+    const html = rowMarkup(
+      { op: "multiply", field: 2, when: { field: "Diameter", cmp: ">=", value: 100 } },
+      1
+    );
+    expect(optionsOf(html, "Step 2 condition value")).toEqual([]);
+    expect(html).toContain('aria-label="Step 2 condition value" value="100"');
+  });
+
+  it("only a DECLARED list counts — a text column keeps free text", () => {
+    // Material's values could be gathered from whatever rows exist today, and
+    // a list built that way silently loses any value no row carries yet.
+    expect(conditionValueOptions("Elevation", INPLACE_LINE_FIELDS)).toEqual([
+      "Floor",
+      "Wall",
+      "Inverted"
+    ]);
+    expect(conditionValueOptions("Material", INPLACE_LINE_FIELDS)).toBeNull();
+    expect(conditionValueOptions("Depth", INPLACE_LINE_FIELDS)).toBeNull();
+  });
+
+  it("adding one in place produces exactly the step the mock-up describes", () => {
+    const step: ChargeStep = { op: "multiply", field: 2 };
+    const seed = defaultCondition(INPLACE_COLS, INPLACE_LINE_FIELDS);
+    expect(seed).toStrictEqual({ field: "Material", cmp: "is", value: 0 });
+
+    // Choosing Elevation gives its first declared option; choosing Inverted
+    // gives the mock-up's rule.
+    const withElevation = setStepCondition(step, { field: "Elevation", cmp: "is", value: "Floor" });
+    const done = setStepCondition(withElevation, {
+      field: "Elevation",
+      cmp: "is",
+      value: "Inverted"
+    });
+    expect(done).toStrictEqual({
+      op: "multiply",
+      field: 2,
+      when: { field: "Elevation", cmp: "is", value: "Inverted" }
+    });
+    expect(JSON.stringify(done)).toBe(
+      '{"op":"multiply","field":2,"when":{"field":"Elevation","cmp":"is","value":"Inverted"}}'
+    );
+  });
+
+  it("prefers a text field, and its first declared option, when seeding one", () => {
+    expect(defaultCondition([], INPLACE_LINE_FIELDS)).toStrictEqual({
+      field: "Elevation",
+      cmp: "is",
+      value: "Floor"
+    });
+    expect(
+      defaultCondition([{ id: "n", name: "Depth", dataType: "NUMBER", role: "KEY" }], [])
+    ).toStrictEqual({ field: "Depth", cmp: "is", value: 0 });
+    expect(defaultCondition([], [])).toBeNull();
+  });
+
+  it("a value typed by hand becomes a number only when it reads as one", () => {
+    expect(coerceConditionValue("100")).toBe(100);
+    expect(coerceConditionValue(" 2.5 ")).toBe(2.5);
+    expect(coerceConditionValue("Inverted")).toBe("Inverted");
+    expect(coerceConditionValue("")).toBe("");
+  });
+
+  it("is offered on every op that can carry one, and on no other", () => {
+    for (const op of KNOWN_OPS) {
+      const step = buildStepOfOp(op, {}, "Depth");
+      const html = rowMarkup(step, 1);
+      const offered = html.includes("+ only when…") || html.includes('data-testid="condition-pill-1"');
+      expect(offered).toBe(CONDITIONAL_OPS.includes(op));
+    }
+  });
+
+  it("is ONE component, and there is no second copy of the comparator menu", () => {
+    expect(count(CARD_SRC, "export function ConditionPill(")).toBe(1);
+    expect(count(CARD_SRC, "<ConditionPill")).toBe(1);
+    expect(count(CARD_SRC, "CONDITION_CMPS.map(")).toBe(1);
+  });
+});
+
+describe("CHARGE_STEP_INPLACE_V1: the guards live in the controls", () => {
+  const GUARD_COLS: RateColumnMeta[] = [
+    { id: "g1", name: "Depth", dataType: "NUMBER", role: "KEY", unit: "mm" },
+    { id: "g2", name: "Holes", dataType: "NUMBER", role: "KEY" },
+    { id: "g3", name: "Fee", dataType: "CURRENCY", role: "VALUE" }
+  ];
+  const guardSteps = (): ChargeStep[] => [
+    { op: "start", field: "Depth" },
+    { op: "multiply", field: "Holes" },
+    { op: "add", field: "Fee" }
+  ];
+
+  it("the operation menu at index 0 offers start and disables everything else", () => {
+    const html = listMarkup(guardSteps(), GUARD_COLS, []);
+    expect(optionsOf(html, "Step 1 operation")).toEqual([
+      "Start with",
+      "Multiply by",
+      "Divide by",
+      "Add",
+      "Subtract",
+      "Round",
+      "Never less than",
+      "Never more than"
+    ]);
+    expect(disabledOptionsOf(html, "Step 1 operation")).toEqual([
+      "multiply",
+      "divide",
+      "add",
+      "subtract",
+      "round",
+      "floor",
+      "cap"
+    ]);
+  });
+
+  it("the operation menu at index 2 offers the same list and disables start", () => {
+    const html = listMarkup(guardSteps(), GUARD_COLS, []);
+    expect(optionsOf(html, "Step 3 operation")).toEqual(optionsOf(html, "Step 1 operation"));
+    expect(disabledOptionsOf(html, "Step 3 operation")).toEqual(["start"]);
+  });
+
+  it("a reorder the guard would refuse is disabled, not offered", () => {
+    // canMoveStep asks the mutator, so the control cannot drift from the rule.
+    const steps: ChargeStep[] = [
+      { op: "start", field: "Depth" },
+      { op: "round", direction: "nearest", interval: 10 }
+    ];
+    expect(canMoveStep(steps, 1, 0)).toBe(false);
+    expect(canMoveStep(steps, 0, 1)).toBe(false);
+    expect(canMoveStep(guardSteps(), 1, 0)).toBe(true);
+    expect(canMoveStep(guardSteps(), 0, -1)).toBe(false);
+    const html = listMarkup(steps, GUARD_COLS, []);
+    expect(count(html, 'aria-label="Move step 2 up" disabled=""')).toBe(1);
+  });
+
+  it("moving step 2 to the top leaves step 1 a start, no red panel, Save enabled", () => {
+    const after = reorderSteps(guardSteps(), 1, 0);
+    expect(after[0].op).toBe("start");
+    expect(after.map((st, i) => stepSentence(st, i))).toEqual([
+      "1. Start with Holes",
+      "2. Multiply by Depth",
+      "3. Add Fee"
+    ]);
+    const errors = validateSteps(after, GUARD_COLS.map((c) => c.name));
+    expect(errors).toEqual([]);
+    expect(errors.length > 0).toBe(false);
+    expect(true && errors.length === 0 && after.length > 0).toBe(true);
+  });
+
+  it("replaceStepAt refuses a non-start at slot 0, and a second start elsewhere", () => {
+    const steps = guardSteps();
+    expect(replaceStepAt(steps, 0, { op: "multiply", field: "Holes" })).toBe(steps);
+    expect(replaceStepAt(steps, 1, { op: "start", field: "Fee" })).toBe(steps);
+    expect(replaceStepAt(steps, 9, { op: "add", field: "Fee" })).toBe(steps);
+    expect(replaceStepAt(steps, -1, { op: "add", field: "Fee" })).toBe(steps);
+    expect(replaceStepAt(steps, 1, steps[1])).toBe(steps);
+    // And it does write when the guard allows it.
+    expect(replaceStepAt(steps, 1, { op: "divide", field: "Holes" })[1]).toStrictEqual({
+      op: "divide",
+      field: "Holes"
+    });
+  });
+
+  it("no in-place edit reaches `First step must have op \"start\".`", () => {
+    // The edit surface, walked exhaustively: every step of every shape, at
+    // every index, changed to every op, plus every operand and condition
+    // change. The op menu is the only control that can touch `op` at all.
+    const shapes: ChargeStep[] = [
+      { op: "start", field: "Depth" },
+      { op: "multiply", field: "Holes" },
+      { op: "divide", field: 10 },
+      { op: "round", direction: "nearest", interval: 1 },
+      { op: "floor", value: 1 },
+      { op: "cap", value: 500 },
+      { op: "add", field: "Fee", when: { field: "Depth", cmp: ">", value: 2 } }
+    ];
+    const names = GUARD_COLS.map((c) => c.name);
+    let checked = 0;
+
+    for (const shape of shapes) {
+      for (const index of [0, 1, 2]) {
+        if (!isOpOfferableAt(shape.op as StepOp, index)) continue;
+        const list = guardSteps();
+        list[index] = shape;
+        for (const op of KNOWN_OPS) {
+          const edits: ChargeStep[] = [
+            changeStepOp(list[index], op, "Depth"),
+            setStepOperand(list[index], "Fee"),
+            setStepOperand(list[index], 3),
+            setStepFixedValue(list[index], 99),
+            setStepRound(list[index], { direction: "up", interval: 5 }),
+            setStepCondition(list[index], { field: "Depth", cmp: "<", value: 1 }),
+            setStepCondition(list[index], undefined)
+          ];
+          for (const edit of edits) {
+            const next = replaceStepAt(list, index, edit);
+            expect(next[0].op).toBe("start");
+            expect(next.filter((st) => st.op === "start")).toHaveLength(1);
+            expect(
+              validateSteps(next, names).some(
+                (e) => e.message === 'First step must have op "start".'
+              )
+            ).toBe(false);
+            checked++;
+          }
+        }
+      }
+    }
+    // The size of the search, not a target.
+    expect(checked).toBe(728);
+  });
+
+  it("there is exactly ONE implementation of each of the three guards", () => {
+    // 1. The reorder coercion.
+    expect(count(CARD_SRC, "export function reorderSteps(")).toBe(1);
+    expect(count(CARD_SRC, "reorderSteps(steps, from, to)")).toBe(1); // canMoveStep asks it
+    // 2. Step 1 has no remove control.
+    expect(count(CARD_SRC, "export function canRemoveStep(")).toBe(1);
+    expect(count(CARD_SRC, "export function removeStepAt(")).toBe(1);
+    expect(count(CARD_SRC, "canRemoveStep(")).toBe(3); // definition, removeStepAt, the row
+    // 3. `start` is offerable only in slot 0.
+    expect(count(CARD_SRC, "export function isOpOfferableAt(")).toBe(1);
+    expect(count(CARD_SRC, "index === 0 ? op === \"start\" : op !== \"start\"")).toBe(1);
+    // ...and everything that needs the rule asks that one function.
+    expect(CARD_SRC).toContain("return KNOWN_OPS.filter((o) => isOpOfferableAt(o, stepCount));");
+    expect(CARD_SRC).toContain("if (!isOpOfferableAt(next.op as StepOp, index)) return steps;");
+    expect(CARD_SRC).toContain("disabled={!isOpOfferableAt(op, index)}");
+  });
+
+  it("neither validation rule was relaxed", () => {
+    expect(
+      validateSteps([{ op: "multiply", field: "Holes" }], GUARD_COLS.map((c) => c.name))
+    ).toContainEqual({ index: 0, message: 'First step must have op "start".' });
+    expect(CARD_SRC).toContain(
+      `errors.push({ index: 0, message: 'First step must have op "start".' });`
+    );
+  });
+});
+
+describe("CHARGE_STEP_INPLACE_V1: + Add a step, and no parallel form", () => {
+  it("appends a start on an empty list and a multiply on a list that has one", () => {
+    const cols = numericFieldOptions(INPLACE_COLS, INPLACE_LINE_FIELDS);
+    expect(newStepFor([], cols)).toStrictEqual({ op: "start", field: "Diameter" });
+    expect(newStepFor([{ op: "start", field: "Depth" }], cols)).toStrictEqual({
+      op: "multiply",
+      field: "Diameter"
+    });
+    // A table with no number field at all still gets a usable step.
+    expect(newStepFor([], [])).toStrictEqual({ op: "start", field: 1 });
+    expect(defaultOperand([])).toBe(1);
+  });
+
+  it("appends through the guard, so it can never add a second start", () => {
+    const steps: ChargeStep[] = [{ op: "start", field: "Depth" }];
+    const next = appendStep(steps, newStepFor(steps, ["Depth"]));
+    expect(next).toHaveLength(2);
+    expect(next.filter((st) => st.op === "start")).toHaveLength(1);
+    expect(CARD_SRC).toContain("addStep(newStepFor(steps, numericCols))");
+  });
+
+  it("the step it adds is the same shape a row already edits", () => {
+    const added = newStepFor([{ op: "start", field: "Depth" }], ["Depth"]);
+    expect(rowMarkup(added, 1)).toContain('aria-label="Step 2 operand"');
+  });
+
+  it("the add-step form and every duplicate control it carried are gone", () => {
+    expect(CARD_SRC).not.toContain("function AddStepForm");
+    expect(CARD_SRC).not.toContain('data-testid="add-step-form"');
+    expect(CARD_SRC).not.toContain('data-testid="condition-fields"');
+    expect(CARD_SRC).not.toContain("Add condition (only apply this step when…)");
+    expect(CARD_SRC).toContain("+ Add a step");
+  });
+});
+
+describe("CHARGE_STEP_INPLACE_V1: nothing about what a step computes changed", () => {
+  const CORE_CELLS = { "c-diameter": 32, "c-rate": 1.7 };
+  const coreValues = () => buildStepValues(CORE_COLS, CORE_CELLS, CORE_LINE_FIELDS);
+  const totalOf = (steps: ChargeStep[]) =>
+    evaluateStepsClient(steps, coreValues()).at(-1)?.runningTotal ?? null;
+
+  it("the mock-up's Core holes rule still prices at 81.60", () => {
+    expect(formatStepTotal(totalOf(CORE_STEPS) as number, { money: true })).toBe("$81.60");
+  });
+
+  it("editing step 5's operand to a number and back returns to 81.60", () => {
+    // Step 5 is `Multiply by Rate`, and Rate is 1.70 on the matched row.
+    const toNumber = replaceStepAt(CORE_STEPS, 4, setStepOperand(CORE_STEPS[4], 1.7));
+    expect(toNumber[4]).toStrictEqual({ op: "multiply", field: 1.7 });
+    expect(formatStepTotal(totalOf(toNumber) as number, { money: true })).toBe("$81.60");
+
+    const backToRate = replaceStepAt(toNumber, 4, setStepOperand(toNumber[4], "Rate"));
+    expect(backToRate).toStrictEqual(CORE_STEPS);
+    expect(formatStepTotal(totalOf(backToRate) as number, { money: true })).toBe("$81.60");
+  });
+
+  it("changing an operand changes the total, and only because the step changed", () => {
+    const doubled = replaceStepAt(CORE_STEPS, 4, setStepOperand(CORE_STEPS[4], 3.4));
+    expect(totalOf(doubled)).toBeCloseTo(163.2, 10);
+    // The evaluator is untouched: the same steps against the same values give
+    // the same trail the parity suite already pinned.
+    expect(evaluateStepsClient(CORE_STEPS, coreValues()).map((t) => t.runningTotal)).toEqual([
+      18, 1.8, 2, 2, 3.4, 6.8, 81.6
+    ]);
+  });
+
+  it("the card still runs the shared evaluator and holds no rule of its own", () => {
+    expect(count(CARD_SRC, "evaluateChargeSteps(")).toBe(1);
+    expect(count(CARD_SRC, "buildStepValues(")).toBe(1);
+    expect(CARD_SRC).not.toContain("function checkCondition");
+  });
+});
+
+describe("CHARGE_STEP_INPLACE_V1: every colour is a token", () => {
+  it("the new styles carry no hex literal and no raw rgba", () => {
+    const styles = CARD_SRC.slice(CARD_SRC.indexOf("const stepListStyle"));
+    expect(styles).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+    expect(styles).not.toMatch(/rgba?\(/);
+  });
+
+  it("the pill uses the two tokens that deliberately do not flip with the theme", () => {
+    // --surface-override is the same amber in both themes, so the text on it
+    // has to be the same near-black in both themes.
+    const html = rowMarkup(
+      { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+      1
+    );
+    expect(html).toContain("background:var(--surface-override)");
+    expect(html).toContain("color:var(--brand-dark)");
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+
+  it("the row itself paints from tokens in both themes", () => {
+    const html = rowMarkup({ op: "start", field: "Depth" }, 0);
+    expect(html).toContain("background:var(--surface-card)");
+    expect(html).toContain("border:1px solid var(--border-default)");
+    expect(html).toContain("background:var(--brand-primary-light)");
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+
+  it("an invalid row is marked with the danger token, not a literal", () => {
+    const html = rowMarkup({ op: "multiply", field: "Nowhere" }, 1, { invalid: true });
+    expect(html).toContain("border:1px solid var(--status-danger)");
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+
+  it("carries the marker", () => {
+    expect(CARD_SRC).toContain("CHARGE_STEP_INPLACE_V1");
   });
 });

@@ -138,9 +138,45 @@ export function validateRowCells(columns: RateColumn[], cells: Record<string, un
 }
 
 /**
+ * UNIT_PER_ROW_V1 — column names (trimmed, lower-cased, matched whole) that
+ * mark an INFO column as the table's per-row unit carrier. Whole-name match,
+ * never a substring: "Unit rate" and "Unit cost" are money columns and say
+ * nothing about the basis a row bills on.
+ *
+ * Mirrors PER_ROW_UNIT_COLUMN_NAMES in the API's rate-validation.service.ts.
+ */
+const PER_ROW_UNIT_COLUMN_NAMES = new Set(["unit", "units"]);
+
+/**
+ * UNIT_PER_ROW_V1 — does this column set carry its units per row?
+ *
+ * True when some INFO column is named "Unit"/"Units" and holds free text (a
+ * TEXT column, or a LIST_REF one drawing units from a GlobalList). Mirrors
+ * `hasPerRowUnitColumn` in the API's rate-validation.service.ts; the two must
+ * agree, or the admin screen shows a "Structure issues" banner for a shape
+ * the server will happily save (or, worse, hides one it will reject).
+ */
+export function hasPerRowUnitColumn(
+  columns: Pick<RateColumn, "name" | "dataType" | "role">[]
+): boolean {
+  return columns.some(
+    (c) =>
+      c.role === "INFO" &&
+      (c.dataType === "TEXT" || c.dataType === "LIST_REF") &&
+      PER_ROW_UNIT_COLUMN_NAMES.has((c.name ?? "").trim().toLowerCase())
+  );
+}
+
+/**
  * Structure check for a proposed column set. Mirrors the server's
  * `assertStructure` (spec §4) so the New Table wizard can warn early
  * without a round-trip. Server remains the source of truth.
+ *
+ * UNIT_PER_ROW_V1: a VALUE column may omit its unit when the table has a
+ * per-row unit column — `other-rates` bills every row on a different basis
+ * ("per visit", "p/hr", "p/hr/man"), so its unit lives per row in an INFO
+ * column and no per-column value is correct. Permissive only: a VALUE column
+ * that names a unit is still fine either way (`plant` has both, deliberately).
  */
 export function validateColumnStructure(
   columns: Pick<RateColumn, "name" | "dataType" | "role" | "unit" | "listSlug">[]
@@ -157,8 +193,11 @@ export function validateColumnStructure(
   if (values.length === 0) {
     errors.push("Need at least one VALUE column — a table with no $ column is a List, not a Rate.");
   }
+  const unitPerRow = hasPerRowUnitColumn(columns);
   for (const v of values) {
     if (!v.unit || !v.unit.trim()) {
+      // UNIT_PER_ROW_V1 — the rows carry their own unit, so this column needs none.
+      if (unitPerRow) continue;
       errors.push(`VALUE column "${v.name}" needs a unit (e.g. hr, m, tonne).`);
     }
   }

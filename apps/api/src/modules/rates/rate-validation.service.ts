@@ -16,6 +16,15 @@ export class RateValidationService {
    * LIST_REF column must name a live listSlug. Throws BadRequestException on
    * the first offence — the caller is committing structure, not doing bulk
    * import.
+   *
+   * UNIT_PER_ROW_V1: the per-column unit requirement is waived for every
+   * VALUE column when the table carries a per-row unit column (see
+   * `hasPerRowUnitColumn`). Some tables — `other-rates` is the worked example
+   * — bill each row on a different basis ("per visit", "p/hr", "p/hr/man"),
+   * so no single per-column unit is correct and the honest unit already lives
+   * in an INFO column, per row. This is purely permissive: a VALUE column
+   * that HAS a unit is still accepted, whether or not a per-row unit column
+   * is present (`plant` has both, and deliberately so).
    */
   assertStructure(columns: Pick<RateColumn, "name" | "dataType" | "role" | "unit" | "listSlug">[]) {
     if (columns.length === 0) {
@@ -31,8 +40,11 @@ export class RateValidationService {
         "Rate table must have at least one VALUE column (a table with no $ column is a List — use GlobalList)."
       );
     }
+    const unitPerRow = hasPerRowUnitColumn(columns);
     for (const v of values) {
       if (!v.unit || !v.unit.trim()) {
+        // UNIT_PER_ROW_V1 — the rows carry their own unit, so this column needs none.
+        if (unitPerRow) continue;
         throw new BadRequestException(`VALUE column "${v.name}" requires a unit (e.g. hr, m, tonne).`);
       }
     }
@@ -130,6 +142,40 @@ export class RateValidationService {
       }
     }
   }
+}
+
+/**
+ * UNIT_PER_ROW_V1 — column names (trimmed, lower-cased, matched whole) that
+ * mark an INFO column as the table's per-row unit carrier. Whole-name match,
+ * never a substring: "Unit rate" and "Unit cost" are money columns and say
+ * nothing about the basis a row bills on.
+ */
+const PER_ROW_UNIT_COLUMN_NAMES = new Set(["unit", "units"]);
+
+/**
+ * UNIT_PER_ROW_V1 — does this column set carry its units per row?
+ *
+ * True when some INFO column is named "Unit"/"Units" and holds free text (a
+ * TEXT column, or a LIST_REF one drawing units from a GlobalList). Role INFO
+ * because a unit is descriptive, not a key and not a priced quantity;
+ * dataType because a NUMBER/DATE/BOOL column cannot hold "p/hr/man".
+ *
+ * Name-coupled by design, and that is the weak point: it is the only signal
+ * the current schema carries, `gate_allow: none` rules a schema flag out of
+ * this slice, and every table that has such a column today — plant, fuel,
+ * enclosure, other-rates, material-densities — names it exactly "Unit".
+ * The blast radius of a miss is small and safe: the VALUE column simply has
+ * to name its own unit, which is today's behaviour for every table.
+ */
+export function hasPerRowUnitColumn(
+  columns: Pick<RateColumn, "name" | "dataType" | "role">[]
+): boolean {
+  return columns.some(
+    (c) =>
+      c.role === "INFO" &&
+      (c.dataType === "TEXT" || c.dataType === "LIST_REF") &&
+      PER_ROW_UNIT_COLUMN_NAMES.has((c.name ?? "").trim().toLowerCase())
+  );
 }
 
 function keyPart(v: unknown): string {

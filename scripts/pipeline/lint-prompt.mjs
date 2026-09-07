@@ -746,6 +746,371 @@ function checkOrphanedDischarge(promptName, repoRoot) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// MODULE PROVENANCE SLICE 1: which module does this prompt belong to?
+//
+// WHY: [MEASURED 2026-09-01, origin/main b30e166a] across the last 40 merged PRs there are 24
+// distinct conventional-commit scopes and SIX of them mean "crm" (crm-s8, crm-s9, crm-s10,
+// crm-s11, crm-s12, crm-wincount-slice3); two mean "rates"; two mean "scope". The scope is
+// invented by the build agent at `gh pr create` time - the watcher never titles a PR,
+// PROMPT-SCHEMA.md said nothing about titles, and no CI job checked them - so three independent
+// gaps let it drift. The arming log cannot close the gap either: every entry reads `by=Marco@`
+// (the Windows account) regardless of which of the four arming actors was responsible.
+//
+// THE INSIGHT: prompts already carry the answer. Every prompt declares `scope:` - a list of file
+// paths - and the module is derivable from it PROVIDED the incidental paths are ranked out.
+// Nearly every feature touches apps/api/prisma/** and its own docs/**, so those must never win
+// over a product module. Naive derivation (no ranking) resolves 43 of 107; ranking the
+// incidentals out resolves 77 of 107 (72%).
+// ---------------------------------------------------------------------------
+
+/**
+ * Incidental "modules" in PRIORITY ORDER (most specific first).
+ *
+ * These are real destinations - a prompt can legitimately be a prisma-only or a docs-only prompt -
+ * but they are never the ANSWER when a product module is also present, because nearly every
+ * feature slice touches prisma and its own docs. They are demoted, not deleted.
+ *
+ * The order is load-bearing and must stay a fixed list rather than scope order: a prompt scoped
+ * to [apps/api/prisma/**, docs/**] is a schema prompt that also writes a note, so `prisma` wins,
+ * and it must win the same way whichever order the author happened to type the two paths in.
+ */
+const INCIDENTAL_MODULE_RANK = ["prisma", "sot", "e2e", "ci", "board", "docs"];
+const INCIDENTAL_MODULES = new Set(INCIDENTAL_MODULE_RANK);
+
+/**
+ * Prefix -> module for everything that is not a product module directory.
+ * ORDER IS LOAD-BEARING: first match wins, so the more specific prefix must come first
+ * (scripts/pr-watcher before scripts, docs/pr-prompts before docs).
+ */
+const MODULE_PREFIX_RULES = [
+  ["apps/api/prisma", "prisma"],
+  ["scripts/pr-watcher", "watcher"],
+  ["scripts", "pipeline"],
+  [".github", "ci"],
+  ["tests/e2e", "e2e"],
+  ["sot", "sot"],
+  ["docs/pr-prompts", "board"],
+  ["docs", "docs"],
+];
+
+/** The two roots whose immediate child directory names ARE the product-module vocabulary. */
+const MODULE_SEGMENT_ROOTS = ["apps/api/src/modules/", "apps/web/src/pages/"];
+
+/** Normalise a scope entry to forward slashes with no leading ./ or /. */
+function normaliseScopePath(p) {
+  return String(p == null ? "" : p)
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "");
+}
+
+/**
+ * Is this path segment a plausible module DIRECTORY name?
+ *
+ * Two rejections, both of which shipped as bugs in the first measurement pass:
+ *   - a segment containing `*` is a glob, not a name. `apps/web/src/**` must resolve to null,
+ *     NOT to the module `**`. That is how the bug would have shipped: a wildcard rendered as a
+ *     conventional-commit scope.
+ *   - a segment carrying a file extension is a FILE, not a directory.
+ *     `apps/web/src/pages/AdminSettingsPage.tsx` is a page component, and the vocabulary is
+ *     defined as the DIRECTORY names under the two roots. Admitting it invents a module called
+ *     `AdminSettingsPage.tsx`, which is the same defect class as `**`.
+ */
+function isModuleSegment(seg) {
+  if (!seg) return false;
+  if (seg.includes("*")) return false;
+  if (/\.[A-Za-z0-9]+$/.test(seg)) return false;
+  return true;
+}
+
+/**
+ * Resolve ONE scope path to a module name, or null when the path says nothing about a module.
+ * Exported for the unit tests; the resolution table is documented in PROMPT-SCHEMA.md.
+ */
+export function resolveScopePathToModule(rawPath) {
+  const p = normaliseScopePath(rawPath);
+  if (!p) return null;
+
+  for (const root of MODULE_SEGMENT_ROOTS) {
+    if (p === root.slice(0, -1) || p.startsWith(root)) {
+      const seg = p.slice(root.length).split("/")[0];
+      return isModuleSegment(seg) ? seg : null;
+    }
+  }
+  for (const [prefix, mod] of MODULE_PREFIX_RULES) {
+    if (p === prefix || p.startsWith(prefix + "/")) return mod;
+  }
+  return null;
+}
+
+/**
+ * The product-module VOCABULARY, DERIVED from the repo at run time - never hand-listed.
+ *
+ * A hand-maintained list of 81 modules goes stale the day someone adds the 82nd, and it fails
+ * OPEN: the new module's prompts silently stop being recognised. That is the same defect class as
+ * `pr-statussweep-orphan-worktree-dirs`, retired 2026-09-01 for keying on a name instead of a
+ * behaviour. Read the directory names instead.
+ *
+ * Fail-SAFE: an unreadable root contributes nothing rather than throwing. A linter that cannot
+ * list a directory must not bin the queue.
+ */
+export function moduleVocabulary(repoRoot) {
+  const out = new Set(INCIDENTAL_MODULE_RANK);
+  out.add("pipeline");
+  out.add("watcher");
+  for (const root of MODULE_SEGMENT_ROOTS) {
+    let entries;
+    try {
+      entries = readdirSync(join(repoRoot, ...root.replace(/\/$/, "").split("/")), { withFileTypes: true });
+    } catch (_) {
+      continue;
+    }
+    for (const e of entries) if (e.isDirectory()) out.add(e.name);
+  }
+  return out;
+}
+
+/**
+ * DERIVE the module from a prompt's `scope` list. Pure, exported, unit-testable.
+ *
+ * Returns { module, source, candidates }:
+ *   source "derived"      - exactly one PRODUCT module in scope; `module` is it.
+ *   source "incidental"   - no product module, but incidentals present; `module` is the
+ *                           highest-ranked incidental (a genuinely docs-only / prisma-only prompt).
+ *   source "ambiguous"    - two or more product modules; `module` is null, `candidates` lists them
+ *                           so the author can paste one into `module:`.
+ *   source "unresolvable" - nothing in scope resolves at all; `module` is null, candidates empty.
+ *
+ * The vocabulary is NOT consulted here on purpose. A slice that CREATES
+ * apps/api/src/modules/<new>/ must derive <new>, and a gate that refused it would fail closed on
+ * exactly the new work it exists to label. Vocabulary membership is enforced only on a DECLARED
+ * `module:` value, where a typo has no other way of being caught.
+ */
+export function deriveModule(scopePaths) {
+  const list = Array.isArray(scopePaths) ? scopePaths : [scopePaths];
+  const seen = [];
+  for (const raw of list) {
+    const m = resolveScopePathToModule(raw);
+    if (m && !seen.includes(m)) seen.push(m);
+  }
+  const product = seen.filter((m) => !INCIDENTAL_MODULES.has(m));
+  const incidental = seen.filter((m) => INCIDENTAL_MODULES.has(m));
+
+  if (product.length === 1) return { module: product[0], source: "derived", candidates: product };
+  if (product.length > 1) return { module: null, source: "ambiguous", candidates: product };
+  if (incidental.length > 0) {
+    const ranked = INCIDENTAL_MODULE_RANK.filter((m) => incidental.includes(m));
+    return { module: ranked[0], source: "incidental", candidates: incidental };
+  }
+  return { module: null, source: "unresolvable", candidates: [] };
+}
+
+/**
+ * Every front-matter key this linter READS. Co-located with the checks that read them, so a
+ * future key is added here in the same commit that starts reading it - unlike a list kept in
+ * another file, which is what goes stale.
+ *
+ * Used only to answer "is this key unknown?" before offering a did-you-mean for `module`.
+ */
+const KNOWN_FM_KEYS = new Set([
+  ...REQUIRED,
+  ...LEGAL_DEP_KEYS,
+  "module", "gate_allow", "seed_only", "escalates", "backfill", "cluster", "cluster_order",
+  "design_ref", "rollback_strategy", "fixes_pr",
+]);
+
+/**
+ * MODULE_KEY_TYPO. parseFrontMatter silently ignores keys it does not recognise, so a prompt
+ * written with `moduel:` loses its provenance WITHOUT A WORD - the same silent-drop hazard the
+ * dependency-key scanner exists to close for `requires*`. Scan the RAW front matter (not the
+ * parsed object, which has already thrown the bad key away) for an unknown key that is one or two
+ * edits away from `module`.
+ */
+function findModuleKeyTypo(rawFm) {
+  if (!rawFm) return null;
+  for (const line of rawFm.split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*)\s*:/);
+    if (!m) continue;
+    const key = m[1];
+    const lower = key.toLowerCase();
+    if (KNOWN_FM_KEYS.has(lower)) continue;
+    if (lower[0] !== "m") continue;
+    if (levenshtein(lower, "module") <= 2) return key;
+  }
+  return null;
+}
+
+/**
+ * THE RATCHET. Load scripts/pipeline/module-baseline.json.
+ *
+ * 30 of the 107 staged prompts cannot self-resolve. Hard-failing them would break them at ARM
+ * time - burning an arm each, with a human present expecting a build. So a prompt already named
+ * in the baseline downgrades MODULE_AMBIGUOUS to a WARNING and still lints ADMIT; a prompt NOT in
+ * the baseline is REJECTED. Every existing prompt arms exactly as it does today, every NEW prompt
+ * must be unambiguous from birth, and the baseline can only shrink.
+ *
+ * Shape mirrors docs/qa/sot-refs-baseline.json ({_readme, entries}) so there is one pattern here,
+ * not two.
+ *
+ * Keyed by SLUG, not filename. arm-prompt.ps1 renames <slug>-HOLD.md to <slug>-ready.md, and a
+ * baseline keyed by the HOLD filename would stop matching at the exact moment of arming - turning
+ * an ADMIT into a REJECT during the arm it was written to protect.
+ *
+ * Fail-SAFE: an unreadable or malformed baseline yields null, and a null baseline downgrades
+ * every ambiguity to a warning. One broken read must not bin the whole queue.
+ */
+function loadModuleBaseline(repoRoot) {
+  const override = process.env.LINT_MODULE_BASELINE;
+  const path = override && override !== ""
+    ? override
+    : join(repoRoot, "scripts", "pipeline", "module-baseline.json");
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!parsed || !Array.isArray(parsed.entries)) return null;
+  const out = new Set();
+  for (const e of parsed.entries) {
+    const slug = typeof e === "string" ? e : e && e.prompt;
+    if (typeof slug === "string" && slug.trim() !== "") out.add(promptSlug(slug.trim()));
+  }
+  return out;
+}
+
+/** Strip the queue suffix so HOLD and ready forms of one prompt share a key. */
+export function promptSlug(name) {
+  return String(name || "")
+    .replace(/\.md$/i, "")
+    .replace(/-(HOLD|ready)$/i, "");
+}
+
+/**
+ * MODULE PROVENANCE check. Returns { ok, code?, msg?, warnings?, module?, source? }.
+ *
+ * Rules, in order:
+ *   1. `moduel:`-class typo in the raw front matter          -> MODULE_KEY_TYPO   (ERROR)
+ *   2. `module:` present but not a single token              -> MODULE_INVALID    (ERROR)
+ *   3. `module:` present and unknown to the vocabulary       -> MODULE_UNKNOWN    (ERROR)
+ *   4. `module:` present and contradicts a CONFIDENT
+ *      derivation                                            -> MODULE_MISMATCH   (ERROR)
+ *   5. `module:` absent and derivation is not confident      -> MODULE_AMBIGUOUS
+ *                                        (ERROR, or WARNING when slug is in the baseline)
+ */
+function checkModuleProvenance(fm, fileText, repoRoot, name) {
+  const warnings = [];
+  const declaredRaw = fm.module;
+  const derived = deriveModule(fm.scope || []);
+
+  const typo = findModuleKeyTypo(rawFrontMatterBlock(fileText));
+  if (typo) {
+    return {
+      ok: false, code: "MODULE_KEY_TYPO",
+      msg: "Unknown front-matter key " + JSON.stringify(typo) + " - did you mean \"module\"?\n" +
+        "        parseFrontMatter IGNORES keys it does not know, so a mistyped `module` key does not\n" +
+        "        fail: it vanishes, and the prompt silently falls back to derivation (or to\n" +
+        "        MODULE_AMBIGUOUS) with no word about the line you actually wrote.",
+    };
+  }
+
+  if (declaredRaw !== undefined && !(Array.isArray(declaredRaw) && declaredRaw.length === 0)) {
+    const declared = String(declaredRaw).trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(declared)) {
+      return {
+        ok: false, code: "MODULE_INVALID",
+        msg: "`module` must be a single bare name (got " + JSON.stringify(String(declaredRaw)) + ").\n" +
+          "        It becomes the conventional-commit scope of the PR title, so it cannot carry\n" +
+          "        spaces, slashes or globs.",
+      };
+    }
+
+    // Vocabulary = the repo's module directories PLUS whatever this prompt's own scope resolves
+    // to. The second half matters: a slice that CREATES apps/api/src/modules/<new>/ declares a
+    // module that does not exist on disk yet, and rejecting it would fail closed on new work.
+    const vocab = moduleVocabulary(repoRoot);
+    for (const c of derived.candidates) vocab.add(c);
+    if (derived.module) vocab.add(derived.module);
+    if (!vocab.has(declared)) {
+      return {
+        ok: false, code: "MODULE_UNKNOWN",
+        msg: "module: " + declared + " is not a module in this repo.\n" +
+          "        The vocabulary is DERIVED at run time from the directory names under\n" +
+          "        apps/api/src/modules/ and apps/web/src/pages/, plus the pipeline destinations\n" +
+          "        (" + INCIDENTAL_MODULE_RANK.join(", ") + ", pipeline, watcher), plus anything this\n" +
+          "        prompt's own `scope` resolves to. If you are creating the module in this slice,\n" +
+          "        name its directory in `scope` and the value will be recognised.",
+      };
+    }
+
+    if (derived.source === "derived" && derived.module !== declared) {
+      return {
+        ok: false, code: "MODULE_MISMATCH",
+        msg: "module: " + declared + " contradicts the module derived from `scope`: " + derived.module + ".\n" +
+          "        scope resolves unambiguously to \"" + derived.module + "\", so one of the two is wrong.\n" +
+          "        Either fix the `module:` value, or widen/correct `scope` if the declared module is\n" +
+          "        the true one. A declared value that quietly disagrees with the files the slice\n" +
+          "        actually touches is worse than no value at all - it mislabels the PR with\n" +
+          "        authority.",
+      };
+    }
+
+    if (derived.source === "ambiguous" && !derived.candidates.includes(declared)) {
+      warnings.push(
+        "MODULE_DECLARED_OUTSIDE_SCOPE: module: " + declared + " is not among the modules `scope` " +
+        "touches (" + derived.candidates.join(", ") + "). Declared value honoured."
+      );
+    }
+
+    return { ok: true, warnings, module: declared, source: "declared" };
+  }
+
+  if (derived.source === "derived" || derived.source === "incidental") {
+    return { ok: true, warnings, module: derived.module, source: derived.source };
+  }
+
+  // Ambiguous or unresolvable, and nothing declared.
+  const detail = derived.candidates.length > 0
+    ? "`scope` touches " + derived.candidates.length + " modules: " + derived.candidates.join(", ") + ".\n" +
+      "        A machine must not pick for you - these are genuinely different modules.\n" +
+      "        Add `module: <one of them>` to the front matter."
+    : "Nothing in `scope` resolves to a module (paths like `apps/web/src/**` name no module).\n" +
+      "        Add `module: <name>` to the front matter, or narrow `scope` to the module it touches.";
+
+  const baseline = loadModuleBaseline(repoRoot);
+  const slug = promptSlug(name);
+
+  if (baseline === null) {
+    warnings.push(
+      "MODULE_AMBIGUOUS (warning): scripts/pipeline/module-baseline.json could not be read; " +
+      "treating every ambiguity as a warning rather than binning the queue. " + detail.split("\n")[0]
+    );
+    return { ok: true, warnings, module: null, source: derived.source };
+  }
+
+  if (baseline.has(slug)) {
+    warnings.push(
+      "MODULE_AMBIGUOUS (baselined): " + detail.split("\n")[0] +
+      " Ratcheted in scripts/pipeline/module-baseline.json - remove the entry once `module:` is added."
+    );
+    return { ok: true, warnings, module: null, source: derived.source };
+  }
+
+  return {
+    ok: false, code: "MODULE_AMBIGUOUS",
+    msg: "No `module:` in front matter and it cannot be derived from `scope`.\n" +
+      "        " + detail + "\n" +
+      "        `module` is the conventional-commit scope the PR will carry. Across the last 40\n" +
+      "        merged PRs, SIX distinct scopes meant \"crm\" because the build agent invented one\n" +
+      "        per slice. This is the field that stops that.\n" +
+      "        The 30 prompts already staged when this gate landed are ratcheted in\n" +
+      "        scripts/pipeline/module-baseline.json and still ADMIT. That file may only SHRINK:\n" +
+      "        adding your prompt to it is the gate failing open. Add `module:` instead.",
+  };
+}
+
 const RESET = "\x1b[0m";
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -1447,6 +1812,8 @@ export function lint(file, opts) {
   const fileText = readFileSync(file, "utf8");
   const fm = parseFrontMatter(fileText);
   const released = [];
+  const warnings = [];
+  let moduleResult = null;
   const fail = (code, msg) => ({ ok: false, code, msg, name });
 
   if (!fm) {
@@ -1858,7 +2225,29 @@ export function lint(file, opts) {
     }
   }
 
-  return { ok: true, name, size, premise: String(fm.premise), released };
+  // MODULE PROVENANCE SLICE 1 — MODULE_AMBIGUOUS / MODULE_MISMATCH / MODULE_KEY_TYPO.
+  //
+  // PLACEMENT IS LAST, AND DELIBERATELY SO, for the same reason MISSING_STANDING_AUTHORITY is:
+  //   - AFTER the premise, so a stale prompt still reports STALE (exit 3, "already done, BIN IT")
+  //     rather than being masked by a missing-label rejection. "The work is already done" is
+  //     strictly better information than "your front matter is missing a field".
+  //   - AFTER every pre-existing rejection, so NO existing failure code can shift. A prompt that
+  //     rejects today for HUMAN_GATE_PRESENT, UI_PROMPT_NEEDS_DESIGN_REF, GATE_NOT_RELEASED or
+  //     MISSING_STANDING_AUTHORITY still rejects with THAT code. Other stations parse these codes;
+  //     the only verdicts this slice can change are ADMIT/PROMOTE ones, and the ratchet is what
+  //     keeps it from changing those either.
+  {
+    const modRes = checkModuleProvenance(fm, fileText, repoRoot, name);
+    if (!modRes.ok) return fail(modRes.code, modRes.msg);
+    if (modRes.warnings && modRes.warnings.length) warnings.push(...modRes.warnings);
+    moduleResult = modRes;
+  }
+
+  return {
+    ok: true, name, size, premise: String(fm.premise), released, warnings,
+    module: moduleResult ? moduleResult.module : null,
+    moduleSource: moduleResult ? moduleResult.source : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1928,6 +2317,12 @@ for (const f of files) {
       promoted++;
     } else {
       console.log(GREEN + "ADMIT  " + RESET + " " + r.name + "  " + DIM + "(size " + r.size + ")" + RESET);
+    }
+    // Module-provenance warnings print AFTER the verdict line, never before it. Station scripts
+    // and the queue sweep read the FIRST line to learn the verdict; a warning printed above it
+    // would change what every one of them sees for a prompt whose verdict did not change.
+    if (r.warnings && r.warnings.length) {
+      for (const w of r.warnings) console.log("        " + YELLOW + "WARN" + RESET + " " + w);
     }
     admitted++;
   } else if (r.stale) {

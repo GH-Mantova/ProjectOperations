@@ -79,6 +79,7 @@ seed_only: false
 escalates: false          # true if this touches prod data / auth / Azure
 rollback_strategy: ''     # OPTIONAL in general; REQUIRED when scope touches prisma/migrations
 backfill: false           # OPTIONAL; only meaningful for migration-scoped prompts (see Gate A below)
+module: ''                # OPTIONAL; derived from `scope` when unambiguous (see below)
 ---
 ```
 
@@ -507,6 +508,84 @@ completely ungated -- silently losing its ordering gate. Common traps:
 the real key. `requires_files_on_main` (plural) looks plausible, passes a spell-check,
 but the watcher never sees it and the gate silently disappears. The linter now catches it.
 
+## Optional: `module` — which module this prompt belongs to
+
+`module` is the **conventional-commit scope the PR will carry**. It is optional, because for
+72% of the corpus the linter can already work it out.
+
+**[MEASURED 2026-09-01, origin/main b30e166a]** across the last 40 merged PRs there are 24
+distinct commit scopes and **six of them mean `crm`** (`crm-s8`, `crm-s9`, `crm-s10`, `crm-s11`,
+`crm-s12`, `crm-wincount-slice3`); two mean `rates`, two mean `scope`. Nothing derived the scope
+and nothing checked it — the build agent invents it at `gh pr create` time — so it drifted.
+
+**You usually do not write this key.** `deriveModule()` in `scripts/pipeline/lint-prompt.mjs`
+reads it out of `scope`, resolving each path with this table (first match wins):
+
+| Scope path | Module |
+|---|---|
+| `apps/api/src/modules/<X>/…` | `X` |
+| `apps/web/src/pages/<X>/…` | `X` |
+| `apps/api/prisma/…` | `prisma` *(incidental)* |
+| `scripts/pr-watcher/…` | `watcher` |
+| `scripts/…` | `pipeline` |
+| `.github/…` | `ci` *(incidental)* |
+| `tests/e2e/…` | `e2e` *(incidental)* |
+| `sot/…` | `sot` *(incidental)* |
+| `docs/pr-prompts/…` | `board` *(incidental)* |
+| `docs/…` | `docs` *(incidental)* |
+| anything else | *(nothing)* |
+
+A segment that is a glob (`apps/web/src/**`) or a file (`apps/web/src/pages/AdminSettingsPage.tsx`)
+names **no module** — the vocabulary is the *directory* names under the two module roots, and it
+is read off disk at run time rather than hand-listed, so adding module number 82 needs no edit
+here.
+
+Then the incidentals are **ranked out**: nearly every feature slice also touches
+`apps/api/prisma/**` and its own `docs/**`, so those never win over a product module.
+
+- Exactly one product module left → that is the module.
+- No product module but incidentals present → the highest-ranked incidental
+  (`prisma` > `sot` > `e2e` > `ci` > `board` > `docs`) — a genuinely schema-only or docs-only prompt.
+- Two or more, or nothing at all → **ambiguous**; you must write `module:` yourself.
+
+**[MEASURED 2026-09-07]** over all 107 tracked `-HOLD.md` / `-ready.md` prompts under
+`docs/pr-prompts/` excluding `superseded/` and `archive/`: 64 derive one product module, 13
+resolve to a sole incidental destination — **77 of 107 (72%) need no author input** — and 30 do
+not. Naive derivation, without ranking the incidentals out, resolves only 43.
+
+### When you DO write it
+
+```yaml
+---
+module: rates
+---
+```
+
+- **A declared value wins** over the derivation.
+- It must be in the derived vocabulary: a directory under `apps/api/src/modules/` or
+  `apps/web/src/pages/`, one of the pipeline destinations above, or a module this prompt's own
+  `scope` creates. Otherwise `MODULE_UNKNOWN`.
+- If it **contradicts** an unambiguous derivation, that is `MODULE_MISMATCH` and the prompt is
+  rejected naming both values. A label that quietly disagrees with the files the slice touches is
+  worse than no label — it mislabels the PR with authority.
+- Spell the key right. `parseFrontMatter` ignores keys it does not know, so `moduel:` would
+  vanish silently; the linter rejects near-misses with `MODULE_KEY_TYPO`.
+
+### The ratchet
+
+30 prompts were already staged when this gate landed and cannot self-resolve. Rejecting them
+would have broken them at **arm** time — burning an arm each, with a human present expecting a
+build. They are listed in **`scripts/pipeline/module-baseline.json`** (same shape as
+`docs/qa/sot-refs-baseline.json`), keyed by slug so an entry keeps matching after
+`arm-prompt.ps1` renames `<slug>-HOLD.md` to `<slug>-ready.md`.
+
+- Name **in** the baseline → `MODULE_AMBIGUOUS` is a **warning**, printed under the verdict line;
+  the prompt still ADMITs.
+- Name **not** in the baseline → `MODULE_AMBIGUOUS` is an **error**; the prompt is rejected.
+
+**That file may only shrink.** Adding your new prompt to it is the gate failing open — write
+`module:` instead. Burn-down is deleting an entry in the same PR that adds the key to its prompt.
+
 ## Optional: `design_ref` — the mock-up a UI prompt was built from
 
 Marco designs a screen in an artifact or mock-up, has Station 06 turn it into a PR,
@@ -597,6 +676,11 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `CLUSTER_DEAD_GATE` | A `requires_on_main` needle is already on `origin/main` at intake - the ordering gate is a no-op. Only checked for cluster prompts. |
 | `FILE_GATE_DEAD` | A `requires_file_on_main` path is already on `origin/main` at intake - the gate can never fail, so the slice would dispatch ungated. Applies to ALL prompts (cluster or not). Fail-safe on git errors: WARN and skip. |
 | `DESIGN_REF_MALFORMED` | `design_ref` is set but does not match either accepted shape (`https://claude.ai/code/artifact/<uuid>` or `Claude Design/<path>`). Shape only — existence is not checked. |
+| `MODULE_AMBIGUOUS` | No `module:` and `scope` names two or more modules (or none at all). The message lists the candidates. Add `module: <one of them>`. Downgraded to a WARNING for prompts named in `scripts/pipeline/module-baseline.json`. |
+| `MODULE_MISMATCH` | `module:` contradicts the module unambiguously derived from `scope`. The message names both. Fix the value, or fix `scope`. |
+| `MODULE_UNKNOWN` | `module:` is not a directory under `apps/api/src/modules/` or `apps/web/src/pages/`, not a pipeline destination (`prisma`, `sot`, `e2e`, `ci`, `board`, `docs`, `pipeline`, `watcher`), and not created by this prompt's own `scope`. |
+| `MODULE_INVALID` | `module:` is not a single bare name — it becomes a commit scope, so no spaces, slashes or globs. |
+| `MODULE_KEY_TYPO` | A front-matter key one or two edits from `module` (`moduel:`, `modules:`). `parseFrontMatter` ignores unknown keys, so the line would otherwise vanish without a word. |
 | `UI_PROMPT_NEEDS_DESIGN_REF` | `scope` touches `apps/web/` but `design_ref` is missing/empty. Cite the artifact URL or the `Claude Design/` path the screen was drawn from. Exception: prompts with `fixes_pr:` are exempt (red-board fix). |
 
 ---

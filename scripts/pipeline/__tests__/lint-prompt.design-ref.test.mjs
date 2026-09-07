@@ -63,6 +63,12 @@ function webPrompt(extraFmLines) {
     "done_when: pnpm build\n" +
     "size: 3\n" +
     "gate_allow: none\n" +
+    // `module` added by MODULE_PROVENANCE_S1. `apps/web/src/**` names no module — it is the
+    // linter's own documented negative control (a glob segment is not a module name), so this
+    // fixture is MODULE_AMBIGUOUS without a declared value. Declaring it keeps these tests
+    // testing design_ref, which is what they were written for, instead of silently becoming
+    // module-gate tests. No assertion below is relaxed.
+    "module: crm\n" +
     (extraFmLines ? extraFmLines + "\n" : "") +
     "---\n\n" +
     GOOD_BODY

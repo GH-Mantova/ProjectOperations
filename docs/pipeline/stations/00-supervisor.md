@@ -871,6 +871,42 @@ PR, which is more than a collect run should carry.
 
 ---
 
+## 🧹 AND ARCHIVING ONE LEAVES THE SAME UNTRACKED COPY, WHICH THE NEXT RUN COMMITS BACK
+
+**MEASURED 2026-09-07T08:3xZ.** `git mv`-ing a breadcrumb into `docs/pr-prompts/archive/` happens
+inside your PR **worktree**. The dev tree keeps its own copy of that file, untracked, at the ROOT
+path, and the archive move never touches it. So after the archiving PR merges the dev tree still
+holds `docs/pr-prompts/<breadcrumb>.md` as an untracked file, and `git status` there says exactly
+what it said before anyone archived anything.
+
+**The next run reads that as "this station’s finding reached nobody" and commits a SECOND tracked
+copy at the root path.** Measured instance: `00-04-scanner-2026-09-07-0610-…md` is tracked at BOTH
+paths on `origin/main`, byte-identical — `git rev-parse origin/main:<each path>` returns the same
+blob `85c147fc` on both sides. The `archive/` copy was added by **#1766** (`f6924544`, 06:36Z), the
+root copy by **#1768** (`7872d84c`, 07:38Z), whose own breadcrumb records the claim *"it was
+untracked and reached nobody until now"* — false at the moment it was written. **One duplicated
+basename against 63 root and 434 archived files**, so this is rare rather than systemic, and it
+still cost a run its collect evidence.
+
+🔧 **Two rules, and the first is the cheap one.**
+
+1. **Before committing any breadcrumb as unreported, ask the TRACKED SET, not the dev tree.**
+   `git ls-files docs/pr-prompts` and match by **basename** — `check-breadcrumb.mjs` matches by
+   trailing path segment (§9.5), so an archived breadcrumb is already reported and already counts
+   for `--freshness`. A dev-tree `git status` cannot see that: it answers about the dev tree.
+2. **Extend the delete-the-disk-copy rule above to archiving.** That section covers the untracked
+   copy of a breadcrumb your PR **added**; the same applies, at the ROOT path and with the same
+   read-backs, to one your PR **archived**. Cure 1 there — write it inside the worktree — cannot
+   help here, because the file you archived was written by an earlier run.
+
+⚠️ **De-duplicating is safe for freshness, and that was proved rather than assumed.** With the root
+copy `git rm`-ed and only the `archive/` copy left, `check-breadcrumb.mjs --freshness` still
+reported `04  last 2026-09-07T06:10:00Z  2.2h ago  (cadence 4h)  ok`, `CLEAN`, exit 0. **The
+falsifying probe is that pair of runs**: run `--freshness` before and after removing a duplicated
+root copy, and if the station goes SILENT this note is wrong.
+
+---
+
 # MANDATORY ANSWER SHEET - you FAILED your first run without this
 
 Your 2026-07-13 17:46 run reported "watcher healthy, board fine, no surprises." **Five PRs were

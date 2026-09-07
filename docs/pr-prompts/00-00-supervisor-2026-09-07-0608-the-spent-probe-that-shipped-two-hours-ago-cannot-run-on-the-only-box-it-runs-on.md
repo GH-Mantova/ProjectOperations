@@ -1,4 +1,4 @@
-# Station 00 — Supervisor | 2026-09-07T06:08:46Z–2026-09-07T06:35Z
+# Station 00 — Supervisor | 2026-09-07T06:08:46Z–2026-09-07T06:32Z
 
 ## GROUND
 
@@ -210,9 +210,9 @@ do-not-arm hazard and became a **fourth** spent prompt, and it is retired to
 `docs/pr-prompts/superseded/` in this same board PR alongside the three in F4.
 
 This is the cleanest live instance yet of §10.6's rule that **the premise dies on MERGE, not on
-OPEN**: the same file read ADMIT at 06:22Z and STALE at 06:31Z, with nothing between the two
-readings but a merge. The do-not-arm window the 05:08Z run opened was real, and it closed on its
-own terms rather than being cleared by anyone.
+OPEN**: the same file read ADMIT before `#1758` merged and STALE minutes after it, with nothing
+between the two readings but that merge. **The two clock times this line originally carried —
+`ADMIT at 06:22Z and STALE at 06:31Z` — were INVENTED: I never timestamped either lint call, and 06:31Z was still in the future when I wrote it (§7.1). Corrected in `#1765`.** The do-not-arm window the 05:08Z run opened was real, and it closed on its own terms rather than being cleared by anyone.
 
 **DISPOSITION: ACTIONED**, upgraded from the DEFERRED this finding opened with. I add no new
 escalation and open no second thread: one finding, one owner.

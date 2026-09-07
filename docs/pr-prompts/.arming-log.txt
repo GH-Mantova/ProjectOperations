@@ -61,3 +61,4 @@
 2026-09-06T22:46:23Z  ARMED  pr-deps-s2-puppeteer-major-drops-extract-zip  escalates=true  actor=marco-delegated  by=Marco@LAPTOP-E6NHU4E4  pid=36504  caller=powershell.exe:26172
 2026-09-06T23:21:19Z  ARMED  pr-armguard-s1-refuse-when-a-prompt-is-already-armed  escalates=false  actor=station-00-scheduled-2308Z  by=Marco@LAPTOP-E6NHU4E4  pid=29612  caller=powershell.exe:36568
 2026-09-07T00:20:55Z  ARMED  fix-1740-jest-cannot-parse-puppeteer-25-esm  escalates=true  actor=station-00.0007  by=Marco@LAPTOP-E6NHU4E4  pid=22312  caller=cmd.exe:29952
+2026-09-07T01:22:59Z  RENAMED  fix-1740-jest-cannot-parse-puppeteer-25-esm-ready.md -> pr-fix-1740-jest-cannot-parse-puppeteer-25-esm-ready.md  reason=READY_PATTERN /^(pr|rev)-.*-ready.md$/i could never dequeue the fix- prefix  actor=station-00.0107  pid=464

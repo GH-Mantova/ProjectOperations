@@ -721,12 +721,40 @@ function headerRow(markup: string): string[] {
   return Array.from(thead.matchAll(/<th\b[^>]*>(.*?)<\/th>/g)).map((m) => m[1]);
 }
 
+/**
+ * Keep the characters that sit OUTSIDE a tag, by scanning -- not by regex-replacing
+ * the tags away.
+ *
+ * CodeQL raised the single-pass `replace(/<[^>]+>/g, "")` this replaced as a
+ * high-severity `js/incomplete-multi-character-sanitization`. Being straight
+ * about it: I could not construct an input where one pass of THAT regex leaves a
+ * tag behind -- a stray `<` is always absorbed by the next match -- so I am not
+ * claiming a demonstrated exploit. What is true is that a regex `replace` is the
+ * shape of a sanitiser, this helper is not one, and the finding is about the
+ * shape. A scanner cannot assemble a tag out of its own leftovers by construction,
+ * which is a stronger statement than "I could not find a counterexample".
+ *
+ * The exposure here is nil either way -- it reads markup this file just rendered
+ * from its own fixtures. It is fixed rather than suppressed because suppressing a
+ * true-positive-shaped finding in a test is how a real one gets suppressed later.
+ */
+function stripTags(html: string): string {
+  let out = "";
+  let inTag = false;
+  for (const ch of html) {
+    if (ch === "<") inTag = true;
+    else if (ch === ">") inTag = false;
+    else if (!inTag) out += ch;
+  }
+  return out;
+}
+
 /** The `<td>` texts of one body row, tags stripped. */
 function bodyRows(markup: string): string[][] {
   const tbody = markup.slice(markup.indexOf("<tbody>"), markup.indexOf("</tbody>"));
   return Array.from(tbody.matchAll(/<tr[^>]*>(.*?)<\/tr>/g)).map((row) =>
     Array.from(row[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)).map((c) =>
-      c[1].replace(/<[^>]+>/g, "").trim()
+      stripTags(c[1]).trim()
     )
   );
 }

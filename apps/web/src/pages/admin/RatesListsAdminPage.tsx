@@ -11,20 +11,32 @@ import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGri
 import {
   blankRowCells,
   consumerTypeLabel,
+  deleteFieldConfirmMessage,
+  deleteFieldWarning,
   groupBindings,
+  rateFieldRows,
+  usedInLabel,
   validateColumnStructure,
   validateRowCells,
   whereUsedBlockerMessage,
+  type FieldKind,
   type ListBinding,
   type ListBindingConsumerType,
   type RateColumn,
   type RateColumnDataType,
   type RateColumnRole,
+  type RateFieldRow,
   type RateRow
 } from "./ratesListsHelpers";
 import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
-import { ChargeStepsEditor } from "./ChargeStepsEditor";
+// RATE_FIELDS_TABLE_V2 — `FIELD_SOURCE_LABELS` is imported, never copied. The
+// charge-steps card owns the two words ("the rate table" / "the estimate
+// line") and labels its operand `<optgroup>`s with them; the `From` column
+// below reads the same object, so the picker and this table cannot end up
+// calling one thing two names.
+import { ChargeStepsEditor, FIELD_SOURCE_LABELS } from "./ChargeStepsEditor";
 import type { RateLineField } from "@project-ops/config/charge-step-semantics";
+import type { ChargeStep } from "../../lib/chargeStepTypes";
 
 // ── Types coming off the API ─────────────────────────────────────────────
 
@@ -879,6 +891,13 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   const [editRowId, setEditRowId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, unknown> | null>(null);
 
+  // RATE_FIELDS_TABLE_V2 — THE step list, and the only copy of it on this page.
+  // It is loaded once by ChargeStepsEditor's own GET and handed up here through
+  // `onStepsChange`; the Fields card reads it to fill `Used in`. No second
+  // fetch, and no server round-trip between a step being edited and the delete
+  // warning knowing about it.
+  const [chargeSteps, setChargeSteps] = useState<ChargeStep[]>([]);
+
   // Hub import/export state
   const [hubExporting, setHubExporting] = useState(false);
   const [hubImporting, setHubImporting] = useState(false);
@@ -886,6 +905,14 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   const hubFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const columnErrors = useMemo(() => validateColumnStructure(table.columns), [table.columns]);
+
+  // RATE_FIELDS_TABLE_V2 — one derivation, read by the Fields card and by the
+  // delete confirm, so the steps the warning names are exactly the steps the
+  // `Used in` cell shows.
+  const fieldRows = useMemo(
+    () => rateFieldRows(table.columns, table.lineFields ?? [], chargeSteps),
+    [table.columns, table.lineFields, chargeSteps]
+  );
   const rowErrors = useMemo(
     () => (rowDraft ? validateRowCells(table.columns, rowDraft) : []),
     [table.columns, rowDraft]
@@ -916,9 +943,16 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   };
 
   const handleDeleteColumn = async (columnId: string) => {
+    // RATE_FIELDS_TABLE_V2 — the question names the field and the steps that
+    // use it. It used to be one generic sentence, so the answer to "what does
+    // this break?" was a 400 on the next charge-steps save. `deleteColumn` on
+    // the server is unchanged and still decides what is allowed: this warns,
+    // it does not refuse.
+    const column = table.columns.find((c) => c.id === columnId);
+    const row = fieldRows.find((f) => f.id === columnId);
     const ok = await confirm({
-      title: "Delete column",
-      message: "Delete this column? Any values stored for it will be dropped.",
+      title: "Delete field",
+      message: deleteFieldConfirmMessage(column?.name ?? "This field", row?.usedIn ?? []),
       confirmLabel: "Delete",
       variant: "danger"
     });
@@ -1146,7 +1180,7 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
         {pendingError ? <ErrorBanner message={pendingError} onDismiss={() => setPendingError(null)} /> : null}
       </div>
 
-      <ColumnsCard columns={table.columns} onAdd={handleAddColumn} onDelete={handleDeleteColumn} />
+      <FieldsCard fields={fieldRows} onAdd={handleAddColumn} onDelete={handleDeleteColumn} />
 
       <ChargeStepsEditor
         tableId={table.id}
@@ -1167,6 +1201,10 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
         // exactly as it did before the column existed.
         lineFields={table.lineFields ?? []}
         onSaved={() => void onChanged()}
+        // RATE_FIELDS_TABLE_V2 — the card publishes the step list it already
+        // loaded, so the Fields card above can fill `Used in` without a second
+        // GET and without a stale copy.
+        onStepsChange={setChargeSteps}
       />
 
       <RowsCard
@@ -1203,12 +1241,80 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   );
 }
 
-function ColumnsCard({
-  columns,
+const fieldHeadStyle = { textAlign: "left", padding: "6px 8px" } as const;
+const fieldCellStyle = { padding: "7px 8px", verticalAlign: "top" } as const;
+
+/**
+ * RATE_FIELDS_TABLE_V2 — the `Kind` cell.
+ *
+ * The mock-up gives the two kinds it has two tones: teal for a number, amber
+ * for text. Only the amber half survives contact with the tokens that actually
+ * ship. The teal chip is `--brand-primary-light` behind `--text-primary`, and
+ * tokens.css never redefines `--brand-primary-light` for dark mode — so on a
+ * dark card it keeps its light-mode value and sits behind near-white text, at
+ * a contrast ratio no one can read. The mock-up lifts that token (and
+ * `--status-active`) in its own copy of the sheet and says so; the product has
+ * not, and inventing the lift here would be a theme change smuggled into a
+ * card. So the number chip is neutral, and the amber chip carries the signal
+ * that matters: amber means this field cannot go in the sum, which is exactly
+ * the rule the operand picker applies. `--surface-override` and `--brand-dark`
+ * hold the same value in either theme, so the amber chip reads in both.
+ */
+function KindChip({ kind }: { kind: FieldKind }) {
+  const isNumber = kind === "number";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+        background: isNumber ? "var(--surface-subtle)" : "var(--surface-override)",
+        color: isNumber ? "var(--text-primary)" : "var(--brand-dark)",
+        border: `1px solid ${isNumber ? "var(--border-default)" : "var(--brand-accent-dark)"}`
+      }}
+    >
+      {kind}
+    </span>
+  );
+}
+
+/**
+ * RATE_FIELDS_TABLE_V2 — the card that lists what a charge step can use.
+ *
+ * It used to head its table `Name | Role | Type | Unit / list | Req?` and
+ * answered none of the three questions a person editing a charge rule actually
+ * has. It now heads it `Field | From | Kind | Unit | Used in`:
+ *
+ *   From    — the ruling of 2026-09-04: a charge step prices against values
+ *             the estimator enters as well as stored columns. Line fields list
+ *             under the same table as columns, so this column is the only
+ *             thing telling a reader which of these rows is looked up and
+ *             which is filled in on the estimate. The words are the operand
+ *             picker's own `<optgroup>` labels, imported, not retyped.
+ *   Kind    — `number` / `text` / `date` / `yes / no`, from
+ *             `columnFieldKind`, instead of the raw storage enum. The same
+ *             function decides what the operand picker will offer as an
+ *             arithmetic operand, so the label and the menu agree by
+ *             construction.
+ *   Used in — the step numbers naming this field, counting both the arithmetic
+ *             operand and the condition field, because the server rejects a
+ *             dangling name in either. Deleting a used field is still allowed
+ *             — the server decides that — but it is no longer silent.
+ *
+ * Role and Req? are gone from the TABLE only. `role` is still stored, still
+ * set by the add-column form below, and still what the rows grid badges;
+ * `required` is still enforced by `validateRowCells`. Nothing about how a
+ * field is stored changed here.
+ */
+export function FieldsCard({
+  fields,
   onAdd,
   onDelete
 }: {
-  columns: RateColumn[];
+  fields: RateFieldRow[];
   onAdd: (col: {
     name: string;
     dataType: RateColumnDataType;
@@ -1251,50 +1357,92 @@ function ColumnsCard({
 
   return (
     <div className="s7-card">
-      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Columns</h3>
-      {columns.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No columns yet — add KEY, VALUE, and INFO columns below.</p>
+      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Fields</h3>
+      <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 12px", maxWidth: "70ch" }}>
+        What the steps can use. A field from the rate table comes off the matched row; a field from
+        the estimate line is what the estimator enters.
+      </p>
+      {fields.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>No fields yet — add KEY, VALUE, and INFO columns below.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border, #e5e7eb)", color: "var(--text-muted)" }}>
-              <th style={{ textAlign: "left", padding: "6px 8px" }}>Name</th>
-              <th style={{ textAlign: "left", padding: "6px 8px" }}>Role</th>
-              <th style={{ textAlign: "left", padding: "6px 8px" }}>Type</th>
-              <th style={{ textAlign: "left", padding: "6px 8px" }}>Unit / list</th>
-              <th style={{ textAlign: "left", padding: "6px 8px" }}>Req?</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {columns.map((c) => (
-              <tr key={c.id} style={{ borderBottom: "1px solid var(--border, #f1f5f9)" }}>
-                <td style={{ padding: "6px 8px" }}>{c.name}</td>
-                <td style={{ padding: "6px 8px" }}>
-                  <RoleBadge role={c.role} />
-                </td>
-                <td style={{ padding: "6px 8px" }}>{c.dataType}</td>
-                <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>
-                  {c.unit ?? c.listSlug ?? "—"}
-                </td>
-                <td style={{ padding: "6px 8px" }}>{c.required ? "yes" : "—"}</td>
-                <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => void onDelete(c.id)}
-                    style={{ minHeight: 32 }}
-                  >
-                    Delete
-                  </button>
-                </td>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border-default)", color: "var(--text-muted)" }}>
+                <th style={fieldHeadStyle}>Field</th>
+                <th style={fieldHeadStyle}>From</th>
+                <th style={fieldHeadStyle}>Kind</th>
+                <th style={fieldHeadStyle}>Unit</th>
+                <th style={fieldHeadStyle}>Used in</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {fields.map((f) => {
+                // The warning is about a delete, so only a row that offers
+                // one carries it. A line field's `Used in` still names its
+                // steps; what it does not do is caution about an action that
+                // is not on the row.
+                const warning = f.id === null ? null : deleteFieldWarning(f.name, f.usedIn);
+                return (
+                  <tr key={`${f.source}:${f.name}`} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                    <td style={fieldCellStyle}>
+                      <span style={{ fontWeight: 600 }}>{f.name}</span>
+                      {/* The list a LIST_REF column draws from. The mock-up has
+                          no place for it; without it nothing on this screen
+                          says which GlobalList feeds the column. */}
+                      {f.listSlug ? (
+                        <span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>
+                          {f.listSlug}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td style={{ ...fieldCellStyle, color: "var(--text-secondary)" }}>
+                      {FIELD_SOURCE_LABELS[f.source]}
+                    </td>
+                    <td style={fieldCellStyle}>
+                      <KindChip kind={f.kind} />
+                    </td>
+                    <td style={{ ...fieldCellStyle, color: "var(--text-muted)" }}>{f.unit ?? "—"}</td>
+                    <td
+                      style={{
+                        ...fieldCellStyle,
+                        color: warning ? "var(--status-warning)" : "var(--text-muted)"
+                      }}
+                      title={warning ?? undefined}
+                    >
+                      {usedInLabel(f.usedIn)}
+                    </td>
+                    <td style={{ ...fieldCellStyle, textAlign: "right" }}>
+                      {/* A line field is declared on the table alongside the
+                          charge steps and has no id and no delete route of its
+                          own, so this slice offers no control for one rather
+                          than a control that cannot work. */}
+                      {f.id === null ? null : (
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          onClick={() => void onDelete(f.id as string)}
+                          style={{ minHeight: 32, ...(warning ? { color: "var(--status-danger)" } : null) }}
+                          title={warning ?? undefined}
+                          aria-label={warning ? `Delete ${f.name}. ${warning}` : `Delete ${f.name}`}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border, #e5e7eb)" }}>
+      {/* `var(--border, ...)` names no token in tokens.css — the hex fallback
+          was doing the work, in both themes. `--border-default` is the real
+          one, and it is redefined for dark mode. */}
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-default)" }}>
         <h4 style={{ margin: "0 0 8px", fontSize: 13, textTransform: "uppercase", color: "var(--text-muted)" }}>
           Add column
         </h4>

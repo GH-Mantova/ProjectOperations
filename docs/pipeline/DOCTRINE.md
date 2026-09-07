@@ -403,6 +403,20 @@ here now because they are true for **every** station.
   🔧 **Count Windows-path occurrences in node, or put the single-backslash needle in DOUBLE quotes**
   — and control any path search against a path you know is present. Found by Station 04
   2026-09-06T22:1xZ (F4), landed by Station 00 at 23:3xZ.
+- 🔴 **`gh run view <run> --job <job> --log` EMITS THREE TAB-SEPARATED COLUMNS, AND COLUMN 1 IS THE
+  JOB NAME — so grepping the whole line for anything that appears in the job's own name matches EVERY
+  LINE OF THE LOG.** [MEASURED] 2026-09-07T18:4xZ by Station 00 on the `Approval receipt (CP-26)` job of
+  run `34151708462` (`#1767`): the log is **220** lines, every one shaped
+  `<job name>\t<step name>\t<timestamp> <text>`, and `Select-String -Pattern 'CP-26'` over the raw lines
+  matched the runner-version banner, the image provisioner and the build date — because `CP-26` is in
+  column 1 of all of them. Nothing is empty and nothing warns, so §9.6 does not fire; the query worked
+  and answered a question about the job's TITLE. The gate's actual verdict is in column 3 and reads
+  `FAIL - CP-26 approval-receipt [LABEL_PRESENT] …`, one line out of 220.
+  🔧 **Split on the tab and search the LAST column** — `$lines | ForEach-Object { ($_ -split "`t")[-1] }`
+  — and control it against a needle you know is in the log body and one you know is nowhere.
+  ⚠️ This is why *"never diagnose a CI failure without reading the job log"* (§3) is not sufficient on
+  its own: reading the log and grepping the log are different acts, and only one of them is protected
+  by this bullet.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
 
 ## 9.2 Git
@@ -585,6 +599,21 @@ here now because they are true for **every** station.
 
 - ⚠️ **The GitHub MCP token cannot merge, and cannot open PRs (403).** Use `gh` through Desktop
   Commander.
+- 🔴 **A PR CARRYING `do-not-merge` CAN NEVER BE GREEN, AND IT SHOWS AS TWO REDS WITH ONE CAUSE.**
+  `approval-receipt-check.mjs` returns `FAIL - CP-26 approval-receipt [LABEL_PRESENT] PR carries the
+  do-not-merge label (escalates:true). A human must review and REMOVE the label` — quoted verbatim,
+  [MEASURED] 2026-09-07T18:4xZ by Station 00 from column 3 of run `34151708462` on `#1767`. That same
+  check runs **twice**: as the required check `Approval receipt (CP-26)` **and** as a step inside
+  `PR gates — diff checks`, so both failed on that PR, in the same run, from the one cause. This is
+  **PARKED BY DESIGN, not a defect and not work.** Three consecutive collect runs listed such PRs among
+  "the reds" as though they were something to fix.
+  🔧 **Read the CP-26 VERDICT TOKEN, never the pass/fail counts.** `[LABEL_PRESENT]` = parked, nothing
+  to do; `[RELEASED_NO_RECEIPT]` = the label was removed and no receipt was committed, which IS a real
+  finding; `PASS / NEVER_ESCALATED` = the gate never armed at all, because it is armed by LABELLING and
+  not by the diff (§10.2.1 — a green CP-26 on a never-labelled PR is a statement about a release that
+  never happened). ⚠️ **Only Marco removes the label**, so a run that meets `[LABEL_PRESENT]` has
+  finished: there is no agent-side action behind it. **The falsifying probe is the verdict line itself**
+  — pull it from column 3 of the CP-26 job log, per §9.1.
 - 🔴 **A `--jq` expression survives the `-Command` layer intact — spaces included — but escaped
   double quotes DO NOT.** `join(\",\")` arrives as `join(,\)` and jq fails LOUDLY with
   `failed to parse jq expression`. Keep double quotes out of jq expressions, or use `--json` plus

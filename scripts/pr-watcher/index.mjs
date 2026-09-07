@@ -1019,9 +1019,22 @@ async function runGh(args, { json = false, allowNonZero = false } = {}) {
   return new Promise((resolve, reject) => {
     const out = [];
     const err = [];
+    // GATE_PATH_SPACE_V1 - NO `shell: true` HERE EITHER. Same mechanism as
+    // runGit() below: with shell:true node does not escape the argv array, it
+    // joins it into one command string and hands that to cmd.exe / sh (node
+    // DEP0190). Every gh argument carrying a space or a shell metacharacter -
+    // a PR title, a body, a branch name, a --json field list, a gate path such
+    // as "Claude Design/docs/01-commercial.md" - is then re-split or
+    // interpreted by the shell before gh ever sees it. Without a shell, spawn
+    // passes argv straight through. Removing it here closes the same hole the
+    // rest of this PR closes for git, and it is the sink CodeQL flags as
+    // js/shell-command-constructed-from-input once unmetDependencies() is
+    // exported. GH_BIN resolves to a real executable that spawn finds on PATH
+    // with no shell on both platforms this runs on (gh.exe on the Windows box,
+    // gh on Linux CI); a .cmd/.bat shim would need PR_WATCHER_GH_BIN pointed
+    // at the real binary.
     const child = spawn(GH_BIN, args, {
       cwd: REPO_ROOT,
-      shell: true,
       env: childEnv,
     });
     child.stdout.on("data", (c) => out.push(c));

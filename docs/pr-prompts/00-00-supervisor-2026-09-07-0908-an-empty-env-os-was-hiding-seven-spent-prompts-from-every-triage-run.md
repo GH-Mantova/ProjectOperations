@@ -228,11 +228,30 @@ they run in still has the `"Stop"` version. Any station that reaches for the swe
 loud crash and a dev tree left off `main` — and F5's conflict means the canonical block's fallback
 ("write it inside your own run's PR") is the one that still works.
 
+**F8. The `check-pr-title` gate that shipped this morning in `#1763` took its first live scalp, and
+it was mine — the trap is that a PR title's scope must name a DIRECTORY, not the FILE you changed.**
+[MEASURED] from the job log, never the diff: `#1777` failed `Pipeline — watcher + linter tests` with
+`[TITLE_SCOPE_UNRESOLVED] scope "sweep-breadcrumbs" names nothing this repo can point at`, nearest
+five `agreed-records, pdf-rendering, sweep, access-requests, admin-users`. I had written
+`fix(sweep-breadcrumbs):` from the filename `scripts/pipeline/sweep-breadcrumbs.ps1`. The gate wants a
+module directory under `apps/api/src/modules/` or `apps/web/src/pages/`, an area directory under
+`apps/ packages/ docs/ scripts/`, or a `NAMED_AREAS` entry. Renamed to `fix(sweep):` — and note the
+gate's own instruction, which is right and worth repeating: **do NOT add a scope to
+`title-scope-baseline.json` to make this pass; that file may only shrink, and adding to it is the
+gate failing open.**
+⚠️ Every station that names a PR after the file it edited will meet this. `sweep-breadcrumbs.ps1`
+generates its own titles as `docs(pipeline): …`, which passes — so the script is fine and the habit is
+not.
+**DISPOSITION: ACTIONED** — `#1777` renamed; the local suites (`scripts/pipeline/__tests__/*.mjs`,
+298 tests) pass in a worktree off that branch, so this was the only failure.
+
 ## WHAT I DID NOT DO
 
 - **Merged nothing.** All five open PRs are Marco's — one by a real watcher verdict, three by a
   `do-not-merge` label, one by hand classification, and `#1767` twice over because it carries a
-  migration. `#1776` is my own docs-only PR and is armed for native auto-merge, not hand-merged.
+  migration. `#1776` is my own docs-only PR; it reached `main` through **native squash auto-merge**,
+  which is the sanctioned path — it was never hand-merged, and `#1777` (Marco's) was deliberately
+  left un-armed.
 - **Armed nothing** (F3), and specifically did not arm the three §10.6 duplicates, the two
   `pr-sot-*` (05's lane), `pr-tr-s1-reminder-policy` (migration), or
   `pr-triage-holds-open-pr-duplicate-bucket` (would collide with `#1769` on one file).

@@ -1139,7 +1139,15 @@ const WATCHER_INDEX = join(REPO_ROOT, "scripts", "pr-watcher", "index.mjs");
 
 function readSource(path) {
   // arm-prompt.ps1 carries a UTF-8 BOM; strip it so line-anchored regexes work.
-  return readFileSync(path, "utf8").replace(/^\uFEFF/, "");
+  //
+  // 2026-09-07: line endings are normalised to LF too. This job runs on
+  // windows-latest, where git checks the tree out with CRLF, so a scan written
+  // as indexOf("\n    exit 6\n") finds nothing -- the byte after the 6 is \r.
+  // It cost a red CI run on PR #1759: every OTHER anchor in this file happened
+  // to survive, because they use /m with \s*$, which tolerates a \r. That is
+  // the dangerous shape of this bug -- it takes out one assertion and leaves
+  // the rest green, so the failure reads like a real defect in the script.
+  return readFileSync(path, "utf8").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
 }
 
 /** The regex literal scripts/pr-watcher/index.mjs actually declares. */

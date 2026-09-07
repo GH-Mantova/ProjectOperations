@@ -418,6 +418,7 @@ here now because they are true for **every** station.
   its own: reading the log and grepping the log are different acts, and only one of them is protected
   by this bullet.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
+- 🔴 **NEVER BIND A POWERSHELL AUTOMATIC VARIABLE AS A LOOP OR ASSIGNMENT TARGET; PREFER A NAME NO AUTOMATIC VARIABLE CAN SHADOW.** `AUTOMATIC_VARIABLE_ASSIGNMENT_V1` [MEASURED] 2026-09-07T22:2xZ by Station 04 at `1ddf3fb4`: a `foreach ($home in @(<docs/pr-reviews/…> × 3)) { … }` loop over three review-file homes produced zero rows and exited 0. Cause: `$home` is a read-only PowerShell automatic variable; binding it throws `SessionStateUnauthorizedAccessException: Cannot overwrite variable HOME because it is read-only or constant` to the error stream once, and the loop body never runs. The three homes held 106, 61, and 623 review files at the same minute — §9.6 does not fire because the exit code is 0. Guard 5 of §7 is scoped to **single-letter** names (`$c` vs. `$C`); a reader following it to the letter still writes `$home`, `$host`, `$input`, `$pwd`, `$args`, `$matches`. 🔧 Pick a non-automatic name (`$reviewHome`); control any `foreach` that produces no rows against an input you know is non-empty — a loop that never ran and a loop over an empty collection are byte-identical in output. **Falsifying probe:** `powershell -NoProfile -Command "foreach ($home in @(1,2,3)) { $home }"` — if it prints `1 2 3`, this bullet is wrong and must be re-measured.
 
 ## 9.2 Git
 
@@ -707,8 +708,7 @@ here now because they are true for **every** station.
   `// Cheaper than the premise (single gh call, no shell subprocess), so run` above the
   `checkFixesPrTargetOpen({ fixesPr, fetchState: fetch })` call site names it that). **A `fixes_pr`
   verdict therefore DOES depend on `gh`** — confirm it resolves before trusting one. (Found by
-  Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour — `Select-String LINT_GH_BIN`
-  returns exactly one hit.) **A line-number citation into a file outside this document
+  Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour — `Select-String LINT_GH_BIN`.) **A line-number citation into a file outside this document
   is invalidated by any edit above it — prefer a symbol name or a fixed comment string as the
   anchor.** **Confirm `git` resolves AND read its stderr before believing any ADMIT.** And "fail
   SAFE" is safe only against wrongly *binning* a prompt: with respect to **arming** it fails

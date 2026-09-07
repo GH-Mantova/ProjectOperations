@@ -961,7 +961,12 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
       .pop();
     assert.ok(line, "an ARMED line for the forced arm must exist");
     assert.match(line, /\bforced=1\b/, `audit line must record forced=1, got:\n${line}`);
-    assert.match(line, new RegExp(`forced_past=[^\\s]*${other.replace(/-/g, "\\-")}`),
+    // Capture the token rather than building a RegExp out of the slug: the
+    // hand-rolled escape here escaped "-" and not a backslash, which CodeQL
+    // correctly flags as incomplete. This asserts the same property, no regex
+    // is constructed from the slug, and nothing is loosened.
+    const forcedPast = /forced_past=(\S*)/.exec(line);
+    assert.ok(forcedPast && forcedPast[1].includes(other),
       `audit line must name what was forced past, got:\n${line}`);
   });
 });

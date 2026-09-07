@@ -358,6 +358,10 @@ approval, and only then:
 2. **MATERIALISE the file into `C:\ProjectOperations2\docs\pr-prompts\`** after the arming PR
    merges - the watcher consumes from the DEV TREE filesystem, not from main; a committed
    prompt that is not materialised NEVER runs (learned 2026-07-23, days of silent idle).
+   **Materialise means COPY THE FILE ONTO DISK. It does not mean commit it there** - the dev
+   tree is on `main`, which cannot push, so a commit there drifts local `main` permanently
+   (NO-DRIFT, `docs/pipeline/stations/00-supervisor.md`). The watcher globs the filesystem; it
+   does not care whether the file is tracked.
 3. If escalates:true - it will run; note in the prompt body that the resulting PR must be
    labelled do-not-merge for Marco.
 4. NEVER merge anything - the supervisor/auto-merge drives the board.

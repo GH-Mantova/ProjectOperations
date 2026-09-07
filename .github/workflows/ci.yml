@@ -313,6 +313,54 @@ jobs:
           node scripts/pipeline/check-sot-baseline-ratchet.mjs \
             "$RUNNER_TEMP/sot-refs-baseline.base.json" \
             docs/qa/sot-refs-baseline.json
+      # RATCHET: no file under apps/web/src may gain a hard-coded colour literal.
+      #
+      # `sot/01` SECTION 5 says "Always use CSS variables - never hardcode colour values".
+      # MEASURED 2026-09-07 @9826b552: apps/web/src breaks that rule 4,353 times across 263
+      # tracked .ts/.tsx/.css files, and nothing counted them. Between 2026-08-18 and
+      # 2026-09-01 the count rose 3,792 -> ~4,32x, about 39 new literals a day, concentrated
+      # in the areas lanes are actively building. The registered migration campaign
+      # (docs/plans/theme-system-plan.md, decision D24) cannot outrun that: the board merges
+      # one PR at a time and the debt grows faster than eleven serialised slices retire it.
+      # This gate migrates nothing. It stops the inflow so opportunistic conversion converges.
+      #
+      # NOT A WARNING. A gate shipped warn-only needs a second arming to become real, and
+      # this board already has one of those sitting unarmed (pr-dns-s5-checker-flip-to-fail).
+      #
+      # TWO STEPS, for the same reason check-pr-title has two.
+      #
+      # 1. --self-test runs UNCONDITIONALLY (push and pull_request). It needs no baseline and
+      #    exercises 25 cases - 8 on the rule (four of them FAIL-cases), 4 on unparseable
+      #    input, 13 on the counter itself. A commit that breaks the checker therefore goes
+      #    red on trunk, at the commit that broke it, instead of surfacing later as a mystery
+      #    rejection on somebody's PR. Costs ~0.08s.
+      #
+      # 2. The real check is GUARDED to pull_request, because it needs a BASE baseline to
+      #    ratchet against and `github.base_ref` only exists on a PR.
+      #
+      # DE-FACTO BLOCKING, THOUGH NOT A REQUIRED CHECK. Ruleset 15532058 ("Main") requires
+      # exactly four contexts (CodeQL, API, Web, tendering-e2e) and this job is not one of
+      # them, so branch protection will not block on it. The WATCHER will:
+      # scripts/pr-watcher/index.mjs:1921 aborts the merge on the first statusCheckRollup
+      # entry whose conclusion is FAILURE, required or not. A red here burns the slice.
+      - run: node scripts/pipeline/check-hex-ratchet.mjs --self-test
+      - name: hex ratchet - no file may gain a hard-coded colour
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          # Guard: if the baseline did not exist on the base branch this is the creation PR -
+          # its own baseline is by definition absent upstream, so without this the PR that
+          # introduces the gate fails its own gate. Same guard as the sot-refs ratchet above.
+          if ! git show "origin/${{ github.base_ref }}:docs/qa/hex-baseline.json" > /dev/null 2>&1; then
+            echo "hex-baseline.json is new on this PR - ratchet skipped (creation is allowed)"
+            exit 0
+          fi
+          git show "origin/${{ github.base_ref }}:docs/qa/hex-baseline.json" > "$RUNNER_TEMP/hex-baseline.base.json"
+          # --check runs the rule TWICE: the base baseline against the actual tree (what stops
+          # a new literal), and the base baseline against the committed baseline (what stops
+          # you raising a file's number to silence the first). Either alone leaves a door open.
+          node scripts/pipeline/check-hex-ratchet.mjs \
+            --check --base "$RUNNER_TEMP/hex-baseline.base.json"
       # check-lessons: exit 0 = clean (no regressions); exit 1 = broken instrument;
       # exit 2 = at least one lesson has regressed. All non-zero are failures.
       - name: check-lessons

@@ -130,6 +130,63 @@ if ($Actor -notmatch $ACTOR_RE) {
 }
 
 # ---------------------------------------------------------------------------
+# Step 0b - REACHABILITY: refuse a name the watcher can never dequeue
+# ---------------------------------------------------------------------------
+# scripts/pr-watcher/index.mjs decides what may ENTER the queue with a single
+# constant, READY_PATTERN, and gates BOTH its queue scan (isReady) and its armed
+# census on it. This script builds "$PROMPT_DIR/$Name-ready.md" and, until now,
+# never checked that the result could match.
+#
+# Arming fix-1740-jest-cannot-parse-puppeteer-25-esm at 2026-09-07T00:20:55Z
+# therefore produced a file every queue scan skipped. The prompt was armed,
+# counted as armed by lint-prompt.mjs, status-sweep.ps1 and
+# restart-watcher-if-wedged.ps1, and dead. It sat unrunnable for 62 minutes;
+# only the watchdog saw it, as "WATCHDOG armed=1 runnable=0", in a line that
+# then calls the idle legitimate. Renaming the file to pr-fix-1740-...-ready.md
+# made the watcher dequeue and start it within one second, which is the proof
+# that the prefix was the whole fault.
+#
+# It fails in the DANGEROUS direction - the board reports work in flight and
+# nothing is in flight - so this is a hard refusal, not a warning. A warning in
+# a headless arm is read by nobody.
+#
+# WHY THE PATTERN IS COPIED HERE RATHER THAN READ FROM index.mjs: the test
+# harness rewrites $REPO_ROOT to a throwaway temp repo that contains no
+# scripts/pr-watcher at all, so a runtime read would find nothing in ANY test
+# and the guard would have to choose between failing open (the defect, restored)
+# and failing closed (every arm refused). The copy is instead kept honest by a
+# drift test in scripts/pipeline/__tests__/arm-prompt.test.mjs that reads BOTH
+# files and fails the moment the two texts diverge. A copy nobody checks is how
+# this class of bug returns.
+#
+# The value below MUST stay textually identical to the regex body declared in
+# scripts/pr-watcher/index.mjs. It is deliberately the only copy of it in this
+# file. PowerShell's -match is case-insensitive by default, which is the /i flag.
+$READY_PATTERN = '^(pr|rev)-.*-ready\.md$'
+
+# Placed here, beside the actor check and ahead of everything else, for the same
+# reason Step 0 is first: no lock is acquired, no linter runs, no rename happens
+# and no audit line is written on this path, so a refused arm leaves the queue
+# byte-identical to how it found it. This also covers -WhatIf, which must not
+# print a plan for a name that could never run.
+$readyName = "$Name-ready.md"
+# In .NET regex, end-of-string also matches immediately before a trailing
+# newline; in JavaScript it does not. A name carrying a CR or LF would therefore
+# pass this check and still be skipped by the watcher, so it is refused
+# explicitly rather than left to that one-character difference between the two
+# regex engines.
+if (($readyName -match '[\r\n]') -or ($readyName -notmatch $READY_PATTERN)) {
+    Write-Fail "UNREACHABLE_NAME: '$readyName' can never be dequeued - the watcher's READY_PATTERN is /$READY_PATTERN/i."
+    Write-Host "  An armed name must begin with 'pr-' or 'rev-'. See READY_PATTERN in scripts/pr-watcher/index.mjs."
+    $suggested = "pr-$Name"
+    if (("$suggested-ready.md" -match $READY_PATTERN) -and ("$suggested-ready.md" -notmatch '[\r\n]')) {
+        Write-Host "  Rename the HOLD to '$suggested-HOLD.md' and arm that."
+    }
+    Write-Host "  REFUSED before the lock: nothing was renamed, moved or logged."
+    exit 6
+}
+
+# ---------------------------------------------------------------------------
 # Step 1 — acquire exclusive lock
 # ---------------------------------------------------------------------------
 

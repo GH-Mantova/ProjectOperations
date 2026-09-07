@@ -1740,10 +1740,15 @@ function extractPrNumber(text) {
 //   currentLabels   — array of label names currently on the PR
 //   doNotMergeEvents— array of {event: "labeled"|"unlabeled", createdAt: iso} for the
 //                     do-not-merge label ONLY (caller filters). Unsorted OK.
+//   isFixLane       — true when the prompt carries `fixes_pr: N` front matter. See the
+//                     FIXES_PR_ESCALATION note in the body: for a fix-lane prompt the PR
+//                     is older than the run BY CONSTRUCTION, so the "spent" test is not a
+//                     re-run heuristic but a tautology, and is skipped.
 //
 // Actions:
 //   "spent"          — PR pre-dates this run; prompt was consumed elsewhere already,
 //                      caller must move to processed/ with NO label, NO comment.
+//                      NEVER returned for a fix-lane prompt (FIXES_PR_ESCALATION).
 //   "already-labeled"— PR already carries do-not-merge; caller MUST NOT re-add.
 //   "declined"       — the most recent do-not-merge event is `unlabeled`. A human made
 //                      the call; caller MUST NOT re-apply, must log the decline loudly.
@@ -1753,8 +1758,27 @@ export function decideEscalationAction({
   runStartedAtMs,
   currentLabels,
   doNotMergeEvents,
+  isFixLane = false,
 }) {
+  // FIXES_PR_ESCALATION — the `spent` test below asks "was this PR created before this
+  // run started?" and reads YES as "an earlier run already consumed this prompt". For an
+  // ordinary prompt that inference holds: the watcher OPENS the PR during the run, so a
+  // pre-existing PR really does mean a re-run. For a fix-lane prompt (`fixes_pr: N` in
+  // front matter) it is a tautology — such a prompt exists precisely to push onto a PR
+  // that is ALREADY open, so `prCreatedAtMs < runStartedAtMs` is true on the first and
+  // only run. Reading that as "spent" made `escalates: true` inert for the whole fix
+  // lane: no `do-not-merge` label, no comment, and a verdict object carrying no `marco`
+  // key at all for RULE 2's `marco.:true` probe to find. First live instance:
+  // pr-fix-1740-jest-cannot-parse-puppeteer-25-esm, run 2026-09-07T01:23Z.
+  //
+  // Skipping the test for the fix lane does NOT reopen the 2026-08-18 incident (#1158 —
+  // an armed re-run re-applying `do-not-merge` 78 minutes after Marco removed it). That
+  // protection lives in the `already-labeled` and `declined` branches below, which a
+  // fix-lane prompt now falls through to: a label still on the PR is not re-applied, and
+  // a most-recent `unlabeled` event still beats automation. The guard is narrowed, not
+  // deleted — it is untouched for every non-fix-lane prompt.
   if (
+    !isFixLane &&
     Number.isFinite(prCreatedAtMs) &&
     Number.isFinite(runStartedAtMs) &&
     prCreatedAtMs < runStartedAtMs
@@ -1785,14 +1809,14 @@ export function decideEscalationAction({
 
 // Fetch the state needed to decide the escalation action. Isolated so holdForMarco stays
 // small and so the transport can be swapped in tests if we ever want an integration one.
-async function fetchEscalationState(prNumber) {
-  const pr = await runGh(
+async function fetchEscalationState(prNumber, { runGhImpl = runGh } = {}) {
+  const pr = await runGhImpl(
     ["pr", "view", String(prNumber), "--json", "createdAt,labels"],
     { json: true },
   );
   // `gh api` substitutes {owner}/{repo} from the current git remote, so this works in
   // both the interactive tree and the watcher clone without hard-coding GH-Mantova/…
-  const events = await runGh(
+  const events = await runGhImpl(
     ["api", `repos/{owner}/{repo}/issues/${prNumber}/events`, "--paginate"],
     { json: true },
   );
@@ -1813,7 +1837,7 @@ async function fetchEscalationState(prNumber) {
 // Post the "held for Marco" comment via a temp file. The old --body path split
 // the (unquoted) body on shell whitespace and failed with "accepts at most 1 arg(s),
 // received 42" on every escalates PR (#1158, #1165, #1166 all lost their comment).
-async function postHeldForMarcoComment(prNumber) {
+async function postHeldForMarcoComment(prNumber, { runGhImpl = runGh } = {}) {
   const body =
     "Held for Marco: this prompt declared `escalates: true`, so the watcher did not enable " +
     "auto-merge and applied the `do-not-merge` label. CP-26 fails while the label is present. " +
@@ -1821,7 +1845,7 @@ async function postHeldForMarcoComment(prNumber) {
   const tmpFile = path.join(__dirname, `.held-for-marco-${prNumber}.tmp.md`);
   try {
     await writeFile(tmpFile, body, "utf-8");
-    await runGh(["pr", "comment", String(prNumber), "--body-file", tmpFile]);
+    await runGhImpl(["pr", "comment", String(prNumber), "--body-file", tmpFile]);
   } finally {
     try {
       unlinkSync(tmpFile);
@@ -1831,28 +1855,46 @@ async function postHeldForMarcoComment(prNumber) {
   }
 }
 
-async function holdForMarco(prNumber, promptName, runStartedAtMs, _hbOpts = {}) {
+// FIXES_PR_ESCALATION — `fixesPr` is a REAL caller input, not a test seam: the dispatcher
+// threads the prompt's `fixes_pr` front-matter value in so decideEscalationAction can tell
+// a fix-lane prompt (whose PR necessarily pre-dates the run) from a re-run of a spent one.
+// The remaining `_opts` keys are the same undocumented test seam startHeartbeat uses
+// (_appendLine, _intervalMs) plus injectable gh/log transports, so the label-applying path
+// can be executed in a unit test without spawning gh. Exported for that reason.
+//
+// Every return carries BOTH `marco` and `fixLane` explicitly. A verdict that is merely
+// SILENT about Marco is the defect this closes: RULE 2's only probe is `marco.:true` over
+// docs/pr-prompts/processed/pr-*.log, so the old `{ spent: true, reason }` shape made a PR
+// whose only prompt log was a fix-lane log read as carrying no Marco routing at all.
+export async function holdForMarco(prNumber, promptName, runStartedAtMs, _opts = {}) {
+  const fixesPr = _opts.fixesPr ?? null;
+  const isFixLane = Number.isInteger(fixesPr) && fixesPr > 0;
+  const runGhImpl = _opts._runGh ?? runGh;
+  const fetchStateImpl = _opts._fetchEscalationState ?? fetchEscalationState;
+  const postCommentImpl = _opts._postHeldForMarcoComment ?? postHeldForMarcoComment;
+  const logImpl = _opts._log ?? log;
   const hbStartedMs = Date.now();
   startHeartbeat(
     MERGE_WAIT_HEARTBEAT,
     () => `waiting for Marco review of PR #${prNumber} (elapsed=${Math.round((Date.now() - hbStartedMs) / 1000)}s)`,
     null,
-    _hbOpts,
+    _opts,
   );
   try {
     let state;
     try {
-      state = await fetchEscalationState(prNumber);
+      state = await fetchStateImpl(prNumber, { runGhImpl });
     } catch (err) {
       // If we can't read PR state, fall back to fail-loud: warn and skip label + comment
       // rather than blindly re-applying (which is exactly the bug being fixed).
-      log(
+      logImpl(
         "merge",
         `PR #${prNumber}: could NOT read escalation state (${err.message}) — refusing to modify label. Verify by hand.`,
       );
       return {
         ok: false,
         marco: true,
+        fixLane: isFixLane,
         reason: `escalates:true — could not read PR state (${err.message}); label NOT touched, verify by hand.`,
       };
     }
@@ -1862,48 +1904,57 @@ async function holdForMarco(prNumber, promptName, runStartedAtMs, _hbOpts = {}) 
       runStartedAtMs,
       currentLabels: state.currentLabels,
       doNotMergeEvents: state.doNotMergeEvents,
+      isFixLane,
     });
 
     if (decision.action === "spent") {
-      log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}. Filing prompt as processed, no label/comment.`);
-      return { spent: true, reason: decision.reason };
+      logImpl("merge", `PR #${prNumber}: escalates:true — ${decision.reason}. Filing prompt as processed, no label/comment.`);
+      // `marco: false` is stated, not omitted. Nothing was routed to a human here, and a
+      // reader (or RULE 2's `marco.:true` probe) must be able to see that as a fact rather
+      // than infer it from a missing key. Unreachable for a fix-lane prompt.
+      return { spent: true, marco: false, fixLane: isFixLane, reason: decision.reason };
     }
 
     if (decision.action === "already-labeled") {
-      log("merge", `PR #${prNumber}: escalates:true — ${decision.reason}`);
-      return { ok: false, marco: true, reason: `escalates:true — ${decision.reason}` };
+      logImpl("merge", `PR #${prNumber}: escalates:true — ${decision.reason}`);
+      return { ok: false, marco: true, fixLane: isFixLane, reason: `escalates:true — ${decision.reason}` };
     }
 
     if (decision.action === "declined") {
-      log(
+      // Reachable for fix-lane prompts too — this is where the 2026-08-18 guarantee
+      // (a human's removal of `do-not-merge` wins) is honoured now that the fix lane no
+      // longer short-circuits into `spent` before ever consulting the label history.
+      logImpl(
         "merge",
         `PR #${prNumber}: escalates:true — REFUSING to re-apply \`do-not-merge\`: ${decision.reason}`,
       );
       return {
         ok: false,
         marco: true,
+        fixLane: isFixLane,
         reason: `escalates:true — ${decision.reason}`,
       };
     }
 
-    log("merge", `PR #${prNumber}: escalates:true — NOT enabling auto-merge; labelling do-not-merge`);
+    logImpl("merge", `PR #${prNumber}: escalates:true — NOT enabling auto-merge; labelling do-not-merge`);
     try {
-      await runGh(["pr", "edit", String(prNumber), "--add-label", "do-not-merge"]);
+      await runGhImpl(["pr", "edit", String(prNumber), "--add-label", "do-not-merge"]);
     } catch (err) {
       // Fail LOUD, never silently: an unlabelled escalates PR is exactly the hazard this closes.
-      log("merge", `PR #${prNumber}: FAILED to apply do-not-merge label: ${err.message}`);
+      logImpl("merge", `PR #${prNumber}: FAILED to apply do-not-merge label: ${err.message}`);
       return {
         ok: false,
         marco: true,
+        fixLane: isFixLane,
         reason: `escalates:true — auto-merge withheld, but the do-not-merge label could NOT be applied (${err.message}). Apply it by hand before anyone merges.`,
       };
     }
     try {
-      await postHeldForMarcoComment(prNumber);
+      await postCommentImpl(prNumber, { runGhImpl });
     } catch (err) {
-      log("merge", `PR #${prNumber}: comment failed (non-fatal): ${err.message}`);
+      logImpl("merge", `PR #${prNumber}: comment failed (non-fatal): ${err.message}`);
     }
-    return { ok: false, marco: true, reason: "escalates:true — held for Marco, labelled do-not-merge" };
+    return { ok: false, marco: true, fixLane: isFixLane, reason: "escalates:true — held for Marco, labelled do-not-merge" };
   } finally {
     stopHeartbeat();
   }
@@ -3146,8 +3197,10 @@ async function drain() {
         log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
         // escalates:true short-circuits BOTH merge paths — the flag means a human decides, so
         // auto-merge is never enabled regardless of AUTO_MERGE_POLICY.
+        // FIXES_PR_ESCALATION — `deps.fixesPr` (front matter `fixes_pr: N`) is threaded in
+        // so holdForMarco can tell a fix-lane prompt from a re-run of a spent one.
         const result = deps.escalates
-          ? await holdForMarco(prNumber, name, runStartedAtMs)
+          ? await holdForMarco(prNumber, name, runStartedAtMs, { fixesPr: deps.fixesPr })
           : AUTO_MERGE_POLICY === "tests-docs"
             ? await waitForPolicyMerge(prNumber)
             : await waitForMerge(prNumber, name);

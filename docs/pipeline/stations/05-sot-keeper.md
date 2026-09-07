@@ -374,7 +374,10 @@ S1. NEVER edit main directly, NEVER merge. Deliver as ONE doc-reconcile PR that 
     globs the dev tree and will run it (DOCTRINE §5b) — and **Station 05 may never arm**; and
     (c) STATION-CAPABILITIES.md §5 grants 05 "Create a PR — ✅ doc-reconcile only", and the
     AUTHORITY section above says "you never arm and you never merge", which is silent on push.
-    Opening the PR yourself is the sanctioned delivery. Never arm, never merge.
+    Opening the PR yourself is the sanctioned delivery. Never arm, never merge. **And never
+    `git commit` on `main` in the dev tree** — a regenerated artifact committed there can never
+    push, and the drift is permanent (NO-DRIFT, `docs/pipeline/stations/00-supervisor.md`). The
+    disposable worktree off `origin/main` already gives you a branch; commit there.
 S2. Determinism: run the generator TWICE; outputs byte-identical (modulo the Last updated stamp). If not, ABORT.
 S3. Section-scoped: PROVE only the generated section changed — compare the curated MERGED SOURCES region's sha256 before/after. If any curated byte moved, ABORT.
 S4. No content loss: curated line count must not decrease. If it shrank, ABORT.

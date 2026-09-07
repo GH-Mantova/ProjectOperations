@@ -203,8 +203,19 @@ profile on the board.
 🔴 **DO NOT ARM `pr-linefields-s3-fields-table-from-and-used-in-HOLD.md` while `#1758` is open.**
 Retire it to `superseded/` when `#1758` merges.
 
-**DISPOSITION: DEFERRED**, unchanged from the 05:08Z run's F1. I add no new escalation and open no
-second thread: one finding, one owner.
+⚠️ **UPDATED MID-RUN — `#1758` MERGED at 06:19:26Z, while this report was being written.**
+Re-linted at that moment: `lint-prompt.mjs` returns **STALE (exit 3)**, quoting the premise back and
+saying `The work is ALREADY DONE. Binned before spawning an agent.` So this prompt stopped being a
+do-not-arm hazard and became a **fourth** spent prompt, and it is retired to
+`docs/pr-prompts/superseded/` in this same board PR alongside the three in F4.
+
+This is the cleanest live instance yet of §10.6's rule that **the premise dies on MERGE, not on
+OPEN**: the same file read ADMIT at 06:22Z and STALE at 06:31Z, with nothing between the two
+readings but a merge. The do-not-arm window the 05:08Z run opened was real, and it closed on its
+own terms rather than being cleared by anyone.
+
+**DISPOSITION: ACTIONED**, upgraded from the DEFERRED this finding opened with. I add no new
+escalation and open no second thread: one finding, one owner.
 
 ### F6 — two escalations that existed on one machine's disk now reach `main`, by this PR
 

@@ -969,4 +969,294 @@ describe("arm-prompt.ps1", { skip: !IS_WIN || !PWSH ? "Windows + pwsh required" 
     assert.ok(forcedPast && forcedPast[1].includes(other),
       `audit line must name what was forced past, got:\n${line}`);
   });
+
+  // -------------------------------------------------------------------------
+  // ARMGUARD-S2 - refuse a name the watcher can never dequeue.
+  //
+  // scripts/pr-watcher/index.mjs gates its queue scan AND its armed census on
+  // one constant, READY_PATTERN. arm-prompt.ps1 built "$Name-ready.md" and
+  // never checked the result could match it, so on 2026-09-07T00:20:55Z
+  // fix-1740-jest-cannot-parse-puppeteer-25-esm-ready.md was armed, counted as
+  // armed by every census, and skipped by every queue scan for 62 minutes. Only
+  // the watchdog saw it, as "WATCHDOG armed=1 runnable=0". Renaming it to
+  // pr-fix-1740-...-ready.md made the watcher start it within one second.
+  //
+  // These five prove the guard on the real script. The source-level checks in
+  // the describe below prove the pattern itself, on every platform.
+  // -------------------------------------------------------------------------
+
+  test("a pr-* name still arms normally - the reachability guard changes nothing about today's behaviour", () => {
+    const repo = makeTempRepo();
+    const slug = "pr-armguard-s2-reachable";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug);
+
+    assert.equal(res.status, 0, `a pr-* name must still arm\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.ok(existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "ready file must exist");
+    assert.ok(!/UNREACHABLE_NAME/.test(res.stdout + res.stderr),
+      `a conforming name must not mention the guard at all, got:\n${res.stdout}${res.stderr}`);
+  });
+
+  test("a rev-<n> name still arms normally - rev- is the other half of READY_PATTERN", () => {
+    // rev-*-ready.md are auto-generated REVIEW JOBS (DOCTRINE 9.5). They ARE
+    // dequeueable, so the guard must admit them; Get-ArmedPrompts already
+    // excludes them from the RULE 4 count by its `pr-*` glob.
+    const repo = makeTempRepo();
+    const slug = "rev-1234";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug);
+
+    assert.equal(res.status, 0, `a rev-<n> name must still arm\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.ok(existsSync(join(repo, "docs", "pr-prompts", `${slug}-ready.md`)), "ready file must exist");
+    assert.ok(!/UNREACHABLE_NAME/.test(res.stdout + res.stderr),
+      `rev- must not be refused, got:\n${res.stdout}${res.stderr}`);
+  });
+
+  test("REFUSES the fix-* name from the 2026-09-07 incident and leaves the queue byte-identical", () => {
+    const repo = makeTempRepo();
+    // The real slug, verbatim. This is the name that armed successfully and
+    // could never be dequeued.
+    const slug = "fix-1740-jest-cannot-parse-puppeteer-25-esm";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const promptDir = join(repo, "docs", "pr-prompts");
+    const holdPath  = join(promptDir, `${slug}-HOLD.md`);
+    const readyPath = join(promptDir, `${slug}-ready.md`);
+
+    // Snapshot the queue directory, contents included, so "byte-identical" is
+    // asserted rather than assumed.
+    const snapshot = () => fs.readdirSync(promptDir).sort()
+      .map((n) => `${n}:${readFileSync(join(promptDir, n), "utf8")}`).join("|");
+    const before = snapshot();
+    const statusBefore = gitStatus(repo);
+
+    const res = runArmPromptSimple(repo, slug);
+
+    assert.notEqual(res.status, 0, `an unreachable name must exit non-zero, got 0\n${res.stdout}`);
+    assert.equal(res.status, 6,
+      `expected the UNREACHABLE_NAME exit code 6, got ${res.status}\n${res.stdout}${res.stderr}`);
+
+    const out = res.stdout + res.stderr;
+    assert.match(out, /UNREACHABLE_NAME/, `output must carry the UNREACHABLE_NAME token, got:\n${out}`);
+    // It must name the offending name AND a conforming suggestion.
+    assert.ok(out.includes(`${slug}-ready.md`), `output must name the offending file, got:\n${out}`);
+    assert.ok(out.includes(`pr-${slug}-HOLD.md`), `output must suggest a conforming rename, got:\n${out}`);
+
+    // Nothing renamed, nothing moved.
+    assert.ok(existsSync(holdPath), "the -HOLD.md must still be on disk after the refusal");
+    assert.ok(!existsSync(readyPath), "no ready file may be produced by a refusal");
+
+    // Nothing logged: the refusal is ahead of the audit line, so the log must
+    // not even have been created.
+    assert.ok(!existsSync(join(promptDir, ".arming-log.txt")),
+      "a refused arm must not create .arming-log.txt");
+
+    // Nothing staged, and the queue directory is byte-identical.
+    assert.equal(gitDiffCached(repo), "", "index must be clean after the refusal");
+    assert.equal(gitStatus(repo), statusBefore, "working tree status must be unchanged");
+    assert.equal(snapshot(), before, "docs/pr-prompts must be byte-identical after a refused arm");
+  });
+
+  test("-WhatIf refuses an unreachable name instead of printing a plan", () => {
+    const repo = makeTempRepo();
+    const slug = "fix-1740-jest-cannot-parse-puppeteer-25-esm";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const res = runArmPromptSimple(repo, slug, [], { whatIf: true });
+
+    assert.equal(res.status, 6,
+      `-WhatIf must refuse with exit 6, got ${res.status}\n${res.stdout}${res.stderr}`);
+    assert.match(res.stdout + res.stderr, /UNREACHABLE_NAME/);
+    // A dry run that says "all checks pass" for a name that can never run is
+    // exactly the false green this slice removes.
+    assert.ok(!/all checks pass/.test(res.stdout),
+      `-WhatIf must not report a passing plan for an unreachable name, got:\n${res.stdout}`);
+  });
+
+  test("the refusal is ahead of the lock: an unreachable name is refused even while another process holds it", async () => {
+    // The behavioural proof that nothing is renamed, moved or logged on the
+    // refusal path. If the guard sat after Acquire-Lock this run would block for
+    // the full timeout and exit 1 with a lock-timeout message; it exits 6
+    // immediately instead.
+    const repo = makeTempRepo();
+    const slug = "fix-1740-jest-cannot-parse-puppeteer-25-esm";
+    addHoldFile(repo, slug, validHoldContent());
+
+    const lockPath = join(repo, ".git", "po-arm.lock");
+    const acquireLockScript = [
+      `$stream = [System.IO.File]::Open('${lockPath}', [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)`,
+      `$stream.SetLength(0)`,
+      `$bytes = [System.Text.Encoding]::ASCII.GetBytes('313131')`,
+      `$stream.Write($bytes, 0, $bytes.Length)`,
+      `$stream.Flush()`,
+      `Write-Host 'LOCK_ACQUIRED'`,
+      `Start-Sleep -Seconds 30`,
+      `$stream.Close()`,
+    ].join("; ");
+
+    const lockHolder = spawn(PWSH, ["-NoProfile", "-NonInteractive", "-Command", acquireLockScript], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+
+    await new Promise((resolve) => {
+      let buf = "";
+      lockHolder.stdout.on("data", (chunk) => {
+        buf += chunk.toString();
+        if (buf.includes("LOCK_ACQUIRED")) resolve();
+      });
+      lockHolder.on("error", () => resolve());
+      setTimeout(resolve, 5000);
+    });
+
+    try {
+      const res = runArmPromptSimple(repo, slug, [], { lockTimeoutSeconds: 3 });
+      const out = res.stdout + res.stderr;
+      assert.equal(res.status, 6,
+        `expected exit 6 (refused before the lock), got ${res.status}\n${out}`);
+      assert.match(out, /UNREACHABLE_NAME/);
+      assert.ok(!/Could not acquire lock/.test(out),
+        `the guard must run before the lock is even attempted, got:\n${out}`);
+      assert.ok(existsSync(join(repo, "docs", "pr-prompts", `${slug}-HOLD.md`)), "HOLD must survive");
+    } finally {
+      try { lockHolder.kill(); } catch (_) {}
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ARMGUARD-S2 - source-level checks. Deliberately NOT platform-gated.
+//
+// Every test above needs Windows + pwsh and SKIPs elsewhere, so the ubuntu
+// `pipeline-tests` job proves nothing about arm-prompt.ps1. These read the two
+// source files as text and run on every platform, which is what makes drift
+// between the guard and the watcher catchable in ordinary CI. Nothing here is
+// skipped, so the Windows job's `skipped == 0` assertion still holds.
+// ---------------------------------------------------------------------------
+
+const WATCHER_INDEX = join(REPO_ROOT, "scripts", "pr-watcher", "index.mjs");
+
+function readSource(path) {
+  // arm-prompt.ps1 carries a UTF-8 BOM; strip it so line-anchored regexes work.
+  return readFileSync(path, "utf8").replace(/^\uFEFF/, "");
+}
+
+/** The regex literal scripts/pr-watcher/index.mjs actually declares. */
+function watcherReadyPattern() {
+  const m = /^const READY_PATTERN = \/(.+)\/([a-z]*);\s*$/m.exec(readSource(WATCHER_INDEX));
+  assert.ok(m, "could not find `const READY_PATTERN = /.../;` in scripts/pr-watcher/index.mjs");
+  return { body: m[1], flags: m[2] };
+}
+
+/** The pattern arm-prompt.ps1's Step 0b guard enforces. */
+function armReadyPattern() {
+  const m = /^\$READY_PATTERN\s*=\s*'([^']*)'\s*$/m.exec(readSource(ARM_SCRIPT));
+  assert.ok(m, "could not find a top-level `$READY_PATTERN = '...'` in scripts/pipeline/arm-prompt.ps1");
+  return m[1];
+}
+
+describe("arm-prompt.ps1 reachability guard - source level", () => {
+
+  // -------------------------------------------------------------------------
+  // DRIFT. The guard hard-codes the watcher's pattern rather than reading
+  // index.mjs at run time: the test harness rewrites $REPO_ROOT to a temp repo
+  // that has no scripts/pr-watcher, so a run-time read would find nothing in
+  // ANY test and would have to fail either open (the defect, restored) or
+  // closed (every arm refused). A copy nobody checks is how this class of bug
+  // returns - this is the check that makes the copy honest.
+  // -------------------------------------------------------------------------
+  test("DRIFT: the pattern arm-prompt.ps1 enforces is the pattern pr-watcher/index.mjs declares", () => {
+    const watcher = watcherReadyPattern();
+    const arm = armReadyPattern();
+
+    assert.equal(
+      arm,
+      watcher.body,
+      "arm-prompt.ps1 and scripts/pr-watcher/index.mjs no longer agree on READY_PATTERN.\n" +
+      `  arm-prompt.ps1       : ${arm}\n` +
+      `  pr-watcher/index.mjs : ${watcher.body}\n` +
+      "  Arming would admit names the watcher will not dequeue, or refuse names it would.\n" +
+      "  Update the $READY_PATTERN literal in arm-prompt.ps1 Step 0b to match."
+    );
+
+    // PowerShell's -match is case-insensitive by default, which is exactly /i.
+    // Any other flag set means the two engines no longer behave the same and
+    // the guard has to be re-derived rather than left to look right.
+    assert.equal(
+      watcher.flags,
+      "i",
+      `READY_PATTERN flags changed to "${watcher.flags}". PowerShell's -match supplies /i and ` +
+      "nothing else; re-derive the guard in arm-prompt.ps1 Step 0b before shipping this."
+    );
+  });
+
+  test("the enforced pattern accepts pr-/rev- names and refuses the fix-* name from the 2026-09-07 incident", () => {
+    const { flags } = watcherReadyPattern();
+    const re = new RegExp(armReadyPattern(), flags);
+
+    // The pattern must be the RIGHT one, not merely the same one in two files.
+    for (const name of [
+      "pr-foo-ready.md",
+      "rev-1234-ready.md",
+      "pr-armguard-s2-refuse-a-name-the-watcher-can-never-dequeue-ready.md",
+      "PR-Foo-ready.md", // the /i flag
+    ]) {
+      assert.ok(re.test(name), `${name} must be dequeueable`);
+    }
+
+    for (const name of [
+      // The live instance: armed 00:20:55Z, unrunnable for 62 minutes.
+      "fix-1740-jest-cannot-parse-puppeteer-25-esm-ready.md",
+      "hotfix-x-ready.md",
+      "prfoo-ready.md",
+      "revfoo-ready.md",
+      "pr-foo-HOLD.md",
+      "docs-cleanup-ready.md",
+    ]) {
+      assert.ok(!re.test(name), `${name} must NOT be dequeueable`);
+    }
+  });
+
+  test("the rename the refusal suggests is itself dequeueable", () => {
+    // The message tells the caller to rename the HOLD to 'pr-<name>-HOLD.md'.
+    // Advice that would itself be refused is worse than no advice.
+    const { flags } = watcherReadyPattern();
+    const re = new RegExp(armReadyPattern(), flags);
+    for (const slug of ["fix-1740-jest-cannot-parse-puppeteer-25-esm", "hotfix-x", "x"]) {
+      assert.ok(re.test(`pr-${slug}-ready.md`),
+        `the suggested rename pr-${slug}-HOLD.md must produce a dequeueable ready name`);
+    }
+  });
+
+  test("the refusal sits at top level, ahead of the -WhatIf plan and ahead of the lock", () => {
+    const src = readSource(ARM_SCRIPT);
+
+    const pattern = src.indexOf("\n$READY_PATTERN = '");
+    const refusal = src.indexOf("\n    exit 6\n");
+    const whatIf  = src.indexOf("\nif ($WhatIf) {");
+    const lock    = src.indexOf("\n$lockStream = Acquire-Lock");
+
+    assert.ok(pattern >= 0, "the guard's top-level $READY_PATTERN assignment is missing");
+    assert.ok(refusal >= 0, "the guard's `exit 6` refusal is missing");
+    assert.ok(whatIf  >= 0, "could not locate the top-level `if ($WhatIf) {` block");
+    assert.ok(lock    >= 0, "could not locate the top-level `$lockStream = Acquire-Lock` call");
+
+    // Top-level statement order IS execution order in PowerShell, so this is
+    // what makes "nothing is renamed, moved or logged on the refusal path"
+    // true: the refusal is reached before the -WhatIf plan and before the lock,
+    // and therefore before the linter, the `git mv` and the audit line, every
+    // one of which is only ever called from inside one of those two.
+    assert.ok(pattern < refusal, "the pattern must be defined before the refusal uses it");
+    assert.ok(refusal < whatIf,  "the refusal must come before the -WhatIf plan");
+    assert.ok(whatIf  < lock,    "sanity: the -WhatIf block precedes the lock, as it always has");
+
+    // The refusal must be a hard exit, never a warning: a warning in a headless
+    // arm is read by nobody.
+    const guardBlock = src.slice(pattern, whatIf);
+    assert.match(guardBlock, /Write-Fail "UNREACHABLE_NAME:/,
+      "the refusal must be emitted through Write-Fail with the UNREACHABLE_NAME token");
+    assert.match(guardBlock, /\n    exit 6\n/,
+      "the refusal must exit non-zero (6), not warn and continue");
+  });
 });

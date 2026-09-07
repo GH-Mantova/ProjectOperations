@@ -482,6 +482,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "claimLineItems": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -3162,6 +3168,18 @@
           "aggregations": []
         },
         "variation": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "agreedRecordId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "agreedRecord": {
           "role": "dimension",
           "label": null,
           "filterable": true,

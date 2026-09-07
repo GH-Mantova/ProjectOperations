@@ -4524,9 +4524,16 @@ model ClaimLineItem {
   thisClaimAmount   Decimal       @default(0) @map("this_claim_amount") @db.Decimal(12, 2)
   variationId       String?       @map("variation_id")
   variation         Variation?    @relation(fields: [variationId], references: [id], onDelete: SetNull)
+  // SoR S9a — AR side of the approved-item claim feed. Symmetric with
+  // `variationId`: a claim line is sourced from EITHER an approved Variation
+  // (VC) or an approved AgreedRecord (AR), never both. Nullable because every
+  // pre-S9a line (and every discipline/scope line) has no AR source.
+  agreedRecordId    String?       @map("agreed_record_id")
+  agreedRecord      AgreedRecord? @relation(fields: [agreedRecordId], references: [id], onDelete: SetNull)
   sortOrder         Int           @default(0) @map("sort_order")
 
   @@index([claimId])
+  @@index([agreedRecordId])
   @@map("claim_line_items")
 }
 
@@ -8089,6 +8096,8 @@ model AgreedRecord {
   updatedAt              DateTime                 @updatedAt @map("updated_at")
   lines                  AgreedRecordLine[]
   attachments            AgreedRecordAttachment[]
+  // SoR S9a — claim lines fed from this AR once it is APPROVED and signed.
+  claimLineItems         ClaimLineItem[]
 
   @@index([jobId, status])
   @@map("agreed_records")

@@ -46,6 +46,7 @@ import {
   evaluateStepsClient,
   numericFieldOptions,
   allFieldOptions,
+  FIELD_SOURCE_LABELS,
   formatStepTotal,
   stepTotalPresentations,
   CMP_LABELS,
@@ -96,6 +97,7 @@ import {
   type TotalPresentation
 } from "../ChargeStepsEditor";
 import type { ChargeStep } from "../../../lib/chargeStepTypes";
+import { isNumberKindColumn } from "../ratesListsHelpers";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CARD_SRC = readFileSync(resolve(__dirname, "..", "ChargeStepsEditor.tsx"), "utf-8");
@@ -2324,5 +2326,126 @@ describe("CHARGE_STEP_INPLACE_V1: every colour is a token", () => {
 
   it("carries the marker", () => {
     expect(CARD_SRC).toContain("CHARGE_STEP_INPLACE_V1");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 12. RATE_FIELDS_TABLE_V2 — one rule for "counts as a number", and one copy
+//     of the step list
+//
+// The Fields card next door prints a `Kind` for every field and the operand
+// picker here offers a subset of the same fields. Those two used to encode
+// "is this a number?" separately — the card would have read a dataType, and
+// this file spelled it "not TEXT and not LIST_REF". They now both call
+// `isNumberKindColumn` in ratesListsHelpers.ts, and the tests below hold them
+// to that.
+//
+// The second half is the wiring: the Fields card's `Used in` column needs the
+// step list, this card is the only thing that fetches it, and there must not
+// be a second fetch.
+// ══════════════════════════════════════════════════════════════════════════
+
+const KIND_COLS: RateColumnMeta[] = [
+  { id: "t1", name: "Notes", dataType: "TEXT", role: "INFO" },
+  { id: "t2", name: "Depth", dataType: "NUMBER", role: "KEY", unit: "mm" },
+  { id: "t3", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "$ / m" },
+  { id: "t4", name: "Effective", dataType: "DATE", role: "INFO" },
+  { id: "t5", name: "Night", dataType: "BOOL", role: "INFO" },
+  { id: "t6", name: "Equipment", dataType: "LIST_REF", role: "KEY" }
+];
+
+describe("RATE_FIELDS_TABLE_V2: numericFieldOptions reads the shared kind rule", () => {
+  it("offers exactly the number-kind columns", () => {
+    expect(numericFieldOptions(KIND_COLS)).toEqual(["Depth", "Rate"]);
+  });
+
+  it("a DATE column is no longer offered as an arithmetic operand", () => {
+    expect(numericFieldOptions(KIND_COLS)).not.toContain("Effective");
+  });
+
+  it("a BOOL column is no longer offered as an arithmetic operand", () => {
+    expect(numericFieldOptions(KIND_COLS)).not.toContain("Night");
+  });
+
+  it("agrees with isNumberKindColumn for every storage type", () => {
+    const offered = new Set(numericFieldOptions(KIND_COLS));
+    for (const c of KIND_COLS) {
+      expect({ name: c.name, offered: offered.has(c.name) }).toEqual({
+        name: c.name,
+        offered: isNumberKindColumn(c.dataType)
+      });
+    }
+  });
+
+  it("the operand picker still offers exactly what numericFieldOptions offers", () => {
+    const offered = operandGroups(KIND_COLS, INPLACE_LINE_FIELDS).flatMap((g) =>
+      g.choices.map((c) => c.name)
+    );
+    expect(offered).toEqual(numericFieldOptions(KIND_COLS, INPLACE_LINE_FIELDS));
+  });
+
+  it("the CONDITION picker is untouched — a date or a yes/no is legible in a condition", () => {
+    const offered = conditionFieldGroups(KIND_COLS, INPLACE_LINE_FIELDS).flatMap((g) =>
+      g.choices.map((c) => c.name)
+    );
+    expect(offered).toEqual(allFieldOptions(KIND_COLS, INPLACE_LINE_FIELDS));
+    expect(offered).toContain("Effective");
+    expect(offered).toContain("Night");
+  });
+
+  it("a saved step that already names a DATE column still renders it — nothing stored is lost", () => {
+    const markup = rowMarkup({ op: "multiply", field: "Effective" }, 1, {
+      columns: KIND_COLS,
+      lineFields: []
+    });
+    // The picker keeps an option for a value it does not offer, so the step
+    // still shows what it names and still saves it back unchanged.
+    expect(markup).toContain('<option value="f:Effective" selected="">Effective</option>');
+    expect(markup).toContain('aria-label="2. Multiply by Effective"');
+  });
+
+  it("the two source labels are still the mock-up's, and still come from one object", () => {
+    expect(FIELD_SOURCE_LABELS).toEqual({
+      table: "the rate table",
+      line: "the estimate line"
+    });
+  });
+});
+
+describe("RATE_FIELDS_TABLE_V2: one copy of the step list", () => {
+  const CHARGE_STEPS_CALL = "authFetch(`/rates/tables/${tableId}/charge-steps`";
+
+  it("this card is the only thing that fetches the step list", () => {
+    // Two references: the GET, and the PATCH that saves.
+    expect(count(CARD_SRC, CHARGE_STEPS_CALL)).toBe(2);
+    expect(count(CARD_SRC, `${CHARGE_STEPS_CALL})`)).toBe(1); // the one GET
+    expect(count(CARD_SRC, `${CHARGE_STEPS_CALL}, {`)).toBe(1); // the PATCH
+  });
+
+  it("the page that mounts it issues no fetch of its own for the same list", () => {
+    expect(MOUNT_SRC).not.toMatch(/authFetch\([`"'][^`"']*charge-steps/);
+  });
+
+  it("the list is published from load and from every mutation, and nowhere else", () => {
+    expect(count(CARD_SRC, "onStepsChangeRef.current?.(")).toBe(2);
+    const loadBody = CARD_SRC.slice(
+      CARD_SRC.indexOf("const load = useCallback"),
+      CARD_SRC.indexOf("useEffect(() => {\n    void load();")
+    );
+    expect(count(loadBody, "onStepsChangeRef.current?.(loaded)")).toBe(1);
+    const updateBody = CARD_SRC.slice(
+      CARD_SRC.indexOf("const updateSteps = (next: ChargeStep[]) => {"),
+      CARD_SRC.indexOf("// CHARGE_STEP_GUARDS_V1 — every mutator")
+    );
+    expect(count(updateBody, "onStepsChangeRef.current?.(next)")).toBe(1);
+  });
+
+  it("the callback is held in a ref, so it cannot rebuild `load` and re-fire the GET", () => {
+    expect(CARD_SRC).toContain("const onStepsChangeRef = useRef(onStepsChange);");
+    // `load`'s dependency array is unchanged — an inline arrow prop in there
+    // would make a new `load` on every parent render, and the effect below it
+    // would GET again on each one.
+    expect(CARD_SRC).toContain("}, [authFetch, tableId]);");
+    expect(CARD_SRC).not.toContain("}, [authFetch, tableId, onStepsChange]);");
   });
 });

@@ -3773,6 +3773,8 @@ async function main() {
   await seedCrmDropReasons(prisma);
   // CFX-1: BUILTIN field definitions for Client and SubcontractorSupplier. Idempotent — upsert on [appliesTo, key].
   await seedFieldDefinitionsBuiltin(prisma);
+  // TR-1: singleton CRM reminder policy. Idempotent — upsert on the fixed id.
+  await seedReminderPolicy(prisma);
 
   // MT-3 enablement: every seeded user belongs to the single pilot tenant.
   // Without a homeTenantId the JWT carries no tenant claim, so the tenant
@@ -3783,6 +3785,54 @@ async function main() {
   await prisma.user.updateMany({
     where: { homeTenantId: null },
     data: { homeTenantId: SEEDED_DEFAULT_TENANT_ID }
+  });
+}
+
+// TR-1: seed the singleton TenderReminderPolicy row.
+//
+// Upsert on the fixed id "trp-default" so re-seeding is idempotent, and
+// `update: {}` so an admin who has tuned the timings through
+// PUT /crm/admin/reminder-policy does not have them reset by the next seed run.
+//
+// The id and the values below MUST match REMINDER_POLICY_SINGLETON_ID /
+// DEFAULT_REMINDER_POLICY in
+// apps/api/src/modules/crm/reminders/reminder-policy.service.ts — that service
+// lazily creates the same row on production, which never runs this seed
+// (deploy.yml runs `prisma migrate deploy` only). They are duplicated as
+// literals rather than imported so this seed script stays free of the NestJS
+// DI runtime.
+//
+// The threshold maps carry the values currently hardcoded in
+// apps/web/src/pages/tendering-page-helpers.ts (`stageIdleThresholds`).
+// Nothing reads them yet — see TR-1 §8.
+async function seedReminderPolicy(prisma: PrismaClient) {
+  await prisma.tenderReminderPolicy.upsert({
+    where: { id: "trp-default" },
+    update: {},
+    create: {
+      id: "trp-default",
+      daysBefore: 7,
+      dueDayOf: true,
+      postSubmissionChaseDays: 14,
+      postSubmissionCadenceDays: 14,
+      escalationWindowDays: 3,
+      watchIdleThresholds: {
+        DRAFT: 3,
+        IN_PROGRESS: 4,
+        SUBMITTED: 2,
+        AWARDED: 3,
+        CONTRACT_ISSUED: 5,
+        CONVERTED: 999
+      },
+      rottingIdleThresholds: {
+        DRAFT: 7,
+        IN_PROGRESS: 8,
+        SUBMITTED: 5,
+        AWARDED: 6,
+        CONTRACT_ISSUED: 10,
+        CONVERTED: 999
+      }
+    }
   });
 }
 

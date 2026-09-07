@@ -1019,9 +1019,22 @@ async function runGh(args, { json = false, allowNonZero = false } = {}) {
   return new Promise((resolve, reject) => {
     const out = [];
     const err = [];
+    // GATE_PATH_SPACE_V1 - NO `shell: true` HERE EITHER. Same mechanism as
+    // runGit() below: with shell:true node does not escape the argv array, it
+    // joins it into one command string and hands that to cmd.exe / sh (node
+    // DEP0190). Every gh argument carrying a space or a shell metacharacter -
+    // a PR title, a body, a branch name, a --json field list, a gate path such
+    // as "Claude Design/docs/01-commercial.md" - is then re-split or
+    // interpreted by the shell before gh ever sees it. Without a shell, spawn
+    // passes argv straight through. Removing it here closes the same hole the
+    // rest of this PR closes for git, and it is the sink CodeQL flags as
+    // js/shell-command-constructed-from-input once unmetDependencies() is
+    // exported. GH_BIN resolves to a real executable that spawn finds on PATH
+    // with no shell on both platforms this runs on (gh.exe on the Windows box,
+    // gh on Linux CI); a .cmd/.bat shim would need PR_WATCHER_GH_BIN pointed
+    // at the real binary.
     const child = spawn(GH_BIN, args, {
       cwd: REPO_ROOT,
-      shell: true,
       env: childEnv,
     });
     child.stdout.on("data", (c) => out.push(c));
@@ -1050,11 +1063,24 @@ async function runGh(args, { json = false, allowNonZero = false } = {}) {
 }
 
 // Run `git` and resolve stdout, reject on non-zero exit.
+//
+// GATE_PATH_SPACE_V1 — NO `shell: true` HERE, EVER. With shell:true node does
+// not escape the argv array: it joins it into one command string and hands
+// that to cmd.exe / sh (node DEP0190). Every argument containing a space is
+// then re-split by the shell, so a gate path like
+// "Claude Design/docs/01-commercial.md" reaches git as two arguments and
+// `cat-file -e` exits 129 ("too many arguments") instead of 0. The caller,
+// unmetDependencies(), treats every non-zero exit as "not on origin/main" —
+// exit 129 (git usage error) and exit 128 (genuine absence) are
+// indistinguishable there — so a SATISFIED gate is reported as unsatisfied and
+// the prompt is deferred forever. Measured 2026-09-05: twelve consecutive
+// deferrals over 59 minutes on a file that had been on origin/main since 09-04.
+// Without a shell, spawn passes argv straight through and spaces survive.
 function runGit(args) {
   return new Promise((resolve, reject) => {
     const out = [];
     const err = [];
-    const child = spawn("git", args, { cwd: REPO_ROOT, shell: true });
+    const child = spawn("git", args, { cwd: REPO_ROOT });
     child.stdout.on("data", (c) => out.push(c));
     child.stderr.on("data", (c) => err.push(c));
     child.on("error", reject);
@@ -1323,7 +1349,13 @@ export function hasDeclaredDependencies(deps) {
 
 // Returns a list of human-readable unmet-dependency reasons (empty = go).
 // A gh/git error counts as unmet — fail closed, re-check next rescan.
-async function unmetDependencies(deps) {
+//
+// EXPORTED for test only (gate-path-space.test.mjs). This is the one function
+// that turns a real git exit code into the sentence the watcher logs, so it is
+// the only place a "gate path contains a space" regression can be observed
+// end-to-end rather than by grepping source. Behaviour is unchanged by the
+// export; nothing outside this module calls it in production.
+export async function unmetDependencies(deps) {
   const unmet = [];
   for (const n of deps.requiresMerged) {
     try {
@@ -2083,15 +2115,15 @@ async function syncMain() {
     await runGh(["repo", "view", "--json", "name"], { json: true }); // sanity — confirm gh works
     // Use plain git via spawn (gh doesn't pull)
     await new Promise((resolve, reject) => {
-      const child = spawn("git", ["fetch", "origin"], { cwd: REPO_ROOT, shell: true });
+      const child = spawn("git", ["fetch", "origin"], { cwd: REPO_ROOT });
       child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`git fetch ${code}`))));
     });
     await new Promise((resolve, reject) => {
-      const child = spawn("git", ["checkout", "main"], { cwd: REPO_ROOT, shell: true });
+      const child = spawn("git", ["checkout", "main"], { cwd: REPO_ROOT });
       child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`git checkout main ${code}`))));
     });
     await new Promise((resolve, reject) => {
-      const child = spawn("git", ["pull"], { cwd: REPO_ROOT, shell: true });
+      const child = spawn("git", ["pull"], { cwd: REPO_ROOT });
       child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`git pull ${code}`))));
     });
     log("sync", "main is up to date");
@@ -3255,10 +3287,12 @@ async function warnOnUntrackedReadyPrompts() {
     porcelain = await new Promise((resolve, reject) => {
       const out = [];
       const err = [];
+      // GATE_PATH_SPACE_V1: no shell here either — PROMPT_DIR is an absolute
+      // path (PR_WATCHER_PROMPT_DIR can point anywhere) and a shell would
+      // re-split it on any space, turning this warning into a hard error.
       const child = spawn(
         "git",
         ["-C", PROMPT_DIR, "ls-files", "--others", "--exclude-standard", "--", "."],
-        { shell: true },
       );
       child.stdout.on("data", (c) => out.push(c));
       child.stderr.on("data", (c) => err.push(c));

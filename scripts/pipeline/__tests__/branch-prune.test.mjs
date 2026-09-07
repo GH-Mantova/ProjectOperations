@@ -340,10 +340,14 @@ test("A: for-each-ref %(upstream:track) is the field that says [gone]", () => {
   assert.equal(refs["tracked"].track, "[gone]", "after the remote branch goes, the field says so");
 
   // The 0x1f separator survives even a branch name full of delimiters people might have picked.
-  git(work, "branch", "weird|name.with-stuff");
+  // NOT a pipe. The pipe is RESERVED on Windows, so a loose ref file for a branch name
+  // containing one cannot be created at all and this test dies before it measures anything
+  // (#1756, Windows CI, 2026-09-07). Every character below is legal in a git refname AND in a
+  // Windows filename, so the assertion runs on both platforms.
+  git(work, "branch", "weird,name;with=stuff");
   refs = read();
-  assert.ok(Object.keys(refs).includes("weird|name.with-stuff"),
-    "field splitting must not break on a branch name containing a pipe");
+  assert.ok(Object.keys(refs).includes("weird,name;with=stuff"),
+    "field splitting must not break on a branch name containing delimiter characters");
 });
 
 // ===========================================================================

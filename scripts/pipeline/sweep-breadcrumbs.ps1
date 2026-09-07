@@ -264,8 +264,14 @@ $body = @(
     "Files:"
 ) + ($sweepable | ForEach-Object { "  " + $_ })
 
-$commitArgs = @("commit", "-m", $subject)
-foreach ($line in $body) { $commitArgs += @("-m", $line) }
+# ONE -m for the whole body, never one -m per line. PowerShell 5.1 DROPS an empty-string argument
+# when splatting to a native command, so `-m ""` - and $body has three empty lines - reaches git as a
+# bare `-m` with no value. The parse then desynchronises and a later body line is taken as a
+# PATHSPEC. MEASURED 2026-09-07T09:33Z by Station 00: the run aborted with
+# `error: pathspec 'Files:' did not match any file(s) known to git`, at exit 1, having already
+# created the branch and staged the file. Nothing warns; the argument simply is not there.
+# Git treats embedded newlines in a single -m as the body paragraph, which is what was wanted.
+$commitArgs = @("commit", "-m", $subject, "-m", (($body | Where-Object { $null -ne $_ }) -join "`n"))
 $null = Invoke-Git -GitArgs $commitArgs
 Write-Step ("Committed " + $sweepable.Count + " file(s) on " + $branch)
 

@@ -103,17 +103,20 @@ jobs:
       # against the bundled schema; output lands in deploy-api/node_modules.
       - name: Generate Prisma client into bundle
         run: pnpm --filter @project-ops/api exec prisma generate --schema ../../deploy-api/prisma/schema.prisma
-      # Puppeteer 23.x needs a pinned Chrome build available at runtime for
+      # Puppeteer 25.x needs a pinned Chrome build available at runtime for
       # /tenders/:id/export/pdf and per-quote PDF endpoints. Install it into
       # the bundle so the App Service deploy ships a self-contained Chrome
       # (fix/quote-pdf-crash). Cache dir is set inside the bundle so the
       # runtime resolver in deploy-api/node_modules/puppeteer finds it.
+      # NOTE: puppeteer 25.x moved the CLI from lib/esm/puppeteer/node/cli.js
+      # to lib/puppeteer/node/cli.js (verified against puppeteer@25.9.0 bin
+      # field in package.json). Updated here as part of DEPS-S2.
       - name: Install Chrome for puppeteer into bundle
         run: |
           set -euo pipefail
           cd deploy-api
           PUPPETEER_CACHE_DIR="$PWD/.cache/puppeteer" \
-            node node_modules/puppeteer/lib/esm/puppeteer/node/cli.js \
+            node node_modules/puppeteer/lib/puppeteer/node/cli.js \
               browsers install chrome
       # Chrome BINARY is not enough — the App Service Linux runtime image lacks
       # the shared libs Chrome dynamically links against (libglib-2.0.so.0,

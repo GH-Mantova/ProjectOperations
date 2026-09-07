@@ -138,7 +138,7 @@ export class PdfRendererService implements OnModuleDestroy {
     } else {
       let resolved: string | null = null;
       try {
-        resolved = puppeteer.executablePath();
+        resolved = await puppeteer.executablePath();
       } catch (err) {
         this.logger.error(CHROME_INSTALL_HINT);
         throw new PdfRenderError(CHROME_INSTALL_HINT, err, HttpStatus.SERVICE_UNAVAILABLE);

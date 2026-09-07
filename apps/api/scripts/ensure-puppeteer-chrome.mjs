@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Idempotently provision the Chrome build that puppeteer 23.x pins.
+// Idempotently provision the Chrome build that puppeteer 25.x pins.
 //
 // Runs as `postinstall` so a fresh `pnpm install` leaves the API able to
 // render PDFs without a manual `npx puppeteer browsers install chrome`
@@ -69,7 +69,7 @@ console.log(
 );
 const result = spawnSync(
   process.execPath,
-  ["node_modules/puppeteer/lib/esm/puppeteer/node/cli.js", "browsers", "install", "chrome"],
+  ["node_modules/puppeteer/lib/puppeteer/node/cli.js", "browsers", "install", "chrome"],
   { stdio: "inherit", cwd: process.cwd() },
 );
 

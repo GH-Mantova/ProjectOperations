@@ -22,6 +22,20 @@
 #                     satisfied" and the reason this script exists.
 #   exit 1  REJECT -> still gated (unmet dependency, human gate, malformed) -- reason shown.
 #
+# ...AND EXIT 1 IS NOT A PREMISE READING (SPENT_BEHIND_A_REJECT_V1, added 2026-09-07). That
+# mapping is only sound if every prompt's premise actually RAN, and it does not.
+# lint-prompt.mjs evaluates the premise LAST, and four rejection paths return before it:
+# HUMAN_GATE_PRESENT, GATE_NOT_RELEASED, FILE_GATE_NOT_RELEASED and UI_PROMPT_NEEDS_DESIGN_REF.
+# A prompt that hits any of them exits 1 with its premise never executed, and a prompt whose
+# premise never ran can never be reported SPENT however completely its work has shipped. So the
+# old TOTALS line published `spent=N ... of <every HOLD>` -- a denominator it had not measured.
+# Measured on this board 2026-09-07: 33 of 68 HOLDs REJECTed, and ALL 33 by one of those four
+# pre-premise codes, so the honest denominator was 35, not 68. The fifth bucket below runs the
+# premise of every rejected prompt directly and reports what it finds; TOTALS now names the
+# denominator it can actually stand behind. No linter change, no verdict change: the ordering
+# in lint-prompt.mjs is deliberate and moving the premise first would change what REJECT means
+# for every caller, the watcher included. This is a second READING, in the reporting layer.
+#
 # NEVER passes --dequeue: with that flag lint-prompt.mjs RENAMES the file (line 1440). This
 # script mutates nothing, arms nothing and renames nothing. Verified read-only 2026-08-30.
 #
@@ -164,13 +178,178 @@ foreach ($holdFile in $holdFiles) {
         if ($clean) { $verdict = $clean; break }
     }
 
-    $record = [pscustomobject]@{ Name = $holdFile.Name; Exit = $exitCode; Verdict = $verdict }
+    # FullName is carried so the SPENT-BEHIND-A-REJECT pass below can re-read the prompt's own
+    # front matter without re-globbing the queue.
+    $record = [pscustomobject]@{ Name = $holdFile.Name; Exit = $exitCode; Verdict = $verdict; Path = $holdFile.FullName }
 
     switch ($exitCode) {
         0       { [void]$satisfied.Add($record) }
         3       { [void]$spent.Add($record) }
         1       { [void]$stillGated.Add($record) }
         default { [void]$unreadable.Add($record) }
+    }
+}
+
+# ---- SPENT BEHIND A REJECT -- the fifth bucket ---------------------------------------------
+# SPENT_BEHIND_A_REJECT_V1 - a REJECT does not mean the premise was evaluated.
+#
+# See the header. Everything in STILL GATED is UNMEASURED with respect to SPENT rather than
+# measured-and-not-spent, so this pass asks the one question lint never reached: for each
+# rejected prompt, is its premise FALSE -- i.e. has the work already SHIPPED?
+#
+# A hit means a prompt that is spent AND still gated. It should be RETIRED to
+# docs/pr-prompts/superseded/ in a board PR, and it is invisible to the `spent` count above,
+# which is exactly how a spent prompt survives a triage pass. It is a finding for a HUMAN.
+# This pass stays read-only like the rest of the script: it runs one command per rejected
+# prompt and arms, renames, moves and stages nothing.
+
+# Read the `premise:` line out of a prompt's own front matter, applying lint-prompt.mjs's
+# quote-stripping rule from parseFrontMatter -- and nothing else. This is DELIBERATELY NOT a
+# second front-matter parser (see WHY IT DELEGATES, top of file): anything it does not
+# recognise -- no front matter, no premise, an empty premise, a YAML block scalar -- returns
+# $null, and the caller reports PREMISE UNMEASURABLE rather than guessing.
+function Get-PromptPremise {
+    param([string] $PromptPath)
+
+    $promptLines = @(Get-Content -LiteralPath $PromptPath -ErrorAction SilentlyContinue)
+    if ($promptLines.Count -eq 0) { return $null }
+    if ($promptLines[0].Trim() -ne "---") { return $null }
+
+    for ($index = 1; $index -lt $promptLines.Count; $index++) {
+        if ($promptLines[$index].Trim() -eq "---") { break }
+        $keyMatch = [regex]::Match($promptLines[$index], '^premise:\s*(.*)$')
+        if (-not $keyMatch.Success) { continue }
+
+        $value = $keyMatch.Groups[1].Value.Trim()
+        if ($value -eq "") { return $null }
+        # YAML block-scalar indicator: the real value lives on the following lines. Not folded
+        # here on purpose -- an unfolded indicator is the two-character string, which would run
+        # as a shell command and produce a confident wrong answer.
+        if (@(">-", ">+", ">", "|-", "|+", "|") -contains $value) { return $null }
+
+        $quote = $value.Substring(0, 1)
+        if (($quote -eq "'" -or $quote -eq '"') -and $value.Length -gt 1 -and $value.Substring($value.Length - 1, 1) -eq $quote) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        if ($value -eq "") { return $null }
+        return $value
+    }
+    return $null
+}
+
+# Resolve bash the same way lint-prompt.mjs's findBash does -- Git-for-Windows bash on Windows,
+# /bin/bash elsewhere -- so that a box where the LINTER cannot run premises is a box where this
+# probe reports UNMEASURABLE rather than inventing a verdict.
+$bashBin = $null
+if ($env:OS -eq "Windows_NT") {
+    $bashCandidates = @("C:\Program Files\Git\bin\bash.exe", "C:\Program Files (x86)\Git\bin\bash.exe")
+    if ($env:ProgramFiles) { $bashCandidates += (Join-Path $env:ProgramFiles "Git\bin\bash.exe") }
+    foreach ($candidate in $bashCandidates) {
+        if (Test-Path -LiteralPath $candidate) { $bashBin = $candidate; break }
+    }
+} else {
+    $bashBin = "/bin/bash"
+}
+
+# Run ONE premise the way lint-prompt.mjs's runPremise does: same shell, same cwd (Set-Location
+# $Repo above, the same cwd inheritance the `& node $linter <relative path>` calls already rely
+# on), and the SAME split between "legitimately false" and "BROKEN":
+#
+#   exit 0                     -> the work is STILL NEEDED. Not spent.
+#   clean non-zero             -> the premise is FALSE: the work has SHIPPED. SPENT.
+#   127 / 126 / 2 / no spawn   -> the PROBE is broken, so the prompt is UNMEASURABLE.
+#
+# That last line is the whole point. DOCTRINE section 7 guard 2: never let a failed call flow
+# into a comparison. A premise that never ran must NEVER be read as "premise false", and must
+# never be read as "not spent" either.
+#
+# The premise is piped to bash on STDIN rather than passed as an argument on purpose: Windows
+# PowerShell 5.1 mangles embedded double quotes in native-command arguments, and most premises
+# on this board contain them.
+#
+# One deliberate difference from runPremise: it matches its "broken" phrases against stderr
+# only, while PowerShell 5.1 cannot split the streams without a temp file, so this matches
+# against stdout+stderr merged. The extra reach can only push a prompt from a verdict into
+# UNMEASURABLE, which is LOUD and is never read as "not spent" -- the safe direction.
+function Invoke-PremiseProbe {
+    param([string] $PremiseCommand, [string] $BashBinary)
+
+    if (-not $BashBinary) {
+        return [pscustomobject]@{ Verdict = "UNMEASURABLE"; Detail = "no bash found (install Git for Windows) -- lint-prompt.mjs cannot run premises on this box either" }
+    }
+    # Windows PowerShell 5.1 encodes native-command stdin with $OutputEncoding, which defaults
+    # to ASCII: a non-ASCII premise would be silently corrupted to '?' and then RUN. Refuse to
+    # measure rather than measure something other than the premise.
+    if ($PremiseCommand -match "[^\u0000-\u007F]") {
+        return [pscustomobject]@{ Verdict = "UNMEASURABLE"; Detail = "premise contains non-ASCII characters; refusing to pipe it through an ASCII stdin encoding" }
+    }
+
+    $probeOutput = ""
+    $probeExit   = $null
+    try {
+        $probeOutput = ($PremiseCommand | & $BashBinary -s 2>&1 | Out-String)
+        $probeExit   = $LASTEXITCODE
+    } catch {
+        return [pscustomobject]@{ Verdict = "UNMEASURABLE"; Detail = "could not execute " + $BashBinary + ": " + $_.Exception.Message }
+    }
+    if ($null -eq $probeExit) {
+        return [pscustomobject]@{ Verdict = "UNMEASURABLE"; Detail = "the premise produced no exit code at all" }
+    }
+
+    $probeText = $probeOutput.Trim()
+    if ($probeText.Length -gt 200) { $probeText = $probeText.Substring(0, 200) }
+    if ($probeExit -eq 0) {
+        return [pscustomobject]@{ Verdict = "NEEDED"; Detail = "premise exit 0 -- the work is still needed" }
+    }
+    if ($probeExit -lt 0 -or $probeExit -eq 2 -or $probeExit -eq 126 -or $probeExit -eq 127 -or
+        $probeText -match "command not found|No such file or directory|is not recognized|cannot access") {
+        $brokenDetail = "premise ERRORED (exit " + $probeExit + ")"
+        if ($probeText) { $brokenDetail = $brokenDetail + " -- " + $probeText }
+        return [pscustomobject]@{ Verdict = "UNMEASURABLE"; Detail = $brokenDetail }
+    }
+    return [pscustomobject]@{ Verdict = "SPENT"; Detail = "premise exit " + $probeExit + " -- the premise is FALSE, the work has SHIPPED" }
+}
+
+# SPENT-BEHIND-A-REJECT positive control (DOCTRINE section 7 standing guard 1). A fifth bucket
+# that reads 0 every run is the exact shape of a check never seen to fire. The SPENT control
+# further up proves the LINTER can emit exit 3; it says nothing about THIS probe's own path. So
+# drive the whole new path -- front-matter read, quote strip, bash spawn, exit-code split --
+# over the same fixture, whose premise is legitimately false, and require SPENT back.
+$behindProbeOk   = $false
+$behindProbeNote = ""
+if (Test-Path -LiteralPath $spentFixture) {
+    $fixturePremise = Get-PromptPremise -PromptPath $spentFixture
+    if (-not $fixturePremise) {
+        $behindProbeNote = "no single-line premise could be read from " + $spentFixture
+    } else {
+        $fixtureResult = Invoke-PremiseProbe -PremiseCommand $fixturePremise -BashBinary $bashBin
+        if ($fixtureResult.Verdict -eq "SPENT") {
+            $behindProbeOk = $true
+        } else {
+            $behindProbeNote = "fixture probe returned " + $fixtureResult.Verdict + " (expected SPENT) -- " + $fixtureResult.Detail
+        }
+    }
+} else {
+    $behindProbeNote = "fixture missing: " + $spentFixture
+}
+
+$spentBehindReject   = New-Object System.Collections.ArrayList
+$premiseUnmeasurable = New-Object System.Collections.ArrayList
+$rejectStillNeeded   = New-Object System.Collections.ArrayList
+
+foreach ($gatedItem in $stillGated) {
+    $rejectedPremise = Get-PromptPremise -PromptPath $gatedItem.Path
+    if (-not $rejectedPremise) {
+        [void]$premiseUnmeasurable.Add([pscustomobject]@{ Name = $gatedItem.Name; Detail = "no single-line premise value in front matter (absent, empty, or a YAML block scalar)" })
+        continue
+    }
+    $probeResult = Invoke-PremiseProbe -PremiseCommand $rejectedPremise -BashBinary $bashBin
+    if ($probeResult.Verdict -eq "SPENT") {
+        [void]$spentBehindReject.Add([pscustomobject]@{ Name = $gatedItem.Name; Verdict = $gatedItem.Verdict; Detail = $probeResult.Detail })
+    } elseif ($probeResult.Verdict -eq "NEEDED") {
+        [void]$rejectStillNeeded.Add($gatedItem.Name)
+    } else {
+        [void]$premiseUnmeasurable.Add([pscustomobject]@{ Name = $gatedItem.Name; Detail = $probeResult.Detail })
     }
 }
 
@@ -189,8 +368,33 @@ foreach ($item in $satisfied) { Write-Output ("    " + $item.Name) }
 Write-Output ""
 
 Write-Output ">>> STILL GATED (lint exit 1) -- correctly on hold"
+Write-Output "    'Correctly on hold' is a statement about GATES ONLY. lint rejected these"
+Write-Output "    BEFORE it ran their premise, so nothing here says the work is outstanding."
 if ($stillGated.Count -eq 0) { Write-Output "    (none)" }
 foreach ($item in $stillGated) { Write-Output ("    " + $item.Name + "`n        " + $item.Verdict) }
+Write-Output ""
+
+Write-Output ">>> SPENT BEHIND A REJECT -- still gated, but the work has ALREADY SHIPPED"
+Write-Output "    lint rejected each of these before reaching its premise, so exit 1 said nothing"
+Write-Output "    about whether the work is done. Probed directly here: the premise is FALSE."
+Write-Output "    Each one is spent AND gated. RETIRE it to docs/pr-prompts/superseded/ in a board"
+Write-Output "    PR. It is invisible to the spent count above -- that is how a spent prompt"
+Write-Output "    survives a triage pass. A finding for a human, not an instruction. Do NOT arm."
+if ($spentBehindReject.Count -eq 0) { Write-Output "    (none)" }
+foreach ($item in $spentBehindReject) { Write-Output ("    " + $item.Name + "`n        " + $item.Verdict + "`n        " + $item.Detail) }
+if ($premiseUnmeasurable.Count -gt 0) {
+    Write-Output ""
+    Write-Output ("    PREMISE UNMEASURABLE -- " + $premiseUnmeasurable.Count + " rejected prompt(s) whose premise could not be RUN:")
+    Write-Output "    a spawn failure, a missing binary, or a premise that is absent or malformed."
+    Write-Output "    These are UNMEASURED. They are NOT 'not spent', and they are NOT spent. They"
+    Write-Output "    are excluded from the denominator on the TOTALS line below."
+    foreach ($item in $premiseUnmeasurable) { Write-Output ("    " + $item.Name + "`n        " + $item.Detail) }
+}
+if (-not $behindProbeOk) {
+    Write-Output ""
+    Write-Output ("!!! SUSPECT: this bucket is UNMEASURABLE this run -- " + $behindProbeNote)
+    Write-Output "!!! An empty bucket above proves NOTHING. Fix the control before believing it."
+}
 Write-Output ""
 
 if ($unreadable.Count -gt 0) {
@@ -220,9 +424,35 @@ if ($skippedGates.Count -gt 0) {
 $buckets = 0
 foreach ($count in @($spent.Count, $satisfied.Count, $stillGated.Count)) { if ($count -gt 0) { $buckets++ } }
 
-Write-Output ("=== TOTALS  spent=" + $spent.Count + "  gates-satisfied=" + $satisfied.Count + "  still-gated=" + $stillGated.Count + "  unreadable=" + $unreadable.Count + "  of " + $holdFiles.Count)
+# THE DENOMINATOR. The old line read "spent=N ... of <every HOLD>", and that pairing was the
+# defect: SPENT can only be measured over prompts whose premise actually RAN. So spent now
+# carries its own denominator ON THE LINE PEOPLE QUOTE, "of N HOLDs" attaches to the bucket
+# counts where it belongs, and the lines under it say which part of that denominator lint
+# earned and which part this script's probe did -- because lint's exit codes still cannot say
+# SPENT for a REJECT, whatever the probe found. An UNMEASURABLE prompt is in NEITHER number:
+# excluded, never counted as not-spent (DOCTRINE section 7 guard 2).
+$spentTotal       = $spent.Count + $spentBehindReject.Count
+$lintEvaluated    = $satisfied.Count + $spent.Count
+$premiseEvaluated = $lintEvaluated + $spentBehindReject.Count + $rejectStillNeeded.Count
+
+Write-Output ("=== TOTALS  spent=" + $spentTotal + " of " + $premiseEvaluated + " evaluated  gates-satisfied=" + $satisfied.Count + "  still-gated=" + $stillGated.Count + "  unreadable=" + $unreadable.Count + "  of " + $holdFiles.Count + " HOLDs")
+if ($premiseEvaluated -eq $holdFiles.Count) {
+    Write-Output ("    The spent denominator is " + $premiseEvaluated + " -- every premise on this board was evaluated, but not")
+    Write-Output ("    all of them by lint. lint runs the premise LAST, so it evaluated " + $lintEvaluated + " (the ADMIT and")
+    Write-Output ("    STALE buckets) and its " + $stillGated.Count + " REJECT(s) never reached one.")
+} else {
+    Write-Output ("    The spent denominator is " + $premiseEvaluated + ", not " + $holdFiles.Count + ", and it is not all lint's. lint runs the")
+    Write-Output ("    premise LAST, so it evaluated " + $lintEvaluated + " (the ADMIT and STALE buckets) and its " + $stillGated.Count)
+    Write-Output "    REJECT(s) never reached one."
+}
+Write-Output ("    This script re-probed those " + $stillGated.Count + " REJECT(s) directly: " + $spentBehindReject.Count + " spent behind a REJECT,")
+Write-Output ("    " + $rejectStillNeeded.Count + " still needed, " + $premiseUnmeasurable.Count + " UNMEASURABLE. So spent=" + $spentTotal + " is " + $spent.Count + " from lint plus " + $spentBehindReject.Count + " from the probe.")
+if ($premiseUnmeasurable.Count -gt 0) {
+    Write-Output ("    The " + $premiseUnmeasurable.Count + " UNMEASURABLE prompt(s) are EXCLUDED from the denominator above. They are")
+    Write-Output "    not evidence of anything, in either direction. Fix them and re-run."
+}
 if (-not $spentProbeOk) {
-    Write-Output ("!!! SUSPECT: spent=" + $spent.Count + " is UNMEASURED -- the SPENT positive control did not pass (" + $spentProbeNote + ").")
+    Write-Output ("!!! SUSPECT: the lint SPENT bucket (exit 3, count " + $spent.Count + ") is UNMEASURED -- the SPENT positive control did not pass (" + $spentProbeNote + ").")
 }
 if ($buckets -lt 2) {
     Write-Output "!!! SUSPECT: every HOLD landed in ONE bucket. That is the signature of a broken"
@@ -234,9 +464,21 @@ if ($buckets -lt 2) {
     if ($spent.Count      -gt 0) { [void]$seen.Add("SPENT") }
     if ($satisfied.Count  -gt 0) { [void]$seen.Add("ADMIT") }
     if ($stillGated.Count -gt 0) { [void]$seen.Add("REJECT") }
-    Write-Output ("    calibrated: " + $buckets + " distinct verdicts observed on the board (" + ($seen -join ", ") + ").")
+    if ($spentBehindReject.Count   -gt 0) { [void]$seen.Add("SPENT-BEHIND-A-REJECT") }
+    if ($premiseUnmeasurable.Count -gt 0) { [void]$seen.Add("PREMISE-UNMEASURABLE") }
+    Write-Output ("    calibrated: " + $buckets + " distinct lint verdicts on the board; verdicts observed this run: " + ($seen -join ", ") + ".")
     if ($spentProbeOk) {
         Write-Output "    SPENT was additionally proved reachable by the fixture control above."
+    }
+    # A fifth verdict that is never observed must not ride along on the word "calibrated".
+    if ($spentBehindReject.Count -eq 0) {
+        if ($behindProbeOk) {
+            Write-Output "    SPENT BEHIND A REJECT was never observed on the board. The fixture control proved"
+            Write-Output "    the probe CAN emit it, so that 0 means none -- not 'this instrument cannot say'."
+        } else {
+            Write-Output "!!! SPENT BEHIND A REJECT was never observed AND its control did not pass, so it is a"
+            Write-Output "!!! check never seen to fire. Read its 0 as UNMEASURED, not as none."
+        }
     }
 }
 Write-Output "    READ-ONLY: nothing was armed, renamed, moved or staged."

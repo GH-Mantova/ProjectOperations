@@ -354,6 +354,33 @@ here now because they are true for **every** station.
   way §9.6 can see: the cmdlet did exactly what it was asked. 🔧 **Use `-Filter` on a single
   extension, or put the wildcard in the path** — and control any recursive file search against a
   file you know is there.
+
+  🔴🔴 **CORRECTED 2026-09-07 — THE BULLET ABOVE IS SCOPED TO THE NO-`-Recurse` FORM ONLY. WITH
+  `-Recurse` IT DOES NOT REPRODUCE, AND READING IT OTHERWISE TELLS A STATION ITS *WORKING* QUERY IS
+  BROKEN — which is how a real absence gets papered over as an instrument fault.** [MEASURED]
+  2026-09-07T06:22Z by Station 04, PS `5.1.26100.9168`, against a purpose-built fixture
+  (`top.log` + `sub\nested.log` + `sub\other.txt`, truth known by construction) and a real tree:
+
+  | form | bare `<dir>` | `<dir>\*` | truth |
+  |---|---|---|---|
+  | real dir (`…\scripts\pr-watcher`), **WITH** `-Recurse` | **45** | 45 | 45 |
+  | fixture, **WITH** `-Recurse` | **2** | 2 | **2** |
+  | fixture, **WITHOUT** `-Recurse` | **0** | 1 | 1 at depth 1 |
+  | `C:\po-watcher`, **WITHOUT** `-Recurse` | **0** | 7 | 7 |
+
+  `-Recurse` rescues the bare-directory path on this build, in both a real tree and a fixture whose
+  truth is known by construction. **The mechanism is real for the depth-1 form** — the last two rows
+  — and that is the form the cure exists for.
+  ⚠️ **[CANNOT MEASURE] the exact query in the worked example above.** `Get-ChildItem C:\po-watcher
+  -Recurse -Include '*.log'` recurses `node_modules` and did not return in six minutes; it was
+  terminated. So the true cause of the 2026-09-06T17:2xZ zero is unmeasured — the surviving
+  candidates are the *"filtered to the last two hours"* clause or the recursion itself, **not** the
+  stated `-Include` mechanism.
+  🔧 **Nothing is retired:** `-Filter`, the wildcard path, and *"control any recursive file search
+  against a file you know is there"* all stand, and are what a reader needs either way. **The
+  falsifying probe is the fixture table above** — rebuild it and re-run both forms. Found by
+  Station 04 2026-09-07T06:2xZ (F1), landed by Station 00 at 07:5xZ.
+
 - 🔴 **A SINGLE-QUOTED PowerShell needle containing `\\` CAN NEVER MATCH A WINDOWS PATH, AND ITS
   ZERO WEARS AN ABSENCE'S CLOTHES.** PowerShell single quotes do **not** process escapes, so
   `'C:\\Foo\\Bar'` is searched as a literal *double* backslash and matches nothing on any real path.
@@ -428,6 +455,20 @@ here now because they are true for **every** station.
   staged and your commit will carry it. **Check `git diff --cached --name-status` before every commit**,
   and commit with a pathspec (`git commit -- <path>`) when anything else is staged. Two collisions in
   two sessions, both caught by eye rather than by a guard.
+
+- 🔴 **ON A TREE THAT IS BEHIND `origin/main`, `git status` ANSWERS A QUESTION ABOUT `HEAD`, NOT
+  ABOUT `origin/main` — so a ` M` or ` D` there is NOT evidence of uncommitted work.** [MEASURED]
+  2026-09-07T06:1xZ by Station 04 on a dev tree **7 behind, 0 ahead**: `git status --porcelain`
+  showed ` M docs/pipeline/sweep-rotation.json`, while
+  `git diff --numstat origin/main -- docs/pipeline/sweep-rotation.json` returned **EMPTY** — the
+  working copy matched `origin/main` exactly and differed only from the behind-HEAD. Station 00 had
+  already committed that advance. A run reading the ` M` alone re-files a closed finding against a
+  board where it is fixed, and the same reasoning covers every ` D` for a consumed prompt whose
+  deleting PR is already on `origin/main`. 🔧 **The uncommitted-work probe is
+  `git diff --numstat origin/main -- <path>`, where EMPTY is the real answer** — the same cure §9.3's
+  length-comparison bullet prescribes, applied to the status read. Found by Station 04
+  2026-09-07T06:1xZ (F6), landed by Station 00 at 07:5xZ.
+
 - ⚠️ **`git stash` in the watcher clone is a CLOSED LOOP** — the launcher's preflight stashes on every
   start, and nothing ever pops. Report the count and its growth. `git stash drop`, **never `pop`**.
 
@@ -592,6 +633,23 @@ here now because they are true for **every** station.
   `gh pr view <n> --json mergedAt`. ⚠️ **The falsifying probe is the pair above** — re-run both
   endpoints on one merged PR; if the list entry ever reads `merged: true`, this bullet is dead.
   Found by Station 00 2026-09-06T04:2xZ (F2, blind run), landed by 00 at 05:3xZ.
+
+  🔴 **CORRECTED 2026-09-07 — THE RULE STANDS; THE SYMPTOM IS TRANSPORT-SPECIFIC, AND A READER
+  CHECKING IT THROUGH `gh` READS THE TRAP AS DEAD.** The measurement above was taken through the
+  GitHub MCP, the only transport the bullet names. [MEASURED] 2026-09-07T06:3xZ by Station 04
+  through `gh api` — the transport `STATION-CAPABILITIES.md` §3 calls the authority — over
+  `/repos/GH-Mantova/ProjectOperations/pulls?state=closed&per_page=10`: **10** entries returned;
+  `merged === true` on **0**; and the `merged` key **defined at all** on **0** — through `gh` it is
+  **ABSENT**, not `false`. `merged_at` was populated on **10 of 10**. POSITIVE control, same PR,
+  single GET `/pulls/1762`: `{"merged": true, "merged_at": "2026-09-07T05:49:35Z"}`.
+  🔧 **So the shape differs by transport and the conclusion does not: through the MCP the key reads
+  `false`, through `gh api` the key is absent, both readings are unusable, and `merged_at` is correct
+  on both.** A run that goes looking for the documented `false` through `gh` and does not find it
+  must NOT conclude the trap no longer reproduces — that retires a live rule whose whole job is to
+  stop a dozen phantom stranded-branch escalations. The two-endpoint pair remains the falsifying
+  probe and now works from either transport. Found by Station 04 2026-09-07T06:3xZ (F3), landed by
+  Station 00 at 07:5xZ.
+
 
 ## 9.5 The pipeline's own instruments
 
@@ -968,6 +1026,37 @@ here now because they are true for **every** station.
   newest line and the current-UTC name across a 14:00Z boundary, this correction is wrong and must be
   re-measured. Found by Station 03 2026-09-06T23:0xZ (F1), landed by Station 00 at 23:3xZ.
 
+  🔴🔴 **CORRECTED 2026-09-07 — "TAKE THE NEWEST `*.log` BY `LastWriteTimeUtc`" CAN SELECT A LOG
+  WITH ZERO LANE INFORMATION, BECAUSE THAT DIRECTORY HOLDS FILES THAT ARE NOT DAILY LOGS AT ALL.**
+  The name half of the correction above is right and re-proved. The SELECTION half has an unguarded
+  collision. [MEASURED] 2026-09-07T06:3xZ by Station 04 over
+  `C:\po-watcher\ProjectOperations\scripts\pr-watcher\logs` — **44** `*.log`, each copied before
+  reading (the live file is held open by the watcher):
+
+  | file | `LastWriteTimeUtc` | bytes | `opened PR #` | `[merge]` (POS) | NEG |
+  |---|---|---|---|---|---|
+  | `2026-09-07.log` | **06:23:15Z** | 55,140 | 2 | 5 | 0 |
+  | **`supervisor.log`** | **05:38:27Z** | 680,086 | **0** | **0** | 0 |
+  | `2026-09-06.log` | 2026-09-06T23:04:05Z | 145,258 | 5 | 11 | 0 |
+  | `2026-09-04.log` | 2026-09-06T05:27:31Z | 244,157 | 10 | 20 | 0 |
+
+  **Five of the 44 are not daily logs** — `supervisor.log`, two `supervisor.rot-*`, two
+  `supervisor.crashed-*`. `supervisor.log` was written **today**, sat **second-newest by 45
+  minutes**, and answers `opened PR #` → **0** with its own positive control `[merge]` → **0**. Any
+  gap wider than that margin — a watcher relaunch, a kill-loop pause, the daily name rolling at the
+  next launch — makes it the newest, and the prescribed cure then hands the reader a log where every
+  count is zero **and the positive control fails too.** That is §9.6 exactly, sitting inside the cure
+  written for §9.6 eight hours earlier; it is the same shape as the `ensure-watcher.log` warning
+  above, except that one names a file by hand and this one is structural.
+  🔧 **Filter to the daily-log NAME SHAPE first, and take the newest by mtime second:**
+  `Get-ChildItem "$logDir\*" -Filter '*.log' | Where-Object { $_.BaseName -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1`.
+  The name is still never *constructed*, only *validated*, so the 23:0xZ correction is untouched and
+  the freshness precondition is unchanged. **Naming `supervisor.log` in prose is not the fix** — the
+  directory has already accumulated five non-daily names and the sixth will not be in the prose.
+  **The falsifying probe is the table above.** Found by Station 04 2026-09-07T06:3xZ (F2), landed by
+  Station 00 at 07:5xZ.
+
+
 
 - ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
   "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read
@@ -1051,6 +1140,22 @@ Station 00 used `zzQq00Needle20260905T2008` → 0 at 20:1xZ. **Both are now writ
 neither is usable again** — which is the rule, not an oversight: a needle is spent the moment it
 lands in a tracked file.
 ⚠️ **Those hit counts are STATE — re-measure them, never quote them.**
+
+🔴🔴 **RUN EVERY §9 PROBE AGAINST THE CORPUS ITS BULLET NAMES — NEVER AGAINST §9 ITSELF. THIS
+DOCUMENT CONTAINS A LITERAL INSTANCE OF EVERY BROKEN QUERY IT RECORDS, SO A PROBE POINTED HERE
+MEASURES THE DOCUMENTATION AND INVERTS THE ANSWER.** [MEASURED] 2026-09-07T06:2xZ by Station 04,
+which walked into it: §9.1's double-backslash-needle probe, run against `DOCTRINE.md` instead of the
+five station bootstraps the bullet names, returned **3** for the BROKEN form and **1** for the
+WORKING form — the exact inverse of the truth, because this document *quotes* the broken form as
+documentation. Re-pointed at the corpus the bullet actually names it returns **0** and **3**, as
+recorded. Written up from the wrong corpus it reads *"the broken needle finds more than the working
+one, so the bullet is backwards"* — a confident, coherent, wrong finding about the one document every
+station is told it can trust.
+🔧 **This generalises the minted-needle rule from NEEDLES to PATTERNS.** §9 is a written description
+of broken queries, so it contains one of each; and `instrument-honesty` is the one sweep in the
+rotation guaranteed to reach for it. **Falsifying probe: run any §9 probe twice, once against this
+file and once against the corpus its bullet names, and compare.** Found by Station 04
+2026-09-07T06:2xZ (F7), landed by Station 00 at 07:5xZ.
 
 <!-- END-CANONICAL-BLOCK: instruments v2 -->
 

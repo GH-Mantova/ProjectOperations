@@ -69,7 +69,21 @@ param(
     [switch]$NoPr
 )
 
-$ErrorActionPreference = "Stop"
+# DOCTRINE section 7, standing guard 7: "$ErrorActionPreference = 'Continue' in git scripts. Git
+# warns on stderr; 'Stop' will abort you BEFORE your commit while the log still looks perfectly
+# clean." Invoke-Git below merges stderr into the output stream with 2>&1, so under "Stop" every
+# ordinary git notice - "Switched to a new branch", "set up to track" - is raised as a terminating
+# NativeCommandError. MEASURED 2026-09-07T09:30Z by Station 00: this script created its branch, then
+# died on git's own "Switched to a new branch" line. Nothing was staged, nothing committed, nothing
+# pushed, no PR opened - and the dev tree was left OFF main, which is the drift this script exists to
+# prevent.
+#
+# "Continue" alone would be worse, not better: Write-Error stops being terminating, so a failed
+# `git add` would flow straight into the commit. Both halves are required, and they are:
+#   (1) "Continue" here, so a native stderr line cannot throw; and
+#   (2) `throw` instead of `Write-Error` in Invoke-Git, so a real non-zero exit still aborts
+#       regardless of the preference.
+$ErrorActionPreference = "Continue"
 
 function Write-Step { param([string]$Message) Write-Output $Message }
 
@@ -79,7 +93,8 @@ function Invoke-Git {
     $output = & git @GitArgs 2>&1
     $code = $LASTEXITCODE
     if ($code -ne 0 -and -not $AllowFailure) {
-        Write-Error ("git " + ($GitArgs -join " ") + " failed with exit " + $code + ":`n" + ($output -join "`n"))
+        # throw, not Write-Error: terminating regardless of $ErrorActionPreference.
+        throw ("git " + ($GitArgs -join " ") + " failed with exit " + $code + ":`n" + ($output -join "`n"))
     }
     return @{ Output = $output; ExitCode = $code }
 }
@@ -91,7 +106,8 @@ function Invoke-Git {
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $top = (& git rev-parse --show-toplevel 2>$null)
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($top)) {
-        Write-Error "not inside a git repository, and -RepoRoot was not supplied."
+        # throw, not Write-Error: terminating regardless of $ErrorActionPreference.
+        throw "not inside a git repository, and -RepoRoot was not supplied."
     }
     $RepoRoot = ([string]$top).Trim()
 }

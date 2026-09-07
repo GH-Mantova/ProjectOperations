@@ -228,11 +228,43 @@ they run in still has the `"Stop"` version. Any station that reaches for the swe
 loud crash and a dev tree left off `main` — and F5's conflict means the canonical block's fallback
 ("write it inside your own run's PR") is the one that still works.
 
+**F8. The `check-pr-title` gate that shipped this morning in `#1763` took its first live scalp, and
+it was mine — the trap is that a PR title's scope must name a DIRECTORY, not the FILE you changed.**
+[MEASURED] from the job log, never the diff (`gh api repos/.../actions/jobs/<id>/logs`, because
+`gh run view --log-failed` refuses while the run is still in progress): `#1777` failed
+`Pipeline — watcher + linter tests` with
+`[TITLE_SCOPE_UNRESOLVED] scope "sweep-breadcrumbs" names nothing this repo can point at`, nearest
+five `agreed-records, pdf-rendering, sweep, access-requests, admin-users`. I had written
+`fix(sweep-breadcrumbs):` from the filename `scripts/pipeline/sweep-breadcrumbs.ps1`. The gate wants a
+module directory under `apps/api/src/modules/` or `apps/web/src/pages/`, an area directory under
+`apps/ packages/ docs/ scripts/`, or a `NAMED_AREAS` entry. Renamed to `fix(sweep):` — and note the
+gate's own instruction, which is right and worth repeating: **do NOT add a scope to
+`title-scope-baseline.json` to make this pass; that file may only shrink, and adding to it is the
+gate failing open.**
+⚠️ Every station that names a PR after the file it edited will meet this. `sweep-breadcrumbs.ps1`
+generates its own titles as `docs(pipeline): …`, which passes — so the script is fine and the habit is
+not.
+**DISPOSITION: ACTIONED** — `#1777` renamed; the local suites (`scripts/pipeline/__tests__/*.mjs`,
+298 tests, and `nodrift-sweep.test.mjs`'s 15) all pass in a worktree off that branch, so the title
+was the only failure.
+
+**F9. `#1778` merged while I was still adding F8 to it, so this addendum is a second PR — and the
+mechanism that did it is the one already escalated.** `#1776` merged at 09:21:10Z and `#1778` at
+09:41:35Z, both by native auto-merge that I armed. The push carrying F8 was rejected non-fast-forward
+and then **re-created the deleted branch on `origin`**, which is the shape `pollForBehindPrs` produces
+after every board PR merge. The stray branch `chore/sweep-breadcrumbs-20260907-0934` is left on
+`origin` deliberately: deleting a branch is on DOCTRINE §5's irreversible list, and it is harmless.
+**DISPOSITION: DEFERRED** — folded into the existing `pollForBehindPrs` escalation rather than raised
+again. 🔧 **The operating lesson is cheap and immediate: once you have armed auto-merge on your own
+breadcrumb PR, the window to amend it is minutes. Finish the report before arming.**
+
 ## WHAT I DID NOT DO
 
 - **Merged nothing.** All five open PRs are Marco's — one by a real watcher verdict, three by a
   `do-not-merge` label, one by hand classification, and `#1767` twice over because it carries a
-  migration. `#1776` is my own docs-only PR and is armed for native auto-merge, not hand-merged.
+  migration. `#1776` and `#1778` are my own docs-only PRs; both reached `main` through **native
+  squash auto-merge**, which is the sanctioned path — neither was hand-merged, and `#1777` (Marco's)
+  was deliberately left un-armed.
 - **Armed nothing** (F3), and specifically did not arm the three §10.6 duplicates, the two
   `pr-sot-*` (05's lane), `pr-tr-s1-reminder-policy` (migration), or
   `pr-triage-holds-open-pr-duplicate-bucket` (would collide with `#1769` on one file).

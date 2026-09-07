@@ -53,6 +53,7 @@ function makePlantListedRate(overrides: Partial<{
   category: string;
   unit: string;
   rate: number;
+  fuelRate: number | null;
   isActive: boolean;
   sortOrder: number | null;
 }> = {}): ListedRate {
@@ -70,6 +71,11 @@ function makePlantListedRate(overrides: Partial<{
     // read sortOrder. Defaulted to 0 here only so the fixture satisfies the
     // ListedRate type — pass an override if a test ever asserts on it.
     sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
+    // PLANT_FUEL_COLUMN_V1. The legacy plant adapter always yields a number
+    // here (`fuelRate` is Decimal @default(0), not nullable), so the default
+    // is 0, not null. The export sheets do not render it today — pass an
+    // override if a test ever asserts on it.
+    fuelRate: overrides.fuelRate !== undefined ? overrides.fuelRate : 0,
     source: "legacy"
   };
 }
@@ -103,6 +109,8 @@ function makeWasteListedRate(overrides: Partial<{
     // As above: the waste sheet does its own ordering and never reads
     // sortOrder. Defaulted to 0 only to satisfy the ListedRate type.
     sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
+    // Waste has no fuel concept — `fuelRate` is null on every non-plant kind.
+    fuelRate: null,
     source: "legacy"
   };
 }

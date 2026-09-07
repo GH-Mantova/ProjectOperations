@@ -267,6 +267,38 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   (2026-09-02), because two things independently mutating git and the queue is the collision LL-38
   records, and the board is where that collision happens.
 
+## NO-DRIFT — agents write, one job commits
+
+**Nobody runs `git commit` on `main` in `C:\ProjectOperations2`.** That tree cannot push to `main`:
+the ruleset requires a pull request and forbids merge commits. A commit made there has no route to
+origin, so it moves local `main` permanently ahead of `origin/main` — and every route back
+(`git reset --hard`, a path-scoped `git checkout`) is on the forbidden list.
+
+MEASURED 2026-08-27T22:00Z: local `main` carried five commits absent from `origin/main`. Four of the
+five held content that had already reached `main` by another route, so the drift bought nothing and
+cost a reconciliation that needed both forbidden commands. A Station 04 run recreated it within
+twenty minutes. It regenerates daily for as long as any station doc still implies otherwise.
+
+- **Breadcrumbs, station notes and scanner output are left UNTRACKED.** You do not commit them at
+  all. `scripts/pipeline/sweep-breadcrumbs.ps1` batches them onto a branch and opens ONE PR — the
+  shape PR #1357 already demonstrated with 29 untracked breadcrumbs. Name yours in your report so
+  the sweep knows to look for it.
+- **Anything else that must be committed goes on a branch, then through a PR:**
+  `git switch -c <type>/<desc>`, commit there, open the PR. Never on `main`.
+- **Arming files are never swept.** The sweep refuses `*-ready.md` and `*-HOLD.md`, and refuses to
+  stage a deletion, so it can neither arm a prompt nor retire one. Arming stays a deliberate
+  `arm-prompt.ps1` call.
+- **The guard is a TRACKED hook: `.githooks/pre-commit`.** `package.json`'s postinstall sets
+  `core.hooksPath = .githooks`, so that file IS the hook git runs and there is **no install step at
+  all**. Copying a hook into `.git/hooks/` has zero effect while `hooksPath` is set — measured
+  2026-08-27, an empty test commit on `main` succeeded anyway. The guard sits at the TOP of the
+  hook, ahead of the doc stamper, so a refused commit rewrites nothing. A human who means it can
+  still use `git commit --no-verify`.
+
+🔴 **"I cannot push" is never a reason to commit locally.** It is a reason to open a PR, or to leave
+the file untracked for the sweep. A station reaching for `git commit` on `main` has mis-read its own
+instructions — and the five-commit drift above is what that mis-reading costs.
+
 ## HARD STOPS — absolute, all stations
 
 See **DOCTRINE §5**, which binds you and is not restated here. The two that are most often reasoned

@@ -346,3 +346,128 @@ out, then remove the worktree**, never `--force` first.
   copies were verified with SHA-256 on both sides of the same boundary.
 - **Did not run `git checkout .` / `reset --hard` / `stash pop` / `git clean`** in any tree.
 - **Azure / Entra / SharePoint:** not touched, not read, not once.
+
+## ADDENDUM — 2026-09-07T23:29Z–23:45Z (same run, later measurements)
+
+Appended after `#1794` merged. Everything above was written before the merge; everything here is
+what the merge, the dev-tree cure and the arm actually did.
+
+**`#1794` MERGED `2026-09-07T23:29:12Z`**, `origin/main` `9be865ec` → **`ae32fe82`**. 15 of 15 checks
+green, `mergeStateStatus CLEAN`, no labels. Merged through the sanctioned primitive only —
+`Assert-SmokedOrEscalate -PR 1794` then `Merge-Pr -PR 1794`, which re-reads state and throws unless
+it is `MERGED`; read back independently as `{"mergedAt":"2026-09-07T23:29:12Z","state":"MERGED"}`.
+[MEASURED]
+
+**Lane classification for `#1794`, with both controls.** RULE 2 probe pinned to the LIVE tree
+`C:\ProjectOperations2\docs\pr-prompts\processed` (never the clone): **2061** logs, newest
+`rev-1794-ready.md.log` at **23:30:33Z** — younger than the oldest open PR, which is the control that
+separates the live directory from the seventeen-day-stale decoy. POSITIVE control `marco.:true`
+(regex, the dot matching the quote) → **620**. NEGATIVE control, this run's minted needle → **0**.
+`PR #1794` over `pr-*.log`, excluding `rev-*` → **0**; NEGATIVE control `PR #999999` → **0**. So
+`NO LOG`, and under §10.1 step 3 it is **hand-classified** as Station 00's own board lane — every
+path under `docs/`, opened by the scheduled 00 lane, no watcher involvement.
+`#1775` → **0** and `#1767` → **0** likewise: `[NO LANE VERDICT — hand-classified]`, both Marco's,
+both untouched. [MEASURED]
+
+**The pre-merge sweep printed `CAUTION`, and the cause was MY OWN worktree.** Its §7 read
+`CAUTION: 1 LIVE STATION WORKTREE(s) detected … C:/po-worktrees/board-00-20260907T2310Z` — the
+disposable worktree this run created three minutes earlier. §3's real mutation signals were all
+clear at the same moment: `index.lock` False/False, git processes **0**, no PR touched on GitHub in
+the last 2 minutes, no build in flight. This is the documented "a `CAUTION: LIVE STATION WORKTREE`
+can be YOUR OWN" trap, met live, and it is the reason §3 and not §7 is the safe-to-act gate for a
+run that has just made its own worktree. [MEASURED]
+
+### F11 — S3 — The post-merge fast-forward cure's own precondition test is written against the wrong ref, and this run reproduced both halves of the inversion
+
+The station doc's `sweep-rotation.json` cure says git *"refuses on the working copy differing from
+**HEAD**, not from the merge target"*. My first cure attempt guarded the restore with
+`git diff --numstat origin/main -- docs/pipeline/sweep-rotation.json`, read **EMPTY**, concluded
+"nothing to restore" and skipped step 1 — and the fast-forward then refused on that exact file.
+[MEASURED] 23:3xZ, the two readings side by side, seconds apart:
+
+```
+git diff --numstat HEAD        -- docs/pipeline/sweep-rotation.json  ->  2  2   <- the real answer
+git diff --numstat origin/main -- docs/pipeline/sweep-rotation.json  ->  EMPTY  <- reads "clean"
+git merge --ff-only origin/main -> error: Your local changes ... would be overwritten by merge
+```
+
+This is a **narrower and more specific** case than DOCTRINE §9.2's "on a tree that is behind
+`origin/main`, `git status` answers about HEAD" bullet, and it points the opposite way: that bullet
+prescribes `--numstat origin/main` as *the* uncommitted-work probe, and here that probe is precisely
+the one that reads clean while the FF refuses. **Both are right in their own scope** — `origin/main`
+is the right ref for "has this already landed", `HEAD` is the right ref for "will the fast-forward
+refuse" — and a run that carries only the §9.2 form into the FF cure gets a confident EMPTY and a
+refused merge with no visible cause. Re-run with the restore performed unconditionally against HEAD
+(node write of `git show HEAD:<path>`, never `git checkout --`), `--renormalize` read back **EMPTY**
+so no `git restore --staged` was needed, and the fast-forward then succeeded first time.
+
+**DISPOSITION: DEFERRED.** Real and cheap to fix — one clause in this station's own doc naming HEAD
+as the ref for the precondition — but it is a `docs/pipeline/stations/` edit competing with this
+run's single arm, and the FIX is already written down here where the next run collects it. What
+would make it urgent: a second run losing a cycle to the same EMPTY reading.
+
+### F12 — 🟢 A fast-forward DOES write the files back to disk when they were deleted while untracked at HEAD
+
+The station doc's step-2 note records that after deleting an untracked breadcrumb and fast-forwarding,
+*"git does not write them back to disk … the cure ends with the dev tree holding two deleted tracked
+files"*, and prescribes a fourth restore action for it. **That did not happen here, and the reason is
+a real distinction the note does not draw.** [MEASURED] all four paths were deleted from disk while
+they were **untracked at HEAD `9be865ec`** — the index had no entry for them at all — so the
+fast-forward to `ae32fe82` treated each as an ordinary `create mode 100644` and wrote it:
+
+```
+onDisk=True  00-00-supervisor-2026-09-07-2310-...md
+onDisk=True  00-03-machine-minder-2026-09-07-2303-...md
+onDisk=True  00-04-scanner-2026-09-07-2212-...md
+onDisk=True  pr-doctrine-s9-powershell-readonly-automatic-variables-HOLD.md
+```
+
+and the three prescribed read-backs came back `0 0`, `--numstat` **EMPTY**, `--cached` **EMPTY**
+without any restore step. The doc's note describes the case where the deleted path was **tracked at
+HEAD** — which is what happens when a run deletes a breadcrumb *after* its PR has already been
+fast-forwarded in. **The discriminator is whether the path is in the index at HEAD when you delete
+it**, and deleting *before* the fast-forward is the cheaper order because it needs no restore at all.
+
+**DISPOSITION: DEFERRED**, same reason and same PR as F11 — it is one clause in the same paragraph.
+Not urgent: the prescribed fourth action is harmless when unnecessary (it restores a file that is
+already correct), so a run following the doc literally loses nothing but a step.
+
+### F3 (continued) — the arm, with both instruments and their controls
+
+Armed at **`2026-09-07T23:32:16Z`**, `docs/pr-prompts/.arming-log.txt` row:
+
+```
+2026-09-07T23:32:16Z  ARMED  pr-doctrine-s9-powershell-readonly-automatic-variables
+escalates=false  actor=station-00.sched2340  by=Marco@LAPTOP-E6NHU4E4  pid=20008
+caller=powershell.exe:14816
+```
+
+Everything RULE 4 requires, run **before** the arm and each with a control that fired:
+
+| instrument | subject | control |
+|---|---|---|
+| `lint-prompt.mjs` | **ADMIT (size 2), exit 0** | `pr-524-rates-b-slice2-canonical-HOLD.md` → **REJECT `[HUMAN_GATE_PRESENT]`, exit 1** — the linter was answering |
+| union grep, case-correct | `DO_NOT_ARM_COMMENT` (i) **0** · `DO_NOT_ARM_CAPS` (case-sensitive) **0** · `ARM_ONLY` (i) **0** | same marker on `pr-524` → **1** — the grep was answering |
+| the BODY, read in full | no prose human gate; the only imperative is *"STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR"* | `## STANDING AUTHORITY` is boilerplate on ~51 of 61 prompts and is **not** an arming grant |
+| premise, live on `origin/main` | `AUTOMATIC_VARIABLE_ASSIGNMENT_V1` → **0 hits** (premise TRUE) | POSITIVE `CANONICAL-BLOCK` → **3**; NEGATIVE minted needle → **0** |
+| duplicate check | `scope:` = `docs/pipeline/DOCTRINE.md` + `docs/pipeline/stations/_canonical-blocks.json`; neither open PR (`#1775` map-locations, `#1767` crm reminders) touches either | — |
+| never-arm lists | not on any of them; `gate_allow: none`, no `requires_*` gates | — |
+| single actor | dev and clone `index.lock` **False/False**, git processes **0**, dev index staged **EMPTY**, armed count **0 → 1** | `arm-prompt.ps1` ran its own `-WhatIf` first, exit 0, and re-checked RULE 4 inside its OS file lock |
+
+`arm-prompt.ps1` released the staged rename from the index on purpose (`ARM_INDEX_RELEASED`) and left
+the index clean, so nothing of this run's arm can be swept into an unrelated chat's commit. The dev
+tree now shows ` M docs/pr-prompts/.arming-log.txt` and ` D …-HOLD.md`, with **nothing staged**. The
+`-HOLD` deletion is deliberately left for the watcher's own build PR to carry, which is what deletes
+a consumed prompt; committing it here would race that PR.
+
+**`.arming-log.txt` is committed in the follow-up PR that carries this addendum**, as §9.5 requires
+of any run that arms — the log is a strict superset of `origin/main` (insertions, zero deletions),
+which is the shape that means "something in the working copy has not landed yet", so it is appended
+to and never restored to HEAD.
+
+**What to watch, and it is the point of the arm.** The watcher should build this prompt, open a
+docs-only PR, and — if the `tests-docs` lane is alive — enable native squash auto-merge inside the
+90-minute `MERGE_TIMEOUT_MS` window with no human. If instead the verdict comes back
+`{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}`, that is the
+open starvation escalation reproducing, **not** a policy decision, and RULE 2 still forbids any
+station clearing it. Either outcome answers a question seven consecutive runs could only argue about.

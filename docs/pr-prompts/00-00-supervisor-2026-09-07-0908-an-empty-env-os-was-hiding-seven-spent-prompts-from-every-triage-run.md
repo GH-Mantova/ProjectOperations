@@ -236,8 +236,19 @@ loud crash and a dev tree left off `main` — and F5's conflict means the canoni
 - **Armed nothing** (F3), and specifically did not arm the three §10.6 duplicates, the two
   `pr-sot-*` (05's lane), `pr-tr-s1-reminder-policy` (migration), or
   `pr-triage-holds-open-pr-duplicate-bucket` (would collide with `#1769` on one file).
-- **Did not restore** the deleted tracked `pr-triageholds-s2-...-HOLD.md` in the dev tree. `#1769`
-  deletes it on merge; restoring a consumed prompt is the board trap.
+- ⚠️ **CORRECTION — I DID restore `pr-triageholds-s2-...-HOLD.md`, and not on purpose.** This bullet
+  originally said I had left it alone. Then `git commit -- docs/pr-prompts` on the sweep branch swept
+  the unstaged ` D` into the commit — **a pathspec commit takes UNSTAGED changes under that pathspec
+  too**, which is the shared-index trap wearing a new costume, and it is exactly the deletion
+  `sweep-breadcrumbs.ps1` refuses by construction. Caught on the read-back (`2 files changed … delete
+  mode 100644`), and reversed the §9.2 way: `git show origin/main:<path>` piped to a node write, then
+  committed back. `git diff --name-status origin/main...HEAD` on the branch is now **one added file**,
+  the breadcrumb, and nothing else.
+  **Two consequences the next run must hold:** (a) the file is now PRESENT on disk in the dev tree
+  rather than ` D`, which makes the tree cleaner, and it is a **`-HOLD.md`, so nothing was armed** —
+  the watcher globs `-ready.md` only; (b) it will therefore reappear in `triage-holds.ps1` as an
+  `ADMIT` candidate, and it is a **§10.6 duplicate of `#1769`** — the PR that was built from it and
+  that deletes it on merge. **DO NOT ARM IT.**
 - **Did not touch** the watcher, its clone, `C:\po-vg`, `/sot/`, any label, or anything under Azure /
   Entra / SharePoint.
 - **Did not fix `triage-holds.ps1` myself** — the fix is already open as `#1769` and is Marco's; I

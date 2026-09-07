@@ -2,8 +2,23 @@
 /**
  * pre-commit hook — refuse an unlogged HOLD->ready arming rename
  *
- * Installed to .git/hooks/pre-commit by scripts/pipeline/install-agents.ps1
- * (or manually: cp scripts/pipeline/hooks/pre-commit .git/hooks/pre-commit)
+ * 🔴 THIS HOOK IS CURRENTLY INERT IN THIS REPO. READ BEFORE TRUSTING IT.
+ *
+ * package.json's postinstall runs `git config core.hooksPath .githooks`. While
+ * core.hooksPath is set, git IGNORES .git/hooks/ ENTIRELY, so installing this
+ * file there — by install-agents.ps1 or by hand — has no effect whatsoever.
+ * MEASURED 2026-08-27: a hook copied into .git/hooks/ did not fire and an empty
+ * test commit on `main` succeeded anyway.
+ *
+ * The hook git actually runs is the TRACKED .githooks/pre-commit. Because it is
+ * tracked, it needs NO manual install step at all — a clone that has run
+ * `pnpm install` has the hook. The NO-DRIFT branch guard lives at the top of
+ * that file for exactly this reason.
+ *
+ * This file remains the documented SOURCE and rationale for the unlogged-arm
+ * check below, but nothing invokes it today. Wiring it into .githooks/pre-commit
+ * is a separate slice: it is the unlogged-arming gate, deliberately out of scope
+ * for NO-DRIFT.
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS HOOK DOES
@@ -34,12 +49,13 @@
  * ---------------------------------------------------------------------------
  * WHY THIS IS A SPEED BUMP, NOT A GATE
  *
- * Git hooks live in .git/hooks/, which is NOT versioned. This file is
- * committed to scripts/pipeline/hooks/ as source of truth, but it is only
- * active for repos where the install step has been run.  Anyone who clones
- * without running the install step has no hook.  The filesystem (and
- * .arming-log.txt) remains the only sound arm census; this hook exists to
- * catch accidents, not to make bypass impossible.
+ * The claim that "git hooks live in .git/hooks/, which is NOT versioned" was
+ * true in general and FALSE here, and it is corrected above: this repo sets
+ * core.hooksPath to the TRACKED .githooks/ directory, so its hooks are versioned
+ * and install themselves. What remains true is the modesty: `git commit
+ * --no-verify` bypasses any hook, so the filesystem (and .arming-log.txt)
+ * remains the only sound arm census. A hook catches accidents; it does not make
+ * bypass impossible.
  *
  * ---------------------------------------------------------------------------
  */

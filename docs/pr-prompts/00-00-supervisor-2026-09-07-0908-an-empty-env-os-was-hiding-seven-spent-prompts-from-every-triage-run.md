@@ -76,7 +76,17 @@ from `git diff b46d7cb8 200231c2` and is obeyed below.
    `git diff --numstat` is the ` D` of `pr-triageholds-s2-env-os-is-empty-in-a-station-shell-HOLD.md`,
    the prompt `#1769` was built from and will delete on merge — left alone deliberately, because
    restoring it is how a consumed prompt comes back armed (§9.2).
-4. Nothing else. **No prompt was armed. No PR was merged.**
+4. **`#1777` opened** — `fix(sweep-breadcrumbs): git stderr is not a failure, and a real failure must
+   still abort`, two commits, one file. **Not** auto-merged: `scripts/` is outside `^(tests|docs)/`,
+   so it is Marco's. See F7.
+5. **`#1778` opened** — this breadcrumb, landed by `sweep-breadcrumbs.ps1` itself once fixed. That
+   run is the positive control for `#1777`.
+6. The dev tree was left on a sweep branch **twice** by the failing script and returned to `main`
+   both times with `git switch main` plus `git restore --staged` (index-only, never
+   `git checkout -- <path>`, §9.2). Read back each time: branch `main`,
+   `git rev-list --left-right --count HEAD...origin/main` = `0 0`, `git diff --cached --name-status`
+   EMPTY. Both throwaway branches were deleted; neither was ever pushed.
+7. Nothing else. **No prompt was armed. No PR was merged.**
 
 ## FINDINGS
 
@@ -188,10 +198,30 @@ non-zero exit so a real failure still aborts regardless of the preference.
 **DISPOSITION: ACTIONED** — `#1777` opened with that two-part fix. It touches `scripts/`, so it is
 outside `^(tests|docs)/` and **Marco's to merge**; I drove it, I do not merge it.
 
-🔬 **This breadcrumb IS the positive control.** After `#1777` was pushed, the FIXED script was run
-against the dev tree (`-RepoRoot C:\ProjectOperations2`) and landed this file through the
-branch-and-PR path the broken version could not reach — the pass the failing version was never seen
-to produce (§7 standing guard 1). If you are reading this on `main`, the fix works.
+🔴 **AND FIXING IT UNCOVERED A SECOND DEFECT UNDERNEATH, WHICH IS A NEW §9.1-CLASS SHELL TRAP.**
+With `"Stop"` gone the script got further — branch created, file staged — and then died at exit 1
+with `error: pathspec 'Files:' did not match any file(s) known to git`. [MEASURED] 09:33Z.
+**PowerShell 5.1 silently DROPS an empty-string argument when splatting to a native command.** The
+commit was built one `-m` per body line and `$body` carries three empty lines, so `-m ""` reached
+`git` as a **bare `-m` with no value**; the argument parse desynchronised and the body line `Files:`
+was consumed as a **pathspec**. Nothing warns and nothing is empty in a way §9.6 can see — the
+argument simply is not there. Cured in the same PR: one `-m` for the whole body, joined with
+newlines, which is the form git wants anyway.
+
+🔬 **This breadcrumb IS the positive control, and it is the one the failing version could never
+produce.** With BOTH fixes in place the script was run for real against the dev tree
+(`-RepoRoot C:\ProjectOperations2`) and landed this file through the branch-and-PR path: branch
+`chore/sweep-breadcrumbs-20260907-0934`, committed, pushed, **`#1778` opened**. The dev tree was
+returned to `main` afterwards, `git rev-list --left-right --count HEAD...origin/main` = `0 0`. If you
+are reading this on `main`, the mechanism works.
+
+🔧 **DISPATCH FOR THE NEXT CROSS-DOC PR — the empty-native-argument trap belongs in DOCTRINE §9.1.**
+It is a *different* mechanism from the `-Command` expansion bullet and from the single-quoted `\\`
+needle, and it is not written down anywhere. It is deliberately NOT added this run because §9 is a
+hash-gated canonical block and re-recording it must ship across all seven station docs in one PR —
+the same constraint F5 is deferred on. **Fold both into whichever run next carries a cross-doc
+change.** Falsifying probe: `& git @(@("commit","-m","x","-m","","-m","y"))` — if git receives three
+messages rather than two, this is wrong.
 
 ⚠️ **Until `#1777` merges, `## NO-DRIFT` is unfollowable for every other station**, because the tree
 they run in still has the `"Stop"` version. Any station that reaches for the sweep before then gets a

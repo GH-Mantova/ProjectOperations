@@ -76,7 +76,66 @@ export type ResolvedRate = {
  * with `availableCuttingCombinations()` one of only two `available*` helpers
  * that do not use `sortOrder`. Adding the column to `EstimateCoreHoleRate`
  * would be a schema change and a migration, which is not this slice.
+ *
+ * `fuelRate` (PLANT_FUEL_COLUMN_V1) is the plant hire item's running fuel
+ * cost. It exists because `value` can carry exactly one figure and plant is
+ * priced on two: `lookupPlant` returns `fuelRateAud` alongside `rateAud`, and
+ * `tendering.persona.ts` instructs the model to report both because "the hire
+ * rate alone understates the all-in plant cost". Without it the persona's
+ * plant lookup cannot move to `listRates` and loses the number at cutover.
+ *
+ * A NAMED FIELD, NOT THE `info` BAG. `info` is documented above as
+ * "descriptive metadata not used for pricing or key-matching", and Marco
+ * ruled (2026-09-07) that the fuel rate is a VALUE column — a priced
+ * quantity. Filing a priced quantity in the not-priced bag would be a false
+ * statement about it, would hand the consumer `unknown` where it needs a
+ * number, and on the RateTable path would require folding VALUE columns into
+ * the INFO bag for every table. The legacy `waste` adapter does put its
+ * second priced quantity in `info` (`info.loadRate`), and that is exactly the
+ * shape that fails: `tryListRateTable` builds `info` from INFO-role columns
+ * only, so `waste`'s "Rate per load" is absent on the RateTable path and the
+ * figure is lost at cutover. Not repeating that here.
+ *
+ * WHY IT IS NULLABLE, and what each value means:
+ *   - a number — the fuel figure for this row. `0` is a real, meaningful
+ *     value: `EstimatePlantRate.fuelRate` is `Decimal @default(0)` and
+ *     `estimates.service.ts` writes `dto.fuelRate ?? "0"`, so a plant item
+ *     with no fuel cost recorded reports `0`, never `null`, on the legacy
+ *     path. `null` there is unreachable by construction.
+ *   - `null` — "this row has no fuel figure to report", which happens two
+ *     ways: the slug has no `Fuel rate` VALUE column at all (every non-plant
+ *     kind), or the RateTable row carries no cell for it (a row added through
+ *     the admin UI after the migration and left blank). Reporting `0` for
+ *     those would fabricate a fuel cost of zero dollars, which is a claim,
+ *     not an absence — the same reason `sortOrder` is `null` for `core-hole`
+ *     rather than a made-up `0`.
+ * A non-numeric cell also reports `null` rather than `NaN`, so a consumer
+ * that writes `fuelRate ?? fallback` cannot silently propagate `NaN` into a
+ * price.
+ *
+ * Like `isActive` and `sortOrder` it is a REPORT: adding it changed no
+ * `where` and no `orderBy`.
  */
+/**
+ * PLANT_FUEL_COLUMN_V1 — the `name` of the second VALUE column on the plant
+ * rate table ("Fuel rate"), the running fuel cost an estimator adds on top of
+ * the hire rate when an item is operated.
+ *
+ * THE NAME IS THE KEY, IN ALL THREE PLACES. `seed-initial-services.ts` upserts
+ * the column on the unique `(rate_table_id, name)`; the
+ * `20260907120000_rates_plant_fuel_column` migration resolves the column on
+ * the same pair; and `tryListRateTable` below matches on it too. The literal
+ * id `rt-plt-c-fuel` is stamped only in a create branch — a column created
+ * through the admin UI carries a cuid under the same name, so id-keyed code
+ * would silently miss it. Never key on the id.
+ *
+ * Matched across VALUE columns on ANY table, not gated on `slug === "plant"`:
+ * the statement being made is "a VALUE column named 'Fuel rate' is a fuel
+ * rate", which is true wherever it appears, and it keeps `tryListRateTable`
+ * free of per-slug branching.
+ */
+export const PLANT_FUEL_COLUMN_NAME = "Fuel rate";
+
 export type ListedRate = {
   rowId: string;
   keys: Record<string, unknown>;
@@ -90,6 +149,13 @@ export type ListedRate = {
    * backing model has no such column. Reported, never ordered by — see above.
    */
   sortOrder: number | null;
+  /**
+   * The row's fuel rate (PLANT_FUEL_COLUMN_V1) — `null` when the kind has no
+   * `Fuel rate` VALUE column or the row carries no cell for it. `0` is a real
+   * value and is NOT the same as `null`. Reported, never filtered or ordered
+   * on — see above.
+   */
+  fuelRate: number | null;
   source: RateSource;
 };
 
@@ -616,6 +682,12 @@ export class RateResolverService {
     if (valueCols.length === 0) return null;
     // Use valueCols[0] only — matches resolveRate's tryRateTable behaviour.
     const valueCol = valueCols[0];
+    // PLANT_FUEL_COLUMN_V1 — the second priced quantity. Found by column
+    // NAME, the same key the seed and the migration use, never by the literal
+    // id `rt-plt-c-fuel` (an admin-UI column carries a cuid under that name).
+    // `undefined` on every table that has no such column, which is every kind
+    // but plant; those rows report `fuelRate: null`.
+    const fuelCol = valueCols.find((c) => c.name === PLANT_FUEL_COLUMN_NAME);
     const rows = await this.prisma.rateRow.findMany({
       where: { rateTableId: table.id, isActive: true },
       orderBy: { sortOrder: "asc" }
@@ -632,6 +704,18 @@ export class RateResolverService {
         const val = cells[col.id] ?? cells[col.name];
         info[col.name] = val ?? null;
       }
+      // Cell absent (or non-numeric) => null, never 0 and never NaN: `0` is a
+      // real fuel rate and must not be fabricated for a row that simply has
+      // no cell. `cells[col.id] ?? cells[col.name]` mirrors the KEY/INFO
+      // readers above, which tolerate both keyings.
+      let fuelRate: number | null = null;
+      if (fuelCol) {
+        const rawFuel = cells[fuelCol.id] ?? cells[fuelCol.name];
+        if (rawFuel !== undefined && rawFuel !== null) {
+          const n = Number(rawFuel);
+          fuelRate = Number.isNaN(n) ? null : n;
+        }
+      }
       return {
         rowId: row.id,
         keys,
@@ -645,6 +729,7 @@ export class RateResolverService {
         // RateRow declares `sortOrder Int @default(0)`, and the findMany above
         // already orders by it; reading the column changes neither.
         sortOrder: row.sortOrder,
+        fuelRate,
         source: "ratetable" as const
       };
     });
@@ -667,9 +752,9 @@ export class RateResolverService {
           // All three shift entries come from the same row, so all three
           // report that row's isActive and that row's sortOrder.
           entries.push(
-            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, source: "legacy" }
+            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, source: "legacy" }
           );
         }
         return entries;
@@ -689,6 +774,13 @@ export class RateResolverService {
           unit: row.unit,
           isActive: row.isActive,
           sortOrder: row.sortOrder,
+          // PLANT_FUEL_COLUMN_V1 — the running fuel cost, reported alongside
+          // the hire rate. `fuelRate` is `Decimal @default(0)` and NOT
+          // nullable, and estimates.service.ts writes `dto.fuelRate ?? "0"`,
+          // so this branch always yields a number: `0` for an item with no
+          // fuel cost recorded, never null. Converted with Number() exactly
+          // like the adjacent `value: Number(row.rate)`.
+          fuelRate: Number(row.fuelRate),
           source: "legacy" as const
         }));
       }
@@ -709,6 +801,8 @@ export class RateResolverService {
           unit: row.unit,
           isActive: row.isActive,
           sortOrder: row.sortOrder,
+          // No fuel concept on this kind — see the ListedRate doc comment.
+          fuelRate: null,
           source: "legacy" as const
         }));
       }
@@ -734,6 +828,7 @@ export class RateResolverService {
           unit: "m",
           isActive: row.isActive,
           sortOrder: row.sortOrder,
+          fuelRate: null,
           source: "legacy" as const
         }));
       }
@@ -754,6 +849,7 @@ export class RateResolverService {
           // can tell there is no curated order here instead of trusting a
           // fabricated one. Making this a number means a migration.
           sortOrder: null,
+          fuelRate: null,
           source: "legacy" as const
         }));
       }
@@ -769,6 +865,7 @@ export class RateResolverService {
           unit: row.unit,
           isActive: row.isActive,
           sortOrder: row.sortOrder,
+          fuelRate: null,
           source: "legacy" as const
         }));
       }
@@ -787,6 +884,7 @@ export class RateResolverService {
           // column anyway so the field never disagrees with the row.
           isActive: row.isActive,
           sortOrder: row.sortOrder,
+          fuelRate: null,
           source: "legacy" as const
         }));
       }
@@ -805,6 +903,7 @@ export class RateResolverService {
           // column anyway so the field never disagrees with the row.
           isActive: row.isActive,
           sortOrder: row.sortOrder,
+          fuelRate: null,
           source: "legacy" as const
         }));
       }

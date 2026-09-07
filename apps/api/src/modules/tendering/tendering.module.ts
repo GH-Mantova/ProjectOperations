@@ -37,7 +37,7 @@ import { QuoteProposalsService } from "./scope/quote-proposals.service";
 import { ClarificationProposalsController } from "./scope/clarification-proposals.controller";
 import { ClarificationProposalsService } from "./scope/clarification-proposals.service";
 import { ScopeSubLinkedItemController } from "./scope/scope-cards.controller";
-import { AllocationController } from "./allocation.controller";
+import { AllocationController, CapacityBoardController } from "./allocation.controller";
 import { AllocationService } from "./allocation.service";
 import { CapacityService } from "./capacity.service";
 
@@ -55,6 +55,10 @@ import { CapacityService } from "./capacity.service";
     // matches. Its own routes are all parameterized under that prefix, so it
     // cannot swallow a static sibling in return.
     AllocationController,
+    // EW-4 board. Same registration-order constraint as AllocationController
+    // and for the same reason: its prefix /tenders/capacity-board is static, so
+    // it must be resolved before TenderingController's greedy GET /tenders/:id.
+    CapacityBoardController,
     TenderingController,
     // Withdrawn-review routes live on /tenders/:id/withdraw + /withdrawal/*.
     // Registered after TenderingController so its :id-scoped POSTs don't

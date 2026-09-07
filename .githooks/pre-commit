@@ -4,6 +4,65 @@
 
 set -e
 
+# --- NO-DRIFT branch guard -------------------------------------------------
+# Refuse any commit made while HEAD is on `main`. Placed FIRST, immediately
+# after `set -e`, so a refused commit short-circuits before the doc stamper
+# below rewrites files and re-stages them.
+#
+# WHY. C:\ProjectOperations2 cannot push to `main`: the ruleset requires a
+# pull request and forbids merge commits. A commit made there on `main`
+# therefore has no route to origin. It moves local `main` ahead permanently,
+# and every way back (`git reset --hard`, a path-scoped `git checkout`) is on
+# the forbidden list. Measured 2026-08-27T22:00Z: five such commits, four of
+# them carrying content that had already reached `main` by another route. The
+# drift bought nothing and cost a reconciliation that needed both forbidden
+# commands. A Station 04 run recreated it within twenty minutes.
+#
+# THIS HOOK IS TRACKED. `package.json`'s postinstall sets
+# `core.hooksPath = .githooks`, so this file is the hook git actually runs and
+# there is NO manual install step. Copying a hook into `.git/hooks/` has zero
+# effect while hooksPath is set — measured 2026-08-27, an empty test commit on
+# `main` succeeded anyway.
+#
+# HOW TO DO THE THING YOU WERE TRYING TO DO:
+#   - Breadcrumbs, station notes and scanner output are left UNTRACKED. You do
+#     not commit them at all; scripts/pipeline/sweep-breadcrumbs.ps1 batches
+#     them onto a branch and opens one PR.
+#   - Work that must be committed goes on a branch:
+#       git switch -c <type>/<desc>
+#     then through a PR like any other change.
+#
+# A human who genuinely means it can still use `git commit --no-verify`. That
+# is deliberate: this is a speed bump against an automated habit, not a
+# security boundary. Note that --no-verify also skips the stamper below.
+
+# `git symbolic-ref` exits non-zero on a detached HEAD; `|| true` keeps `set -e`
+# from killing the hook there. A detached HEAD is not `main`, so it is allowed.
+NODRIFT_BRANCH=$(git symbolic-ref --short -q HEAD || true)
+
+if [ "$NODRIFT_BRANCH" = "main" ] || [ "$NODRIFT_BRANCH" = "master" ]; then
+  echo "" >&2
+  echo "[pre-commit] REFUSED: NO-DRIFT — commit on '$NODRIFT_BRANCH' in this tree." >&2
+  echo "" >&2
+  echo "  This tree cannot push to '$NODRIFT_BRANCH' (the ruleset requires a PR and" >&2
+  echo "  forbids merge commits), so this commit could never reach origin. It would" >&2
+  echo "  move local '$NODRIFT_BRANCH' permanently ahead, and every route back is on" >&2
+  echo "  the forbidden-command list." >&2
+  echo "" >&2
+  echo "  Breadcrumbs and station notes: leave them UNTRACKED. Do not commit them." >&2
+  echo "  scripts/pipeline/sweep-breadcrumbs.ps1 batches them into one PR." >&2
+  echo "" >&2
+  echo "  Anything else that must be committed goes on a branch:" >&2
+  echo "" >&2
+  echo "      git switch -c <type>/<desc>" >&2
+  echo "      git commit ..." >&2
+  echo "" >&2
+  echo "  Nothing is lost — your staged changes are still staged." >&2
+  echo "" >&2
+  exit 1
+fi
+# --- end NO-DRIFT branch guard ---------------------------------------------
+
 # AEST = UTC+10 fixed (Brisbane has no DST). Use TZ=Australia/Brisbane.
 NOW=$(TZ=Australia/Brisbane date '+%Y-%m-%d %H:%M AEST')
 

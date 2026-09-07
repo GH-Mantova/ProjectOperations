@@ -392,6 +392,26 @@ MIDNIGHT LOCAL, every night.** [MEASURED] the same run, `lastRunAt`: 00 `14:08:0
 needs an offset of **at least ten minutes**, and the one that must move is **05**, whose slot is the
 fixed one. The cron changes are Marco's — they live in the scheduled-tasks layer, not this repo.
 
+🔴🔴 **CORRECTED 2026-09-07T18:1xZ — THE COLLISION IS NOT A MIDNIGHT EVENT, AND THE REMEDY
+ABOVE FIXES ONE OCCURRENCE IN SIX.** The paragraph above is right that cron is evaluated in Brisbane
+local time and right that 05 must move. What is wrong is the FREQUENCY, and it is wrong in the
+direction of UNDER-stating the problem: **00 is HOURLY, so it collides with 04 on EVERY ONE of 04's
+six daily runs**, not only the one at midnight local. [MEASURED] 2026-09-07T18:1xZ by Station 00,
+from the scheduled-tasks MCP and from its own run: `00-supervisor` `5 * * * *`,
+`lastRunAt 2026-09-07T18:08:32Z` (jitter 172 s), against `04-scanner` `0 */4 * * *`,
+`lastRunAt 2026-09-07T18:10:11Z` (jitter 571 s) — **99 seconds apart, at 04:10 LOCAL**, which is as
+far from midnight as this schedule allows. `0 */4 * * *` fires at 00/04/08/12/16/20 local
+(= 14/18/22/02/06/10 UTC), and an hourly `5 * * * *` lands inside ten minutes of every one of them
+**by construction** — the midnight slot is not special, it is merely the only one where 05 joins in.
+
+🔧 **So moving 05 de-collides the THREE-station case only.** The two-station 00×04 overlap survives
+any change to 05 and recurs six times a day; de-colliding it needs 04's minute moved away from 00's,
+or 00's moved off `:05`. Both are Marco's — they live in the scheduled-tasks layer, not this repo, and
+this correction changes what the open cron-offset escalation must ask him for: **two offsets, not
+one.** ⚠️ **Falsifying probe: read both crons and both `lastRunAt` values from the MCP at any 04
+occurrence. If they are ever more than ten minutes apart, this correction is wrong.** Found and
+landed by Station 00 2026-09-07T18:1xZ.
+
 🔴 **AND THE CADENCE IS STORED IN A THIRD PLACE THAT THE CORRECTION DID NOT REACH.**
 `scripts/pipeline/check-breadcrumb.mjs` keeps its own `CADENCE` map, and `00` in it still reads
 **2**. [MEASURED] 2026-09-05T15:1xZ at `52232fec`, anchor `const CADENCE =`:

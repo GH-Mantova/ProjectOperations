@@ -1488,3 +1488,46 @@ prompt outlives its own build because the PR does not delete it; here the prompt
 all. Both end with an armable duplicate, and neither is visible to `lint-prompt.mjs`, whose gates
 ask only whether the premise still holds — which, until the PR merges, it does.
 
+🔴 **CORRECTED 2026-09-07T03:4xZ — THE `scope:` CROSS-CHECK IS WRONG IN BOTH
+DIRECTIONS, AND ONE FOUR-PR BOARD SHOWED ONE OF EACH.** [MEASURED] 2026-09-07T02:1xZ by Station
+04 at `5a824702`, over all 25 `ADMIT` prompts against the 4 open PRs (POSITIVE control — a PR's
+own first file matches itself; NEGATIVE control — a freshly minted path matches nothing). Five
+overlaps: **two real, three false.**
+
+| `ADMIT` prompt | overlap | open PR | truth |
+|---|---|---|---|
+| `pr-rates-plant-fuel-column` | 3/4 | `#1746` | **TRUE duplicate** |
+| `pr-sweep-stale-check-retires-live-escalations` | 1/1 | `#1750` | **TRUE duplicate** |
+| `pr-statussweep-local-time-timestamps` | 1/1 | `#1750` | false positive |
+| `pr-sweep-dead-queue-dir-reads` | 1/1 | `#1750` | false positive |
+| `pr-rateparity-s1-harness` | 1/4 | `#1746` | false positive |
+
+**(a) It UNDER-reports, on the class it exists to protect.** `pr-rates-plant-fuel-column` scores
+3/4 for one reason: its second `scope:` entry is `apps/api/prisma/migrations/` — a **directory**.
+`#1746` carries a migration file nested one level deeper, inside that very entry.
+An exact-path set test can never match a directory-form scope entry, so a
+**full-match** rule clears a `gate_allow: migrations` prompt — i.e. Marco's — for arming, which is
+precisely the class this section exists to stop being duplicated.
+
+**(b) It OVER-reports whenever `scope:` names a single file.** Three prompts share the sole entry
+`scripts/pipeline/status-sweep.ps1`; `#1750` touches that file, so all three score a perfect 1/1
+and only one of them is `#1750`'s work. **For a one-file scope the test's precision is zero by
+construction.**
+
+🔧 **THE RULE, corrected. Match a scope entry ending in `/` as a PREFIX against the PR's file
+paths, and treat ANY overlap of 1 or more as a CANDIDATE that must then be confirmed — never as a
+verdict, in either direction.** This is the complete-and-additive form: the directory case can no
+longer hide a real duplicate, and a 1/1 stops being a conclusion. The only cost is that the reader
+must look at one more field.
+
+⚠️ **Confirm on the prompt's own MARKER STRING, not on the head branch.** The paragraph above
+already measured that a prompt asserts no branch at all, so a branch test checks something the
+prompt never said. What separated all five rows above was the PR title carrying the prompt's own
+marker (`PLANT_FUEL_COLUMN_V1`), which the prompt **does** assert.
+
+🔧 **The falsifying probe is the table above:** re-run the cross-check on a board carrying one
+prompt whose `scope:` names a directory and another whose `scope:` names a single file. If the
+directory entry still fails to match, or the single-file entry is still being read as a verdict,
+this correction has not landed. Found by Station 04 2026-09-07T02:1xZ (F2), landed by Station 00
+at 03:4xZ.
+

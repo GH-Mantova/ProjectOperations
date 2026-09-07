@@ -3725,6 +3725,20 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
   });
 
   // ── Plant ────────────────────────────────────────────────────────────
+  // PLANT_FUEL_COLUMN_V1 — the plant table carries TWO priced quantities: the
+  // hire rate and the running fuel cost the estimator adds on top when the
+  // item is operated (`EstimatePlantRate.fuelRate`, surfaced by the persona's
+  // `lookup_rate` as `fuelRateAud`). Marco ruled on 2026-09-07 that it is a
+  // second VALUE column, shaped like the `waste` table's
+  // "Rate per tonne" / "Rate per load" pair three definitions down. Its unit
+  // is "day", matching the Rate column: `fuelRate` is billed on the same
+  // basis as the hire rate (estimates.dto.ts:51 — "Unit defaults to 'day' and
+  // fuelRate to 0 when omitted server-side").
+  //
+  // Column upserts here key on (rate_table_id, name), so the migration
+  // `20260907120000_rates_plant_fuel_column` — which is what actually reaches
+  // production, since deploy.yml never runs this seed (CP-23) — keys on the
+  // same pair. Neither may key on the literal id `rt-plt-c-fuel`.
   const plantRows = await prisma.estimatePlantRate.findMany({
     orderBy: [{ sortOrder: "asc" }, { item: "asc" }]
   });
@@ -3737,7 +3751,8 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
       { key: "item", name: "Item", dataType: "TEXT", role: "KEY", sortOrder: 1 },
       { key: "category", name: "Category", dataType: "TEXT", role: "INFO", sortOrder: 2 },
       { key: "unit", name: "Unit", dataType: "TEXT", role: "INFO", sortOrder: 3 },
-      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 4 }
+      { key: "rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 4 },
+      { key: "fuel", name: "Fuel rate", dataType: "CURRENCY", role: "VALUE", unit: "day", sortOrder: 5 }
     ],
     rows: plantRows.map((r, idx) => ({
       id: `rr-plt-${rowSlug(r.item)}`,
@@ -3746,7 +3761,11 @@ export async function seedRateTableProjections(prisma: PrismaClient): Promise<vo
         item: r.item,
         category: r.category ?? "",
         unit: r.unit,
-        rate: Number(r.rate)
+        rate: Number(r.rate),
+        // `fuelRate` is Decimal @default(0) and NOT nullable, so this is
+        // always a number — `0` for an item with no fuel cost recorded.
+        // Converted with Number() consistent with `rate` above.
+        fuel: Number(r.fuelRate)
       }
     }))
   });

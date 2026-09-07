@@ -161,6 +161,120 @@ if (-not $env:PR_WATCHER_AUTO_MERGE_POLICY) { $env:PR_WATCHER_AUTO_MERGE_POLICY 
 if (-not $env:PR_WATCHER_MAX_TURNS)         { $env:PR_WATCHER_MAX_TURNS = "240" }
 if (-not $env:PR_WATCHER_RUN_TIMEOUT_MIN)   { $env:PR_WATCHER_RUN_TIMEOUT_MIN = "75" }
 
+# --- App identity (WATCHER_APP_AUTH_V1) -- OPTIONAL, and OFF until Marco configures it ---
+#
+# scripts/pr-watcher/app-auth.mjs reads exactly three environment variables:
+#
+#   PO_WATCHER_APP_ID           the GitHub App's numeric id       (a public identifier)
+#   PO_WATCHER_INSTALLATION_ID  the installation's numeric id     (a public identifier)
+#   PO_WATCHER_APP_KEY          a filesystem PATH to the private-key .pem
+#
+# None of those three values is itself a secret. The FILE that PO_WATCHER_APP_KEY
+# names is, and it must never exist inside any working tree -- a key committed once
+# is a key rotated forever. Nothing in this script reads that file; it only checks
+# that it exists.
+#
+# The two ids are not hard-coded here either. They are machine-and-account facts, so
+# they live beside the key path in a machine-local config that is NOT in this
+# repository and never will be:
+#
+#   C:\po-secrets\watcher-app-auth.ps1
+#
+# That file is Marco's to write (docs/runbooks/watcher-identity-github-app.md, PART 1
+# step 5). No agent can create it, and this PR does not create it.
+# It is dot-sourced, i.e. EXECUTED, so it must contain the three $env: assignments and
+# nothing else.
+#
+# ABSENT FILE => nothing is set => index.mjs's APP_AUTH_ENABLED is false => the watcher
+# behaves EXACTLY as it did before this block existed, running as ambient GH-Mantova.
+# That silence is deliberate and load-bearing: CI, a fresh clone and any second machine
+# have no key, and making App auth mandatory would fail the watcher closed on every one
+# of them. This block is additive, not a migration.
+$AppAuthConfig = "C:\po-secrets\watcher-app-auth.ps1"
+$AppAuthConfigLoaded = $false
+if (Test-Path -LiteralPath $AppAuthConfig) {
+    try {
+        . $AppAuthConfig
+        $AppAuthConfigLoaded = $true
+    } catch {
+        Write-Log "[$(Get-Date -Format o)] app-auth: '$AppAuthConfig' exists but could not be loaded. It must contain only the three PO_WATCHER_* assignments."
+        Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: app-auth config failed to load: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+# --- Half-configured App auth is a LOUD failure, never a silent downgrade ---
+#
+# index.mjs keys APP_AUTH_ENABLED on PO_WATCHER_APP_KEY ALONE. So a config that sets
+# the two ids but not the key path leaves App auth OFF, and the watcher goes on
+# labelling and merging as ambient GH-Mantova while the operator believes the switch
+# is on. node cannot catch that case: by the time it runs, "the variable was never
+# set" and "the variable was meant to be set and isn't" look identical. This wrapper
+# is the only place that can tell them apart, so it does.
+#
+# The existence of the config file is itself a declaration of intent, so it counts as
+# "App auth was wanted here" even if the file sets nothing at all (a typo'd variable
+# name, a commented-out line). Otherwise that case would be the one remaining silent
+# downgrade: a file present, the operator satisfied, and the watcher merging as
+# GH-Mantova anyway.
+#
+#   config file absent AND nothing set  -> OFF, byte-for-byte today's behaviour
+#   wanted AND all three set            -> hand off to node, which mints the token and
+#                                          fails CLOSED itself if the key is rejected
+#   wanted AND anything missing         -> REFUSE, because that is precisely the state
+#                                          in which the audit trail lies about who acted
+$AppAuthSet     = @()
+$AppAuthMissing = @()
+foreach ($AppAuthVar in @("PO_WATCHER_APP_ID", "PO_WATCHER_INSTALLATION_ID", "PO_WATCHER_APP_KEY")) {
+    $AppAuthValue = [Environment]::GetEnvironmentVariable($AppAuthVar, "Process")
+    if ([string]::IsNullOrWhiteSpace($AppAuthValue)) {
+        $AppAuthMissing += $AppAuthVar
+    } else {
+        $AppAuthSet += $AppAuthVar
+    }
+}
+
+$AppAuthWanted = ($AppAuthConfigLoaded -or $AppAuthSet.Count -gt 0)
+
+if ($AppAuthWanted -and $AppAuthMissing.Count -gt 0) {
+    $AppAuthSetLabel = if ($AppAuthSet.Count -gt 0) { $AppAuthSet -join ', ' } else { "(none)" }
+    Write-Log "[$(Get-Date -Format o)] app-auth: config loaded = $AppAuthConfigLoaded; set = $AppAuthSetLabel; missing = $($AppAuthMissing -join ', ')."
+    Write-Log "[$(Get-Date -Format o)] app-auth: fix '$AppAuthConfig' so it sets all three, or rename it away to go back to ambient auth. Runbook: docs/runbooks/watcher-identity-github-app.md"
+    Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: app-auth is HALF-CONFIGURED (missing: $($AppAuthMissing -join ', ')). Refusing to start, because a half-configured watcher merges as ambient GH-Mantova while looking switched on."
+    exit 1
+}
+
+$AppAuthOn = ($AppAuthSet.Count -eq 3)
+
+if ($AppAuthOn) {
+    # Existence check ONLY. This script never opens the key, never prints its contents,
+    # and prints only its basename -- the same redaction app-auth.mjs applies to its own
+    # error messages. Catching a missing key here turns node's later failed-closed exit
+    # into a diagnosis the operator can act on without reading a stack.
+    $AppAuthKeyPresent = $false
+    try {
+        $AppAuthKeyPresent = Test-Path -LiteralPath $env:PO_WATCHER_APP_KEY -PathType Leaf
+    } catch {
+        $AppAuthKeyPresent = $false
+    }
+    if (-not $AppAuthKeyPresent) {
+        $AppAuthKeyName = ($env:PO_WATCHER_APP_KEY -replace '^.*[\\/]', '')
+        Write-Log "[$(Get-Date -Format o)] app-auth: PO_WATCHER_APP_KEY is set but names no readable file. Correct the path in '$AppAuthConfig'."
+        Write-Log "[$(Get-Date -Format o)] PRE-FLIGHT FAIL: app-auth private key not found ($AppAuthKeyName). Refusing to start rather than falling back to ambient GH-Mantova."
+        exit 1
+    }
+}
+
+# Banner text. "configured" means the three variables are present and the key file
+# exists -- it is NOT proof that auth is live. Only node can prove that, by logging
+# "app-auth:    gh[installation] (projectops-watcher[bot], WATCHER_APP_AUTH_V1)"
+# a few lines further down the same log.
+$AppAuthBanner = if ($AppAuthOn) {
+    "configured (App id $($env:PO_WATCHER_APP_ID), installation $($env:PO_WATCHER_INSTALLATION_ID)) -- see node's app-auth line below"
+} else {
+    "OFF - ambient GH-Mantova"
+}
+
 if ($env:PR_WATCHER_PROMPT_DIR) {
     $PromptDir = (Resolve-Path $env:PR_WATCHER_PROMPT_DIR).Path
 } else {
@@ -188,6 +302,7 @@ PR watcher (v2) -- daytime launcher
 Started:        $(Get-Date -Format o)
 Repo (git):     $RepoRoot
 Prompt dir:     $PromptDir
+App auth:       $AppAuthBanner
 Auto-review:    $($env:PR_WATCHER_AUTO_REVIEW)
 Auto-update:    $($env:PR_WATCHER_AUTO_UPDATE)
 Auto-merge:     $($env:PR_WATCHER_AUTO_MERGE_POLICY)

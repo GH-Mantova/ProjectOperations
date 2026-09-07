@@ -249,16 +249,81 @@ Section "3. IS THE BOARD BUSY? (safe-to-act gate -- REAL mutation signals, not '
 # claude-code process parented to the Desktop app, so counting those flags the user's own session
 # as a station and always says DO NOT ACT. Key on actual board mutation instead.
 # ------------------------------------------------------------------------------------------------
-$inprog = @(Get-ChildItem (Join-Path $Queue "in-progress\*") -File -ErrorAction SilentlyContinue)
 $lockInteractive = Test-Path (Join-Path $Repo ".git\index.lock")
 $lockClone = Test-Path (Join-Path $WatcherClone ".git\index.lock")
 $gitProc = @(Get-Process -Name git -ErrorAction SilentlyContinue)
 $headless = @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-Object { $_.CommandLine -like "*claude-code*stream-json*" })
-$boardBusy = ($inprog.Count -gt 0) -or $lockInteractive -or $lockClone -or ($gitProc.Count -gt 0)
-Line "LIVE" ("in-progress prompts (a station is running one): " + $inprog.Count)
+# THREE REAL signals. A fourth term used to sit at the front of this expression: a count of files
+# in a queue subdirectory that NO producer ever writes (scripts/pr-watcher/index.mjs files prompts
+# to processed/, failed/, blocked/, paused/ and no-pr-opened/ and names no such folder; the folder
+# is not tracked on main and not on disk). It was therefore a PERMANENT ZERO, and a permanent zero
+# ORed into a boolean contributes nothing -- removing it cannot change this value. See the
+# buildRunning comment below for the measurement and for what replaced it.
+$boardBusy = $lockInteractive -or $lockClone -or ($gitProc.Count -gt 0)
 Line "LIVE" ("git index.lock  interactive/clone: " + $lockInteractive + " / " + $lockClone + "  (true = a git write is mid-flight)")
 Line "LIVE" ("git processes running: " + $gitProc.Count)
 Line "INFO" ("headless claude-code sessions: " + $headless.Count + "  (INCLUDES this chat -- informational, NOT a blocker)")
+
+# ---- buildRunning: a REAL live signal, REPORTED AND DELIBERATELY NOT WIRED INTO $boardBusy ------
+# WHAT THIS REPLACES. The line that used to print here counted files in a queue subdirectory that
+# nothing writes, and printed the resulting permanent 0 as a [LIVE] fact meaning "no station is
+# running a prompt". Measured 2026-09-01T02:55:09Z: the sweep printed that zero while
+# scripts/pr-watcher/logs/2026-08-31.log showed a build started at 02:33:55Z and the heartbeat was
+# ticking elapsed=180s. A build WAS running; the sweep said none was. DOCTRINE 9.6 exactly -- an
+# empty result reported as an empty world -- inside the one instrument every station is told to
+# obey before mutating the board.
+#
+# The heartbeat is the signal that folder was pretending to be: the watcher rewrites it every 60 s
+# for as long as an agent is actually running, and never otherwise.
+#
+# *** DO NOT ADD $buildRunning TO $boardBusy, AND DO NOT LET IT EMIT A "DO NOT ACT" VERDICT. ***
+# This is not half-finished wiring for the next reader to complete. A watcher build lasts 20-75
+# minutes and the watcher builds near-continuously, so a board that blocked on this signal would be
+# frozen for most of the day. That is the "without damaging existing work" half of RULE 1, and it is
+# the whole reason this fact is REPORTED rather than ENFORCED: a station reads it and decides. If
+# you believe it belongs in the gate, change RULE 1 first -- do not change this line alone.
+$buildHeartbeat = Join-Path $WatcherClone "scripts\pr-watcher\heartbeat.log"
+$buildRunning = $false
+$buildReport = "[CANNOT MEASURE] heartbeat.log not found at " + $buildHeartbeat
+if (Test-Path $buildHeartbeat) {
+  try {
+    $buildLines = @(Get-Content $buildHeartbeat -Tail 5 -ErrorAction Stop | Where-Object { $_ -match '\S' })
+    if ($buildLines.Count -eq 0) {
+      $buildReport = "[CANNOT MEASURE] heartbeat.log is present but holds no non-empty line"
+    } else {
+      $buildLast = $buildLines[$buildLines.Count - 1]
+      # Anchor on the TICK shape the watcher writes: "[<iso>] <name> elapsed=<N>s last: <snippet>".
+      # Requiring elapsed= to be the token immediately after the name is what rejects the OTHER
+      # line the watcher appends to this same file:
+      #   "[<iso>] [run-timeout] <name> exceeded 75 min (elapsed=4500s) - killing child ..."
+      # which also carries elapsed=<N>s but means the child was KILLED -- the opposite of a build in
+      # flight. A bare 'elapsed=\d+s' search would read that as a running build.
+      $buildMatch = [regex]::Match($buildLast, '^\[[^\]]+\]\s+(\S+)\s+elapsed=\d+s\b')
+      # BOTH SIDES UTC, on purpose. Do NOT "make this consistent" with the heartbeat-age line in
+      # section 2, which subtracts two LOCAL values and says why; mixing the two zones is the
+      # 600-minute error that comment exists to prevent. Compare on the raw double and round only
+      # for display: [int] in PowerShell rounds (2.9 -> 3), so casting before the test would call a
+      # 2.9-minute-old tick stale.
+      $buildAgeRaw = ((Get-Date).ToUniversalTime() - (Get-Item $buildHeartbeat).LastWriteTimeUtc).TotalMinutes
+      $buildAgeMin = [math]::Round($buildAgeRaw, 1)
+      if (-not $buildMatch.Success) {
+        $buildReport = "no build in flight (newest heartbeat line is not a tick; file " + $buildAgeMin + " min old)"
+      } elseif ($buildAgeRaw -ge 3) {
+        $buildReport = "no build in flight (newest tick is " + $buildAgeMin + " min old; ticks are 60 s apart while a build runs)"
+      } else {
+        $buildRunning = $true
+        # Scrub to printable ASCII: the snippet the watcher tails into this file can carry any byte,
+        # and section 4B scrubs for the same reason.
+        $buildPromptName = ($buildMatch.Groups[1].Value -replace '[^\x20-\x7E]', '')
+        $buildReport = "BUILD IN FLIGHT: " + $buildPromptName + "  (tick " + $buildAgeMin + " min old)"
+      }
+    }
+  } catch {
+    # Unreadable is not idle. Never print false here (DOCTRINE 9.6).
+    $buildReport = "[CANNOT MEASURE] heartbeat.log unreadable: " + $_.Exception.Message
+  }
+}
+Line "LIVE" ("watcher build (heartbeat -- reported, NOT a block signal): " + $buildReport)
 # recent remote board activity: a station doing gh-only work (merge/label) leaves NO local lock (close blind-spot 5)
 $recent = @()
 if ($ghOk) {
@@ -279,11 +344,19 @@ Section "4. QUEUE (docs/pr-prompts on disk)"
 $armed = @(Get-ChildItem (Join-Path $Queue "*-ready.md") -ErrorAction SilentlyContinue)
 Line "LIVE" ("armed (*-ready.md): " + $armed.Count)
 foreach ($a in $armed) { Line "LIVE" ("   " + $a.Name) }
-foreach ($sub in @("in-progress","needs-marco","no-pr-opened","failed","blocked")) {
+# Test-Path FIRST, and SAY SO when the answer is "absent". A directory that is not there is not a
+# directory holding zero files (DOCTRINE 9.6). This is not a hypothetical distinction here: every
+# one of these subdirs is gitignored (.gitignore lines 76-83), so "absent" is the NORMAL state of a
+# fresh clone. The old shape had a bare `if (Test-Path)` with no else, so a missing failed/ or
+# blocked/ produced NO LINE AT ALL and the section read as "nothing failed, nothing blocked" to
+# whoever was deciding what to do next.
+foreach ($sub in @("needs-marco","no-pr-opened","failed","blocked")) {
   $d = Join-Path $Queue $sub
   if (Test-Path $d) {
     $c = @(Get-ChildItem (Join-Path $d "*") -File -ErrorAction SilentlyContinue)
     Line "LIVE" ($sub + "/: " + $c.Count)
+  } else {
+    Line "LIVE" ("[CANNOT MEASURE] queue subdir absent: " + $sub + "  (nothing was counted -- this is NOT a count of 0)")
   }
 }
 
@@ -292,7 +365,12 @@ Section "4B. RECENT FAILURES / SILENT EXITS (contents, not just counts -- close 
 # ------------------------------------------------------------------------------------------------
 foreach ($bucket in @("failed", "no-pr-opened")) {
   $d = Join-Path $Queue $bucket
-  if (-not (Test-Path $d)) { continue }
+  if (-not (Test-Path $d)) {
+    # Absent is not empty, same rule as section 4. The old bare `continue` emitted nothing, so a
+    # missing failed/ made this whole section read as "no recent failures" (DOCTRINE 9.6).
+    Line "LIVE" ("[CANNOT MEASURE] queue subdir absent: " + $bucket + "  (recent failures cannot be listed)")
+    continue
+  }
   $all = @(Get-ChildItem (Join-Path $d "*") -File -ErrorAction SilentlyContinue)
   $files = @($all | Sort-Object LastWriteTime -Descending | Select-Object -First 6)
   Line "LIVE" ($bucket + "/ (" + $all.Count + " total; newest " + $files.Count + " shown):")
@@ -378,8 +456,19 @@ Section "5. STALE-CLAIM CROSS-CHECK  (the step that was being skipped)"
 # an explicit "section 5 CANNOT decide" line below. Refusing to answer is allowed; lying is not
 # (DOCTRINE 7). If you want the STALE verdict back for such a file, title it after its PR.
 # ------------------------------------------------------------------------------------------------
-$nm = @(Get-ChildItem (Join-Path $Queue "needs-marco\*.md") -ErrorAction SilentlyContinue)
-if ($nm.Count -eq 0) { Line "LIVE" "no needs-marco escalations on disk" }
+# Absent is not empty, same rule as sections 4 and 4B. needs-marco/ is gitignored (.gitignore line
+# 82) and is never on main by design, so on a fresh clone it does not exist -- and "no needs-marco
+# escalations on disk" would then be an assertion about a folder this sweep never looked in
+# (DOCTRINE 9.6). The whole stale-claim cross-check below is what is missing in that case, which is
+# the most consequential thing this instrument does; it must not be silent.
+$nmDir = Join-Path $Queue "needs-marco"
+$nm = @()
+if (-not (Test-Path $nmDir)) {
+  Line "LIVE" "[CANNOT MEASURE] queue subdir absent: needs-marco  (no escalation was cross-checked against GitHub -- this is NOT 'no escalations')"
+} else {
+  $nm = @(Get-ChildItem (Join-Path $nmDir "*.md") -ErrorAction SilentlyContinue)
+  if ($nm.Count -eq 0) { Line "LIVE" "no needs-marco escalations on disk" }
+}
 foreach ($f in $nm) {
   $txt = Get-Content $f.FullName -Raw
   $prNums = [regex]::Matches($txt, "(?:pull/|#)(\d{3,5})") | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
@@ -456,7 +545,7 @@ Section "7. VERDICT"
 # ------------------------------------------------------------------------------------------------
 $safe = -not $boardBusy
 if (-not $safe) {
-  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- in-progress prompt / git lock / git process). Wait, re-run, then act."
+  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- a git index.lock is held, or a git process is running). Wait, re-run, then act."
 } elseif ($liveWorktrees.Count -gt 0) {
   # A LIVE STATION WORKTREE means a station is actively working. Do not say SAFE TO ACT.
   # Do NOT say DO NOT ACT either -- a live worktree off origin/main is correct isolation.

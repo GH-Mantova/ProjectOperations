@@ -124,6 +124,8 @@ rate that swamps it when run against **merged** PRs. **This bucket must query `-
 
 ## STANDING AUTHORITY
 
+STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.
+
 Ordinary staged prompt. Not a never-arm prompt. It touches one read-only reporting script, mutates
 nothing, and is chained on `SPENT_BEHIND_A_REJECT_V1` so that the two changes to
 `triage-holds.ps1` cannot collide.

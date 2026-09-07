@@ -379,7 +379,7 @@ here now because they are true for **every** station.
   🔧 **Nothing is retired:** `-Filter`, the wildcard path, and *"control any recursive file search
   against a file you know is there"* all stand, and are what a reader needs either way. **The
   falsifying probe is the fixture table above** — rebuild it and re-run both forms. Found by
-  Station 04 2026-09-07T06:2xZ (F1), landed by Station 00 at 07:5xZ.
+  Station 04 2026-09-07T06:2xZ (F1), landed by Station 00 at 07:3xZ.
 
 - 🔴 **A SINGLE-QUOTED PowerShell needle containing `\\` CAN NEVER MATCH A WINDOWS PATH, AND ITS
   ZERO WEARS AN ABSENCE'S CLOTHES.** PowerShell single quotes do **not** process escapes, so
@@ -467,7 +467,7 @@ here now because they are true for **every** station.
   deleting PR is already on `origin/main`. 🔧 **The uncommitted-work probe is
   `git diff --numstat origin/main -- <path>`, where EMPTY is the real answer** — the same cure §9.3's
   length-comparison bullet prescribes, applied to the status read. Found by Station 04
-  2026-09-07T06:1xZ (F6), landed by Station 00 at 07:5xZ.
+  2026-09-07T06:1xZ (F6), landed by Station 00 at 07:3xZ.
 
 - ⚠️ **`git stash` in the watcher clone is a CLOSED LOOP** — the launcher's preflight stashes on every
   start, and nothing ever pops. Report the count and its growth. `git stash drop`, **never `pop`**.
@@ -648,7 +648,7 @@ here now because they are true for **every** station.
   must NOT conclude the trap no longer reproduces — that retires a live rule whose whole job is to
   stop a dozen phantom stranded-branch escalations. The two-endpoint pair remains the falsifying
   probe and now works from either transport. Found by Station 04 2026-09-07T06:3xZ (F3), landed by
-  Station 00 at 07:5xZ.
+  Station 00 at 07:3xZ.
 
 
 ## 9.5 The pipeline's own instruments
@@ -1054,7 +1054,7 @@ here now because they are true for **every** station.
   the freshness precondition is unchanged. **Naming `supervisor.log` in prose is not the fix** — the
   directory has already accumulated five non-daily names and the sixth will not be in the prose.
   **The falsifying probe is the table above.** Found by Station 04 2026-09-07T06:3xZ (F2), landed by
-  Station 00 at 07:5xZ.
+  Station 00 at 07:3xZ.
 
 
 
@@ -1155,7 +1155,7 @@ station is told it can trust.
 of broken queries, so it contains one of each; and `instrument-honesty` is the one sweep in the
 rotation guaranteed to reach for it. **Falsifying probe: run any §9 probe twice, once against this
 file and once against the corpus its bullet names, and compare.** Found by Station 04
-2026-09-07T06:2xZ (F7), landed by Station 00 at 07:5xZ.
+2026-09-07T06:2xZ (F7), landed by Station 00 at 07:3xZ.
 
 <!-- END-CANONICAL-BLOCK: instruments v2 -->
 

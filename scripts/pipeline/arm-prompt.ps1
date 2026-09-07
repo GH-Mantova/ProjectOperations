@@ -59,6 +59,13 @@ param(
 
     [switch]$WhatIf,
 
+    # RULE 4 waiver. If any pr-*-ready.md is already armed at depth 1, arming is
+    # refused (ALREADY_ARMED). -Force overrides that refusal deliberately, and
+    # the audit line records both the waiver and the name(s) it was forced past.
+    # Not a default. No station passes this automatically. It exists for a human
+    # who means it.
+    [switch]$Force,
+
     [int]$LockTimeoutSeconds = 60
 )
 
@@ -217,6 +224,53 @@ function Assert-CleanIndex {
 }
 
 # ---------------------------------------------------------------------------
+# Step 2b — RULE 4 pre-flight: refuse if any other prompt is already armed
+# ---------------------------------------------------------------------------
+#
+# The lock serialises arming against other arming; it does not tell one arming
+# path that another has work in flight. On 2026-09-06 two paths (a chat and
+# station 00) each printed "already armed = 1" and armed anyway five minutes
+# apart. A rule the tool can measure is a rule the tool must enforce.
+#
+# Count `pr-*-ready.md` at depth 1 ONLY. Two exclusions, both load-bearing:
+#   - rev-<n>-ready.md are auto-generated REVIEW JOBS, not prompts (DOCTRINE
+#     §9.5). Counting them would refuse legitimate arms. The `pr-*` glob
+#     excludes them by construction.
+#   - Subdirectories (processed/, failed/, blocked/, no-pr-opened/, needs-marco/)
+#     are full of *-ready.md. A recursive count would refuse every arm forever.
+
+# Persisted across the call so the audit line can name what -Force was forced past.
+$script:_forcedPast = @()
+
+function Get-ArmedPrompts {
+    $dir = "$REPO_ROOT\$($PROMPT_DIR -replace '/', '\')"
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return @() }
+    # -File + -Filter + no -Recurse enforces depth 1 and the `pr-*` glob.
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter 'pr-*-ready.md' -File -ErrorAction SilentlyContinue)
+    return @($files | ForEach-Object { $_.Name })
+}
+
+function Assert-NotAlreadyArmed {
+    $armed = @(Get-ArmedPrompts)
+    if ($armed.Count -eq 0) { return }
+
+    if ($Force) {
+        # Waiver stands, but not silently. Names are stashed for the audit line
+        # so the log records exactly what the human overrode.
+        $script:_forcedPast = $armed
+        Write-Host "[arm-prompt] WARN: -Force waiving RULE 4 refusal. Already armed:" -ForegroundColor Yellow
+        foreach ($a in $armed) { Write-Host "  $a" }
+        return
+    }
+
+    Write-Fail "ALREADY_ARMED: another prompt is already armed. RULE 4 says arm one at a time."
+    foreach ($a in $armed) { Write-Host "  $a" }
+    Write-Host ""
+    Write-Host "Pass -Force to override deliberately. The waiver will be recorded in .arming-log.txt."
+    exit 5
+}
+
+# ---------------------------------------------------------------------------
 # Step 3 — verify the target
 # ---------------------------------------------------------------------------
 
@@ -305,6 +359,9 @@ if ($WhatIf) {
     Write-Step "Checking index is clean ..."
     Assert-CleanIndex
 
+    Write-Step "Checking no other prompt is already armed (RULE 4) ..."
+    Assert-NotAlreadyArmed
+
     Write-Step "Verifying target ..."
     Assert-TargetValid
 
@@ -333,6 +390,11 @@ try {
     # Step 2: index-guard before.
     Write-Step "Checking index is clean (before) ..."
     Assert-CleanIndex
+
+    # Step 2b: RULE 4 — refuse if another prompt is already armed. Inside the
+    # lock so the check and the rename are atomic against another arming run.
+    Write-Step "Checking no other prompt is already armed (RULE 4) ..."
+    Assert-NotAlreadyArmed
 
     # Step 3: verify target.
     Write-Step "Verifying target: $HOLD_REL ..."
@@ -449,6 +511,14 @@ try {
         # actor= comes FIRST of the identity fields because it is the only one that
         # distinguishes two sessions on the same machine. The rest corroborate it.
         $line = "$stamp  ARMED  $Name  escalates=$esc  actor=$Actor  by=$env:USERNAME@$hostName  pid=$PID  caller=$caller"
+        # If -Force waived RULE 4, record it and name what it was forced past. A
+        # waiver that leaves no trace is the same blindness in a different place.
+        # Only appended when -Force actually overrode a refusal, so unforced arms
+        # keep the same field layout every downstream reader expects.
+        if ($Force -and $script:_forcedPast -and $script:_forcedPast.Count -gt 0) {
+            $forcedNames = ($script:_forcedPast -join ',')
+            $line = "$line  forced=1  forced_past=$forcedNames"
+        }
         Add-Content -LiteralPath $armLog -Value $line -Encoding ASCII
         Write-Step "Audit line written to .arming-log.txt"
     } catch {

@@ -332,8 +332,36 @@ if ($stateFiles.Count -gt 0) {
 
 # ------------------------------------------------------------------------------------------------
 Section "5. STALE-CLAIM CROSS-CHECK  (the step that was being skipped)"
-# Every needs-marco/*.md that names a PR number: re-query that PR LIVE. If it is MERGED/CLOSED,
-# the escalation is STALE and should be cleared -- it is NOT a live thing awaiting Marco.
+# Every needs-marco/*.md that names a PR number: re-query that PR LIVE.
+#
+# TWO CORRECTIONS, both measured 2026-09-06/07 (Station 00 flagged this three runs running; the
+# 2026-09-07T00:08Z breadcrumb counted 126 [STALE] lines against 26 of 29 open escalations). The old
+# verdict was one line -- state MERGED or CLOSED => "escalation is DEAD, clear it" -- and it was wrong
+# in two independent ways that BOTH pushed the same direction: retire a LIVE escalation.
+#
+#   (a) CLOSED was collapsed into MERGED. A PR that closed UNMERGED shipped nothing. For a whole
+#       class of escalation it is the PREMISE, not the refutation:
+#       pr-1612-closed-unmerged-branch-holds-the-only-copy-2026-09-05.md exists BECAUSE #1612 closed
+#       unmerged and its branch holds the only copy. The sweep read CLOSED and told the reader to
+#       clear it -- the instrument retired the escalation exactly when its premise was satisfied.
+#       Fix: ask for mergedAt, not state alone. mergedAt populated = actually merged. CLOSED with an
+#       empty mergedAt is now a [FILE] "read it" line, never a [STALE] "clear it" instruction.
+#
+#   (b) EVERY #NNNN in the body was read as the escalation SUBJECT. A PR cited as EVIDENCE is
+#       byte-identical to this regex to one the escalation is ABOUT.
+#       label-removal-is-the-release-path-and-leaves-no-signature-2026-09-05.md cites 30 merged PRs
+#       as its measured evidence and therefore generated 30 "escalation is DEAD, clear it" lines
+#       about itself. Fix: a ref counts as the SUBJECT only if the number is announced in the
+#       FILENAME (pr-1612-...) or on the file's FIRST HEADING LINE. Anything else is context: we
+#       still print it and still name its live state, but we drop the instruction. The instruction
+#       was the harmful half.
+#
+# KNOWN AND ACCEPTED TRADEOFF (do not discover this the hard way): an escalation that IS about a
+# merged PR but never says so in its filename or first heading will no longer be called STALE. That
+# is a false negative, traded for the false positives above. It is NOT silent: every merged ref is
+# still printed with its state, and a file that names no subject at all while citing merged PRs gets
+# an explicit "section 5 CANNOT decide" line below. Refusing to answer is allowed; lying is not
+# (DOCTRINE 7). If you want the STALE verdict back for such a file, title it after its PR.
 # ------------------------------------------------------------------------------------------------
 $nm = @(Get-ChildItem (Join-Path $Queue "needs-marco\*.md") -ErrorAction SilentlyContinue)
 if ($nm.Count -eq 0) { Line "LIVE" "no needs-marco escalations on disk" }
@@ -344,14 +372,53 @@ foreach ($f in $nm) {
     Line "FILE" ($f.Name + "  (no PR ref, or gh down -- cannot cross-check; read it as a SNAPSHOT)")
     continue
   }
+
+  # ---- which PR numbers is this file ABOUT? (subject) vs merely citing? (evidence) --------------
+  # SUBJECT 1: announced in the filename, e.g. "pr-1612-closed-unmerged-...". The "pr" marker is
+  # required -- a bare number match would read the date in "...-2026-09-05.md" as PR #2026. The
+  # trailing (?!-\d{2}-\d{2}) rejects a date that happens to follow the marker, which is not
+  # hypothetical: "...-merged-a-red-pr-2026-08-20.md" otherwise yields subject PR #2026.
+  $subjectNums = @()
+  foreach ($m in [regex]::Matches($f.Name, '(?:^|[^0-9A-Za-z])[Pp][Rr][-_ #]?(\d{3,5})(?![0-9])(?!-\d{2}-\d{2})')) {
+    $subjectNums += $m.Groups[1].Value
+  }
+  # SUBJECT 2: named on the FIRST heading line (the title). Body headings do not count -- an
+  # evidence table under "## What I measured" is exactly the case (b) above.
+  $firstHeading = ""
+  foreach ($ln in ($txt -split '\r?\n')) {
+    if ($ln -match '^\s{0,3}#{1,6}\s+\S') { $firstHeading = $ln; break }
+  }
+  if ($firstHeading) {
+    foreach ($m in [regex]::Matches($firstHeading, '(?:pull/|#)(\d{3,5})')) { $subjectNums += $m.Groups[1].Value }
+  }
+  $subjectNums = @($subjectNums | Select-Object -Unique)
+
+  $mergedCited = 0
   foreach ($n in $prNums) {
-    $st = gh pr view $n --json state,isDraft 2>$null | ConvertFrom-Json
+    # mergedAt, not state: DOCTRINE 9.4 -- "merged" is unreliable on a list response, mergedAt is
+    # correct on both endpoints, and "pr view" is the per-PR form.
+    $st = gh pr view $n --json state,isDraft,mergedAt 2>$null | ConvertFrom-Json
     if (-not $st) { Line "FILE" ($f.Name + " -> #" + $n + " not found via gh"); continue }
-    if ($st.state -eq "MERGED" -or $st.state -eq "CLOSED") {
-      Line "STALE" ($f.Name + " references #" + $n + " which is " + $st.state + " -- escalation is DEAD, clear it. Do NOT report it as pending.")
+    $isMerged = -not [string]::IsNullOrWhiteSpace([string]$st.mergedAt)
+    $isSubject = ($subjectNums -contains $n)
+    $draft = if ($st.isDraft) { " [DRAFT]" } else { "" }
+    if ($isMerged) { $mergedCited++ }
+
+    if (-not $isSubject) {
+      Line "FILE" ($f.Name + " cites #" + $n + " (" + $st.state + $draft + ") as evidence -- not its premise; does not clear the escalation.")
+    } elseif ($isMerged) {
+      Line "STALE" ($f.Name + " references #" + $n + " which is MERGED -- escalation is DEAD, clear it. Do NOT report it as pending.")
+    } elseif ($st.state -eq "CLOSED") {
+      Line "FILE" ($f.Name + " references #" + $n + " which CLOSED UNMERGED -- this may be the escalation's PREMISE, read the file before clearing it.")
     } else {
-      Line "LIVE" ($f.Name + " references #" + $n + " = " + $st.state + $(if ($st.isDraft) { " [DRAFT]" } else { "" }) + " -- genuinely open")
+      Line "LIVE" ($f.Name + " references #" + $n + " = " + $st.state + $draft + " -- genuinely open")
     }
+  }
+
+  # The false negative, said out loud rather than swallowed (DOCTRINE 7 / 9.6): this file cites
+  # merged work but never names a subject PR, so section 5 has no basis for ANY staleness verdict.
+  if ($subjectNums.Count -eq 0 -and $mergedCited -gt 0) {
+    Line "FILE" ($f.Name + " names no subject PR in its filename or first heading but cites " + $mergedCited + " MERGED PR(s) -- section 5 CANNOT decide whether it is stale. Read the file; do not clear it on this line alone.")
   }
 }
 

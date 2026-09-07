@@ -4,8 +4,9 @@
  *
  * Layout (within RateTableDetail, between Columns and Rows cards):
  *   - Scenario picker: select a row to drive the running-total preview
- *   - Numbered step list with up/down reorder, running total beside each step
- *   - Steps whose condition is not met render greyed with "not applied"
+ *   - Numbered step list: each step is a four-part row — number, body,
+ *     running total, actions — and the body holds live controls
+ *   - Steps whose condition is not met render greyed
  *   - CHARGE_STEP_PARITY_V1: the preview runs the SAME evaluator as the server
  *     (`@project-ops/config/charge-step-semantics`), so it cannot show a price
  *     the server would not produce. A step that cannot be worked out shows the
@@ -25,10 +26,23 @@
  *     enters on the line — as well as a rate-table column. Both kinds land in
  *     ONE values map, built by `buildStepValues` in the shared semantics module
  *     so the preview and the server cannot disagree about what a name resolves
- *     to. This slice offers them in the add-step form and previews them from
- *     their declared `sample`; declaring one, editing a step in place and the
- *     real scenario inputs are slices 2-4.
- *   - "Add step" form below the list
+ *     to. They are offered in the operand picker below and previewed from
+ *     their declared `sample`; declaring one and the real scenario inputs are
+ *     slices 3 and 4.
+ *   - CHARGE_STEP_INPLACE_V1: the step row IS the editor. A saved step used to
+ *     render as a read-only sentence, and the only way to change one was to
+ *     remove every step below it and retype them in order — which is why a
+ *     three-times-a-year edit was the riskiest thing this card could be asked
+ *     to do. Now every control writes straight into the step at that index
+ *     through `replaceStepAt`, and one OPERAND PICKER offers both kinds of
+ *     field — rate-table columns and estimate-line fields, grouped and
+ *     labelled so a reader can tell which is which — plus `a number…` for a
+ *     literal. The condition is a pill on the row. There is no add-step form:
+ *     `+ Add a step` appends a step in the same shape every row already edits,
+ *     so there is exactly one implementation of each control. The step-1
+ *     guards are expressed in those controls rather than duplicated beside
+ *     them, and neither validation rule moved.
+ *   - "+ Add a step" button below the list
  *   - Collapsed "Show as formula" disclosure (read-only)
  *   - Impact line: open tender count + snapshot note
  *
@@ -475,7 +489,8 @@ export function canLeadStepList(
  * assigns the running total rather than combining with it.
  */
 export function addableOps(stepCount: number): StepOp[] {
-  return stepCount === 0 ? ["start"] : KNOWN_OPS.filter((o) => o !== "start");
+  // ONE rule, asked about the slot a new step would land in.
+  return KNOWN_OPS.filter((o) => isOpOfferableAt(o, stepCount));
 }
 
 /** Step 1 has no remove control: removing it is the one move that cannot be undone. */
@@ -554,6 +569,369 @@ export function reorderSteps(steps: ChargeStep[], from: number, to: number): Cha
     next[other] = operandStep(incoming.op === "start" ? "multiply" : incoming.op, displaced.field);
   }
   return next;
+}
+
+// ── CHARGE_STEP_INPLACE_V1: one operand picker, and an editable row ────────
+//
+// A saved step used to render as a read-only sentence, and the only way to
+// change one was to remove every step below it and retype them in order. The
+// row IS the editor now: each control writes straight into the step at that
+// index through `replaceStepAt`, which is where the step-1 guards live, so
+// editing in place cannot reach a state the list could not be saved from.
+
+/** The two places a value can come from, named the way the mock-up names them. */
+export type FieldSource = "table" | "line";
+
+/**
+ * How the picker labels each source. These are the mock-up's own words from
+ * its Fields table's `From` column, so the picker and that table (slice 3)
+ * cannot end up calling the same thing two different names.
+ */
+export const FIELD_SOURCE_LABELS: Record<FieldSource, string> = {
+  table: "the rate table",
+  line: "the estimate line"
+};
+
+/** The final option of the operand picker, which reveals a numeric input. */
+export const OPERAND_NUMBER_LABEL = "a number…";
+
+/** Its `<option value>`. Field options carry `f:<name>`; this one carries `n`. */
+export const OPERAND_NUMBER_VALUE = "n";
+
+/** One name a step can use, with everything the picker needs to draw it. */
+export type FieldChoice = {
+  name: string;
+  source: FieldSource;
+  unit?: string | null;
+  /** Text is legible in a condition and meaningless in the sum. */
+  text: boolean;
+};
+
+/** A labelled group of choices — one `<optgroup>`. */
+export type FieldGroup = { source: FieldSource; label: string; choices: FieldChoice[] };
+
+/**
+ * Every name a step can use, in the order `allFieldOptions` lists them, with
+ * its source and whether it is text. This is the ONE list both pickers are
+ * built from: the operand picker drops the text choices, the condition field
+ * picker keeps them, and neither invents an ordering of its own.
+ */
+export function fieldChoices(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): FieldChoice[] {
+  const isTextColumn = (dataType: string) => dataType === "TEXT" || dataType === "LIST_REF";
+  return [
+    ...columns.map((c) => ({
+      name: c.name,
+      source: "table" as const,
+      unit: c.unit ?? null,
+      text: isTextColumn(c.dataType)
+    })),
+    ...lineFields
+      .filter((f) => f.kind !== "text")
+      .map((f) => ({ name: f.name, source: "line" as const, unit: f.unit ?? null, text: false })),
+    ...lineFields
+      .filter((f) => f.kind === "text")
+      .map((f) => ({ name: f.name, source: "line" as const, unit: f.unit ?? null, text: true }))
+  ];
+}
+
+/** Split choices into labelled groups, dropping a group with nothing in it. */
+export function fieldGroups(choices: FieldChoice[]): FieldGroup[] {
+  const sources: FieldSource[] = ["table", "line"];
+  return sources
+    .map((source) => ({
+      source,
+      label: FIELD_SOURCE_LABELS[source],
+      choices: choices.filter((c) => c.source === source)
+    }))
+    .filter((g) => g.choices.length > 0);
+}
+
+/**
+ * The groups the ONE operand picker offers. Number-kind only: text is not
+ * arithmetic, which is the rule `numericFieldOptions` and the server's
+ * `validateChargeSteps` both already apply.
+ */
+export function operandGroups(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): FieldGroup[] {
+  return fieldGroups(fieldChoices(columns, lineFields).filter((c) => !c.text));
+}
+
+/** The groups the condition field picker offers — both kinds, text included. */
+export function conditionFieldGroups(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): FieldGroup[] {
+  return fieldGroups(fieldChoices(columns, lineFields));
+}
+
+/** How one choice reads in a menu: its name, and its unit when it has one. */
+export function fieldChoiceLabel(choice: FieldChoice): string {
+  return choice.unit ? `${choice.name} (${choice.unit})` : choice.name;
+}
+
+/** The `<option value>` for a named field. */
+export function operandFieldValue(name: string): string {
+  return `f:${name}`;
+}
+
+/** Read an operand `<option value>` back. */
+export function parseOperandValue(value: string): { field: string } | { number: true } {
+  return value === OPERAND_NUMBER_VALUE ? { number: true } : { field: value.slice(2) };
+}
+
+/**
+ * The operand picker's full rendered option list, group labels included, in
+ * the order a reader sees them. Exported so a test can assert the whole menu
+ * rather than a sample of it.
+ */
+export function operandOptionList(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): string[] {
+  const out: string[] = [];
+  for (const group of operandGroups(columns, lineFields)) {
+    out.push(group.label);
+    for (const choice of group.choices) out.push(fieldChoiceLabel(choice));
+  }
+  out.push(OPERAND_NUMBER_LABEL);
+  return out;
+}
+
+/**
+ * The value control for a condition on this field: a closed list when the
+ * field DECLARES one, otherwise free text.
+ *
+ * Only a declared list counts. A TEXT column's values could be gathered from
+ * whatever rows the table happens to hold today, but a list built that way
+ * silently loses any value no row carries yet — which would make a condition
+ * on a new value untypeable. Free text stays the safe default there.
+ */
+export function conditionValueOptions(
+  field: string,
+  lineFields: readonly RateLineField[] = []
+): string[] | null {
+  const declared = lineFields.find((f) => f.name === field)?.options;
+  return declared && declared.length > 0 ? declared : null;
+}
+
+/** A condition value typed by hand: a number when it reads as one, else text. */
+export function coerceConditionValue(raw: string): string | number {
+  const trimmed = raw.trim();
+  if (trimmed === "" || Number.isNaN(Number(trimmed))) return raw;
+  return Number(trimmed);
+}
+
+/**
+ * The condition a step gets when someone clicks `+ only when…`.
+ *
+ * A text field is preferred, because a closed list is the case the pill was
+ * built for and its first option is a valid answer straight away. With no
+ * text field the first field of any kind is used, compared against 0 — a
+ * condition that is false until it is edited, which the skipped-step styling
+ * says out loud.
+ */
+export function defaultCondition(
+  columns: RateColumnMeta[],
+  lineFields: readonly RateLineField[] = []
+): Condition | null {
+  const choices = fieldChoices(columns, lineFields);
+  const field = choices.find((c) => c.text) ?? choices[0];
+  if (!field) return null;
+  const options = conditionValueOptions(field.name, lineFields);
+  return { field: field.name, cmp: "is", value: options ? options[0] : 0 };
+}
+
+// ── CHARGE_STEP_INPLACE_V1: writing a step, one op at a time ──────────────
+
+/** Ops whose operand is a literal `value`, never a field. */
+export const FIXED_VALUE_OPS: StepOp[] = ["floor", "cap"];
+
+/**
+ * Everything one step carries that a step of another op might keep. Changing
+ * `Multiply by Rate` to `Divide by` should not lose `Rate`, and neither
+ * should it lose the condition hanging off it.
+ */
+export type StepCarry = {
+  field?: string | number;
+  value?: number;
+  direction?: "nearest" | "up" | "down";
+  interval?: number;
+  when?: Condition;
+};
+
+/** Read the carry off a step. */
+export function stepCarry(step: ChargeStep): StepCarry {
+  const carry: StepCarry = {};
+  if ("field" in step) carry.field = step.field;
+  if ("value" in step) carry.value = step.value;
+  if (step.op === "round") {
+    carry.direction = step.direction;
+    carry.interval = step.interval;
+  }
+  if ("when" in step && step.when) carry.when = step.when;
+  return carry;
+}
+
+/**
+ * Build a step of `op` from a carry — the ONE place that says what a step of
+ * each op looks like. The row's operation menu, the operand picker and the
+ * `+ Add a step` button all come through here, so a step built by one of them
+ * is shaped exactly like a step built by another.
+ *
+ * `when` is spread conditionally, never written as `undefined`: a step with an
+ * explicit `when: undefined` and a step with no `when` are the same step to
+ * `toEqual` and different objects to `JSON.stringify`, and the second is what
+ * goes over the wire.
+ */
+export function buildStepOfOp(
+  op: StepOp,
+  carry: StepCarry,
+  fallbackField: string | number
+): ChargeStep {
+  const operand =
+    carry.field ?? (typeof carry.value === "number" ? carry.value : fallbackField);
+  const when = carry.when;
+
+  switch (op) {
+    // `start` seeds the total; it takes no condition, because skipping it
+    // would leave every later step with nothing to work from.
+    case "start":
+      return { op: "start", field: operand };
+    case "multiply":
+      return when ? { op: "multiply", field: operand, when } : { op: "multiply", field: operand };
+    case "divide":
+      return when ? { op: "divide", field: operand, when } : { op: "divide", field: operand };
+    case "add":
+      return when ? { op: "add", field: operand, when } : { op: "add", field: operand };
+    case "subtract":
+      return when ? { op: "subtract", field: operand, when } : { op: "subtract", field: operand };
+    case "round":
+      return {
+        op: "round",
+        direction: carry.direction ?? "nearest",
+        interval: carry.interval ?? 1
+      };
+    default: {
+      // floor / cap — a literal, never a field. A number operand carries over
+      // (`Multiply by 2` to `Never less than 2`); a named field cannot, so the
+      // limit starts at 0 and the running total says so immediately.
+      const value = carry.value ?? (typeof carry.field === "number" ? carry.field : 0);
+      return op === "floor"
+        ? when
+          ? { op: "floor", value, when }
+          : { op: "floor", value }
+        : when
+          ? { op: "cap", value, when }
+          : { op: "cap", value };
+    }
+  }
+}
+
+/** Change a step's operation, keeping what the new op can still use. */
+export function changeStepOp(
+  step: ChargeStep,
+  op: StepOp,
+  fallbackField: string | number
+): ChargeStep {
+  if (step.op === op) return step;
+  return buildStepOfOp(op, stepCarry(step), fallbackField);
+}
+
+/** Point an arithmetic step at another field, or at a numeric literal. */
+export function setStepOperand(step: ChargeStep, field: string | number): ChargeStep {
+  if (!ARITHMETIC_OPS.includes(step.op as StepOp)) return step;
+  if ("field" in step && step.field === field) return step;
+  return buildStepOfOp(step.op as StepOp, { ...stepCarry(step), field }, field);
+}
+
+/** Set the literal a `floor` or a `cap` holds. */
+export function setStepFixedValue(step: ChargeStep, value: number): ChargeStep {
+  if (!FIXED_VALUE_OPS.includes(step.op as StepOp)) return step;
+  if ("value" in step && step.value === value) return step;
+  return buildStepOfOp(step.op as StepOp, { ...stepCarry(step), value }, value);
+}
+
+/** Set a `round` step's direction and/or interval. */
+export function setStepRound(
+  step: ChargeStep,
+  patch: { direction?: "nearest" | "up" | "down"; interval?: number }
+): ChargeStep {
+  if (step.op !== "round") return step;
+  return buildStepOfOp("round", { ...stepCarry(step), ...patch }, 1);
+}
+
+/** Attach a condition to a step, or take it off with `undefined`. */
+export function setStepCondition(step: ChargeStep, when?: Condition): ChargeStep {
+  if (!CONDITIONAL_OPS.includes(step.op as StepOp)) return step;
+  const carry = stepCarry(step);
+  if (when) carry.when = when;
+  else delete carry.when;
+  return buildStepOfOp(step.op as StepOp, carry, 1);
+}
+
+/**
+ * CHARGE_STEP_GUARDS_V1 — whether an operation may sit at this index. ONE
+ * rule, two readers: the row's operation menu disables what it says no to, and
+ * `addableOps` below is this same predicate asked about the slot a new step
+ * would land in.
+ *
+ * Slot 0 takes `start` and nothing else — any other first step is
+ * `First step must have op "start".` Every other slot takes anything but
+ * `start`, because a second `start` passes both validators (each only looks at
+ * index 0) and then silently discards everything computed before it.
+ */
+export function isOpOfferableAt(op: StepOp, index: number): boolean {
+  return index === 0 ? op === "start" : op !== "start";
+}
+
+/**
+ * Write a step in place, refusing what `isOpOfferableAt` does not offer.
+ *
+ * Every in-place edit goes through here, so the guards hold for the row
+ * controls exactly as they hold for reorder, remove and append. A refusal
+ * returns the list by identity, so nothing changes and the card is not even
+ * marked dirty.
+ */
+export function replaceStepAt(steps: ChargeStep[], index: number, next: ChargeStep): ChargeStep[] {
+  if (index < 0 || index >= steps.length) return steps;
+  if (!isOpOfferableAt(next.op as StepOp, index)) return steps;
+  if (next === steps[index]) return steps;
+  const out = [...steps];
+  out[index] = next;
+  return out;
+}
+
+/**
+ * Whether a reorder is available, asked of the mutator that would perform it.
+ *
+ * CHARGE_STEP_GUARDS_V1 — the control is disabled exactly when `reorderSteps`
+ * would refuse the move, so there is no second copy of the rule to drift.
+ */
+export function canMoveStep(steps: ChargeStep[], from: number, to: number): boolean {
+  return reorderSteps(steps, from, to) !== steps;
+}
+
+/**
+ * The operand a new step points at: the first field the picker offers, or the
+ * literal 1 when the table declares no number field at all.
+ */
+export function defaultOperand(numericCols: string[]): string | number {
+  return numericCols[0] ?? 1;
+}
+
+/**
+ * The step `+ Add a step` appends: a `start` while the list is empty, a
+ * `Multiply by` on the first available field once it is not — the same shape
+ * every row already edits, so there is nothing to learn twice.
+ */
+export function newStepFor(steps: ChargeStep[], numericCols: string[]): ChargeStep {
+  const op = addableOps(steps.length)[0];
+  return buildStepOfOp(op, {}, defaultOperand(numericCols));
 }
 
 /**
@@ -725,6 +1103,13 @@ export function ChargeStepsEditor({
     if (next !== steps) updateSteps(next);
   };
 
+  // CHARGE_STEP_INPLACE_V1 — every control on every row lands here. It is the
+  // fifth guarded delegation, not a fifth way to write the list.
+  const editStep = (index: number, step: ChargeStep) => {
+    const next = replaceStepAt(steps, index, step);
+    if (next !== steps) updateSteps(next);
+  };
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -760,7 +1145,6 @@ export function ChargeStepsEditor({
   // ── Main render ───────────────────────────────────────────────────────
 
   const numericCols = numericFieldOptions(columns, lineFields);
-  const allCols = allFieldOptions(columns, lineFields);
   const formula = stepsToFormula(steps);
 
   return (
@@ -880,128 +1264,28 @@ export function ChargeStepsEditor({
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>
       ) : steps.length === 0 ? (
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          No steps yet. Add a &ldquo;start&rdquo; step below to begin.
+          No steps yet. Add the first step below — it starts the running total.
         </p>
       ) : (
-        <ol
-          style={{ margin: "0 0 12px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}
-          aria-label="Charge step list"
-        >
-          {steps.map((step, i) => {
-            const trailEntry = trail[i];
-            const skipped = trailEntry?.skipped ?? false;
-            const runningTotal = trailEntry?.runningTotal ?? null;
-            const stepIssue = trailEntry?.issue ?? null;
-            const valError = validationErrors.find((e) => e.index === i);
-            const tinted = stepIssue !== null || valError !== undefined;
-
-            return (
-              <li
-                key={i}
-                data-testid={`step-row-${i}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  background: skipped
-                    ? "rgba(148,163,184,0.07)"
-                    : tinted
-                      ? "rgba(239,68,68,0.06)"
-                      : "var(--surface-raised, #f8fafc)",
-                  opacity: skipped ? 0.6 : 1,
-                  border: tinted
-                    ? "1px solid rgba(239,68,68,0.25)"
-                    : "1px solid var(--border, #e5e7eb)"
-                }}
-              >
-                {/* Up/Down */}
-                <span style={{ display: "inline-flex", flexDirection: "column", gap: 1 }}>
-                  <button
-                    type="button"
-                    aria-label={`Move step ${i + 1} up`}
-                    disabled={i === 0 || (i === 1 && !canLeadStepList(step))}
-                    onClick={() => moveUp(i)}
-                    style={reorderBtnStyle}
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move step ${i + 1} down`}
-                    disabled={i === steps.length - 1 || (i === 0 && !canLeadStepList(steps[1]))}
-                    onClick={() => moveDown(i)}
-                    style={reorderBtnStyle}
-                  >
-                    ▼
-                  </button>
-                </span>
-
-                {/* Sentence */}
-                <span style={{ flex: 1, fontSize: 13 }}>
-                  {stepSentence(step, i)}
-                  {skipped ? (
-                    <span
-                      style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}
-                    >
-                      not applied
-                    </span>
-                  ) : null}
-                </span>
-
-                {/* Why this step could not be worked out — shown instead of a
-                    running total, so the editor never prints a figure the
-                    server would not produce. */}
-                {stepIssue ? (
-                  <span
-                    role="note"
-                    data-testid={`step-issue-${i}`}
-                    style={{
-                      fontSize: 11,
-                      color: "var(--status-danger, #ef4444)",
-                      textAlign: "right",
-                      maxWidth: 260
-                    }}
-                  >
-                    {describeChargeStepIssue(stepIssue)}
-                  </span>
-                ) : null}
-
-                {/* Running total */}
-                {runningTotal !== null ? (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text-muted)",
-                      fontVariantNumeric: "tabular-nums",
-                      minWidth: 60,
-                      textAlign: "right"
-                    }}
-                    title="Running total after this step"
-                  >
-                    = {formatStepTotal(runningTotal, presentations[i] ?? MEASUREMENT)}
-                  </span>
-                ) : null}
-
-                {/* Remove — CHARGE_STEP_GUARDS_V1: step 1 gets no control. The
-                    spacer keeps the column aligned down the list. */}
-                {canRemoveStep(i) ? (
-                  <button
-                    type="button"
-                    aria-label={`Remove step ${i + 1}`}
-                    onClick={() => removeStep(i)}
-                    style={removeBtnStyle}
-                    data-testid={`remove-step-${i}`}
-                  >
-                    ×
-                  </button>
-                ) : (
-                  <span aria-hidden="true" style={removeSpacerStyle} />
-                )}
-              </li>
-            );
-          })}
+        <ol style={stepListStyle} aria-label="Charge step list">
+          {steps.map((step, i) => (
+            <ChargeStepRow
+              key={i}
+              step={step}
+              index={i}
+              columns={columns}
+              lineFields={lineFields}
+              trailEntry={trail[i]}
+              presentation={presentations[i] ?? MEASUREMENT}
+              invalid={validationErrors.some((e) => e.index === i)}
+              canMoveUp={canMoveStep(steps, i, i - 1)}
+              canMoveDown={canMoveStep(steps, i, i + 1)}
+              onChange={(next) => editStep(i, next)}
+              onMoveUp={() => moveUp(i)}
+              onMoveDown={() => moveDown(i)}
+              onRemove={() => removeStep(i)}
+            />
+          ))}
         </ol>
       )}
 
@@ -1024,13 +1308,26 @@ export function ChargeStepsEditor({
         </div>
       ) : null}
 
-      {/* Add step form */}
-      <AddStepForm
-        numericCols={numericCols}
-        allCols={allCols}
-        onAdd={addStep}
-        stepCount={steps.length}
-      />
+      {/* CHARGE_STEP_INPLACE_V1 — one button, not a parallel form. It appends
+          a step in the same editable shape every row already uses, so there is
+          exactly one operand control and one condition control in this file. */}
+      {!loading ? (
+        <div style={addStepRowStyle}>
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => addStep(newStepFor(steps, numericCols))}
+            style={{ minHeight: 34 }}
+            data-testid="add-step-btn"
+          >
+            + Add a step
+          </button>
+          <span style={addStepNoteStyle}>
+            A step can multiply, divide, add, subtract, round, or hold a floor or a cap — and any
+            of them can apply only when a condition is met.
+          </span>
+        </div>
+      ) : null}
 
       {/* Formula disclosure */}
       <details
@@ -1068,355 +1365,688 @@ export function ChargeStepsEditor({
   );
 }
 
-// ── AddStepForm ───────────────────────────────────────────────────────────
+// ── CHARGE_STEP_INPLACE_V1: the controls ──────────────────────────────────
+//
+// One implementation of each control, used by every row. There is no second
+// copy in an add form, because there is no add form: `+ Add a step` appends a
+// step in the same editable shape the rows already use.
 
-function AddStepForm({
-  numericCols,
-  allCols,
-  onAdd,
-  stepCount
+/**
+ * A number that is only written to the step when what is typed is a number.
+ *
+ * The input holds a draft while it is being edited, so a half-typed value
+ * ("", "-", "1.") never lands in the step as `NaN` and never silently becomes
+ * 0. Blur drops the draft, and the field snaps back to what the step actually
+ * holds.
+ */
+function NumberField({
+  value,
+  onChange,
+  label,
+  wide = false,
+  positive = false
 }: {
-  numericCols: string[];
-  allCols: string[];
-  onAdd: (step: ChargeStep) => void;
-  /** CHARGE_STEP_GUARDS_V1 — how many steps the list already has, which is
-   *  what decides whether `start` is an operation that can be added. */
-  stepCount: number;
+  value: number;
+  onChange: (next: number) => void;
+  label: string;
+  wide?: boolean;
+  positive?: boolean;
 }) {
-  // CHARGE_STEP_GUARDS_V1 — the menu offers only what this list can take, and
-  // the form defaults to the first of those: `start` while the list is empty,
-  // and the first op that is not `start` once it is not.
-  const ops = useMemo(() => addableOps(stepCount), [stepCount]);
-  const [op, setOp] = useState<StepOp>(() => addableOps(stepCount)[0]);
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      className="s7-input"
+      inputMode="decimal"
+      aria-label={label}
+      value={draft ?? String(value)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        const parsed = Number(raw);
+        if (raw.trim() === "" || Number.isNaN(parsed)) return;
+        if (positive && parsed <= 0) return;
+        onChange(parsed);
+      }}
+      onBlur={() => setDraft(null)}
+      style={wide ? numberFieldWideStyle : numberFieldStyle}
+    />
+  );
+}
 
-  useEffect(() => {
-    if (!ops.includes(op)) setOp(ops[0]);
-  }, [ops, op]);
+/**
+ * A `<select>` over grouped field choices, with the step's own name kept
+ * offerable even when the table no longer declares it.
+ *
+ * A step saved against a column that has since been renamed must still SHOW
+ * that name. Dropping it would make the select fall to its first option and
+ * quietly misreport the step; `validateSteps` already marks the row, and this
+ * keeps the row telling the truth about what it holds.
+ */
+function GroupedFieldSelect({
+  groups,
+  value,
+  label,
+  style,
+  onChange
+}: {
+  groups: FieldGroup[];
+  value: string;
+  label: string;
+  style: CSSProperties;
+  onChange: (name: string) => void;
+}) {
+  const known = groups.some((g) => g.choices.some((c) => c.name === value));
+  return (
+    <select
+      className="s7-select"
+      style={style}
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {known ? null : <option value={value}>{value}</option>}
+      {groups.map((group) => (
+        <optgroup key={group.source} label={group.label}>
+          {group.choices.map((choice) => (
+            <option key={choice.name} value={choice.name}>
+              {fieldChoiceLabel(choice)}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
-  const [fieldMode, setFieldMode] = useState<"column" | "number">("column");
-  const [fieldCol, setFieldCol] = useState(numericCols[0] ?? "");
-  const [fieldNum, setFieldNum] = useState("");
-  const [direction, setDirection] = useState<"nearest" | "up" | "down">("nearest");
-  const [interval, setIntervalVal] = useState("1");
-  const [fixedValue, setFixedValue] = useState("");
-  const [hasCondition, setHasCondition] = useState(false);
-  const [condField, setCondField] = useState(allCols[0] ?? "");
-  const [condCmp, setCondCmp] = useState<ConditionCmp>("is");
-  const [condValue, setCondValue] = useState("");
-
-  const needsField = ARITHMETIC_OPS.includes(op);
-  const needsRound = op === "round";
-  const needsFixed = op === "floor" || op === "cap";
-  const canHaveCond = CONDITIONAL_OPS.includes(op);
-
-  const canAdd = (() => {
-    if (needsField) {
-      if (fieldMode === "column" && !fieldCol) return false;
-      if (fieldMode === "number") {
-        const n = Number(fieldNum);
-        if (fieldNum.trim() === "" || isNaN(n)) return false;
-      }
-    }
-    if (needsRound) {
-      const n = Number(interval);
-      if (interval.trim() === "" || isNaN(n) || n <= 0) return false;
-    }
-    if (needsFixed) {
-      if (fixedValue.trim() === "" || isNaN(Number(fixedValue))) return false;
-    }
-    if (hasCondition) {
-      if (!condField || !condValue.trim()) return false;
-    }
-    return true;
-  })();
-
-  const handleAdd = () => {
-    if (!canAdd) return;
-
-    const field: string | number =
-      fieldMode === "number" ? Number(fieldNum) : fieldCol;
-
-    const when: Condition | undefined =
-      hasCondition && canHaveCond
-        ? { field: condField, cmp: condCmp, value: isNaN(Number(condValue)) ? condValue : Number(condValue) }
-        : undefined;
-
-    let step: ChargeStep;
-    if (needsRound) {
-      step = { op: "round", direction, interval: Number(interval) };
-    } else if (op === "floor") {
-      step = when ? { op: "floor", value: Number(fixedValue), when } : { op: "floor", value: Number(fixedValue) };
-    } else if (op === "cap") {
-      step = when ? { op: "cap", value: Number(fixedValue), when } : { op: "cap", value: Number(fixedValue) };
-    } else if (op === "start") {
-      step = { op: "start", field };
-    } else if (op === "multiply") {
-      step = when ? { op: "multiply", field, when } : { op: "multiply", field };
-    } else if (op === "divide") {
-      step = when ? { op: "divide", field, when } : { op: "divide", field };
-    } else if (op === "add") {
-      step = when ? { op: "add", field, when } : { op: "add", field };
-    } else {
-      step = when ? { op: "subtract", field, when } : { op: "subtract", field };
-    }
-
-    onAdd(step);
-
-    // Reset condition but keep op for convenience
-    setHasCondition(false);
-    setCondValue("");
-    setFieldNum("");
-    setFixedValue("");
-  };
+/**
+ * THE operand picker — one control offering both kinds of field and saying
+ * which is which, plus `a number…` for a literal.
+ *
+ * It replaces the Mode / Column / Value trio the add form used to carry: after
+ * line fields there are two SOURCES of operand, and three controls to choose
+ * between them is one more decision than the person is actually making. The
+ * `<optgroup>` labels are the words the mock-up's Fields table uses in its
+ * `From` column — "the rate table" and "the estimate line" — so a reader can
+ * tell a column from a line field without leaving the picker.
+ *
+ * Number-kind fields only. Text is offered by the CONDITION picker instead,
+ * which is the rule slice 1 put on the server and `numericFieldOptions`
+ * already encodes here.
+ */
+export function OperandPicker({
+  step,
+  index,
+  columns,
+  lineFields,
+  onChange
+}: {
+  step: ChargeStep;
+  index: number;
+  columns: RateColumnMeta[];
+  lineFields: readonly RateLineField[];
+  onChange: (next: ChargeStep) => void;
+}) {
+  const groups = useMemo(() => operandGroups(columns, lineFields), [columns, lineFields]);
+  const field = "field" in step ? step.field : 0;
+  const isLiteral = typeof field === "number";
+  const known = groups.some((g) => g.choices.some((c) => c.name === field));
 
   return (
-    <div
-      style={{
-        padding: "10px 12px",
-        borderRadius: 6,
-        border: "1px dashed var(--border, #e5e7eb)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8
-      }}
-      data-testid="add-step-form"
-    >
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Add step</div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-        {/* Op selector */}
-        <label style={fieldLabelStyle}>
-          <span style={labelTextStyle}>Operation</span>
-          <select
-            className="s7-select"
-            value={op}
-            onChange={(e) => setOp(e.target.value as StepOp)}
-            style={selectStyle}
-            aria-label="Step operation"
-          >
-            {ops.map((o) => (
-              <option key={o} value={o}>{OP_LABELS[o]}</option>
+    <>
+      <select
+        className="s7-select"
+        style={rowSelectStyle}
+        aria-label={`Step ${index + 1} operand`}
+        value={isLiteral ? OPERAND_NUMBER_VALUE : operandFieldValue(field)}
+        onChange={(e) => {
+          const parsed = parseOperandValue(e.target.value);
+          if ("number" in parsed) {
+            onChange(setStepOperand(step, isLiteral ? field : 1));
+          } else {
+            onChange(setStepOperand(step, parsed.field));
+          }
+        }}
+      >
+        {isLiteral || known ? null : (
+          <option value={operandFieldValue(field)}>{field}</option>
+        )}
+        {groups.map((group) => (
+          <optgroup key={group.source} label={group.label}>
+            {group.choices.map((choice) => (
+              <option key={choice.name} value={operandFieldValue(choice.name)}>
+                {fieldChoiceLabel(choice)}
+              </option>
             ))}
-          </select>
-        </label>
-
-        {/* Field operand (for arithmetic ops) */}
-        {needsField ? (
-          <>
-            <label style={fieldLabelStyle}>
-              <span style={labelTextStyle}>Mode</span>
-              <select
-                className="s7-select"
-                value={fieldMode}
-                onChange={(e) => setFieldMode(e.target.value as "column" | "number")}
-                style={selectStyle}
-                aria-label="Field input mode"
-              >
-                <option value="column">Column</option>
-                <option value="number">Number</option>
-              </select>
-            </label>
-            {fieldMode === "column" ? (
-              <label style={fieldLabelStyle}>
-                <span style={labelTextStyle}>Column</span>
-                <select
-                  className="s7-select"
-                  value={fieldCol}
-                  onChange={(e) => setFieldCol(e.target.value)}
-                  style={selectStyle}
-                  aria-label="Field column"
-                >
-                  {numericCols.length === 0 ? (
-                    <option value="">— no numeric columns —</option>
-                  ) : (
-                    numericCols.map((c) => <option key={c} value={c}>{c}</option>)
-                  )}
-                </select>
-              </label>
-            ) : (
-              <label style={fieldLabelStyle}>
-                <span style={labelTextStyle}>Value</span>
-                <input
-                  className="s7-input"
-                  type="number"
-                  value={fieldNum}
-                  onChange={(e) => setFieldNum(e.target.value)}
-                  style={{ ...selectStyle, width: 80 }}
-                  aria-label="Numeric literal"
-                />
-              </label>
-            )}
-          </>
-        ) : null}
-
-        {/* Round controls */}
-        {needsRound ? (
-          <>
-            <label style={fieldLabelStyle}>
-              <span style={labelTextStyle}>Direction</span>
-              <select
-                className="s7-select"
-                value={direction}
-                onChange={(e) => setDirection(e.target.value as "nearest" | "up" | "down")}
-                style={selectStyle}
-                aria-label="Round direction"
-              >
-                <option value="nearest">Nearest</option>
-                <option value="up">Up</option>
-                <option value="down">Down</option>
-              </select>
-            </label>
-            <label style={fieldLabelStyle}>
-              <span style={labelTextStyle}>Interval</span>
-              <input
-                className="s7-input"
-                type="number"
-                value={interval}
-                onChange={(e) => setIntervalVal(e.target.value)}
-                style={{ ...selectStyle, width: 80 }}
-                aria-label="Round interval"
-                min={0.0001}
-                step="any"
-              />
-            </label>
-          </>
-        ) : null}
-
-        {/* Fixed value (floor/cap) */}
-        {needsFixed ? (
-          <label style={fieldLabelStyle}>
-            <span style={labelTextStyle}>Value</span>
-            <input
-              className="s7-input"
-              type="number"
-              value={fixedValue}
-              onChange={(e) => setFixedValue(e.target.value)}
-              style={{ ...selectStyle, width: 80 }}
-              aria-label="Fixed value"
-              step="any"
-            />
-          </label>
-        ) : null}
-      </div>
-
-      {/* Condition toggle */}
-      {canHaveCond ? (
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={hasCondition}
-            onChange={(e) => setHasCondition(e.target.checked)}
-            aria-label="Add condition"
-          />
-          Add condition (only apply this step when…)
-        </label>
+          </optgroup>
+        ))}
+        <option value={OPERAND_NUMBER_VALUE}>{OPERAND_NUMBER_LABEL}</option>
+      </select>
+      {isLiteral ? (
+        <NumberField
+          wide
+          value={field}
+          label={`Step ${index + 1} number`}
+          onChange={(next) => onChange(setStepOperand(step, next))}
+        />
       ) : null}
+    </>
+  );
+}
 
-      {/* Condition fields */}
-      {hasCondition && canHaveCond ? (
-        <div
-          style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", paddingLeft: 16 }}
-          data-testid="condition-fields"
+/**
+ * THE condition control — `only when <field> <comparator> <value>` as a pill
+ * on the row, and `+ only when…` on a step that has none.
+ *
+ * Where the chosen field DECLARES an option list the value control is a select
+ * over it, which is the difference between `Inverted` matching and `inverted`
+ * being typed by hand — the comparison is case-insensitive, but a typo is not.
+ */
+export function ConditionPill({
+  step,
+  index,
+  columns,
+  lineFields,
+  onChange
+}: {
+  step: ChargeStep;
+  index: number;
+  columns: RateColumnMeta[];
+  lineFields: readonly RateLineField[];
+  onChange: (next: ChargeStep) => void;
+}) {
+  const groups = useMemo(() => conditionFieldGroups(columns, lineFields), [columns, lineFields]);
+  const when = "when" in step ? step.when : undefined;
+
+  if (!when) {
+    const seed = defaultCondition(columns, lineFields);
+    if (!seed) return null;
+    return (
+      <button
+        type="button"
+        style={addConditionStyle}
+        data-testid={`add-condition-${index}`}
+        onClick={() => onChange(setStepCondition(step, seed))}
+      >
+        + only when…
+      </button>
+    );
+  }
+
+  const options = conditionValueOptions(when.field, lineFields);
+  const shown = String(when.value);
+
+  return (
+    <span style={conditionPillStyle} data-testid={`condition-pill-${index}`}>
+      <span style={conditionLabelStyle}>only when</span>
+      <GroupedFieldSelect
+        groups={groups}
+        value={when.field}
+        label={`Step ${index + 1} condition field`}
+        style={conditionControlStyle}
+        onChange={(name) => {
+          const next = conditionValueOptions(name, lineFields);
+          onChange(
+            setStepCondition(step, {
+              field: name,
+              cmp: when.cmp,
+              // A field with a declared list gets its first option, because the
+              // value it replaces is not one of them. Otherwise the value
+              // stands: changing which field is compared is not a reason to
+              // throw away what it is compared against.
+              value: next ? next[0] : when.value
+            })
+          );
+        }}
+      />
+      <select
+        className="s7-select"
+        style={conditionControlStyle}
+        aria-label={`Step ${index + 1} condition comparator`}
+        value={when.cmp}
+        onChange={(e) =>
+          onChange(setStepCondition(step, { ...when, cmp: e.target.value as ConditionCmp }))
+        }
+      >
+        {CONDITION_CMPS.map((cmp) => (
+          <option key={cmp} value={cmp}>
+            {CMP_LABELS[cmp]}
+          </option>
+        ))}
+      </select>
+      {options ? (
+        <select
+          className="s7-select"
+          style={conditionControlStyle}
+          aria-label={`Step ${index + 1} condition value`}
+          value={shown}
+          onChange={(e) => onChange(setStepCondition(step, { ...when, value: e.target.value }))}
         >
-          <label style={fieldLabelStyle}>
-            <span style={labelTextStyle}>Field</span>
-            <select
-              className="s7-select"
-              value={condField}
-              onChange={(e) => setCondField(e.target.value)}
-              style={selectStyle}
-              aria-label="Condition field"
-            >
-              {allCols.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-          <label style={fieldLabelStyle}>
-            <span style={labelTextStyle}>Is</span>
-            <select
-              className="s7-select"
-              value={condCmp}
-              onChange={(e) => setCondCmp(e.target.value as ConditionCmp)}
-              style={selectStyle}
-              aria-label="Condition comparator"
-            >
-              {CONDITION_CMPS.map((c) => (
-                <option key={c} value={c}>{CMP_LABELS[c]}</option>
-              ))}
-            </select>
-          </label>
-          <label style={fieldLabelStyle}>
-            <span style={labelTextStyle}>Value</span>
-            <input
-              className="s7-input"
-              value={condValue}
-              onChange={(e) => setCondValue(e.target.value)}
-              style={{ ...selectStyle, width: 100 }}
-              aria-label="Condition value"
-            />
-          </label>
-        </div>
-      ) : null}
+          {options.includes(shown) ? null : <option value={shown}>{shown}</option>}
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="s7-input"
+          style={conditionControlStyle}
+          aria-label={`Step ${index + 1} condition value`}
+          value={shown}
+          onChange={(e) =>
+            onChange(setStepCondition(step, { ...when, value: coerceConditionValue(e.target.value) }))
+          }
+        />
+      )}
+      <button
+        type="button"
+        style={conditionRemoveStyle}
+        aria-label={`Remove the condition on step ${index + 1}`}
+        data-testid={`remove-condition-${index}`}
+        onClick={() => onChange(setStepCondition(step, undefined))}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
 
-      <div>
+/**
+ * ONE step, as the mock-up draws it: number, body, running total, actions.
+ *
+ * The body holds live controls, not a sentence. Every one of them writes
+ * straight into the step at this index, and the sentence survives as the row's
+ * accessible name so the list still reads aloud as English.
+ *
+ * CHARGE_STEP_GUARDS_V1 is expressed in the controls themselves, which is how
+ * the mock-up does it: `start` is disabled in the operation menu at every
+ * index above 0, every other op is disabled at index 0, a reorder the guard
+ * would refuse is disabled rather than offered, and step 1's remove control is
+ * a spacer.
+ */
+export function ChargeStepRow({
+  step,
+  index,
+  columns,
+  lineFields,
+  trailEntry,
+  presentation,
+  invalid,
+  canMoveUp,
+  canMoveDown,
+  onChange,
+  onMoveUp,
+  onMoveDown,
+  onRemove
+}: {
+  step: ChargeStep;
+  index: number;
+  columns: RateColumnMeta[];
+  lineFields: readonly RateLineField[];
+  trailEntry?: ChargeStepTrailEntry;
+  presentation: TotalPresentation;
+  invalid: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onChange: (next: ChargeStep) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+}) {
+  const skipped = trailEntry?.skipped ?? false;
+  const runningTotal = trailEntry?.runningTotal ?? null;
+  const stepIssue = trailEntry?.issue ?? null;
+  const tinted = stepIssue !== null || invalid;
+  const numericCols = numericFieldOptions(columns, lineFields);
+
+  return (
+    <li
+      data-testid={`step-row-${index}`}
+      aria-label={stepSentence(step, index)}
+      style={{
+        ...stepRowStyle,
+        ...(tinted ? stepRowInvalidStyle : null),
+        opacity: skipped ? 0.55 : 1
+      }}
+    >
+      <span style={stepNumberStyle} aria-hidden="true">
+        {index + 1}
+      </span>
+
+      <span style={stepBodyStyle}>
+        {/* Operation. Every known op is listed at every index and the ones the
+            guards refuse are disabled, so the menu keeps its shape and says
+            WHY a move is not available instead of hiding it. */}
+        <select
+          className="s7-select"
+          style={rowSelectStyle}
+          aria-label={`Step ${index + 1} operation`}
+          value={step.op}
+          onChange={(e) =>
+            onChange(
+              changeStepOp(step, e.target.value as StepOp, defaultOperand(numericCols))
+            )
+          }
+        >
+          {KNOWN_OPS.map((op) => (
+            <option key={op} value={op} disabled={!isOpOfferableAt(op, index)}>
+              {OP_LABELS[op]}
+            </option>
+          ))}
+        </select>
+
+        {step.op === "round" ? (
+          <>
+            <select
+              className="s7-select"
+              style={rowSelectStyle}
+              aria-label={`Step ${index + 1} round direction`}
+              value={step.direction}
+              onChange={(e) =>
+                onChange(
+                  setStepRound(step, {
+                    direction: e.target.value as "nearest" | "up" | "down"
+                  })
+                )
+              }
+            >
+              <option value="nearest">to the nearest</option>
+              <option value="up">up to the next</option>
+              <option value="down">down to the last</option>
+            </select>
+            <NumberField
+              positive
+              value={step.interval}
+              label={`Step ${index + 1} round interval`}
+              onChange={(interval) => onChange(setStepRound(step, { interval }))}
+            />
+            {step.interval === 1 ? <span style={rowHintStyle}>whole number</span> : null}
+          </>
+        ) : FIXED_VALUE_OPS.includes(step.op as StepOp) ? (
+          // floor / cap keep their literal `value`. The operand picker is not
+          // offered for them: a floor that moves with a field is a different
+          // rule, and this slice is not the place to invent it.
+          <NumberField
+            wide
+            value={"value" in step ? step.value : 0}
+            label={`Step ${index + 1} value`}
+            onChange={(value) => onChange(setStepFixedValue(step, value))}
+          />
+        ) : (
+          <OperandPicker
+            step={step}
+            index={index}
+            columns={columns}
+            lineFields={lineFields}
+            onChange={onChange}
+          />
+        )}
+
+        {CONDITIONAL_OPS.includes(step.op as StepOp) ? (
+          <ConditionPill
+            step={step}
+            index={index}
+            columns={columns}
+            lineFields={lineFields}
+            onChange={onChange}
+          />
+        ) : null}
+      </span>
+
+      {/* Running total — or, when the step could not be worked out, the reason.
+          CHARGE_STEP_PARITY_V1: never a plausible-looking figure instead. */}
+      <span style={stepTotalStyle}>
+        {stepIssue ? (
+          <span role="note" data-testid={`step-issue-${index}`} style={stepIssueStyle}>
+            {describeChargeStepIssue(stepIssue)}
+          </span>
+        ) : runningTotal !== null ? (
+          <>
+            {skipped ? <span style={rowHintStyle}>skipped </span> : null}
+            <b>{formatStepTotal(runningTotal, presentation)}</b>
+          </>
+        ) : (
+          <span style={rowHintStyle}>—</span>
+        )}
+      </span>
+
+      <span style={stepActionsStyle}>
         <button
           type="button"
-          className="s7-btn s7-btn--ghost s7-btn--sm"
-          disabled={!canAdd}
-          onClick={handleAdd}
-          style={{ minHeight: 36 }}
-          data-testid="add-step-btn"
+          aria-label={`Move step ${index + 1} up`}
+          disabled={!canMoveUp}
+          onClick={onMoveUp}
+          style={iconBtnStyle}
         >
-          + Add step
+          ▲
         </button>
-      </div>
-    </div>
+        <button
+          type="button"
+          aria-label={`Move step ${index + 1} down`}
+          disabled={!canMoveDown}
+          onClick={onMoveDown}
+          style={iconBtnStyle}
+        >
+          ▼
+        </button>
+        {/* CHARGE_STEP_GUARDS_V1: step 1 gets no remove control — removing it
+            is the one move that cannot be undone. The spacer holds the column
+            open so the list stays aligned. */}
+        {canRemoveStep(index) ? (
+          <button
+            type="button"
+            aria-label={`Remove step ${index + 1}`}
+            onClick={onRemove}
+            style={iconBtnStyle}
+            data-testid={`remove-step-${index}`}
+          >
+            ×
+          </button>
+        ) : (
+          <span aria-hidden="true" style={iconSpacerStyle} />
+        )}
+      </span>
+    </li>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
 
-const reorderBtnStyle: CSSProperties = {
-  background: "transparent",
+// ── CHARGE_STEP_INPLACE_V1 styles ─────────────────────────────────────────
+//
+// The mock-up's step: a four-part grid — number, body, running total, actions.
+// Every colour is a token from apps/web/src/styles/tokens.css, so the row
+// flips with the theme; there is no hex literal and no raw rgba below.
+// `--surface-override` and `--brand-dark` are the two tokens that deliberately
+// do NOT flip: the pill's fill is the same amber in both themes, so the text
+// on it has to be the same near-black in both themes too.
+
+const stepListStyle: CSSProperties = {
+  margin: "0 0 12px",
+  padding: 0,
+  listStyle: "none",
+  display: "flex",
+  flexDirection: "column",
+  gap: 6
+};
+
+const stepRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "26px minmax(0,1fr) auto 74px",
+  gap: 10,
+  alignItems: "center",
+  padding: "9px 11px",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-card)",
+  border: "1px solid var(--border-default)"
+};
+
+const stepRowInvalidStyle: CSSProperties = {
+  border: "1px solid var(--status-danger)",
+  background: "var(--surface-subtle)"
+};
+
+const stepNumberStyle: CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: "50%",
+  background: "var(--brand-primary-light)",
+  color: "var(--text-primary)",
+  fontSize: 11,
+  fontWeight: 700,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontVariantNumeric: "tabular-nums"
+};
+
+const stepBodyStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  flexWrap: "wrap",
+  minWidth: 0
+};
+
+/** Overrides `.s7-select`'s full width and 36px height for a control on a row. */
+const rowSelectStyle: CSSProperties = {
+  width: "auto",
+  height: 32,
+  padding: "4px 8px",
+  fontSize: 13,
+  borderRadius: "var(--radius-sm)"
+};
+
+const numberFieldStyle: CSSProperties = {
+  width: 58,
+  height: 32,
+  padding: "4px 8px",
+  fontSize: 13,
+  textAlign: "right",
+  borderRadius: "var(--radius-sm)",
+  fontVariantNumeric: "tabular-nums"
+};
+
+const numberFieldWideStyle: CSSProperties = {
+  ...numberFieldStyle,
+  width: 74,
+  textAlign: "left"
+};
+
+const rowHintStyle: CSSProperties = {
+  fontSize: 12,
+  color: "var(--text-secondary)"
+};
+
+const conditionPillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "3px 8px 3px 9px",
+  borderRadius: 99,
+  background: "var(--surface-override)",
+  color: "var(--brand-dark)"
+};
+
+const conditionLabelStyle: CSSProperties = {
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "var(--brand-dark)",
+  whiteSpace: "nowrap"
+};
+
+const conditionControlStyle: CSSProperties = {
+  width: "auto",
+  height: 26,
+  padding: "2px 6px",
+  fontSize: 12,
+  borderRadius: "var(--radius-sm)",
+  borderColor: "var(--brand-accent-dark)"
+};
+
+const conditionRemoveStyle: CSSProperties = {
+  background: "none",
   border: "none",
+  color: "var(--brand-dark)",
   cursor: "pointer",
-  fontSize: 9,
+  fontSize: 13,
+  lineHeight: 1,
+  padding: "0 2px"
+};
+
+const addConditionStyle: CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "var(--brand-accent-dark)",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  fontSize: 12,
+  padding: "3px 4px",
+  whiteSpace: "nowrap"
+};
+
+const stepTotalStyle: CSSProperties = {
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+  fontSize: 13,
+  color: "var(--text-secondary)"
+};
+
+const stepIssueStyle: CSSProperties = {
+  fontSize: 11,
+  color: "var(--status-danger)",
+  display: "inline-block",
+  maxWidth: 260,
+  whiteSpace: "normal",
+  textAlign: "right"
+};
+
+const stepActionsStyle: CSSProperties = {
+  display: "inline-flex",
+  gap: 2,
+  justifyContent: "flex-end"
+};
+
+const iconBtnStyle: CSSProperties = {
+  width: 24,
+  height: 24,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "none",
+  background: "none",
   color: "var(--text-muted)",
-  padding: "0 2px",
+  borderRadius: "var(--radius-sm)",
+  cursor: "pointer",
+  fontSize: 11,
   lineHeight: 1
 };
 
 /** CHARGE_STEP_GUARDS_V1 — holds the remove column open on step 1, which has
  *  no remove control. */
-const removeSpacerStyle: CSSProperties = {
+const iconSpacerStyle: CSSProperties = {
   display: "inline-block",
-  width: 18
+  width: 24,
+  height: 24
 };
 
-const removeBtnStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
-  cursor: "pointer",
-  fontSize: 18,
-  color: "var(--text-muted)",
-  padding: "0 4px",
-  lineHeight: 1
-};
-
-const fieldLabelStyle: CSSProperties = {
+const addStepRowStyle: CSSProperties = {
   display: "flex",
-  flexDirection: "column",
-  gap: 2
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+  marginTop: 14
 };
 
-const labelTextStyle: CSSProperties = {
-  fontSize: 11,
-  color: "var(--text-muted)"
-};
-
-const selectStyle: CSSProperties = {
+const addStepNoteStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 240,
+  margin: 0,
   fontSize: 12,
-  minHeight: 32
+  color: "var(--text-secondary)"
 };
+
 
 // CHARGE_STEP_CARD_V2 — the row that closes the step list. Colours come from
 // real tokens in apps/web/src/styles/tokens.css, so the row flips with the

@@ -234,6 +234,39 @@ jobs:
       # and no instrument measured the drift. An embedded copy of a living document always drifts;
       # this gate is what stops it coming back.
       - run: node scripts/pipeline/check-agent-doctrine.mjs
+      # A PR title must NAME THE MODULE IT CHANGES. Slice 1 (#1753) gave every prompt a
+      # validated `module:`; this is what carries that value onto GitHub, where the board is
+      # actually read. [MEASURED 2026-09-01] 24 distinct commit scopes across 40 merged PRs, six
+      # of them meaning "crm" - nothing derived the scope and nothing checked it.
+      #
+      # TWO STEPS, DELIBERATELY.
+      #
+      # 1. --self-test runs UNCONDITIONALLY (push and pull_request). It needs no PR_TITLE and
+      #    exercises all seven controls, one per vocabulary layer, so a commit that breaks the
+      #    checker - a bad NAMED_AREAS edit, a moved module root, a malformed baseline - goes red
+      #    on trunk, at the commit that broke it, instead of surfacing later as a mystery
+      #    rejection on somebody's PR. Costs ~0.2s.
+      #
+      # 2. The real check is GUARDED to pull_request. The PR title is not in the checkout, so the
+      #    workflow has to hand it over in PR_TITLE; on a `push` to main there is no
+      #    github.event.pull_request, PR_TITLE would be empty, and the checker would correctly
+      #    exit 2 [CANNOT MEASURE] and turn trunk red for a title that does not exist. The guard
+      #    - not a fallback default - is the fix: the checker must never be taught to pass when
+      #    it cannot see a title.
+      #
+      # DE-FACTO BLOCKING, EVEN THOUGH IT IS NOT A REQUIRED CHECK. Ruleset 15532058 ("Main")
+      # requires exactly four contexts and this job is not one of them, so branch protection will
+      # not block a merge on it. The WATCHER will: scripts/pr-watcher/index.mjs:1921 aborts the
+      # merge on the first statusCheckRollup entry whose conclusion is FAILURE, required or not.
+      # A red here therefore burns the slice. That is why the vocabulary is derived and wide
+      # (measured: 35/40 and 102/120 of recent merged titles pass) rather than a module-name
+      # whitelist (measured: 15/40).
+      - run: node scripts/pipeline/check-pr-title.mjs --self-test
+      - name: PR title names its module
+        if: github.event_name == 'pull_request'
+        run: node scripts/pipeline/check-pr-title.mjs
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
       # The report contract, enforced on the reports themselves. lint-station checks that a
       # station DOC says where findings go; this checks that a station RUN put them there.
       # Structure only in CI - the freshness check needs a live box and would always fail here.

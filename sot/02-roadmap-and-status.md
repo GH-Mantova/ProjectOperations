@@ -60,16 +60,16 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ## 2. 🔧 In-PR — open right now (4)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-06T14:20Z**, `origin/main`
-> d1467428). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-07T14:21Z**, `origin/main`
+> f9815d11. For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #1719 | feat(ew-2c): allocation rejection, transfer, push-back and stale detection | BLOCKED; CI 14 pass / 0 fail / 1 pending |
-| #1713 | feat(rates): a charge step can name an estimator-entered line field (RATE_LINE_FIELDS_V1) | BLOCKED; CI 13 pass / 0 fail / 2 pending |
-| #1709 | feat(tender-lifecycle): TenderClient.bidStatus — the schema and API foundation | BLOCKED; CI 13 pass / 0 fail / 2 pending |
-| #1699 | fix(rates): give the three unit-less seeded VALUE columns a unit | BLOCKED; CI 12 pass / 2 fail / 1 pending — RED, routed to Marco |
+| #1777 | fix(sweep): git stderr is not a failure, and a real failure must still abort | BLOCKED; CI 14 pass / 0 fail / 1 pending |
+| #1775 | feat(map-locations): write the tip id on the waste rate rows, and keep it written (TIP-ID-S2) | BLOCKED; CI 12 pass / 2 fail / 1 pending |
+| #1774 | ci(web): ratchet hard-coded colour literals so apps/web/src can only get cleaner | BLOCKED; CI 12 pass / 2 fail / 1 pending |
+| #1767 | feat(crm): reminder policy config + polymorphic reminder log (TR-1) | BLOCKED; CI 12 pass / 2 fail / 1 pending |
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z

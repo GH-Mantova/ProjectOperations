@@ -83,7 +83,7 @@ is already wrong.
 scheduled-tasks MCP", never as "the five".** The MCP is already the prescribed source for cadence
 (§6's red rule), so this adds no new instrument. **Falsifying probe: the enabled-task count from the
 MCP against the number of bootstraps the sweep actually opened.** Found by Station 04
-2026-09-07T06:1xZ (F4), landed by Station 00 at 07:5xZ.
+2026-09-07T06:1xZ (F4), landed by Station 00 at 07:3xZ.
 
 
 

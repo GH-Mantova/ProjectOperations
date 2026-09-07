@@ -586,6 +586,47 @@ build. They are listed in **`scripts/pipeline/module-baseline.json`** (same shap
 **That file may only shrink.** Adding your new prompt to it is the gate failing open — write
 `module:` instead. Burn-down is deleting an entry in the same PR that adds the key to its prompt.
 
+### The PR title
+
+The `module` value is not paperwork — it is **the scope the PR title must carry**:
+
+```
+<type>(<module>): <summary>
+```
+
+`scripts/pipeline/check-pr-title.mjs` enforces this in CI on every pull request, reading the title
+from `PR_TITLE` (the title is not in the checkout, so `.github/workflows/ci.yml` hands it over).
+
+- **Type** is one of `feat fix docs test chore refactor perf build ci style revert`. A `!` before
+  the colon is allowed for a breaking change (`feat(scope)!: …`).
+- **The scope is not optional.** `docs: …` is rejected; `docs(pipeline): …` passes. A title that
+  does not name its module is the whole reason this check exists.
+- **The scope must resolve** to a module directory under `apps/api/src/modules/` or
+  `apps/web/src/pages/`, an area directory directly under `apps/`, `packages/`, `docs/` or
+  `scripts/`, or one of the named pipeline areas listed in `check-pr-title.mjs` (`pipeline`,
+  `watcher`, `pr-watcher`, `watchdog`, `board`, `doctrine`, `sweep`, `status-sweep`, `hygiene`,
+  `agents`, `station`, `lint-prompt`, `arm-prompt`, `triage-holds`, `deps`, …). The vocabulary is
+  the **same one** `module:` is validated against — it is imported from `lint-prompt.mjs`, not
+  copied — so a `module:` the linter accepted is a scope the title check accepts.
+- **A slice suffix is tolerated but discouraged.** `-s<N>` / `-slice<N>` is stripped once before
+  the lookup, so `feat(crm-s11): …` passes as `crm`. It is stripped ONCE: `crm-s1-s2` is a
+  malformed scope, not `crm`. Prefer the bare module — six of the last 40 merged titles meant
+  `crm` and spelled it six different ways, which is the drift this whole chain exists to stop.
+- **A failure prints the fix**: the scope seen, its normalised form, the five nearest vocabulary
+  entries, and the `gh pr edit` command to rename the PR.
+
+**Write the title rule into the prompt body.** A gate only ever catches what has already gone
+wrong; a prompt that tells its agent
+
+> Title the PR `feat(<module>): <summary>`.
+
+makes the title correct *by construction*, and the gate never fires. That is the outcome to aim
+for — the check is the backstop, not the mechanism.
+
+`scripts/pipeline/title-scope-baseline.json` is the title check's ratchet, the same shape as
+`module-baseline.json` above. It is **seeded empty**: measured 2026-09-07, every open PR passes on
+the vocabulary alone. **Do not add to it.** Retitle the PR instead.
+
 ## Optional: `design_ref` — the mock-up a UI prompt was built from
 
 Marco designs a screen in an artifact or mock-up, has Station 06 turn it into a PR,

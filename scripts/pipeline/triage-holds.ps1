@@ -240,8 +240,21 @@ function Get-PromptPremise {
 # Resolve bash the same way lint-prompt.mjs's findBash does -- Git-for-Windows bash on Windows,
 # /bin/bash elsewhere -- so that a box where the LINTER cannot run premises is a box where this
 # probe reports UNMEASURABLE rather than inventing a verdict.
+#
+# BASH_PLATFORM_PROBE_V1 -- the OS env var (the one this used to key on) is INHERITED, not a
+# property of the operating system. In the PowerShell 5.1 process Desktop Commander starts for
+# a scheduled station -- the only shell any station runs in -- it is the empty string, so
+# branching on it put a Windows box down the /bin/bash path and every premise probe returned
+#   UNMEASURABLE -- could not execute /bin/bash: The term '/bin/bash' is not recognized ...
+# Measured 2026-09-07 at origin/main 9a905ec6 from inside a live Station 00 run:
+# `spent=5 of 26 evaluated ... of 57 HOLDs` with 31 prompts tagged PREMISE UNMEASURABLE and the
+# fixture control FAILING, i.e. the whole SPENT_BEHIND_A_REJECT_V1 bucket that shipped in #1754
+# was inert. [System.Environment]::OSVersion.Platform is answered by .NET, exists in PS 5.1 and
+# PS 7, and cannot be unset by a parent process. lint-prompt.mjs's findBash uses
+# process.platform for the same reason.
+$isWindowsHost = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
 $bashBin = $null
-if ($env:OS -eq "Windows_NT") {
+if ($isWindowsHost) {
     $bashCandidates = @("C:\Program Files\Git\bin\bash.exe", "C:\Program Files (x86)\Git\bin\bash.exe")
     if ($env:ProgramFiles) { $bashCandidates += (Join-Path $env:ProgramFiles "Git\bin\bash.exe") }
     foreach ($candidate in $bashCandidates) {
@@ -393,6 +406,8 @@ if ($premiseUnmeasurable.Count -gt 0) {
 if (-not $behindProbeOk) {
     Write-Output ""
     Write-Output ("!!! SUSPECT: this bucket is UNMEASURABLE this run -- " + $behindProbeNote)
+    $resolvedBash = if ($bashBin) { $bashBin } else { "(none found)" }
+    Write-Output ("!!! resolved bash: " + $resolvedBash + " (host is " + [System.Environment]::OSVersion.Platform + "; the binary is the whole answer here).")
     Write-Output "!!! An empty bucket above proves NOTHING. Fix the control before believing it."
 }
 Write-Output ""

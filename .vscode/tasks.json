@@ -140,12 +140,12 @@
       "detail": "Live tail of the newest PR-watcher log file."
     },
     {
-      "label": "branch: prune (remote + local)",
+      "label": "branch: prune (local, dry-run)",
       "type": "shell",
-      "command": "powershell -NoProfile -File scripts/branch-prune.ps1; git fetch --prune; git branch -vv | Select-String ': gone]' | ForEach-Object { git branch -D ($_.ToString().Trim() -split '\\s+')[0] }",
+      "command": "git fetch --prune; powershell -NoProfile -File scripts/branch-prune.ps1",
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "reveal": "always" },
-      "detail": "Deletes remote branches with merged PRs (skips open PRs + main), then force-deletes local branches whose upstream is gone (catches squash-merged branches). Uses Windows PowerShell 5.1. NEVER run while the watcher is mid-job."
+      "detail": "Prints a prune PLAN and deletes nothing. `git fetch --prune` first, which only drops stale remote-tracking refs and destroys no work; then branch-prune.ps1 in its default dry-run mode. This task previously chained a gone-upstream Select-String sweep into a force-delete loop, which removed every branch with a gone upstream regardless of unpushed commits, open PRs or worktrees — on 2026-09-03 one click would have destroyed the 28 commits on fix1483. That fall-through is gone and must not come back (a force-delete flag appearing in this file is itself the defect): deletion now requires running the script by hand with -Apply, which quarantines every branch to a ref before removing it. Windows PowerShell 5.1."
     }
   ]
 }

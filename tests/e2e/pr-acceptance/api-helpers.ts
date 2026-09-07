@@ -1,5 +1,6 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 import { ADMIN, FIELD_WORKER } from "./helpers";
+import { readSharedApiToken, tokenIsFresh } from "../api-tokens";
 
 /**
  * Batch 3 — thin API fixture layer. The Scope of Works tables render many
@@ -17,28 +18,52 @@ export const TEMPLATE_TENDER_ID = "seed-tender-template-100";
 export const TEMPLATE_CARD_DEM = `${TEMPLATE_TENDER_ID}-card-DEM`;
 export const TEMPLATE_CARD_CIV = `${TEMPLATE_TENDER_ID}-card-CIV`;
 
-// Access tokens live 15m (auth.accessTtl); reuse them well inside that window
-// so per-test fixture setup doesn't hammer /auth/login — the per-IP auth rate
-// limit (5 logins / 60s) otherwise trips mid-run and 429s every later login.
-const TOKEN_CACHE_TTL_MS = 10 * 60 * 1000;
-const tokenCache = new Map<string, { token: string; fetchedAt: number }>();
+// This Map is per WORKER PROCESS, which is exactly the problem it used to be
+// the whole solution to: with N workers the suite cold-logged in N times per
+// persona, and the API throttles /auth/login at 5 per 60s per IP
+// (auth-throttle.config.ts) with every worker calling from 127.0.0.1.
+//
+// The run-wide bundle at playwright/.auth/api-tokens.json — published once by
+// the setup project, see tests/e2e/api-tokens.ts — is now the primary source,
+// and this Map is only a per-process memo of it. Logins are therefore constant
+// in worker count instead of linear.
+const tokenCache = new Map<string, string>();
 
+/**
+ * Three layers, cheapest first:
+ *
+ *  1. this process's memo;
+ *  2. the run-wide bundle the setup project published;
+ *  3. a live /auth/login — the fallback for a run whose bundle is missing (a
+ *     spec invoked without the setup project) or whose 15-minute tokens have
+ *     aged out under a long suite.
+ *
+ * Freshness is decided by the token's own `exp` claim rather than a
+ * hand-tuned TTL, so this stays correct if JWT_ACCESS_TTL changes.
+ */
 async function cachedLoginToken(
   request: APIRequestContext,
   email: string,
   password: string,
   label: string
 ): Promise<string> {
-  const hit = tokenCache.get(email);
-  if (hit && Date.now() - hit.fetchedAt < TOKEN_CACHE_TTL_MS) {
-    return hit.token;
+  const memo = tokenCache.get(email);
+  if (tokenIsFresh(memo, email)) {
+    return memo;
   }
+
+  const shared = readSharedApiToken(email);
+  if (shared) {
+    tokenCache.set(email, shared);
+    return shared;
+  }
+
   const res = await request.post(`${API_BASE}/auth/login`, {
     data: { email, password }
   });
   expect(res.ok(), `POST /auth/login (${label}) → ${res.status()}`).toBeTruthy();
   const token = ((await res.json()) as { accessToken: string }).accessToken;
-  tokenCache.set(email, { token, fetchedAt: Date.now() });
+  tokenCache.set(email, token);
   return token;
 }
 

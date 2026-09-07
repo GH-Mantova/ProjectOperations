@@ -49,7 +49,7 @@
  * Reference tables (isReference) show an explanation instead of the editor.
  */
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   buildStepValues,
   describeChargeStepIssue,
@@ -60,6 +60,7 @@ import {
   type RateLineField
 } from "@project-ops/config/charge-step-semantics";
 import { useAuth } from "../../auth/AuthContext";
+import { isNumberKindColumn } from "./ratesListsHelpers";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import type { ChargeStep, Condition, ConditionCmp } from "../../lib/chargeStepTypes";
 
@@ -135,13 +136,23 @@ export type RateColumnMeta = {
  * are offered here; text is offered by neither, which is the rule this function
  * already applied to TEXT and LIST_REF columns and now applies to a `text` line
  * field as well.
+ *
+ * RATE_FIELDS_TABLE_V2 — "counts as a number" is no longer spelled out here as
+ * "not TEXT and not LIST_REF". It is `isNumberKindColumn` in
+ * ratesListsHelpers.ts, which is also what the Fields card's `Kind` column
+ * prints, so the word on the card and the contents of this menu cannot drift
+ * apart. The rule TIGHTENS by two storage types: a DATE and a BOOL column used
+ * to fall through the old negative test and be offered as an operand, and
+ * neither is a number you can multiply by. Nothing stored moves — a saved step
+ * that already names one still renders and still saves, because the picker
+ * keeps an option for a value it does not recognise.
  */
 export function numericFieldOptions(
   columns: RateColumnMeta[],
   lineFields: readonly RateLineField[] = []
 ): string[] {
   return [
-    ...columns.filter((c) => c.dataType !== "TEXT" && c.dataType !== "LIST_REF").map((c) => c.name),
+    ...columns.filter((c) => isNumberKindColumn(c.dataType)).map((c) => c.name),
     ...numericLineFieldNames(lineFields)
   ];
 }
@@ -650,15 +661,21 @@ export function fieldGroups(choices: FieldChoice[]): FieldGroup[] {
 }
 
 /**
- * The groups the ONE operand picker offers. Number-kind only: text is not
- * arithmetic, which is the rule `numericFieldOptions` and the server's
- * `validateChargeSteps` both already apply.
+ * The groups the ONE operand picker offers. Number-kind only.
+ *
+ * RATE_FIELDS_TABLE_V2 — the filter reads `isNumberKindColumn` rather than
+ * `FieldChoice.text`, because those two are not the same question. `text` says
+ * "this reads as text, so the condition pill should offer it a value list";
+ * number-kind says "this can go in the sum". A DATE column is neither text nor
+ * a number, and only the second question keeps it out of a multiply. Line
+ * fields declare their kind directly and are filtered on that.
  */
 export function operandGroups(
   columns: RateColumnMeta[],
   lineFields: readonly RateLineField[] = []
 ): FieldGroup[] {
-  return fieldGroups(fieldChoices(columns, lineFields).filter((c) => !c.text));
+  const numberKind = new Set(numericFieldOptions(columns, lineFields));
+  return fieldGroups(fieldChoices(columns, lineFields).filter((c) => numberKind.has(c.name)));
 }
 
 /** The groups the condition field picker offers — both kinds, text included. */
@@ -968,7 +985,8 @@ export function ChargeStepsEditor({
   columns,
   rows,
   lineFields = EMPTY_LINE_FIELDS,
-  onSaved
+  onSaved,
+  onStepsChange
 }: {
   tableId: string;
   tableName: string;
@@ -983,6 +1001,21 @@ export function ChargeStepsEditor({
    */
   lineFields?: readonly RateLineField[];
   onSaved?: () => void;
+  /**
+   * RATE_FIELDS_TABLE_V2 — the step list, handed up to whoever mounted this
+   * card, once after it loads and again after every mutation.
+   *
+   * The Fields card is a SIBLING of this one and its `Used in` column is
+   * computed from these steps. It has no route of its own to fetch them and
+   * must not get one: two GETs for the same list means two copies, and a
+   * `Used in` column read off a stale copy would name the wrong steps in a
+   * delete warning — worse than no column at all. So this card, which already
+   * owns the list, says what it holds.
+   *
+   * Fired from `load` and from `updateSteps` — never from a render-time
+   * effect, which would fire on renders that changed nothing.
+   */
+  onStepsChange?: (steps: ChargeStep[]) => void;
 }) {
   const { authFetch } = useAuth();
   const [steps, setSteps] = useState<ChargeStep[]>([]);
@@ -994,6 +1027,16 @@ export function ChargeStepsEditor({
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  // RATE_FIELDS_TABLE_V2 — held in a ref, and deliberately NOT a dependency of
+  // `load`. An inline arrow passed by the parent has a new identity on every
+  // one of its renders; in `load`'s dependency array that would rebuild `load`,
+  // re-fire the effect below and turn one GET per table into an endless stream
+  // of them. The ref keeps the callback current without touching that array.
+  const onStepsChangeRef = useRef(onStepsChange);
+  useEffect(() => {
+    onStepsChangeRef.current = onStepsChange;
+  });
+
   // ── Load ──────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
@@ -1003,9 +1046,13 @@ export function ChargeStepsEditor({
       const res = await authFetch(`/rates/tables/${tableId}/charge-steps`);
       if (!res.ok) throw new Error(await readApiErrorMessage(res, "Failed to load charge steps."));
       const body = (await res.json()) as { chargeSteps: ChargeStep[] | null; openTenderCount: number };
-      setSteps(body.chargeSteps ?? []);
+      const loaded = body.chargeSteps ?? [];
+      setSteps(loaded);
       setOpenTenderCount(body.openTenderCount);
       setDirty(false);
+      // RATE_FIELDS_TABLE_V2 — the ONE copy of the step list, published once
+      // it exists. This is the only GET of it on the page.
+      onStepsChangeRef.current?.(loaded);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1077,6 +1124,11 @@ export function ChargeStepsEditor({
   const updateSteps = (next: ChargeStep[]) => {
     setSteps(next);
     setDirty(true);
+    // RATE_FIELDS_TABLE_V2 — every mutation, saved or not. `Used in` has to be
+    // true of what is on screen now, not of what was last written to the
+    // server: a person who has just pointed step 4 at a different field needs
+    // the delete warning to already know that.
+    onStepsChangeRef.current?.(next);
   };
 
   // CHARGE_STEP_GUARDS_V1 — every mutator that can write index 0 delegates to

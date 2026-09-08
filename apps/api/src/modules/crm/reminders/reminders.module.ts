@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../../prisma/prisma.module";
+import { PlatformModule } from "../../platform/platform.module";
+import { CommsReminderService } from "./comms-reminder.service";
 import { ReminderPolicyController } from "./reminder-policy.controller";
 import { ReminderPolicyService } from "./reminder-policy.service";
 
@@ -10,8 +12,19 @@ import { ReminderPolicyService } from "./reminder-policy.service";
  * §0). Reminders cron over `CommTask` and `Tender`; they do NOT create threads,
  * so they do not belong inside CommsModule.
  *
- * TR-1 registers only the policy read/write surface. TR-2 adds the cron
- * service and TR-3 the escalation pass into this same module.
+ * TR-1 registered the policy read/write surface. TR-2 adds
+ * `CommsReminderService` — the nightly cron that reads that policy and sweeps
+ * the PRE-DUE / POST-SUBMISSION / TASK tracks. TR-3 adds the escalation pass
+ * into this same module.
+ *
+ * `PlatformModule` is imported for `NotificationsService`, the single delivery
+ * seam the cron writes through (the TR-2 prompt said `crm.module.ts` already
+ * imported it — measured against origin/main, it does not; the import belongs
+ * here anyway, next to the only consumer).
+ *
+ * `@nestjs/schedule` needs no import here: `ScheduleModule.forRoot()` is
+ * registered once in `app.module.ts`, which is what discovers the `@Cron`
+ * decorator on any provider in the graph. `forFeature()` would be redundant.
  *
  * `AuditService` is injected without an import here because `AuditModule` is
  * `@Global()`.
@@ -20,9 +33,9 @@ import { ReminderPolicyService } from "./reminder-policy.service";
  * reminder-policy.controller.ts for why, and why not `tenders.manage`).
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, PlatformModule],
   controllers: [ReminderPolicyController],
-  providers: [ReminderPolicyService],
-  exports: [ReminderPolicyService]
+  providers: [ReminderPolicyService, CommsReminderService],
+  exports: [ReminderPolicyService, CommsReminderService]
 })
 export class RemindersModule {}

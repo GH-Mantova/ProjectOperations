@@ -652,9 +652,29 @@ design_ref: Claude Design/proposed/scope-card-v3.html
 Anything else is rejected with `DESIGN_REF_MALFORMED`.
 
 **Required for UI prompts.** If any `scope` entry begins `apps/web/`, a missing or empty
-`design_ref` REJECTs with `UI_PROMPT_NEEDS_DESIGN_REF`. The one deliberate exception is
-`fixes_pr:` — a fix-forward on a red board must never be blocked for want of a design
-citation.
+`design_ref` REJECTs with `UI_PROMPT_NEEDS_DESIGN_REF`. Two deliberate exceptions:
+
+1. **`fixes_pr:`** — a fix-forward on a red board must never be blocked for want of a
+   design citation.
+2. **A slice that changes no screen.** The gate exists so a reviewer can compare the PR
+   against the mock-up; a prompt that renders nothing has no mock-up to cite, and inventing
+   one is a lie recorded in the queue. The exemption applies only when **every** `apps/web/`
+   entry is one of:
+   - a named file under `apps/web/src/lib/` (any extension — `apps/web/src/lib/__tests__/`
+     included), or
+   - exactly `apps/web/src/App.tsx`.
+
+   `__tests__/` is exempt only **under `lib/`**. A component test
+   (`apps/web/src/components/__tests__/Foo.test.tsx`) is not exempt: it is the one shape
+   that can change what is asserted *about* a screen without citing the design it is
+   asserting against. One page, one component, one component test, or one **wildcard**
+   anywhere in the web scope and the exemption is off. A `*` in an entry always disqualifies it — including `apps/web/src/lib/**`, whose
+   literal prefix looks exempt: a glob is a promise about files that do not exist yet and
+   cannot be proven screenless. The exemption is decided from `scope:` alone; there is no
+   opt-out key, and widening `scope` to buy it is the gate failing open.
+
+Both exceptions concern a **missing** `design_ref` only. A `design_ref` that IS set must
+still match one of the two shapes, exempt scope or not.
 
 **Existence is deliberately NOT checked.** An artifact URL is not reachable from CI, and
 a `Claude Design/` path is gitignored — `git cat-file` would fail on a file that is
@@ -722,7 +742,7 @@ runs, the log may point somewhere new. Chase the log, not the original diagnosis
 | `MODULE_UNKNOWN` | `module:` is not a directory under `apps/api/src/modules/` or `apps/web/src/pages/`, not a pipeline destination (`prisma`, `sot`, `e2e`, `ci`, `board`, `docs`, `pipeline`, `watcher`), and not created by this prompt's own `scope`. |
 | `MODULE_INVALID` | `module:` is not a single bare name — it becomes a commit scope, so no spaces, slashes or globs. |
 | `MODULE_KEY_TYPO` | A front-matter key one or two edits from `module` (`moduel:`, `modules:`). `parseFrontMatter` ignores unknown keys, so the line would otherwise vanish without a word. |
-| `UI_PROMPT_NEEDS_DESIGN_REF` | `scope` touches `apps/web/` but `design_ref` is missing/empty. Cite the artifact URL or the `Claude Design/` path the screen was drawn from. Exception: prompts with `fixes_pr:` are exempt (red-board fix). |
+| `UI_PROMPT_NEEDS_DESIGN_REF` | `scope` touches `apps/web/` but `design_ref` is missing/empty. Cite the artifact URL or the `Claude Design/` path the screen was drawn from. Exceptions: prompts with `fixes_pr:` (red-board fix), and a slice that changes no screen — every `apps/web/` entry a named file under `apps/web/src/lib/` (its `__tests__/` included) or exactly `apps/web/src/App.tsx`, with no wildcards. |
 
 ---
 

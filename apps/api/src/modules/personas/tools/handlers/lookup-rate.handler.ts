@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
-import { PrismaService } from "../../../../prisma/prisma.service";
+import { RateResolverService } from "../../../rates/rate-resolver.service";
+import type { ListedRate } from "../../../rates/rate-resolver.service";
 import type {
   ToolHandler,
   ToolHandlerContext,
@@ -272,7 +272,7 @@ export class LookupRateHandler implements ToolHandler<Input> {
     required: ["rateType"]
   };
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly rateResolver: RateResolverService) {}
 
   async execute(input: Input, ctx: ToolHandlerContext): Promise<ToolHandlerExecuteResult> {
     if (!this.hasViewPermission(ctx)) {
@@ -380,18 +380,29 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // less informative — the user wants to see "Floor + Asphalt" not "Any".
   private async lookupCutting(args: CuttingArgs): Promise<ToolHandlerExecuteResult> {
     const dbElevation = args.elevation === "wall" ? "Wall" : "Floor";
-    const candidates = await this.prisma.estimateCuttingRate.findMany({
-      where: {
-        equipment: { equals: args.equipment, mode: "insensitive" },
-        material: { in: [args.material, "Any"], mode: "insensitive" },
-        elevation: { in: [dbElevation, "Any"] },
-        depthMm: args.depthMm,
-        isActive: true
-      }
+    const allRows = await this.rateResolver.listRates("cutting");
+
+    // material: case-insensitive match for [args.material, "Any"]
+    // elevation: case-sensitive match for [dbElevation, "Any"] (as per original)
+    // equipment: case-insensitive exact match
+    // depthMm: exact number match
+    // isActive: filter active only
+    const candidates = allRows.filter((r) => {
+      if (!r.isActive) return false;
+      const k = r.keys as { equipment: string; elevation: string; material: string; depthMm: number };
+      if (k.equipment.toLowerCase() !== args.equipment.toLowerCase()) return false;
+      if (k.depthMm !== args.depthMm) return false;
+      const elevationMatch = k.elevation === dbElevation || k.elevation === "Any";
+      if (!elevationMatch) return false;
+      const materialLower = k.material.toLowerCase();
+      const materialMatch =
+        materialLower === args.material.toLowerCase() || materialLower === "any";
+      if (!materialMatch) return false;
+      return true;
     });
 
     if (candidates.length === 0) {
-      const available = await this.availableCuttingCombinations(args);
+      const available = this.availableCuttingCombinations(allRows, args);
       return errorResult(
         `No active cutting rate found for equipment="${args.equipment}", elevation=${args.elevation}, material="${args.material}", depth=${args.depthMm}mm. ` +
           (available
@@ -401,20 +412,21 @@ export class LookupRateHandler implements ToolHandler<Input> {
     }
 
     const best = pickMostSpecificCuttingRow(candidates, dbElevation, args.material);
+    const bestKeys = best.keys as { equipment: string; elevation: string; material: string; depthMm: number };
 
     return jsonResult({
       rateType: "cutting",
-      equipment: best.equipment,
+      equipment: bestKeys.equipment,
       elevation: args.elevation,
       material: args.material,
       depthMm: args.depthMm,
       matchedRow: {
-        equipment: best.equipment,
-        elevation: best.elevation,
-        material: best.material,
-        depthMm: best.depthMm
+        equipment: bestKeys.equipment,
+        elevation: bestKeys.elevation,
+        material: bestKeys.material,
+        depthMm: bestKeys.depthMm
       },
-      ratePerMetreAud: decimalToNumber(best.ratePerM),
+      ratePerMetreAud: best.value,
       unit: "AUD per linear metre",
       currency: "AUD",
       lookupSource: "live rates (estimate_cutting_rates table)"
@@ -425,25 +437,32 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // elevation multiplier in code. Return BOTH base and final so the
   // model can explain the calculation transparently.
   private async lookupCoreHole(args: CoreHoleArgs): Promise<ToolHandlerExecuteResult> {
-    const row = await this.prisma.estimateCoreHoleRate.findUnique({
-      where: { diameterMm: args.diameterMm }
+    const allRows = await this.rateResolver.listRates("core-hole");
+
+    // core-hole is pre-sorted by diameterMm asc (resolver line 837).
+    // Find the exact diameter, then check isActive.
+    const row = allRows.find((r) => {
+      const k = r.keys as { diameterMm: number };
+      return k.diameterMm === args.diameterMm;
     });
+
     if (!row || !row.isActive) {
-      const available = await this.availableCoreHoleDiameters();
+      const available = this.availableCoreHoleDiameters(allRows);
       return errorResult(
         `No active core hole rate found for diameter=${args.diameterMm}mm. ` +
           `Available diameters (mm): ${available || "none seeded"}.`
       );
     }
+
     const multiplier = CORE_HOLE_ELEVATION_MULTIPLIERS[args.elevation];
-    const baseRate = decimalToNumber(row.ratePerHole);
+    const baseRate = row.value;
     const finalRate = round2(baseRate * multiplier);
 
     return jsonResult({
       rateType: "core_hole",
       elevation: args.elevation,
       diameterMm: args.diameterMm,
-      matchedRow: { diameterMm: row.diameterMm },
+      matchedRow: { diameterMm: args.diameterMm },
       baseRateAud: baseRate,
       elevationMultiplier: multiplier,
       finalRateAud: finalRate,
@@ -462,28 +481,45 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // Labour: role is @unique on EstimateLabourRate. Match case-insensitive.
   // Return the requested shift's rate as the primary value, plus all
   // three shift rates for context.
+  //
+  // listRates("labour") returns 3 entries per DB row (day/night/weekend).
+  // De-dupe by rowId to find the row, then extract all three shift values.
   private async lookupLabour(args: LabourArgs): Promise<ToolHandlerExecuteResult> {
-    const row = await this.prisma.estimateLabourRate.findFirst({
-      where: {
-        role: { equals: args.role, mode: "insensitive" },
-        isActive: true
-      }
+    const allRows = await this.rateResolver.listRates("labour");
+
+    // Find any entry for the requested role (all three shifts share the same rowId).
+    const matching = allRows.filter((r) => {
+      if (!r.isActive) return false;
+      const k = r.keys as { role: string; shift: string };
+      return k.role.toLowerCase() === args.role.toLowerCase();
     });
-    if (!row) {
-      const available = await this.availableLabourRoles();
+
+    if (matching.length === 0) {
+      const available = this.availableLabourRoles(allRows);
       return errorResult(
         `No active labour rate found for role="${args.role}". ` +
           `Available roles: ${available || "none seeded"}.`
       );
     }
-    const dayRate = decimalToNumber(row.dayRate);
-    const nightRate = decimalToNumber(row.nightRate);
-    const weekendRate = decimalToNumber(row.weekendRate);
+
+    // Extract role name from the canonical row (use first match).
+    const roleName = (matching[0]!.keys as { role: string; shift: string }).role;
+
+    // Grab each shift value from the three entries.
+    const dayEntry = matching.find((r) => (r.keys as { shift: string }).shift === "day");
+    const nightEntry = matching.find((r) => (r.keys as { shift: string }).shift === "night");
+    const weekendEntry = matching.find((r) => (r.keys as { shift: string }).shift === "weekend");
+
+    const dayRate = dayEntry?.value ?? 0;
+    const nightRate = nightEntry?.value ?? 0;
+    const weekendRate = weekendEntry?.value ?? 0;
+
     const shiftRate =
       args.shift === "day" ? dayRate : args.shift === "night" ? nightRate : weekendRate;
+
     return jsonResult({
       rateType: "labour",
-      role: row.role,
+      role: roleName,
       shift: args.shift,
       rateAud: shiftRate,
       dayRateAud: dayRate,
@@ -499,25 +535,29 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // Return rate, billing unit, and fuelRate (the running fuel cost the
   // estimator adds on top of the hire rate when the item is operated).
   private async lookupPlant(args: PlantArgs): Promise<ToolHandlerExecuteResult> {
-    const row = await this.prisma.estimatePlantRate.findFirst({
-      where: {
-        item: { equals: args.item, mode: "insensitive" },
-        isActive: true
-      }
+    const allRows = await this.rateResolver.listRates("plant");
+
+    const row = allRows.find((r) => {
+      if (!r.isActive) return false;
+      const k = r.keys as { item: string };
+      return k.item.toLowerCase() === args.item.toLowerCase();
     });
+
     if (!row) {
-      const available = await this.availablePlantItems();
+      const available = this.availablePlantItems(allRows);
       return errorResult(
         `No active plant rate found for item="${args.item}". ` +
           `Available items: ${available || "none seeded"}.`
       );
     }
+
+    const k = row.keys as { item: string };
     return jsonResult({
       rateType: "plant",
-      item: row.item,
-      rateAud: decimalToNumber(row.rate),
+      item: k.item,
+      rateAud: row.value,
       unit: `AUD per ${row.unit}`,
-      fuelRateAud: decimalToNumber(row.fuelRate),
+      fuelRateAud: row.fuelRate ?? 0,
       currency: "AUD",
       lookupSource: "live rates (estimate_plant_rates table)"
     });
@@ -527,27 +567,34 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // matched case-insensitive. Return ton rate, load rate, billing unit,
   // and waste group classification.
   private async lookupWaste(args: WasteArgs): Promise<ToolHandlerExecuteResult> {
-    const row = await this.prisma.estimateWasteRate.findFirst({
-      where: {
-        wasteType: { equals: args.wasteType, mode: "insensitive" },
-        facility: { equals: args.facility, mode: "insensitive" },
-        isActive: true
-      }
+    const allRows = await this.rateResolver.listRates("waste");
+
+    const row = allRows.find((r) => {
+      if (!r.isActive) return false;
+      const k = r.keys as { wasteType: string; facility: string };
+      return (
+        k.wasteType.toLowerCase() === args.wasteType.toLowerCase() &&
+        k.facility.toLowerCase() === args.facility.toLowerCase()
+      );
     });
+
     if (!row) {
-      const available = await this.availableWasteCombinations();
+      const available = this.availableWasteCombinations(allRows);
       return errorResult(
         `No active waste rate found for wasteType="${args.wasteType}", facility="${args.facility}". ` +
           `Available combinations: ${available || "none seeded"}.`
       );
     }
+
+    const k = row.keys as { wasteType: string; facility: string };
+    const info = row.info as { wasteGroup: string | null; loadRate: number };
     return jsonResult({
       rateType: "waste",
-      wasteType: row.wasteType,
-      facility: row.facility,
-      wasteGroup: row.wasteGroup,
-      tonRateAud: decimalToNumber(row.tonRate),
-      loadRateAud: decimalToNumber(row.loadRate),
+      wasteType: k.wasteType,
+      facility: k.facility,
+      wasteGroup: info.wasteGroup,
+      tonRateAud: row.value,
+      loadRateAud: info.loadRate,
       unit: row.unit,
       currency: "AUD",
       lookupSource: "live rates (estimate_waste_rates table)"
@@ -557,23 +604,27 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // Fuel: item is @unique on EstimateFuelRate. Match case-insensitive.
   // Return rate and its billing unit (typically per litre).
   private async lookupFuel(args: FuelArgs): Promise<ToolHandlerExecuteResult> {
-    const row = await this.prisma.estimateFuelRate.findFirst({
-      where: {
-        item: { equals: args.item, mode: "insensitive" },
-        isActive: true
-      }
+    const allRows = await this.rateResolver.listRates("fuel");
+
+    const row = allRows.find((r) => {
+      if (!r.isActive) return false;
+      const k = r.keys as { item: string };
+      return k.item.toLowerCase() === args.item.toLowerCase();
     });
+
     if (!row) {
-      const available = await this.availableFuelItems();
+      const available = this.availableFuelItems(allRows);
       return errorResult(
         `No active fuel rate found for item="${args.item}". ` +
           `Available items: ${available || "none seeded"}.`
       );
     }
+
+    const k = row.keys as { item: string };
     return jsonResult({
       rateType: "fuel",
-      item: row.item,
-      rateAud: decimalToNumber(row.rate),
+      item: k.item,
+      rateAud: row.value,
       unit: `AUD per ${row.unit}`,
       currency: "AUD",
       lookupSource: "live rates (estimate_fuel_rates table)"
@@ -582,24 +633,29 @@ export class LookupRateHandler implements ToolHandler<Input> {
 
   // Enclosure: enclosureType is @unique on EstimateEnclosureRate. Match
   // case-insensitive. Return rate and its billing unit.
+  // Resolver pre-filters to isActive:true; filtering again is a harmless no-op.
   private async lookupEnclosure(args: EnclosureArgs): Promise<ToolHandlerExecuteResult> {
-    const row = await this.prisma.estimateEnclosureRate.findFirst({
-      where: {
-        enclosureType: { equals: args.enclosureType, mode: "insensitive" },
-        isActive: true
-      }
+    const allRows = await this.rateResolver.listRates("enclosure");
+
+    const row = allRows.find((r) => {
+      if (!r.isActive) return false;
+      const k = r.keys as { enclosureType: string };
+      return k.enclosureType.toLowerCase() === args.enclosureType.toLowerCase();
     });
+
     if (!row) {
-      const available = await this.availableEnclosureTypes();
+      const available = this.availableEnclosureTypes(allRows);
       return errorResult(
         `No active enclosure rate found for enclosureType="${args.enclosureType}". ` +
           `Available types: ${available || "none seeded"}.`
       );
     }
+
+    const k = row.keys as { enclosureType: string };
     return jsonResult({
       rateType: "enclosure",
-      enclosureType: row.enclosureType,
-      rateAud: decimalToNumber(row.rate),
+      enclosureType: k.enclosureType,
+      rateAud: row.value,
       unit: `AUD per ${row.unit}`,
       currency: "AUD",
       lookupSource: "live rates (estimate_enclosure_rates table)"
@@ -610,27 +666,40 @@ export class LookupRateHandler implements ToolHandler<Input> {
   // active rows can match. Use a case-insensitive substring match (the
   // model often won't know the exact catalogue wording) and return all
   // matches so the user can pick.
+  // Resolver pre-filters to isActive:true; filtering again is a harmless no-op.
   private async lookupOther(args: OtherArgs): Promise<ToolHandlerExecuteResult> {
-    const rows = await this.prisma.cuttingOtherRate.findMany({
-      where: {
-        description: { contains: args.description, mode: "insensitive" },
-        isActive: true
-      },
-      orderBy: [{ sortOrder: "asc" }, { description: "asc" }]
-    });
-    if (rows.length === 0) {
-      const available = await this.availableOtherDescriptions();
+    const allRows = await this.rateResolver.listRates("other-rates");
+
+    // Substring match, case-insensitive. Re-sort: sortOrder asc, then description asc.
+    const matched = allRows
+      .filter((r) => {
+        if (!r.isActive) return false;
+        const k = r.keys as { description: string };
+        return String(k.description).toLowerCase().includes(args.description.toLowerCase());
+      })
+      .sort((a, b) => {
+        const aSortOrder = a.sortOrder ?? 0;
+        const bSortOrder = b.sortOrder ?? 0;
+        if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        const aDesc = String((a.keys as { description: string }).description);
+        const bDesc = String((b.keys as { description: string }).description);
+        return aDesc.localeCompare(bDesc);
+      });
+
+    if (matched.length === 0) {
+      const available = this.availableOtherDescriptions(allRows);
       return errorResult(
         `No active other rate found matching description="${args.description}". ` +
           `Available descriptions: ${available || "none seeded"}.`
       );
     }
+
     return jsonResult({
       rateType: "other",
       searchDescription: args.description,
-      matches: rows.map((r) => ({
-        description: r.description,
-        rateAud: decimalToNumber(r.rate),
+      matches: matched.map((r) => ({
+        description: (r.keys as { description: string }).description,
+        rateAud: r.value,
         unit: `AUD per ${r.unit}`
       })),
       currency: "AUD",
@@ -638,89 +707,149 @@ export class LookupRateHandler implements ToolHandler<Input> {
     });
   }
 
-  private async availableCuttingCombinations(args: CuttingArgs): Promise<string | null> {
-    const rows = await this.prisma.estimateCuttingRate.findMany({
-      where: {
-        equipment: { equals: args.equipment, mode: "insensitive" },
-        isActive: true
-      },
-      select: { elevation: true, material: true, depthMm: true },
-      orderBy: [{ elevation: "asc" }, { material: "asc" }, { depthMm: "asc" }],
-      take: 50
-    });
+  private availableCuttingCombinations(allRows: ListedRate[], args: CuttingArgs): string | null {
+    const rows = allRows
+      .filter((r) => {
+        if (!r.isActive) return false;
+        const k = r.keys as { equipment: string };
+        return k.equipment.toLowerCase() === args.equipment.toLowerCase();
+      })
+      .sort((a, b) => {
+        const ak = a.keys as { elevation: string; material: string; depthMm: number };
+        const bk = b.keys as { elevation: string; material: string; depthMm: number };
+        if (ak.elevation < bk.elevation) return -1;
+        if (ak.elevation > bk.elevation) return 1;
+        if (ak.material < bk.material) return -1;
+        if (ak.material > bk.material) return 1;
+        return ak.depthMm - bk.depthMm;
+      })
+      .slice(0, 50);
+
     if (rows.length === 0) return null;
     return rows
-      .map((r) => `${r.elevation}/${r.material}/${r.depthMm}mm`)
+      .map((r) => {
+        const k = r.keys as { elevation: string; material: string; depthMm: number };
+        return `${k.elevation}/${k.material}/${k.depthMm}mm`;
+      })
       .join(", ");
   }
 
-  private async availableCoreHoleDiameters(): Promise<string> {
-    const rows = await this.prisma.estimateCoreHoleRate.findMany({
-      where: { isActive: true },
-      select: { diameterMm: true },
-      orderBy: { diameterMm: "asc" }
-    });
-    return rows.map((r) => r.diameterMm).join(", ");
+  private availableCoreHoleDiameters(allRows: ListedRate[]): string {
+    // allRows from "core-hole" are already ordered by diameterMm asc (resolver).
+    return allRows
+      .filter((r) => r.isActive)
+      .map((r) => (r.keys as { diameterMm: number }).diameterMm)
+      .join(", ");
   }
 
-  private async availableLabourRoles(): Promise<string> {
-    const rows = await this.prisma.estimateLabourRate.findMany({
-      where: { isActive: true },
-      select: { role: true },
-      orderBy: [{ sortOrder: "asc" }, { role: "asc" }],
-      take: 50
+  private availableLabourRoles(allRows: ListedRate[]): string {
+    // De-dupe by rowId to get one entry per role, then sort: sortOrder asc, role asc.
+    const seen = new Set<string>();
+    const unique: ListedRate[] = [];
+    for (const r of allRows) {
+      if (!r.isActive) continue;
+      if (!seen.has(r.rowId)) {
+        seen.add(r.rowId);
+        unique.push(r);
+      }
+    }
+    unique.sort((a, b) => {
+      const aSortOrder = a.sortOrder ?? 0;
+      const bSortOrder = b.sortOrder ?? 0;
+      if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+      const aRole = String((a.keys as { role: string }).role);
+      const bRole = String((b.keys as { role: string }).role);
+      return aRole.localeCompare(bRole);
     });
-    return rows.map((r) => r.role).join(", ");
+    return unique
+      .slice(0, 50)
+      .map((r) => (r.keys as { role: string }).role)
+      .join(", ");
   }
 
-  private async availablePlantItems(): Promise<string> {
-    const rows = await this.prisma.estimatePlantRate.findMany({
-      where: { isActive: true },
-      select: { item: true },
-      orderBy: [{ sortOrder: "asc" }, { item: "asc" }],
-      take: 50
-    });
-    return rows.map((r) => r.item).join(", ");
+  private availablePlantItems(allRows: ListedRate[]): string {
+    return allRows
+      .filter((r) => r.isActive)
+      .sort((a, b) => {
+        const aSortOrder = a.sortOrder ?? 0;
+        const bSortOrder = b.sortOrder ?? 0;
+        if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        const aItem = String((a.keys as { item: string }).item);
+        const bItem = String((b.keys as { item: string }).item);
+        return aItem.localeCompare(bItem);
+      })
+      .slice(0, 50)
+      .map((r) => (r.keys as { item: string }).item)
+      .join(", ");
   }
 
-  private async availableWasteCombinations(): Promise<string> {
-    const rows = await this.prisma.estimateWasteRate.findMany({
-      where: { isActive: true },
-      select: { wasteType: true, facility: true },
-      orderBy: [{ sortOrder: "asc" }, { wasteType: "asc" }, { facility: "asc" }],
-      take: 50
-    });
-    return rows.map((r) => `${r.wasteType} @ ${r.facility}`).join(", ");
+  private availableWasteCombinations(allRows: ListedRate[]): string {
+    return allRows
+      .filter((r) => r.isActive)
+      .sort((a, b) => {
+        const aSortOrder = a.sortOrder ?? 0;
+        const bSortOrder = b.sortOrder ?? 0;
+        if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        const ak = a.keys as { wasteType: string; facility: string };
+        const bk = b.keys as { wasteType: string; facility: string };
+        if (ak.wasteType < bk.wasteType) return -1;
+        if (ak.wasteType > bk.wasteType) return 1;
+        return ak.facility.localeCompare(bk.facility);
+      })
+      .slice(0, 50)
+      .map((r) => {
+        const k = r.keys as { wasteType: string; facility: string };
+        return `${k.wasteType} @ ${k.facility}`;
+      })
+      .join(", ");
   }
 
-  private async availableFuelItems(): Promise<string> {
-    const rows = await this.prisma.estimateFuelRate.findMany({
-      where: { isActive: true },
-      select: { item: true },
-      orderBy: [{ sortOrder: "asc" }, { item: "asc" }],
-      take: 50
-    });
-    return rows.map((r) => r.item).join(", ");
+  private availableFuelItems(allRows: ListedRate[]): string {
+    return allRows
+      .filter((r) => r.isActive)
+      .sort((a, b) => {
+        const aSortOrder = a.sortOrder ?? 0;
+        const bSortOrder = b.sortOrder ?? 0;
+        if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        const aItem = String((a.keys as { item: string }).item);
+        const bItem = String((b.keys as { item: string }).item);
+        return aItem.localeCompare(bItem);
+      })
+      .slice(0, 50)
+      .map((r) => (r.keys as { item: string }).item)
+      .join(", ");
   }
 
-  private async availableEnclosureTypes(): Promise<string> {
-    const rows = await this.prisma.estimateEnclosureRate.findMany({
-      where: { isActive: true },
-      select: { enclosureType: true },
-      orderBy: [{ sortOrder: "asc" }, { enclosureType: "asc" }],
-      take: 50
-    });
-    return rows.map((r) => r.enclosureType).join(", ");
+  private availableEnclosureTypes(allRows: ListedRate[]): string {
+    return allRows
+      .filter((r) => r.isActive)
+      .sort((a, b) => {
+        const aSortOrder = a.sortOrder ?? 0;
+        const bSortOrder = b.sortOrder ?? 0;
+        if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        const aEt = String((a.keys as { enclosureType: string }).enclosureType);
+        const bEt = String((b.keys as { enclosureType: string }).enclosureType);
+        return aEt.localeCompare(bEt);
+      })
+      .slice(0, 50)
+      .map((r) => (r.keys as { enclosureType: string }).enclosureType)
+      .join(", ");
   }
 
-  private async availableOtherDescriptions(): Promise<string> {
-    const rows = await this.prisma.cuttingOtherRate.findMany({
-      where: { isActive: true },
-      select: { description: true },
-      orderBy: [{ sortOrder: "asc" }, { description: "asc" }],
-      take: 50
-    });
-    return rows.map((r) => r.description).join(", ");
+  private availableOtherDescriptions(allRows: ListedRate[]): string {
+    return allRows
+      .filter((r) => r.isActive)
+      .sort((a, b) => {
+        const aSortOrder = a.sortOrder ?? 0;
+        const bSortOrder = b.sortOrder ?? 0;
+        if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        const aDesc = String((a.keys as { description: string }).description);
+        const bDesc = String((b.keys as { description: string }).description);
+        return aDesc.localeCompare(bDesc);
+      })
+      .slice(0, 50)
+      .map((r) => (r.keys as { description: string }).description)
+      .join(", ");
   }
 }
 
@@ -835,22 +964,19 @@ function parseOtherInput(raw: OtherInput | undefined): OtherArgs | string {
   return { description: description.trim() };
 }
 
-function pickMostSpecificCuttingRow<
-  T extends { elevation: string; material: string }
->(rows: T[], requestedElevation: string, requestedMaterial: string): T {
-  const score = (r: T) => {
+function pickMostSpecificCuttingRow(
+  rows: ListedRate[],
+  requestedElevation: string,
+  requestedMaterial: string
+): ListedRate {
+  const score = (r: ListedRate) => {
     let s = 0;
-    if (r.elevation.toLowerCase() === requestedElevation.toLowerCase()) s += 2;
-    if (r.material.toLowerCase() === requestedMaterial.toLowerCase()) s += 1;
+    const k = r.keys as { elevation: string; material: string };
+    if (k.elevation.toLowerCase() === requestedElevation.toLowerCase()) s += 2;
+    if (k.material.toLowerCase() === requestedMaterial.toLowerCase()) s += 1;
     return s;
   };
   return rows.slice().sort((a, b) => score(b) - score(a))[0]!;
-}
-
-function decimalToNumber(value: Prisma.Decimal | number | string): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") return parseFloat(value);
-  return value.toNumber();
 }
 
 function round2(value: number): number {

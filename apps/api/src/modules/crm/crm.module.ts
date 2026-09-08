@@ -6,6 +6,7 @@ import { CrmService } from "./crm.service";
 import { AccountsModule } from "./accounts/accounts.module";
 import { PipelineDashboardModule } from "./pipeline/pipeline-dashboard.module";
 import { RelationshipsModule } from "./relationships/relationships.module";
+import { RemindersModule } from "./reminders/reminders.module";
 
 /**
  * CRM module — Lead + Opportunity pipeline + Account spine (CRM-1) +
@@ -20,12 +21,30 @@ import { RelationshipsModule } from "./relationships/relationships.module";
  * over the existing win/loss capture (TenderOutcome) and Opportunity/Account
  * roll-ups.
  *
+ * TR-1 adds RemindersModule (`crm/reminders/`) — the admin-configurable
+ * reminder policy that TR-2's cron will read. It is a sibling of
+ * `crm/comms/`, not a part of it: reminders scan CommTask/Tender dates, they
+ * do not create threads.
+ *
  * Permissions: `crm.view` / `crm.manage` (registered in permission-registry).
  */
 @Module({
-  imports: [PrismaModule, TenderingModule, AccountsModule, RelationshipsModule, PipelineDashboardModule],
+  imports: [
+    PrismaModule,
+    TenderingModule,
+    AccountsModule,
+    RelationshipsModule,
+    PipelineDashboardModule,
+    RemindersModule
+  ],
   controllers: [CrmController],
   providers: [CrmService],
-  exports: [CrmService, AccountsModule, RelationshipsModule, PipelineDashboardModule]
+  exports: [
+    CrmService,
+    AccountsModule,
+    RelationshipsModule,
+    PipelineDashboardModule,
+    RemindersModule
+  ]
 })
 export class CrmModule {}

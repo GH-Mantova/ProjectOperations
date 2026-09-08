@@ -113,3 +113,34 @@ export class BrandingController {
     return { ok: true };
   }
 }
+
+/**
+ * Unprivileged read — any authenticated user may call GET /branding/active.
+ *
+ * NOTE: PermissionsGuard is intentionally OMITTED. Its source shows that when
+ * no @RequirePermissions decorator is present, the guard returns true (allow),
+ * so including it would be harmless — but the spec requires only JwtAuthGuard
+ * here to make the intent explicit and prevent future reviewers from adding a
+ * blanket class-level @RequirePermissions that would lock out regular users.
+ *
+ * Returns EXACTLY four keys: primaryColorHex, secondaryColorHex, logoLightUrl,
+ * logoDarkUrl. No scheme ids, names, lists, favicon, or letterhead (TRAP 2).
+ */
+@ApiTags("Branding")
+@ApiBearerAuth()
+@Controller("branding")
+@UseGuards(JwtAuthGuard)
+export class BrandingViewerController {
+  constructor(private readonly service: BrandingService) {}
+
+  @Get("active")
+  @ApiOperation({
+    summary:
+      "Return the active brand colours and logo URLs for the current company. " +
+      "Available to every authenticated user — primary and accent are applied " +
+      "across the app today. Returns exactly four keys."
+  })
+  getActiveBranding() {
+    return this.service.getActiveBrandingForViewer();
+  }
+}

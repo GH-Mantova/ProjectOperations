@@ -233,6 +233,49 @@ export class BrandingService {
     }
   }
 
+  /**
+   * Narrow read for every authenticated user — returns exactly four keys.
+   * Precedence: active scheme first, then legacy CompanyProfile columns.
+   * Never exposes scheme ids, names, lists, favicon, or letterhead.
+   */
+  async getActiveBrandingForViewer(): Promise<{
+    primaryColorHex: string | null;
+    secondaryColorHex: string | null;
+    logoLightUrl: string | null;
+    logoDarkUrl: string | null;
+  }> {
+    const profile = await this.prisma.companyProfile.findUnique({
+      where: { id: COMPANY_PROFILE_ID },
+      select: {
+        primaryColorHex: true,
+        secondaryColorHex: true,
+        logoLightUrl: true,
+        logoDarkUrl: true,
+        activeColorScheme: {
+          select: {
+            primaryColorHex: true,
+            secondaryColorHex: true
+          }
+        }
+      }
+    });
+    if (!profile) {
+      return {
+        primaryColorHex: null,
+        secondaryColorHex: null,
+        logoLightUrl: null,
+        logoDarkUrl: null
+      };
+    }
+    const scheme = profile.activeColorScheme;
+    return {
+      primaryColorHex: scheme?.primaryColorHex ?? profile.primaryColorHex,
+      secondaryColorHex: scheme?.secondaryColorHex ?? profile.secondaryColorHex,
+      logoLightUrl: profile.logoLightUrl,
+      logoDarkUrl: profile.logoDarkUrl
+    };
+  }
+
   private assertHex(value: string, field: string) {
     if (!HEX_COLOR.test(value)) {
       throw new BadRequestException(

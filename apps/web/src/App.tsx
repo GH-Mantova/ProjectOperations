@@ -126,6 +126,7 @@ import { OfflineIndicator } from "./offline/OfflineIndicator";
 import { InstallPrompt } from "./offline/InstallPrompt";
 import { UpdatePromptToast } from "./pwa/UpdatePromptToast";
 import { ConfirmProvider } from "./hooks/useConfirm";
+import { BrandSchemeProvider } from "./lib/brand-scheme";
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -243,6 +244,7 @@ function DraftPurgeRunner() {
 export function App() {
   return (
     <AuthProvider>
+      <BrandSchemeProvider>
       <DraftPurgeRunner />
       <UpdatePromptToast />
       {/* PR F FIX 1 — OfflineProvider scoped to /field/* only. Desktop and
@@ -782,6 +784,7 @@ export function App() {
         </Routes>
         </ConfirmProvider>
       </PortalAuthProvider>
+      </BrandSchemeProvider>
     </AuthProvider>
   );
 }

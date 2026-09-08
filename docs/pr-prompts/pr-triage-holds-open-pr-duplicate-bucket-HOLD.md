@@ -93,21 +93,35 @@ rate that swamps it when run against **merged** PRs. **This bucket must query `-
    `gh pr list --state open --json number,title,headRefName,files`. Assign the result to a
    variable and count it with `@($rows).Count` — never `@(ConvertFrom-Json ...).Count`, which
    answers `1` for an empty array and `1` for a forty-element one (DOCTRINE 9.4).
-2. Parse each admitted prompt's `scope:` list from its front matter and mark the prompt
-   **OPEN_PR_DUPLICATE** when every `scope:` entry is present in one open PR's file list. Report a
-   partial match (at least two entries, and at least 60 percent) as **OPEN_PR_OVERLAP**, in the
-   same bucket but named differently — an overlap is a question, a full match is an answer.
-3. Print a new heading `DUPLICATES OF AN OPEN PR — DO NOT ARM`, one line per prompt naming the PR
-   number and the match ratio, and **remove those prompts from the CANDIDATES heading** so the
-   arming decision cannot read them as fresh work. Leave the file on disk untouched.
-4. Carry the literal token `OPEN_PR_DUPLICATE_V1` in a comment beside the new block, so the
+2. Parse each admitted prompt's `scope:` list from its front matter and match it against each open
+   PR's file list under **DOCTRINE 10.6's CORRECTED rule (2026-09-07)**, not the earlier full-match
+   one. Two halves, both load-bearing, both measured:
+   - **A `scope:` entry ending in `/` is a DIRECTORY and matches as a PREFIX** of a PR file path.
+     An exact-path set test can never match a directory-form entry, so a full-match rule silently
+     clears a `gate_allow: migrations` prompt — Marco's — for arming, which is the exact class this
+     bucket exists to protect. Measured on `pr-rates-plant-fuel-column` vs `#1746`: 3 of 4, the
+     miss being the entry `apps/api/prisma/migrations/`.
+   - **ANY overlap of one entry or more makes the prompt a CANDIDATE for duplication — never a
+     verdict, in either direction.** For a one-file `scope:` the test's precision is ZERO by
+     construction: three prompts sharing the sole entry `scripts/pipeline/status-sweep.ps1` each
+     scored a perfect 1/1 against `#1750` and only one of them was that PR's work.
+3. Print a new heading `POSSIBLE DUPLICATES OF AN OPEN PR — CONFIRM BEFORE ARMING`, one line per
+   prompt naming the PR number, the matched entries and the match ratio, and **leave those prompts
+   in the CANDIDATES heading, annotated**. Do NOT remove them: removing a prompt on an unconfirmed
+   overlap converts a candidate into a verdict, which is precisely what DOCTRINE 10.6 forbids, and
+   over a one-entry scope it would silently hide real work on a test with no precision at all.
+   Leave the file on disk untouched.
+4. **Print the confirmation step on the same line**, because this bucket is deliberately not an
+   answer: confirm on the prompt's own **marker string** appearing in the PR title or body — never
+   on the head branch, which the prompt asserts nowhere.
+5. Carry the literal token `OPEN_PR_DUPLICATE_V1` in a comment beside the new block, so the
    premise above can die.
-5. **Fail loud, never quiet.** If the `gh` call fails or returns nothing, print
+6. **Fail loud, never quiet.** If the `gh` call fails or returns nothing, print
    `OPEN_PR_DUPLICATE: UNKNOWN — could not read the open board` and leave every prompt in the
    bucket the linter put it in. A lookup failure must never silently empty CANDIDATES, and it must
-   never silently pass a duplicate through as a candidate (DOCTRINE 7, and 9.6 — an empty result is
+   never silently pass a duplicate through unannotated (DOCTRINE 7, and 9.6 — an empty result is
    not an empty world).
-6. Include a POSITIVE control in the script's own output: print the number of open PRs read and the
+7. Include a POSITIVE control in the script's own output: print the number of open PRs read and the
    number of admitted prompts scanned. A bucket that reports zero duplicates while having read zero
    PRs is indistinguishable from a clean board, which is the failure this whole section exists for.
 
@@ -115,8 +129,13 @@ rate that swamps it when run against **merged** PRs. **This bucket must query `-
 
 - `pnpm build` and `pnpm lint` pass.
 - `grep -q "OPEN_PR_DUPLICATE_V1" scripts/pipeline/triage-holds.ps1` succeeds.
-- Running the script prints the new heading, the PR count and the admitted-prompt count, and the
-  CANDIDATES total drops by exactly the number of prompts moved into the new bucket.
+- Running the script prints the new heading, the PR count and the admitted-prompt count.
+- **The CANDIDATES total is UNCHANGED.** Annotated prompts stay in it; the new heading reports, it
+  does not filter. A run in which CANDIDATES shrinks has implemented the pre-correction rule.
+- **The two DOCTRINE 10.6 shapes are both exercised, and this is the falsifying probe for step 2:**
+  a prompt whose `scope:` names a DIRECTORY is matched against a PR carrying a file nested inside
+  it (must match), and a prompt whose `scope:` names a single file is matched 1/1 (must appear as a
+  candidate, annotated, and must NOT be removed from CANDIDATES).
 - Chain siblings whose own gate is unreleased are absent from the new bucket, because the bucket is
   computed only over prompts the linter admitted.
 - With `gh` unavailable (simulate by pointing `PATH` away from it), the script prints the UNKNOWN

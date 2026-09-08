@@ -64,3 +64,4 @@
 2026-09-07T01:22:59Z  RENAMED  fix-1740-jest-cannot-parse-puppeteer-25-esm-ready.md -> pr-fix-1740-jest-cannot-parse-puppeteer-25-esm-ready.md  reason=READY_PATTERN /^(pr|rev)-.*-ready.md$/i could never dequeue the fix- prefix  actor=station-00.0107  pid=464
 2026-09-07T07:20:53Z  ARMED  pr-triageholds-s2-env-os-is-empty-in-a-station-shell  escalates=false  actor=station-00.0708  by=Marco@LAPTOP-E6NHU4E4  pid=12928  caller=powershell.exe:15548
 2026-09-07T23:32:16Z  ARMED  pr-doctrine-s9-powershell-readonly-automatic-variables  escalates=false  actor=station-00.sched2340  by=Marco@LAPTOP-E6NHU4E4  pid=20008  caller=powershell.exe:14816
+2026-09-08T05:45:21Z  ARMED  pr-stationcaps-blind-run-names-one-mount  escalates=false  actor=station-00.sched0509  by=Marco@LAPTOP-E6NHU4E4  pid=9260  caller=powershell.exe:31900

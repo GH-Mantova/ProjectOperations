@@ -364,6 +364,8 @@ leaves no signature cannot reach `main`. That is the CI gate section 5's own pro
 durable signature. A scheduled run finding an unattributed merge should read that as a **defect in
 this lane**, not as an unknown actor.
 
+🔧 **The receipt's own AUTHORING commit carries a discriminating git identity, and `mergedBy` is not the last word — see `DOCTRINE.md` section 10.2.1 for the measured table and its falsifying probe. Do not restate it here** (section 3's no-paraphrase rule).
+
 ## 6. When each station should be called
 
 | Station | Cadence | Call it when |

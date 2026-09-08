@@ -240,3 +240,33 @@ same way, or if the file's content is ever needed.
 - **Did not compare a piped hash.** `git diff --numstat origin/main -- <path>` was used throughout.
 - **Did not edit `/sot/`,** and did not touch Azure, Entra or SharePoint — not once, not
   read-modify-write.
+
+## ADDENDUM — 2026-09-08T00:36Z–00:50Z (same run, later measurements)
+
+`#1798` merged at **00:36:05Z** (`87e47607`), and the dev tree fast-forwarded onto it cleanly — all
+three read-backs the station doc requires: `git rev-list --left-right --count HEAD...origin/main`
+→ `0 0`, `git diff --numstat` → EMPTY, `git diff --cached --name-status` → EMPTY. No disk-copy cure
+was needed because the breadcrumb was written inside the worktree (cure 1).
+
+### F8 — ACTIONED — `#1775` merged mid-run, which made a second prompt SPENT within the hour
+
+**[MEASURED]** `#1775` merged at **2026-09-08T00:2xZ** as `b34a8d86` while this run was building its
+board PR — Marco's own merge, the third of the three PRs the 2310 collect reported open. Its work is
+exactly the scope of `pr-tipid-s2-write-the-ids-backfill-and-admin-HOLD.md`, which the 2310 run
+correctly refused to retire while the PR was open (`superseded/` only once it MERGES).
+
+Re-linted after the merge: `node scripts/pipeline/lint-prompt.mjs
+docs/pr-prompts/pr-tipid-s2-write-the-ids-backfill-and-admin-HOLD.md` → **`STALE`, exit 3**,
+*"Premise no longer holds … The work is ALREADY DONE."* That is the SPENT bucket, and the retirement
+is now due.
+
+**DISPOSITION: ACTIONED** — retired to `docs/pr-prompts/superseded/` in this PR. With it, all three
+of the do-not-arm names this station has been carrying since 2026-09-07 are discharged: two by their
+PRs merging, one because its content shipped while its prompt stayed tracked. **The board's
+do-not-arm carry-forward is now empty.**
+
+### What this does not change
+
+The arming picture is unaffected: `pr-tipid-s2` was never armable, and removing it from the board
+leaves the same measurement — no HOLD on this board can enter the `tests-docs` lane. `#1796` is still
+open, still Marco's, still untouched by this station.

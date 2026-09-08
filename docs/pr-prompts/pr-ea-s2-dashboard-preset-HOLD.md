@@ -16,6 +16,7 @@ rollback_strategy: >-
   UPDATE ... SET and no migration. Revert the PR to remove the preset row; no
   existing dashboard, report definition or user data is touched either way.
 requires_on_main: 'apps/api/src/modules/reporting/estimating-analytics-report.definitions.ts :: estimator-turnaround'
+design_ref: https://claude.ai/code/artifact/10c03a71-0346-4a9e-8b07-7974fd191544
 ---
 <!-- escalates was false until 2026-08-23. lint-prompt.mjs DESTRUCTIVE_MUST_ESCALATE fires
      because `scope` reaches apps/api/prisma/seed.ts AND the body mentions "backfill" in the
@@ -32,6 +33,121 @@ This is **EA-2**, the second and final slice of the estimating-analytics program
 **assembles** the existing shipped win-rate reports + EA-1's two new definitions into a
 curated **`Dashboard { scope: "GLOBAL" }`** row via the existing dashboard mechanism. It is
 **NOT** a bespoke page and **NOT** a pivot builder.
+
+---
+
+# AMENDMENT 2026-09-08 — READ THIS BEFORE THE BODY BELOW
+
+Marco reviewed and approved the mock-up at `design_ref` on 2026-09-08 and said, in his own
+words: *"I like the way the Estimating Analytics looks and feels. Make sure when staging this
+PR, it reflects the UI/UX you built on the mock-up."*
+
+**The mock-up is binding for UI/UX.** Where the body below and the mock-up disagree about what
+the screen looks like or how it behaves, the mock-up wins. Open it before you write any code and
+read its on-page grounding panel — it carries every measurement behind the sections that follow,
+with file:line.
+
+The body below is **retained as the record**, not erased. Four passages in it are superseded.
+
+## A. The body seeds the WRONG TABLE. This blocks the whole slice.
+
+The body says to seed `Dashboard` + `DashboardWidget` modelled on `seed-home-dashboard`. **That
+subsystem cannot render a report widget at all.** `dashboards.service.ts:206-226` switches on a
+fixed `kpi|bar_chart|line_chart|donut_chart|chart|table` list against a hardcoded `metricKey`
+set and returns `{ type: "unsupported" }` for anything else, which `GlobalDashboardPage.tsx`
+prints as "not renderable here".
+
+Report widgets live on **`UserDashboard`** (`schema.prisma:2846`), seeded by
+`seedUserDashboards()` at `seed.ts:3900`, rendered by `DashboardCanvas` at `/dashboards/:id`.
+Config shape is
+`{ period: WidgetPeriod, widgets: WidgetConfigEntry[], dashboardFilters?: WidgetFilters }`
+(`apps/web/src/dashboards/types.ts:25-44`).
+
+**Supersedes:** "Migration gate", "Grounded state on main" bullets 1-2, and "What to build" §1.
+The stable id and the `isDefault: false` rule still stand.
+
+## B. The widget shape in "What to build" §1 does not exist
+
+`type: "report-chart"` with `config: { reportKey }` is not a shape this repo accepts. The report
+key lives **inside the type string** — `report:chart:<key>` / `report:table:<key>`
+(`reportRegistry.ts:117,132`) — and `WidgetSubConfig` is `{ period?, filters?, fields? }`. There
+is no `reportKey` config field anywhere.
+
+**`tender-winloss-by-estimator` does not exist.** The report that does that job is
+**`tender-win-rate`** ("Tender win rate by estimator"), `reporting.service.ts:203`.
+
+**Layout trap:** `registerReportWidgets` defaults every report widget to `colSpan: 4`. A preset
+that omits `colSpan` renders as nine stacked full-width cards. The mock-up's spans are
+`w4, w2, w2, w2, w2, w2, w2, w4, w2, w2` — use them.
+
+## C. "Do NOT expose one estimator's numbers" is NOT satisfied by the body's §2
+
+Self-filtering exists **only** in EA-1's two definitions. `tender-win-rate` — widget 1 in the
+body's own list — and all five `tender-winloss-*` never read `currentUser`. Their only guard is
+`@RequirePermissions("reporting.view")`. As the body specifies it, an estimator-only user sees
+every colleague's win rate, in direct breach of Decision EA-D5 stated further down.
+
+Worse, `selfFilterClause` tests `!isSuperUser`, not "estimator-only" — so an estimating manager
+who is not a super-user is silently self-filtered, the opposite of this dashboard's intent.
+
+**This needs Marco's ruling before the slice is armed.** Do not paper over it.
+
+## D. Two live defects the mock-up surfaced, both outside this scope
+
+1. **`config.period` never reaches a report widget.** Neither `reportChartWidget.tsx` nor
+   `reportTableWidget.tsx` mentions `period`, `resolvePeriod` or `globalPeriod`. Every report
+   widget runs **unwindowed, over all time**, while the picker above says "Last 30 days".
+2. **Setting a Period on a report widget 400s it.** `buildConfigSchema` emits a `period` field
+   (`reportRegistry.ts:66`), the settings popover writes it into `payload.filters`, `buildQuery`
+   serialises it — but `ReportRunQueryDto` has no `period` and the global pipe runs
+   `whitelist: true, forbidNonWhitelisted: true` (`bootstrap/create-app.ts:21-27`).
+
+Fixing (2) needs `apps/api/src/modules/reporting/` — **not in this prompt's `scope`.**
+
+## E. The UI/UX this PR must deliver, per the mock-up
+
+All of the following sit inside `apps/web/src/dashboards/**`, which IS in scope:
+
+- **A view-time filter bar** writing straight into `dashboardFilters`: the existing period
+  presets, plus real `from`/`to` date inputs, `clientId` and `estimatorId`. **No schema change
+  is needed** — `WidgetFilters` is `Record<string, unknown>` (`types.ts:15`) and
+  `dashboardFilters` already exists (`:43`). Today the only editor is the customise drawer,
+  which saves config rather than filtering a view.
+- **A window-resolution line** stating which widgets obey which control, and whether a hand-typed
+  date range has diverged from the selected preset. Given defect D-1, this is not cosmetic.
+- **Filter-reachability chips** per card — `applied` / `available` / `not a parameter`. Measured:
+  `estimatorId` is declared by **only** `estimator-turnaround` and `estimator-qty-vs-value`;
+  `tender-win-rate` takes `from`/`to` only. A filter that cannot reach a widget must say so
+  rather than look applied.
+- **A per-widget override badge** where `config.filters` differs from the bar —
+  `resolveEffectiveFilters` is `{...dashboardFilters, ...widgetFilters}` (`types.ts:208`) and an
+  explicit empty string clears rather than defers.
+- **A chart/table toggle** on every chart widget, the table face reproducing
+  `reportTableWidget` exactly: `formatCell` semantics, right-aligned numerics, the totals row,
+  the `Generated …` line.
+- **Each definition's real `description`** under its title.
+- **A catalogue** of the estimating-analytics report set, marking what is on the dashboard and
+  what is strip-only.
+- **Refresh + an as-at stamp**, and a **dashboard-level export** alongside the per-widget
+  Excel/CSV/PDF strip that `reportWidgetChrome.tsx` already ships.
+
+**Marco's scope ruling, 2026-09-08:** `job-status-summary`, `worker-competency-expiry` and
+`asset-utilisation-snapshot` are **out of scope** — Operations/HR reports, not estimating
+analytics. They are not in the catalogue. `/reports` stays the only surface reaching them, and a
+later `/reports` retirement must rehome them rather than assume this dashboard absorbed them.
+
+## F. Consequence for size and scope — Marco decides before arming
+
+`size: 9` and "Do NOT exceed 9 files" were written for a seed-only preset. Section E is real web
+work on top of a corrected seed target. Two honest shapes:
+
+1. **Widen EA-2** — raise `size`, keep `apps/web/src/dashboards/**`, ship preset + filter bar
+   together. Defect D-2 still needs its own slice for the reporting DTO.
+2. **Split** — EA-2a seeds the corrected `UserDashboard` preset with the mock-up's spans; EA-2b
+   builds the view-time filter surface. D-2 is a third, small slice.
+
+Recommendation: **2**, with D-2 first, because until the DTO accepts `period` the settings
+popover breaks any widget it touches.
 
 ## STANDING AUTHORITY
 

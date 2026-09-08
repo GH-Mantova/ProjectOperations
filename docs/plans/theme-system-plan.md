@@ -80,6 +80,10 @@ arm manually.
 
 ## 3. Slice List (dependency order)
 
+> **STATUS 2026-09-01.** SLICES 1–4 remain valid and unshipped. SLICES 5–15 are SUPERSEDED by
+> the hex-baseline ratchet — see SECTION 5 — and are kept only as a record of measured debt.
+> SLICES 16–17 are superseded by the S1–S6 chain in SECTION 7.
+
 ### SLICE 1 — Token foundation
 
 **Goal:** Collapse the duplicated dark block so each token is declared exactly once; add density
@@ -313,11 +317,22 @@ For every token-cleanup slice (SLICES 5–15), the following acceptance criteria
 
 ---
 
-## 5. Sequencing Rule
+## 5. Sequencing Rule — AMENDED 2026-09-01
 
-**SLICE 17 must not be armed until every non-conditional cleanup slice (SLICES 5–13) has merged to
-main.** The field slices (14–15) are conditional and do not block SLICE 17 if Marco confirms field
-is out of scope. SLICE 16 must also be merged before SLICE 17 is armed.
+**Superseded:** the original rule gated SLICE 17 behind cleanup SLICES 5–13. That rule is
+withdrawn. It was written when the literal count was 3,792; by 2026-09-01 it was 4,339, and
+SLICE 12's scope had outgrown the prompt linter's ten-file cap. A campaign that loses ground
+while it waits cannot be a precondition for the work it is blocking.
+
+**In force from 2026-09-01:** the visible theme surface is gated on the **hex-baseline ratchet**
+(`docs/qa/hex-baseline.json` + `scripts/pipeline/check-hex-ratchet.mjs`) being live in CI. The
+ratchet permits a file's hex count to fall or hold and rejects any increase, and requires new
+files to start at zero. Token cleanup then happens opportunistically: a lane converts the
+literals in a file it is already editing, and the baseline shrinks as a side effect of ordinary
+work.
+
+SLICES 5–15 are retained below as a **record of measured debt, not as a work queue.** They are
+not to be armed as written; their file lists and counts are stale.
 
 ---
 
@@ -337,3 +352,34 @@ armed:
    but there is no lint rule enforcing it. A doc-reconcile PR should add the lint rule reference and
    note the 3,763 pre-existing violations as technical debt being retired by this plan. This
    reconcile PR is outside the scope of any code-writer agent (CP-24); Marco arms it manually.
+
+
+---
+
+## 7. The build chain in force from 2026-09-01
+
+Marco approved `erp-theme-builder-mockup.pdf` on 2026-09-01 and confirmed he wants all of it
+built. This chain replaces SLICES 16–17.
+
+| Slice | What it does | Schema? | Gate |
+|---|---|---|---|
+| **S1** | The application path: a saved scheme reaches the screen as CSS variables. Two colours (`--brand-primary`, `--brand-accent`), one unprivileged read route. | no | none |
+| **S2** | The hex-baseline ratchet. | no | none |
+| **S3** | Widen `BrandColorScheme` to the mockup's full palette — sidebar, cards, text, five status colours. | **YES — migration** | **Marco merges** |
+| **S4** | Named presets (Harbour, Graphite) as seeded `BrandColorScheme` rows. | seed only | S3 |
+| **S5** | Density (compact / comfortable) as tokens plus a control. | no | SLICE 1 |
+| **S6** | Live preview, contrast-ratio badges, per-user override in `localStorage`. | no | S3, S5 |
+
+**Only S3 carries a migration.** The per-user override in S6 is stored in `localStorage`
+alongside the existing `projectops.theme` key, so it needs no table: there is no general
+per-user preference store in the schema today (`NotificationPreference` is the only per-user
+preference model, and it is channel-specific).
+
+**SLICE 1 of this plan is a genuine prerequisite for S3 and S5.** MEASURED 2026-09-01:
+`tokens.css` declares 14 dark-mode tokens in `:root[data-theme="dark"]` and duplicates all 14
+inside the `@media (prefers-color-scheme: dark)` fallback. Until that duplication is collapsed,
+every token S3 and S5 add must be written twice and kept in sync by hand.
+
+Presets are seeded rows rather than `[data-theme="..."]` CSS blocks — the approved mockup is a
+*builder*, so a preset the company cannot then edit would contradict it. This supersedes
+SLICE 3's and SLICE 16's `[data-theme]` approach.

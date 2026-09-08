@@ -287,7 +287,7 @@ Allocation of `D` numbers is Marco's alone, so this register does not renumber a
 | D21 | 8.2.5.4 | Material-density editing waits inside the Rates & Lists redesign | QUARANTINED | — |
 | D22 | 8.2.7 | Shift Period **pulls** the rate; all SoW fields editable; edits never push back | QUARANTINED | — |
 | D23 | 2.6.5 | Fuel/Operations → Tendering (pricing) + Projects (driver-facing fuel/tip routing) | QUARANTINED | — |
-| D24 | 1.2.1 | Theme sequencing **option C** — token cleanup on the most-used screens first | REGISTERED | `docs/plans/theme-system-plan.md:4` |
+| D24 | 1.2.1 | Theme sequencing **amended 2026-09-01**: the visible theme surface is gated on the **hex-baseline ratchet**, not on a token-cleanup campaign. Cleanup is opportunistic — each lane retires the literals in files it already touches. Supersedes "option C". | REGISTERED | `docs/plans/theme-system-plan.md:4` |
 | D25 | 2.1 | Every data domain **can** be shared between companies, **nothing by default**, plus an **Import** option to copy between companies | REGISTERED | `docs/plans/multi-tenant-plan.md:15` |
 | D26 | 2.6.6 | **Finish the Job/Project fold properly** (B-P0a-5…-9); schedule when the board is quiet | REGISTERED | `docs/pr-prompts/BACKLOG.yaml:428` |
 | D27 | 2.8.2 | A missing rate is **"No rate" / "N/A"**, never 0; empty or 0 auto-display as N/A and are excluded from cheapest-source comparison | QUARANTINED | — |

@@ -259,3 +259,26 @@ one. No merge, no branch update, no label change.
 - **Did not `git checkout .`, `reset --hard`, `stash pop` or `git clean`** anywhere.
 - **Did not edit `/sot/`,** and did not touch Azure, Entra or SharePoint — not once, not
   read-modify-write.
+
+## ADDENDUM — 2026-09-08T01:5xZ (same run, later measurements)
+
+`#1796` **MERGED** while this run's board PR was in CI — Marco's own merge — and is now
+`origin/main` `7fd57e37`. **The board now holds no open PR but this station's own.** This PR was
+rebased onto it (`git rebase origin/main`, clean, no conflict, `4b23f31a`); no force was needed on
+`main` and nothing else was touched.
+
+### F8 — ACTIONED — `#1796` merging made a second prompt SPENT inside the hour
+
+`pr-sor-s9a-register-api-HOLD.md` is exactly `#1796`'s scope, and the 00:08Z run correctly refused to
+retire it while the PR was open — §10.6 is explicit that the premise dies on MERGE, not on OPEN.
+Re-linted at `7fd57e37`: **`STALE`, exit 3**, *"Premise no longer holds … The work is ALREADY
+DONE."*
+
+**DISPOSITION: ACTIONED** — retired to `docs/pr-prompts/superseded/` in this PR.
+
+### What this does not change
+
+F4's measurement is unaffected. The retirement removes a candidate that was never armable, leaving
+**13** gate-satisfied HOLDs and still **none** of them eligible for the `tests-docs` lane — the fifth
+consecutive run with that reading. F7 is discharged by the merge: the PR was Marco's, Marco merged
+it, and this station never touched it.

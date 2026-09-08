@@ -358,39 +358,54 @@ PORTAL_PUBLIC_URL=
 ```
 1. DASHBOARDS
    Home                 → /
+                          (custom user dashboards render inline under this group;
+                           they are not part of NAV_GROUPS)
 
-2. ESTIMATING
-   Tenders              → /tenders
-   Contracts            → /contracts
-   Tender Settings      → /tenders/settings
-   Directory            → /directory
-                          (tabs: Clients | Subcontractors & Suppliers | Contacts)
-   Rates & Lists        → /admin/rates-lists
-   Reports              → /tenders/reports
-   Variations           → (future)
+2. TENDERING            (renamed from "Estimating" — NAV-1, 2026-08-14)
+   Leads & opportunities → /tenders/leads
+   Tenders               → /tenders
+   Pipeline              → /tenders/pipeline
+                           (PIPELINE_FOLDED, 2026-08-20: repointed from /crm/pipeline.
+                            Gate is requiresAnyPermission ["tenders.view", "crm.view"].)
+   Schedule of Rates     → /admin/schedule-of-rates
+   Contracts             → /contracts
+   Reports               → /reports
 
-3. PROJECTS
+3. CRM                  (new top-level group — NAV-1, 2026-08-14; gate: crm.view)
+   Accounts              → /crm/accounts        (tabs: List | Relationships)
+   Tenders               → /crm/register        (tabs: Register | Follow-ups)
+   Comms hub             → /crm/comms           (tabs: Inbox | Threads | To-dos)
+
+4. PROJECTS
    Jobs                 → /jobs   (merged Jobs+Projects; label "Jobs")
    Sites                → /sites
 
-4. OPERATIONS
+5. OPERATIONS
    Scheduler            → /scheduler
                           (view tabs: Board | Grid | Availability)
-   Assets & Equipment   → Assets | Inventory | Maintenance
+   Live crew map        → /workers/live-crew
+   Assets & Equipment   → operations/assets-equipment
+                          (tabs: Assets | Inventory | Maintenance)
    Procurement          → /procurement
 
-5. HR
+6. HR
    Workers              → /workers   (absorbs /resources)
+   Leave Approvals      → /workers/leave-approvals
+   Job roles            → /workers/job-roles
    Payroll Export       → /timesheets/payroll-export
    Timesheet Approval   → /timesheets/approval
+   Dockets              → /dockets
+   Expenses             → /expenses
 
-6. SAFETY & COMPLIANCE
+7. SAFETY & COMPLIANCE
    Safety               → /safety
+   Cases                → /cases
+   Knowledge Base       → /knowledge
    Compliance           → /compliance
    Forms                → /forms
    Documents            → /documents   (Archived tab folds /archive)
 
-7. SETTINGS  (per-screen permissions — the blanket admin route guard is GONE)
+8. SETTINGS  (per-screen permissions — the blanket admin route guard is GONE)
    Personal:
      Account                  → /settings/account
      Notification preferences → /settings/notifications

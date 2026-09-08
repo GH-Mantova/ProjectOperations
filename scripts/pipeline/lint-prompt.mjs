@@ -229,6 +229,71 @@ function validateDepKeyValues(fm, file) {
 const DESIGN_REF_URL_RE = /^https:\/\/claude\.ai\/code\/artifact\/[A-Za-z0-9_-]+/;
 const DESIGN_REF_PATH_RE = /^Claude Design\/\S/;
 
+/**
+ * THE NO-SCREEN EXEMPTION — is this ONE apps/web/ scope entry provably screenless?
+ *
+ * UI_PROMPT_NEEDS_DESIGN_REF exists so a reviewer can compare the PR against the mock-up.
+ * That purpose evaporates when the slice renders nothing: a prompt scoped to
+ * apps/web/src/lib/*.ts plus an App.tsx route wiring changes NO screen, so there is no
+ * mock-up to compare against and no honest design_ref to cite. Before this exemption such
+ * a prompt was unarmable with no correct way out — the only escapes were to invent a
+ * design_ref (a lie recorded in the queue) or to fake a fixes_pr.
+ *
+ * Two entry shapes qualify, and only these two:
+ *   - a FILE under apps/web/src/lib/  (any extension)  — helpers, not components. This
+ *     covers apps/web/src/lib/__tests__/ as well, since those tests live under lib/.
+ *   - exactly apps/web/src/App.tsx                     — the router, not a screen
+ *
+ * __tests__/ is NOT exempt in general, only under lib/. A component test
+ * (apps/web/src/components/__tests__/Foo.test.tsx) is the one place a slice could change
+ * what is ASSERTED about a screen without citing the design it is asserting against. No
+ * measured prompt needs the wider form, so the rule is written at the narrower boundary:
+ * a rule that is free to tighten should be tightened.
+ *
+ * A `*` ANYWHERE in the entry disqualifies it, full stop — including a lib-shaped glob like
+ * apps/web/src/lib/**. A glob is a promise about files that do not exist yet; it cannot be
+ * proven screenless, and admitting `apps/web/src/**` on a literal-prefix reading would gut
+ * the gate entirely. This is the load-bearing half of the rule.
+ *
+ * A bare DIRECTORY entry (apps/web/src/lib) does not qualify either: the exemption is
+ * stated over named files, and a directory is a glob without the asterisk.
+ *
+ * THE KNOWN HOLE — App.tsx. It is exempted as the ROUTER, not as a screen, and that is a
+ * judgement, not a proof: App.tsx is 400+ lines and does contain JSX, so an App.tsx-only
+ * prompt that adds rendered chrome (a banner, a shell element, anything visible outside a
+ * <Route>) would slip past this gate with no design citation. That is the deliberate,
+ * KNOWN cost of unblocking route-wiring slices, accepted with eyes open rather than
+ * overlooked. If a design regression is ever traced back to this exemption, THIS is the
+ * first branch to revisit — drop the App.tsx shape and make route-wiring slices cite the
+ * design of the screen they are wiring up.
+ *
+ * MEASURED BASIS — scoped from evidence, not convenience. The rule was built against the
+ * three live apps/web/ prompts on the board that lint UI_PROMPT_NEEDS_DESIGN_REF, and it
+ * unblocks exactly ONE of them:
+ *   - pr-brandtheme-s1-apply-the-saved-scheme  ADMITS. Web scope is exactly
+ *     apps/web/src/lib/brand-scheme.ts, its lib/__tests__ sibling, and App.tsx. It renders
+ *     nothing; no mock-up of it exists or can exist.
+ *   - pr-company-manage-s2-retire-adminonly    STILL REJECTED, on
+ *     apps/web/src/components/SettingsShell.tsx — a component renders UI.
+ *   - pr-unified-api-key-vault-slice4c         STILL REJECTED, on apps/web/src/** — a glob.
+ * Two of three staying blocked is the check on this rule's width. If a change here starts
+ * admitting either of those two, the exemption has stopped being narrow.
+ */
+function webScopeEntryChangesNoScreen(entry) {
+  const p = normaliseScopePath(entry);
+  if (!p) return false;
+  // A glob can never be proven to touch no screen. Checked FIRST so no later branch
+  // can ever see a wildcard.
+  if (p.includes("*")) return false;
+  // Must name a file, not a directory: the last segment carries an extension.
+  if (!/\.[A-Za-z0-9]+$/.test(p.split("/").pop() || "")) return false;
+  if (p === "apps/web/src/App.tsx") return true;
+  // Includes apps/web/src/lib/__tests__/. Deliberately NOT a general __tests__/ rule:
+  // a component test under apps/web/src/components/__tests__/ is not exempt.
+  if (p.startsWith("apps/web/src/lib/")) return true;
+  return false;
+}
+
 function validateDesignRef(fm) {
   const raw = fm.design_ref;
   const isSet =
@@ -239,9 +304,14 @@ function validateDesignRef(fm) {
   const scopeList = Array.isArray(fm.scope)
     ? fm.scope
     : (fm.scope != null && fm.scope !== "" ? [fm.scope] : []);
-  const scopeTouchesWeb = scopeList.some((s) =>
-    /^apps[\\/]web[\\/]/.test(String(s).trim()),
-  );
+  const webEntries = scopeList
+    .map((s) => String(s).trim())
+    .filter((s) => /^apps[\\/]web[\\/]/.test(s));
+  const scopeTouchesWeb = webEntries.length > 0;
+  // Third exemption: EVERY apps/web/ entry is provably screenless. `every` on a non-empty
+  // list — one component, one page, one glob anywhere in scope and the exemption is off.
+  const webChangesNoScreen =
+    scopeTouchesWeb && webEntries.every(webScopeEntryChangesNoScreen);
   const hasFixesPr =
     fm.fixes_pr !== undefined &&
     fm.fixes_pr !== "" &&
@@ -274,7 +344,7 @@ function validateDesignRef(fm) {
     return { ok: true };
   }
 
-  if (scopeTouchesWeb && !hasFixesPr) {
+  if (scopeTouchesWeb && !hasFixesPr && !webChangesNoScreen) {
     return {
       ok: false, code: "UI_PROMPT_NEEDS_DESIGN_REF",
       msg:
@@ -285,7 +355,13 @@ function validateDesignRef(fm) {
         "          design_ref: https://claude.ai/code/artifact/<uuid>\n" +
         "          design_ref: Claude Design/<path>\n" +
         "        Exception: a fix-forward prompt (fixes_pr: N) is exempt — a red-board fix\n" +
-        "        must never be blocked for want of a design citation.",
+        "        must never be blocked for want of a design citation.\n" +
+        "        Exception: a slice that changes NO screen is exempt — but only when EVERY\n" +
+        "        apps/web/ entry is a named file under apps/web/src/lib/ (its __tests__/ included)\n" +
+        "        or exactly apps/web/src/App.tsx. A component test under\n" +
+        "        apps/web/src/components/__tests__/ is NOT exempt. Any wildcard entry\n" +
+        "        (even apps/web/src/lib/**) forfeits it: a glob cannot be proven screenless.\n" +
+        "        Do NOT widen scope to buy the exemption — cite the design instead.",
     };
   }
 

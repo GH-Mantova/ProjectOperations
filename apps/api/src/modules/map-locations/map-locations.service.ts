@@ -1,8 +1,31 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import type { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../../prisma/prisma.service";
 
 export type MapLocationKind = "TIP" | "POI";
+
+// ---------------------------------------------------------------------------
+// TIP-ID-S2 — keeping the waste rate rows' mapLocationId true
+// ---------------------------------------------------------------------------
+// TIP-ID-S1 gave the waste rate rows a mapLocationId cell; the one-off
+// backfill (scripts/rates/backfill-waste-map-location-ids.mjs) fills the rows
+// that already exist. These constants are the second half: when a TIP's
+// facility is set through this admin path, the matching rate rows are linked
+// in the same transaction, so the backfill does not rot the first time
+// somebody adds a facility.
+//
+// RateRow.cells is keyed by RateColumn id — see the baseline migration
+// 20260713140000_seed_baseline_rate_tables, which writes
+// {"rt-wst-t-c-facility":"BMI Acacia Ridge", ...}, and upsertTable in
+// seed-initial-services.ts, which rewrites every key to `${tableId}-c-${key}`.
+// The bare `facility` / `mapLocationId` spellings are only a fallback for rows
+// written by something else; the bare alias is also what S1's
+// resolveWasteFacility() reads, so it is written alongside the canonical key.
+const WASTE_TABLE_SLUGS = ["waste-per-tonne", "waste-per-m3"];
+const FACILITY_COLUMN_NAME = "Facility";
+const MAP_LOCATION_COLUMN_NAME = "Map location";
+const MAP_LOCATION_ALIAS_KEY = "mapLocationId";
 
 export type CreateMapLocationDto = {
   name: string;
@@ -112,21 +135,111 @@ export class MapLocationsService {
     return toDto(loc as RawLocation);
   }
 
-  async create(dto: CreateMapLocationDto) {
-    const loc = await this.prisma.mapLocation.create({
-      data: {
-        name: dto.name.trim(),
-        kind: dto.kind,
-        categoryId: dto.categoryId ?? null,
-        addressLine1: dto.addressLine1.trim(),
-        suburb: dto.suburb.trim(),
-        state: dto.state.trim(),
-        postcode: dto.postcode.trim(),
-        latitude: dto.latitude ?? null,
-        longitude: dto.longitude ?? null,
-        facility: dto.facility?.trim() ?? null,
-        notes: dto.notes?.trim() ?? null
+  /**
+   * TIP-ID-S2 — write `mapLocationId` onto every waste rate row whose facility
+   * cell equals `facility` exactly (both trimmed).
+   *
+   * The rules are deliberately the same as the backfill script's
+   * (scripts/rates/backfill-waste-map-location-ids.mjs), so the one-off and the
+   * ongoing path can never disagree about what a link means:
+   *
+   *   - Exact, trimmed match only. No case folding, no punctuation stripping,
+   *     no fuzzy matching. A near miss is left unlinked, never guessed at.
+   *   - A row already carrying a DIFFERENT non-null id is left exactly as it
+   *     is. A stale link is evidence (S1's resolveWasteFacility surfaces it as
+   *     `dangling`); silently re-pointing it would destroy that evidence. The
+   *     backfill script's `--force` is the deliberate instrument for a
+   *     re-decision.
+   *   - Every other cell is copied through untouched and no cell key is ever
+   *     removed; no row is created or deleted; EstimateWasteRate — which still
+   *     prices every job — is not touched at all.
+   *
+   * @returns the number of rate rows actually updated.
+   */
+  private async linkWasteRatesToTip(
+    tx: Prisma.TransactionClient,
+    mapLocationId: string,
+    facility: string
+  ): Promise<number> {
+    const wanted = facility.trim();
+    if (wanted === "") return 0;
+
+    const tables = await tx.rateTable.findMany({
+      where: { slug: { in: WASTE_TABLE_SLUGS } },
+      include: { columns: true, rows: true }
+    });
+
+    let written = 0;
+    for (const table of tables) {
+      const facilityCol = table.columns.find((c) => c.name === FACILITY_COLUMN_NAME);
+      const mapCol = table.columns.find((c) => c.name === MAP_LOCATION_COLUMN_NAME);
+
+      const facilityKeys = [
+        facilityCol?.id,
+        `${table.id}-c-facility`,
+        "facility",
+        "Facility"
+      ].filter((k): k is string => typeof k === "string");
+
+      const primaryKey = mapCol ? mapCol.id : `${table.id}-c-mapLocationId`;
+      const targetKeys =
+        primaryKey === MAP_LOCATION_ALIAS_KEY ? [primaryKey] : [primaryKey, MAP_LOCATION_ALIAS_KEY];
+
+      for (const row of table.rows) {
+        const cells = { ...((row.cells ?? {}) as Record<string, unknown>) };
+        const key = facilityKeys.find((k) =>
+          Object.prototype.hasOwnProperty.call(cells, k)
+        );
+        if (key === undefined) continue;
+
+        const value = cells[key];
+        if (typeof value !== "string" || value.trim() !== wanted) continue;
+
+        const existing = targetKeys.map((k) => {
+          const v = cells[k];
+          return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+        });
+        // Stale link to some other location — leave it alone and report nothing
+        // silently changed. Already correct — nothing to do.
+        if (existing.some((v) => v !== null && v !== mapLocationId)) continue;
+        if (existing.every((v) => v === mapLocationId)) continue;
+
+        for (const k of targetKeys) cells[k] = mapLocationId;
+        await tx.rateRow.update({
+          where: { id: row.id },
+          data: { cells: cells as Prisma.InputJsonValue }
+        });
+        written += 1;
       }
+    }
+
+    return written;
+  }
+
+  async create(dto: CreateMapLocationDto) {
+    const facility = dto.facility?.trim() ?? null;
+    const loc = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.mapLocation.create({
+        data: {
+          name: dto.name.trim(),
+          kind: dto.kind,
+          categoryId: dto.categoryId ?? null,
+          addressLine1: dto.addressLine1.trim(),
+          suburb: dto.suburb.trim(),
+          state: dto.state.trim(),
+          postcode: dto.postcode.trim(),
+          latitude: dto.latitude ?? null,
+          longitude: dto.longitude ?? null,
+          facility,
+          notes: dto.notes?.trim() ?? null
+        }
+      });
+      // A new TIP that names a facility adopts the rate rows that already use
+      // that exact string, in the same transaction as the create.
+      if (created.kind === "TIP" && facility) {
+        await this.linkWasteRatesToTip(tx, created.id, facility);
+      }
+      return created;
     });
     return toDto(loc as RawLocation);
   }
@@ -158,23 +271,38 @@ export class MapLocationsService {
       }
     }
 
-    const loc = await this.prisma.mapLocation.update({
-      where: { id },
-      data: {
-        name: dto.name !== undefined ? dto.name.trim() : undefined,
-        kind: dto.kind,
-        categoryId: dto.categoryId !== undefined ? (dto.categoryId ?? null) : undefined,
-        addressLine1:
-          dto.addressLine1 !== undefined ? dto.addressLine1.trim() : undefined,
-        suburb: dto.suburb !== undefined ? dto.suburb.trim() : undefined,
-        state: dto.state !== undefined ? dto.state.trim() : undefined,
-        postcode: dto.postcode !== undefined ? dto.postcode.trim() : undefined,
-        latitude: dto.latitude !== undefined ? (dto.latitude ?? null) : undefined,
-        longitude: dto.longitude !== undefined ? (dto.longitude ?? null) : undefined,
-        facility: newFacility !== undefined ? newFacility : undefined,
-        notes: dto.notes !== undefined ? (dto.notes?.trim() ?? null) : undefined,
-        isActive: dto.isActive
+    // TIP-ID-S2: the update and the rate-row link happen in ONE transaction, so
+    // a MapLocation can never be saved with a facility the rate rows do not
+    // know about (or vice versa).
+    const loc = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.mapLocation.update({
+        where: { id },
+        data: {
+          name: dto.name !== undefined ? dto.name.trim() : undefined,
+          kind: dto.kind,
+          categoryId: dto.categoryId !== undefined ? (dto.categoryId ?? null) : undefined,
+          addressLine1:
+            dto.addressLine1 !== undefined ? dto.addressLine1.trim() : undefined,
+          suburb: dto.suburb !== undefined ? dto.suburb.trim() : undefined,
+          state: dto.state !== undefined ? dto.state.trim() : undefined,
+          postcode: dto.postcode !== undefined ? dto.postcode.trim() : undefined,
+          latitude: dto.latitude !== undefined ? (dto.latitude ?? null) : undefined,
+          longitude: dto.longitude !== undefined ? (dto.longitude ?? null) : undefined,
+          facility: newFacility !== undefined ? newFacility : undefined,
+          notes: dto.notes !== undefined ? (dto.notes?.trim() ?? null) : undefined,
+          isActive: dto.isActive
+        }
+      });
+
+      // Only when a TIP's facility was actually supplied on this request, and
+      // resolved to a non-empty string. A POI links nothing; clearing a
+      // facility (null) links nothing and unlinks nothing — an existing id on a
+      // rate row is data, and removing it is not this path's decision.
+      const effectiveKind = dto.kind ?? existing.kind;
+      if (effectiveKind === "TIP" && newFacility) {
+        await this.linkWasteRatesToTip(tx, updated.id, newFacility);
       }
+      return updated;
     });
     return toDto(loc as RawLocation);
   }

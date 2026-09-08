@@ -127,6 +127,21 @@ function formatDate(date: Date): string {
  * `Tender.updatedAt` is deliberately NOT used anywhere — it is reset by any
  * edit, so "idle for N days" measured against it silently resets every time
  * somebody opens and saves the record.
+ *
+ * ── WHAT HAPPENS WHEN NOBODY ACTS (TR-3) ───────────────────────────────────
+ * This service tells the person who owns the work, once, and records that it
+ * did. The SECOND half of that story — "…and nothing happened" — belongs to
+ * `CommsReminderEscalationService` (`comms-reminder-escalation.service.ts`),
+ * which reads the `TenderReminderLog` rows written below, and after
+ * `policy.escalationWindowDays` notifies the holders of `crm.manage` about any
+ * subject that has still not moved.
+ *
+ * It is NOT called from `scanAndNotify` and is NOT injected here: it carries
+ * its own nightly `@Cron` at 21:30 UTC, thirty minutes behind this one. That
+ * seam keeps both services independently testable and leaves this service's
+ * constructor and its `ReminderSweepResult` contract unchanged. Nothing here
+ * needs to know the escalation exists; the log rows are the entire interface
+ * between them.
  */
 @Injectable()
 export class CommsReminderService {

@@ -181,6 +181,32 @@ and the matching ref in the mount with no Desktop Commander at all.
 `docs/pr-prompts/processed/*.log` (the RULE 2 probe), `.arming-log.txt`, every station breadcrumb,
 and the three binding documents — which is the whole of COLLECT and most of PHASE 1.
 
+🔴 **AND `ProjectOperations2` IS NOT THE ONLY MOUNT — THE LIST ABOVE ENUMERATED ONE OF ELEVEN, AND THAT UNDERCOUNT COSTS A BLIND RUN ITS CROSS-CHECKS.** `BLIND_RUN_OTHER_MOUNTS_V1` [MEASURED]
+2026-09-08T04:09Z by Station 00 (breadcrumb
+`00-00-supervisor-2026-09-08-0409-blind-run-check-breadcrumb-freshness-reads-two-live-stations-as-never-having-reported.md`,
+F3): a single blind scheduled Cowork session mapped **eleven** folders under
+`/sessions/<id>/mnt/`, `po-watcher` among them, and through it read the watcher's **live** daily
+clone log at `…\pr-watcher\logs\2026-09-07.log`, newest line `[2026-09-08T04:13:23.281Z] [update]
+PR #1805 branch updated (was BEHIND)` — four minutes old at the moment of reading. POSITIVE
+control `[merge]` matched 9 lines; NEGATIVE control, a freshly minted needle, matched 0. §4 lists
+`C:\po-watcher` and `C:\po-watcher\ProjectOperations` as mapped folders alongside
+`C:\ProjectOperations2`, and every one of them is readable on a blind run. **The mount list is a
+property of the session, not of this file — enumerate `/sessions/<id>/mnt/` at the start of a run
+rather than assume the one folder the enumeration above used to name.** The concrete consequence
+is DOCTRINE §9.5's three-homes rule: the review verdict for a PR may live in the dev tree, in the
+clone's `docs/pr-reviews/`, or in `C:\po-watcher\verdicts-archive\`, and a blind run that reads
+only the dev tree cannot write "no verdict for PR N" — the reading is UNMEASURED until all three
+homes have been checked, and `verdicts-archive` in particular is reachable only through the
+`po-watcher` mount. **This is not a relaxation of the ceiling below.** A blind run still cannot
+RUN anything on the host, so it still may not claim any liveness, smoke, safe-to-act or merge
+verdict — those come from `restart-watcher-if-wedged.ps1` and `status-sweep.ps1`, and no log line
+substitutes for either. The distinction the addition draws is between **quoting** a timestamped
+line the watcher wrote — which the clone log makes available — and **issuing a verdict** about
+the watcher, which it does not. ⚠️ **Falsifying probe: enumerate `/sessions/<id>/mnt/` from
+inside a blind run and read the newest daily log under the clone's `scripts/pr-watcher/logs/`;
+if only one mount is present, or the clone is unreadable, this paragraph is wrong and must be
+re-measured.**
+
 **The ceiling, and it is why the stop is still correct.** Through the mount a run may NOT:
 
 - run `git` against the Windows `.git` — DOCTRINE §9.2, a cut-short call leaves a 0-byte

@@ -234,6 +234,14 @@ jobs:
       # and no instrument measured the drift. An embedded copy of a living document always drifts;
       # this gate is what stops it coming back.
       - run: node scripts/pipeline/check-agent-doctrine.mjs
+      # A pipeline script may not READ a queue subdirectory that no pipeline script WRITES.
+      # [MEASURED 2026-09-01] three scripts counted docs/pr-prompts/in-progress/ - a directory
+      # scripts/pr-watcher/index.mjs never creates - and all three printed 0 rather than
+      # [CANNOT MEASURE]: status-sweep.ps1 (fed $boardBusy / DO NOT ACT), supervise-watcher.ps1
+      # (fed the watchdog's "a build is running, not hung" guard) and a station board sweep
+      # ("queue empty" while a prompt sat armed). Each was fixed by hand; nothing stopped the
+      # fourth. This derives producers and consumers from the source - no allowlist to go stale.
+      - run: node scripts/pipeline/check-queue-dirs.mjs
       # A PR title must NAME THE MODULE IT CHANGES. Slice 1 (#1753) gave every prompt a
       # validated `module:`; this is what carries that value onto GitHub, where the board is
       # actually read. [MEASURED 2026-09-01] 24 distinct commit scopes across 40 merged PRs, six

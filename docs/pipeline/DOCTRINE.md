@@ -1359,6 +1359,42 @@ though CI enforces it. The honest boundary today is the instrument: `bd-push-sli
 receipt into the PR branch before it arms auto-merge, and refuses to arm without one. That is a
 constraint on one script, which is weaker than CI and must be said plainly rather than dressed up.
 
+🔴🔴 **THE RECEIPT'S AUTHORING COMMIT NAMES ITS OWN ACTOR IN THE GIT IDENTITY, AND THE SQUASH MERGE
+IS THE ONLY THING THAT HIDES IT.** [MEASURED] 2026-09-08T00:3xZ by Station 00 (scheduled) via
+`gh pr view <N> --json commits` then `gh api repos/GH-Mantova/ProjectOperations/commits/<sha>`, over
+four receipts written inside twenty-five minutes of each other:
+
+| receipt | authoring commit | `commit.author.name` | message | actor |
+|---|---|---|---|---|
+| `1797.md` | `08ce2ae0` 23:37:35Z | **`Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>`** | `docs(merge-approvals): receipt for #1797 - supervised cloud lane, standing authority` | this lane |
+| `1767.md` | `268a9a54` 23:15:59Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Create 1767.md`** | Marco, GitHub web UI |
+| `1775.md` | `d146637e` 23:17:08Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Add approval details for PR 1775`** | Marco, GitHub web UI |
+| `1796.md` | `6aaf5f62` 2026-09-08T00:08:17Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Create 1796.md`** | Marco, GitHub web UI |
+
+**POSITIVE control, and it is the load-bearing row:** the same PR's BUILD commit `985fa475`
+(23:36:31Z, carrying the two in-scope doc edits) reads `Marco <marco@initialservices.net>` — the
+**watcher's own local git config on Marco's box**. 🔴 **So the most human-looking identity on this
+board belongs to the most automated actor**, and a run attributing work by author name gets the
+watcher's builds exactly backwards. That is the opposite error to the one `mergedBy` produces, and
+the two together are why identity has to be read per-commit or not at all.
+
+🔧 **Read the AUTHORING commit, never the squash-merge commit.**
+`git log --format=%an origin/main -- docs/decisions/merge-approvals/<N>.md` answers `GH-Mantova` for
+**every** receipt, because the squash commit is all `main` retains — the discriminating identity
+survives only on the PR's own commit list. ⚠️ **Falsifying probe: the table above.** Re-run it on any
+receipt; if a cloud-lane receipt ever reads `Marco <marco@initialservices.net>`, or a watcher build
+commit reads the cloud-lane identity, this block is wrong and must be re-measured.
+
+🔴 **AND `approved_by: marco` IN A RECEIPT'S FRONT MATTER DOES NOT MEAN MARCO SAW THE PR.** On a
+standing-authority receipt the BODY says so in as many words — *"Marco did not see this PR before it
+merged"* — while the machine-readable field one line above says the opposite. The field records
+*whose authority*, not *who looked*. A scheduled Station 00 run read the field, did not read the
+body, and filed a forgery accusation against an actor that had signed its own commit; the
+measurements above retracted it the next hour. **Read the body, and prefer the commit identity to
+the field.** A one-line `authority: standing | personal` discriminator in the front matter would
+remove the ambiguity at the source, and choosing to add one is Marco's, not a station's.
+
+
 **Ruled by Marco, 2026-09-07**, when the conflict between this section and §10.1 was put to him
 directly — may the lane merge `escalates: false` PRs touching `apps/api` and `apps/web`, or is the
 tests-docs boundary the real line? He chose: **the lane merges, but writes a receipt first.**

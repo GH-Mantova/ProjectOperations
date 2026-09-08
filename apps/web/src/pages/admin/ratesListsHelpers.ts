@@ -416,3 +416,150 @@ export function deleteFieldConfirmMessage(name: string, usedIn: readonly number[
   const warning = deleteFieldWarning(name, usedIn);
   return warning ? `${base} ${warning}` : base;
 }
+
+// ── RATE_SCENARIO_PICKER_V2 ───────────────────────────────────────────────
+//
+// Choosing the scenario the preview prices, the way an estimator describes
+// one: by its KEY values, not by its ordinal position in the grid.
+//
+// The picker used to be a single select whose options were literally "Row 1"
+// … "Row N". On a seven-row table that asks the reader to count rows in a
+// table further down the page to find out which rule they are looking at, and
+// nothing on screen ever said which row was picked. These four functions are
+// the whole of the new rule, kept pure and out of the component so the cascade
+// can be pinned by spec rather than by clicking.
+//
+// `role === "KEY"` identifies a key column — the same rule
+// `validateColumnStructure` above applies, and the one the server matches rows
+// on. Cells are read by column ID, exactly as `buildStepValues` reads them.
+
+/**
+ * The part of a column these functions need. `role` is a `string` rather than
+ * `RateColumnRole` because `RateColumnMeta` in ChargeStepsEditor.tsx carries
+ * it as one — same reason `columnFieldKind` takes a `string` dataType.
+ */
+export type ScenarioColumn = { id: string; name: string; role: string };
+
+/** The part of a row these functions need. */
+export type ScenarioRow = { id: string; cells: Record<string, unknown> };
+
+/**
+ * A cell as the picker compares it: a string, always.
+ *
+ * Key cells arrive as numbers (`200`), as strings (`"200"`) and as neither
+ * (`null`), depending on how the row was written. A `<select>` value is a
+ * string whatever it came from, so the comparison is done in strings and in
+ * one place — comparing `200` to `"200"` with `===` is the bug this exists to
+ * make unwritable.
+ */
+export function scenarioCellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return typeof value === "string" ? value : String(value);
+}
+
+/**
+ * How two option values sort: numerically when BOTH parse as numbers, by
+ * locale otherwise.
+ *
+ * A depth band list read as text sorts `150, 200, 50` — which is not a depth
+ * band list any estimator recognises. Requiring both sides to parse keeps a
+ * mixed column (`"Any"`, `"150"`) on the locale comparator rather than
+ * silently sorting `NaN`.
+ */
+export function compareScenarioValues(a: string, b: string): number {
+  const na = Number(a);
+  const nb = Number(b);
+  if (a.trim() !== "" && b.trim() !== "" && Number.isFinite(na) && Number.isFinite(nb)) {
+    return na - nb;
+  }
+  return a.localeCompare(b);
+}
+
+/** The KEY columns, in the order the table declares them. */
+export function scenarioKeyColumns<C extends ScenarioColumn>(columns: readonly C[]): C[] {
+  return columns.filter((c) => c.role === "KEY");
+}
+
+/**
+ * The values one key column may still be set to, given the keys chosen before
+ * it — the cascade.
+ *
+ * Distinct values of that column across the rows that match every EARLIER key
+ * column, sorted by `compareScenarioValues`. Only earlier keys constrain it:
+ * a later key narrowing an earlier one's menu would make the two selects fight
+ * each other, and the reader could not tell which choice had been overridden.
+ *
+ * An earlier key with no value chosen does not constrain — `resolveScenarioKeys`
+ * always fills every earlier key before asking, so that only arises when a
+ * caller asks about a column in isolation, and "everything" is the honest
+ * answer to "what is available when nothing is chosen".
+ */
+export function scenarioKeyOptions(
+  columns: readonly ScenarioColumn[],
+  rows: readonly ScenarioRow[],
+  chosen: Readonly<Record<string, string>>,
+  columnId: string
+): string[] {
+  const keys = scenarioKeyColumns(columns);
+  const index = keys.findIndex((c) => c.id === columnId);
+  if (index === -1) return [];
+  const earlier = keys.slice(0, index);
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const matchesEarlier = earlier.every((c) => {
+      const want = chosen[c.id];
+      if (want === undefined || want === "") return true;
+      return scenarioCellText(row.cells[c.id]) === want;
+    });
+    if (!matchesEarlier) continue;
+    seen.add(scenarioCellText(row.cells[columnId]));
+  }
+  return [...seen].sort(compareScenarioValues);
+}
+
+/**
+ * The chosen keys with every stale value replaced — the picker's own state,
+ * normalised.
+ *
+ * Changing an earlier key can strand a later one on a value no row carries any
+ * more (Roadsaw / Floor / Asphalt, then Equipment → Demosaw: no Demosaw row is
+ * Asphalt). Leaving the select showing Asphalt would be a picker naming a
+ * combination that does not exist, and the preview beneath it would say
+ * nothing matches — for a choice the reader never made. So a stranded key
+ * falls back to the FIRST remaining option, resolved left to right so each
+ * fallback is itself a value the keys before it allow.
+ */
+export function resolveScenarioKeys(
+  columns: readonly ScenarioColumn[],
+  rows: readonly ScenarioRow[],
+  chosen: Readonly<Record<string, string>>
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const col of scenarioKeyColumns(columns)) {
+    const options = scenarioKeyOptions(columns, rows, out, col.id);
+    const want = chosen[col.id];
+    out[col.id] = want !== undefined && options.includes(want) ? want : options[0] ?? "";
+  }
+  return out;
+}
+
+/**
+ * The row the chosen keys name, or null when the combination is not on the
+ * sheet.
+ *
+ * Every KEY cell must equal the chosen value, compared as strings. Null rather
+ * than a nearest guess: a preview run against "the closest row" is a number
+ * nobody should read, and the card says so in words instead.
+ */
+export function matchScenarioRow<R extends ScenarioRow>(
+  columns: readonly ScenarioColumn[],
+  rows: readonly R[],
+  chosen: Readonly<Record<string, string>>
+): R | null {
+  const keys = scenarioKeyColumns(columns);
+  return (
+    rows.find((row) =>
+      keys.every((c) => scenarioCellText(row.cells[c.id]) === (chosen[c.id] ?? ""))
+    ) ?? null
+  );
+}

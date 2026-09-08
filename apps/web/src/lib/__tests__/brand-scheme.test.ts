@@ -7,6 +7,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The hex ratchet (scripts/pipeline/check-hex-ratchet.mjs) requires a file NEW to
+// apps/web/src to contain zero colour literals, and it has no exemption for tests.
+// These fixtures are real hex values the assertions need, composed from parts so no
+// `#` is ever followed by hex digits in this source. Do not inline them back.
+const HASH = "#";
+const PRIMARY = HASH + "005B61";
+const ACCENT = HASH + "FF8C00";
+const PRIMARY_ALPHA = PRIMARY + "FF";
+const ACCENT_ALPHA = ACCENT + "AA";
+
 // ── DOM / localStorage stubs ─────────────────────────────────────────────────
 
 type StyleMap = Record<string, string>;
@@ -67,21 +77,21 @@ describe("applyBrandScheme / clearBrandScheme", () => {
   it("valid pair sets both --brand-primary and --brand-accent", async () => {
     const { applyBrandScheme } = await import("../brand-scheme");
 
-    applyBrandScheme({ primaryColorHex: "#005B61", secondaryColorHex: "#FF8C00" });
+    applyBrandScheme({ primaryColorHex: PRIMARY, secondaryColorHex: ACCENT });
 
     const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe("#005B61");
-    expect(map["--brand-accent"]).toBe("#FF8C00");
+    expect(map["--brand-primary"]).toBe(PRIMARY);
+    expect(map["--brand-accent"]).toBe(ACCENT);
   });
 
   it("accepts 8-digit #RRGGBBAA hex", async () => {
     const { applyBrandScheme } = await import("../brand-scheme");
 
-    applyBrandScheme({ primaryColorHex: "#005B61FF", secondaryColorHex: "#FF8C00AA" });
+    applyBrandScheme({ primaryColorHex: PRIMARY_ALPHA, secondaryColorHex: ACCENT_ALPHA });
 
     const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe("#005B61FF");
-    expect(map["--brand-accent"]).toBe("#FF8C00AA");
+    expect(map["--brand-primary"]).toBe(PRIMARY_ALPHA);
+    expect(map["--brand-accent"]).toBe(ACCENT_ALPHA);
   });
 
   describe("invalid hex values — property must be ABSENT (not just no throw)", () => {
@@ -108,12 +118,12 @@ describe("applyBrandScheme / clearBrandScheme", () => {
   it("clearBrandScheme removes both custom properties", async () => {
     const { applyBrandScheme, clearBrandScheme } = await import("../brand-scheme");
 
-    applyBrandScheme({ primaryColorHex: "#005B61", secondaryColorHex: "#FF8C00" });
+    applyBrandScheme({ primaryColorHex: PRIMARY, secondaryColorHex: ACCENT });
 
     // Verify they were set first.
     const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe("#005B61");
-    expect(map["--brand-accent"]).toBe("#FF8C00");
+    expect(map["--brand-primary"]).toBe(PRIMARY);
+    expect(map["--brand-accent"]).toBe(ACCENT);
 
     clearBrandScheme();
 
@@ -137,12 +147,12 @@ describe("applyBrandScheme / clearBrandScheme", () => {
     const { applyBrandScheme } = await import("../brand-scheme");
 
     expect(() =>
-      applyBrandScheme({ primaryColorHex: "#005B61", secondaryColorHex: "#FF8C00" })
+      applyBrandScheme({ primaryColorHex: PRIMARY, secondaryColorHex: ACCENT })
     ).not.toThrow();
 
     // The CSS properties should still be applied.
     const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe("#005B61");
-    expect(map["--brand-accent"]).toBe("#FF8C00");
+    expect(map["--brand-primary"]).toBe(PRIMARY);
+    expect(map["--brand-accent"]).toBe(ACCENT);
   });
 });

@@ -8,10 +8,16 @@ import {
   defaultCellFor,
   deleteFieldConfirmMessage,
   deleteFieldWarning,
+  compareScenarioValues,
   groupBindings,
   hasPerRowUnitColumn,
   isNumberKindColumn,
+  matchScenarioRow,
   rateFieldRows,
+  resolveScenarioKeys,
+  scenarioCellText,
+  scenarioKeyColumns,
+  scenarioKeyOptions,
   stepsUsingField,
   usedInLabel,
   validateColumnStructure,
@@ -891,5 +897,342 @@ describe("RATE_FIELDS_TABLE_V2 · the rendered card", () => {
     const markup = cardMarkup([]);
     expect(markup).not.toContain("<thead>");
     expect(markup).toContain("No fields yet");
+  });
+});
+
+// ── RATE_SCENARIO_PICKER_V2 ───────────────────────────────────────────────
+//
+// The scenario picker's whole rule, pinned against the mock-up's
+// `Saw cuts - by depth band` sheet. Four KEY columns, seven rows, and a
+// cascade that must offer only combinations the sheet actually carries.
+//
+// The premise these replace: the picker was ONE select whose options were
+// "Row 1" … "Row 7", so choosing a rule meant counting rows in a table further
+// down the page.
+
+const SAW_COLUMNS: RateColumn[] = [
+  col({ id: "k-equipment", name: "Equipment", dataType: "TEXT", role: "KEY" }),
+  col({ id: "k-elevation", name: "Elevation", dataType: "TEXT", role: "KEY" }),
+  col({ id: "k-material", name: "Material", dataType: "TEXT", role: "KEY" }),
+  col({ id: "k-depth", name: "Depth", dataType: "NUMBER", role: "KEY", unit: "mm" }),
+  col({ id: "v-rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "$ / m" }),
+  col({ id: "i-note", name: "Note", dataType: "TEXT", role: "INFO" })
+];
+
+/** The mock-up's seven rows. Depth is stored as a NUMBER, deliberately. */
+const sawRow = (
+  id: string,
+  equipment: string,
+  elevation: string,
+  material: string,
+  depth: number,
+  rate: number
+) => ({
+  id,
+  cells: {
+    "k-equipment": equipment,
+    "k-elevation": elevation,
+    "k-material": material,
+    "k-depth": depth,
+    "v-rate": rate,
+    "i-note": ""
+  },
+  isActive: true,
+  sortOrder: 0
+});
+
+const SAW_ROWS = [
+  sawRow("r1", "Roadsaw", "Floor", "Concrete", 150, 15.5),
+  sawRow("r2", "Roadsaw", "Floor", "Concrete", 200, 18.95),
+  sawRow("r3", "Roadsaw", "Floor", "Asphalt", 150, 12.4),
+  sawRow("r4", "Demosaw", "Floor", "Any", 150, 22),
+  sawRow("r5", "Demosaw", "Wall", "Concrete", 150, 26.5),
+  sawRow("r6", "Ringsaw", "Floor", "Any", 200, 31),
+  sawRow("r7", "Ringsaw", "Wall", "Any", 200, 34)
+];
+
+const KEY_IDS = ["k-equipment", "k-elevation", "k-material", "k-depth"] as const;
+
+/** The four options lists, in cascade order, for a fully-chosen scenario. */
+const cascade = (chosen: Record<string, string>) =>
+  KEY_IDS.map((id) => scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, chosen, id));
+
+describe("RATE_SCENARIO_PICKER_V2 · a key column is a key column", () => {
+  it("the KEY columns are the picker's selects, in table order", () => {
+    expect(scenarioKeyColumns(SAW_COLUMNS).map((c) => c.name)).toStrictEqual([
+      "Equipment",
+      "Elevation",
+      "Material",
+      "Depth"
+    ]);
+  });
+
+  it("VALUE and INFO columns are not part of the scenario", () => {
+    expect(scenarioKeyColumns(SAW_COLUMNS).map((c) => c.name)).not.toContain("Rate");
+    expect(scenarioKeyColumns(SAW_COLUMNS).map((c) => c.name)).not.toContain("Note");
+  });
+
+  it("the control count is one per key column plus one per line field", () => {
+    // The mock-up's sheet: four keys, one line field ("Metres") — five controls.
+    expect(scenarioKeyColumns(SAW_COLUMNS).length + 1).toBe(5);
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2 · a cell is compared as a string", () => {
+  it("a NUMBER cell and the string a <select> hands back are the same value", () => {
+    expect(scenarioCellText(200)).toBe("200");
+    expect(scenarioCellText("200")).toBe("200");
+  });
+
+  it("an empty cell is the empty string, not 'null' or 'undefined'", () => {
+    expect(scenarioCellText(null)).toBe("");
+    expect(scenarioCellText(undefined)).toBe("");
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2 · how options sort", () => {
+  it("numbers sort as numbers, so a depth band list is not 150, 200, 50", () => {
+    expect(["200", "50", "150"].slice().sort(compareScenarioValues)).toStrictEqual([
+      "50",
+      "150",
+      "200"
+    ]);
+  });
+
+  it("text sorts by locale", () => {
+    expect(["Roadsaw", "Demosaw", "Ringsaw"].slice().sort(compareScenarioValues)).toStrictEqual([
+      "Demosaw",
+      "Ringsaw",
+      "Roadsaw"
+    ]);
+  });
+
+  it("a mixed column stays on the locale comparator rather than sorting NaN", () => {
+    expect(["150", "Any", "200"].slice().sort(compareScenarioValues)).toStrictEqual([
+      "150",
+      "200",
+      "Any"
+    ]);
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2 · the cascade", () => {
+  it("Equipment offers every equipment on the sheet", () => {
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, {}, "k-equipment")).toStrictEqual([
+      "Demosaw",
+      "Ringsaw",
+      "Roadsaw"
+    ]);
+  });
+
+  it("the mock-up's walk: Roadsaw → Floor → Asphalt, Concrete → 150, 200", () => {
+    const chosen: Record<string, string> = { "k-equipment": "Roadsaw" };
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, chosen, "k-elevation")).toStrictEqual([
+      "Floor"
+    ]);
+    chosen["k-elevation"] = "Floor";
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, chosen, "k-material")).toStrictEqual([
+      "Asphalt",
+      "Concrete"
+    ]);
+    chosen["k-material"] = "Concrete";
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, chosen, "k-depth")).toStrictEqual([
+      "150",
+      "200"
+    ]);
+  });
+
+  it("only EARLIER keys narrow a menu — a later choice never edits an earlier one", () => {
+    // Depth 200 exists only for Concrete under Roadsaw/Floor, and Material's
+    // menu must still offer Asphalt: the two selects do not fight each other.
+    const chosen = {
+      "k-equipment": "Roadsaw",
+      "k-elevation": "Floor",
+      "k-material": "Concrete",
+      "k-depth": "200"
+    };
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, chosen, "k-material")).toStrictEqual([
+      "Asphalt",
+      "Concrete"
+    ]);
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, chosen, "k-equipment")).toStrictEqual([
+      "Demosaw",
+      "Ringsaw",
+      "Roadsaw"
+    ]);
+  });
+
+  it("every offered option leads somewhere: the full cascade never offers a dead end", () => {
+    for (const equipment of scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, {}, "k-equipment")) {
+      const a = { "k-equipment": equipment };
+      for (const elevation of scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, a, "k-elevation")) {
+        const b = { ...a, "k-elevation": elevation };
+        for (const material of scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, b, "k-material")) {
+          const c = { ...b, "k-material": material };
+          const depths = scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, c, "k-depth");
+          expect(depths.length).toBeGreaterThan(0);
+          for (const depth of depths) {
+            expect(matchScenarioRow(SAW_COLUMNS, SAW_ROWS, { ...c, "k-depth": depth })).not.toBeNull();
+          }
+        }
+      }
+    }
+  });
+
+  it("a column that is not a key has no options", () => {
+    expect(scenarioKeyOptions(SAW_COLUMNS, SAW_ROWS, {}, "v-rate")).toStrictEqual([]);
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2 · the matched row", () => {
+  it("the mock-up's worked example: Roadsaw / Floor / Concrete / 200 is one row", () => {
+    const row = matchScenarioRow(SAW_COLUMNS, SAW_ROWS, {
+      "k-equipment": "Roadsaw",
+      "k-elevation": "Floor",
+      "k-material": "Concrete",
+      "k-depth": "200"
+    });
+    expect(row?.id).toBe("r2");
+    expect(row?.cells["v-rate"]).toBe(18.95);
+  });
+
+  it("matches a NUMBER cell against the string the select hands back", () => {
+    // The Depth cells are stored as numbers; the chosen value is "200".
+    expect(SAW_ROWS[1].cells["k-depth"]).toBe(200);
+    expect(
+      matchScenarioRow(SAW_COLUMNS, SAW_ROWS, {
+        "k-equipment": "Roadsaw",
+        "k-elevation": "Floor",
+        "k-material": "Concrete",
+        "k-depth": "200"
+      })?.id
+    ).toBe("r2");
+  });
+
+  it("a combination the sheet does not carry matches nothing — no nearest guess", () => {
+    expect(
+      matchScenarioRow(SAW_COLUMNS, SAW_ROWS, {
+        "k-equipment": "Roadsaw",
+        "k-elevation": "Floor",
+        "k-material": "Asphalt",
+        "k-depth": "200"
+      })
+    ).toBeNull();
+  });
+
+  it("every key must match, not most of them", () => {
+    expect(
+      matchScenarioRow(SAW_COLUMNS, SAW_ROWS, {
+        "k-equipment": "Roadsaw",
+        "k-elevation": "Wall",
+        "k-material": "Concrete",
+        "k-depth": "150"
+      })
+    ).toBeNull();
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2 · the stale-value fallback", () => {
+  it("nothing chosen resolves to the first option at every level, and matches", () => {
+    const keys = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, {});
+    expect(keys).toStrictEqual({
+      "k-equipment": "Demosaw",
+      "k-elevation": "Floor",
+      "k-material": "Any",
+      "k-depth": "150"
+    });
+    expect(matchScenarioRow(SAW_COLUMNS, SAW_ROWS, keys)?.id).toBe("r4");
+  });
+
+  it("a valid combination is left exactly as chosen", () => {
+    const chosen = {
+      "k-equipment": "Roadsaw",
+      "k-elevation": "Floor",
+      "k-material": "Concrete",
+      "k-depth": "200"
+    };
+    expect(resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, chosen)).toStrictEqual(chosen);
+  });
+
+  it("Roadsaw/Floor/Asphalt/150, then Equipment → Demosaw: Material falls to Any, Depth keeps 150", () => {
+    const stale = {
+      "k-equipment": "Demosaw",
+      "k-elevation": "Floor",
+      "k-material": "Asphalt",
+      "k-depth": "150"
+    };
+    const resolved = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, stale);
+    expect(resolved).toStrictEqual({
+      "k-equipment": "Demosaw",
+      "k-elevation": "Floor",
+      "k-material": "Any",
+      "k-depth": "150"
+    });
+    // And the fallback lands on a real row rather than on nothing.
+    expect(matchScenarioRow(SAW_COLUMNS, SAW_ROWS, resolved)?.id).toBe("r4");
+  });
+
+  it("a fallback cascades: a stranded key re-strands the ones after it", () => {
+    // Ringsaw carries no 150 depth at all, so Depth cannot keep its value.
+    const resolved = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, {
+      "k-equipment": "Ringsaw",
+      "k-elevation": "Floor",
+      "k-material": "Concrete",
+      "k-depth": "150"
+    });
+    expect(resolved).toStrictEqual({
+      "k-equipment": "Ringsaw",
+      "k-elevation": "Floor",
+      "k-material": "Any",
+      "k-depth": "200"
+    });
+    expect(matchScenarioRow(SAW_COLUMNS, SAW_ROWS, resolved)?.id).toBe("r6");
+  });
+
+  it("resolving is idempotent — a resolved set of keys resolves to itself", () => {
+    const once = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, {
+      "k-equipment": "Roadsaw",
+      "k-elevation": "Wall",
+      "k-material": "Asphalt",
+      "k-depth": "999"
+    });
+    expect(resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, once)).toStrictEqual(once);
+    expect(matchScenarioRow(SAW_COLUMNS, SAW_ROWS, once)).not.toBeNull();
+  });
+
+  it("a resolved scenario ALWAYS matches a row, for every starting point", () => {
+    const nonsense = [
+      {},
+      { "k-equipment": "Chainsaw" },
+      { "k-depth": "12" },
+      { "k-equipment": "Demosaw", "k-material": "Asphalt" },
+      { "k-equipment": "Ringsaw", "k-elevation": "Wall", "k-material": "Concrete" }
+    ];
+    for (const start of nonsense) {
+      const keys = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, start);
+      expect(matchScenarioRow(SAW_COLUMNS, SAW_ROWS, keys)).not.toBeNull();
+    }
+  });
+
+  it("an empty sheet resolves every key to blank and matches nothing", () => {
+    expect(resolveScenarioKeys(SAW_COLUMNS, [], {})).toStrictEqual({
+      "k-equipment": "",
+      "k-elevation": "",
+      "k-material": "",
+      "k-depth": ""
+    });
+    expect(matchScenarioRow(SAW_COLUMNS, [], resolveScenarioKeys(SAW_COLUMNS, [], {}))).toBeNull();
+  });
+
+  it("a table with no KEY column falls back to the first row, as the picker always did", () => {
+    const noKeys = SAW_COLUMNS.filter((c) => c.role !== "KEY");
+    expect(resolveScenarioKeys(noKeys, SAW_ROWS, {})).toStrictEqual({});
+    expect(matchScenarioRow(noKeys, SAW_ROWS, {})?.id).toBe("r1");
+  });
+
+  it("the cascade is stable while the keys are: the same chosen keys give the same menus", () => {
+    const keys = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, { "k-equipment": "Roadsaw" });
+    expect(cascade(keys)).toStrictEqual(cascade(keys));
+    expect(cascade(keys)[1]).toStrictEqual(["Floor"]);
   });
 });

@@ -35,6 +35,7 @@
     "pr:watch": "node scripts/pr-watcher/index.mjs",
     "rates:fallback-audit": "node scripts/rates/fallback-audit.mjs",
     "rates:parity-proof": "node scripts/rates/parity-proof.mjs",
+    "rates:backfill-tip-ids": "node scripts/rates/backfill-waste-map-location-ids.mjs",
     "check:sot-refs": "node scripts/pipeline/check-sot-refs.mjs",
     "check:lessons": "node scripts/pipeline/check-lessons.mjs",
     "check:backlog": "node scripts/pipeline/check-backlog.mjs",

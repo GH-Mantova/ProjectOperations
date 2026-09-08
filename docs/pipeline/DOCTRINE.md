@@ -739,6 +739,54 @@ here now because they are true for **every** station.
   never-arm prompt**, and it fires at the `DO_NOT_ARM_COMMENT` test before the premise is ever evaluated. The general
   warning stands: a **prose** human gate matches neither regex and is invisible to both the
   linter and any grep built on them.
+- 🔴 **AND THE SAME UNION GREP *OVER*-REPORTS, BECAUSE `checkHumanGate` STRIPS CODE CONTEXT BEFORE IT
+  TESTS THE MARKERS AND A `Select-String` CANNOT — SO A PROMPT THAT *DOCUMENTS* THE ARMING GATE READS
+  AS GATED WHILE THE LINTER CORRECTLY ADMITS IT.** The bullet above records the grep's
+  UNDER-reporting (case sensitivity). This is the other direction, it was undocumented until now, and
+  it costs the opposite thing: it makes a run **refuse to arm real work**, and it lands preferentially
+  on the prompts that repair this pipeline's own instruments — because those are the prompts that
+  quote the marker. `checkHumanGate` (anchor: `export function checkHumanGate`) opens with
+  `const stripped = stripCodeContext(bodyText)` (anchor: `stripCodeContext(bodyText)`), so fenced
+  blocks and inline code spans are removed **before** the three regexes run — exactly as its own doc
+  comment says (*"a prompt that documents this feature … quotes these strings as examples"*). A grep
+  reads the unstripped source and therefore asks a different question.
+  [MEASURED] 2026-09-08T01:2xZ by Station 00 at `e453ee8d`, union grep over the depth-1 `-HOLD.md`
+  in `docs/pr-prompts` (`watcher:\s*do-not-arm` case-insensitive · `DO NOT ARM` `-CaseSensitive` ·
+  `Arm ONLY` case-insensitive), every hit then re-linted with `lint-prompt.mjs`:
+
+  | | count |
+  |---|---|
+  | flagged by the union grep | **12** |
+  | of those, lint exit 1 `HUMAN_GATE_PRESENT` — TRUE positives | **11** |
+  | of those, lint exit 0 **ADMIT**, no gate — FALSE positive | **1** |
+
+  The false positive is `pr-triage-holds-open-pr-duplicate-bucket-HOLD.md`, whose body asks the
+  script to print the heading `DUPLICATES OF AN OPEN PR — DO NOT ARM` inside an inline code span.
+  **NEGATIVE control:** two prompts the grep did *not* flag were re-linted and neither reported
+  `HUMAN_GATE_PRESENT`, so on this board the grep produced no false negatives — its error is
+  one-directional.
+  🔧 **Keep the grep; it is still the required second instrument. But treat a grep hit as a QUESTION
+  and settle it by running `lint-prompt.mjs` on that one file and reading the `HUMAN_GATE_PRESENT`
+  CODE — never the exit code alone**, because a HOLD also exits 1 for `GATE_NOT_RELEASED` and the
+  exit code cannot discriminate. Never arm on the grep's silence; never refuse on its noise.
+  ⚠️ **This is §9.6's closing rule with the corpus changed from this document to the queue:** a
+  prompt that describes the arming gate contains a literal instance of the arming gate, so a probe
+  pointed at it measures the documentation.
+  ⚠️ **DO NOT use the board count above as the falsifying probe — the same PR that landed this
+  bullet also REPAIRED the one false positive it names**, so a re-run over today's HOLDs returns 11
+  of 11 and reads as *"the bullet is wrong"*. **The probe is a FIXTURE whose truth is known by
+  construction.** [MEASURED] the same run against the exported `checkHumanGate`:
+
+  | fixture body line | raw union grep | `checkHumanGate` | truth |
+  |---|---|---|---|
+  | `DO NOT ARM until Marco answers.` — prose | FLAG | `HUMAN_GATE_PRESENT` | gate |
+  | the same words inside an **inline code span** | FLAG | **`ok` — no gate** | not a gate |
+  | the same words inside a **fenced block** | FLAG | **`ok` — no gate** | not a gate |
+  | the `watcher: do-not-arm` HTML comment | FLAG | `HUMAN_GATE_PRESENT` | gate |
+  | no marker at all — NEGATIVE control | clear | `ok` | not a gate |
+
+  Rebuild those five and run both instruments; if the grep and `checkHumanGate` ever agree on all
+  five rows, this bullet is wrong. Found and landed by Station 00 2026-09-08T01:2xZ.
 - 🟢 **LANDED 2026-08-31T01:21:53Z — `parseFrontMatter` now FOLDS block scalars, so the LL-29 rollback
   gate is real again.** PR **#1414** (`1a62c86d`) added `foldBlockScalar` for `>`, `>-`, `>+`, `|`, `|-`,
   `|+` with correct chomping. Measured on `origin/main` at `6e105076`:
@@ -1358,6 +1406,42 @@ this lane's receipt requirement is a **discipline, not a gate**, and this sectio
 though CI enforces it. The honest boundary today is the instrument: `bd-push-slice.ps1` writes the
 receipt into the PR branch before it arms auto-merge, and refuses to arm without one. That is a
 constraint on one script, which is weaker than CI and must be said plainly rather than dressed up.
+
+🔴🔴 **THE RECEIPT'S AUTHORING COMMIT NAMES ITS OWN ACTOR IN THE GIT IDENTITY, AND THE SQUASH MERGE
+IS THE ONLY THING THAT HIDES IT.** [MEASURED] 2026-09-08T00:3xZ by Station 00 (scheduled) via
+`gh pr view <N> --json commits` then `gh api repos/GH-Mantova/ProjectOperations/commits/<sha>`, over
+four receipts written inside twenty-five minutes of each other:
+
+| receipt | authoring commit | `commit.author.name` | message | actor |
+|---|---|---|---|---|
+| `1797.md` | `08ce2ae0` 23:37:35Z | **`Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>`** | `docs(merge-approvals): receipt for #1797 - supervised cloud lane, standing authority` | this lane |
+| `1767.md` | `268a9a54` 23:15:59Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Create 1767.md`** | Marco, GitHub web UI |
+| `1775.md` | `d146637e` 23:17:08Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Add approval details for PR 1775`** | Marco, GitHub web UI |
+| `1796.md` | `6aaf5f62` 2026-09-08T00:08:17Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Create 1796.md`** | Marco, GitHub web UI |
+
+**POSITIVE control, and it is the load-bearing row:** the same PR's BUILD commit `985fa475`
+(23:36:31Z, carrying the two in-scope doc edits) reads `Marco <marco@initialservices.net>` — the
+**watcher's own local git config on Marco's box**. 🔴 **So the most human-looking identity on this
+board belongs to the most automated actor**, and a run attributing work by author name gets the
+watcher's builds exactly backwards. That is the opposite error to the one `mergedBy` produces, and
+the two together are why identity has to be read per-commit or not at all.
+
+🔧 **Read the AUTHORING commit, never the squash-merge commit.**
+`git log --format=%an origin/main -- docs/decisions/merge-approvals/<N>.md` answers `GH-Mantova` for
+**every** receipt, because the squash commit is all `main` retains — the discriminating identity
+survives only on the PR's own commit list. ⚠️ **Falsifying probe: the table above.** Re-run it on any
+receipt; if a cloud-lane receipt ever reads `Marco <marco@initialservices.net>`, or a watcher build
+commit reads the cloud-lane identity, this block is wrong and must be re-measured.
+
+🔴 **AND `approved_by: marco` IN A RECEIPT'S FRONT MATTER DOES NOT MEAN MARCO SAW THE PR.** On a
+standing-authority receipt the BODY says so in as many words — *"Marco did not see this PR before it
+merged"* — while the machine-readable field one line above says the opposite. The field records
+*whose authority*, not *who looked*. A scheduled Station 00 run read the field, did not read the
+body, and filed a forgery accusation against an actor that had signed its own commit; the
+measurements above retracted it the next hour. **Read the body, and prefer the commit identity to
+the field.** A one-line `authority: standing | personal` discriminator in the front matter would
+remove the ambiguity at the source, and choosing to add one is Marco's, not a station's.
+
 
 **Ruled by Marco, 2026-09-07**, when the conflict between this section and §10.1 was put to him
 directly — may the lane merge `escalates: false` PRs touching `apps/api` and `apps/web`, or is the

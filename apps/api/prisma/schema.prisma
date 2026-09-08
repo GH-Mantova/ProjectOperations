@@ -368,6 +368,11 @@ model User {
   allocatorDelegatesGranted  AllocatorDelegate[]         @relation("AllocatorDelegateGrantor")
   allocatorDelegatesReceived AllocatorDelegate[]         @relation("AllocatorDelegateUser")
 
+  // TR-1: CRM reminder policy edits made by this user. Nullable on the policy
+  // side (onDelete: SetNull) so deleting an admin never blocks or deletes the
+  // singleton config row.
+  reminderPolicyUpdates TenderReminderPolicy[] @relation("ReminderPolicyUpdatedBy")
+
   @@index([isActive])
   @@index([managerId])
   @@map("users")
@@ -4524,9 +4529,16 @@ model ClaimLineItem {
   thisClaimAmount   Decimal       @default(0) @map("this_claim_amount") @db.Decimal(12, 2)
   variationId       String?       @map("variation_id")
   variation         Variation?    @relation(fields: [variationId], references: [id], onDelete: SetNull)
+  // SoR S9a — AR side of the approved-item claim feed. Symmetric with
+  // `variationId`: a claim line is sourced from EITHER an approved Variation
+  // (VC) or an approved AgreedRecord (AR), never both. Nullable because every
+  // pre-S9a line (and every discipline/scope line) has no AR source.
+  agreedRecordId    String?       @map("agreed_record_id")
+  agreedRecord      AgreedRecord? @relation(fields: [agreedRecordId], references: [id], onDelete: SetNull)
   sortOrder         Int           @default(0) @map("sort_order")
 
   @@index([claimId])
+  @@index([agreedRecordId])
   @@map("claim_line_items")
 }
 
@@ -8035,6 +8047,69 @@ model EmailLog {
   @@map("email_logs")
 }
 
+// ── TR-1: CRM reminder policy + reminder log ─────────────────────────────────
+// Admin-configurable reminder timings (TenderReminderPolicy) and the
+// idempotency log the TR-2 cron will upsert into (TenderReminderLog).
+// CRM surface (TR_SCOPE_CRM, docs/plans/tender-reminders-plan.md §0) — the
+// services live in `apps/api/src/modules/crm/reminders/`, NOT in tendering.
+// Both tables are new and additive: no existing table is altered, no existing
+// row is read or written by the migration that creates them.
+
+/// TR-1: Singleton configuration row for the CRM reminder engine. Exactly one
+/// row is expected per installation; the seed writes it with the fixed id
+/// "trp-default", and ReminderPolicyService.getPolicy() lazily creates the
+/// same row on first read so a production deploy (which runs
+/// `prisma migrate deploy` and NOT the seed) is not left without a policy.
+model TenderReminderPolicy {
+  id                        String   @id @default(cuid())
+  /// Days before Tender.dueDate the first PRE-DUE reminder fires.
+  daysBefore                Int      @default(7) @map("days_before")
+  /// Fire an additional reminder on the due day itself.
+  dueDayOf                  Boolean  @default(true) @map("due_day_of")
+  /// Days after submittedAt before the first POST-SUBMISSION chase.
+  postSubmissionChaseDays   Int      @default(14) @map("post_submission_chase_days")
+  /// Days between subsequent POST-SUBMISSION chases.
+  postSubmissionCadenceDays Int      @default(14) @map("post_submission_cadence_days")
+  /// Per-stage "watch" idle day counts, keyed by TenderingStage. Seeded from
+  /// the values currently hardcoded in tendering-page-helpers.ts. NOT read by
+  /// anything yet (TR-1 §8) — carried so a later slice can wire them in.
+  watchIdleThresholds       Json     @map("watch_idle_thresholds")
+  /// Per-stage "rotting" idle day counts. Same provenance and status.
+  rottingIdleThresholds     Json     @map("rotting_idle_thresholds")
+  /// Days an item may stay unactioned before escalating to a manager (TR-3).
+  escalationWindowDays      Int      @default(3) @map("escalation_window_days")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+  updatedById               String?  @map("updated_by_id")
+  updatedBy                 User?    @relation("ReminderPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("tender_reminder_policy")
+}
+
+/// TR-1: Polymorphic idempotency log for the TR-2 reminder cron. One row per
+/// (subject, triggerKey) that has already fired; the unique constraint is the
+/// race-guard the cron upserts against, so a re-run in the same tick — or two
+/// overlapping ticks — cannot double-notify.
+///
+/// The model name is kept as TenderReminderLog to avoid migration-name churn;
+/// the store is NOT tender-only (CommTask rows are subjects too).
+model TenderReminderLog {
+  id          String   @id @default(cuid())
+  /// Polymorphic subject: "Tender" (PRE-DUE / POST-SUBMISSION tracks) or
+  /// "CommTask" (FOLLOW-UP track). No hard FK — matches the
+  /// CommThread/CommTask polymorphism already in use in this schema. Cascade
+  /// on subject delete is deliberately NOT modelled: the cron deletes its own
+  /// log rows if that ever matters.
+  subjectType String   @map("subject_type")
+  subjectId   String   @map("subject_id")
+  /// e.g. "pre_due_7", "pre_due_0", "post_sub_14", "task_due", "esc_task_due".
+  triggerKey  String   @map("trigger_key")
+  firedAt     DateTime @default(now()) @map("fired_at")
+
+  @@unique([subjectType, subjectId, triggerKey])
+  @@index([subjectType, subjectId])
+  @@map("tender_reminder_log")
+}
+
 // ── SoR S7: Agreed Record (AR / dayworks) ────────────────────────────────────
 
 /// Single-row sequence table that issues AR-XXXXXX numbers for AgreedRecord.
@@ -8089,6 +8164,8 @@ model AgreedRecord {
   updatedAt              DateTime                 @updatedAt @map("updated_at")
   lines                  AgreedRecordLine[]
   attachments            AgreedRecordAttachment[]
+  // SoR S9a — claim lines fed from this AR once it is APPROVED and signed.
+  claimLineItems         ClaimLineItem[]
 
   @@index([jobId, status])
   @@map("agreed_records")

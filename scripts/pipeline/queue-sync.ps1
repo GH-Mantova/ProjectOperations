@@ -39,7 +39,12 @@ param(
 
 $ErrorActionPreference = "Continue"
 $Ledger = Join-Path $PromptDir ".queue-sync-ledger.txt"
-$SubDirs = @("processed", "failed", "no-pr-opened", "blocked", "paused", "in-progress")
+# NO "in-progress" HERE (removed 2026-09-08). Nothing has ever written that directory --
+# index.mjs files prompts to processed/, failed/, no-pr-opened/, blocked/ and paused/ and to
+# nothing else, and it is not on origin/main. Its Test-Path below was therefore never once
+# true, so removing it cannot change $seenElsewhere. It was the fourth instance of the
+# 2026-09-01 dead-queue-read class; scripts/pipeline/check-queue-dirs.mjs now gates the class.
+$SubDirs = @("processed", "failed", "no-pr-opened", "blocked", "paused")
 
 function Say($tag, $msg) { Write-Output ("[queue-sync] " + $tag.PadRight(10) + " " + $msg) }
 

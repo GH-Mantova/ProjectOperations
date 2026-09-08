@@ -1,0 +1,84 @@
+name: Claude Code
+
+# The Claude GitHub App is installed on this repository with read+write on
+# actions, checks, code, discussions, issues, pull requests, repository hooks
+# and workflows. Installing the app grants permissions; THIS FILE is what
+# actually runs when somebody writes @claude. Until it landed, mentioning
+# @claude anywhere in this repo did nothing at all -- confirmed by trying it on
+# #1483 on 2026-09-01, which produced no workflow run.
+#
+# WHAT IT IS FOR: on 2026-09-01 every agent write path into this repository
+# closed at once (read-only MCP credential, git lock files unreleasable through
+# the Cowork bridge, extension refusing keystroke injection). Four PRs needed
+# two-line fixes and none could be applied by an agent; Marco applied them by
+# hand. This gives the board an agent reachable by a PR comment that can commit.
+#
+# SECRET REQUIRED -- this workflow is inert until Marco adds one of:
+#   CLAUDE_CODE_OAUTH_TOKEN  (his Claude subscription; `claude setup-token`)
+#   ANTHROPIC_API_KEY        (Console key, billed per token)
+# The `with:` block below uses the OAuth token. To switch to the API key,
+# replace that one line with:
+#   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+# Agents do not create, read or guess the secret. With it absent the action
+# fails to authenticate, which is the correct failure: closed.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# One run per issue/PR thread. A burst of comments on the same thread queues
+# rather than starting parallel runs, each of which would spend tokens and
+# Actions minutes. Modelled on ci.yml's concurrency block; NOT cancel-in-progress,
+# because a half-finished agent run can leave a branch in a partial state.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # Keeps a runner from starting at all on the overwhelming majority of
+    # comments. This is the first of three cost guards; see also timeout-minutes
+    # and --max-turns below. Do not remove any of the three.
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Exactly five, deliberately. In particular NOT `workflows: write` -- an
+    # agent able to rewrite its own trigger conditions is a much larger decision
+    # than this workflow is making.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      # Pinned to the version ci.yml already uses, so the repo has one pin to
+      # maintain rather than two. The upstream example shows @v6.
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --max-turns 15
+        # DO NOT ADD a `github_token` INPUT HERE. GitHub does not trigger workflows on
+        # commits made with the default GITHUB_TOKEN. Every PR on this repo is
+        # gated on CI with strict_required_status_checks_policy = true, so a
+        # commit that does not fire `pull_request` leaves the PR permanently
+        # pending its required checks -- it can never merge, and it looks like a
+        # hang rather than an error. Omitting it makes the action authenticate
+        # as the Claude GitHub App, whose pushes fire events normally.
+        #
+        # The prompt's done_when greps for that input name and asserts it is
+        # ABSENT, so this comment deliberately does not spell it with a trailing
+        # colon: a comment that quotes the forbidden string fails the check it
+        # is explaining. Same class of defect as #1801.
+        #
+        # DO NOT ADD an `allowed_bots` input. The action rejects bot actors unless they
+        # are listed there. Every actor on this board authenticates as the human
+        # user GH-Mantova, so nothing here needs it, and adding one weakens the
+        # loop-prevention that check exists to provide.

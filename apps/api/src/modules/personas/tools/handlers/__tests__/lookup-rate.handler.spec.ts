@@ -1,217 +1,29 @@
-import { Prisma } from "@prisma/client";
 import { LookupRateHandler } from "../lookup-rate.handler";
+import type { RateResolverService } from "../../../../rates/rate-resolver.service";
+import type { ListedRate } from "../../../../rates/rate-resolver.service";
 import type { ToolHandlerContext } from "../../tool-handler.types";
-import type { PrismaService } from "../../../../../prisma/prisma.service";
 
-// Lightweight mock — covers all eight rate tables LookupRateHandler touches.
-function buildPrismaMock(opts: {
-  cuttingRows?: Array<{
-    id: string;
-    equipment: string;
-    elevation: string;
-    material: string;
-    depthMm: number;
-    ratePerM: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-  coreHoleRows?: Array<{
-    id: string;
-    diameterMm: number;
-    ratePerHole: Prisma.Decimal;
-    isActive: boolean;
-  }>;
-  labourRows?: Array<{
-    id: string;
-    role: string;
-    dayRate: Prisma.Decimal;
-    nightRate: Prisma.Decimal;
-    weekendRate: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-  plantRows?: Array<{
-    id: string;
-    item: string;
-    unit: string;
-    rate: Prisma.Decimal;
-    fuelRate: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-  wasteRows?: Array<{
-    id: string;
-    wasteType: string;
-    facility: string;
-    wasteGroup: string | null;
-    unit: string;
-    tonRate: Prisma.Decimal;
-    loadRate: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-  fuelRows?: Array<{
-    id: string;
-    item: string;
-    unit: string;
-    rate: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-  enclosureRows?: Array<{
-    id: string;
-    enclosureType: string;
-    unit: string;
-    rate: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-  otherRows?: Array<{
-    id: string;
-    description: string;
-    unit: string;
-    rate: Prisma.Decimal;
-    isActive: boolean;
-    sortOrder: number;
-  }>;
-}) {
-  const cuttingRows = opts.cuttingRows ?? [];
-  const coreHoleRows = opts.coreHoleRows ?? [];
-  const labourRows = opts.labourRows ?? [];
-  const plantRows = opts.plantRows ?? [];
-  const wasteRows = opts.wasteRows ?? [];
-  const fuelRows = opts.fuelRows ?? [];
-  const enclosureRows = opts.enclosureRows ?? [];
-  const otherRows = opts.otherRows ?? [];
-
-  const prisma = {
-    estimateCuttingRate: {
-      findMany: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        return cuttingRows.filter((r) => matchCuttingWhere(r, w));
-      })
-    },
-    estimateCoreHoleRate: {
-      findUnique: jest.fn(async (args: { where: { diameterMm: number } }) => {
-        return coreHoleRows.find((r) => r.diameterMm === args.where.diameterMm) ?? null;
-      }),
-      findMany: jest.fn(async () => coreHoleRows.filter((r) => r.isActive))
-    },
-    estimateLabourRate: {
-      findFirst: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        const role = w.role as { equals?: string; mode?: string } | undefined;
-        const active = w.isActive === true;
-        return (
-          labourRows.find(
-            (r) =>
-              (!active || r.isActive) &&
-              (!role?.equals || r.role.toLowerCase() === role.equals.toLowerCase())
-          ) ?? null
-        );
-      }),
-      findMany: jest.fn(async () => labourRows.filter((r) => r.isActive))
-    },
-    estimatePlantRate: {
-      findFirst: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        const item = w.item as { equals?: string; mode?: string } | undefined;
-        const active = w.isActive === true;
-        return (
-          plantRows.find(
-            (r) =>
-              (!active || r.isActive) &&
-              (!item?.equals || r.item.toLowerCase() === item.equals.toLowerCase())
-          ) ?? null
-        );
-      }),
-      findMany: jest.fn(async () => plantRows.filter((r) => r.isActive))
-    },
-    estimateWasteRate: {
-      findFirst: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        const wasteType = w.wasteType as { equals?: string; mode?: string } | undefined;
-        const facility = w.facility as { equals?: string; mode?: string } | undefined;
-        const active = w.isActive === true;
-        return (
-          wasteRows.find(
-            (r) =>
-              (!active || r.isActive) &&
-              (!wasteType?.equals || r.wasteType.toLowerCase() === wasteType.equals.toLowerCase()) &&
-              (!facility?.equals || r.facility.toLowerCase() === facility.equals.toLowerCase())
-          ) ?? null
-        );
-      }),
-      findMany: jest.fn(async () => wasteRows.filter((r) => r.isActive))
-    },
-    estimateFuelRate: {
-      findFirst: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        const item = w.item as { equals?: string; mode?: string } | undefined;
-        const active = w.isActive === true;
-        return (
-          fuelRows.find(
-            (r) =>
-              (!active || r.isActive) &&
-              (!item?.equals || r.item.toLowerCase() === item.equals.toLowerCase())
-          ) ?? null
-        );
-      }),
-      findMany: jest.fn(async () => fuelRows.filter((r) => r.isActive))
-    },
-    estimateEnclosureRate: {
-      findFirst: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        const enclosureType = w.enclosureType as { equals?: string; mode?: string } | undefined;
-        const active = w.isActive === true;
-        return (
-          enclosureRows.find(
-            (r) =>
-              (!active || r.isActive) &&
-              (!enclosureType?.equals || r.enclosureType.toLowerCase() === enclosureType.equals.toLowerCase())
-          ) ?? null
-        );
-      }),
-      findMany: jest.fn(async () => enclosureRows.filter((r) => r.isActive))
-    },
-    cuttingOtherRate: {
-      findMany: jest.fn(async (args: { where?: Record<string, unknown> }) => {
-        const w = args.where ?? {};
-        const description = w.description as
-          | { contains?: string; mode?: string }
-          | undefined;
-        const active = w.isActive === true;
-        return otherRows.filter((r) => {
-          if (active && !r.isActive) return false;
-          if (description?.contains) {
-            return r.description.toLowerCase().includes(description.contains.toLowerCase());
-          }
-          return true;
-        });
-      })
-    }
+// Minimal ListedRate factory — callers only need to specify fields relevant to
+// their test; the rest default to safe values.
+function makeRate(overrides: Partial<ListedRate> & { keys: ListedRate["keys"] }): ListedRate {
+  return {
+    rowId: overrides.rowId ?? "row-default",
+    keys: overrides.keys,
+    info: overrides.info ?? {},
+    value: overrides.value ?? 0,
+    unit: overrides.unit ?? "each",
+    isActive: overrides.isActive !== undefined ? overrides.isActive : true,
+    sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
+    fuelRate: overrides.fuelRate !== undefined ? overrides.fuelRate : null,
+    source: overrides.source ?? "legacy"
   };
-  return prisma as unknown as PrismaService;
 }
 
-function matchCuttingWhere(
-  row: { equipment: string; elevation: string; material: string; depthMm: number; isActive: boolean },
-  where: Record<string, unknown>
-): boolean {
-  const equipment = where.equipment as { equals?: string; mode?: string } | undefined;
-  if (equipment?.equals && row.equipment.toLowerCase() !== equipment.equals.toLowerCase()) {
-    return false;
-  }
-  const material = where.material as { in?: string[]; mode?: string } | undefined;
-  if (material?.in) {
-    const lowered = material.in.map((m) => m.toLowerCase());
-    if (!lowered.includes(row.material.toLowerCase())) return false;
-  }
-  const elevation = where.elevation as { in?: string[] } | undefined;
-  if (elevation?.in && !elevation.in.includes(row.elevation)) return false;
-  if (typeof where.depthMm === "number" && row.depthMm !== where.depthMm) return false;
-  if (where.isActive === true && !row.isActive) return false;
-  return true;
+// Build a mock RateResolverService where listRates(slug) returns a fixed list.
+function buildResolverMock(ratesBySlug: Record<string, ListedRate[]>): RateResolverService {
+  return {
+    listRates: jest.fn(async (slug: string) => ratesBySlug[slug] ?? [])
+  } as unknown as RateResolverService;
 }
 
 const ACTOR_WITH_PERMISSION: ToolHandlerContext = {
@@ -238,10 +50,6 @@ const ACTOR_WITHOUT_PERMISSION: ToolHandlerContext = {
   toolUseId: "tu-2"
 };
 
-function dec(value: number): Prisma.Decimal {
-  return new Prisma.Decimal(value);
-}
-
 function parseTextPayload(text: string): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>;
 }
@@ -249,21 +57,19 @@ function parseTextPayload(text: string): Record<string, unknown> {
 describe("LookupRateHandler", () => {
   describe("cutting", () => {
     it("returns matched rate for valid wall cutting input", async () => {
-      const prisma = buildPrismaMock({
-        cuttingRows: [
-          {
-            id: "r-1",
-            equipment: "Demosaw",
-            elevation: "Wall",
-            material: "Concrete",
-            depthMm: 100,
-            ratePerM: dec(45.5),
+      const resolver = buildResolverMock({
+        cutting: [
+          makeRate({
+            rowId: "r-1",
+            keys: { equipment: "Demosaw", elevation: "Wall", material: "Concrete", depthMm: 100 },
+            value: 45.5,
+            unit: "m",
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "cutting",
@@ -281,21 +87,19 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns matched rate for valid floor cutting input", async () => {
-      const prisma = buildPrismaMock({
-        cuttingRows: [
-          {
-            id: "r-2",
-            equipment: "Roadsaw",
-            elevation: "Floor",
-            material: "Asphalt",
-            depthMm: 200,
-            ratePerM: dec(31.75),
+      const resolver = buildResolverMock({
+        cutting: [
+          makeRate({
+            rowId: "r-2",
+            keys: { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 200 },
+            value: 31.75,
+            unit: "m",
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "cutting",
@@ -309,21 +113,19 @@ describe("LookupRateHandler", () => {
     });
 
     it("matches \"Any\"-elevation equipment when caller asks for wall or floor", async () => {
-      const prisma = buildPrismaMock({
-        cuttingRows: [
-          {
-            id: "r-3",
-            equipment: "Ringsaw",
-            elevation: "Any",
-            material: "Any",
-            depthMm: 250,
-            ratePerM: dec(60.0),
+      const resolver = buildResolverMock({
+        cutting: [
+          makeRate({
+            rowId: "r-3",
+            keys: { equipment: "Ringsaw", elevation: "Any", material: "Any", depthMm: 250 },
+            value: 60.0,
+            unit: "m",
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "cutting",
@@ -337,21 +139,19 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available combos when no rate row matches", async () => {
-      const prisma = buildPrismaMock({
-        cuttingRows: [
-          {
-            id: "r-4",
-            equipment: "Roadsaw",
-            elevation: "Floor",
-            material: "Asphalt",
-            depthMm: 100,
-            ratePerM: dec(20),
+      const resolver = buildResolverMock({
+        cutting: [
+          makeRate({
+            rowId: "r-4",
+            keys: { equipment: "Roadsaw", elevation: "Floor", material: "Asphalt", depthMm: 100 },
+            value: 20,
+            unit: "m",
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "cutting",
@@ -367,8 +167,8 @@ describe("LookupRateHandler", () => {
     });
 
     it("rejects elevation=inverted for cutting (cutting has only wall/floor)", async () => {
-      const prisma = buildPrismaMock({});
-      const handler = new LookupRateHandler(prisma);
+      const resolver = buildResolverMock({});
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "cutting",
@@ -389,12 +189,19 @@ describe("LookupRateHandler", () => {
 
   describe("core_hole", () => {
     it("returns base rate × 1.0 for floor elevation", async () => {
-      const prisma = buildPrismaMock({
-        coreHoleRows: [
-          { id: "ch-1", diameterMm: 100, ratePerHole: dec(2.55), isActive: true }
+      const resolver = buildResolverMock({
+        "core-hole": [
+          makeRate({
+            rowId: "ch-1",
+            keys: { diameterMm: 100 },
+            value: 2.55,
+            unit: "hole",
+            isActive: true,
+            sortOrder: null
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "core_hole", coreHole: { elevation: "floor", diameterMm: 100 } },
         ACTOR_WITH_PERMISSION
@@ -407,12 +214,19 @@ describe("LookupRateHandler", () => {
     });
 
     it("applies 1.1× multiplier for wall elevation", async () => {
-      const prisma = buildPrismaMock({
-        coreHoleRows: [
-          { id: "ch-2", diameterMm: 100, ratePerHole: dec(10), isActive: true }
+      const resolver = buildResolverMock({
+        "core-hole": [
+          makeRate({
+            rowId: "ch-2",
+            keys: { diameterMm: 100 },
+            value: 10,
+            unit: "hole",
+            isActive: true,
+            sortOrder: null
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "core_hole", coreHole: { elevation: "wall", diameterMm: 100 } },
         ACTOR_WITH_PERMISSION
@@ -424,12 +238,19 @@ describe("LookupRateHandler", () => {
     });
 
     it("applies 2.0× multiplier for inverted elevation", async () => {
-      const prisma = buildPrismaMock({
-        coreHoleRows: [
-          { id: "ch-3", diameterMm: 150, ratePerHole: dec(3.2), isActive: true }
+      const resolver = buildResolverMock({
+        "core-hole": [
+          makeRate({
+            rowId: "ch-3",
+            keys: { diameterMm: 150 },
+            value: 3.2,
+            unit: "hole",
+            isActive: true,
+            sortOrder: null
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "core_hole", coreHole: { elevation: "inverted", diameterMm: 150 } },
         ACTOR_WITH_PERMISSION
@@ -440,13 +261,13 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available diameters when none match", async () => {
-      const prisma = buildPrismaMock({
-        coreHoleRows: [
-          { id: "ch-a", diameterMm: 50, ratePerHole: dec(2), isActive: true },
-          { id: "ch-b", diameterMm: 100, ratePerHole: dec(2.5), isActive: true }
+      const resolver = buildResolverMock({
+        "core-hole": [
+          makeRate({ rowId: "ch-a", keys: { diameterMm: 50 }, value: 2, unit: "hole", isActive: true, sortOrder: null }),
+          makeRate({ rowId: "ch-b", keys: { diameterMm: 100 }, value: 2.5, unit: "hole", isActive: true, sortOrder: null })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "core_hole", coreHole: { elevation: "wall", diameterMm: 999 } },
         ACTOR_WITH_PERMISSION
@@ -460,8 +281,8 @@ describe("LookupRateHandler", () => {
 
   describe("input validation", () => {
     it("rejects when rateType=cutting but no cutting block provided", async () => {
-      const prisma = buildPrismaMock({});
-      const handler = new LookupRateHandler(prisma);
+      const resolver = buildResolverMock({});
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute({ rateType: "cutting" }, ACTOR_WITH_PERMISSION);
       expect(result.result.isError).toBe(true);
       const text = (result.result.content[0] as { text: string }).text;
@@ -469,8 +290,8 @@ describe("LookupRateHandler", () => {
     });
 
     it("rejects when rateType=core_hole but no coreHole block provided", async () => {
-      const prisma = buildPrismaMock({});
-      const handler = new LookupRateHandler(prisma);
+      const resolver = buildResolverMock({});
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute({ rateType: "core_hole" }, ACTOR_WITH_PERMISSION);
       expect(result.result.isError).toBe(true);
       const text = (result.result.content[0] as { text: string }).text;
@@ -478,8 +299,8 @@ describe("LookupRateHandler", () => {
     });
 
     it("rejects rateType values not in the supported enum", async () => {
-      const prisma = buildPrismaMock({});
-      const handler = new LookupRateHandler(prisma);
+      const resolver = buildResolverMock({});
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "bogus" as never },
         ACTOR_WITH_PERMISSION
@@ -494,20 +315,14 @@ describe("LookupRateHandler", () => {
 
   describe("labour", () => {
     it("returns the requested shift rate plus all three shift rates", async () => {
-      const prisma = buildPrismaMock({
-        labourRows: [
-          {
-            id: "l-1",
-            role: "Demolition labourer",
-            dayRate: dec(72.5),
-            nightRate: dec(90.0),
-            weekendRate: dec(115.0),
-            isActive: true,
-            sortOrder: 0
-          }
+      const resolver = buildResolverMock({
+        labour: [
+          makeRate({ rowId: "l-1", keys: { role: "Demolition labourer", shift: "day" }, value: 72.5, unit: "day", isActive: true, sortOrder: 0 }),
+          makeRate({ rowId: "l-1", keys: { role: "Demolition labourer", shift: "night" }, value: 90.0, unit: "day", isActive: true, sortOrder: 0 }),
+          makeRate({ rowId: "l-1", keys: { role: "Demolition labourer", shift: "weekend" }, value: 115.0, unit: "day", isActive: true, sortOrder: 0 })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "labour", labour: { role: "demolition labourer", shift: "night" } },
         ACTOR_WITH_PERMISSION
@@ -527,20 +342,14 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available roles when no match", async () => {
-      const prisma = buildPrismaMock({
-        labourRows: [
-          {
-            id: "l-2",
-            role: "Asbestos labourer",
-            dayRate: dec(80),
-            nightRate: dec(100),
-            weekendRate: dec(120),
-            isActive: true,
-            sortOrder: 0
-          }
+      const resolver = buildResolverMock({
+        labour: [
+          makeRate({ rowId: "l-2", keys: { role: "Asbestos labourer", shift: "day" }, value: 80, unit: "day", isActive: true, sortOrder: 0 }),
+          makeRate({ rowId: "l-2", keys: { role: "Asbestos labourer", shift: "night" }, value: 100, unit: "day", isActive: true, sortOrder: 0 }),
+          makeRate({ rowId: "l-2", keys: { role: "Asbestos labourer", shift: "weekend" }, value: 120, unit: "day", isActive: true, sortOrder: 0 })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "labour", labour: { role: "Unknown role", shift: "day" } },
         ACTOR_WITH_PERMISSION
@@ -554,20 +363,21 @@ describe("LookupRateHandler", () => {
 
   describe("plant", () => {
     it("returns rate + unit + fuel rate for matched item", async () => {
-      const prisma = buildPrismaMock({
-        plantRows: [
-          {
-            id: "p-1",
-            item: "13T excavator",
+      const resolver = buildResolverMock({
+        plant: [
+          makeRate({
+            rowId: "p-1",
+            keys: { item: "13T excavator" },
+            info: { Category: "Excavation", Unit: "day" },
+            value: 950,
             unit: "day",
-            rate: dec(950),
-            fuelRate: dec(140),
             isActive: true,
-            sortOrder: 0
-          }
+            sortOrder: 0,
+            fuelRate: 140
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "plant", plant: { item: "13t excavator" } },
         ACTOR_WITH_PERMISSION
@@ -582,20 +392,21 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available items when no match", async () => {
-      const prisma = buildPrismaMock({
-        plantRows: [
-          {
-            id: "p-2",
-            item: "Bobcat",
+      const resolver = buildResolverMock({
+        plant: [
+          makeRate({
+            rowId: "p-2",
+            keys: { item: "Bobcat" },
+            info: { Category: "", Unit: "day" },
+            value: 550,
             unit: "day",
-            rate: dec(550),
-            fuelRate: dec(60),
             isActive: true,
-            sortOrder: 0
-          }
+            sortOrder: 0,
+            fuelRate: 60
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "plant", plant: { item: "Tower crane" } },
         ACTOR_WITH_PERMISSION
@@ -609,22 +420,20 @@ describe("LookupRateHandler", () => {
 
   describe("waste", () => {
     it("returns ton rate + load rate + group when (wasteType, facility) matches", async () => {
-      const prisma = buildPrismaMock({
-        wasteRows: [
-          {
-            id: "w-1",
-            wasteType: "Concrete",
-            facility: "BMI Swanbank",
-            wasteGroup: "Inert",
+      const resolver = buildResolverMock({
+        waste: [
+          makeRate({
+            rowId: "w-1",
+            keys: { wasteType: "Concrete", facility: "BMI Swanbank" },
+            info: { wasteGroup: "Inert", loadRate: 120 },
+            value: 45,
             unit: "tonne",
-            tonRate: dec(45),
-            loadRate: dec(120),
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "waste",
@@ -644,22 +453,20 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available combinations when no match", async () => {
-      const prisma = buildPrismaMock({
-        wasteRows: [
-          {
-            id: "w-2",
-            wasteType: "General waste",
-            facility: "Cleanaway Willawong",
-            wasteGroup: null,
+      const resolver = buildResolverMock({
+        waste: [
+          makeRate({
+            rowId: "w-2",
+            keys: { wasteType: "General waste", facility: "Cleanaway Willawong" },
+            info: { wasteGroup: null, loadRate: 0 },
+            value: 180,
             unit: "tonne",
-            tonRate: dec(180),
-            loadRate: dec(0),
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         {
           rateType: "waste",
@@ -676,19 +483,19 @@ describe("LookupRateHandler", () => {
 
   describe("fuel", () => {
     it("returns rate + unit for matched fuel item", async () => {
-      const prisma = buildPrismaMock({
-        fuelRows: [
-          {
-            id: "f-1",
-            item: "Diesel",
+      const resolver = buildResolverMock({
+        fuel: [
+          makeRate({
+            rowId: "f-1",
+            keys: { item: "Diesel" },
+            value: 2.05,
             unit: "litre",
-            rate: dec(2.05),
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "fuel", fuel: { item: "diesel" } },
         ACTOR_WITH_PERMISSION
@@ -702,12 +509,12 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available items when no match", async () => {
-      const prisma = buildPrismaMock({
-        fuelRows: [
-          { id: "f-2", item: "Unleaded", unit: "litre", rate: dec(2.2), isActive: true, sortOrder: 0 }
+      const resolver = buildResolverMock({
+        fuel: [
+          makeRate({ rowId: "f-2", keys: { item: "Unleaded" }, value: 2.2, unit: "litre", isActive: true, sortOrder: 0 })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "fuel", fuel: { item: "Avgas" } },
         ACTOR_WITH_PERMISSION
@@ -721,19 +528,19 @@ describe("LookupRateHandler", () => {
 
   describe("enclosure", () => {
     it("returns rate + unit for matched enclosure type", async () => {
-      const prisma = buildPrismaMock({
-        enclosureRows: [
-          {
-            id: "e-1",
-            enclosureType: "Class A enclosure",
+      const resolver = buildResolverMock({
+        enclosure: [
+          makeRate({
+            rowId: "e-1",
+            keys: { enclosureType: "Class A enclosure" },
+            value: 85,
             unit: "sqm",
-            rate: dec(85),
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "enclosure", enclosure: { enclosureType: "class a enclosure" } },
         ACTOR_WITH_PERMISSION
@@ -747,19 +554,19 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available types when no match", async () => {
-      const prisma = buildPrismaMock({
-        enclosureRows: [
-          {
-            id: "e-2",
-            enclosureType: "Class B enclosure",
+      const resolver = buildResolverMock({
+        enclosure: [
+          makeRate({
+            rowId: "e-2",
+            keys: { enclosureType: "Class B enclosure" },
+            value: 45,
             unit: "sqm",
-            rate: dec(45),
             isActive: true,
             sortOrder: 0
-          }
+          })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "enclosure", enclosure: { enclosureType: "Negative-pressure decon unit" } },
         ACTOR_WITH_PERMISSION
@@ -773,35 +580,14 @@ describe("LookupRateHandler", () => {
 
   describe("other", () => {
     it("returns all matching rows for a substring description match", async () => {
-      const prisma = buildPrismaMock({
-        otherRows: [
-          {
-            id: "o-1",
-            description: "Establishment fee",
-            unit: "job",
-            rate: dec(450),
-            isActive: true,
-            sortOrder: 0
-          },
-          {
-            id: "o-2",
-            description: "Mobilisation establishment",
-            unit: "job",
-            rate: dec(600),
-            isActive: true,
-            sortOrder: 1
-          },
-          {
-            id: "o-3",
-            description: "Saw blade change",
-            unit: "ea",
-            rate: dec(120),
-            isActive: true,
-            sortOrder: 2
-          }
+      const resolver = buildResolverMock({
+        "other-rates": [
+          makeRate({ rowId: "o-1", keys: { description: "Establishment fee" }, value: 450, unit: "job", isActive: true, sortOrder: 0 }),
+          makeRate({ rowId: "o-2", keys: { description: "Mobilisation establishment" }, value: 600, unit: "job", isActive: true, sortOrder: 1 }),
+          makeRate({ rowId: "o-3", keys: { description: "Saw blade change" }, value: 120, unit: "ea", isActive: true, sortOrder: 2 })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "other", other: { description: "establishment" } },
         ACTOR_WITH_PERMISSION
@@ -818,19 +604,12 @@ describe("LookupRateHandler", () => {
     });
 
     it("returns helpful error with available descriptions when no match", async () => {
-      const prisma = buildPrismaMock({
-        otherRows: [
-          {
-            id: "o-4",
-            description: "Saw blade change",
-            unit: "ea",
-            rate: dec(120),
-            isActive: true,
-            sortOrder: 0
-          }
+      const resolver = buildResolverMock({
+        "other-rates": [
+          makeRate({ rowId: "o-4", keys: { description: "Saw blade change" }, value: 120, unit: "ea", isActive: true, sortOrder: 0 })
         ]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "other", other: { description: "no such thing" } },
         ACTOR_WITH_PERMISSION
@@ -844,10 +623,10 @@ describe("LookupRateHandler", () => {
 
   describe("permission", () => {
     it("denies callers without estimates.view", async () => {
-      const prisma = buildPrismaMock({
-        coreHoleRows: [{ id: "ch", diameterMm: 50, ratePerHole: dec(2), isActive: true }]
+      const resolver = buildResolverMock({
+        "core-hole": [makeRate({ rowId: "ch", keys: { diameterMm: 50 }, value: 2, unit: "hole", isActive: true, sortOrder: null })]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const result = await handler.execute(
         { rateType: "core_hole", coreHole: { elevation: "floor", diameterMm: 50 } },
         ACTOR_WITHOUT_PERMISSION
@@ -859,10 +638,10 @@ describe("LookupRateHandler", () => {
     });
 
     it("super-users bypass the explicit permission check", async () => {
-      const prisma = buildPrismaMock({
-        coreHoleRows: [{ id: "ch", diameterMm: 50, ratePerHole: dec(2), isActive: true }]
+      const resolver = buildResolverMock({
+        "core-hole": [makeRate({ rowId: "ch", keys: { diameterMm: 50 }, value: 2, unit: "hole", isActive: true, sortOrder: null })]
       });
-      const handler = new LookupRateHandler(prisma);
+      const handler = new LookupRateHandler(resolver);
       const ctx: ToolHandlerContext = {
         actor: { sub: "u-3", email: "su@is", permissions: [], isSuperUser: true } as never,
         conversationId: "c",

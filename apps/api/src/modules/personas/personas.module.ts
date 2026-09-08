@@ -1,6 +1,7 @@
 import { Module, OnModuleInit, forwardRef } from "@nestjs/common";
 import { AiProvidersModule } from "../ai-providers/ai-providers.module";
 import { PlatformModule } from "../platform/platform.module";
+import { RatesModule } from "../rates/rates.module";
 import { TenderingModule } from "../tendering/tendering.module";
 import { ConversationsService } from "./conversations.service";
 import { PersonaDispatcherService } from "./dispatcher/persona-dispatcher.service";
@@ -50,7 +51,7 @@ const TENDERING_RATE_SUB_MODES = [
 // register here, bind to sub-modes here. New tools land by adding a
 // handler file + a register/bind call below.
 @Module({
-  imports: [AiProvidersModule, PlatformModule, forwardRef(() => TenderingModule)],
+  imports: [AiProvidersModule, PlatformModule, RatesModule, forwardRef(() => TenderingModule)],
   controllers: [PersonasController],
   providers: [
     PersonasService,

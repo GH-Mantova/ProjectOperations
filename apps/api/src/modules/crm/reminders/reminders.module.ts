@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../../prisma/prisma.module";
 import { PlatformModule } from "../../platform/platform.module";
+import { CommsReminderEscalationService } from "./comms-reminder-escalation.service";
 import { CommsReminderService } from "./comms-reminder.service";
 import { ReminderPolicyController } from "./reminder-policy.controller";
 import { ReminderPolicyService } from "./reminder-policy.service";
@@ -15,7 +16,13 @@ import { ReminderPolicyService } from "./reminder-policy.service";
  * TR-1 registered the policy read/write surface. TR-2 adds
  * `CommsReminderService` — the nightly cron that reads that policy and sweeps
  * the PRE-DUE / POST-SUBMISSION / TASK tracks. TR-3 adds the escalation pass
- * into this same module.
+ * into this same module: `CommsReminderEscalationService`, which carries its
+ * OWN `@Cron` (21:30 UTC, half an hour behind the primary sweep) rather than
+ * being injected into `CommsReminderService`. See the class doc on that
+ * service for why that seam was chosen — in short, it keeps both services
+ * independently testable and leaves TR-2's public shape untouched. Because it
+ * is a `@Cron` provider in the graph, `ScheduleModule.forRoot()` in
+ * `app.module.ts` discovers it with no extra wiring here.
  *
  * `PlatformModule` is imported for `NotificationsService`, the single delivery
  * seam the cron writes through (the TR-2 prompt said `crm.module.ts` already
@@ -35,7 +42,7 @@ import { ReminderPolicyService } from "./reminder-policy.service";
 @Module({
   imports: [PrismaModule, PlatformModule],
   controllers: [ReminderPolicyController],
-  providers: [ReminderPolicyService, CommsReminderService],
-  exports: [ReminderPolicyService, CommsReminderService]
+  providers: [ReminderPolicyService, CommsReminderService, CommsReminderEscalationService],
+  exports: [ReminderPolicyService, CommsReminderService, CommsReminderEscalationService]
 })
 export class RemindersModule {}

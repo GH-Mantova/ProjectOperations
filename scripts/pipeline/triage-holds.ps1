@@ -36,6 +36,15 @@
 # in lint-prompt.mjs is deliberate and moving the premise first would change what REJECT means
 # for every caller, the watcher included. This is a second READING, in the reporting layer.
 #
+# ...AND EXIT 0 IS NOT A "NOT YET BUILT" READING (OPEN_PR_DUPLICATE_V1, added 2026-09-08). The
+# premise dies on MERGE, not on OPEN. A second lane (DOCTRINE 10.2) never consumes the queue
+# file, so while its PR waits on Marco the prompt still ADMITs -- or PROMOTEs -- and reads as
+# fresh work; arming it opens a SECOND PR for work already on the board. Measured 2026-09-06:
+# six of seven open PRs matched a live, armable queue prompt. The sixth bucket crosses each
+# ADMITTED prompt's scope: list against the OPEN board and ANNOTATES the hits. It reports; it
+# does not filter. Nothing changes bucket, no count changes, and the annotated prompts stay in
+# GATES SATISFIED, because the overlap test is a CANDIDATE and never a verdict (DOCTRINE 10.6).
+#
 # NEVER passes --dequeue: with that flag lint-prompt.mjs RENAMES the file (line 1440). This
 # script mutates nothing, arms nothing and renames nothing. Verified read-only 2026-08-30.
 #
@@ -187,6 +196,255 @@ foreach ($holdFile in $holdFiles) {
         3       { [void]$spent.Add($record) }
         1       { [void]$stillGated.Add($record) }
         default { [void]$unreadable.Add($record) }
+    }
+}
+
+# ---- POSSIBLE DUPLICATES OF AN OPEN PR -- the sixth bucket --------------------------------
+# OPEN_PR_DUPLICATE_V1 - a satisfied gate does not mean the work is unbuilt.
+#
+# The exit code above answers "does the premise still hold?". It cannot answer "has this work
+# already reached the board?". For watcher-built work the two coincide, because the watcher
+# DELETES the prompt when it builds it. For a SECOND LANE (DOCTRINE 10.2 - a cloud session
+# that clones, branches and opens a PR without the watcher, the dev tree or the queue) they
+# come apart: the prompt is never consumed, its premise stays true for as long as the PR is
+# unmerged, and lint therefore keeps returning ADMIT -- or PROMOTE, its strongest arm signal --
+# on work that is already open. MEASURED 2026-09-06T13:3xZ at a65ab1d4 by Station 00: SIX of
+# seven open PRs were a scope-list match to a live queue prompt and every one of those six
+# prompts was armable (five ADMIT, one PROMOTE). Arming any of them opens a duplicate PR.
+#
+# DOCTRINE 10.6 prescribes the cure as a MANUAL step -- cross the prompt's scope: entries
+# against `gh pr list --state open` -- which nothing ran, at the one moment the arming
+# decision is made. This bucket runs it.
+#
+# THREE THINGS THIS BUCKET IS NOT.
+#   1. It is not a verdict. DOCTRINE 10.6's CORRECTED rule (2026-09-07) measured the test in
+#      both directions on one four-PR board: of five overlaps, two were true duplicates and
+#      THREE were false. Over a one-entry scope: its precision is ZERO by construction -- three
+#      prompts share the sole entry scripts/pipeline/status-sweep.ps1 and all three scored a
+#      perfect 1/1 against #1750, which was one of them. So prompts are ANNOTATED here and
+#      LEFT in GATES SATISFIED. Removing one on an unconfirmed overlap would convert a
+#      candidate into a verdict and silently hide real work.
+#   2. It is not a MERGED-PR check. The same section measured the file-overlap test against 60
+#      merged PRs and the false-positive rate swamped it (two full matches, neither a
+#      duplicate). --state open ONLY. Over merged work the premise is the discriminator and
+#      lint already runs it -- that is the SPENT bucket.
+#   3. It is not run over the whole board. Only prompts lint ALREADY ADMITTED are scanned,
+#      which is what keeps chain siblings out: pr-linefields-s2/s3 share files with #1713 and
+#      scored 2/2 and 3/5, but both REJECT [GATE_NOT_RELEASED] -- later slices, not
+#      duplicates, and their own gates already withhold them.
+
+# Read a prompt's `scope:` list out of its own front matter, in the same deliberately narrow
+# spirit as Get-PromptPremise above: this is NOT a second YAML parser. Only the block-sequence
+# form ("scope:" on its own line, then "  - entry" lines) is recognised. Anything else -- no
+# front matter, no scope: key, an inline value, an empty list -- returns $null and the caller
+# reports the prompt UNSCANNABLE rather than reporting "no overlap", because an unparsed scope
+# is not an empty scope (DOCTRINE 9.6).
+function Get-PromptScope {
+    param([string] $PromptPath)
+
+    $promptLines = @(Get-Content -LiteralPath $PromptPath -ErrorAction SilentlyContinue)
+    if ($promptLines.Count -eq 0) { return $null }
+    if ($promptLines[0].Trim() -ne "---") { return $null }
+
+    $entries = New-Object System.Collections.ArrayList
+    $inScope = $false
+    for ($index = 1; $index -lt $promptLines.Count; $index++) {
+        $line = $promptLines[$index]
+        if ($line.Trim() -eq "---") { break }
+
+        if (-not $inScope) {
+            $scopeMatch = [regex]::Match($line, '^scope:\s*(.*)$')
+            if (-not $scopeMatch.Success) { continue }
+            # An inline value (a flow sequence, a quoted string, a block-scalar indicator) is
+            # NOT parsed here. Refuse to measure rather than measure the wrong thing.
+            if ($scopeMatch.Groups[1].Value.Trim() -ne "") { return $null }
+            $inScope = $true
+            continue
+        }
+
+        $itemMatch = [regex]::Match($line, '^\s+-\s+(.+?)\s*$')
+        if ($itemMatch.Success) {
+            $entry = $itemMatch.Groups[1].Value.Trim()
+            if ($entry.Length -gt 1) {
+                $quote = $entry.Substring(0, 1)
+                if (($quote -eq "'" -or $quote -eq '"') -and $entry.Substring($entry.Length - 1, 1) -eq $quote) {
+                    $entry = $entry.Substring(1, $entry.Length - 2)
+                }
+            }
+            if ($entry -ne "") { [void]$entries.Add($entry) }
+            continue
+        }
+        # A line that is not an indented list item ends the block (the next front-matter key).
+        if ($line -match '^\S') { break }
+    }
+
+    if ($entries.Count -eq 0) { return $null }
+    # Joined to a single string on purpose: `return $entries` would unroll a ONE-entry list to a
+    # scalar String at the call site, and $scope[0] would then hand back a CHARACTER. The caller
+    # splits it back apart and wraps the result in @(...).
+    return ($entries -join "`n")
+}
+
+# The prompt's own MARKER STRING -- the *_V<n> token a prompt asserts about the file it changes.
+# DOCTRINE 10.6: what separated the two true duplicates from the three false positives was the
+# PR TITLE carrying the prompt's marker (e.g. PLANT_FUEL_COLUMN_V1). NEVER the head branch: a
+# Select-String for 'branch|headRef' over the two measured prompts returned 0, so a branch test
+# checks something the prompt never asserted and can stop working without warning. Returns a
+# single joined string (same one-element unrolling reason as above), or $null.
+function Get-PromptMarkers {
+    param([string] $PromptPath)
+
+    $rawText = (Get-Content -LiteralPath $PromptPath -Raw -ErrorAction SilentlyContinue)
+    if (-not $rawText) { return $null }
+    $found = New-Object System.Collections.ArrayList
+    foreach ($tokenMatch in [regex]::Matches($rawText, '\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_V[0-9]+\b')) {
+        if (-not $found.Contains($tokenMatch.Value)) { [void]$found.Add($tokenMatch.Value) }
+    }
+    if ($found.Count -eq 0) { return $null }
+    return ($found -join " / ")
+}
+
+# DOCTRINE 10.6's CORRECTED rule, both halves, and nothing more.
+#
+#   DIRECTORY FORM -- a scope entry ending in "/" is a directory and matches as a PREFIX of a
+#   PR file path. An exact-path set test can never match one, so a full-match rule silently
+#   clears a `gate_allow: migrations` prompt -- Marco's -- for arming, the exact class this
+#   bucket exists to protect. Measured on pr-rates-plant-fuel-column vs #1746: 3 of 4, the miss
+#   being the entry apps/api/prisma/migrations/.
+#
+#   The GLOB FORM "<dir>/**" is the SAME shape and is normalised to the same prefix. DOCTRINE
+#   10.6 and this prompt both name only the bare trailing "/", but on this board (2026-09-08,
+#   39 depth-1 HOLDs) the directory-form entries split 36 "<dir>/**" to 2 "<dir>/". Honouring
+#   only the bare slash would leave 36 of 38 directory entries matching nothing at all -- i.e.
+#   it would reproduce failure (a) on almost every prompt that has one.
+#
+#   FILE FORM -- everything else matches EXACTLY. A middle-glob entry (a/*/b.ts) has no such
+#   form on this board and is left to the exact test, which under-reports rather than inventing
+#   a match; over-reporting here is only ever annotation, but a wrong match wastes a human.
+#
+# Comparison is OrdinalIgnoreCase because this instrument runs on Windows and reports a
+# CANDIDATE, never a verdict: a case-folded extra hit costs one look, a missed hit costs a
+# duplicate PR.
+function Test-ScopeEntryMatchesFile {
+    param([string] $Entry, [string] $FilePath)
+
+    $entryText = ($Entry -replace "\\", "/").Trim()
+    $fileText  = ($FilePath -replace "\\", "/").Trim()
+    if ($entryText -eq "" -or $fileText -eq "") { return $false }
+    if ($entryText.StartsWith("./")) { $entryText = $entryText.Substring(2) }
+    if ($fileText.StartsWith("./"))  { $fileText  = $fileText.Substring(2) }
+
+    $dirPrefix = ""
+    if ($entryText.EndsWith("/"))       { $dirPrefix = $entryText }
+    elseif ($entryText.EndsWith("/**")) { $dirPrefix = $entryText.Substring(0, $entryText.Length - 2) }
+    elseif ($entryText.EndsWith("/*"))  { $dirPrefix = $entryText.Substring(0, $entryText.Length - 1) }
+
+    if ($dirPrefix -ne "") {
+        return $fileText.StartsWith($dirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    return [string]::Equals($entryText, $fileText, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+# Read the open board ONCE. --state open only (see 2 above). --limit is raised off gh's default
+# of 30 because a truncated board cannot report a duplicate it never read, and that silence
+# would be indistinguishable from a clean board.
+$openPrs      = $null
+$openPrError  = ""
+try {
+    $ghRaw  = (& gh pr list --state open --limit 200 --json number,title,headRefName,files 2>&1 | Out-String)
+    $ghExit = $LASTEXITCODE
+    if ($ghExit -ne 0) {
+        $openPrError = "`"gh pr list --state open`" exited " + $ghExit + " -- " + $ghRaw.Trim()
+    } elseif ($ghRaw.Trim() -eq "") {
+        $openPrError = "`"gh pr list --state open`" exited 0 but returned no output at all"
+    } else {
+        # ASSIGN, THEN COUNT (DOCTRINE 9.4). @(ConvertFrom-Json ...).Count answers 1 for an
+        # EMPTY array and 1 for a forty-element one, because the pipeline unrolls the array
+        # into @() one element at a time. And ConvertFrom-Json on "[]" yields $null, whose
+        # @($null) is a ONE-element array holding nothing -- an empty board would then read as
+        # "1 PR read". Both are handled explicitly here, once.
+        $parsedPrs = ConvertFrom-Json $ghRaw
+        if ($null -eq $parsedPrs) { $openPrs = @() } else { $openPrs = @($parsedPrs) }
+    }
+} catch {
+    $openPrError = "the open board could not be read or parsed: " + $_.Exception.Message
+}
+
+$dupLines        = New-Object System.Collections.ArrayList
+$dupAnnotation   = @{}
+$scopeUnscannable = New-Object System.Collections.ArrayList
+$prsWithoutFiles  = New-Object System.Collections.ArrayList
+$scannedAdmitted  = 0
+
+if ($null -ne $openPrs) {
+    foreach ($admitted in $satisfied) {
+        $scannedAdmitted++
+
+        $scopeBlob = Get-PromptScope -PromptPath $admitted.Path
+        if (-not $scopeBlob) {
+            [void]$scopeUnscannable.Add([pscustomobject]@{ Name = $admitted.Name; Detail = "no block-form scope: list in front matter (absent, inline, or empty) -- NOT scanned, and NOT cleared" })
+            continue
+        }
+        # @(...) on purpose: a one-entry scope list would otherwise be a scalar String here and
+        # $scopeEntries[0] would be a CHARACTER, not a path.
+        $scopeEntries = @($scopeBlob -split "`n")
+        if ($scopeEntries.Count -eq 0) {
+            [void]$scopeUnscannable.Add([pscustomobject]@{ Name = $admitted.Name; Detail = "scope: list parsed to zero entries -- NOT scanned, and NOT cleared" })
+            continue
+        }
+
+        # Read once per prompt, not once per PR: it is the same answer for every PR.
+        $markers = Get-PromptMarkers -PromptPath $admitted.Path
+
+        foreach ($openPr in $openPrs) {
+            # @(...) on purpose again: a PR touching exactly ONE file arrives as a single
+            # object, not an array, and $openPr.files.Count on it would answer 1 for both one
+            # file and no files at all (DOCTRINE 9.4). The explicit $null test in front is the
+            # other half -- @($null) is a ONE-element array holding nothing, so a PR whose file
+            # list is absent would otherwise be scanned as "one file" and quietly report no
+            # overlap. It is counted instead, and named on the control line below.
+            if ($null -eq $openPr.files) { [void]$prsWithoutFiles.Add($openPr.number); continue }
+            $prFiles = @($openPr.files)
+            if ($prFiles.Count -eq 0) { [void]$prsWithoutFiles.Add($openPr.number); continue }
+
+            $matchedEntries = New-Object System.Collections.ArrayList
+            foreach ($entry in $scopeEntries) {
+                foreach ($prFile in $prFiles) {
+                    if ($null -eq $prFile) { continue }
+                    if (Test-ScopeEntryMatchesFile -Entry $entry -FilePath $prFile.path) {
+                        [void]$matchedEntries.Add($entry)
+                        break
+                    }
+                }
+            }
+
+            # ANY overlap of ONE entry or more makes this a CANDIDATE for duplication. Never a
+            # verdict, in either direction (DOCTRINE 10.6).
+            if ($matchedEntries.Count -lt 1) { continue }
+
+            $ratio  = "" + $matchedEntries.Count + " of " + $scopeEntries.Count
+            $prLabel = "#" + $openPr.number + " (" + $ratio + ")"
+            if ($dupAnnotation.ContainsKey($admitted.Name)) {
+                $dupAnnotation[$admitted.Name] = $dupAnnotation[$admitted.Name] + ", " + $prLabel
+            } else {
+                $dupAnnotation[$admitted.Name] = $prLabel
+            }
+
+            if ($markers) {
+                $confirmStep = "CONFIRM: does #" + $openPr.number + "'s TITLE or BODY carry this prompt's marker (" + $markers + ")?  gh pr view " + $openPr.number + " --json title,body   -- confirm on the MARKER, never on the head branch (" + $openPr.headRefName + "), which the prompt asserts nowhere."
+            } else {
+                $confirmStep = "CONFIRM: read this prompt's own marker string and look for it in #" + $openPr.number + "'s TITLE or BODY.  gh pr view " + $openPr.number + " --json title,body   -- confirm on the MARKER, never on the head branch (" + $openPr.headRefName + "), which the prompt asserts nowhere."
+            }
+
+            [void]$dupLines.Add([pscustomobject]@{
+                Name    = $admitted.Name
+                Pr      = $openPr.number
+                Title   = $openPr.title
+                Ratio   = $ratio
+                Matched = ($matchedEntries -join ", ")
+                Confirm = $confirmStep
+            })
+        }
     }
 }
 
@@ -377,7 +635,66 @@ Write-Output ">>> GATES SATISFIED -- lint ADMITs (exit 0). CANDIDATES, not instr
 Write-Output "    ADMIT is NECESSARY, NOT SUFFICIENT. Read the body: a prose human gate is"
 Write-Output "    invisible to the linter. Arm ONE AT A TIME, and only Station 00 arms."
 if ($satisfied.Count -eq 0) { Write-Output "    (none)" }
-foreach ($item in $satisfied) { Write-Output ("    " + $item.Name) }
+foreach ($item in $satisfied) {
+    # OPEN_PR_DUPLICATE_V1 annotation. The prompt STAYS in this bucket and this bucket's total
+    # is UNCHANGED by it -- the sixth bucket below reports, it does not filter (DOCTRINE 10.6).
+    if ($dupAnnotation.ContainsKey($item.Name)) {
+        Write-Output ("    " + $item.Name + "   <-- POSSIBLE DUPLICATE of open PR " + $dupAnnotation[$item.Name] + " -- confirm below before arming")
+    } else {
+        Write-Output ("    " + $item.Name)
+    }
+}
+Write-Output ""
+
+# ---- POSSIBLE DUPLICATES OF AN OPEN PR (OPEN_PR_DUPLICATE_V1) -----------------------------
+Write-Output ">>> POSSIBLE DUPLICATES OF AN OPEN PR -- CONFIRM BEFORE ARMING"
+if ($openPrError) {
+    # FAIL LOUD, NEVER QUIET (DOCTRINE 7, and 9.6 -- an empty result is not an empty world). A
+    # lookup failure must never silently empty CANDIDATES and must never silently pass a
+    # duplicate through unannotated. Every prompt above stays in the bucket lint put it in, and
+    # this script still exits 0: it is a report, and a report that cannot answer says so.
+    Write-Output "    OPEN_PR_DUPLICATE: UNKNOWN -- could not read the open board"
+    Write-Output ("    " + $openPrError)
+    Write-Output "    Nothing was moved or annotated. Every prompt above is in the bucket lint put"
+    Write-Output "    it in, and NONE of them has been checked against the open board. Read this as"
+    Write-Output "    UNMEASURED, never as 'no duplicates'. Run the cross-check by hand before"
+    Write-Output "    arming anything: gh pr list --state open --json number,title,files"
+} else {
+    # POSITIVE CONTROL, printed EVERY run (DOCTRINE section 7 standing guard 1). A bucket that
+    # reports zero duplicates while having read zero PRs is indistinguishable from a clean
+    # board, which is the failure this whole section exists for. Both numbers, always.
+    Write-Output ("    control: " + $openPrs.Count + " open PR(s) read from the board; " + $scannedAdmitted + " admitted prompt(s) scanned.")
+    Write-Output "    Only prompts lint ADMITTED are scanned -- a chain sibling whose own gate is"
+    Write-Output "    unreleased is REJECTed above and never reaches this bucket. --state open ONLY:"
+    Write-Output "    over MERGED PRs this same test's false-positive rate swamps it (DOCTRINE 10.6)."
+    if ($prsWithoutFiles.Count -gt 0) {
+        $distinctNoFiles = @($prsWithoutFiles | Sort-Object -Unique)
+        Write-Output ("    NOTE: " + $distinctNoFiles.Count + " open PR(s) came back with NO file list and were compared")
+        Write-Output ("    against nothing: #" + ($distinctNoFiles -join ", #") + ". They are UNMEASURED, not clear.")
+    }
+    if ($openPrs.Count -eq 0) {
+        Write-Output "    The open board is EMPTY, so there is nothing here to be a duplicate OF."
+    }
+    if ($dupLines.Count -eq 0) {
+        Write-Output "    (none)"
+    } else {
+        Write-Output ("    " + $dupLines.Count + " overlap(s). ANY overlap of one entry or more is a CANDIDATE for")
+        Write-Output "    duplication -- NEVER a verdict, in either direction. Over a one-entry scope the"
+        Write-Output "    test's precision is ZERO by construction (three prompts once scored 1/1 against"
+        Write-Output "    the same PR and only one was its work). These prompts are STILL LISTED under"
+        Write-Output "    GATES SATISFIED above, annotated. Confirm each one, then decide."
+        foreach ($item in $dupLines) {
+            Write-Output ("    " + $item.Name + "`n        overlaps open PR #" + $item.Pr + " (" + $item.Ratio + ") -- " + $item.Title + "`n        matched scope entries: " + $item.Matched + "`n        " + $item.Confirm)
+        }
+    }
+    if ($scopeUnscannable.Count -gt 0) {
+        Write-Output ""
+        Write-Output ("    SCOPE UNSCANNABLE -- " + $scopeUnscannable.Count + " admitted prompt(s) whose scope: list could not be")
+        Write-Output "    read. They were NOT compared against the open board. That is UNMEASURED, not"
+        Write-Output "    clear: an unparsed scope is not an empty scope. Cross them by hand."
+        foreach ($item in $scopeUnscannable) { Write-Output ("    " + $item.Name + "`n        " + $item.Detail) }
+    }
+}
 Write-Output ""
 
 Write-Output ">>> STILL GATED (lint exit 1) -- correctly on hold"

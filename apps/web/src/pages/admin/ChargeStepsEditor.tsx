@@ -3,7 +3,9 @@
  * into money as a numbered list of plain sentences, not a formula.
  *
  * Layout (within RateTableDetail, between Columns and Rows cards):
- *   - Scenario picker: select a row to drive the running-total preview
+ *   - Scenario picker: choose the scenario that drives the running-total
+ *     preview — one select per KEY column, cascading, plus one control per
+ *     line field
  *   - Numbered step list: each step is a four-part row — number, body,
  *     running total, actions — and the body holds live controls
  *   - Steps whose condition is not met render greyed
@@ -42,6 +44,18 @@
  *     so there is exactly one implementation of each control. The step-1
  *     guards are expressed in those controls rather than duplicated beside
  *     them, and neither validation rule moved.
+ *   - RATE_SCENARIO_PICKER_V2: the scenario is chosen the way an estimator
+ *     describes one — by KEY value and by the values entered on the line —
+ *     not by counting rows. One cascading select per KEY column (each offering
+ *     only what the keys before it leave available), one control per line
+ *     field seeded from its declared `sample`, and the matched row highlighted
+ *     in the Rows card so the card and the grid agree about which rule is
+ *     being priced. The chosen keys and the matched row id live in the detail
+ *     component that mounts BOTH cards; this card is told which row matched
+ *     and reads its cells through the same `buildStepValues` it always did. A
+ *     combination no row carries prints `SCENARIO_NO_MATCH` and NO running
+ *     totals: a preview run against an empty values map is a number nobody
+ *     should read.
  *   - "+ Add a step" button below the list
  *   - Collapsed "Show as formula" disclosure (read-only)
  *   - Impact line: open tender count + snapshot note
@@ -60,7 +74,12 @@ import {
   type RateLineField
 } from "@project-ops/config/charge-step-semantics";
 import { useAuth } from "../../auth/AuthContext";
-import { isNumberKindColumn } from "./ratesListsHelpers";
+import {
+  isNumberKindColumn,
+  scenarioKeyColumns,
+  scenarioKeyOptions,
+  type ScenarioColumn
+} from "./ratesListsHelpers";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import type { ChargeStep, Condition, ConditionCmp } from "../../lib/chargeStepTypes";
 
@@ -968,6 +987,108 @@ export function evaluateStepsClient(
   return evaluateChargeSteps(steps, values).trail;
 }
 
+// ── RATE_SCENARIO_PICKER_V2: the scenario, in the estimator's words ───────
+//
+// The cascade itself is in `ratesListsHelpers.ts` (pure, spec'd there). What
+// lives here is the OTHER half of a scenario — the values the estimator enters
+// on the line — plus the two sentences the card prints about the result.
+
+/**
+ * What the card says when the chosen keys name no row.
+ *
+ * The mock-up's words. It matters that this is a sentence and not an empty
+ * preview: an empty values map still evaluates, and every step would print
+ * "no value for …" beside it — a wall of red for a combination that simply is
+ * not on this sheet, which is a different and much smaller problem.
+ */
+export const SCENARIO_NO_MATCH = "No row on this sheet matches that combination.";
+
+/**
+ * The caption printed under the Rows table when a row is highlighted.
+ *
+ * Owned here rather than in RatesListsAdminPage.tsx for the same reason
+ * `FIELD_SOURCE_LABELS` is: the card and the grid are two components, and the
+ * sentence that ties them together must be one string, not two copies that
+ * drift.
+ */
+export const SCENARIO_HIGHLIGHT_CAPTION = "The highlighted row is the one priced above.";
+
+/** The label above the scenario controls. */
+export const SCENARIO_LEGEND = "Preview this scenario:";
+
+/**
+ * A line field's declared `sample`, as the text its control shows before
+ * anyone touches it.
+ *
+ * Slice 1 stored the `sample` so the preview had something to work with, and
+ * this slice replaces it with a control — but the control still OPENS on the
+ * sample, so the card shows a worked number the moment it appears rather than
+ * an empty box and a missing-operand issue.
+ */
+export function lineFieldSampleText(field: RateLineField): string {
+  return field.sample === undefined || field.sample === null ? "" : String(field.sample);
+}
+
+/**
+ * What one line field's control currently shows: what was typed into it, or
+ * the declared sample if nothing has been.
+ *
+ * The draft holds OVERRIDES only, never a seeded copy of every sample. A
+ * seeded copy would need re-seeding every time the table's declarations
+ * changed, and a stale copy of a sample is exactly the kind of number that
+ * reads as real.
+ */
+export function lineFieldDisplayValue(
+  field: RateLineField,
+  draft: Readonly<Record<string, string>>
+): string {
+  return draft[field.name] ?? lineFieldSampleText(field);
+}
+
+/**
+ * The `lineValues` argument for `buildStepValues`: the entered half of the
+ * scenario.
+ *
+ * Only fields that were actually typed into appear, so `buildStepValues` falls
+ * back to each untouched field's `sample` — which is precisely what it did
+ * before this slice. Given the same row and the same line values, every
+ * running total is unchanged.
+ *
+ * A number field's text becomes a number when it parses. When it does not, the
+ * text is passed through unchanged rather than dropped or zeroed, so the
+ * evaluator reports the same issue it reports for a column holding the same
+ * junk — one rule for "that is not a number", not two.
+ */
+export function scenarioLineValues(
+  lineFields: readonly RateLineField[] | null | undefined,
+  draft: Readonly<Record<string, string>>
+): Record<string, number | string> {
+  const out: Record<string, number | string> = {};
+  for (const field of lineFields ?? []) {
+    const raw = draft[field.name];
+    if (raw === undefined) continue;
+    if (field.kind === "text") {
+      out[field.name] = raw;
+      continue;
+    }
+    const parsed = Number(raw);
+    out[field.name] = raw.trim() !== "" && Number.isFinite(parsed) ? parsed : raw;
+  }
+  return out;
+}
+
+/**
+ * How many controls the scenario bar renders: one per KEY column, one per line
+ * field. Exported because "the picker is a row-counter" was the whole premise
+ * of this slice, and the count is the cheapest way to assert it is not.
+ */
+export function scenarioControlCount(
+  columns: readonly ScenarioColumn[],
+  lineFields: readonly RateLineField[] | null | undefined
+): number {
+  return scenarioKeyColumns(columns).length + (lineFields ?? []).length;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 type RateRowShape = {
@@ -978,6 +1099,9 @@ type RateRowShape = {
 /** Stable identity, so the default prop does not re-run every memo each render. */
 const EMPTY_LINE_FIELDS: readonly RateLineField[] = [];
 
+/** Same reason as EMPTY_LINE_FIELDS: a fresh `{}` default would re-run the memos. */
+const EMPTY_SCENARIO_KEYS: Readonly<Record<string, string>> = {};
+
 export function ChargeStepsEditor({
   tableId,
   tableName,
@@ -985,6 +1109,9 @@ export function ChargeStepsEditor({
   columns,
   rows,
   lineFields = EMPTY_LINE_FIELDS,
+  scenarioKeys = EMPTY_SCENARIO_KEYS,
+  onScenarioKeysChange,
+  matchedRowId = null,
   onSaved,
   onStepsChange
 }: {
@@ -1000,6 +1127,21 @@ export function ChargeStepsEditor({
    * cannot clear a declaration it has no UI to edit.
    */
   lineFields?: readonly RateLineField[];
+  /**
+   * RATE_SCENARIO_PICKER_V2 — the chosen KEY values, by column id, and the row
+   * they matched.
+   *
+   * Both are owned by the detail component that mounts this card AND the Rows
+   * card, because the highlight and the preview have to be the same answer to
+   * the same question. Held here they could not be: `RowsCard` is a sibling,
+   * not a child. Optional and defaulting to "nothing chosen" so the card still
+   * renders standalone — with no keys chosen the picker resolves to the first
+   * available option and the preview behaves as it always did.
+   */
+  scenarioKeys?: Readonly<Record<string, string>>;
+  onScenarioKeysChange?: (next: Record<string, string>) => void;
+  /** The row `scenarioKeys` matched, or null when the combination is not on the sheet. */
+  matchedRowId?: string | null;
   onSaved?: () => void;
   /**
    * RATE_FIELDS_TABLE_V2 — the step list, handed up to whoever mounted this
@@ -1023,7 +1165,10 @@ export function ChargeStepsEditor({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scenarioRowId, setScenarioRowId] = useState<string>("");
+  // RATE_SCENARIO_PICKER_V2 — the entered half of the scenario, as typed.
+  // OVERRIDES ONLY: a name absent from here has not been touched, and
+  // `buildStepValues` uses that field's declared `sample`.
+  const [lineDraft, setLineDraft] = useState<Record<string, string>>({});
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -1064,29 +1209,47 @@ export function ChargeStepsEditor({
     void load();
   }, [load]);
 
-  // Pick first row as scenario when rows load
-  useEffect(() => {
-    if (rows.length > 0 && !scenarioRowId) {
-      setScenarioRowId(rows[0].id);
-    }
-  }, [rows, scenarioRowId]);
+  // ── RATE_SCENARIO_PICKER_V2: the scenario ─────────────────────────────
+
+  // The KEY columns, in table order — one select each.
+  const keyColumns = useMemo(() => scenarioKeyColumns(columns), [columns]);
+
+  // The row the keys matched. The id comes from the mount, which owns it
+  // because the Rows card needs the same answer; the lookup back to the row is
+  // local because only this card needs the cells.
+  const matchedRow = useMemo(
+    () => rows.find((r) => r.id === matchedRowId) ?? null,
+    [rows, matchedRowId]
+  );
+
+  // A combination that is not on the sheet. `rows.length === 0` is a different
+  // and older message ("Add rows to this table…"), so it is not this one.
+  const noMatch = rows.length > 0 && matchedRow === null;
 
   // ── Scenario values ───────────────────────────────────────────────────
 
   // RATE_LINE_FIELDS_V1 — ONE values map, built once, by the same function any
   // server caller would use (`@project-ops/config/charge-step-semantics`). The
-  // column half is the matched row's cells; the line-field half is each field's
-  // declared `sample`, until slice 4 builds the real scenario inputs.
-  const scenarioValues = useMemo<Record<string, number | string>>(() => {
-    const row = rows.find((r) => r.id === scenarioRowId);
-    return buildStepValues(columns, row?.cells, lineFields);
-  }, [rows, scenarioRowId, columns, lineFields]);
+  // column half is the matched row's cells; the line-field half is what the
+  // controls below hold, falling back to each field's declared `sample`.
+  //
+  // RATE_SCENARIO_PICKER_V2 changed where those inputs come from and nothing
+  // about how they resolve: the builder, its argument order and its rules are
+  // untouched.
+  const scenarioValues = useMemo<Record<string, number | string>>(
+    () =>
+      buildStepValues(columns, matchedRow?.cells, lineFields, scenarioLineValues(lineFields, lineDraft)),
+    [columns, matchedRow, lineFields, lineDraft]
+  );
 
   // ── Running totals ────────────────────────────────────────────────────
 
+  // RATE_SCENARIO_PICKER_V2 — no row, no trail. Evaluating an empty values map
+  // would put a "no value for …" issue beside every step, which reads as seven
+  // broken rules rather than one combination that does not exist.
   const trail = useMemo(
-    () => evaluateStepsClient(steps, scenarioValues),
-    [steps, scenarioValues]
+    () => (noMatch ? [] : evaluateStepsClient(steps, scenarioValues)),
+    [noMatch, steps, scenarioValues]
   );
 
   // ── CHARGE_STEP_CARD_V2: presentation of those totals ─────────────────
@@ -1265,31 +1428,73 @@ export function ChargeStepsEditor({
         </div>
       ) : null}
 
-      {/* Scenario picker */}
+      {/* RATE_SCENARIO_PICKER_V2 — the scenario bar. One select per KEY
+          column, cascading left to right, then one control per line field.
+          The picker used to be a single select reading "Row 1 … Row N", which
+          asked the reader to count rows in the table further down the page to
+          find out which rule they were looking at. */}
       {rows.length > 0 ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-            Preview with row:
-          </label>
-          <select
-            className="s7-select"
-            value={scenarioRowId}
-            onChange={(e) => setScenarioRowId(e.target.value)}
-            style={{ fontSize: 12, minHeight: 32 }}
-            aria-label="Scenario row for running-total preview"
-          >
-            {rows.map((r, i) => (
-              <option key={r.id} value={r.id}>
-                Row {i + 1}
-              </option>
+        <div style={scenarioBarStyle} data-testid="scenario-picker">
+          <span style={scenarioLegendStyle}>{SCENARIO_LEGEND}</span>
+          <div style={scenarioControlsStyle}>
+            {keyColumns.map((col) => {
+              const options = scenarioKeyOptions(columns, rows, scenarioKeys, col.id);
+              const value = scenarioKeys[col.id] ?? "";
+              return (
+                <label key={col.id} style={scenarioFieldStyle}>
+                  <span style={scenarioFieldLabelStyle}>{col.name}</span>
+                  <select
+                    className="s7-select"
+                    style={scenarioControlStyle}
+                    aria-label={`Scenario ${col.name}`}
+                    value={value}
+                    onChange={(e) =>
+                      onScenarioKeysChange?.({ ...scenarioKeys, [col.id]: e.target.value })
+                    }
+                  >
+                    {/* A value no row carries is kept offerable so the select
+                        never silently shows a different one than it holds;
+                        `resolveScenarioKeys` at the mount normally replaces it
+                        before this renders. */}
+                    {options.includes(value) ? null : <option value={value}>{value}</option>}
+                    {options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+            {lineFields.map((field) => (
+              <label key={field.name} style={scenarioFieldStyle}>
+                <span style={scenarioFieldLabelStyle}>
+                  {field.unit ? `${field.name} (${field.unit})` : field.name}
+                </span>
+                <LineFieldControl
+                  field={field}
+                  value={lineFieldDisplayValue(field, lineDraft)}
+                  onChange={(next) =>
+                    setLineDraft((prev) => ({ ...prev, [field.name]: next }))
+                  }
+                />
+              </label>
             ))}
-          </select>
+          </div>
         </div>
       ) : (
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
           Add rows to this table to preview running totals against real values.
         </p>
       )}
+
+      {/* RATE_SCENARIO_PICKER_V2 — the combination is not on this sheet. Said
+          in words, with no running totals beneath it. */}
+      {noMatch ? (
+        <p role="note" data-testid="scenario-no-match" style={scenarioNoMatchStyle}>
+          {SCENARIO_NO_MATCH}
+        </p>
+      ) : null}
 
       {/* Validation errors */}
       {validationErrors.length > 0 ? (
@@ -1345,7 +1550,11 @@ export function ChargeStepsEditor({
           the last entry of the trail above; when that entry has no number,
           the row says so rather than printing a figure nobody can stand
           behind. */}
-      {!loading && steps.length > 0 ? (
+      {/* RATE_SCENARIO_PICKER_V2 — and no line total either when no row
+          matched. The line total IS a running total; printing one for a
+          combination that does not exist is the number this slice exists to
+          suppress. */}
+      {!loading && steps.length > 0 && !noMatch ? (
         <div style={lineTotalRowStyle} data-testid="line-total">
           <span style={lineTotalLabelStyle}>{LINE_TOTAL_LABEL}</span>
           {lineTotal === null ? (
@@ -1414,6 +1623,67 @@ export function ChargeStepsEditor({
         </div>
       </details>
     </div>
+  );
+}
+
+// ── RATE_SCENARIO_PICKER_V2: one control per line field ───────────────────
+
+/**
+ * The control an estimate-line value gets, chosen by what the field declares.
+ *
+ * Three shapes, and the declaration decides which:
+ *   - `kind: "number"` → a numeric input. It is what the estimator types into
+ *     on the line, and the preview should not ask for it any differently.
+ *   - `kind: "text"` WITH `options` → a select over exactly those options. The
+ *     options are a closed list; a free-text box beside a closed list invites
+ *     a value the condition can never match.
+ *   - `kind: "text"` with no options → a text input.
+ *
+ * Uncontrolled-to-controlled is avoided by `lineFieldDisplayValue`, which
+ * always returns a string: an untouched field shows its declared `sample`.
+ *
+ * Unlike `NumberField` above there is no draft state here. Nothing is written
+ * into a step — the value lands in the values map, and a half-typed "1." is
+ * simply a scenario that does not price yet, which the trail already says.
+ */
+export function LineFieldControl({
+  field,
+  value,
+  onChange
+}: {
+  field: RateLineField;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const label = `Scenario ${field.name}`;
+  if (field.kind === "text" && field.options && field.options.length > 0) {
+    return (
+      <select
+        className="s7-select"
+        style={scenarioControlStyle}
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {field.options.includes(value) ? null : <option value={value}>{value}</option>}
+        {field.options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <input
+      className="s7-input"
+      style={scenarioControlStyle}
+      aria-label={label}
+      inputMode={field.kind === "text" ? undefined : "decimal"}
+      type={field.kind === "text" ? "text" : "number"}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 
@@ -1904,6 +2174,70 @@ export function ChargeStepRow({
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
+
+// ── RATE_SCENARIO_PICKER_V2 styles ────────────────────────────────────────
+//
+// The scenario bar wraps: a table with four key columns and a line field puts
+// five controls on this row, and on a narrow card they have to go somewhere.
+// Every colour below is a token — no hex, no raw rgba — so the bar flips with
+// the theme like the step rows beneath it.
+
+const scenarioBarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "flex-end",
+  gap: 10,
+  marginBottom: 12,
+  padding: "8px 10px",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--surface-subtle)",
+  border: "1px solid var(--border-default)"
+};
+
+const scenarioLegendStyle: CSSProperties = {
+  fontSize: 12,
+  color: "var(--text-muted)",
+  whiteSpace: "nowrap",
+  alignSelf: "center"
+};
+
+const scenarioControlsStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "flex-end",
+  gap: 8
+};
+
+const scenarioFieldStyle: CSSProperties = {
+  display: "inline-flex",
+  flexDirection: "column",
+  gap: 2
+};
+
+const scenarioFieldLabelStyle: CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-muted)",
+  whiteSpace: "nowrap"
+};
+
+const scenarioControlStyle: CSSProperties = {
+  width: "auto",
+  minWidth: 96,
+  height: 32,
+  padding: "4px 8px",
+  fontSize: 13,
+  borderRadius: "var(--radius-sm)"
+};
+
+const scenarioNoMatchStyle: CSSProperties = {
+  margin: "0 0 12px",
+  padding: "8px 10px",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--surface-subtle)",
+  borderLeft: "3px solid var(--status-warning)",
+  color: "var(--text-secondary)",
+  fontSize: 12
+};
 
 // ── CHARGE_STEP_INPLACE_V1 styles ─────────────────────────────────────────
 //

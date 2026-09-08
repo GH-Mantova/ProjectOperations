@@ -39,6 +39,7 @@ import {
   LEGACY_TENDERS_ROOT_PATH,
   SeamExtensionRequiredError,
   extractTNumber,
+  MAX_COPY_DEPTH,
   type ISharePointCopySeam,
   type FolderChildItem,
   type LegacyFolderItem,
@@ -239,6 +240,10 @@ function makeSeamMock(overrides: Partial<ISharePointCopySeam> = {}): jest.Mocked
     }),
     // TFM-S7: default to true (destination exists) so existing tests pass unchanged.
     folderExists: jest.fn().mockResolvedValue(true),
+    // TFM-S11: default ensureCopyFolderPath returns a stable ID based on the relativePath.
+    ensureCopyFolderPath: jest.fn().mockImplementation((relativePath: string, _name: string) =>
+      Promise.resolve(`ensured-${relativePath}`),
+    ),
     ...overrides,
   } as jest.Mocked<ISharePointCopySeam>;
 }
@@ -449,11 +454,15 @@ describe("SharepointLegacyCopyService.plan()", () => {
             // Only T1001 and T1002 have legacy folders; T1003 has none
             return Promise.resolve([TENDER_FOLDER_T1001, TENDER_FOLDER_T1002]);
           }
+          if (itemId === TENDER_FOLDER_T1001.id) {
+            // TFM-S11: files are discovered via listFolderItemsById during recursive walk
+            return Promise.resolve([
+              { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+              { id: LEGACY_FILE_B.fileId, name: LEGACY_FILE_B.name, isFolder: false, size: LEGACY_FILE_B.size },
+            ]);
+          }
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest
-        .fn()
-        .mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
     });
 
     const prisma = makePrismaMock(
@@ -544,9 +553,12 @@ describe("SharepointLegacyCopyService.plan()", () => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id)
             return Promise.resolve([TENDER_FOLDER_T1001, ORPHAN_FOLDER]);
+          if (itemId === TENDER_FOLDER_T1001.id)
+            return Promise.resolve([
+              { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+            ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
     });
 
     const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
@@ -575,9 +587,12 @@ describe("SharepointLegacyCopyService.execute()", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+            { id: LEGACY_FILE_B.fileId, name: LEGACY_FILE_B.name, isFolder: false, size: LEGACY_FILE_B.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
       listDestinationFolderChildren: jest.fn().mockResolvedValue([]), // empty dest
     });
 
@@ -611,9 +626,12 @@ describe("SharepointLegacyCopyService.execute()", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+            { id: LEGACY_FILE_B.fileId, name: LEGACY_FILE_B.name, isFolder: false, size: LEGACY_FILE_B.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
       listDestinationFolderChildren: jest
         .fn()
         .mockResolvedValue([
@@ -675,9 +693,12 @@ describe("SharepointLegacyCopyService.execute()", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+            { id: LEGACY_FILE_B.fileId, name: LEGACY_FILE_B.name, isFolder: false, size: LEGACY_FILE_B.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
       listDestinationFolderChildren: jest.fn().mockResolvedValue(destFiles),
     });
 
@@ -711,9 +732,12 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+            { id: LEGACY_FILE_B.fileId, name: LEGACY_FILE_B.name, isFolder: false, size: LEGACY_FILE_B.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
       // folderExists should NOT be called when status is "failed" (short-circuit)
       folderExists: jest.fn().mockResolvedValue(true),
     });
@@ -742,9 +766,11 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
       // Simulate destination folder not yet provisioned
       folderExists: jest.fn().mockResolvedValue(false),
     });
@@ -770,9 +796,12 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+            { id: LEGACY_FILE_B.fileId, name: LEGACY_FILE_B.name, isFolder: false, size: LEGACY_FILE_B.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A, LEGACY_FILE_B]),
       folderExists: jest.fn().mockResolvedValue(true),
     });
 
@@ -835,9 +864,11 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([LEGACY_FOLDER_S10]);
+          if (itemId === LEGACY_FOLDER_S10.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
       folderExists: jest.fn().mockResolvedValue(true),
     });
 
@@ -891,9 +922,11 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([LEGACY_FOLDER_S10B]);
+          if (itemId === LEGACY_FOLDER_S10B.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
       folderExists: jest.fn().mockResolvedValue(true),
     });
 
@@ -947,9 +980,11 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([LEGACY_FOLDER_S10C]);
+          if (itemId === LEGACY_FOLDER_S10C.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
       folderExists: jest.fn().mockResolvedValue(true),
     });
 
@@ -978,9 +1013,11 @@ describe("TFM-S7 — destination precondition", () => {
         .mockImplementation((_siteId: string, _driveId: string, itemId: string) => {
           if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
           if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
           return Promise.resolve([]);
         }),
-      listFolderChildren: jest.fn().mockResolvedValue([LEGACY_FILE_A]),
       listDestinationFolderChildren: jest.fn().mockResolvedValue([]),
       folderExists: jest.fn().mockImplementation(() => {
         folderExistsCallCount++;
@@ -1005,5 +1042,212 @@ describe("TFM-S7 — destination precondition", () => {
 
     // folderExists must have been called at least twice (plan + execute re-check)
     expect(folderExistsCallCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ===========================================================================
+// TFM-S11 — recursive copy
+// ===========================================================================
+
+describe("TFM-S11 - recursive copy", () => {
+  const rootItemId = "synthetic-root-item-id";
+
+  it("two-level tree: nested file lands at mirrored destination sub-path", async () => {
+    const photosFolder = { id: "photos-folder", name: "Site photos", isFolder: true };
+    const imgFile = { id: "img-1", name: "IMG_1.jpg", isFolder: false, size: 500 };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_s: string, _d: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            photosFolder,
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
+          if (itemId === "photos-folder") return Promise.resolve([imgFile]);
+          return Promise.resolve([]);
+        }),
+      listDestinationFolderChildren: jest.fn().mockResolvedValue([]),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const report = await svc.execute();
+
+    // 2 files: LEGACY_FILE_A at top-level, IMG_1.jpg under Site photos
+    expect(report.totalCopied).toBe(2);
+    expect(report.totalErrors).toBe(0);
+
+    // ensureCopyFolderPath must be called for the sub-folder
+    expect(seam.ensureCopyFolderPath).toHaveBeenCalledWith(
+      `${FOLDER_LINK_T1001.relativePath}/Site photos`,
+      "Site photos",
+    );
+
+    const uploadCalls = (seam.uploadFile as jest.Mock).mock.calls.map(
+      (c: unknown[]) => (c[0] as { folderId: string; name: string }),
+    );
+
+    // LEGACY_FILE_A uploaded to the tender root folder
+    const aUpload = uploadCalls.find((c) => c.name === LEGACY_FILE_A.name);
+    expect(aUpload).toBeDefined();
+    expect(aUpload!.folderId).toBe(FOLDER_LINK_T1001.itemId);
+
+    // IMG_1.jpg uploaded to the ensured sub-folder ID
+    const imgUpload = uploadCalls.find((c) => c.name === "IMG_1.jpg");
+    expect(imgUpload).toBeDefined();
+    expect(imgUpload!.folderId).toBe(`ensured-${FOLDER_LINK_T1001.relativePath}/Site photos`);
+  });
+
+  it("subfolders recursed but never passed to downloadFileBytes", async () => {
+    const photosFolder = { id: "photos-folder", name: "Site photos", isFolder: true };
+    const imgFile = { id: "img-1", name: "IMG_1.jpg", isFolder: false, size: 500 };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_s: string, _d: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            photosFolder,
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
+          if (itemId === "photos-folder") return Promise.resolve([imgFile]);
+          return Promise.resolve([]);
+        }),
+      listDestinationFolderChildren: jest.fn().mockResolvedValue([]),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    await svc.execute();
+
+    // downloadFileBytes must never be called with the folder ID
+    const downloadCalls = (seam.downloadFileBytes as jest.Mock).mock.calls.map(
+      (c: unknown[]) => (c[0] as { fileId: string }).fileId,
+    );
+    expect(downloadCalls).not.toContain("photos-folder");
+    expect(downloadCalls).not.toContain(TENDER_FOLDER_T1001.id);
+  });
+
+  it("same filename+size in two different subfolders → both copied", async () => {
+    const folderA = { id: "folder-a", name: "A", isFolder: true };
+    const folderB = { id: "folder-b", name: "B", isFolder: true };
+    const fileInA = { id: "file-in-a", name: "report.pdf", isFolder: false, size: 1000 };
+    const fileInB = { id: "file-in-b", name: "report.pdf", isFolder: false, size: 1000 };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_s: string, _d: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([folderA, folderB]);
+          if (itemId === "folder-a") return Promise.resolve([fileInA]);
+          if (itemId === "folder-b") return Promise.resolve([fileInB]);
+          return Promise.resolve([]);
+        }),
+      listDestinationFolderChildren: jest.fn().mockResolvedValue([]),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const report = await svc.execute();
+
+    // Same name+size in different sub-paths → both must be copied independently
+    expect(report.totalCopied).toBe(2);
+    expect(seam.uploadFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("idempotent re-run: already-copied nested tree copies nothing", async () => {
+    const photosFolder = { id: "photos-folder", name: "Site photos", isFolder: true };
+    const imgFile = { id: "img-1", name: "IMG_1.jpg", isFolder: false, size: 500 };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_s: string, _d: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([
+            photosFolder,
+            { id: LEGACY_FILE_A.fileId, name: LEGACY_FILE_A.name, isFolder: false, size: LEGACY_FILE_A.size },
+          ]);
+          if (itemId === "photos-folder") return Promise.resolve([imgFile]);
+          return Promise.resolve([]);
+        }),
+      listDestinationFolderChildren: jest
+        .fn()
+        .mockImplementation((_input: { relativePath: string }) => {
+          const relPath = (_input as { relativePath: string }).relativePath;
+          // Top-level destination — LEGACY_FILE_A already present
+          if (relPath === FOLDER_LINK_T1001.relativePath) {
+            return Promise.resolve([
+              { name: LEGACY_FILE_A.name, fileId: "dest-a", size: LEGACY_FILE_A.size },
+            ]);
+          }
+          // Sub-folder destination — IMG_1.jpg already present
+          if (relPath === `${FOLDER_LINK_T1001.relativePath}/Site photos`) {
+            return Promise.resolve([
+              { name: "IMG_1.jpg", fileId: "dest-img", size: 500 },
+            ]);
+          }
+          return Promise.resolve([]);
+        }),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const report = await svc.execute();
+
+    expect(report.totalCopied).toBe(0);
+    expect(report.totalAlreadyPresent).toBe(2);
+    expect(seam.uploadFile).not.toHaveBeenCalled();
+  });
+
+  it("depth beyond MAX_COPY_DEPTH: stops, warns, increments skippedDepthCapped", async () => {
+    // Build a chain of MAX_COPY_DEPTH + 2 nested folders.
+    // At the very deepest level there is a file — it must NOT be copied.
+    const folderChain: Array<{ id: string; name: string; isFolder: true }> = [];
+    for (let i = 0; i <= MAX_COPY_DEPTH + 1; i++) {
+      folderChain.push({ id: `deep-folder-${i}`, name: `Depth${i}`, isFolder: true });
+    }
+    const deepFile = { id: "deep-file", name: "deep.txt", isFolder: false, size: 100 };
+
+    const seam = makeSeamMock({
+      resolveItemIdByPath: jest.fn().mockResolvedValue(rootItemId),
+      listFolderItemsById: jest
+        .fn()
+        .mockImplementation((_s: string, _d: string, itemId: string) => {
+          if (itemId === rootItemId) return Promise.resolve([MONTH_FOLDER_AUG]);
+          if (itemId === MONTH_FOLDER_AUG.id) return Promise.resolve([TENDER_FOLDER_T1001]);
+          if (itemId === TENDER_FOLDER_T1001.id) return Promise.resolve([folderChain[0]]);
+          // Each folder in the chain points to the next
+          for (let i = 0; i < folderChain.length - 1; i++) {
+            if (itemId === folderChain[i].id) return Promise.resolve([folderChain[i + 1]]);
+          }
+          // Last folder contains the deep file (but recursion should have stopped before reaching it)
+          if (itemId === folderChain[folderChain.length - 1].id) return Promise.resolve([deepFile]);
+          return Promise.resolve([]);
+        }),
+      listDestinationFolderChildren: jest.fn().mockResolvedValue([]),
+    });
+
+    const prisma = makePrismaMock([TENDER_WITH_MATCH], [FOLDER_LINK_T1001]);
+    const svc = await buildModule(prisma, seam);
+    const report = await svc.execute();
+
+    // Depth cap was hit — at least one subtree was skipped
+    expect(report.skippedDepthCapped).toBeGreaterThanOrEqual(1);
+    // The deep file must NOT have been copied
+    expect(report.totalCopied).toBe(0);
+    expect(seam.uploadFile).not.toHaveBeenCalled();
   });
 });

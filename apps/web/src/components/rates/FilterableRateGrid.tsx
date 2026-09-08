@@ -27,6 +27,17 @@ type Props = {
   renderTrailing?: (row: RateGridRow) => ReactNode;
   testIdPrefix: string;
   emptyState?: ReactNode;
+  /**
+   * RATE_SCENARIO_PICKER_V2 — mark ONE row as the row something outside this
+   * grid is talking about. The admin Rates page uses it to point at the row
+   * the charge-steps preview is pricing.
+   *
+   * OPTIONAL, and no highlight is the default: the tender Rates tab renders
+   * this same grid and passes nothing, so it is unchanged. Marking is all it
+   * does — no scroll, no selection, no filtering, and the other rows stay
+   * exactly where they were.
+   */
+  highlightRowId?: string | null;
 };
 
 const ACCENT = "var(--text-accent, #EA580C)";
@@ -41,7 +52,8 @@ export function FilterableRateGrid({
   trailingHeader,
   renderTrailing,
   testIdPrefix,
-  emptyState
+  emptyState,
+  highlightRowId = null
 }: Props) {
   const defaultGroupKey =
     groupByKey === undefined
@@ -229,6 +241,7 @@ export function FilterableRateGrid({
                   }
                   renderTrailing={renderTrailing}
                   hasTrailing={trailingHeader !== undefined}
+                  highlightRowId={highlightRowId}
                   testIdPrefix={testIdPrefix}
                 />
               ))
@@ -793,6 +806,7 @@ function GroupSection({
   onToggle,
   renderTrailing,
   hasTrailing,
+  highlightRowId,
   testIdPrefix
 }: {
   groupKey: string;
@@ -803,6 +817,7 @@ function GroupSection({
   onToggle: () => void;
   renderTrailing?: (row: RateGridRow) => ReactNode;
   hasTrailing: boolean;
+  highlightRowId: string | null;
   testIdPrefix: string;
 }) {
   const colSpan = columns.length + (hasTrailing ? 1 : 0);
@@ -848,6 +863,7 @@ function GroupSection({
             columns={columns}
             renderTrailing={renderTrailing}
             hasTrailing={hasTrailing}
+            highlighted={row.id === highlightRowId}
           />
         ))}
     </>
@@ -858,15 +874,43 @@ function BodyRow({
   row,
   columns,
   renderTrailing,
-  hasTrailing
+  hasTrailing,
+  highlighted = false
 }: {
   row: RateGridRow;
   columns: RateGridColumn[];
   renderTrailing?: (row: RateGridRow) => ReactNode;
   hasTrailing: boolean;
+  /**
+   * RATE_SCENARIO_PICKER_V2 — this is the row the caption under the grid is
+   * pointing at. `BodyRow` has exactly ONE call site, so grouped, ungrouped,
+   * filtered and sorted row paths all mark it the same way.
+   */
+  highlighted?: boolean;
 }) {
   return (
-    <tr style={{ borderBottom: `1px solid var(--border-subtle, #F1F5F9)` }}>
+    <tr
+      data-highlighted={highlighted ? "true" : undefined}
+      style={{
+        // The row rule. `--border-subtle` carried a phantom literal fallback
+        // that was not even the token's own value and could never have been
+        // reached (tokens.css defines the token at `:root`); this slice's rule
+        // is that every colour on a row comes from a token, and this is one.
+        borderBottom: "1px solid var(--border-subtle)",
+        // RATE_SCENARIO_PICKER_V2 — a token fill plus an inset left rule. Both
+        // are tokens and neither is a hex literal: `--surface-hover` is
+        // redefined for dark mode in tokens.css so the fill follows the theme,
+        // and `--brand-accent` deliberately does NOT flip, so the same amber
+        // rule reads against the light fill and the dark one. `inset` rather
+        // than a real border, so marking a row does not shift the grid by 3px.
+        ...(highlighted
+          ? {
+              background: "var(--surface-hover)",
+              boxShadow: "inset 3px 0 0 0 var(--brand-accent)"
+            }
+          : null)
+      }}
+    >
       {columns.map((col) => {
         const custom = row.render?.[col.key];
         const align = col.align ?? (col.kind === "text" ? "left" : "right");

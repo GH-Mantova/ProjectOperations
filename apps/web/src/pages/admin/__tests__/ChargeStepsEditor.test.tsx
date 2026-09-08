@@ -67,7 +67,6 @@ import {
   reorderSteps,
   // CHARGE_STEP_INPLACE_V1
   ChargeStepRow,
-  FIELD_SOURCE_LABELS,
   FIXED_VALUE_OPS,
   OPERAND_NUMBER_LABEL,
   OPERAND_NUMBER_VALUE,
@@ -92,16 +91,39 @@ import {
   setStepOperand,
   setStepRound,
   stepCarry,
+  // RATE_SCENARIO_PICKER_V2
+  LineFieldControl,
+  SCENARIO_HIGHLIGHT_CAPTION,
+  SCENARIO_LEGEND,
+  SCENARIO_NO_MATCH,
+  lineFieldDisplayValue,
+  lineFieldSampleText,
+  scenarioControlCount,
+  scenarioLineValues,
   type RateColumnMeta,
   type StepOp,
   type TotalPresentation
 } from "../ChargeStepsEditor";
 import type { ChargeStep } from "../../../lib/chargeStepTypes";
 import { isNumberKindColumn } from "../ratesListsHelpers";
+// RATE_SCENARIO_PICKER_V2 — the highlight is the half of this slice that
+// renders somewhere else, so it is rendered here rather than grepped for.
+import { FilterableRateGrid } from "../../../components/rates/FilterableRateGrid";
+import type { RateGridColumn, RateGridRow } from "../../../components/rates/rateGridModel";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CARD_SRC = readFileSync(resolve(__dirname, "..", "ChargeStepsEditor.tsx"), "utf-8");
 const MOUNT_SRC = readFileSync(resolve(__dirname, "..", "RatesListsAdminPage.tsx"), "utf-8");
+// RATE_SCENARIO_PICKER_V2 — the shared grid, and the OTHER consumer of it that
+// this slice must leave alone.
+const GRID_SRC = readFileSync(
+  resolve(__dirname, "..", "..", "..", "components", "rates", "FilterableRateGrid.tsx"),
+  "utf-8"
+);
+const RATES_TAB_SRC = readFileSync(
+  resolve(__dirname, "..", "..", "tendering", "RatesTab.tsx"),
+  "utf-8"
+);
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -1664,7 +1686,12 @@ describe("RATE_LINE_FIELDS_V1: buildStepValues is the one values map", () => {
 describe("RATE_LINE_FIELDS_V1: the card and its mount are wired for line fields", () => {
   it("the card takes lineFields and builds its values map with the shared builder", () => {
     expect(CARD_SRC).toContain("lineFields?: readonly RateLineField[];");
-    expect(CARD_SRC).toContain("return buildStepValues(columns, row?.cells, lineFields);");
+    // RATE_SCENARIO_PICKER_V2 moved the row from a locally-chosen id to the
+    // matched row the mount hands down, and gave the builder the entered line
+    // values it has always accepted. Same builder, same argument order.
+    expect(CARD_SRC).toContain(
+      "buildStepValues(columns, matchedRow?.cells, lineFields, scenarioLineValues(lineFields, lineDraft))"
+    );
     // Exactly one implementation of the map, on this side of the wire.
     expect(CARD_SRC.match(/buildStepValues\(/g)).toHaveLength(1);
   });
@@ -2447,5 +2474,385 @@ describe("RATE_FIELDS_TABLE_V2: one copy of the step list", () => {
     // would GET again on each one.
     expect(CARD_SRC).toContain("}, [authFetch, tableId]);");
     expect(CARD_SRC).not.toContain("}, [authFetch, tableId, onStepsChange]);");
+  });
+});
+
+// ── RATE_SCENARIO_PICKER_V2 ───────────────────────────────────────────────
+//
+// 13. The scenario is chosen the way an estimator describes one, and the row
+//     it lands on is shown. The cascade itself is spec'd in
+//     ratesListsHelpers.test.ts; these pin the OTHER half — the line-field
+//     controls, the two sentences, what the card does when nothing matches,
+//     and the wiring that lets a sibling card highlight the same row.
+
+/** The mock-up's `Saw cuts - by depth band` VALUE column and line field. */
+const SAW_COLS: RateColumnMeta[] = [
+  { id: "k-equipment", name: "Equipment", dataType: "TEXT", role: "KEY" },
+  { id: "k-elevation", name: "Elevation", dataType: "TEXT", role: "KEY" },
+  { id: "k-material", name: "Material", dataType: "TEXT", role: "KEY" },
+  { id: "k-depth", name: "Depth", dataType: "NUMBER", role: "KEY", unit: "mm" },
+  { id: "v-rate", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "$ / m" }
+];
+
+const SAW_LINE_FIELDS: RateLineField[] = [{ name: "Metres", kind: "number", unit: "m", sample: 24 }];
+
+/** Roadsaw / Floor / Concrete / 200 — the worked example's row. */
+const SAW_MATCHED_CELLS: Record<string, unknown> = {
+  "k-equipment": "Roadsaw",
+  "k-elevation": "Floor",
+  "k-material": "Concrete",
+  "k-depth": 200,
+  "v-rate": 18.95
+};
+
+const SAW_STEPS: ChargeStep[] = [
+  { op: "start", field: "Rate" },
+  { op: "multiply", field: "Metres" }
+];
+
+/** Every kind of line field, so each control shape is exercised. */
+const MIXED_LINE_FIELDS: RateLineField[] = [
+  { name: "Metres", kind: "number", unit: "m", sample: 24 },
+  { name: "Elevation", kind: "text", options: ["Floor", "Wall", "Inverted"], sample: "Floor" },
+  { name: "Reference", kind: "text", sample: "job-1042" }
+];
+
+const controlMarkup = (field: RateLineField, draft: Record<string, string> = {}) =>
+  renderToStaticMarkup(
+    <LineFieldControl
+      field={field}
+      value={lineFieldDisplayValue(field, draft)}
+      onChange={noop}
+    />
+  );
+
+describe("RATE_SCENARIO_PICKER_V2: the picker is no longer a row counter", () => {
+  it("the shipped 'Row 1 … Row N' select is gone", () => {
+    expect(CARD_SRC).not.toContain("Preview with row:");
+    expect(CARD_SRC).not.toContain("Scenario row for running-total preview");
+    expect(CARD_SRC).not.toMatch(/Row \{i \+ 1\}/);
+    // And with it the local row-id state the mount could not see.
+    expect(CARD_SRC).not.toContain("scenarioRowId");
+  });
+
+  it("one control per KEY column plus one per line field — five for the mock-up's sheet", () => {
+    expect(scenarioControlCount(SAW_COLS, SAW_LINE_FIELDS)).toBe(5);
+    // Four key columns is what makes it five; the VALUE column is not a control.
+    expect(SAW_COLS.filter((c) => c.role === "KEY")).toHaveLength(4);
+  });
+
+  it("a table with no line fields still gets one control per key column", () => {
+    expect(scenarioControlCount(SAW_COLS, [])).toBe(4);
+    expect(scenarioControlCount(SAW_COLS, null)).toBe(4);
+  });
+
+  it("carries the marker, and the picker renders a select per key column", () => {
+    expect(CARD_SRC).toContain("RATE_SCENARIO_PICKER_V2");
+    expect(CARD_SRC).toContain("keyColumns.map((col)");
+    expect(CARD_SRC).toContain("scenarioKeyOptions(columns, rows, scenarioKeys, col.id)");
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: one control per line field", () => {
+  it("a number line field gets a numeric input, seeded from its sample", () => {
+    const markup = controlMarkup(MIXED_LINE_FIELDS[0]);
+    expect(markup).toContain('type="number"');
+    expect(markup).toContain('value="24"');
+    expect(markup).toContain('aria-label="Scenario Metres"');
+    expect(markup).not.toContain("<select");
+  });
+
+  it("a text line field WITH options gets a select over exactly those options", () => {
+    const markup = controlMarkup(MIXED_LINE_FIELDS[1]);
+    expect(markup).toMatch(/^<select/);
+    expect(markup).toContain(">Floor</option>");
+    expect(markup).toContain(">Wall</option>");
+    expect(markup).toContain(">Inverted</option>");
+    expect(markup.match(/<option/g)).toHaveLength(3);
+  });
+
+  it("a text line field with NO options gets a text input, seeded from its sample", () => {
+    const markup = controlMarkup(MIXED_LINE_FIELDS[2]);
+    expect(markup).toContain('type="text"');
+    expect(markup).toContain('value="job-1042"');
+    expect(markup).not.toContain("<select");
+  });
+
+  it("every control opens on the declared sample", () => {
+    expect(MIXED_LINE_FIELDS.map((f) => lineFieldSampleText(f))).toStrictEqual([
+      "24",
+      "Floor",
+      "job-1042"
+    ]);
+    for (const field of MIXED_LINE_FIELDS) {
+      expect(controlMarkup(field)).toContain(`value="${lineFieldSampleText(field)}"`);
+    }
+  });
+
+  it("a field with no sample opens blank rather than undefined", () => {
+    const field: RateLineField = { name: "Metres", kind: "number" };
+    expect(lineFieldSampleText(field)).toBe("");
+    expect(controlMarkup(field)).toContain('value=""');
+  });
+
+  it("what was typed wins over the sample", () => {
+    expect(lineFieldDisplayValue(MIXED_LINE_FIELDS[0], { Metres: "31" })).toBe("31");
+    expect(controlMarkup(MIXED_LINE_FIELDS[0], { Metres: "31" })).toContain('value="31"');
+  });
+
+  it("uses no hex colour literal, so it reads in both themes", () => {
+    for (const field of MIXED_LINE_FIELDS) {
+      expect(controlMarkup(field)).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: entered values reach the ONE values map", () => {
+  it("an untouched field is absent, so buildStepValues falls back to its sample", () => {
+    expect(scenarioLineValues(MIXED_LINE_FIELDS, {})).toStrictEqual({});
+    expect(
+      buildStepValues(SAW_COLS, SAW_MATCHED_CELLS, SAW_LINE_FIELDS, scenarioLineValues(SAW_LINE_FIELDS, {}))
+    ).toEqual({
+      Equipment: "Roadsaw",
+      Elevation: "Floor",
+      Material: "Concrete",
+      Depth: 200,
+      Rate: 18.95,
+      Metres: 24
+    });
+  });
+
+  it("a number field's text becomes a number", () => {
+    expect(scenarioLineValues(MIXED_LINE_FIELDS, { Metres: "31.5" })).toStrictEqual({
+      Metres: 31.5
+    });
+  });
+
+  it("a text field's text stays text, even when it looks like a number", () => {
+    expect(scenarioLineValues(MIXED_LINE_FIELDS, { Reference: "1042" })).toStrictEqual({
+      Reference: "1042"
+    });
+  });
+
+  it("junk in a number field is passed through, so the evaluator reports the column rule", () => {
+    const values = buildStepValues(
+      SAW_COLS,
+      SAW_MATCHED_CELLS,
+      SAW_LINE_FIELDS,
+      scenarioLineValues(SAW_LINE_FIELDS, { Metres: "abc" })
+    );
+    expect(values.Metres).toBe("abc");
+    const trail = evaluateStepsClient(SAW_STEPS, values);
+    expect(trail[1].runningTotal).toBeNull();
+    expect(trail[1].issue).not.toBeNull();
+  });
+
+  it("nothing about how a value resolves changed — same row, same line values, same map", () => {
+    // The pre-slice call: three arguments, line fields previewed from `sample`.
+    expect(
+      buildStepValues(SAW_COLS, SAW_MATCHED_CELLS, SAW_LINE_FIELDS, scenarioLineValues(SAW_LINE_FIELDS, {}))
+    ).toEqual(buildStepValues(SAW_COLS, SAW_MATCHED_CELLS, SAW_LINE_FIELDS));
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: the mock-up's worked example", () => {
+  const values = buildStepValues(
+    SAW_COLS,
+    SAW_MATCHED_CELLS,
+    SAW_LINE_FIELDS,
+    scenarioLineValues(SAW_LINE_FIELDS, { Metres: "24" })
+  );
+
+  it("Roadsaw / Floor / Concrete / 200 prices at the row's own Rate", () => {
+    expect(values.Rate).toBe(18.95);
+    expect(values.Metres).toBe(24);
+  });
+
+  it("Metres 24 × 18.95 is a line total of 454.80", () => {
+    const trail = evaluateStepsClient(SAW_STEPS, values);
+    expect(trail[0].runningTotal).toBe(18.95);
+    // Binary floating point, not a rounding rule: 18.95 × 24 lands a hair
+    // under 454.8, exactly as it does on the server. The card prints the
+    // figure through `formatStepTotal`, which is where the two decimals come
+    // from — asserted below rather than assumed.
+    expect(trail[1].runningTotal).toBeCloseTo(454.8, 10);
+    expect(evaluateChargeSteps(SAW_STEPS, values).total).toBeCloseTo(454.8, 10);
+    expect(formatStepTotal(trail[1].runningTotal as number, { money: true })).toBe("$454.80");
+  });
+
+  it("the caption printed under the highlighted row says which row that is", () => {
+    expect(SCENARIO_HIGHLIGHT_CAPTION).toBe("The highlighted row is the one priced above.");
+    // One string, two cards: the mount imports it rather than retyping it.
+    expect(MOUNT_SRC).toContain("SCENARIO_HIGHLIGHT_CAPTION");
+    expect(MOUNT_SRC).not.toContain("The highlighted row is the one priced above.");
+  });
+
+  it("the legend names what the bar is for", () => {
+    expect(SCENARIO_LEGEND).toBe("Preview this scenario:");
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: a combination no row carries", () => {
+  it("says so, in the mock-up's words", () => {
+    expect(SCENARIO_NO_MATCH).toBe("No row on this sheet matches that combination.");
+  });
+
+  it("prints NO running total beside a step — a row that is not there has no numbers", () => {
+    // What the card renders when it has no matched row: an empty trail, so
+    // every row is handed `trailEntry: undefined`.
+    const priced = rowMarkup(SAW_STEPS[1], 1, {
+      columns: SAW_COLS,
+      lineFields: SAW_LINE_FIELDS,
+      trailEntry: { index: 1, runningTotal: 454.8, skipped: false, issue: null }
+    });
+    const unpriced = rowMarkup(SAW_STEPS[1], 1, {
+      columns: SAW_COLS,
+      lineFields: SAW_LINE_FIELDS,
+      trailEntry: undefined
+    });
+    expect(priced).toContain("454.80");
+    expect(unpriced).not.toContain("454.80");
+    expect(unpriced).not.toContain("18.95");
+    expect(unpriced).toContain("—");
+  });
+
+  it("the card blanks the trail rather than evaluating an empty map", () => {
+    expect(CARD_SRC).toContain("noMatch ? [] : evaluateStepsClient(steps, scenarioValues)");
+    // …and the LINE TOTAL row goes with it: it IS a running total.
+    expect(CARD_SRC).toContain("!loading && steps.length > 0 && !noMatch ?");
+  });
+
+  it("an empty values map is exactly the wall of issues the message replaces", () => {
+    const trail = evaluateStepsClient(SAW_STEPS, {});
+    expect(trail.every((t) => t.runningTotal === null)).toBe(true);
+    expect(trail[0].issue?.code).toBe("missing-operand");
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: the state lives above both cards", () => {
+  it("the card is TOLD the matched row; it does not pick one", () => {
+    expect(CARD_SRC).toContain("matchedRowId?: string | null;");
+    expect(CARD_SRC).toContain("scenarioKeys?: Readonly<Record<string, string>>;");
+    expect(CARD_SRC).toContain("onScenarioKeysChange?: (next: Record<string, string>) => void;");
+    expect(CARD_SRC).toContain("rows.find((r) => r.id === matchedRowId)");
+  });
+
+  it("the mount owns the keys and the matched row, and hands the same id to both cards", () => {
+    expect(MOUNT_SRC).toContain("resolveScenarioKeys(table.columns, table.rows, scenarioKeyChoice)");
+    expect(MOUNT_SRC).toContain("matchScenarioRow(table.columns, table.rows, scenarioKeys)?.id ?? null");
+    expect(MOUNT_SRC).toContain("matchedRowId={matchedRowId}");
+    expect(MOUNT_SRC).toContain("highlightRowId={matchedRowId}");
+  });
+
+  it("still ONE values map on this side of the wire", () => {
+    expect(CARD_SRC.match(/buildStepValues\(/g)).toHaveLength(1);
+  });
+
+  it("no pricing path was wired up — evaluateSteps stays where slice 1 left it", () => {
+    expect(CARD_SRC).not.toContain("RateResolver");
+    expect(MOUNT_SRC).not.toContain("RateResolver");
+    expect(CARD_SRC).not.toContain("evaluateSteps(");
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: the shared grid gains an OPTIONAL highlight", () => {
+  it("the prop is optional and defaults to no highlight", () => {
+    expect(GRID_SRC).toContain("highlightRowId?: string | null;");
+    expect(GRID_SRC).toContain("highlightRowId = null");
+  });
+
+  it("BodyRow has exactly one call site, so every row path marks the row alike", () => {
+    expect(GRID_SRC.match(/<BodyRow\b/g)).toHaveLength(1);
+    expect(GRID_SRC.match(/function BodyRow\b/g)).toHaveLength(1);
+    expect(GRID_SRC).toContain("highlighted={row.id === highlightRowId}");
+  });
+
+  it("marks the row and nothing else — no scroll, no selection, no filtering", () => {
+    expect(GRID_SRC).not.toContain("scrollIntoView");
+    expect(GRID_SRC).not.toContain("onRowSelect");
+    // The highlight is not consulted by any of the row-shaping steps.
+    expect(GRID_SRC).not.toMatch(/filter[^\n]*highlightRowId/);
+  });
+
+  it("the highlight is a token fill and an inset rule — no hex, no raw rgba", () => {
+    expect(GRID_SRC).toContain('background: "var(--surface-hover)"');
+    expect(GRID_SRC).toContain('boxShadow: "inset 3px 0 0 0 var(--brand-accent)"');
+  });
+
+  it("RatesTab, the other consumer, passes nothing and is untouched", () => {
+    expect(RATES_TAB_SRC).toContain("<FilterableRateGrid");
+    expect(RATES_TAB_SRC).not.toContain("highlightRowId");
+    expect(RATES_TAB_SRC).not.toContain("RATE_SCENARIO_PICKER_V2");
+  });
+});
+
+describe("RATE_SCENARIO_PICKER_V2: the grid actually marks the matched row", () => {
+  const GRID_COLUMNS: RateGridColumn[] = [
+    { key: "k-material", label: "Material", kind: "text" },
+    { key: "k-depth", label: "Depth", kind: "number" },
+    { key: "v-rate", label: "Rate", kind: "currency" }
+  ];
+
+  const GRID_ROWS: RateGridRow[] = [
+    { id: "r1", values: { "k-material": "Concrete", "k-depth": 150, "v-rate": 15.5 } },
+    { id: "r2", values: { "k-material": "Concrete", "k-depth": 200, "v-rate": 18.95 } },
+    { id: "r3", values: { "k-material": "Asphalt", "k-depth": 150, "v-rate": 12.4 } }
+  ];
+
+  const gridMarkup = (highlightRowId?: string | null) =>
+    renderToStaticMarkup(
+      <FilterableRateGrid
+        columns={GRID_COLUMNS}
+        rows={GRID_ROWS}
+        testIdPrefix="scenario"
+        highlightRowId={highlightRowId}
+      />
+    );
+
+  /** The opening `<tr>` tags inside `<tbody>`, in order. */
+  const bodyRowTags = (markup: string): string[] => {
+    const body = markup.slice(markup.indexOf("<tbody>"));
+    return body.match(/<tr[^>]*>/g) ?? [];
+  };
+
+  it("marks exactly one row — the one it was given", () => {
+    const markup = gridMarkup("r2");
+    expect(markup.match(/data-highlighted="true"/g)).toHaveLength(1);
+    // The marked <tr> is the one whose cells are the worked example's row.
+    const marked = markup.slice(markup.indexOf('data-highlighted="true"'));
+    const cells = marked.slice(0, marked.indexOf("</tr>"));
+    expect(cells).toContain("18.95");
+    expect(cells).toContain("200");
+    expect(cells).not.toContain("12.4");
+  });
+
+  it("omitting the prop marks nothing, which is what RatesTab gets", () => {
+    expect(gridMarkup()).not.toContain("data-highlighted");
+    expect(gridMarkup(null)).not.toContain("data-highlighted");
+  });
+
+  it("an id no row carries marks nothing rather than the first row", () => {
+    expect(gridMarkup("nope")).not.toContain("data-highlighted");
+  });
+
+  it("marking a row hides none of the others and reorders nothing", () => {
+    const before = gridMarkup();
+    const after = gridMarkup("r2");
+    expect(bodyRowTags(after)).toHaveLength(bodyRowTags(before).length);
+    expect(after).toContain("Asphalt");
+    expect(after.indexOf("15.5")).toBeLessThan(after.indexOf("18.95"));
+    expect(after.indexOf("18.95")).toBeLessThan(after.indexOf("12.4"));
+  });
+
+  it("the mark is a token fill and an inset rule, so it reads in both themes", () => {
+    const marked = gridMarkup("r2");
+    const markedRow = bodyRowTags(marked).find((t) => t.includes('data-highlighted="true"'));
+    expect(markedRow).toContain("var(--surface-hover)");
+    expect(markedRow).toContain("inset 3px 0 0 0 var(--brand-accent)");
+    expect(markedRow).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    // And the rows this slice touched carry no hex either.
+    for (const tag of bodyRowTags(marked)) {
+      expect(tag).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
   });
 });

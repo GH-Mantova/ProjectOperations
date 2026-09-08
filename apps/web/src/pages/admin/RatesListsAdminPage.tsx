@@ -14,7 +14,9 @@ import {
   deleteFieldConfirmMessage,
   deleteFieldWarning,
   groupBindings,
+  matchScenarioRow,
   rateFieldRows,
+  resolveScenarioKeys,
   usedInLabel,
   validateColumnStructure,
   validateRowCells,
@@ -34,7 +36,15 @@ import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
 // line") and labels its operand `<optgroup>`s with them; the `From` column
 // below reads the same object, so the picker and this table cannot end up
 // calling one thing two names.
-import { ChargeStepsEditor, FIELD_SOURCE_LABELS } from "./ChargeStepsEditor";
+// RATE_SCENARIO_PICKER_V2 — `SCENARIO_HIGHLIGHT_CAPTION` is imported for the
+// same reason: the caption under the Rows table names what the charge-steps
+// card above it is pricing, and one sentence about two cards must be one
+// string.
+import {
+  ChargeStepsEditor,
+  FIELD_SOURCE_LABELS,
+  SCENARIO_HIGHLIGHT_CAPTION
+} from "./ChargeStepsEditor";
 import type { RateLineField } from "@project-ops/config/charge-step-semantics";
 import type { ChargeStep } from "../../lib/chargeStepTypes";
 
@@ -898,6 +908,28 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
   // warning knowing about it.
   const [chargeSteps, setChargeSteps] = useState<ChargeStep[]>([]);
 
+  // RATE_SCENARIO_PICKER_V2 — the chosen scenario, held HERE because two
+  // sibling cards need the same answer: the charge-steps card prices the
+  // matched row, and the Rows card highlights it. Held in either card it would
+  // be invisible to the other, which is why the shipped picker could name a
+  // row and nothing on screen said which row it named.
+  //
+  // What is stored is only what a person actually chose. Every read goes
+  // through `resolveScenarioKeys`, which replaces any value an earlier key has
+  // since stranded — so the state can never be normalised into a shape that
+  // disagrees with the selects rendering it.
+  const [scenarioKeyChoice, setScenarioKeyChoice] = useState<Record<string, string>>({});
+
+  const scenarioKeys = useMemo(
+    () => resolveScenarioKeys(table.columns, table.rows, scenarioKeyChoice),
+    [table.columns, table.rows, scenarioKeyChoice]
+  );
+
+  const matchedRowId = useMemo(
+    () => matchScenarioRow(table.columns, table.rows, scenarioKeys)?.id ?? null,
+    [table.columns, table.rows, scenarioKeys]
+  );
+
   // Hub import/export state
   const [hubExporting, setHubExporting] = useState(false);
   const [hubImporting, setHubImporting] = useState(false);
@@ -1200,6 +1232,12 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
         // declares. `?? []` everywhere: a table that declares none behaves
         // exactly as it did before the column existed.
         lineFields={table.lineFields ?? []}
+        // RATE_SCENARIO_PICKER_V2 — the card renders the picker and reads the
+        // matched row's cells; it does not own either, because the Rows card
+        // below highlights the same row.
+        scenarioKeys={scenarioKeys}
+        onScenarioKeysChange={setScenarioKeyChoice}
+        matchedRowId={matchedRowId}
         onSaved={() => void onChanged()}
         // RATE_FIELDS_TABLE_V2 — the card publishes the step list it already
         // loaded, so the Fields card above can fill `Used in` without a second
@@ -1210,6 +1248,8 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
       <RowsCard
         columns={table.columns}
         rows={table.rows}
+        // RATE_SCENARIO_PICKER_V2 — the other half of the same answer.
+        highlightRowId={matchedRowId}
         rowDraft={rowDraft}
         rowErrors={rowErrors}
         editRowId={editRowId}
@@ -1240,6 +1280,17 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
     </div>
   );
 }
+
+/**
+ * RATE_SCENARIO_PICKER_V2 — the caption under the Rows grid. Muted text on the
+ * card's own background: it is a note about the table, not a status banner.
+ * Token colours only, so it reads in both themes.
+ */
+const highlightCaptionStyle = {
+  margin: "8px 0 0",
+  fontSize: 12,
+  color: "var(--text-muted)"
+} as const;
 
 const fieldHeadStyle = { textAlign: "left", padding: "6px 8px" } as const;
 const fieldCellStyle = { padding: "7px 8px", verticalAlign: "top" } as const;
@@ -1557,6 +1608,7 @@ function RoleBadge({ role }: { role: RateColumnRole }) {
 function RowsCard({
   columns,
   rows,
+  highlightRowId,
   rowDraft,
   rowErrors,
   editRowId,
@@ -1574,6 +1626,12 @@ function RowsCard({
 }: {
   columns: RateColumn[];
   rows: RateRow[];
+  /**
+   * RATE_SCENARIO_PICKER_V2 — the row the charge-steps card above is pricing,
+   * or null when the chosen combination is not on this sheet. The grid marks
+   * it; it does not scroll to it, select it, filter to it or hide the others.
+   */
+  highlightRowId?: string | null;
   rowDraft: Record<string, unknown> | null;
   rowErrors: Array<{ columnId: string; message: string }>;
   editRowId: string | null;
@@ -1649,6 +1707,7 @@ function RowsCard({
             <FilterableRateGrid
               columns={gridColumns}
               rows={gridRows}
+              highlightRowId={highlightRowId}
               testIdPrefix="admin-rates"
               trailingHeader={<span aria-hidden />}
               renderTrailing={(gridRow) => (
@@ -1673,6 +1732,15 @@ function RowsCard({
                 </span>
               )}
             />
+          ) : null}
+          {/* RATE_SCENARIO_PICKER_V2 — the caption is what makes the highlight
+              readable. A tinted row with nothing saying why is a row someone
+              will read as an error state. Printed only when a row IS
+              highlighted: with no match there is nothing to point at. */}
+          {rows.length > 0 && highlightRowId ? (
+            <p style={highlightCaptionStyle} data-testid="admin-rates-highlight-caption">
+              {SCENARIO_HIGHLIGHT_CAPTION}
+            </p>
           ) : null}
           {isEditing && editDraft ? (
             <div

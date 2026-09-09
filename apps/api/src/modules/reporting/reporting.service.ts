@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions";
 import { ESTIMATING_ANALYTICS_REPORT_DEFS } from "./estimating-analytics-report.definitions";
+import { resolveSelfFilter } from "./report-self-filter";
 
 // Cross-module BI reporting layer (slice 1).
 //
@@ -219,7 +220,12 @@ const REPORT_DEFS: ReportDefinition[] = [
     async run(prisma, params) {
       const submittedAt = dateRangeFilter(params.from, params.to);
       const where: Prisma.TenderWhereInput = {
-        status: { in: ["SUBMITTED", "AWARDED", "LOST", "CONTRACT_ISSUED"] }
+        status: { in: ["SUBMITTED", "AWARDED", "LOST", "CONTRACT_ISSUED"] },
+        // EA-GATE exposure fix: tender-win-rate names individuals; apply the
+        // same self-filter as the EA reports so a plain estimator only sees
+        // her own win rate. Without this anyone holding reporting.view could
+        // read every individual's performance numbers.
+        ...resolveSelfFilter(params)
       };
       if (submittedAt) where.submittedAt = submittedAt;
       const tenders = await prisma.tender.findMany({

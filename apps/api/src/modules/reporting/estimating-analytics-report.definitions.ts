@@ -2,13 +2,15 @@ import { Prisma } from "@prisma/client";
 import type { PrismaService } from "../../prisma/prisma.service";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 import { deriveLeadTimeDays } from "../win-likelihood/win-likelihood-features.service";
+import { resolveSelfFilter } from "./report-self-filter";
 
 // EA-1: Two new read-only report definitions for estimating analytics.
 // Decision references (from docs/plans/estimating-analytics-plan.md):
 // Decision EA-D3: turnaround = days-to-quote (submittedAt − createdAt), excludes
 //                 still-open tenders (DRAFT / IN_PROGRESS).
 // Decision EA-D4: qty-vs-$ throughput = count + Σ estimatedValue per estimator.
-// Decision EA-D5: if currentUser is NOT isSuperUser, self-filter to own tenders.
+// Decision EA-D5: self-filter to own tenders unless user holds reporting.team or is isSuperUser.
+//                 EA-GATE replaces the old isSuperUser-only check with resolveSelfFilter.
 //
 // NOTE: This file intentionally does NOT import from reporting.service to avoid
 // a circular dependency (reporting.service imports this file). It uses local
@@ -124,16 +126,6 @@ function formatEstimatorName(
   return name || estimator.email || "Unassigned";
 }
 
-// Build the self-filter clause for EA-D5 role gating.
-// Estimator self-view: restrict to tenders assigned to the current user.
-// Manager / super-user / no currentUser: no restriction.
-function selfFilterClause(params: ReportRunParams): { assignedEstimatorId?: string } {
-  if (params.currentUser && !params.currentUser.isSuperUser) {
-    return { assignedEstimatorId: params.currentUser.sub };
-  }
-  return {};
-}
-
 // ── Shared tender select helper ─────────────────────────────────────────────
 
 interface EstimatingTenderRow {
@@ -152,7 +144,7 @@ async function loadEstimatingTenders(
   const submittedAt = localDateRangeFilter(params.from, params.to);
   const where: Prisma.TenderWhereInput = {
     status: { in: [...CLOSED_OR_SUBMITTED_STATUSES] },
-    ...selfFilterClause(params),
+    ...resolveSelfFilter(params),
     ...extraWhere
   };
   if (submittedAt) where.submittedAt = submittedAt;

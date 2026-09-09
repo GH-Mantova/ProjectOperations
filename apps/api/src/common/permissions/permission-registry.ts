@@ -134,6 +134,11 @@ export const permissionRegistry = [
   // aggregating existing tables. Sits beside per-module dashboard widgets —
   // this is the tabular/exportable side (Excel / CSV / PDF).
   { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" },
+  // EA-GATE: distinguishes team-wide visibility from self-only. Without this
+  // code a user holding reporting.view sees only tenders assigned to them.
+  // Granted to every role that holds tenders.allocate (manager-shaped roles)
+  // via the seed so nobody loses access on deploy.
+  { code: "reporting.team", module: "reporting", label: "View other people's numbers in reports", description: "See the team-wide rollup in estimating and win-rate reports. Without this code a user sees only tenders assigned to them." },
   // Site sign-in / sign-out (WHS spine — muster roll reads this back).
   { code: "sites.view", module: "sites", label: "View who is currently signed in on a site", description: "View site sign-in/out attendance — current on-site headcount and my own attendance" },
   { code: "sites.manage", module: "sites", label: "Sign in and sign out of a site", description: "Record site sign-in / sign-out for the field worker app" },

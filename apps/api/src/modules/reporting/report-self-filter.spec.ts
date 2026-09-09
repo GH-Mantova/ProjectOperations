@@ -14,11 +14,18 @@
  *     to anyone holding reporting.view. resolveSelfFilter must be spread into
  *     its where clause; this test fails if the spread is removed.
  *
+ *   Delivery-mechanism guard: production deploys with `prisma migrate deploy`
+ *     and never runs the TS seed, so reporting.team is granted to no role on
+ *     the first deploy. Team visibility therefore keys off TEAM_VISIBILITY_CODES,
+ *     which also accepts tenders.allocate — a code production already has on
+ *     exactly the manager roles we mean. The guard fails if anyone narrows the
+ *     helper back to reporting.team alone without landing a real migration first.
+ *
  * Test idiom: plain mock objects with jest.fn(), co-located, no @prisma/client
  * dependency — matches estimating-analytics-report.definitions.spec.ts.
  */
 
-import { resolveSelfFilter } from "./report-self-filter";
+import { resolveSelfFilter, TEAM_VISIBILITY_CODES } from "./report-self-filter";
 import { ReportingService } from "./reporting.service";
 import type { AuthenticatedUser } from "../../common/auth/authenticated-request.interface";
 
@@ -43,6 +50,20 @@ function teamManager(): { currentUser: AuthenticatedUser } {
   };
 }
 
+// Manager-shaped role as it actually exists in production TODAY: holds
+// tenders.allocate, does NOT hold the brand-new reporting.team code.
+// This is the delivery-mechanism guard — see below.
+function allocateManager(): { currentUser: AuthenticatedUser } {
+  return {
+    currentUser: {
+      sub: "alloc-1",
+      email: "allocator@test.com",
+      permissions: ["reporting.view", "tenders.allocate"],
+      isSuperUser: false
+    }
+  };
+}
+
 function plainEstimator(sub = "est-1"): { currentUser: AuthenticatedUser } {
   return {
     currentUser: {
@@ -54,7 +75,7 @@ function plainEstimator(sub = "est-1"): { currentUser: AuthenticatedUser } {
   };
 }
 
-// ── resolveSelfFilter — four branches ────────────────────────────────────────
+// ── resolveSelfFilter — branch coverage ──────────────────────────────────────
 
 describe("resolveSelfFilter", () => {
   it("no currentUser (internal/seed/test call) → {}", () => {
@@ -77,6 +98,42 @@ describe("resolveSelfFilter", () => {
     expect(resolveSelfFilter(plainEstimator("est-99"))).toEqual({
       assignedEstimatorId: "est-99"
     });
+  });
+
+  it("holds tenders.allocate but NOT reporting.team → {} [delivery-mechanism guard]", () => {
+    // This is the guard that keeps EA-GATE deliverable.
+    //
+    // Production deploys with `prisma migrate deploy` and never runs the TS
+    // seed, so reporting.team is granted to NO role on the first deploy. If
+    // reporting.team were the only code that unlocked the team rollup, every
+    // estimating manager would silently drop to self-view while Admin kept
+    // visibility through admin-all-permissions.
+    //
+    // tenders.allocate already exists in production and is already held by
+    // exactly the manager roles we mean, so it is a member of
+    // TEAM_VISIBILITY_CODES. This test MUST fail if someone narrows the helper
+    // back to reporting.team alone without first landing a real migration that
+    // grants reporting.team to allocate-holding roles.
+    expect(resolveSelfFilter(allocateManager())).toEqual({});
+  });
+
+  it("TEAM_VISIBILITY_CODES contains both codes, and each one alone is sufficient", () => {
+    expect([...TEAM_VISIBILITY_CODES]).toEqual(
+      expect.arrayContaining(["reporting.team", "tenders.allocate"])
+    );
+    for (const code of TEAM_VISIBILITY_CODES) {
+      expect(
+        resolveSelfFilter({
+          // SelfFilterParams.currentUser is a Pick<> — sub / isSuperUser /
+          // permissions only. No email here or excess-property checking fails.
+          currentUser: {
+            sub: "solo-1",
+            permissions: ["reporting.view", code],
+            isSuperUser: false
+          }
+        })
+      ).toEqual({});
+    }
   });
 });
 

@@ -136,8 +136,13 @@ export const permissionRegistry = [
   { code: "reporting.view", module: "reporting", label: "View cross-module reports", description: "View and export the cross-module reporting surface (pipeline, win-rate, jobs, competency expiry, asset utilisation)" },
   // EA-GATE: distinguishes team-wide visibility from self-only. Without this
   // code a user holding reporting.view sees only tenders assigned to them.
-  // Granted to every role that holds tenders.allocate (manager-shaped roles)
-  // via the seed so nobody loses access on deploy.
+  //
+  // This code is NOT granted to any role by this PR. Team visibility is keyed
+  // off TEAM_VISIBILITY_CODES in modules/reporting/report-self-filter.ts, which
+  // also accepts tenders.allocate — the manager-shaped code that already exists
+  // in production — so manager roles keep the team rollup on the first deploy
+  // with no data migration. Production runs `prisma migrate deploy` and never
+  // the TS seed, so a seed-only grant would never have reached it.
   { code: "reporting.team", module: "reporting", label: "View other people's numbers in reports", description: "See the team-wide rollup in estimating and win-rate reports. Without this code a user sees only tenders assigned to them." },
   // Site sign-in / sign-out (WHS spine — muster roll reads this back).
   { code: "sites.view", module: "sites", label: "View who is currently signed in on a site", description: "View site sign-in/out attendance — current on-site headcount and my own attendance" },

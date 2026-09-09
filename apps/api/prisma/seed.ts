@@ -3786,38 +3786,6 @@ async function main() {
     where: { homeTenantId: null },
     data: { homeTenantId: SEEDED_DEFAULT_TENANT_ID }
   });
-
-  // EA-GATE: grant reporting.team to every role that already holds tenders.allocate.
-  //
-  // Rationale: tenders.allocate is the manager-shaped permission ("Allocate
-  // tenders to estimators; view and manage the estimator capacity board"). Any
-  // role that can allocate work is the natural audience for the team-wide
-  // reporting rollup. Granting reporting.team to those roles means nobody loses
-  // access on deploy — without this grant only Admin holds the new code and
-  // every estimating manager silently drops to self-view.
-  //
-  // skipDuplicates: true — idempotent; safe to re-run.
-  const allocatePermission = await prisma.permission.findUnique({
-    where: { code: "tenders.allocate" }
-  });
-  const teamPermission = await prisma.permission.findUnique({
-    where: { code: "reporting.team" }
-  });
-  if (allocatePermission && teamPermission) {
-    const allocateRoleLinks = await prisma.rolePermission.findMany({
-      where: { permissionId: allocatePermission.id },
-      select: { roleId: true }
-    });
-    if (allocateRoleLinks.length > 0) {
-      await prisma.rolePermission.createMany({
-        skipDuplicates: true,
-        data: allocateRoleLinks.map((rp) => ({
-          roleId: rp.roleId,
-          permissionId: teamPermission.id
-        }))
-      });
-    }
-  }
 }
 
 // TR-1: seed the singleton TenderReminderPolicy row.

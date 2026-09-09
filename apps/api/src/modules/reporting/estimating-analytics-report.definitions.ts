@@ -9,8 +9,13 @@ import { resolveSelfFilter } from "./report-self-filter";
 // Decision EA-D3: turnaround = days-to-quote (submittedAt − createdAt), excludes
 //                 still-open tenders (DRAFT / IN_PROGRESS).
 // Decision EA-D4: qty-vs-$ throughput = count + Σ estimatedValue per estimator.
-// Decision EA-D5: self-filter to own tenders unless user holds reporting.team or is isSuperUser.
+// Decision EA-D5: self-filter to own tenders unless the user is isSuperUser or holds
+//                 one of TEAM_VISIBILITY_CODES (reporting.team, tenders.allocate).
 //                 EA-GATE replaces the old isSuperUser-only check with resolveSelfFilter.
+//                 tenders.allocate is in that list deliberately: production runs
+//                 `prisma migrate deploy` and never the TS seed, so keying team
+//                 visibility on a brand-new code alone would have shipped the code
+//                 without the grant. See report-self-filter.ts for the full note.
 //
 // NOTE: This file intentionally does NOT import from reporting.service to avoid
 // a circular dependency (reporting.service imports this file). It uses local

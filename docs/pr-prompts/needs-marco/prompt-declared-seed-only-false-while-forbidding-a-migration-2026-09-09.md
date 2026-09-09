@@ -56,9 +56,52 @@ re-sync (`permission-registry.ts:2`) does cover the `permissions` **row** — th
 code. It does **not** cover `rolePermission` links, which are ordinary seed data. §4 extended the
 narrower true claim to cover the wider false one.
 
-`[CANNOT MEASURE]` Whether other prompts on disk carry the same shape. A sweep needs the rule below
-to exist first; grepping by hand for "do not add a migration" across 3,199 prompt stems is not a
-reliable instrument.
+`[MEASURED]` **The board carries exactly one other prompt with this shape, and it was armable.**
+
+I first wrote this section as `[CANNOT MEASURE]`, on the reasoning that grepping 3,199 prompt stems
+by hand is not a defensible instrument. That was the wrong denominator. The set that can actually be
+armed is the 36 `*-HOLD.md` at **depth 1** of `docs/pr-prompts/`, which is entirely tractable, so I
+implemented the four conditions of the proposed rule as a report-only probe and ran it over that set:
+
+```
+=== CONTROLS ===
+  POS fixture fires = true    (must be true)
+  NEG fixture fires = false   (must be false)     <- same fixture with gate_allow: migrations
+
+=== SWEEP: 36 *-HOLD.md at depth 1 ===
+  prompts touching apps/api/prisma/seed* in scope : 6
+  of those, RULE WOULD FIRE                       : 1
+  unreadable                                      : 0
+
+=== WOULD FIRE ===
+  pr-ea-s2-dashboard-preset-HOLD.md
+      seed_only=false  escalates=true  gate_allow=none
+      scope seed entries: apps/api/prisma/seed.ts
+      matched: no-migration-is-needed
+```
+
+Both controls behaved, and the 6 seed-touchers prove the `c1` detector was live — so "1 of 36" is a
+real count, not a silent no-op. **False-positive rate on this board: 0 of 1.** The rule found the one
+prompt that has the defect and did not flag the other five prompts that touch the seed legitimately.
+
+That prompt was sitting in the triage's **GATES SATISFIED** bucket — presented to every station as an
+arming candidate. Had any station armed it, CP-23 would have failed the resulting PR for exactly the
+reason recorded here, and a second arm-implement-open-review cycle would have been spent on a
+known-unsatisfiable spec.
+
+`[MEASURED]` The same prompt is **also** superseded: `pr-ea-gate-report-self-filter-HOLD.md` says
+EA-GATE, EA-2a and EA-2b together replace it, and both successors are on disk
+(`pr-ea-s2a-dashboard-preset-seed-HOLD.md`, `pr-ea-s2b-dashboard-filter-surface-HOLD.md`). Nothing in
+the prompt itself said so, so neither a reader nor the triage report could see it.
+
+**Action taken:** a `<!-- watcher: do-not-arm -->` marker plus a dated, explicitly reversible
+Station-00 hold note has been added to that prompt in this same PR. It now REJECTs
+`HUMAN_GATE_PRESENT` instead of ADMITting, so nothing can arm it. Deleting one line clears the hold.
+Whether it is retired to `superseded/`, repaired with a real migration, or declared dev-only is
+Marco's call and is set out in the note.
+
+That is a one-off manual hold on one prompt. It is not a substitute for the rule: the next prompt
+with this shape will ADMIT exactly as this one did.
 
 ## WHY THIS IS A CLASS, NOT AN INCIDENT
 
@@ -108,10 +151,13 @@ dev-only prompt clears it by declaring so, which is a sentence the author should
 
 ### The three questions for Marco
 
-1. **Add the rule?** REJECT, or WARN-only for a period first so we can see how many existing prompts
-   it lights up without blocking the board.
-2. **Sweep existing prompts?** The rule is cheap to run in report-only mode across
-   `docs/pr-prompts/**`. If others carry the shape, better to know before one is armed.
+1. **Add the rule?** The WARN-first hedge was there in case the rule lit up half the board. It does
+   not — 1 of 36, no false positives — so **REJECT straight away** looks safe, and REJECT is the
+   verdict that actually prevents the wasted cycle. Your call; I have not implemented either.
+2. ~~**Sweep existing prompts?**~~ **Done — see WHAT I MEASURED.** 1 of 36 depth-1 HOLDs fires,
+   0 false positives, and that one prompt is now held with a `do-not-arm` marker pending your call
+   on it. The remaining question is only whether to widen the sweep past depth 1; I would not
+   bother, since nothing below depth 1 is armable.
 3. **Should `seed_only: false` + a `seed*` path in `scope` be a REJECT on its own,** independent of
    the prose? Stricter and simpler — no regex over English — but it would REJECT a legitimate
    prompt that touches the seed *and* adds a migration in the same slice, unless condition 2 above
@@ -128,8 +174,11 @@ dev-only prompt clears it by declaring so, which is a sentence the author should
 - Did **not** re-arm or retire the originating prompt. Its `premise` goes false when #1823 merges, so
   `lint-prompt.mjs` returns SPENT and it cannot be re-armed. Retirement to `superseded/` is Station
   05's board-PR lane.
-- Did **not** sweep the other prompts for the same shape. Doing it by hand would produce a number I
-  could not defend; it wants the rule in report-only mode.
+- Did **not** decide what happens to `pr-ea-s2-dashboard-preset-HOLD.md`. Holding it from being
+  armed is a supervisor's job; choosing between retiring it, giving it a real migration, or
+  declaring its preset dev-only is not. All three are laid out in the note on the prompt itself.
+- Did **not** run the probe below depth 1 of `docs/pr-prompts/`. Nothing there is armable, so the
+  extra coverage buys nothing; say the word if you want it anyway.
 
 ## FINDINGS
 
@@ -141,6 +190,13 @@ dev-only prompt clears it by declaring so, which is a sentence the author should
   preserved in a `<details>` block so the defect stays legible), §5 given the guard test, the
   forbid-migration Do NOT line qualified, `scope` and `size` corrected, and the false "it seeds a
   role grant that runs on deploy" line fixed.
-- **ESCALATED** — the linter rule above. Three questions, all board-throughput trade-offs.
+- **ACTIONED** — swept all 36 depth-1 HOLDs with a controlled report-only probe of the proposed rule.
+  1 fires, 0 false positives, 6 seed-touchers proving the detector was live.
+- **ACTIONED** — `pr-ea-s2-dashboard-preset-HOLD.md`, the one that fires, was sitting ADMIT in the
+  triage's arming-candidate bucket. It now carries a `<!-- watcher: do-not-arm -->` marker and a
+  dated, one-line-reversible Station-00 hold note. It is also superseded by two prompts that already
+  exist on disk, which nothing on it recorded.
+- **ESCALATED** — the linter rule. Three questions; question 2 is now answered by the sweep and
+  question 1's WARN-first hedge is no longer needed, so what is really left is 1 and 3.
+- **ESCALATED** — what happens to `pr-ea-s2-dashboard-preset-HOLD.md`: retire, repair, or leave held.
 - **DEFERRED** — the sot lessons entry, to Station 05's doc-reconcile lane.
-- **DEFERRED** — the sweep of existing prompts, until the rule exists in report-only mode.

@@ -26,7 +26,59 @@ design_ref: https://claude.ai/code/artifact/10c03a71-0346-4a9e-8b07-7974fd191544
      Marco: if you want this back on auto-merge, set escalates: false and reword the sub-bullet
      at "Satisfy Gate A" so the word does not appear. Supervisor chose the safe half. -->
 
+<!-- watcher: do-not-arm -->
+
 # EA-2 — "Estimating Analytics" curated GLOBAL dashboard preset
+
+> ## HELD BY STATION 00, 2026-09-09. DO NOT ARM. Marco rules on which way this goes.
+>
+> This prompt lint-**ADMIT**ted and sat in the "GATES SATISFIED" bucket of the HOLD triage — i.e. it
+> was presented to every station as an arming candidate. It should not be armed, for **two
+> independent measured reasons**. The `<!-- watcher: do-not-arm -->` marker above is what stops
+> that; it makes `lint-prompt.mjs` REJECT with `HUMAN_GATE_PRESENT` before the premise runs.
+>
+> **This hold was placed by Station 00, not by Marco.** It is one line and deleting it clears the
+> hold completely. Nothing else about this prompt has been changed, and nothing has been deleted.
+>
+> ### Reason 1 — two successors already exist, and neither warns against this file
+>
+> `pr-ea-gate-report-self-filter-HOLD.md` states that EA-GATE, EA-2a and EA-2b together
+> **supersede this prompt**. `[MEASURED] 2026-09-09` — both successors are on disk:
+> `pr-ea-s2a-dashboard-preset-seed-HOLD.md` and `pr-ea-s2b-dashboard-filter-surface-HOLD.md`.
+> Nothing in *this* file said so, so the supersession was invisible to anyone reading it or the
+> triage report. Arming it would have duplicated a 9-file `escalates: true` slice.
+>
+> ### Reason 2 — it carries the CP-23 unsatisfiable shape, and would fail for a known reason
+>
+> `[MEASURED] 2026-09-09` — a report-only probe implementing the four conditions of the proposed
+> `SEED_GRANT_UNDELIVERABLE` rule (see
+> `needs-marco/prompt-declared-seed-only-false-while-forbidding-a-migration-2026-09-09.md`) was run
+> over all 36 `*-HOLD.md` at depth 1. POS and NEG fixture controls both behaved. **6 prompts touch
+> `apps/api/prisma/seed*` in `scope`; the rule fires on exactly one — this one:**
+>
+> ```
+> pr-ea-s2-dashboard-preset-HOLD.md
+>     seed_only=false  escalates=true  gate_allow=none
+>     scope seed entries: apps/api/prisma/seed.ts
+>     matched: no-migration-is-needed
+> ```
+>
+> That is the same shape that made #1823 unsatisfiable: a `seed.ts` write, `gate_allow: none`, and a
+> body asserting no migration is needed. Under CP-23 the only exits are a migration (which the body
+> forbids) or a `SEED-ONLY: dev` body line (which asserts production does not need the preset row —
+> if that is *true* here, say so in the prompt, because it changes the slice).
+>
+> ### The three ways out — Marco's call
+>
+> 1. **Retire it** to `superseded/` in a board PR and let EA-2a + EA-2b carry the work. Most likely
+>    correct, given the successors exist. *Do not delete it* — the amendment block below is the
+>    record of four superseded passages and is worth keeping.
+> 2. **Keep it and fix the CP-23 shape** — either `gate_allow: migrations` plus a real idempotent
+>    migration for the preset row, or an explicit statement that the preset is genuinely dev-only.
+> 3. **Neither** — leave the marker in place. Nothing arms it and nothing is lost.
+>
+> Station 00 did not choose between these: option 1 retires a prompt, option 2 changes what a slice
+> delivers to production, and both are Marco's.
 
 **Binding plan:** `docs/plans/estimating-analytics-plan.md` (read it in full before starting).
 This is **EA-2**, the second and final slice of the estimating-analytics program. It

@@ -54,6 +54,7 @@ function mapAdapterItemsToLegacyFolderItems(items: AdapterFolderChildItem[]): Le
     id: item.id,
     name: item.name,
     isFolder: item.isFolder,
+    size: item.size,
   }));
 }
 
@@ -64,7 +65,7 @@ function mapAdapterItemsToLegacyFolderItems(items: AdapterFolderChildItem[]): Le
  * TFM-S6 adds listFolderItemsById and resolveItemIdByPath for the two-level
  * month/tender walk on the legacy tree.
  */
-class SharePointCopySeamBridge implements ISharePointCopySeam {
+export class SharePointCopySeamBridge implements ISharePointCopySeam {
   constructor(private readonly svc: SharePointService) {}
 
   async getResolvedConfig(): Promise<ResolvedConfig> {
@@ -152,6 +153,17 @@ class SharePointCopySeamBridge implements ISharePointCopySeam {
 
   async folderExists(siteId: string, driveId: string, relativePath: string): Promise<boolean> {
     return this.svc.folderExists(siteId, driveId, relativePath);
+  }
+
+  async ensureCopyFolderPath(relativePath: string, name: string): Promise<string> {
+    const record = await this.svc.ensureFolder({
+      name,
+      relativePath,
+      module: "tendering-legacy-copy",
+      // linkedEntityType and linkedEntityId INTENTIONALLY UNSET so this row can
+      // never win the `linkedEntityType: "Tender"` destination lookup.
+    });
+    return record.itemId;
   }
 }
 

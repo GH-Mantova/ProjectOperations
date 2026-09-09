@@ -80,6 +80,7 @@ export type LegacyFolderItem = {
   id: string;
   name: string;
   isFolder: boolean;
+  size?: number;   // TFM-S11 - needed for idempotency of nested file copy
 };
 
 export type ListFolderChildrenInput = {
@@ -169,6 +170,13 @@ export interface ISharePointCopySeam {
    * Returns false on a legitimate 404; rethrows on transport/auth errors.
    */
   folderExists(siteId: string, driveId: string, relativePath: string): Promise<boolean>;
+  /**
+   * TFM-S11 - Ensure a folder exists at `relativePath` and return its drive item ID.
+   * Creates intermediate folders as needed. NEVER moves, renames or deletes.
+   * Links are written with module "tendering-legacy-copy" and NO linkedEntityType,
+   * so they can never win the `linkedEntityType: "Tender"` destination lookup.
+   */
+  ensureCopyFolderPath(relativePath: string, name: string): Promise<string>;
 }
 
 export const SHAREPOINT_COPY_SEAM = Symbol("SHAREPOINT_COPY_SEAM");
@@ -217,6 +225,8 @@ export interface PlanEntry {
   destinationFolderPath: string;
   /** Destination folder drive item ID — needed by execute() for upload */
   destinationFolderItemId: string;
+  /** Legacy folder drive item ID — needed by execute() for recursive walk (TFM-S11) */
+  legacyFolderItemId: string;
   /** true iff the destination folder exists and provisioning did not fail */
   destinationReady: boolean;
   /** human-readable reason when destinationReady is false; null when ready */
@@ -256,6 +266,7 @@ export interface MatchExecutionResult {
   copied: number;
   alreadyPresent: number;
   errors: number;
+  skippedDepthCapped: number;
 }
 
 export interface LegacyCopyExecutionReport {
@@ -270,6 +281,8 @@ export interface LegacyCopyExecutionReport {
   noDestinationCount: number;
   /** TFM-S7 — Tenders skipped at execute time because destination was not ready */
   skippedUnreadyCount: number;
+  /** TFM-S11 — Total files skipped because recursion exceeded MAX_COPY_DEPTH */
+  skippedDepthCapped: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +290,17 @@ export interface LegacyCopyExecutionReport {
 // ---------------------------------------------------------------------------
 
 const T_NUMBER_REGEX = /\bT(\d{3,5})\b/;
+
+/** TFM-S11 - Hard cap on recursion depth into legacy subfolders. */
+export const MAX_COPY_DEPTH = 10;
+
+export interface LegacyFileEntry {
+  fileId: string;
+  name: string;
+  size: number;
+  /** Path below the tender folder. "" for top-level files, "Site photos" one level down. */
+  relativeSubPath: string;
+}
 
 /** Extracts "T####" from a tender title, or null if none. */
 export function extractTNumber(title: string): string | null {
@@ -456,13 +480,18 @@ export class SharepointLegacyCopyService {
       // Legacy folder path is two levels deep: root/month/folder
       const legacyFolderPath = `${this.legacyRootPath}/${legacyFolder.monthFolder}/${legacyFolder.name}`;
 
-      let legacyChildren: FolderChildItem[] = [];
+      // TFM-S11: collect all files recursively using the tender folder's item ID.
+      const legacyFiles: LegacyFileEntry[] = [];
+      const planStats = { skippedDepthCapped: 0 };
       try {
-        legacyChildren = await this.sharepoint.listFolderChildren({
-          siteId: config.siteId,
-          driveId: config.driveId,
-          relativePath: legacyFolderPath,
-        });
+        await this.collectLegacyFilesRecursive(
+          config,
+          legacyFolder.id,
+          "",
+          0,
+          legacyFiles,
+          planStats,
+        );
       } catch (err) {
         if (err instanceof SeamExtensionRequiredError) {
           throw err;
@@ -489,10 +518,14 @@ export class SharepointLegacyCopyService {
 
       // wouldCopy is populated only when destination is ready.
       const wouldCopy: WouldCopyEntry[] = readiness.ready
-        ? legacyChildren.map((child) => ({
-            sourcePath: `${legacyFolderPath}/${child.name}`,
-            destinationPath: `${destinationLink.relativePath}/${child.name}`,
-            sizeBytes: child.size,
+        ? legacyFiles.map((f) => ({
+            sourcePath: f.relativeSubPath
+              ? `${legacyFolderPath}/${f.relativeSubPath}/${f.name}`
+              : `${legacyFolderPath}/${f.name}`,
+            destinationPath: f.relativeSubPath
+              ? `${destinationLink.relativePath}/${f.relativeSubPath}/${f.name}`
+              : `${destinationLink.relativePath}/${f.name}`,
+            sizeBytes: f.size,
           }))
         : [];
 
@@ -503,6 +536,7 @@ export class SharepointLegacyCopyService {
         legacyFolderPath,
         destinationFolderPath: destinationLink.relativePath,
         destinationFolderItemId: destinationLink.itemId,
+        legacyFolderItemId: legacyFolder.id,
         destinationReady: readiness.ready,
         destinationReason: readiness.reason,
         wouldCopy,
@@ -549,6 +583,7 @@ export class SharepointLegacyCopyService {
     let totalAlreadyPresent = 0;
     let totalErrors = 0;
     let skippedUnreadyCount = 0;
+    let totalSkippedDepthCapped = 0;
 
     for (const candidate of legacyPlan.matched) {
       // TFM-S7: re-check destination readiness at execute time — do not trust
@@ -594,10 +629,11 @@ export class SharepointLegacyCopyService {
       totalCopied += result.copied;
       totalAlreadyPresent += result.alreadyPresent;
       totalErrors += result.errors;
+      totalSkippedDepthCapped += result.skippedDepthCapped;
     }
 
     this.logger.log(
-      `execute(): matched=${legacyPlan.matched.length} skippedUnready=${skippedUnreadyCount} copied=${totalCopied} alreadyPresent=${totalAlreadyPresent} errors=${totalErrors}`
+      `execute(): matched=${legacyPlan.matched.length} skippedUnready=${skippedUnreadyCount} copied=${totalCopied} alreadyPresent=${totalAlreadyPresent} errors=${totalErrors} skippedDepthCapped=${totalSkippedDepthCapped}`
     );
 
     return {
@@ -609,6 +645,7 @@ export class SharepointLegacyCopyService {
       unmatchedTenderCount: legacyPlan.unmatchedTenders.length,
       noDestinationCount: legacyPlan.noDestination.length,
       skippedUnreadyCount,
+      skippedDepthCapped: totalSkippedDepthCapped,
     };
   }
 
@@ -660,6 +697,44 @@ export class SharepointLegacyCopyService {
     return { ready: true, reason: null };
   }
 
+  /**
+   * TFM-S11 — Recursively collect all files in a legacy folder subtree.
+   * Folders are descended into; files are appended to `files`.
+   * Recursion is capped at MAX_COPY_DEPTH.
+   */
+  private async collectLegacyFilesRecursive(
+    config: ResolvedConfig,
+    itemId: string,
+    currentSubPath: string,
+    depth: number,
+    files: LegacyFileEntry[],
+    stats: { skippedDepthCapped: number },
+  ): Promise<void> {
+    if (depth > MAX_COPY_DEPTH) {
+      this.logger.warn(
+        `collectLegacyFilesRecursive: MAX_COPY_DEPTH (${MAX_COPY_DEPTH}) reached at "${currentSubPath}" - subtree skipped`,
+      );
+      stats.skippedDepthCapped++;
+      return;
+    }
+    const children = await this.sharepoint.listFolderItemsById(
+      config.siteId, config.driveId, itemId,
+    );
+    for (const child of children) {
+      if (child.isFolder) {
+        const nextSub = currentSubPath ? `${currentSubPath}/${child.name}` : child.name;
+        await this.collectLegacyFilesRecursive(config, child.id, nextSub, depth + 1, files, stats);
+      } else {
+        files.push({
+          fileId: child.id,
+          name: child.name,
+          size: child.size ?? 0,
+          relativeSubPath: currentSubPath,
+        });
+      }
+    }
+  }
+
   private async copyMatchCandidate(
     candidate: PlanEntry,
     config: ResolvedConfig
@@ -668,15 +743,19 @@ export class SharepointLegacyCopyService {
     let copied = 0;
     let alreadyPresent = 0;
     let errors = 0;
+    const stats = { skippedDepthCapped: 0 };
 
-    // Enumerate legacy files
-    let legacyChildren: FolderChildItem[] = [];
+    // TFM-S11: Enumerate legacy files recursively using the tender folder's item ID.
+    const legacyFiles: LegacyFileEntry[] = [];
     try {
-      legacyChildren = await this.sharepoint.listFolderChildren({
-        siteId: config.siteId,
-        driveId: config.driveId,
-        relativePath: candidate.legacyFolderPath,
-      });
+      await this.collectLegacyFilesRecursive(
+        config,
+        candidate.legacyFolderItemId,
+        "",
+        0,
+        legacyFiles,
+        stats,
+      );
     } catch (err) {
       if (err instanceof SeamExtensionRequiredError) throw err;
       const reason = err instanceof Error ? err.message : String(err);
@@ -685,66 +764,141 @@ export class SharepointLegacyCopyService {
       );
       files.push({ name: "(list-failed)", outcome: "error", reason });
       errors++;
-      return { tenderId: candidate.tenderId, tNumber: candidate.tNumber, files, copied, alreadyPresent, errors };
+      return { tenderId: candidate.tenderId, tNumber: candidate.tNumber, files, copied, alreadyPresent, errors, skippedDepthCapped: stats.skippedDepthCapped };
     }
 
-    // Enumerate destination files for idempotency check
-    let destChildren: FolderChildItem[] = [];
-    try {
-      destChildren = await this.sharepoint.listDestinationFolderChildren({
-        siteId: config.siteId,
-        driveId: config.driveId,
-        relativePath: candidate.destinationFolderPath,
-      });
-    } catch (err) {
-      if (err instanceof SeamExtensionRequiredError) throw err;
-      // Non-fatal: if we can't list dest, assume empty and copy everything
-      const reason = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `execute(): failed to list destination folder ${candidate.destinationFolderPath}, assuming empty: ${reason}`
-      );
-    }
-
-    // Build a lookup of existing destination files by name+size for idempotency
-    const destByNameAndSize = new Map<string, FolderChildItem>();
-    for (const df of destChildren) {
-      destByNameAndSize.set(`${df.name}::${df.size}`, df);
-    }
-
-    for (const legacy of legacyChildren) {
-      const idempotencyKey = `${legacy.name}::${legacy.size}`;
-      if (destByNameAndSize.has(idempotencyKey)) {
-        files.push({ name: legacy.name, outcome: "skipped", reason: "already present" });
-        alreadyPresent++;
-        continue;
+    // Group files by relativeSubPath
+    const filesBySubPath = new Map<string, LegacyFileEntry[]>();
+    for (const f of legacyFiles) {
+      const group = filesBySubPath.get(f.relativeSubPath);
+      if (group) {
+        group.push(f);
+      } else {
+        filesBySubPath.set(f.relativeSubPath, [f]);
       }
+    }
 
+    // Compute all distinct ancestor sub-paths from the grouped keys.
+    // Sort by depth (segment count) then lexicographically.
+    const allSubPaths = Array.from(filesBySubPath.keys());
+    const ancestorSet = new Set<string>();
+    for (const subPath of allSubPaths) {
+      if (!subPath) continue;
+      const parts = subPath.split("/");
+      for (let i = 1; i <= parts.length; i++) {
+        ancestorSet.add(parts.slice(0, i).join("/"));
+      }
+    }
+    const sortedAncestors = Array.from(ancestorSet).sort((a, b) => {
+      const depthDiff = a.split("/").length - b.split("/").length;
+      if (depthDiff !== 0) return depthDiff;
+      return a.localeCompare(b);
+    });
+
+    // Init destFolderIds seeded with root
+    const destFolderIds = new Map<string, string>();
+    destFolderIds.set("", candidate.destinationFolderItemId);
+
+    // Ensure each ancestor sub-path exists at the destination
+    for (const ancestor of sortedAncestors) {
+      const leafName = ancestor.includes("/")
+        ? ancestor.slice(ancestor.lastIndexOf("/") + 1)
+        : ancestor;
+      const destRelativePath = `${candidate.destinationFolderPath}/${ancestor}`;
       try {
-        const bytes = await this.sharepoint.downloadFileBytes({
-          siteId: config.siteId,
-          driveId: config.driveId,
-          fileId: legacy.fileId,
-        });
-        await this.sharepoint.uploadFile({
-          siteId: config.siteId,
-          driveId: config.driveId,
-          folderId: candidate.destinationFolderItemId,
-          name: legacy.name,
-          content: bytes,
-        });
-        files.push({ name: legacy.name, outcome: "copied" });
-        copied++;
+        const folderId = await this.sharepoint.ensureCopyFolderPath(destRelativePath, leafName);
+        destFolderIds.set(ancestor, folderId);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `execute(): failed to copy file ${legacy.name} for ${candidate.tNumber}: ${reason}`
+          `execute(): failed to ensure destination folder "${destRelativePath}" for ${candidate.tNumber}: ${reason}`
         );
-        files.push({ name: legacy.name, outcome: "error", reason });
-        errors++;
+        // Leave ancestor absent from map; files under it will be skipped with error
       }
     }
 
-    return { tenderId: candidate.tenderId, tNumber: candidate.tNumber, files, copied, alreadyPresent, errors };
+    // Sort sub-paths by depth then lexicographically
+    const sortedSubPaths = Array.from(filesBySubPath.keys()).sort((a, b) => {
+      if (!a && !b) return 0;
+      if (!a) return -1;
+      if (!b) return 1;
+      const depthDiff = a.split("/").length - b.split("/").length;
+      if (depthDiff !== 0) return depthDiff;
+      return a.localeCompare(b);
+    });
+
+    for (const sub of sortedSubPaths) {
+      const destPath = sub
+        ? `${candidate.destinationFolderPath}/${sub}`
+        : candidate.destinationFolderPath;
+
+      // List destination for idempotency
+      let destChildren: FolderChildItem[] = [];
+      try {
+        destChildren = await this.sharepoint.listDestinationFolderChildren({
+          siteId: config.siteId,
+          driveId: config.driveId,
+          relativePath: destPath,
+        });
+      } catch (err) {
+        if (err instanceof SeamExtensionRequiredError) throw err;
+        const reason = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `execute(): failed to list destination folder ${destPath}, assuming empty: ${reason}`
+        );
+      }
+
+      // Build idempotency map keyed by name::size
+      const destByNameAndSize = new Map<string, FolderChildItem>();
+      for (const df of destChildren) {
+        destByNameAndSize.set(`${df.name}::${df.size}`, df);
+      }
+
+      const groupFiles = filesBySubPath.get(sub) ?? [];
+      for (const legacy of groupFiles) {
+        const displayName = sub ? `${sub}/${legacy.name}` : legacy.name;
+        const idempotencyKey = `${legacy.name}::${legacy.size}`;
+
+        if (destByNameAndSize.has(idempotencyKey)) {
+          files.push({ name: displayName, outcome: "skipped", reason: "already present" });
+          alreadyPresent++;
+          continue;
+        }
+
+        const destFolderId = destFolderIds.get(sub);
+        if (destFolderId === undefined) {
+          files.push({ name: displayName, outcome: "error", reason: "destination folder not ensured" });
+          errors++;
+          continue;
+        }
+
+        try {
+          const bytes = await this.sharepoint.downloadFileBytes({
+            siteId: config.siteId,
+            driveId: config.driveId,
+            fileId: legacy.fileId,
+          });
+          await this.sharepoint.uploadFile({
+            siteId: config.siteId,
+            driveId: config.driveId,
+            folderId: destFolderId,
+            name: legacy.name,
+            content: bytes,
+          });
+          files.push({ name: displayName, outcome: "copied" });
+          copied++;
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `execute(): failed to copy file ${displayName} for ${candidate.tNumber}: ${reason}`
+          );
+          files.push({ name: displayName, outcome: "error", reason });
+          errors++;
+        }
+      }
+    }
+
+    return { tenderId: candidate.tenderId, tNumber: candidate.tNumber, files, copied, alreadyPresent, errors, skippedDepthCapped: stats.skippedDepthCapped };
   }
 }
 

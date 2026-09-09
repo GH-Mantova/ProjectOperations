@@ -32,6 +32,21 @@
   --surface-override: #FDD387;
   --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.10);
+  /* Dark palette constants — declared once here, consumed by both dark selectors below */
+  --dark-surface-page: #17181C;
+  --dark-surface-card: #22242A;
+  --dark-surface-subtle: #1D1F24;
+  --dark-surface-hover: #2A2D33;
+  --dark-surface-zebra: #1F2126;
+  --dark-text-primary: #F4F5F7;
+  --dark-text-secondary: #B7BCC5;
+  --dark-text-muted: #8B909B;
+  --dark-text-inverse: #0F1013;
+  --dark-border-default: #33363D;
+  --dark-border-subtle: #2A2D33;
+  --dark-status-neutral: #B7BCC5;
+  --dark-shadow-card: 0 1px 3px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.35);
+  --dark-shadow-dropdown: 0 6px 20px rgba(0,0,0,0.55);
   color-scheme: light;
 }
 
@@ -40,39 +55,39 @@
    Applied when the user explicitly picks dark (data-theme="dark") or when
    they have no preference and the OS reports prefers-color-scheme: dark. */
 :root[data-theme="dark"] {
-  --surface-page: #17181C;
-  --surface-card: #22242A;
-  --surface-subtle: #1D1F24;
-  --surface-hover: #2A2D33;
-  --surface-zebra: #1F2126;
-  --text-primary: #F4F5F7;
-  --text-secondary: #B7BCC5;
-  --text-muted: #8B909B;
-  --text-inverse: #0F1013;
-  --border-default: #33363D;
-  --border-subtle: #2A2D33;
-  --status-neutral: #B7BCC5;
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.35);
-  --shadow-dropdown: 0 6px 20px rgba(0,0,0,0.55);
+  --surface-page: var(--dark-surface-page);
+  --surface-card: var(--dark-surface-card);
+  --surface-subtle: var(--dark-surface-subtle);
+  --surface-hover: var(--dark-surface-hover);
+  --surface-zebra: var(--dark-surface-zebra);
+  --text-primary: var(--dark-text-primary);
+  --text-secondary: var(--dark-text-secondary);
+  --text-muted: var(--dark-text-muted);
+  --text-inverse: var(--dark-text-inverse);
+  --border-default: var(--dark-border-default);
+  --border-subtle: var(--dark-border-subtle);
+  --status-neutral: var(--dark-status-neutral);
+  --shadow-card: var(--dark-shadow-card);
+  --shadow-dropdown: var(--dark-shadow-dropdown);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --surface-page: #17181C;
-    --surface-card: #22242A;
-    --surface-subtle: #1D1F24;
-    --surface-hover: #2A2D33;
-    --surface-zebra: #1F2126;
-    --text-primary: #F4F5F7;
-    --text-secondary: #B7BCC5;
-    --text-muted: #8B909B;
-    --text-inverse: #0F1013;
-    --border-default: #33363D;
-    --border-subtle: #2A2D33;
-    --status-neutral: #B7BCC5;
-    --shadow-card: 0 1px 3px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.35);
-    --shadow-dropdown: 0 6px 20px rgba(0,0,0,0.55);
+    --surface-page: var(--dark-surface-page);
+    --surface-card: var(--dark-surface-card);
+    --surface-subtle: var(--dark-surface-subtle);
+    --surface-hover: var(--dark-surface-hover);
+    --surface-zebra: var(--dark-surface-zebra);
+    --text-primary: var(--dark-text-primary);
+    --text-secondary: var(--dark-text-secondary);
+    --text-muted: var(--dark-text-muted);
+    --text-inverse: var(--dark-text-inverse);
+    --border-default: var(--dark-border-default);
+    --border-subtle: var(--dark-border-subtle);
+    --status-neutral: var(--dark-status-neutral);
+    --shadow-card: var(--dark-shadow-card);
+    --shadow-dropdown: var(--dark-shadow-dropdown);
     color-scheme: dark;
   }
 }

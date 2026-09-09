@@ -62,18 +62,37 @@ chain looked, so nothing failed.
 `docs/pr-prompts/`; none is in the cardui, scopecosts, waste, cutting or operational-costs family.
 The chain has no continuation and cannot be restarted from the retired prompts.
 
-**[INFERRED — NOT MEASURED] The shipped sections do not match the approved mock-up.** This rests on
-Marco's screenshots against `design_ref`
-`https://claude.ai/code/artifact/1c1d373e-dd9c-472b-9063-d74529da1035`, which all five prompts
-carry. Reading the screenshots, the shipped operational-costs table appears to lack FROM / SOURCE /
-DURATION PERIOD / MARKUP; the waste section appears to lack TRUCK / CAP (T) / CAP (M³) / TRUCKS /
-LOADS·DAYS / DISPOSAL / TRANSPORT and the Road/Straight distance toggle; and cutting appears as a
-take-off list rather than the mock-up's single editable table.
+**[MEASURED — upgraded 2026-09-09 2350Z] The shipped sections do not match the approved mock-up.**
+This was first written INFERRED, off Marco's screenshots. He then asked for the diff, so it was
+done properly: mock-up columns extracted from the rendered `<th>` labels in the design_ref artifact,
+shipped columns read from `origin/main`. Both sides measured.
 
-**[CANNOT MEASURE] — and Station 06 must close this before drafting anything.** I have not opened
-the artifact. Every gap above is read off a picture, which is precisely the kind of unverified
-claim that produced a REJECT-AND-REDO on #1823 earlier in this same run. **Do not draft a prompt
-from this paragraph. Ground it first.**
+*Other operational costs* — `OtherOperationalCosts.tsx:648` ships
+`["Item","Qty","Unit","Days","Rate","Total",""]`. The mock-up has From, Item description, **Source**,
+Qty, Duration, **Duration period**, Rate, **Markup**, Total. `markup` appears **0 times** in the
+whole 903-line component, so per-line markup is absent altogether, not merely unlabelled.
+
+*Waste* — `ScopeWasteTab.tsx:687-702` ships WBS, Description, Group, Type, Facility, Billed by,
+Tonnes, M³, Loads, Duration, $/unit, $/Load, Line total. The mock-up additionally has **Truck**,
+**Cap (t)**, **Cap (m³)**, **Trucks**, **Loads/day**, **Loads · days**, **Disposal**, **Transport**,
+**Markup**, **From**, and a **Road / Straight distance toggle**. This is the largest gap: the mock-up
+prices waste as disposal + transport derived from truck capacity and load counts; the shipped table
+prices it as a flat rate times a quantity.
+
+*Concrete cutting* — `CuttingSection.tsx` ships WBS, Description, Rig, Method, Elevation, Depth (mm),
+Length (Lm), Rate ($/m), Total. The mock-up has From, **Type**, Description, Equipment, Elevation,
+**Material**, Depth, **Ø**, Qty, Method, Rate, **Markup**, Total. Its per-row `Type` is what the old
+`ScopeCuttingSheet` expresses as Saw cuts / Core holes / Other **tabs** — so the mock-up's single
+table replaces BOTH shipped components.
+
+**[NOT MEASURED] Whether each missing column has a backing field.** Nothing here was executed and no
+API was read. Where a column has no field, the options are a new API slice, a derived value, or
+dropping the column — a product decision, and Marco's. It must not be resolved by quietly adding a
+migration: #1823 was rejected today for exactly that shape.
+
+**[NOT MEASURED] Whether `ScopeCuttingSheet` holds a capability `CuttingSection` lacks.** This is the
+question that decides whether the removal can ship on its own or has to wait for the reconciliation.
+Station 06 must answer it in PHASE 5.
 
 ## WHAT CHANGED
 
@@ -104,15 +123,19 @@ about everything else, reads as a pass. A replacement slice arguably needs a `do
 asserts the ABSENCE of what it replaced.
 **DISPOSITION: ESCALATED to Marco — rule on whether replacement slices must assert absence.**
 
-**F4 — The mock-up has not been diffed against what shipped.**
-Marco asked whether to do this now or after the `tenders.allocate` question and the two held PRs
-(#1823, #1824) are settled. He has not answered.
-**DISPOSITION: DEFERRED pending Marco.**
+**F4 — The mock-up has been diffed against what shipped.**
+Done at Marco's request rather than deferred. Per-section column diff in WHAT I MEASURED above,
+both sides measured. Delivered to him as a Station 06 intake brief carrying the full table, PHASE 1
+pre-filled and PHASE 2 grounded, so 06 can start at PHASE 2. The two things the diff could NOT
+settle — whether each missing column has a backing field, and whether `ScopeCuttingSheet` holds a
+capability `CuttingSection` lacks — are named in the brief as PHASE 5 and PHASE 6 questions.
+**DISPOSITION: ACTIONED — handed to Station 06 via Marco.**
 
 ## WHAT I DID NOT DO
 
-- **Did not open the design_ref artifact.** So every statement about what the mock-up requires is
-  marked INFERRED above and must not be treated as a requirement.
+- **Did not execute anything, or read the API.** The column diff is a static read of both sides. It
+  says what each table RENDERS, not what data exists behind it and not how either behaves at
+  runtime. Both gaps are named as NOT MEASURED above.
 - **Did not draft or stage any prompt.** Drafting is Station 06's job and staging is Phase 6, which
   is Marco's gate. Station 00 writing the prompt would skip both.
 - **Did not touch code, or `ScopeCardsTab.tsx`.** Deleting a mount is a code change and belongs in

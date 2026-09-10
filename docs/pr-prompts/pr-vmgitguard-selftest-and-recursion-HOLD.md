@@ -18,6 +18,35 @@ backfill: false
 module: pipeline
 ---
 
+
+<!-- watcher: do-not-arm -->
+
+**DO NOT ARM — THIS PROMPT'S WORK IS ALREADY OPEN AS PR #1832.**
+
+[MEASURED] 2026-09-10T02:2xZ by Station 00 (scheduled) at `origin/main` `bc8289db`.
+The watcher armed this prompt at `2026-09-10T00:07:52Z` (`docs/pr-prompts/.arming-log.txt`,
+`actor=station-00.cloud-lane-1010`), built it, and opened **#1832** —
+`docs/pr-prompts/processed/pr-vmgitguard-selftest-and-recursion-ready.md.log` carries
+`PR #1832 opened, unmerged` and `[watcher] merge result for PR #1832:
+{"ok":false,"marco":true,"reason":"outside tests/ or docs/: scripts/pipeline/vm-git-guard.sh"}`.
+**#1832 is OPEN, CLEAN and green, and it is Marco's to merge (RULE 2).**
+
+The `-ready.md` was consumed, but this `-HOLD.md` was never deleted, so it is still tracked on
+`origin/main` — and its premise (`! grep -q "VM_GIT_GUARD_NO_RECURSE"
+scripts/pipeline/vm-git-guard.sh`) stays TRUE for exactly as long as #1832 sits unmerged.
+`node scripts/pipeline/lint-prompt.mjs` on the `origin/main` blob `ba7a92bb` returned **ADMIT,
+exit 0** at 02:2xZ. That is DOCTRINE §10.6 exactly: *the premise dies on MERGE, not on OPEN*,
+so arming this opens a SECOND PR for work already open. The marker is what makes the hazard
+visible to `lint-prompt.mjs` and to every actor that reads `origin/main` — CI, a fresh clone,
+and the supervised cloud lane, which sees only what is committed to the repo.
+
+**Clearing it:** when **#1832 merges**, the premise dies on its own and this prompt lints STALE
+(exit 3) — nothing needs doing. If **#1832 is closed unmerged**, a human deletes the
+`watcher: do-not-arm` line above and this prompt is armable again, unchanged. Nothing here
+deletes any work.
+
+**Falsifying probe:** `node scripts/pipeline/lint-prompt.mjs` on this file must return
+`REJECT [HUMAN_GATE_PRESENT]`, exit 1. If it returns ADMIT, the marker did not take.
 # The device-bridge git guard fails its own self-test, and passes it 1017 times
 
 `scripts/pipeline/vm-git-guard.sh` is the first thing every station doc tells a run to execute, and

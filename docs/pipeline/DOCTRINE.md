@@ -1959,3 +1959,52 @@ directory entry still fails to match, or the single-file entry is still being re
 this correction has not landed. Found by Station 04 2026-09-07T02:1xZ (F2), landed by Station 00
 at 03:4xZ.
 
+
+🔴🔴 **CORRECTED 2026-09-10T17:3xZ — THE CONFIRM STEP HAS NO INSTRUMENT ON 90% OF THE QUEUE, AND
+ITS ABSENCE FAILS IN THE ARMING DIRECTION.** The correction above ends *"Confirm on the prompt's own
+MARKER STRING, not on the head branch"*, and its worked example is `PLANT_FUEL_COLUMN_V1`.
+[MEASURED] 2026-09-10T17:2xZ by Station 00 at `4b205fca`, over every `-HOLD.md` at depth 1 of
+`docs/pr-prompts` (40 files): **only 4 carry a `_V<n>` marker at all.** So for **36 of 40** the
+prescribed confirmation cannot be run in either direction, and this section names no fallback — a
+reader who follows it literally reaches no verdict on a CANDIDATE the tool has just flagged, and the
+available next move is to arm it, which is the one outcome this section exists to prevent.
+
+**It fired on this board the same run.** `triage-holds.ps1` flagged
+`pr-company-manage-s1-permission-and-grant-HOLD.md` as a POSSIBLE DUPLICATE of open `#1823`, overlap
+**1 of 4**, on the single shared entry `apps/api/src/common/permissions/permission-registry.ts`.
+Marker tokens in the prompt: **none** — a wide `[A-Z][A-Z0-9]{2,}(_[A-Z0-9]+)+` sweep returns only
+front-matter key names and a migration name. Marker tokens in `#1823`'s title and body: **none**.
+**POSITIVE control that the marker instrument itself works:** the same sweep over
+`pr-rateparity-s1-harness-HOLD.md` returns `RATE_PARITY_HARNESS_V1` and `RATE_LINE_FIELDS_V1`. The
+instrument is sound; the corpus does not carry what it reads.
+
+⚠️ **And the overlap file is the aggravating class, not an accident.** A permission registry, a
+schema, a barrel, a workflow file — a shared REGISTRY that many unrelated prompts must touch — will
+collide with almost any PR in its area, so the single-entry case (b) above already calls *"precision
+zero by construction"* is not rare on this queue; it is where the flags come from.
+
+🔧 **The fallback that always exists is the `premise`, evaluated at the PR's HEAD rather than at
+`main`.** Every prompt carries an executable premise by `docs/pr-prompts/PROMPT-SCHEMA.md`; this
+section's headline — *"the premise dies on MERGE, not on OPEN"* — is a statement about `main`, and it
+is exactly why the premise is still readable at the open PR's head. **If the PR's head already makes
+the premise FALSE, that PR is the prompt's work.** [MEASURED] the same run on the flagged pair, via
+`gh api repos/GH-Mantova/ProjectOperations/contents/<path>?ref=<headRefOid>`:
+
+| probe at `#1823` head `fe98c6be` | count | reading |
+|---|---|---|
+| `company.manage` — the prompt's own premise needle | **0** | premise still TRUE ⇒ **NOT this PR's work** |
+| `reporting.team` — POSITIVE control, `#1823`'s own subject | **1** | the probe can return a hit |
+| a freshly minted needle — NEGATIVE control | **0** | the probe is not matching everything |
+
+**Verdict on the flag: NOT a duplicate**, settled by an instrument that exists on 40 of 40 prompts
+instead of 4. This is the complete-and-additive form — it removes the blind spot permanently, it
+cannot mis-arm anything (a premise that is still true is precisely the definition of work not yet
+done), and it adds no new tooling: the needle is already in the prompt's own front matter.
+
+⚠️ **Keep the marker test FIRST where a marker exists** — it is the stronger evidence, because it
+names the work rather than inferring it from a file's contents. The premise-at-head test is the
+fallback, not the replacement. ⚠️ **The 4-of-40 figure is STATE — re-measure it, never quote it.**
+**Falsifying probe: the marker sweep over the depth-1 `-HOLD.md` corpus.** If it ever returns a
+marker on every prompt this correction is unnecessary; and if the premise-at-head probe ever returns
+a hit for a prompt whose work is demonstrably not in that PR, it is wrong and must be re-measured.
+Found and landed by Station 00 2026-09-10T17:3xZ.

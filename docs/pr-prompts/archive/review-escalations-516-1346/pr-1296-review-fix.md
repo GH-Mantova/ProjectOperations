@@ -1,0 +1,1 @@
+PR #1296 ships correct substantive content (7 env vars added to `.env.example` per prompt), but CI fails on gate marker. PR body is missing `GATE-ALLOW: env-vars` (column 0) declaration required by CP-12 gate for any `.env.example` modifications. Edit the PR body to add that line unindented, then re-run jobs.

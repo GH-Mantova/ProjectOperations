@@ -1,0 +1,1 @@
+Import path off-by-one in test file: pipeline-dashboard.controller.spec.ts line 6 uses `../../../common/auth/permissions.guard` but needs 4 levels up, not 3. Jest fails with "Cannot find module ../../../common/auth/permissions.guard". PR body incorrectly claims tests pass. Guard logic is correct; only the test import is wrong.

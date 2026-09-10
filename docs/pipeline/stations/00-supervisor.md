@@ -215,6 +215,25 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
   station is not a quiet one** — either it did not run, or it ran and did not report, and both are
   defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
+
+  🔴 **THE SWEEP'S SECTION 5 `[STALE]` ESCALATION ROWS ARE YOURS TO CLEAR HERE, AND DISPATCHING
+  THEM TO 03 IS A DISPATCH TO NOBODY.** `status-sweep.ps1` tags a `needs-marco/` file `[STALE]`
+  when the PR it names has merged, and prints its own instruction — *"escalation is DEAD, clear
+  it."* [MEASURED] 2026-09-10T21:1xZ: **eleven** such rows were live, all of them PR-scoped, the
+  oldest naming a PR merged on **09-03**; the standing hand-over that was supposed to clear them
+  had been addressed to **Station 03** since 2026-08-31 and 03 cannot execute it — its authority
+  row in `STATION-CAPABILITIES.md` is **report-only**, and `needs-marco/` is an escalation
+  queue rather than a machine. So the rows survived ten days and eleven of Marco's 57 escalation
+  files were dead. 🔧 **Clear them during COLLECT, and never on the tag alone:** open each file,
+  re-ask its PR individually with `gh pr view <n> -R <owner>/<repo> --json state,mergedAt` (a
+  LIST response's `merged` field is unusable — DOCTRINE §9.4) with a negative control, confirm
+  nothing GENERAL survives the merged PR, then `Move-Item` it into
+  `docs/pr-prompts/needs-marco/discharged/` — **never delete**, and leave a
+  `_DISCHARGE-NOTE-*.md` beside them naming what was measured. ⚠️ That folder is gitignored, so
+  the note reaches nobody on its own: **say in your breadcrumb what you discharged**, or the
+  clearing itself is unreported. ⚠️ **Falsifying probe: re-run the sweep and read section 5.** If a
+  name you moved is still tagged, the move did not take; if a NEW `[STALE]` row names a file that
+  is not PR-scoped, read it rather than discharging it.
 - **THEN CROSS THE FRESHNESS TABLE AGAINST `lastRunAt`. THE BREADCRUMB IS ONE INSTRUMENT AND IT
   CANNOT NAME THE CAUSE.** `check-breadcrumb.mjs` compares breadcrumb dates and nothing else, so the
   three failures below are identical to it — and two of them print `ok`. Call `list_scheduled_tasks`

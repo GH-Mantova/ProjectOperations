@@ -71,3 +71,4 @@
 2026-09-08T12:29:41Z  ARMED  pr-tfm-s11-copy-recursive-preserve  escalates=true  actor=station-00.cloud-lane-1230  by=Marco@LAPTOP-E6NHU4E4  pid=33784  caller=powershell.exe:37620
 2026-09-08T23:43:55Z  ARMED  pr-ea-gate-report-self-filter  escalates=true  actor=station-00.cloud-lane-2345  by=Marco@LAPTOP-E6NHU4E4  pid=26276  caller=powershell.exe:5764
 2026-09-09T22:24:15Z  ARMED  pr-brandtheme-s5-density-tokens-and-control  escalates=false  actor=station-00.cloud-lane-0900  by=Marco@LAPTOP-E6NHU4E4  pid=20796  caller=powershell.exe:30836
+2026-09-10T00:07:52Z  ARMED  pr-vmgitguard-selftest-and-recursion  escalates=false  actor=station-00.cloud-lane-1010  by=Marco@LAPTOP-E6NHU4E4  pid=7104  caller=powershell.exe:19412

@@ -197,8 +197,10 @@ now blob `c9b5113b`, 356 lines, `do-not-arm` marker hits **2** — it was `0aa34
 
 `#1834` landed itself on native auto-merge at `02:25:40Z`, read back `MERGED`. **This run's own
 board PR `#1836` is armed the same way** — branch updated, `autoMergeRequest` present, BLOCKED on
-re-running checks at the moment this run ended. **That one is NOT reported as merged**, because no
-read-back was possible before the run closed.
+re-running checks at the moment this sentence was written. **It then landed while the run was still
+open: read back `state=MERGED`, head `eb9798ec`, `origin/main` `d9648fea`.** Its `--delete-branch`
+removed the head, which is why the follow-up carrying this paragraph and Station 04's breadcrumb
+arrives as a separate addendum PR rather than another commit on the same branch.
 
 **`#1832` and `#1823` are green, CLEAN and BEHIND, and both are Marco's.** Both carry a live
 watcher `marco:true` verdict, and `labels=[]` on both does **not** clear it — removing
@@ -317,6 +319,51 @@ outside this station's lane to merge, which is why it is named here rather than 
 **It becomes urgent when the root count passes ~60**, half the 159 that made the board unreadable
 in August.
 
+### F7 — Station 04 filed a breadcrumb 13 minutes into this run, and its one dispatch is the THIRD deferred edit to the same canonical block
+
+[MEASURED] `00-04-scanner-2026-09-10-0210-…md` landed in the dev tree at `02:22:22Z`, unchanged and
+16,492 bytes at `02:34:46Z` (two reads, twelve minutes apart, byte-identical — so 04's run had
+finished, not paused). All five contract sections present, four dispositions. It is **untracked**,
+so it has reached nobody until a run commits it; it is committed in this PR.
+
+Its F2, F3 and F4 are self-dispositioned ESCALATED / DEFERRED / DEFERRED and need nothing from me.
+**F1 is DISPATCHED to Station 00** and is real: `Get-ChildItem "<dir>\*" -Recurse -File` answers
+**0** when depth 1 holds no files — measured **0 against a truth of 17** on
+`C:\Users\Marco\Claude\Scheduled`, while the bare-directory form answers 17. §9.1's own 2026-09-07
+fixture cannot fail on it, because that fixture holds a matching file at depth 1.
+
+**And here is the finding that is mine rather than 04's: that edit is now the THIRD one deferred to
+the same canonical block, by three different runs, each for the same correct reason.** 04's F1
+(§9.1, this run), the 01:10Z run's F6 (§9.1 — a non-ASCII needle in `node -e` silently drops a
+match; it ate the line naming a failing test), and this run's F5 (§9.3 — `Compare-Object` across a
+`git show` / working-copy boundary measures the encodings). Each was deferred because a canonical
+block needs `lint-station.mjs --write-canonical` and a PR of its own, which is true. The effect is
+that the document written to hold measured traps is the one place a measured trap cannot land
+cheaply — and three are now queued behind that cost.
+
+**DISPATCHED — to the next Station 00 occurrence, and deliberately as an EXECUTABLE handover rather
+than a note**, because a disposition addressed to a future run is exactly what bills a later run to
+re-discover it. The anchors below were measured this run at `ed7dc38f` and are strings, not line
+numbers (§9.5). **`DOCTRINE.md` is CRLF — every anchor needs `\r\n`, which cost this run its first
+attempt: all four `\n` anchors returned `idx=-1` with the file open in front of it.**
+
+| fold in | into | anchor string |
+|---|---|---|
+| 04's F1 | §9.1 | after `Station 04 2026-09-07T06:2xZ (F1), landed by Station 00 at 07:3xZ.` |
+| 0110's F6 | §9.1 | before `## 9.2 Git` |
+| this run's F5 | §9.3 | before `## 9.4 GitHub` |
+
+One document, one PR — `instruments v2` is DOCTRINE-only, so a §9 edit costs ONE document and not
+seven, and `lint-station.mjs` correctly reads `REJECT: 1 of 8` until the hash is re-recorded with
+`--write-canonical`. Hand-land it and say so in the PR body: §10.3 names *a canonical block* and *a
+correction to DOCTRINE itself* as the two cases where hand-landing beats arming.
+
+**Why this run did not do it:** it started at `02:09Z` against an hourly cron whose next occurrence
+is `03:07:52Z`, and `needs-marco/station-00-overruns-its-hourly-slot-and-eats-the-next-occurrence-2026-09-07.md`
+records what happens when a run spends its successor's slot. Landing three canonical bullets plus a
+hash re-record was not finishable inside the remainder, and starting it would have left a
+half-edited hash-gated block in a worktree. **The whole cost of doing it next run is the table
+above, which is why the table is here.**
 ## WHAT I DID NOT DO
 
 - **Did not merge `#1832` or `#1823`.** Both carry a live watcher `marco:true` verdict and RULE 2

@@ -1410,6 +1410,48 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   clone in the same minute while an untracked file is present.** If they ever agree, this bullet is wrong and
   must be re-measured. Found by Station 00 2026-09-10T20:2xZ.
 
+- 🔴🔴 **`status-sweep.ps1` IS AN INSTRUMENT, AND ITS OWN `[LIVE]` LINES ARE SUBJECT TO §7 — THE
+  REPORT'S HEADER TELLS EVERY STATION TO TRUST THEM, AND TWO OF THEM WERE MEASURED WRONG ON ONE
+  DAY.** `SWEEP_LIVE_LINES_ARE_NOT_EXEMPT_V1` The sweep's HOW TO READ block instructs *"Report ONLY
+  from `[LIVE]` lines"*. That is correct about **provenance** — a `[LIVE]` line came from GitHub or
+  a running process rather than from a file — and it is read as a claim about **correctness**, which
+  it is not. Several `[LIVE]` lines are *derived verdicts over* live data, and a derivation can be
+  wrong while every input is fresh. Nothing is empty and nothing warns, so §9.6 never fires.
+
+  **Two measured instances, both 2026-09-10, and both fail in the direction of manufacturing work:**
+
+  | the `[LIVE]` line | the truth | cost of believing it |
+  |---|---|---|
+  | `watcher clone: branch=main dirty=2  <-- ... the watcher may refuse to start` | `git status --porcelain --untracked-files=no` → **0**; the two files are review verdicts the `rev-<N>` job writes into the clone by design, and a tracked-dirty clone auto-stashes rather than refusing | a MIS-ROUTED DISPATCH to Station 03 as clone hygiene — 13 verbatim quotations of that line in `archive/` (the bullet immediately above) |
+  | `main CI on 6e63dc72: 4 success / 1 failed  <-- TRUNK IS RED` | the only non-success run is **`Dependabot Updates`**; all four real trunk checks are `success` | `00-supervisor.md` rule 5 reads a red trunk under a docs diff as *"instant proof of a MAIN regression"*, so a run hunts — or authors a `fixes_pr` against — a regression that does not exist |
+
+  [MEASURED] 2026-09-10T22:1xZ by Station 00 at `6e63dc72`, `gh run list -R <owner>/<repo> --commit
+  <full 40-char sha> --json conclusion,name,event,workflowName` (full SHA per §9.4; `-R` and
+  `$LASTEXITCODE` per §9.4's CWD bullet): **6** runs — `Dependabot Updates` / `dynamic` /
+  **`failure`**, `Claude Code` / `issue_comment` / `skipped`, and `Deploy` · `CI` · `CodeQL` ·
+  `Tendering Browser Smoke`, **every one `success`**. The trunk verdict counts every run *attributed*
+  to `origin/main`'s head, so a single Dependabot run flipped the headline from `(trunk green)` at
+  21:09Z to `TRUNK IS RED` at 22:10Z **with no commit between the two readings**.
+
+  🔧 **The rule that survives any one fix: report from `[LIVE]`, but before you ACT on a `[LIVE]`
+  line, re-derive it from its own source.** Provenance is not correctness. Both instances were
+  settled by asking the underlying instrument directly rather than by re-reading the sweep.
+
+  ⚠️ **The trunk row has a fix OPEN and GREEN on the board as `#1852` (`TRUNK_VERDICT_SCOPED_V1`),
+  and it is Marco's to merge**, so that row is expected to die. It is written with the probe that
+  kills it rather than left to outlive its own truth — the failure this section's opening bullets
+  record. **Verified against the PR's DIFF, never its title:** applying its denylist
+  (`workflowName -eq "Dependabot Updates" -or event -eq "schedule"`) to this same commit gives
+  `trunkRuns=5, otherRuns=1` → **4 success / 0 failed → `(trunk green)`**. ⚠️ The denylist is
+  deliberate and must not be "simplified" into an allowlist: **`CodeQL` runs as event `dynamic`**
+  and IS a trunk check, so an `event -eq push` allowlist would silently drop it.
+
+  ⚠️ **Falsifying probe, per row: for the clone, run both `git status` forms against it in the same
+  minute; for the trunk, re-run `gh run list --commit <full sha> --json conclusion,workflowName,event`
+  and compare the aggregate verdict against the trunk-only subset.** If a sweep `[LIVE]` line ever
+  survives being re-derived from its own source on both rows, this bullet is unnecessary. Found and
+  landed by Station 00 2026-09-10T22:1xZ.
+
 ## 9.6 The rule behind all of them
 
 🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is

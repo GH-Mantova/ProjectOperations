@@ -727,6 +727,55 @@ here now because they are true for **every** station.
   Station 00 at 07:3xZ.
 
 
+- 🔴 **`gh` INFERS THE REPO FROM THE CURRENT DIRECTORY, SO A `gh` QUERY RUN FROM A NON-REPO CWD
+  ANSWERS EMPTY FOR EVERY QUESTION — AND §9.1'S OWN CURE IS WHAT PUTS YOU THERE.** [MEASURED]
+  2026-09-10T05:2xZ by Station 00 at `bb04235e`, `gh pr list --state open --json number`, with
+  stderr discarded the way a script discards it:
+
+  | form | exit | stdout chars |
+  |---|---|---|
+  | non-repo CWD, no `-R` — **the failing form** | **1** | **0** |
+  | non-repo CWD, with `-R <owner>/<repo>` — POSITIVE control | 0 | 33 |
+  | dev-tree CWD, no `-R` — POSITIVE control | 0 | 33 |
+  | dev-tree CWD, with `-R` — POSITIVE control | 0 | 33 |
+
+  NEGATIVE control, `-R` naming a repo that does not exist: exit **1**. The failing form writes
+  `failed to run git: fatal: not a git repository (or any of the parent directories): .git` to
+  **stderr**, and nothing at all to stdout.
+
+  🔴 **The exit code is 1, so this is loud — but only to a caller that looks at it.** The trap is a
+  pairing every station already writes: `2>$null` to keep git's stderr chatter out of a report
+  (§7 guard 7 asks for exactly that tolerance), plus a result piped straight into
+  `ConvertFrom-Json` / `Where-Object` with no test of `$LASTEXITCODE`. What comes back is then a
+  well-formed **empty board**, for every query, at what reads as success.
+
+  🔴 **Measured live in the run that found it, and it produced a confident wrong answer rather than
+  a visible failure.** Eight worktree branches were crossed against the board to decide which were
+  safe to tear down; all eight returned `NO PR ON THE BOARD` — including
+  `feat/ea-gate-reporting-team-permission`, which is **PR #1823's own head branch and was OPEN at
+  that moment**. Re-run with `-R`, the same eight returned six MERGED PRs, one OPEN and one merged
+  six days earlier. **A uniform zero across a heterogeneous input set is the signature.**
+
+  🔧 **The mechanism is why this belongs in §9 rather than in one station's notes.** §9.1 says put
+  anything containing `$` in a `.ps1` and run it with `-File`; a `.ps1` launched that way inherits
+  the **session's** working directory, not the repo's. [MEASURED] the same run: Desktop Commander
+  opens its shell in the Cowork session's `outputs` folder, which is not a git repository. **So
+  following §9.1's cure moves the script out of the repo and arms this trap.** Both cures are
+  correct on their own and compose into a silent one — the shape §9 keeps recording.
+
+  🔧 **Pass `-R <owner>/<repo>` on EVERY `gh` call inside a script, and test `$LASTEXITCODE` before
+  parsing.** `-R` is correct from inside the repo too (rows 3 and 4 agree), so there is no case
+  where adding it is wrong. Control every `gh` query against a value you know is on the board.
+
+  ⚠️ **This is NOT the `--jq`, short-SHA or `merged`-field trap above.** Those are about the shape
+  of a query or of a payload; this one is about **where the process was standing**, and it fires on
+  every `gh` sub-command that resolves a repo from context, not only `pr list`.
+
+  ⚠️ **Falsifying probe: the four-row table above.** Rebuild it — one CWD inside the repo, one
+  outside, `-R` present and absent. If row 1 ever returns stdout, this bullet is wrong and must be
+  re-measured. Found and landed by Station 00 2026-09-10T05:3xZ.
+
+
 ## 9.5 The pipeline's own instruments
 
 - 🔴 **ANCHOR BY SYMBOL, NEVER BY LINE NUMBER — and this section violated its own rule sixteen

@@ -1,0 +1,1 @@
+PR #796 substantive code is correct (staff seeding now uses "SSO-ONLY" sentinel, LocalAuthProvider disables local login). CI failure is procedural: CP-23 gate requires `SEED-ONLY: dev` marker at column 0 in PR body to acknowledge seed change has no production impact. Add marker and re-trigger gates (close/reopen PR or push empty commit), then merge.

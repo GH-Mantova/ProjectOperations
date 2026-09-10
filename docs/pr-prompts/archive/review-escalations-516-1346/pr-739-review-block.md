@@ -1,0 +1,3 @@
+PR #739 BLOCKED: Legacy /admin/settings redirect violates failure-honesty requirement.
+
+The PR redirects non-admin users from /admin/settings to /settings/administration/system instead of showing NoAccess in-place at the legacy URL. This breaks issue #544's requirement (sot/01 SECTION 6) that permission failures remain visible on the legacy path so users can see their lack of permission, not mistake it for a broken page. The fix requires either removing the /admin/settings redirect (keep the old route serving AdminSettingsPage which has its own NoAccess guard) or wrapping it in permission logic before the redirect. Test batch8-admin-portal.spec.ts:162 is failing.

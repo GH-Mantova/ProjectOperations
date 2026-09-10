@@ -1,0 +1,3 @@
+# PR #895 — Reject (Schema drift on api_key_type.updated_at)
+
+The SLICE-3 backfill migration fails at runtime with a Prisma schema-validation error: `api_key_type` table has no DEFAULT on `updated_at`, but the schema model requires one. The SLICE-1 migration created the table without a default, and SLICE-3 tries to seed 11 rows, triggering Prisma to detect a mismatch. The fix is to add `DEFAULT CURRENT_TIMESTAMP` to the `updated_at` column definition in the SLICE-3 migration (before or after the type seed INSERT, or retroactively in a new ALTER step). The migration SQL logic is sound and idempotent; only the schema-validation conflict needs resolution.

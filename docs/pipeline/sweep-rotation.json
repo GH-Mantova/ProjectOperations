@@ -1,13 +1,13 @@
 {
   "_why": "Station 04 covers ONE named sweep per run, completely, instead of every sweep shallowly. Without recorded state every fresh run picks the first entry, which narrows coverage without rotating it - gate liveness gets checked forever and instruction drift never does. This file is that state. Station 04 reads it, runs the sweep it names, then advances it via: node scripts/pipeline/next-sweep.mjs --advance",
-  "last_index": 3,
-  "last_run_utc": "2026-09-10T02:10:54Z",
+  "last_index": 0,
+  "last_run_utc": "2026-09-10T06:10:05Z",
   "last_station": "04-scanner",
   "sweeps": [
     {
       "key": "gate-liveness",
       "title": "Gate liveness",
-      "brief": "Execute every armed and HOLD prompt's premise against origin/main at a named SHA. A premise that returns false is finished work still sitting on the board. Repair dead requires_merged / requires_file_on_main / requires_on_main gates - and re-check the prompts behind each one you repair, because a dead gate MASKS the premise behind it."
+      "brief": "Execute every armed and HOLD prompt's premise against origin/main at a named SHA. A premise that returns false is finished work still sitting on the board. Repair dead requires_merged / requires_file_on_main / requires_on_main gates - and re-check the prompts behind each one you repair, because a dead gate MASKS the premise behind it. BEFORE REPAIRING A DEAD GATE, CHECK WHETHER IT IS THE ONLY THING HOLDING THE PROMPT: docs/approvals/README.md records that for the Marco-approval class the dependency gate being dead was the only thing lint rejected on, so repairing it would have silently removed the protection - and two of those prompts DROP DATABASE TABLES. If the prompt is destructive, or its other gates are already satisfied, REPORT IT AND REPAIR NOTHING."
     },
     {
       "key": "instrument-honesty",

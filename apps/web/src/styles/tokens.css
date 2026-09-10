@@ -32,6 +32,15 @@
   --surface-override: #FDD387;
   --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.10);
+  /* Density tokens — comfortable (default) values measured from the current
+     screen: table row 40 px, controls 36 px, cell vertical padding 10 px,
+     cell horizontal padding 12 px. These are the values the app has always
+     had; comfortable is a no-op for every existing user.
+     Override block below (data-density="compact") reduces all four. */
+  --density-row-height: 40px;
+  --density-control-height: 36px;
+  --density-space-y: 10px;
+  --density-space-x: 12px;
   /* Dark palette constants — declared once here, consumed by both dark selectors below */
   --dark-surface-page: #17181C;
   --dark-surface-card: #22242A;
@@ -90,6 +99,17 @@
     --shadow-dropdown: var(--dark-shadow-dropdown);
     color-scheme: dark;
   }
+}
+
+/* Density — compact override. Intentionally separate from both theme
+   selectors (data-theme="dark"/"light") so it composes freely across all
+   four combinations: light/comfortable, light/compact, dark/comfortable,
+   dark/compact. Never nest this inside a theme selector. */
+:root[data-density="compact"] {
+  --density-row-height: 32px;
+  --density-control-height: 28px;
+  --density-space-y: 6px;
+  --density-space-x: 10px;
 }
 
 /* Typography scale per 7.0 */
@@ -195,7 +215,7 @@
 }
 
 .s7-table tbody tr {
-  height: 40px;
+  height: var(--density-row-height);
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -212,7 +232,7 @@
 }
 
 .s7-table tbody td {
-  padding: 10px 12px;
+  padding: var(--density-space-y) var(--density-space-x);
   vertical-align: middle;
 }
 
@@ -229,7 +249,7 @@
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   padding: 0 16px;
-  height: 36px;
+  height: var(--density-control-height);
   border: 1px solid transparent;
 }
 
@@ -286,7 +306,7 @@
 .s7-select,
 .s7-textarea {
   width: 100%;
-  height: 36px;
+  height: var(--density-control-height);
   padding: 0 12px;
   font-family: inherit;
   font-size: 14px;

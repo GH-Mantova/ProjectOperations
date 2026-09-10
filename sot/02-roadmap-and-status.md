@@ -58,18 +58,19 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (4)
+## 2. 🔧 In-PR — open right now (5)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-07T14:21Z**, `origin/main`
-> f9815d11. For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-09T23:03Z**, `origin/main`
+> f482d1a5). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #1777 | fix(sweep): git stderr is not a failure, and a real failure must still abort | BLOCKED; CI 14 pass / 0 fail / 1 pending |
-| #1775 | feat(map-locations): write the tip id on the waste rate rows, and keep it written (TIP-ID-S2) | BLOCKED; CI 12 pass / 2 fail / 1 pending |
-| #1774 | ci(web): ratchet hard-coded colour literals so apps/web/src can only get cleaner | BLOCKED; CI 12 pass / 2 fail / 1 pending |
-| #1767 | feat(crm): reminder policy config + polymorphic reminder log (TR-1) | BLOCKED; CI 12 pass / 2 fail / 1 pending |
+| #1827 | feat(settings): brandtheme S5 - density (compact/comfortable) tokens and control | CLEAN; CI 15 pass / 0 fail / 0 pending |
+| #1826 | docs(pr-prompts): track pr-vmgitguard-selftest-and-recursion-HOLD.md | CLEAN; CI 15 pass / 0 fail / 0 pending |
+| #1825 | docs(pipeline): a review verdict is not anchored to a head SHA | CLEAN; CI 15 pass / 0 fail / 0 pending |
+| #1824 | docs(pipeline): amend the EA-GATE prompt and file the CP-23 unsatisfiable-prompt class | CLEAN; CI 15 pass / 0 fail / 0 pending |
+| #1823 | feat(reporting): EA-GATE — key report self-filter to reporting.team permission | CLEAN; CI 15 pass / 0 fail / 0 pending |
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z

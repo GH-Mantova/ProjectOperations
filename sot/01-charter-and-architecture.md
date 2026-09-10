@@ -451,11 +451,18 @@ FIELD (FieldLayout, mobile only — bottom nav)
 >
 > Group 7 above was reconciled by SLICE 20 against the shipped nav model
 > (`apps/web/src/components/settings-nav-items.ts`), which is the operative source for
-> Settings destinations and their permission codes. **Groups 1-6 and FIELD are NOT yet
-> reconciled** — they still describe the pre-NAV-1 sidebar (the group is named "ESTIMATING",
-> there is no CRM group). That reconcile is NAV-5, staged at
-> `docs/pr-prompts/pr-sot-01-nav5-reconcile-2026-08-20-HOLD.md`; the live model is
+> Settings destinations and their permission codes. **Groups 1-8 and FIELD were reconciled
+> by NAV-5, which SHIPPED in #1810** (merged 2026-09-08T05:15Z). SECTION 9 above therefore
+> already describes the post-NAV-1 sidebar: group 2 is `TENDERING` (renamed from
+> "Estimating", NAV-1) and group 3 is the new top-level `CRM` group. The live model is
 > `apps/web/src/components/ShellLayout.tsx` `NAV_GROUPS`.
+>
+> ⚠️ This paragraph asserted the opposite — *“Groups 1-6 and FIELD are NOT yet reconciled”* —
+> for the whole of 2026-09-08, ninety lines below the SECTION 9 block that refutes it, and it
+> also cited the now-consumed prompt `pr-sot-01-nav5-reconcile-2026-08-20-HOLD`. That citation
+> is why #1817 had to back out retiring the prompt: removing the file made this line dangle and
+> `check-sot-refs.mjs` failed the branch. The citation is dropped here so the retirement can
+> proceed; **retiring the prompt itself is Station 00/06's, not 05's.**
 
 ---
 

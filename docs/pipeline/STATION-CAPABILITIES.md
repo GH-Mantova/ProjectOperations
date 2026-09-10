@@ -236,6 +236,35 @@ COLLECTS first, and says which of the two it did.** "I was blind, so I did nothi
 blind, so I read everything readable and acted on none of it" are different reports, and until this
 correction the second one was unavailable.
 
+🔴🔴 **AND THE MOUNT IS NOT THE ONLY READ TRANSPORT — A RUN CAN LOSE BOTH NAMED ONES AND STILL
+COLLECT.** `NATIVE_FILE_TOOLS_READ_TRANSPORT_V1` [MEASURED] 2026-09-10T18:0xZ by Station 00 with
+Desktop Commander at `CONNECT_TIMEOUT` (30 s, after four `ToolSearch` loads — a failure AFTER the
+load, so blindness) and the Plan9 share unmounted for the fifth consecutive station run: the Cowork
+**native file tools** (`Read` / `Glob` / `Grep`) read `C:\ProjectOperations2` directly and returned
+the two binding documents, the station doc, the breadcrumb corpus, the queue census, the
+`needs-marco/` census and the loose refs `.git/refs/heads/main` and `.git/refs/remotes/origin/main`.
+POSITIVE controls: `Read docs/pipeline/STATION-CAPABILITIES.md` -> 486 lines; `Grep 'No second
+transport'` over `docs/pipeline` -> **1**. NEGATIVE control, a freshly minted needle -> **0**. **They
+are read-WRITE**: the same run wrote its own breadcrumb to `docs/pr-prompts/` through `Write`, which
+is how a blind run leaves a report at a tracked path even though it cannot open the PR that tracks it.
+
+⚠️ **THE CEILING ABOVE IS UNCHANGED, AND THE PARAGRAPH THAT ADDS THIS TRANSPORT HAS TO SAY SO.**
+The native file tools READ; they execute nothing. No `.ps1`, no `git` against the Windows `.git`,
+therefore **no liveness, smoke, safe-to-act or merge verdict**, and no board mutation. What changes
+is only the difference between *quoting a file* and *issuing a verdict* — the same distinction this
+section already draws for the watcher's clone log. ⚠️ **And note what it costs:** PREFLIGHT step 2's
+*"read from `git show origin/main:<path>`, never the working copy"* cannot be honoured on this
+transport, so a run using it must say it read the working copy and that the reading may be behind
+`main`.
+
+🔴 **Why this belongs here rather than in one run's notes.** This section is built on two
+transports and only two, and a reader following it literally on a day when both are down concludes
+there is nothing left and stops with no COLLECT — which is the precise failure the 2026-09-05
+correction above was written to remove, reproduced one layer down. ⚠️ **Falsifying probe: from a
+run with neither Desktop Commander nor a mount, `Read` any tracked file under
+`C:\ProjectOperations2`; if it fails, this paragraph is wrong and must be re-measured.** Found by
+Station 00 (blind run) 2026-09-10T18:0xZ (F1), landed by Station 00 at 19:1xZ.
+
 ### GitHub
 
 `gh` CLI via Desktop Commander is the authority. The **GitHub MCP token cannot merge (403)**.

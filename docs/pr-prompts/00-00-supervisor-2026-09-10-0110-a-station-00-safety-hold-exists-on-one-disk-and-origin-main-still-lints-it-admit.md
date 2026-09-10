@@ -188,8 +188,11 @@ its rule 5 says re-run a transient *before* diagnosing a defect. **It cannot cau
 `autoMergeRequest` on `#1832` is measured **off**, and `#1832` hand-classifies as **Marco's**
 (`scripts/`, outside all three `NESTED_TEST_PATHS` forms), so driving it green is the job and
 merging it is not.
-⚠️ **The outcome is recorded in WHAT I DID NOT DO, not asserted here** — the rerun had not
-completed when this file was written, and a rerun I fired is not a rerun I have seen pass.
+✅ **CONFIRMED at 01:34:05Z, and this is the evidence rather than my opinion of it:**
+`gh run view 34423181820 --json status,conclusion` → **`completed` / `success`**, and
+`#1832` `mergeStateStatus` moved **BLOCKED → CLEAN**. Same head, same job, no code change
+between the two runs — which is what makes the transient reading a measurement and not a guess.
+**The board now has zero reds.** `#1832` remains Marco's to merge; driving it green was the job.
 
 ### F3 — Condition 3 is cooling but not clear, so `#1824` is deferred a second time — with the test sharpened
 
@@ -291,11 +294,11 @@ wrong.
 - **Merged nothing.** `#1823` carries a live watcher `marco:true` verdict — RULE 2 binds, and its
   `labels=[]` does not clear it. `#1832` hand-classifies as Marco's. `#1824` is mine and green, and
   was left for condition 3 (F3). `#1834` is a receipt PR opened by the live lane.
-- **Did not confirm `#1832` went green.** The rerun was `in_progress` at `01:23:29Z`, four minutes
-  in, against an original wall time of ~4.5 min. **A rerun I fired is not a rerun I have seen
-  pass** — the next run must read `gh run view 34423181820 --json conclusion` before treating
-  `#1832` as anything but red, and if it failed again on the same WebKit error, that is a second
-  occurrence and the transient reading is dead.
+- **Did not merge `#1832`, though I did drive it green.** The rerun completed `success` at
+  `01:34:05Z` and the PR is now CLEAN, but it hand-classifies as **Marco's** (`scripts/`, outside
+  all three `NESTED_TEST_PATHS` forms), so the merge is not mine. It is green and waiting.
+  ⚠️ If it ever reds again on the same WebKit error, that is a **second** occurrence and the
+  transient reading in F2 is dead — treat it as a real defect at that point, not a third rerun.
 - **Armed nothing**, and did not run `triage-holds.ps1` for arming candidates. Real armed count 0 at
   the start and 0 at the end. Station 04's 09-09T22:02Z F1 — the arming linter giving two opposite
   verdicts on one unchanged prompt eight minutes apart, erring toward ARM — remains unreproduced and

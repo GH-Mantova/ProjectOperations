@@ -233,41 +233,59 @@ while the 00×04 overlap survives any change to 05 and recurs six times a day. B
 the scheduled-tasks layer, which is Marco's, not this repo's. This entry exists so the count keeps
 accruing against the existing file rather than starting a new one.
 
-### F5 — The post-merge fast-forward was blocked by three different causes in sequence, and `Compare-Object` nearly made me delete the upgrade it was hiding
+### F5 — The post-merge fast-forward took three causes in sequence, and the third produced a comparison that was WRONG IN BOTH DIRECTIONS
 
-The dev tree opened 2 behind. Three blockers, each with a different cure, and the third is a trap
-worth writing down:
+The dev tree opened 2 behind. Three blockers, each with a different cure:
 
 1. **`.arming-log.txt` modified against HEAD.** The right instrument said it was not local work:
    `git diff --numstat origin/main -- docs/pr-prompts/.arming-log.txt` returned **EMPTY**, so the
    working copy already equalled `origin/main` and the ` M` was only against the behind-HEAD
    (DOCTRINE §9.2). Restored path-scoped; no append-only content was at risk because there was none.
 2. **Two untracked breadcrumbs at paths the fast-forward had to create** — the documented cure.
-   `00-05-sot-keeper-…-2202-…md` hash-matched `origin/main` exactly (`d37e6c48` both sides) and was
-   deleted.
-3. 🔴 **`00-00-supervisor-2026-09-09-2345-…md` did NOT match** — working copy `d207e4ed` against
-   `origin/main` `51448904`. `Compare-Object` on the two, read with `Select-Object -First 30`,
-   showed **thirty `=>` rows and not one `<=`**, which reads as *"the working copy is a subset;
-   deleting it loses nothing."* Counting the sides instead of eyeballing the head of the list gave
-   `=>` **36** and `<=` **59**. **`Compare-Object` emits every `=>` row before any `<=` row, so any
-   `-First N` over its output is a one-sided view**, and the one-sided view is the one that licenses
-   a delete. The 59 hidden lines were an upgrade the 23:45Z run wrote at ~23:50Z, after the copy
-   that reached its PR: `[MEASURED — upgraded 2026-09-09 2350Z]` replacing
-   `[INFERRED — NOT MEASURED]`, with the mock-up-versus-shipped column diff actually taken. Nothing
-   was empty, nothing warned, both readings exited 0 — §7's shape, not §9.6's.
+   `00-05-sot-keeper-…-2202-…md` hash-matched `origin/main` exactly (`d37e6c48` both sides), so it
+   was deleted and the fast-forward replaced it.
+3. 🔴 **`00-00-supervisor-2026-09-09-2345-…md` did NOT match** — disk `d207e4ed` against
+   `origin/main` `51448904` — and answering *"which side is newer?"* is where this run's own
+   instrument lied to it.
 
-**ACTIONED** for this run: the file was copied out to `%TEMP%` (`git hash-object` verified
-`d207e4ed` on the copy) before the delete, the fast-forward then succeeded, and the read-back is
-`## main...origin/main` with no ahead/behind clause.
-🔧 **The rule this earns: never trust a truncated `Compare-Object`. Count the two `SideIndicator`
-groups, or use `git diff --numstat` / `git hash-object` / `Buffer.compare`, which is what §9.3
-already prescribes for deciding whether two files differ.** **Falsifying probe:** run
-`Compare-Object` on any pair where each side holds unique lines and read the first N rows; if a
-`<=` row ever appears before the last `=>` row, this is wrong.
-**DEFERRED as a doc edit** — the natural home is the §9.3 comparison bullet, which sits inside the
-`instruments v2` canonical block and needs `lint-station.mjs --write-canonical` and a PR of its
-own. It does not belong in a collect PR.
+**The lie, and it is §9.3's boundary rule with a delete attached.** `Compare-Object` was run over
+`$a = git show origin/main:<path>` and `$b = Get-Content <path>`. PowerShell decodes those two
+sources **differently** — `git show`'s output came back with `—` mangled to `\ufffd?"` while
+`Get-Content` rendered it correctly — so every line containing an em dash appeared as a *pair* of
+unique rows, one on each side. The counts (`36` vs `59`) were therefore mostly encoding noise, the
+first 30 rows were a one-sided view of it, and **the sample I read off it supported the exact
+opposite of the truth.** Both forms exited 0 and nothing was empty, so §9.6 never fires.
 
+**The sound instrument, run afterwards, settles it in one line.** The blob was dumped with
+`git cat-file blob` through `cmd /c` (never PowerShell `>`, §9.3) and both files compared in node,
+on the same side of the boundary, CRLF-normalised:
+
+```
+origin/main copy   181 lines   lines only here: 36
+disk copy          158 lines   lines only here: 17
+```
+
+**`origin/main` holds the LATER, BETTER text.** Its 36 unique lines are the
+`[MEASURED — upgraded 2026-09-09 2350Z]` mock-up-versus-shipped column diff, taken properly from
+the rendered `<th>` labels. The disk copy's 17 unique lines are the **superseded**
+`[INFERRED — NOT MEASURED]` paragraph that upgrade replaced, plus its `[CANNOT MEASURE]` caveat and
+an F4 the merged version drops. **Deleting the untracked disk copy lost nothing**, and the earlier
+reading of this same evidence — that the disk held an upgrade `main` lacked — was **wrong and is
+retracted here rather than left standing.**
+
+**ACTIONED.** The file was copied to `%TEMP%` (`git hash-object` verified `d207e4ed` on the copy)
+before the delete, so the retraction above could be measured rather than assumed; the fast-forward
+then succeeded and reads back `## main...origin/main` with no ahead/behind clause.
+🔧 **The rule this earns, and it is narrower and more useful than "do not truncate":
+`Compare-Object` across a `git show` / working-copy boundary is measuring the ENCODINGS, not the
+content, and its `<=`/`=>` sides are then meaningless in both directions.** DOCTRINE §9.3 already
+says compare content with `git diff --numstat`, `git rev-parse` vs `git hash-object`, or
+`Buffer.compare` in node **on the same side of the boundary**; this is that bullet meeting a
+`Compare-Object` instead of a length, with a delete downstream of the answer.
+**Falsifying probe:** re-run both forms on any file containing a non-ASCII character — the
+PowerShell comparison must report differences that the node comparison does not.
+**DEFERRED as a doc edit** — the home is §9.3, inside the `instruments v2` canonical block, which
+needs `lint-station.mjs --write-canonical` and a PR of its own. It does not belong in a collect PR.
 ### F6 — Archiving was skipped for a fourth consecutive run, because nothing links a breadcrumb to the disposition that would let it be archived
 
 The station doc's collect contract says to `git mv` a breadcrumb into `archive/` **once every

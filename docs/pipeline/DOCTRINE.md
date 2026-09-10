@@ -1595,6 +1595,54 @@ survives only on the PR's own commit list. ⚠️ **Falsifying probe: the table 
 receipt; if a cloud-lane receipt ever reads `Marco <marco@initialservices.net>`, or a watcher build
 commit reads the cloud-lane identity, this block is wrong and must be re-measured.
 
+🔴🔴 **CORRECTED 2026-09-10 — THE AUTHOR IDENTITY NAMES A *TREE*, NOT AN ACTOR, AND THE TABLE
+ABOVE IS MISSING TWO OF THE FIVE PAIRINGS THIS BOARD EMITS. A CLOUD-LANE RECEIPT NOW AUTHORS AS
+`PR Supervisor <supervisor@local>`.** The table is right that the discriminating identity survives
+only on the PR’s own commit list, and right that the watcher’s builds read `Marco`. What it does not
+say is *why*, and the why is load-bearing: `%an` / `%ae` come from whichever **tree** the commit was
+made in, so one actor emits different identities depending on where it committed. [MEASURED]
+2026-09-10T16:2xZ by Station 00 (scheduled), across all five open PRs and both working trees:
+
+| authoring identity | what it actually names | how it is fixed |
+|---|---|---|
+| `Marco <marco@initialservices.net>` | the **watcher clone** `C:\po-watcher\ProjectOperations` — a watcher build | that clone’s `git config user.name` / `user.email` |
+| `PR Supervisor <supervisor@local>` | the **dev tree** `C:\ProjectOperations2` **and every worktree sharing its `.git/config`** | the dev tree’s `git config` |
+| `GH-Mantova <273896040+GH-Mantova@users.noreply.github.com>` | the **GitHub web UI / API** — every squash merge, and every `Merge branch ‘main’ into …` update-branch | GitHub’s own noreply identity |
+| `GH-Mantova <marco@initialservices.net>` | a **fourth pairing, from neither tree** — on this board it is the second lane that opened `#1852` | neither tree’s config |
+| `Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>` | the supervised cloud lane, when it commits somewhere supplying that identity | its own signature |
+
+**The row that breaks the table.** the merge-approval receipt on `#1823`, commit `9664f95a`,
+authors as **`PR Supervisor <supervisor@local>`** — while the receipt’s own closing line
+reads *“Receipt written by the supervised Station 00 cloud lane”* and its commit message carries
+`Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` and a `Claude-Session:` URL. Same lane, same
+kind of artefact, an identity the table has no row for — because this receipt was committed from a
+**dev-tree worktree** (`git worktree list` shows one parked at exactly that SHA), which supplies its
+own `user.name` through the shared `.git/config`.
+
+🔴 **The table’s own falsifying probe does not fire on this.** It asks whether a cloud-lane receipt
+ever reads `Marco <marco@initialservices.net>`, or a watcher build the cloud-lane identity. Neither
+happened — the receipt read a **fifth** pairing the probe does not mention, so the block stays
+silently under-determined and a reader applying it to today’s newest receipt gets **no answer at
+all**: for the one open PR carrying product code, and against the standing escalation
+`needs-marco/nothing-verifies-a-merge-approval-receipt-2026-09-07.md`, whose whole subject is receipt
+attribution. A scheduled run has already filed a forgery accusation off a misread of this same kind
+and retracted it an hour later; that is recorded two paragraphs down.
+
+🔧 **So attribute by the TRAILERS, and read `%an` as naming a TREE.** `Co-Authored-By:` and
+`Claude-Session:` are written by the actor and survive on the PR’s commit list; `%an` is written by
+whichever `git config` was in scope. Resolve a `PR Supervisor <supervisor@local>` commit by asking
+`git worktree list` which tree carries that SHA, then read the trailers for the actor. **POSITIVE
+controls, both trees, same run:** dev tree `git config user.name` → `PR Supervisor`, `user.email` →
+`supervisor@local`; clone → `Marco` / `marco@initialservices.net`. That second control establishes
+this section’s *“the most human-looking identity belongs to the most automated actor”* from the
+**cause** side — the clone is simply configured that way — rather than from behaviour alone.
+
+⚠️ **Falsifying probe: the two `git config` reads and the worktree list.** If the dev tree’s
+`user.email` ever stops being `supervisor@local`, or a `PR Supervisor` commit resolves to no worktree,
+this correction is wrong and must be re-measured. ⚠️ **The identity SET is state — re-measure it,
+never quote it; a sixth pairing is invisible until it appears.** Found and landed by Station 00
+2026-09-10T16:2xZ.
+
 🔴 **AND `approved_by: marco` IN A RECEIPT'S FRONT MATTER DOES NOT MEAN MARCO SAW THE PR.** On a
 standing-authority receipt the BODY says so in as many words — *"Marco did not see this PR before it
 merged"* — while the machine-readable field one line above says the opposite. The field records

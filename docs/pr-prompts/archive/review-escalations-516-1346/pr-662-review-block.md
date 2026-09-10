@@ -1,0 +1,1 @@
+PR #662 blocked: Web build failure + missing data-model regeneration. Schema modified but docs/data-model files not regenerated per MANDATORY prompt directive. Web build failure status shown but no error log available — requires investigation. Recommend: fix Web build, run `node scripts/data-model/build-relationship-map.mjs`, commit fixes, and re-run CI.

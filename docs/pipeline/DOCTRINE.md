@@ -843,6 +843,35 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   re-measured. Found and landed by Station 00 2026-09-10T05:3xZ.
 
 
+- 🔴 **`gh pr view <n> --json number` RETURNS A WELL-FORMED ROW AT EXIT 0 FOR A PR THAT DOES
+  NOT EXIST, SO THE NATURAL EXISTENCE PROBE ANSWERS *YES FOR EVERY INTEGER* AND THE NATURAL NEGATIVE
+  CONTROL PASSES.** `number` is derivable from the argument, so `gh` answers it locally and never
+  issues the query; add any field the server must supply and the call fails **loudly**. [MEASURED]
+  2026-09-10T23:0xZ by Station 03 at `3e1be716` and re-measured row-for-row by Station 00 at 23:2xZ,
+  `gh version 2.90.0`, `-R <owner>/<repo>` on every call (the CWD bullet above):
+
+  | form | exit | stdout |
+  |---|---|---|
+  | `gh pr view 999999 --json number` — **the failing form** | **0** | `{"number":999999}` |
+  | `gh pr view 999999 --json number,state` | 1 | `GraphQL: Could not resolve to a PullRequest with the number of 999999.` |
+  | `gh pr view 999999 --json state` | 1 | the same GraphQL error |
+  | `gh pr view 1823 --json number,state` — POSITIVE control, open | 0 | `{"number":1823,"state":"OPEN"}` |
+  | `gh pr view 1863 --json number` — POSITIVE control, merged | 0 | `{"number":1863}` |
+
+  Nothing is empty and nothing warns, so §9.6 cannot fire — this is §9.6 **inverted**, a FABRICATED row
+  read as a real one, the same shape as the `merged`-field bullet above but manufactured locally rather
+  than mis-served.
+  🔴 **The reason it earns a bullet is that it poisons §9.6's own cure.** §9.6 requires every run to mint
+  a fresh negative control; a run that mints one as *"a PR number that cannot exist"* and probes it this
+  way gets a **PASS**, which reads as *"my instrument is broken"* — and that reading is how a true
+  finding gets retired. It fired live in the run that found it: 03's first negative control was exactly
+  this form and returned `negExit=0`, caught only because the answer looked too clean.
+  🔧 **Never probe PR existence with `--json number` alone. Ask for a field the server must answer**
+  — `state`, `title`, `mergedAt` — **or request two fields and test `$LASTEXITCODE` before parsing.**
+  ⚠️ **Falsifying probe: the five rows above.** Re-run them; if row 1 ever exits 1, or row 2 ever exits 0,
+  this bullet is wrong and must be re-measured. Found by Station 03 2026-09-10T23:0xZ (F2), re-measured
+  and landed by Station 00 at 23:3xZ.
+
 ## 9.5 The pipeline's own instruments
 
 - 🔴 **ANCHOR BY SYMBOL, NEVER BY LINE NUMBER — and this section violated its own rule sixteen

@@ -857,6 +857,25 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   was verified sound by symbol at the same time and needed no correction. 🔧 **A line number into a
   file outside this document is invalidated by any edit above it — if you find yourself writing one,
   write the symbol instead.**
+  🔴 **AND IT BINDS EVERY BINDING DOCUMENT, NOT ONLY THIS ONE — the scoping was measured, and
+  the nine documents that never got the rule are exactly where the surviving rot lives.**
+  [MEASURED] 2026-09-10T18:1xZ by Station 04 at `77137033` across the ten binding documents:
+  `DOCTRINE.md` carries **18** `(anchor: …)` forms and **one** surviving `file:NNN` citation
+  (`start-watcher.ps1:160`, correct), while the other nine carry **0** anchors between them and
+  **four** citations — `ensure-watcher.ps1:10` in `03-machine-minder.md`, and `CLAUDE.md:19`,
+  `pr-gates.mjs:327` and `build-relationship-map.mjs:18-19` in `05-sot-keeper.md`. Two of those
+  four had been re-found and correctly dispositioned by **four** consecutive `instruction-drift`
+  sweeps (09-02, 09-04, 09-07, 09-10) without either being fixed, because the fix that would have
+  prevented them was applied to one file and the rule was never widened. POSITIVE control, the
+  word "anchor": 28 in `DOCTRINE.md`, 1 in `STATION-CAPABILITIES.md`, 0 elsewhere; NEGATIVE
+  control 0 in every row.
+  🔧 **Write a symbol or fixed-comment anchor in EVERY station doc, in `CLAUDE.md` and in
+  `STATION-CAPABILITIES.md`, not only here.** ⚠️ **Those counts are STATE — re-measure, never
+  quote.** **Falsifying probe: extract every `<file>:<NNN>` form from the ten binding documents at
+  `origin/main` and resolve each against the line it cites.** All four survivors were converted to
+  anchors in the same PR that landed this clause, so a re-run returns one citation and not five;
+  if a NEW raw line citation ever appears in a station doc, this clause is being ignored rather
+  than being wrong. Found by Station 04 2026-09-10T18:1xZ (F2), landed by Station 00 at 19:1xZ.
 
 - 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
   `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs

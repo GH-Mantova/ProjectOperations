@@ -596,6 +596,37 @@ here now because they are true for **every** station.
   above, and it corrupts a grep, a line count, a hash or a node read just as readily. **To dump a
   blob, write it with node (`readFileSync`/`writeFileSync`, utf8) — never `>` or `Out-File`. To
   decide whether two files differ, use `git diff`, `git hash-object`, or `Buffer.compare` in node.**
+- 🔴 **A HAND-ROLLED FRONT-MATTER PARSER MATCHING `\s*\n` SILENTLY RETURNS NOTHING ON CRLF,
+  AND A UNIFORM ZERO ACROSS A HETEROGENEOUS CORPUS IS ITS ONLY SYMPTOM.** [MEASURED]
+  2026-09-10T08:3xZ by Station 00, classifying the 11 gate-satisfied `-HOLD.md` prompts against
+  `classifyPolicyFiles` to ask whether any could still enter the `tests-docs` lane. Every prompt in
+  `docs/pr-prompts/` is stored CRLF. The list-form matcher `/^scope:\s*\n((?:\s*-\s*.+\n)+)/m`
+  returned **null on all eleven**, so every prompt read `scope=0` and the run’s headline was
+  `TESTS-DOCS ELIGIBLE = 0 of 11`. The CRLF-explicit form
+  `/^scope:[ \t]*\r?\n((?:[ \t]*-[ \t]*\S.*\r?\n)+)/m` matches the same bytes: on
+  `pr-triage-corpus-suffix-union-HOLD.md`, side by side, the broken form scored **0** and the working
+  form **1**. Re-run with the working parser the eleven parse to scope counts
+  `8 6 4 2 5 6 3 6 4 1 1` — and the answer is **still 0 of 11**.
+  🔴 **That is what makes it dangerous rather than merely wrong: the broken instrument produced the
+  byte-identical headline to the sound one**, and to the six preceding runs that had reported that same
+  number, so nothing in the report looked wrong and no read-back could have caught it.
+  🔧 **The three controls that DID run — POSITIVE paths, NEGATIVE paths, migration clause — all passed,
+  because every one of them tests the CLASSIFIER and none of them tests the PARSER that feeds it.
+  Control the EXTRACTION step separately from the DECISION step:** assert that a file you know carries
+  a scope parses to a non-zero count, and that a key you know is absent parses to zero. A classifier
+  controlled only on synthetic paths it never actually receives is a check nobody has seen fail.
+  ⚠️ **Falsifying probe: run both regexes over any prompt in `docs/pr-prompts/` with a list-form
+  `scope:`.** If the `\s*\n` form ever matches, this bullet is wrong and must be re-measured.
+  Found and landed by Station 00 2026-09-10T08:5xZ.
+- ⚠️ **`*>` IS THE SAME UTF-16LE TRAP AS `>`, AND THE PREFLIGHT’S OWN CURE WALKS STRAIGHT INTO IT.**
+  The bullet below names `git show <ref>:<path> > file`; the all-streams form `*>` behaves identically.
+  [MEASURED] the same run: `status-sweep.ps1 *> sweep.txt` wrote a **129,564**-byte file opening
+  `FF FE`, which `readFileSync(p, "utf8")` then split into 380 lines whose `====` section headers
+  matched **no** regex — a structured report read as structureless, at exit 0. Re-decoded as
+  `utf16le` all ten sections were there. This is worth naming because PREFLIGHT step 4 tells every
+  station to **capture the sweep to a FILE** (the script returns early and hides its own section 7
+  verdict otherwise), so the prescribed cure for one trap is a direct instance of another.
+  🔧 **Capture with `*>` if you like, but decode `utf16le` — or write the capture from node.**
 - 🔴 **AND THE CURE ABOVE HAS ITS OWN READ-BACK TRAP: NEVER COMPARE FILE *LENGTHS* ACROSS A
   `git show` / WORKING-COPY BOUNDARY.** MEASURED 2026-09-05T10:1xZ by Station 04, comparing the
   watcher clone's `scripts/pr-watcher/index.mjs` against `origin/main`'s. **Two independent errors

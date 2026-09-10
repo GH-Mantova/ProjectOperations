@@ -1375,6 +1375,41 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   UNMEASURED until all three homes have been checked** - and never as evidence the review lane is dead.
 
 
+- 🔴 **`status-sweep.ps1`'s CLONE-DIRTY FLAG COUNTS UNTRACKED FILES AND `start-watcher.ps1` DOES NOT, SO THE
+  SWEEP WARNS *"the watcher may refuse to start"* ON A CONDITION THE WATCHER EXPLICITLY IGNORES — AND IT FIRES
+  ON AN ARTEFACT THE REVIEW LANE CREATES BY DESIGN.** [MEASURED] 2026-09-10T20:2xZ by Station 00 at `2ea16157`,
+  both forms run against `C:\po-watcher\ProjectOperations` in the same minute:
+
+  | form | anchor | result |
+  |---|---|---|
+  | `git status --short` | `status-sweep.ps1`, `$cdirty = @(git status --short` | **2** |
+  | `git status --porcelain --untracked-files=no` | `start-watcher.ps1`, `# --- Pre-flight: branch + clean tree ---` | **0** |
+
+  The two files counted are `?? docs/pr-reviews/pr-1850-review.md` and `?? docs/pr-reviews/pr-1852-review.md` —
+  review verdicts the `rev-<N>` job writes into the clone **by design** (the three-homes bullet above), so this
+  false warning recurs on every reviewed PR whose verdict has not yet been mirrored. `start-watcher.ps1`'s own
+  comment says so in as many words: *"Only TRACKED modified/staged files count as 'dirty' -- untracked files"*.
+
+  🔴 **The second conjunct is false too: a TRACKED-dirty clone does not refuse either — it AUTO-STASHES.**
+  Anchor `# --- Self-heal: AUTO-STASH a dirty tree instead of exiting 1 ---`, whose own comment records that a
+  dirty tracked tree *"used to be a hard PRE-FLIGHT FAIL (exit 1)"*. Refusal now survives only if the stash
+  itself fails. The clone's **71** stashes are that path's receipts. ⚠️ **That is a count, i.e. state —
+  re-measure it, never quote it.**
+
+  ⚠️ **Nothing is empty and nothing warns, so 9.6 does not fire** — the cmdlet answered exactly the question
+  it was asked, about a different quantity from the one the flag's sentence names. **The measured cost is a
+  MIS-ROUTED DISPATCH, repeatedly.** The reading is a `status-sweep.ps1` defect, and archived runs have instead
+  sent it to Station 03 as clone hygiene, or noted in prose that the watcher "has not" refused without reaching
+  the cause. [MEASURED] over `docs/pr-prompts/archive/*.md`: `refuse to start` → **32** hits, **13** of them
+  verbatim quotations of the sweep's own output line; **0** hits at depth 1 and **0** in `needs-marco/`
+  (POSITIVE control `CP-24` → 152 / 17 / 7; NEGATIVE control, a freshly minted needle → 0).
+
+  🔧 **Read the clone's health from `git status --porcelain --untracked-files=no`, and treat the sweep's
+  `dirty=` number as untracked-inclusive until it is scoped.** The corruption test is unchanged and is the one
+  that decides: `MERGE_HEAD`, rebase state, unmerged paths. ⚠️ **Falsifying probe: run both forms against the
+  clone in the same minute while an untracked file is present.** If they ever agree, this bullet is wrong and
+  must be re-measured. Found by Station 00 2026-09-10T20:2xZ.
+
 ## 9.6 The rule behind all of them
 
 🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is

@@ -117,8 +117,9 @@ watcher, no clone, no worktree but my own, and no production data.**
    `state=MERGED`, `mergedAt 2026-09-10T02:22:50Z`, merge commit `bc8289db`.
 4. **Armed native squash auto-merge on `#1834`** and ran `gh pr update-branch 1834` (`✓ PR branch
    updated`, new head `a3cfff72`) because it had gone BEHIND. `autoMergeRequest` read back present,
-   `mergeMethod SQUASH`, `enabledAt 2026-09-10T02:21:50Z`. It was still BLOCKED on re-running checks
-   when this run ended — **auto-merge enabled is not a merge, and it is not reported as one.**
+   `mergeMethod SQUASH`, `enabledAt 2026-09-10T02:21:50Z`. **It then landed on its own: read back
+   `state=MERGED`, `mergedAt 2026-09-10T02:25:40Z`.** Enabled is not merged, so it is reported here
+   only because the read-back was taken.
 5. **Published a `watcher: do-not-arm` marker on two `-HOLD.md` prompts** in this PR — F1 and F2.
    Both edits are strict supersets (`29 0` and `32 0`), both byte deltas asserted against the
    inserted block, and both prompts re-linted `REJECT [HUMAN_GATE_PRESENT]`, exit 1.
@@ -194,7 +195,10 @@ its own predecessor's F1 falsifying probe: `pr-ea-s2-dashboard-preset-HOLD.md` o
 now blob `c9b5113b`, 356 lines, `do-not-arm` marker hits **2** — it was `0aa3413b`, 304 lines,
 **0** hits at run start. The safety hold that existed on one disk is now on `main`.
 
-`#1834` is armed for native auto-merge and had its branch updated; it will land itself.
+`#1834` landed itself on native auto-merge at `02:25:40Z`, read back `MERGED`. **This run's own
+board PR `#1836` is armed the same way** — branch updated, `autoMergeRequest` present, BLOCKED on
+re-running checks at the moment this run ended. **That one is NOT reported as merged**, because no
+read-back was possible before the run closed.
 
 **`#1832` and `#1823` are green, CLEAN and BEHIND, and both are Marco's.** Both carry a live
 watcher `marco:true` verdict, and `labels=[]` on both does **not** clear it — removing

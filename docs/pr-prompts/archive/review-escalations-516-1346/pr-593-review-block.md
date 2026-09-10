@@ -1,0 +1,3 @@
+PR #593: feat(admin): third-party integration keys in System Settings (encrypted)
+
+BLOCK REASON: Data model drift — the CI job "Data model — drift check (schema.prisma <-> generated map)" failed because the schema.prisma was modified (new IntegrationCredential model) but the generated documentation files in docs/data-model/ were not regenerated and committed. This is a required gate per house rules. Scope and implementation quality are sound; the agent must regenerate the data-model files by running `scripts/data-model/build-relationship-map.mjs` and commit before re-firing or this PR re-runs.

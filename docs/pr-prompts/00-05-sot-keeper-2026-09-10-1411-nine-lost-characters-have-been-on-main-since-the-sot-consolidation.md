@@ -284,6 +284,30 @@ instruction change into an `sot/` content repair makes the review harder for no 
 **DISPOSITION: DISPATCHED** — to Station 00, as a one-line addition to
 `docs/pipeline/stations/05-sot-keeper.md` in its own docs PR.
 
+### F6 — this station is told to write its report to two different homes, and only one of them is collected
+
+The station brief's OUTPUT section says *"write a timestamped report to
+`docs/data-model/sweeps/<YYYY-MM-DD>.md`"*. The canonical report contract, higher in the same
+file, says **every run writes ONE breadcrumb** at `docs/pr-prompts/00-<NN>-…` and that Station 00
+collects breadcrumbs — *"that is the only channel that closes."*
+
+`docs/data-model/sweeps/` is tracked and not gitignored (`git check-ignore` exits 1), and holds 11
+files — but the newest is **2026-09-05**, five days ago, while 05 has reported on most days since.
+So recent runs have already stopped writing it, and none of them recorded that they had, or why.
+That silence is the failure mode this pipeline keeps paying for: a lapsed obligation looks
+identical to a discharged one.
+
+This run wrote the breadcrumb only. The contract wins by its own terms — the station file states
+that where the brief disagrees with the contract, the contract governs — and splitting one run's
+findings across two homes is precisely what the contract exists to stop. But the brief still says
+otherwise in plain language, so the next run will face the same question with no record of this
+one's answer.
+
+**DISPOSITION: DISPATCHED** — to Station 00, together with F5, as a small edit to
+`docs/pipeline/stations/05-sot-keeper.md`: either retire the `sweeps/` instruction from the brief,
+or state explicitly that it is superseded by the breadcrumb contract. Either is a one-line change;
+leaving both instructions live is the only option that keeps costing runs.
+
 ## WHAT I DID NOT DO
 
 - **Did not re-merge sot/04's generated section, and did not run the generator in write mode.** The

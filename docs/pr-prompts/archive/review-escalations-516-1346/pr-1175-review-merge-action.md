@@ -1,0 +1,1 @@
+PR #1175 is substantively complete and correct. Agent had standing authority to open the PR (prompt line 121) but did not apply the `do-not-merge` label required by `escalates: true`. Before merging, apply the label so reviewers (including automated systems) respect the escalation. The plan itself is sound and ready.

@@ -1,0 +1,1 @@
+PR #595 blocked: CP-11 gate failure (migration undeclared in PR body) + data model drift check failure. The commit message has "GATE-ALLOW: migrations" but pr-gates.mjs only parses the PR body, not commit messages. Add the marker to the PR body column 0, then investigate why the drift check is failing (schema.prisma vs generated map mismatch).

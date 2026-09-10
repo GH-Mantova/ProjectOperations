@@ -1,0 +1,3 @@
+PR #1077 failed scope: missing three required data-model artifacts.
+
+The prompt (pr-mig-s1-drop-site-name-unique-ready.md) section 3 explicitly requires "Commit the three regenerated artifacts: relationship-map.json, relationship-map.md, metadata-catalog.json". The PR shows only 4 files changed (schema.prisma, migration.sql, seed.ts, MIG-1-DONE.md). None of the three data-model artifacts are in the diff, despite the PR body claiming they were regenerated. The prompt does not allow omitting artifacts even if "unchanged" — they must be committed to maintain the audit trail. Re-fire the prompt to complete the scope.

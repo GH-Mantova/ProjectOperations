@@ -1,0 +1,1 @@
+PR #1242 is scope-clean and self-verification passes, but the tendering-e2e job (run 32245023135) is stuck in_progress after 10+ hours. All other required checks pass (build, lint, gates, pipeline). Recommend canceling the stalled run and retriggering e2e, or confirming completion via GitHub Actions UI before merging.

@@ -380,6 +380,52 @@ here now because they are true for **every** station.
   against a file you know is there"* all stand, and are what a reader needs either way. **The
   falsifying probe is the fixture table above** — rebuild it and re-run both forms. Found by
   Station 04 2026-09-07T06:2xZ (F1), landed by Station 00 at 07:3xZ.
+  🔴🔴 **CORRECTED 2026-09-10 — "PUT THE WILDCARD IN THE PATH" IS SAFE ONLY WITHOUT `-Recurse`.
+  COMBINED WITH `-Recurse` AND A TYPE FILTER IT RETURNS ZERO WHENEVER DEPTH 1 HOLDS NO MATCHING
+  FILE — and the fixture above cannot fail, because it holds one.** [MEASURED] 2026-09-10T02:2xZ by
+  Station 04 at `ed7dc38f`, PS `5.1.26100.9444`, on a real container directory holding 7
+  subdirectories and **0 files** at depth 1, with 17 files and 11 `SKILL.md` in total:
+
+  | form | result | truth |
+  |---|---|---|
+  | `Get-ChildItem $sd -Recurse -File` | **17** | 17 |
+  | `Get-ChildItem "$sd\*" -Recurse -File` | **0** | 17 |
+  | `Get-ChildItem $sd -Recurse -Filter 'SKILL.md' -File` | **11** | 11 |
+  | `Get-ChildItem "$sd\*" -Recurse -Filter 'SKILL.md' -File` | **0** | 11 |
+  | `Get-ChildItem "$sd\*" -Recurse` (no `-File`) | **22** | recursion itself works |
+  | `Get-ChildItem "$sd\*" -Directory` (no recurse) | **7** | 7 |
+
+  **Mechanism.** With a trailing `\*` the type filter is applied to the *wildcard-resolved depth-1
+  set*, not to the recursed set, so a container directory with no matching file at depth 1 is
+  emptied before recursion contributes anything. No error, no warning, exit 0 — nothing is empty in
+  a way §9.6 can see, because the cmdlet did exactly what it was asked. The available conclusion in
+  the run that met it was *"the bootstrap corpus shrank from 11 to 6"*, which would have retired a
+  live escalation's own corpus; it was caught only because the positive control also read 0 while
+  node had just listed the files.
+
+  🔧 **State the rule positively: with `-Recurse`, pass the BARE directory and use `-Filter`. Never
+  combine a trailing `\*` with `-Recurse` and a type filter.** The wildcard-in-the-path cure is
+  correct and stays — scoped to the depth-1, no-`-Recurse` form it was measured for, which is also
+  the form §9.5's log-selection cure uses and is therefore unaffected.
+
+  ⚠️ **The 2026-09-07 fixture is structurally blind to this and must not be used as the falsifying
+  probe on its own** — it holds a matching file at depth 1, so every form agrees on it, and a reader
+  who rebuilds it is reassured. **The probe is a PAIR of fixtures differing only in what sits at
+  depth 1:**
+
+  | fixture (truth: 2 `.log`) | bare `-Recurse -Filter -File` | star `-Recurse -Filter -File` | bare `-Recurse -File` | star `-Recurse -File` |
+  |---|---|---|---|---|
+  | A — a `.log` present at depth 1 (the 09-07 fixture) | 2 | **2** | 3 | **3** |
+  | B — `.log` files only deeper, none at depth 1 | 2 | **0** | 3 | **0** |
+
+  Rebuild both and run all four forms; **if fixture B's star columns ever return 2 and 3, this
+  correction is wrong and must be re-measured.** ⚠️ **Blast radius is agents, not scripts:**
+  `Select-String -Pattern '\\\*"?\s+-Recurse'` over every `.ps1` under this repo's `scripts`
+  directory returned **0** (POSITIVE control `Get-ChildItem` → 24; NEGATIVE control, a freshly
+  minted needle → 0), so nothing shipped uses the failing form. What is exposed is every run that
+  follows the prescribed cure by hand, over exactly the container-shaped directories stations probe
+  most — and one of them was the run that found this. Found by Station 04 2026-09-10T02:2xZ (F1),
+  landed by Station 00 at 03:3xZ.
 
 - 🔴 **A SINGLE-QUOTED PowerShell needle containing `\\` CAN NEVER MATCH A WINDOWS PATH, AND ITS
   ZERO WEARS AN ABSENCE'S CLOTHES.** PowerShell single quotes do **not** process escapes, so

@@ -1,0 +1,1 @@
+PR #1152 violates scope: prompt line 66 explicitly requires route `/settings/crm/drop-reasons`, but the PR implements `/settings/administration/crm-drop-reasons`. The prompt spec and PR implementation contradict on the route path structure. Rebase also needed (SettingsShell.tsx conflict), but the core issue is the route path deviation from spec.

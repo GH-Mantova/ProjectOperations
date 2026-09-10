@@ -1,0 +1,1 @@
+PR #998 contains significant scope creep: settings navigation refactor (Admin pages consolidation, routes deletion, fixture removals) mixed into F-5 WHS field wave. The core F-5 work (pickers, Signature v2, sealing, photo upgrades) is sound but CI fails on missing GATE-ALLOW: migrations in the PR body. Recommend re-fire or manual cleanup before merge.

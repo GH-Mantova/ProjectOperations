@@ -1,0 +1,1 @@
+PR #1266 is ready to merge: scope complete, self-verification green, all mechanical work correct (45→0 raw errors eliminated). However, CI is blocked on tendering-e2e webkit test timeout at page load (unrelated to this PR's admin/personas/portal error handling changes). Investigate tendering-e2e webkit flake separately; the PR itself is safe to merge once smoke test clears.

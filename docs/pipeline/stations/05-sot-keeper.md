@@ -242,7 +242,7 @@ an entry. You are the only station that may edit `sot/`, so you are the only one
 down.
 
 🔴 **The count lives in that file (`entries.length`) — never in this sentence.** This paragraph said
-**26** until 2026-08-31, when the real figure was **14**; `CLAUDE.md:19` carried the same stale number
+**26** until 2026-08-31, when the real figure was **14**; `CLAUDE.md` (anchor: `SOT reference baseline:`) carried the same stale number
 and was fixed for the same reason in #1408. State does not belong in an instruction document.
 
 **Workflow — one entry at a time:**
@@ -295,7 +295,7 @@ remain` on every run. N must be lower than it was before your PR, never higher.
 - `/sot/` edits land **only** via a dedicated doc-reconcile PR, for deterministic drift only. You are
   otherwise read-only. **You never arm and you never merge.**
 - 🔴 **CP-24 decides how you may ship.** A PR mixing `sot/` with `scripts/` or `apps/` is a **hard
-  block** (`pr-gates.mjs:327`). `sot/` plus `docs/` is allowed. **Trust the gate, not any prose
+  block** (anchor: `const sotRe = /^sot\//` in `scripts/pr-gates/pr-gates.mjs`). `sot/` plus `docs/` is allowed. **Trust the gate, not any prose
   description of it** — a station brief once described CP-24 wrongly. Split before you open the PR.
 - Anything requiring judgement is **NEVER auto-edited** — it comes back as a finding for a human.
 - **Never re-stage a stale prompt without checking `main` first.** Five of seven re-queued prompts
@@ -339,8 +339,9 @@ Use sandboxed bash/node; the repo is mounted.
    🔴 **CORRECTED 2026-08-25 — this is NOT a drift gate and never was.** `--check` does **not**
    compare against any committed artifact: `relationship-map.md` and `.json` are **gitignored**
    (each on its own literal line in `.gitignore`, under the `# Data-model artefacts` comment) because committing them churned every open PR, and the source says so at
-   `build-relationship-map.mjs:18-19`. All `--check` proves is that `schema.prisma` parses with no
-   unresolvable model/enum reference; it `return`s at line 561 **before** writing anything.
+   `build-relationship-map.mjs` (anchor: `The --check mode does NOT compare`). All `--check` proves
+   is that `schema.prisma` parses with no unresolvable model/enum reference; it `return`s in the
+   `--check` branch **before** writing anything.
    **MEASURED negative control:** a garbage line was prepended to the committed-looking
    `relationship-map.md` and `--check` still printed `OK` and exited **0**. The matching CI job is
    named `Data model — generator sanity (schema.prisma parses cleanly)`, not a drift job.

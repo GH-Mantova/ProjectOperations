@@ -25,6 +25,38 @@ cluster: estimating-analytics-v2
 cluster_order: 1
 ---
 
+
+<!-- watcher: do-not-arm -->
+
+**DO NOT ARM WHILE PR #1823 IS OPEN. The redo below is intended; a SECOND concurrent PR is not.**
+
+[MEASURED] 2026-09-10T02:3xZ by Station 00 (scheduled) at `origin/main` `bc8289db`.
+`node scripts/pipeline/lint-prompt.mjs` on the `origin/main` blob `827244e5` returned **ADMIT,
+exit 0** — because the premise (`! grep -q "reporting.team"
+apps/api/src/common/permissions/permission-registry.ts`) is still TRUE on `main`, and it stays
+true for exactly as long as **#1823** sits unmerged. DOCTRINE §10.6: *the premise dies on MERGE,
+not on OPEN.* #1823 is OPEN, CLEAN, green, `labels=[]`, and carries a live watcher verdict
+`{"ok":false,"marco":true,"reason":"escalates:true - held for Marco, labelled do-not-merge"}`
+— so RULE 2 binds it and removing its label did not clear that.
+
+**Why prose was not enough.** This file already said CONSUMED and named #1823 in its body. A prose
+gate matches neither arming regex and is invisible to `lint-prompt.mjs` and to any RULE 4 grep
+(DOCTRINE §9.5), so the linter went on answering ADMIT to every actor that reads `origin/main`.
+This marker is the machine-readable form of what the paragraph below already meant.
+
+**Clearing it — and the redo is the whole point, so this is not a veto.** When **#1823 is closed
+unmerged** (the disposition its REJECT verdict implies), delete the `watcher: do-not-arm` line
+above and arm this prompt: the amended §4 below is the corrected work and its premise is still
+live. If **#1823 merges instead**, the premise dies on its own and this prompt lints STALE
+(exit 3) — nothing needs doing. Nothing here deletes any work.
+
+⚠️ **#1823's own fate is already an open escalation** —
+`docs/pr-prompts/needs-marco/verdict-is-not-anchored-to-a-head-sha-2026-09-09.md` records its
+REJECT verdict and the expired evidence table behind it. **Do not re-raise it; this marker only
+stops the duplicate-PR hazard that escalation does not cover.**
+
+**Falsifying probe:** `node scripts/pipeline/lint-prompt.mjs` on this file must return
+`REJECT [HUMAN_GATE_PRESENT]`, exit 1. If it returns ADMIT, the marker did not take.
 # EA-GATE — key the report self-filter to a permission, not to `isSuperUser`
 
 > **CONSUMED — and AMENDED 2026-09-09 after the PR it produced was rejected.**

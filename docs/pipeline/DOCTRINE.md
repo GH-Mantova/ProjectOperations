@@ -464,7 +464,26 @@ here now because they are true for **every** station.
   its own: reading the log and grepping the log are different acts, and only one of them is protected
   by this bullet.
 - ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
-- 🔴 **NEVER BIND A POWERSHELL AUTOMATIC VARIABLE AS A LOOP OR ASSIGNMENT TARGET; PREFER A NAME NO AUTOMATIC VARIABLE CAN SHADOW.** `AUTOMATIC_VARIABLE_ASSIGNMENT_V1` [MEASURED] 2026-09-07T22:2xZ by Station 04 at `1ddf3fb4`: a `foreach ($home in @(<docs/pr-reviews/…> × 3)) { … }` loop over three review-file homes produced zero rows and exited 0. Cause: `$home` is a read-only PowerShell automatic variable; binding it throws `SessionStateUnauthorizedAccessException: Cannot overwrite variable HOME because it is read-only or constant` to the error stream once, and the loop body never runs. The three homes held 106, 61, and 623 review files at the same minute — §9.6 does not fire because the exit code is 0. Guard 5 of §7 is scoped to **single-letter** names (`$c` vs. `$C`); a reader following it to the letter still writes `$home`, `$host`, `$input`, `$pwd`, `$args`, `$matches`. 🔧 Pick a non-automatic name (`$reviewHome`); control any `foreach` that produces no rows against an input you know is non-empty — a loop that never ran and a loop over an empty collection are byte-identical in output. **Falsifying probe:** `powershell -NoProfile -Command "foreach ($home in @(1,2,3)) { $home }"` — if it prints `1 2 3`, this bullet is wrong and must be re-measured.
+- 🔴 **NEVER BIND A POWERSHELL AUTOMATIC VARIABLE AS A LOOP OR ASSIGNMENT TARGET; PREFER A NAME NO AUTOMATIC VARIABLE CAN SHADOW.** `AUTOMATIC_VARIABLE_ASSIGNMENT_V1` [MEASURED] 2026-09-07T22:2xZ by Station 04 at `1ddf3fb4`: a `foreach ($home in @(<docs/pr-reviews/…> × 3)) { … }` loop over three review-file homes produced zero rows and exited 0. Cause: `$home` is a read-only PowerShell automatic variable; binding it throws `SessionStateUnauthorizedAccessException: Cannot overwrite variable HOME because it is read-only or constant` to the error stream once, and the loop body never runs. The three homes held 106, 61, and 623 review files at the same minute — §9.6 does not fire because the exit code is 0. Guard 5 of §7 is scoped to **single-letter** names (`$c` vs. `$C`); a reader following it to the letter still writes `$home`, `$host`, `$input`, `$pwd`, `$args`, `$matches`. 🔧 Pick a non-automatic name (`$reviewHome`); control any `foreach` that produces no rows against an input you know is non-empty — a loop that never ran and a loop over an empty collection are byte-identical in output. **Falsifying probe — the argument must reach the child with `$` intact, so SINGLE-quote it, or put it
+in a `.ps1` and run it with `-File`:**
+`powershell -NoProfile -Command 'foreach ($home in @(1,2,3)) { $home }'`. Expect
+`Cannot overwrite variable HOME because it is read-only or constant` and ZERO rows, against a
+POSITIVE control with a non-automatic name (`$loopVar`) that emits three.
+🔴 **A ParserError naming a filesystem path instead of `$home` means your argument was expanded
+before the child ever saw it — that is the FIRST bullet of this subsection firing, not this one, and
+you have measured nothing.** If the single-quoted form ever prints `1 2 3`, this bullet is wrong and
+must be re-measured.
+⚠️ **The probe as written until 2026-09-10 was routed through `-Command` with DOUBLE quotes and was
+therefore unfalsifiable in the direction it exists to protect.** [MEASURED] 2026-09-10T10:1xZ by
+Station 04 at `a2fa8e4e` across four transports: `start_process -Command "…"` and an interactive
+shell with a double-quoted argument both delivered `foreach (C:\Users\Marco in @(1,2,3))` and died
+with `Missing variable name after foreach` — a ParserError that is NOT this bullet’s symptom, read by
+two of four transports as *"not `1 2 3`, so still trapped"* having measured nothing. Only the
+single-quoted form and the `-File` form reach the mechanism. 🔧 **The two cures in this subsection
+point in OPPOSITE directions and neither used to say which bullet it belonged to:** the expansion
+bullet above correctly demands its own control run through `-Command` and never `-File`; this one
+needs a transport that PRESERVES `$`. Applying the first bullet’s instruction to this one arms the
+failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:4xZ.
 
 ## 9.2 Git
 
@@ -708,6 +727,23 @@ here now because they are true for **every** station.
   `Where-Object` collapse above, and it is worse, because it silently *refutes* a true finding:
   it turned `gh run list --commit <short>` → `[]` and `--commit <full>` → 4 runs into the
   identical reading `1 / 1`, i.e. "§9.4’s short-SHA trap no longer reproduces."
+  🔴 **AND ASSIGN-THEN-COUNT DOES NOT RESCUE AN EMPTY *STRING*, WHICH IS WHAT EVERY FAILED `gh`
+  CALL RETURNS.** `ConvertFrom-Json ""` returns **`$null`**, and **`@($null).Count` is `1`** — so the
+  prescribed cure still answers **one row, with every field empty**, which reads worse than an empty
+  list because it looks like a real answer. [MEASURED] 2026-09-10T10:1xZ by Station 04 at `a2fa8e4e`
+  on a `gh` call made to fail by a cause unrelated to CWD (a `--json` field list written with spaces
+  after the commas, which PowerShell splits into separate arguments): the failing form with `2>$null`
+  exited **1**, wrote **0** chars to stdout, and assign-then-count returned **1** with a first field of
+  `[]`; the same call with `2>&1` showed `gh : unknown command "createdAt" for "gh run list"`; the
+  no-spaces POSITIVE control exited 0 and counted **4**. Controls in the same session:
+  assign-then-count on `'[]'` → **0** (the documented cure, working), and a null-guarded
+  `@($r | Where-Object { $_ }).Count` → **0**.
+  🔧 **So the CWD bullet’s cure — test `$LASTEXITCODE` before parsing — is not a CWD rule: it is the
+  rule for EVERY cause of a failed `gh` call**, because they all produce empty stdout. Test the exit
+  code, or count with a null guard; assign-then-count alone leaves you a phantom row.
+  ⚠️ **Falsifying probe:** `$r = ConvertFrom-Json ""; @($r).Count`. If it ever answers `0`, this
+  clause is wrong and must be re-measured. Found by Station 04 2026-09-10T10:1xZ (F6), landed by
+  Station 00 at 11:4xZ.
 - ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
   **per-commit**.
 - 🔴 **...and `gh run list --commit <SHA>` answers `[]` for a SHORT sha, exit 0.** Measured

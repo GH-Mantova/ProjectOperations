@@ -1936,6 +1936,59 @@ lands with nobody but its author having read it.
 — binding law, a canonical block, a correction to DOCTRINE itself — and say in the PR body that you
 did, and why.
 
+🔴🔴 **AND THE VERDICT THE LANE WAITS FOR IS CONSUMED BY EXACTLY ONE CODE PATH, WHICH RUNS ONLY FOR
+WATCHER-OPENED PRs — SO EVERY `rev-<N>` REVIEW OF A SECOND-LANE PR IS UNREAD BY CONSTRUCTION, AND ITS
+ABSENCE LOOKS IDENTICAL TO A HOLE IN THE MERGE GATE.** `REV_LANE_UNCONSUMED_ON_SECOND_LANE_V1` The
+paragraphs above treat a missing verdict as a starvation defect that permanently human-gates a
+docs-only PR, which is right for a PR the watcher opened. They do not say what a missing verdict
+means for a PR it did not — and the answer is *nothing at all*, because the only reader was never
+going to run.
+
+[MEASURED] 2026-09-11T00:1xZ by Station 00 (scheduled) at `e6e11370`, from the source and from the
+two PRs Station 03 dispatched as a suspected silent hole in the gate (its 2026-09-10T23:10Z
+breadcrumb, F4):
+
+| probe | result |
+|---|---|
+| `verdictApproves` call sites in `scripts/pr-watcher/index.mjs` | **1** — inside `waitForPolicyMerge` (anchor: `if (!mergeEnabled && allGreen && (await verdictApproves(`) |
+| `#1837` — review job exited 0, wrote no verdict in any of the three homes | `processed/pr-*.log` hits for `PR #1837` → **0** ⇒ **not watcher-opened** |
+| `#1746` — same signature | `processed/pr-*.log` hits for `PR #1746` → **0** ⇒ **not watcher-opened** |
+| POSITIVE controls, the four watcher-opened PRs open at that moment | `#1850` · `#1845` · `#1832` · `#1823` → **2** hits each, each carrying a real `merge result for PR #N` verdict |
+| NEGATIVE control, `PR #999998` over the same corpus | **0** |
+
+So `waitForPolicyMerge` never ran for either PR, `verdictApproves` was never called, and no gate was
+bypassed. **The gate is intact.** What is true instead is 03's own second disjunct: the `rev-` lane
+reviewed two PRs whose verdicts no code path would ever read, and a third — `#1866`, reviewed
+`VERDICT: MERGE` into the clone at `00:1xZ` on the same day — was likewise second-lane.
+
+🔴 **Why this earns a bullet rather than a note: the two readings prescribe opposite actions.** A
+missing verdict on a **watcher-opened** PR is a live RULE-2-affecting defect and the PR is stuck. A
+missing verdict on a **second-lane** PR is a review nobody commissioned and the PR is unaffected. The
+observable — `rev-<N>` in `failed/`, exit 0, no file in any of the three homes — is byte-identical,
+and DOCTRINE section 9.5 already records that a `rev-<n>-ready.md.log` exists for BOTH lanes and
+therefore carries **zero** lane information. A run meeting the signature with only the paragraphs
+above to hand reaches for the merge gate, which is the expensive wrong place.
+
+🔧 **Establish the LANE before diagnosing a missing verdict, with the section 10.1 step-1 probe — the
+PROMPT logs alone, `processed/pr-*.log`, excluding `rev-*`.** Hits ⇒ watcher-opened ⇒ a missing
+verdict is the starvation defect above. Zero hits, with the probe's own positive and negative
+controls passing ⇒ second lane ⇒ the verdict was never going to be read, and the finding is the
+wasted review, not the gate.
+
+⚠️ **The wasted review is the residual, and it is not nothing.** Every second-lane PR still enqueues
+a `rev-<N>` job that occupies the single lane for the length of a full review — the same lane whose
+occupancy `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md` already names as the
+starvation cause. **Whether the review lane should skip PRs the watcher did not open is Marco's
+call**, because a human may well want those reviews even though no machine reads them; it is filed as
+`needs-marco/rev-lane-reviews-second-lane-prs-that-nothing-reads-2026-09-11.md` rather than decided
+here.
+
+⚠️ **Falsifying probe: the table above.** Re-run the call-site count and the per-PR prompt-log hits on
+any PR whose `rev-` job left no verdict. If `verdictApproves` ever acquires a second call site outside
+`waitForPolicyMerge`, or a zero-hit PR turns out to have been watcher-opened, this bullet is wrong and
+must be re-measured. Found by Station 03 2026-09-10T23:1xZ (F4), measured and landed by Station 00 at
+2026-09-11T00:2xZ.
+
 ## 10.4 Design decisions are settled BEFORE the prompt, not inside the slice
 
 Interface questions have been surfacing as mid-slice STOP-AND-REPORTs — the owner-control permission

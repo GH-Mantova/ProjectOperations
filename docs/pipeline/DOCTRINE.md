@@ -338,6 +338,22 @@ here now because they are true for **every** station.
   `00-04-scanner-2026-09-04-1409-doctrine-s9-anchors-have-drifted-ninety-lines-under-the-arming-markers.md`,
   finding F3, dispatched to 00 as a possible retirement). **It is a measurement of the cure working,
   not a non-reproduction: this bullet stands UNQUALIFIED.**
+
+  **NON-REPRODUCTION RECORDED 2026-09-11, AND THE CURE STANDS UNCONDITIONALLY.**
+  `COMMAND_LAYER_EXPANSION_NOT_REPRODUCED_V1` [MEASURED] 2026-09-11T02:2xZ by Station 04 at
+  `ec7dd590`, through `start_process` shell `powershell.exe` - the transport this bullet's own
+  control mandates, never `-File`: `$CTRL=42; "CTRL-literal-is:$CTRL"` printed
+  **`CTRL-literal-is:42`**, so the `42` survived and nothing substituted an undefined name; and
+  `foreach ($home in @(1,2,3))` raised **`Cannot overwrite variable HOME because it is read-only or
+  constant`** with zero rows - NOT the ParserError naming a filesystem path that this subsection
+  names as the discriminator for pre-expansion. The CAUSE of the difference is **[CANNOT MEASURE]**:
+  a Desktop Commander change between 2026-09-10T10:1xZ and now is the obvious candidate and is
+  unproved. **This is a non-reproduction, not a retirement.** Writing `$` into a `.ps1` and running
+  it with `-File` costs nothing, so the cure is unconditional whatever the answer - a silent wrong
+  value at exit 0 is the worst shape in this section, and one run's inability to reproduce it is not
+  evidence it cannot happen. Re-run both rows, and stamp the transport AND the Desktop Commander
+  version, before anyone edits this bullet again. Found by Station 04 2026-09-11T02:2xZ (F2), landed
+  by Station 00 at 02:5xZ.
 - ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
   **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
   the first read), but early returns are real — one was observed the same run on a line with no `#`.
@@ -416,16 +432,57 @@ here now because they are true for **every** station.
   | fixture (truth: 2 `.log`) | bare `-Recurse -Filter -File` | star `-Recurse -Filter -File` | bare `-Recurse -File` | star `-Recurse -File` |
   |---|---|---|---|---|
   | A — a `.log` present at depth 1 (the 09-07 fixture) | 2 | **2** | 3 | **3** |
-  | B — `.log` files only deeper, none at depth 1 | 2 | **0** | 3 | **0** |
+  | B — **ZERO FILES OF ANY KIND at depth 1**, `.log` only deeper | 2 | **0** | 3 | **0** |
 
-  Rebuild both and run all four forms; **if fixture B's star columns ever return 2 and 3, this
-  correction is wrong and must be re-measured.** ⚠️ **Blast radius is agents, not scripts:**
+  🔴🔴 **CORRECTED 2026-09-11 — FIXTURE B AS ORIGINALLY SPECIFIED ("`.log` files only deeper, none at
+  depth 1") CANNOT FAIL, AND THE SENTENCE BELOW TELLS ITS READER TO RETIRE A LIVE TRAP WHEN IT
+  PASSES.** `WILDCARD_RECURSE_FIXTURE_NEEDS_ZERO_FILES_V1` The mechanism needs **zero files of ANY
+  kind** at depth 1, not zero *matching* files: one non-matching file is enough for the trailing
+  wildcard to resolve a depth-1 set that the type filter can survive. [MEASURED] 2026-09-11T02:2xZ
+  by Station 04 at `ec7dd590`, PS `5.1.26100.9444`, over three fixtures whose truth is known by
+  construction (each: 2 `.log`, 3 files, one subdirectory level). A fixture with a `.log` at depth 1
+  and a fixture with a `top.txt` at depth 1 **both** return star columns `2` and `3` — the exact
+  values this probe nominates as its own refutation — while only a fixture holding **no files at
+  all** at depth 1 returns `0` and `0`. The 2026-09-10 measurement was taken on a real directory
+  holding *"7 subdirectories and **0 files**"*, which is that third shape: the bullet's own worked
+  table states it and the fixture spec then lost it.
+  ⚠️ **The RULE is untouched and nothing is retired** — with `-Recurse`, pass the BARE directory
+  and use `-Filter`; the wildcard-in-path cure stays scoped to the depth-1 no-`-Recurse` form it was
+  measured for. What changes is only that the probe is now able to fail, which is the whole reason a
+  falsifying probe is written down. Found by Station 04 2026-09-11T02:2xZ (F1), landed by Station 00
+  at 03:3xZ.
+
+  Rebuild both and run all four forms; **if fixture B — built with NO files whatever at depth 1 —
+  ever returns star columns of 2 and 3, this correction is wrong and must be re-measured.** ⚠️ **Blast radius is agents, not scripts:**
   `Select-String -Pattern '\\\*"?\s+-Recurse'` over every `.ps1` under this repo's `scripts`
   directory returned **0** (POSITIVE control `Get-ChildItem` → 24; NEGATIVE control, a freshly
   minted needle → 0), so nothing shipped uses the failing form. What is exposed is every run that
   follows the prescribed cure by hand, over exactly the container-shaped directories stations probe
   most — and one of them was the run that found this. Found by Station 04 2026-09-10T02:2xZ (F1),
   landed by Station 00 at 03:3xZ.
+
+  **CORRECTED 2026-09-11 - FIXTURE B AS SPECIFIED CANNOT FAIL, AND THE BULLET ABOVE TELLS ITS READER
+  TO RETIRE A LIVE TRAP WHEN IT PASSES.** `FIXTURE_B_NEEDS_ZERO_FILES_V1` The mechanism needs **zero
+  files of any kind** at depth 1, not zero *matching* files: one non-matching file is enough for the
+  trailing `\*` to resolve a depth-1 set that the type filter can survive. [MEASURED]
+  2026-09-11T02:2xZ by Station 04 at `ec7dd590`, PS `5.1.26100.9444`, three fixtures whose truth is
+  known by construction (each 2 `.log`, 3 files, one subdirectory level):
+
+  | fixture | files at depth 1 | bare `-Recurse -Filter -File` | star `-Recurse -Filter -File` | bare `-Recurse -File` | star `-Recurse -File` |
+  |---|---|---|---|---|---|
+  | A - a `.log` at depth 1 (the 09-07 fixture) | 1 | 2 | **2** | 3 | **3** |
+  | B - `.log` only deeper, `top.txt` at depth 1 (the PRESCRIBED fixture) | 1 | 2 | **2** | 3 | **3** |
+  | C - `.log` only deeper, ZERO FILES at depth 1 | **0** | 2 | **0** | 3 | **0** |
+
+  Fixture B returns exactly the `2` and `3` the paragraph above nominates as its own refutation, so a
+  run that rebuilds the prescribed pair - which is what an `instrument-honesty` sweep is told to do -
+  reads *"this correction is wrong"* and retires a trap that is live. The 2026-09-10 measurement was
+  taken on a real directory holding *"7 subdirectories and 0 files"* - fixture C's shape, stated in
+  that bullet's own worked table and lost in its fixture spec. **Every RULE above is unchanged; only
+  the fixture spec is corrected: FIXTURE B MUST HOLD NO FILES AT ALL AT DEPTH 1.** **Falsifying
+  probe: rebuild A, B and C and read the `files at depth 1` column; if fixture C's star columns ever
+  return 2 and 3, this correction is wrong.** Found by Station 04 2026-09-11T02:2xZ (F1), landed by
+  Station 00 at 02:5xZ.
 
 - 🔴 **A SINGLE-QUOTED PowerShell needle containing `\\` CAN NEVER MATCH A WINDOWS PATH, AND ITS
   ZERO WEARS AN ABSENCE'S CLOTHES.** PowerShell single quotes do **not** process escapes, so
@@ -744,6 +801,20 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   ⚠️ **Falsifying probe:** `$r = ConvertFrom-Json ""; @($r).Count`. If it ever answers `0`, this
   clause is wrong and must be re-measured. Found by Station 04 2026-09-10T10:1xZ (F6), landed by
   Station 00 at 11:4xZ.
+
+  **GENERALISED 2026-09-11 - THE TRAP IS IN THE COUNTER, NOT IN `gh`.**
+  `NULL_COUNT_IS_IN_THE_COUNTER_V1` This clause reads as a `gh`-parsing rule and it is not:
+  `@(...)` wrapping is how stations tally **every** `Select-String` and `Get-ChildItem` result, and
+  `@($null).Count` is `1` there too. [MEASURED] 2026-09-11T02:2xZ by Station 04 at `ec7dd590`,
+  inside its own probe: four independent truths of **0** - a freshly minted negative needle, a spent
+  needle, `STOP-WATCHER*` at the dev-tree root, and the section 9.2 `ls-tree` glob pathspec - all
+  came back as **1**, a uniform and entirely plausible count. It was caught only because one affected
+  row was a fixture whose truth was known by construction; the available write-up was *"the fresh
+  needle is already contaminated"* and *"the `ls-tree` glob no longer returns zero"*, the second of
+  which would have retired a live section 9.2 trap. **Count with the null guard
+  `@($x | Where-Object { $null -ne $_ }).Count` wherever you count at all** - controls in the same
+  session: `$null` to **0**, `@(1,2,3)` to **3**. Found by Station 04 2026-09-11T02:2xZ (F6),
+  landed by Station 00 at 02:5xZ.
 - ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
   **per-commit**.
 - 🔴 **...and `gh run list --commit <SHA>` answers `[]` for a SHORT sha, exit 0.** Measured
@@ -905,6 +976,20 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   anchors in the same PR that landed this clause, so a re-run returns one citation and not five;
   if a NEW raw line citation ever appears in a station doc, this clause is being ignored rather
   than being wrong. Found by Station 04 2026-09-10T18:1xZ (F2), landed by Station 00 at 19:1xZ.
+
+  **CORRECTED 2026-09-11 - THE CLAUSE LANDED AND ITS OWN PROBE READS AS THOUGH IT DID NOT.**
+  `ANCHOR_PROBE_PER_DOCUMENT_V1` [MEASURED] 2026-09-11T02:3xZ by Station 04 at `ec7dd590`: run
+  literally, the probe returns **7**, not the predicted 1 - `DOCTRINE.md` 7, every other binding
+  document **0**. Four of the seven are THIS document quoting the citations it retired from
+  `03-machine-minder.md` and `05-sot-keeper.md` (`ensure-watcher.ps1:10`, `pr-gates.mjs:327`,
+  `build-relationship-map.mjs:18-19`) plus `CLAUDE.md:19`; the other three are the one legitimate
+  survivor `start-watcher.ps1:160`, used once here and twice in section 10.3, and it resolves
+  correctly. So 03 and 05 are clean and the clause shipped - but a reader who counts 7 against a
+  predicted 1 concludes it never did and re-opens four sweeps' worth of closed work. **State the
+  prediction PER DOCUMENT, which cannot be satisfied by prose:** `03` to 0, `05` to 0,
+  `CLAUDE.md` to 0, `STATION-CAPABILITIES.md` to 0, and `DOCTRINE.md` to its
+  `start-watcher.ps1:160` uses only, every other hit being a quotation of a citation it removed.
+  Found by Station 04 2026-09-11T02:3xZ (F4), landed by Station 00 at 02:5xZ.
 
 - 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
   `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs

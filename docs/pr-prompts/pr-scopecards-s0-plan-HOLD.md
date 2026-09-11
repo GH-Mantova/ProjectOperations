@@ -152,4 +152,8 @@ indistinguishable from failing** - the work is discarded either way.
 
 ## STATUS
 
-**HOLD.** Marco arms this. It is staged as a record of an approved plan, not as a dispatch.
+Armed by Station 00 on Marco's instruction (chat, 2026-09-11). While this file carries the
+`-HOLD.md` suffix it is a record of an approved plan. Once it carries the `-ready.md` suffix,
+that rename IS the dispatch: build the plan file and open the PR. This section is never a
+reason to wait - the 2026-09-11T00:57Z run read the previous wording as a hold, refused to
+act, and the watcher consumed the prompt on a PR number the refusal happened to mention.

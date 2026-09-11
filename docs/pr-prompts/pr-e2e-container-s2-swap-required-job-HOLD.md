@@ -33,6 +33,7 @@ rollback_strategy: >-
   container is wrong, `tendering-e2e` goes red on the first PR after merge.
 ---
 
+<!-- watcher: do-not-arm -->
 # SLICE 2 of 2 — move the required `tendering-e2e` job into the container
 
 **`escalates: true`. This edits the one required check that gates every PR in

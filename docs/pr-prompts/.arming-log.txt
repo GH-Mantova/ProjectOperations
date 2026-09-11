@@ -75,3 +75,5 @@
 2026-09-10T09:12:30Z  ARMED  pr-statussweep-gitproc-scope-to-the-two-repos  escalates=false  actor=station-00.cowork-audit  by=Marco@LAPTOP-E6NHU4E4  pid=5328  caller=powershell.exe:9648
 2026-09-10T11:50:44Z  ARMED  pr-triage-corpus-suffix-union  escalates=false  actor=station-00.cowork-audit  by=Marco@LAPTOP-E6NHU4E4  pid=21888  caller=powershell.exe:28128
 2026-09-11T00:57:09Z  ARMED  pr-scopecards-s0-plan  escalates=false  actor=station-00.cowork-0002  by=Marco@LAPTOP-E6NHU4E4  pid=23452  caller=powershell.exe:30296
+2026-09-11T01:25:22Z  ARMED  pr-scopecards-s0-plan  escalates=false  actor=station-00.cowork-0002  by=Marco@LAPTOP-E6NHU4E4  pid=25780  caller=powershell.exe:5844
+2026-09-11T02:30:04Z  ARMED  pr-company-manage-s1-permission-and-grant  escalates=true  actor=station-00.cowork-0002  by=Marco@LAPTOP-E6NHU4E4  pid=12340  caller=powershell.exe:25092

@@ -300,3 +300,15 @@ second-lane-looking PR arrives unreviewed and the absence looks like an ordinary
   `docs/pr-prompts/.queue-sync-ledger.txt`.
 - **This breadcrumb was written INSIDE this run's PR worktree**, the preferred home in the REPORT
   CONTRACT, so no untracked copy is left in the dev tree to block the next fast-forward.
+
+- **HANDOVER — this PR plants a known fast-forward blocker, deliberately.** Station 04's breadcrumb
+  exists UNTRACKED in the dev tree at `docs/pr-prompts/00-04-scanner-2026-09-11-0211-…md` and this PR
+  adds it as a TRACKED file at that same path. When PR 1873 merges, `git merge --ff-only` in
+  `C:\ProjectOperations2` will refuse with *"untracked working tree files would be overwritten"*
+  while `git diff --numstat` reads EMPTY — the cause documented in this station's own
+  delete-the-disk-copy section. **The cure, in order:** prove the disk copy is byte-identical to the
+  committed blob (`git rev-parse origin/main:<path>` against `git hash-object <path>`, never a
+  piped hash), `Remove-Item` it, fast-forward, restore it from the NEW `HEAD` with
+  `git show HEAD:<path>` piped to a write, and read back all three of `0 0`, `--numstat` EMPTY and
+  `--cached --name-status` EMPTY. `.arming-log.txt` will need the append-only save/restore/reapply
+  cycle again if the other actor has armed anything further by then.

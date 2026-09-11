@@ -79,3 +79,5 @@
 2026-09-11T02:30:04Z  ARMED  pr-company-manage-s1-permission-and-grant  escalates=true  actor=station-00.cowork-0002  by=Marco@LAPTOP-E6NHU4E4  pid=12340  caller=powershell.exe:25092
 2026-09-11T03:02:53Z  ARMED  pr-qpdf-1-estimate-preview-mark  escalates=true  actor=station-00.cowork-0002  by=Marco@LAPTOP-E6NHU4E4  pid=26280  caller=powershell.exe:27964
 2026-09-11T03:30:22Z  ARMED  pr-rateparity-s1-harness  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=23380  caller=powershell.exe:14972
+2026-09-11T04:39:49Z  ARMED  pr-fix-1874-permission-matrix-patch-row-is-superuser-gated  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=13072  caller=powershell.exe:1400
+2026-09-11T04:58:35Z  ARMED  pr-fix-1878-parity-harness-json-casts-through-unknown  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=2800  caller=powershell.exe:28892

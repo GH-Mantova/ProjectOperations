@@ -432,10 +432,28 @@ here now because they are true for **every** station.
   | fixture (truth: 2 `.log`) | bare `-Recurse -Filter -File` | star `-Recurse -Filter -File` | bare `-Recurse -File` | star `-Recurse -File` |
   |---|---|---|---|---|
   | A — a `.log` present at depth 1 (the 09-07 fixture) | 2 | **2** | 3 | **3** |
-  | B — `.log` files only deeper, none at depth 1 | 2 | **0** | 3 | **0** |
+  | B — **ZERO FILES OF ANY KIND at depth 1**, `.log` only deeper | 2 | **0** | 3 | **0** |
 
-  Rebuild both and run all four forms; **if fixture B's star columns ever return 2 and 3, this
-  correction is wrong and must be re-measured.** ⚠️ **Blast radius is agents, not scripts:**
+  🔴🔴 **CORRECTED 2026-09-11 — FIXTURE B AS ORIGINALLY SPECIFIED ("`.log` files only deeper, none at
+  depth 1") CANNOT FAIL, AND THE SENTENCE BELOW TELLS ITS READER TO RETIRE A LIVE TRAP WHEN IT
+  PASSES.** `WILDCARD_RECURSE_FIXTURE_NEEDS_ZERO_FILES_V1` The mechanism needs **zero files of ANY
+  kind** at depth 1, not zero *matching* files: one non-matching file is enough for the trailing
+  wildcard to resolve a depth-1 set that the type filter can survive. [MEASURED] 2026-09-11T02:2xZ
+  by Station 04 at `ec7dd590`, PS `5.1.26100.9444`, over three fixtures whose truth is known by
+  construction (each: 2 `.log`, 3 files, one subdirectory level). A fixture with a `.log` at depth 1
+  and a fixture with a `top.txt` at depth 1 **both** return star columns `2` and `3` — the exact
+  values this probe nominates as its own refutation — while only a fixture holding **no files at
+  all** at depth 1 returns `0` and `0`. The 2026-09-10 measurement was taken on a real directory
+  holding *"7 subdirectories and **0 files**"*, which is that third shape: the bullet's own worked
+  table states it and the fixture spec then lost it.
+  ⚠️ **The RULE is untouched and nothing is retired** — with `-Recurse`, pass the BARE directory
+  and use `-Filter`; the wildcard-in-path cure stays scoped to the depth-1 no-`-Recurse` form it was
+  measured for. What changes is only that the probe is now able to fail, which is the whole reason a
+  falsifying probe is written down. Found by Station 04 2026-09-11T02:2xZ (F1), landed by Station 00
+  at 03:3xZ.
+
+  Rebuild both and run all four forms; **if fixture B — built with NO files whatever at depth 1 —
+  ever returns star columns of 2 and 3, this correction is wrong and must be re-measured.** ⚠️ **Blast radius is agents, not scripts:**
   `Select-String -Pattern '\\\*"?\s+-Recurse'` over every `.ps1` under this repo's `scripts`
   directory returned **0** (POSITIVE control `Get-ChildItem` → 24; NEGATIVE control, a freshly
   minted needle → 0), so nothing shipped uses the failing form. What is exposed is every run that

@@ -99,7 +99,7 @@ if ($ghOk) {
   if (-not $mainSha) {
     Line "LIVE" "main CI: [CANNOT MEASURE] cannot resolve origin/main"
   } else {
-    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name 2>$null | Out-String).Trim()
+    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName 2>$null | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($mainRunsRaw) -or $mainRunsRaw -eq "[]") {
       # ConvertFrom-Json on "[]" puts something on the pipeline that @() counts as ONE. Test the
       # RAW string first, or an empty board reads as a single mystery run.
@@ -112,18 +112,56 @@ if ($ghOk) {
       $mainParsed = $mainRunsRaw | ConvertFrom-Json
       $mainRuns = @()
       foreach ($r in $mainParsed) { $mainRuns += $r }
-      $mfail = 0; $mok = 0; $mpend = 0
+      # NOT EVERY RUN ATTRIBUTED TO A COMMIT IS TRUNK CI. (TRUNK_VERDICT_SCOPED_V1)
+      # MEASURED 2026-09-09 and again 2026-09-10: "gh run list --commit <sha>" also returns
+      # Dependabot security-update runs and cron "Pipeline heartbeat" runs. Neither tests this
+      # commit's code; they are merely ATTRIBUTED to main's HEAD. Counting them printed
+      # "TRUNK IS RED" on a commit whose every real check was green -- on two separate days,
+      # found independently by three stations. Nothing is empty and nothing warns, so DOCTRINE
+      # 9.6 never fires: the query worked and answered a question nobody asked. The cost is
+      # directional -- a station believing the line hunts a regression that does not exist.
+      # This is a DENYLIST, deliberately, and NOT an "event -eq push" allowlist: CodeQL runs as
+      # event "dynamic" (run name "Push on main") and IS a trunk check, so an allowlist would
+      # silently drop it. An unknown future workflow keeps counting toward the verdict rather
+      # than vanishing from it -- wrong-but-loud beats wrong-and-silent.
+      $trunkRuns = @(); $otherRuns = @()
       foreach ($r in $mainRuns) {
+        if ($r.workflowName -eq "Dependabot Updates" -or $r.event -eq "schedule") { $otherRuns += $r }
+        else { $trunkRuns += $r }
+      }
+      $mfail = 0; $mok = 0; $mpend = 0
+      foreach ($r in $trunkRuns) {
         if (-not $r.conclusion) { $mpend++ }
         elseif ($r.conclusion -eq "success") { $mok++ }
         elseif ($r.conclusion -eq "skipped") { }
         else { $mfail++ }
       }
-      $mverdict = if ($mfail -gt 0) { "  <-- TRUNK IS RED" }
+      $mverdict = if ($trunkRuns.Count -eq 0) { "  <-- [CANNOT MEASURE] no trunk-CI run on this commit; NOT a green trunk" }
+                  elseif ($mfail -gt 0) { "  <-- TRUNK IS RED" }
                   elseif ($mok -gt 0 -and $mpend -eq 0) { "  (trunk green)" }
                   elseif ($mok -gt 0) { "  (no failure so far, but " + $mpend + " still running -- not yet green)" }
                   else { "  <-- [CANNOT MEASURE] nothing has concluded on this commit; NOT a green trunk" }
       Line "LIVE" ("main CI on " + $mainSha.Substring(0,8) + ": " + $mok + " success / " + $mfail + " failed / " + $mpend + " running" + $mverdict)
+      # Reported on their OWN line, never folded into the verdict above. The genuine signal inside
+      # these is easy to lose in an aggregate: on 2026-09-09 five failing "Pipeline heartbeat" runs
+      # were carrying a real SILENT-stations alarm, and the aggregate count hid it rather than
+      # surfaced it. Excluding them from the verdict must not mean hiding them.
+      if ($otherRuns.Count -gt 0) {
+        $ofail = 0
+        $onames = @{}
+        foreach ($r in $otherRuns) {
+          $isBad = ($r.conclusion -and $r.conclusion -ne "success" -and $r.conclusion -ne "skipped")
+          if ($isBad) { $ofail++ }
+          $wfKey = [string]$r.workflowName
+          if (-not $onames.ContainsKey($wfKey)) { $onames[$wfKey] = @(0, 0) }
+          $onames[$wfKey][0] = $onames[$wfKey][0] + 1
+          if ($isBad) { $onames[$wfKey][1] = $onames[$wfKey][1] + 1 }
+        }
+        Line "LIVE" ("   NOT trunk CI on this commit, excluded from the verdict above: " + $otherRuns.Count + " run(s), " + $ofail + " failing")
+        foreach ($wfKey in $onames.Keys) {
+          Line "LIVE" ("      " + $wfKey + ": " + $onames[$wfKey][0] + " run(s), " + $onames[$wfKey][1] + " failing")
+        }
+      }
     }
   }
 } else {

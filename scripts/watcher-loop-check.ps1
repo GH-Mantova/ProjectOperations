@@ -59,11 +59,14 @@ else { Write-Output "  none" }
 
 Write-Output ""
 Write-Output "=== ORPHANED WORKTREES (rule-6b apitest scratch left behind by an aborted run)"
-if (Test-Path "C:\po-worktrees") {
-    $wt = @(Get-ChildItem -Path "C:\po-worktrees" -Directory -ErrorAction SilentlyContinue)
-    if ($wt.Count -gt 0) { foreach ($d in $wt) { Write-Output ("  " + $d.LastWriteTime.ToString("MM-dd HH:mm") + "  " + $d.Name) } }
-    else { Write-Output "  none" }
-} else { Write-Output "  C:\po-worktrees does not exist" }
+foreach ($wtRoot in @("C:\PR-Master\worktrees", "C:\po-worktrees")) {
+    Write-Output ("  [" + $wtRoot + "]")
+    if (Test-Path $wtRoot) {
+        $wt = @(Get-ChildItem -Path $wtRoot -Directory -ErrorAction SilentlyContinue)
+        if ($wt.Count -gt 0) { foreach ($d in $wt) { Write-Output ("    " + $d.LastWriteTime.ToString("MM-dd HH:mm") + "  " + $d.Name) } }
+        else { Write-Output "    none" }
+    } else { Write-Output ("  " + $wtRoot + " does not exist") }
+}
 
 Write-Output ""
 Write-Output "=== WATCHER REPO INTEGRITY (an agent left this mid-merge on 2026-07-13 and killed the queue)"

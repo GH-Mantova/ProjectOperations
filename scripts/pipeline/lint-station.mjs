@@ -34,9 +34,9 @@ const REQUIRED_SECTIONS = [
 ];
 
 const ALLOWED_WIN_ROOTS = [
-  'C:\\ProjectOperations2', 'C:\\po-watcher', 'C:\\po-sup-fix-scripts', 'C:\\po-worktrees',
-  'C:\\po-wt', 'C:\\po-wt-h', 'C:\\po-watcher-worktrees', 'C:\\Users\\Marco\\Claude\\Scheduled',
-  'C:\\ProjectOperations-Reference',
+  'C:\\ProjectOperations2', 'C:\\po-watcher', 'C:\\po-sup-fix-scripts', 'C:\\PR-Master',
+  'C:\\po-worktrees', 'C:\\po-wt', 'C:\\po-wt-h', 'C:\\po-watcher-worktrees',
+  'C:\\Users\\Marco\\Claude\\Scheduled', 'C:\\ProjectOperations-Reference',
 ];
 
 const FORBIDDEN_OUTPUTS = ['docs/qa/qa-findings.md', 'docs/qa/qa-checklist.md'];

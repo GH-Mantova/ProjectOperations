@@ -212,8 +212,9 @@ authoring it again.
 **DISPOSITION: ACTIONED.** `Rename-Item pr-scopecards-s0-plan-b-ready.md →
 pr-scopecards-s0-plan-b-LOOPING.md` at `01:29:53Z` — item 2 of this station's own fix set. Read back:
 `*-ready.md` → **0**, `*-LOOPING.md` → `pr-scopecards-s0-plan-b-LOOPING.md`. Measured again at
-`01:32:34Z`: no fifth `[start]`, and the open board is still **6** PRs with `#1870` the newest — **no
-duplicate was created.** ⚠️ The `-LOOPING.md` file is gitignored, so it is named here rather than
+`01:32:34Z`: no fifth `[start]`, and the open board was still **6** PRs with `#1870` the newest.
+⚠️ **That reading was true when taken and FALSE twelve seconds later — see F7.** The rename stopped
+build **five**; build **four** was already running and opened its duplicate at `01:32:46Z`. ⚠️ The `-LOOPING.md` file is gitignored, so it is named here rather than
 carried by this PR.
 
 ### F3 — F3 of the 00:11Z run is now ANSWERED: 0 of 9 gate-satisfied HOLDs can enter the tests-docs lane. Still DEFERRED, but measured rather than assumed.
@@ -284,6 +285,34 @@ was PowerShell on the host, and both `index.lock` probes read False at the end.
 `needs-marco/cowork-vm-mount-unreachable-two-stations-2026-09-10.md` and
 `linux-sandbox-fails-to-start-four-consecutive-runs-2026-09-10.md`; a third file would be noise. It
 matters on the next run where the bridge IS up and the guard is skipped for a different reason.
+
+### F7 — The fourth build opened its duplicate anyway, twelve seconds after I measured that it had not. Closed as superseded. ACTIONED.
+
+⚠️ **This is DOCTRINE section 7's `[LIVE]` rule firing inside my own report.** F2 above recorded
+"no duplicate was created" from a board read at `01:32:34Z`. It was correct when taken. `#1871`
+(`docs(plans): scope-cards reconciliation plan (SLICE-0)`, head `docs/slice-0-scope-cards-plan`) was
+created at **`01:32:46Z`** — twelve seconds afterwards. A rename stops the NEXT restage; it cannot
+stop an agent already spawned. I said so when I applied it, and then did not re-measure late enough
+to catch the result.
+
+Both heads fetched via `gh api repos/<owner>/<repo>/contents/<path>?ref=<headRefOid>`:
+
+| | `#1870` | `#1871` |
+|---|---|---|
+| created | `01:28:16Z` | `01:32:46Z` |
+| chars / lines | **13,587 / 118** | 7,457 / 83 |
+| `quoteDestination` (a `done_when` token) | 2 | 1 |
+| `S10` (the other `done_when` token) | 3 | 2 |
+| NEGATIVE control, a freshly minted needle | 0 | 0 |
+
+Both satisfy the prompt's `done_when`; `#1870` is earlier and materially fuller, so it is the keeper.
+
+**DISPOSITION: ACTIONED.** `#1871` was commented with that table and the cause, then closed:
+`gh pr close 1871` exit 0, read back `state=CLOSED`, `closedAt=2026-09-11T01:37:15Z`, and `#1870`
+read back **OPEN**. Nothing is lost — the branch is untouched and the PR can be reopened.
+⚠️ **The lesson the LOOP rule's own text does not carry:** renaming a looping `*-ready.md` bounds the
+loop but does not cancel the build in flight, so a run that applies it must re-check the board
+**after** that build's expected duration, not immediately.
 
 ## WHAT I DID NOT DO
 

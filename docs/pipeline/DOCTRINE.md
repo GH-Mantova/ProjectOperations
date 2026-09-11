@@ -1718,7 +1718,10 @@ share one function, and the fix for either is the same.**
 
 🔧 **Station 00's sanctioned remedy is the one in its own fix set: rename the looping `*-ready.md` to
 `*-LOOPING.md`.** Done here at `01:29:53Z` on `pr-scopecards-s0-plan-b-ready.md`, read back
-`*-ready.md` → **0** and `*-LOOPING.md` → 1, and no fifth build started. ⚠️ **Do not read a restage as
+`*-ready.md` → **0** and `*-LOOPING.md` → 1, and no fifth build started. ⚠️ **The rename bounds the
+loop; it does not cancel the build already IN FLIGHT** — the fourth build opened its duplicate four
+minutes later and had to be closed as superseded, so re-check the board AFTER that build’s expected
+duration rather than immediately. ⚠️ **Do not read a restage as
 a failed build** — check the board for a PR on the prompt's head branch first, because on this failure
 mode the work succeeded and only the detection did not.
 

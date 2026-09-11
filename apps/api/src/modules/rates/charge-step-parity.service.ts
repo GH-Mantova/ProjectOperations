@@ -33,6 +33,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { evaluateSteps } from "./rate-step-evaluator";
 import type { ChargeStep } from "./rate-step-evaluator";
+import { readStoredLineFields } from "./rate-tables.service";
 import { buildStepValues } from "@project-ops/config/charge-step-semantics";
 import type { RateLineField, StepValueColumn } from "@project-ops/config/charge-step-semantics";
 
@@ -278,16 +279,15 @@ export class ChargeStepParityService {
     }
 
     const rawSteps = table.chargeSteps;
+    // Stored steps were validated by validateChargeSteps on write (rate-tables.service.ts);
+    // the harness is read-only and every evaluation runs under try/catch, so a malformed
+    // row is logged as a disagreement, never thrown into a price.
     const steps: ChargeStep[] | null =
-      rawSteps && Array.isArray(rawSteps) && rawSteps.length > 0
-        ? (rawSteps as ChargeStep[])
+      Array.isArray(rawSteps) && rawSteps.length > 0
+        ? (rawSteps as unknown as ChargeStep[])
         : null;
 
-    const rawLineFields = table.lineFields;
-    const lineFields: RateLineField[] =
-      rawLineFields && Array.isArray(rawLineFields)
-        ? (rawLineFields as RateLineField[])
-        : [];
+    const lineFields: RateLineField[] = readStoredLineFields(table.lineFields);
 
     type RawCol = { id: string; name: string; role: string };
     const rawCols = table.columns as RawCol[];

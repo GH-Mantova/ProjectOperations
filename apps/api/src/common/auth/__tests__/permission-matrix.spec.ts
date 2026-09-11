@@ -110,7 +110,9 @@ const ROWS: MatrixRow[] = [
   { group: "long-tail", method: "patch", path: `/tenders/${MISSING}/award`, permission: "tenderconversion.manage", body: {}, viewer: 403 },
   // ── Company profile + branding (SLICE 17 company.manage) ─────────────────
   { group: "company", method: "get", path: "/admin/company/profile", permission: "company.manage", viewer: 403, admin: true },
-  { group: "company", method: "patch", path: "/admin/company/profile", permission: "company.manage", body: {}, viewer: 403, admin: true },
+  // PATCH /admin/company/profile is super-user gated in the handler (assertSuperUser) on top of
+  // company.manage; the matrix admin is not a super-user, so only the permission guard is asserted here.
+  { group: "company", method: "patch", path: "/admin/company/profile", permission: "company.manage", body: {}, viewer: 403 },
   { group: "company", method: "get", path: "/admin/company/legal-documents", permission: "company.manage", viewer: 403, admin: true },
   { group: "company", method: "get", path: "/admin/company/licences", permission: "company.manage", viewer: 403, admin: true },
   { group: "company", method: "get", path: "/admin/company/insurances", permission: "company.manage", viewer: 403, admin: true },

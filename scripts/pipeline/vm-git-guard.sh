@@ -7,8 +7,14 @@
 # never expires, and status-sweep.ps1 escalates to DO NOT ACT - freezing every station.
 # Seven occurrences. Three documentation bullets did not prevent the eighth.
 #
-# WHAT THIS DOES. Installs a 'git' shim early on PATH that refuses only when the call targets a
-# mounted folder. Git anywhere else in the VM (a scratch clone under $HOME, /tmp) is untouched.
+# WHAT THIS DOES. Installs a 'git' shim early on PATH that refuses when EITHER the call's
+# arguments target a mounted folder OR the current working directory sits under one. Both
+# checks matter: a bare `git status` from inside the mount would otherwise operate on the
+# mounted repo via $PWD, so a run that reads only the first sentence of this comment will
+# be surprised when its scratch clone is refused because it forgot to `cd` out of mnt/.
+# To use git in this VM against something outside the mount, both conditions must hold -
+# the arguments must not point at mnt/ AND you must be cd'd outside mnt/ (a scratch clone
+# under $HOME or /tmp works only if you `cd` there first).
 #
 # INSTALL (idempotent, run it at the top of any VM-side session):
 #   bash "$HOME/mnt/ProjectOperations2/scripts/pipeline/vm-git-guard.sh"
@@ -46,7 +52,8 @@ seven occurrences).
 Use instead:
   - the GitHub API (gh api / the github MCP tools) for anything readable from the remote;
   - a shell ON the Windows host for anything that must touch C:\ProjectOperations2\.git;
-  - git in this VM only outside mnt/ (a scratch clone under $HOME, /tmp).
+  - git in this VM only outside mnt/ (a scratch clone under $HOME, /tmp), AND with $PWD
+    outside mnt/ too - the shim refuses on $PWD as well as on arguments.
 
 To read one file at a revision without git: gh api repos/OWNER/REPO/contents/PATH?ref=REF
 MSG
@@ -85,20 +92,41 @@ ensure_on_path() {
 
 ensure_on_path
 
-# positive control - the guard must REFUSE a mounted path and ALLOW one outside it
+# positive control (mounted-argument) - the guard must REFUSE a call whose ARGUMENTS target
+# a mounted folder, regardless of $PWD.
 if PATH="${BIN}:${PATH}" git -C "${HOME}/mnt" status >/dev/null 2>&1; then
-  echo "FAIL: guard did not refuse a mounted path"; exit 1
+  echo "FAIL: guard did not refuse a mounted-path argument"; exit 1
 fi
-if ! PATH="${BIN}:${PATH}" git --version >/dev/null 2>&1; then
+
+# positive control (mounted-cwd) - the guard must ALSO REFUSE a bare call whose arguments
+# name nothing mounted but whose $PWD is under mnt/. Today this behaviour is real but
+# untested, so without this control nothing would catch its removal.
+if (cd "${HOME}/mnt" 2>/dev/null && PATH="${BIN}:${PATH}" git --version >/dev/null 2>&1); then
+  echo "FAIL: guard did not refuse a bare call from a mounted cwd"; exit 1
+fi
+
+# negative control - a call whose arguments target nothing mounted, made from a cwd that
+# is ALSO outside the mount, must be ALLOWED. The subshell `cd /tmp` neutralises $PWD so
+# this measures what the message claims, not an accidental $PWD refusal.
+if ! (cd /tmp && PATH="${BIN}:${PATH}" git --version >/dev/null 2>&1); then
   echo "FAIL: guard blocked a call that targets nothing mounted"; exit 1
 fi
 
-# persistence controls - re-running must not grow .bashrc; login shell must resolve shim
-HASH_BEFORE="$(md5sum "${HOME}/.bashrc" | awk '{print $1}')"
-bash "${BASH_SOURCE[0]}" 2>/dev/null || true
-HASH_AFTER="$(md5sum "${HOME}/.bashrc" | awk '{print $1}')"
-if [ "$HASH_BEFORE" != "$HASH_AFTER" ]; then
-  echo "FAIL: re-running the installer grew ~/.bashrc (not idempotent)"; exit 1
+# idempotency control - re-running must not grow .bashrc, and must not recurse. The
+# re-exec below sets VM_GIT_GUARD_NO_RECURSE=1 in the child's environment; when a run
+# sees that variable already set on entry, it skips its own re-exec entirely and reports
+# the control as skipped-because-nested. Without this marker each run would launch a
+# child that launches a child (measured at 1017 nested invocations before a VM resource
+# limit ended it, swallowed by `|| true`).
+if [ -n "${VM_GIT_GUARD_NO_RECURSE:-}" ]; then
+  echo "idempotency control: skipped (nested run, VM_GIT_GUARD_NO_RECURSE=${VM_GIT_GUARD_NO_RECURSE})"
+else
+  HASH_BEFORE="$(md5sum "${HOME}/.bashrc" | awk '{print $1}')"
+  VM_GIT_GUARD_NO_RECURSE=1 bash "${BASH_SOURCE[0]}" >/dev/null 2>&1 || true
+  HASH_AFTER="$(md5sum "${HOME}/.bashrc" | awk '{print $1}')"
+  if [ "$HASH_BEFORE" != "$HASH_AFTER" ]; then
+    echo "FAIL: re-running the installer grew ~/.bashrc (not idempotent)"; exit 1
+  fi
 fi
 
 RESOLVED="$(bash -lc 'command -v git' 2>/dev/null || true)"
@@ -106,5 +134,5 @@ if [ "$RESOLVED" != "${BIN}/git" ]; then
   echo "FAIL: bash -lc 'command -v git' resolved to '${RESOLVED}', expected '${BIN}/git'"; exit 1
 fi
 
-echo "vm-git-guard installed at ${BIN}/git - refuses mounted paths, allows everything else (both controls passed)"
+echo "vm-git-guard installed at ${BIN}/git - refuses mounted paths and mounted cwd, allows everything else (three controls passed)"
 echo "persistence controls passed: .bashrc byte-identical on re-run; login shell resolves shim"

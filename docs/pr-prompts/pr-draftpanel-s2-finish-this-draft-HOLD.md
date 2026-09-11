@@ -156,6 +156,6 @@ indistinguishable from failing** - the work is discarded either way.
 
 ## STATUS
 
-**HOLD.** Marco arms this. Second in the `draftpanel` cluster; dispatches only once S1's
+Armed by Station 00 under Marco's direction. Once this file carries the `-ready.md` suffix that rename IS the dispatch - build it and open the PR; this section is never a reason to wait. Second in the `draftpanel` cluster; dispatches only once S1's
 `scope-cards-rates-gate` is on `main`. S3 (carry-over strip + picker re-point) is authored
 after this lands.

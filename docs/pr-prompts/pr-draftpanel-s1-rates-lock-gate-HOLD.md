@@ -154,5 +154,5 @@ indistinguishable from failing** - the work is discarded either way.
 
 ## STATUS
 
-**HOLD.** Marco arms this. Head of the `draftpanel` cluster; S2 waits on
+Armed by Station 00 under Marco's direction. Once this file carries the `-ready.md` suffix that rename IS the dispatch - build it and open the PR; this section is never a reason to wait. Head of the `draftpanel` cluster; S2 waits on
 `ScopeCardsTab.tsx :: scope-cards-rates-gate`.

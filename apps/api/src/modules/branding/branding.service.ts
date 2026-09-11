@@ -12,11 +12,31 @@ import { COMPANY_PROFILE_ID } from "../company-profile/company-profile.service";
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
+/** The thirteen S3 palette fields — all optional (nullable on the schema). */
+const S3_PALETTE_FIELDS = [
+  "sidebarBgHex",
+  "sidebarTextHex",
+  "sidebarTextActiveHex",
+  "surfacePageHex",
+  "surfaceCardHex",
+  "textPrimaryHex",
+  "textSecondaryHex",
+  "textMutedHex",
+  "statusActiveHex",
+  "statusWarningHex",
+  "statusDangerHex",
+  "statusInfoHex",
+  "statusNeutralHex"
+] as const;
+
+type S3PaletteField = (typeof S3_PALETTE_FIELDS)[number];
+type S3PaletteData = Partial<Record<S3PaletteField, string | null>>;
+
 export type UpsertColorSchemeDto = {
   name: string;
   primaryColorHex: string;
   secondaryColorHex: string;
-};
+} & S3PaletteData;
 
 export type UpsertBrandAssetDto = {
   kind: BrandAssetKind;
@@ -100,12 +120,35 @@ export class BrandingService {
   async upsertColorScheme(actorId: string, dto: UpsertColorSchemeDto) {
     this.assertHex(dto.primaryColorHex, "primaryColorHex");
     this.assertHex(dto.secondaryColorHex, "secondaryColorHex");
+
+    // Validate each optional S3 palette column if provided.
+    for (const field of S3_PALETTE_FIELDS) {
+      const value = dto[field];
+      if (value != null) {
+        this.assertHex(value, field);
+      }
+    }
+
+    // Build the palette data for the thirteen new columns.
+    const paletteData: S3PaletteData = {};
+    for (const field of S3_PALETTE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(dto, field)) {
+        paletteData[field] = dto[field] ?? null;
+      }
+    }
+
     const scheme = await this.prisma.brandColorScheme.upsert({
       where: { name: dto.name },
-      create: dto,
+      create: {
+        name: dto.name,
+        primaryColorHex: dto.primaryColorHex,
+        secondaryColorHex: dto.secondaryColorHex,
+        ...paletteData
+      },
       update: {
         primaryColorHex: dto.primaryColorHex,
-        secondaryColorHex: dto.secondaryColorHex
+        secondaryColorHex: dto.secondaryColorHex,
+        ...paletteData
       }
     });
     await this.audit.write({
@@ -234,8 +277,9 @@ export class BrandingService {
   }
 
   /**
-   * Narrow read for every authenticated user — returns exactly four keys.
-   * Precedence: active scheme first, then legacy CompanyProfile columns.
+   * Narrow read for every authenticated user — returns exactly seventeen keys
+   * (S3 widens the original four to include the full palette).
+   * Precedence: active scheme first for palette columns; logos from CompanyProfile.
    * Never exposes scheme ids, names, lists, favicon, or letterhead.
    */
   async getActiveBrandingForViewer(): Promise<{
@@ -243,6 +287,19 @@ export class BrandingService {
     secondaryColorHex: string | null;
     logoLightUrl: string | null;
     logoDarkUrl: string | null;
+    sidebarBgHex: string | null;
+    sidebarTextHex: string | null;
+    sidebarTextActiveHex: string | null;
+    surfacePageHex: string | null;
+    surfaceCardHex: string | null;
+    textPrimaryHex: string | null;
+    textSecondaryHex: string | null;
+    textMutedHex: string | null;
+    statusActiveHex: string | null;
+    statusWarningHex: string | null;
+    statusDangerHex: string | null;
+    statusInfoHex: string | null;
+    statusNeutralHex: string | null;
   }> {
     const profile = await this.prisma.companyProfile.findUnique({
       where: { id: COMPANY_PROFILE_ID },
@@ -254,7 +311,20 @@ export class BrandingService {
         activeColorScheme: {
           select: {
             primaryColorHex: true,
-            secondaryColorHex: true
+            secondaryColorHex: true,
+            sidebarBgHex: true,
+            sidebarTextHex: true,
+            sidebarTextActiveHex: true,
+            surfacePageHex: true,
+            surfaceCardHex: true,
+            textPrimaryHex: true,
+            textSecondaryHex: true,
+            textMutedHex: true,
+            statusActiveHex: true,
+            statusWarningHex: true,
+            statusDangerHex: true,
+            statusInfoHex: true,
+            statusNeutralHex: true
           }
         }
       }
@@ -264,7 +334,20 @@ export class BrandingService {
         primaryColorHex: null,
         secondaryColorHex: null,
         logoLightUrl: null,
-        logoDarkUrl: null
+        logoDarkUrl: null,
+        sidebarBgHex: null,
+        sidebarTextHex: null,
+        sidebarTextActiveHex: null,
+        surfacePageHex: null,
+        surfaceCardHex: null,
+        textPrimaryHex: null,
+        textSecondaryHex: null,
+        textMutedHex: null,
+        statusActiveHex: null,
+        statusWarningHex: null,
+        statusDangerHex: null,
+        statusInfoHex: null,
+        statusNeutralHex: null
       };
     }
     const scheme = profile.activeColorScheme;
@@ -272,7 +355,20 @@ export class BrandingService {
       primaryColorHex: scheme?.primaryColorHex ?? profile.primaryColorHex,
       secondaryColorHex: scheme?.secondaryColorHex ?? profile.secondaryColorHex,
       logoLightUrl: profile.logoLightUrl,
-      logoDarkUrl: profile.logoDarkUrl
+      logoDarkUrl: profile.logoDarkUrl,
+      sidebarBgHex: scheme?.sidebarBgHex ?? null,
+      sidebarTextHex: scheme?.sidebarTextHex ?? null,
+      sidebarTextActiveHex: scheme?.sidebarTextActiveHex ?? null,
+      surfacePageHex: scheme?.surfacePageHex ?? null,
+      surfaceCardHex: scheme?.surfaceCardHex ?? null,
+      textPrimaryHex: scheme?.textPrimaryHex ?? null,
+      textSecondaryHex: scheme?.textSecondaryHex ?? null,
+      textMutedHex: scheme?.textMutedHex ?? null,
+      statusActiveHex: scheme?.statusActiveHex ?? null,
+      statusWarningHex: scheme?.statusWarningHex ?? null,
+      statusDangerHex: scheme?.statusDangerHex ?? null,
+      statusInfoHex: scheme?.statusInfoHex ?? null,
+      statusNeutralHex: scheme?.statusNeutralHex ?? null
     };
   }
 

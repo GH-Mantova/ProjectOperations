@@ -108,6 +108,14 @@ const ROWS: MatrixRow[] = [
   // Viewer's 17 seeded view codes intentionally exclude projects.view, so 403.
   { group: "projects", method: "get", path: "/projects/next-number", permission: "projects.view", viewer: 403, admin: true },
   { group: "long-tail", method: "patch", path: `/tenders/${MISSING}/award`, permission: "tenderconversion.manage", body: {}, viewer: 403 },
+  // ── Company profile + branding (SLICE 17 company.manage) ─────────────────
+  { group: "company", method: "get", path: "/admin/company/profile", permission: "company.manage", viewer: 403, admin: true },
+  { group: "company", method: "patch", path: "/admin/company/profile", permission: "company.manage", body: {}, viewer: 403, admin: true },
+  { group: "company", method: "get", path: "/admin/company/legal-documents", permission: "company.manage", viewer: 403, admin: true },
+  { group: "company", method: "get", path: "/admin/company/licences", permission: "company.manage", viewer: 403, admin: true },
+  { group: "company", method: "get", path: "/admin/company/insurances", permission: "company.manage", viewer: 403, admin: true },
+  { group: "company", method: "get", path: "/admin/branding", permission: "company.manage", viewer: 403, admin: true },
+
   { group: "long-tail", method: "get", path: "/admin/settings/notifications", permission: "platform.admin", viewer: 403 },
   { group: "long-tail", method: "get", path: "/admin/client-versions", permission: "platform.admin", viewer: 403 },
   { group: "long-tail", method: "post", path: "/admin/client-versions/request-update", permission: "platform.admin", body: { all: true }, viewer: 403 },

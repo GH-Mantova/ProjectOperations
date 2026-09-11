@@ -1622,6 +1622,116 @@ probe is well calibrated for watcher-opened PRs and says nothing whatsoever abou
 4. Never record "no verdict found" as "not routed to Marco". Write `[NO LANE VERDICT — hand-classified]`
    and give the classification.
 
+🔴🔴 **A VERDICT IN THAT CORPUS CAN NAME A PR THE WATCHER NEVER OPENED, BECAUSE THE PR NUMBER IS
+SCRAPED OUT OF THE AGENT'S FREE PROSE — SO STEP 1'S *"a verdict names that PR ⇒ obey it"* CAN BE
+SATISFIED BY A PR THE WATCHER NEITHER BUILT NOR TOUCHED.** `PRNUMBER_SCRAPED_FROM_PROSE_V1`
+Steps 1–4 above assume a verdict line is evidence that the watcher opened that PR. It is not. The
+number is taken from the build agent's combined stdout, by regex, and **any sentence the agent
+writes that mentions a PR supplies one.**
+
+**Mechanism, read from the source** (`scripts/pr-watcher/index.mjs`, anchor
+`function extractPrNumber`), which is called at the single site `const prNumber =
+extractPrNumber(agentOutput)`:
+
+```js
+function extractPrNumber(text) {
+  const urlMatch = text.match(/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/);
+  if (urlMatch) return Number(urlMatch[1]);
+  const hashMatch = text.match(/(?:PR|pr|pull request)\s*#(\d+)/);
+  if (hashMatch) return Number(hashMatch[1]);
+  return null;
+}
+```
+
+Neither alternative is anchored to anything the agent *did*. A quoted URL, a citation, a review note
+or a memory recollection all match, and the first match in the whole output wins.
+
+**[MEASURED] 2026-09-11T01:4xZ by Station 00 (scheduled) at `7b1ba03a`.** `pr-scopecards-s0-plan`
+was armed at `00:57:09Z`; its first build opened no PR and the watcher restaged it as attempt `b`.
+Attempt `b` opened no PR either — it declined on the prompt's own prose `STATUS: HOLD` line — but its
+stdout contained the sentence *"My memory … records reviewing **PR #1866 (SLICE-0 scope cards)** with
+a MERGE verdict earlier today."* `extractPrNumber` returned **1866**. The watcher then ran its whole
+merge path against `#1866` — a PR opened by a **second lane** and already merged **41 minutes
+earlier** — and wrote into `that prompt’s own `docs/pr-prompts/processed/<prompt>.md.log``:
+
+```
+[watcher] merge result for PR #1866: {"ok":true}
+```
+
+**Three consequences, each measured:**
+
+| | before | after |
+|---|---|---|
+| `Select-String docs\pr-prompts\processed\pr-*.log -Pattern 'PR #1866\b'` | **0** (Station 00, 00:1xZ, breadcrumb `…-0011-…`) | **2** (01:4xZ, this run) |
+| `#1866`'s lane under §10.1 step 1 | no verdict ⇒ hand-classified second lane, correctly | a verdict names it ⇒ reads **watcher-opened** |
+| the build's own outcome | agent exited 0 having opened no PR | filed to `processed/`, **not** `no-pr-opened/` |
+
+NEGATIVE control, `PR #999996` over the same corpus → **0**; POSITIVE control, `PR #1850` → **2**,
+carrying a real `marco:true` verdict. `no-pr-opened/`'s newest entry is still `2026-09-02T03:47Z`, so
+**the folder that exists to catch a silent no-op did not catch this one** — the hijacked number made
+the run look like a completed build.
+
+🔴 **The danger is not this instance, it is the polarity.** Here the forged verdict was `{"ok":true}`
+on a PR that was already merged, so nothing moved. Had the scraped number named an **open** PR, the
+watcher would have driven `waitForPolicyMerge` on a PR it did not build, from a prompt that produced
+nothing. Had the verdict come back `marco:true`, §10.1 step 1 says **obey it** — and an unrelated PR
+would be permanently human-gated by a routing decision that was never made about it.
+
+🔴 **And it makes a lane classification NON-MONOTONIC, which no rule above anticipates.** Every
+instruction in this section reads the probe as answering a fixed fact about a PR. It does not: a log
+written later, for a **different** prompt, can add a verdict naming a PR that was correctly classified
+second lane an hour earlier. **A lane verdict is only as of the minute it was taken — re-take it, and
+never carry one forward from an earlier breadcrumb.**
+
+🔧 **Until the scrape is replaced, cross every verdict against the log's OWN prompt.** A verdict line
+is trustworthy only if the `processed/<prompt>.md.log` that carries it also carries that prompt's own
+`opened PR #<n>` / PR-URL line for the **same** number, and the prompt's `scope:` is consistent with
+the PR's files. A verdict for a PR that appears **only** in prose in that log is a scrape, not a
+routing. ⚠️ This does not weaken RULE 2 in the direction that matters: an unexplained `marco:true`
+still binds. It bars reading `ok:true` — or a watcher lane — **into** a PR from a prose mention.
+
+🔴🔴 **AND IT FAILS IN THE OTHER DIRECTION TOO, ON THE SAME PROMPT, THIRTY MINUTES LATER: MARKDOWN
+EMPHASIS DEFEATS THE MATCH, SO A BUILD THAT *DID* OPEN A PR IS RESTAGED AS A DUPLICATE.** `\s*` does
+not match `**`. [MEASURED] 2026-09-11T01:2xZ by Station 00, from the live daily clone log (found by
+name shape then mtime, never constructed):
+
+```
+[2026-09-11T01:25:23.413Z] [start] pr-scopecards-s0-plan-ready.md (max-turns=240)
+PR **#1870** opened and left unmerged: docs/plans/…, ...
+[2026-09-11T01:28:34.743Z] [NO-PR] pr-scopecards-s0-plan-ready.md  pr-scopecards-s0-plan-b-ready.md (no PR found - attempt 2 (b))
+[2026-09-11T01:28:34.816Z] [start] pr-scopecards-s0-plan-b-ready.md (max-turns=240)
+```
+
+`gh pr view 1870 --json number,state,createdAt,headRefName,files` → **OPEN**, created
+**`01:28:16Z`**, head `slice-0-scope-cards-plan`, one file `docs/plans/…`
+— the PR existed **18 seconds before** the watcher declared *"no PR found"* and restaged. The agent
+reported it correctly; the regex could not read `PR **#1870**`. POSITIVE control, `[start] ` over the
+same log → **47**; NEGATIVE control, a freshly minted needle → **0**.
+
+🔴 **So one prompt produced FOUR builds in thirty-two minutes** — `00:57:10`, `00:57:51` (`-b`),
+`01:25:23`, `01:28:34` (`-b`) — two arms and two restages, on a `max-turns=240` agent each time, and
+the fourth was building a **duplicate of a PR that was already open.** The restage is silent: it is a
+`[NO-PR]` line in a clone-side log, not an entry in `no-pr-opened/`, so nothing in the queue census
+shows it. This is the same kill-loop shape §9.5 records for the watchdog, reached from a different
+cause, and it is why the bullet above is not merely an attribution problem: **the two failure modes
+share one function, and the fix for either is the same.**
+
+🔧 **Station 00's sanctioned remedy is the one in its own fix set: rename the looping `*-ready.md` to
+`*-LOOPING.md`.** Done here at `01:29:53Z` on `pr-scopecards-s0-plan-b-ready.md`, read back
+`*-ready.md` → **0** and `*-LOOPING.md` → 1, and no fifth build started. ⚠️ **The rename bounds the
+loop; it does not cancel the build already IN FLIGHT** — the fourth build opened its duplicate four
+minutes later and had to be closed as superseded, so re-check the board AFTER that build’s expected
+duration rather than immediately. ⚠️ **Do not read a restage as
+a failed build** — check the board for a PR on the prompt's head branch first, because on this failure
+mode the work succeeded and only the detection did not.
+
+⚠️ **Falsifying probe: the two counts in the table above.** Re-run the `PR #1866` search over
+`processed\pr-*.log` with both controls and open the one hit that is not a verdict line; if the prose
+sentence is gone, or `extractPrNumber` no longer has the `(?:PR|pr|pull request)\s*#(\d+)` alternative,
+this bullet must be re-measured. The repair is `scripts/pr-watcher/**` and therefore Marco's, and is
+filed as `needs-marco/watcher-scrapes-the-pr-number-out-of-agent-prose-2026-09-11.md`. Found and
+landed by Station 00 2026-09-11T01:4xZ.
+
 ⚠️ **The probe must be written without a quote character**: `-Pattern 'marco.:true'` (regex, `.` matches
 the quote). The `-SimpleMatch '"marco":true'` form returns 0 **and so does its negative control** —
 escaped double quotes do not survive the `-Command` layer (§9.4, and it is a SHELL fact, not a `gh` one).

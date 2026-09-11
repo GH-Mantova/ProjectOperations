@@ -99,7 +99,7 @@ if ($ghOk) {
   if (-not $mainSha) {
     Line "LIVE" "main CI: [CANNOT MEASURE] cannot resolve origin/main"
   } else {
-    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name 2>$null | Out-String).Trim()
+    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName 2>$null | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($mainRunsRaw) -or $mainRunsRaw -eq "[]") {
       # ConvertFrom-Json on "[]" puts something on the pipeline that @() counts as ONE. Test the
       # RAW string first, or an empty board reads as a single mystery run.
@@ -112,18 +112,56 @@ if ($ghOk) {
       $mainParsed = $mainRunsRaw | ConvertFrom-Json
       $mainRuns = @()
       foreach ($r in $mainParsed) { $mainRuns += $r }
-      $mfail = 0; $mok = 0; $mpend = 0
+      # NOT EVERY RUN ATTRIBUTED TO A COMMIT IS TRUNK CI. (TRUNK_VERDICT_SCOPED_V1)
+      # MEASURED 2026-09-09 and again 2026-09-10: "gh run list --commit <sha>" also returns
+      # Dependabot security-update runs and cron "Pipeline heartbeat" runs. Neither tests this
+      # commit's code; they are merely ATTRIBUTED to main's HEAD. Counting them printed
+      # "TRUNK IS RED" on a commit whose every real check was green -- on two separate days,
+      # found independently by three stations. Nothing is empty and nothing warns, so DOCTRINE
+      # 9.6 never fires: the query worked and answered a question nobody asked. The cost is
+      # directional -- a station believing the line hunts a regression that does not exist.
+      # This is a DENYLIST, deliberately, and NOT an "event -eq push" allowlist: CodeQL runs as
+      # event "dynamic" (run name "Push on main") and IS a trunk check, so an allowlist would
+      # silently drop it. An unknown future workflow keeps counting toward the verdict rather
+      # than vanishing from it -- wrong-but-loud beats wrong-and-silent.
+      $trunkRuns = @(); $otherRuns = @()
       foreach ($r in $mainRuns) {
+        if ($r.workflowName -eq "Dependabot Updates" -or $r.event -eq "schedule") { $otherRuns += $r }
+        else { $trunkRuns += $r }
+      }
+      $mfail = 0; $mok = 0; $mpend = 0
+      foreach ($r in $trunkRuns) {
         if (-not $r.conclusion) { $mpend++ }
         elseif ($r.conclusion -eq "success") { $mok++ }
         elseif ($r.conclusion -eq "skipped") { }
         else { $mfail++ }
       }
-      $mverdict = if ($mfail -gt 0) { "  <-- TRUNK IS RED" }
+      $mverdict = if ($trunkRuns.Count -eq 0) { "  <-- [CANNOT MEASURE] no trunk-CI run on this commit; NOT a green trunk" }
+                  elseif ($mfail -gt 0) { "  <-- TRUNK IS RED" }
                   elseif ($mok -gt 0 -and $mpend -eq 0) { "  (trunk green)" }
                   elseif ($mok -gt 0) { "  (no failure so far, but " + $mpend + " still running -- not yet green)" }
                   else { "  <-- [CANNOT MEASURE] nothing has concluded on this commit; NOT a green trunk" }
       Line "LIVE" ("main CI on " + $mainSha.Substring(0,8) + ": " + $mok + " success / " + $mfail + " failed / " + $mpend + " running" + $mverdict)
+      # Reported on their OWN line, never folded into the verdict above. The genuine signal inside
+      # these is easy to lose in an aggregate: on 2026-09-09 five failing "Pipeline heartbeat" runs
+      # were carrying a real SILENT-stations alarm, and the aggregate count hid it rather than
+      # surfaced it. Excluding them from the verdict must not mean hiding them.
+      if ($otherRuns.Count -gt 0) {
+        $ofail = 0
+        $onames = @{}
+        foreach ($r in $otherRuns) {
+          $isBad = ($r.conclusion -and $r.conclusion -ne "success" -and $r.conclusion -ne "skipped")
+          if ($isBad) { $ofail++ }
+          $wfKey = [string]$r.workflowName
+          if (-not $onames.ContainsKey($wfKey)) { $onames[$wfKey] = @(0, 0) }
+          $onames[$wfKey][0] = $onames[$wfKey][0] + 1
+          if ($isBad) { $onames[$wfKey][1] = $onames[$wfKey][1] + 1 }
+        }
+        Line "LIVE" ("   NOT trunk CI on this commit, excluded from the verdict above: " + $otherRuns.Count + " run(s), " + $ofail + " failing")
+        foreach ($wfKey in $onames.Keys) {
+          Line "LIVE" ("      " + $wfKey + ": " + $onames[$wfKey][0] + " run(s), " + $onames[$wfKey][1] + " failing")
+        }
+      }
     }
   }
 } else {
@@ -251,7 +289,27 @@ Section "3. IS THE BOARD BUSY? (safe-to-act gate -- REAL mutation signals, not '
 # ------------------------------------------------------------------------------------------------
 $lockInteractive = Test-Path (Join-Path $Repo ".git\index.lock")
 $lockClone = Test-Path (Join-Path $WatcherClone ".git\index.lock")
-$gitProc = @(Get-Process -Name git -ErrorAction SilentlyContinue)
+# GITPROC_SCOPED_V1: count only git.exe touching our trees, by COMMAND LINE (DOCTRINE 9.5).
+# A bare Get-Process -Name git matches EVERY git.exe on the machine, including a read-only
+# 'git show' run by a concurrent chat against an unrelated repo, and this sweep's own transient
+# git children. Measured 2026-09-10: one plain 'git log' child took the unscoped count from 0
+# to 2 on an otherwise idle board while index.lock stayed False, and section 7 printed
+# DO NOT ACT on that count alone. The comment above already reasoned this same class through
+# for claude.exe -- this line kept the shape that comment fixed. Only git.exe whose command
+# line names the dev tree ($Repo) or the watcher clone ($WatcherClone) is board-busy;
+# anything else is another repository's business. CWD cannot be read from Win32_Process in
+# PS 5.1 without P/Invoke, so a bare 'git status' issued from inside $Repo will not match --
+# such an invocation is either a WRITE (caught by index.lock two lines above) or a READ
+# (which never justified DO NOT ACT). The unscoped total is still reported as [INFO] below so
+# no reader loses a number they may have been relying on (RULE 1: additive, existing signals
+# untouched).
+$gitProcAll = @(Get-CimInstance Win32_Process -Filter "Name='git.exe'" -ErrorAction SilentlyContinue)
+$repoPat = $Repo.ToLower()
+$clonePat = $WatcherClone.ToLower()
+$gitProc = @($gitProcAll | Where-Object {
+  $cl = if ($_.CommandLine) { $_.CommandLine.ToLower() } else { "" }
+  ($cl.Contains($repoPat)) -or ($cl.Contains($clonePat))
+})
 $headless = @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-Object { $_.CommandLine -like "*claude-code*stream-json*" })
 # THREE REAL signals. A fourth term used to sit at the front of this expression: a count of files
 # in a queue subdirectory that NO producer ever writes (scripts/pr-watcher/index.mjs files prompts
@@ -261,7 +319,8 @@ $headless = @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-
 # buildRunning comment below for the measurement and for what replaced it.
 $boardBusy = $lockInteractive -or $lockClone -or ($gitProc.Count -gt 0)
 Line "LIVE" ("git index.lock  interactive/clone: " + $lockInteractive + " / " + $lockClone + "  (true = a git write is mid-flight)")
-Line "LIVE" ("git processes running: " + $gitProc.Count)
+Line "LIVE" ("git processes touching our trees (scoped): " + $gitProc.Count + "  (this is what feeds the safe-to-act gate)")
+Line "INFO" ("git processes machine-wide (unscoped): " + $gitProcAll.Count + "  (includes concurrent chats and other repos -- informational, NOT a blocker)")
 Line "INFO" ("headless claude-code sessions: " + $headless.Count + "  (INCLUDES this chat -- informational, NOT a blocker)")
 
 # ---- buildRunning: a REAL live signal, REPORTED AND DELIBERATELY NOT WIRED INTO $boardBusy ------
@@ -545,7 +604,7 @@ Section "7. VERDICT"
 # ------------------------------------------------------------------------------------------------
 $safe = -not $boardBusy
 if (-not $safe) {
-  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- a git index.lock is held, or a git process is running). Wait, re-run, then act."
+  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- a git index.lock is held, or a git process is touching our trees). Wait, re-run, then act."
 } elseif ($liveWorktrees.Count -gt 0) {
   # A LIVE STATION WORKTREE means a station is actively working. Do not say SAFE TO ACT.
   # Do NOT say DO NOT ACT either -- a live worktree off origin/main is correct isolation.

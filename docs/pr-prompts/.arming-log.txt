@@ -74,3 +74,4 @@
 2026-09-10T00:07:52Z  ARMED  pr-vmgitguard-selftest-and-recursion  escalates=false  actor=station-00.cloud-lane-1010  by=Marco@LAPTOP-E6NHU4E4  pid=7104  caller=powershell.exe:19412
 2026-09-10T09:12:30Z  ARMED  pr-statussweep-gitproc-scope-to-the-two-repos  escalates=false  actor=station-00.cowork-audit  by=Marco@LAPTOP-E6NHU4E4  pid=5328  caller=powershell.exe:9648
 2026-09-10T11:50:44Z  ARMED  pr-triage-corpus-suffix-union  escalates=false  actor=station-00.cowork-audit  by=Marco@LAPTOP-E6NHU4E4  pid=21888  caller=powershell.exe:28128
+2026-09-11T00:57:09Z  ARMED  pr-scopecards-s0-plan  escalates=false  actor=station-00.cowork-0002  by=Marco@LAPTOP-E6NHU4E4  pid=23452  caller=powershell.exe:30296

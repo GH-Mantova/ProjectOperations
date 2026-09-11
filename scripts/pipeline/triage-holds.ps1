@@ -149,12 +149,41 @@ if ($spentProbeOk) {
     Write-Output "!!! spent=0 below proves NOTHING. Fix the control before believing any spent reading."
 }
 
-$holdFiles = @(Get-ChildItem -Path $queueDir -Filter "*-HOLD.md" -File | Sort-Object Name)
-Write-Output ("=== HOLD triage  --  " + $holdFiles.Count + " *-HOLD.md at depth 1 of docs/pr-prompts")
+# TRIAGE_CORPUS_UNION_V1 (added 2026-09-10). Was `Get-ChildItem -Filter "*-HOLD.md"`. A
+# single-suffix corpus made every non-HOLD prompt at depth 1 invisible to the sweep whose
+# whole job is to find spent prompts. MEASURED 2026-09-10 by Station 04 and Station 00 on
+# the same disk: `pr-watcher-verdict-home-resolver-LOOPING.md` sat at the queue root while
+# its work had ALREADY SHIPPED (VERDICT_HOME_RESOLVER present 6x on origin/main), and the
+# TOTALS line read `spent=0 of 41 evaluated ... of 41 HOLDs`. The sentence beneath TOTALS
+# said "every premise on this board was evaluated" -- true of *-HOLD.md, false of the
+# board. So the corpus widens to the union of the three prompt suffixes actually used at
+# depth 1 -- -HOLD.md, -ready.md, -LOOPING.md -- with rev-* files EXCLUDED because they
+# are auto-generated REVIEW JOBS with no front matter (DOCTRINE section 9.5) and counting
+# them would report them as malformed.
+#
+# ADDITIVE: no prompt leaves the denominator, no verdict changes for any file already
+# counted, and the -HOLD.md sub-count is preserved on its own TOTALS line below so any
+# reader or script relying on that number still finds it. A wider denominator can only
+# ever reveal -- it cannot hide.
+$corpusSuffixes = @("-HOLD.md", "-ready.md", "-LOOPING.md")
+$corpusFiles = @(
+    Get-ChildItem -Path $queueDir -File |
+        Where-Object {
+            $entryName = $_.Name
+            if ($entryName.StartsWith("rev-")) { return $false }
+            foreach ($suffix in $corpusSuffixes) { if ($entryName.EndsWith($suffix)) { return $true } }
+            return $false
+        } |
+        Sort-Object Name
+)
+$holdFiles    = @($corpusFiles | Where-Object { $_.Name.EndsWith("-HOLD.md") })
+$readyFiles   = @($corpusFiles | Where-Object { $_.Name.EndsWith("-ready.md") })
+$loopingFiles = @($corpusFiles | Where-Object { $_.Name.EndsWith("-LOOPING.md") })
+Write-Output ("=== queue triage  --  " + $corpusFiles.Count + " prompt(s) at depth 1 of docs/pr-prompts: HOLD=" + $holdFiles.Count + ", ready=" + $readyFiles.Count + ", LOOPING=" + $loopingFiles.Count + "  (rev-* excluded; TRIAGE_CORPUS_UNION_V1)")
 Write-Output ("    linter: " + $linter + "   (read-only; --dequeue is never passed)")
 Write-Output ""
 
-if ($holdFiles.Count -eq 0) { Write-Output "NO-OP: no *-HOLD.md prompts in the queue root."; exit 0 }
+if ($corpusFiles.Count -eq 0) { Write-Output "NO-OP: no prompt files (*-HOLD.md, *-ready.md, *-LOOPING.md) in the queue root."; exit 0 }
 
 $satisfied  = New-Object System.Collections.ArrayList
 $spent      = New-Object System.Collections.ArrayList
@@ -162,11 +191,16 @@ $stillGated = New-Object System.Collections.ArrayList
 $unreadable = New-Object System.Collections.ArrayList
 $skippedGates = New-Object System.Collections.ArrayList
 
-foreach ($holdFile in $holdFiles) {
-    $relative  = "docs/pr-prompts/" + $holdFile.Name
+foreach ($queueFile in $corpusFiles) {
+    $relative  = "docs/pr-prompts/" + $queueFile.Name
     $rawOutput = (& node $linter $relative 2>&1)
     $exitCode  = $LASTEXITCODE
     $text      = ($rawOutput | Out-String)
+
+    # Suffix carried through the record so a reader can tell HOLD from ready from LOOPING
+    # without reparsing filenames downstream (TRIAGE_CORPUS_UNION_V1).
+    $matchedSuffix = ""
+    foreach ($suffix in $corpusSuffixes) { if ($queueFile.Name.EndsWith($suffix)) { $matchedSuffix = $suffix; break } }
 
     # A PARTIAL git outage does not trip the preflight above: git resolves, but an individual
     # `git show origin/main:<path>` still fails and lint-prompt.mjs prints
@@ -176,7 +210,7 @@ foreach ($holdFile in $holdFiles) {
     foreach ($rawLine in ($text -split "`r?`n")) {
         $cleanLine = ($rawLine -replace "\x1b\[[0-9;]*m", "").Trim()
         if ($cleanLine -match "probe: could not reach") {
-            [void]$skippedGates.Add([pscustomobject]@{ Name = $holdFile.Name; Warn = $cleanLine })
+            [void]$skippedGates.Add([pscustomobject]@{ Name = $queueFile.Name; Warn = $cleanLine })
         }
     }
 
@@ -189,7 +223,7 @@ foreach ($holdFile in $holdFiles) {
 
     # FullName is carried so the SPENT-BEHIND-A-REJECT pass below can re-read the prompt's own
     # front matter without re-globbing the queue.
-    $record = [pscustomobject]@{ Name = $holdFile.Name; Exit = $exitCode; Verdict = $verdict; Path = $holdFile.FullName }
+    $record = [pscustomobject]@{ Name = $queueFile.Name; Exit = $exitCode; Verdict = $verdict; Path = $queueFile.FullName; Suffix = $matchedSuffix }
 
     switch ($exitCode) {
         0       { [void]$satisfied.Add($record) }
@@ -624,11 +658,16 @@ foreach ($gatedItem in $stillGated) {
     }
 }
 
+# Suffix tag printed inline for -ready.md / -LOOPING.md rows so a reader can see which
+# corpus bucket a row came from (TRIAGE_CORPUS_UNION_V1). HOLD rows stay unadorned to
+# preserve the reading of pre-union output.
+function Get-SuffixTag { param($Record) if ($Record.Suffix -and $Record.Suffix -ne "-HOLD.md") { return "  [" + $Record.Suffix + "]" } return "" }
+
 Write-Output ">>> SPENT -- premise already satisfied, the work has SHIPPED (lint exit 3)"
 Write-Output "    The strongest sense of 'already satisfied'. Retire them to"
 Write-Output "    docs/pr-prompts/superseded/ in a board PR. Do NOT arm."
 if ($spent.Count -eq 0) { Write-Output "    (none)" }
-foreach ($item in $spent) { Write-Output ("    " + $item.Name + "`n        " + $item.Verdict) }
+foreach ($item in $spent) { Write-Output ("    " + $item.Name + (Get-SuffixTag $item) + "`n        " + $item.Verdict) }
 Write-Output ""
 
 Write-Output ">>> GATES SATISFIED -- lint ADMITs (exit 0). CANDIDATES, not instructions."
@@ -639,9 +678,9 @@ foreach ($item in $satisfied) {
     # OPEN_PR_DUPLICATE_V1 annotation. The prompt STAYS in this bucket and this bucket's total
     # is UNCHANGED by it -- the sixth bucket below reports, it does not filter (DOCTRINE 10.6).
     if ($dupAnnotation.ContainsKey($item.Name)) {
-        Write-Output ("    " + $item.Name + "   <-- POSSIBLE DUPLICATE of open PR " + $dupAnnotation[$item.Name] + " -- confirm below before arming")
+        Write-Output ("    " + $item.Name + (Get-SuffixTag $item) + "   <-- POSSIBLE DUPLICATE of open PR " + $dupAnnotation[$item.Name] + " -- confirm below before arming")
     } else {
-        Write-Output ("    " + $item.Name)
+        Write-Output ("    " + $item.Name + (Get-SuffixTag $item))
     }
 }
 Write-Output ""
@@ -701,7 +740,7 @@ Write-Output ">>> STILL GATED (lint exit 1) -- correctly on hold"
 Write-Output "    'Correctly on hold' is a statement about GATES ONLY. lint rejected these"
 Write-Output "    BEFORE it ran their premise, so nothing here says the work is outstanding."
 if ($stillGated.Count -eq 0) { Write-Output "    (none)" }
-foreach ($item in $stillGated) { Write-Output ("    " + $item.Name + "`n        " + $item.Verdict) }
+foreach ($item in $stillGated) { Write-Output ("    " + $item.Name + (Get-SuffixTag $item) + "`n        " + $item.Verdict) }
 Write-Output ""
 
 Write-Output ">>> SPENT BEHIND A REJECT -- still gated, but the work has ALREADY SHIPPED"
@@ -767,13 +806,17 @@ $spentTotal       = $spent.Count + $spentBehindReject.Count
 $lintEvaluated    = $satisfied.Count + $spent.Count
 $premiseEvaluated = $lintEvaluated + $spentBehindReject.Count + $rejectStillNeeded.Count
 
-Write-Output ("=== TOTALS  spent=" + $spentTotal + " of " + $premiseEvaluated + " evaluated  gates-satisfied=" + $satisfied.Count + "  still-gated=" + $stillGated.Count + "  unreadable=" + $unreadable.Count + "  of " + $holdFiles.Count + " HOLDs")
-if ($premiseEvaluated -eq $holdFiles.Count) {
-    Write-Output ("    The spent denominator is " + $premiseEvaluated + " -- every premise on this board was evaluated, but not")
+Write-Output ("=== TOTALS  spent=" + $spentTotal + " of " + $premiseEvaluated + " evaluated  gates-satisfied=" + $satisfied.Count + "  still-gated=" + $stillGated.Count + "  unreadable=" + $unreadable.Count + "  of " + $corpusFiles.Count + " prompts (HOLD=" + $holdFiles.Count + ", ready=" + $readyFiles.Count + ", LOOPING=" + $loopingFiles.Count + ")")
+# TRIAGE_CORPUS_UNION_V1: the -HOLD.md sub-count preserved for readers/scripts that carry
+# the pre-union number. Read the TOTALS line above for the whole corpus; read this line
+# only when you specifically want the HOLD segment.
+Write-Output ("    of the " + $corpusFiles.Count + " prompt(s) above, " + $holdFiles.Count + " are -HOLD.md (the pre-union corpus). rev-* review jobs are excluded.")
+if ($premiseEvaluated -eq $corpusFiles.Count) {
+    Write-Output ("    The spent denominator is " + $premiseEvaluated + " -- every premise in this corpus was evaluated, but not")
     Write-Output ("    all of them by lint. lint runs the premise LAST, so it evaluated " + $lintEvaluated + " (the ADMIT and")
     Write-Output ("    STALE buckets) and its " + $stillGated.Count + " REJECT(s) never reached one.")
 } else {
-    Write-Output ("    The spent denominator is " + $premiseEvaluated + ", not " + $holdFiles.Count + ", and it is not all lint's. lint runs the")
+    Write-Output ("    The spent denominator is " + $premiseEvaluated + ", not " + $corpusFiles.Count + ", and it is not all lint's. lint runs the")
     Write-Output ("    premise LAST, so it evaluated " + $lintEvaluated + " (the ADMIT and STALE buckets) and its " + $stillGated.Count)
     Write-Output "    REJECT(s) never reached one."
 }
@@ -787,7 +830,7 @@ if (-not $spentProbeOk) {
     Write-Output ("!!! SUSPECT: the lint SPENT bucket (exit 3, count " + $spent.Count + ") is UNMEASURED -- the SPENT positive control did not pass (" + $spentProbeNote + ").")
 }
 if ($buckets -lt 2) {
-    Write-Output "!!! SUSPECT: every HOLD landed in ONE bucket. That is the signature of a broken"
+    Write-Output "!!! SUSPECT: every prompt landed in ONE bucket. That is the signature of a broken"
     Write-Output "!!! probe, not of a uniform board. Prove node and git both resolve for"
     Write-Output "!!! lint-prompt.mjs (DOCTRINE 9.5 -- a missing git makes every gate skip) before"
     Write-Output "!!! believing this run."

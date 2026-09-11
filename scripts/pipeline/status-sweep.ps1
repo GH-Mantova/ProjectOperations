@@ -289,7 +289,27 @@ Section "3. IS THE BOARD BUSY? (safe-to-act gate -- REAL mutation signals, not '
 # ------------------------------------------------------------------------------------------------
 $lockInteractive = Test-Path (Join-Path $Repo ".git\index.lock")
 $lockClone = Test-Path (Join-Path $WatcherClone ".git\index.lock")
-$gitProc = @(Get-Process -Name git -ErrorAction SilentlyContinue)
+# GITPROC_SCOPED_V1: count only git.exe touching our trees, by COMMAND LINE (DOCTRINE 9.5).
+# A bare Get-Process -Name git matches EVERY git.exe on the machine, including a read-only
+# 'git show' run by a concurrent chat against an unrelated repo, and this sweep's own transient
+# git children. Measured 2026-09-10: one plain 'git log' child took the unscoped count from 0
+# to 2 on an otherwise idle board while index.lock stayed False, and section 7 printed
+# DO NOT ACT on that count alone. The comment above already reasoned this same class through
+# for claude.exe -- this line kept the shape that comment fixed. Only git.exe whose command
+# line names the dev tree ($Repo) or the watcher clone ($WatcherClone) is board-busy;
+# anything else is another repository's business. CWD cannot be read from Win32_Process in
+# PS 5.1 without P/Invoke, so a bare 'git status' issued from inside $Repo will not match --
+# such an invocation is either a WRITE (caught by index.lock two lines above) or a READ
+# (which never justified DO NOT ACT). The unscoped total is still reported as [INFO] below so
+# no reader loses a number they may have been relying on (RULE 1: additive, existing signals
+# untouched).
+$gitProcAll = @(Get-CimInstance Win32_Process -Filter "Name='git.exe'" -ErrorAction SilentlyContinue)
+$repoPat = $Repo.ToLower()
+$clonePat = $WatcherClone.ToLower()
+$gitProc = @($gitProcAll | Where-Object {
+  $cl = if ($_.CommandLine) { $_.CommandLine.ToLower() } else { "" }
+  ($cl.Contains($repoPat)) -or ($cl.Contains($clonePat))
+})
 $headless = @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-Object { $_.CommandLine -like "*claude-code*stream-json*" })
 # THREE REAL signals. A fourth term used to sit at the front of this expression: a count of files
 # in a queue subdirectory that NO producer ever writes (scripts/pr-watcher/index.mjs files prompts
@@ -299,7 +319,8 @@ $headless = @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-
 # buildRunning comment below for the measurement and for what replaced it.
 $boardBusy = $lockInteractive -or $lockClone -or ($gitProc.Count -gt 0)
 Line "LIVE" ("git index.lock  interactive/clone: " + $lockInteractive + " / " + $lockClone + "  (true = a git write is mid-flight)")
-Line "LIVE" ("git processes running: " + $gitProc.Count)
+Line "LIVE" ("git processes touching our trees (scoped): " + $gitProc.Count + "  (this is what feeds the safe-to-act gate)")
+Line "INFO" ("git processes machine-wide (unscoped): " + $gitProcAll.Count + "  (includes concurrent chats and other repos -- informational, NOT a blocker)")
 Line "INFO" ("headless claude-code sessions: " + $headless.Count + "  (INCLUDES this chat -- informational, NOT a blocker)")
 
 # ---- buildRunning: a REAL live signal, REPORTED AND DELIBERATELY NOT WIRED INTO $boardBusy ------
@@ -583,7 +604,7 @@ Section "7. VERDICT"
 # ------------------------------------------------------------------------------------------------
 $safe = -not $boardBusy
 if (-not $safe) {
-  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- a git index.lock is held, or a git process is running). Wait, re-run, then act."
+  Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- a git index.lock is held, or a git process is touching our trees). Wait, re-run, then act."
 } elseif ($liveWorktrees.Count -gt 0) {
   # A LIVE STATION WORKTREE means a station is actively working. Do not say SAFE TO ACT.
   # Do NOT say DO NOT ACT either -- a live worktree off origin/main is correct isolation.

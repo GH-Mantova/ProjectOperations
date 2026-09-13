@@ -7,6 +7,8 @@ import { ScheduleOfRatesController } from "./schedule-of-rates.controller";
 import { ScheduleOfRatesService } from "./schedule-of-rates.service";
 import { SorClientRateCardController } from "./sor-client-rate-card.controller";
 import { SorClientRateCardService } from "./sor-client-rate-card.service";
+import { SorPushBackController } from "./sor-push-back.controller";
+import { SorPushBackService } from "./sor-push-back.service";
 import { SorSourceMarkupController } from "./sor-source-markup.controller";
 import { SorSourceMarkupService } from "./sor-source-markup.service";
 import { CreateSorService } from "./create-sor.service";
@@ -35,10 +37,11 @@ import { CreateSorService } from "./create-sor.service";
   controllers: [
     ScheduleOfRatesController,
     SorClientRateCardController,
+    SorPushBackController,
     SorSourceMarkupController,
-    JobSorSnapshotController
+    JobSorSnapshotController,
   ],
-  providers: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService, JobSorSnapshotService, CreateSorService],
-  exports: [ScheduleOfRatesService, SorClientRateCardService, SorSourceMarkupService, JobSorSnapshotService, CreateSorService]
+  providers: [ScheduleOfRatesService, SorClientRateCardService, SorPushBackService, SorSourceMarkupService, JobSorSnapshotService, CreateSorService],
+  exports: [ScheduleOfRatesService, SorClientRateCardService, SorPushBackService, SorSourceMarkupService, JobSorSnapshotService, CreateSorService]
 })
 export class ScheduleOfRatesModule {}

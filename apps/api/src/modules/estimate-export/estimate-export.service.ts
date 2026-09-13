@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { parseDefaultClauses, type TcClause } from "../quote/tc-parser";
+import { parseDefaultClauses, parseClauses, type TcClause } from "../quote/tc-parser";
 import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import { buildEstimateExcel } from "./excel/estimate-excel.builder";
 import {
@@ -188,6 +188,43 @@ function isClauseArray(value: unknown): value is TcClause[] {
       typeof (c as TcClause).heading === "string" &&
       typeof (c as TcClause).body === "string"
   );
+}
+
+/**
+ * Resolve T&C clauses from a per-tender tandC row (JSON stored clauses), or
+ * fall back to the canonical TC_TEXT defaults when the row is absent. This is
+ * the same logic the tender-level PDF uses at :252-257, extracted so that
+ * quote-pdf.service.ts can share one code path for the live-clause fallback.
+ *
+ * Exported so quote-pdf.service.ts can import it without duplicating the
+ * isClauseArray guard.
+ */
+export function resolveLiveClauses(
+  tandC: { clauses: unknown } | null | undefined
+): TcClause[] {
+  if (tandC && isClauseArray(tandC.clauses)) {
+    return tandC.clauses;
+  }
+  return parseDefaultClauses();
+}
+
+/**
+ * Resolve T&C clauses from a pinned CompanyLegalDocument `content` string.
+ * Falls back to `liveClauses` when parseClauses() returns empty (human-edited
+ * v2+ content that doesn't follow the N. HEADING regex).
+ *
+ * Returns `{ clauses, usedPinned }` so the caller can emit a logger.warn when
+ * pinned content fails to parse.
+ */
+export function resolvePinnedClauses(
+  pinnedContent: string,
+  liveClauses: TcClause[]
+): { clauses: TcClause[]; usedPinned: boolean } {
+  const parsed = parseClauses(pinnedContent);
+  if (parsed.length > 0) {
+    return { clauses: parsed, usedPinned: true };
+  }
+  return { clauses: liveClauses, usedPinned: false };
 }
 
 @Injectable()

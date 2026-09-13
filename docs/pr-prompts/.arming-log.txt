@@ -86,3 +86,8 @@
 2026-09-13T06:06:30Z  ARMED  pr-brandtheme-s6-live-preview-contrast-and-override  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=4912  caller=powershell.exe:26688
 2026-09-13T06:36:28Z  ARMED  pr-qpdf-3-quoteref-collision-409  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=16080  caller=powershell.exe:29624
 2026-09-13T06:53:31Z  ARMED  pr-qpdf-4-freeze-issued-terms  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=30676  caller=powershell.exe:21176
+2026-09-13T07:23:03Z  ARMED  pr-fix-1875-batch4-e2e-expects-the-old-quote-labels  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=30984  caller=powershell.exe:13536
+2026-09-13T07:32:57Z  ARMED  pr-fv2-maintenance-usage-intervals  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=5312  caller=powershell.exe:10620
+2026-09-13T07:55:34Z  ARMED  pr-draftpanel-s1-rates-lock-gate  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=31244  caller=powershell.exe:29264
+2026-09-13T08:32:03Z  ARMED  pr-qpdf-2-rate-basis-stamp  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=12696  caller=powershell.exe:28580
+2026-09-13T08:59:59Z  ARMED  pr-bp-s2-worth-chasing-view  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=22956  caller=powershell.exe:26724

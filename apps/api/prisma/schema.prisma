@@ -6432,6 +6432,23 @@ model BrandColorScheme {
   name              String   @unique
   primaryColorHex   String   @map("primary_color_hex")
   secondaryColorHex String   @map("secondary_color_hex")
+
+  // S3 palette — all nullable; NULL means "use the tokens.css fallback".
+  // No defaults so no existing row is visually altered by this migration.
+  sidebarBgHex          String? @map("sidebar_bg_hex")
+  sidebarTextHex        String? @map("sidebar_text_hex")
+  sidebarTextActiveHex  String? @map("sidebar_text_active_hex")
+  surfacePageHex        String? @map("surface_page_hex")
+  surfaceCardHex        String? @map("surface_card_hex")
+  textPrimaryHex        String? @map("text_primary_hex")
+  textSecondaryHex      String? @map("text_secondary_hex")
+  textMutedHex          String? @map("text_muted_hex")
+  statusActiveHex       String? @map("status_active_hex")
+  statusWarningHex      String? @map("status_warning_hex")
+  statusDangerHex       String? @map("status_danger_hex")
+  statusInfoHex         String? @map("status_info_hex")
+  statusNeutralHex      String? @map("status_neutral_hex")
+
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 

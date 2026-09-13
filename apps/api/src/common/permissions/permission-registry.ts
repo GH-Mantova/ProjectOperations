@@ -160,7 +160,11 @@ export const permissionRegistry = [
   // aggregate Admin Settings page (notifications, email, AI, integrations tabs).
   // The Admin role receives this code automatically via the all-permissions grant
   // in seed-reference.ts (every entry is upserted then granted to Admin).
-  { code: "system.manage", module: "platform", label: "Manage system settings", description: "Access and edit the aggregate system settings (notifications, email, AI, integrations)" }
+  { code: "system.manage", module: "platform", label: "Manage system settings", description: "Access and edit the aggregate system settings (notifications, email, AI, integrations)" },
+  // SLICE 17 company.manage — replaces the platform.admin guard on the company-profile
+  // and branding endpoints that back AdminCompanyPage. isHighRisk: true because it
+  // previously required the Admin role (platform.admin) to reach those write surfaces.
+  { code: "company.manage", module: "platform", label: "Manage company details and branding", description: "Edit company details, legal information and branding", isHighRisk: true }
 ] as const;
 
 export type PermissionRegistryEntry = (typeof permissionRegistry)[number];

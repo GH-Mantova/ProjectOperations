@@ -12,6 +12,7 @@ escalates: false
 cluster: sor-s9
 cluster_order: 2
 requires_on_main: apps/api/src/modules/agreed-records/agreed-record-register.controller.ts :: eligible-for-claim
+design_ref: https://claude.ai/code/artifact/66c798f3-fce1-4232-9b35-77367f36e225
 ---
 
 # SoR S9b - per-job SoR register screen + raise-claim picker

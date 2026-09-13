@@ -118,14 +118,14 @@ export class CompanyProfileController {
   constructor(private readonly service: CompanyProfileService) {}
 
   @Get("profile")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Read the company profile singleton + completeness indicator." })
   getProfile() {
     return this.service.getProfile();
   }
 
   @Post("profile")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({
     summary:
       "Bootstrap the company profile singleton on a fresh environment. Idempotent: returns the existing profile if one is already present. Super-user only."
@@ -136,7 +136,7 @@ export class CompanyProfileController {
   }
 
   @Patch("profile")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({
     summary:
       "Partial update of the company profile. Super-user only (enforced server-side, not just UI)."
@@ -148,14 +148,14 @@ export class CompanyProfileController {
 
   // ─── Legal documents ──────────────────────────────────────────────────
   @Get("legal-documents")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "List all versions of all legal-document types (newest first per type)." })
   listLegalDocuments() {
     return this.service.listLegalDocuments();
   }
 
   @Post("legal-documents")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({
     summary:
       "Create a NEW version of a legal document. The previous active version (if any) is closed. Old versions are never mutated — they may be pinned by historical quotes/contracts."
@@ -174,14 +174,14 @@ export class CompanyProfileController {
 
   // ─── Company licences ─────────────────────────────────────────────────
   @Get("licences")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "List company-owned licences (demolition, asbestos, QBCC, waste transport). Same expiry-alert path as subcontractors." })
   listLicences() {
     return this.service.listLicences();
   }
 
   @Post("licences")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Create a new company-owned licence. Super-user only." })
   createLicence(@Body() dto: LicenceDto, @Req() req: AuthenticatedRequest) {
     this.service.assertSuperUser(req.user);
@@ -193,7 +193,7 @@ export class CompanyProfileController {
   }
 
   @Patch("licences/:id")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Update a company-owned licence (renew, change number/issuer/expiry). Super-user only." })
   updateLicence(
     @Param("id") id: string,
@@ -209,7 +209,7 @@ export class CompanyProfileController {
   }
 
   @Delete("licences/:id")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Delete a company-owned licence. Super-user only." })
   async deleteLicence(@Param("id") id: string, @Req() req: AuthenticatedRequest) {
     this.service.assertSuperUser(req.user);
@@ -219,14 +219,14 @@ export class CompanyProfileController {
 
   // ─── Company insurances ───────────────────────────────────────────────
   @Get("insurances")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "List company-owned insurances (public liability, workers comp, professional indemnity)." })
   listInsurances() {
     return this.service.listInsurances();
   }
 
   @Post("insurances")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Create a new company-owned insurance policy. Super-user only." })
   createInsurance(@Body() dto: InsuranceDto, @Req() req: AuthenticatedRequest) {
     this.service.assertSuperUser(req.user);
@@ -237,7 +237,7 @@ export class CompanyProfileController {
   }
 
   @Patch("insurances/:id")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Update a company-owned insurance policy (renew, update policy/expiry). Super-user only." })
   updateInsurance(
     @Param("id") id: string,
@@ -252,7 +252,7 @@ export class CompanyProfileController {
   }
 
   @Delete("insurances/:id")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Delete a company-owned insurance policy. Super-user only." })
   async deleteInsurance(@Param("id") id: string, @Req() req: AuthenticatedRequest) {
     this.service.assertSuperUser(req.user);

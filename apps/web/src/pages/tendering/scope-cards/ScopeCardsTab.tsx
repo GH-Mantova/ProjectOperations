@@ -592,8 +592,8 @@ export function ScopeCardsTab({
             justifyContent: "space-between",
             gap: 16,
             padding: "10px 16px",
-            background: "var(--status-warning-bg, #FFF8E6)",
-            border: "1px solid var(--status-warning, #F59E0B)",
+            background: "color-mix(in srgb, var(--status-warning) 15%, transparent)",
+            border: "1px solid var(--status-warning)",
             borderRadius: "var(--radius-sm)",
             flexWrap: "wrap"
           }}

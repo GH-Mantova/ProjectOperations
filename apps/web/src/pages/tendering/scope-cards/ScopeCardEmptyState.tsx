@@ -74,9 +74,9 @@ export function ScopeCardRatesRequiredEmptyState({ onLockRates, locking }: Rates
       style={{
         textAlign: "center",
         padding: 60,
-        background: "var(--surface-muted, #F6F6F6)",
+        background: "var(--surface-subtle)",
         borderRadius: 8,
-        border: "1px dashed var(--border, #e5e7eb)"
+        border: "1px dashed var(--border-subtle)"
       }}
     >
       <h3 style={{ margin: 0, fontSize: 18 }}>Lock rates before pricing</h3>

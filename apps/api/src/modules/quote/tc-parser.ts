@@ -3,13 +3,16 @@ import { TC_TEXT } from "../estimate-export/pdf/tc-text.const";
 export type TcClause = { number: string; heading: string; body: string };
 
 /**
- * Parse the monolithic TC_TEXT string (defined for the quote-PDF renderer)
- * into an ordered array of { number, heading, body }. Clause 17A is a real
- * clause so numbers are strings, not integers. Blank lines inside a clause
- * are preserved in the body as "\n\n" so the textarea round-trips cleanly.
+ * Parse an arbitrary T&C text string into an ordered array of
+ * { number, heading, body }. Clause 17A is a real clause so numbers are
+ * strings, not integers. Blank lines inside a clause are preserved in the
+ * body as "\n\n" so the textarea round-trips cleanly.
+ *
+ * Returns an empty array when no `N. HEADING` lines are found — callers must
+ * treat an empty result as "fall back to live terms".
  */
-export function parseDefaultClauses(): TcClause[] {
-  const lines = TC_TEXT.split(/\r?\n/);
+export function parseClauses(text: string): TcClause[] {
+  const lines = text.split(/\r?\n/);
   const headingRe = /^(\d+A?)\.\s+(.+)$/;
   const clauses: TcClause[] = [];
   let current: TcClause | null = null;
@@ -33,6 +36,15 @@ export function parseDefaultClauses(): TcClause[] {
     clauses.push(current);
   }
   return clauses;
+}
+
+/**
+ * Parse the monolithic TC_TEXT string (defined for the quote-PDF renderer)
+ * into an ordered array of { number, heading, body }. This is a one-line
+ * wrapper over parseClauses(TC_TEXT) — kept so callers are unaffected.
+ */
+export function parseDefaultClauses(): TcClause[] {
+  return parseClauses(TC_TEXT);
 }
 
 export function clauseByNumber(clauses: TcClause[], number: string): TcClause | undefined {

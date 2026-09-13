@@ -312,6 +312,22 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     expect(mockRenderer.renderHtmlToPdf).toHaveBeenCalled();
   });
 
+  it("ESTIMATE_PREVIEW_MARK_V1 — exportPdf passes the estimate-preview header option to the renderer", async () => {
+    jest.clearAllMocks();
+    const tender = baseTender({
+      scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
+    });
+    const svc = makeService(tender);
+    await svc.exportPdf("t-1", "u-1");
+    expect(mockRenderer.renderHtmlToPdf).toHaveBeenCalledTimes(1);
+    const callArgs = (mockRenderer.renderHtmlToPdf as jest.Mock).mock.calls[0] as [unknown, { headerHtml: string }];
+    const headerHtml = callArgs[1].headerHtml;
+    // The header must carry the internal-estimate mark and an EST- prefixed ref
+    expect(headerHtml).toContain("INTERNAL ESTIMATE PREVIEW");
+    expect(headerHtml).toContain("EST-TEN-001");
+    expect(headerHtml).not.toContain("Quote No.");
+  });
+
   it("pipes the payload through buildEstimateExcel without throwing (integration smoke)", async () => {
     const tender = baseTender({
       scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]

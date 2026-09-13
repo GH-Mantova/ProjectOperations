@@ -154,8 +154,9 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     await expect(page.getByRole("button", { name: "Cost Summary", exact: true })).toHaveCount(0);
     await expect(page.getByText("Recalculate")).toHaveCount(0);
 
-    // PR #254 — Generate Quote renders in the header area when NOT editing.
-    await expect(page.getByRole("button", { name: "Generate Quote", exact: true })).toBeVisible();
+    // PR #254 — Estimate Preview (renamed from Generate Quote by #1875) renders
+    // in the header area when NOT editing.
+    await expect(page.getByRole("button", { name: "Estimate Preview", exact: true })).toBeVisible();
   });
 
   test("client scoring stars render on the T260520-ACME-Rev1 client card (Overview)", async ({ page }) => {
@@ -367,17 +368,19 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
 
   // ── Exports (PRs #45, #61, #254, #256, #257) ───────────────────────────────
 
-  test("Generate Quote toggles the export panel; PDF + Excel downloads fire; history records both", async ({
+  test("Estimate Preview toggles the export panel; PDF + Excel downloads fire; history records both", async ({
     page
   }) => {
     await openQuoteTab(page, "T260520-ACME-Rev1");
 
-    // PR #256/#257 — works in view mode, toggles the panel.
-    await page.getByRole("button", { name: "Generate Quote", exact: true }).click();
+    // PR #256/#257 — works in view mode, toggles the panel. Renamed by #1875:
+    // the header button is now "Estimate Preview" and the panel heading is
+    // "Estimate preview".
+    await page.getByRole("button", { name: "Estimate Preview", exact: true }).click();
     const panel = page.locator("section", {
-      has: page.getByRole("heading", { name: "Generate quote" })
+      has: page.getByRole("heading", { name: "Estimate preview" })
     });
-    await expect(panel.getByRole("heading", { name: "Generate quote" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Estimate preview" })).toBeVisible();
     await expect(panel.getByText("Export history")).toBeVisible();
 
     // History list scoped to the panel; the API serves rows newest-first
@@ -388,10 +391,10 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     // confirm its history row landed BEFORE firing the next export (the toast
     // appears before the list refetch, so the row needs its own assertion).
     const pdfDownloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF quote", exact: true }).click();
+    await page.getByRole("button", { name: "Download estimate preview (PDF)", exact: true }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toBe("IS_Quote_T260520-ACME-Rev1.pdf");
-    await expect(page.getByText("PDF quote generated")).toBeVisible();
+    await expect(page.getByText("Estimate preview PDF generated")).toBeVisible();
     await expect(historyRows.first().getByText("PDF", { exact: true })).toBeVisible();
 
     // PR #45 — Excel export download event, then its history row.
@@ -407,8 +410,8 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
     await expect(historyRows.nth(1)).toBeVisible();
 
     // Second click toggles the panel back off.
-    await page.getByRole("button", { name: "Generate Quote", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Download PDF quote", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Estimate Preview", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Download estimate preview (PDF)", exact: true })).toHaveCount(0);
     // Residue: the two EstimateExport rows remain (history has no delete UI).
   });
 

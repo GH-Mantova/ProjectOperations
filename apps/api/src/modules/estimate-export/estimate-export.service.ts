@@ -436,7 +436,7 @@ export class EstimateExportService {
     const html = buildQuoteHtml(payload);
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate(payload.tender.tenderNumber, ctx),
+      headerHtml: headerTemplate(`EST-${payload.tender.tenderNumber}`, ctx, true),
       footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },
     });

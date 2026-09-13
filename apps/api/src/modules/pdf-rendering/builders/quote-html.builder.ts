@@ -369,13 +369,19 @@ function coverPage(
 
   let html = "";
 
-  // Two-column meta
+  // Two-column meta.
+  // RATE_BASIS_STAMP_V1 — the "Rate basis:" row reads TenderRateSet.lockedAt.
+  // When no rate set exists the row prints "Rates not locked" — the document
+  // never falls back to the print date, which is what the header displays and
+  // what this row exists to distinguish itself from.
+  const rateBasisText = esc(rateBasisLine(p.tender.rateSet?.lockedAt ?? null));
   html += `<div class="meta-grid">
   <div><span class="label">Company:</span> <span class="value">${esc(primaryClient?.name ?? "—")}</span></div>
   <div><span class="label">${esc(refLabel)}</span> <span class="value">${esc(quoteRef)}</span></div>
   <div><span class="label">Attention:</span> <span class="value">${esc(primaryClient?.contactName ?? "—")}</span></div>
   <div><span class="label">Date:</span> <span class="value">${fmtDate(new Date())}</span></div>
   <div><span class="label">Phone:</span> <span class="value">${esc(primaryClient?.contactPhone ?? "—")}</span></div>
+  <div><span class="label">Rate basis:</span> <span class="value">${rateBasisText}</span></div>
   <div><span class="label">Project:</span> <span class="value">${esc(p.tender.title)}</span></div>
   <div><span class="label">Email:</span> <span class="value">${esc(primaryClient?.contactEmail ?? "—")}</span></div>
   <div><span class="label">Estimator:</span> <span class="value">${esc(estimatorName)}</span></div>
@@ -830,17 +836,41 @@ const DEFAULT_PDF_COMPANY_CONTEXT: PdfCompanyContext = {
 
 // ESTIMATE_PREVIEW_MARK_V1 — when overlay === null the header and cover treat
 // this render as an internal estimate preview, not an issuable client quote.
-// The third parameter is intentionally optional so quote-pdf.service.ts (which
-// always passes a real overlay) needs no change.
+// RATE_BASIS_STAMP_V1 — the ratesLockedAt option surfaces the moment
+// TenderRateSetService.lock() materialised the rate set. Null means the
+// tender has no locked rate set; the header prints that fact explicitly
+// rather than falling back to the print date. Options object rather than
+// positional args so QPDF-1's isEstimatePreview and QPDF-2's ratesLockedAt
+// (and future flags) compose without call-site rework.
+export type HeaderTemplateOptions = {
+  isEstimatePreview?: boolean;
+  ratesLockedAt?: Date | null;
+};
+
+// RATE_BASIS_STAMP_V1 — the client-facing document must never invent a
+// rate basis. If TenderRateSet is absent the header/cover say so with the
+// same wording so a reader who scans either sees the same claim.
+const RATE_BASIS_NOT_LOCKED = "Rates not locked";
+
+function rateBasisLine(lockedAt: Date | null | undefined): string {
+  return lockedAt
+    ? `Rates as of ${fmtDate(lockedAt)}`
+    : RATE_BASIS_NOT_LOCKED;
+}
+
 function headerTemplate(
   quoteRef: string,
   ctx: PdfCompanyContext = DEFAULT_PDF_COMPANY_CONTEXT,
-  isEstimatePreview = false,
+  options: HeaderTemplateOptions = {},
 ): string {
+  const { isEstimatePreview = false, ratesLockedAt = null } = options;
   const logo = logoBase64();
   const rightMeta = ctx.headerRightMeta ?? DEFAULT_PDF_COMPANY_CONTEXT.headerRightMeta ?? "";
+  const rateBasis = esc(rateBasisLine(ratesLockedAt));
   if (isEstimatePreview) {
     // Fits within the existing 35mm top margin — no margin change required.
+    // RATE_BASIS_STAMP_V1 — rate basis rides on the same doc-control row
+    // as the print date so no vertical space is added.
     return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div style="background:${BRAND.teal};color:#fff;padding:6pt 15mm 10pt 15mm;display:flex;align-items:center;gap:8pt;position:relative">
     <img src="data:image/png;base64,${logo}" style="height:28pt;width:auto">
@@ -851,7 +881,7 @@ function headerTemplate(
   <div style="height:2pt;background:${BRAND.orange}"></div>
   <div style="display:flex;justify-content:space-between;align-items:center;padding:2pt 15mm 0 15mm;line-height:1.4">
     <span style="font-size:6.5pt;font-weight:700;color:${BRAND.orange};letter-spacing:0.05em">INTERNAL ESTIMATE PREVIEW — NOT FOR CLIENT DISTRIBUTION</span>
-    <span style="font-size:6pt;color:#777;text-align:right">Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></span>
+    <span style="font-size:6pt;color:#777;text-align:right">${rateBasis} &nbsp;|&nbsp; Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></span>
   </div>
 </div>`;
   }
@@ -863,7 +893,7 @@ function headerTemplate(
     <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:8pt">Quote No. ${esc(quoteRef)}</span>
   </div>
   <div style="height:2pt;background:${BRAND.orange}"></div>
-  <div style="text-align:right;font-size:6pt;color:#777;padding:2pt 15mm 0 15mm;line-height:1.4">Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></div>
+  <div style="text-align:right;font-size:6pt;color:#777;padding:2pt 15mm 0 15mm;line-height:1.4">${rateBasis} &nbsp;|&nbsp; Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></div>
 </div>`;
 }
 

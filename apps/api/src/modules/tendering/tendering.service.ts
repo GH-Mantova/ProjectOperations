@@ -114,7 +114,8 @@ const tenderInclude = {
  * and duplication.
  *
  * Cross-cutting behaviour: every mutation writes an AuditService entry;
- * status transitions pin submittedAt/wonAt/lostAt + ratesSnapshotAt and
+ * status transitions pin submittedAt/wonAt/lostAt (ratesSnapshotAt is
+ * owned by TenderRateSetService.lock(), not by status changes) and
  * drive per-client win/tender scoring (guarded by tenderScoreCounted);
  * create/duplicate provision SharePoint folders best-effort; the first
  * SUBMITTED transition fires a detached notification email.
@@ -269,8 +270,8 @@ export class TenderingService {
    * Bulk update the status of up to 50 tenders in a single transaction.
    *
    * Applies the same lifecycle-date pinning as updateStatus (submittedAt,
-   * wonAt, lostAt, ratesSnapshotAt) and updates client win/tender scores
-   * outside the transaction. Writes one audit entry for the whole batch.
+   * wonAt, lostAt) and updates client win/tender scores outside the
+   * transaction. Writes one audit entry for the whole batch.
    *
    * @param tenderIds - up to 50 tender ids (duplicates de-duped)
    * @param status - target status applied to every tender
@@ -318,9 +319,9 @@ export class TenderingService {
         const data: Prisma.TenderUpdateInput = { status };
         if (status === "SUBMITTED" && !tender.submittedAt) {
           data.submittedAt = now;
-          // ratesSnapshotAt is now set by rateSetService.lock(); remove the bare
-          // date stamp so the two writes don't race. Tenders that already had a
-          // snapshot keep it unchanged.
+          // ratesSnapshotAt is owned by TenderRateSetService.lock() and must NOT
+          // be written here — a status change is not a rate lock. Tenders that
+          // already had a snapshot keep it unchanged.
         }
         if (isWon && !tender.wonAt) {
           data.wonAt = now;
@@ -1002,7 +1003,7 @@ export class TenderingService {
   /**
    * Update only the tender status, driving the lifecycle side effects.
    *
-   * First SUBMITTED pins submittedAt + ratesSnapshotAt; first win
+   * First SUBMITTED pins submittedAt; first win
    * (AWARDED/CONTRACT_ISSUED/CONVERTED) pins wonAt; first LOST pins
    * lostAt (each backfills submittedAt if missing). Updates client
    * win/tender scores once per tender (tenderScoreCounted guard) and
@@ -1023,9 +1024,12 @@ export class TenderingService {
     }
     const now = new Date();
     const data: Prisma.TenderUpdateInput = { status };
-    // First transition to SUBMITTED pins submittedAt. If the tender has no
-    // TenderRateSet, lock() creates the snapshot and stamps ratesSnapshotAt;
-    // otherwise the existing set is untouched (no re-lock on subsequent submits).
+    // First transition to SUBMITTED pins submittedAt. The rate snapshot
+    // timestamp is owned by TenderRateSetService.lock() and must NOT be
+    // written here — a status change is not a rate lock, and stamping it
+    // from a dropdown fills the column with a meaningless date. If the
+    // tender has no TenderRateSet, we call lock() BEFORE the update so
+    // lock() writes ratesSnapshotAt; otherwise the existing set is untouched.
     let needsRateLock = false;
     if (status === "SUBMITTED" && !existing.submittedAt) {
       data.submittedAt = now;

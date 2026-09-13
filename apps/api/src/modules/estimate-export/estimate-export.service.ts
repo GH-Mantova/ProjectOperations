@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { parseDefaultClauses, type TcClause } from "../quote/tc-parser";
+import { parseDefaultClauses, parseClauses, type TcClause } from "../quote/tc-parser";
 import { ScopeRedesignService } from "../tendering/scope-redesign.service";
 import { buildEstimateExcel } from "./excel/estimate-excel.builder";
 import {
@@ -126,6 +126,11 @@ export type ExportPayload = {
     dueDate: Date | null;
     createdAt: Date;
     ratesSnapshotAt: Date | null;
+    // RATE_BASIS_STAMP_V1 — the honest rate basis is the moment
+    // TenderRateSetService.lock() materialised the per-tender rate set.
+    // Null when rates have not been locked; the PDF must say so
+    // explicitly rather than fall back to the print date.
+    rateSet: { lockedAt: Date } | null;
     estimator: {
       firstName: string;
       lastName: string;
@@ -185,6 +190,43 @@ function isClauseArray(value: unknown): value is TcClause[] {
   );
 }
 
+/**
+ * Resolve T&C clauses from a per-tender tandC row (JSON stored clauses), or
+ * fall back to the canonical TC_TEXT defaults when the row is absent. This is
+ * the same logic the tender-level PDF uses at :252-257, extracted so that
+ * quote-pdf.service.ts can share one code path for the live-clause fallback.
+ *
+ * Exported so quote-pdf.service.ts can import it without duplicating the
+ * isClauseArray guard.
+ */
+export function resolveLiveClauses(
+  tandC: { clauses: unknown } | null | undefined
+): TcClause[] {
+  if (tandC && isClauseArray(tandC.clauses)) {
+    return tandC.clauses;
+  }
+  return parseDefaultClauses();
+}
+
+/**
+ * Resolve T&C clauses from a pinned CompanyLegalDocument `content` string.
+ * Falls back to `liveClauses` when parseClauses() returns empty (human-edited
+ * v2+ content that doesn't follow the N. HEADING regex).
+ *
+ * Returns `{ clauses, usedPinned }` so the caller can emit a logger.warn when
+ * pinned content fails to parse.
+ */
+export function resolvePinnedClauses(
+  pinnedContent: string,
+  liveClauses: TcClause[]
+): { clauses: TcClause[]; usedPinned: boolean } {
+  const parsed = parseClauses(pinnedContent);
+  if (parsed.length > 0) {
+    return { clauses: parsed, usedPinned: true };
+  }
+  return { clauses: liveClauses, usedPinned: false };
+}
+
 @Injectable()
 export class EstimateExportService {
   constructor(
@@ -235,7 +277,10 @@ export class EstimateExportService {
         },
         assumptions: { orderBy: { sortOrder: "asc" } },
         exclusions: { orderBy: { sortOrder: "asc" } },
-        tandC: true
+        tandC: true,
+        // RATE_BASIS_STAMP_V1 — pull the lock timestamp so the PDF prints
+        // the moment rates were locked, not the print date.
+        rateSet: { select: { lockedAt: true } }
       }
     });
     if (!tender) throw new NotFoundException("Tender not found.");
@@ -390,6 +435,7 @@ export class EstimateExportService {
         dueDate: tender.dueDate,
         createdAt: tender.createdAt,
         ratesSnapshotAt: tender.ratesSnapshotAt,
+        rateSet: tender.rateSet ? { lockedAt: tender.rateSet.lockedAt } : null,
         estimator: tender.estimator
           ? {
               firstName: tender.estimator.firstName,
@@ -436,7 +482,10 @@ export class EstimateExportService {
     const html = buildQuoteHtml(payload);
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate(`EST-${payload.tender.tenderNumber}`, ctx, true),
+      headerHtml: headerTemplate(`EST-${payload.tender.tenderNumber}`, ctx, {
+        isEstimatePreview: true,
+        ratesLockedAt: payload.tender.rateSet?.lockedAt ?? null,
+      }),
       footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },
     });

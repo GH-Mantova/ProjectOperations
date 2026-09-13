@@ -113,7 +113,8 @@ const tenderInclude = {
  * and duplication.
  *
  * Cross-cutting behaviour: every mutation writes an AuditService entry;
- * status transitions pin submittedAt/wonAt/lostAt + ratesSnapshotAt and
+ * status transitions pin submittedAt/wonAt/lostAt (ratesSnapshotAt is
+ * owned by TenderRateSetService.lock(), not by status changes) and
  * drive per-client win/tender scoring (guarded by tenderScoreCounted);
  * create/duplicate provision SharePoint folders best-effort; the first
  * SUBMITTED transition fires a detached notification email.
@@ -264,8 +265,8 @@ export class TenderingService {
    * Bulk update the status of up to 50 tenders in a single transaction.
    *
    * Applies the same lifecycle-date pinning as updateStatus (submittedAt,
-   * wonAt, lostAt, ratesSnapshotAt) and updates client win/tender scores
-   * outside the transaction. Writes one audit entry for the whole batch.
+   * wonAt, lostAt) and updates client win/tender scores outside the
+   * transaction. Writes one audit entry for the whole batch.
    *
    * @param tenderIds - up to 50 tender ids (duplicates de-duped)
    * @param status - target status applied to every tender
@@ -284,7 +285,7 @@ export class TenderingService {
 
     const existing = await this.prisma.tender.findMany({
       where: { id: { in: uniqueIds } },
-      select: { id: true, status: true, submittedAt: true, ratesSnapshotAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true, tenderWinCounted: true }
+      select: { id: true, status: true, submittedAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true, tenderWinCounted: true }
     });
     const missing = uniqueIds.filter((id) => !existing.some((tender) => tender.id === id));
     if (missing.length) {
@@ -300,20 +301,17 @@ export class TenderingService {
         const data: Prisma.TenderUpdateInput = { status };
         if (status === "SUBMITTED" && !tender.submittedAt) {
           data.submittedAt = now;
-          if (!tender.ratesSnapshotAt) data.ratesSnapshotAt = now;
         }
         if (isWon && !tender.wonAt) {
           data.wonAt = now;
           if (!tender.submittedAt) {
             data.submittedAt = now;
-            if (!tender.ratesSnapshotAt) data.ratesSnapshotAt = now;
           }
         }
         if (status === "LOST" && !tender.lostAt) {
           data.lostAt = now;
           if (!tender.submittedAt) {
             data.submittedAt = now;
-            if (!tender.ratesSnapshotAt) data.ratesSnapshotAt = now;
           }
         }
         if (isScorable && !tender.tenderScoreCounted) {
@@ -984,7 +982,7 @@ export class TenderingService {
   /**
    * Update only the tender status, driving the lifecycle side effects.
    *
-   * First SUBMITTED pins submittedAt + ratesSnapshotAt; first win
+   * First SUBMITTED pins submittedAt; first win
    * (AWARDED/CONTRACT_ISSUED/CONVERTED) pins wonAt; first LOST pins
    * lostAt (each backfills submittedAt if missing). Updates client
    * win/tender scores once per tender (tenderScoreCounted guard) and
@@ -1005,25 +1003,23 @@ export class TenderingService {
     }
     const now = new Date();
     const data: Prisma.TenderUpdateInput = { status };
-    // First transition to SUBMITTED pins submittedAt AND freezes the rate
-    // snapshot timestamp — the Quote tab uses this to display "Rates as of
-    // [date]" and rates admin can warn if the library moves afterwards.
+    // First transition to SUBMITTED pins submittedAt. The rate snapshot
+    // timestamp is owned by TenderRateSetService.lock() and must NOT be
+    // written here — a status change is not a rate lock, and stamping it
+    // from a dropdown fills the column with a meaningless date.
     if (status === "SUBMITTED" && !existing.submittedAt) {
       data.submittedAt = now;
-      if (!existing.ratesSnapshotAt) data.ratesSnapshotAt = now;
     }
     if ((status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED") && !existing.wonAt) {
       data.wonAt = now;
       if (!existing.submittedAt) {
         data.submittedAt = now;
-        if (!existing.ratesSnapshotAt) data.ratesSnapshotAt = now;
       }
     }
     if (status === "LOST" && !existing.lostAt) {
       data.lostAt = now;
       if (!existing.submittedAt) {
         data.submittedAt = now;
-        if (!existing.ratesSnapshotAt) data.ratesSnapshotAt = now;
       }
     }
     const tender = await this.prisma.tender.update({

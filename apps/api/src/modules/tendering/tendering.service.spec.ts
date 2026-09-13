@@ -447,4 +447,55 @@ describe("TenderingService", () => {
     expect(tenderOutcome.deleteMany).not.toHaveBeenCalled();
     expect(tenderOutcome.update).not.toHaveBeenCalled();
   });
+
+  // RATE_BASIS_STAMP_V1 (part a) — a status change is not a rate lock. The
+  // ratesSnapshotAt column is owned by TenderRateSetService.lock(); the
+  // status writer must pin submittedAt and touch nothing on the snapshot.
+  it("DRAFT → SUBMITTED writes submittedAt and does NOT write ratesSnapshotAt", async () => {
+    const tenderUpdate = jest.fn().mockResolvedValue({
+      id: "t-1",
+      tenderNumber: "T260612-ACME-Rev1",
+      title: "x",
+      estimatedValue: null,
+      tenderClients: []
+    });
+    const service = new TenderingService(
+      {
+        tender: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "t-1",
+            status: "DRAFT",
+            submittedAt: null,
+            ratesSnapshotAt: null,
+            wonAt: null,
+            lostAt: null,
+            tenderScoreCounted: false
+          }),
+          update: tenderUpdate
+        }
+      } as never,
+      { write: jest.fn().mockResolvedValue(undefined) } as never,
+      { sendNotificationEmail: jest.fn() } as never,
+      { ensureTenderFolderStructure: jest.fn().mockResolvedValue(undefined) } as never,
+      tenderNumberServiceMock() as never,
+      { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
+      { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+    );
+
+    await service.updateStatus("t-1", "SUBMITTED", "user-1");
+
+    // The primary status write is the first tender.update call. A second
+    // update may follow to pin tenderScoreCounted — that is unrelated to
+    // rate-basis and must not carry ratesSnapshotAt either.
+    expect(tenderUpdate).toHaveBeenCalled();
+    for (const call of tenderUpdate.mock.calls) {
+      const { data } = call[0] as { data: Record<string, unknown> };
+      expect(data).not.toHaveProperty("ratesSnapshotAt");
+    }
+    const primaryCall = tenderUpdate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(primaryCall.data.status).toBe("SUBMITTED");
+    expect(primaryCall.data.submittedAt).toBeInstanceOf(Date);
+  });
 });

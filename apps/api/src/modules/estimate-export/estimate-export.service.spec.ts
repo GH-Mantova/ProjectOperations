@@ -33,6 +33,7 @@ type FakeTender = {
   dueDate: Date | null;
   estimatedValue: { toString(): string } | null;
   ratesSnapshotAt: Date | null;
+  rateSet: { lockedAt: Date } | null;
   estimator: {
     id: string;
     firstName: string;
@@ -130,6 +131,7 @@ function baseTender(partial: Partial<FakeTender> = {}): FakeTender {
     dueDate: null,
     estimatedValue: null,
     ratesSnapshotAt: null,
+    rateSet: null,
     estimator: {
       id: "user-raj",
       firstName: "Raj",
@@ -348,5 +350,51 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     const svc = makeService(baseTender({ ratesSnapshotAt: snapshot }));
     const payload: ExportPayload = await svc.fetchTenderForExport("t-1");
     expect(payload.tender.ratesSnapshotAt).toEqual(snapshot);
+  });
+
+  it("RATE_BASIS_STAMP_V1 — surfaces rateSet.lockedAt when the tender has a locked rate set", async () => {
+    const lockedAt = new Date("2026-05-11T09:30:00Z");
+    const svc = makeService(baseTender({ rateSet: { lockedAt } }));
+    const payload: ExportPayload = await svc.fetchTenderForExport("t-1");
+    expect(payload.tender.rateSet).toEqual({ lockedAt });
+  });
+
+  it("RATE_BASIS_STAMP_V1 — surfaces rateSet=null when the tender has no locked rate set", async () => {
+    const svc = makeService(baseTender({ rateSet: null }));
+    const payload: ExportPayload = await svc.fetchTenderForExport("t-1");
+    expect(payload.tender.rateSet).toBeNull();
+  });
+
+  it("RATE_BASIS_STAMP_V1 — exportPdf passes ratesLockedAt into the header when the tender is locked", async () => {
+    jest.clearAllMocks();
+    const lockedAt = new Date("2026-05-11T09:30:00Z");
+    const svc = makeService(
+      baseTender({
+        rateSet: { lockedAt },
+        scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
+      })
+    );
+    await svc.exportPdf("t-1", "u-1");
+    expect(mockRenderer.renderHtmlToPdf).toHaveBeenCalledTimes(1);
+    const callArgs = (mockRenderer.renderHtmlToPdf as jest.Mock).mock.calls[0] as [unknown, { headerHtml: string }];
+    const headerHtml = callArgs[1].headerHtml;
+    expect(headerHtml).toContain("Rates as of 11/05/2026");
+    expect(headerHtml).not.toContain("Rates not locked");
+  });
+
+  it("RATE_BASIS_STAMP_V1 — exportPdf passes 'Rates not locked' when the tender has no rate set", async () => {
+    jest.clearAllMocks();
+    const svc = makeService(
+      baseTender({
+        rateSet: null,
+        scopeItems: [scopeItem({ discipline: "DEM", wbsCode: "DEM1", description: "Strip out" })]
+      })
+    );
+    await svc.exportPdf("t-1", "u-1");
+    expect(mockRenderer.renderHtmlToPdf).toHaveBeenCalledTimes(1);
+    const callArgs = (mockRenderer.renderHtmlToPdf as jest.Mock).mock.calls[0] as [unknown, { headerHtml: string }];
+    const headerHtml = callArgs[1].headerHtml;
+    expect(headerHtml).toContain("Rates not locked");
+    expect(headerHtml).not.toMatch(/Rates as of \d{2}\/\d{2}\/\d{4}/);
   });
 });

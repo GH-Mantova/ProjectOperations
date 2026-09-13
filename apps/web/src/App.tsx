@@ -23,6 +23,7 @@ import { ArchiveDetailPage } from "./pages/archive/ArchiveDetailPage";
 import { TenderingPage } from "./pages/tendering/TenderingPage";
 import { TenderDetailPage } from "./pages/tendering/TenderDetailPage";
 import { PipelinePage } from "./pages/tendering/PipelinePage";
+import { BidPriorityRankingPage } from "./pages/tendering/BidPriorityRankingPage";
 import { JobsListPage } from "./pages/jobs/JobsListPage";
 import { JobDetailPage } from "./pages/jobs/JobDetailPage";
 import { ProjectsListPage } from "./pages/projects/ProjectsListPage";
@@ -349,6 +350,8 @@ export function App() {
             {/* pipeline-fold (2026-08-20): /tenders/pipeline is now the combined
                 Board + Insights page. The old redirect to /tenders is replaced. */}
             <Route path="/tenders/pipeline" element={<PipelinePage />} />
+            {/* BP-2: "worth chasing" bid priority ranking. ADVISORY ONLY. */}
+            <Route path="/tenders/priority-ranking" element={<BidPriorityRankingPage />} />
             <Route path="/tenders/create" element={<Navigate to="/tenders" replace />} />
             <Route path="/tenders/workspace" element={<Navigate to="/tenders" replace />} />
             {/* Unified Directory redirects — /tenders/{clients,contacts} were

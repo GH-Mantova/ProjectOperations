@@ -98,3 +98,4 @@
 2026-09-13T11:10:17Z  ARMED  pr-fix-1886-contrast-test-hex-literals-trip-the-ratchet  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=25084  caller=powershell.exe:7048
 2026-09-13T11:21:06Z  ARMED  pr-fix-1895-capacity-board-hard-coded-colours-to-tokens  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=17032  caller=powershell.exe:28756
 2026-09-13T11:37:45Z  ARMED  pr-fix-1894-priority-ranking-page-colours-to-tokens  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=9544  caller=powershell.exe:16888
+2026-09-13T11:58:32Z  ARMED  pr-fix-1896-push-back-service-names-the-tender-relation-wrong  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=28300  caller=powershell.exe:22156

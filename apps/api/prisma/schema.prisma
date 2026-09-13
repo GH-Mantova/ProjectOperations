@@ -2064,8 +2064,14 @@ model AssetMaintenancePlan {
   intervalDays     Int                     @map("interval_days")
   warningDays      Int                     @default(7) @map("warning_days")
   blockWhenOverdue Boolean                 @default(true) @map("block_when_overdue")
-  lastCompletedAt  DateTime?               @map("last_completed_at")
-  nextDueAt        DateTime?               @map("next_due_at")
+  lastCompletedAt      DateTime?               @map("last_completed_at")
+  nextDueAt            DateTime?               @map("next_due_at")
+  // F-8: usage-based maintenance interval fields.
+  intervalUsage        Decimal?                @db.Decimal(12, 1) @map("interval_usage")
+  usageUnit            String?                 @map("usage_unit")   // "hours" | "km"
+  lastCompletedReading Decimal?                @db.Decimal(12, 1) @map("last_completed_reading")
+  nextDueReading       Decimal?                @db.Decimal(12, 1) @map("next_due_reading")
+  usageWarningPct      Int                     @default(90) @map("usage_warning_pct")
   status           String                  @default("ACTIVE")
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")

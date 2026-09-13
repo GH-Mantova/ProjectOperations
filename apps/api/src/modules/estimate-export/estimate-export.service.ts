@@ -126,6 +126,11 @@ export type ExportPayload = {
     dueDate: Date | null;
     createdAt: Date;
     ratesSnapshotAt: Date | null;
+    // RATE_BASIS_STAMP_V1 — the honest rate basis is the moment
+    // TenderRateSetService.lock() materialised the per-tender rate set.
+    // Null when rates have not been locked; the PDF must say so
+    // explicitly rather than fall back to the print date.
+    rateSet: { lockedAt: Date } | null;
     estimator: {
       firstName: string;
       lastName: string;
@@ -272,7 +277,10 @@ export class EstimateExportService {
         },
         assumptions: { orderBy: { sortOrder: "asc" } },
         exclusions: { orderBy: { sortOrder: "asc" } },
-        tandC: true
+        tandC: true,
+        // RATE_BASIS_STAMP_V1 — pull the lock timestamp so the PDF prints
+        // the moment rates were locked, not the print date.
+        rateSet: { select: { lockedAt: true } }
       }
     });
     if (!tender) throw new NotFoundException("Tender not found.");
@@ -427,6 +435,7 @@ export class EstimateExportService {
         dueDate: tender.dueDate,
         createdAt: tender.createdAt,
         ratesSnapshotAt: tender.ratesSnapshotAt,
+        rateSet: tender.rateSet ? { lockedAt: tender.rateSet.lockedAt } : null,
         estimator: tender.estimator
           ? {
               firstName: tender.estimator.firstName,
@@ -473,7 +482,10 @@ export class EstimateExportService {
     const html = buildQuoteHtml(payload);
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate(`EST-${payload.tender.tenderNumber}`, ctx, true),
+      headerHtml: headerTemplate(`EST-${payload.tender.tenderNumber}`, ctx, {
+        isEstimatePreview: true,
+        ratesLockedAt: payload.tender.rateSet?.lockedAt ?? null,
+      }),
       footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },
     });

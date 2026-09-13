@@ -97,11 +97,12 @@ describe("ShellLayout nav — NAV-1 restructure (2026-08-14)", () => {
     group.items.map((item) => ({ groupId: group.id, ...item }))
   );
 
-  it("Tendering carries the 6-item funnel in order: Leads & opportunities, Tenders, Pipeline, Schedule of Rates, Contracts, Reports (NAV-1)", () => {
+  it("Tendering carries the 7-item funnel in order: Leads & opportunities, Tenders, Priority ranking, Pipeline, Schedule of Rates, Contracts, Reports (NAV-1 + BP-2)", () => {
     const tendering = NAV_GROUPS.find((g) => g.id === "tendering");
     expect(tendering?.items.map((i) => i.label)).toEqual([
       "Leads & opportunities",
       "Tenders",
+      "Priority ranking",
       "Pipeline",
       "Schedule of Rates",
       "Contracts",

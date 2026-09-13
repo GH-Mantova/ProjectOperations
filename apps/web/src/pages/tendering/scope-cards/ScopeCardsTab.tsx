@@ -7,8 +7,9 @@ import { useAuth } from "../../../auth/AuthContext";
 import { useConfirm } from "../../../hooks/useConfirm";
 import { OverrideField } from "../../../components";
 import { ScopeCardTabsRow } from "./ScopeCardTabsRow";
-import { ScopeCardEmptyState } from "./ScopeCardEmptyState";
+import { ScopeCardEmptyState, ScopeCardRatesRequiredEmptyState } from "./ScopeCardEmptyState";
 import { ChangeDisciplineModal } from "./ChangeDisciplineModal";
+import { getRateSet, lockRateSet } from "../ratesTabApi";
 import { useScopeCards, type ScopeCard, type ScopeCardSummary } from "./useScopeCards";
 import { useTenderEstimate } from "./useTenderEstimate";
 import {
@@ -106,6 +107,12 @@ export function ScopeCardsTab({
   const [loadingItems, setLoadingItems] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Rates-gate state. null = not yet loaded; undefined = fetch failed (treated
+  // same as no set for safety — do not block on a transient error).
+  const [rateSet, setRateSet] = useState<{ id: string } | null | undefined>(undefined);
+  const [rateSetLoading, setRateSetLoading] = useState(true);
+  const [lockingRates, setLockingRates] = useState(false);
   const [disciplineChange, setDisciplineChange] = useState<{
     card: ScopeCard;
     newDiscipline: string;
@@ -134,9 +141,26 @@ export function ScopeCardsTab({
     }
   }, [authFetch, tenderId]);
 
+  // Rates-gate: fetch the rate set alongside items on every reload.
+  // getRateSet returns null when none exists (tender has no locked snapshot).
+  // On error, treat as null — we show the gate rather than hiding it on a
+  // transient fetch failure, which is the conservative/safe direction.
+  const loadRateSet = useCallback(async () => {
+    setRateSetLoading(true);
+    try {
+      const set = await getRateSet(authFetch, tenderId);
+      setRateSet(set);
+    } catch {
+      setRateSet(null);
+    } finally {
+      setRateSetLoading(false);
+    }
+  }, [authFetch, tenderId]);
+
   useEffect(() => {
     void loadItems();
-  }, [loadItems]);
+    void loadRateSet();
+  }, [loadItems, loadRateSet]);
 
   // Toast auto-dismiss.
   useEffect(() => {
@@ -171,8 +195,23 @@ export function ScopeCardsTab({
   // Reload both items and cards when items change (e.g. add/delete affects
   // itemCount on the parent card).
   const reloadEverything = useCallback(async () => {
-    await Promise.all([loadItems(), reloadCards()]);
-  }, [loadItems, reloadCards]);
+    await Promise.all([loadItems(), reloadCards(), loadRateSet()]);
+  }, [loadItems, reloadCards, loadRateSet]);
+
+  // Rates-gate — lock rates from the Scope of Works tab. On success, re-fetch
+  // the rate set (so the gate clears) and reload cards (now unlocked for
+  // creation). No page reload required.
+  const lockRatesFromTab = useCallback(async () => {
+    setLockingRates(true);
+    try {
+      await lockRateSet(authFetch, tenderId);
+      await Promise.all([loadRateSet(), reloadCards()]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLockingRates(false);
+    }
+  }, [authFetch, tenderId, loadRateSet, reloadCards]);
 
   // ── The stack: every card in the visible discipline, in sort order ────
   const disciplineCards = useMemo(
@@ -414,7 +453,51 @@ export function ScopeCardsTab({
     );
   }
 
-  if (cards.length === 0) {
+  // Rates-gate: derive the gate state once so every branch below can read it.
+  // rateSetLoading=true means we haven't heard back yet — show a skeleton rather
+  // than briefly flashing the unlocked state.
+  const ratesLocked = !rateSetLoading && rateSet != null;
+  const gateState: "locked" | "unlocked-empty" | "unlocked-readonly" = ratesLocked
+    ? "locked"
+    : cards.length === 0
+    ? "unlocked-empty"
+    : "unlocked-readonly";
+
+  if (!ratesLocked) {
+    if (rateSetLoading) {
+      return (
+        <div className="s7-card">
+          <Skeleton width="100%" height={220} />
+        </div>
+      );
+    }
+
+    if (gateState === "unlocked-empty") {
+      return (
+        <div
+          className="sow-tab"
+          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+          data-testid="scope-cards-rates-gate"
+          data-state="unlocked-empty"
+        >
+          <header className="sow-tab__header">
+            <div>
+              <h2 className="s7-type-page-title" style={{ margin: 0, fontSize: 24 }}>
+                Scope of Works
+              </h2>
+              <p style={{ color: "var(--text-muted)", marginTop: 4 }}>{tenderTitle}</p>
+            </div>
+          </header>
+          <ScopeCardRatesRequiredEmptyState
+            onLockRates={lockRatesFromTab}
+            locking={lockingRates}
+          />
+        </div>
+      );
+    }
+  }
+
+  if (ratesLocked && cards.length === 0) {
     return (
       <div className="sow-tab" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <header className="sow-tab__header">
@@ -439,8 +522,17 @@ export function ScopeCardsTab({
     );
   }
 
+  // Unlocked-readonly: cards exist but no rate set. The stack is visible but
+  // inert. The "New card" affordance (inside ScopeCardTabsRow) is suppressed.
+  const isReadOnly = gateState === "unlocked-readonly";
+
   return (
-    <div className="sow-tab" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      className="sow-tab"
+      style={{ display: "flex", flexDirection: "column", gap: 16 }}
+      data-testid="scope-cards-rates-gate"
+      data-state={gateState}
+    >
       <header
         className="sow-tab__header"
         style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}
@@ -451,48 +543,81 @@ export function ScopeCardsTab({
           </h2>
           <p style={{ color: "var(--text-muted)", marginTop: 4 }}>{tenderTitle}</p>
         </div>
-        <TenderMarkupPicker
-          markup={tenderMarkup}
-          onSave={async (next) => {
-            try {
-              await saveTenderMarkup(next);
-              await reloadEverything();
-            } catch (err) {
-              setError((err as Error).message);
-            }
-          }}
-          onResetAll={async () => {
-            const scopeCount = cards.filter((c) => c.markupOverride != null).length;
-            const wasteCount = cards.filter((c) => c.wasteMarkupOverride != null).length;
-            const cuttingCount = cards.filter((c) => c.cuttingMarkupOverride != null).length;
-            const total = scopeCount + wasteCount + cuttingCount;
-            if (total > 0) {
-              const ok = await confirm({
-                title: "Reset markup overrides",
-                message: `Reset every markup override back to the tender default? This affects ${scopeCount} scope card(s), ${wasteCount} waste section(s), and ${cuttingCount} cutting section(s).`,
-                confirmLabel: "Reset",
-                variant: "danger"
-              });
-              if (!ok) return;
-            }
-            try {
-              const { cardsReset, wasteSectionsReset, cuttingSectionsReset } = await resetAllCardMarkup();
-              await reloadEverything();
-              setToast(
-                `Cleared: ${cardsReset} scope, ${wasteSectionsReset} waste, ${cuttingSectionsReset} cutting`
-              );
-            } catch (err) {
-              setError((err as Error).message);
-            }
-          }}
-        />
+        {!isReadOnly ? (
+          <TenderMarkupPicker
+            markup={tenderMarkup}
+            onSave={async (next) => {
+              try {
+                await saveTenderMarkup(next);
+                await reloadEverything();
+              } catch (err) {
+                setError((err as Error).message);
+              }
+            }}
+            onResetAll={async () => {
+              const scopeCount = cards.filter((c) => c.markupOverride != null).length;
+              const wasteCount = cards.filter((c) => c.wasteMarkupOverride != null).length;
+              const cuttingCount = cards.filter((c) => c.cuttingMarkupOverride != null).length;
+              const total = scopeCount + wasteCount + cuttingCount;
+              if (total > 0) {
+                const ok = await confirm({
+                  title: "Reset markup overrides",
+                  message: `Reset every markup override back to the tender default? This affects ${scopeCount} scope card(s), ${wasteCount} waste section(s), and ${cuttingCount} cutting section(s).`,
+                  confirmLabel: "Reset",
+                  variant: "danger"
+                });
+                if (!ok) return;
+              }
+              try {
+                const { cardsReset, wasteSectionsReset, cuttingSectionsReset } = await resetAllCardMarkup();
+                await reloadEverything();
+                setToast(
+                  `Cleared: ${cardsReset} scope, ${wasteSectionsReset} waste, ${cuttingSectionsReset} cutting`
+                );
+              } catch (err) {
+                setError((err as Error).message);
+              }
+            }}
+          />
+        ) : null}
       </header>
 
+      {/* Unlocked-readonly banner — rates were deleted after cards were priced. */}
+      {isReadOnly ? (
+        <div
+          role="alert"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            padding: "10px 16px",
+            background: "var(--status-warning-bg, #FFF8E6)",
+            border: "1px solid var(--status-warning, #F59E0B)",
+            borderRadius: "var(--radius-sm)",
+            flexWrap: "wrap"
+          }}
+        >
+          <span style={{ fontSize: 14 }}>
+            Rates are unlocked — these cards are read-only until rates are locked again.
+          </span>
+          <button
+            type="button"
+            className="s7-btn s7-btn--primary s7-btn--sm"
+            onClick={() => void lockRatesFromTab()}
+            disabled={lockingRates}
+          >
+            {lockingRates ? "Locking…" : "Lock rates"}
+          </button>
+        </div>
+      ) : null}
+
+      {/* Tab strip — the "+ New card" affordance is hidden while unlocked. */}
       <ScopeCardTabsRow
         cards={cards}
         activeDiscipline={activeDiscipline}
         onSelectDiscipline={setActiveDiscipline}
-        onCreateCard={async (name, discipline) => {
+        onCreateCard={isReadOnly ? undefined : async (name, discipline) => {
           try {
             await createCard(name, discipline);
             setActiveDiscipline(discipline);
@@ -512,71 +637,87 @@ export function ScopeCardsTab({
             rollup={rollup}
           />
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {disciplineCards.map((card, index) => (
-              <ScopeCardStackEntry
-                key={card.id}
-                card={card}
-                stageIndex={index}
-                stageCount={disciplineCards.length}
-                collapsed={collapsedCardIds[card.id] === true}
-                onToggleCollapsed={() => toggleCollapsed(card.id)}
-                onMove={(delta) => void moveCardWithinDiscipline(card.id, delta)}
-                concurrentWithPrevious={sharesStageWithPrevious(disciplineCards, card.id)}
-                onToggleStageGroup={() => void toggleStageGroupWithPrevious(card.id)}
-                stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 }}
-                summary={cardSummaries[card.id] ?? null}
-                cardItems={itemsByCard.get(card.id) ?? []}
-                loadingItems={loadingItems}
-                tenderId={tenderId}
-                tenderMarkup={tenderMarkup}
-                onOtherCostTotalChange={handleOtherCostTotal}
-                onCuttingTotalChange={handleCuttingTotal}
-                onRename={async (name) => {
-                  try {
-                    await renameCard(card.id, name);
-                  } catch (err) {
-                    setError((err as Error).message);
+          {/* Unlocked-readonly: wrap the entire card stack in a fieldset so
+              every native input/button/select inside it is inert. The fieldset
+              also carries aria-disabled and pointer-events:none for elements
+              (like divs with onClick) that the browser does not honour disabled
+              on natively. */}
+          <fieldset
+            disabled={isReadOnly}
+            aria-disabled={isReadOnly ? "true" : undefined}
+            style={{
+              border: "none",
+              margin: 0,
+              padding: 0,
+              pointerEvents: isReadOnly ? "none" : undefined
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {disciplineCards.map((card, index) => (
+                <ScopeCardStackEntry
+                  key={card.id}
+                  card={card}
+                  stageIndex={index}
+                  stageCount={disciplineCards.length}
+                  collapsed={collapsedCardIds[card.id] === true}
+                  onToggleCollapsed={() => toggleCollapsed(card.id)}
+                  onMove={(delta) => void moveCardWithinDiscipline(card.id, delta)}
+                  concurrentWithPrevious={sharesStageWithPrevious(disciplineCards, card.id)}
+                  onToggleStageGroup={() => void toggleStageGroupWithPrevious(card.id)}
+                  stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 }}
+                  summary={cardSummaries[card.id] ?? null}
+                  cardItems={itemsByCard.get(card.id) ?? []}
+                  loadingItems={loadingItems}
+                  tenderId={tenderId}
+                  tenderMarkup={tenderMarkup}
+                  onOtherCostTotalChange={handleOtherCostTotal}
+                  onCuttingTotalChange={handleCuttingTotal}
+                  onRename={async (name) => {
+                    try {
+                      await renameCard(card.id, name);
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                  onDelete={async () => {
+                    try {
+                      await deleteCard(card.id);
+                      setToast("Card deleted");
+                    } catch (err) {
+                      setToast((err as Error).message);
+                    }
+                  }}
+                  onRequestDisciplineChange={(newDiscipline) =>
+                    setDisciplineChange({ card, newDiscipline })
                   }
-                }}
-                onDelete={async () => {
-                  try {
-                    await deleteCard(card.id);
-                    setToast("Card deleted");
-                  } catch (err) {
-                    setToast((err as Error).message);
-                  }
-                }}
-                onRequestDisciplineChange={(newDiscipline) =>
-                  setDisciplineChange({ card, newDiscipline })
-                }
-                onSetMarkupOverride={async (next) => {
-                  try {
-                    await setCardMarkupOverride(card.id, next);
+                  onSetMarkupOverride={async (next) => {
+                    try {
+                      await setCardMarkupOverride(card.id, next);
+                      await reloadEverything();
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                  onHeaderOverride={async (patch) => {
+                    try {
+                      await updateCardHeaderOverrides(card.id, patch);
+                      await refreshCardSummary(card.id);
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                  onSetCardNotes={async (patch) => {
+                    await setCardNotes(card.id, patch);
+                  }}
+                  onSetSectionMarkup={async (section, next) => {
+                    await setCardSectionMarkupOverride(card.id, section, next);
                     await reloadEverything();
-                  } catch (err) {
-                    setError((err as Error).message);
-                  }
-                }}
-                onHeaderOverride={async (patch) => {
-                  try {
-                    await updateCardHeaderOverrides(card.id, patch);
-                    await refreshCardSummary(card.id);
-                  } catch (err) {
-                    setError((err as Error).message);
-                  }
-                }}
-                onSetCardNotes={async (patch) => {
-                  await setCardNotes(card.id, patch);
-                }}
-                onSetSectionMarkup={async (section, next) => {
-                  await setCardSectionMarkupOverride(card.id, section, next);
-                  await reloadEverything();
-                }}
-                onItemsChanged={reloadEverything}
-              />
-            ))}
-          </div>
+                  }}
+                  onItemsChanged={reloadEverything}
+                />
+              ))}
+            </div>
+          </fieldset>
         </div>
       ) : null}
 

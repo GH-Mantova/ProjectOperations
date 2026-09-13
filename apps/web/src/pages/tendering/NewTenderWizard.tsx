@@ -1764,7 +1764,7 @@ function StepReview(props: {
         </div>
         <div>
           <dt>Rates snapshot</dt>
-          <dd>{props.ratesLocked ? "Locked" : <em>Not locked (will lock automatically on first status change)</em>}</dd>
+          <dd>{props.ratesLocked ? "Locked" : <em>Not locked — lock on the Rates tab before pricing scope</em>}</dd>
         </div>
       </dl>
       <p className="new-tender-wizard__hint">

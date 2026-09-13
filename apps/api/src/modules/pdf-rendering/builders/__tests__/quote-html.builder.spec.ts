@@ -256,6 +256,45 @@ describe("Quote HTML builder", () => {
     expect(header).toContain("-webkit-print-color-adjust:exact");
   });
 
+  it("ESTIMATE_PREVIEW_MARK_V1 — no-overlay render contains estimate-preview mark and no bare Quote No. + tenderNumber", () => {
+    const tenderNumber = "T260512-BRIS-Rev1";
+    const html = buildQuoteHtml(basePayload());
+    // Must contain the EST- prefixed estimate ref (not the bare tenderNumber under "Quote No")
+    expect(html).toContain(`EST-${tenderNumber}`);
+    // Must NOT print "Quote No:" followed by the bare tenderNumber
+    expect(html).not.toMatch(/Quote No[:.]\s*T260512-BRIS-Rev1/);
+    // Must contain the estimate-ref label
+    expect(html).toContain("Estimate Ref:");
+  });
+
+  it("ESTIMATE_PREVIEW_MARK_V1 — overlay render is unchanged (no draft mark, still prints overlay.quoteRef)", () => {
+    const html = buildQuoteHtml(basePayload(), makeOverlay());
+    // Overlay path must print Quote No: (not Estimate Ref:)
+    expect(html).toContain("Quote No:");
+    // Must print the overlay quoteRef
+    expect(html).toContain("IS-Q001");
+    // Must NOT contain the estimate-preview mark
+    expect(html).not.toContain("INTERNAL ESTIMATE PREVIEW");
+    // Must NOT contain an EST- prefixed ref
+    expect(html).not.toContain("EST-T260512-BRIS-Rev1");
+  });
+
+  it("ESTIMATE_PREVIEW_MARK_V1 — estimate-preview headerTemplate carries the internal mark and Estimate Ref label", () => {
+    const header = headerTemplate("EST-T260512-BRIS-Rev1", undefined, true);
+    expect(header).toContain("INTERNAL ESTIMATE PREVIEW");
+    expect(header).toContain("Estimate Ref: EST-T260512-BRIS-Rev1");
+    expect(header).not.toContain("Quote No.");
+    expect(header).toContain("Electronic document");
+    expect(header).toContain("Uncontrolled when printed");
+  });
+
+  it("ESTIMATE_PREVIEW_MARK_V1 — standard headerTemplate (isEstimatePreview=false) is unchanged", () => {
+    const header = headerTemplate("IS-Q001");
+    expect(header).toContain("Quote No. IS-Q001");
+    expect(header).not.toContain("INTERNAL ESTIMATE PREVIEW");
+    expect(header).not.toContain("Estimate Ref:");
+  });
+
   it("provides a footer template with page numbers and teal branding", () => {
     const footer = footerTemplate();
     expect(footer).toContain("pageNumber");

@@ -22,6 +22,21 @@ class UpsertColorSchemeDto {
   @IsString() @MinLength(1) @MaxLength(100) name!: string;
   @IsString() @MaxLength(9) primaryColorHex!: string;
   @IsString() @MaxLength(9) secondaryColorHex!: string;
+
+  // S3 palette — all optional; omitting a field leaves the DB value unchanged.
+  @IsOptional() @IsString() @MaxLength(9) sidebarBgHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) sidebarTextHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) sidebarTextActiveHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) surfacePageHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) surfaceCardHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) textPrimaryHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) textSecondaryHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) textMutedHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) statusActiveHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) statusWarningHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) statusDangerHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) statusInfoHex?: string | null;
+  @IsOptional() @IsString() @MaxLength(9) statusNeutralHex?: string | null;
 }
 
 class SetActiveColorSchemeDto {
@@ -123,8 +138,9 @@ export class BrandingController {
  * here to make the intent explicit and prevent future reviewers from adding a
  * blanket class-level @RequirePermissions that would lock out regular users.
  *
- * Returns EXACTLY four keys: primaryColorHex, secondaryColorHex, logoLightUrl,
- * logoDarkUrl. No scheme ids, names, lists, favicon, or letterhead (TRAP 2).
+ * Returns EXACTLY seventeen keys: the original four (primaryColorHex,
+ * secondaryColorHex, logoLightUrl, logoDarkUrl) plus the thirteen S3 palette
+ * columns. No scheme ids, names, lists, favicon, or letterhead.
  */
 @ApiTags("Branding")
 @ApiBearerAuth()
@@ -137,8 +153,8 @@ export class BrandingViewerController {
   @ApiOperation({
     summary:
       "Return the active brand colours and logo URLs for the current company. " +
-      "Available to every authenticated user — primary and accent are applied " +
-      "across the app today. Returns exactly four keys."
+      "Available to every authenticated user — primary, accent, and S3 palette " +
+      "are applied across the app. Returns exactly seventeen keys."
   })
   getActiveBranding() {
     return this.service.getActiveBrandingForViewer();

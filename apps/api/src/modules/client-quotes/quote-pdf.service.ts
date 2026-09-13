@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   EstimateExportService,
+  resolveLiveClauses,
+  resolvePinnedClauses,
   type ExportPayload
 } from "../estimate-export/estimate-export.service";
 import {
@@ -22,6 +24,8 @@ function toNum(v: { toString(): string } | number | null | undefined): number {
 
 @Injectable()
 export class QuotePdfService {
+  private readonly logger = new Logger(QuotePdfService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotes: ClientQuotesService,
@@ -48,7 +52,8 @@ export class QuotePdfService {
         costOptions: { orderBy: { sortOrder: "asc" } },
         assumptions: { orderBy: [{ sortOrder: "asc" }] },
         exclusions: { orderBy: { sortOrder: "asc" } },
-        scopeItems: { orderBy: { sortOrder: "asc" } }
+        scopeItems: { orderBy: { sortOrder: "asc" } },
+        issuedTerms: { select: { content: true } }
       }
     });
     if (!quote || quote.tenderId !== tenderId) throw new NotFoundException("Quote not found.");
@@ -132,6 +137,33 @@ export class QuotePdfService {
           contactPhone: contact?.phone ?? tenderClientRecord.client.phone ?? null
         }
       ];
+    }
+
+    // Fallback ladder for T&C clause resolution (QPDF-4):
+    //   1. Unsent quote (sentAt null)        → live clauses from tender / defaults
+    //   2. Sent, issuedTermsDocumentId null  → live clauses (pre-#549 or no active row)
+    //   3. Pinned row found, parses empty    → live clauses + logger.warn
+    //   4. Pinned row found, parses ≥1 clause → pinned clauses (the #549 spec)
+    // A quote PDF with no terms is worse than one with the wrong terms.
+    {
+      const liveClauses = resolveLiveClauses(base.tandc);
+      if (quote.sentAt !== null && quote.issuedTerms !== null) {
+        const { clauses, usedPinned } = resolvePinnedClauses(
+          quote.issuedTerms.content,
+          liveClauses
+        );
+        if (!usedPinned) {
+          this.logger.warn(
+            `Quote ${quoteId}: pinned T&C document (issuedTermsDocumentId=${quote.issuedTermsDocumentId}) ` +
+            `parsed 0 clauses — falling back to live terms.`
+          );
+        }
+        base.tandc = { clauses };
+      } else {
+        // Draft or pre-#549 send: use live clauses (already in base.tandc, but
+        // guard against an unlikely empty-JSON edge case from the tender row).
+        base.tandc = { clauses: liveClauses };
+      }
     }
 
     const html = buildQuoteHtml(base, overlay);

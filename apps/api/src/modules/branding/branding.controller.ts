@@ -43,7 +43,7 @@ export class BrandingController {
   constructor(private readonly service: BrandingService) {}
 
   @Get()
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({
     summary:
       "Read the current branding: active color scheme, all schemes, per-kind assets, and the legacy string fallbacks."
@@ -53,14 +53,14 @@ export class BrandingController {
   }
 
   @Get("color-schemes")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "List all named color schemes." })
   listColorSchemes() {
     return this.service.listColorSchemes();
   }
 
   @Post("color-schemes")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Create or update a named color scheme. Super-user only." })
   upsertColorScheme(@Body() dto: UpsertColorSchemeDto, @Req() req: AuthenticatedRequest) {
     this.service.assertSuperUser(req.user);
@@ -68,7 +68,7 @@ export class BrandingController {
   }
 
   @Delete("color-schemes/:id")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Delete a color scheme. Super-user only." })
   async deleteColorScheme(@Param("id") id: string, @Req() req: AuthenticatedRequest) {
     this.service.assertSuperUser(req.user);
@@ -77,7 +77,7 @@ export class BrandingController {
   }
 
   @Put("active-color-scheme")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({
     summary:
       "Point the singleton at a color scheme (or clear it with null). Mirrors palette into the legacy string columns. Super-user only."
@@ -91,7 +91,7 @@ export class BrandingController {
   }
 
   @Put("assets")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({
     summary:
       "Create-or-update a per-kind brand asset URL. Also mirrors the URL into the matching legacy string column. Super-user only."
@@ -102,7 +102,7 @@ export class BrandingController {
   }
 
   @Delete("assets/:kind")
-  @RequirePermissions("platform.admin")
+  @RequirePermissions("company.manage")
   @ApiOperation({ summary: "Delete a per-kind brand asset. Super-user only." })
   async deleteAsset(
     @Param("kind") kind: BrandAssetKind,

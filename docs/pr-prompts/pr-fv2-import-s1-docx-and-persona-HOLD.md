@@ -109,5 +109,5 @@ indistinguishable from failing** - the work is discarded either way.
 
 ## STATUS
 
-**HOLD.** Marco arms this. Head of the `fv2-import` cluster; S2 waits on
+Armed by Station 00 under Marco's direction; the -ready rename IS the dispatch, never a reason to wait. Head of the `fv2-import` cluster; S2 waits on
 `inspection-builder.service.ts :: resolveProviderConfig(actorId, "forms")`.

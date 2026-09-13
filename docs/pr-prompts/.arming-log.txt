@@ -95,3 +95,5 @@
 2026-09-13T09:57:02Z  ARMED  pr-ratehub-s6a-push-back-api  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=8452  caller=powershell.exe:30792
 2026-09-13T10:31:42Z  ARMED  pr-fix-1891-tendering-specs-need-the-tenth-constructor-arg  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=25680  caller=powershell.exe:22804
 2026-09-13T10:55:29Z  ARMED  pr-fix-1894-nav-test-must-count-priority-ranking  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=17224  caller=powershell.exe:6928
+2026-09-13T11:10:17Z  ARMED  pr-fix-1886-contrast-test-hex-literals-trip-the-ratchet  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=25084  caller=powershell.exe:7048
+2026-09-13T11:21:06Z  ARMED  pr-fix-1895-capacity-board-hard-coded-colours-to-tokens  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=17032  caller=powershell.exe:28756

@@ -35,23 +35,16 @@ function formatPercent(value: number | null | undefined): string {
 
 // ---- confidence badge ----
 
-const CONFIDENCE_COLOR: Record<string, { bg: string; text: string }> = {
-  LOW: { bg: "#FEF9C3", text: "#854D0E" },
-  MEDIUM: { bg: "#DBEAFE", text: "#1E40AF" },
-  HIGH: { bg: "#DCFCE7", text: "#166534" }
+const CONFIDENCE_VARIANT: Record<string, string> = {
+  LOW: "s7-badge--warning",
+  MEDIUM: "s7-badge--info",
+  HIGH: "s7-badge--active"
 };
 
 function ConfidenceBadge({ value }: { value: "LOW" | "MEDIUM" | "HIGH" | null }) {
   if (!value) return <span>—</span>;
-  const colors = CONFIDENCE_COLOR[value] ?? { bg: "#F3F4F6", text: "#374151" };
-  return (
-    <span
-      className="s7-badge"
-      style={{ background: colors.bg, color: colors.text }}
-    >
-      {value}
-    </span>
-  );
+  const variant = CONFIDENCE_VARIANT[value] ?? "s7-badge--neutral";
+  return <span className={`s7-badge ${variant}`}>{value}</span>;
 }
 
 // ---- why-factors tooltip (top 2 factors) ----
@@ -70,7 +63,7 @@ function WhyFactors({ factors }: { factors: string[] }) {
           background: "transparent",
           border: "none",
           cursor: "pointer",
-          color: "var(--color-teal, #005B61)",
+          color: "var(--color-teal)",
           textDecoration: "underline",
           font: "inherit",
           padding: 0
@@ -89,8 +82,8 @@ function WhyFactors({ factors }: { factors: string[] }) {
             top: "100%",
             left: 0,
             marginTop: 4,
-            background: "#1F2937",
-            color: "#F9FAFB",
+            background: "var(--surface-sidebar)",
+            color: "var(--text-inverse)",
             borderRadius: 6,
             padding: "8px 12px",
             minWidth: 220,
@@ -113,7 +106,7 @@ function WhyFactors({ factors }: { factors: string[] }) {
               fontSize: 11,
               background: "transparent",
               border: "none",
-              color: "#9CA3AF",
+              color: "var(--text-muted)",
               cursor: "pointer",
               padding: 0
             }}
@@ -243,12 +236,12 @@ export function BidPriorityRankingPage() {
             display: "inline-flex",
             alignItems: "center",
             gap: 8,
-            background: "#FEF9C3",
-            border: "1px solid #FDE047",
+            background: "rgba(245, 158, 11, 0.1)",
+            border: "1px solid var(--status-warning)",
             borderRadius: 6,
             padding: "6px 12px",
             fontSize: 13,
-            color: "#713F12",
+            color: "var(--status-warning)",
             fontWeight: 500
           }}
         >
@@ -275,11 +268,11 @@ export function BidPriorityRankingPage() {
         <div
           role="alert"
           style={{
-            background: "#FEF2F2",
-            border: "1px solid #FCA5A5",
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid var(--status-danger)",
             borderRadius: 8,
             padding: "16px 20px",
-            color: "#991B1B",
+            color: "var(--status-danger)",
             marginBottom: 16
           }}
         >
@@ -354,7 +347,7 @@ export function BidPriorityRankingPage() {
                   <td>
                     <Link
                       to={`/tenders/${item.tenderId}`}
-                      style={{ color: "var(--color-teal, #005B61)", fontWeight: 500 }}
+                      style={{ color: "var(--color-teal)", fontWeight: 500 }}
                     >
                       {item.title}
                     </Link>
@@ -364,7 +357,7 @@ export function BidPriorityRankingPage() {
                   <td>{formatDate(item.dueDate)}</td>
                   <td>
                     {item.insufficientData ? (
-                      <span style={{ color: "var(--text-muted, #6B7280)", fontStyle: "italic" }}>
+                      <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
                         Insufficient data
                       </span>
                     ) : (
@@ -380,7 +373,7 @@ export function BidPriorityRankingPage() {
                   </td>
                   <td>
                     {item.insufficientData ? (
-                      <span style={{ color: "var(--text-muted, #6B7280)", fontStyle: "italic" }}>
+                      <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
                         Insufficient data
                       </span>
                     ) : (

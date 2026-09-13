@@ -351,7 +351,12 @@ function coverPage(
   p: ExportPayload,
   overlay: QuoteOverlay | null,
 ): string {
-  const quoteRef = overlay?.quoteRef ?? p.tender.tenderNumber;
+  // When overlay === null this is an internal estimate preview (ESTIMATE_PREVIEW_MARK_V1).
+  // The ref must not collide with ClientQuote refs minted as <tenderNumber> or
+  // <tenderNumber>-R{n}, so it carries an "EST-" prefix. The label avoids "Quote No".
+  const isEstimatePreview = overlay === null;
+  const quoteRef = overlay?.quoteRef ?? `EST-${p.tender.tenderNumber}`;
+  const refLabel = isEstimatePreview ? "Estimate Ref:" : "Quote No:";
   const primaryClient = p.tender.clients[0] ?? null;
   const estimator = p.tender.estimator ?? {
     firstName: "Initial",
@@ -367,7 +372,7 @@ function coverPage(
   // Two-column meta
   html += `<div class="meta-grid">
   <div><span class="label">Company:</span> <span class="value">${esc(primaryClient?.name ?? "—")}</span></div>
-  <div><span class="label">Quote No:</span> <span class="value">${esc(quoteRef)}</span></div>
+  <div><span class="label">${esc(refLabel)}</span> <span class="value">${esc(quoteRef)}</span></div>
   <div><span class="label">Attention:</span> <span class="value">${esc(primaryClient?.contactName ?? "—")}</span></div>
   <div><span class="label">Date:</span> <span class="value">${fmtDate(new Date())}</span></div>
   <div><span class="label">Phone:</span> <span class="value">${esc(primaryClient?.contactPhone ?? "—")}</span></div>
@@ -823,12 +828,33 @@ const DEFAULT_PDF_COMPANY_CONTEXT: PdfCompanyContext = {
     "10 Grice St, Clontarf Q 4019 | P: (07) 3888 0539 | E: admin@initialservices.net | A.B.N: 75 631 222 556"
 };
 
+// ESTIMATE_PREVIEW_MARK_V1 — when overlay === null the header and cover treat
+// this render as an internal estimate preview, not an issuable client quote.
+// The third parameter is intentionally optional so quote-pdf.service.ts (which
+// always passes a real overlay) needs no change.
 function headerTemplate(
   quoteRef: string,
-  ctx: PdfCompanyContext = DEFAULT_PDF_COMPANY_CONTEXT
+  ctx: PdfCompanyContext = DEFAULT_PDF_COMPANY_CONTEXT,
+  isEstimatePreview = false,
 ): string {
   const logo = logoBase64();
   const rightMeta = ctx.headerRightMeta ?? DEFAULT_PDF_COMPANY_CONTEXT.headerRightMeta ?? "";
+  if (isEstimatePreview) {
+    // Fits within the existing 35mm top margin — no margin change required.
+    return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+  <div style="background:${BRAND.teal};color:#fff;padding:6pt 15mm 10pt 15mm;display:flex;align-items:center;gap:8pt;position:relative">
+    <img src="data:image/png;base64,${logo}" style="height:28pt;width:auto">
+    <span style="font-weight:700;font-size:12pt;flex:1">${esc(ctx.tradingName.toUpperCase())}</span>
+    <span style="font-size:6.5pt;text-align:right;white-space:nowrap">${esc(rightMeta)}</span>
+    <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:8pt">Estimate Ref: ${esc(quoteRef)}</span>
+  </div>
+  <div style="height:2pt;background:${BRAND.orange}"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:2pt 15mm 0 15mm;line-height:1.4">
+    <span style="font-size:6.5pt;font-weight:700;color:${BRAND.orange};letter-spacing:0.05em">INTERNAL ESTIMATE PREVIEW — NOT FOR CLIENT DISTRIBUTION</span>
+    <span style="font-size:6pt;color:#777;text-align:right">Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></span>
+  </div>
+</div>`;
+  }
   return `<div style="width:100%;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div style="background:${BRAND.teal};color:#fff;padding:6pt 15mm 10pt 15mm;display:flex;align-items:center;gap:8pt;position:relative">
     <img src="data:image/png;base64,${logo}" style="height:28pt;width:auto">
@@ -858,8 +884,10 @@ export function buildQuoteHtml(
   overlay: QuoteOverlay | null = null,
 ): string {
   const base = baseUrl();
+  // When overlay === null (estimate preview path), prefix with "EST-" so this
+  // ref can never be mistaken for an issued ClientQuote ref. See ESTIMATE_PREVIEW_MARK_V1.
   const quoteRef =
-    overlay?.quoteRef ?? payload.tender.tenderNumber;
+    overlay?.quoteRef ?? `EST-${payload.tender.tenderNumber}`;
 
   let body = "";
   body += coverPage(payload, overlay);

@@ -20,7 +20,7 @@ export class EstimateExportController {
   @RequirePermissions("tenders.view")
   @ApiOperation({
     summary:
-      "Stream a client-facing IS quote PDF for the tender. Totals are recomputed from raw EstimateItem lines on every call; stored totals are never trusted. Logs an EstimateExport audit row."
+      "Stream an internal estimate preview PDF for the tender. Totals are recomputed from the current rate library on every call and are not an issued client quote. Logs an EstimateExport audit row."
   })
   @ApiProduces("application/pdf")
   @ApiResponse({ status: 200, description: "PDF stream with IS_Quote_<tenderNumber>.pdf filename." })

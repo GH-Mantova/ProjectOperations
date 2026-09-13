@@ -1745,11 +1745,16 @@ function PreviewTab({
         <p><strong>Client:</strong> {quote.client.name}</p>
         <h4 style={{ marginBottom: 4 }}>Cost summary</h4>
         <ul style={{ margin: "0 0 8px 16px" }}>
-          {quote.costLines.map((l) => (
-            <li key={l.id}>
-              {l.label}) {l.description} — {fmtCurrency(l.price)}
-            </li>
-          ))}
+          {quote.costLines.filter((l) => l.isVisible).map((l) => {
+            const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
+            const displayAmount = approp ? approp.displayedAmount : l.price;
+            const displayDesc = l.displayDescription ?? l.description;
+            return (
+              <li key={l.id}>
+                {l.label}) {displayDesc} — {fmtCurrency(displayAmount)}
+              </li>
+            );
+          })}
         </ul>
         <p>
           Client-facing total:{" "}

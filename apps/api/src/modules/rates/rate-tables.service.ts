@@ -430,7 +430,7 @@ const LINE_FIELD_KINDS = new Set(["number", "text"]);
  * dropped, which lands on `[]` — exactly how the column behaves on a row that
  * predates it.
  */
-function readStoredLineFields(raw: unknown): RateLineField[] {
+export function readStoredLineFields(raw: unknown): RateLineField[] {
   if (!Array.isArray(raw)) return [];
   const out: RateLineField[] = [];
   for (const entry of raw) {

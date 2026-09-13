@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { parseRatesCanonicalSource, RatesCanonicalSource } from "../../config/app.config";
+import { ChargeStepParityService } from "./charge-step-parity.service";
 
 export type RateSource = "legacy" | "ratetable";
 
@@ -197,7 +198,13 @@ export type RateParityResult = {
 export class RateResolverService {
   private readonly logger = new Logger(RateResolverService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Optional so existing unit tests that construct the service directly
+    // (with one argument) continue to work. When absent the parity harness
+    // is a no-op — the price path is unaffected.
+    private readonly chargeStepParity?: ChargeStepParityService
+  ) {}
 
   async resolveRate(
     tableSlug: string,
@@ -220,7 +227,16 @@ export class RateResolverService {
 
     if (source === "ratetable") {
       const flexible = await this.tryRateTable(tableSlug, keys);
-      if (flexible) return flexible;
+      if (flexible) {
+        // RATE_PARITY_HARNESS_V1 — fire-and-forget parity check.
+        // Statement-only: the return value of checkParity (Promise<void>) is
+        // discarded. The resolved price is unaffected whether checkParity
+        // agrees, disagrees, or encounters an error internally (it cannot
+        // throw — it catches everything). Optional-chained: no-op when the
+        // harness is not wired (e.g. in unit tests).
+        void this.chargeStepParity?.checkParity(tableSlug, keys, flexible.value, options?.tenderId);
+        return flexible;
+      }
       const legacy = await this.tryLegacy(tableSlug, keys);
       if (legacy) {
         this.logger.warn({
@@ -228,6 +244,8 @@ export class RateResolverService {
           slug: tableSlug,
           keys
         });
+        // RATE_PARITY_HARNESS_V1 — parity check on legacy-path result.
+        void this.chargeStepParity?.checkParity(tableSlug, keys, legacy.value, options?.tenderId);
         return legacy;
       }
       throw new NotFoundException(
@@ -236,9 +254,17 @@ export class RateResolverService {
     }
 
     const legacy = await this.tryLegacy(tableSlug, keys);
-    if (legacy) return legacy;
+    if (legacy) {
+      // RATE_PARITY_HARNESS_V1 — parity check on legacy-path result (default path).
+      void this.chargeStepParity?.checkParity(tableSlug, keys, legacy.value, options?.tenderId);
+      return legacy;
+    }
     const flexible = await this.tryRateTable(tableSlug, keys);
-    if (flexible) return flexible;
+    if (flexible) {
+      // RATE_PARITY_HARNESS_V1 — parity check on ratetable fallback.
+      void this.chargeStepParity?.checkParity(tableSlug, keys, flexible.value, options?.tenderId);
+      return flexible;
+    }
     throw new NotFoundException(`No rate table with slug "${tableSlug}".`);
   }
 

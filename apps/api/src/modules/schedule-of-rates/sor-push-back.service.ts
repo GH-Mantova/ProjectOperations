@@ -435,7 +435,7 @@ export class SorPushBackService {
   }): Promise<FutureLock[]> {
     const tenders = await this.prisma.tender.findMany({
       where: {
-        tenderRateSet: null,
+        rateSet: null,
         status: { notIn: [...TERMINAL_STATUSES] },
       },
       select: {

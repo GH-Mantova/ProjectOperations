@@ -484,7 +484,7 @@ describe("SorPushBackService.pushBack (SUBBIE — vendor supersede)", () => {
 
 // ── 7. futureLocks filtering ──────────────────────────────────────────────────
 describe("SorPushBackService.getPreview — futureLocks", () => {
-  it("queries tenders with tenderRateSet=null and status notIn TERMINAL_STATUSES", async () => {
+  it("queries tenders with rateSet=null and status notIn TERMINAL_STATUSES", async () => {
     const prisma = makePrisma();
     const { svc } = make(prisma);
 
@@ -507,7 +507,7 @@ describe("SorPushBackService.getPreview — futureLocks", () => {
     expect(prisma.tender.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          tenderRateSet: null,
+          rateSet: null,
           status: expect.objectContaining({
             notIn: expect.arrayContaining([
               "AWARDED",

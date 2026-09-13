@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -62,6 +63,19 @@ function toNum(v: Prisma.Decimal | number | string | null | undefined): number {
   if (typeof v === "number") return v;
   const n = Number((v as { toString(): string }).toString());
   return Number.isFinite(n) ? n : 0;
+}
+
+// QPDF-3: Prisma unique-violation on the `quote_ref` column, in either
+// encoding of `meta.target` (string or string[]) Prisma emits across
+// providers. Mirrors the shape of `isJobNumberUniqueViolation` in
+// jobs.service.ts so the two 409 translations behave the same way.
+function isQuoteRefUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code !== "P2002") return false;
+  const target = err.meta?.target;
+  if (Array.isArray(target)) return target.includes("quote_ref");
+  if (typeof target === "string") return target.includes("quote_ref");
+  return false;
 }
 
 @Injectable()
@@ -178,15 +192,32 @@ export class ClientQuotesService {
       });
     }
 
-    const quote = await this.prisma.clientQuote.create({
-      data: {
-        tenderId,
-        clientId: dto.clientId,
-        revision: nextRevision,
-        quoteRef,
-        createdById: actorId
+    let quote;
+    try {
+      quote = await this.prisma.clientQuote.create({
+        data: {
+          tenderId,
+          clientId: dto.clientId,
+          revision: nextRevision,
+          quoteRef,
+          createdById: actorId
+        }
+      });
+    } catch (err) {
+      // QPDF-3: quote_ref is @unique globally (schema.prisma:4654) but
+      // is minted per-client from tender.tenderNumber, so client B's
+      // first quote off a tender collides with client A's. Translate
+      // the raw Prisma P2002 into a 409 whose message tells the operator
+      // what actually happened - the format decision is escalated to
+      // Marco in docs/pr-prompts/needs-marco/qpdf-3-quote-ref-format-decision.md
+      // and until that lands, a second client still cannot be quoted.
+      if (isQuoteRefUniqueViolation(err)) {
+        throw new ConflictException(
+          `Quote reference "${quoteRef}" is already in use on this tender for another client. Quote references are currently unique across the whole system, so a second client cannot be quoted on this tender until the reference format is settled.`
+        );
       }
-    });
+      throw err;
+    }
 
     if (dto.copyFromQuoteId) {
       await this.deepCopyFrom(quote.id, dto.copyFromQuoteId);

@@ -42,6 +42,15 @@ destroys working data, not prose.
 | [What I Still Need](https://claude.ai/code/artifact/4bc3864f-bea8-4ec6-992b-d83180d077d2) | `4bc3864f` | 22 questions with saved answers and notes. Holds saved state. |
 | [Section 445 Build Spec](https://claude.ai/code/artifact/b3935f38-1633-4254-a239-a014a3b4b8fb) | `b3935f38` | Asbestos awareness course. Not built. |
 | [The Escalation Gate](https://claude.ai/code/artifact/02588f3f-b59b-4c52-baaa-78c59ed2b717) | `02588f3f` | The compliance escalation gate. |
+| [Height Access Selection](https://claude.ai/code/artifact/ba803039-1b65-4e18-b4d0-06e0425da158) | `ba803039` | ARCP height-access selection. WHS programme, not an ERP screen - Marco, 2026-09-11. |
+
+## Outside both programmes
+
+Not ERP, not compliance. Listed so nobody stages an ERP prompt for them again.
+
+| Artifact | id | Belongs to |
+|---|---|---|
+| [Program Dates Rework](https://claude.ai/code/artifact/36118b31-d90c-4884-bb41-14d106a5bc37) | `36118b31` | IS-Scheduler (the Azure Resource Allocator), Edit Project modal. Handled in its own Cowork project - Marco, 2026-09-11. |
 
 ## Folded into the Work Breakdown — read the fold, not these
 
@@ -105,4 +114,3 @@ saying what it is the design of record for, or a move into Retired.
 |---|---|
 | [ARCP Review Findings](https://claude.ai/code/artifact/846b795c-f408-493a-9b52-a851e2a760b9) | `846b795c` |
 | [ARCP Section 21 — Coating Removal](https://claude.ai/code/artifact/31091614-115c-4a56-b531-55ddda8549bc) | `31091614` |
-| [Height Access Selection](https://claude.ai/code/artifact/ba803039-1b65-4e18-b4d0-06e0425da158) | `ba803039` |

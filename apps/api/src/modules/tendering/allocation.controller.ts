@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  HttpCode,
+  NotFoundException,
   Param,
   Post,
   Put,
@@ -13,6 +16,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@ne
 import {
   ArrayMinSize,
   IsArray,
+  IsDateString,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -28,6 +32,8 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequireAnyPermission, RequirePermissions } from "../../common/auth/permissions.decorator";
 import { AllocationService } from "./allocation.service";
 import { CapacityService } from "./capacity.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 class EstimatorTargetDto {
   @IsString()
@@ -86,6 +92,18 @@ class UpdateEstimatorCapacityDto {
   concurrentCap?: number;
 }
 
+class CreateDelegateDto {
+  @IsString()
+  @IsNotEmpty()
+  delegateId!: string;
+
+  @IsDateString()
+  startDate!: string;
+
+  @IsDateString()
+  endDate!: string;
+}
+
 /**
  * REST surface for the estimator allocation lifecycle (EW-2d).
  *
@@ -118,7 +136,9 @@ class UpdateEstimatorCapacityDto {
 export class AllocationController {
   constructor(
     private readonly service: AllocationService,
-    private readonly capacity: CapacityService
+    private readonly capacity: CapacityService,
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService
   ) {}
 
   @Post(":id/allocate-single")
@@ -238,6 +258,129 @@ export class AllocationController {
   @ApiResponse({ status: 404, description: "Tender not found." })
   history(@Param("id") id: string) {
     return this.capacity.getAllocationHistory(id);
+  }
+
+  // ── Delegate window endpoints (EW-5) ──────────────────────────────────────
+  //
+  // GET  /tenders/allocations/delegates       — list active + future windows
+  // POST /tenders/allocations/delegates       — create a new window
+  // DELETE /tenders/allocations/delegates/:id — revoke (delete) a window
+  //
+  // All three are gated on tenders.allocate. The static path "delegates" MUST
+  // be registered before the greedy :id routes above — Nest resolves controllers
+  // in registration order but within a single controller resolves static
+  // segments before parameterised ones (same rule as TenderingController vs
+  // AllocationController). These are annotated as static so they cannot shadow
+  // :id routes.
+
+  @Get("delegates")
+  @RequirePermissions("tenders.allocate")
+  @ApiOperation({ summary: "List active and future allocator delegate windows" })
+  @ApiResponse({ status: 200, description: "Array of AllocatorDelegate rows (active + future only)." })
+  @ApiResponse({ status: 403, description: "tenders.allocate required." })
+  async listDelegates() {
+    const now = new Date();
+    const rows = await this.prisma.allocatorDelegate.findMany({
+      where: { endDate: { gte: now } },
+      orderBy: { startDate: "asc" },
+      include: {
+        delegate: { select: { firstName: true, lastName: true } },
+        grantedBy: { select: { firstName: true, lastName: true } }
+      }
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      delegateId: r.delegateId,
+      delegateName: `${r.delegate.firstName} ${r.delegate.lastName}`.trim(),
+      grantedById: r.grantedById,
+      grantedByName: `${r.grantedBy.firstName} ${r.grantedBy.lastName}`.trim(),
+      startDate: r.startDate.toISOString(),
+      endDate: r.endDate.toISOString(),
+      createdAt: r.createdAt.toISOString()
+    }));
+  }
+
+  @Post("delegates")
+  @RequirePermissions("tenders.allocate")
+  @ApiOperation({ summary: "Grant a new allocator delegate window" })
+  @ApiResponse({ status: 201, description: "Delegate window created." })
+  @ApiResponse({ status: 400, description: "Invalid body or date range." })
+  @ApiResponse({ status: 403, description: "tenders.allocate required." })
+  @ApiResponse({ status: 404, description: "Delegate user not found." })
+  async createDelegate(
+    @Body() dto: CreateDelegateDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    const start = new Date(dto.startDate);
+    const end = new Date(dto.endDate);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new Error("Invalid date format.");
+    }
+    if (start > end) {
+      throw new Error("startDate must be on or before endDate.");
+    }
+    if (end < new Date()) {
+      throw new Error("endDate must be in the future.");
+    }
+
+    const delegate = await this.prisma.user.findUnique({ where: { id: dto.delegateId }, select: { id: true, firstName: true, lastName: true } });
+    if (!delegate) throw new NotFoundException("Delegate user not found.");
+
+    const grantor = await this.prisma.user.findUnique({ where: { id: actor.sub }, select: { id: true, firstName: true, lastName: true } });
+
+    const row = await this.prisma.allocatorDelegate.create({
+      data: {
+        delegateId: dto.delegateId,
+        grantedById: actor.sub,
+        startDate: start,
+        endDate: end
+      }
+    });
+
+    await this.audit.write({
+      actorId: actor.sub,
+      action: "tenders.delegate.create",
+      entityType: "AllocatorDelegate",
+      entityId: row.id,
+      metadata: { delegateId: dto.delegateId, startDate: dto.startDate, endDate: dto.endDate }
+    });
+
+    return {
+      id: row.id,
+      delegateId: row.delegateId,
+      delegateName: `${delegate.firstName} ${delegate.lastName}`.trim(),
+      grantedById: row.grantedById,
+      grantedByName: grantor ? `${grantor.firstName} ${grantor.lastName}`.trim() : actor.sub,
+      startDate: row.startDate.toISOString(),
+      endDate: row.endDate.toISOString(),
+      createdAt: row.createdAt.toISOString()
+    };
+  }
+
+  @Delete("delegates/:delegateWindowId")
+  @HttpCode(204)
+  @RequirePermissions("tenders.allocate")
+  @ApiOperation({ summary: "Revoke an allocator delegate window" })
+  @ApiResponse({ status: 204, description: "Delegate window deleted." })
+  @ApiResponse({ status: 403, description: "tenders.allocate required." })
+  @ApiResponse({ status: 404, description: "Delegate window not found." })
+  async deleteDelegate(
+    @Param("delegateWindowId") delegateWindowId: string,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    const row = await this.prisma.allocatorDelegate.findUnique({ where: { id: delegateWindowId } });
+    if (!row) throw new NotFoundException("Delegate window not found.");
+
+    await this.prisma.allocatorDelegate.delete({ where: { id: delegateWindowId } });
+
+    await this.audit.write({
+      actorId: actor.sub,
+      action: "tenders.delegate.delete",
+      entityType: "AllocatorDelegate",
+      entityId: delegateWindowId,
+      metadata: { delegateId: row.delegateId, startDate: row.startDate, endDate: row.endDate }
+    });
   }
 }
 

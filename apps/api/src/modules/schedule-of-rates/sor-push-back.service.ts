@@ -661,8 +661,9 @@ export class SorPushBackService {
       }
     }
 
-    // Compute frozen / future counts before the transaction (read-only).
-    const frozenRecords = await this._frozenInternal(table.id, rateRowId, rate.id);
+    // Frozen scan is a preview-only concern; push must not re-scan tender/snapshot
+    // tables (the preview already gave the operator the full frozen breakdown).
+    const frozenRecords: FrozenRecord[] = [];
     const futureLockTenders = table.isReference
       ? []
       : await this._futureLocks(figures);
@@ -681,16 +682,16 @@ export class SorPushBackService {
     // The row id is the guarantee: TenderRateEntry keys are `${tableId}:${rowId}:${colId}`,
     // so changing the id would cause every locked tender to miss the snapshot key and
     // fall back to the live (just-pushed) value — defeating the frozen guarantee.
-    await this.prisma.$transaction([
-      this.prisma.rateRow.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.rateRow.update({
         where: { id: rateRowId },
         data: {
           cells: updatedCells as Prisma.InputJsonValue,
           updatedById: actorId,
         },
-      }),
-      this.prisma.sorChangeLogEntry.createMany({ data: changeLogEntries }),
-    ]);
+      });
+      await tx.sorChangeLogEntry.createMany({ data: changeLogEntries });
+    });
 
     await this.audit.write({
       action: "sor.rate.push-back",

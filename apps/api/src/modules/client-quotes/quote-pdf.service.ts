@@ -138,7 +138,9 @@ export class QuotePdfService {
     const ctx = await this.exportSvc.resolvePdfCompanyContext();
     const buffer = await this.pdfRenderer.renderHtmlToPdf(html, {
       displayHeaderFooter: true,
-      headerHtml: headerTemplate(overlay.quoteRef, ctx),
+      headerHtml: headerTemplate(overlay.quoteRef, ctx, {
+        ratesLockedAt: base.tender.rateSet?.lockedAt ?? null,
+      }),
       footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },
     });

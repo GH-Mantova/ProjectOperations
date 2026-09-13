@@ -81,3 +81,8 @@
 2026-09-11T03:30:22Z  ARMED  pr-rateparity-s1-harness  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=23380  caller=powershell.exe:14972
 2026-09-11T04:39:49Z  ARMED  pr-fix-1874-permission-matrix-patch-row-is-superuser-gated  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=13072  caller=powershell.exe:1400
 2026-09-11T04:58:35Z  ARMED  pr-fix-1878-parity-harness-json-casts-through-unknown  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=2800  caller=powershell.exe:28892
+2026-09-11T05:16:43Z  ARMED  pr-brandtheme-s3-full-palette-columns  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=316  caller=powershell.exe:28916
+2026-09-11T05:47:45Z  ARMED  pr-pr-master-root-known-to-sweep-and-lint  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=18244  caller=powershell.exe:32448
+2026-09-13T06:06:30Z  ARMED  pr-brandtheme-s6-live-preview-contrast-and-override  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=4912  caller=powershell.exe:26688
+2026-09-13T06:36:28Z  ARMED  pr-qpdf-3-quoteref-collision-409  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=16080  caller=powershell.exe:29624
+2026-09-13T06:53:31Z  ARMED  pr-qpdf-4-freeze-issued-terms  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=30676  caller=powershell.exe:21176

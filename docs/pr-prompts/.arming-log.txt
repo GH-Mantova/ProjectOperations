@@ -91,3 +91,5 @@
 2026-09-13T07:55:34Z  ARMED  pr-draftpanel-s1-rates-lock-gate  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=31244  caller=powershell.exe:29264
 2026-09-13T08:32:03Z  ARMED  pr-qpdf-2-rate-basis-stamp  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=12696  caller=powershell.exe:28580
 2026-09-13T08:59:59Z  ARMED  pr-bp-s2-worth-chasing-view  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=22956  caller=powershell.exe:26724
+2026-09-13T09:21:18Z  ARMED  pr-ew-s5-capacity-board-ui  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=4616  caller=powershell.exe:352
+2026-09-13T09:57:02Z  ARMED  pr-ratehub-s6a-push-back-api  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=8452  caller=powershell.exe:30792

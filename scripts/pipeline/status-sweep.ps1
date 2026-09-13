@@ -247,7 +247,8 @@ if ($wt.Count -gt 0) {
 # worktree-registry-escapees: directories under worktree roots that are NOT in git worktree list.
 # These are invisible to the registry-based check above. Report them; do NOT prune.
 # Station 03 acts on REGISTRY-ESCAPEE findings.
-$worktreeRoots = @("C:\po-worktrees", "C:\po-wt", "C:\po-watcher-worktrees")
+# C:\PR-Master\worktrees is the current root; the legacy roots retire per docs/pipeline/PR-MASTER.md.
+$worktreeRoots = @("C:\PR-Master\worktrees", "C:\po-worktrees", "C:\po-wt", "C:\po-watcher-worktrees")
 $registeredPaths = @(git worktree list 2>$null | ForEach-Object { ($_ -split '\s+')[0].Trim().ToLower() })
 $escapeeCount = 0
 foreach ($wtRoot in $worktreeRoots) {

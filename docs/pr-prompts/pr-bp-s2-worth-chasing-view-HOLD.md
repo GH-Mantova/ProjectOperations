@@ -4,13 +4,16 @@ premise_means: No bid-priority ranked view page exists on main yet — BP-2 (wor
 scope:
   - apps/web/src/pages/tendering/BidPriorityRankingPage.tsx
   - apps/web/src/hooks/useBidPriorityRanking.ts
-  - apps/web/src/components/tendering/**
+  - apps/web/src/App.tsx
+  - apps/web/src/components/ShellLayout.tsx
+  - apps/web/src/pages/tendering/TenderingPage.tsx
 done_when: pnpm build && pnpm lint && test -f apps/web/src/pages/tendering/BidPriorityRankingPage.tsx
 size: 5
 gate_allow: none
 seed_only: false
 escalates: false
 requires_on_main: 'apps/api/src/modules/tendering/tendering.controller.ts :: priority-ranking'
+design_ref: https://claude.ai/code/artifact/87fb711c-6987-4860-9ef8-e5363542c37c
 ---
 
 # BP-2 — Web "worth chasing" ranked view

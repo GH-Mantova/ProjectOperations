@@ -24,6 +24,7 @@ function basePayload(
       dueDate: new Date("2026-06-15"),
       createdAt: new Date("2026-05-01"),
       ratesSnapshotAt: null,
+      rateSet: null,
       estimator: {
         firstName: "Raj",
         lastName: "Pudasaini",
@@ -280,7 +281,7 @@ describe("Quote HTML builder", () => {
   });
 
   it("ESTIMATE_PREVIEW_MARK_V1 — estimate-preview headerTemplate carries the internal mark and Estimate Ref label", () => {
-    const header = headerTemplate("EST-T260512-BRIS-Rev1", undefined, true);
+    const header = headerTemplate("EST-T260512-BRIS-Rev1", undefined, { isEstimatePreview: true });
     expect(header).toContain("INTERNAL ESTIMATE PREVIEW");
     expect(header).toContain("Estimate Ref: EST-T260512-BRIS-Rev1");
     expect(header).not.toContain("Quote No.");
@@ -302,6 +303,61 @@ describe("Quote HTML builder", () => {
     expect(footer).toContain("admin@initialservices.net");
     expect(footer).toContain("#005B61");
     expect(footer).toContain("-webkit-print-color-adjust:exact");
+  });
+
+  it("RATE_BASIS_STAMP_V1 — cover prints 'Rates as of <lockDate>' when the tender has a locked rate set", () => {
+    const payload = basePayload();
+    payload.tender.rateSet = { lockedAt: new Date("2026-04-23T10:00:00Z") };
+    const html = buildQuoteHtml(payload);
+    expect(html).toContain("Rate basis:");
+    expect(html).toContain("Rates as of 23/04/2026");
+    expect(html).not.toContain("Rates not locked");
+  });
+
+  it("RATE_BASIS_STAMP_V1 — cover prints 'Rates not locked' when the tender has no locked rate set", () => {
+    const payload = basePayload();
+    payload.tender.rateSet = null;
+    const html = buildQuoteHtml(payload);
+    expect(html).toContain("Rate basis:");
+    expect(html).toContain("Rates not locked");
+    // Must NOT invent a basis from the print date.
+    expect(html).not.toMatch(/Rates as of \d{2}\/\d{2}\/\d{4}/);
+  });
+
+  it("RATE_BASIS_STAMP_V1 — standard headerTemplate prints 'Rates as of <lockDate>' when supplied", () => {
+    const header = headerTemplate("IS-Q001", undefined, {
+      ratesLockedAt: new Date("2026-04-23T10:00:00Z"),
+    });
+    expect(header).toContain("Rates as of 23/04/2026");
+    expect(header).toContain("Quote No. IS-Q001");
+    expect(header).not.toContain("Rates not locked");
+  });
+
+  it("RATE_BASIS_STAMP_V1 — standard headerTemplate prints 'Rates not locked' when the basis is absent", () => {
+    const header = headerTemplate("IS-Q001", undefined, { ratesLockedAt: null });
+    expect(header).toContain("Rates not locked");
+    // The print-date placeholder is still there — but only as the print
+    // date; it must not be reused as the rate basis.
+    expect(header).toContain('class="date"');
+    expect(header).not.toMatch(/Rates as of \d{2}\/\d{2}\/\d{4}/);
+  });
+
+  it("RATE_BASIS_STAMP_V1 — estimate-preview headerTemplate carries the rate basis alongside the internal mark", () => {
+    const header = headerTemplate("EST-T260512-BRIS-Rev1", undefined, {
+      isEstimatePreview: true,
+      ratesLockedAt: new Date("2026-04-23T10:00:00Z"),
+    });
+    expect(header).toContain("INTERNAL ESTIMATE PREVIEW");
+    expect(header).toContain("Rates as of 23/04/2026");
+  });
+
+  it("RATE_BASIS_STAMP_V1 — estimate-preview headerTemplate prints 'Rates not locked' when the basis is absent", () => {
+    const header = headerTemplate("EST-T260512-BRIS-Rev1", undefined, {
+      isEstimatePreview: true,
+      ratesLockedAt: null,
+    });
+    expect(header).toContain("INTERNAL ESTIMATE PREVIEW");
+    expect(header).toContain("Rates not locked");
   });
 
   it("does not append stray parenthesis to cost summary labels", () => {

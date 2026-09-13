@@ -117,6 +117,7 @@ import { CommsPage } from "./pages/crm/CommsPage";
 import { CrmIndex } from "./pages/crm/CrmIndex";
 import { CrmCatchAllRedirect, ClientsEntryRedirect } from "./pages/crm/CrmRedirects";
 import { TendersPage } from "./pages/crm/TendersPage";
+import { CapacityBoardPage } from "./pages/tenders/CapacityBoardPage";
 import { AccountsPage } from "./pages/crm/AccountsPage";
 import { CrmBoardContent } from "./pages/crm/CrmBoardPage";
 // RelationshipsPage is rendered inside AccountsPage (CRM S2 tab shell).
@@ -349,6 +350,11 @@ export function App() {
             {/* pipeline-fold (2026-08-20): /tenders/pipeline is now the combined
                 Board + Insights page. The old redirect to /tenders is replaced. */}
             <Route path="/tenders/pipeline" element={<PipelinePage />} />
+            {/* EW-5: Capacity board — gated internally (shows NoAccess for
+                users without tenders.allocate or tenders.manage). Registered
+                BEFORE /tenders/:id so the static "capacity" segment is not
+                captured as an id by TenderDetailPage. */}
+            <Route path="/tenders/capacity" element={<CapacityBoardPage />} />
             <Route path="/tenders/create" element={<Navigate to="/tenders" replace />} />
             <Route path="/tenders/workspace" element={<Navigate to="/tenders" replace />} />
             {/* Unified Directory redirects — /tenders/{clients,contacts} were

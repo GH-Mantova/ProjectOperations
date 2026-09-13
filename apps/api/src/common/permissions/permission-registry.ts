@@ -94,6 +94,9 @@ export const permissionRegistry = [
   { code: "authority.manage", module: "authority", label: "Configure spend limits and approval thresholds", description: "Manage authority rules — configurable spend limits and approval thresholds", isHighRisk: true },
   // Rates & Lists R0 (PR-487).
   { code: "rates.manage", module: "rates", label: "Edit rates and price lists", description: "Create and edit flexible rate tables (RateTable / RateColumn / RateRow)" },
+  // Rate Hub S6a: push-back a SoR line edit to the master hub row. High-risk because it changes
+  // the value every future tender will lock against (schema.prisma RateRow.cells).
+  { code: "rates.push-back", module: "rates", label: "Push a Schedule of Rates edit back to the master hub", description: "Update the master RateRow / SubcontractorRate from a SoR line - changes what every future tender locks", isHighRisk: true },
   { code: "lists.manage", module: "lists", label: "Manage list bindings and consumers", description: "Manage list bindings and list-consumer wiring" },
   // Comms + Approvals Phase 2 slice 1.
   { code: "approvals.view", module: "approvals", label: "View approval-decision history", description: "View approval-decision history for a record" },

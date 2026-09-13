@@ -14,6 +14,7 @@ gate_allow: none
 seed_only: false
 escalates: false
 requires_on_main: apps/api/src/modules/tendering/capacity.service.ts :: getAllEstimatorsSummary
+design_ref: https://claude.ai/code/artifact/0bc51ab1-fbb0-4e28-a90e-f0d30043b5e4
 ---
 
 # EW-5: Capacity board UI + allocation actions + delegation config UI

@@ -79,6 +79,7 @@ import { FieldDocketPage } from "./pages/field/FieldDocketPage";
 import { FieldExpensePage } from "./pages/field/FieldExpensePage";
 import { AgreedRecordCapturePage } from "./pages/AgreedRecordCapturePage";
 import { AgreedRecordOfficeReviewPage } from "./pages/AgreedRecordOfficeReviewPage";
+import { JobSorRegisterPage } from "./pages/JobSorRegisterPage";
 import { TimesheetApprovalPage } from "./pages/timesheets/TimesheetApprovalPage";
 import { PayrollExportPage } from "./pages/field/PayrollExportPage";
 import { DocketsRegisterPage } from "./pages/dockets/DocketsRegisterPage";
@@ -624,6 +625,8 @@ export function App() {
             <Route path="/variations/:id/pricing" element={<VariationPricingPage />} />
             {/* SoR S8: office review queue + AR pricing / approve / send-back. */}
             <Route path="/agreed-records/review" element={<AgreedRecordOfficeReviewPage />} />
+            {/* SoR S9b: per-job VC + AR register and raise-claim picker. */}
+            <Route path="/jobs/:jobId/sor-register" element={<JobSorRegisterPage />} />
             <Route path="/admin/rates-lists" element={<Navigate to="/settings/reference-data" replace />} />
             <Route path="/admin/automations" element={<Navigate to="/settings/administration/automations" replace />} />
             {/* SLICE 15: /admin/job-roles retargets to the new Workers URL

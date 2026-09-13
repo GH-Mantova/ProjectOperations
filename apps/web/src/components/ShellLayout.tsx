@@ -210,7 +210,17 @@ export const NAV_GROUPS: NavGroup[] = [
           (path.startsWith("/tenders/") &&
             !path.startsWith("/tenders/contacts") &&
             !path.startsWith("/tenders/leads") &&
-            !path.startsWith("/tenders/pipeline")),
+            !path.startsWith("/tenders/pipeline") &&
+            !path.startsWith("/tenders/priority-ranking")),
+        requiresPermission: "tenders.view"
+      },
+      {
+        // BP-2: "worth chasing" bid priority ranking. ADVISORY ONLY.
+        // Gated on tenders.view (matches the API endpoint's permission gate).
+        to: "/tenders/priority-ranking",
+        label: "Priority ranking",
+        icon: ICON_AUDIT,
+        match: (path) => path.startsWith("/tenders/priority-ranking"),
         requiresPermission: "tenders.view"
       },
       {
@@ -607,6 +617,8 @@ const BREADCRUMBS: Record<string, string> = {
   "/tenders/leads": "Leads & opportunities",
   // pipeline-fold: combined Board + Insights page.
   "/tenders/pipeline": "Pipeline",
+  // BP-2: bid priority ranking.
+  "/tenders/priority-ranking": "Priority ranking",
   "/workers": "Workers",
   "/workers/leave-approvals": "Leave Approvals",
   "/workers/live-crew": "Live crew map",

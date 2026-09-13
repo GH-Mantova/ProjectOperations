@@ -37,6 +37,9 @@ type TenderListItem = {
   // WL-1b — server returns outcomes on the list (tenderInclude.outcomes);
   // used by NeedsOutcomePanel to spot closed tenders with no capture.
   outcomes?: Array<{ id: string; recordedAt?: string | null }>;
+  // BP-2 — ML win-likelihood point estimate (0–1). Populated when the list
+  // endpoint is extended to include it; null/undefined → "—" in the column.
+  pointEstimate?: number | null;
 };
 
 // WL-1b — statuses that trigger the outcome-capture modal on kanban drop.
@@ -138,7 +141,9 @@ type ColumnKey =
   | "value"
   | "dueDate"
   | "daysUntilDue"
-  | "createdAt";
+  | "createdAt"
+  // BP-2 — ML win-likelihood point estimate column.
+  | "winLikelihood";
 
 const COLUMN_LABEL: Record<ColumnKey, string> = {
   tenderNumber: "Tender #",
@@ -150,7 +155,9 @@ const COLUMN_LABEL: Record<ColumnKey, string> = {
   value: "Value",
   dueDate: "Due date",
   daysUntilDue: "Days until due",
-  createdAt: "Created"
+  createdAt: "Created",
+  // BP-2 — ML win-likelihood point estimate.
+  winLikelihood: "Win-likelihood"
 };
 
 const ALWAYS_VISIBLE: ColumnKey[] = ["tenderNumber", "name"];
@@ -173,7 +180,10 @@ const ALL_COLUMNS: ColumnKey[] = [
   "value",
   "dueDate",
   "daysUntilDue",
-  "createdAt"
+  "createdAt",
+  // BP-2 — ML win-likelihood (opt-in; not in DEFAULT_COLUMNS because the
+  // list endpoint does not yet return pointEstimate; shows "—" until it does).
+  "winLikelihood"
 ];
 const COLUMN_STORAGE_KEY = "tenders-register-columns:v1";
 
@@ -1946,6 +1956,11 @@ function RegisterRow({
         return daysUntil(tender.dueDate);
       case "createdAt":
         return new Date(tender.createdAt).toLocaleDateString();
+      // BP-2 — ML win-likelihood point estimate (0–1 scale → display as %).
+      // Shows "—" when null or not returned by the list endpoint.
+      case "winLikelihood":
+        if (tender.pointEstimate === null || tender.pointEstimate === undefined) return "—";
+        return `${Math.round(tender.pointEstimate * 100)}%`;
       default:
         return "—";
     }

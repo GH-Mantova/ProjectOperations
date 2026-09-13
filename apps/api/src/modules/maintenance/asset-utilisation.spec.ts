@@ -31,7 +31,8 @@ function buildService(assets: AssetStub[]) {
   const findMany = jest.fn((_args: FindManyArgs) => Promise.resolve(assets));
   const prisma = { asset: { findMany } };
   const audit = { write: jest.fn() };
-  const service = new MaintenanceService(prisma as never, audit as never);
+  const notifications = { create: jest.fn() };
+  const service = new MaintenanceService(prisma as never, audit as never, notifications as never);
   return { service, findMany };
 }
 

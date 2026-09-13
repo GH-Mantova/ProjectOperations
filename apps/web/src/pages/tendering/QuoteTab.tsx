@@ -77,7 +77,7 @@ export function QuoteTab({
             onClick={() => setShowGenerate((v) => !v)}
             style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
           >
-            Generate Quote
+            Estimate Preview
           </button>
         </div>
       )}
@@ -318,7 +318,7 @@ function GenerateQuoteSection({
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      onToast(kind === "pdf" ? "PDF quote generated" : "Excel workbook generated");
+      onToast(kind === "pdf" ? "Estimate preview PDF generated" : "Excel workbook generated");
       await loadExports();
     } catch (err) {
       setError((err as Error).message);
@@ -331,7 +331,7 @@ function GenerateQuoteSection({
 
   return (
     <section className="s7-card">
-      <h3 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 12 }}>Generate quote</h3>
+      <h3 className="s7-type-section-heading" style={{ marginTop: 0, marginBottom: 12 }}>Estimate preview</h3>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button
@@ -341,7 +341,7 @@ function GenerateQuoteSection({
           onClick={() => void download("pdf")}
           style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
         >
-          {busy === "pdf" ? "Generating…" : "Download PDF quote"}
+          {busy === "pdf" ? "Generating…" : "Download estimate preview (PDF)"}
         </button>
         <button
           type="button"

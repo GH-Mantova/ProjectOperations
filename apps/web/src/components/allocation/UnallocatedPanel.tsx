@@ -31,11 +31,11 @@ function formatAge(dueDate: string | null): string {
   return `${diffDays}d remaining`;
 }
 
-const URGENCY_COLOUR: Record<string, string> = {
-  CRITICAL: "#B91C1C",
-  HIGH: "#D97706",
-  MEDIUM: "#059669",
-  LOW: "#6B7280"
+const URGENCY_BADGE_VARIANT: Record<string, "danger" | "warning" | "active" | "neutral"> = {
+  CRITICAL: "danger",
+  HIGH: "warning",
+  MEDIUM: "active",
+  LOW: "neutral"
 };
 
 // Anti-fatigue cap (plan §3.8): show at most 20 rows before collapsing.
@@ -97,7 +97,7 @@ export function UnallocatedPanel({
         style={{
           padding: "24px 16px",
           textAlign: "center",
-          color: "var(--text-muted, #9CA3AF)",
+          color: "var(--text-muted)",
           fontSize: 13
         }}
       >
@@ -115,11 +115,11 @@ export function UnallocatedPanel({
           style={{
             padding: "10px 14px",
             marginBottom: 12,
-            background: "#FEF3C7",
-            border: "1px solid #FCD34D",
+            background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--status-warning) 40%, transparent)",
             borderRadius: 6,
             fontSize: 13,
-            color: "#92400E"
+            color: "var(--text-primary)"
           }}
         >
           {unallocated.length} tenders need allocating.
@@ -132,7 +132,7 @@ export function UnallocatedPanel({
           aria-label="Unallocated tenders"
         >
           <thead>
-            <tr style={{ borderBottom: "2px solid var(--border-default, #E5E7EB)" }}>
+            <tr style={{ borderBottom: "2px solid var(--border-default)" }}>
               {["Tender", "Client", "Due / Age", "Urgency", "Suggested", "Actions"].map((col) => (
                 <th
                   key={col}
@@ -140,7 +140,7 @@ export function UnallocatedPanel({
                     padding: "10px 12px",
                     textAlign: "left",
                     fontWeight: 600,
-                    color: "var(--text-secondary, #4B5563)",
+                    color: "var(--text-secondary)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -158,13 +158,13 @@ export function UnallocatedPanel({
               return (
                 <tr
                   key={t.tenderId}
-                  style={{ borderBottom: "1px solid var(--border-subtle, #F3F4F6)" }}
+                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
                 >
                   <td style={{ padding: "10px 12px" }}>
                     <span style={{ fontWeight: 500 }}>{t.tenderNumber}</span>{" "}
-                    <span style={{ color: "var(--text-secondary, #4B5563)" }}>{t.title}</span>
+                    <span style={{ color: "var(--text-secondary)" }}>{t.title}</span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "var(--text-secondary, #4B5563)" }}>
+                  <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>
                     —
                   </td>
                   <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
@@ -172,19 +172,13 @@ export function UnallocatedPanel({
                   </td>
                   <td style={{ padding: "10px 12px" }}>
                     <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        background: `${URGENCY_COLOUR[t.urgencyKey] ?? "#6B7280"}22`,
-                        color: URGENCY_COLOUR[t.urgencyKey] ?? "#6B7280"
-                      }}
+                      className={`s7-badge s7-badge--${URGENCY_BADGE_VARIANT[t.urgencyKey] ?? "neutral"}`}
+                      style={{ fontWeight: 600 }}
                     >
                       {t.urgencyKey}
                     </span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "var(--text-secondary, #4B5563)" }}>
+                  <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>
                     {suggested}
                   </td>
                   <td style={{ padding: "10px 12px" }}>
@@ -252,7 +246,7 @@ export function UnallocatedPanel({
           }
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
-            <p style={{ margin: 0, color: "var(--text-secondary, #4B5563)" }}>
+            <p style={{ margin: 0, color: "var(--text-secondary)" }}>
               {modal.tender.title}
             </p>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -268,10 +262,10 @@ export function UnallocatedPanel({
                 }
                 style={{
                   padding: "8px 10px",
-                  border: "1px solid var(--border-default, #D1D5DB)",
+                  border: "1px solid var(--border-default)",
                   borderRadius: 6,
                   fontSize: 13,
-                  background: "var(--surface, #fff)"
+                  background: "var(--surface-card)"
                 }}
               >
                 <option value="">-- Select estimator --</option>
@@ -284,7 +278,7 @@ export function UnallocatedPanel({
               </select>
             </label>
             {modalError && (
-              <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--status-danger, #B91C1C)" }}>
+              <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--status-danger)" }}>
                 {modalError}
               </p>
             )}
@@ -321,10 +315,10 @@ export function UnallocatedPanel({
           }
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
-            <p style={{ margin: 0, color: "var(--text-secondary, #4B5563)" }}>
+            <p style={{ margin: 0, color: "var(--text-secondary)" }}>
               {modal.tender.title}
             </p>
-            <p style={{ margin: 0, color: "var(--text-secondary, #4B5563)" }}>
+            <p style={{ margin: 0, color: "var(--text-secondary)" }}>
               Select one or more estimators to offer this tender to:
             </p>
             <div
@@ -334,7 +328,7 @@ export function UnallocatedPanel({
                 gap: 6,
                 maxHeight: 220,
                 overflowY: "auto",
-                border: "1px solid var(--border-default, #D1D5DB)",
+                border: "1px solid var(--border-default)",
                 borderRadius: 6,
                 padding: "8px 10px"
               }}
@@ -363,9 +357,9 @@ export function UnallocatedPanel({
                   <span>
                     {e.displayName}
                     {e.isOverloaded ? (
-                      <span style={{ color: "#B91C1C", marginLeft: 4 }}>(overloaded)</span>
+                      <span style={{ color: "var(--status-danger)", marginLeft: 4 }}>(overloaded)</span>
                     ) : (
-                      <span style={{ color: "#6B7280", marginLeft: 4 }}>
+                      <span style={{ color: "var(--text-secondary)", marginLeft: 4 }}>
                         ({e.utilizationPct >= 999 ? "no cap" : `${e.utilizationPct.toFixed(0)}%`})
                       </span>
                     )}
@@ -374,7 +368,7 @@ export function UnallocatedPanel({
               ))}
             </div>
             {modalError && (
-              <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--status-danger, #B91C1C)" }}>
+              <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--status-danger)" }}>
                 {modalError}
               </p>
             )}

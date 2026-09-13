@@ -87,8 +87,8 @@ export function CapacityBoardPage() {
             position: "fixed",
             bottom: 24,
             right: 24,
-            background: "#1F2937",
-            color: "#F9FAFB",
+            background: "var(--brand-dark)",
+            color: "var(--text-inverse)",
             padding: "10px 18px",
             borderRadius: 8,
             fontSize: 13,
@@ -104,8 +104,8 @@ export function CapacityBoardPage() {
       <div
         style={{
           padding: "20px 24px 0",
-          background: "var(--surface, #fff)",
-          borderBottom: "1px solid var(--border-default, #E5E7EB)"
+          background: "var(--surface-card)",
+          borderBottom: "1px solid var(--border-default)"
         }}
       >
         <h1
@@ -168,13 +168,13 @@ function tabStyle(active: boolean): React.CSSProperties {
     padding: "12px 20px",
     border: "none",
     borderBottom: active
-      ? "2px solid var(--color-teal, #005B61)"
+      ? "2px solid var(--brand-primary)"
       : "2px solid transparent",
     background: "transparent",
     cursor: "pointer",
     fontWeight: active ? 600 : 400,
     fontSize: 14,
-    color: active ? "var(--color-teal, #005B61)" : "var(--text-muted, #666)"
+    color: active ? "var(--brand-primary)" : "var(--text-muted)"
   };
 }
 
@@ -213,7 +213,7 @@ function BoardTab({ toast }: { toast: (msg: string) => void }) {
 
   if (loading) {
     return (
-      <div style={{ padding: 32, color: "var(--text-muted, #9CA3AF)", fontSize: 13 }}>
+      <div style={{ padding: 32, color: "var(--text-muted)", fontSize: 13 }}>
         Loading capacity board…
       </div>
     );
@@ -225,7 +225,7 @@ function BoardTab({ toast }: { toast: (msg: string) => void }) {
         role="alert"
         style={{
           padding: 32,
-          color: "var(--status-danger, #B91C1C)",
+          color: "var(--status-danger)",
           fontSize: 13,
           maxWidth: 600
         }}
@@ -262,15 +262,8 @@ function BoardTab({ toast }: { toast: (msg: string) => void }) {
           Unallocated tenders
           {(board?.unallocated?.length ?? 0) > 0 && (
             <span
-              style={{
-                marginLeft: 8,
-                fontSize: 12,
-                padding: "2px 8px",
-                borderRadius: 10,
-                background: "#FEE2E2",
-                color: "#B91C1C",
-                fontWeight: 600
-              }}
+              className="s7-badge s7-badge--danger"
+              style={{ marginLeft: 8, fontWeight: 600 }}
             >
               {board!.unallocated.length}
             </span>
@@ -291,8 +284,8 @@ function BoardTab({ toast }: { toast: (msg: string) => void }) {
         </h2>
         <div
           style={{
-            background: "var(--surface, #fff)",
-            border: "1px solid var(--border-default, #E5E7EB)",
+            background: "var(--surface-card)",
+            border: "1px solid var(--border-default)",
             borderRadius: 8,
             padding: 20
           }}
@@ -397,7 +390,7 @@ function MyQueueTab({
 
   if (loading) {
     return (
-      <div style={{ padding: 32, color: "var(--text-muted, #9CA3AF)", fontSize: 13 }}>
+      <div style={{ padding: 32, color: "var(--text-muted)", fontSize: 13 }}>
         Loading your queue…
       </div>
     );
@@ -405,7 +398,7 @@ function MyQueueTab({
 
   if (error) {
     return (
-      <div role="alert" style={{ padding: 32, color: "var(--status-danger, #B91C1C)", fontSize: 13 }}>
+      <div role="alert" style={{ padding: 32, color: "var(--status-danger)", fontSize: 13 }}>
         {error}
       </div>
     );
@@ -413,7 +406,7 @@ function MyQueueTab({
 
   return (
     <div style={{ padding: "24px" }}>
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary, #4B5563)" }}>
+      <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
         Tenders assigned to you. Claim unallocated tenders or reject those you cannot take.
       </p>
 
@@ -422,7 +415,7 @@ function MyQueueTab({
           style={{
             padding: "40px 24px",
             textAlign: "center",
-            color: "var(--text-muted, #9CA3AF)",
+            color: "var(--text-muted)",
             fontSize: 13
           }}
         >
@@ -431,7 +424,7 @@ function MyQueueTab({
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: "2px solid var(--border-default, #E5E7EB)" }}>
+            <tr style={{ borderBottom: "2px solid var(--border-default)" }}>
               {["Tender", "Status", "Allocation state", "Due date", "Actions"].map((col) => (
                 <th
                   key={col}
@@ -439,7 +432,7 @@ function MyQueueTab({
                     padding: "10px 12px",
                     textAlign: "left",
                     fontWeight: 600,
-                    color: "var(--text-secondary, #4B5563)",
+                    color: "var(--text-secondary)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -459,19 +452,19 @@ function MyQueueTab({
               return (
                 <tr
                   key={t.id}
-                  style={{ borderBottom: "1px solid var(--border-subtle, #F3F4F6)" }}
+                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
                 >
                   <td style={{ padding: "10px 12px" }}>
                     <span style={{ fontWeight: 500 }}>{t.tenderNumber}</span>{" "}
-                    <span style={{ color: "var(--text-secondary, #4B5563)" }}>{t.title}</span>
+                    <span style={{ color: "var(--text-secondary)" }}>{t.title}</span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "var(--text-secondary, #4B5563)" }}>
+                  <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>
                     {t.status}
                   </td>
                   <td style={{ padding: "10px 12px" }}>
                     <AllocationStateBadge state={t.allocationState} />
                   </td>
-                  <td style={{ padding: "10px 12px", color: "var(--text-secondary, #4B5563)", whiteSpace: "nowrap" }}>
+                  <td style={{ padding: "10px 12px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
                     {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
                   </td>
                   <td style={{ padding: "10px 12px" }}>
@@ -489,7 +482,7 @@ function MyQueueTab({
                         <button
                           type="button"
                           className="s7-btn s7-btn--sm s7-btn--ghost"
-                          style={{ color: "var(--status-danger, #B91C1C)" }}
+                          style={{ color: "var(--status-danger)" }}
                           onClick={() => setRejectTarget(t)}
                         >
                           Reject
@@ -519,27 +512,18 @@ function MyQueueTab({
 
 // ── Allocation state badge ────────────────────────────────────────────────────
 
-const STATE_COLOURS: Record<string, { bg: string; text: string }> = {
-  UNALLOCATED: { bg: "#FEE2E2", text: "#B91C1C" },
-  ALLOCATED: { bg: "#D1FAE5", text: "#065F46" },
-  POOL: { bg: "#DBEAFE", text: "#1E40AF" },
-  CLAIMED: { bg: "#D1FAE5", text: "#065F46" },
-  REJECTED: { bg: "#F3F4F6", text: "#6B7280" }
+const STATE_BADGE_VARIANT: Record<string, "danger" | "active" | "info" | "neutral"> = {
+  UNALLOCATED: "danger",
+  ALLOCATED: "active",
+  POOL: "info",
+  CLAIMED: "active",
+  REJECTED: "neutral"
 };
 
 function AllocationStateBadge({ state }: { state: string }) {
-  const colours = STATE_COLOURS[state] ?? { bg: "#F3F4F6", text: "#6B7280" };
+  const variant = STATE_BADGE_VARIANT[state] ?? "neutral";
   return (
-    <span
-      style={{
-        padding: "2px 8px",
-        borderRadius: 4,
-        fontSize: 11,
-        fontWeight: 600,
-        background: colours.bg,
-        color: colours.text
-      }}
-    >
+    <span className={`s7-badge s7-badge--${variant}`} style={{ fontWeight: 600 }}>
       {state}
     </span>
   );

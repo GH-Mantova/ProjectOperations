@@ -135,20 +135,20 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
       <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Delegate windows</h3>
 
       {error && (
-        <p role="alert" style={{ margin: 0, color: "var(--status-danger, #B91C1C)", fontSize: 12 }}>
+        <p role="alert" style={{ margin: 0, color: "var(--status-danger)", fontSize: 12 }}>
           {error}
         </p>
       )}
 
       {/* Existing delegates list */}
       {loadingDelegates ? (
-        <p style={{ color: "var(--text-muted, #9CA3AF)" }}>Loading…</p>
+        <p style={{ color: "var(--text-muted)" }}>Loading…</p>
       ) : delegates.length === 0 ? (
-        <p style={{ color: "var(--text-muted, #9CA3AF)" }}>No active or upcoming delegate windows.</p>
+        <p style={{ color: "var(--text-muted)" }}>No active or upcoming delegate windows.</p>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ borderBottom: "2px solid var(--border-default, #E5E7EB)" }}>
+            <tr style={{ borderBottom: "2px solid var(--border-default)" }}>
               {["Delegate", "Start", "End", "Granted by", ""].map((col) => (
                 <th
                   key={col}
@@ -156,7 +156,7 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
                     padding: "8px 10px",
                     textAlign: "left",
                     fontWeight: 600,
-                    color: "var(--text-secondary, #4B5563)"
+                    color: "var(--text-secondary)"
                   }}
                 >
                   {col}
@@ -171,20 +171,14 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
               return (
                 <tr
                   key={d.id}
-                  style={{ borderBottom: "1px solid var(--border-subtle, #F3F4F6)" }}
+                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
                 >
                   <td style={{ padding: "8px 10px" }}>
                     <span style={{ fontWeight: 500 }}>{d.delegateName}</span>
                     {isActive && (
                       <span
-                        style={{
-                          marginLeft: 6,
-                          fontSize: 11,
-                          padding: "1px 6px",
-                          borderRadius: 4,
-                          background: "#D1FAE5",
-                          color: "#065F46"
-                        }}
+                        className="s7-badge s7-badge--active"
+                        style={{ marginLeft: 6 }}
                       >
                         Active
                       </span>
@@ -192,14 +186,14 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
                   </td>
                   <td style={{ padding: "8px 10px" }}>{formatDate(d.startDate)}</td>
                   <td style={{ padding: "8px 10px" }}>{formatDate(d.endDate)}</td>
-                  <td style={{ padding: "8px 10px", color: "var(--text-secondary, #4B5563)" }}>
+                  <td style={{ padding: "8px 10px", color: "var(--text-secondary)" }}>
                     {d.grantedByName}
                   </td>
                   <td style={{ padding: "8px 10px" }}>
                     <button
                       type="button"
                       className="s7-btn s7-btn--sm s7-btn--ghost"
-                      style={{ color: "var(--status-danger, #B91C1C)" }}
+                      style={{ color: "var(--status-danger)" }}
                       onClick={() => { void handleDelete(d.id); }}
                       disabled={deletingId === d.id}
                       aria-label={`Revoke delegate window for ${d.delegateName}`}
@@ -217,7 +211,7 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
       {/* New delegate form */}
       <fieldset
         style={{
-          border: "1px solid var(--border-default, #E5E7EB)",
+          border: "1px solid var(--border-default)",
           borderRadius: 8,
           padding: "16px",
           margin: 0
@@ -234,10 +228,10 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
               onChange={(e) => setNewDelegateId(e.target.value)}
               style={{
                 padding: "8px 10px",
-                border: "1px solid var(--border-default, #D1D5DB)",
+                border: "1px solid var(--border-default)",
                 borderRadius: 6,
                 fontSize: 13,
-                background: "var(--surface, #fff)"
+                background: "var(--surface-card)"
               }}
             >
               <option value="">-- Select user --</option>
@@ -258,7 +252,7 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
               onChange={(e) => setNewStartDate(e.target.value)}
               style={{
                 padding: "8px 10px",
-                border: "1px solid var(--border-default, #D1D5DB)",
+                border: "1px solid var(--border-default)",
                 borderRadius: 6,
                 fontSize: 13
               }}
@@ -274,7 +268,7 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
               onChange={(e) => setNewEndDate(e.target.value)}
               style={{
                 padding: "8px 10px",
-                border: "1px solid var(--border-default, #D1D5DB)",
+                border: "1px solid var(--border-default)",
                 borderRadius: 6,
                 fontSize: 13
               }}
@@ -283,12 +277,12 @@ export function DelegateWindowEditor({ listDelegates, createDelegate, deleteDele
         </div>
 
         {dateError && (
-          <p role="alert" style={{ margin: "8px 0 0", fontSize: 12, color: "var(--status-danger, #B91C1C)" }}>
+          <p role="alert" style={{ margin: "8px 0 0", fontSize: 12, color: "var(--status-danger)" }}>
             {dateError}
           </p>
         )}
         {formError && (
-          <p role="alert" style={{ margin: "8px 0 0", fontSize: 12, color: "var(--status-danger, #B91C1C)" }}>
+          <p role="alert" style={{ margin: "8px 0 0", fontSize: 12, color: "var(--status-danger)" }}>
             {formError}
           </p>
         )}

@@ -66,12 +66,12 @@ export function RejectModal({ tenderId, tenderRef, onReject, onSuccess, onClose 
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
-        <p style={{ margin: 0, color: "var(--text-secondary, #4B5563)" }}>
+        <p style={{ margin: 0, color: "var(--text-secondary)" }}>
           Provide a reason for declining this tender. The allocator will be notified.
         </p>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontWeight: 500 }}>
-            Reason <span style={{ color: "var(--status-danger, #B91C1C)" }}>*</span>
+            Reason <span style={{ color: "var(--status-danger)" }}>*</span>
           </span>
           <textarea
             value={reason}
@@ -82,7 +82,7 @@ export function RejectModal({ tenderId, tenderRef, onReject, onSuccess, onClose 
             style={{
               width: "100%",
               padding: "8px 10px",
-              border: `1px solid ${canSubmit || reason === "" ? "var(--border-default, #D1D5DB)" : "var(--status-danger, #B91C1C)"}`,
+              border: `1px solid ${canSubmit || reason === "" ? "var(--border-default)" : "var(--status-danger)"}`,
               borderRadius: 6,
               fontFamily: "inherit",
               fontSize: 13,
@@ -93,14 +93,14 @@ export function RejectModal({ tenderId, tenderRef, onReject, onSuccess, onClose 
             data-testid="reject-modal-reason"
             autoFocus
           />
-          <span style={{ fontSize: 11, color: "var(--text-muted, #9CA3AF)", alignSelf: "flex-end" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "flex-end" }}>
             {reason.length}/1000
           </span>
         </label>
         {!canSubmit && reason.length > 0 && (
           <p
             role="alert"
-            style={{ margin: 0, fontSize: 12, color: "var(--status-danger, #B91C1C)" }}
+            style={{ margin: 0, fontSize: 12, color: "var(--status-danger)" }}
           >
             A reason is required.
           </p>
@@ -108,7 +108,7 @@ export function RejectModal({ tenderId, tenderRef, onReject, onSuccess, onClose 
         {error && (
           <p
             role="alert"
-            style={{ margin: 0, fontSize: 12, color: "var(--status-danger, #B91C1C)" }}
+            style={{ margin: 0, fontSize: 12, color: "var(--status-danger)" }}
           >
             {error}
           </p>

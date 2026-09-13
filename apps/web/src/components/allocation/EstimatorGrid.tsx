@@ -59,12 +59,12 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
             width: "100%",
             borderCollapse: "collapse",
             fontSize: 13,
-            background: "var(--surface, #fff)"
+            background: "var(--surface-card)"
           }}
           aria-label="Estimator capacity grid"
         >
           <thead>
-            <tr style={{ borderBottom: "2px solid var(--border-default, #E5E7EB)" }}>
+            <tr style={{ borderBottom: "2px solid var(--border-default)" }}>
               {(
                 [
                   "Estimator",
@@ -82,7 +82,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                     padding: "10px 12px",
                     textAlign: "left",
                     fontWeight: 600,
-                    color: "var(--text-secondary, #4B5563)",
+                    color: "var(--text-secondary)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -96,7 +96,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
               <tr>
                 <td
                   colSpan={7}
-                  style={{ padding: "24px 12px", textAlign: "center", color: "var(--text-muted, #9CA3AF)" }}
+                  style={{ padding: "24px 12px", textAlign: "center", color: "var(--text-muted)" }}
                 >
                   No estimators on the board yet.
                 </td>
@@ -106,7 +106,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                 <tr
                   key={est.userId}
                   style={{
-                    borderBottom: "1px solid var(--border-subtle, #F3F4F6)",
+                    borderBottom: "1px solid var(--border-subtle)",
                     opacity: est.isActive ? 1 : 0.5
                   }}
                 >
@@ -114,14 +114,8 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                     <span style={{ fontWeight: 500 }}>{est.displayName}</span>
                     {!est.isActive && (
                       <span
-                        style={{
-                          marginLeft: 6,
-                          fontSize: 11,
-                          padding: "1px 6px",
-                          borderRadius: 4,
-                          background: "#F3F4F6",
-                          color: "#6B7280"
-                        }}
+                        className="s7-badge s7-badge--neutral"
+                        style={{ marginLeft: 6 }}
                       >
                         Inactive
                       </span>
@@ -136,7 +130,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                         alignItems: "center",
                         gap: 6,
                         fontWeight: est.isOverloaded ? 600 : 400,
-                        color: est.isOverloaded ? "#B91C1C" : "inherit"
+                        color: est.isOverloaded ? "var(--status-danger)" : "inherit"
                       }}
                     >
                       {est.utilizationPct >= 999 ? "No capacity" : `${est.utilizationPct.toFixed(1)}%`}
@@ -149,7 +143,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                             width: 8,
                             height: 8,
                             borderRadius: "50%",
-                            background: "#DC2626"
+                            background: "var(--status-danger)"
                           }}
                         />
                       )}
@@ -214,7 +208,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              <span style={{ color: "var(--text-secondary, #4B5563)", fontWeight: 500 }}>
+              <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>
                 Unallocated tender
               </span>
               <select
@@ -222,10 +216,10 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                 onChange={(e) => setSelectedTenderId(e.target.value)}
                 style={{
                   padding: "8px 10px",
-                  border: "1px solid var(--border-default, #D1D5DB)",
+                  border: "1px solid var(--border-default)",
                   borderRadius: 6,
                   fontSize: 13,
-                  background: "var(--surface, #fff)"
+                  background: "var(--surface-card)"
                 }}
               >
                 <option value="">-- Select a tender --</option>
@@ -239,7 +233,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
             {assignError && (
               <p
                 role="alert"
-                style={{ margin: 0, fontSize: 12, color: "var(--status-danger, #B91C1C)" }}
+                style={{ margin: 0, fontSize: 12, color: "var(--status-danger)" }}
               >
                 {assignError}
               </p>
@@ -265,7 +259,7 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
           }
         >
           <div style={{ fontSize: 13 }}>
-            <p style={{ margin: "0 0 12px", color: "var(--text-secondary, #4B5563)" }}>
+            <p style={{ margin: "0 0 12px", color: "var(--text-secondary)" }}>
               {tenderListEstimator.openTenderCount === 0
                 ? "No open tenders assigned."
                 : `${tenderListEstimator.openTenderCount} open tender(s) assigned. Current load: ${tenderListEstimator.load.toFixed(1)} / ${tenderListEstimator.effectiveCap.toFixed(1)} effective capacity.`}
@@ -275,39 +269,39 @@ export function EstimatorGrid({ estimators, unallocated, onAssign }: Props) {
                 style={{
                   flex: 1,
                   padding: "10px 12px",
-                  background: "var(--border-subtle, #F9FAFB)",
+                  background: "var(--surface-subtle)",
                   borderRadius: 6,
                   textAlign: "center"
                 }}
               >
-                <div style={{ fontSize: 20, fontWeight: 700, color: tenderListEstimator.isOverloaded ? "#B91C1C" : "var(--color-teal, #005B61)" }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: tenderListEstimator.isOverloaded ? "var(--status-danger)" : "var(--brand-primary)" }}>
                   {tenderListEstimator.utilizationPct >= 999 ? "N/A" : `${tenderListEstimator.utilizationPct.toFixed(0)}%`}
                 </div>
-                <div style={{ color: "var(--text-secondary, #4B5563)", marginTop: 2 }}>Utilisation</div>
+                <div style={{ color: "var(--text-secondary)", marginTop: 2 }}>Utilisation</div>
               </div>
               <div
                 style={{
                   flex: 1,
                   padding: "10px 12px",
-                  background: "var(--border-subtle, #F9FAFB)",
+                  background: "var(--surface-subtle)",
                   borderRadius: 6,
                   textAlign: "center"
                 }}
               >
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{tenderListEstimator.availabilityPct}%</div>
-                <div style={{ color: "var(--text-secondary, #4B5563)", marginTop: 2 }}>Availability</div>
+                <div style={{ color: "var(--text-secondary)", marginTop: 2 }}>Availability</div>
               </div>
               <div
                 style={{
                   flex: 1,
                   padding: "10px 12px",
-                  background: "var(--border-subtle, #F9FAFB)",
+                  background: "var(--surface-subtle)",
                   borderRadius: 6,
                   textAlign: "center"
                 }}
               >
                 <div style={{ fontSize: 20, fontWeight: 700 }}>{tenderListEstimator.concurrentCap}</div>
-                <div style={{ color: "var(--text-secondary, #4B5563)", marginTop: 2 }}>Cap</div>
+                <div style={{ color: "var(--text-secondary)", marginTop: 2 }}>Cap</div>
               </div>
             </div>
           </div>

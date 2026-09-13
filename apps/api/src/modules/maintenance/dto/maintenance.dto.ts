@@ -1,5 +1,15 @@
 import { Type } from "class-transformer";
-import { IsBoolean, IsDateString, IsInt, IsOptional, IsString } from "class-validator";
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min
+} from "class-validator";
 import { PaginationQueryDto } from "../../../common/dto/pagination-query.dto";
 
 /**
@@ -52,6 +62,38 @@ export class UpsertMaintenancePlanDto {
   @IsOptional() @IsDateString() nextDueAt?: string;
   /** Plan lifecycle status (e.g. `ACTIVE`, `PAUSED`). Defaults to `ACTIVE`. */
   @IsOptional() @IsString() status?: string;
+
+  // F-8: usage-based maintenance interval fields.
+
+  /**
+   * Usage interval — the plan becomes due when the asset has accumulated this
+   * many units of usage since the last completion. Must be positive.
+   */
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.1) intervalUsage?: number;
+
+  /**
+   * Unit for the usage interval. Must be one of `"hours"` or `"km"`.
+   * Required when `intervalUsage` is set.
+   */
+  @IsOptional() @IsString() @IsIn(["hours", "km"]) usageUnit?: string;
+
+  /**
+   * Reading at the time of the last completed maintenance event — used as the
+   * baseline for the next usage interval.
+   */
+  @IsOptional() @Type(() => Number) @IsNumber() lastCompletedReading?: number;
+
+  /**
+   * Reading at which the next maintenance event is due. Computed from
+   * `lastCompletedReading + intervalUsage` when not supplied explicitly.
+   */
+  @IsOptional() @Type(() => Number) @IsNumber() nextDueReading?: number;
+
+  /**
+   * Percentage of the usage interval at which a DUE_SOON warning is raised.
+   * Must be between 1 and 100. Defaults to 90.
+   */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) usageWarningPct?: number;
 }
 
 /**

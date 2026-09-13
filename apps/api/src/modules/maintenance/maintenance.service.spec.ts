@@ -4,6 +4,9 @@
 // direct instantiation with `as never`. Topped up from the original
 // single-test spec per backlog pr-118 — the emphasis is the derived
 // maintenanceSummary state machine and the completed-event due-date roll.
+//
+// F-8: adds tests for recomputeUsageIntervals, event completion usage roll,
+// and buildMaintenanceSummary usage-based OVERDUE detection.
 
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { MaintenanceService } from "./maintenance.service";
@@ -31,6 +34,10 @@ const activePlan = (overrides: Record<string, unknown> = {}) => ({
   warningDays: 7,
   blockWhenOverdue: true,
   status: "ACTIVE",
+  intervalUsage: null,
+  nextDueReading: null,
+  lastCompletedReading: null,
+  usageWarningPct: 90,
   ...overrides
 });
 
@@ -88,10 +95,15 @@ function buildService() {
   };
 
   const auditService = { write: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+  const notificationsService = { create: jest.fn().mockResolvedValue({ id: "notif-1" }) };
 
-  const service = new MaintenanceService(prisma as never, auditService as never);
+  const service = new MaintenanceService(
+    prisma as never,
+    auditService as never,
+    notificationsService as never
+  );
 
-  return { service, prisma, auditService };
+  return { service, prisma, auditService, notificationsService };
 }
 
 // ─── Asset status transitions ──────────────────────────────────────────────
@@ -104,7 +116,8 @@ describe("MaintenanceService.updateAssetStatus", () => {
           findUnique: jest.fn().mockResolvedValue({ id: "asset-1", status: "AVAILABLE" })
         }
       } as never,
-      { write: jest.fn() } as never
+      { write: jest.fn() } as never,
+      { create: jest.fn() } as never
     );
 
     await expect(
@@ -254,6 +267,42 @@ describe("MaintenanceService maintenance summary", () => {
 
     await expect(service.getAssetMaintenance("missing")).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  // F-8: usage-based summary tests
+  it("is OVERDUE when the usage span is consumed (lastCompletedReading >= nextDueReading)", async () => {
+    const summary = await summaryFor(
+      fullAsset({
+        maintenancePlans: [
+          activePlan({
+            nextDueAt: daysFromNow(30), // calendar is fine
+            intervalUsage: "500",
+            usageUnit: "hours",
+            lastCompletedReading: "1500",  // lastCompleted >= nextDue => overdue
+            nextDueReading: "1500",
+            usageWarningPct: 90,
+            blockWhenOverdue: true
+          })
+        ]
+      })
+    );
+    expect(summary).toMatchObject({ maintenanceState: "OVERDUE", schedulerImpact: "BLOCK" });
+  });
+
+  it("calendar OVERDUE takes precedence over usage-ok plan", async () => {
+    const summary = await summaryFor(
+      fullAsset({
+        maintenancePlans: [
+          activePlan({
+            nextDueAt: daysFromNow(-1),
+            intervalUsage: null,
+            nextDueReading: null,
+            lastCompletedReading: null
+          })
+        ]
+      })
+    );
+    expect(summary).toMatchObject({ maintenanceState: "OVERDUE", schedulerImpact: "BLOCK" });
+  });
 });
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
@@ -336,7 +385,9 @@ describe("MaintenanceService.upsertEvent", () => {
     const { service, prisma } = buildService();
     (prisma.assetMaintenancePlan as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
       id: "plan-1",
-      intervalDays: 30
+      intervalDays: 30,
+      intervalUsage: null,
+      usageUnit: null
     });
     const completedAt = "2026-06-01T00:00:00.000Z";
 
@@ -348,11 +399,38 @@ describe("MaintenanceService.upsertEvent", () => {
 
     expect((prisma.assetMaintenancePlan as { update: jest.Mock }).update).toHaveBeenCalledWith({
       where: { id: "plan-1" },
-      data: {
+      data: expect.objectContaining({
         lastCompletedAt: new Date(completedAt),
         nextDueAt: new Date("2026-07-01T00:00:00.000Z")
-      }
+      })
     });
+  });
+
+  it("also rolls nextDueReading when the plan has intervalUsage set", async () => {
+    const { service, prisma } = buildService();
+    (prisma.assetMaintenancePlan as { findUnique: jest.Mock }).findUnique.mockResolvedValue({
+      id: "plan-1",
+      intervalDays: 30,
+      intervalUsage: "500",
+      usageUnit: "hours"
+    });
+    (prisma.asset as { findUnique: jest.Mock }).findUnique
+      // First call is requireAsset
+      .mockResolvedValueOnce({ id: "asset-1", status: "ACTIVE" })
+      // Second call fetches current readings
+      .mockResolvedValueOnce({ currentHoursReading: "1200", currentKmReading: null });
+
+    const completedAt = "2026-06-01T00:00:00.000Z";
+
+    await service.upsertEvent(
+      undefined,
+      { assetId: "asset-1", maintenancePlanId: "plan-1", eventType: "SERVICE", completedAt } as never,
+      "user-1"
+    );
+
+    const updateCall = (prisma.assetMaintenancePlan as { update: jest.Mock }).update.mock.calls[0][0];
+    expect(updateCall.data.lastCompletedReading?.toString()).toBe("1200");
+    expect(updateCall.data.nextDueReading?.toString()).toBe("1700");
   });
 
   it("does not touch the plan when the event has no completedAt", async () => {
@@ -413,6 +491,111 @@ describe("MaintenanceService.upsertInspection / upsertBreakdown defaults", () =>
     expect(auditService.write).toHaveBeenCalledWith(
       expect.objectContaining({ action: "maintenance.breakdown.create" })
     );
+  });
+});
+
+// ─── F-8: recomputeUsageIntervals ─────────────────────────────────────────
+
+describe("MaintenanceService.recomputeUsageIntervals", () => {
+  it("initialises nextDueReading on first call when it is null", async () => {
+    const { service, prisma } = buildService();
+
+    (prisma.assetMaintenancePlan as { findMany: jest.Mock }).findMany.mockResolvedValue([
+      {
+        id: "plan-1",
+        title: "500h service",
+        assetId: "asset-1",
+        status: "ACTIVE",
+        intervalUsage: "500",
+        usageUnit: "hours",
+        lastCompletedReading: null,
+        nextDueReading: null,
+        usageWarningPct: 90,
+        blockWhenOverdue: true
+      }
+    ]);
+
+    await service.recomputeUsageIntervals("asset-1", "hours", 1000);
+
+    expect((prisma.assetMaintenancePlan as { update: jest.Mock }).update).toHaveBeenCalledWith({
+      where: { id: "plan-1" },
+      data: expect.objectContaining({
+        lastCompletedReading: expect.objectContaining({ valueOf: expect.any(Function) }),
+        nextDueReading: expect.objectContaining({ valueOf: expect.any(Function) })
+      })
+    });
+
+    const updateCall = (prisma.assetMaintenancePlan as { update: jest.Mock }).update.mock.calls[0][0];
+    expect(updateCall.data.lastCompletedReading.toString()).toBe("1000");
+    expect(updateCall.data.nextDueReading.toString()).toBe("1500");
+  });
+
+  it("fires a notification when usage crosses the warning threshold", async () => {
+    const { service, prisma, notificationsService } = buildService();
+
+    // Plan: 500h interval, baseline at 1000, next due at 1500, warning at 90%
+    // At 90% the threshold is: 1000 + (1500-1000)*0.9 = 1450
+    // Current reading = 1460 => should fire
+    (prisma.assetMaintenancePlan as { findMany: jest.Mock }).findMany.mockResolvedValue([
+      {
+        id: "plan-1",
+        title: "500h service",
+        assetId: "asset-1",
+        status: "ACTIVE",
+        intervalUsage: "500",
+        usageUnit: "hours",
+        lastCompletedReading: "1000",
+        nextDueReading: "1500",
+        usageWarningPct: 90,
+        blockWhenOverdue: true
+      }
+    ]);
+
+    await service.recomputeUsageIntervals("asset-1", "hours", 1460);
+
+    expect(notificationsService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: "warning",
+        title: expect.stringContaining("500h service")
+      }),
+      undefined
+    );
+  });
+
+  it("does not fire a notification when below the warning threshold", async () => {
+    const { service, prisma, notificationsService } = buildService();
+
+    // At 1300 out of 1000->1500: progress = 300/500 = 60% < 90%
+    (prisma.assetMaintenancePlan as { findMany: jest.Mock }).findMany.mockResolvedValue([
+      {
+        id: "plan-1",
+        title: "500h service",
+        assetId: "asset-1",
+        status: "ACTIVE",
+        intervalUsage: "500",
+        usageUnit: "hours",
+        lastCompletedReading: "1000",
+        nextDueReading: "1500",
+        usageWarningPct: 90,
+        blockWhenOverdue: true
+      }
+    ]);
+
+    await service.recomputeUsageIntervals("asset-1", "hours", 1300);
+
+    // Wait a tick for the void promise
+    await Promise.resolve();
+    expect(notificationsService.create).not.toHaveBeenCalled();
+  });
+
+  it("skips plans where intervalUsage is null", async () => {
+    const { service, prisma, notificationsService } = buildService();
+
+    (prisma.assetMaintenancePlan as { findMany: jest.Mock }).findMany.mockResolvedValue([]);
+
+    await service.recomputeUsageIntervals("asset-1", "hours", 1000);
+
+    expect(notificationsService.create).not.toHaveBeenCalled();
   });
 });
 

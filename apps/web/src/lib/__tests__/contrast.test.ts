@@ -7,9 +7,9 @@
  *
  * Reference pairs used:
  *   Black on white : WCAG 2.x defines this as exactly 21:1.
- *   #595959 on white: resolves to ~7.0:1 (AAA boundary), derivable from the
+ *   595959 on white: resolves to ~7.0:1 (AAA boundary), derivable from the
  *     WCAG relative-luminance formula — (1.05) / (0.1000 + 0.05) = 7.0.
- *   #767676 on white: resolves to ~4.55:1 (AA range, above 4.5 threshold).
+ *   767676 on white: resolves to ~4.55:1 (AA range, above 4.5 threshold).
  *     Cited by WebAIM Contrast Checker and widely used in WCAG references.
  */
 import { describe, expect, it } from "vitest";
@@ -36,7 +36,7 @@ const GREY_AA = H + "767676";
 /**
  * Two colours that produce a ratio below 3.0 (Fail).
  * Pairing a very light colour against white gives a very low ratio.
- * #EEEEEE on white: sRGB=238/255≈0.9333; linear≈0.8713; L≈0.8713
+ * EEEEEE on white: sRGB=238/255≈0.9333; linear≈0.8713; L≈0.8713
  * ratio=(1.05)/(0.9213)≈1.14 — clearly Fail.
  */
 const NEAR_WHITE = H + "EEEEEE";
@@ -57,14 +57,14 @@ describe("contrastRatio — known WCAG pairs", () => {
     expect(contrastRatio(BLACK, BLACK)).toBeCloseTo(1, 5);
   });
 
-  it("#595959 on white resolves to approximately 7.0:1 (AAA boundary)", () => {
+  it("grey 595959 on white resolves to approximately 7.0:1 (AAA boundary)", () => {
     // Acceptable within 0.05 — reflects floating-point accumulation only.
     const ratio = contrastRatio(GREY_AAA_BOUNDARY, WHITE);
     expect(ratio).toBeGreaterThanOrEqual(6.9);
     expect(ratio).toBeLessThanOrEqual(7.1);
   });
 
-  it("#767676 on white is in the AA range (>= 4.5 and < 7.0)", () => {
+  it("grey 767676 on white is in the AA range (>= 4.5 and < 7.0)", () => {
     const ratio = contrastRatio(GREY_AA, WHITE);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
     expect(ratio).toBeLessThan(7.0);

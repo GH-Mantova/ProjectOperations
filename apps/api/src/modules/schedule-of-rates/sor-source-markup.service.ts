@@ -31,6 +31,23 @@ import { AuditService } from "../audit/audit.service";
  *                     ?? 0
  */
 
+/**
+ * Maps the three SoR figures (ordinary, oneAndHalf, double) to the RateColumn
+ * names that carry them in the internal rate hub. Used by both promoteToHub
+ * (filling a new RateRow from a SoR line) and SorPushBackService (writing a
+ * SoR line's live figures back to the hub row — the inverse direction).
+ *
+ * Column names are compared case-insensitively at the call site.
+ */
+export const SOR_FIGURE_COLUMN_NAMES: Record<
+  "ordinary" | "oneAndHalf" | "double",
+  string[]
+> = {
+  ordinary: ["rate", "day rate", "rate per tonne"],
+  oneAndHalf: ["night rate"],
+  double: ["weekend rate"],
+};
+
 /** Serialised shape of {@link SorPeriod.categoryMarkups}. Values are percentages. */
 export type PeriodCategoryMarkups = Partial<Record<SorCategory, number>>;
 
@@ -253,15 +270,13 @@ export class SorSourceMarkupService {
     put("category", rate.class);
     put("class", rate.class);
     put("unit", rate.unit);
-    // Values
+    // Values — column names sourced from SOR_FIGURE_COLUMN_NAMES (exported constant).
     const ord = rate.ordinary != null ? Number(rate.ordinary) : null;
     const oneHalf = rate.oneAndHalf != null ? Number(rate.oneAndHalf) : null;
     const dbl = rate.double != null ? Number(rate.double) : null;
-    put("rate", ord);
-    put("day rate", ord);
-    put("night rate", oneHalf);
-    put("weekend rate", dbl);
-    put("rate per tonne", ord);
+    for (const name of SOR_FIGURE_COLUMN_NAMES.ordinary) put(name, ord);
+    for (const name of SOR_FIGURE_COLUMN_NAMES.oneAndHalf) put(name, oneHalf);
+    for (const name of SOR_FIGURE_COLUMN_NAMES.double) put(name, dbl);
 
     const newRow = await this.prisma.rateRow.create({
       data: {

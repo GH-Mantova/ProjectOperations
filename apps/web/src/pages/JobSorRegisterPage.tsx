@@ -55,20 +55,41 @@ type RaiseClaimResult = {
 
 // ── Status pills ──────────────────────────────────────────────────────────────
 
+const PILL_INFO = {
+  bg: "color-mix(in srgb, var(--status-info) 12%, transparent)",
+  fg: "var(--status-info)",
+};
+const PILL_WARNING = {
+  bg: "color-mix(in srgb, var(--status-warning) 15%, transparent)",
+  fg: "var(--status-warning)",
+};
+const PILL_ACTIVE = {
+  bg: "color-mix(in srgb, var(--status-active) 15%, transparent)",
+  fg: "var(--status-active)",
+};
+const PILL_DANGER = {
+  bg: "color-mix(in srgb, var(--status-danger) 12%, transparent)",
+  fg: "var(--status-danger)",
+};
+const PILL_NEUTRAL = {
+  bg: "color-mix(in srgb, var(--status-neutral) 12%, transparent)",
+  fg: "var(--status-neutral)",
+};
+
 const STATUS_PILL: Record<string, { bg: string; fg: string }> = {
-  DRAFT: { bg: "#E0F2F1", fg: "#005B61" },
-  SUBMITTED: { bg: "#FEF9C3", fg: "#713F12" },
-  OFFICE_REVIEW: { bg: "#FEF3C7", fg: "#92400E" },
-  PRICED: { bg: "#EDE9FE", fg: "#5B21B6" },
-  APPROVED: { bg: "#DCFCE7", fg: "#166534" },
-  SENT_BACK: { bg: "#FEE2E2", fg: "#991B1B" },
-  VOID: { bg: "#F3F4F6", fg: "#6B7280" },
-  PENDING: { bg: "#DBEAFE", fg: "#1E40AF" },
-  REJECTED: { bg: "#FEE2E2", fg: "#991B1B" },
+  DRAFT: PILL_INFO,
+  SUBMITTED: PILL_WARNING,
+  OFFICE_REVIEW: PILL_WARNING,
+  PRICED: PILL_INFO,
+  APPROVED: PILL_ACTIVE,
+  SENT_BACK: PILL_DANGER,
+  VOID: PILL_NEUTRAL,
+  PENDING: PILL_INFO,
+  REJECTED: PILL_DANGER,
 };
 
 function statusPill(status: string): { bg: string; fg: string } {
-  return STATUS_PILL[status] ?? { bg: "#F3F4F6", fg: "#6B7280" };
+  return STATUS_PILL[status] ?? PILL_NEUTRAL;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -262,8 +283,8 @@ export function JobSorRegisterPage() {
           {register?.contractId == null && !loading && (
             <span
               style={{
-                background: "#FEF3C7",
-                color: "#92400E",
+                background: "color-mix(in srgb, var(--status-warning) 15%, transparent)",
+                color: "var(--status-warning)",
                 borderRadius: 4,
                 padding: "2px 10px",
                 fontSize: 12,
@@ -301,11 +322,11 @@ export function JobSorRegisterPage() {
 
       {/* ── Register table ── */}
       {loading && (
-        <div style={{ color: "#6B7280", padding: "24px 0" }}>Loading register...</div>
+        <div style={{ color: "var(--text-secondary)", padding: "24px 0" }}>Loading register...</div>
       )}
 
       {!loading && !error && allRows.length === 0 && (
-        <div style={{ color: "#6B7280", padding: "24px 0" }}>
+        <div style={{ color: "var(--text-secondary)", padding: "24px 0" }}>
           No variation contracts or agreed records on this job yet.
         </div>
       )}
@@ -332,8 +353,14 @@ export function JobSorRegisterPage() {
                     <td>
                       <span
                         style={{
-                          background: row.kind === "VARIATION" ? "#DBEAFE" : "#F3E8FF",
-                          color: row.kind === "VARIATION" ? "#1E40AF" : "#6B21A8",
+                          background:
+                            row.kind === "VARIATION"
+                              ? "color-mix(in srgb, var(--status-info) 12%, transparent)"
+                              : "color-mix(in srgb, var(--brand-primary) 12%, transparent)",
+                          color:
+                            row.kind === "VARIATION"
+                              ? "var(--status-info)"
+                              : "var(--brand-primary)",
                           borderRadius: 4,
                           padding: "2px 8px",
                           fontSize: 11,
@@ -345,7 +372,7 @@ export function JobSorRegisterPage() {
                       </span>
                     </td>
                     <td style={{ fontWeight: 600 }}>{row.number}</td>
-                    <td style={{ color: "#374151" }}>{row.description}</td>
+                    <td style={{ color: "var(--text-primary)" }}>{row.description}</td>
                     <td>
                       <span
                         style={{
@@ -361,8 +388,8 @@ export function JobSorRegisterPage() {
                         {row.status}
                       </span>
                     </td>
-                    <td style={{ color: "#6B7280", fontSize: 12 }}>
-                      {row.sorVersion ?? <span style={{ color: "#D1D5DB" }}>—</span>}
+                    <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                      {row.sorVersion ?? <span style={{ color: "var(--text-muted)" }}>—</span>}
                     </td>
                     <td style={{ fontWeight: 600 }}>{fmtMoney(row.amount)}</td>
                     <td style={{ fontSize: 12 }}>
@@ -370,7 +397,7 @@ export function JobSorRegisterPage() {
                         <span>
                           <span
                             style={{
-                              color: row.workerSigned ? "#166534" : "#9CA3AF",
+                              color: row.workerSigned ? "var(--status-active)" : "var(--text-muted)",
                               marginRight: 6,
                             }}
                             title={row.workerSigned ? "Worker signed" : "Worker not signed"}
@@ -378,14 +405,14 @@ export function JobSorRegisterPage() {
                             {row.workerSigned ? "W" : "w"}
                           </span>
                           <span
-                            style={{ color: row.clientRepSigned ? "#166534" : "#9CA3AF" }}
+                            style={{ color: row.clientRepSigned ? "var(--status-active)" : "var(--text-muted)" }}
                             title={row.clientRepSigned ? "Client rep signed" : "Client rep not signed"}
                           >
                             {row.clientRepSigned ? "C" : "c"}
                           </span>
                         </span>
                       ) : (
-                        <span style={{ color: "#D1D5DB" }}>—</span>
+                        <span style={{ color: "var(--text-muted)" }}>—</span>
                       )}
                     </td>
                   </tr>
@@ -417,7 +444,7 @@ export function JobSorRegisterPage() {
         >
           <div
             style={{
-              background: "#fff",
+              background: "var(--surface-card)",
               borderRadius: 10,
               padding: 28,
               maxWidth: 680,
@@ -436,7 +463,7 @@ export function JobSorRegisterPage() {
                   border: "none",
                   fontSize: 22,
                   cursor: "pointer",
-                  color: "#6B7280",
+                  color: "var(--text-secondary)",
                   lineHeight: 1,
                   padding: "0 4px",
                 }}
@@ -463,7 +490,7 @@ export function JobSorRegisterPage() {
                   setClaimMonth(v ? `${v}-01` : "");
                 }}
                 style={{
-                  border: "1px solid #D1D5DB",
+                  border: "1px solid var(--border-default)",
                   borderRadius: 6,
                   padding: "6px 10px",
                   fontSize: 13,
@@ -473,18 +500,18 @@ export function JobSorRegisterPage() {
 
             {/* Eligible / non-eligible picker list */}
             {eligibleLoading && (
-              <div style={{ color: "#6B7280", padding: "12px 0" }}>Loading eligible items...</div>
+              <div style={{ color: "var(--text-secondary)", padding: "12px 0" }}>Loading eligible items...</div>
             )}
 
             {eligibleError && (
               <div
                 style={{
-                  background: "#FEF2F2",
-                  border: "1px solid #FCA5A5",
+                  background: "color-mix(in srgb, var(--status-danger) 10%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--status-danger) 40%, transparent)",
                   borderRadius: 6,
                   padding: "8px 14px",
                   marginBottom: 16,
-                  color: "#991B1B",
+                  color: "var(--status-danger)",
                   fontSize: 13,
                 }}
               >
@@ -502,7 +529,7 @@ export function JobSorRegisterPage() {
                         fontWeight: 600,
                         fontSize: 13,
                         marginBottom: 8,
-                        color: "#1E40AF",
+                        color: "var(--status-info)",
                         textTransform: "uppercase",
                         letterSpacing: "0.05em",
                       }}
@@ -521,7 +548,7 @@ export function JobSorRegisterPage() {
                             alignItems: "flex-start",
                             gap: 10,
                             padding: "8px 0",
-                            borderBottom: "1px solid #F3F4F6",
+                            borderBottom: "1px solid var(--border-subtle)",
                             cursor: isDisabled ? "not-allowed" : "pointer",
                             opacity: isDisabled ? 0.55 : 1,
                           }}
@@ -544,7 +571,7 @@ export function JobSorRegisterPage() {
                             <div style={{ fontWeight: 600, fontSize: 13 }}>
                               {v.number} — {v.description}
                             </div>
-                            <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
                               {fmtMoney(v.amount)}
                               {v.sorVersion ? (
                                 <span style={{ marginLeft: 8 }}>SoR: {v.sorVersion}</span>
@@ -554,7 +581,7 @@ export function JobSorRegisterPage() {
                               <div
                                 style={{
                                   fontSize: 11,
-                                  color: "#DC2626",
+                                  color: "var(--status-danger)",
                                   marginTop: 2,
                                   fontWeight: 600,
                                 }}
@@ -590,7 +617,7 @@ export function JobSorRegisterPage() {
                         fontWeight: 600,
                         fontSize: 13,
                         marginBottom: 8,
-                        color: "#6B21A8",
+                        color: "var(--brand-primary)",
                         textTransform: "uppercase",
                         letterSpacing: "0.05em",
                       }}
@@ -609,7 +636,7 @@ export function JobSorRegisterPage() {
                             alignItems: "flex-start",
                             gap: 10,
                             padding: "8px 0",
-                            borderBottom: "1px solid #F3F4F6",
+                            borderBottom: "1px solid var(--border-subtle)",
                             cursor: isDisabled ? "not-allowed" : "pointer",
                             opacity: isDisabled ? 0.55 : 1,
                           }}
@@ -632,7 +659,7 @@ export function JobSorRegisterPage() {
                             <div style={{ fontWeight: 600, fontSize: 13 }}>
                               {ar.number} — {ar.description}
                             </div>
-                            <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
                               {fmtMoney(ar.amount)}
                               {ar.sorVersion ? (
                                 <span style={{ marginLeft: 8 }}>SoR: {ar.sorVersion}</span>
@@ -645,7 +672,7 @@ export function JobSorRegisterPage() {
                               <div
                                 style={{
                                   fontSize: 11,
-                                  color: "#DC2626",
+                                  color: "var(--status-danger)",
                                   marginTop: 2,
                                   fontWeight: 600,
                                 }}
@@ -674,7 +701,7 @@ export function JobSorRegisterPage() {
                 )}
 
                 {allRegisterIds.variations.length === 0 && allRegisterIds.agreedRecords.length === 0 && (
-                  <div style={{ color: "#6B7280", padding: "8px 0" }}>
+                  <div style={{ color: "var(--text-secondary)", padding: "8px 0" }}>
                     No items on this register to claim.
                   </div>
                 )}
@@ -685,12 +712,12 @@ export function JobSorRegisterPage() {
             {submitError && (
               <div
                 style={{
-                  background: "#FEF2F2",
-                  border: "1px solid #FCA5A5",
+                  background: "color-mix(in srgb, var(--status-danger) 10%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--status-danger) 40%, transparent)",
                   borderRadius: 6,
                   padding: "8px 14px",
                   marginBottom: 16,
-                  color: "#991B1B",
+                  color: "var(--status-danger)",
                   fontSize: 13,
                 }}
               >
@@ -702,19 +729,19 @@ export function JobSorRegisterPage() {
             {submitSuccess && (
               <div
                 style={{
-                  background: "#F0FDF4",
-                  border: "1px solid #BBF7D0",
+                  background: "color-mix(in srgb, var(--status-active) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--status-active) 40%, transparent)",
                   borderRadius: 6,
                   padding: "10px 14px",
                   marginBottom: 16,
                   fontSize: 13,
-                  color: "#166534",
+                  color: "var(--status-active)",
                 }}
               >
                 <strong>Claim raised.</strong> {submitSuccess.linesAdded} line(s) added; total{" "}
                 {fmtMoney(submitSuccess.totalClaimed)}.
                 {submitSuccess.skipped.length > 0 && (
-                  <span style={{ marginLeft: 4, color: "#92400E" }}>
+                  <span style={{ marginLeft: 4, color: "var(--status-warning)" }}>
                     {submitSuccess.skipped.length} item(s) skipped (failed approval filter).
                   </span>
                 )}
@@ -728,7 +755,7 @@ export function JobSorRegisterPage() {
                 onClick={() => setPickerOpen(false)}
                 disabled={submitting}
                 style={{
-                  background: "#F3F4F6",
+                  background: "var(--border-subtle)",
                   border: "none",
                   borderRadius: 6,
                   padding: "8px 18px",
@@ -749,8 +776,8 @@ export function JobSorRegisterPage() {
                     (selectedVariationIds.size === 0 && selectedAgreedRecordIds.size === 0)
                   }
                   style={{
-                    background: "#2563EB",
-                    color: "#fff",
+                    background: "var(--status-info)",
+                    color: "var(--text-inverse)",
                     border: "none",
                     borderRadius: 6,
                     padding: "8px 18px",

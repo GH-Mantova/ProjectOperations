@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Outfit', system-ui, sans-serif; }
+    a { color: #005B61; } a:hover { color: #004449; }
+    .nl { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 11px; padding: 0 12px; height: 40px; border-radius: 8px; color: #A8AEBB; font-size: 13.5px; }
+    .nl--on { background: rgba(254,170,109,0.18); color: #FFFFFF; font-weight: 500; }
+    .grp { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6B7280; padding: 0 12px 5px; }
+    .btn { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E5E7EB; background: #FFFFFF; color: #000; }
+    .card { background:#FFF;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .tab { font-size: 13.5px; color: #6B7280; padding: 0 2px 11px; border-bottom: 2px solid transparent; }
+    .tab--on { color: #005B61; font-weight: 600; border-bottom-color: #005B61; }
+    th { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #6B7280; text-align: left; padding: 0 11px 9px 0; white-space: nowrap; }
+    td { padding: 11px 11px 11px 0; font-size: 13px; color: #111827; border-top: 1px solid #F3F4F6; vertical-align: top; }
+    .chip { font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap; }
+    .tog { display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:999px;font-size:12.5px;font-weight:500;border:1px solid #E5E7EB;background:#FFF;color:#374151; }
+    .tog--on { background:#005B61;border-color:#005B61;color:#FFF; }
+    .dot { width:8px;height:8px;border-radius:50%;display:inline-block; }
+    .new { position: relative; }
+    .new::after { content: ""; position: absolute; top: -5px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: #FEAA6D; box-shadow: 0 0 0 2px #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: grid; grid-template-columns: 240px 1fr; background: #F6F6F6;">
+
+  <div style="background: #000000; padding: 16px 12px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 38px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #005B61; color: #FFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family:'Syne',sans-serif;">PO</div>
+      <div style="color: #FFFFFF; font-size: 13.5px; font-weight: 600;">Project Ops</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">CRM</div>
+      <div class="nl"><span></span><span>Accounts</span><span></span></div>
+      <div class="nl nl--on"><span></span><span>Tenders</span><span style="background:#F59E0B;color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">7</span></div>
+      <div class="nl"><span></span><span>Comms hub</span><span style="background:#EF4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">15</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 24px;">
+      <div style="font-size: 13px; color: #6B7280;">Project Ops <span style="color:#D1D5DB">/</span> Tenders <span style="color:#D1D5DB">/</span> <span style="color:#000; font-weight: 500;">Follow-ups</span></div>
+    </div>
+
+    <div style="padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; flex-grow: 1; overflow: hidden;">
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
+        <div>
+          <div style="font-family:'Syne',sans-serif; font-size: 24px; font-weight: 700; color: #000; letter-spacing:-.02em;">Tenders</div>
+          <div style="font-size: 13.5px; color: #6B7280; margin-top: 3px;">Same list as the register, filtered to what is waiting on you.</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="btn">Export CSV</div>
+          <div class="btn new">Save this view</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:24px;border-bottom:1px solid #E5E7EB;">
+        <div class="tab">Register <span style="color:#9CA3AF;">183</span></div>
+        <div class="tab tab--on">Follow-ups <span style="background:#F59E0B;color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">7</span></div>
+      </div>
+
+      <div class="new" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9CA3AF;margin-right:2px;">Show</span>
+        <div class="tog tog--on"><span class="dot" style="background:#FCA5A5;"></span> Overdue</div>
+        <div class="tog tog--on"><span class="dot" style="background:#FCD34D;"></span> Due soon</div>
+        <div class="tog tog--on"><span class="dot" style="background:#9CA3AF;"></span> No next action</div>
+        <div class="tog"><span class="dot" style="background:#86EFAC;"></span> On track</div>
+        <div style="width:1px;height:22px;background:#E5E7EB;margin:0 4px;"></div>
+        <div class="tog tog--on">Submitted tenders</div>
+        <div class="tog tog--on">Opportunities</div>
+        <div class="tog tog--on">Leads</div>
+        <div class="tog">Won &amp; lost</div>
+        <div style="width:1px;height:22px;background:#E5E7EB;margin:0 4px;"></div>
+        <div class="tog">Mine only</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;">
+        <div class="card" style="padding:13px 15px;border-left:3px solid #EF4444;"><div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;">Overdue</div><div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#EF4444;margin-top:4px;">7</div></div>
+        <div class="card" style="padding:13px 15px;border-left:3px solid #F59E0B;"><div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;">Due this week</div><div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#B45309;margin-top:4px;">11</div></div>
+        <div class="card" style="padding:13px 15px;border-left:3px solid #6B7280;"><div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;">Never logged</div><div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#374151;margin-top:4px;">23</div></div>
+        <div class="card" style="padding:13px 15px;border-left:3px solid #005B61;"><div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;">Value at risk</div><div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#005B61;margin-top:4px;">$4.2M</div></div>
+      </div>
+
+      <div class="card" style="flex-grow:1;display:flex;flex-direction:column;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>
+            <th style="padding-left:18px;">What</th>
+            <th>Type</th>
+            <th>Client</th>
+            <th>Value</th>
+            <th>Last interaction</th>
+            <th>Logged by</th>
+            <th>Next action</th>
+            <th style="padding-right:18px;"></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">T-2418 &middot; Northshore demolition</div></td>
+              <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Tender</span></td>
+              <td>Hansen Yuncken</td><td>$1.84M</td>
+              <td><div>Phone &mdash; 4d</div><div style="font-size:11.5px;color:#9CA3AF;">Chased addendum 3</div></td>
+              <td>M. Cattaneo</td>
+              <td><div>Re-chase the QS</div><span class="chip" style="background:#FEE2E2;color:#991B1B;">3 days over</span></td>
+              <td style="padding-right:18px;"><div class="btn" style="height:28px;font-size:12px;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">Bulli industrial strip-out</div></td>
+              <td><span class="chip" style="background:#FEF3C7;color:#92400E;">Opportunity</span></td>
+              <td>Built Pty Ltd</td><td>$620k</td>
+              <td><div>Email &mdash; 9d</div><div style="font-size:11.5px;color:#9CA3AF;">Sent draft rates</div></td>
+              <td>R. Silva</td>
+              <td><div>Revised saw-cutting rates</div><span class="chip" style="background:#FEE2E2;color:#991B1B;">1 day over</span></td>
+              <td style="padding-right:18px;"><div class="btn" style="height:28px;font-size:12px;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">T-2402 &middot; Parramatta carpark</div></td>
+              <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Tender</span></td>
+              <td>John Holland Group</td><td>$980k</td>
+              <td><div style="color:#B45309;">Email &mdash; 30d</div><div style="font-size:11.5px;color:#9CA3AF;">Submitted the tender</div></td>
+              <td>M. Cattaneo</td>
+              <td><div style="color:#9CA3AF;font-style:italic;">None set</div><span class="chip" style="background:#F3F4F6;color:#6B7280;">Stalled</span></td>
+              <td style="padding-right:18px;"><div class="btn" style="height:28px;font-size:12px;border-color:#FEAA6D;color:#7C4A12;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">Concrete cutting panel enquiry</div></td>
+              <td><span class="chip" style="background:#F3F4F6;color:#6B7280;">Lead</span></td>
+              <td>Richard Crookes</td><td>&mdash;</td>
+              <td><div>Portal &mdash; 2d</div><div style="font-size:11.5px;color:#9CA3AF;">Enquiry received</div></td>
+              <td style="color:#9CA3AF;">&mdash;</td>
+              <td><div>Qualify &mdash; scope and access</div><span class="chip" style="background:#FEF3C7;color:#92400E;">Tomorrow</span></td>
+              <td style="padding-right:18px;"><div class="btn" style="height:28px;font-size:12px;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">Mascot warehouse demo</div></td>
+              <td><span class="chip" style="background:#FEF3C7;color:#92400E;">Opportunity</span></td>
+              <td>Lendlease</td><td>$1.35M</td>
+              <td><div style="color:#9CA3AF;font-style:italic;">Never logged</div></td>
+              <td style="color:#9CA3AF;">&mdash;</td>
+              <td><div style="color:#9CA3AF;font-style:italic;">None set</div><span class="chip" style="background:#F3F4F6;color:#6B7280;">Stalled</span></td>
+              <td style="padding-right:18px;"><div class="btn" style="height:28px;font-size:12px;border-color:#FEAA6D;color:#7C4A12;">Log</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="new" style="background:#FEF6EE;border:1px solid #FEAA6D;border-radius:10px;padding:12px 16px;font-size:13px;color:#7C4A12;line-height:1.55;">
+        <b>Same list, different filter.</b> Follow-ups is the register with the three amber toggles on and &ldquo;On track&rdquo; off &mdash; not a separate screen with its own data. Turn <b>Won &amp; lost</b> on and you are looking at the full register again. <b>Save this view</b> keeps whatever combination you land on.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

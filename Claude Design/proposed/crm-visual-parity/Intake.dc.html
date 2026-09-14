@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Outfit', system-ui, sans-serif; }
+    a { color: #005B61; } a:hover { color: #004449; }
+    .nl { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 11px; padding: 0 12px; height: 40px; border-radius: 8px; color: #A8AEBB; font-size: 13.5px; }
+    .nl--on { background: rgba(254,170,109,0.18); color: #FFFFFF; font-weight: 500; }
+    .grp { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6B7280; padding: 0 12px 5px; }
+    .btn { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E5E7EB; background: #FFFFFF; color: #000; }
+    .btn--p { background: #005B61; border-color: #005B61; color: #FFFFFF; font-weight: 600; }
+    .btn--d { border-color: #FCA5A5; color: #B91C1C; }
+    .card { background:#FFF;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .tab { font-size: 13.5px; color: #6B7280; padding: 0 2px 11px; border-bottom: 2px solid transparent; }
+    .tab--on { color: #005B61; font-weight: 600; border-bottom-color: #005B61; }
+    .src { display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px; }
+    .new { position: relative; }
+    .new::after { content: ""; position: absolute; top: -5px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: #FEAA6D; box-shadow: 0 0 0 2px #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: grid; grid-template-columns: 240px 1fr; background: #F6F6F6;">
+
+  <div style="background: #000000; padding: 16px 12px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 38px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #005B61; color: #FFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family:'Syne',sans-serif;">PO</div>
+      <div style="color: #FFFFFF; font-size: 13.5px; font-weight: 600;">Project Ops</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">CRM</div>
+      <div class="nl"><span></span><span>Accounts</span><span></span></div>
+      <div class="nl"><span></span><span>Tenders</span><span style="background:#F59E0B;color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">7</span></div>
+      <div class="nl nl--on"><span></span><span>Comms hub</span><span style="background:#EF4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">15</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 24px;">
+      <div style="font-size: 13px; color: #6B7280;">Project Ops <span style="color:#D1D5DB">/</span> Comms hub <span style="color:#D1D5DB">/</span> <span style="color:#000; font-weight: 500;">Inbox</span></div>
+    </div>
+
+    <div style="padding: 22px 24px; display: flex; flex-direction: column; gap: 15px; flex-grow: 1; overflow: hidden;">
+
+      <div>
+        <div style="font-family:'Syne',sans-serif; font-size: 24px; font-weight: 700; color: #000; letter-spacing:-.02em;">Comms hub</div>
+        <div style="font-size: 13.5px; color: #6B7280; margin-top: 3px;">Everything coming in &mdash; leads not yet triaged, live conversations, and what you owe people.</div>
+      </div>
+
+      <div style="display:flex;gap:24px;border-bottom:1px solid #E5E7EB;">
+        <div class="tab tab--on new">Inbox <span style="background:#EF4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">15</span></div>
+        <div class="tab">Threads <span style="color:#9CA3AF;">12</span></div>
+        <div class="tab">To-dos <span style="color:#9CA3AF;">18</span></div>
+      </div>
+
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+        <div class="btn new" style="border-color:#005B61;color:#005B61;">Anchor: All &#9662;</div>
+        <div style="font-size:12.5px;color:#9CA3AF;">Lead &middot; Tender &middot; Job &middot; Account &middot; Other</div>
+        <div style="flex-grow:1;"></div>
+        <div class="btn">Channel: All &#9662;</div>
+        <div class="btn btn--p">Capture a lead</div>
+      </div>
+
+      <div class="card" style="flex-grow:1;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:13px 20px;border-bottom:1px solid #F3F4F6;font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6B7280;">Untriaged &middot; oldest first</div>
+
+        <div style="display:flex;flex-direction:column;">
+
+          <div style="padding:16px 20px;border-bottom:1px solid #F3F4F6;display:flex;gap:16px;align-items:flex-start;">
+            <div style="flex-grow:1;">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                <div style="font-size:14px;font-weight:600;">Slab sawing &mdash; Mascot warehouse</div>
+                <span class="src" style="background:#F3F4F6;color:#6B7280;">Lead</span>
+                <span class="src" style="background:#EEF2FF;color:#3B82F6;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg> Email
+                </span>
+                <span style="font-size:12px;color:#9CA3AF;">4 days ago</span>
+              </div>
+              <div style="font-size:13px;color:#374151;margin-top:4px;line-height:1.5;">&ldquo;Approx 340m of slab sawing plus core holes, starting mid-October. Can you price?&rdquo; &mdash; j.pearce@lendlease.com</div>
+              <div style="display:flex;align-items:center;gap:9px;margin-top:8px;">
+                <span style="font-size:12px;color:#6B7280;">Account:</span>
+                <span style="font-size:12.5px;font-weight:600;color:#005B61;">Lendlease</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:7px;flex-shrink:0;">
+              <div class="btn new">Archive</div>
+              <div class="btn">Don&rsquo;t pursue</div>
+              <div class="btn btn--p">Price it</div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px;border-bottom:1px solid #F3F4F6;display:flex;gap:16px;align-items:flex-start;background:#FAFAFA;">
+            <div style="flex-grow:1;">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                <div style="font-size:14px;font-weight:600;color:#6B7280;">Untitled enquiry</div>
+                <span class="src" style="background:#F3F4F6;color:#6B7280;">Lead</span>
+                <span class="src" style="background:#FEF2F2;color:#B91C1C;">Empty</span>
+                <span style="font-size:12px;color:#9CA3AF;">2 days ago</span>
+              </div>
+              <div style="font-size:13px;color:#9CA3AF;margin-top:4px;font-style:italic;">No description, no contact, no account, no value. Created by mistake.</div>
+            </div>
+            <div style="display:flex;gap:7px;flex-shrink:0;">
+              <div class="btn btn--d new">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                Delete
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:16px 20px;display:flex;gap:16px;align-items:flex-start;">
+            <div style="flex-grow:1;">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                <div style="font-size:14px;font-weight:600;">Demolition enquiry &mdash; Newcastle</div>
+                <span class="src" style="background:#F3F4F6;color:#6B7280;">Lead</span>
+                <span class="src" style="background:#E6F0F1;color:#005B61;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg> Phone
+                </span>
+                <span style="font-size:12px;color:#B45309;font-weight:500;">63 days ago</span>
+              </div>
+              <div style="font-size:13px;color:#374151;margin-top:4px;line-height:1.5;">Two-storey commercial strip-out. Wanted a budget figure before going to their board. No callback since.</div>
+            </div>
+            <div style="display:flex;gap:7px;flex-shrink:0;">
+              <div class="btn new" style="border-color:#F59E0B;color:#92400E;">Archive</div>
+              <div class="btn">Don&rsquo;t pursue</div>
+              <div class="btn btn--p">Price it</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="new" style="background:#FFF;border:1px solid #FEAA6D;border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:22px;">
+        <div>
+          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7C4A12;margin-bottom:8px;">Archive &mdash; needs a reason</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="height:32px;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:13px;background:#FFF;">Went cold &mdash; no response <span style="color:#9CA3AF;">&#9662;</span></div>
+            <div style="border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:13px;color:#111827;min-height:44px;background:#FFF;line-height:1.45;">Chased twice by phone, no callback since June. Leaving open if they re-engage.</div>
+            <div style="font-size:12px;color:#9CA3AF;">Same governed list as &ldquo;Don&rsquo;t pursue&rdquo;, so the reasons stay reportable. Restorable at any time.</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#B91C1C;margin-bottom:8px;">Delete &mdash; only when empty</div>
+          <div style="font-size:13px;color:#374151;line-height:1.6;">
+            Offered only on a lead with no description, contact, account, value, thread or drop reason &mdash; a mis-click, nothing more. Anything with content can be archived but never deleted, so history stays intact.
+          </div>
+          <div style="font-size:12px;color:#9CA3AF;margin-top:9px;">Neither action exists today: archive is a bare stage change with no reason recorded, and there is no delete at all.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

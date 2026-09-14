@@ -11,8 +11,8 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-09-09 22:47 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `83ad3df361bd`)
+- Last updated: 2026-09-14 14:17 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `a5ba7c95a076`)
 - Models: 296 | Enums: 69 | FK edges: 493 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
@@ -281,13 +281,13 @@ graph LR
 
 ### Model: AssetMaintenancePlan
 
-- Table: `asset_maintenance_plans` | Domain: Assets | Fields: 14
+- Table: `asset_maintenance_plans` | Domain: Assets | Fields: 19
 - Belongs to (FK out):
   - `asset` -> **Asset** (assetId, onDelete Cascade)
 - Has many:
   - `events` -> **AssetMaintenanceEvent**[]
 - Referenced by: **AssetMaintenanceEvent**
-- Suggested measures: intervalDays, warningDays
+- Suggested measures: intervalDays, warningDays, nextDueReading, usageWarningPct
 - Suggested dimensions: status, asset
 - Time fields: lastCompletedAt, nextDueAt
 
@@ -2648,10 +2648,11 @@ graph LR
 
 ### Model: BrandColorScheme
 
-- Table: `brand_color_scheme` | Domain: Unclassified | Fields: 7
+- Table: `brand_color_scheme` | Domain: Unclassified | Fields: 20
 - Has many:
   - `activeOn` -> **CompanyProfile**[]
 - Referenced by: **CompanyProfile**
+- Suggested dimensions: statusActiveHex, statusWarningHex, statusDangerHex, statusInfoHex, statusNeutralHex
 
 ### Model: BusinessProcessFlow
 

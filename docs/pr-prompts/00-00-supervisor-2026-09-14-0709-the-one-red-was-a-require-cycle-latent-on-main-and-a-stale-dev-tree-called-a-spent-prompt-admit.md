@@ -308,3 +308,39 @@ three-PR board it was 3 of 3.
 - **Did not tear down `C:\po-wt\ea2a-fix` before reading back the push.** Both disposable worktrees
   (`ea2a-fix`, `board-0709`) are removed at the end of this run; neither ever held this breadcrumb,
   which was written inside the board PR's worktree per the REPORT CONTRACT's first cure.
+
+---
+
+**ADDENDUM 2026-09-14T07:3xZ — SAME RUN. F1'S FIRST PUSH WAS WRONG, AND IT WAS WRONG IN THE WAY §7
+KEEPS RECORDING: I BELIEVED A TRUNCATED GREP.**
+
+CI on `b1efa896` came back with the API job still red and `tendering-e2e` red as well. Read from
+column 3 of the job log:
+
+```
+src/modules/reporting/reporting.service.ts:306:19 - error TS2552: Cannot find name 'parseFromDate'.
+src/modules/reporting/reporting.service.ts:307:19 - error TS2304: Cannot find name 'parseToDate'.
+```
+
+**Eleven suites failed to compile, none of them related to the cycle.** The block I moved out of
+`reporting.service.ts` contained four functions — the two exported helpers and the two private date
+parsers — and `reporting.service.ts` calls `parseFromDate` / `parseToDate` **directly** at 306–307.
+I did not see that, because the survey I ran before editing printed `Select-Object -First 6` per
+file and the six hits it showed were all inside the definitions themselves. **A truncated listing
+read as a complete one** — §9.6's shape with the corpus being my own instrument output.
+
+🔧 **Second commit, pushed `b1efa896..869807f0`:** both parsers are now `export`ed from
+`reporting.helpers.ts` and imported by name in `reporting.service.ts`. Byte deltas asserted
+(`helpers expected=14 actual=14`, `service expected=28 actual=28`), and the edit script now ends
+with a **guard that is the lesson rather than a note about it**: for every identifier the helpers
+module owns, it tests whether `reporting.service.ts` calls it and whether the import line names it,
+and throws on any use that is not imported. All four rows read `used=true imported=true`.
+
+⚠️ **F1's disposition is unchanged and so is its honesty clause: ACTIONED means PUSHED, not GREEN.**
+The evidence is CI's exit code on `869807f0`, which had not reported when this run ended. If the API
+job is still red, the next run owns it and starts from this addendum rather than from the stack
+trace. `#1920` is still NOT merged and still must not be.
+
+⚠️ **One thing this cost that is worth naming: a wrong push on another lane's PR spends a full CI
+cycle on Marco's board.** The cheap guard was available the whole time — print every hit, not the
+first six — and it is now in the script rather than in a resolution.

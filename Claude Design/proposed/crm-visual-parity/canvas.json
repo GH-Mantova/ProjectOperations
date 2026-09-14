@@ -1,0 +1,109 @@
+{
+  "artboards": [
+    {
+      "file": "Nav.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 560,
+      "h": 900,
+      "title": "Nav — three items, tabs inside"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 680,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Accounts · List"
+    },
+    {
+      "file": "Relationships.dc.html",
+      "x": 2240,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Accounts · Relationships"
+    },
+    {
+      "file": "Account360.dc.html",
+      "x": 3800,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Account 360"
+    },
+    {
+      "file": "Register.dc.html",
+      "x": 0,
+      "y": 1060,
+      "w": 1440,
+      "h": 900,
+      "title": "Tenders · Register"
+    },
+    {
+      "file": "FollowUps.dc.html",
+      "x": 1560,
+      "y": 1060,
+      "w": 1440,
+      "h": 900,
+      "title": "Tenders · Follow-ups"
+    },
+    {
+      "file": "BulkLink.dc.html",
+      "x": 3120,
+      "y": 1060,
+      "w": 1100,
+      "h": 900,
+      "title": "Review and link — preview"
+    },
+    {
+      "file": "Intake.dc.html",
+      "x": 0,
+      "y": 2120,
+      "w": 1440,
+      "h": 900,
+      "title": "Comms hub · Inbox"
+    },
+    {
+      "file": "Comms.dc.html",
+      "x": 1560,
+      "y": 2120,
+      "w": 1440,
+      "h": 900,
+      "title": "Comms hub · Threads"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "legend",
+      "x": 0,
+      "y": -250,
+      "w": 620,
+      "text": "READING THIS\n\nAn orange dot marks something that does not exist today. Everything unmarked is already built and working.\n\nThe amber strip at the foot of each screen says what changes and why."
+    },
+    {
+      "id": "revised",
+      "x": 700,
+      "y": -250,
+      "w": 660,
+      "text": "REVISED AFTER YOUR WALK\n\n① Flat, and fewer — six CRM items became three, each opening a page whose tabs carry the rest. No collapsible parents.\n② The bulk link is now a preview, not one click. See the Review-and-link artboard.\n④ Log contact now sits on every account row as well as in the form.\n⑤ Anchor is a two-step picker across Lead · Tender · Job · Account · Contract · Other, and Lead intake became the Comms Inbox tab.\n⑥ Archive needs a governed reason; Delete only ever offered on an empty lead.\n⑦ Last interaction and Logged by are now columns, and Next action is their output — pressing Log sets it.\n⑧ Register and Follow-ups are one screen, two tabs, with filters you can toggle in and out."
+    },
+    {
+      "id": "pushback",
+      "x": 1420,
+      "y": -250,
+      "w": 660,
+      "text": "ONE PLACE I DIDN'T FOLLOW YOU\n\nYou asked whether the Comms hub should manage everything from leads to tenders to live jobs. For the CONVERSATION, yes — that is the anchor dropdown.\n\nBut the triage actions (Price it / Don't pursue) stay owned by the intake module, not by comms. comms deliberately imports nothing from Tender or Job so it can branch into its own product later, and folding triage in would weld it to tendering.\n\nSo: one window and one nav item for you, two modules underneath. You get the merge you asked for without paying for it in the code."
+    },
+    {
+      "id": "unchanged",
+      "x": 2140,
+      "y": -250,
+      "w": 560,
+      "text": "UNCHANGED\n\n③ Account 360 as drawn — you approved it.\n\nLeads & opportunities and Pipeline stay under Tendering.\n\nNothing is deleted, no route retired, the legacy /crm/leads API routes stay.\n\nEmail rows are a marked placeholder — still blocked on M365 provisioning."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

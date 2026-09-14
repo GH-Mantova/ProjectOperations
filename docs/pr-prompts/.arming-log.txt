@@ -103,3 +103,5 @@
 2026-09-13T12:33:03Z  ARMED  pr-fix-1886-merge-main-after-brandtheme-s3-landed  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=29428  caller=powershell.exe:2300
 2026-09-13T13:01:33Z  ARMED  pr-fix-1896-push-internal-must-write-through-the-transaction-client  escalates=true  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=29636  caller=powershell.exe:22876
 2026-09-13T13:36:32Z  ARMED  pr-fix-1891-merge-main-after-qpdf-2-landed  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=26080  caller=powershell.exe:7104
+2026-09-13T14:31:20Z  ARMED  pr-fix-1895-merge-main-after-bp-2-landed  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=26756  caller=powershell.exe:29244
+2026-09-13T15:00:51Z  ARMED  pr-sor-s9b-register-ui  escalates=false  actor=station-00.interactive-0002  by=Marco@LAPTOP-E6NHU4E4  pid=972  caller=powershell.exe:29316

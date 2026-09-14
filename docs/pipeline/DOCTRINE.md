@@ -427,6 +427,27 @@ here now because they are true for **every** station.
   `finished execution` message, send one command to that PID; if the call genuinely fails, this bullet
   is wrong and must be re-measured. Found and landed by Station 00 2026-09-14T12:2xZ.
 
+  🔴 **SECOND INSTANCE, EIGHT HOURS LATER, AND IT NARROWS THE TRIGGER: THE STATEMENT THAT PRECEDED
+  THE FALSE TERMINATION WAS A NATIVE COMMAND WRITING A MULTI-LINE ERROR TO STDERR — `gh`, NOT `git`.**
+  `EARLY_RETURN_TRIGGER_IS_A_NATIVE_STDERR_WRITER_V1` The bullet above leaves the trigger
+  `[CANNOT MEASURE]` after two honest attempts, both of which re-ran `git`. [MEASURED]
+  2026-09-14T20:1xZ by Station 00 (scheduled) at `e42cd7ce`, shell PID 31840: an
+  `interact_with_process` chain of four statements — `gh pr checks 1920` piped to `Select-String`,
+  an echo of `$LASTEXITCODE`, then two `gh pr view … --jq` calls — returned the two failing check
+  rows, the exit echo, and `gh`'s own multi-line `failed to parse jq expression` block, and then
+  **`✅ Process 31840 has finished execution`**. The fourth statement produced no output at all.
+  🔴 **POSITIVE CONTROL, and it is again the whole finding: the shell was ALIVE.** The very next
+  call to the same PID answered `PID31840-ALIVE` and `C:\ProjectOperations2` on the first try, with
+  its working directory intact, and carried the rest of the run. **Guard (2) above — treat
+  `Process has finished execution` as a claim to be falsified — cost one call and decided it.**
+  ⚠️ **What is added is the shape of the preceding statement, not a proved mechanism.** Both
+  measured instances share it: a native (non-PowerShell) command emitting a multi-line error to
+  stderr in the middle of a chain. That is a class to re-run against, not a cause — `$ErrorActionPreference`
+  was `Continue` here too, so §7 guard 7 is still not the mechanism. ⚠️ **Falsifying probe: send a
+  deliberately malformed `--jq` expression to `gh` mid-chain with a marker echo after it.** If the
+  marker prints, this narrowing is wrong and must be re-measured. Found and landed by Station 00
+  2026-09-14T20:2xZ.
+
 - 🔴 **`Get-ChildItem <dir> -Recurse -Include '*.log'` RETURNS NOTHING, EXIT 0, UNLESS THE PATH
   ITSELF ENDS IN A WILDCARD.** In PS 5.1 `-Include` filters the *path* argument, not the recursion,
   so the directory form silently matches zero items while the identical query with `<dir>\*` works.

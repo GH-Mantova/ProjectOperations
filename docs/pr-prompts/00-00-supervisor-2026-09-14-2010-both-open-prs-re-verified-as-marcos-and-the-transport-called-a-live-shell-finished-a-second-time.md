@@ -142,6 +142,23 @@ command with the same stderr shape, so the class is narrower than the bullet cou
 **DISPOSITION: ACTIONED.** Clause `EARLY_RETURN_TRIGGER_IS_A_NATIVE_STDERR_WRITER_V1` landed in
 §9.1 in this run's PR, with its own falsifying probe; nothing retired. Verified by `lint-station.mjs`
 reading `ADMIT: all 8 docs clean` after the canonical re-record.
+**F1 CORRECTION, 20:3xZ, same run — F1 was WRONG in the direction that matters, and its own
+falsifying probe is what caught it.** F1 asserts *"The fourth statement produced no output at
+all"*. `read_process_output` on PID 31840 returns the full 380-line buffer **including
+`MARKER_L`**, the last statement of that chain: **every statement ran, and it was the READER that
+returned early, not the shell that stopped.** The narrowing to "a native command writing a
+multi-line error to stderr" is refuted too — a deliberately malformed `--jq` mid-chain with a
+marker after it returned `PROBE_START` · the parse error · `PROBE_AFTER_JQ` · `PROBE_END` in the
+first read, no early return at all. So `Process has finished execution` is the early-return §9.1
+already documents, wearing a different label, and the cure was always written down: keep calling
+`read_process_output` with explicit offsets until `0 remaining`. This also puts the 12:1xZ
+instance's *"the three read-backs produced no output at all"* back in doubt — that run never
+drained its buffer.
+**DISPOSITION: ACTIONED.** Clause `FALSE_TERMINATION_IS_AN_EARLY_READ_NOT_AN_UNRUN_STATEMENT_V1`
+landed in §9.1 in a second PR this run, retiring the narrowing and strengthening guard (2) from
+*ping the PID* to *drain its buffer*. Verified by `lint-station.mjs` reading `ADMIT: all 8 docs
+clean` after a second canonical re-record.
+
 
 **F2 — Station 04's F1 re-measured and still live: `check-breadcrumb.mjs` hard-codes `'00': 2`
 against an hourly cron.** Confirmed at `e42cd7ce` with a fresh negative needle (above). This is

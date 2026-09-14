@@ -58,6 +58,13 @@ describe("GeocodifyAdapter", () => {
       expect(s.placeId).toBeNull();
     });
 
+    it("hits the live api.geocodify.com/v2/autocomplete host", async () => {
+      fetchSpy.mockResolvedValueOnce(makeResponse(200, { response: { features: [] } }));
+      await adapter.autocomplete("q", "k");
+      const url = fetchSpy.mock.calls[0][0] as string;
+      expect(url).toContain("https://api.geocodify.com/v2/autocomplete");
+    });
+
     it("sends api_key as query param", async () => {
       fetchSpy.mockResolvedValueOnce(makeResponse(200, { response: { features: [] } }));
       await adapter.autocomplete("q", "MY-KEY");
@@ -65,11 +72,11 @@ describe("GeocodifyAdapter", () => {
       expect(url).toContain("api_key=MY-KEY");
     });
 
-    it("applies countrycodes=au filter", async () => {
+    it("does NOT send countrycodes (undocumented parameter)", async () => {
       fetchSpy.mockResolvedValueOnce(makeResponse(200, { response: { features: [] } }));
       await adapter.autocomplete("q", "k");
       const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain("countrycodes=au");
+      expect(url).not.toContain("countrycodes");
     });
 
     it("returns empty array when features is empty", async () => {
@@ -81,6 +88,16 @@ describe("GeocodifyAdapter", () => {
     it("throws on non-2xx so the chain falls through", async () => {
       fetchSpy.mockResolvedValueOnce(makeResponse(401, {}, false));
       await expect(adapter.autocomplete("q", "k")).rejects.toThrow("geocodify_http_401");
+    });
+
+    it("throws geocodify_meta_<code> on a 200 body whose meta.code is not 200", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        makeResponse(200, {
+          meta: { code: 401, error_type: "auth failed", error_detail: "bad key" },
+          response: []
+        })
+      );
+      await expect(adapter.autocomplete("q", "k")).rejects.toThrow("geocodify_meta_401");
     });
   });
 
@@ -96,11 +113,11 @@ describe("GeocodifyAdapter", () => {
       expect(results[0].lon).toBe(153.0251);
     });
 
-    it("hits the /api/geocode endpoint", async () => {
+    it("hits the live /v2/geocode endpoint", async () => {
       fetchSpy.mockResolvedValueOnce(makeResponse(200, { response: { features: [] } }));
       await adapter.forward("q", "k");
       const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain("/api/geocode");
+      expect(url).toContain("https://api.geocodify.com/v2/geocode");
     });
 
     it("throws on non-2xx", async () => {
@@ -119,11 +136,11 @@ describe("GeocodifyAdapter", () => {
       expect(results[0].suburb).toBe("Brisbane City");
     });
 
-    it("hits the /api/reverse endpoint with lat+lng params", async () => {
+    it("hits the live /v2/reverse endpoint with lat+lng params", async () => {
       fetchSpy.mockResolvedValueOnce(makeResponse(200, { response: { features: [] } }));
       await adapter.reverse(-27.47, 153.03, "k");
       const url = fetchSpy.mock.calls[0][0] as string;
-      expect(url).toContain("/api/reverse");
+      expect(url).toContain("https://api.geocodify.com/v2/reverse");
       expect(url).toContain("lat=-27.47");
       expect(url).toContain("lng=153.03");
     });

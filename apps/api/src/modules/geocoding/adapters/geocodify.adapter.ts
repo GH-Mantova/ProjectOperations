@@ -7,17 +7,17 @@ import {
 
 // Geocodify geocoding adapter.
 //
-// Autocomplete → https://app.geocodify.com/api/autocomplete  (?api_key=&q=)
-// Forward      → https://app.geocodify.com/api/geocode        (?api_key=&q=)
-// Reverse      → https://app.geocodify.com/api/reverse        (?api_key=&lat=&lng=)
+// Autocomplete → https://api.geocodify.com/v2/autocomplete  (?api_key=&q=)
+// Forward      → https://api.geocodify.com/v2/geocode        (?api_key=&q=)
+// Reverse      → https://api.geocodify.com/v2/reverse        (?api_key=&lat=&lng=)
 //
 // Auth: `api_key` query param.  3 500 ms timeout.
 // All three ops normalise provider responses into GeoapifySuggestion (text
 // fields only — compliance §6).
 
-const AUTOCOMPLETE_URL = "https://app.geocodify.com/api/autocomplete";
-const GEOCODE_URL = "https://app.geocodify.com/api/geocode";
-const REVERSE_URL = "https://app.geocodify.com/api/reverse";
+const AUTOCOMPLETE_URL = "https://api.geocodify.com/v2/autocomplete";
+const GEOCODE_URL = "https://api.geocodify.com/v2/geocode";
+const REVERSE_URL = "https://api.geocodify.com/v2/reverse";
 
 // ---------- raw response shapes ----------
 
@@ -43,7 +43,14 @@ type GeocodifyFeature = {
   properties?: GeocodifyProperties;
 };
 
+type GeocodifyMeta = {
+  code?: number;
+  error_type?: string;
+  error_detail?: string;
+};
+
 type GeocodifyResponse = {
+  meta?: GeocodifyMeta;
   response?: {
     features?: GeocodifyFeature[];
   };
@@ -86,7 +93,6 @@ export class GeocodifyAdapter implements GeocodingAdapter {
     const url = new URL(AUTOCOMPLETE_URL);
     url.searchParams.set("q", text);
     url.searchParams.set("api_key", apiKey);
-    url.searchParams.set("countrycodes", "au");
 
     return this.fetchFeatures(url.toString(), "autocomplete");
   }
@@ -95,7 +101,6 @@ export class GeocodifyAdapter implements GeocodingAdapter {
     const url = new URL(GEOCODE_URL);
     url.searchParams.set("q", text);
     url.searchParams.set("api_key", apiKey);
-    url.searchParams.set("countrycodes", "au");
 
     return this.fetchFeatures(url.toString(), "forward");
   }
@@ -119,6 +124,13 @@ export class GeocodifyAdapter implements GeocodingAdapter {
       throw new Error(`geocodify_http_${res.status}`);
     }
     const body = (await res.json()) as GeocodifyResponse;
+    const metaCode = body?.meta?.code;
+    if (typeof metaCode === "number" && metaCode !== 200) {
+      this.logger.warn(
+        `Geocodify ${op} meta ${metaCode} ${body.meta?.error_type ?? ""}`.trim()
+      );
+      throw new Error(`geocodify_meta_${metaCode}`);
+    }
     const features = body?.response?.features;
     return Array.isArray(features) ? features.map(mapFeature) : [];
   }

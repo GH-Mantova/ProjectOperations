@@ -354,6 +354,35 @@ here now because they are true for **every** station.
   evidence it cannot happen. Re-run both rows, and stamp the transport AND the Desktop Commander
   version, before anyone edits this bullet again. Found by Station 04 2026-09-11T02:2xZ (F2), landed
   by Station 00 at 02:5xZ.
+
+  🔴🔴 **CAUSE FOUND 2026-09-14 — THE NON-REPRODUCTION ABOVE IS A PROPERTY OF THE TRANSPORT, AND
+  THIS BULLET'S OWN CONTROL NAMES IT AMBIGUOUSLY. `-Command` MEANS *A NESTED
+  `powershell.exe -Command "…"`*, NOT *THE DESKTOP COMMANDER SHELL WHOSE NAME IS `powershell.exe`*.**
+  `COMMAND_LAYER_EXPANSION_IS_THE_NESTED_FORM_V1` The 2026-09-11 row says it ran *"through
+  `start_process` shell `powershell.exe` - the transport this bullet's own control mandates"*. That
+  is the shell NAME, not the `-Command` LAYER, and there is no expansion layer on it — so the row
+  measured a transport the trap was never claimed for, and read `CTRL-literal-is:42` as a
+  non-reproduction. [MEASURED] 2026-09-14T18:2xZ by Station 00 (scheduled) at `49685973`, host PS
+  **5.1.26100.9444**, Desktop Commander `start_process`, both rows minutes apart in one session,
+  control `$CTRL=42` (undefined at expansion time, so it MUST print empty if a pre-expansion layer
+  exists):
+
+  | transport | result |
+  |---|---|
+  | `start_process` shell `powershell.exe`, statements sent **direct** — the 09-11 row | `ROW_A_direct_shell:42` and `USER_IS:Marco` — **no expansion** |
+  | `start_process` shell `powershell.exe`, command = `powershell.exe -NoProfile -Command "…"` | **`The string is missing the terminator: ".`** — `$CTRL` consumed before the child parsed, **expansion** |
+
+  POSITIVE control that the nested form fires on real work, same run: a `Select-String … \| ForEach-Object { $_.LineNumber … }`
+  written through the nested form arrived as `{ .LineNumber …` and died `ParserError: An expression
+  was expected after '('` — the `$_` gone, not merely mis-valued.
+
+  🔧 **So nothing is retired and nothing is a Desktop Commander regression: the trap is live, and the
+  cure is unchanged and unconditional.** What changes is the CONTROL: a run testing this bullet must
+  nest `powershell.exe -Command "…"` inside the transport, because the bare shell has no layer to
+  demonstrate. ⚠️ **The 2026-09-11 block stays as written** — it is a true measurement of the direct
+  transport, and deleting it would cost the next run the pair. ⚠️ **Falsifying probe: the two rows
+  above.** If the nested row ever prints `ROW_B_nested_Command:42`, this correction is wrong and must
+  be re-measured. Found and landed by Station 00 2026-09-14T18:3xZ.
 - ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
   **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
   the first read), but early returns are real — one was observed the same run on a line with no `#`.

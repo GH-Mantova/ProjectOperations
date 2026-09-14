@@ -1,0 +1,171 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Outfit', system-ui, sans-serif; }
+    a { color: #005B61; } a:hover { color: #004449; }
+    .nl { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 11px; padding: 0 12px; height: 40px; border-radius: 8px; color: #A8AEBB; font-size: 13.5px; }
+    .nl--on { background: rgba(254,170,109,0.18); color: #FFFFFF; font-weight: 500; }
+    .grp { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6B7280; padding: 0 12px 5px; }
+    .btn { height: 36px; padding: 0 15px; border-radius: 8px; font-size: 13.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #E5E7EB; background: #FFFFFF; color: #000; }
+    .btn--p { background: #005B61; border-color: #005B61; color: #FFFFFF; font-weight: 600; }
+    .card { background:#FFF;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .ch { font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6B7280; }
+    .tab { font-size: 13.5px; color: #6B7280; padding: 0 2px 11px; border-bottom: 2px solid transparent; }
+    .tab--on { color: #005B61; font-weight: 600; border-bottom-color: #005B61; }
+    .chip { font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px; }
+    .new { position: relative; }
+    .new::after { content: ""; position: absolute; top: -5px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: #FEAA6D; box-shadow: 0 0 0 2px #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: grid; grid-template-columns: 240px 1fr; background: #F6F6F6;">
+
+  <div style="background: #000000; padding: 16px 12px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 38px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #005B61; color: #FFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family:'Syne',sans-serif;">PO</div>
+      <div style="color: #FFFFFF; font-size: 13.5px; font-weight: 600;">Project Ops</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">CRM</div>
+      <div class="nl"><span></span><span>Accounts</span></div>
+      <div class="nl"><span></span><span>Tenders</span></div>
+      <div class="nl nl--on"><span></span><span>Comms hub</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 24px;">
+      <div style="font-size: 13px; color: #6B7280;">Project Ops <span style="color:#D1D5DB">/</span> <span style="color:#000; font-weight: 500;">Comms hub</span></div>
+    </div>
+
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1; overflow: hidden;">
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
+        <div>
+          <div style="font-family:'Syne',sans-serif; font-size: 24px; font-weight: 700; color: #000; letter-spacing:-.02em;">Comms hub</div>
+          <div style="font-size: 13.5px; color: #6B7280; margin-top: 3px;">Internal threads and to-dos, anchored to an account, tender, job or contract.</div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center;">
+          <div class="btn new" style="border-color:#005B61;color:#005B61;">Anchor: All &#9662;</div>
+          <div class="btn new btn--p">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+            New thread
+          </div>
+        </div>
+      </div>
+
+      <div class="new" style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+        <span style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;white-space:nowrap;">New thread &mdash; anchor to</span>
+        <div style="height:32px;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 11px;font-size:13px;min-width:130px;">Tender <span style="color:#9CA3AF;margin-left:10px;">&#9662;</span></div>
+        <div style="height:32px;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 11px;font-size:13px;flex-grow:1;">T-2418 &middot; Northshore demolition <span style="color:#9CA3AF;">&#9662;</span></div>
+        <span style="font-size:12.5px;color:#9CA3AF;white-space:nowrap;">Lead &middot; Tender &middot; Job &middot; Account &middot; Contract &middot; Other</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 400px;gap:16px;flex-grow:1;overflow:hidden;">
+
+        <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+          <div style="display:flex;gap:22px;padding:15px 20px 0;border-bottom:1px solid #F3F4F6;">
+            <div class="tab new">Inbox <span style="background:#EF4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">15</span></div>
+            <div class="tab tab--on">Threads <span style="color:#9CA3AF;">12</span></div>
+            <div class="tab">To-dos <span style="color:#9CA3AF;">18</span></div>
+          </div>
+
+          <div style="padding:8px 0;display:flex;flex-direction:column;">
+            <div style="padding:14px 20px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:#E6F0F1;color:#005B61;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">RS</div>
+              <div style="flex-grow:1;">
+                <div style="display:flex;align-items:baseline;gap:9px;">
+                  <div style="font-size:13.5px;font-weight:600;">Northshore variation pricing</div>
+                  <span class="chip" style="background:#E6F0F1;color:#005B61;">Tender T-2418</span>
+                </div>
+                <div style="font-size:13px;color:#374151;margin-top:3px;">R. Silva: Sent the revised transport rates through, waiting on their QS.</div>
+                <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">4 messages &middot; 6 days ago</div>
+              </div>
+            </div>
+            <div style="padding:14px 20px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:#E6F0F1;color:#005B61;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">MC</div>
+              <div style="flex-grow:1;">
+                <div style="display:flex;align-items:baseline;gap:9px;">
+                  <div style="font-size:13.5px;font-weight:600;">Asbestos scope &mdash; who&rsquo;s pricing it?</div>
+                  <span class="chip" style="background:#FEF3C7;color:#92400E;">Account &middot; Hansen Yuncken</span>
+                </div>
+                <div style="font-size:13px;color:#374151;margin-top:3px;">M. Cattaneo: <span style="color:#005B61;font-weight:600;">@priya</span> can you take the removal component?</div>
+                <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">2 messages &middot; yesterday</div>
+              </div>
+            </div>
+            <div style="padding:14px 20px;display:flex;gap:12px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:#E6F0F1;color:#005B61;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">PN</div>
+              <div style="flex-grow:1;">
+                <div style="display:flex;align-items:baseline;gap:9px;">
+                  <div style="font-size:13.5px;font-weight:600;">Site access window &mdash; Bulli</div>
+                  <span class="chip" style="background:#F3F4F6;color:#6B7280;">Job J-1187</span>
+                </div>
+                <div style="font-size:13px;color:#374151;margin-top:3px;">P. Nair: Council says no works before 7am. Adjusting the programme.</div>
+                <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">7 messages &middot; 2 days ago</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:16px;overflow:hidden;">
+          <div class="card new" style="padding:18px 20px;">
+            <div class="ch" style="margin-bottom:13px;">Add a to-do</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="border:1px solid #E5E7EB;border-radius:8px;padding:9px 11px;font-size:13.5px;color:#111827;background:#FFF;">Follow up on the addendum 3 pricing</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div>
+                  <div style="font-size:11.5px;font-weight:600;color:#6B7280;margin-bottom:5px;">Assign to</div>
+                  <div style="height:34px;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:13px;background:#FFF;">
+                    <span style="display:flex;align-items:center;gap:7px;"><span style="width:20px;height:20px;border-radius:50%;background:#005B61;color:#FFF;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">MC</span> Me</span>
+                    <span style="color:#9CA3AF;">&#9662;</span>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:11.5px;font-weight:600;color:#6B7280;margin-bottom:5px;">Due</div>
+                  <div style="height:34px;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:13px;background:#FFF;color:#111827;">4 Sep <span style="color:#9CA3AF;">&#9662;</span></div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;"><div class="btn btn--p" style="height:32px;font-size:13px;">Add</div></div>
+            </div>
+          </div>
+
+          <div class="card" style="padding:18px 20px;flex-grow:1;overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <div class="ch">My to-dos</div>
+              <span class="chip" style="background:#FEE2E2;color:#991B1B;">1 overdue</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:13px;">
+              <div style="display:flex;gap:10px;align-items:flex-start;">
+                <div style="width:16px;height:16px;border:1.6px solid #EF4444;border-radius:4px;margin-top:2px;flex-shrink:0;"></div>
+                <div><div style="font-size:13.5px;">Send Built the revised saw-cutting rates</div><div style="font-size:12px;color:#EF4444;margin-top:2px;">Overdue by 3 days &middot; Hansen Yuncken</div></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start;">
+                <div style="width:16px;height:16px;border:1.6px solid #D1D5DB;border-radius:4px;margin-top:2px;flex-shrink:0;"></div>
+                <div><div style="font-size:13.5px;">Chase addendum 3 from the QS</div><div style="font-size:12px;color:#9CA3AF;margin-top:2px;">Due in 2 days &middot; Tender T-2418</div></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start;">
+                <div style="width:16px;height:16px;border:1.6px solid #D1D5DB;border-radius:4px;margin-top:2px;flex-shrink:0;"></div>
+                <div><div style="font-size:13.5px;">Book the Bulli site walk</div><div style="font-size:12px;color:#9CA3AF;margin-top:2px;">Due 9 Sep &middot; Job J-1187</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#FEF6EE;border:1px solid #FEAA6D;border-radius:10px;padding:12px 16px;font-size:13px;color:#7C4A12;">
+        <b>The hub now spans leads to live jobs.</b> Anchor is a two-step picker &mdash; type, then record &mdash; across Lead, Tender, Job, Account, Contract and Other, so nothing falls outside it. <b>Inbox</b> is the untriaged-lead tab. <b>Assign to</b> defaults to you: today every to-do is created unassigned, which is why &ldquo;My to-dos&rdquo; is empty for everyone.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

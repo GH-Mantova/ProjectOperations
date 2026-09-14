@@ -601,7 +601,7 @@ export function PushBackDialog({
         <div
           style={{
             padding: "8px 12px",
-            background: "var(--surface-2, #f9fafb)",
+            background: "var(--surface-subtle)",
             borderRadius: 6,
             fontSize: 12,
           }}
@@ -791,7 +791,7 @@ export function PushBackDialog({
           style={{
             padding: "8px 12px",
             borderRadius: 6,
-            background: "var(--surface-2, #f9fafb)",
+            background: "var(--surface-subtle)",
             fontSize: 12,
             marginBottom: 8,
             border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",

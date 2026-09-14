@@ -3983,7 +3983,7 @@ async function seedUserDashboards(prisma: PrismaClient) {
         userRoles: {
           some: {
             role: {
-              permissions: {
+              rolePermissions: {
                 some: { permissionId: reportingViewPerm.id }
               }
             }

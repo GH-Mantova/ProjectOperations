@@ -359,6 +359,45 @@ here now because they are true for **every** station.
   the first read), but early returns are real — one was observed the same run on a line with no `#`.
   This is not a hang. Keep calling `read_process_output` with explicit offsets until it
   reports `0 remaining`.
+- 🔴🔴 **AND THE EARLY RETURN IS REPORTED AS A *TERMINATION*, NOT AS A TIMEOUT — SO THE CURE
+  ABOVE IS NEVER REACHED, AND THE STATEMENTS THAT DID NOT RUN LOOK LIKE STATEMENTS THAT FOUND
+  NOTHING.** `EARLY_RETURN_REPORTED_AS_TERMINATION_V1` The bullet above tells you an early return
+  *"is not a hang"* and to keep calling `read_process_output`. A reader who is told the process has
+  **finished** has no reason to call anything again. [MEASURED] 2026-09-14T12:1xZ by Station 00
+  (scheduled) at `345c5708`: an `interact_with_process` chain of five statements against shell PID
+  31964 — a node restore, `git merge --ff-only origin/main`, then three read-backs
+  (`git rev-list --left-right --count`, `git diff --numstat`, `git diff --cached --name-status`) —
+  returned the node line, the FIRST line of git’s multi-line refusal, and then
+  **`✅ Process 31964 has finished execution`**. The three read-backs produced no output at all.
+
+  🔴 **POSITIVE CONTROL, and it is the whole finding: the shell was ALIVE.** Twenty minutes later
+  the same PID answered `"PID31964-ALIVE"; git rev-parse --short HEAD` → `345c5708` on the first try,
+  from `C:\ProjectOperations2`, with its working directory intact. Nothing had terminated. **The
+  run had already abandoned it and started a second shell on the strength of that message.**
+
+  🔴 **The cost is §9.6 with the emptiness manufactured by the instrument.** Three read-backs whose
+  whole job is to say whether a tree is clean returned nothing, and *nothing* is exactly what a clean
+  tree returns — `git diff --numstat` EMPTY and `git diff --cached --name-status` EMPTY are the
+  prescribed PASS readings in the post-merge fast-forward cure in `00-supervisor.md`. A run that
+  places its read-backs after a command that can fail therefore reads **UNRUN as CLEAN**, at what the
+  transport calls success.
+
+  🔧 **Two guards, and the first costs nothing.** (1) **Never put a read-back in the same
+  `interact_with_process` chain after a command that can fail** — echo a literal marker after each
+  statement and assert the marker is present, because a statement that never ran and a statement that
+  found nothing are byte-identical otherwise. (2) **Treat `Process has finished execution` as a claim
+  to be falsified, never as a fact**: send one trivial command to the same PID before believing the
+  shell is gone — that probe is one call and it decides.
+
+  ⚠️ **The TRIGGER is [CANNOT MEASURE] after two honest attempts.** Re-running the failing component
+  alone — a `git` command writing a multi-line `NativeCommandError` to stderr through
+  `2>&1 | Select-Object -Last N`, with and without a preceding `node -e` — did **not** reproduce it:
+  both attempts ran every following statement and printed both markers. `$ErrorActionPreference` was
+  `Continue` in every shell measured, so §7 guard 7 is not the mechanism. **The guards above do not
+  depend on the trigger being known.** ⚠️ **Falsifying probe: the positive control.** On the next
+  `finished execution` message, send one command to that PID; if the call genuinely fails, this bullet
+  is wrong and must be re-measured. Found and landed by Station 00 2026-09-14T12:2xZ.
+
 - 🔴 **`Get-ChildItem <dir> -Recurse -Include '*.log'` RETURNS NOTHING, EXIT 0, UNLESS THE PATH
   ITSELF ENDS IN A WILDCARD.** In PS 5.1 `-Include` filters the *path* argument, not the recursion,
   so the directory form silently matches zero items while the identical query with `<dir>\*` works.

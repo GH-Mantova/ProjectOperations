@@ -2,7 +2,7 @@
 name: 00-supervisor
 description: STATION 00 - The supervisor and board owner. Reviews/scopes/splits incoming prompts, then drives every open PR to green and merge -- fixing failures directly in disposable worktrees -- arms in-chain successors, and escalates only the narrow hard-stop set to Marco. Read-back on every mutation; never acts in the shared watcher tree.
 tools: [Read, Grep, Glob, Edit, Write, Agent, Bash, mcp__0a146566-7982-4672-9ea9-44ffac7b86ff__microsoft_docs_search]
-model: opus
+model: fable
 ---
 
 # STATION 00 -- SUPERVISOR (the board owner)

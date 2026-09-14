@@ -2,7 +2,7 @@
 name: 03-machine-minder
 description: STATION 03 - Keeps the line running. Watcher liveness, wedged/down recovery, orphaned worktrees, queue file hygiene. Called when the MACHINERY breaks, not the code. Cannot run git at all.
 tools: [Read, Grep, Glob, Bash, Write]
-model: haiku
+model: fable
 maxTurns: 40
 ---
 

@@ -103,6 +103,20 @@ obligation has nothing left to burn down; the ratchet now only has to stop new e
 **Safeguard S7 — no reconcile already pending.** `gh pr list --state open` returns three PRs, none
 touching `sot/`; `git ls-remote --heads origin | Select-String 'sot'` returns **0** rows. [MEASURED]
 
+**DOCTRINE §9.1's `EARLY_RETURN_REPORTED_AS_TERMINATION_V1` reproduced a THIRD time, on a trigger
+the bullet does not name, and the falsifying probe it prescribes refuted the message again.**
+[MEASURED] 2026-09-14T14:3xZ, shell PID 33540. A `gh pr view ... --jq` call hit §9.4's
+escaped-double-quote trap; `gh` wrote `failed to parse jq expression (line 1, column 140)` across
+four lines to stderr, and the transport then reported **`Process 33540 has finished execution`**.
+POSITIVE CONTROL, one call later to the same PID: `"PID33540-ALIVE"; git -C C:\po-wt\sot04-20260914
+rev-parse --short HEAD` → `PID33540-ALIVE` and `d7313195`, working directory intact. **The shell was
+never gone.** The bullet records its trigger as `[CANNOT MEASURE]` after two honest attempts and
+names `git` writing a multi-line `NativeCommandError`; this instance is **`gh`**, not `git`, which
+widens the candidate from one binary to *any native command writing multi-line output to stderr
+through the PowerShell error stream*. Guard 2 — treat the message as a claim to falsify and spend one
+call on a probe — paid for itself here: this run had already put a read-back behind that call.
+⚠️ Trigger still unproved; nothing is retired, and both guards stand. Corroboration only.
+
 ## WHAT CHANGED
 
 **Unit 1 — today (2026-09-14): the sot/04 generated section was re-merged.** In a disposable

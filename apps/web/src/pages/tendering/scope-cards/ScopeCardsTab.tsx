@@ -145,8 +145,12 @@ export function ScopeCardsTab({
   // getRateSet returns null when none exists (tender has no locked snapshot).
   // On error, treat as null — we show the gate rather than hiding it on a
   // transient fetch failure, which is the conservative/safe direction.
+  // SCOPE_RATES_GATE_NO_REFETCH_FLASH_V1 - only the FIRST fetch shows the
+  // skeleton (rateSetLoading starts true). Later reloads - after an item PATCH,
+  // a lock, a card change - keep the last known answer on screen; flipping the
+  // flag back to true unmounted the whole card stack and closed every open
+  // expandable mid-edit (batch3-scope-items e2e, PR 1891).
   const loadRateSet = useCallback(async () => {
-    setRateSetLoading(true);
     try {
       const set = await getRateSet(authFetch, tenderId);
       setRateSet(set);

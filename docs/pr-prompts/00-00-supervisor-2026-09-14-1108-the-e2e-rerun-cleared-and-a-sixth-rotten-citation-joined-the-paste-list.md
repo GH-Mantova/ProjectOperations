@@ -198,3 +198,53 @@ isolation would otherwise read `armed = 0` as an oversight.
 - **Did not run Marco's own board PRs through any smoke or vision review.** Nothing here touches
   `apps/web/**` in a PR I may act on.
 - **Did not edit `/sot/`, touch Azure/Entra/SharePoint, write production data, or commit on `main`.**
+
+---
+
+## ADDENDUM 2026-09-14T11:2xZ â€” same run, later measurement: `needs-marco/` is gitignored as a FOLDER but SIX of its files are TRACKED
+
+### Correcting this report
+
+F3 above says *"`needs-marco/` is gitignored, so this sentence is the only copy of the discharge that
+reaches anybody."* **That is TRUE of the new file in F4 and FALSE of the file F3 appended to.**
+I measured it only after the board PR was already open, so the correction lands as a second commit on
+the same branch rather than a rewrite of the paragraph.
+
+### What is actually true
+
+- [MEASURED] `git check-ignore -v` on the F4 file â†’
+  `.gitignore:82:docs/pr-prompts/needs-marco/` â€” ignored, as expected.
+- [MEASURED] `git ls-files --error-unmatch docs/pr-prompts/needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md`
+  â†’ **exits 0 and echoes the path. The file is TRACKED.**
+- [MEASURED] `git ls-files docs/pr-prompts/needs-marco` â†’ **6** tracked files in a directory the
+  `.gitignore` covers wholesale. They were force-added at some point in the past; the ignore rule has
+  no effect on an already-tracked path.
+- [MEASURED] Consequence I created and then caught: appending the F3 addendum produced
+  `git diff --numstat` â†’ `62 0` â€” a **tracked modification left dirty in the shared dev tree**, which
+  is exactly the class of thing this station doc spends two long sections on (`sweep-rotation.json`,
+  the untracked breadcrumb) because it blocks the next fast-forward and gets re-diagnosed from first
+  principles every time.
+
+### Why it is worth a finding rather than a footnote
+
+`needs-marco/` is treated everywhere â€” in this station doc, in the bootstraps, in my own report one
+screen above â€” as a uniformly gitignored escalation queue. It is not. **Whether an escalation reaches
+a clone, CI or a cloud-fired station depends on whether its particular file happens to have been
+force-added**, and nothing announces which. Both available errors are live:
+
+- Write to a **tracked** one and you leave a dirty tracked file behind, unreported, as I did.
+- Write to an **ignored** one and believe it travelled, when only the breadcrumb sentence does.
+
+The cheap discriminator, before writing into any `needs-marco/` file: `git ls-files --error-unmatch
+<path>`. Exit 0 â‡’ tracked â‡’ it belongs in your board PR. Non-zero â‡’ ignored â‡’ your breadcrumb is the
+only copy that travels.
+
+ðŸ”§ **Falsifying probe for a future run:** `git ls-files docs/pr-prompts/needs-marco | wc -l` against
+the directory's own file count. If the tracked count is 0 or equals the total, this note is wrong and
+the class really is uniform.
+
+**DISPOSITION: ACTIONED** â€” the tracked addendum is committed onto this run's own board PR branch in
+the same commit that carries this correction, so the dev tree is left clean of it. The general
+non-uniformity is recorded here rather than escalated: it needs no decision from Marco, and the
+discriminator above is a one-command habit any station can adopt.
+

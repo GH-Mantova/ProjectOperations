@@ -100,6 +100,40 @@ describe("RateTablesService.deleteTable", () => {
   });
 });
 
+describe("RateTablesService.updateColumn", () => {
+  const COLUMN = {
+    id: "col-1",
+    rateTableId: "rt-1",
+    name: "region",
+    dataType: "TEXT",
+    role: "KEY",
+    unit: null,
+    listSlug: null,
+    required: false,
+    min: null,
+    max: null,
+    sortOrder: 0
+  };
+
+  test("rename onto an existing name answers 409 with 'Pick another name', not 500", async () => {
+    const prisma = makePrisma({
+      rateColumn: {
+        findUnique: jest.fn().mockResolvedValue(COLUMN),
+        update: jest.fn().mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }))
+      },
+      rateTable: {
+        findUnique: jest.fn().mockResolvedValue({ ...RATE_TABLE, columns: [COLUMN] }),
+        delete: jest.fn()
+      }
+    });
+    const { service } = build(prisma);
+    const promise = service.updateColumn("rt-1", "col-1", { name: "Rate" } as never);
+    await expect(promise).rejects.toBeInstanceOf(ConflictException);
+    await expect(promise).rejects.toThrow(/Pick another name/);
+    await expect(promise).rejects.toThrow(/"Rate"/);
+  });
+});
+
 describe("RateTablesService.deleteColumn", () => {
   const COLUMN = {
     id: "col-1",
@@ -134,6 +168,17 @@ describe("RateTablesService.deleteColumn", () => {
     );
     expect(prisma.rateColumn.delete).not.toHaveBeenCalled();
     expect(audit.write).not.toHaveBeenCalled();
+  });
+
+  test("refusal message names the row count, says 'Remove the rows first', and drops 'Deactivate'", async () => {
+    const prisma = makePrisma();
+    prisma.rateColumn.findUnique.mockResolvedValue(COLUMN);
+    prisma.rateRow.count.mockResolvedValue(3);
+    const { service } = build(prisma);
+    const promise = service.deleteColumn("rt-1", "col-1", "actor-1");
+    await expect(promise).rejects.toThrow(/3 row\(s\)/);
+    await expect(promise).rejects.toThrow(/Remove the rows first/);
+    await expect(promise).rejects.not.toThrow(/Deactivate/);
   });
 
   test("hard-deletes when the table has no rows and writes an audit row", async () => {

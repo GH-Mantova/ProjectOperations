@@ -194,20 +194,30 @@ export class RateTablesService {
           : c
     );
     this.validation.assertStructure(merged);
-    return this.prisma.rateColumn.update({
-      where: { id: columnId },
-      data: {
-        name: dto.name?.trim(),
-        dataType: dto.dataType,
-        role: dto.role,
-        unit: dto.unit,
-        listSlug: dto.listSlug,
-        required: dto.required,
-        min: dto.min as unknown as Prisma.Decimal | undefined,
-        max: dto.max as unknown as Prisma.Decimal | undefined,
-        sortOrder: dto.sortOrder
+    const nextName = dto.name?.trim() ?? existing.name;
+    try {
+      return await this.prisma.rateColumn.update({
+        where: { id: columnId },
+        data: {
+          name: dto.name?.trim(),
+          dataType: dto.dataType,
+          role: dto.role,
+          unit: dto.unit,
+          listSlug: dto.listSlug,
+          required: dto.required,
+          min: dto.min as unknown as Prisma.Decimal | undefined,
+          max: dto.max as unknown as Prisma.Decimal | undefined,
+          sortOrder: dto.sortOrder
+        }
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new ConflictException(
+          `This table already has a column called "${nextName}". Pick another name.`
+        );
       }
-    });
+      throw err;
+    }
   }
 
   /**
@@ -224,7 +234,7 @@ export class RateTablesService {
     const rowCount = await this.prisma.rateRow.count({ where: { rateTableId: tableId } });
     if (rowCount > 0) {
       throw new ConflictException(
-        `Cannot delete column while the table has ${rowCount} row(s) — cell keys reference the column and would be orphaned. Deactivate rows first.`
+        `Cannot delete "${existing.name}" while the table has ${rowCount} row(s) — every row stores a value under it. Remove the rows first, or leave the column where it is.`
       );
     }
     await this.prisma.rateColumn.delete({ where: { id: columnId } });

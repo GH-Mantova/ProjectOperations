@@ -2,7 +2,7 @@
 name: 04-scanner
 description: STATION 04 - Finds problems. QA sweeps, data-model drift, prod-vs-seed gaps, dead links, SoT drift. READ-ONLY everywhere. Its only output is a well-formed prompt proposal and a findings file. Proposes; never acts.
 tools: [Read, Grep, Glob, Bash, Write, mcp__a4bd401d-418f-4be4-8a4c-82556fe24a77__resolve-library-id, mcp__a4bd401d-418f-4be4-8a4c-82556fe24a77__query-docs, mcp__0a146566-7982-4672-9ea9-44ffac7b86ff__microsoft_docs_search]
-model: sonnet
+model: fable
 maxTurns: 60
 ---
 

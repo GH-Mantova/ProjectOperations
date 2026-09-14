@@ -13,7 +13,7 @@ import { Prisma } from "@prisma/client";
 // Definitions files import from HERE. reporting.service.ts re-exports these two
 // names so every existing importer keeps working unchanged.
 
-function parseFromDate(raw?: string): Date | undefined {
+export function parseFromDate(raw?: string): Date | undefined {
   if (!raw) return undefined;
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return undefined;
@@ -21,7 +21,7 @@ function parseFromDate(raw?: string): Date | undefined {
   return d;
 }
 
-function parseToDate(raw?: string): Date | undefined {
+export function parseToDate(raw?: string): Date | undefined {
   if (!raw) return undefined;
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return undefined;

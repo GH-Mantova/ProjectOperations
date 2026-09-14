@@ -5,7 +5,7 @@ import type { AuthenticatedUser } from "../../common/auth/authenticated-request.
 import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions";
 import { ESTIMATING_ANALYTICS_REPORT_DEFS } from "./estimating-analytics-report.definitions";
 import { resolveSelfFilter } from "./report-self-filter";
-import { dateRangeFilter, decimalToNumber } from "./reporting.helpers";
+import { dateRangeFilter, decimalToNumber, parseFromDate, parseToDate } from "./reporting.helpers";
 
 // Cross-module BI reporting layer (slice 1).
 //

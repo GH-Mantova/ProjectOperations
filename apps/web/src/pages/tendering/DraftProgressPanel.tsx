@@ -273,23 +273,25 @@ function MeterBar({ steps }: { steps: DraftCompleteness["steps"] }) {
 
 // ---------------------------------------------------------------------------
 // Style helpers (token-based, no new colours)
+// DRAFTPANEL_S2_HEX_TO_TOKENS_V1 - every colour here is a tokens.css token (sot/01 SECTION 5); the hex
+// ratchet (check-hex-ratchet.mjs) refuses any new literal, var() fallbacks included.
 // ---------------------------------------------------------------------------
 
 type State = DraftCompleteness["steps"][number]["state"];
 
 function stateBackground(state: State): string {
   switch (state) {
-    case "ready": return "#D1FAE5"; // green-100 analogue
-    case "partial": return "#FED7AA"; // amber-200 analogue
-    case "outstanding": return "var(--surface-border)";
-    case "not-checkable": return "var(--surface-border)";
+    case "ready": return "color-mix(in srgb, var(--status-active) 12%, transparent)";
+    case "partial": return "color-mix(in srgb, var(--status-warning) 18%, transparent)";
+    case "outstanding": return "var(--border-default)";
+    case "not-checkable": return "var(--border-default)";
   }
 }
 
 function stateColor(state: State): string {
   switch (state) {
-    case "ready": return "#065F46";
-    case "partial": return "#3E2A00";
+    case "ready": return "var(--status-active)";
+    case "partial": return "var(--status-warning)";
     case "outstanding": return "var(--text-muted)";
     case "not-checkable": return "var(--text-muted)";
   }
@@ -297,18 +299,18 @@ function stateColor(state: State): string {
 
 function stateBadgeBackground(state: State): string {
   switch (state) {
-    case "ready": return "#D1FAE5";
-    case "partial": return "#FEF3C7";
-    case "outstanding": return "color-mix(in srgb, var(--status-danger, #DC2626) 12%, transparent)";
+    case "ready": return "color-mix(in srgb, var(--status-active) 12%, transparent)";
+    case "partial": return "color-mix(in srgb, var(--status-warning) 18%, transparent)";
+    case "outstanding": return "color-mix(in srgb, var(--status-danger) 12%, transparent)";
     case "not-checkable": return "var(--surface-subtle, rgba(0,0,0,0.05))";
   }
 }
 
 function stateBadgeColor(state: State): string {
   switch (state) {
-    case "ready": return "#065F46";
-    case "partial": return "#78350F";
-    case "outstanding": return "var(--status-danger, #DC2626)";
+    case "ready": return "var(--status-active)";
+    case "partial": return "var(--status-warning)";
+    case "outstanding": return "var(--status-danger)";
     case "not-checkable": return "var(--text-muted)";
   }
 }
@@ -324,11 +326,11 @@ function stateBadgeLabel(state: State): string {
 
 function segmentBackground(state: State): string {
   switch (state) {
-    case "ready": return "#34D399"; // emerald
-    case "partial": return "#FCD34D"; // amber
-    case "outstanding": return "var(--surface-border)";
+    case "ready": return "var(--status-active)";
+    case "partial": return "var(--status-warning)";
+    case "outstanding": return "var(--border-default)";
     case "not-checkable":
       // hatched appearance via repeating-linear-gradient
-      return "repeating-linear-gradient(45deg, var(--surface-border) 0 3px, var(--surface-subtle, rgba(0,0,0,0.05)) 3px 6px)";
+      return "repeating-linear-gradient(45deg, var(--border-default) 0 3px, var(--surface-subtle, rgba(0,0,0,0.05)) 3px 6px)";
   }
 }

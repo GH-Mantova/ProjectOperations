@@ -101,7 +101,7 @@ export async function seedCompanyProfile(prisma: PrismaClient) {
 // so a manual admin edit of the palette survives a `pnpm seed` re-run — same
 // CP-08 discipline the profile row itself uses.
 async function seedDefaultBrandColorScheme(prisma: PrismaClient) {
-  return prisma.brandColorScheme.upsert({
+  const scheme = await prisma.brandColorScheme.upsert({
     where: { name: "Default" },
     update: {},
     create: {
@@ -111,7 +111,65 @@ async function seedDefaultBrandColorScheme(prisma: PrismaClient) {
       secondaryColorHex: "#FEAA6D"
     }
   });
+  // S4: seed the two named candidate presets (Harbour, Graphite) alongside
+  // Default. Same upsert-by-name shape → idempotent. `update: {}` means a
+  // company that edits Harbour keeps their edits across re-seeds; the seed
+  // is the source of truth for the first write only.
+  for (const preset of [HARBOUR_PRESET, GRAPHITE_PRESET]) {
+    await prisma.brandColorScheme.upsert({
+      where: { name: preset.name },
+      update: {},
+      create: preset
+    });
+  }
+  return scheme;
 }
+
+// S4 named presets — every field is populated so a preset is a preset, not a
+// half-preset that inherits from tokens.css for whatever it omits. Values are
+// lifted from Marco's approved `theme-system-mockup.html`; the muted sidebar
+// colour and neutral status colours are flattened from rgba() to solid hex
+// because the schema stores hex only. Never used as the active scheme by seed
+// — the null-check at seedCompanyProfile:33 protects live activeColorSchemeId.
+export const HARBOUR_PRESET = {
+  id: "brand-scheme-harbour",
+  name: "Harbour",
+  primaryColorHex: "#2F5FD0",
+  secondaryColorHex: "#16B1C9",
+  sidebarBgHex: "#1E2A4A",
+  sidebarTextHex: "#8B96AC",
+  sidebarTextActiveHex: "#FFFFFF",
+  surfacePageHex: "#F5F7FB",
+  surfaceCardHex: "#FFFFFF",
+  textPrimaryHex: "#131A2B",
+  textSecondaryHex: "#6B7793",
+  textMutedHex: "#9BA3BA",
+  statusActiveHex: "#12876F",
+  statusWarningHex: "#9A5A13",
+  statusDangerHex: "#C33B34",
+  statusInfoHex: "#2F5FD0",
+  statusNeutralHex: "#5F6B85"
+} as const;
+
+export const GRAPHITE_PRESET = {
+  id: "brand-scheme-graphite",
+  name: "Graphite",
+  primaryColorHex: "#2F3237",
+  secondaryColorHex: "#E8A33D",
+  sidebarBgHex: "#17191C",
+  sidebarTextHex: "#848487",
+  sidebarTextActiveHex: "#F2F2EF",
+  surfacePageHex: "#EEEEEA",
+  surfaceCardHex: "#FFFFFF",
+  textPrimaryHex: "#101114",
+  textSecondaryHex: "#6B6F76",
+  textMutedHex: "#9C9FA5",
+  statusActiveHex: "#2F6B33",
+  statusWarningHex: "#7A5310",
+  statusDangerHex: "#9C2B20",
+  statusInfoHex: "#2C5AA0",
+  statusNeutralHex: "#5B5F63"
+} as const;
 
 // Legal documents are seeded as version 1, effective from 2020-01-01
 // (earliest known — Initial Services predates this system). Insert-if-absent

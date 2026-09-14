@@ -198,3 +198,89 @@ isolation would otherwise read `armed = 0` as an oversight.
 - **Did not run Marco's own board PRs through any smoke or vision review.** Nothing here touches
   `apps/web/**` in a PR I may act on.
 - **Did not edit `/sot/`, touch Azure/Entra/SharePoint, write production data, or commit on `main`.**
+
+---
+
+## ADDENDUM 2026-09-14T11:2xZ â€” same run, later measurement: `needs-marco/` is gitignored as a FOLDER but SIX of its files are TRACKED
+
+### Correcting this report
+
+F3 above says *"`needs-marco/` is gitignored, so this sentence is the only copy of the discharge that
+reaches anybody."* **That is TRUE of the new file in F4 and FALSE of the file F3 appended to.**
+I measured it only after the board PR was already open, so the correction lands as a second commit on
+the same branch rather than a rewrite of the paragraph.
+
+### What is actually true
+
+- [MEASURED] `git check-ignore -v` on the F4 file â†’
+  `.gitignore:82:docs/pr-prompts/needs-marco/` â€” ignored, as expected.
+- [MEASURED] `git ls-files --error-unmatch docs/pr-prompts/needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md`
+  â†’ **exits 0 and echoes the path. The file is TRACKED.**
+- [MEASURED] `git ls-files docs/pr-prompts/needs-marco` â†’ **6** tracked files in a directory the
+  `.gitignore` covers wholesale. They were force-added at some point in the past; the ignore rule has
+  no effect on an already-tracked path.
+- [MEASURED] Consequence I created and then caught: appending the F3 addendum produced
+  `git diff --numstat` â†’ `62 0` â€” a **tracked modification left dirty in the shared dev tree**, which
+  is exactly the class of thing this station doc spends two long sections on (`sweep-rotation.json`,
+  the untracked breadcrumb) because it blocks the next fast-forward and gets re-diagnosed from first
+  principles every time.
+
+### Why it is worth a finding rather than a footnote
+
+`needs-marco/` is treated everywhere â€” in this station doc, in the bootstraps, in my own report one
+screen above â€” as a uniformly gitignored escalation queue. It is not. **Whether an escalation reaches
+a clone, CI or a cloud-fired station depends on whether its particular file happens to have been
+force-added**, and nothing announces which. Both available errors are live:
+
+- Write to a **tracked** one and you leave a dirty tracked file behind, unreported, as I did.
+- Write to an **ignored** one and believe it travelled, when only the breadcrumb sentence does.
+
+The cheap discriminator, before writing into any `needs-marco/` file: `git ls-files --error-unmatch
+<path>`. Exit 0 â‡’ tracked â‡’ it belongs in your board PR. Non-zero â‡’ ignored â‡’ your breadcrumb is the
+only copy that travels.
+
+ðŸ”§ **Falsifying probe for a future run:** `git ls-files docs/pr-prompts/needs-marco | wc -l` against
+the directory's own file count. If the tracked count is 0 or equals the total, this note is wrong and
+the class really is uniform.
+
+**DISPOSITION: ACTIONED** â€” the tracked addendum is committed onto this run's own board PR branch in
+the same commit that carries this correction, so the dev tree is left clean of it. The general
+non-uniformity is recorded here rather than escalated: it needs no decision from Marco, and the
+discriminator above is a one-command habit any station can adopt.
+
+
+---
+
+## ADDENDUM 2 â€” 2026-09-14T11:3xZ: native auto-merge deleted the branch out from under a second push, and the push SUCCEEDED anyway
+
+Worth one paragraph because it silently discards work and every instrument says it went fine.
+
+Sequence, [MEASURED]: `#1927` was opened at `11:17Z` and `gh pr merge 1927 --auto --squash
+--delete-branch` was enabled and read back. While the addendum above was being prepared, the checks
+went green, auto-merge squashed `#1927` at head `3ebd54cf`, and `--delete-branch` removed
+`docs/st00-collect-2026-09-14-1108` from origin. The addendum commit `02b89dc1` was then pushed to
+that branch name â€” and **git reported `* [new branch]` and exit 0.** A push that re-creates a deleted
+branch looks identical to a push that updates a live one, except for two words in the output nobody
+reads. The commit was on origin, attached to no PR, and on no route to `main`.
+
+ðŸ”´ **`--delete-branch` on auto-merge turns any later push to that branch into a silent orphan.** The
+read-back that catches it is not the push's exit code but `gh pr view <n> --json state,headRefOid`:
+here it returned `MERGED` at `3ebd54cf`, i.e. one commit behind what had just been pushed.
+
+âš ï¸ **And the obvious recovery does not work either.** A 3-dot diff of the re-created branch against
+the new `origin/main` reported all four files as pure additions (`250 0`, `224 0`, `62 0`) even though
+three of them were already on `main` byte-for-byte â€” because a **squash** merge leaves no common
+ancestor, so the branch's own history is not recognised. Opening a PR from it would have re-added
+files that already exist. The cure is a **fresh branch off the new `origin/main`** carrying only the
+delta, which is what this PR is.
+
+ðŸ”§ **Rule for a future run: do not enable auto-merge until the run has finished writing.** Either
+hold `--auto` to the end of the run, or drop `--delete-branch` so a late push still lands somewhere
+recoverable. The first is better â€” it is complete and additive, and it removes the race rather than
+softening its consequence.
+
+**DISPOSITION: ACTIONED** â€” the lost commit was re-authored onto a fresh branch off `origin/main`
+`5066f4ec` and is in this PR. âš ï¸ The orphaned re-created branch
+`docs/st00-collect-2026-09-14-1108` is **left on origin deliberately**: branch deletion is on this
+station's irreversible list, and an unreferenced branch costs nothing. It can be removed by hand.
+

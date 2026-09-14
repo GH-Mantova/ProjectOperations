@@ -106,3 +106,65 @@ station files a `.gitignore:<N>` finding at all.
 - No Azure / Entra / SharePoint anything.
 - No production data, no migration, no secret, no permission.
 - Nothing irreversible. Item 1 is five text pastes; item 2 is a CI check that does not exist yet.
+
+---
+
+## ADDENDUM 2026-09-14T11:1xZ — ITEM 1 gains a SIXTH paste, in a different file
+
+**Added by** Station 00 (scheduled, 2026-09-14T11:08Z run), at `origin/main daec3f2b`.
+**Source finding:** Station 04, `docs/pr-prompts/00-04-scanner-2026-09-14-1010-the-task-store-reverted-a-verified-write-and-a-sixth-rotten-citation-sits-in-05s-bootstrap.md`, F1 — DISPATCHED to 00, which owns this file.
+
+ITEM 1 above is still **entirely unactioned**: [MEASURED 2026-09-14] all five bootstraps still carry
+the `.gitignore:107-111` sentence and all five still have mtime `2026-09-01T00:07:44Z`.
+
+**What is new** is a sixth rotten citation of the same class, which the ITEM 1 paste will NOT touch
+because it is in a different file and a different sentence. `C:\Users\Marco\Claude\Scheduled\05-sot-keeper\SKILL.md`
+line 63 reads, verbatim:
+
+```
+CP-24 is a hard block: a PR mixing `sot/` with `scripts/` or `apps/` fails (`pr-gates.mjs:327`). `sot/` plus `docs/` is allowed. Split before you open, not after CI tells you.
+```
+
+[MEASURED 2026-09-14T11:1xZ, independently of 04] line **327** of
+`scripts/pr-gates/pr-gates.mjs` on `origin/main daec3f2b` is a bare `{`. The real anchor is
+`const sotRe = /^sot\//;`. Negative control: a needle minted this run, `zzKt9r3Bq8Xm`, returns 0
+occurrences in the same bootstrap, so the search is not matching everything.
+
+### The sixth paste
+
+In `05-sot-keeper\SKILL.md` line 63, replace:
+
+```
+(`pr-gates.mjs:327`)
+```
+
+with:
+
+```
+(anchor: `const sotRe = /^sot\//` in scripts/pr-gates/pr-gates.mjs)
+```
+
+Same principle as the five above — **an anchor, not a number** — so the next insertion into
+`pr-gates.mjs` cannot re-rot it.
+
+### Why this one matters slightly more than the five
+
+A station that checks the citation finds a brace, and the available conclusion is *"CP-24 is not
+where this says it is"* — about the single gate that stops `sot/` work being mixed with code. The
+repo-side `docs/pipeline/stations/05-sot-keeper.md` already carries the anchor form correctly, so the
+anchor conversion **stopped at the repo boundary** and the layer that actually governs a scheduled
+run kept the number.
+
+### It also strengthens ITEM 2
+
+ITEM 2's argument was "this class has recurred twice". It is now *"recurred twice, and has a live
+instance that ITEM 1's own value-query could not see"* — 04's 09-06 scan searched the class
+`\.gitignore:\d+`, and this member is a different file entirely. A CI check that validates every
+`<file>:<N>` citation against the token its sentence claims is the only thing that enumerates the
+class rather than its known members.
+
+### Nothing here is urgent and nothing is irreversible
+
+One more text paste, in a file that is outside the repo, outside CI and versioned by nothing — which
+is exactly why Station 00 is asking rather than writing it (`STATION-CAPABILITIES.md` §1, and RULE 1
+option 2 above, unchanged).

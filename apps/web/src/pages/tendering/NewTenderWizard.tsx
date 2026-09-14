@@ -38,6 +38,7 @@ import {
   type WizardFlowState,
   type WizardStepKey
 } from "./newTenderWizard.helpers";
+import { getRateSet } from "./ratesTabApi";
 
 type PricingBasis = "DOCUMENTS" | "CLIENT_REQUEST" | "IDENTIFIED_RISK";
 
@@ -83,7 +84,13 @@ type Action =
   | { type: "jump"; step: WizardStepKey }
   | { type: "setDraft"; draftId: string }
   | { type: "lockRates" }
-  | { type: "reset" };
+  | { type: "reset" }
+  | {
+      type: "resume";
+      step: WizardStepKey;
+      /** Visited map seeded from the DraftCompleteness derivation payload. */
+      visited: Record<WizardStepKey, boolean>;
+    };
 
 function flowReducer(state: WizardFlowState, action: Action): WizardFlowState {
   switch (action.type) {
@@ -101,6 +108,12 @@ function flowReducer(state: WizardFlowState, action: Action): WizardFlowState {
       return { ...state, ratesLocked: true };
     case "reset":
       return initialFlowState();
+    case "resume":
+      return {
+        ...state,
+        currentStep: action.step,
+        visited: { ...state.visited, ...action.visited, [action.step]: true }
+      };
     default:
       return state;
   }
@@ -115,14 +128,21 @@ export type NewTenderWizardProps = {
   onCreated: (id: string) => void;
   /**
    * Fired when the wizard needs the parent to reload the master builder list
-   * — currently used after quick-add so a builder given "full details" in the
+   * -- currently used after quick-add so a builder given "full details" in the
    * other tab shows up when the user returns to the picker.
    */
   onNeedClientsRefetch?: () => void;
+  /**
+   * DraftPanel S2: when set, the wizard opens directly to the specified step
+   * and seeds visited from the completeness derivation payload so the rail
+   * nav is unlocked for steps that already have data.
+   */
+  resumeToStep?: WizardStepKey | null;
+  resumeVisited?: Partial<Record<WizardStepKey, boolean>> | null;
 };
 
 export function NewTenderWizard(props: NewTenderWizardProps) {
-  const { open, clients, users, existingDraftId, onClose, onCreated, onNeedClientsRefetch } = props;
+  const { open, clients, users, existingDraftId, onClose, onCreated, onNeedClientsRefetch, resumeToStep, resumeVisited } = props;
   const { authFetch, user } = useAuth();
 
   const [flow, dispatch] = useReducer(flowReducer, undefined, initialFlowState);
@@ -207,7 +227,19 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     if (existingDraftId) {
       dispatch({ type: "setDraft", draftId: existingDraftId });
     }
-  }, [open, existingDraftId]);
+    // DraftPanel S2: if the caller specified a step to resume to, apply it.
+    if (existingDraftId && resumeToStep) {
+      const allKeys = ["project", "builders", "packages", "documents", "rates", "ai", "review"] as const;
+      const seededVisited = allKeys.reduce(
+        (acc, key) => {
+          acc[key] = !!(resumeVisited?.[key]);
+          return acc;
+        },
+        {} as Record<WizardStepKey, boolean>
+      );
+      dispatch({ type: "resume", step: resumeToStep, visited: seededVisited });
+    }
+  }, [open, existingDraftId, resumeToStep, resumeVisited]);
 
   // Load discipline catalogue on first open — powers the Packages step.
   useEffect(() => {
@@ -235,11 +267,15 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
     let cancelled = false;
     (async () => {
       try {
-        const [tRes, pkgRes, mxRes, docRes] = await Promise.all([
+        const [tRes, pkgRes, mxRes, docRes, fetchedRateSet] = await Promise.all([
           authFetch(`/tenders/${flow.draftId}`),
           authFetch(`/tenders/${flow.draftId}/packages`),
           authFetch(`/tenders/${flow.draftId}/matrix`),
-          authFetch(`/tenders/${flow.draftId}/documents`)
+          authFetch(`/tenders/${flow.draftId}/documents`),
+          // DraftPanel S2: rehydrate the rate-set so ratesLocked reflects the
+          // actual server state. On a fresh open this was always false (the
+          // client only set it via the lockRates action in this session).
+          getRateSet(authFetch, flow.draftId as string).catch(() => null)
         ]);
         if (!tRes.ok) throw new Error("Could not load draft tender.");
         const tender = await tRes.json();
@@ -282,6 +318,11 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
         if (docRes.ok) {
           const dbody = await docRes.json();
           setDocuments(Array.isArray(dbody?.data) ? dbody.data : Array.isArray(dbody) ? dbody : []);
+        }
+        // DraftPanel S2: rehydrate ratesLocked + version label from server state.
+        if (fetchedRateSet) {
+          dispatch({ type: "lockRates" });
+          if (fetchedRateSet.sourceLabel) setRatesVersionLabel(fetchedRateSet.sourceLabel);
         }
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -986,7 +1027,7 @@ export function NewTenderWizard(props: NewTenderWizardProps) {
               </h3>
               <p className="new-tender-wizard__subtitle">
                 {flow.draftId
-                  ? "Draft saved — you can close and resume this tender from the drafts list at any time."
+                  ? "Draft saved -- you can close and resume this tender from the tender itself at any time."
                   : "We will save a draft as soon as you enter a project name and continue."}
               </p>
             </div>

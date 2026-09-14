@@ -20,6 +20,12 @@ import { AssistPanel, useCanUseAssist } from "../../components/AssistPanel";
 import { RecordHistory } from "../../components/RecordHistory";
 import { TenderFolderStatusPill, type FolderProvisioningFailure } from "./TenderFolderStatusPill";
 import { readApiErrorMessage } from "../../lib/api-errors";
+import { DraftProgressPanel } from "./DraftProgressPanel";
+import { NewTenderWizard } from "./NewTenderWizard";
+import {
+  deriveDraftCompleteness,
+  type WizardStepKey
+} from "./newTenderWizard.helpers";
 
 type TenderDetail = {
   id: string;
@@ -184,6 +190,17 @@ export function TenderDetailPage() {
   const [bumpError, setBumpError] = useState<string | null>(null);
   const [bumpToast, setBumpToast] = useState<string | null>(null);
 
+  // DraftPanel S2: wizard re-entry state.
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardResumeStep, setWizardResumeStep] = useState<WizardStepKey | null>(null);
+  const [wizardResumeVisited, setWizardResumeVisited] = useState<Partial<Record<WizardStepKey, boolean>> | null>(null);
+  // Draft completeness data -- loaded alongside the tender for DRAFT tenders.
+  const [draftPackages, setDraftPackages] = useState<Array<{ id: string; disciplineItemId: string }>>([]);
+  const [draftMatrix, setDraftMatrix] = useState<Array<{ tenderClientId: string; tenderPackageId: string }>>([]);
+  const [draftDocuments, setDraftDocuments] = useState<Array<{ id: string }>>([]);
+  const [draftRateSet, setDraftRateSet] = useState<{ id: string } | null>(null);
+  const [draftDataLoaded, setDraftDataLoaded] = useState(false);
+
   // Alt+A toggles the Assumptions & Exclusions floating editor (not on Quote tab)
   const aeEditorOpenRef = useRef(aeEditorOpen);
   aeEditorOpenRef.current = aeEditorOpen;
@@ -239,6 +256,54 @@ export function TenderDetailPage() {
     void reload();
     void loadEstimate();
   }, [reload, loadEstimate]);
+
+  // DraftPanel S2: load packages/matrix/documents/rateSet for completeness
+  // derivation whenever the tender is in DRAFT status.
+  useEffect(() => {
+    if (!id || !tender || tender.status !== "DRAFT") {
+      setDraftDataLoaded(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [pkgRes, mxRes, docRes, rateRes] = await Promise.all([
+          authFetch(`/tenders/${id}/packages`),
+          authFetch(`/tenders/${id}/matrix`),
+          authFetch(`/tenders/${id}/documents`),
+          authFetch(`/tenders/${id}/rate-set`)
+        ]);
+        if (cancelled) return;
+        if (pkgRes.ok) {
+          const pkgs = await pkgRes.json();
+          setDraftPackages(Array.isArray(pkgs) ? pkgs : []);
+        }
+        if (mxRes.ok) {
+          const mx = await mxRes.json();
+          setDraftMatrix(Array.isArray(mx) ? mx : []);
+        }
+        if (docRes.ok) {
+          const docs = await docRes.json();
+          setDraftDocuments(
+            Array.isArray(docs?.data) ? docs.data : Array.isArray(docs) ? docs : []
+          );
+        }
+        if (rateRes.ok) {
+          const rs = await rateRes.text();
+          setDraftRateSet(rs ? (JSON.parse(rs) as { id: string } | null) : null);
+        } else {
+          setDraftRateSet(null);
+        }
+        setDraftDataLoaded(true);
+      } catch {
+        // best-effort -- panel degrades gracefully if data is unavailable
+        if (!cancelled) setDraftDataLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, tender, authFetch]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -432,6 +497,21 @@ export function TenderDetailPage() {
             <h1 className="s7-type-page-title" style={{ margin: "4px 0 0" }}>{tender.title}</h1>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* DraftPanel S2: Resume wizard button -- visible on all tabs while DRAFT. */}
+            {tender.status === "DRAFT" ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary s7-btn--sm"
+                onClick={() => {
+                  setWizardResumeStep(null);
+                  setWizardResumeVisited(null);
+                  setWizardOpen(true);
+                }}
+                data-testid="tender-detail-resume-wizard"
+              >
+                Resume wizard
+              </button>
+            ) : null}
             <span
               className="s7-badge"
               style={{
@@ -622,6 +702,92 @@ export function TenderDetailPage() {
 
         {tab === "overview" && (
           <div className="tender-detail__sections">
+            {/* DraftPanel S2: completeness panel -- only while DRAFT. */}
+            {tender.status === "DRAFT" && draftDataLoaded ? (
+              <DraftProgressPanel
+                completeness={deriveDraftCompleteness(
+                  {
+                    title: tender.title,
+                    siteId: (tender as unknown as { siteId?: string | null }).siteId ?? null,
+                    estimatorUserId: tender.estimator?.id ?? null
+                  },
+                  (tender.tenderClients ?? []).map((tc) => ({
+                    clientId: tc.client.id,
+                    clientName: tc.client.name,
+                    contactId: tc.contact?.id ?? null,
+                    submissionDate: null
+                  })),
+                  draftPackages.map((p) => ({
+                    id: p.id,
+                    disciplineItemId: p.disciplineItemId,
+                    value: p.disciplineItemId,
+                    label: p.disciplineItemId,
+                    sortOrder: 0
+                  })),
+                  draftMatrix,
+                  draftDocuments,
+                  draftRateSet
+                )}
+                createdAt={tender.createdAt}
+                updatedAt={tender.updatedAt}
+                createdByName={tender.estimator ? `${tender.estimator.firstName} ${tender.estimator.lastName}` : undefined}
+                onResume={(payload) => {
+                  // Build a visited map from the completeness derivation:
+                  // mark all steps that have data as visited so the rail is unlocked.
+                  const derived = deriveDraftCompleteness(
+                    {
+                      title: tender.title,
+                      siteId: (tender as unknown as { siteId?: string | null }).siteId ?? null,
+                      estimatorUserId: tender.estimator?.id ?? null
+                    },
+                    (tender.tenderClients ?? []).map((tc) => ({
+                      clientId: tc.client.id,
+                      clientName: tc.client.name,
+                      contactId: tc.contact?.id ?? null,
+                      submissionDate: null
+                    })),
+                    draftPackages.map((p) => ({
+                      id: p.id,
+                      disciplineItemId: p.disciplineItemId,
+                      value: p.disciplineItemId,
+                      label: p.disciplineItemId,
+                      sortOrder: 0
+                    })),
+                    draftMatrix,
+                    draftDocuments,
+                    draftRateSet
+                  );
+                  const visitedFromDerived: Partial<Record<WizardStepKey, boolean>> = {};
+                  for (const s of derived.steps) {
+                    if (s.state !== "outstanding") {
+                      visitedFromDerived[s.step] = true;
+                    }
+                  }
+                  setWizardResumeStep(payload.step);
+                  setWizardResumeVisited(visitedFromDerived);
+                  setWizardOpen(true);
+                }}
+                onMoveToEstimating={() => void changeStatus("IN_PROGRESS")}
+                onDiscard={async () => {
+                  if (!canManageTenders) return;
+                  const ok = await confirm({
+                    title: "Discard this draft?",
+                    message: "This will permanently delete the draft tender and all its data. This cannot be undone.",
+                    confirmLabel: "Discard draft",
+                    variant: "danger"
+                  });
+                  if (!ok) return;
+                  try {
+                    const res = await authFetch(`/tenders/${tender.id}`, { method: "DELETE" });
+                    if (!res.ok) throw new Error(await readApiErrorMessage(res));
+                    navigate("/tenders");
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                }}
+                busy={statusUpdating}
+              />
+            ) : null}
             <section className="tender-detail__info-cards">
               <div className="tender-detail__info-card">
                 <p className="s7-type-label">Stage</p>
@@ -912,6 +1078,28 @@ export function TenderDetailPage() {
         )}
 
       </div>
+
+      {/* DraftPanel S2: wizard re-entry from the tender detail page. */}
+      {tender.status === "DRAFT" && wizardOpen ? (
+        <NewTenderWizard
+          open={wizardOpen}
+          clients={[]}
+          users={tender.estimator ? [{ id: tender.estimator.id, firstName: tender.estimator.firstName, lastName: tender.estimator.lastName }] : []}
+          existingDraftId={tender.id}
+          resumeToStep={wizardResumeStep}
+          resumeVisited={wizardResumeVisited}
+          onClose={() => {
+            setWizardOpen(false);
+            setWizardResumeStep(null);
+            setWizardResumeVisited(null);
+            void reload();
+          }}
+          onCreated={() => {
+            setWizardOpen(false);
+            void reload();
+          }}
+        />
+      ) : null}
 
       {addClientOpen ? (
         <AddClientModal

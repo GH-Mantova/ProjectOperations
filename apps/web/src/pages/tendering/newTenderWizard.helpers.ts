@@ -330,6 +330,163 @@ export function deriveFolderPreview(
   return sanitised ? `${tPrefix} - ${sanitised}` : tPrefix;
 }
 
+// ---------------------------------------------------------------------------
+// Draft completeness derivation (DraftPanel S2).
+// Pure helper — no DOM, no fetch — so it can be exercised without jsdom.
+// ---------------------------------------------------------------------------
+
+/**
+ * One entry per WIZARD_STEP_KEYS describing how complete that step is.
+ * Steps with state "not-checkable" do not contribute to the ready count.
+ */
+export type StepCompletionState = "ready" | "partial" | "outstanding" | "not-checkable";
+
+export type StepCompletion = {
+  step: WizardStepKey;
+  state: StepCompletionState;
+  why: string;
+  counts?: { done: number; total: number };
+};
+
+export type DraftCompleteness = {
+  steps: StepCompletion[];
+  /** How many of the 5 checkable steps are "ready". */
+  readyCount: number;
+  /** Always 5 — the two not-checkable steps (ai, review) are excluded. */
+  checkableCount: number;
+};
+
+/** Minimal tender shape the derivation needs from the server. */
+export type TenderForCompleteness = {
+  title?: string | null;
+  siteId?: string | null;
+  estimatorUserId?: string | null;
+};
+
+/** Minimal rate-set shape — we only care whether one exists. */
+export type RateSetForCompleteness = { id: string } | null;
+
+export function deriveDraftCompleteness(
+  tender: TenderForCompleteness,
+  builders: ReadonlyArray<BuilderDraft>,
+  packages: ReadonlyArray<PackageRef>,
+  cells: ReadonlyArray<MatrixCell>,
+  documents: ReadonlyArray<{ id: string }>,
+  rateSet: RateSetForCompleteness
+): DraftCompleteness {
+  const steps: StepCompletion[] = [];
+
+  // --- project ---
+  const hasTitle = !!(tender.title?.trim());
+  const hasSite = !!tender.siteId;
+  const hasEstimator = !!tender.estimatorUserId;
+  const projectDone = hasTitle && hasSite && hasEstimator;
+  const projectMissing: string[] = [];
+  if (!hasTitle) projectMissing.push("title");
+  if (!hasSite) projectMissing.push("linked site");
+  if (!hasEstimator) projectMissing.push("estimator");
+  steps.push({
+    step: "project",
+    state: projectDone ? "ready" : "outstanding",
+    why: projectDone
+      ? "Title, site and estimator all set."
+      : `Missing: ${projectMissing.join(", ")}.`
+  });
+
+  // --- builders ---
+  const incomplete = detectIncompleteBuilders(builders);
+  const buildersState: StepCompletionState =
+    builders.length === 0
+      ? "outstanding"
+      : incomplete.length > 0
+        ? "partial"
+        : "ready";
+  steps.push({
+    step: "builders",
+    state: buildersState,
+    why:
+      builders.length === 0
+        ? "No builders added yet."
+        : incomplete.length > 0
+          ? `${incomplete.length} builder${incomplete.length === 1 ? "" : "s"} missing contact or submission date.`
+          : `${builders.length} builder${builders.length === 1 ? "" : "s"} complete.`,
+    counts: { done: builders.length - incomplete.length, total: builders.length }
+  });
+
+  // --- packages ---
+  // "at least one package and at least one matrix cell per builder"
+  const builderIds = new Set(builders.map((b) => b.clientId));
+  // We only have clientId in BuilderDraft; cells carry tenderClientId (the
+  // junction row id, not the raw clientId). We cannot cross-check per-builder
+  // cell coverage without the serverTenderClients map here, so we use a
+  // simpler heuristic: at least one package and at least one cell.
+  const packagesDone = packages.length > 0 && cells.length > 0;
+  const packagesState: StepCompletionState =
+    packages.length === 0 ? "outstanding" : cells.length === 0 ? "partial" : "ready";
+  void packagesDone; // quiets unused-var; state is what matters
+  void builderIds;
+  steps.push({
+    step: "packages",
+    state: packagesState,
+    why:
+      packages.length === 0
+        ? "No packages selected."
+        : cells.length === 0
+          ? `${packages.length} package${packages.length === 1 ? "" : "s"} added but no matrix cells ticked.`
+          : `${packages.length} package${packages.length === 1 ? "" : "s"}, ${cells.length} matrix cell${cells.length === 1 ? "" : "s"}.`,
+    counts: { done: packages.length, total: packages.length }
+  });
+
+  // --- documents ---
+  // The disciplineItem<->UploadCategoryPicker mapping was NOT found
+  // (UploadCategoryPicker uses a static folder structure, not disciplineItemId;
+  // documents carry a `category` string path, not a disciplineItemId). The row
+  // degrades honestly to a file count as the spec allows.
+  const docCount = documents.length;
+  const docsState: StepCompletionState =
+    docCount === 0 ? "outstanding" : "partial";
+  // "partial" even with files present because we cannot verify bucket coverage
+  // without the disciplineItem mapping. The prompt spec says "partial when > 0".
+  steps.push({
+    step: "documents",
+    state: docsState,
+    why:
+      docCount === 0
+        ? "No files uploaded yet."
+        : `${docCount} file${docCount === 1 ? "" : "s"} uploaded (bucket coverage unverifiable).`,
+    counts: { done: docCount, total: docCount }
+  });
+
+  // --- rates ---
+  const ratesState: StepCompletionState = rateSet ? "ready" : "outstanding";
+  steps.push({
+    step: "rates",
+    state: ratesState,
+    why: rateSet ? "Rate snapshot locked." : "No rate snapshot locked yet."
+  });
+
+  // --- ai (not checkable) ---
+  steps.push({
+    step: "ai",
+    state: "not-checkable",
+    why: "AI scope is a stub -- not yet available."
+  });
+
+  // --- review (not checkable) ---
+  steps.push({
+    step: "review",
+    state: "not-checkable",
+    why: "Review persists no server state."
+  });
+
+  const checkableCount = 5;
+  const readyCount = steps.filter(
+    (s) => s.state === "ready" && s.step !== "ai" && s.step !== "review"
+  ).length;
+
+  return { steps, readyCount, checkableCount };
+}
+
 export type DiscardDraftRequest = { path: string; method: "DELETE" };
 
 /**

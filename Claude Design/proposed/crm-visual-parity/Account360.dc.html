@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Outfit', system-ui, sans-serif; }
+    a { color: #005B61; } a:hover { color: #004449; }
+    .nl { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 11px; padding: 0 12px; height: 40px; border-radius: 8px; color: #A8AEBB; font-size: 13.5px; }
+    .nl--on { background: rgba(254,170,109,0.18); color: #FFFFFF; font-weight: 500; }
+    .grp { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6B7280; padding: 0 12px 5px; }
+    .btn { height: 34px; padding: 0 14px; border-radius: 8px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #E5E7EB; background: #FFFFFF; color: #000; }
+    .btn--p { background: #005B61; border-color: #005B61; color: #FFFFFF; font-weight: 600; }
+    .tab { font-size: 13.5px; color: #6B7280; padding: 0 2px 11px; border-bottom: 2px solid transparent; }
+    .tab--on { color: #005B61; font-weight: 600; border-bottom-color: #005B61; }
+    .fld { font-size: 11px; font-weight: 600; letter-spacing:.05em; text-transform: uppercase; color: #9CA3AF; }
+    .val { font-size: 13.5px; color: #111827; margin-top: 3px; }
+    .new { position: relative; }
+    .new::after { content: ""; position: absolute; top: -5px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: #FEAA6D; box-shadow: 0 0 0 2px #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: grid; grid-template-columns: 240px 1fr; background: #F6F6F6;">
+
+  <div style="background: #000000; padding: 16px 12px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 38px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #005B61; color: #FFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family:'Syne',sans-serif;">PO</div>
+      <div style="color: #FFFFFF; font-size: 13.5px; font-weight: 600;">Project Ops</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">CRM</div>
+      <div class="nl nl--on"><span></span><span>Accounts</span></div>
+      <div class="nl"><span></span><span>Tenders</span></div>
+      <div class="nl"><span></span><span>Comms hub</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 24px;">
+      <div style="font-size: 13px; color: #6B7280;">Project Ops <span style="color:#D1D5DB">/</span> Accounts <span style="color:#D1D5DB">/</span> <span style="color:#000; font-weight: 500;">Hansen Yuncken</span></div>
+    </div>
+
+    <div style="padding: 22px 24px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1; overflow: hidden;">
+
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;">
+        <div style="display: flex; gap: 14px; align-items: center;">
+          <div style="width: 46px; height: 46px; border-radius: 11px; background: #005B61; color: #FFF; font-family:'Syne',sans-serif; font-size: 16px; font-weight: 700; display:flex; align-items:center; justify-content:center;">HY</div>
+          <div>
+            <div style="font-family:'Syne',sans-serif; font-size: 23px; font-weight: 700; color: #000; letter-spacing:-.02em;">Hansen Yuncken</div>
+            <div style="display:flex; gap:9px; align-items:center; margin-top: 4px;">
+              <span style="background:#E6F0F1;color:#005B61;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;">Active</span>
+              <span style="font-size:12.5px;color:#6B7280;">Head contractor &middot; ABN 63 008 129 613</span>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 9px;">
+          <div class="btn new">Log contact</div>
+          <div class="btn new">New thread</div>
+          <div class="btn new btn--p">Edit account</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 12px;">
+        <div style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div class="fld">Tenders</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-top:3px;">47</div></div>
+        <div style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div class="fld">Value</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-top:3px;">$18.4M</div></div>
+        <div style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div class="fld">Win rate</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#005B61;margin-top:3px;">41%</div></div>
+        <div style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div class="fld">Jobs</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-top:3px;">12</div></div>
+        <div class="new" style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div class="fld">Contracts</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-top:3px;">5</div></div>
+        <div class="new" style="background:#FFF;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;"><div class="fld">Last contact</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-top:3px;">4d</div></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 320px; gap: 16px; flex-grow: 1; overflow: hidden;">
+
+        <div style="background:#FFF;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;flex-direction:column;overflow:hidden;">
+          <div style="display:flex;gap:22px;padding:15px 20px 0;border-bottom:1px solid #F3F4F6;">
+            <div class="tab tab--on">Activity</div>
+            <div class="tab">Contacts <span style="color:#9CA3AF;">8</span></div>
+            <div class="tab">Tenders <span style="color:#9CA3AF;">47</span></div>
+            <div class="tab">Jobs <span style="color:#9CA3AF;">12</span></div>
+            <div class="tab new">Contracts <span style="color:#9CA3AF;">5</span></div>
+            <div class="tab new">Opportunities <span style="color:#9CA3AF;">6</span></div>
+          </div>
+
+          <div class="new" style="padding: 18px 20px; display:flex; flex-direction: column; gap: 15px; overflow: hidden;">
+            <div style="font-size: 11px; font-weight:700; letter-spacing:.08em; text-transform: uppercase; color:#9CA3AF;">Notes, threads and emails, merged</div>
+
+            <div style="display:flex; gap: 12px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:#E6F0F1;color:#005B61;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">MC</div>
+              <div style="flex-grow:1;">
+                <div style="font-size:13px;"><b>Marco Cattaneo</b> logged a call with <b>Dave Renshaw</b> <span style="color:#9CA3AF;">&middot; 4 days ago</span></div>
+                <div style="font-size:13px;color:#374151;margin-top:3px;line-height:1.5;">Chased the Northshore demolition package. They&rsquo;re re-scoping the asbestos component and will re-issue next week.</div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap: 12px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </div>
+              <div style="flex-grow:1;">
+                <div style="font-size:13px;"><b>Thread</b> &mdash; Northshore variation pricing <span style="color:#9CA3AF;">&middot; 6 days ago &middot; 4 messages</span></div>
+                <div style="font-size:13px;color:#374151;margin-top:3px;">R. Silva: &ldquo;Sent the revised transport rates through, waiting on their QS.&rdquo;</div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap: 12px;">
+              <div style="width:30px;height:30px;border-radius:50%;background:#EEF2FF;color:#3B82F6;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+              </div>
+              <div style="flex-grow:1;">
+                <div style="font-size:13px;"><b>Email</b> from d.renshaw@hansenyuncken.com.au <span style="color:#9CA3AF;">&middot; 9 days ago</span></div>
+                <div style="font-size:13px;color:#374151;margin-top:3px;">RE: Tender T-2418 &mdash; addendum 2 issued</div>
+              </div>
+            </div>
+
+            <div style="border:1px dashed #E5E7EB;border-radius:9px;padding:11px 14px;font-size:12.5px;color:#9CA3AF;background:#FAFAFA;">
+              Email entries appear once M365 capture is switched on. Everything else is live today.
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;overflow:hidden;">
+          <div style="background:#FFF;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+            <div style="font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6B7280;margin-bottom:13px;">Account</div>
+            <div style="display:flex;flex-direction:column;gap:13px;">
+              <div><div class="fld">Lifecycle</div><div class="val new" style="display:inline-flex;align-items:center;gap:7px;border:1px solid #E5E7EB;border-radius:7px;padding:5px 10px;">Active <span style="color:#9CA3AF;">&#9662;</span></div></div>
+              <div><div class="fld">Type</div><div class="val new" style="display:inline-flex;align-items:center;gap:7px;border:1px solid #E5E7EB;border-radius:7px;padding:5px 10px;">Head contractor <span style="color:#9CA3AF;">&#9662;</span></div></div>
+              <div><div class="fld">Owner</div><div class="val new" style="display:inline-flex;align-items:center;gap:7px;border:1px solid #E5E7EB;border-radius:7px;padding:5px 10px;">M. Cattaneo <span style="color:#9CA3AF;">&#9662;</span></div></div>
+              <div><div class="fld">Source</div><div class="val">Repeat business</div></div>
+              <div><div class="fld">Linked client</div><div class="val" style="color:#005B61;">Hansen Yuncken &rsaquo;</div></div>
+            </div>
+          </div>
+
+          <div class="new" style="background:#FFF;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+            <div style="font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6B7280;margin-bottom:11px;">Next action</div>
+            <div style="font-size:13.5px;color:#111827;">Re-price Northshore once addendum 3 lands</div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:8px;">
+              <span style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;">Due in 2 days</span>
+              <span style="font-size:12.5px;color:#6B7280;">M. Cattaneo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

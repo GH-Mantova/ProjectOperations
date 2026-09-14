@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Outfit', system-ui, sans-serif; }
+    a { color: #005B61; } a:hover { color: #004449; }
+    .nl { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 11px; padding: 0 12px; height: 40px; border-radius: 8px; color: #A8AEBB; font-size: 13.5px; }
+    .nl--on { background: rgba(254,170,109,0.18); color: #FFFFFF; font-weight: 500; }
+    .grp { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6B7280; padding: 0 12px 5px; }
+    .btn { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E5E7EB; background: #FFFFFF; color: #000; }
+    .card { background:#FFF;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .tab { font-size: 13.5px; color: #6B7280; padding: 0 2px 11px; border-bottom: 2px solid transparent; }
+    .tab--on { color: #005B61; font-weight: 600; border-bottom-color: #005B61; }
+    th { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #6B7280; text-align: left; padding: 0 11px 9px 0; white-space: nowrap; }
+    td { padding: 11px 11px 11px 0; font-size: 13px; color: #111827; border-top: 1px solid #F3F4F6; vertical-align: top; }
+    .chip { font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap; }
+    .new { position: relative; }
+    .new::after { content: ""; position: absolute; top: -5px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: #FEAA6D; box-shadow: 0 0 0 2px #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: grid; grid-template-columns: 240px 1fr; background: #F6F6F6;">
+
+  <div style="background: #000000; padding: 16px 12px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 38px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #005B61; color: #FFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family:'Syne',sans-serif;">PO</div>
+      <div style="color: #FFFFFF; font-size: 13.5px; font-weight: 600;">Project Ops</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">CRM</div>
+      <div class="nl"><span></span><span>Accounts</span><span></span></div>
+      <div class="nl nl--on"><span></span><span>Tenders</span><span style="background:#F59E0B;color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">7</span></div>
+      <div class="nl"><span></span><span>Comms hub</span><span style="background:#EF4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">15</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; padding: 0 24px;">
+      <div style="font-size: 13px; color: #6B7280;">Project Ops <span style="color:#D1D5DB">/</span> Tenders <span style="color:#D1D5DB">/</span> <span style="color:#000; font-weight: 500;">Register</span></div>
+    </div>
+
+    <div style="padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; flex-grow: 1; overflow: hidden;">
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
+        <div>
+          <div style="font-family:'Syne',sans-serif; font-size: 24px; font-weight: 700; color: #000; letter-spacing:-.02em;">Tenders</div>
+          <div style="font-size: 13.5px; color: #6B7280; margin-top: 3px;">Every tender and opportunity, and what we owe each one next.</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="btn new">Export CSV</div>
+          <div class="btn new">Columns &#9662;</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:24px;border-bottom:1px solid #E5E7EB;">
+        <div class="tab tab--on">Register <span style="color:#9CA3AF;">183</span></div>
+        <div class="tab new">Follow-ups <span style="background:#F59E0B;color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">7</span></div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <div style="flex-grow:1;min-width:170px;height:32px;border:1px solid #E5E7EB;border-radius:8px;display:flex;align-items:center;gap:8px;padding:0 11px;color:#9CA3AF;font-size:12.5px;background:#FFF;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg> Search
+        </div>
+        <div class="btn">Status &#9662;</div>
+        <div class="btn">Client &#9662;</div>
+        <div class="btn new">Owner &#9662;</div>
+        <div class="btn new">Logged by &#9662;</div>
+        <div class="btn new">Value &#9662;</div>
+        <div class="btn new">Due &#9662;</div>
+      </div>
+
+      <div class="card" style="flex-grow:1;display:flex;flex-direction:column;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>
+            <th style="padding-left:18px;">Tender &#9662;</th>
+            <th>Client</th>
+            <th>Status</th>
+            <th>Value</th>
+            <th class="new">Last interaction</th>
+            <th class="new">Logged by</th>
+            <th class="new">Next action</th>
+            <th style="padding-right:18px;"></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">T-2418 &middot; Northshore demolition</div><div style="font-size:11.5px;color:#9CA3AF;">Submitted 12 Aug</div></td>
+              <td>Hansen Yuncken</td>
+              <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Submitted</span></td>
+              <td>$1.84M</td>
+              <td class="new"><div>Phone &mdash; 4 days ago</div><div style="font-size:11.5px;color:#9CA3AF;">Chased addendum 3</div></td>
+              <td class="new"><div style="display:flex;align-items:center;gap:6px;"><span style="width:20px;height:20px;border-radius:50%;background:#005B61;color:#FFF;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">MC</span> M. Cattaneo</div></td>
+              <td class="new"><div>Re-chase the QS</div><span class="chip" style="background:#FEE2E2;color:#991B1B;">3 days over</span></td>
+              <td style="padding-right:18px;"><div class="btn new" style="height:28px;font-size:12px;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">T-2431 &middot; Wollongong slab saw</div><div style="font-size:11.5px;color:#9CA3AF;">Submitted 21 Aug</div></td>
+              <td>ADCO Constructions</td>
+              <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Submitted</span></td>
+              <td>$412k</td>
+              <td class="new"><div>Email &mdash; 6 days ago</div><div style="font-size:11.5px;color:#9CA3AF;">Sent revised price</div></td>
+              <td class="new"><div style="display:flex;align-items:center;gap:6px;"><span style="width:20px;height:20px;border-radius:50%;background:#005B61;color:#FFF;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">PN</span> P. Nair</div></td>
+              <td class="new"><div>Confirm receipt by phone</div><span class="chip" style="background:#FEF3C7;color:#92400E;">In 4 days</span></td>
+              <td style="padding-right:18px;"><div class="btn new" style="height:28px;font-size:12px;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">T-2402 &middot; Parramatta carpark</div><div style="font-size:11.5px;color:#9CA3AF;">Submitted 28 Jul</div></td>
+              <td>John Holland Group</td>
+              <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Submitted</span></td>
+              <td>$980k</td>
+              <td class="new"><div style="color:#B45309;">Email &mdash; 30 days ago</div><div style="font-size:11.5px;color:#9CA3AF;">Submitted the tender</div></td>
+              <td class="new"><div style="display:flex;align-items:center;gap:6px;"><span style="width:20px;height:20px;border-radius:50%;background:#005B61;color:#FFF;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">MC</span> M. Cattaneo</div></td>
+              <td class="new"><div style="color:#9CA3AF;font-style:italic;">None set</div><span class="chip" style="background:#F3F4F6;color:#6B7280;">Stalled</span></td>
+              <td style="padding-right:18px;"><div class="btn new" style="height:28px;font-size:12px;border-color:#FEAA6D;color:#7C4A12;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">T-2377 &middot; Bulli industrial</div><div style="font-size:11.5px;color:#9CA3AF;">Won 3 Jul</div></td>
+              <td>Built Pty Ltd</td>
+              <td><span class="chip" style="background:#DCFCE7;color:#166534;">Won</span></td>
+              <td>$620k</td>
+              <td class="new"><div>Site visit &mdash; 2 days ago</div><div style="font-size:11.5px;color:#9CA3AF;">Programme walkthrough</div></td>
+              <td class="new"><div style="display:flex;align-items:center;gap:6px;"><span style="width:20px;height:20px;border-radius:50%;background:#005B61;color:#FFF;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">RS</span> R. Silva</div></td>
+              <td class="new"><div style="color:#9CA3AF;">&mdash;</div></td>
+              <td style="padding-right:18px;"><div class="btn new" style="height:28px;font-size:12px;">Log</div></td>
+            </tr>
+            <tr>
+              <td style="padding-left:18px;"><div style="font-weight:600;">Mascot warehouse demo</div><div style="font-size:11.5px;color:#9CA3AF;">Opportunity &middot; qualified</div></td>
+              <td>Lendlease</td>
+              <td><span class="chip" style="background:#FEF3C7;color:#92400E;">Qualified</span></td>
+              <td>$1.35M</td>
+              <td class="new"><div style="color:#9CA3AF;font-style:italic;">Never logged</div></td>
+              <td class="new"><div style="color:#9CA3AF;">&mdash;</div></td>
+              <td class="new"><div style="color:#9CA3AF;font-style:italic;">None set</div><span class="chip" style="background:#F3F4F6;color:#6B7280;">Stalled</span></td>
+              <td style="padding-right:18px;"><div class="btn new" style="height:28px;font-size:12px;border-color:#FEAA6D;color:#7C4A12;">Log</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="new" style="background:#FEF6EE;border:1px solid #FEAA6D;border-radius:10px;padding:12px 16px;font-size:13px;color:#7C4A12;line-height:1.55;">
+        <b>Next action is an output, not a field you type.</b> Pressing <b>Log</b> records what happened &mdash; channel, who, what was said &mdash; and sets the next action in the same step. That is why <b>Last interaction</b>, <b>Logged by</b> and <b>Next action</b> sit together: the first two produce the third. A row whose next action is &ldquo;None set&rdquo; is one nobody has logged against, which is exactly what the Follow-ups tab filters for.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

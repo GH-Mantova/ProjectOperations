@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&amp;family=Syne:wght@600;700&amp;display=swap">
+  <style>
+    body { margin: 0; font-family: 'Outfit', system-ui, sans-serif; }
+    a { color: #005B61; } a:hover { color: #004449; }
+    .nl { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 11px; padding: 0 12px; height: 40px; border-radius: 8px; color: #A8AEBB; font-size: 13.5px; }
+    .nl--on { background: rgba(254,170,109,0.18); color: #FFFFFF; font-weight: 500; }
+    .grp { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6B7280; padding: 0 12px 5px; }
+    .btn { height: 36px; padding: 0 15px; border-radius: 8px; font-size: 13.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #E5E7EB; background: #FFFFFF; color: #000; }
+    .btn--p { background: #005B61; border-color: #005B61; color: #FFFFFF; font-weight: 600; }
+    th { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6B7280; text-align: left; padding: 0 14px 10px 0; }
+    td { padding: 13px 14px 13px 0; font-size: 13.5px; color: #111827; border-top: 1px solid #F3F4F6; }
+    .new { position: relative; }
+    .new::after { content: ""; position: absolute; top: -5px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: #FEAA6D; box-shadow: 0 0 0 2px #FFFFFF; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: grid; grid-template-columns: 240px 1fr; background: #F6F6F6;">
+
+  <div style="background: #000000; padding: 16px 12px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 38px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #005B61; color: #FFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif;">PO</div>
+      <div style="color: #FFFFFF; font-size: 13.5px; font-weight: 600;">Project Ops</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">Tendering</div>
+      <div class="nl" style="opacity:.6"><span></span><span>Leads &amp; opportunities</span></div>
+      <div class="nl" style="opacity:.6"><span></span><span>Tenders</span></div>
+      <div class="nl" style="opacity:.6"><span></span><span>Pipeline</span></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="grp">CRM</div>
+      <div class="nl nl--on"><span></span><span>Accounts</span></div>
+      <div class="nl"><span></span><span>Tenders</span></div>
+      <div class="nl"><span></span><span>Comms hub</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; overflow: hidden;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between; padding: 0 24px;">
+      <div style="font-size: 13px; color: #6B7280;">Project Ops <span style="color:#D1D5DB">/</span> <span style="color:#000; font-weight: 500;">Accounts</span></div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <div style="width: 30px; height: 30px; border-radius: 50%; background: #005B61; color: #FFF; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center;">MC</div>
+      </div>
+    </div>
+
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 18px; flex-grow: 1;">
+
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;">
+        <div>
+          <div style="font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -.02em;">Accounts</div>
+          <div style="font-size: 13.5px; color: #6B7280; margin-top: 3px;">Every organisation you tender to, subcontract under, or have worked for.</div>
+        </div>
+        <div style="display: flex; gap: 9px;">
+          <div class="btn">Export</div>
+          <div class="btn new btn--p">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>
+            New account
+          </div>
+        </div>
+      </div>
+
+      <div class="new" style="display:flex;gap:24px;border-bottom:1px solid #E5E7EB;margin-top:-4px;">
+        <div style="font-size:13.5px;color:#005B61;font-weight:600;padding:0 2px 11px;border-bottom:2px solid #005B61;">List</div>
+        <div style="font-size:13.5px;color:#6B7280;padding:0 2px 11px;border-bottom:2px solid transparent;">Relationships</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px;">
+        <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px 17px; box-shadow: 0 1px 3px rgba(0,0,0,.06);">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing:.06em; text-transform: uppercase; color: #6B7280;">Accounts</div>
+          <div style="font-family:'Syne',sans-serif; font-size: 27px; font-weight: 700; color:#000; margin-top: 5px;">214</div>
+        </div>
+        <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px 17px; box-shadow: 0 1px 3px rgba(0,0,0,.06);">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing:.06em; text-transform: uppercase; color: #6B7280;">Open opportunities</div>
+          <div style="font-family:'Syne',sans-serif; font-size: 27px; font-weight: 700; color:#005B61; margin-top: 5px;">38</div>
+        </div>
+        <div class="new" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px 17px; box-shadow: 0 1px 3px rgba(0,0,0,.06);">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing:.06em; text-transform: uppercase; color: #6B7280;">Going cold</div>
+          <div style="font-family:'Syne',sans-serif; font-size: 27px; font-weight: 700; color:#F59E0B; margin-top: 5px;">9</div>
+          <div style="font-size: 11.5px; color:#9CA3AF; margin-top: 2px;">no contact in 60 days</div>
+        </div>
+        <div class="new" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 15px 17px; box-shadow: 0 1px 3px rgba(0,0,0,.06);">
+          <div style="font-size: 11px; font-weight: 600; letter-spacing:.06em; text-transform: uppercase; color: #6B7280;">Unlinked clients</div>
+          <div style="font-family:'Syne',sans-serif; font-size: 27px; font-weight: 700; color:#EF4444; margin-top: 5px;">205</div>
+          <div style="font-size: 11.5px; color:#9CA3AF; margin-top: 2px;">no account row yet</div>
+        </div>
+      </div>
+
+      <div class="new" style="background: #FEF6EE; border: 1px solid #FEAA6D; border-radius: 10px; padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="display:flex; align-items:center; gap: 11px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E8914F" stroke-width="2"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+          <div style="font-size: 13.5px; color: #7C4A12;"><b>205 clients have no account.</b> Accounts stopped being created when the backfill ran on 14 Aug — every client added since is missing one.</div>
+        </div>
+        <div class="btn" style="border-color:#E8914F; color:#7C4A12; white-space: nowrap;">Review and link…</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 14px 18px; border-bottom: 1px solid #F3F4F6; display: flex; gap: 10px; align-items: center;">
+          <div class="new" style="flex-grow: 1; height: 34px; border: 1px solid #E5E7EB; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 11px; color: #9CA3AF; font-size: 13px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg>
+            Search accounts
+          </div>
+          <div style="height: 34px; border: 1px solid #E5E7EB; border-radius: 8px; display: flex; align-items: center; padding: 0 11px; font-size: 13px; color: #374151;">Lifecycle: All</div>
+          <div style="height: 34px; border: 1px solid #E5E7EB; border-radius: 8px; display: flex; align-items: center; padding: 0 11px; font-size: 13px; color: #374151;">Owner: All</div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; padding: 0 18px;">
+          <thead><tr>
+            <th style="padding-left: 18px; text-align: center">Account</th>
+            <th style="text-align: center">Lifecycle</th>
+            <th style="text-align: center">Owner</th>
+            <th style="text-align: center">Open opps</th>
+            <th style="text-align: center">Win rate</th>
+            <th style="text-align: center">Last contact</th>
+            <th style="padding-right: 18px;"></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="padding-left: 18px;"><div style="font-weight: 600;">Hansen Yuncken</div><div style="font-size:12px;color:#9CA3AF;">ABN 63 008 129 613</div></td>
+              <td><span style="background:#E6F0F1;color:#005B61;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;">Active</span></td>
+              <td class="new">M. Cattaneo</td>
+              <td style="text-align: center">6</td>
+              <td style="text-align: center">41%</td>
+              <td class="new" style="text-align: right">4 days ago</td>
+              <td style="padding-right: 18px; text-align: right; white-space: nowrap;"><span class="btn new" style="height:28px;padding:0 11px;font-size:12px;">Log contact</span></td>
+            </tr>
+            <tr>
+              <td style="padding-left: 18px;"><div style="font-weight: 600;">Built Pty Ltd</div><div style="font-size:12px;color:#9CA3AF;">ABN 51 003 032 258</div></td>
+              <td><span style="background:#E6F0F1;color:#005B61;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;">Active</span></td>
+              <td class="new">M. Cattaneo</td>
+              <td style="text-align: center">4</td>
+              <td style="text-align: center">33%</td>
+              <td class="new" style="text-align: right"><span style="color: rgb(180, 83, 9); font-weight: 500; text-align: center"></span><span style="color: rgb(180, 83, 9); text-align: center; font-weight: 700">71 days ago</span><span style="background: rgb(254, 243, 199); color: rgb(146, 64, 14); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 4px" data-dc-dragging="1">GOING COLD</span></td>
+              <td style="padding-right: 18px; text-align: right; white-space: nowrap;"><span class="btn new" style="height:28px;padding:0 11px;font-size:12px;">Log contact</span></td>
+            </tr>
+            <tr>
+              <td style="padding-left: 18px;"><div style="font-weight: 600;">Lendlease</div><div style="font-size:12px;color:#9CA3AF;">ABN 11 000 098 162</div></td>
+              <td><span style="background:#FEF3C7;color:#92400E;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;">Prospect</span></td>
+              <td class="new" style="color:#9CA3AF;">Unassigned</td>
+              <td style="text-align: center">1</td>
+              <td style="text-align: center">—</td>
+              <td class="new" style="text-align: right">12 days ago</td>
+              <td style="padding-right: 18px; text-align: right; white-space: nowrap;"><span class="btn new" style="height:28px;padding:0 11px;font-size:12px;">Log contact</span></td>
+            </tr>
+            <tr>
+              <td style="padding-left: 18px;"><div style="font-weight: 600;">John Holland Group</div><div style="font-size:12px;color:#9CA3AF;">ABN 11 004 282 268</div></td>
+              <td><span style="background:#E6F0F1;color:#005B61;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;">Active</span></td>
+              <td class="new">R. Silva</td>
+              <td style="text-align: center">9</td>
+              <td style="text-align: center">52%</td>
+              <td class="new" style="text-align: right">Yesterday</td>
+              <td style="padding-right: 18px; text-align: right; white-space: nowrap;"><span class="btn new" style="height:28px;padding:0 11px;font-size:12px;">Log contact</span></td>
+            </tr>
+            <tr>
+              <td style="padding-left: 18px;"><div style="font-weight: 600;">ADCO Constructions</div><div style="font-size:12px;color:#9CA3AF;">ABN 24 000 201 655</div></td>
+              <td><span style="background:#F3F4F6;color:#6B7280;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;">Past</span></td>
+              <td class="new" style="color:#9CA3AF;">Unassigned</td>
+              <td style="text-align: center">0</td>
+              <td style="text-align: center">18%</td>
+              
+              <td class="new" style="text-align: right"><span style="color: rgb(180, 83, 9); font-weight: 700">8 months ago</span><span style="background: rgb(254, 243, 199); color: rgb(146, 64, 14); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 4px; text-align: right">GOING COLD</span></td><td style="padding-right: 18px; text-align: right; white-space: nowrap;"><span class="btn new" style="height:28px;padding:0 11px;font-size:12px;">Log contact</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

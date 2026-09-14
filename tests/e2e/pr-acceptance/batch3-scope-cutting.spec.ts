@@ -26,6 +26,7 @@ import { loginAsAdmin } from "./helpers";
 import {
   apiToken,
   createCuttingItem,
+  ensureRatesLocked,
   lastMoney,
   listCuttingItems,
   purgeCuttingItems,
@@ -49,8 +50,11 @@ async function openCivCuttingSheet(page: Page): Promise<void> {
 }
 
 test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
     await loginAsAdmin(page);
+    // PR #1891 rates-lock gate — a scope tab with no locked rate set renders
+    // the empty state and every WBS assertion below times out.
+    await ensureRatesLocked(request, await apiToken(request), TEMPLATE_TENDER_ID);
   });
 
   test("saw cut: equipment gates elevation and method — Roadsaw is Floor-only, Inverted is never offered", async ({

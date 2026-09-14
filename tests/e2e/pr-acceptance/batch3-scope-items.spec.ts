@@ -39,6 +39,7 @@ import {
   apiToken,
   createScopeItem,
   deleteScopeItem,
+  ensureRatesLocked,
   lastMoney,
   purgeScopeItemsByPrefix,
   TEMPLATE_CARD_DEM,
@@ -137,8 +138,11 @@ async function openMeasurementBlock(article: ReturnType<typeof itemGroup>): Prom
 }
 
 test.describe("Batch 3 — Scope of Works items (PRs #43, #44, #60, #72, #175, #176, #180, #241)", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
     await loginAsAdmin(page);
+    // PR #1891 rates-lock gate — a scope tab with no locked rate set renders
+    // the empty state and every WBS assertion below times out.
+    await ensureRatesLocked(request, await apiToken(request), TEMPLATE_TENDER_ID);
   });
 
   test("discipline card tabs render; seeded items and footer show real $ totals that agree", async ({ page }) => {

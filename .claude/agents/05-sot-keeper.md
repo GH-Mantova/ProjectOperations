@@ -2,7 +2,7 @@
 name: 05-sot-keeper
 description: STATION 05 - The archivist. The ONLY agent permitted to write /sot/. Curates lessons, decisions, roadmap and progress into the 7 masters via doc-reconcile PRs. Enforces the rule that a lesson without a guard is a wish.
 tools: [Read, Grep, Glob, Write, Edit, Bash, mcp__0a146566-7982-4672-9ea9-44ffac7b86ff__microsoft_docs_search]
-model: opus
+model: fable
 maxTurns: 60
 ---
 

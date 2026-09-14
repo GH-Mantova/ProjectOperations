@@ -119,7 +119,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
           <button
             type="button"
             className="s7-btn s7-btn--primary"
-            style={{ background: "#FEAA6D", color: "#242424", borderColor: "#FEAA6D" }}
+            style={{ background: "var(--brand-accent)", color: "#242424", borderColor: "var(--brand-accent)" }}
             onClick={() => void submit()}
             disabled={!file || busy}
           >
@@ -129,7 +129,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
       }
     >
       <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 12 }}>
-        <p style={{ margin: 0, color: "var(--text-muted, #6B7280)" }}>
+        <p style={{ margin: 0, color: "var(--text-secondary)" }}>
           Upload a paper inspection sheet, checklist, or safety form and we&rsquo;ll draft a form
           template you can review before publishing. Uses your configured AI provider (BYOK). The
           draft never publishes automatically.
@@ -141,19 +141,19 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
           <div
             style={{
               flex: 1,
-              border: "1px solid var(--border, #E5E7EB)",
+              border: "1px solid var(--border-default)",
               borderRadius: 8,
               padding: "10px 12px",
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "var(--surface, #fff)"
+              background: "var(--surface-card)"
             }}
           >
             <span style={{ fontSize: 20 }}>&#x1F4C4;</span>
             <div>
               <div style={{ fontWeight: 600, fontSize: 12 }}>PDF</div>
-              <div style={{ color: "var(--text-muted, #6B7280)", fontSize: 11 }}>.pdf</div>
+              <div style={{ color: "var(--text-secondary)", fontSize: 11 }}>.pdf</div>
             </div>
           </div>
 
@@ -161,19 +161,19 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
           <div
             style={{
               flex: 1,
-              border: "1px solid var(--border, #E5E7EB)",
+              border: "1px solid var(--border-default)",
               borderRadius: 8,
               padding: "10px 12px",
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "var(--surface, #fff)"
+              background: "var(--surface-card)"
             }}
           >
             <span style={{ fontSize: 20 }}>&#x1F4DD;</span>
             <div>
               <div style={{ fontWeight: 600, fontSize: 12 }}>Word</div>
-              <div style={{ color: "var(--text-muted, #6B7280)", fontSize: 11 }}>.docx</div>
+              <div style={{ color: "var(--text-secondary)", fontSize: 11 }}>.docx</div>
             </div>
           </div>
 
@@ -181,21 +181,21 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
           <div
             style={{
               flex: 1,
-              border: "1px dashed var(--border, #D1D5DB)",
+              border: "1px dashed var(--border-default)",
               borderRadius: 8,
               padding: "10px 12px",
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "var(--surface-disabled, #F9FAFB)",
+              background: "var(--surface-subtle)",
               opacity: 0.6
             }}
             title="Cognito Forms integration is available via the API only"
           >
             <span style={{ fontSize: 20 }}>&#x1F517;</span>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-muted, #6B7280)" }}>Cognito</div>
-              <div style={{ color: "var(--text-muted, #9CA3AF)", fontSize: 11 }}>API only</div>
+              <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)" }}>Cognito</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 11 }}>API only</div>
             </div>
           </div>
         </div>
@@ -211,14 +211,14 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
           onClick={() => inputRef.current?.click()}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
           style={{
-            border: `2px dashed ${dragging ? "#FEAA6D" : "var(--border, #D1D5DB)"}`,
+            border: `2px dashed ${dragging ? "var(--brand-accent)" : "var(--border-default)"}`,
             borderRadius: 8,
             padding: "20px 16px",
             textAlign: "center",
             cursor: busy ? "not-allowed" : "pointer",
-            background: dragging ? "rgba(254,170,109,0.06)" : "var(--surface, #fff)",
+            background: dragging ? "color-mix(in srgb, var(--brand-accent) 6%, transparent)" : "var(--surface-card)",
             transition: "border-color 0.15s, background 0.15s",
-            color: "var(--text-muted, #6B7280)"
+            color: "var(--text-secondary)"
           }}
         >
           <input
@@ -244,7 +244,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
               alignItems: "center",
               gap: 8,
               padding: "8px 10px",
-              background: "var(--surface-subtle, #F3F4F6)",
+              background: "var(--surface-subtle)",
               borderRadius: 6,
               fontSize: 12
             }}
@@ -255,12 +255,12 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               <strong>{file.name}</strong>
             </span>
-            <span style={{ color: "var(--text-muted, #6B7280)", whiteSpace: "nowrap" }}>
+            <span style={{ color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
               {formatBytes(file.size)}
             </span>
             <span
               style={{
-                background: "var(--border, #E5E7EB)",
+                background: "var(--border-default)",
                 borderRadius: 4,
                 padding: "1px 6px",
                 fontSize: 11,
@@ -277,7 +277,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "var(--text-muted, #9CA3AF)",
+                  color: "var(--text-muted)",
                   padding: "0 2px",
                   fontSize: 14,
                   lineHeight: 1
@@ -292,7 +292,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
 
         {/* Busy label */}
         {busy ? (
-          <div style={{ fontSize: 12, color: "var(--text-muted, #6B7280)" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             Building draft...
           </div>
         ) : null}
@@ -312,7 +312,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
           </div>
         ) : null}
 
-        <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted, #9CA3AF)" }}>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
           Scanned PDFs without a text layer can&rsquo;t be imported directly &mdash; run them
           through OCR first.
         </p>

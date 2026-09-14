@@ -351,6 +351,34 @@ Use sandboxed bash/node; the repo is mounted.
    open PRs (Rule Zero).
 2. CATALOG VALIDITY: assert docs/data-model/metadata-catalog.json parses as valid JSON (`node -e "JSON.parse(require('fs').readFileSync('docs/data-model/metadata-catalog.json','utf8'))"`). It was invalid (unterminated string @ ~offset 407816) for four consecutive sweeps and nothing acted on it. If invalid, this is a HIGH-severity finding — say so loudly, do not bury it.
 3. SOT-04 DRIFT: compare model/enum/FK/domain counts in sot/04-data-model.md's header against the freshly generated docs/data-model/relationship-map.md header. Mismatch = the SoT master's generated section was not re-merged after a regen.
+   🔴 **CORRECTED 2026-09-14 — THE HEADER COUNTS ARE STRUCTURALLY BLIND TO FIELD-LEVEL DRIFT, SO A
+   MATCH IS NOT EVIDENCE THE SECTION IS CURRENT.** Step 1's own correction calls this "the only real
+   drift probe"; it is the only probe *named*, which is not the same thing. The four counts change
+   only when a MODEL, ENUM, FK EDGE or DOMAIN is added or removed. Adding a field to an existing
+   model moves none of them. [MEASURED] 2026-09-14T14:1xZ at `ed3e5e42`: sot/04's header read
+   `Models: 296 | Enums: 69 | FK edges: 493 | Domains: 23` and a freshly generated
+   `relationship-map.md` read the identical four numbers — while the generated bodies differed,
+   `AssetMaintenancePlan` `Fields: 14` against `19` and `BrandColorScheme` `Fields: 7` against `20`,
+   plus a `Suggested dimensions` line present in one and absent in the other. `--check` also
+   exited 0, as step 1 already records it must. **Nothing was empty and nothing warned**, so DOCTRINE
+   §9.6 does not fire: every instrument answered a question about counts, correctly, and no
+   instrument was asked about content.
+
+   🔧 **The probe that answers is a CONTENT comparison of the generated section itself:** slice
+   sot/04 between `<!-- SOT04-GENERATED:BEGIN -->` and `<!-- SOT04-GENERATED:END -->`, slice
+   `relationship-map.md` from its `## Table of Contents` heading, normalise line endings, and
+   compare the two strings. Identical ⇒ current. **Run the header-count check as well, not instead**
+   — it is the cheaper read and it still catches a model-level regen that was never merged.
+   ⚠️ **Compare the strings, never their LENGTHS or their line counts** (DOCTRINE §9.3): sot/04 is
+   CRLF on this host and the generated artifact is written LF, so the two differ by their line count
+   before any content does. ⚠️ **And do not read a naive line-by-line index diff as the size of the
+   drift** — a single inserted line offsets every line after it, and the first pass of this
+   measurement reported 1072 differing lines where `git diff` on the committed result reported
+   **6 insertions / 5 deletions.**
+   ⚠️ **Falsifying probe: the two `Fields:` counts above.** Re-run the content comparison at a
+   commit where the four header counts agree; if it can never disagree with them, this correction is
+   wrong and must be re-measured.
+
 4. ROADMAP DRIFT: compare sot/02's In-PR / Staged lists against ACTUAL open PRs and the docs/pr-prompts/ queue. Note items marked In-PR that are merged/closed, or Staged prompts already merged.
 5. AUTOMATION HEALTH: report watcher liveness by PID **and command line** (`Get-CimInstance Win32_Process` filtered on `pr-watcher[\\/]index\.mjs` — never by image name), the state and `LastTaskResult` of whatever restarter tasks the live task list actually holds, and the newest mtimes under `docs/pr-prompts/processed/`. **Read the live task list; do not enumerate task names from this document.** A dead watcher or a failing restarter means NOTHING is merging — this silently stalled the board for 3 days in July 2026. Lead the report with it if so. (Corrected 2026-08-27: this step previously named four fixtures — `pr-shepherd`, `night-qa`, `watcher-triage`, `feature-queue-watch` — which have not existed for months. `Get-ScheduledTask` across all visible Windows tasks returns none of them and only `PO Watcher Keepalive` matches the project, so every run either reported four phantom tasks as broken or quietly dropped the step.)
 6. MODEL <-> MIGRATION <-> CODE COHERENCE: every `model X` in schema has a backing migration; every migration table has a live model; every model referenced by apps/api/src resolves. Report mismatches.

@@ -156,6 +156,12 @@ describe("InspectionBuilderService.buildFromPdf", () => {
     stream: undefined as unknown as never
   };
 
+  const validDocxFile: Express.Multer.File = {
+    ...validFile,
+    originalname: "checklist.docx",
+    mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  };
+
   it("rejects an empty upload", async () => {
     const svc = new InspectionBuilderService(makeAi([]), makeForms().service);
     await expect(
@@ -163,7 +169,7 @@ describe("InspectionBuilderService.buildFromPdf", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("rejects a non-PDF mimetype", async () => {
+  it("rejects an unsupported mimetype", async () => {
     const svc = new InspectionBuilderService(makeAi([]), makeForms().service);
     await expect(
       svc.buildFromPdf({ ...validFile, mimetype: "image/png" }, "user-1")
@@ -173,12 +179,28 @@ describe("InspectionBuilderService.buildFromPdf", () => {
   it("throws 400 with an OCR hint when the PDF has no text layer", async () => {
     const svc = new InspectionBuilderService(makeAi([]), makeForms().service);
     // Stub the private extractor to return empty text — simulates a scanned PDF.
-    (svc as unknown as { extractPdfText: () => Promise<string> }).extractPdfText = jest
+    (svc as unknown as { extractText: () => Promise<string> }).extractText = jest
       .fn()
       .mockResolvedValue("");
     await expect(svc.buildFromPdf(validFile, "user-1")).rejects.toMatchObject({
       message: expect.stringContaining("no readable text")
     });
+  });
+
+  it("resolves the AI provider config against the 'forms' scope", async () => {
+    const ai = makeAi([
+      { type: "content", text: '{"name":"Test","sections":[]}' },
+      { type: "done" }
+    ]);
+    const { service: forms } = makeForms();
+    const svc = new InspectionBuilderService(ai, forms);
+    (svc as unknown as { extractText: () => Promise<string> }).extractText = jest
+      .fn()
+      .mockResolvedValue("enough text to pass the threshold check here");
+
+    await svc.buildFromPdf(validFile, "user-1");
+
+    expect(ai.resolveProviderConfig).toHaveBeenCalledWith("user-1", "forms");
   });
 
   it("passes AI JSON through the coercer to FormsService.createTemplate and returns counts", async () => {
@@ -192,7 +214,7 @@ describe("InspectionBuilderService.buildFromPdf", () => {
     ]);
     const { service: forms, createTemplate } = makeForms();
     const svc = new InspectionBuilderService(ai, forms);
-    (svc as unknown as { extractPdfText: () => Promise<string> }).extractPdfText = jest
+    (svc as unknown as { extractText: () => Promise<string> }).extractText = jest
       .fn()
       .mockResolvedValue("Ladder Prestart\nRails secure\nSigned by");
 
@@ -210,10 +232,27 @@ describe("InspectionBuilderService.buildFromPdf", () => {
     expect(result.fieldCount).toBe(2);
   });
 
+  it("accepts a Word (.docx) file and routes extraction through mammoth", async () => {
+    const ai = makeAi([
+      { type: "content", text: '{"name":"Word Form","sections":[{"title":"S","fields":[{"label":"Item","fieldType":"text"}]}]}' },
+      { type: "done" }
+    ]);
+    const { service: forms, createTemplate } = makeForms();
+    const svc = new InspectionBuilderService(ai, forms);
+    (svc as unknown as { extractDocxText: () => Promise<string> }).extractDocxText = jest
+      .fn()
+      .mockResolvedValue("--- Document ---\nItem description with enough text for threshold");
+
+    const result = await svc.buildFromPdf(validDocxFile, "user-1");
+
+    expect(createTemplate).toHaveBeenCalledTimes(1);
+    expect(result.provider).toBe("anthropic");
+  });
+
   it("surfaces AI stream errors as 503", async () => {
     const ai = makeAi([{ type: "error", error: "429 rate limited" }]);
     const svc = new InspectionBuilderService(ai, makeForms().service);
-    (svc as unknown as { extractPdfText: () => Promise<string> }).extractPdfText = jest
+    (svc as unknown as { extractText: () => Promise<string> }).extractText = jest
       .fn()
       .mockResolvedValue("some real text with enough length to pass the threshold check");
     await expect(svc.buildFromPdf(validFile, "user-1")).rejects.toBeInstanceOf(

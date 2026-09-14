@@ -252,16 +252,16 @@ function MiniBadge({
 }) {
   const bg =
     variant === "success"
-      ? "var(--status-success, #22c55e)"
+      ? "var(--status-active)"
       : variant === "warning"
-        ? "var(--status-warning, #f59e0b)"
+        ? "var(--status-warning)"
         : variant === "muted"
-          ? "var(--surface-2, #f3f4f6)"
-          : "var(--surface-2, #f3f4f6)";
+          ? "var(--surface-subtle)"
+          : "var(--surface-subtle)";
   const color =
     variant === "success" || variant === "warning"
-      ? "#fff"
-      : "var(--text-secondary, #374151)";
+      ? "var(--text-inverse)"
+      : "var(--text-secondary)";
   return (
     <span
       style={{
@@ -438,12 +438,12 @@ export function PushBackDialog({
           style={{
             padding: "12px 14px",
             borderRadius: 8,
-            background: "var(--status-danger-bg, #fef2f2)",
-            border: "1px solid var(--status-danger, #ef4444)",
+            background: "color-mix(in srgb, var(--status-danger) 12%, transparent)",
+            border: "1px solid var(--status-danger)",
             marginBottom: 16,
           }}
         >
-          <p style={{ margin: 0, fontWeight: 600, color: "var(--status-danger, #b91c1c)" }}>
+          <p style={{ margin: 0, fontWeight: 600, color: "var(--status-danger)" }}>
             {state.message}
           </p>
         </div>

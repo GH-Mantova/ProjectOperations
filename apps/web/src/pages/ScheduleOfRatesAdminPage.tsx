@@ -203,7 +203,7 @@ function sourceBadge(source: SorRateSourceType | undefined): ReactNode {
         fontSize: 10,
         fontWeight: 700,
         background: SOURCE_BADGE_COLOR[value],
-        color: "#fff"
+        color: "var(--text-inverse)"
       }}
     >
       {SOURCE_BADGE_LABEL[value]}
@@ -333,7 +333,7 @@ function PushBackButton({
           borderRadius: 99,
           fontSize: 10,
           fontWeight: 600,
-          background: "var(--surface-2, #f3f4f6)",
+          background: "var(--surface-subtle)",
           color: "var(--text-muted)",
           whiteSpace: "nowrap"
         }}
@@ -367,7 +367,7 @@ function PushBackButton({
             borderRadius: 99,
             fontSize: 10,
             fontWeight: 600,
-            background: "var(--surface-2, #f3f4f6)",
+            background: "var(--surface-subtle)",
             color: "var(--text-muted)",
             whiteSpace: "nowrap"
           }}
@@ -510,9 +510,9 @@ function DriftLine({
 function statusBadge(status: SorPeriodStatus): ReactNode {
   const color =
     status === "ACTIVE"
-      ? "var(--status-success, #22c55e)"
+      ? "var(--status-active)"
       : status === "EXPIRED"
-        ? "var(--status-danger, #ef4444)"
+        ? "var(--status-danger)"
         : "var(--text-muted)";
   return (
     <span
@@ -523,7 +523,7 @@ function statusBadge(status: SorPeriodStatus): ReactNode {
         fontSize: 11,
         fontWeight: 600,
         background: color,
-        color: "#fff",
+        color: "var(--text-inverse)",
         marginLeft: 6,
         verticalAlign: "middle"
       }}
@@ -839,8 +839,8 @@ export function ScheduleOfRatesAdminPage() {
             bottom: 80,
             right: 20,
             zIndex: 2000,
-            background: "var(--status-success, #22c55e)",
-            color: "#fff",
+            background: "var(--status-active)",
+            color: "var(--text-inverse)",
             padding: "10px 16px",
             borderRadius: 8,
             maxWidth: 420,
@@ -2164,7 +2164,7 @@ function SubcontractorRateRow({
             onChange={(e) => setDraft((prev) => ({ ...prev, isReference: e.target.checked }))}
           />
         ) : rate.isReference ? (
-          <span style={{ color: "var(--status-success, #22c55e)", fontWeight: 600 }}>Yes</span>
+          <span style={{ color: "var(--status-active)", fontWeight: 600 }}>Yes</span>
         ) : (
           <span style={{ color: "var(--text-muted)" }}>No</span>
         )}
@@ -2323,9 +2323,9 @@ function CategoryMarkupsEditor({
             padding: "2px 10px",
             borderRadius: 6,
             fontSize: 12,
-            background: driftedCount > 0 ? "var(--status-warning-bg, #fffbeb)" : "var(--surface-2, #f3f4f6)",
-            border: `1px solid ${driftedCount > 0 ? "var(--status-warning, #f59e0b)" : "var(--border-subtle, rgba(0,0,0,0.08))"}`,
-            color: driftedCount > 0 ? "var(--status-warning, #92400e)" : "var(--text-muted)",
+            background: driftedCount > 0 ? "color-mix(in srgb, var(--status-warning) 15%, transparent)" : "var(--surface-subtle)",
+            border: `1px solid ${driftedCount > 0 ? "var(--status-warning)" : "var(--border-subtle, rgba(0,0,0,0.08))"}`,
+            color: driftedCount > 0 ? "var(--status-warning)" : "var(--text-muted)",
             whiteSpace: "nowrap"
           }}
           title="Lines that differ from their hub figure"
@@ -2337,7 +2337,7 @@ function CategoryMarkupsEditor({
             padding: "2px 10px",
             borderRadius: 6,
             fontSize: 12,
-            background: "var(--surface-2, #f3f4f6)",
+            background: "var(--surface-subtle)",
             border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
             color: "var(--text-muted)",
             whiteSpace: "nowrap"
@@ -2689,9 +2689,9 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
   const rowKindBadge = (kind: RowKind): ReactNode => {
     if (kind === "master") return null;
     const cfg: Record<Exclude<RowKind, "master">, { label: string; color: string }> = {
-      override: { label: "Override", color: "var(--status-warning, #f59e0b)" },
+      override: { label: "Override", color: "var(--status-warning)" },
       added: { label: "Added", color: "var(--status-info, #3b82f6)" },
-      removed: { label: "Removed", color: "var(--status-danger, #ef4444)" }
+      removed: { label: "Removed", color: "var(--status-danger)" }
     };
     const { label, color } = cfg[kind];
     return (
@@ -2703,7 +2703,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
           fontSize: 10,
           fontWeight: 600,
           background: color,
-          color: "#fff",
+          color: "var(--text-inverse)",
           marginLeft: 4
         }}
       >

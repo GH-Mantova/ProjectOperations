@@ -26,7 +26,7 @@ import {
   BuildFormFromPdfResponseDto,
   DraftRuleDto
 } from "./dto/inspection-builder.dto";
-import { InspectionBuilderService } from "./inspection-builder.service";
+import { InspectionBuilderService, ACCEPTED_MIMETYPES } from "./inspection-builder.service";
 import { AiFormDescribeService } from "./ai-form-describe.service";
 import { AiRuleDraftService } from "./ai-rule-draft.service";
 import type { FieldRule } from "@project-ops/config/forms-rule-definition";
@@ -36,6 +36,10 @@ import type { FieldRule } from "@project-ops/config/forms-rule-definition";
 // oversized files at the multer layer so we never buffer a 500 MB blob
 // just to fail parse.
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+// ACCEPTED_MIMETYPES (imported from service) contains:
+//   - application/pdf
+//   - application/vnd.openxmlformats-officedocument.wordprocessingml.document
 
 /**
  * `InspectionBuilderController` -- AI-assisted form template authoring endpoints.
@@ -69,17 +73,33 @@ export class InspectionBuilderController {
   @RequirePermissions("forms.manage")
   @UseInterceptors(
     FileInterceptor("file", {
-      limits: { fileSize: MAX_UPLOAD_BYTES }
+      limits: { fileSize: MAX_UPLOAD_BYTES },
+      fileFilter: (
+        _req: unknown,
+        file: Express.Multer.File,
+        cb: (err: Error | null, accept: boolean) => void
+      ) => {
+        if (ACCEPTED_MIMETYPES.has(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              `Unsupported file type: ${file.mimetype}. Upload a PDF or Word (.docx) document.`
+            ),
+            false
+          );
+        }
+      }
     })
   )
   @ApiConsumes("multipart/form-data")
   @ApiOperation({
-    summary: "Build a DRAFT form template from an uploaded PDF",
+    summary: "Build a DRAFT form template from an uploaded PDF or Word document",
     description:
-      "Extracts text from the uploaded PDF, calls the caller's configured AI provider (BYOK via AiProvidersService -- same key store as the assist panel) to derive sections + fields, and creates a DRAFT FormTemplate. Never publishes the template -- the user must open it in the designer and press publish. Requires forms.manage."
+      "Extracts text from the uploaded PDF or Word (.docx) document, calls the caller's configured AI provider (BYOK via AiProvidersService -- same key store as the assist panel) to derive sections + fields, and creates a DRAFT FormTemplate. Never publishes the template -- the user must open it in the designer and press publish. Requires forms.manage. Route name is intentionally preserved for backwards compatibility."
   })
   @ApiResponse({ status: 201, description: "Draft form template created.", type: BuildFormFromPdfResponseDto })
-  @ApiResponse({ status: 400, description: "Missing/invalid PDF, or PDF has no text layer (scanned)." })
+  @ApiResponse({ status: 400, description: "Missing/invalid file, unsupported type, or PDF has no text layer (scanned)." })
   @ApiResponse({ status: 403, description: "Missing forms.manage permission." })
   @ApiResponse({ status: 503, description: "AI provider not configured or upstream error." })
   async buildFromPdf(
@@ -87,7 +107,7 @@ export class InspectionBuilderController {
     @CurrentUser() actor: AuthenticatedUser
   ): Promise<BuildFormFromPdfResponseDto> {
     if (!file) {
-      throw new BadRequestException("Upload a PDF file in the `file` multipart field.");
+      throw new BadRequestException("Upload a PDF or Word (.docx) file in the `file` multipart field.");
     }
     return this.builder.buildFromPdf(file, actor.sub);
   }

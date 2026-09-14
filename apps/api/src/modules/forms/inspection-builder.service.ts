@@ -4,6 +4,7 @@ import {
   Logger,
   ServiceUnavailableException
 } from "@nestjs/common";
+import * as mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
 import { AiProvidersService } from "../ai-providers/ai-providers.service";
 import { sanitiseProviderError } from "../ai-providers/error-sanitiser";
@@ -43,14 +44,15 @@ export class InspectionBuilderService {
   /**
    * Build a DRAFT form template from an uploaded document.
    *
-   * Text-layer PDFs are extracted with pdfjs-dist (no network round-trip),
-   * then the extracted text is sent to the caller's configured AI provider
-   * as a one-shot chat request that MUST reply with the JSON envelope
+   * PDF files are extracted with pdfjs-dist; Word (.docx) files are extracted
+   * with mammoth. The extracted text is sent to the caller's configured AI
+   * provider as a one-shot chat request that MUST reply with the JSON envelope
    * described in `SYSTEM_PROMPT`. The JSON is parsed, coerced to
    * `UpsertFormTemplateDto`, and handed straight to `FormsService.createTemplate`.
    *
    * Failure modes:
-   *  - Empty / corrupt PDF → 400 BadRequest.
+   *  - Empty / corrupt file → 400 BadRequest.
+   *  - Unsupported mimetype → 400 BadRequest with accepted list.
    *  - Scanned (image-only) PDF with no text layer → 400 BadRequest with an
    *    "extract text first" hint. This slice deliberately does NOT ship
    *    vision fallback — that expands blast radius (tokens, provider quirks,
@@ -63,22 +65,22 @@ export class InspectionBuilderService {
     actorId: string
   ): Promise<{ id: string; name: string; provider: string; fieldCount: number; sectionCount: number }> {
     if (!file || !file.buffer || file.size === 0) {
-      throw new BadRequestException("Upload a non-empty PDF.");
+      throw new BadRequestException("Upload a non-empty document.");
     }
-    if (file.mimetype !== "application/pdf") {
+    if (!ACCEPTED_MIMETYPES.has(file.mimetype)) {
       throw new BadRequestException(
-        `Unsupported file type: ${file.mimetype}. Upload a PDF.`
+        `Unsupported file type: ${file.mimetype}. Accepted: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document.`
       );
     }
 
-    const extractedText = await this.extractPdfText(file.buffer, file.originalname);
+    const extractedText = await this.extractText(file);
     if (extractedText.trim().length < 20) {
       throw new BadRequestException(
         "This PDF has no readable text layer — it looks like a scan. Run it through OCR first, or paste the content into a new form manually."
       );
     }
 
-    const config = await this.aiProviders.resolveProviderConfig(actorId, "tendering");
+    const config = await this.aiProviders.resolveProviderConfig(actorId, "forms");
 
     this.logger.log(
       `Build-from-PDF start [user=${actorId}, file=${file.originalname}, bytes=${file.size}, chars=${extractedText.length}, provider=${config.providerId}, source=${config.source}]`
@@ -104,6 +106,37 @@ export class InspectionBuilderService {
       fieldCount,
       sectionCount
     };
+  }
+
+  /**
+   * Dispatch text extraction to the appropriate extractor based on mimetype.
+   */
+  private async extractText(file: Express.Multer.File): Promise<string> {
+    if (file.mimetype === MIMETYPE_PDF) {
+      return this.extractPdfText(file.buffer, file.originalname);
+    }
+    if (file.mimetype === MIMETYPE_DOCX) {
+      return this.extractDocxText(file.buffer, file.originalname);
+    }
+    // Should never reach here — ACCEPTED_MIMETYPES guard above catches this.
+    throw new BadRequestException(
+      `Unsupported file type: ${file.mimetype}. Accepted: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document.`
+    );
+  }
+
+  /**
+   * Extract raw text from a .docx buffer using mammoth. No pages in a Word
+   * document — we emit a single document marker and cap to MAX_TEXT_CHARS_TO_MODEL.
+   */
+  private async extractDocxText(bytes: Buffer, filename: string): Promise<string> {
+    let result: { value: string };
+    try {
+      result = await mammoth.extractRawText({ buffer: bytes });
+    } catch {
+      throw new BadRequestException(`Failed to parse "${filename}". The file may be corrupt.`);
+    }
+    const text = result.value.trim();
+    return (`--- Document ---\n${text}`).slice(0, MAX_TEXT_CHARS_TO_MODEL);
   }
 
   /**
@@ -185,6 +218,15 @@ export class InspectionBuilderService {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
+
+const MIMETYPE_PDF = "application/pdf";
+const MIMETYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** Mimetypes accepted by `buildFromPdf` / the multer filter on the controller. */
+export const ACCEPTED_MIMETYPES: ReadonlySet<string> = new Set([
+  MIMETYPE_PDF,
+  MIMETYPE_DOCX
+]);
 
 // Cap the text handed to the model. 40k chars ≈ 10-12k tokens on Anthropic
 // tokenisers — comfortably inside the 8k output allowance the assist path

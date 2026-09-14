@@ -573,9 +573,9 @@ function TemplatesTab({
               type="button"
               className="s7-btn s7-btn--secondary"
               onClick={onImport}
-              title="Upload a paper form as a PDF; AI drafts a matching template you can review"
+              title="Upload a PDF or Word document; AI drafts a matching template you can review"
             >
-              Import from PDF…
+              Import from document...
             </button>
             <button
               type="button"

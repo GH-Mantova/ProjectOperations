@@ -72,6 +72,7 @@ premise_means: The ConfirmDialog component does not exist yet.
 scope:
   - apps/web/src/components/**
   - packages/ui/src/**
+  - docs/pr-prompts/superseded/pr-my-prompt-HOLD.md   # retire THIS prompt, in THIS PR
 done_when: pnpm build && pnpm lint && grep -rq "ConfirmDialog" packages/ui/src
 size: 6
 gate_allow: none          # none | migrations | env-vars | dependencies
@@ -82,6 +83,56 @@ backfill: false           # OPTIONAL; only meaningful for migration-scoped promp
 module: ''                # OPTIONAL; derived from `scope` when unambiguous (see below)
 ---
 ```
+
+### `scope` — and it MUST name the prompt's own `-HOLD.md`
+
+🔴 **A prompt whose `scope` does not name its own file is never retired by the PR that builds
+it, and it stays armable forever.** Arming renames `-HOLD.md` → `-ready.md`, and the watcher deletes
+the `-ready.md` when it builds — but the `-HOLD.md` is still **tracked on `origin/main`**. Nothing in
+the build removes it there. The moment anything restores that path, `lint-prompt.mjs` reads it
+`ADMIT` again and it is armable: a duplicate of a PR that is already open.
+
+**[MEASURED] 2026-09-14T09:2xZ by Station 00** at `e5d40aff`, over the three prompts armed in the
+preceding twenty-four hours, each read with `gh pr view <n> --json files`:
+
+| prompt | its PR | does the PR retire the prompt? |
+|---|---|---|
+| `pr-fv2-import-s1-docx-and-persona` | `#1918` | **YES** — `docs/pr-prompts/superseded/pr-fv2-import-s1-docx-and-persona-HOLD.md` is in its file list |
+| `pr-ea-s2a-dashboard-preset-seed` | `#1920` | no |
+| `pr-ratescol-s0-column-api-hygiene` | `#1923` | no |
+
+**One of the three works, and the whole difference is in the prompt.** `#1918`'s prompt named its own
+path in `scope`, so the code-writer moved it to `superseded/` in the same PR. The other two did not,
+and each left a tracked `-HOLD.md` behind.
+
+🔧 **So every prompt's `scope` carries one extra entry — its own file:**
+
+```yaml
+scope:
+  - apps/web/src/components/**
+  - docs/pr-prompts/superseded/pr-my-prompt-HOLD.md   # retire THIS prompt, in THIS PR
+```
+
+and the body's `done_when` can then see it:
+`! test -f docs/pr-prompts/pr-my-prompt-HOLD.md`. **The retirement counts toward `size`** — it is a
+real file in the diff, so a prompt at the `size: 10` ceiling is one over and must be split anyway.
+
+⚠️ **`git mv` it into `superseded/`, never delete it.** The prompt is the only surviving record of
+why the work was proposed, and `superseded/` is where this pipeline keeps spent prompts.
+
+⚠️ **This deliberately does NOT retire a prompt whose PR is closed unmerged.** The retirement rides
+in the PR's own diff, so it lands only if the PR lands. That is the correct behaviour, and it is why
+the cure belongs in the prompt rather than in a sweep that fires on arming: a sweep that retired the
+prompt at arming time would destroy work whose PR was later closed.
+
+⚠️ **The defect this removes has been re-found five times.** Until now it was curable only by hand,
+after the fact, by a run that happened to notice a lone `0	<n>	docs/pr-prompts/...-HOLD.md` row in
+`git diff --numstat` after a fast-forward — and the safe response to that row is to leave the
+deletion in place until the PR merges, which is a second thing to remember rather than a fix.
+
+**Falsifying probe: `gh pr view <n> --json files` on the next PR built from an armed prompt.** If
+`docs/pr-prompts/superseded/<prompt>-HOLD.md` is absent from that file list, the prompt did not carry
+its own path and this rule was not followed.
 
 ### `premise` — **the field that matters**
 

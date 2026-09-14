@@ -303,6 +303,14 @@ It costs one tool call. Being wrong costs a PR, a review cycle, and Marco's trus
 4. The PR body has any required **column-0 `GATE-ALLOW:` marker** — bare, no `## ` prefix.
    (10 PRs failed CP-11 on exactly this. `## GATE-ALLOW: migrations` does NOT match the regex.)
 5. You pushed, and you opened the PR.
+6. **No hex colour literal anywhere under `apps/web/src`** — every colour is a `tokens.css` token by
+   role (`--text-*`, `--surface-*`, `--border-*`, `--status-*`, `--brand-*`), and a `var(--x, #hex)`
+   FALLBACK counts as a literal. CI runs `scripts/pipeline/check-hex-ratchet.mjs --check` against
+   `docs/qa/hex-baseline.json` and a file absent from the baseline must be clean; the baseline may
+   only shrink. `HEX_RATCHET_IN_DONE_V1` — five PRs in two days (#1894, #1895, #1905, #1910, #1911)
+   went red on exactly this and each needed a repair commit before it could merge. Run the ratchet
+   before you push: `git show origin/main:docs/qa/hex-baseline.json > /tmp/hex.base.json && node
+   scripts/pipeline/check-hex-ratchet.mjs --check --base /tmp/hex.base.json`.
 
 **Never write "done" for something you have not grepped.** PR #476 claimed `createPortal`; #478
 claimed a `managerId` DTO. Neither was in the diff. **The station gate greps your diff — self-report

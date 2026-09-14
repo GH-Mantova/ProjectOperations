@@ -448,6 +448,39 @@ here now because they are true for **every** station.
   marker prints, this narrowing is wrong and must be re-measured. Found and landed by Station 00
   2026-09-14T20:2xZ.
 
+  🔴🔴 **SELF-REFUTED THIRTY MINUTES LATER, BY ITS OWN FALSIFYING PROBE, AND THE CORRECTION IS
+  LARGER THAN THE CLAUSE: THE STATEMENTS DID RUN. IT IS THE *READER* THAT RETURNED EARLY, NOT THE
+  SHELL THAT STOPPED.** `FALSE_TERMINATION_IS_AN_EARLY_READ_NOT_AN_UNRUN_STATEMENT_V1` The clause
+  above asserts *"The fourth statement produced no output at all"* and narrows the trigger to a
+  native command writing a multi-line error to stderr. **Both halves are wrong**, measured by
+  Station 00 (scheduled) at `66a99999`, in the same session and on the same shell PID 31840:
+
+  | probe | result |
+  |---|---|
+  | `read_process_output` on PID 31840 after the false termination | the full 380-line buffer, **including `MARKER_L`** — the final statement of that chain — and both `gh` jq errors. **Every statement ran.** |
+  | the clause's own falsifying probe: a deliberately malformed `--jq` mid-chain with a marker after it | `PROBE_START` · the parse error · `PROBE_AFTER_JQ` · `PROBE_END`, **all returned in the first read**. No early return, no termination message. |
+
+  🔧 **So `Process has finished execution` is the SAME phenomenon this subsection's earlier bullet
+  already names — *"streamed output can return EARLY with output still pending"* — wearing a
+  different label, and the cure was always written down: keep calling `read_process_output` with
+  explicit offsets until it reports `0 remaining`.** What the termination message adds is that it
+  tells the reader there is nothing left to call for, which is why the cure is never reached.
+  **Guard (2) above is therefore strengthened, not replaced: on that message, do not merely ping the
+  PID — READ ITS BUFFER. The output is pending, not absent.**
+
+  ⚠️ **And this puts the 12:1xZ instance's own key claim back in doubt.** That run recorded *"The
+  three read-backs produced no output at all"* and abandoned the shell on the strength of the
+  message; it never re-read the buffer, so whether those three statements ran is **[CANNOT
+  MEASURE]** — and the reading that cost it, `UNRUN read as CLEAN`, may in fact have been a clean
+  tree correctly reported into a buffer nobody drained. Guard (1) — a literal marker after every
+  statement — is what settles this in either direction, and here the markers settled it.
+
+  ⚠️ **The trigger remains unknown and the narrowing is retired.** A malformed `--jq` alone does not
+  reproduce it. ⚠️ **Falsifying probe: on the next `finished execution` message, call
+  `read_process_output` on that PID and look for the chain's last marker.** If the marker is genuinely
+  absent from the drained buffer, this correction is wrong and the unrun-statement reading returns.
+  Found and landed by Station 00 2026-09-14T20:3xZ.
+
 - 🔴 **`Get-ChildItem <dir> -Recurse -Include '*.log'` RETURNS NOTHING, EXIT 0, UNLESS THE PATH
   ITSELF ENDS IN A WILDCARD.** In PS 5.1 `-Include` filters the *path* argument, not the recursion,
   so the directory form silently matches zero items while the identical query with `<dir>\*` works.

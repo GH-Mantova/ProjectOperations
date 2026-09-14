@@ -4,6 +4,7 @@ import { BrandingService } from "../branding.service";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { COMPANY_PROFILE_ID } from "../../company-profile/company-profile.service";
+import { HARBOUR_PRESET, GRAPHITE_PRESET } from "../../../../prisma/seed-company-profile";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -267,5 +268,51 @@ describe("BrandingService.upsertColorScheme — hex validation", () => {
     mockAudit.write.mockResolvedValue(undefined);
 
     await expect(service.upsertColorScheme("actor-1", fullDto)).resolves.toBeDefined();
+  });
+});
+
+// ── Suite: S4 named presets (Harbour, Graphite) ──────────────────────────────
+//
+// The values themselves live in seed-company-profile.ts and are imported here
+// so the test cannot drift silently: renaming a field or dropping a value from
+// the seed breaks these assertions before the seed runs against a real DB.
+describe("S4 named presets — Harbour and Graphite", () => {
+  const PALETTE_FIELDS = ["primaryColorHex", "secondaryColorHex", ...S3_FIELDS] as const;
+
+  for (const preset of [HARBOUR_PRESET, GRAPHITE_PRESET]) {
+    describe(preset.name, () => {
+      it("populates all fifteen colour fields with a non-null hex", () => {
+        for (const field of PALETTE_FIELDS) {
+          const value = (preset as Record<string, unknown>)[field];
+          expect(value).not.toBeNull();
+          expect(typeof value).toBe("string");
+          expect(value).toMatch(/^#[0-9A-Fa-f]{6}$/);
+        }
+      });
+    });
+  }
+
+  it("listColorSchemes() returns the two presets alongside Default", async () => {
+    jest.clearAllMocks();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BrandingService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuditService, useValue: mockAudit }
+      ]
+    }).compile();
+    const service = module.get(BrandingService);
+
+    // findMany is what the seed's upserts feed into — sorted by name asc, so
+    // the order is Default, Graphite, Harbour.
+    mockPrisma.brandColorScheme.findMany.mockResolvedValue([
+      { id: "brand-scheme-default", name: "Default", primaryColorHex: "#005B61", secondaryColorHex: "#FEAA6D" },
+      GRAPHITE_PRESET,
+      HARBOUR_PRESET
+    ]);
+
+    const schemes = await service.listColorSchemes();
+    const names = schemes.map((s) => s.name);
+    expect(names).toEqual(["Default", "Graphite", "Harbour"]);
   });
 });

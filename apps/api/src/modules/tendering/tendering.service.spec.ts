@@ -24,7 +24,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     await expect(
@@ -58,7 +59,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     return expect(
@@ -92,7 +94,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     const result = await service.previewImport([
@@ -117,7 +120,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     const addNoteSpy = jest.spyOn(service, "addNote").mockResolvedValue({ id: "tender-1" } as never);
@@ -174,7 +178,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       projects as never,
       contracts as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     await service.updateStatus("t-1", "CONTRACT_ISSUED", "user-1");
@@ -216,7 +221,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       projects as never,
       contracts as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     await service.updateStatus("t-1", "CONTRACT_ISSUED", "user-1");
@@ -260,7 +266,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       contracts as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     const result = await service.updateStatus("t-1", "CONTRACT_ISSUED", "user-1");
@@ -281,7 +288,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      {} as never
     );
 
     await expect(
@@ -333,7 +341,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      outcomeCapture as never
+      outcomeCapture as never,
+      {} as never
     );
 
     await expect(service.updateStatus("t-1", "LOST", "user-1")).resolves.toBeDefined();
@@ -374,7 +383,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      outcomeCapture as never
+      outcomeCapture as never,
+      {} as never
     );
 
     const outcome = {
@@ -431,7 +441,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      outcomeCapture as never
+      outcomeCapture as never,
+      {} as never
     );
 
     const result = await service.recordTenderOutcome(
@@ -459,6 +470,7 @@ describe("TenderingService", () => {
       estimatedValue: null,
       tenderClients: []
     });
+    const rateSetService = { lock: jest.fn().mockResolvedValue(undefined) };
     const service = new TenderingService(
       {
         tender: {
@@ -481,7 +493,8 @@ describe("TenderingService", () => {
       { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
       { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
       { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+      { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+      rateSetService as never
     );
 
     await service.updateStatus("t-1", "SUBMITTED", "user-1");
@@ -497,5 +510,9 @@ describe("TenderingService", () => {
     const primaryCall = tenderUpdate.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(primaryCall.data.status).toBe("SUBMITTED");
     expect(primaryCall.data.submittedAt).toBeInstanceOf(Date);
+    // draftpanel S1: with no existing snapshot, the status writer must call
+    // TenderRateSetService.lock() so lock() owns the ratesSnapshotAt write.
+    expect(rateSetService.lock).toHaveBeenCalledTimes(1);
+    expect(rateSetService.lock).toHaveBeenCalledWith("t-1", "user-1");
   });
 });

@@ -35,7 +35,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { loginAsAdmin } from "./helpers";
-import { TEMPLATE_TENDER_ID } from "./api-helpers";
+import { apiToken, ensureRatesLocked, TEMPLATE_TENDER_ID } from "./api-helpers";
 
 /**
  * The placeholder WbsCommentBlock passes to the shared NotesField.
@@ -106,8 +106,12 @@ function cardEntry(page: Page, code: string) {
 }
 
 test.describe("Batch 8 — Shell & tendering long tail (PRs #219, #248, #172, #182, #178, #177, #27, #14)", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
     await loginAsAdmin(page);
+    // PR #1891 rates-lock gate — the scope-tab and long-tail markup tests
+    // below open /tenders/<TEMPLATE_TENDER_ID>/scope, which now renders the
+    // "Lock rates before pricing" empty state when the tender has no set.
+    await ensureRatesLocked(request, await apiToken(request), TEMPLATE_TENDER_ID);
   });
 
   test("tender detail tabs navigate and reflect the active tab (PR #219)", async ({ page }) => {

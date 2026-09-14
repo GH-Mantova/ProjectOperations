@@ -38,6 +38,7 @@ import {
   apiToken,
   createScopeItem,
   deleteScopeItem,
+  ensureRatesLocked,
   listWasteRows,
   purgeScopeItemsByPrefix,
   purgeWasteRows,
@@ -53,8 +54,11 @@ async function openDemCard(page: Page): Promise<void> {
 }
 
 test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #180)", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
     await loginAsAdmin(page);
+    // PR #1891 rates-lock gate — a scope tab with no locked rate set renders
+    // the empty state and every WBS assertion below times out.
+    await ensureRatesLocked(request, await apiToken(request), TEMPLATE_TENDER_ID);
   });
 
   test("manual waste row: Group → Type → Facility cascade narrows options and auto-fills the rate/unit", async ({

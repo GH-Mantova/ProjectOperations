@@ -48,7 +48,8 @@ function makeService(prisma: ReturnType<typeof mockPrisma>, audit: ReturnType<ty
     { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
     { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
     { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-    { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never
+    { recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }), normalizeOutcome: jest.fn((v) => v ?? {}) } as never,
+    {} as never
   );
 }
 

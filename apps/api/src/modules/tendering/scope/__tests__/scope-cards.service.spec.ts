@@ -48,6 +48,9 @@ function buildPrismaMock(opts: {
   scopeItemCount?: number;
   scopeItemAggregateMaxItemNumber?: number;
   estimatePlantRates?: Array<{ id: string; category: string | null }>;
+  /** Whether a TenderRateSet row exists for the tender. Defaults to true so
+   *  existing tests continue to pass without change. */
+  rateSetExists?: boolean;
 } = {}) {
   const tenderFindUnique: AsyncMock = jest.fn(async () =>
     opts.tenderExists === false ? null : { id: "tender-1" }
@@ -107,8 +110,14 @@ function buildPrismaMock(opts: {
     return [];
   });
 
+  // Rates-gate — default true so all pre-existing tests pass unchanged.
+  const rateSetFindUnique: AsyncMock = jest.fn(async () =>
+    opts.rateSetExists === false ? null : { id: "rate-set-1", tenderId: "tender-1" }
+  );
+
   const prisma = {
     tender: { findUnique: tenderFindUnique },
+    tenderRateSet: { findUnique: rateSetFindUnique },
     scopeCard: {
       findFirst: scopeCardFindFirst,
       findMany: scopeCardFindMany,
@@ -134,6 +143,7 @@ function buildPrismaMock(opts: {
     prisma,
     mocks: {
       tenderFindUnique,
+      rateSetFindUnique,
       scopeCardFindFirst,
       scopeCardFindMany,
       scopeCardAggregate,
@@ -191,6 +201,34 @@ describe("ScopeOfWorksService.createCard (PR B1)", () => {
     };
     expect(args.data?.name?.length).toBe(200);
     expect(args.data?.name?.startsWith("x")).toBe(true);
+  });
+});
+
+describe("ScopeOfWorksService.createCard — rates-gate (draftpanel S1)", () => {
+  it("throws ConflictException when no TenderRateSet exists for the tender", async () => {
+    const { prisma } = buildPrismaMock({ rateSetExists: false });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await expect(
+      svc.createCard("tender-1", "user-1", { name: "Demo", discipline: "DEM" })
+    ).rejects.toThrow("Rates are not locked for this tender.");
+  });
+
+  it("throws ConflictException (not NotFoundException) so the caller can surface a helpful message", async () => {
+    const { prisma } = buildPrismaMock({ rateSetExists: false });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await expect(
+      svc.createCard("tender-1", "user-1", { name: "Demo", discipline: "DEM" })
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("proceeds normally when a TenderRateSet exists", async () => {
+    const { prisma, mocks } = buildPrismaMock({
+      rateSetExists: true,
+      scopeCardAggregateMax: { cardNumber: null, sortOrder: null }
+    });
+    const svc = new ScopeOfWorksService(prisma as never, minimalRateResolver);
+    await svc.createCard("tender-1", "user-1", { name: "Demo", discipline: "DEM" });
+    expect(mocks.scopeCardCreate).toHaveBeenCalledTimes(1);
   });
 });
 

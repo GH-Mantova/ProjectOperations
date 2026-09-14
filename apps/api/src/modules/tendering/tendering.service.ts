@@ -10,6 +10,7 @@ import { SharePointService } from "../platform/sharepoint.service";
 import { ProjectsService } from "../projects/projects.service";
 import { TenderNumberService } from "./tender-number.service";
 import { RecordTenderOutcomeInput, TenderOutcomeCaptureService } from "./tender-outcome-capture.service";
+import { TenderRateSetService } from "./tender-rate-set.service";
 import { clientSlug, FALLBACK_SLUG } from "../../common/id-format/client-slug";
 import { SEEDED_DEFAULT_TENANT_ID } from "../../common/tenancy/tenant.constants";
 import { QuickEditDto, TenderQueryDto, TenderSortField } from "./dto/tender-query.dto";
@@ -142,7 +143,11 @@ export class TenderingService {
     private readonly contracts: ContractsService,
     // WL-1a — append-only recorder of TenderOutcome. Optional at close, but
     // when the caller sends an outcome payload the writes go through here.
-    private readonly outcomeCapture: TenderOutcomeCaptureService
+    private readonly outcomeCapture: TenderOutcomeCaptureService,
+    // Rates-gate: locks the rate snapshot on first SUBMITTED when the tender
+    // has no existing rate set. TenderRateSetService is provided by the same
+    // TenderingModule so no forwardRef is needed.
+    private readonly rateSetService: TenderRateSetService
   ) {}
 
   /**
@@ -285,7 +290,7 @@ export class TenderingService {
 
     const existing = await this.prisma.tender.findMany({
       where: { id: { in: uniqueIds } },
-      select: { id: true, status: true, submittedAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true, tenderWinCounted: true }
+      select: { id: true, status: true, submittedAt: true, ratesSnapshotAt: true, wonAt: true, lostAt: true, tenderScoreCounted: true, tenderWinCounted: true }
     });
     const missing = uniqueIds.filter((id) => !existing.some((tender) => tender.id === id));
     if (missing.length) {
@@ -296,11 +301,27 @@ export class TenderingService {
     const isWon = status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED";
     const isScorable = isWon || status === "SUBMITTED" || status === "LOST";
 
+    // Rates-gate: for any tender that is being submitted for the first time and
+    // has no rate set, lock rates BEFORE the bulk transaction so lock()'s own
+    // transaction completes first. Tenders that already have a set are skipped.
+    for (const tender of existing) {
+      const needsLock =
+        !tender.ratesSnapshotAt &&
+        !tender.submittedAt &&
+        (status === "SUBMITTED" || isWon || status === "LOST");
+      if (needsLock) {
+        await this.rateSetService.lock(tender.id, actorId ?? "system");
+      }
+    }
+
     const updated = await this.prisma.$transaction(
       existing.map((tender) => {
         const data: Prisma.TenderUpdateInput = { status };
         if (status === "SUBMITTED" && !tender.submittedAt) {
           data.submittedAt = now;
+          // ratesSnapshotAt is owned by TenderRateSetService.lock() and must NOT
+          // be written here — a status change is not a rate lock. Tenders that
+          // already had a snapshot keep it unchanged.
         }
         if (isWon && !tender.wonAt) {
           data.wonAt = now;
@@ -1006,21 +1027,33 @@ export class TenderingService {
     // First transition to SUBMITTED pins submittedAt. The rate snapshot
     // timestamp is owned by TenderRateSetService.lock() and must NOT be
     // written here — a status change is not a rate lock, and stamping it
-    // from a dropdown fills the column with a meaningless date.
+    // from a dropdown fills the column with a meaningless date. If the
+    // tender has no TenderRateSet, we call lock() BEFORE the update so
+    // lock() writes ratesSnapshotAt; otherwise the existing set is untouched.
+    let needsRateLock = false;
     if (status === "SUBMITTED" && !existing.submittedAt) {
       data.submittedAt = now;
+      if (!existing.ratesSnapshotAt) needsRateLock = true;
     }
     if ((status === "AWARDED" || status === "CONTRACT_ISSUED" || status === "CONVERTED") && !existing.wonAt) {
       data.wonAt = now;
       if (!existing.submittedAt) {
         data.submittedAt = now;
+        if (!existing.ratesSnapshotAt) needsRateLock = true;
       }
     }
     if (status === "LOST" && !existing.lostAt) {
       data.lostAt = now;
       if (!existing.submittedAt) {
         data.submittedAt = now;
+        if (!existing.ratesSnapshotAt) needsRateLock = true;
       }
+    }
+    // Lock rates before writing the tender update so ratesSnapshotAt is set
+    // by lock() and not duplicated here. actorId may be undefined in tests;
+    // fall back to a synthetic id rather than crashing.
+    if (needsRateLock) {
+      await this.rateSetService.lock(id, actorId ?? "system");
     }
     const tender = await this.prisma.tender.update({
       where: { id },

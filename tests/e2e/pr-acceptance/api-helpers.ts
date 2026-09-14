@@ -98,6 +98,29 @@ export async function apiFetch<T = unknown>(
 }
 
 /**
+ * PR #1891 draftpanel S1 — the Scope of Works tab is now gated on the tender
+ * having a locked TenderRateSet. The seeded template tender ships without one,
+ * so any spec that opens /tenders/<TEMPLATE_TENDER_ID>/scope hits the
+ * "Lock rates before pricing" empty state until this runs. Idempotent: a
+ * second call is a no-op (POST /rate-set/lock upserts and skips overridden
+ * entries per tender-rate-set.service.ts).
+ */
+export async function ensureRatesLocked(
+  request: APIRequestContext,
+  token: string,
+  tenderId: string
+): Promise<void> {
+  const existing = await apiFetch<{ id: string } | null>(
+    request,
+    token,
+    "GET",
+    `/tenders/${tenderId}/rate-set`
+  );
+  if (existing && existing.id) return;
+  await apiFetch(request, token, "POST", `/tenders/${tenderId}/rate-set/lock`, {});
+}
+
+/**
  * Creates a scope item inside a card, then PATCHes extra fields (the
  * per-card create DTO only accepts description + rowType). Returns the id.
  */

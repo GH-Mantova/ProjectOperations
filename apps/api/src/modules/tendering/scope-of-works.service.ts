@@ -998,6 +998,12 @@ export class ScopeOfWorksService {
    * Create a new card. cardNumber auto-assigned as MAX(cardNumber)+1 in
    * (tenderId, discipline). Never reuses freed numbers. sortOrder lands
    * the new card at the end of the tab row.
+   *
+   * Rates-gate: a TenderRateSet row must exist for this tender before any
+   * card can be created. Without a locked snapshot, rates could move under
+   * the estimate between creation and submission.
+   *
+   * @throws ConflictException when no rate set exists for the tender
    */
   async createCard(
     tenderId: string,
@@ -1005,6 +1011,10 @@ export class ScopeOfWorksService {
     dto: { name: string; discipline: Discipline }
   ) {
     await this.requireTender(tenderId);
+    const rateSet = await this.prisma.tenderRateSet.findUnique({ where: { tenderId } });
+    if (!rateSet) {
+      throw new ConflictException("Rates are not locked for this tender.");
+    }
     const maxCard = await this.prisma.scopeCard.aggregate({
       where: { tenderId, discipline: dto.discipline },
       _max: { cardNumber: true }

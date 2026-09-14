@@ -58,7 +58,8 @@ function makeService(
     {
       recordOutcome: jest.fn().mockResolvedValue(null),
       normalizeOutcome: jest.fn((input) => input ?? {})
-    } as never
+    } as never,
+    { lock: jest.fn().mockResolvedValue({}) } as never
   );
 }
 

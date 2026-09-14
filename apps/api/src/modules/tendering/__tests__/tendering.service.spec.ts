@@ -75,7 +75,10 @@ function makeService(prisma: ReturnType<typeof makePrisma>) {
     { recordTenderOutcome: jest.fn().mockResolvedValue(undefined) } as never,
     { convertFromTender: jest.fn().mockResolvedValue(undefined) } as never,
     { createFromTender: jest.fn().mockResolvedValue(undefined) } as never,
-    makeOutcomeCaptureMock() as never
+    makeOutcomeCaptureMock() as never,
+    // Rates-gate: stub TenderRateSetService — these tests exercise update(),
+    // not updateStatus(), so lock() is never called here.
+    { lock: jest.fn().mockResolvedValue({}) } as never
   );
 }
 

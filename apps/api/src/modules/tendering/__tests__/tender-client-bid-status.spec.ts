@@ -31,7 +31,8 @@ function makeService(prisma: unknown) {
     {
       recordOutcome: jest.fn().mockResolvedValue({ id: "o-1", supersedesId: null }),
       normalizeOutcome: jest.fn((v) => v ?? {})
-    } as never
+    } as never,
+    {} as never
   );
 }
 

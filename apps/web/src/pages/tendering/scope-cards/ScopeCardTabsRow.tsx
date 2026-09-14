@@ -20,7 +20,11 @@ type Props = {
   /** Discipline code of the visible tab, e.g. "DEM". */
   activeDiscipline: string | null;
   onSelectDiscipline: (discipline: string) => void;
-  onCreateCard: (name: string, discipline: string) => Promise<void>;
+  /**
+   * Called when the user creates a new card. When absent the "+ New card"
+   * affordance is not rendered (rates-gate locked-readonly state).
+   */
+  onCreateCard?: (name: string, discipline: string) => Promise<void>;
 };
 
 export function ScopeCardTabsRow({
@@ -58,7 +62,7 @@ export function ScopeCardTabsRow({
           />
         );
       })}
-      <ScopeCardCreateTab onCreate={onCreateCard} />
+      {onCreateCard ? <ScopeCardCreateTab onCreate={onCreateCard} /> : null}
     </div>
   );
 }

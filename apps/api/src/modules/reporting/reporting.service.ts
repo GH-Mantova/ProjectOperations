@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from "../../common/auth/authenticated-request.
 import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions";
 import { ESTIMATING_ANALYTICS_REPORT_DEFS } from "./estimating-analytics-report.definitions";
 import { resolveSelfFilter } from "./report-self-filter";
+import { dateRangeFilter, decimalToNumber, parseFromDate, parseToDate } from "./reporting.helpers";
 
 // Cross-module BI reporting layer (slice 1).
 //
@@ -82,39 +83,13 @@ export interface ReportRunResponse extends ReportDefinitionSummary {
   generatedAt: string;
 }
 
-// ── date-window helpers ──────────────────────────────────────────────
+// ── date-window helpers ──────────────────────────────────
+//
+// Moved to ./reporting.helpers so a definitions file can use them without
+// importing this module back (require cycle -> uninitialised REPORT_DEFS).
+// Re-exported here so every existing importer is unaffected.
 
-function parseFromDate(raw?: string): Date | undefined {
-  if (!raw) return undefined;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return undefined;
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
-
-function parseToDate(raw?: string): Date | undefined {
-  if (!raw) return undefined;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return undefined;
-  d.setUTCHours(23, 59, 59, 999);
-  return d;
-}
-
-export function dateRangeFilter(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
-  const gte = parseFromDate(from);
-  const lte = parseToDate(to);
-  if (!gte && !lte) return undefined;
-  const filter: Prisma.DateTimeFilter = {};
-  if (gte) filter.gte = gte;
-  if (lte) filter.lte = lte;
-  return filter;
-}
-
-export function decimalToNumber(value: Prisma.Decimal | number | null | undefined): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === "number") return value;
-  return Number(value.toString());
-}
+export { dateRangeFilter, decimalToNumber } from "./reporting.helpers";
 
 function formatEstimatorName(estimator: { firstName: string | null; lastName: string | null; email: string } | null | undefined): string {
   if (!estimator) return "Unassigned";

@@ -11,11 +11,12 @@ import {
   type ReactNode
 } from "react";
 import { EmptyState, Skeleton } from "@project-ops/ui";
-import { throwIfApiError } from "../lib/api-errors";
+import { throwIfApiError, readApiErrorMessage } from "../lib/api-errors";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../hooks/useConfirm";
 import { can } from "../auth/permissions";
 import { NoAccess } from "../components/NoAccess";
+import { PushBackDialog } from "../components/sor/PushBackDialog";
 
 // ─── S3 API Types ─────────────────────────────────────────────────────────────
 
@@ -110,6 +111,25 @@ type SorChangeLogEntry = {
   changedById: string | null;
 };
 
+// ─── S6b: Hub figures map (drift display) ────────────────────────────────────
+
+type HubFigureEntry = {
+  model: "RateRow" | "SubcontractorRate";
+  figures: { ordinary?: number; oneAndHalf?: number; double?: number };
+  missing: Array<"ordinary" | "oneAndHalf" | "double">;
+};
+type HubFiguresMap = Record<string, HubFigureEntry>;
+
+// ─── S6b: Push-back result (for success toast) ────────────────────────────────
+
+type PushBackResult = {
+  landed: string[];
+  futureLockCount: number;
+  frozenCount: number;
+  targetModel: "RateRow" | "SubcontractorRate";
+  targetId: string;
+};
+
 // ─── Draft types for add/edit forms ──────────────────────────────────────────
 
 type AddRateDraft = {
@@ -183,7 +203,7 @@ function sourceBadge(source: SorRateSourceType | undefined): ReactNode {
         fontSize: 10,
         fontWeight: 700,
         background: SOURCE_BADGE_COLOR[value],
-        color: "#fff"
+        color: "var(--text-inverse)"
       }}
     >
       {SOURCE_BADGE_LABEL[value]}
@@ -274,12 +294,225 @@ function PromoteButton({
   );
 }
 
+// ─── S6b: PushBackButton ─────────────────────────────────────────────────────
+
+/**
+ * PushBackButton — rendered beside PromoteButton in the Source/markup cell.
+ *
+ * Decision table (from spec):
+ *   - user lacks `rates.push-back` → null (drift lines still render)
+ *   - sourceType MANUAL → chip "no hub anchor"
+ *   - INTERNAL, period ACTIVE → "Push 3 figures"
+ *   - SUBBIE / SUPPLIER, period ACTIVE → "Push 1 figure"
+ *   - all landing figures equal hub → same button, disabled
+ *   - period not ACTIVE → disabled + chip
+ */
+function PushBackButton({
+  rate,
+  period,
+  canPushBack,
+  hubFigures,
+  onOpen
+}: {
+  rate: SorRate;
+  period: SorPeriodSummary | undefined;
+  canPushBack: boolean;
+  hubFigures: HubFiguresMap;
+  onOpen: (rate: SorRate) => void;
+}) {
+  if (!canPushBack) return null;
+
+  const srcType = rate.sourceType ?? "MANUAL";
+
+  if (srcType === "MANUAL") {
+    return (
+      <span
+        style={{
+          display: "inline-block",
+          padding: "1px 6px",
+          borderRadius: 99,
+          fontSize: 10,
+          fontWeight: 600,
+          background: "var(--surface-subtle)",
+          color: "var(--text-muted)",
+          whiteSpace: "nowrap"
+        }}
+        title="No hub anchor — cannot push back"
+      >
+        &#8856; No hub anchor — cannot push
+      </span>
+    );
+  }
+
+  const periodStatus = period?.status ?? "UNKNOWN";
+  const isActive = periodStatus === "ACTIVE";
+
+  if (!isActive) {
+    const periodLabel = period?.label ?? periodStatus;
+    return (
+      <>
+        <button
+          type="button"
+          className="s7-btn s7-btn--sm"
+          disabled
+          title={`SoR period ${periodLabel} status is "${periodStatus}"`}
+          style={{ padding: "1px 6px", fontSize: 10, opacity: 0.5 }}
+        >
+          {srcType === "INTERNAL" ? "Push 3 figures" : "Push 1 figure"}
+        </button>
+        <span
+          style={{
+            display: "inline-block",
+            padding: "1px 6px",
+            borderRadius: 99,
+            fontSize: 10,
+            fontWeight: 600,
+            background: "var(--surface-subtle)",
+            color: "var(--text-muted)",
+            whiteSpace: "nowrap"
+          }}
+        >
+          &#8856; Period &quot;{periodStatus}&quot;
+        </span>
+      </>
+    );
+  }
+
+  // Check if all landing figures already equal hub (nothingToPush heuristic)
+  const hubEntry = hubFigures[rate.id];
+  let nothingToPush = false;
+  if (hubEntry) {
+    if (srcType === "INTERNAL") {
+      const figFields: Array<"ordinary" | "oneAndHalf" | "double"> = ["ordinary", "oneAndHalf", "double"];
+      const landingFields = figFields.filter((f) => !hubEntry.missing.includes(f));
+      nothingToPush =
+        landingFields.length > 0 &&
+        landingFields.every((f) => {
+          const hub = hubEntry.figures[f];
+          const sor = rate[f] != null ? Number(rate[f]) : null;
+          return hub != null && sor != null && hub === sor;
+        });
+    } else {
+      // vendor: only ordinary lands
+      const hub = hubEntry.figures.ordinary;
+      const sor = rate.ordinary != null ? Number(rate.ordinary) : null;
+      nothingToPush = hub != null && sor != null && hub === sor;
+    }
+  }
+
+  const label = srcType === "INTERNAL" ? "Push 3 figures" : "Push 1 figure";
+
+  return (
+    <button
+      type="button"
+      className="s7-btn s7-btn--sm"
+      disabled={nothingToPush}
+      title={nothingToPush ? "Nothing to push — all figures match the hub" : undefined}
+      style={{ padding: "1px 6px", fontSize: 10 }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(rate);
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── S6b: DriftLine ──────────────────────────────────────────────────────────
+
+/**
+ * One small line rendered under each figure cell.
+ * Shows the hub figure and signed delta vs. the SoR landing figure.
+ */
+function DriftLine({
+  field,
+  sorValue,
+  rate,
+  period,
+  hubFigures
+}: {
+  field: "ordinary" | "oneAndHalf" | "double";
+  sorValue: string | null | undefined;
+  rate: SorRate;
+  period: SorPeriodSummary | undefined;
+  hubFigures: HubFiguresMap;
+}) {
+  const srcType = rate.sourceType ?? "MANUAL";
+  const periodStatus = period?.status ?? "UNKNOWN";
+
+  if (!period) return null;
+
+  if (periodStatus !== "ACTIVE") {
+    return (
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+        period closed {period.expiryDate ? fmtDate(period.expiryDate) : ""}
+      </div>
+    );
+  }
+
+  if (srcType === "MANUAL") {
+    return (
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+        typed on this page
+      </div>
+    );
+  }
+
+  // Vendor lines: only ordinary has a hub column
+  if ((srcType === "SUBBIE" || srcType === "SUPPLIER") && field !== "ordinary") {
+    return (
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+        no vendor column — stays local
+      </div>
+    );
+  }
+
+  const hubEntry = hubFigures[rate.id];
+  if (!hubEntry) return null;
+
+  if (hubEntry.missing.includes(field)) return null;
+
+  const hubVal = hubEntry.figures[field];
+  if (hubVal == null) return null;
+
+  const sorNum = sorValue != null && sorValue !== "" ? Number(sorValue) : null;
+
+  const hubFmt = new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 2
+  }).format(hubVal);
+
+  if (sorNum == null || hubVal === sorNum) {
+    return (
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+        hub {hubFmt} &middot; in sync
+      </div>
+    );
+  }
+
+  const delta = sorNum - hubVal;
+  const sign = delta >= 0 ? "+" : "";
+  const deltaFmt = sign + new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 2
+  }).format(delta);
+
+  return (
+    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+      hub {hubFmt} &middot; {deltaFmt}
+    </div>
+  );
+}
+
 function statusBadge(status: SorPeriodStatus): ReactNode {
   const color =
     status === "ACTIVE"
-      ? "var(--status-success, #22c55e)"
+      ? "var(--status-active)"
       : status === "EXPIRED"
-        ? "var(--status-danger, #ef4444)"
+        ? "var(--status-danger)"
         : "var(--text-muted)";
   return (
     <span
@@ -290,7 +523,7 @@ function statusBadge(status: SorPeriodStatus): ReactNode {
         fontSize: 11,
         fontWeight: 600,
         background: color,
-        color: "#fff",
+        color: "var(--text-inverse)",
         marginLeft: 6,
         verticalAlign: "middle"
       }}
@@ -480,6 +713,66 @@ export function ScheduleOfRatesAdminPage() {
     [authFetch, loadPeriods, loadPeriodData, selectedPeriodId]
   );
 
+  // ── S6b: Hub figures map (drift lines) ───────────────────────────────────
+  const [hubFigures, setHubFigures] = useState<HubFiguresMap>({});
+
+  const loadHubFigures = useCallback(
+    async (periodId: string) => {
+      try {
+        const res = await authFetch(
+          `/schedule-of-rates/periods/${periodId}/push-back/hub-figures`
+        );
+        if (!res.ok) {
+          // non-fatal — drift lines simply won't render
+          void readApiErrorMessage(res);
+          return;
+        }
+        const data = (await res.json()) as HubFiguresMap;
+        setHubFigures(data);
+      } catch {
+        // non-fatal
+      }
+    },
+    [authFetch]
+  );
+
+  useEffect(() => {
+    if (selectedPeriodId) {
+      void loadHubFigures(selectedPeriodId);
+    } else {
+      setHubFigures({});
+    }
+  }, [selectedPeriodId, loadHubFigures]);
+
+  // ── S6b: Push-back dialog ─────────────────────────────────────────────────
+  const [pushBackRate, setPushBackRate] = useState<SorRate | null>(null);
+  const [pushBackToast, setPushBackToast] = useState<string | null>(null);
+  const canPushBack = useMemo(() => can(user, "rates.push-back"), [user]);
+
+  const handlePushBackSuccess = useCallback(
+    async (result: PushBackResult) => {
+      setPushBackRate(null);
+      const figWord = result.landed.length === 1 ? "figure" : "figures";
+      const lockWord = result.futureLockCount === 1 ? "tender" : "tenders";
+      const targetDetail =
+        result.targetModel === "RateRow" ? " · row id preserved" : "";
+      const msg =
+        `Hub rate updated — ${result.landed.length} ${figWord}. ` +
+        `${result.futureLockCount} ${lockWord} will lock the new number.` +
+        targetDetail;
+      setPushBackToast(msg);
+      setTimeout(() => setPushBackToast(null), 6000);
+      // Refetch period data, change log, and hub-figures map
+      if (selectedPeriodId) {
+        await Promise.all([
+          loadPeriodData(selectedPeriodId),
+          loadHubFigures(selectedPeriodId)
+        ]);
+      }
+    },
+    [selectedPeriodId, loadPeriodData, loadHubFigures]
+  );
+
   // ── Create period ─────────────────────────────────────────────────────────
   const submitCreatePeriod = async () => {
     if (!newPeriod.year || !newPeriod.startDate || !newPeriod.expiryDate) return;
@@ -521,6 +814,44 @@ export function ScheduleOfRatesAdminPage() {
 
   return (
     <div className="admin-page" style={{ paddingBottom: 70 }}>
+      {/* S6b: Push-back dialog */}
+      {pushBackRate && (
+        <PushBackDialog
+          rateId={pushBackRate.id}
+          rateName={pushBackRate.name}
+          rateOrdinary={pushBackRate.ordinary != null ? Number(pushBackRate.ordinary) : null}
+          rateOneAndHalf={pushBackRate.oneAndHalf != null ? Number(pushBackRate.oneAndHalf) : null}
+          rateDouble={pushBackRate.double != null ? Number(pushBackRate.double) : null}
+          periods={periods}
+          onSwitchPeriod={(pid) => setSelectedPeriodId(pid)}
+          onClose={() => setPushBackRate(null)}
+          onSuccess={(result) => void handlePushBackSuccess(result)}
+          authFetch={authFetch}
+        />
+      )}
+
+      {/* S6b: Success toast */}
+      {pushBackToast && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 80,
+            right: 20,
+            zIndex: 2000,
+            background: "var(--status-active)",
+            color: "var(--text-inverse)",
+            padding: "10px 16px",
+            borderRadius: 8,
+            maxWidth: 420,
+            fontSize: 13,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+          }}
+        >
+          {pushBackToast}
+        </div>
+      )}
+
       <header className="admin-page__header">
         <div>
           <p className="s7-type-label">Estimating</p>
@@ -772,6 +1103,8 @@ export function ScheduleOfRatesAdminPage() {
           initial={periodData.period.categoryMarkups ?? {}}
           canManage={canManage}
           callApi={callApi}
+          hubFigures={hubFigures}
+          allRates={Object.values(ratesByCategory).flat()}
         />
       )}
 
@@ -814,11 +1147,15 @@ export function ScheduleOfRatesAdminPage() {
                 <LabourTable
                   rates={ratesByCategory["LABOUR"] ?? []}
                   periodId={selectedPeriodId}
+                  period={selectedPeriod}
                   canManage={canManage}
+                  canPushBack={canPushBack}
                   saving={saving}
                   callApi={callApi}
                   selectedLineIds={selectedLineIds}
                   onToggleLine={toggleLine}
+                  hubFigures={hubFigures}
+                  onOpenPushBack={(r) => setPushBackRate(r)}
                 />
               )}
               {tab === "plant" && (
@@ -826,11 +1163,15 @@ export function ScheduleOfRatesAdminPage() {
                   category="PLANT"
                   rates={ratesByCategory["PLANT"] ?? []}
                   periodId={selectedPeriodId}
+                  period={selectedPeriod}
                   canManage={canManage}
+                  canPushBack={canPushBack}
                   saving={saving}
                   callApi={callApi}
                   selectedLineIds={selectedLineIds}
                   onToggleLine={toggleLine}
+                  hubFigures={hubFigures}
+                  onOpenPushBack={(r) => setPushBackRate(r)}
                 />
               )}
               {tab === "waste" && (
@@ -838,22 +1179,30 @@ export function ScheduleOfRatesAdminPage() {
                   category="WASTE"
                   rates={ratesByCategory["WASTE"] ?? []}
                   periodId={selectedPeriodId}
+                  period={selectedPeriod}
                   canManage={canManage}
+                  canPushBack={canPushBack}
                   saving={saving}
                   callApi={callApi}
                   selectedLineIds={selectedLineIds}
                   onToggleLine={toggleLine}
+                  hubFigures={hubFigures}
+                  onOpenPushBack={(r) => setPushBackRate(r)}
                 />
               )}
               {tab === "subcontractor" && (
                 <SubcontractorTable
                   rates={ratesByCategory["SUBCONTRACTOR"] ?? []}
                   periodId={selectedPeriodId}
+                  period={selectedPeriod}
                   canManage={canManage}
+                  canPushBack={canPushBack}
                   saving={saving}
                   callApi={callApi}
                   selectedLineIds={selectedLineIds}
                   onToggleLine={toggleLine}
+                  hubFigures={hubFigures}
+                  onOpenPushBack={(r) => setPushBackRate(r)}
                 />
               )}
               {tab === "changelog" && <ChangeLogPanel entries={changeLog} />}
@@ -904,23 +1253,35 @@ export function ScheduleOfRatesAdminPage() {
 
 type RateTableProps = {
   periodId: string;
+  /** Full period object for drift lines and PushBackButton */
+  period: SorPeriodSummary | undefined;
   canManage: boolean;
+  /** Whether the current user has rates.push-back */
+  canPushBack: boolean;
   saving: boolean;
   callApi: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
   /** IDs of rates currently selected for client PDF */
   selectedLineIds: Set<string>;
   /** Toggle a rate in/out of the client PDF selection */
   onToggleLine: (id: string) => void;
+  /** Hub figures map for drift display */
+  hubFigures: HubFiguresMap;
+  /** Open push-back dialog for the given rate */
+  onOpenPushBack: (rate: SorRate) => void;
 };
 
 function LabourTable({
   rates,
   periodId,
+  period,
   canManage,
+  canPushBack,
   saving,
   callApi,
   selectedLineIds,
-  onToggleLine
+  onToggleLine,
+  hubFigures,
+  onOpenPushBack
 }: RateTableProps & { rates: SorRate[] }) {
   const [draft, setDraft] = useState<AddRateDraft>(BLANK_ADD_DRAFT);
   const canAdd = canManage && !!draft.name.trim();
@@ -998,10 +1359,14 @@ function LabourTable({
               <LabourRateRow
                 key={rate.id}
                 rate={rate}
+                period={period}
                 canManage={canManage}
+                canPushBack={canPushBack}
                 callApi={callApi}
                 selected={selectedLineIds.has(rate.id)}
                 onToggle={onToggleLine}
+                hubFigures={hubFigures}
+                onOpenPushBack={onOpenPushBack}
               />
             ))}
           </tbody>
@@ -1022,16 +1387,24 @@ type LabourRowDraft = {
 
 function LabourRateRow({
   rate,
+  period,
   canManage,
+  canPushBack,
   callApi,
   selected,
   onToggle,
+  hubFigures,
+  onOpenPushBack,
 }: {
   rate: SorRate;
+  period: SorPeriodSummary | undefined;
   canManage: boolean;
+  canPushBack: boolean;
   callApi: RateTableProps["callApi"];
   selected: boolean;
   onToggle: (id: string) => void;
+  hubFigures: HubFiguresMap;
+  onOpenPushBack: (rate: SorRate) => void;
 }) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
@@ -1162,21 +1535,36 @@ function LabourRateRow({
           <input className="s7-input s7-input--sm" type="number" step="0.01" value={draft.ordinary}
             onChange={(e) => setDraft((prev) => ({ ...prev, ordinary: e.target.value }))}
             onFocus={(e) => e.currentTarget.select()} />
-        ) : currency(rate.ordinary)}
+        ) : (
+          <>
+            {currency(rate.ordinary)}
+            <DriftLine field="ordinary" sorValue={rate.ordinary} rate={rate} period={period} hubFigures={hubFigures} />
+          </>
+        )}
       </td>
       <td>
         {editing ? (
           <input className="s7-input s7-input--sm" type="number" step="0.01" value={draft.oneAndHalf}
             onChange={(e) => setDraft((prev) => ({ ...prev, oneAndHalf: e.target.value }))}
             onFocus={(e) => e.currentTarget.select()} />
-        ) : currency(rate.oneAndHalf)}
+        ) : (
+          <>
+            {currency(rate.oneAndHalf)}
+            <DriftLine field="oneAndHalf" sorValue={rate.oneAndHalf} rate={rate} period={period} hubFigures={hubFigures} />
+          </>
+        )}
       </td>
       <td>
         {editing ? (
           <input className="s7-input s7-input--sm" type="number" step="0.01" value={draft.double}
             onChange={(e) => setDraft((prev) => ({ ...prev, double: e.target.value }))}
             onFocus={(e) => e.currentTarget.select()} />
-        ) : currency(rate.double)}
+        ) : (
+          <>
+            {currency(rate.double)}
+            <DriftLine field="double" sorValue={rate.double} rate={rate} period={period} hubFigures={hubFigures} />
+          </>
+        )}
       </td>
       <td>
         {editing ? (
@@ -1190,6 +1578,13 @@ function LabourRateRow({
           {sourceBadge(rate.sourceType)}
           <MarkupCell rate={rate} canManage={canManage} callApi={callApi} />
           <PromoteButton rate={rate} callApi={callApi} />
+          <PushBackButton
+            rate={rate}
+            period={period}
+            canPushBack={canPushBack}
+            hubFigures={hubFigures}
+            onOpen={onOpenPushBack}
+          />
         </div>
       </td>
       <td onClick={(e) => e.stopPropagation()}>
@@ -1222,11 +1617,15 @@ function UnitRateTable({
   category,
   rates,
   periodId,
+  period,
   canManage,
+  canPushBack,
   saving,
   callApi,
   selectedLineIds,
-  onToggleLine
+  onToggleLine,
+  hubFigures,
+  onOpenPushBack
 }: RateTableProps & { category: "PLANT" | "WASTE"; rates: SorRate[] }) {
   const [draft, setDraft] = useState({ name: "", unit: "", ordinary: "", comments: "" });
   const canAdd = canManage && !!draft.name.trim();
@@ -1295,10 +1694,14 @@ function UnitRateTable({
               <UnitRateRow
                 key={rate.id}
                 rate={rate}
+                period={period}
                 canManage={canManage}
+                canPushBack={canPushBack}
                 callApi={callApi}
                 selected={selectedLineIds.has(rate.id)}
                 onToggle={onToggleLine}
+                hubFigures={hubFigures}
+                onOpenPushBack={onOpenPushBack}
               />
             ))}
           </tbody>
@@ -1312,16 +1715,24 @@ type UnitRowDraft = { name: string; unit: string; ordinary: string; comments: st
 
 function UnitRateRow({
   rate,
+  period,
   canManage,
+  canPushBack,
   callApi,
   selected,
   onToggle,
+  hubFigures,
+  onOpenPushBack,
 }: {
   rate: SorRate;
+  period: SorPeriodSummary | undefined;
   canManage: boolean;
+  canPushBack: boolean;
   callApi: RateTableProps["callApi"];
   selected: boolean;
   onToggle: (id: string) => void;
+  hubFigures: HubFiguresMap;
+  onOpenPushBack: (rate: SorRate) => void;
 }) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
@@ -1432,7 +1843,10 @@ function UnitRateRow({
               onFocus={(e) => e.currentTarget.select()}
             />
           ) : col.key === "ordinary" ? (
-            currency(rate.ordinary)
+            <>
+              {currency(rate.ordinary)}
+              <DriftLine field="ordinary" sorValue={rate.ordinary} rate={rate} period={period} hubFigures={hubFigures} />
+            </>
           ) : (
             String(draft[col.key] ?? "")
           )}
@@ -1443,6 +1857,13 @@ function UnitRateRow({
           {sourceBadge(rate.sourceType)}
           <MarkupCell rate={rate} canManage={canManage} callApi={callApi} />
           <PromoteButton rate={rate} callApi={callApi} />
+          <PushBackButton
+            rate={rate}
+            period={period}
+            canPushBack={canPushBack}
+            hubFigures={hubFigures}
+            onOpen={onOpenPushBack}
+          />
         </div>
       </td>
       <td onClick={(e) => e.stopPropagation()}>
@@ -1474,11 +1895,15 @@ function UnitRateRow({
 function SubcontractorTable({
   rates,
   periodId,
+  period,
   canManage,
+  canPushBack,
   saving,
   callApi,
   selectedLineIds,
-  onToggleLine
+  onToggleLine,
+  hubFigures,
+  onOpenPushBack
 }: RateTableProps & { rates: SorRate[] }) {
   const [draft, setDraft] = useState({ name: "", ordinary: "", isReference: true, comments: "" });
   const canAdd = canManage && !!draft.name.trim();
@@ -1572,10 +1997,14 @@ function SubcontractorTable({
               <SubcontractorRateRow
                 key={rate.id}
                 rate={rate}
+                period={period}
                 canManage={canManage}
+                canPushBack={canPushBack}
                 callApi={callApi}
                 selected={selectedLineIds.has(rate.id)}
                 onToggle={onToggleLine}
+                hubFigures={hubFigures}
+                onOpenPushBack={onOpenPushBack}
               />
             ))}
           </tbody>
@@ -1589,16 +2018,24 @@ type SubRowDraft = { name: string; ordinary: string; isReference: boolean; comme
 
 function SubcontractorRateRow({
   rate,
+  period,
   canManage,
+  canPushBack,
   callApi,
   selected,
   onToggle,
+  hubFigures,
+  onOpenPushBack,
 }: {
   rate: SorRate;
+  period: SorPeriodSummary | undefined;
   canManage: boolean;
+  canPushBack: boolean;
   callApi: RateTableProps["callApi"];
   selected: boolean;
   onToggle: (id: string) => void;
+  hubFigures: HubFiguresMap;
+  onOpenPushBack: (rate: SorRate) => void;
 }) {
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
@@ -1713,7 +2150,10 @@ function SubcontractorRateRow({
             onFocus={(e) => e.currentTarget.select()}
           />
         ) : (
-          currency(rate.ordinary)
+          <>
+            {currency(rate.ordinary)}
+            <DriftLine field="ordinary" sorValue={rate.ordinary} rate={rate} period={period} hubFigures={hubFigures} />
+          </>
         )}
       </td>
       <td onClick={(e) => e.stopPropagation()}>
@@ -1724,7 +2164,7 @@ function SubcontractorRateRow({
             onChange={(e) => setDraft((prev) => ({ ...prev, isReference: e.target.checked }))}
           />
         ) : rate.isReference ? (
-          <span style={{ color: "var(--status-success, #22c55e)", fontWeight: 600 }}>Yes</span>
+          <span style={{ color: "var(--status-active)", fontWeight: 600 }}>Yes</span>
         ) : (
           <span style={{ color: "var(--text-muted)" }}>No</span>
         )}
@@ -1747,6 +2187,13 @@ function SubcontractorRateRow({
           {sourceBadge(rate.sourceType)}
           <MarkupCell rate={rate} canManage={canManage} callApi={callApi} />
           <PromoteButton rate={rate} callApi={callApi} />
+          <PushBackButton
+            rate={rate}
+            period={period}
+            canPushBack={canPushBack}
+            hubFigures={hubFigures}
+            onOpen={onOpenPushBack}
+          />
         </div>
       </td>
       <td onClick={(e) => e.stopPropagation()}>
@@ -1784,12 +2231,16 @@ function CategoryMarkupsEditor({
   periodId,
   initial,
   canManage,
-  callApi
+  callApi,
+  hubFigures,
+  allRates
 }: {
   periodId: string;
   initial: PeriodCategoryMarkups;
   canManage: boolean;
   callApi: (path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) => Promise<void>;
+  hubFigures: HubFiguresMap;
+  allRates: SorRate[];
 }) {
   const categories: SorCategory[] = ["LABOUR", "PLANT", "WASTE", "SUBCONTRACTOR"];
   const [draft, setDraft] = useState<Record<SorCategory, string>>(() => ({
@@ -1822,6 +2273,24 @@ function CategoryMarkupsEditor({
     });
   };
 
+  // S6b: compute drift summary from hubFigures map
+  const linkedCount = Object.keys(hubFigures).length;
+  const total = allRates.length;
+
+  // A rate is "drifted" if it has a hub entry and at least one landing figure differs
+  const driftedCount = allRates.filter((r) => {
+    const entry = hubFigures[r.id];
+    if (!entry) return false;
+    const fields: Array<"ordinary" | "oneAndHalf" | "double"> = ["ordinary", "oneAndHalf", "double"];
+    return fields.some((f) => {
+      if (entry.missing.includes(f)) return false;
+      const hub = entry.figures[f];
+      if (hub == null) return false;
+      const sor = r[f] != null ? Number(r[f]) : null;
+      return sor != null && hub !== sor;
+    });
+  }).length;
+
   return (
     <section
       className="s7-card"
@@ -1847,6 +2316,36 @@ function CategoryMarkupsEditor({
             />
           </label>
         ))}
+        {/* S6b: Hub drift summary cells */}
+        <span
+          style={{
+            marginLeft: 12,
+            padding: "2px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            background: driftedCount > 0 ? "color-mix(in srgb, var(--status-warning) 15%, transparent)" : "var(--surface-subtle)",
+            border: `1px solid ${driftedCount > 0 ? "var(--status-warning)" : "var(--border-subtle, rgba(0,0,0,0.08))"}`,
+            color: driftedCount > 0 ? "var(--status-warning)" : "var(--text-muted)",
+            whiteSpace: "nowrap"
+          }}
+          title="Lines that differ from their hub figure"
+        >
+          Drifted from hub: <strong>{driftedCount}</strong>
+        </span>
+        <span
+          style={{
+            padding: "2px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            background: "var(--surface-subtle)",
+            border: "1px solid var(--border-subtle, rgba(0,0,0,0.08))",
+            color: "var(--text-muted)",
+            whiteSpace: "nowrap"
+          }}
+          title="Lines linked to hub vs total lines in this period"
+        >
+          Lines linked to hub: <strong>{linkedCount} / {total}</strong>
+        </span>
         {canManage && (
           <button
             type="button"
@@ -2190,9 +2689,9 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
   const rowKindBadge = (kind: RowKind): ReactNode => {
     if (kind === "master") return null;
     const cfg: Record<Exclude<RowKind, "master">, { label: string; color: string }> = {
-      override: { label: "Override", color: "var(--status-warning, #f59e0b)" },
+      override: { label: "Override", color: "var(--status-warning)" },
       added: { label: "Added", color: "var(--status-info, #3b82f6)" },
-      removed: { label: "Removed", color: "var(--status-danger, #ef4444)" }
+      removed: { label: "Removed", color: "var(--status-danger)" }
     };
     const { label, color } = cfg[kind];
     return (
@@ -2204,7 +2703,7 @@ function ClientRateCardPanel({ periodId, canManage, authFetch }: ClientRateCardP
           fontSize: 10,
           fontWeight: 600,
           background: color,
-          color: "#fff",
+          color: "var(--text-inverse)",
           marginLeft: 4
         }}
       >

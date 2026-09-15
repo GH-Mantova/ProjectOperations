@@ -4,7 +4,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode
+  type ReactNode,
+  type RefObject
 } from "react";
 import {
   compareRows,
@@ -19,6 +20,26 @@ import {
   type RateGridRow,
   type RateGridRowValue
 } from "./rateGridModel";
+
+/**
+ * RATESCOL S2 — column structure-editing prop.
+ *
+ * When present (admin Rates page), the header dropdown gains four extra
+ * items: Column settings, Move left, Move right, Delete column.
+ * When absent (RatesTab), the dropdown is exactly what it is today.
+ */
+export type StructureEditing = {
+  onOpenSettings: (col: RateGridColumn) => void;
+  onMove: (col: RateGridColumn, dir: -1 | 1) => void;
+  onDelete: (col: RateGridColumn) => void;
+  canMoveLeft: (col: RateGridColumn) => boolean;
+  canMoveRight: (col: RateGridColumn) => boolean;
+  /**
+   * Returns a string (the reason) when delete is refused, null when allowed.
+   * A refused delete shows the reason as disabled text — no dialog.
+   */
+  deleteRefusal: (col: RateGridColumn) => string | null;
+};
 
 type Props = {
   columns: RateGridColumn[];
@@ -39,6 +60,8 @@ type Props = {
    * exactly where they were.
    */
   highlightRowId?: string | null;
+  /** RATESCOL S2 — see StructureEditing. Absent on RatesTab. */
+  structureEditing?: StructureEditing;
 };
 
 const ACCENT = "var(--text-accent, #EA580C)";
@@ -54,7 +77,8 @@ export function FilterableRateGrid({
   renderTrailing,
   testIdPrefix,
   emptyState,
-  highlightRowId = null
+  highlightRowId = null,
+  structureEditing
 }: Props) {
   const defaultGroupKey =
     groupByKey === undefined
@@ -75,6 +99,7 @@ export function FilterableRateGrid({
   );
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [openDropdownKey, setOpenDropdownKey] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const activeGroupKey = groupingEnabled ? defaultGroupKey ?? null : null;
 
@@ -179,7 +204,7 @@ export function FilterableRateGrid({
         testIdPrefix={testIdPrefix}
       />
 
-      <div style={{ overflowX: "auto", position: "relative" }}>
+      <div ref={scrollContainerRef} style={{ overflowX: "auto", position: "relative" }}>
         <table
           style={{
             width: "100%",
@@ -207,6 +232,8 @@ export function FilterableRateGrid({
                   onClearRange={() => clearRange(col.key)}
                   onSort={(dir) => setSortExplicit(col.key, dir)}
                   testIdPrefix={testIdPrefix}
+                  structureEditing={structureEditing}
+                  scrollContainerRef={scrollContainerRef}
                 />
               ))}
               {trailingHeader !== undefined ? (
@@ -547,7 +574,9 @@ function HeaderCell({
   onSetRange,
   onClearRange,
   onSort,
-  testIdPrefix
+  testIdPrefix,
+  structureEditing,
+  scrollContainerRef
 }: {
   column: RateGridColumn;
   rows: RateGridRow[];
@@ -564,6 +593,8 @@ function HeaderCell({
   onClearRange: () => void;
   onSort: (dir: 1 | -1) => void;
   testIdPrefix: string;
+  structureEditing?: StructureEditing;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
 }) {
   const align = column.align ?? (column.kind === "text" ? "left" : "right");
   const hasFilter =
@@ -647,6 +678,8 @@ function HeaderCell({
           onSetRange={onSetRange}
           onClearRange={onClearRange}
           testIdPrefix={testIdPrefix}
+          structureEditing={structureEditing}
+          scrollContainerRef={scrollContainerRef}
         />
       ) : null}
     </th>
@@ -664,7 +697,9 @@ function HeaderDropdown({
   range,
   onSetRange,
   onClearRange,
-  testIdPrefix
+  testIdPrefix,
+  structureEditing,
+  scrollContainerRef
 }: {
   column: RateGridColumn;
   rows: RateGridRow[];
@@ -677,9 +712,13 @@ function HeaderDropdown({
   onSetRange: (r: NumberRange) => void;
   onClearRange: () => void;
   testIdPrefix: string;
+  structureEditing?: StructureEditing;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [find, setFind] = useState("");
+  // RATESCOL S2 — flip anchor: right:0 when the dropdown would overflow right edge
+  const [anchorRight, setAnchorRight] = useState(false);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -689,6 +728,16 @@ function HeaderDropdown({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
+
+  // Measure after mount to detect overflow and flip if needed
+  useEffect(() => {
+    if (!ref.current || !scrollContainerRef.current) return;
+    const dropRect = ref.current.getBoundingClientRect();
+    const containerRect = scrollContainerRef.current.getBoundingClientRect();
+    if (dropRect.right > containerRect.right) {
+      setAnchorRight(true);
+    }
+  }, [scrollContainerRef]);
 
   const values = useMemo(() => distinctValues(rows, column.key), [rows, column.key]);
   const filtered = useMemo(() => {
@@ -701,11 +750,16 @@ function HeaderDropdown({
   const currentSet = columnFilter ?? new Set(values);
   const allSelected = filtered.every((v) => currentSet.has(v));
 
+  // RATESCOL S2 — structure-editing items
+  const refusal = structureEditing ? structureEditing.deleteRefusal(column) : null;
+  const canMoveLeft = structureEditing ? structureEditing.canMoveLeft(column) : false;
+  const canMoveRight = structureEditing ? structureEditing.canMoveRight(column) : false;
+
   const style: CSSProperties = {
     position: "absolute",
     top: "100%",
     marginTop: 4,
-    left: 0,
+    ...(anchorRight ? { right: 0 } : { left: 0 }),
     zIndex: 10,
     background: "var(--text-inverse)",
     border: `1px solid ${BORDER}`,
@@ -866,6 +920,79 @@ function HeaderDropdown({
           </div>
         </div>
       )}
+
+      {/* RATESCOL S2 — structure-editing section (admin only) */}
+      {structureEditing ? (
+        <>
+          <hr style={{ margin: "8px 0", border: "none", borderTop: `1px solid ${BORDER}` }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                structureEditing.onOpenSettings(column);
+                onClose();
+              }}
+              style={{ justifyContent: "flex-start", minHeight: 32 }}
+              data-testid={`${testIdPrefix}-col-settings-${column.key}`}
+            >
+              Column settings
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                structureEditing.onMove(column, -1);
+                onClose();
+              }}
+              disabled={!canMoveLeft}
+              style={{ justifyContent: "flex-start", minHeight: 32 }}
+              data-testid={`${testIdPrefix}-col-move-left-${column.key}`}
+            >
+              Move left
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                structureEditing.onMove(column, 1);
+                onClose();
+              }}
+              disabled={!canMoveRight}
+              style={{ justifyContent: "flex-start", minHeight: 32 }}
+              data-testid={`${testIdPrefix}-col-move-right-${column.key}`}
+            >
+              Move right
+            </button>
+            {/* Delete: disabled with refusal text when rows exist; enabled with zero rows */}
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={
+                refusal
+                  ? undefined
+                  : () => {
+                      structureEditing.onDelete(column);
+                      onClose();
+                    }
+              }
+              disabled={Boolean(refusal)}
+              title={refusal ?? undefined}
+              style={{
+                justifyContent: "flex-start",
+                minHeight: 32,
+                color: refusal ? MUTED : "var(--status-danger, #ef4444)"
+              }}
+              data-testid={`${testIdPrefix}-col-delete-${column.key}`}
+            >
+              Delete column
+            </button>
+            {refusal ? (
+              <span style={{ fontSize: 11, color: MUTED, padding: "2px 4px" }}>{refusal}</span>
+            ) : null}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

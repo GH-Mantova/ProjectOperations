@@ -3,7 +3,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   blankRowCells,
+  chargedFromChange,
   columnFieldKind,
+  columnNameClash,
   consumerTypeLabel,
   defaultCellFor,
   deleteFieldConfirmMessage,
@@ -13,12 +15,15 @@ import {
   hasPerRowUnitColumn,
   isNumberKindColumn,
   matchScenarioRow,
+  moveNote,
   rateFieldRows,
+  renameWarning,
   resolveScenarioKeys,
   scenarioCellText,
   scenarioKeyColumns,
   scenarioKeyOptions,
   stepsUsingField,
+  swapSortOrders,
   usedInLabel,
   validateColumnStructure,
   validateRowCells,
@@ -1234,5 +1239,195 @@ describe("RATE_SCENARIO_PICKER_V2 · the stale-value fallback", () => {
     const keys = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, { "k-equipment": "Roadsaw" });
     expect(cascade(keys)).toStrictEqual(cascade(keys));
     expect(cascade(keys)[1]).toStrictEqual(["Floor"]);
+  });
+});
+
+// ── RATESCOL S2 — columnNameClash ─────────────────────────────────────────
+
+describe("ratesListsHelpers · columnNameClash", () => {
+  const cols: Pick<RateColumn, "id" | "name">[] = [
+    { id: "c1", name: "Rate" },
+    { id: "c2", name: "Depth" },
+    { id: "c3", name: "Item" }
+  ];
+
+  it("returns false when no column has that name", () => {
+    expect(columnNameClash(cols, "Labour", "c1")).toBe(false);
+  });
+
+  it("returns true when another column has the same name (case-insensitive)", () => {
+    expect(columnNameClash(cols, "depth", "c1")).toBe(true);
+    expect(columnNameClash(cols, "RATE", "c2")).toBe(true);
+  });
+
+  it("ignores the column being renamed (excludeId)", () => {
+    // 'Rate' exists as c1 — but we are renaming c1 itself, so no clash
+    expect(columnNameClash(cols, "Rate", "c1")).toBe(false);
+  });
+
+  it("returns false for an empty name", () => {
+    expect(columnNameClash(cols, "", "c1")).toBe(false);
+  });
+});
+
+// ── RATESCOL S2 — renameWarning ───────────────────────────────────────────
+
+describe("ratesListsHelpers · renameWarning", () => {
+  it("returns null when no steps use the column", () => {
+    expect(renameWarning("Rate", [])).toBeNull();
+  });
+
+  it("names the step in the singular", () => {
+    const warn = renameWarning("Rate", [3]);
+    expect(warn).not.toBeNull();
+    expect(warn).toContain("step 3");
+    expect(warn).toContain('"Rate"');
+    // singular: "that step is"
+    expect(warn).toContain("that step is");
+  });
+
+  it("names the steps in the plural", () => {
+    const warn = renameWarning("Rate", [2, 4]);
+    expect(warn).not.toBeNull();
+    expect(warn).toContain("step 2, 4");
+    // plural: "those steps are"
+    expect(warn).toContain("those steps are");
+  });
+
+  it("omits the locked-count clause when lockedCount is not supplied", () => {
+    const warn = renameWarning("Rate", [1]);
+    expect(warn).not.toContain("locked books");
+  });
+
+  it("includes the locked-count clause when lockedCount > 0", () => {
+    const warn = renameWarning("Rate", [1], 3);
+    expect(warn).toContain("3 tenders hold this column in their locked books");
+  });
+
+  it("omits the locked-count clause when lockedCount is 0", () => {
+    const warn = renameWarning("Rate", [1], 0);
+    expect(warn).not.toContain("locked books");
+  });
+});
+
+// ── RATESCOL S2 — chargedFromChange ──────────────────────────────────────
+
+describe("ratesListsHelpers · chargedFromChange", () => {
+  const priceA = { key: "c1", role: "price" as const, chargedFrom: true, label: "Day rate" };
+  const priceB = { key: "c2", role: "price" as const, chargedFrom: false, label: "Night rate" };
+  const lookup = { key: "c3", role: "lookup" as const, label: "Item" };
+
+  it("returns null when the first price column is unchanged", () => {
+    const before = [priceA, priceB, lookup];
+    // same order = same charged-from
+    expect(chargedFromChange(before, before)).toBeNull();
+  });
+
+  it("returns the before/after pair when the charged-from column changes", () => {
+    const before = [priceA, priceB, lookup];
+    // after: priceB comes first
+    const after = [priceB, priceA, lookup];
+    const result = chargedFromChange(before, after);
+    expect(result).not.toBeNull();
+    expect(result?.beforeId).toBe("c1");
+    expect(result?.afterId).toBe("c2");
+  });
+
+  it("returns null when there are no price columns", () => {
+    const before = [lookup];
+    expect(chargedFromChange(before, before)).toBeNull();
+  });
+
+  it("returns null when a role change does NOT alter the charged-from column", () => {
+    // c1 is the only price; changing c3 (lookup -> info) doesn't affect charged-from
+    const before = [priceA, { ...lookup, role: "lookup" as const }];
+    const after = [priceA, { ...lookup, role: "info" as const }];
+    expect(chargedFromChange(before, after)).toBeNull();
+  });
+});
+
+// ── RATESCOL S2 — swapSortOrders ─────────────────────────────────────────
+
+describe("ratesListsHelpers · swapSortOrders", () => {
+  const colsDistinct: Pick<RateColumn, "id" | "sortOrder">[] = [
+    { id: "c1", sortOrder: 1 },
+    { id: "c2", sortOrder: 2 },
+    { id: "c3", sortOrder: 3 }
+  ];
+
+  it("swaps sortOrders when moving right (dir=1)", () => {
+    const [p1, p2] = swapSortOrders(colsDistinct, "c1", 1);
+    expect(p1).toEqual({ id: "c1", sortOrder: 2 });
+    expect(p2).toEqual({ id: "c2", sortOrder: 1 });
+  });
+
+  it("swaps sortOrders when moving left (dir=-1)", () => {
+    const [p1, p2] = swapSortOrders(colsDistinct, "c3", -1);
+    expect(p1).toEqual({ id: "c3", sortOrder: 2 });
+    expect(p2).toEqual({ id: "c2", sortOrder: 3 });
+  });
+
+  it("produces two distinct PATCH bodies even on a sortOrder tie", () => {
+    const colsTied: Pick<RateColumn, "id" | "sortOrder">[] = [
+      { id: "c1", sortOrder: 0 },
+      { id: "c2", sortOrder: 0 }, // tie
+      { id: "c3", sortOrder: 1 }
+    ];
+    const [p1, p2] = swapSortOrders(colsTied, "c1", 1);
+    expect(p1.id).not.toBe(p2.id);
+    expect(p1.sortOrder).not.toBe(p2.sortOrder);
+  });
+
+  it("throws when the column id is not found", () => {
+    expect(() => swapSortOrders(colsDistinct, "nope", 1)).toThrow();
+  });
+
+  it("throws when there is no neighbour in the requested direction", () => {
+    expect(() => swapSortOrders(colsDistinct, "c1", -1)).toThrow();
+    expect(() => swapSortOrders(colsDistinct, "c3", 1)).toThrow();
+  });
+});
+
+// ── RATESCOL S2 — moveNote ────────────────────────────────────────────────
+
+describe("ratesListsHelpers · moveNote", () => {
+  const dayRate: RateColumn = col({ id: "c1", name: "Day rate", role: "VALUE", dataType: "CURRENCY", unit: "day", sortOrder: 1 });
+  const nightRate: RateColumn = col({ id: "c2", name: "Night rate", role: "VALUE", dataType: "CURRENCY", unit: "day", sortOrder: 2 });
+  const itemKey: RateColumn = col({ id: "c3", name: "Item", role: "KEY", dataType: "TEXT", sortOrder: 0 });
+
+  const toSnap = (
+    cols: RateColumn[]
+  ) => cols.map((c) => ({
+    key: c.id,
+    label: c.name,
+    kind: "text" as const,
+    role: (c.role === "KEY" ? "lookup" : c.role === "VALUE" ? "price" : "info") as "lookup" | "price" | "info",
+    unit: c.unit
+  }));
+
+  it("returns the look-up note when a KEY column is moved", () => {
+    const snap = toSnap([itemKey, dayRate]);
+    const note = moveNote(itemKey, snap, snap);
+    expect(note).toContain("Prices are unchanged");
+    expect(note).toContain("order the questions get asked");
+  });
+
+  it("returns a charged-from warning when moving a price column shifts the mark", () => {
+    // Before: dayRate first (charged-from), nightRate second
+    const before = toSnap([dayRate, nightRate]);
+    // After: nightRate first (charged-from), dayRate second
+    const after = toSnap([nightRate, dayRate]);
+    const note = moveNote(nightRate, before, after);
+    expect(note).not.toBeNull();
+    expect(note).toContain("New estimates will now price at the Night rate");
+    expect(note).toContain("locked rates keep their snapshot");
+  });
+
+  it("returns null when a VALUE move does not shift the charged-from column", () => {
+    // Two price columns; moving nightRate further right (still behind dayRate)
+    const before = toSnap([dayRate, nightRate]);
+    // dayRate still first = no change to charged-from
+    const note = moveNote(nightRate, before, before);
+    expect(note).toBeNull();
   });
 });

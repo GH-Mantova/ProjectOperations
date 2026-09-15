@@ -12,7 +12,21 @@ own worktree stands; what changes is WHERE those worktrees go.
   with `git worktree remove` when the PR lands. This covers board PRs, receipt pushes,
   verification checkouts, smoke trees — anything.
 - `C:\PR-Master\drafts\` — prompts and breadcrumbs being written that are not yet in the
-  queue.
+  queue. **A draft leaves this folder the moment its staging PR merges**: move it to
+  `C:\PR-Master\drafts\_staged\` (moved, never deleted — Marco's standing rule). What sits in
+  `drafts\` is then, at a glance, exactly the work that has NOT been staged yet.
+  MEASURED 2026-09-15: without this rule the folder held nine prompt drafts of which
+  **zero** were unstaged — five were already in the queue byte-identical, one had built
+  #1967, one had built #1970, and two were spent copies of prompts already retired to
+  `superseded/`. A folder that looks full of pending work and contains none is worse than
+  an empty one: it is why this lane started re-staging a prompt Station 06 had already
+  staged three minutes earlier.
+- `C:\PR-Master\drafts\_staged\` — drafts whose staging PR has merged. Kept, not deleted:
+  the record of what was drafted, and the thing to diff against when a prompt in the queue
+  looks wrong.
+- Nothing else belongs in `drafts\`. PR bodies, receipt bodies and review comments are a
+  station's working files, not drafts — they go under `C:\PR-Master\scripts\station-NN\`.
+  This lane had ten of its own such files in `drafts\` before the rule was written.
 - The watcher's own clone (`C:\po-watcher\ProjectOperations`) and the dev tree
   (`C:\ProjectOperations2`) stay where they are; they are NOT PR folders and do not move.
 

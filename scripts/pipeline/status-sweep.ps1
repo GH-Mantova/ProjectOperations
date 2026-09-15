@@ -248,13 +248,30 @@ if ($wt.Count -gt 0) {
 # These are invisible to the registry-based check above. Report them; do NOT prune.
 # Station 03 acts on REGISTRY-ESCAPEE findings.
 # C:\PR-Master\worktrees is the current root; the legacy roots retire per docs/pipeline/PR-MASTER.md.
-$worktreeRoots = @("C:\PR-Master\worktrees", "C:\po-worktrees", "C:\po-wt", "C:\po-watcher-worktrees")
-$registeredPaths = @(git worktree list 2>$null | ForEach-Object { ($_ -split '\s+')[0].Trim().ToLower() })
-$escapeeCount = 0
+$worktreeRoots = @("C:\PR-Master\worktrees", "C:\po-worktrees", "C:\po-wt", "C:\po-wt-h", "C:\po-watcher-worktrees")
+# PR_MASTER_BARE_TREE_SCAN_V1 (2026-09-15): the roots above are CONTAINERS - the scan lists their
+# subdirectories. A worktree created directly at "C:\<name>" is inside no container, so it was
+# STRUCTURALLY invisible here: C:\po-fix1891 sat registered and on disk for 28 hours while this
+# check reported "none found under known roots", and every legacy root PR-MASTER.md names as a
+# single tree (po-vg, po-fix*, po-smoke, po-sec-fix, po-preserve, po-work) has the same shape.
+# Detect them without git: a worktree's ".git" is a FILE ("gitdir: ..."); a clone's is a DIRECTORY.
+# That one test separates a worktree from a clone AND from an ordinary folder, so scanning the
+# drive root is cheap and cannot mistake Windows\ or Program Files\ for a tree.
+$bareTrees = @(Get-ChildItem "C:\" -Directory -ErrorAction SilentlyContinue | Where-Object {
+  Test-Path (Join-Path $_.FullName ".git") -PathType Leaf
+})
+# Quarantine under C:\PR-Master\_retired-* is where PR-MASTER.md SENDS a dead tree. Reporting it
+# as an escapee would make the correct end state look like a defect forever.
+$candidateDirs = @()
 foreach ($wtRoot in $worktreeRoots) {
   if (-not (Test-Path $wtRoot)) { continue }
-  $subdirs = @(Get-ChildItem $wtRoot -Directory -ErrorAction SilentlyContinue)
-  foreach ($subdir in $subdirs) {
+  $candidateDirs += @(Get-ChildItem $wtRoot -Directory -ErrorAction SilentlyContinue)
+}
+$candidateDirs += $bareTrees
+$candidateDirs = @($candidateDirs | Where-Object { $_.FullName -notmatch '\\PR-Master\\_retired-' })
+$registeredPaths = @(git worktree list 2>$null | ForEach-Object { ($_ -split '\s+')[0].Trim().ToLower() })
+$escapeeCount = 0
+foreach ($subdir in $candidateDirs) {
     $subdirLower = $subdir.FullName.ToLower() -replace '\\', '/'
     $inRegistry = $registeredPaths | Where-Object { ($_ -replace '\\', '/') -eq $subdirLower }
     if (-not $inRegistry) {
@@ -273,7 +290,6 @@ foreach ($wtRoot in $worktreeRoots) {
       $hasLock = Test-Path (Join-Path $subdir.FullName ".git\index.lock")
       Line "LIVE" ("   REGISTRY-ESCAPEE: " + $subdir.FullName + "  size=" + $escapeeKB + "KB  age=" + $escapeeAge + "min  .lock=" + $hasLock)
     }
-  }
 }
 if ($escapeeCount -eq 0) { Line "LIVE" "worktree-registry-escapees: none found under known roots" }
 else { Line "LIVE" ("worktree-registry-escapees: " + $escapeeCount + " found -- Station 03 should review and prune if confirmed dead") }

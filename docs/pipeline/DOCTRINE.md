@@ -1113,6 +1113,46 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   `start-watcher.ps1:160` uses only, every other hit being a quotation of a citation it removed.
   Found by Station 04 2026-09-11T02:3xZ (F4), landed by Station 00 at 02:5xZ.
 
+  🔴🔴 **CORRECTED 2026-09-15 — THE PROBE IS STRUCTURALLY BLIND TO `.gitignore:<N>`, WHICH IS THE
+  ONE CITATION CLASS THAT HAS ACTUALLY ROTTED, AND THE PER-DOCUMENT PREDICTION ABOVE READS
+  SATISFIED WHILE BEING FALSE.** `CITATION_PROBE_BLIND_TO_DOTFILES_V1` The probe is written as
+  *"extract every `<file>:<NNN>` form"*, and the obvious implementation keys on a FILE EXTENSION.
+  `.gitignore` has none, so an extension-keyed form cannot see it — and the prediction one
+  paragraph up (`03`→0, `05`→0, `CLAUDE.md`→0, `STATION-CAPABILITIES.md`→0, `DOCTRINE.md`→its
+  `start-watcher.ps1:160` uses only) is then satisfied EXACTLY, which reads as *"the rule has
+  landed, nothing left to convert"*. [MEASURED] 2026-09-15T02:1xZ by Station 04 at `25db3c36`,
+  both regex forms over the same nine files (five scheduled-task bootstraps + four binding docs):
+  extension-keyed **6**, dotfile-tolerant **17**, i.e. **11 invisible**. Four of the eleven sit
+  inside the binding documents the prediction covers — `STATION-CAPABILITIES.md` carries
+  `.gitignore:28`, `stations/05-sot-keeper.md` carries `.gitignore:76-83` and `.gitignore:75`,
+  `stations/04-scanner.md` carries `.gitignore:76-83`. NEGATIVE control, a freshly minted needle
+  across four of those files → **0**; POSITIVE control, `.gitignore:<N>` present → **4 of 4**.
+
+  ⚠️ **All four resolve correctly today, and that is why it is worth writing down rather than
+  fixing quietly.** They are live raw line-number citations of exactly the class that has already
+  rotted twice (2026-08-30 off by one, 2026-09-06 off by eight), sitting in documents every
+  station is told it can trust, and the prescribed probe reports zero of them. 🔴 **And the
+  compounding half is upstream:** `needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md`
+  ITEM 2 asks Marco for a `lint-station.mjs` check that validates every `<file>:<N>` citation.
+  Built with the obvious extension-keyed regex, **that check is born blind to the entire class
+  that motivated it.**
+
+  🔧 **So the probe's regex is stated here explicitly and dotfile-tolerantly, and any check built
+  from it must use this form and not an extension-keyed one:**
+
+  ```
+  (^|[\s(`"'])(\.?[A-Za-z0-9_.\-/]+):(\d+(?:-\d+)?)\b
+  ```
+
+  — the leading `\.?` is the whole point; a citation's file part may begin with a dot and carry no
+  extension. **The per-document prediction above stands for extension-bearing citations and is
+  INCOMPLETE on its own:** re-state it as `03`→0, `05`→**2** (`.gitignore:76-83`, `.gitignore:75`),
+  `CLAUDE.md`→0, `STATION-CAPABILITIES.md`→**1** (`.gitignore:28`), `04-scanner.md`→**1**
+  (`.gitignore:76-83`), `DOCTRINE.md`→its `start-watcher.ps1:160` uses plus its quotations of
+  citations it retired. ⚠️ **Falsifying probe: run BOTH forms over those nine files.** If the
+  extension-keyed form ever returns 17, this correction is wrong and must be re-measured. Found by
+  Station 04 2026-09-15T02:1xZ (F1), landed by Station 00 at 02:4xZ.
+
 - 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
   `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs
   `execFileSync(process.env.LINT_GIT_BIN || "git", ["show", "origin/main:<path>"])` and on failure

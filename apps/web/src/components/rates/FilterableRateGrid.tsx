@@ -15,6 +15,7 @@ import {
   passesNumberRange,
   type NumberRange,
   type RateGridColumn,
+  type RateGridColumnRole,
   type RateGridRow,
   type RateGridRowValue
 } from "./rateGridModel";
@@ -41,7 +42,7 @@ type Props = {
 };
 
 const ACCENT = "var(--text-accent, #EA580C)";
-const BRAND = "var(--brand-primary, #005B61)";
+const BRAND = "var(--brand-primary)";
 const BORDER = "var(--border-subtle, #E5E7EB)";
 const MUTED = "var(--text-muted, #64748b)";
 
@@ -464,6 +465,71 @@ function ChipRow({
   );
 }
 
+// ── Role chip ────────────────────────────────────────────────────────────
+
+/**
+ * Small inline chip that names the column's purpose.
+ * Uses only s7-* design tokens — no hex literals, no new font.
+ */
+function RoleChip({
+  role,
+  chargedFrom
+}: {
+  role: RateGridColumnRole;
+  chargedFrom?: boolean;
+}) {
+  let label: string;
+  let chipStyle: CSSProperties;
+
+  if (role === "price" && chargedFrom) {
+    label = "the rate";
+    chipStyle = {
+      background: BRAND,
+      color: "var(--text-inverse)",
+      border: "none"
+    };
+  } else if (role === "price") {
+    label = "price";
+    chipStyle = {
+      background: "transparent",
+      color: BRAND,
+      border: `1px solid ${BRAND}`
+    };
+  } else if (role === "lookup") {
+    label = "look-up";
+    chipStyle = {
+      background: "rgba(0,91,97,0.08)",
+      color: MUTED,
+      border: "none"
+    };
+  } else {
+    // info
+    label = "info";
+    chipStyle = {
+      background: "rgba(148,163,184,0.15)",
+      color: MUTED,
+      border: "none"
+    };
+  }
+
+  return (
+    <span
+      style={{
+        ...chipStyle,
+        display: "inline-block",
+        padding: "1px 6px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 600,
+        lineHeight: "16px",
+        whiteSpace: "nowrap"
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 // ── Header cell + dropdown ───────────────────────────────────────────────
 
 function HeaderCell({
@@ -514,9 +580,12 @@ function HeaderCell({
         textAlign: align,
         position: "sticky",
         top: 0,
-        background: "var(--surface, #fff)",
+        background: "var(--text-inverse)",
         zIndex: 1,
-        color: hasFilter ? ACCENT : undefined
+        color: hasFilter ? ACCENT : undefined,
+        ...(column.chargedFrom
+          ? { boxShadow: "inset 3px 0 0 0 var(--brand-primary)" }
+          : undefined)
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -539,6 +608,7 @@ function HeaderCell({
           {isSorted ? <span aria-hidden> {sort.dir === 1 ? "↑" : "↓"}</span> : null}
         </button>
         {column.labelSuffix ? <span>{column.labelSuffix}</span> : null}
+        {column.role ? <RoleChip role={column.role} chargedFrom={column.chargedFrom} /> : null}
         {filterable ? (
           <button
             type="button"
@@ -559,6 +629,11 @@ function HeaderCell({
           </button>
         ) : null}
       </span>
+      {column.subline ? (
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontWeight: 400 }}>
+          {column.subline}
+        </div>
+      ) : null}
       {isOpen && filterable ? (
         <HeaderDropdown
           column={column}
@@ -632,7 +707,7 @@ function HeaderDropdown({
     marginTop: 4,
     left: 0,
     zIndex: 10,
-    background: "var(--surface, #fff)",
+    background: "var(--text-inverse)",
     border: `1px solid ${BORDER}`,
     borderRadius: 6,
     boxShadow: "0 4px 12px rgba(15,23,42,0.12)",
@@ -925,7 +1000,10 @@ function BodyRow({
               padding: "8px 12px",
               textAlign: align,
               fontFamily: numericFont,
-              verticalAlign: "middle"
+              verticalAlign: "middle",
+              ...(col.chargedFrom
+                ? { boxShadow: "inset 3px 0 0 0 var(--brand-primary)" }
+                : undefined)
             }}
           >
             {custom !== undefined ? custom : renderDefault(col, row.values[col.key])}

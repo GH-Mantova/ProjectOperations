@@ -137,13 +137,16 @@ describe("buildGoingColdTile — the Going cold tile", () => {
 
 // ── The two chips ─────────────────────────────────────────────────────────────
 
+// crmvis-S1 (2026-09-15): chip inline-styles migrated to s7-badge token
+// classes. The "cold chip keeps its orange set" tests previously pinned raw
+// hex literals; those literals are now CSS-var-driven by the kit. Assertions
+// updated to reflect the s7-badge composition.
 describe("Last-contact cell — two chips, the second deliberately quieter", () => {
-  it("the cold chip keeps its orange set and its aria-label", () => {
+  it("the cold chip uses s7-badge--warning and keeps its aria-label", () => {
     expect(PAGE_SRC).toContain('aria-label="Going cold"');
-    expect(PAGE_SRC).toContain("Going cold");
-    expect(PAGE_SRC).toContain('background: "#fff7ed"');
-    expect(PAGE_SRC).toContain('border: "1px solid #fed7aa"');
-    expect(PAGE_SRC).toContain('color: "#ea580c"');
+    expect(PAGE_SRC).toContain("GOING COLD");
+    // crmvis-S1: s7-badge--warning replaces the inline orange set.
+    expect(PAGE_SRC).toContain('s7-badge--warning');
   });
 
   it("the never-contacted chip exists with a matching aria-label", () => {
@@ -156,32 +159,24 @@ describe("Last-contact cell — two chips, the second deliberately quieter", () 
     expect(PAGE_SRC).toContain('row.contactState === "NEVER_CONTACTED"');
   });
 
-  it("the never-contacted chip introduces no colour literal new to this file", () => {
-    // Its three colours are the page's existing muted greys: the same #9ca3af
-    // as the Owner cell's em-dash placeholder at the Owner cell, the plain
-    // #e5e7eb border the StatTile and the table already use, and #fff.
-    //
-    // Cut the chip block out of the source and assert each colour is STILL
-    // there — that is the direct proof it was already in the file rather than
-    // arriving with this chip.
+  it("the never-contacted chip uses s7-badge--neutral (quieter than warning)", () => {
+    // crmvis-S1: inline grey set replaced by s7-badge--neutral.
+    // A backlog is not an alarm — neutral reads quieter than warning.
     const start = PAGE_SRC.indexOf('aria-label="Never contacted"');
-    const end = PAGE_SRC.indexOf("Never contacted\n", start);
     expect(start).toBeGreaterThan(-1);
-    const withoutChip = PAGE_SRC.slice(0, start) + PAGE_SRC.slice(end);
-
-    for (const colour of ["#fff", "#e5e7eb", "#9ca3af"]) {
-      expect(withoutChip).toContain(colour);
-    }
+    const chip = PAGE_SRC.slice(start, start + 200);
+    expect(chip).toContain("s7-badge--neutral");
+    expect(chip).not.toContain("s7-badge--warning");
+    expect(chip).not.toContain("s7-badge--danger");
   });
 
-  it("the never-contacted chip does NOT reuse the orange alarm set", () => {
-    // Isolate the chip block and check it carries none of the orange trio.
+  it("the never-contacted chip does NOT reuse the warning/danger classes", () => {
+    // The cold chip is warning; never-contacted must remain neutral.
     const start = PAGE_SRC.indexOf('aria-label="Never contacted"');
     expect(start).toBeGreaterThan(-1);
-    const chip = PAGE_SRC.slice(start, start + 500);
-    expect(chip).not.toContain("#fff7ed");
-    expect(chip).not.toContain("#fed7aa");
-    expect(chip).not.toContain("#ea580c");
+    const chip = PAGE_SRC.slice(start, start + 200);
+    expect(chip).not.toContain("s7-badge--warning");
+    expect(chip).not.toContain("s7-badge--danger");
   });
 });
 

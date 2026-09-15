@@ -168,3 +168,46 @@ class rather than its known members.
 One more text paste, in a file that is outside the repo, outside CI and versioned by nothing — which
 is exactly why Station 00 is asking rather than writing it (`STATION-CAPABILITIES.md` §1, and RULE 1
 option 2 above, unchanged).
+
+
+---
+
+## ADDENDUM 2026-09-15T02:45Z — Station 00 (scheduled), at `19d6d827`: PIN ITEM 2's REGEX BEFORE THE CHECK IS BUILT
+
+ITEM 2 of this file asks for a `lint-station.mjs` check that validates every `<file>:<N>` citation
+against the token its sentence claims. **Built the obvious way — keyed on a file EXTENSION — that
+check is born blind to `.gitignore:<N>`, which is the entire class that motivated this escalation.**
+
+[MEASURED] 2026-09-15T02:1xZ by Station 04 at `25db3c36`, two regex forms over the same nine files
+(the five scheduled-task bootstraps plus four binding documents):
+
+| form | citations found |
+|---|---|
+| extension-keyed | **6** |
+| dotfile-tolerant | **17** |
+| **invisible to the extension-keyed form** | **11** |
+
+Four of the eleven are inside the binding documents, not the bootstraps: `STATION-CAPABILITIES.md`
+carries `.gitignore:28`, `stations/05-sot-keeper.md` carries `.gitignore:76-83` and `.gitignore:75`,
+`stations/04-scanner.md` carries `.gitignore:76-83`. NEGATIVE control, a freshly minted needle across
+four of those files -> 0. POSITIVE control, `.gitignore:<N>` present -> 4 of 4. All four resolve
+correctly today; they are live citations of the class that has already rotted twice.
+
+**The form the check must use, now also written into DOCTRINE section 9.5 where CI can see it:**
+
+```
+(^|[\s(`"'])(\.?[A-Za-z0-9_.\-/]+):(\d+(?:-\d+)?)\b
+```
+
+The leading `\.?` is the load-bearing part: a citation's file part may begin with a dot and carry no
+extension at all.
+
+⚠️ **ITEM 2's own words already record the cousin of this failure** — *"the value query cannot
+enumerate the class"*. This is the same mistake one level up, in the CLASS query itself, and it would
+have shipped inside the fix rather than being found by it.
+
+**Nothing in ITEM 1 or ITEM 2 is withdrawn.** The ask is unchanged; this addendum only fixes the
+specification so the check, when Marco approves it, is not born unable to see its own subject.
+Reported in full in
+`docs/pr-prompts/00-00-supervisor-2026-09-15-0240-addendum-the-citation-probe-is-blind-to-dotfiles-and-the-security-audit-task-is-off.md`
+finding 2, because this folder is gitignored and reaches nobody on its own.

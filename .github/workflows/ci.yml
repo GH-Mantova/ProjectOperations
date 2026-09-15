@@ -234,6 +234,14 @@ jobs:
       # and no instrument measured the drift. An embedded copy of a living document always drifts;
       # this gate is what stops it coming back.
       - run: node scripts/pipeline/check-agent-doctrine.mjs
+      # Every CP-26 merge-approval receipt must parse under CP-26's OWN front-matter regex.
+      # [MEASURED 2026-09-15] 26 committed receipts (1736..1799) carry a UTF-8 BOM. CP-26's
+      # parser (scripts/pr-gates/approval-receipt.mjs) anchors at string start with no /m flag,
+      # so a BOM makes it report RECEIPT_MALFORMED_FRONT_MATTER - those 26 receipts do not
+      # exist as far as the gate is concerned. Nothing caught it because CP-26 reads exactly
+      # ONE receipt, for the PR being merged, only while do-not-merge is on. A defect in the
+      # approval record must not be able to lie dormant until the day someone needs it.
+      - run: node scripts/pipeline/check-receipts.mjs
       # A pipeline script may not READ a queue subdirectory that no pipeline script WRITES.
       # [MEASURED 2026-09-01] three scripts counted docs/pr-prompts/in-progress/ - a directory
       # scripts/pr-watcher/index.mjs never creates - and all three printed 0 rather than

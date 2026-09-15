@@ -3,6 +3,7 @@ import {
   compareRows,
   distinctValues,
   groupRows,
+  markChargedFrom,
   matchesQuery,
   passesColumnFilters,
   passesNumberRange,
@@ -125,5 +126,40 @@ describe("groupRows", () => {
     expect(groups.map((g) => g.key)).toEqual(["Concrete saw", "Wire saw"]);
     expect(groups[0].rows.map((r) => r.id)).toEqual(["1", "2"]);
     expect(groups[1].rows.map((r) => r.id)).toEqual(["3", "4"]);
+  });
+});
+
+describe("markChargedFrom", () => {
+  it("marks chargedFrom: true on the single price column", () => {
+    const columns: RateGridColumn[] = [
+      { key: "material", label: "Material", kind: "text", role: "lookup" },
+      { key: "rate", label: "Rate", kind: "currency", role: "price" }
+    ];
+    const result = markChargedFrom(columns);
+    expect(result[0].chargedFrom).toBeUndefined();
+    expect(result[1].chargedFrom).toBe(true);
+  });
+
+  it("marks the leftmost price column chargedFrom: true and the rest false", () => {
+    const columns: RateGridColumn[] = [
+      { key: "k", label: "Key", kind: "text", role: "lookup" },
+      { key: "v1", label: "Rate 1", kind: "currency", role: "price" },
+      { key: "v2", label: "Rate 2", kind: "currency", role: "price" },
+      { key: "v3", label: "Rate 3", kind: "currency", role: "price" }
+    ];
+    const result = markChargedFrom(columns);
+    expect(result[0].chargedFrom).toBeUndefined();
+    expect(result[1].chargedFrom).toBe(true);
+    expect(result[2].chargedFrom).toBe(false);
+    expect(result[3].chargedFrom).toBe(false);
+  });
+
+  it("returns the array unchanged when there are no price columns", () => {
+    const columns: RateGridColumn[] = [
+      { key: "material", label: "Material", kind: "text", role: "lookup" },
+      { key: "note", label: "Note", kind: "text", role: "info" }
+    ];
+    const result = markChargedFrom(columns);
+    expect(result).toBe(columns);
   });
 });

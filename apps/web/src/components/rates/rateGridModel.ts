@@ -9,6 +9,13 @@ export { formatKeyColumnHeader } from "../../pages/tendering/ratesTabApi";
 
 export type RateGridColumnKind = "text" | "number" | "currency";
 
+/**
+ * The grid's own vocabulary for a column's purpose. Intentionally different
+ * from the DTO enum (KEY / VALUE / INFO) — the grid speaks to a reader, not
+ * to the API.
+ */
+export type RateGridColumnRole = "lookup" | "price" | "info";
+
 export type RateGridColumn = {
   key: string;
   label: string;
@@ -19,7 +26,42 @@ export type RateGridColumn = {
   filterable?: boolean;
   sortable?: boolean;
   groupable?: boolean;
+  /** Plain-language role; drives the header chip and column rule. Optional — absent = no chip. */
+  role?: RateGridColumnRole;
+  /**
+   * True on the one price column the resolver takes as valueCols[0].
+   * False on every other price column. Absent on non-price columns.
+   * Drives the "the rate" chip variant and the inset column rule.
+   */
+  chargedFrom?: boolean;
+  /** Secondary line shown under the label in the header, e.g. "$ per m". Optional. */
+  subline?: string;
 };
+
+/**
+ * Pure helper: marks the column the rate resolver would take as valueCols[0]
+ * (i.e. the first price column in the array order, which mirrors the
+ * `orderBy: { sortOrder: "asc" }` the server applies when building valueCols).
+ *
+ * Returns a new array — the input is not mutated. chargedFrom is set to true
+ * on exactly one column (the first price column by position), false on every
+ * other price column, and absent on all non-price columns. If there are no
+ * price columns the array is returned unchanged.
+ */
+export function markChargedFrom(columns: RateGridColumn[]): RateGridColumn[] {
+  const hasPriceCol = columns.some((c) => c.role === "price");
+  if (!hasPriceCol) return columns;
+
+  let first = true;
+  return columns.map((c) => {
+    if (c.role !== "price") return c;
+    if (first) {
+      first = false;
+      return { ...c, chargedFrom: true };
+    }
+    return { ...c, chargedFrom: false };
+  });
+}
 
 export type RateGridRowValue = string | number | null;
 

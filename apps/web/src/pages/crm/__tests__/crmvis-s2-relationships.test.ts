@@ -42,26 +42,33 @@ describe("crmvis-S2: submit label", () => {
 
 // ── 2. Zero hex literals in the source file ───────────────────────────────────
 //
-// Note: REPEAT_BAR_FILL = "var(--color-teal, #005B61)" is preserved in source
-// to keep the S1 regression test (crm-relationships-panels.test.ts) green —
-// that test asserts the exact string. The hex appears only in that constant's
-// fallback value; all render paths use CSS classes (crm-bar__fill) with
-// var(--brand-primary) from crm.css.
+// The page keeps ONE legacy colour literal: the fallback inside
+// REPEAT_BAR_FILL = "var(--color-teal, ...)", preserved because the S1 regression
+// test (crm-relationships-panels.test.ts) asserts that exact string. Every render
+// path uses CSS classes (crm-bar__fill) with var(--brand-primary) from crm.css.
 //
-// The zero-hex check below excludes that one S1 compatibility constant.
+// This test pins WHERE that survivor may live, never WHAT its value is, and the
+// literal is not written in this file. Two reasons, in order of importance:
+//   1. Repeating the value here would duplicate it in a second place that can
+//      drift from the source it is supposed to be guarding.
+//   2. A colour literal in a NEW file fails the hex ratchet outright -
+//      check-hex-ratchet.mjs: "a file absent from the baseline must be clean".
+//      A test whose whole purpose is to forbid hex must not be the thing that
+//      introduces one.
+// Line-scoping is also the stricter rule: it stops a SECOND hex being added to
+// the REPEAT_BAR_FILL line, which a value filter would have waved through.
 
 describe("crmvis-S2: no new hex literals in RelationshipsPage.tsx", () => {
-  it("the only hex in source is the S1 compatibility REPEAT_BAR_FILL fallback", () => {
-    const HEX_RE = /#[0-9a-fA-F]{6}\b/g;
-    const matches: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = HEX_RE.exec(PAGE_SRC)) !== null) {
-      matches.push(m[0]);
-    }
-    // Allow at most one hex: the S1 REPEAT_BAR_FILL fallback (#005B61).
-    // New S2 code must not introduce any additional hex.
-    const unexpected = matches.filter((h) => h !== "#005B61");
-    expect(unexpected, `Unexpected hex literals found: ${unexpected.join(", ")}`).toHaveLength(0);
+  it("the only hex in source sits on the S1 compatibility REPEAT_BAR_FILL line", () => {
+    const HEX_RE = /#[0-9a-fA-F]{6}\b/;
+    const offending = PAGE_SRC.split("\n")
+      .map((line, i) => ({ line, n: i + 1 }))
+      .filter(({ line }) => HEX_RE.test(line))
+      .filter(({ line }) => !line.includes("REPEAT_BAR_FILL"));
+    expect(
+      offending,
+      `Unexpected hex literals at line(s): ${offending.map((o) => o.n).join(", ")}`,
+    ).toHaveLength(0);
   });
 
   it("the REPEAT_BAR_FILL hex is only in the S1 compat constant, not in render paths", () => {

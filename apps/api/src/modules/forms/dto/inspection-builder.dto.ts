@@ -1,5 +1,7 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsString } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsObject, IsString, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
+import { UpsertFormTemplateDto } from "./forms.dto";
 
 /**
  * Response returned by `POST /forms/templates/build-from-pdf` -- the
@@ -99,4 +101,56 @@ export class DraftRuleDto {
       "The current form's field list. The AI will only reference fieldKey values from this list."
   })
   fields!: RuleDraftFieldDto[];
+}
+
+// ── FV2-S2: Preview-import DTOs ────────────────────────────────────────────
+
+/**
+ * Response from `POST /forms/templates/preview-import` and
+ * `GET /forms/templates/preview-import/:jobId`.
+ *
+ * The `proposal` is the reviewer-editable UpsertFormTemplateDto; `provenance`
+ * is a flat map of fieldKey -> provenance metadata (review-only, never
+ * persisted).
+ */
+export class PreviewImportResponseDto {
+  @ApiProperty({ description: "Unique job identifier. Valid for 30 minutes." })
+  jobId!: string;
+
+  @ApiProperty({ description: "Full extracted text from the document, including page markers." })
+  extractedText!: string;
+
+  @ApiProperty({ description: "Number of pages detected in the document." })
+  pages!: number;
+
+  @ApiProperty({ description: "AI-generated form template proposal. Editable by the reviewer." })
+  proposal!: UpsertFormTemplateDto;
+
+  @ApiProperty({
+    description:
+      "Per-field provenance metadata (review-only, never persisted). Key is fieldKey."
+  })
+  provenance!: Record<string, unknown>;
+}
+
+/**
+ * Request body for `POST /forms/templates/preview-import/:jobId/create`.
+ *
+ * The reviewer's (possibly edited) UpsertFormTemplateDto is sent back here.
+ * `code` is honoured as sent; a collision produces the existing 409.
+ */
+export class PreviewImportCreateDto {
+  @ApiProperty({ description: "The reviewed (and possibly edited) form template proposal." })
+  @IsObject()
+  @ValidateNested()
+  @Type(() => UpsertFormTemplateDto)
+  proposal!: UpsertFormTemplateDto;
+}
+
+/**
+ * Response from `POST /forms/templates/preview-import/:jobId/create`.
+ */
+export class PreviewImportCreateResponseDto {
+  @ApiProperty({ description: "Id of the newly created DRAFT FormTemplate." })
+  id!: string;
 }

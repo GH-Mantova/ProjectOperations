@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { CenteredModal } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -12,8 +13,12 @@ const ACCEPTED_EXTENSIONS = [".pdf", ".docx"];
 
 type Props = {
   onClose: () => void;
-  /** Called with the id of the newly-created DRAFT template so the caller can navigate to the designer. */
-  onCreated: (templateId: string) => void;
+  /**
+   * @deprecated FV2-S2: the modal now navigates to /forms/import/:jobId
+   * directly. This prop is accepted for backwards compatibility but is no
+   * longer called. Callers should remove it when convenient.
+   */
+  onCreated?: (templateId: string) => void;
 };
 
 function formatBytes(bytes: number): string {
@@ -28,30 +33,44 @@ function sourceLabel(mimetype: string): string {
   return mimetype;
 }
 
+// Six steps shown during state 2 (extraction in progress).
+// Steps 1-3 and 5-6 are countable; step 4 (the model call) is indeterminate.
+const STEPS = [
+  { label: "Receiving document", indeterminate: false },
+  { label: "Reading pages", indeterminate: false },
+  { label: "Extracting text", indeterminate: false },
+  { label: "Asking AI to propose fields", indeterminate: true },
+  { label: "Validating proposal", indeterminate: false },
+  { label: "Preparing review", indeterminate: false }
+];
+
 /**
  * "Import from document" modal on the Forms list.
  *
  * State 1: drop zone with PDF / Word source tiles and a staged file row.
- * State 2 (S2, chained): six-step progress list after upload. Not shipped here.
+ * State 2: six-step progress list shown while preview-import runs.
+ *          Steps 1-3 and 5-6 are shown as ticked; step 4 (model call)
+ *          is rendered as an indeterminate shimmer inside the list.
  *
- * Posts a single-file `multipart/form-data` upload to
- * `POST /forms/templates/build-from-pdf`. The API converts the document into
- * a DRAFT `FormTemplate` via the AI provider the caller has configured
- * (BYOK -- same key store as the assist panel) and returns the new template
- * id, which we hand back so the caller can route to the designer for
- * review + publish. Nothing is published automatically.
+ * On success, navigates to /forms/import/:jobId for review.
+ * The old `build-from-pdf` route is NOT used here; the modal now calls
+ * `POST /forms/templates/preview-import`.
  *
- * Note: the route name `build-from-pdf` is intentionally preserved for
- * backwards compatibility (see controller comment). Word documents are
- * accepted by the same endpoint.
+ * Note: `onCreated` prop has been removed -- the modal navigates directly.
+ * Callers that mounted this modal with onCreated should remove that prop.
  */
-export function ImportFromPdfModal({ onClose, onCreated }: Props) {
+export function ImportFromPdfModal({ onClose, onCreated: _onCreated }: Props) {
   const { authFetch } = useAuth();
+  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+
+  // How many non-indeterminate steps have been visually "ticked"
+  // (deterministic steps 1-3 complete before the AI call, 5-6 after).
+  const [stepsDone, setStepsDone] = useState(0);
 
   const pickFile = (picked: File | null) => {
     setError(null);
@@ -85,26 +104,162 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
   const submit = async () => {
     if (!file) return;
     setBusy(true);
+    setStepsDone(0);
     setError(null);
     try {
+      // Steps 1-3: tick as we prepare the upload (synchronous / fast)
+      setStepsDone(1);
       const formData = new FormData();
+      setStepsDone(2);
       formData.append("file", file);
-      const res = await authFetch("/forms/templates/build-from-pdf", {
+      setStepsDone(3);
+
+      // Step 4 is the AI call -- the server drives this, we just wait.
+      // The shimmer renders for step 4 while the request is in-flight.
+      const res = await authFetch("/forms/templates/preview-import", {
         method: "POST",
         body: formData
       });
+
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(body.message ?? `Import failed (${res.status})`);
       }
-      const created = (await res.json()) as { id: string };
-      onCreated(created.id);
+
+      const created = (await res.json()) as { jobId: string };
+
+      // Steps 5-6: complete after the server responds
+      setStepsDone(5);
+      setStepsDone(6);
+
+      navigate(`/forms/import/${created.jobId}`);
     } catch (err) {
       setError((err as Error).message);
-    } finally {
       setBusy(false);
+      setStepsDone(0);
     }
   };
+
+  // ── State 2: progress list ──────────────────────────────────────────────
+
+  if (busy) {
+    return (
+      <CenteredModal
+        title="Extracting document"
+        onClose={() => undefined}
+        maxWidth={440}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
+          <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 12 }}>
+            This may take 15-30 seconds depending on document size.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {STEPS.map((step, idx) => {
+              const done = stepsDone > idx;
+              const isActive = !done && (
+                // indeterminate step: active while we're waiting for AI
+                step.indeterminate ? stepsDone === 3 : false
+              );
+
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    opacity: done || isActive || stepsDone === idx ? 1 : 0.4
+                  }}
+                >
+                  {/* Status icon */}
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      background: done
+                        ? "var(--status-active, #16a34a)"
+                        : step.indeterminate && stepsDone === 3
+                          ? "transparent"
+                          : "var(--border-default)",
+                      border: step.indeterminate && stepsDone === 3
+                        ? "2px solid var(--border-default)"
+                        : "none"
+                    }}
+                  >
+                    {done ? (
+                      <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>&#x2713;</span>
+                    ) : step.indeterminate && stepsDone === 3 ? (
+                      <div
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          background: "var(--brand-accent, #2563eb)",
+                          animation: "pulse 1.2s ease-in-out infinite"
+                        }}
+                      />
+                    ) : null}
+                  </div>
+
+                  {/* Step label */}
+                  <span
+                    style={{
+                      color: done ? "var(--text-primary)" : step.indeterminate && stepsDone === 3 ? "var(--brand-accent, #2563eb)" : "var(--text-secondary)",
+                      flex: 1
+                    }}
+                  >
+                    {step.label}
+                  </span>
+
+                  {/* Indeterminate shimmer for step 4 */}
+                  {step.indeterminate && stepsDone === 3 ? (
+                    <div
+                      style={{
+                        width: 60,
+                        height: 4,
+                        borderRadius: 2,
+                        overflow: "hidden",
+                        background: "var(--border-default)"
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "40%",
+                          height: "100%",
+                          background: "var(--brand-accent, #2563eb)",
+                          borderRadius: 2,
+                          animation: "slide 1.4s ease-in-out infinite"
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <style>{`
+            @keyframes pulse {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.3; }
+            }
+            @keyframes slide {
+              0% { transform: translateX(-100%); }
+              50% { transform: translateX(150%); }
+              100% { transform: translateX(-100%); }
+            }
+          `}</style>
+        </div>
+      </CenteredModal>
+    );
+  }
+
+  // ── State 1: file picker ──────────────────────────────────────────────
 
   return (
     <CenteredModal
@@ -123,16 +278,16 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
             onClick={() => void submit()}
             disabled={!file || busy}
           >
-            {busy ? "Building draft..." : "Import"}
+            {busy ? "Extracting..." : "Extract"}
           </button>
         </>
       }
     >
       <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ margin: 0, color: "var(--text-secondary)" }}>
-          Upload a paper inspection sheet, checklist, or safety form and we&rsquo;ll draft a form
-          template you can review before publishing. Uses your configured AI provider (BYOK). The
-          draft never publishes automatically.
+          Upload a paper inspection sheet, checklist, or safety form and we&rsquo;ll extract the
+          fields for your review before creating a draft. Uses your configured AI provider (BYOK).
+          The draft never publishes automatically.
         </p>
 
         {/* Source tiles */}
@@ -250,7 +405,7 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
             }}
           >
             <span style={{ fontSize: 16 }}>
-              {file.name.toLowerCase().endsWith(".pdf") ? "📄" : "📝"}
+              {file.name.toLowerCase().endsWith(".pdf") ? "&#x1F4C4;" : "&#x1F4DD;"}
             </span>
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               <strong>{file.name}</strong>
@@ -287,13 +442,6 @@ export function ImportFromPdfModal({ onClose, onCreated }: Props) {
                 &times;
               </button>
             ) : null}
-          </div>
-        ) : null}
-
-        {/* Busy label */}
-        {busy ? (
-          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Building draft...
           </div>
         ) : null}
 

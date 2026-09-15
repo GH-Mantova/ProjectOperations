@@ -72,6 +72,7 @@ function basePayload(
       },
     ],
     cuttingItems: { sawCuts: [], coreHoles: [], otherRates: [] },
+    operationalCosts: [],
     documents: [{ id: "d-1", name: "Site Plan Rev A.pdf" }],
     assumptions: [{ text: "Access via loading dock" }],
     exclusions: [{ text: "Asbestos removal" }],

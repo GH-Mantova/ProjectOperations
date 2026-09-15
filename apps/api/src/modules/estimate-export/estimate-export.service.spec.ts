@@ -72,6 +72,14 @@ function makeService(tender: FakeTender, summary = baseSummary()) {
     estimateExport: { create: async () => undefined },
     companyProfile: {
       findUnique: async () => null // exercise the fallback branch
+    },
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — fetchTenderForExport now queries
+    // operational cost lines and TenderEstimate.
+    scopeOperationalCostLine: {
+      findMany: async () => []
+    },
+    tenderEstimate: {
+      findUnique: async () => ({ markup: 30 })
     }
   } as unknown as ConstructorParameters<typeof EstimateExportService>[0];
   const scope = {
@@ -396,5 +404,25 @@ describe("EstimateExportService.fetchTenderForExport", () => {
     const headerHtml = callArgs[1].headerHtml;
     expect(headerHtml).toContain("Rates not locked");
     expect(headerHtml).not.toMatch(/Rates as of \d{2}\/\d{2}\/\d{4}/);
+  });
+
+  it("SCOPE_OPERATIONAL_COSTS_PRICED_V1 — payload.summary.operationalCosts.withMarkup equals the summary() figure", async () => {
+    // The summary mock returns a fixed operationalCosts figure; fetchTenderForExport
+    // must pass it through to payload.summary without re-computing it.
+    const summary = makeSummary({
+      operationalCosts: { itemCount: 3, subtotal: 4500, withMarkup: 5400 },
+      tenderPrice: 5400
+    });
+    const svc = makeService(baseTender(), summary);
+    const payload: ExportPayload = await svc.fetchTenderForExport("t-1");
+    expect(payload.summary.operationalCosts.withMarkup).toBe(5400);
+    expect(payload.summary.operationalCosts.itemCount).toBe(3);
+  });
+
+  it("SCOPE_OPERATIONAL_COSTS_PRICED_V1 — payload.operationalCosts is an array (empty when no lines)", async () => {
+    const svc = makeService(baseTender());
+    const payload: ExportPayload = await svc.fetchTenderForExport("t-1");
+    expect(Array.isArray(payload.operationalCosts)).toBe(true);
+    expect(payload.operationalCosts).toHaveLength(0);
   });
 });

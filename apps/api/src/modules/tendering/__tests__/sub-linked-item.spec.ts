@@ -173,6 +173,7 @@ function makePrisma(
       findUnique: jest.fn().mockResolvedValue({ markup: new Prisma.Decimal(MARKUP_PCT) })
     },
     scopeWasteItem: { findMany: jest.fn().mockResolvedValue([]) },
+    scopeOperationalCostLine: { findMany: jest.fn().mockResolvedValue([]) },
     cuttingSheetItem: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockImplementation((ops: unknown[]) => Promise.all(ops)),
     ...extraOverrides

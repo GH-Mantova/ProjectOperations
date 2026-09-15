@@ -287,16 +287,22 @@ export function ScopeCardsTab({
     return byCard;
   }, [items, disciplineCards]);
 
-  // SCOPE_OTHER_COSTS_V1 — each card's "Other operational costs" section
-  // reports its own total up to here. The section does NOT compute a card
-  // subtotal; this map is only the section figure, per card.
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — each card's "Other operational costs"
+  // section reports { subtotal, withMarkup } up to here. The section does NOT
+  // compute card money; this map holds the section figures, per card.
   //
   // A collapsed card unmounts its section, and its entry is deliberately NOT
   // cleared: collapsing a card hides its body and moves no figure, which is
   // the rule the roll-up already states for collapse.
-  const [otherCostTotals, setOtherCostTotals] = useState<Record<string, number>>({});
-  const handleOtherCostTotal = useCallback((cardId: string, total: number) => {
-    setOtherCostTotals((prev) => (prev[cardId] === total ? prev : { ...prev, [cardId]: total }));
+  const [otherCostTotals, setOtherCostTotals] = useState<Record<string, { subtotal: number; withMarkup: number }>>({});
+  const handleOtherCostTotal = useCallback((cardId: string, totals: { subtotal: number; withMarkup: number }) => {
+    setOtherCostTotals((prev) => {
+      const existing = prev[cardId];
+      if (existing && existing.subtotal === totals.subtotal && existing.withMarkup === totals.withMarkup) {
+        return prev;
+      }
+      return { ...prev, [cardId]: totals };
+    });
   }, []);
 
   // SCOPE_CUTTING_V1 — the same arrangement for the concrete cutting take-off.
@@ -317,11 +323,10 @@ export function ScopeCardsTab({
   // to either display — is what stops the card and the bar from ever
   // disagreeing about what the card is worth.
   //
-  // The section total is added to `subtotal` and `subtotalWithMarkup`
-  // identically, i.e. at cost. There is no markup field on
-  // ScopeOperationalCostLine and this slice may not add one, so applying a
-  // markup here would be inventing a number the server has never seen. Both
-  // figures therefore move by EXACTLY the section total.
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1: the section now carries its own markup,
+  // server-computed. `subtotal` gets the section's bare subtotal; `subtotalWithMarkup`
+  // gets the section's marked-up total. The two figures can differ when a line
+  // carries a markup override or the card/tender markup is non-zero.
   //
   // SCOPE_CUTTING_V1 — the concrete cutting take-off joins the SAME fold, for
   // the same reason, and on the same terms: `cutting` is a sum of the line
@@ -337,15 +342,17 @@ export function ScopeCardsTab({
       // SCOPE_PROVISIONAL_SPLIT_V1 — pass the discipline so computeCardBarStats
       // applies both halves of the predicate: isProvisional===true OR discipline==="Other".
       const fromItems = computeCardBarStats(itemsByCard.get(card.id) ?? [], card.discipline);
-      const otherCosts = otherCostTotals[card.id] ?? 0;
+      const otherCostsEntry = otherCostTotals[card.id];
+      const otherCostsSubtotal = otherCostsEntry?.subtotal ?? 0;
+      const otherCostsWithMarkup = otherCostsEntry?.withMarkup ?? 0;
       const cutting = cuttingTotals[card.id] ?? 0;
-      // ScopeOperationalCostLine and the cutting take-off have no provisional flag —
-      // they are priced work, always. Pass the provisional figures straight through,
-      // unmodified: otherCosts and cutting go to the priced side only.
+      // ScopeOperationalCostLine: subtotal gets bare cost, subtotalWithMarkup
+      // gets the server's marked-up figure (S1). Cutting has no per-line markup
+      // and goes to both figures at cost (unchanged from SCOPE_CUTTING_V1).
       byCard.set(card.id, {
         itemCount: fromItems.itemCount,
-        subtotal: fromItems.subtotal + otherCosts + cutting,
-        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts + cutting,
+        subtotal: fromItems.subtotal + otherCostsSubtotal + cutting,
+        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup + cutting,
         provisionalSubtotal: fromItems.provisionalSubtotal,
         provisionalWithMarkup: fromItems.provisionalWithMarkup
       });
@@ -818,9 +825,10 @@ type StackEntryProps = {
   onSetCardNotes: (patch: { cuttingNotes?: string | null; wasteNotes?: string | null }) => Promise<void>;
   onSetSectionMarkup: (section: "waste" | "cutting", next: number | null) => Promise<void>;
   onItemsChanged: () => Promise<void>;
-  /** SCOPE_OTHER_COSTS_V1 — reports the card's operational-cost section total
-   *  up to the single card-money fold. Must be referentially stable. */
-  onOtherCostTotalChange: (cardId: string, total: number) => void;
+  /** SCOPE_OPERATIONAL_COSTS_PRICED_V1 — reports the card's operational-cost
+   *  section { subtotal, withMarkup } up to the single card-money fold.
+   *  Must be referentially stable. */
+  onOtherCostTotalChange: (cardId: string, totals: { subtotal: number; withMarkup: number }) => void;
   /** SCOPE_CUTTING_V1 — reports the card's concrete cutting take-off total up
    *  to that same fold. Must be referentially stable. */
   onCuttingTotalChange: (cardId: string, total: number) => void;

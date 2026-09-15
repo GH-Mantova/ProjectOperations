@@ -49,6 +49,8 @@ export function makeSummary(overrides: Partial<Summary> = {}): Summary {
     SUB: zeroBucket(),
     Other: zeroBucket(),
     cutting: { itemCount: 0, subtotal: 0 },
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth stream.
+    operationalCosts: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     tenderPrice: 0,
     provisionalTotal: 0,
     ...overrides,

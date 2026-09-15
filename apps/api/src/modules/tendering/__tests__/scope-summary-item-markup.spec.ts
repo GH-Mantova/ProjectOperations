@@ -100,7 +100,8 @@ function makeSummaryPrisma(opts: { items: unknown[]; tenderMarkup: number }) {
       findUnique: jest.fn().mockResolvedValue({ markup: opts.tenderMarkup })
     },
     cuttingSheetItem: { findMany: jest.fn().mockResolvedValue([]) },
-    scopeWasteItem: { findMany: jest.fn().mockResolvedValue([]) }
+    scopeWasteItem: { findMany: jest.fn().mockResolvedValue([]) },
+    scopeOperationalCostLine: { findMany: jest.fn().mockResolvedValue([]) }
   } as never;
 }
 

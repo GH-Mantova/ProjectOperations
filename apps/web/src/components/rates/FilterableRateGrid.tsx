@@ -42,7 +42,7 @@ type Props = {
 };
 
 const ACCENT = "var(--text-accent, #EA580C)";
-const BRAND = "var(--brand-primary, #005B61)";
+const BRAND = "var(--brand-primary)";
 const BORDER = "var(--border-subtle, #E5E7EB)";
 const MUTED = "var(--text-muted, #64748b)";
 
@@ -485,7 +485,7 @@ function RoleChip({
     label = "the rate";
     chipStyle = {
       background: BRAND,
-      color: "var(--surface, #fff)",
+      color: "var(--text-inverse)",
       border: "none"
     };
   } else if (role === "price") {
@@ -580,11 +580,11 @@ function HeaderCell({
         textAlign: align,
         position: "sticky",
         top: 0,
-        background: "var(--surface, #fff)",
+        background: "var(--text-inverse)",
         zIndex: 1,
         color: hasFilter ? ACCENT : undefined,
         ...(column.chargedFrom
-          ? { boxShadow: "inset 3px 0 0 0 var(--brand-primary, #005B61)" }
+          ? { boxShadow: "inset 3px 0 0 0 var(--brand-primary)" }
           : undefined)
       }}
     >
@@ -707,7 +707,7 @@ function HeaderDropdown({
     marginTop: 4,
     left: 0,
     zIndex: 10,
-    background: "var(--surface, #fff)",
+    background: "var(--text-inverse)",
     border: `1px solid ${BORDER}`,
     borderRadius: 6,
     boxShadow: "0 4px 12px rgba(15,23,42,0.12)",
@@ -1002,7 +1002,7 @@ function BodyRow({
               fontFamily: numericFont,
               verticalAlign: "middle",
               ...(col.chargedFrom
-                ? { boxShadow: "inset 3px 0 0 0 var(--brand-primary, #005B61)" }
+                ? { boxShadow: "inset 3px 0 0 0 var(--brand-primary)" }
                 : undefined)
             }}
           >

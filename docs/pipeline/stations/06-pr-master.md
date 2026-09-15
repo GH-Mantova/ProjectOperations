@@ -355,6 +355,9 @@ approval, and only then:
    phases - they are read-only, and Phase 2 does its own live grounding.)
 1. Stage via a docs-only arming PR from a clean worktree off origin/main (`git add -f` -
    *-ready.md is gitignored). Never mix code or sot/.
+   **That worktree goes at `C:\PR-Master\worktrees\<slug>`, and a draft not yet in the queue goes
+   at `C:\PR-Master\drafts\`** - Marco's ruling of 2026-09-15, `docs/pipeline/PR-MASTER.md`.
+   Never `C:\po-worktrees\<slug>`, never a bare `C:\<name>`; `status-sweep` reports both.
 2. **MATERIALISE the file into `C:\ProjectOperations2\docs\pr-prompts\`** after the arming PR
    merges - the watcher consumes from the DEV TREE filesystem, not from main; a committed
    prompt that is not materialised NEVER runs (learned 2026-07-23, days of silent idle).

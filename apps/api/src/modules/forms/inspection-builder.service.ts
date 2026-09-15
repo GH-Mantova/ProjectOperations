@@ -173,8 +173,12 @@ export class InspectionBuilderService {
     };
     this.previewStore.set(jobId, entry);
 
-    // Schedule cleanup
-    setTimeout(() => { this.previewStore.delete(jobId); }, this.TTL_MS);
+    // Schedule cleanup. The timer is unref()ed so it never keeps the process (or a jest
+    // worker) alive for the full TTL - getPreviewImport also checks expiresAt on read.
+    const cleanup = setTimeout(() => { this.previewStore.delete(jobId); }, this.TTL_MS);
+    if (typeof (cleanup as { unref?: () => void }).unref === "function") {
+      (cleanup as { unref: () => void }).unref();
+    }
 
     return {
       jobId,

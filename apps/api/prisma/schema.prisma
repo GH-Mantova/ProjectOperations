@@ -1352,6 +1352,10 @@ model Tender {
   // folderProvisioningErrors: [{path, message}] for each subfolder that failed.
   folderProvisioningStatus String?                     @map("folder_provisioning_status")
   folderProvisioningErrors Json?                       @map("folder_provisioning_errors")
+  // DraftPanel S3 - what was still unfinished when this tender left DRAFT, snapshotted
+  // from the page that moved it; null for tenders that left DRAFT before this shipped
+  // or via the bulk action. { capturedAt, rows: [{ step, text }], dismissedAt? }
+  draftCarryOver           Json?                       @map("draft_carry_over")
   createdAt                DateTime                    @default(now()) @map("created_at")
   updatedAt                DateTime                    @updatedAt @map("updated_at")
   estimator                User?                       @relation("TenderEstimator", fields: [estimatorUserId], references: [id], onDelete: SetNull)

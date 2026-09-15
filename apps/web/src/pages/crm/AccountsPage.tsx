@@ -5,57 +5,28 @@
 //
 // /crm/relationships redirects here with ?tab=relationships (App.tsx).
 // Data fetching, filters, and content of each page are untouched.
+//
+// crmvis-S1: tab bar moved into AccountsListPage (CrmTabs component).
+// AccountsPage owns the data (list count) and passes tabs+activeId down.
+// RelationshipsPage will receive the same props in S2.
 
 import { useEffect, useState } from "react";
-import { useSearchParams, NavLink } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { AccountsListPage } from "./AccountsListPage";
 import { RelationshipsPage } from "./RelationshipsPage";
+import type { CrmTabDef } from "./CrmTabs";
 
 type TabId = "list" | "relationships";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "list", label: "List" },
-  { id: "relationships", label: "Relationships" }
-];
-
-const tabBarStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 0,
-  borderBottom: "2px solid #e5e7eb",
-  padding: "0 24px",
-  background: "var(--surface-1, #fff)"
-};
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "10px 18px",
-    fontSize: 14,
-    fontWeight: active ? 600 : 400,
-    color: active ? "#4f46e5" : "#6b7280",
-    borderBottom: active ? "2px solid #4f46e5" : "2px solid transparent",
-    marginBottom: -2,
-    textDecoration: "none",
-    background: "transparent",
-    cursor: "pointer",
-    transition: "color 0.15s"
-  };
-}
-
-// CRM_CHROME_V1 — plain grey tab figure. The colour is read back off the
-// existing tabStyle() so the count can never drift from the inactive tab text.
-const tabCountStyle: React.CSSProperties = {
-  marginLeft: 6,
-  fontSize: 12,
-  fontWeight: 400,
-  color: tabStyle(false).color
-};
+const VALID_TABS: TabId[] = ["list", "relationships"];
 
 export function AccountsPage() {
   const [searchParams] = useSearchParams();
   const { authFetch } = useAuth();
-  const activeTab: TabId = (searchParams.get("tab") as TabId) ?? "list";
-  const validTab = TABS.some((t) => t.id === activeTab) ? activeTab : "list";
+  const activeTabRaw = searchParams.get("tab") as TabId | null;
+  const activeTab: TabId =
+    activeTabRaw && VALID_TABS.includes(activeTabRaw) ? activeTabRaw : "list";
 
   // CRM_CHROME_V1 — List count from GET /crm/accounts?limit=1 (`total`).
   // Relationships carries no count in the mock-up; do not invent one.
@@ -79,27 +50,26 @@ export function AccountsPage() {
     };
   }, [authFetch]);
 
+  const tabs: CrmTabDef[] = [
+    {
+      id: "list",
+      label: "List",
+      to: "/crm/accounts",
+      count: listCount
+    },
+    {
+      id: "relationships",
+      label: "Relationships",
+      to: "/crm/accounts?tab=relationships"
+    }
+  ];
+
   return (
     <div>
-      {/* CRM_NAV_TABS — accounts tab bar (S2, 2026-08-28; CRM_CHROME_V1 counts). */}
-      <div style={tabBarStyle} role="tablist" aria-label="Accounts sections">
-        {TABS.map((tab) => (
-          <NavLink
-            key={tab.id}
-            to={tab.id === "list" ? "/crm/accounts" : `/crm/accounts?tab=${tab.id}`}
-            style={tabStyle(validTab === tab.id)}
-            role="tab"
-            aria-selected={validTab === tab.id}
-          >
-            {tab.label}
-            {tab.id === "list" && listCount !== null ? (
-              <span style={tabCountStyle}>{listCount}</span>
-            ) : null}
-          </NavLink>
-        ))}
-      </div>
-      {validTab === "list" && <AccountsListPage />}
-      {validTab === "relationships" && <RelationshipsPage />}
+      {activeTab === "list" && (
+        <AccountsListPage tabs={tabs} activeId={activeTab} />
+      )}
+      {activeTab === "relationships" && <RelationshipsPage />}
     </div>
   );
 }

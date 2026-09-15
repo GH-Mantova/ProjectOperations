@@ -1,3 +1,7 @@
+// DASHBOARD_FILTER_BAR_V1 — view-time filter surface (EA-2b). Mounted below
+// the dashboard header. Writes into ephemeral barFilters; never persisted.
+// Saving filter defaults remains the Customise drawer's job.
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DndContext,
@@ -38,6 +42,8 @@ import { DeleteDashboardModal } from "./DeleteDashboardModal";
 import { WidgetSettingsPopover } from "./WidgetSettingsPopover";
 import { useUserDashboardsActions } from "./userDashboards";
 import { useConfirm } from "../hooks/useConfirm";
+import { DashboardFilterBar, useDashboardBarFilters } from "./DashboardFilterBar";
+import type { ReportDefinitionSummary } from "./widgets/reportRegistry";
 
 type Mode = "by-slug" | "by-id";
 
@@ -78,6 +84,13 @@ export function DashboardCanvas({
   const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const activeIdRef = useRef<string | null>(null);
+
+  // EA-2b: view-time filter bar state. Never persisted — ephemeral per session.
+  const { barFilters, setBarFilters, asAt, refreshKey, refresh } = useDashboardBarFilters(active?.config ?? null);
+  // Report definitions for filter reachability panel.
+  const [reportDefinitions, setReportDefinitions] = useState<ReportDefinitionSummary[]>([]);
+  // Loading state for the filter bar's Refresh button.
+  const [widgetsLoading, setWidgetsLoading] = useState(false);
 
   const loadBySlug = useCallback(
     async (slug: string) => {
@@ -161,6 +174,24 @@ export function DashboardCanvas({
   useEffect(() => () => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
   }, []);
+
+  // Fetch report definitions for the filter bar's reachability panel.
+  // We do this once on mount (definitions are stable at runtime).
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/reporting/definitions")
+      .then(async (res) => {
+        if (cancelled || !res.ok) return;
+        const defs = (await res.json()) as ReportDefinitionSummary[];
+        if (!cancelled) setReportDefinitions(defs);
+      })
+      .catch(() => {
+        // Definitions are best-effort — reachability panel simply won't show chips.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
 
   const updateConfig = (nextConfig: UserDashboardConfig, nextName?: string) => {
     setActive((prev) => (prev ? { ...prev, config: nextConfig, ...(nextName ? { name: nextName } : {}) } : prev));
@@ -412,17 +443,31 @@ export function DashboardCanvas({
 
       {!active ? (
         <Skeleton width="100%" height={200} />
-      ) : visibleWidgets.length === 0 ? (
-        <EmptyState
-          heading="No widgets enabled"
-          subtext="Open Customise to turn widgets on."
-          action={
-            <button type="button" className="s7-btn s7-btn--primary" onClick={() => setCustomiseOpen(true)}>
-              Customise
-            </button>
-          }
-        />
       ) : (
+        <>
+          {/* EA-2b: view-time filter bar — DASHBOARD_FILTER_BAR_V1 */}
+          <DashboardFilterBar
+            config={active.config}
+            barFilters={barFilters}
+            onFiltersChange={setBarFilters}
+            widgets={visibleWidgets}
+            definitions={reportDefinitions}
+            asAt={asAt}
+            loading={widgetsLoading}
+            onRefresh={refresh}
+          />
+
+          {visibleWidgets.length === 0 ? (
+            <EmptyState
+              heading="No widgets enabled"
+              subtext="Open Customise to turn widgets on."
+              action={
+                <button type="button" className="s7-btn s7-btn--primary" onClick={() => setCustomiseOpen(true)}>
+                  Customise
+                </button>
+              }
+            />
+          ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           {placementActive && pendingWidget ? (
             <div className="td-canvas__placement-banner" role="status">
@@ -462,7 +507,7 @@ export function DashboardCanvas({
                       entry={entry}
                       meta={meta}
                       globalPeriod={active.config.period as WidgetPeriod}
-                      dashboardFilters={active.config.dashboardFilters}
+                      dashboardFilters={barFilters}
                       settingsOpen={openSettingsId === entry.id}
                       onOpenSettings={() =>
                         setOpenSettingsId((prev) => (prev === entry.id ? null : entry.id))
@@ -487,6 +532,8 @@ export function DashboardCanvas({
             </div>
           </SortableContext>
         </DndContext>
+          )}
+        </>
       )}
 
       {active ? (

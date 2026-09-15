@@ -1016,7 +1016,8 @@ export class TenderingService {
     id: string,
     status: string,
     actorId?: string,
-    outcome?: RecordTenderOutcomeInput | null
+    outcome?: RecordTenderOutcomeInput | null,
+    draftCarryOver?: { rows: Array<{ step: string; text: string }> } | null
   ) {
     const existing = await this.prisma.tender.findUnique({ where: { id } });
     if (!existing) {
@@ -1024,6 +1025,11 @@ export class TenderingService {
     }
     const now = new Date();
     const data: Prisma.TenderUpdateInput = { status };
+    // DraftPanel S3 — snapshot what was unfinished when this tender left DRAFT.
+    // Only written when the source status IS DRAFT; silently ignored otherwise.
+    if (draftCarryOver && existing.status === "DRAFT") {
+      data.draftCarryOver = { capturedAt: now.toISOString(), rows: draftCarryOver.rows };
+    }
     // First transition to SUBMITTED pins submittedAt. The rate snapshot
     // timestamp is owned by TenderRateSetService.lock() and must NOT be
     // written here — a status change is not a rate lock, and stamping it
@@ -1188,6 +1194,45 @@ export class TenderingService {
     });
 
     return created;
+  }
+
+  /**
+   * DraftPanel S3 — Dismiss the carry-over strip for a tender.
+   *
+   * Merges `dismissedAt` into the existing draftCarryOver Json value.
+   * If the column is null (a legacy tender that left DRAFT before this
+   * shipped), writes { dismissedAt } so the strip is suppressed.
+   * Dismissal is global — it affects all viewers of this tender.
+   *
+   * @returns the updated tender with all relations
+   * @throws NotFoundException when the tender does not exist
+   */
+  async dismissDraftCarryOver(id: string, actorId?: string) {
+    const existing = await this.prisma.tender.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException("Tender not found.");
+    }
+    const now = new Date();
+    const existing_carry_over = existing.draftCarryOver as Record<string, unknown> | null;
+    const updated_carry_over = existing_carry_over
+      ? { ...existing_carry_over, dismissedAt: now.toISOString() }
+      : { dismissedAt: now.toISOString() };
+
+    const tender = await this.prisma.tender.update({
+      where: { id },
+      data: { draftCarryOver: updated_carry_over },
+      include: tenderInclude
+    });
+
+    await this.auditService.write({
+      actorId,
+      action: "tenders.draft-carry-over.dismiss",
+      entityType: "Tender",
+      entityId: id,
+      metadata: {}
+    });
+
+    return tender;
   }
 
   /**

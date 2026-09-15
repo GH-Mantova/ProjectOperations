@@ -118,3 +118,6 @@
 2026-09-15T01:13:02Z  ARMED  pr-fv2-import-s2-review-route  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=27764  caller=powershell.exe:8556
 2026-09-15T01:20:51Z  REFIRED  pr-fv2-import-s2-review-route  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  reason=writer-refused-on-stale-STATUS-HOLD-section-3x-queue-paused  from=failed/pr-fv2-import-s2-review-route-c-ready.md
 2026-09-15T02:02:13Z  ARMED  pr-ea-s2b-dashboard-filter-surface  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=6768  caller=powershell.exe:904
+2026-09-15T02:39:25Z  ARMED  pr-ratescol-s1-header-chips  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=29344  caller=powershell.exe:24428
+2026-09-15T03:06:27Z  ARMED  pr-crmvis-s1-accounts-list  escalates=true  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=17756  caller=powershell.exe:25016
+2026-09-15T03:51:02Z  ARMED  pr-ratescol-s2-header-menu-edit  escalates=true  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=19676  caller=powershell.exe:5356

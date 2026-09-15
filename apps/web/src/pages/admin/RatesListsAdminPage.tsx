@@ -5,18 +5,24 @@ import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
-import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
+import { FilterableRateGrid, type StructureEditing } from "../../components/rates/FilterableRateGrid";
+import { ColumnSettingsPanel } from "../../components/rates/ColumnSettingsPanel";
 import { NoAccess } from "../../components/NoAccess";
 import { markChargedFrom, type RateGridColumn, type RateGridRow } from "../../components/rates/rateGridModel";
 import {
   blankRowCells,
+  chargedFromChange,
   consumerTypeLabel,
   deleteFieldConfirmMessage,
   deleteFieldWarning,
   groupBindings,
   matchScenarioRow,
+  moveNote,
   rateFieldRows,
+  renameWarning,
   resolveScenarioKeys,
+  stepsUsingField,
+  swapSortOrders,
   usedInLabel,
   validateColumnStructure,
   validateRowCells,
@@ -1009,6 +1015,139 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
     await onChanged();
   };
 
+  // RATE_S3_COLUMN_STRUCTURE — settings panel open state
+  const [settingsColumnId, setSettingsColumnId] = useState<string | null>(null);
+  // Move warning after-the-fact state
+  const [moveWarning, setMoveWarning] = useState<{
+    message: string;
+    revertPatches: Array<{ id: string; sortOrder: number }>;
+  } | null>(null);
+
+  /** Mirror of handleDeleteColumn — sends PATCH to update a column. */
+  const handleUpdateColumn = async (
+    columnId: string,
+    patch: Partial<Omit<RateColumn, "id" | "sortOrder">>
+  ) => {
+    setPendingError(null);
+    const res = await authFetch(`/rates/tables/${table.id}/columns/${columnId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    });
+    if (!res.ok) {
+      setPendingError(await readApiErrorMessage(res, "Update column failed."));
+      return;
+    }
+    setSettingsColumnId(null);
+    await onChanged();
+  };
+
+  /**
+   * RATE_S3_COLUMN_STRUCTURE — swap sortOrder with the neighbour in direction
+   * `dir`. Sends two PATCHes. After the move, if the charged-from mark changed,
+   * shows a post-move warning with a "Put it back" option.
+   */
+  const handleMoveColumn = async (columnId: string, dir: -1 | 1) => {
+    const patches = swapSortOrders(table.columns, columnId, dir);
+    if (!patches) return;
+
+    // Compute charged-from before the move
+    const gridColsBefore = markChargedFrom(
+      table.columns.map((c) => toGridColumn(c, lists ?? []))
+    );
+
+    setPendingError(null);
+    // Send the two PATCHes sequentially
+    for (const p of patches) {
+      const res = await authFetch(`/rates/tables/${table.id}/columns/${p.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sortOrder: p.sortOrder })
+      });
+      if (!res.ok) {
+        setPendingError(await readApiErrorMessage(res, "Move column failed."));
+        return;
+      }
+    }
+
+    await onChanged();
+
+    // After refetch, compute charged-from after the move using the updated data
+    // We build the "after" state from the patches to simulate the swap locally.
+    const movedCol = table.columns.find((c) => c.id === columnId);
+    const gridColsAfter = markChargedFrom(
+      table.columns
+        .map((c) => {
+          const patch = patches.find((p) => p.id === c.id);
+          return { ...c, sortOrder: patch ? patch.sortOrder : c.sortOrder };
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((c) => toGridColumn(c, lists ?? []))
+    );
+
+    // Map RateGridColumn (label/grid-role) -> shape chargedFromChange/moveNote expect (name/stored-role)
+    const toNamedCols = (cols: ReturnType<typeof markChargedFrom>) =>
+      cols.map((c) => ({
+        role: c.role === "price" ? "VALUE" : c.role === "lookup" ? "KEY" : "INFO",
+        name: c.label,
+        chargedFrom: c.chargedFrom
+      }));
+
+    if (movedCol) {
+      const namedBefore = toNamedCols(gridColsBefore);
+      const namedAfter = toNamedCols(gridColsAfter);
+      const note = moveNote(movedCol, namedBefore, namedAfter);
+      // The move note for a price column with a charged-from change is the warning.
+      // The lookup note is info — only show if charged-from actually changed.
+      const cfChange = chargedFromChange(namedBefore, namedAfter);
+      if (movedCol.role === "VALUE" && cfChange) {
+        // Revert patches swap back
+        const revertPatches: Array<{ id: string; sortOrder: number }> = [
+          { id: patches[0].id, sortOrder: patches[1].sortOrder },
+          { id: patches[1].id, sortOrder: patches[0].sortOrder }
+        ];
+        setMoveWarning({
+          message: note,
+          revertPatches
+        });
+      }
+    }
+  };
+
+  /** Reverse a previous move (the "Put it back" action). */
+  const handleRevertMove = async (revertPatches: Array<{ id: string; sortOrder: number }>) => {
+    setPendingError(null);
+    for (const p of revertPatches) {
+      const res = await authFetch(`/rates/tables/${table.id}/columns/${p.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sortOrder: p.sortOrder })
+      });
+      if (!res.ok) {
+        setPendingError(await readApiErrorMessage(res, "Revert move failed."));
+        return;
+      }
+    }
+    setMoveWarning(null);
+    await onChanged();
+  };
+
+  /**
+   * Whether a given column can be deleted without a server trip.
+   * Returns a refusal string when rows exist (server would 409), null otherwise.
+   */
+  const deleteRefusal = (col: RateGridColumn): string | null => {
+    if (table.rows.length === 0) return null;
+    const n = table.rows.length;
+    return (
+      `This table still has ${n} row${n === 1 ? "" : "s"}, and every one of them has a value stored ` +
+      `under "${col.label}". Remove the rows first, or leave the column where it is.`
+    );
+  };
+
+  // RATE_S3_COLUMN_STRUCTURE — the sentence from ChargeStepsEditor.tsx ~1399
+  // (a change applies to new lines only; tenders with locked rates keep their snapshot).
+  // We re-use the exact literal to avoid two versions of the same sentence.
+  const CHARGE_STEPS_SNAPSHOT_NOTE =
+    "a change applies to new lines only; tenders with locked rates keep their snapshot.";
+
   const startAddRow = () => {
     setEditRowId(null);
     setEditDraft(null);
@@ -1256,6 +1395,43 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         onStepsChange={setChargeSteps}
       />
 
+      {/* RATE_S3_COLUMN_STRUCTURE — post-move warning for a charged-from shift */}
+      {moveWarning ? (
+        <div
+          role="alert"
+          style={{
+            padding: "10px 14px",
+            borderRadius: 6,
+            background: "rgba(217,119,6,0.08)",
+            border: "1px solid rgba(217,119,6,0.3)",
+            fontSize: 13
+          }}
+        >
+          <p style={{ margin: "0 0 6px" }}>{moveWarning.message}</p>
+          <p style={{ margin: "0 0 8px", color: "var(--text-muted)", fontSize: 12 }}>
+            {CHARGE_STEPS_SNAPSHOT_NOTE}
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => void handleRevertMove(moveWarning.revertPatches)}
+              style={{ minHeight: 32 }}
+            >
+              Put it back
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => setMoveWarning(null)}
+              style={{ minHeight: 32 }}
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <RowsCard
         columns={table.columns}
         rows={table.rows}
@@ -1276,6 +1452,36 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         onCommitEdit={commitEditRow}
         onChangeEditDraft={(next) => setEditDraft(next)}
         onDeleteRow={handleDeleteRow}
+        // RATE_S3_COLUMN_STRUCTURE — admin-only structure editing controls.
+        structureEditing={{
+          onOpenSettings: (col) => setSettingsColumnId(col.key),
+          onMove: (col, dir) => void handleMoveColumn(col.key, dir),
+          onDelete: (col) => void handleDeleteColumn(col.key),
+          canMoveLeft: (col) => {
+            const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+            return sorted[0]?.id !== col.key;
+          },
+          canMoveRight: (col) => {
+            const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+            return sorted[sorted.length - 1]?.id !== col.key;
+          },
+          deleteRefusal,
+          openSettingsKey: settingsColumnId,
+          renderSettings: (col) => {
+            const rateCol = table.columns.find((c) => c.id === col.key);
+            if (!rateCol) return null;
+            return (
+              <ColumnSettingsPanel
+                column={rateCol}
+                allColumns={table.columns}
+                lists={lists ?? []}
+                chargeSteps={chargeSteps}
+                onSave={(patch) => handleUpdateColumn(col.key, patch)}
+                onCancel={() => setSettingsColumnId(null)}
+              />
+            );
+          }
+        }}
       />
 
       {hubImportPreview ? (
@@ -1626,7 +1832,8 @@ function RowsCard({
   onCancelEdit,
   onCommitEdit,
   onChangeEditDraft,
-  onDeleteRow
+  onDeleteRow,
+  structureEditing
 }: {
   columns: RateColumn[];
   rows: RateRow[];
@@ -1652,6 +1859,8 @@ function RowsCard({
   onCommitEdit: () => Promise<void>;
   onChangeEditDraft: (next: Record<string, unknown>) => void;
   onDeleteRow: (id: string) => Promise<void>;
+  /** RATE_S3_COLUMN_STRUCTURE — admin-only. Absent on the tender RatesTab. */
+  structureEditing?: StructureEditing;
 }) {
   const errorByColumn = useMemo(() => {
     const m = new Map<string, string>();
@@ -1737,6 +1946,7 @@ function RowsCard({
                   </button>
                 </span>
               )}
+              structureEditing={structureEditing}
             />
           ) : null}
           {/* RATE_SCENARIO_PICKER_V2 — the caption is what makes the highlight

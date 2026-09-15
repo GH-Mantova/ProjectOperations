@@ -4,7 +4,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode
+  type ReactNode,
+  type RefObject
 } from "react";
 import {
   compareRows,
@@ -19,6 +20,32 @@ import {
   type RateGridRow,
   type RateGridRowValue
 } from "./rateGridModel";
+
+/**
+ * RATE_S3_COLUMN_STRUCTURE — admin-only structure controls.
+ *
+ * When present: the header dropdown gains a divider and four structure items
+ * (Column settings, Move left, Move right, Delete column). When absent (e.g.
+ * the tender RatesTab) the dropdown is exactly what it is today.
+ *
+ * `renderSettings` is called from inside the header cell when the column
+ * settings panel is open for that column. It returns the ReactNode to render
+ * anchored under the header (same position as the dropdown). The parent owns
+ * the panel state via `onOpenSettings`.
+ */
+export type StructureEditing = {
+  onOpenSettings(col: RateGridColumn): void;
+  onMove(col: RateGridColumn, dir: -1 | 1): void;
+  onDelete(col: RateGridColumn): void;
+  canMoveLeft(col: RateGridColumn): boolean;
+  canMoveRight(col: RateGridColumn): boolean;
+  /** Returns a refusal string when delete is not allowed, null when it is. */
+  deleteRefusal(col: RateGridColumn): string | null;
+  /** Key of the column whose settings panel is currently open. Null = none. */
+  openSettingsKey: string | null;
+  /** Renders the settings panel for the given column. */
+  renderSettings(col: RateGridColumn): ReactNode;
+};
 
 type Props = {
   columns: RateGridColumn[];
@@ -39,6 +66,12 @@ type Props = {
    * exactly where they were.
    */
   highlightRowId?: string | null;
+  /**
+   * RATE_S3_COLUMN_STRUCTURE — admin-only. When present, the header chevron
+   * dropdown gains Column settings / Move left / Move right / Delete column.
+   * Absent on the tender RatesTab.
+   */
+  structureEditing?: StructureEditing;
 };
 
 const ACCENT = "var(--text-accent, #EA580C)";
@@ -54,7 +87,8 @@ export function FilterableRateGrid({
   renderTrailing,
   testIdPrefix,
   emptyState,
-  highlightRowId = null
+  highlightRowId = null,
+  structureEditing
 }: Props) {
   const defaultGroupKey =
     groupByKey === undefined
@@ -75,6 +109,7 @@ export function FilterableRateGrid({
   );
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [openDropdownKey, setOpenDropdownKey] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const activeGroupKey = groupingEnabled ? defaultGroupKey ?? null : null;
 
@@ -179,7 +214,7 @@ export function FilterableRateGrid({
         testIdPrefix={testIdPrefix}
       />
 
-      <div style={{ overflowX: "auto", position: "relative" }}>
+      <div ref={scrollContainerRef} style={{ overflowX: "auto", position: "relative" }}>
         <table
           style={{
             width: "100%",
@@ -207,6 +242,8 @@ export function FilterableRateGrid({
                   onClearRange={() => clearRange(col.key)}
                   onSort={(dir) => setSortExplicit(col.key, dir)}
                   testIdPrefix={testIdPrefix}
+                  structureEditing={structureEditing}
+                  scrollContainerRef={scrollContainerRef}
                 />
               ))}
               {trailingHeader !== undefined ? (
@@ -547,7 +584,9 @@ function HeaderCell({
   onSetRange,
   onClearRange,
   onSort,
-  testIdPrefix
+  testIdPrefix,
+  structureEditing,
+  scrollContainerRef
 }: {
   column: RateGridColumn;
   rows: RateGridRow[];
@@ -564,6 +603,8 @@ function HeaderCell({
   onClearRange: () => void;
   onSort: (dir: 1 | -1) => void;
   testIdPrefix: string;
+  structureEditing?: StructureEditing;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
 }) {
   const align = column.align ?? (column.kind === "text" ? "left" : "right");
   const hasFilter =
@@ -647,8 +688,13 @@ function HeaderCell({
           onSetRange={onSetRange}
           onClearRange={onClearRange}
           testIdPrefix={testIdPrefix}
+          structureEditing={structureEditing}
+          scrollContainerRef={scrollContainerRef}
         />
       ) : null}
+      {structureEditing && structureEditing.openSettingsKey === column.key
+        ? structureEditing.renderSettings(column)
+        : null}
     </th>
   );
 }
@@ -664,7 +710,9 @@ function HeaderDropdown({
   range,
   onSetRange,
   onClearRange,
-  testIdPrefix
+  testIdPrefix,
+  structureEditing,
+  scrollContainerRef
 }: {
   column: RateGridColumn;
   rows: RateGridRow[];
@@ -677,6 +725,8 @@ function HeaderDropdown({
   onSetRange: (r: NumberRange) => void;
   onClearRange: () => void;
   testIdPrefix: string;
+  structureEditing?: StructureEditing;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [find, setFind] = useState("");
@@ -701,11 +751,23 @@ function HeaderDropdown({
   const currentSet = columnFilter ?? new Set(values);
   const allSelected = filtered.every((v) => currentSet.has(v));
 
+  // RATE_S3_COLUMN_STRUCTURE — flip: anchor right:0 when the dropdown would
+  // overflow the scroll container on the right. Measured via bounding rect.
+  const [flipRight, setFlipRight] = useState(false);
+  useEffect(() => {
+    if (!ref.current || !scrollContainerRef.current) return;
+    const dropdownRect = ref.current.getBoundingClientRect();
+    const containerRect = scrollContainerRef.current.getBoundingClientRect();
+    if (dropdownRect.right > containerRect.right) {
+      setFlipRight(true);
+    }
+  }, [scrollContainerRef]);
+
   const style: CSSProperties = {
     position: "absolute",
     top: "100%",
     marginTop: 4,
-    left: 0,
+    ...(flipRight ? { right: 0 } : { left: 0 }),
     zIndex: 10,
     background: "var(--text-inverse)",
     border: `1px solid ${BORDER}`,
@@ -866,6 +928,70 @@ function HeaderDropdown({
           </div>
         </div>
       )}
+      {structureEditing ? (
+        <>
+          <hr style={{ margin: "8px 0", border: "none", borderTop: `1px solid ${BORDER}` }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                onClose(); // close the filter dropdown first
+                structureEditing.onOpenSettings(column);
+              }}
+              style={{ justifyContent: "flex-start", minHeight: 32 }}
+              data-testid={`${testIdPrefix}-settings-${column.key}`}
+            >
+              Column settings
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                structureEditing.onMove(column, -1);
+                onClose();
+              }}
+              disabled={!structureEditing.canMoveLeft(column)}
+              style={{ justifyContent: "flex-start", minHeight: 32 }}
+              data-testid={`${testIdPrefix}-move-left-${column.key}`}
+            >
+              Move left
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                structureEditing.onMove(column, 1);
+                onClose();
+              }}
+              disabled={!structureEditing.canMoveRight(column)}
+              style={{ justifyContent: "flex-start", minHeight: 32 }}
+              data-testid={`${testIdPrefix}-move-right-${column.key}`}
+            >
+              Move right
+            </button>
+            {(() => {
+              const refusal = structureEditing.deleteRefusal(column);
+              return (
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={refusal ? undefined : () => {
+                    structureEditing.onDelete(column);
+                    onClose();
+                  }}
+                  disabled={Boolean(refusal)}
+                  title={refusal ?? undefined}
+                  style={{ justifyContent: "flex-start", minHeight: 32 }}
+                  data-testid={`${testIdPrefix}-delete-col-${column.key}`}
+                >
+                  Delete column
+                </button>
+              );
+            })()}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

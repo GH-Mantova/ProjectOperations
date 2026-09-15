@@ -21,11 +21,11 @@ import {
 import { markChargedFrom, type RateGridColumn } from "./rateGridModel";
 import type { ChargeStep } from "../../lib/chargeStepTypes";
 
-const MUTED = "var(--text-muted, #64748b)";
-const BORDER = "var(--border-subtle, #E5E7EB)";
-const BRAND = "var(--brand-primary, #005B61)";
-const DANGER = "var(--status-danger, #DC2626)";
-const WARNING = "var(--status-warning, #D97706)";
+const MUTED = "var(--text-muted)";
+const BORDER = "var(--border-subtle)";
+const BRAND = "var(--brand-primary)";
+const DANGER = "var(--status-danger)";
+const WARNING = "var(--status-warning)";
 
 // ── Plain-language vocabulary ─────────────────────────────────────────────
 

@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  Param,
   Post,
   UploadedFile,
   UseGuards,
@@ -24,7 +26,10 @@ import {
   BuildFormFromDescriptionDto,
   BuildFormFromDescriptionResponseDto,
   BuildFormFromPdfResponseDto,
-  DraftRuleDto
+  DraftRuleDto,
+  PreviewImportCreateDto,
+  PreviewImportCreateResponseDto,
+  PreviewImportResponseDto
 } from "./dto/inspection-builder.dto";
 import { InspectionBuilderService, ACCEPTED_MIMETYPES } from "./inspection-builder.service";
 import { AiFormDescribeService } from "./ai-form-describe.service";
@@ -55,7 +60,12 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
  * condition/action tree for review in the rules builder. Never persists the
  * returned draft -- the human must click "Save rules" in the builder.
  *
- * All three endpoints require `forms.manage`. Provider resolution uses the
+ * FV2-S2 -- three-step preview-import flow:
+ * `POST /forms/templates/preview-import` -- extract + AI, hold in TTL store.
+ * `GET /forms/templates/preview-import/:jobId` -- retrieve held proposal.
+ * `POST /forms/templates/preview-import/:jobId/create` -- create DRAFT from reviewed proposal.
+ *
+ * All endpoints require `forms.manage`. Provider resolution uses the
  * caller's BYOK / company-key path (same key store as the assist panel).
  */
 @ApiTags("Forms")
@@ -111,6 +121,88 @@ export class InspectionBuilderController {
     }
     return this.builder.buildFromPdf(file, actor.sub);
   }
+
+  // ── FV2-S2: Preview-import endpoints ───────────────────────────────────
+
+  @Post("templates/preview-import")
+  @RequirePermissions("forms.manage")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: MAX_UPLOAD_BYTES },
+      fileFilter: (
+        _req: unknown,
+        file: Express.Multer.File,
+        cb: (err: Error | null, accept: boolean) => void
+      ) => {
+        if (ACCEPTED_MIMETYPES.has(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              `Unsupported file type: ${file.mimetype}. Upload a PDF or Word (.docx) document.`
+            ),
+            false
+          );
+        }
+      }
+    })
+  )
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary: "Extract and propose a form template without creating it (step 1 of 3)",
+    description:
+      "Extracts text from the uploaded document, calls the AI provider, and returns a proposal held in a 30-minute TTL in-memory store. The caller navigates to /forms/import/:jobId for review. No template is created at this step."
+  })
+  @ApiResponse({ status: 201, description: "Extraction and proposal returned.", type: PreviewImportResponseDto })
+  @ApiResponse({ status: 400, description: "Missing/invalid file, unsupported type, or no text layer." })
+  @ApiResponse({ status: 403, description: "Missing forms.manage permission." })
+  @ApiResponse({ status: 503, description: "AI provider not configured or upstream error." })
+  async previewImport(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: AuthenticatedUser
+  ): Promise<PreviewImportResponseDto> {
+    if (!file) {
+      throw new BadRequestException("Upload a PDF or Word (.docx) file in the `file` multipart field.");
+    }
+    return this.builder.previewImport(file, actor.sub);
+  }
+
+  @Get("templates/preview-import/:jobId")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({
+    summary: "Retrieve a held import proposal by jobId (step 2 of 3)",
+    description:
+      "Returns the proposal created by POST /forms/templates/preview-import. Returns 404 when the job has expired (30-minute TTL) or does not exist."
+  })
+  @ApiResponse({ status: 200, description: "Proposal retrieved.", type: PreviewImportResponseDto })
+  @ApiResponse({ status: 403, description: "Missing forms.manage permission." })
+  @ApiResponse({ status: 404, description: "Job not found or expired." })
+  getPreviewImport(
+    @Param("jobId") jobId: string
+  ): PreviewImportResponseDto {
+    return this.builder.getPreviewImport(jobId);
+  }
+
+  @Post("templates/preview-import/:jobId/create")
+  @RequirePermissions("forms.manage")
+  @ApiOperation({
+    summary: "Create a DRAFT template from the reviewed proposal (step 3 of 3)",
+    description:
+      "Accepts the reviewer's edited UpsertFormTemplateDto (rejected rows already removed by the client), creates a DRAFT template, and returns the template id. `code` is honoured as sent; a collision produces 409. The template is always created as DRAFT regardless of the `status` field in the payload."
+  })
+  @ApiResponse({ status: 201, description: "DRAFT template created.", type: PreviewImportCreateResponseDto })
+  @ApiResponse({ status: 400, description: "Invalid proposal payload." })
+  @ApiResponse({ status: 403, description: "Missing forms.manage permission." })
+  @ApiResponse({ status: 409, description: "Template code collision." })
+  async createFromPreview(
+    @Param("jobId") jobId: string,
+    @Body() body: PreviewImportCreateDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ): Promise<PreviewImportCreateResponseDto> {
+    return this.builder.createFromPreview(jobId, body.proposal, actor.sub);
+  }
+
+  // ── Existing endpoints ──────────────────────────────────────────────────
 
   @Post("templates/build-from-description")
   @RequirePermissions("forms.manage")

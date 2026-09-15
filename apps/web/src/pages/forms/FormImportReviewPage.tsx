@@ -60,9 +60,9 @@ function confidenceLabel(c: number): "read" | "guessed" | "invented" {
 }
 
 function confidenceColor(label: "read" | "guessed" | "invented"): string {
-  if (label === "read") return "var(--status-active, #16a34a)";
-  if (label === "guessed") return "var(--status-warning, #d97706)";
-  return "var(--status-error, #dc2626)";
+  if (label === "read") return "var(--status-active)";
+  if (label === "guessed") return "var(--status-warning)";
+  return "var(--status-danger)";
 }
 
 function allFieldTypes(): string[] {
@@ -141,8 +141,8 @@ function CoercedChip({ from }: { from: string }) {
         borderRadius: 10,
         fontSize: 10,
         fontWeight: 600,
-        color: "var(--status-warning, #d97706)",
-        border: "1px solid var(--status-warning, #d97706)",
+        color: "var(--status-warning)",
+        border: "1px solid var(--status-warning)",
         background: "transparent",
         textTransform: "uppercase",
         lineHeight: "18px"
@@ -320,7 +320,7 @@ function FieldRow({
             cursor: "pointer",
             fontSize: 11,
             background: rejected ? "var(--surface-card)" : "transparent",
-            color: rejected ? "var(--status-active, #16a34a)" : "var(--text-secondary)"
+            color: rejected ? "var(--status-active)" : "var(--text-secondary)"
           }}
         >
           {rejected ? "Include" : "Reject"}
@@ -357,7 +357,7 @@ function FieldRow({
               border: "none",
               padding: 0,
               cursor: "pointer",
-              color: "var(--brand-accent, #2563eb)",
+              color: "var(--brand-primary)",
               fontSize: 10,
               textDecoration: "underline"
             }}
@@ -471,7 +471,7 @@ function SectionBlock({
             cursor: "pointer",
             fontSize: 11,
             background: sectionRejected ? "var(--surface-card)" : "transparent",
-            color: sectionRejected ? "var(--status-active, #16a34a)" : "var(--text-secondary)"
+            color: sectionRejected ? "var(--status-active)" : "var(--text-secondary)"
           }}
         >
           {sectionRejected ? "Include section" : "Reject section"}
@@ -725,7 +725,7 @@ export function FormImportReviewPage() {
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "var(--text-primary)" }}>
           Could not load import
         </h2>
-        <p style={{ margin: 0, fontSize: 14, color: "var(--status-error, #dc2626)", textAlign: "center", maxWidth: 380 }}>
+        <p style={{ margin: 0, fontSize: 14, color: "var(--status-danger)", textAlign: "center", maxWidth: 380 }}>
           {error}
         </p>
         <button
@@ -878,13 +878,13 @@ export function FormImportReviewPage() {
         <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap", fontSize: 12, color: "var(--text-secondary)" }}>
           <span>{stats.sectionCount} section{stats.sectionCount !== 1 ? "s" : ""}</span>
           <span>{stats.kept} field{stats.kept !== 1 ? "s" : ""} kept</span>
-          {stats.rejected > 0 ? <span style={{ color: "var(--status-error, #dc2626)" }}>{stats.rejected} rejected</span> : null}
+          {stats.rejected > 0 ? <span style={{ color: "var(--status-danger)" }}>{stats.rejected} rejected</span> : null}
           <span>{stats.read} read verbatim</span>
-          <span style={{ color: stats.guessed > 0 ? "var(--status-warning, #d97706)" : undefined }}>
+          <span style={{ color: stats.guessed > 0 ? "var(--status-warning)" : undefined }}>
             {stats.guessed} guessed
           </span>
           {stats.coerced > 0 ? (
-            <span style={{ color: "var(--status-warning, #d97706)" }}>{stats.coerced} type coerced</span>
+            <span style={{ color: "var(--status-warning)" }}>{stats.coerced} type coerced</span>
           ) : null}
           <span style={{ color: "var(--text-muted)" }}>will be created as DRAFT v1</span>
         </div>
@@ -902,8 +902,8 @@ export function FormImportReviewPage() {
                 border: "1px solid var(--border-default)",
                 cursor: "pointer",
                 fontSize: 11,
-                background: filter === seg ? "var(--brand-accent, #2563eb)" : "transparent",
-                color: filter === seg ? "#fff" : "var(--text-secondary)",
+                background: filter === seg ? "var(--brand-primary)" : "transparent",
+                color: filter === seg ? "var(--text-inverse)" : "var(--text-secondary)",
                 fontWeight: filter === seg ? 600 : 400
               }}
             >
@@ -986,7 +986,7 @@ export function FormImportReviewPage() {
           {error ? (
             <span
               role="alert"
-              style={{ fontSize: 12, color: "var(--status-error, #dc2626)" }}
+              style={{ fontSize: 12, color: "var(--status-danger)" }}
             >
               {error}
             </span>
@@ -1004,7 +1004,7 @@ export function FormImportReviewPage() {
           <button
             type="button"
             className="s7-btn s7-btn--primary"
-            style={{ background: "var(--brand-accent)", color: "#242424", borderColor: "var(--brand-accent)" }}
+            style={{ background: "var(--brand-accent)", color: "var(--brand-dark)", borderColor: "var(--brand-accent)" }}
             onClick={() => void submit()}
             disabled={submitting}
           >

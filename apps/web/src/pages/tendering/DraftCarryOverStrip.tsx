@@ -155,8 +155,8 @@ export function DraftCarryOverStrip({
         gap: 8,
         padding: "12px 16px",
         borderRadius: 8,
-        border: "1px solid color-mix(in srgb, var(--status-warning, #F59E0B) 35%, transparent)",
-        background: "color-mix(in srgb, var(--status-warning, #F59E0B) 8%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--status-warning) 35%, transparent)",
+        background: "color-mix(in srgb, var(--status-warning) 8%, transparent)",
         marginBottom: 8
       }}
     >
@@ -174,8 +174,8 @@ export function DraftCarryOverStrip({
             justifyContent: "center",
             fontSize: 13,
             fontWeight: 700,
-            background: "color-mix(in srgb, var(--status-warning, #F59E0B) 25%, transparent)",
-            color: "var(--status-warning, #F59E0B)"
+            background: "color-mix(in srgb, var(--status-warning) 25%, transparent)",
+            color: "var(--status-warning)"
           }}
         >
           !

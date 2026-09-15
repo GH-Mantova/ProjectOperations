@@ -5,10 +5,13 @@
  * SLICE 3 shipped table widgets. SLICE 4 extends this file with chart
  * widget emission (report:chart:<key>) for definitions that have a `chart` spec.
  *
- * W2 (parity audit): `from`/`to` parameters collapse into a single
- * ConfigFieldType "period" field so the widget inherits the dashboard period
- * picker. `clientId` maps to "text" (W3 — upgrading to a "select" with
- * dynamicOptions: "clients" is a follow-on, not blocking).
+ * EA-2b: the `period` ConfigField is removed from report widget schemas.
+ * Date windowing (`from`/`to`) is handled at the dashboard level by
+ * DashboardFilterBar, not per-widget. Setting a per-widget period previously
+ * broke the widget with a 400 (ReportRunQueryDto has no `period` field and
+ * the global pipe runs forbidNonWhitelisted:true). The dead field is removed
+ * rather than wired to an API that doesn't accept it.
+ * String parameters (clientId, estimatorId) remain as text fields.
  */
 
 import { makeReportTableWidget } from "./reportTableWidget";
@@ -47,48 +50,31 @@ export type ReportDefinitionSummary = {
 
 /** Derive a configSchema from a definition's parameters list.
  *
- * W2: if the definition has both `from` and `to` date parameters, collapse
- * them into a single "period" ConfigField so the widget can inherit the
- * dashboard-level period selector.
- * W3: string parameters (clientId, projectId) map to "text" for now.
+ * EA-2b: date parameters (`from`, `to`) are intentionally omitted from the
+ * per-widget configSchema. Date windowing is a dashboard-level concern handled
+ * by DashboardFilterBar. Emitting a `period` field was broken (the API rejects
+ * it with 400; see EA-2b prompt for full diagnosis).
+ *
+ * String parameters (clientId, estimatorId, projectId, etc.) remain as text
+ * fields — they can still be overridden per-widget via WidgetSettingsPopover.
  */
 function buildConfigSchema(
   parameters: ReportDefinitionSummary["parameters"]
 ): ConfigField[] {
   const fields: ConfigField[] = [];
-  const hasFrom = parameters.some((p) => p.name === "from" && p.type === "date");
-  const hasTo = parameters.some((p) => p.name === "to" && p.type === "date");
-  let periodEmitted = false;
 
   for (const param of parameters) {
-    if (param.type === "date" && (param.name === "from" || param.name === "to")) {
-      // Collapse from+to into one "period" field (W2). Only emit once.
-      if (!periodEmitted && hasFrom && hasTo) {
-        fields.push({
-          key: "period",
-          label: "Period",
-          type: "period"
-        });
-        periodEmitted = true;
-      } else if (!(hasFrom && hasTo)) {
-        // Definition has only one of from/to — fall back to text.
-        fields.push({
-          key: param.name,
-          label: param.label,
-          type: "text",
-          placeholder: param.helperText ?? "YYYY-MM-DD"
-        });
-      }
-      // If we already emitted the period field, skip the second date param.
-    } else {
-      // string parameters (clientId, projectId) → text (W3)
-      fields.push({
-        key: param.name,
-        label: param.label,
-        type: "text",
-        placeholder: param.helperText
-      });
-    }
+    // Skip date parameters — windowing is handled by the filter bar, not
+    // per-widget configSchema.
+    if (param.type === "date") continue;
+
+    // string parameters (clientId, estimatorId, projectId, etc.) → text
+    fields.push({
+      key: param.name,
+      label: param.label,
+      type: "text",
+      placeholder: param.helperText
+    });
   }
 
   return fields;

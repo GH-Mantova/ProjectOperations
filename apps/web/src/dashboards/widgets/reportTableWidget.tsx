@@ -8,8 +8,10 @@
  * - `reportKey` is closed over at factory time, so there is no import-time
  *   async; each widget instance is an ordinary React component.
  * - Filters are read from `config.filters` (WidgetSubConfig.filters), which
- *   is the SLICE 5 composition slot. SLICE 3 widgets do not yet merge
- *   dashboard-level filters — that is SLICE 5's job.
+ *   is the SLICE 5 composition slot.
+ *
+ * EA-2b: ReportTable is exported as a named export so reportChartWidget can
+ * mount it for the chart/table toggle without duplicating the renderer.
  */
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -113,7 +115,10 @@ type ReportTableState =
   | { status: "empty" }
   | { status: "ok"; data: ReportRunResponse };
 
-function ReportTable({
+/** Shared table renderer — exported so reportChartWidget can reuse it for the
+ *  chart/table toggle without duplicating the formatCell semantics, totals row,
+ *  or Generated… line. Never write a second table renderer. */
+export function ReportTable({
   reportKey,
   config,
   dashboardFilters,

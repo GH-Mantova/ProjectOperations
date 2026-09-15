@@ -342,12 +342,10 @@ export function TenderingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
-  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
   const [draftPickerOpen, setDraftPickerOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
-    setResumeDraftId(null);
     setNewOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete("new");
@@ -758,12 +756,12 @@ export function TenderingPage() {
             onClick={() => setDraftPickerOpen(true)}
             aria-haspopup="dialog"
           >
-            Resume drafts
+            Unfinished drafts
           </button>
           <button
             type="button"
             className="s7-btn s7-btn--primary"
-            onClick={() => { setResumeDraftId(null); setNewOpen(true); }}
+            onClick={() => { setNewOpen(true); }}
           >
             + New tender
           </button>
@@ -879,11 +877,9 @@ export function TenderingPage() {
         open={newOpen}
         clients={clients}
         users={users}
-        existingDraftId={resumeDraftId}
-        onClose={() => { setNewOpen(false); setResumeDraftId(null); void reload(activeFilters); }}
+        onClose={() => { setNewOpen(false); void reload(activeFilters); }}
         onCreated={(id) => {
           setNewOpen(false);
-          setResumeDraftId(null);
           void reload(activeFilters);
           navigate(`/tenders/${id}`);
         }}
@@ -891,13 +887,12 @@ export function TenderingPage() {
       />
 
       {draftPickerOpen ? (
-        <ResumeDraftPicker
-          drafts={tenders.filter((t) => t.status === "DRAFT")}
+        <UnfinishedDraftsPicker
+          authFetch={authFetch}
           onClose={() => setDraftPickerOpen(false)}
-          onResume={(id) => {
+          onNavigate={(id) => {
             setDraftPickerOpen(false);
-            setResumeDraftId(id);
-            setNewOpen(true);
+            navigate(`/tenders/${id}`);
           }}
         />
       ) : null}
@@ -2488,25 +2483,69 @@ function TenderCard({ tender, onOpen, onDelete, canManage, highlightRef, highlig
 // on step 1) plus the pr-482 packages/matrix/document-buckets seams, and embeds
 // TenderDocumentsPanel on step 4.
 
-type ResumeDraftPickerProps = {
-  drafts: TenderListItem[];
+// DraftPanel S3: UnfinishedDraftsPicker -- replaces ResumeDraftPicker.
+// Fetches all DRAFT tenders independently (not filtered by the view/filter bars),
+// sorted by updatedAt desc. Row click navigates to the tender detail page.
+
+type UnfinishedDraftsPickerProps = {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   onClose: () => void;
-  onResume: (id: string) => void;
+  onNavigate: (id: string) => void;
 };
 
-function ResumeDraftPicker({ drafts, onClose, onResume }: ResumeDraftPickerProps) {
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function UnfinishedDraftsPicker({ authFetch, onClose, onNavigate }: UnfinishedDraftsPickerProps) {
+  const [drafts, setDrafts] = useState<TenderListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await fetchAllPages<TenderListItem>(authFetch, {
+          ...EMPTY_FILTERS,
+          status: ["DRAFT"],
+          sortBy: "updatedAt",
+          sortDir: "desc"
+        });
+        if (cancelled) return;
+        setDrafts(result.items);
+        setTotal(result.total);
+        setTruncated(result.truncated);
+      } catch {
+        // best-effort
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authFetch]);
+
   return (
-    <div className="slide-over-overlay" role="dialog" aria-modal="true" aria-label="Resume draft tender" onClick={onClose}>
+    <div className="slide-over-overlay" role="dialog" aria-modal="true" aria-label="Unfinished drafts" onClick={onClose}>
       <div className="slide-over" onClick={(event) => event.stopPropagation()}>
         <header className="slide-over__header">
           <div>
-            <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Resume incomplete tenders</h2>
-            <p className="slide-over__subtitle">Pick a DRAFT tender to reopen in the wizard.</p>
+            <h2 className="s7-type-section-heading" style={{ margin: 0 }}>Unfinished drafts</h2>
+            <p className="slide-over__subtitle">Every draft, whatever the current filter. Open one to see what is left and pick up from there.</p>
           </div>
           <button type="button" className="slide-over__close" onClick={onClose} aria-label="Close">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2515,27 +2554,42 @@ function ResumeDraftPicker({ drafts, onClose, onResume }: ResumeDraftPickerProps
           </button>
         </header>
         <div className="slide-over__body">
-          {drafts.length === 0 ? (
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1, 2, 3].map((n) => (
+                <div key={n} style={{ height: 40, borderRadius: 6, background: "rgba(0,0,0,0.06)", animation: "pulse 1.5s infinite" }} />
+              ))}
+            </div>
+          ) : drafts.length === 0 ? (
             <div className="new-tender-wizard__empty">
-              <strong>No draft tenders to resume.</strong>
+              <strong>No draft tenders.</strong>
               <span>Start a new tender to see it here.</span>
             </div>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              {drafts.map((d) => (
-                <li key={d.id}>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost"
-                    style={{ width: "100%", justifyContent: "flex-start", textAlign: "left" }}
-                    onClick={() => onResume(d.id)}
-                  >
-                    <span style={{ fontWeight: 600 }}>{d.title || "(untitled)"}</span>
-                    <span style={{ marginLeft: 8, opacity: 0.7 }}>{d.tenderNumber}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                {drafts.map((d) => (
+                  <li key={d.id}>
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost"
+                      style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "8px 12px" }}
+                      onClick={() => onNavigate(d.id)}
+                    >
+                      <span style={{ fontWeight: 600 }}>{d.title || "(untitled)"}</span>
+                      <span style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
+                        {d.tenderNumber} &middot; updated {formatRelative(d.updatedAt)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {truncated ? (
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+                  Showing {drafts.length} of {total} drafts -- the rest are older than what fits here.
+                </p>
+              ) : null}
+            </>
           )}
         </div>
       </div>

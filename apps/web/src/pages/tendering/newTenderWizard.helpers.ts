@@ -491,7 +491,7 @@ export type DiscardDraftRequest = { path: string; method: "DELETE" };
 
 /**
  * The Discard-draft action targets the tenders module's existing hard-delete
- * endpoint (DELETE /tenders/:id — writes audit BEFORE the cascade). Encoded
+ * endpoint (DELETE /tenders/:id -- writes audit BEFORE the cascade). Encoded
  * as a pure helper so the request shape is pinned by test rather than
  * scattered through the component.
  */
@@ -500,4 +500,75 @@ export function buildDiscardDraftRequest(draftId: string): DiscardDraftRequest {
     path: `tenders/${encodeURIComponent(draftId)}`,
     method: "DELETE"
   };
+}
+
+// ---------------------------------------------------------------------------
+// DraftPanel S3: carry-over row selection (DRAFTPANEL_S3_V1).
+// Pure helper -- no DOM, no fetch -- exercises the same completeness object
+// the strip reads, so tests can run without jsdom.
+// ---------------------------------------------------------------------------
+
+export type BuilderReminder = IncompleteBuilderReminder;
+
+/** One row that will appear in the DraftCarryOverStrip. */
+export type CarryOverRow = { step: WizardStepKey; text: string };
+
+/** Steps that are never carry-over candidates (not checkable in the wizard). */
+const NOT_CARRY_OVER_STEPS = new Set<WizardStepKey>(["rates", "ai", "review"]);
+
+/**
+ * Derive which carry-over rows to display.
+ *
+ * "full" mode: every partial/outstanding step except rates/ai/review.
+ *   Used when snapshotting on status change and when building the strip
+ *   if no snapshot exists.
+ *
+ * "light" mode: only builders (partial/outstanding) and documents (outstanding
+ *   with zero files). Used by the strip when no snapshot is available.
+ *
+ * text = step.why for most steps. For builders, if reminders are supplied,
+ * the per-builder wording from formatReminderBody() is preferred.
+ */
+export function selectCarryOverRows(
+  completeness: DraftCompleteness,
+  mode: "full" | "light",
+  reminders?: ReadonlyArray<BuilderReminder>
+): CarryOverRow[] {
+  const rows: CarryOverRow[] = [];
+
+  for (const step of completeness.steps) {
+    if (step.state === "ready" || step.state === "not-checkable") continue;
+    if (NOT_CARRY_OVER_STEPS.has(step.step)) continue;
+
+    if (mode === "light") {
+      // light: only builders (any incomplete) and documents (outstanding, zero files)
+      if (step.step === "builders") {
+        const text =
+          reminders && reminders.length > 0
+            ? reminders.map(formatReminderBody).join(" ")
+            : step.why;
+        rows.push({ step: step.step, text });
+        continue;
+      }
+      if (step.step === "documents" && step.state === "outstanding") {
+        rows.push({ step: step.step, text: step.why });
+        continue;
+      }
+      // all other steps excluded from light mode
+      continue;
+    }
+
+    // full mode
+    if (step.step === "builders") {
+      const text =
+        reminders && reminders.length > 0
+          ? reminders.map(formatReminderBody).join(" ")
+          : step.why;
+      rows.push({ step: step.step, text });
+    } else {
+      rows.push({ step: step.step, text: step.why });
+    }
+  }
+
+  return rows;
 }

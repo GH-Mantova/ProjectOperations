@@ -7,7 +7,7 @@ import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { FilterableRateGrid } from "../../components/rates/FilterableRateGrid";
 import { NoAccess } from "../../components/NoAccess";
-import type { RateGridColumn, RateGridRow } from "../../components/rates/rateGridModel";
+import { markChargedFrom, type RateGridColumn, type RateGridRow } from "../../components/rates/rateGridModel";
 import {
   blankRowCells,
   consumerTypeLabel,
@@ -267,6 +267,10 @@ function RateTablesPanel() {
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Lists are fetched here so toGridColumn can resolve a list column's name
+  // for the header sub-line (e.g. "look-up · Crew types"). The fetch is
+  // fire-and-forget — if it fails the sub-line falls back to the slug.
+  const [lists, setLists] = useState<ListSummary[]>([]);
 
   const exportRates = useCallback(async () => {
     setExporting(true);
@@ -372,6 +376,12 @@ function RateTablesPanel() {
   useEffect(() => {
     if (selectedId) void loadSelected(selectedId);
   }, [selectedId, loadSelected]);
+
+  useEffect(() => {
+    void authFetch("/lists").then(async (res) => {
+      if (res.ok) setLists((await res.json()) as ListSummary[]);
+    });
+  }, [authFetch]);
 
   const handleCreateTable = async (payload: {
     name: string;
@@ -486,6 +496,7 @@ function RateTablesPanel() {
         ) : selected ? (
           <RateTableDetail
             table={selected}
+            lists={lists}
             onChanged={async () => {
               await loadSelected(selected.id);
               await loadTables();
@@ -893,7 +904,7 @@ type HubImportStageResult = {
 
 // ── RateTableDetail ──────────────────────────────────────────────────────────
 
-function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged: () => Promise<void> }) {
+function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; lists: ListSummary[]; onChanged: () => Promise<void> }) {
   const { authFetch } = useAuth();
   const confirm = useConfirm();
   const [pendingError, setPendingError] = useState<string | null>(null);
@@ -1248,6 +1259,7 @@ function RateTableDetail({ table, onChanged }: { table: RateTableFull; onChanged
       <RowsCard
         columns={table.columns}
         rows={table.rows}
+        lists={lists}
         // RATE_SCENARIO_PICKER_V2 — the other half of the same answer.
         highlightRowId={matchedRowId}
         rowDraft={rowDraft}
@@ -1595,19 +1607,11 @@ function ReferenceBadge() {
   );
 }
 
-function RoleBadge({ role }: { role: RateColumnRole }) {
-  const bg = role === "VALUE" ? "rgba(22,163,74,0.12)" : role === "KEY" ? "rgba(0,91,97,0.10)" : "rgba(148,163,184,0.15)";
-  const color = role === "VALUE" ? "#16a34a" : role === "KEY" ? "var(--brand-primary, #005B61)" : "#64748b";
-  return (
-    <span style={{ padding: "2px 8px", borderRadius: 999, background: bg, color, fontSize: 11, fontWeight: 600 }}>
-      {role}
-    </span>
-  );
-}
 
 function RowsCard({
   columns,
   rows,
+  lists,
   highlightRowId,
   rowDraft,
   rowErrors,
@@ -1626,6 +1630,8 @@ function RowsCard({
 }: {
   columns: RateColumn[];
   rows: RateRow[];
+  /** Available lists for resolving list column sub-lines. Optional — absent = fall back to slug. */
+  lists?: ListSummary[];
   /**
    * RATE_SCENARIO_PICKER_V2 — the row the charge-steps card above is pricing,
    * or null when the chosen combination is not on this sheet. The grid marks
@@ -1662,8 +1668,8 @@ function RowsCard({
   const isEditing = editRowId !== null && editDraft !== null;
 
   const gridColumns = useMemo<RateGridColumn[]>(
-    () => columns.map((c) => toGridColumn(c)),
-    [columns]
+    () => markChargedFrom(columns.map((c) => toGridColumn(c, lists ?? []))),
+    [columns, lists]
   );
 
   const gridRows = useMemo<RateGridRow[]>(
@@ -1859,15 +1865,38 @@ function RowsCard({
   );
 }
 
-function toGridColumn(c: RateColumn): RateGridColumn {
+function toGridColumn(c: RateColumn, lists: ListSummary[]): RateGridColumn {
   const kind: RateGridColumn["kind"] =
     c.dataType === "CURRENCY" ? "currency" : c.dataType === "NUMBER" ? "number" : "text";
+
+  const role: RateGridColumn["role"] =
+    c.role === "KEY" ? "lookup" : c.role === "VALUE" ? "price" : "info";
+
+  // Build the header sub-line.
+  let subline: string | undefined;
+  if (c.dataType === "LIST_REF" && c.listSlug) {
+    // List column: "<role word> · <list name>" (fall back to slug if unknown)
+    const listName = lists.find((l) => l.slug === c.listSlug)?.name ?? c.listSlug;
+    const roleWord = role === "lookup" ? "look-up" : role === "price" ? "price" : "info";
+    subline = `${roleWord} · ${listName}`;
+  } else if (role === "price") {
+    // Price column: "$ per <unit>" or "$ · unit per row" when no unit but there
+    // is a per-row Unit column on the table (the caller can't tell from here
+    // without scanning siblings, so we emit the advisory when unit is absent).
+    subline = c.unit ? `$ per ${c.unit}` : "$ · unit per row";
+  } else if (c.unit) {
+    // Lookup or info with a unit: "<role word> · <unit>"
+    const roleWord = role === "lookup" ? "look-up" : "info";
+    subline = `${roleWord} · ${c.unit}`;
+  }
+
   return {
     key: c.id,
     label: c.name,
-    labelSuffix: <RoleBadge role={c.role} />,
     kind,
     unit: c.unit,
+    role,
+    subline,
     groupable: c.role === "KEY" && kind === "text",
     filterable: true,
     sortable: true

@@ -16,6 +16,27 @@ own worktree stands; what changes is WHERE those worktrees go.
 - The watcher's own clone (`C:\po-watcher\ProjectOperations`) and the dev tree
   (`C:\ProjectOperations2`) stay where they are; they are NOT PR folders and do not move.
 
+## Binding on every station (Marco, 2026-09-15)
+
+Marco restated the convention as a rule, not a preference: *"PR-Master is the root folder for all
+pr worktrees, to keep everything tidy (not cluttering my C:\ with several different folders), this
+is where station 06 should be saving all its drafted prs."* Three consequences, all checkable:
+
+- **No station, lane or chat creates a worktree at the drive root.** `C:\po-fix1891`,
+  `C:\po-rcpt<n>`, `C:\po-collect-<hhmm>` and the rest of that shape are violations, whoever
+  makes them - Station 00's own supervised lane made every one of them on 2026-09-14/15. The path
+  is `C:\PR-Master\worktrees\<slug>`, always.
+- **Station 06 stages from `C:\PR-Master\worktrees\<slug>` and drafts into
+  `C:\PR-Master\drafts\`.** Its staging scripts hard-code `C:\po-worktrees\<slug>`
+  (`s06-stage*.ps1`, fifteen of them) - that is the clutter this convention exists to end.
+- **`status-sweep` can now see the violation.** Its escapee scan listed only the SUBDIRECTORIES of
+  four container roots, so a tree at the drive root was invisible to it; PR_MASTER_BARE_TREE_SCAN_V1
+  adds the bare-tree scan. A convention nothing can measure is a preference.
+
+The watcher's agent worktrees under `C:\po-watcher\ProjectOperations\.claude\worktrees\` are
+NOT in scope: they sit inside the watcher's own clone, not at the drive root, and the watcher
+reclaims them itself. Ageing those out is Station 03's, not this convention's.
+
 ## Legacy roots
 
 The pre-2026-09-11 roots — `C:\po-worktrees`, `C:\po-wt`, `C:\po-wt-h`,

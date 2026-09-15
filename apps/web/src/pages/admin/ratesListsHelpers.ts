@@ -563,3 +563,197 @@ export function matchScenarioRow<R extends ScenarioRow>(
     ) ?? null
   );
 }
+
+// ── RATESCOL S2 — column settings / move / delete helpers ────────────────
+//
+// Pure functions exercised by ratesListsHelpers.test.ts.  They know nothing
+// about React or the API — the page's handlers own all of that.
+
+/**
+ * True when the table already has a column with the given name (case-
+ * insensitive), excluding the column being renamed (by id).
+ *
+ * The server answers 409 "Pick another name" on a clash (S0), but stating
+ * the problem before Save avoids a round-trip and lets the panel block early.
+ */
+export function columnNameClash(
+  columns: readonly Pick<RateColumn, "id" | "name">[],
+  name: string,
+  excludeId: string
+): boolean {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return false;
+  return columns.some(
+    (c) => c.id !== excludeId && c.name.trim().toLowerCase() === needle
+  );
+}
+
+/**
+ * The two-clause warning when a renamed column is used by charge steps.
+ *
+ * First clause — steps will break: the step numbers that name the column,
+ * formatted by `usedInLabel`.
+ * Second clause — locked tenders are unaffected: only shown when
+ * `lockedCount` is supplied and > 0.
+ *
+ * This is a warn-not-block: the button reads "Save anyway".
+ */
+export function renameWarning(
+  name: string,
+  usedIn: readonly number[],
+  lockedCount?: number
+): string | null {
+  if (usedIn.length === 0) return null;
+  const many = usedIn.length > 1;
+  const stepLabel = usedInLabel(usedIn);
+  let msg =
+    `"${name}" is used in ${stepLabel}. ` +
+    `Rename it and ${many ? "those steps are" : "that step is"} still looking for "${name}" — ` +
+    `pricing on this table stops working until you open Charge steps and point ` +
+    `${many ? "those steps" : "that step"} at the new name.`;
+  if (lockedCount !== undefined && lockedCount > 0) {
+    msg +=
+      ` The tenders that already priced it are fine — ` +
+      `${lockedCount} tender${lockedCount === 1 ? "" : "s"} hold this column in their locked books ` +
+      `and keep the figures they were quoted.`;
+  }
+  return msg;
+}
+
+/**
+ * Given a column set before and after a proposed change, return the
+ * `{ before, after }` pair of charged-from column ids when `markChargedFrom`
+ * would pick a different column; otherwise null.
+ *
+ * The caller constructs `after` by replacing one column in `before`.
+ * `columns` is a `RateGridColumn[]` because that is what `markChargedFrom`
+ * operates on — the page already has both the before and after sets available
+ * as grid columns.
+ */
+export function chargedFromChange(
+  before: readonly { key: string; role?: string; chargedFrom?: boolean }[],
+  after: readonly { key: string; role?: string; chargedFrom?: boolean }[]
+): { beforeId: string | null; afterId: string | null } | null {
+  const firstPrice = (
+    arr: readonly { key: string; role?: string; chargedFrom?: boolean }[]
+  ): string | null => {
+    for (const c of arr) {
+      if (c.role === "price") return c.key;
+    }
+    return null;
+  };
+  const b = firstPrice(before);
+  const a = firstPrice(after);
+  if (b === a) return null;
+  return { beforeId: b, afterId: a };
+}
+
+/**
+ * The two PATCH bodies needed to swap two columns' `sortOrder` values.
+ *
+ * `dir` is -1 (move left) or 1 (move right). The columns must already be
+ * sorted by `sortOrder` ascending — the page sorts them that way before
+ * building grid columns.
+ *
+ * Returns `[patchForMoved, patchForNeighbour]`. A tie in `sortOrder` is
+ * handled: if after sorting by sortOrder the neighbour still has the same
+ * sortOrder, we assign sortOrder +/- 1 relative to the target so there are
+ * always two distinct bodies.
+ *
+ * Throws if `id` is not found in `columns` or there is no neighbour in the
+ * requested direction.
+ */
+export type SortOrderPatch = { id: string; sortOrder: number };
+
+export function swapSortOrders(
+  columns: readonly Pick<RateColumn, "id" | "sortOrder">[],
+  id: string,
+  dir: -1 | 1
+): [SortOrderPatch, SortOrderPatch] {
+  // Sort a copy by sortOrder ascending (stable).
+  const sorted = columns.slice().sort((a, b) => a.sortOrder - b.sortOrder || 0);
+  const idx = sorted.findIndex((c) => c.id === id);
+  if (idx === -1) throw new Error(`Column ${id} not found`);
+  const neighbourIdx = idx + dir;
+  if (neighbourIdx < 0 || neighbourIdx >= sorted.length) {
+    throw new Error(`No neighbour in direction ${dir} for column ${id}`);
+  }
+  const target = sorted[idx];
+  const neighbour = sorted[neighbourIdx];
+
+  // If they already differ in sortOrder, swap the values directly.
+  if (target.sortOrder !== neighbour.sortOrder) {
+    return [
+      { id: target.id, sortOrder: neighbour.sortOrder },
+      { id: neighbour.id, sortOrder: target.sortOrder }
+    ];
+  }
+  // Tie: assign target its current + dir, neighbour gets current - dir.
+  // This breaks the tie without colliding with any column further away.
+  return [
+    { id: target.id, sortOrder: target.sortOrder + dir },
+    { id: neighbour.id, sortOrder: neighbour.sortOrder - dir }
+  ];
+}
+
+/**
+ * The note shown to the user after a column move.
+ *
+ * When a price column moves and the charged-from column changes, returns the
+ * "leftmost price" warning (state 14 in the design).  When a KEY/look-up
+ * column moves, returns the grouping note (state 7).  Otherwise returns null.
+ *
+ * `before` and `after` are the ordered column arrays before and after the swap,
+ * each built from `markChargedFrom` output so `chargedFrom` is set correctly.
+ * `movedColumn` is the column that was moved.
+ * `firstRowValues` is the first row's rendered cell values (string per column
+ * key), used to format the price example; may be absent.
+ */
+export function moveNote(
+  movedColumn: Pick<RateColumn, "id" | "role" | "name">,
+  before: readonly { key: string; role?: string; chargedFrom?: boolean; label: string; unit?: string | null }[],
+  after: readonly { key: string; role?: string; chargedFrom?: boolean; label: string; unit?: string | null }[],
+  firstRowValues?: Record<string, string | number | null>
+): string | null {
+  const change = chargedFromChange(before, after);
+
+  if (movedColumn.role === "KEY") {
+    // State 7: look-up column moved — prices unchanged, just grouping order.
+    return (
+      "Prices are unchanged. What changed is the order the questions get asked in, " +
+      "and how the grid groups."
+    );
+  }
+
+  if (change !== null) {
+    // State 14: the charged-from column changed.
+    const beforeCol = before.find((c) => c.key === change.beforeId);
+    const afterCol = after.find((c) => c.key === change.afterId);
+
+    let example = "";
+    if (beforeCol && afterCol) {
+      const fmt = (col: { label: string; unit?: string | null }, key: string) => {
+        const raw = firstRowValues?.[key];
+        const val =
+          raw !== undefined && raw !== null
+            ? typeof raw === "number"
+              ? `$${raw.toFixed(2)}`
+              : String(raw)
+            : null;
+        return val ? `${col.label} — ${val} per ${col.unit ?? "unit"}` : col.label;
+      };
+      example = ` ${fmt(beforeCol, beforeCol.key)} -> ${fmt(afterCol, afterCol.key)}.`;
+    }
+
+    return (
+      `New estimates will now price at the ${afterCol?.label ?? "new"} rate. ` +
+      `Anything that prices against this table takes the leftmost price column. ` +
+      `You have just moved ${afterCol?.label ?? "a column"} in front of ` +
+      `${beforeCol?.label ?? "another"}, so any item costed on this table changes rate.` +
+      example +
+      ` A change applies to new lines only; tenders with locked rates keep their snapshot.`
+    );
+  }
+
+  return null;
+}

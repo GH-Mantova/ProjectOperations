@@ -15,8 +15,12 @@ import {
   deleteFieldWarning,
   groupBindings,
   matchScenarioRow,
+  moveNote,
   rateFieldRows,
+  renameWarning,
   resolveScenarioKeys,
+  stepsUsingField,
+  swapSortOrders,
   usedInLabel,
   validateColumnStructure,
   validateRowCells,
@@ -30,6 +34,8 @@ import {
   type RateFieldRow,
   type RateRow
 } from "./ratesListsHelpers";
+import { ColumnSettingsPanel, type ListSummaryForPanel } from "../../components/rates/ColumnSettingsPanel";
+import type { StructureEditing } from "../../components/rates/FilterableRateGrid";
 import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
 // RATE_FIELDS_TABLE_V2 — `FIELD_SOURCE_LABELS` is imported, never copied. The
 // charge-steps card owns the two words ("the rate table" / "the estimate
@@ -1009,6 +1015,154 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
     await onChanged();
   };
 
+  // RATESCOL S2 state
+  const [settingsColumnId, setSettingsColumnId] = useState<string | null>(null);
+  const [moveNoteMessage, setMoveNoteMessage] = useState<string | null>(null);
+  const [pendingMoveUndo, setPendingMoveUndo] = useState<(() => Promise<void>) | null>(null);
+  const [openTenderCount] = useState<number | null>(null);
+
+  // Build grid columns with markChargedFrom applied (needed for move-note comparison)
+  const gridColumnsForMove = useMemo(
+    () => markChargedFrom(table.columns.map((c) => ({
+      key: c.id,
+      label: c.name,
+      kind: (c.dataType === "CURRENCY" ? "currency" : c.dataType === "NUMBER" ? "number" : "text") as "text" | "number" | "currency",
+      role: (c.role === "KEY" ? "lookup" : c.role === "VALUE" ? "price" : "info") as "lookup" | "price" | "info",
+      unit: c.unit
+    }))),
+    [table.columns]
+  );
+
+  /** RATESCOL S2 -- PATCH /rates/tables/:tableId/columns/:columnId */
+  const handleUpdateColumn = async (columnId: string, patch: Record<string, unknown>) => {
+    setPendingError(null);
+    const res = await authFetch(`/rates/tables/${table.id}/columns/${columnId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    });
+    if (!res.ok) {
+      setPendingError(await readApiErrorMessage(res, "Update column failed."));
+      return;
+    }
+    await onChanged();
+  };
+
+  /** RATESCOL S2 -- swap sortOrder in two PATCHes, then warn if charged-from shifts */
+  const handleMoveColumn = async (columnId: string, dir: -1 | 1) => {
+    setPendingError(null);
+    let patches: ReturnType<typeof swapSortOrders>;
+    try {
+      patches = swapSortOrders(table.columns, columnId, dir);
+    } catch {
+      return; // already at the edge
+    }
+    const [p1, p2] = patches;
+
+    // Snapshot before state for charged-from comparison
+    const columnsBefore = table.columns
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    // Fire the two PATCHes
+    const r1 = await authFetch(`/rates/tables/${table.id}/columns/${p1.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ sortOrder: p1.sortOrder })
+    });
+    if (!r1.ok) {
+      setPendingError(await readApiErrorMessage(r1, "Move column failed."));
+      return;
+    }
+    const r2 = await authFetch(`/rates/tables/${table.id}/columns/${p2.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ sortOrder: p2.sortOrder })
+    });
+    if (!r2.ok) {
+      setPendingError(await readApiErrorMessage(r2, "Move column failed."));
+      return;
+    }
+
+    await onChanged();
+
+    // After the move, compute the new column order and check for charged-from shift
+    const columnsAfter = columnsBefore.map((c) => {
+      if (c.id === p1.id) return { ...c, sortOrder: p1.sortOrder };
+      if (c.id === p2.id) return { ...c, sortOrder: p2.sortOrder };
+      return c;
+    }).sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const toSnap = (cols: typeof columnsBefore) =>
+      markChargedFrom(cols.map((c) => ({
+        key: c.id,
+        label: c.name,
+        kind: (c.dataType === "CURRENCY" ? "currency" : c.dataType === "NUMBER" ? "number" : "text") as "text" | "number" | "currency",
+        role: (c.role === "KEY" ? "lookup" : c.role === "VALUE" ? "price" : "info") as "lookup" | "price" | "info",
+        unit: c.unit
+      })));
+
+    const movedCol = table.columns.find((c) => c.id === columnId);
+    if (movedCol) {
+      const note = moveNote(
+        movedCol,
+        toSnap(columnsBefore),
+        toSnap(columnsAfter),
+        table.rows[0]?.cells as Record<string, string | number | null> | undefined
+      );
+      if (note) {
+        setMoveNoteMessage(note);
+        // Build the undo handler (reverse the swap)
+        const undoPatches = swapSortOrders(columnsAfter, columnId, (-dir) as -1 | 1);
+        setPendingMoveUndo(() => async () => {
+          for (const up of undoPatches) {
+            await authFetch(`/rates/tables/${table.id}/columns/${up.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ sortOrder: up.sortOrder })
+            });
+          }
+          await onChanged();
+          setMoveNoteMessage(null);
+          setPendingMoveUndo(null);
+        });
+      }
+    }
+  };
+
+  /** RATESCOL S2 -- delete refusal: stated on the control, never after a dialog */
+  const deleteRefusal = (col: import("../../components/rates/rateGridModel").RateGridColumn): string | null => {
+    if (table.rows.length > 0) {
+      return (
+        `This table still has ${table.rows.length} row${table.rows.length === 1 ? "" : "s"}, ` +
+        `and every one of them has a value stored under "${col.label}". ` +
+        `Remove the rows first, or leave the column where it is.`
+      );
+    }
+    return null;
+  };
+
+  /** RATESCOL S2 -- structureEditing prop for FilterableRateGrid */
+  const structureEditing: StructureEditing = useMemo(() => {
+    const sortedCols = gridColumnsForMove.slice().sort(
+      (a, b) => {
+        const sa = table.columns.find((c) => c.id === a.key)?.sortOrder ?? 0;
+        const sb = table.columns.find((c) => c.id === b.key)?.sortOrder ?? 0;
+        return sa - sb;
+      }
+    );
+    return {
+      onOpenSettings: (col) => setSettingsColumnId(col.key),
+      onMove: (col, dir) => void handleMoveColumn(col.key, dir),
+      onDelete: (col) => void handleDeleteColumn(col.key),
+      canMoveLeft: (col) => {
+        const idx = sortedCols.findIndex((c) => c.key === col.key);
+        return idx > 0;
+      },
+      canMoveRight: (col) => {
+        const idx = sortedCols.findIndex((c) => c.key === col.key);
+        return idx >= 0 && idx < sortedCols.length - 1;
+      },
+      deleteRefusal
+    };
+  }, [gridColumnsForMove, table.columns, table.rows.length]);
+
   const startAddRow = () => {
     setEditRowId(null);
     setEditDraft(null);
@@ -1256,6 +1410,42 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         onStepsChange={setChargeSteps}
       />
 
+      {/* RATESCOL S2 — move note banner (shown after a move that shifts charged-from) */}
+      {moveNoteMessage ? (
+        <div
+          className="s7-card"
+          style={{
+            background: "rgba(251,191,36,0.08)",
+            borderLeft: "4px solid var(--status-warning, #b45309)",
+            padding: "12px 16px",
+            marginBottom: 8
+          }}
+        >
+          <p style={{ margin: "0 0 8px" }}>{moveNoteMessage}</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            {pendingMoveUndo ? (
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost s7-btn--sm"
+                onClick={() => void pendingMoveUndo()}
+              >
+                Put it back
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={() => {
+                setMoveNoteMessage(null);
+                setPendingMoveUndo(null);
+              }}
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <RowsCard
         columns={table.columns}
         rows={table.rows}
@@ -1276,6 +1466,14 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         onCommitEdit={commitEditRow}
         onChangeEditDraft={(next) => setEditDraft(next)}
         onDeleteRow={handleDeleteRow}
+        // RATESCOL S2 — structure editing from the header dropdown
+        structureEditing={structureEditing}
+        settingsColumnId={settingsColumnId}
+        onCloseSettings={() => setSettingsColumnId(null)}
+        onSaveSettings={handleUpdateColumn}
+        listsForPanel={lists.map((l) => ({ id: l.id, name: l.name, slug: l.slug }))}
+        chargeSteps={chargeSteps}
+        openTenderCount={openTenderCount}
       />
 
       {hubImportPreview ? (
@@ -1626,7 +1824,15 @@ function RowsCard({
   onCancelEdit,
   onCommitEdit,
   onChangeEditDraft,
-  onDeleteRow
+  onDeleteRow,
+  // RATESCOL S2 — structure editing from the header dropdown
+  structureEditing,
+  settingsColumnId,
+  onCloseSettings,
+  onSaveSettings,
+  listsForPanel,
+  chargeSteps,
+  openTenderCount
 }: {
   columns: RateColumn[];
   rows: RateRow[];
@@ -1652,6 +1858,13 @@ function RowsCard({
   onCommitEdit: () => Promise<void>;
   onChangeEditDraft: (next: Record<string, unknown>) => void;
   onDeleteRow: (id: string) => Promise<void>;
+  structureEditing?: StructureEditing;
+  settingsColumnId?: string | null;
+  onCloseSettings?: () => void;
+  onSaveSettings?: (columnId: string, patch: Record<string, unknown>) => Promise<void>;
+  listsForPanel?: ListSummaryForPanel[];
+  chargeSteps?: ChargeStep[];
+  openTenderCount?: number | null;
 }) {
   const errorByColumn = useMemo(() => {
     const m = new Map<string, string>();
@@ -1714,6 +1927,7 @@ function RowsCard({
               columns={gridColumns}
               rows={gridRows}
               highlightRowId={highlightRowId}
+              structureEditing={structureEditing}
               testIdPrefix="admin-rates"
               trailingHeader={<span aria-hidden />}
               renderTrailing={(gridRow) => (
@@ -1861,6 +2075,22 @@ function RowsCard({
           ) : null}
         </>
       )}
+      {/* RATESCOL S2 — Column settings panel opens from the header dropdown */}
+      {settingsColumnId && onSaveSettings && onCloseSettings ? (() => {
+        const col = columns.find((c) => c.id === settingsColumnId);
+        if (!col) return null;
+        return (
+          <ColumnSettingsPanel
+            column={col}
+            allColumns={columns}
+            lists={listsForPanel ?? []}
+            chargeSteps={chargeSteps}
+            openTenderCount={openTenderCount ?? null}
+            onSave={onSaveSettings}
+            onCancel={onCloseSettings}
+          />
+        );
+      })() : null}
     </div>
   );
 }

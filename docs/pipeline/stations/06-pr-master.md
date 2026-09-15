@@ -361,6 +361,10 @@ approval, and only then:
    **Create it with `scripts/pipeline/new-worktree.ps1 -Slug <slug> -Branch <branch>`, never with a
    hand-written `git worktree add` path** - the helper refuses a slug that is a path and a root that
    is a drive root, which is how the `C:\po-*` folders got there (PR-MASTER.md, *How you create one*).
+1b. **When the staging PR merges, move the draft to `C:\PR-Master\drafts\_staged\`.** Moved,
+   never deleted. `drafts\` must show only what is NOT yet staged, or it stops answering the
+   one question it exists to answer and two stations race on the same prompt (2026-09-15:
+   06 and the supervised lane both staged scopecards S5, three minutes apart).
 2. **MATERIALISE the file into `C:\ProjectOperations2\docs\pr-prompts\`** after the arming PR
    merges - the watcher consumes from the DEV TREE filesystem, not from main; a committed
    prompt that is not materialised NEVER runs (learned 2026-07-23, days of silent idle).

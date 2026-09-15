@@ -1,10 +1,9 @@
 import { Prisma, TenderOutcomeResult } from "@prisma/client";
-import {
-  dateRangeFilter,
-  decimalToNumber,
-  type ReportDefinition,
-  type ReportRunParams,
-  type ReportRunResult
+import { dateRangeFilter, decimalToNumber } from "./reporting.helpers";
+import type {
+  ReportDefinition,
+  ReportRunParams,
+  ReportRunResult
 } from "./reporting.service";
 import type { PrismaService } from "../../prisma/prisma.service";
 

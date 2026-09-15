@@ -3897,6 +3897,27 @@ async function seedDefaultSurvey(prisma: PrismaClient) {
   });
 }
 
+// EA-2a: exported so estimating-analytics-preset.spec.ts can assert against
+// the real type strings without duplicating them in the test file.
+export const ESTIMATING_ANALYTICS_PRESET = {
+  slug: "estimating-analytics",
+  name: "Estimating Analytics",
+  // Ordered by mock-up spans (w4, w2, w2, w2, w2, w2, w2, w4, w2, w2).
+  // ten_win_rate_chart is the hand-written registry key (not a report widget).
+  widgets: [
+    { type: "report:chart:estimator-turnaround",         colSpan: 4 },
+    { type: "report:chart:tender-win-rate",              colSpan: 2 },
+    { type: "report:chart:estimator-qty-vs-value",       colSpan: 2 },
+    { type: "ten_win_rate_chart",                        colSpan: 2 },
+    { type: "report:chart:tender-winloss-over-time",     colSpan: 2 },
+    { type: "report:chart:tender-winloss-by-value-band", colSpan: 2 },
+    { type: "report:chart:tender-winloss-by-reason",     colSpan: 2 },
+    { type: "report:table:tender-winloss-by-client",     colSpan: 4 },
+    { type: "report:chart:tender-pipeline",              colSpan: 2 },
+    { type: "report:chart:tender-outcome-coverage",      colSpan: 2 }
+  ] as Array<{ type: string; colSpan: number }>
+};
+
 async function seedUserDashboards(prisma: PrismaClient) {
   const users = await prisma.user.findMany({ select: { id: true } });
 
@@ -3946,6 +3967,66 @@ async function seedUserDashboards(prisma: PrismaClient) {
           config
         }
       });
+    }
+  }
+
+  // EA-2a: Estimating Analytics system dashboard - seeded only for users who
+  // hold reporting.view. Queried via the Role->RolePermission->Permission chain
+  // so that any role that grants reporting.view (Admin, Estimator, etc.) picks
+  // it up automatically without a hardcoded name list.
+  const reportingViewPerm = await prisma.permission.findUnique({
+    where: { code: "reporting.view" }
+  });
+  if (reportingViewPerm) {
+    const reportingUsers = await prisma.user.findMany({
+      where: {
+        userRoles: {
+          some: {
+            role: {
+              rolePermissions: {
+                some: { permissionId: reportingViewPerm.id }
+              }
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
+
+    const ea = ESTIMATING_ANALYTICS_PRESET;
+
+    for (const user of reportingUsers) {
+      const config = {
+        period: "30d",
+        widgets: ea.widgets.map((w, order) => ({
+          id: `${w.type}-default`,
+          type: w.type,
+          visible: true,
+          order,
+          colSpan: w.colSpan,
+          config: { period: null, filters: {} }
+        }))
+      };
+      const existing = await prisma.userDashboard.findUnique({
+        where: { userId_slug_isSystem: { userId: user.id, slug: ea.slug, isSystem: true } }
+      });
+      if (existing) {
+        await prisma.userDashboard.update({
+          where: { id: existing.id },
+          data: { name: ea.name, config }
+        });
+      } else {
+        await prisma.userDashboard.create({
+          data: {
+            userId: user.id,
+            name: ea.name,
+            slug: ea.slug,
+            isSystem: true,
+            isDefault: false,
+            config
+          }
+        });
+      }
     }
   }
 

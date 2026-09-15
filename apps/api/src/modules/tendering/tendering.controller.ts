@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { TenderOutcomeReason, TenderOutcomeResult } from "@prisma/client";
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, Min, ValidateNested } from "class-validator";
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -61,6 +61,31 @@ class TenderOutcomeCaptureDto {
   notes?: string;
 }
 
+// DraftPanel S3 — one row in the carry-over snapshot. step must be one of
+// the seven wizard step keys; text is the human-readable reason string.
+const WIZARD_STEP_KEYS_LIST = ["project", "builders", "packages", "documents", "rates", "ai", "review"] as const;
+
+class DraftCarryOverRowDto {
+  @IsString()
+  @IsIn(WIZARD_STEP_KEYS_LIST)
+  step!: string;
+
+  @IsString()
+  @MaxLength(300)
+  text!: string;
+}
+
+// DraftPanel S3 — the carry-over payload sent with a status change when
+// the tender is leaving DRAFT. rows is the snapshotted list of incomplete
+// steps (max 7, one per wizard key). capturedAt is set by the service.
+class DraftCarryOverDto {
+  @IsArray()
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => DraftCarryOverRowDto)
+  rows!: Array<{ step: string; text: string }>;
+}
+
 class UpdateTenderStatusDto {
   @IsString()
   status!: string;
@@ -72,6 +97,14 @@ class UpdateTenderStatusDto {
   @ValidateNested()
   @Type(() => TenderOutcomeCaptureDto)
   outcome?: TenderOutcomeCaptureDto;
+
+  // DraftPanel S3 — optional carry-over snapshot. When present and the
+  // source status is DRAFT, written atomically with the status change.
+  // Ignored when the source status is not DRAFT (no error raised).
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DraftCarryOverDto)
+  draftCarryOver?: DraftCarryOverDto;
 }
 
 class UpdateTenderProbabilityDto {
@@ -560,7 +593,7 @@ export class TenderingController {
     @Body() dto: UpdateTenderStatusDto,
     @CurrentUser() actor: { sub: string }
   ) {
-    return this.service.updateStatus(id, dto.status, actor.sub, dto.outcome);
+    return this.service.updateStatus(id, dto.status, actor.sub, dto.outcome, dto.draftCarryOver);
   }
 
   /**
@@ -586,6 +619,26 @@ export class TenderingController {
     @CurrentUser() actor: { sub: string }
   ) {
     return this.service.recordTenderOutcome(id, dto, actor.sub);
+  }
+
+  /**
+   * DraftPanel S3 — Dismiss the carry-over strip for a tender.
+   *
+   * Merges dismissedAt into the existing draftCarryOver Json value, or writes
+   * { dismissedAt } when there is no snapshot (a legacy tender whose strip is
+   * driven by the light check). Dismissal is stored on the server so it is
+   * gone for everyone — not per-browser. Returns the full tender detail.
+   */
+  @Post(":id/draft-carry-over/dismiss")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Dismiss the draft carry-over strip (server-side, affects all viewers)" })
+  @ApiResponse({ status: 201, description: "Updated tender with dismissedAt merged into draftCarryOver." })
+  @ApiResponse({ status: 404, description: "Tender not found." })
+  dismissDraftCarryOver(
+    @Param("id") id: string,
+    @CurrentUser() actor: { sub: string }
+  ) {
+    return this.service.dismissDraftCarryOver(id, actor.sub);
   }
 
   /**

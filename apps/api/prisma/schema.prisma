@@ -3925,11 +3925,11 @@ model ScopeWasteItem {
 // would be a second source of truth for the same fact.
 //
 // NO STORED TOTAL, on purpose. The line total is
-//   qty x (rateOverride ?? rate)
-// and a stored copy would be a second source of truth that drifts the
-// moment either input is edited. Nothing in this slice computes or reads a
-// total -- no pricing path, card subtotal or discipline roll-up touches
-// this table yet.
+//   qty x days x (rateOverride ?? rate)
+// where days is 1 for a non-duration-bearing unit. A stored copy would be
+// a second source of truth that drifts the moment either input is edited.
+// Scope Cards S1 (SCOPE_OPERATIONAL_COSTS_PRICED_V1) computes the total
+// server-side in scope-item-pricing.ts and returns it on every response.
 model ScopeOperationalCostLine {
   id           String             @id @default(cuid())
   // Parent card. Cascade matches ScopeWasteItem.cardId -- deleting a scope
@@ -3965,6 +3965,19 @@ model ScopeOperationalCostLine {
   // leaves the cost line intact with an empty picker.
   plantRateId  String?            @map("plant_rate_id")
   plantRate    EstimatePlantRate? @relation("ScopeOperationalCostLinePlantRate", fields: [plantRateId], references: [id], onDelete: SetNull)
+  // Scope Cards S1. The WBS code this cost hangs off ("DEM1.2") -- the
+  // mock-up's From column, stored as the code string the card printed when
+  // it was picked.
+  wbsRef         String?  @map("wbs_ref")
+  // Where the figure came from -- free text, a URL, or a document reference.
+  // Mock-up's Source column.
+  sourceRef      String?  @map("source_ref")
+  // Per-line markup, same null-means-inherit semantics as
+  // ScopeOfWorksItem.markupOverride:
+  //   line.markupOverride ?? card.markupOverride ?? tenderEstimate.markup
+  markupOverride Decimal? @map("markup_override") @db.Decimal(5, 2)
+  // The mock-up's per-line comment.
+  notes          String?
   sortOrder    Int                @default(0) @map("sort_order")
   createdById  String             @map("created_by_id")
   createdBy    User               @relation("ScopeOperationalCostLineCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

@@ -358,6 +358,9 @@ approval, and only then:
    **That worktree goes at `C:\PR-Master\worktrees\<slug>`, and a draft not yet in the queue goes
    at `C:\PR-Master\drafts\`** - Marco's ruling of 2026-09-15, `docs/pipeline/PR-MASTER.md`.
    Never `C:\po-worktrees\<slug>`, never a bare `C:\<name>`; `status-sweep` reports both.
+   **Create it with `scripts/pipeline/new-worktree.ps1 -Slug <slug> -Branch <branch>`, never with a
+   hand-written `git worktree add` path** - the helper refuses a slug that is a path and a root that
+   is a drive root, which is how the `C:\po-*` folders got there (PR-MASTER.md, *How you create one*).
 2. **MATERIALISE the file into `C:\ProjectOperations2\docs\pr-prompts\`** after the arming PR
    merges - the watcher consumes from the DEV TREE filesystem, not from main; a committed
    prompt that is not materialised NEVER runs (learned 2026-07-23, days of silent idle).

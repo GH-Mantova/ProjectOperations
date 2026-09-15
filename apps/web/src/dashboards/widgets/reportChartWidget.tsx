@@ -8,11 +8,14 @@
  * - `reportKey` and `chartSpec` are closed over at factory time, so there is no
  *   import-time async; each widget instance is an ordinary React component.
  * - Filters are read from `config.filters` (WidgetSubConfig.filters), which is
- *   the SLICE 5 composition slot. SLICE 4 widgets do not yet merge
- *   dashboard-level filters — that is SLICE 5's job.
+ *   the SLICE 5 composition slot.
  * - Per plan §6.3: unknown chart types render a friendly stub rather than
  *   throwing. If def.chart is absent the factory will not emit a chart widget,
  *   but the component handles that case too for defense in depth.
+ *
+ * EA-2b: adds a chart/table toggle. The table face reuses ReportTable from
+ * reportTableWidget — never a second renderer (formatCell semantics, totals row,
+ * and Generated… line must not drift).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +23,7 @@ import { BarChartWidget, Skeleton } from "@project-ops/ui";
 import { useAuth } from "../../auth/AuthContext";
 import { resolveEffectiveFilters, type WidgetProps } from "../types";
 import { ReportWidgetChrome } from "./reportWidgetChrome";
+import { ReportTable } from "./reportTableWidget";
 
 // ── Shared types (mirrors reporting.service.ts, local to avoid cross-layer
 //   import — see plan §7 "out of scope: rewriting the BI reporting layer")
@@ -209,11 +213,14 @@ function ReportChart({
  *  SLICE 5: dashboardFilters is forwarded so the widget can resolve
  *  effectiveFilters = { ...dashboardFilters, ...config.filters } (plan §5).
  *  SLICE 6: mounts ReportWidgetChrome (export buttons) below the chart;
- *  disabled while the chart is loading. */
+ *  disabled while the chart is loading.
+ *  EA-2b: chart/table toggle — table face reuses ReportTable from
+ *  reportTableWidget (single shared renderer, formatCell semantics preserved). */
 export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | undefined) {
   // Named component (uppercase) so react-hooks/rules-of-hooks recognises it.
   function ReportChartWithChrome({ config, dashboardFilters }: WidgetProps) {
     const [loading, setLoading] = useState(true);
+    const [showTable, setShowTable] = useState(false);
     // Stable callback so the child's useEffect dependency array stays stable.
     const handleLoadingChange = useRef((v: boolean) => setLoading(v)).current;
 
@@ -236,14 +243,56 @@ export function makeReportChartWidget(reportKey: string, chartSpec: ChartSpec | 
           overflow: "hidden"
         }}
       >
+        {/* Chart / Table toggle */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 14px",
+            borderBottom: "1px solid var(--surface-border)"
+          }}
+        >
+          <button
+            type="button"
+            className={showTable ? "s7-btn s7-btn--ghost s7-btn--sm" : "s7-btn s7-btn--secondary s7-btn--sm"}
+            onClick={() => setShowTable(false)}
+            aria-pressed={!showTable}
+            data-testid={`chart-toggle-chart-${reportKey}`}
+          >
+            Chart
+          </button>
+          <button
+            type="button"
+            className={showTable ? "s7-btn s7-btn--secondary s7-btn--sm" : "s7-btn s7-btn--ghost s7-btn--sm"}
+            onClick={() => setShowTable(true)}
+            aria-pressed={showTable}
+            data-testid={`chart-toggle-table-${reportKey}`}
+          >
+            Table
+          </button>
+        </div>
+
         <div style={{ flex: 1, overflow: "auto" }}>
-          <ReportChart
-            reportKey={reportKey}
-            chartSpec={chartSpec}
-            config={config}
-            dashboardFilters={dashboardFilters}
-            onLoadingChange={handleLoadingChange}
-          />
+          {showTable ? (
+            /* Table face — reuses the shared renderer from reportTableWidget.
+             * Must never be a separate reimplementation: formatCell semantics,
+             * totals row, and Generated… line must not drift. */
+            <ReportTable
+              reportKey={reportKey}
+              config={config}
+              dashboardFilters={dashboardFilters}
+              onLoadingChange={handleLoadingChange}
+            />
+          ) : (
+            <ReportChart
+              reportKey={reportKey}
+              chartSpec={chartSpec}
+              config={config}
+              dashboardFilters={dashboardFilters}
+              onLoadingChange={handleLoadingChange}
+            />
+          )}
         </div>
         <ReportWidgetChrome
           reportKey={reportKey}

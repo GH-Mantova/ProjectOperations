@@ -1,0 +1,10 @@
+[
+  { "name": "accounts-list",  "path": "/crm/accounts",                   "actions": [{ "waitFor": "text=Accounts" }],                              "artboard": "Main" },
+  { "name": "relationships",  "path": "/crm/accounts?tab=relationships",  "actions": [{ "waitFor": "text=Recent notes" }],                          "artboard": "Relationships" },
+  { "name": "account-360",    "path": "/crm/accounts",                   "actions": [{ "click": "table tbody tr:first-child a" }],                  "artboard": "Account360", "optional": true },
+  { "name": "register",       "path": "/crm/register",                   "actions": [{ "waitFor": "text=Register" }],                               "artboard": "Register" },
+  { "name": "followups",      "path": "/crm/register?tab=follow-ups",    "actions": [{ "waitFor": "text=Never logged" }],                           "artboard": "FollowUps" },
+  { "name": "bulk-link",      "path": "/crm/accounts",                   "actions": [{ "click": "text=Review and link" }],                          "artboard": "BulkLink", "optional": true },
+  { "name": "comms-inbox",    "path": "/crm/comms",                      "actions": [{ "waitFor": "text=Untriaged" }],                              "artboard": "Intake" },
+  { "name": "comms-threads",  "path": "/crm/comms?tab=threads",          "actions": [{ "waitFor": "text=Threads" }],                                "artboard": "Comms" }
+]

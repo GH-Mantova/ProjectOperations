@@ -9,7 +9,8 @@
  *   1. Every definition with columns produces one `report:table:<key>` entry.
  *   2. Each entry has category "reporting", correct type, name, and size.
  *   3. The configSchema is derived correctly from the definition's parameters.
- *   4. Definitions with from+to parameters get a "period" configField (W2).
+ *   4. EA-2b: date params (from/to) are NOT in the per-widget configSchema —
+ *      the filter bar owns date windowing. W2 "period" collapse is removed.
  *   5. Definitions with string params get "text" configFields (W3).
  *   6. Definitions with zero parameters get an empty configSchema.
  */
@@ -144,14 +145,13 @@ describe("registerReportWidgets", () => {
     }
   });
 
-  // W2: from+to date params collapse into a single "period" ConfigField.
-  it("from+to parameters become a single 'period' configSchema field (W2)", () => {
+  // EA-2b: date params are NOT in per-widget configSchema (DashboardFilterBar owns them).
+  it("from+to date parameters are absent from the per-widget configSchema (EA-2b: filter bar owns date windowing)", () => {
     const meta = metas.find((m) => m.type === "report:table:tender-pipeline");
+    // No period field — the dead W2 collapse is removed; the API rejected it anyway.
     const periodField = meta?.configSchema?.find((f) => f.key === "period");
-    expect(periodField).toBeDefined();
-    expect(periodField?.type).toBe("period");
-
-    // Must NOT have separate "from" and "to" fields alongside the period field.
+    expect(periodField).toBeUndefined();
+    // No raw from/to in the widget schema either — the filter bar provides them.
     const fromField = meta?.configSchema?.find((f) => f.key === "from");
     const toField = meta?.configSchema?.find((f) => f.key === "to");
     expect(fromField).toBeUndefined();

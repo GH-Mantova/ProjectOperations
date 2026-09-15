@@ -10,6 +10,10 @@
  *  6. collectReportParameters union: deduplication by key, first occurrence wins.
  *  7. collectReportParameters: section absent (returns []) when no report widgets present.
  *
+ * EA-2b: the `period` ConfigField was removed from report widget schemas (the
+ * API rejects it with 400; date windowing is handled by DashboardFilterBar).
+ * Tests 6–7 updated accordingly: configSchema no longer contains `period`.
+ *
  * All tests are pure-logic (no React, no fetch).
  */
 
@@ -102,28 +106,33 @@ describe("collectReportParameters (via registerReportWidgets configSchema)", () 
   it("emits configSchema entries for both report definitions", () => {
     const tenderMeta = metas.find((m) => m.type === "report:table:tender-pipeline");
     const jobMeta = metas.find((m) => m.type === "report:table:job-status-summary");
+    // tender-pipeline has clientId (string param) — non-zero configSchema
     expect(tenderMeta?.configSchema?.length).toBeGreaterThan(0);
+    // job-status-summary has projectId (string param) — non-zero configSchema
     expect(jobMeta?.configSchema?.length).toBeGreaterThan(0);
   });
 
-  it("tender-pipeline configSchema contains period field (from+to collapsed) and clientId", () => {
+  it("tender-pipeline configSchema contains clientId but NO period/from/to (EA-2b: date windowing is the filter bar's job)", () => {
     const tenderMeta = metas.find((m) => m.type === "report:table:tender-pipeline");
     const keys = tenderMeta?.configSchema?.map((f) => f.key) ?? [];
-    expect(keys).toContain("period");
+    // String params are retained for per-widget override via WidgetSettingsPopover.
     expect(keys).toContain("clientId");
-    // Must NOT have raw from/to since they collapse to period (W2).
+    // Date params are NOT in the per-widget schema — DashboardFilterBar owns them.
+    expect(keys).not.toContain("period");
     expect(keys).not.toContain("from");
     expect(keys).not.toContain("to");
   });
 
-  it("job-status-summary configSchema contains period field and projectId", () => {
+  it("job-status-summary configSchema contains projectId but NO period/from/to", () => {
     const jobMeta = metas.find((m) => m.type === "report:table:job-status-summary");
     const keys = jobMeta?.configSchema?.map((f) => f.key) ?? [];
-    expect(keys).toContain("period");
     expect(keys).toContain("projectId");
+    expect(keys).not.toContain("period");
+    expect(keys).not.toContain("from");
+    expect(keys).not.toContain("to");
   });
 
-  it("union of parameters across two definitions includes all unique keys", () => {
+  it("union of string parameters across two definitions includes all unique non-date keys", () => {
     // Simulate collectReportParameters: iterate all report:table widgets,
     // union configSchema keys with deduplication.
     const seen = new Set<string>();
@@ -136,11 +145,29 @@ describe("collectReportParameters (via registerReportWidgets configSchema)", () 
         }
       }
     }
-    // "period" appears in both defs but must be deduplicated — only once.
-    expect(union.filter((k) => k === "period")).toHaveLength(1);
-    // Both clientId (from tender-pipeline) and projectId (from job-status-summary) present.
+    // period is gone — the filter bar owns date windowing.
+    expect(union).not.toContain("period");
+    // Both string-param keys present.
     expect(union).toContain("clientId");
     expect(union).toContain("projectId");
+  });
+
+  it("returns empty configSchema for a definition with only date parameters (dates are filter-bar only)", () => {
+    const dateOnlyDefs: ReportDefinitionSummary[] = [
+      {
+        key: "date-only",
+        title: "Date only",
+        description: "A definition with only date parameters.",
+        parameters: [
+          { name: "from", label: "From date", type: "date" },
+          { name: "to", label: "To date", type: "date" }
+        ],
+        columns: [{ key: "count", label: "Count" }]
+      }
+    ];
+    const dateMetas = registerReportWidgets(dateOnlyDefs);
+    const meta = dateMetas.find((m) => m.type === "report:table:date-only");
+    expect(meta?.configSchema).toEqual([]);
   });
 
   it("returns empty configSchema for a definition with zero parameters (no report filter section needed)", () => {

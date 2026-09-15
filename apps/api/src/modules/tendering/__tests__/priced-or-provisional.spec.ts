@@ -40,6 +40,7 @@ function makePrisma(opts: {
     tenderEstimate: {
       findUnique: jest.fn().mockResolvedValue({ markup: opts.tenderMarkup ?? 0 })
     },
+    scopeOperationalCostLine: { findMany: jest.fn().mockResolvedValue([]) },
     scopeWasteItem: {
       findMany: jest.fn().mockResolvedValue(opts.wasteItems ?? [])
     },

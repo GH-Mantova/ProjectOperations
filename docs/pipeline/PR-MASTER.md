@@ -37,6 +37,37 @@ The watcher's agent worktrees under `C:\po-watcher\ProjectOperations\.claude\wor
 NOT in scope: they sit inside the watcher's own clone, not at the drive root, and the watcher
 reclaims them itself. Ageing those out is Station 03's, not this convention's.
 
+## How you create one — `scripts/pipeline/new-worktree.ps1`
+
+A convention that every caller re-implements is a convention every caller gets wrong. As of
+2026-09-15 no station, lane or chat writes a worktree path any more: it supplies a SLUG and the
+helper computes the path.
+
+```powershell
+$wt = & scripts\pipeline\new-worktree.ps1 -Slug rcpt-1964 -Branch po/receipt-1964
+$wt = & scripts\pipeline\new-worktree.ps1 -Slug smoke-0712          # detached at origin/main
+     & scripts\pipeline\new-worktree.ps1 -Slug rcpt-1964 -Remove
+```
+
+The only thing on the success stream is the absolute path, so `$wt = & ...` captures the path and
+nothing else. Overrides exist for the two things that legitimately vary — `-Repo` /
+`PO_REPO_ROOT` (default `C:\ProjectOperations2`) and `-Root` / `PO_WORKTREE_ROOT` (default
+`C:\PR-Master\worktrees`) — and for nothing else.
+
+It refuses, rather than obliges:
+
+| refusal | exit | why |
+| --- | --- | --- |
+| slug is a path (`C:\po-evil`, `a\b`, `..`) | 2 | a slug is a name; the root is not the caller's business |
+| root is a drive root (`C:\`) | 3 | this is the exact defect the helper exists to prevent |
+| the path exists and is not a worktree | 4 | it is someone's folder — quarantine it, never delete it |
+| the worktree already exists, no `-Force` | 4 | an unannounced replacement loses uncommitted work |
+| git succeeded but `.git` is not a FILE | 5 | never hand back a path that is not a worktree |
+
+**Raw `git worktree add` with a hand-written path is the defect.** If you are typing `C:\` into a
+worktree path, you are writing the bug this helper replaced. A caller who needs behaviour the
+helper refuses fixes the helper in a PR; it does not go around it.
+
 ## Legacy roots
 
 The pre-2026-09-11 roots — `C:\po-worktrees`, `C:\po-wt`, `C:\po-wt-h`,

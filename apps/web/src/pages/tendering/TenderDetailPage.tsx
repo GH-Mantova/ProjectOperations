@@ -24,8 +24,10 @@ import { DraftProgressPanel } from "./DraftProgressPanel";
 import { NewTenderWizard } from "./NewTenderWizard";
 import {
   deriveDraftCompleteness,
+  selectCarryOverRows,
   type WizardStepKey
 } from "./newTenderWizard.helpers";
+import { DraftCarryOverStrip } from "./DraftCarryOverStrip";
 
 type TenderDetail = {
   id: string;
@@ -62,7 +64,17 @@ type TenderDetail = {
     isAwarded: boolean;
     contractIssued: boolean;
     relationshipType?: string | null;
+    // DraftPanel S3 -- used for carry-over snapshot accuracy
+    submissionDate?: string | null;
+    primaryContactId?: string | null;
   }>;
+  // DraftPanel S3 -- carry-over snapshot stored when tender left DRAFT.
+  // Shape: { capturedAt: string; rows: Array<{ step: string; text: string }>; dismissedAt?: string }
+  draftCarryOver?: {
+    capturedAt?: string;
+    rows?: Array<{ step: string; text: string }>;
+    dismissedAt?: string;
+  } | null;
   tenderNotes: Array<{ id: string; body: string; createdAt: string; author?: { firstName: string; lastName: string } | null }>;
   clarifications: Array<{ id: string; subject: string; response?: string | null; status: string; createdAt: string; dueDate?: string | null }>;
   followUps: Array<{ id: string; details: string; dueAt: string; status: string; assignedUser?: { firstName: string; lastName: string } | null }>;
@@ -200,6 +212,36 @@ export function TenderDetailPage() {
   const [draftDocuments, setDraftDocuments] = useState<Array<{ id: string }>>([]);
   const [draftRateSet, setDraftRateSet] = useState<{ id: string } | null>(null);
   const [draftDataLoaded, setDraftDataLoaded] = useState(false);
+
+  // DraftPanel S3 -- single memoised derivation. The panel, resume-seeding,
+  // and carry-over snapshot all read this one result so they stay consistent.
+  // Only populated when draft data has been loaded (DRAFT tenders only).
+  const memoCompleteness = useMemo(() => {
+    if (!tender || !draftDataLoaded) return null;
+    return deriveDraftCompleteness(
+      {
+        title: tender.title,
+        siteId: (tender as unknown as { siteId?: string | null }).siteId ?? null,
+        estimatorUserId: tender.estimator?.id ?? null
+      },
+      (tender.tenderClients ?? []).map((tc) => ({
+        clientId: tc.client.id,
+        clientName: tc.client.name,
+        contactId: tc.primaryContactId ?? tc.contact?.id ?? null,
+        submissionDate: tc.submissionDate ?? null
+      })),
+      draftPackages.map((p) => ({
+        id: p.id,
+        disciplineItemId: p.disciplineItemId,
+        value: p.disciplineItemId,
+        label: p.disciplineItemId,
+        sortOrder: 0
+      })),
+      draftMatrix,
+      draftDocuments,
+      draftRateSet
+    );
+  }, [tender, draftDataLoaded, draftPackages, draftMatrix, draftDocuments, draftRateSet]);
 
   // Alt+A toggles the Assumptions & Exclusions floating editor (not on Quote tab)
   const aeEditorOpenRef = useRef(aeEditorOpen);
@@ -342,10 +384,17 @@ export function TenderDetailPage() {
     if (!tender || tender.status === next) return;
     setStatusUpdating(true);
     try {
+      // DraftPanel S3 -- snapshot what was unfinished when this tender leaves
+      // DRAFT. Only attach when completeness data is loaded; never block on it.
+      const body: Record<string, unknown> = { status: next };
+      if (tender.status === "DRAFT" && memoCompleteness) {
+        const rows = selectCarryOverRows(memoCompleteness, "full");
+        body.draftCarryOver = { rows };
+      }
       const response = await authFetch(`/tenders/${tender.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: next })
+        body: JSON.stringify(body)
       });
       if (!response.ok) throw new Error(await readApiErrorMessage(response));
       await reload();
@@ -703,62 +752,17 @@ export function TenderDetailPage() {
         {tab === "overview" && (
           <div className="tender-detail__sections">
             {/* DraftPanel S2: completeness panel -- only while DRAFT. */}
-            {tender.status === "DRAFT" && draftDataLoaded ? (
+            {tender.status === "DRAFT" && memoCompleteness ? (
               <DraftProgressPanel
-                completeness={deriveDraftCompleteness(
-                  {
-                    title: tender.title,
-                    siteId: (tender as unknown as { siteId?: string | null }).siteId ?? null,
-                    estimatorUserId: tender.estimator?.id ?? null
-                  },
-                  (tender.tenderClients ?? []).map((tc) => ({
-                    clientId: tc.client.id,
-                    clientName: tc.client.name,
-                    contactId: tc.contact?.id ?? null,
-                    submissionDate: null
-                  })),
-                  draftPackages.map((p) => ({
-                    id: p.id,
-                    disciplineItemId: p.disciplineItemId,
-                    value: p.disciplineItemId,
-                    label: p.disciplineItemId,
-                    sortOrder: 0
-                  })),
-                  draftMatrix,
-                  draftDocuments,
-                  draftRateSet
-                )}
+                completeness={memoCompleteness}
                 createdAt={tender.createdAt}
                 updatedAt={tender.updatedAt}
                 createdByName={tender.estimator ? `${tender.estimator.firstName} ${tender.estimator.lastName}` : undefined}
                 onResume={(payload) => {
-                  // Build a visited map from the completeness derivation:
+                  // Build a visited map from the memoised completeness:
                   // mark all steps that have data as visited so the rail is unlocked.
-                  const derived = deriveDraftCompleteness(
-                    {
-                      title: tender.title,
-                      siteId: (tender as unknown as { siteId?: string | null }).siteId ?? null,
-                      estimatorUserId: tender.estimator?.id ?? null
-                    },
-                    (tender.tenderClients ?? []).map((tc) => ({
-                      clientId: tc.client.id,
-                      clientName: tc.client.name,
-                      contactId: tc.contact?.id ?? null,
-                      submissionDate: null
-                    })),
-                    draftPackages.map((p) => ({
-                      id: p.id,
-                      disciplineItemId: p.disciplineItemId,
-                      value: p.disciplineItemId,
-                      label: p.disciplineItemId,
-                      sortOrder: 0
-                    })),
-                    draftMatrix,
-                    draftDocuments,
-                    draftRateSet
-                  );
                   const visitedFromDerived: Partial<Record<WizardStepKey, boolean>> = {};
-                  for (const s of derived.steps) {
+                  for (const s of memoCompleteness.steps) {
                     if (s.state !== "outstanding") {
                       visitedFromDerived[s.step] = true;
                     }
@@ -786,6 +790,16 @@ export function TenderDetailPage() {
                   }
                 }}
                 busy={statusUpdating}
+              />
+            ) : null}
+            {/* DraftPanel S3: carry-over strip -- only while IN_PROGRESS, not dismissed, rows non-empty. */}
+            {tender.status === "IN_PROGRESS" ? (
+              <DraftCarryOverStrip
+                tender={tender}
+                tenderClients={tender.tenderClients}
+                tenderDocuments={tender.tenderDocuments}
+                authFetch={authFetch}
+                onDismissed={() => void reload()}
               />
             ) : null}
             <section className="tender-detail__info-cards">
@@ -916,7 +930,7 @@ export function TenderDetailPage() {
               />
             </div>
 
-            <section className="s7-card">
+            <section className="s7-card" id="tender-documents">
               <div className="tender-detail__section-head">
                 <h3 className="s7-type-section-heading" style={{ margin: 0 }}>
                   Documents ({tender.tenderDocuments.length})
@@ -986,6 +1000,7 @@ export function TenderDetailPage() {
             {clientMsg ? (
               <p style={{ color: "var(--status-danger)", fontSize: 12, margin: "4px 0" }}>{clientMsg}</p>
             ) : null}
+            <div id="tender-builders">
             <TenderEntriesPanel
               tenderId={tender.id}
               canManage={canManageTenders}
@@ -1045,6 +1060,7 @@ export function TenderDetailPage() {
                 }
               }}
             />
+            </div>
           </div>
         )}
 

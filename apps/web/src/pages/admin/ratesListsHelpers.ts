@@ -517,6 +517,134 @@ export function scenarioKeyOptions(
   return [...seen].sort(compareScenarioValues);
 }
 
+// ── S3 helpers — column settings, move, delete ───────────────────────────
+
+/**
+ * Case-insensitive clash detector: does `columns` already contain a column
+ * named `name`, ignoring the column with `excludeId`?
+ *
+ * Returns the existing column's display name (for the error message) when there
+ * is a clash, or null when the name is free.
+ */
+export function columnNameClash(
+  columns: Pick<RateColumn, "id" | "name">[],
+  name: string,
+  excludeId: string
+): string | null {
+  const lower = name.trim().toLowerCase();
+  for (const c of columns) {
+    if (c.id === excludeId) continue;
+    if (c.name.trim().toLowerCase() === lower) return c.name;
+  }
+  return null;
+}
+
+/**
+ * The two-clause rename warning that fires when a renamed column is named by a
+ * charge step.
+ *
+ * Clause 1 (always): which steps currently point at the old name, and what
+ * breaks.
+ * Clause 2 (when `lockedCount` is provided): how many tenders are safe because
+ * they hold a snapshot. When undefined, the clause is omitted — the caller
+ * does not know the count and must not invent one.
+ */
+export function renameWarning(
+  name: string,
+  usedIn: readonly number[],
+  lockedCount?: number
+): string {
+  const clause1 =
+    `"${name}" is used in ${usedInLabel(usedIn)}. ` +
+    `Rename it and ${usedIn.length > 1 ? "those steps are" : "that step is"} still looking ` +
+    `for "${name}" — pricing on this table stops working until you open Charge steps and ` +
+    `point ${usedIn.length > 1 ? "those steps" : "that step"} at the new name.`;
+  if (lockedCount === undefined) return clause1;
+  return (
+    clause1 +
+    ` The tenders that already priced it are fine — ${lockedCount} tender${lockedCount === 1 ? "" : "s"} ` +
+    `hold this column in their locked books and keep the figures they were quoted.`
+  );
+}
+
+/**
+ * RATE_S1_CHARGED_FROM — did the charged-from column change between two
+ * `markChargedFrom`-processed column arrays?
+ *
+ * Returns `{ from: string; to: string }` (display names) when the charge-from
+ * mark moved, or null when it did not (or when neither array has a price
+ * column).
+ */
+export function chargedFromChange(
+  before: { role: string; name: string; chargedFrom?: boolean }[],
+  after: { role: string; name: string; chargedFrom?: boolean }[]
+): { from: string; to: string } | null {
+  const beforeCol = before.find((c) => c.chargedFrom === true);
+  const afterCol = after.find((c) => c.chargedFrom === true);
+  if (!beforeCol && !afterCol) return null;
+  if (!beforeCol || !afterCol) return null;
+  if (beforeCol.name === afterCol.name) return null;
+  return { from: beforeCol.name, to: afterCol.name };
+}
+
+/**
+ * Compute the two PATCH bodies needed to swap `columnId` with its neighbour in
+ * direction `dir` (-1 = left, +1 = right).
+ *
+ * `sortOrder` has no unique constraint in the schema; when two columns share
+ * the same sortOrder the function still produces two DISTINCT bodies by forcing
+ * a 1-unit gap.
+ *
+ * Returns `null` when the move is not possible (column not found, or already at
+ * the edge).
+ */
+export function swapSortOrders(
+  columns: Pick<RateColumn, "id" | "sortOrder">[],
+  id: string,
+  dir: -1 | 1
+): [{ id: string; sortOrder: number }, { id: string; sortOrder: number }] | null {
+  const sorted = [...columns].sort((a, b) => a.sortOrder - b.sortOrder);
+  const idx = sorted.findIndex((c) => c.id === id);
+  if (idx === -1) return null;
+  const neighbourIdx = idx + dir;
+  if (neighbourIdx < 0 || neighbourIdx >= sorted.length) return null;
+  const col = sorted[idx];
+  const neighbour = sorted[neighbourIdx];
+  // Guarantee two distinct sortOrder values even when they happen to be equal.
+  const aOrder = neighbour.sortOrder;
+  const bOrder = col.sortOrder === aOrder ? aOrder + dir : col.sortOrder;
+  return [
+    { id: col.id, sortOrder: aOrder },
+    { id: neighbour.id, sortOrder: bOrder }
+  ];
+}
+
+/**
+ * The plain-language note shown after a column is moved.
+ *
+ * Two cases:
+ * - A price column moved in front of another price column: the charged-from
+ *   mark changed — warn about the pricing impact.
+ * - Any other column moved: just note that the question order changed.
+ */
+export function moveNote(
+  column: Pick<RateColumn, "role">,
+  before: { role: string; name: string; chargedFrom?: boolean }[],
+  after: { role: string; name: string; chargedFrom?: boolean }[]
+): string {
+  if (column.role === "VALUE") {
+    const change = chargedFromChange(before, after);
+    if (change) {
+      return (
+        `New estimates will now price at the ${change.to} rate. ` +
+        `Anything that prices against this table takes the leftmost price column. ` +
+        `You have just moved ${change.to} in front of ${change.from}.`
+      );
+    }
+  }
+  return "Prices are unchanged. What changed is the order the questions get asked in, and how the grid groups.";
+}
+
 /**
  * The chosen keys with every stale value replaced — the picker's own state,
  * normalised.

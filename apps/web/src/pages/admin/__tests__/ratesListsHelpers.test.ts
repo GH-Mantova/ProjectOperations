@@ -3,7 +3,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   blankRowCells,
+  chargedFromChange,
   columnFieldKind,
+  columnNameClash,
   consumerTypeLabel,
   defaultCellFor,
   deleteFieldConfirmMessage,
@@ -13,12 +15,15 @@ import {
   hasPerRowUnitColumn,
   isNumberKindColumn,
   matchScenarioRow,
+  moveNote,
   rateFieldRows,
+  renameWarning,
   resolveScenarioKeys,
   scenarioCellText,
   scenarioKeyColumns,
   scenarioKeyOptions,
   stepsUsingField,
+  swapSortOrders,
   usedInLabel,
   validateColumnStructure,
   validateRowCells,
@@ -1234,5 +1239,179 @@ describe("RATE_SCENARIO_PICKER_V2 · the stale-value fallback", () => {
     const keys = resolveScenarioKeys(SAW_COLUMNS, SAW_ROWS, { "k-equipment": "Roadsaw" });
     expect(cascade(keys)).toStrictEqual(cascade(keys));
     expect(cascade(keys)[1]).toStrictEqual(["Floor"]);
+  });
+});
+
+// ── S3 helpers ────────────────────────────────────────────────────────────
+
+describe("ratesListsHelpers · columnNameClash", () => {
+  const cols: Pick<RateColumn, "id" | "name">[] = [
+    { id: "c1", name: "Rate" },
+    { id: "c2", name: "Depth" }
+  ];
+
+  it("returns null when the name is free", () => {
+    expect(columnNameClash(cols, "Labour", "c3")).toBeNull();
+  });
+
+  it("detects a clash regardless of case", () => {
+    expect(columnNameClash(cols, "rate", "c3")).toBe("Rate");
+    expect(columnNameClash(cols, "DEPTH", "c3")).toBe("Depth");
+  });
+
+  it("ignores the column being edited (self)", () => {
+    expect(columnNameClash(cols, "Rate", "c1")).toBeNull();
+  });
+
+  it("case-insensitive self-exclusion", () => {
+    expect(columnNameClash(cols, "RATE", "c1")).toBeNull();
+  });
+
+  it("clashes against a different column even when spelling matches only in case", () => {
+    expect(columnNameClash(cols, "DEPTH", "c1")).toBe("Depth");
+  });
+});
+
+describe("ratesListsHelpers · renameWarning", () => {
+  it("single step — clause 1 only (no lockedCount)", () => {
+    const w = renameWarning("Rate", [3]);
+    expect(w).toContain('"Rate"');
+    expect(w).toContain("step 3");
+    expect(w).not.toContain("tender");
+  });
+
+  it("multiple steps — uses plural form", () => {
+    const w = renameWarning("Rate", [1, 4]);
+    expect(w).toContain("step 1, 4");
+    expect(w).toContain("those steps are");
+  });
+
+  it("clause 2 added when lockedCount is provided", () => {
+    const w = renameWarning("Rate", [3], 5);
+    expect(w).toContain("5 tenders");
+    expect(w).toContain("locked books");
+  });
+
+  it("lockedCount=1 is singular", () => {
+    const w = renameWarning("Rate", [3], 1);
+    expect(w).toContain("1 tender");
+    expect(w).not.toContain("1 tenders");
+  });
+
+  it("lockedCount=undefined omits the tender clause", () => {
+    const w = renameWarning("Rate", [3], undefined);
+    expect(w).not.toContain("tender");
+  });
+});
+
+describe("ratesListsHelpers · chargedFromChange", () => {
+  const price = (name: string, chargedFrom: boolean) => ({
+    role: "VALUE",
+    name,
+    chargedFrom
+  });
+  const lookup = (name: string) => ({ role: "KEY", name });
+
+  it("returns null when the same column is marked in both arrays", () => {
+    const cols = [price("Day rate", true), price("Night rate", false)];
+    expect(chargedFromChange(cols, cols)).toBeNull();
+  });
+
+  it("returns { from, to } when the mark moved", () => {
+    const before = [price("Day rate", true), price("Night rate", false)];
+    const after = [price("Day rate", false), price("Night rate", true)];
+    expect(chargedFromChange(before, after)).toStrictEqual({
+      from: "Day rate",
+      to: "Night rate"
+    });
+  });
+
+  it("returns null when neither array has a charged-from column", () => {
+    const cols = [lookup("Role")];
+    expect(chargedFromChange(cols, cols)).toBeNull();
+  });
+
+  it("returns null when only one array has a charged-from column (no move possible)", () => {
+    const before = [price("Day rate", true)];
+    const after = [lookup("Role")];
+    expect(chargedFromChange(before, after)).toBeNull();
+  });
+});
+
+describe("ratesListsHelpers · swapSortOrders", () => {
+  const cols = (orders: number[]): RateColumn[] =>
+    orders.map((so, i) => col({ id: `c${i}`, sortOrder: so }));
+
+  it("swaps sortOrders between the column and its right neighbour", () => {
+    const result = swapSortOrders(cols([1, 2, 3]), "c0", 1);
+    expect(result).not.toBeNull();
+    const ids = result!.map((r) => r.id);
+    expect(ids).toContain("c0");
+    expect(ids).toContain("c1");
+    // c0 should get c1's old sortOrder
+    const c0patch = result!.find((r) => r.id === "c0")!;
+    const c1patch = result!.find((r) => r.id === "c1")!;
+    expect(c0patch.sortOrder).toBe(2);
+    expect(c1patch.sortOrder).toBe(1);
+  });
+
+  it("swaps sortOrders between the column and its left neighbour", () => {
+    const result = swapSortOrders(cols([1, 2, 3]), "c1", -1);
+    expect(result).not.toBeNull();
+    const c0patch = result!.find((r) => r.id === "c0")!;
+    const c1patch = result!.find((r) => r.id === "c1")!;
+    expect(c1patch.sortOrder).toBe(1);
+    expect(c0patch.sortOrder).toBe(2);
+  });
+
+  it("returns null when already at the left edge", () => {
+    expect(swapSortOrders(cols([1, 2]), "c0", -1)).toBeNull();
+  });
+
+  it("returns null when already at the right edge", () => {
+    expect(swapSortOrders(cols([1, 2]), "c1", 1)).toBeNull();
+  });
+
+  it("returns null when column id not found", () => {
+    expect(swapSortOrders(cols([1, 2]), "cx", 1)).toBeNull();
+  });
+
+  it("tie in sortOrder still produces two distinct PATCH bodies", () => {
+    // c0 and c1 both have sortOrder 5 — a tie
+    const result = swapSortOrders(cols([5, 5, 6]), "c0", 1);
+    expect(result).not.toBeNull();
+    const [p0, p1] = result!;
+    expect(p0.sortOrder).not.toBe(p1.sortOrder);
+  });
+});
+
+describe("ratesListsHelpers · moveNote", () => {
+  const price = (name: string, chargedFrom: boolean) => ({
+    role: "VALUE",
+    name,
+    chargedFrom
+  });
+  const lookup = (name: string) => ({ role: "KEY", name });
+
+  it("price column move with charged-from change -> describes the pricing impact", () => {
+    const before = [price("Day rate", true), price("Night rate", false)];
+    const after = [price("Day rate", false), price("Night rate", true)];
+    const note = moveNote({ role: "VALUE" }, before, after);
+    expect(note).toContain("Night rate");
+    expect(note).toContain("Day rate");
+    expect(note).not.toContain("order the questions");
+  });
+
+  it("price column move with NO charged-from change -> look-up note", () => {
+    const before = [price("Day rate", true), price("Night rate", false)];
+    const note = moveNote({ role: "VALUE" }, before, before);
+    expect(note).toContain("order the questions");
+  });
+
+  it("look-up column move -> order/grouping note", () => {
+    const before = [lookup("Equipment"), lookup("Material")];
+    const note = moveNote({ role: "KEY" }, before, before);
+    expect(note).toContain("order the questions");
+    expect(note).toContain("grid groups");
   });
 });

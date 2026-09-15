@@ -413,6 +413,20 @@ deliberately asserts nothing - it just writes PNGs. The "EXIT CODE decides" rule
      reviewer cannot re-open is not evidence. The cost is repo size, which is why only the screens
      the PR body **declares** are captured, and why `visual-smoke.mjs` refuses any single PNG larger
      than `MAX_PNG_BYTES` (2 MB) - an oversize screen is deleted and counted as a capture failure.
+   - **Compare.** When the PR body names a screens file whose entries carry an `artboard` key,
+     run `render-artboards.mjs` to compose side-by-side app-vs-design images:
+     ```
+     node scripts/pipeline/render-artboards.mjs \
+       --src "Claude Design/proposed/<folder>" \
+       --out <tmp> \
+       --compare docs/pr-reviews/pr-{n}-smoke \
+       --screens <file>
+     ```
+     The resulting `<name>.compare.png` files land alongside the captures in
+     `docs/pr-reviews/pr-{n}-smoke/`. Commit and keep them exactly as the captures (same
+     `git add -f` + push). Judge the compare images just as you judge the plain captures —
+     an artboard's orange dots and amber foot strip are designer annotations, never UI; ignore
+     them when assessing whether the app matches the design.
    - **Judge.** OPEN each PNG and READ it against the PR's stated visual acceptance criteria:
      layout intact (no overlap, no cut-off, no blank region where the PR claims content); the
      elements the PR body says are present are visibly present; nav and shell render; spacing and

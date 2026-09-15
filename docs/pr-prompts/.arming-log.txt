@@ -114,3 +114,7 @@
 2026-09-14T05:03:57Z  ARMED  pr-fv2-import-s1-docx-and-persona  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=24880  caller=powershell.exe:22760
 2026-09-14T06:03:57Z  ARMED  pr-ea-s2a-dashboard-preset-seed  escalates=true  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=20752  caller=powershell.exe:32568
 2026-09-14T08:24:38Z  ARMED  pr-ratescol-s0-column-api-hygiene  escalates=false  actor=station-00.0808  by=Marco@LAPTOP-E6NHU4E4  pid=27640  caller=powershell.exe:26976
+2026-09-15T01:03:10Z  ARMED  pr-crmvis-s0-visual-parity-tooling  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=3956  caller=powershell.exe:20524
+2026-09-15T01:13:02Z  ARMED  pr-fv2-import-s2-review-route  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=27764  caller=powershell.exe:8556
+2026-09-15T01:20:51Z  REFIRED  pr-fv2-import-s2-review-route  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  reason=writer-refused-on-stale-STATUS-HOLD-section-3x-queue-paused  from=failed/pr-fv2-import-s2-review-route-c-ready.md
+2026-09-15T02:02:13Z  ARMED  pr-ea-s2b-dashboard-filter-surface  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=6768  caller=powershell.exe:904

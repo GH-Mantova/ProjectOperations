@@ -19,8 +19,22 @@
  * screens.json shape:
  *   [
  *     { "name": "dashboard",     "path": "/"                                        },
- *     { "name": "budget-detail", "path": "/finance/jobs/job-001",  "waitFor": "text=Committed" }
+ *     { "name": "budget-detail", "path": "/finance/jobs/job-001",  "waitFor": "text=Committed" },
+ *     { "name": "accounts-list", "path": "/crm/accounts",
+ *       "actions": [{ "waitFor": "text=Accounts" }]                                 },
+ *     { "name": "account-360",   "path": "/crm/accounts",
+ *       "actions": [{ "click": "table tbody tr:first-child a" }], "optional": true  }
  *   ]
+ *
+ * Per-entry optional keys (applied after navigation, before screenshot):
+ *   actions?: Array<
+ *     | { click: string }              — page.click(selector)
+ *     | { fill: { selector: string; value: string } }  — page.fill(selector, value)
+ *     | { waitFor: string }            — page.waitForSelector(selector)
+ *   >  Run in order.
+ *   optional?: boolean  — if any waitFor or action selector isn't found within the timeout,
+ *     log "visual-smoke: SKIPPED <name> (optional): <reason>" and skip (no PNG, not counted
+ *     as a failure). Legacy "waitFor" at the top level still works unchanged.
  *
  * Output: docs/pr-reviews/pr-{n}-smoke/{name}.png (one file per entry, in input order).
  *   With --out <dir> the PNGs land in <dir> instead. The summary line names the
@@ -82,12 +96,46 @@ async function loginAsAdmin(page, baseUrl) {
     .waitFor({ state: "visible", timeout: 30_000 });
 }
 
+// Sentinel thrown when an optional screen's selector is not found.
+class SkipError extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "SkipError";
+  }
+}
+
 async function captureOne(page, baseUrl, entry, outDir) {
   const url = new URL(entry.path, baseUrl).toString();
   await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
+
+  // Legacy top-level waitFor still works.
   if (entry.waitFor) {
-    await page.waitForSelector(entry.waitFor, { timeout: 15_000 });
+    try {
+      await page.waitForSelector(entry.waitFor, { timeout: 15_000 });
+    } catch (err) {
+      if (entry.optional) throw new SkipError(`waitFor "${entry.waitFor}": ${err.message}`);
+      throw err;
+    }
   }
+
+  // entry.actions: array of { click } | { fill } | { waitFor } steps, run in order.
+  if (entry.actions) {
+    for (const action of entry.actions) {
+      try {
+        if (action.waitFor !== undefined) {
+          await page.waitForSelector(action.waitFor, { timeout: 15_000 });
+        } else if (action.click !== undefined) {
+          await page.click(action.click, { timeout: 15_000 });
+        } else if (action.fill !== undefined) {
+          await page.fill(action.fill.selector, action.fill.value);
+        }
+      } catch (err) {
+        if (entry.optional) throw new SkipError(`action ${JSON.stringify(action)}: ${err.message}`);
+        throw err;
+      }
+    }
+  }
+
   const outPath = join(outDir, `${entry.name}.png`);
   await page.screenshot({ path: outPath, fullPage: true });
   const { size } = statSync(outPath);
@@ -156,6 +204,7 @@ async function main() {
   }
 
   const written = [];
+  const skipped = [];
   const failed = [];
   for (const entry of screens) {
     try {
@@ -163,14 +212,21 @@ async function main() {
       written.push(p);
       console.log(`captured ${entry.name} -> ${p}`);
     } catch (err) {
-      failed.push({ name: entry.name, error: err.message });
-      console.error(`FAILED ${entry.name}: ${err.message}`);
+      if (err.name === "SkipError") {
+        skipped.push({ name: entry.name, reason: err.message });
+        console.log(`visual-smoke: SKIPPED ${entry.name} (optional): ${err.message}`);
+      } else {
+        failed.push({ name: entry.name, error: err.message });
+        console.error(`FAILED ${entry.name}: ${err.message}`);
+      }
     }
   }
 
   await browser.close();
 
-  console.log(`\nvisual-smoke: wrote ${written.length}/${screens.length} screen(s) to ${outDir}`);
+  const total = screens.length;
+  console.log(`\nvisual-smoke: wrote ${written.length}/${total} screen(s) to ${outDir}` +
+    (skipped.length > 0 ? ` (${skipped.length} optional skipped)` : ""));
   if (failed.length > 0) {
     console.error(`visual-smoke: ${failed.length} screen(s) failed`);
     return 3;

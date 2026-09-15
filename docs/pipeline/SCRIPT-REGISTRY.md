@@ -83,7 +83,8 @@ stages prompts — that is the whole job.
 | `pipeline\check-sot-bytes.mjs` | Reads the **bytes**, not PowerShell's decoding of them. | Suspected encoding damage in `sot/`. |
 | `pipeline\check-sot-encoding.ps1` | Is Marco's working copy of `sot/` byte-damaged (em-dashes, arrows mangled)? | Same. PS 5.1 decodes BOM-less UTF-8 as Windows-1252. |
 | `data-model\build-relationship-map.mjs` | Regenerates the data-model map. `--check` validates without writing. | Verifying drift; the `--check` form is the safe one. |
-| `pipeline\visual-smoke.mjs` | Playwright capture for the vision review. | Station 02's rule-6 review. |
+| `pipeline\visual-smoke.mjs` | Playwright capture for the vision review. Per-entry `actions` (click / fill / waitFor) and `optional` flag supported — optional entries are skipped (not failed) when a selector is not found. | Station 02's rule-6 review. |
+| `pipeline\render-artboards.mjs` | Renders on-repo `.dc.html` artboards to PNGs at their canvas viewport size. With `--compare <smoke-dir> --screens <file>` composes side-by-side app-vs-artboard images for the vision review. | Station 02's rule-6 vision review (crmvis S0 and later clusters). |
 
 ---
 

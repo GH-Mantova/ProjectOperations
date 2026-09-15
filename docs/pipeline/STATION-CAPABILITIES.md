@@ -85,6 +85,29 @@ scheduled-tasks MCP", never as "the five".** The MCP is already the prescribed s
 MCP against the number of bootstraps the sweep actually opened.** Found by Station 04
 2026-09-07T06:1xZ (F4), landed by Station 00 at 07:3xZ.
 
+🔴🔴 **CORRECTED 2026-09-15 — `weekly-security-audit` IS DISABLED, SO THE HEADLINE ABOVE NOW ARGUES
+AGAINST THIS SECTION'S OWN RULE.** `CAPABILITIES_ASSERTS_A_DISABLED_TASK_IS_LIVE_V1` [MEASURED]
+2026-09-15T02:1xZ by Station 04 from the scheduled-tasks MCP: `weekly-security-audit`
+**`enabled: false`**, `lastRunAt 2026-09-06T21:32:44Z` — it has not run since the day before the
+paragraph above was written. **The live ENABLED count is FOUR** (`00-supervisor` `5 * * * *`,
+`03-machine-minder` `0 9 * * *`, `04-scanner` `0 */4 * * *`, `05-sot-keeper` `10 0 * * *`), which
+is the number the red headline above and §5 both tell the reader is wrong.
+
+⚠️ **Nothing above is retired and the count is not "corrected" back to five.** The RULE is what
+saves a careful reader and it is unchanged — *express a bootstrap sweep's corpus as every
+`SKILL.md` behind an ENABLED task in the MCP, never as "the five"*, and *read the live cron from
+the MCP, never from here*. A run that follows it gets four and is right. What is fixed here is only
+that the surrounding prose carried a dated measurement asserting the opposite, and §1's whole
+thesis is that a stale instruction reads exactly like a current one.
+
+⚠️ **Whether Marco turned it off is his to answer** and is already filed as
+`needs-marco/weekly-security-audit-is-off-and-the-task-store-reverts-verified-writes-2026-09-14.md`;
+that file claims the off-switch question and does not mention this document, which is why the
+document-drift half is recorded here rather than folded into it. **Falsifying probe: read `enabled`
+for `weekly-security-audit` from the scheduled-tasks MCP.** If it is ever `true`, this correction is
+unnecessary and §1 is simply current again. Found by Station 04 2026-09-15T02:1xZ (F3), landed by
+Station 00 at 02:4xZ.
+
 
 
 ---
@@ -339,6 +362,13 @@ otherwise conclude the live task list is four. **Its authority row is: every ❌
 columns, and Azure / Entra / SharePoint ❌ absolute like everything else.** (Station 04,
 2026-09-07T06:1xZ, F4.)
 
+🔴 **UPDATE 2026-09-15: that task is `enabled: false` (MCP, [MEASURED] 02:1xZ; last run
+2026-09-06T21:32:44Z), so "a LIVE scheduled task" is no longer true of it and the live enabled
+count is FOUR — see §1's 2026-09-15 correction.** The row STAYS: its purpose is to stop this matrix
+being miscounted, and that purpose survives the task being off. Its authority row is unchanged and
+would bind again the moment it is re-enabled. Whether it should be re-enabled is Marco's, filed as
+`needs-marco/weekly-security-audit-is-off-and-the-task-store-reverts-verified-writes-2026-09-14.md`.
+
 
 **Station 01 was missing from this matrix until 2026-09-03**, although it has a contract-linted
 station doc (`docs/pipeline/stations/01-code-writer.md`, `station_doc_version: 1`), is named on
@@ -432,7 +462,7 @@ this lane**, not as an unknown actor.
 | **04 Scanner** | every 4 h | "is anything rotting?" - drift, dead gates, regressions, instruments that lie |
 | **05 SoT-keeper** | daily | `/sot/` drift; the only station that may edit it |
 | **06 PR Master** | on demand | design and stage new work; never arms, never merges |
-| **`weekly-security-audit`** | weekly, Mon — read it from the MCP | not a station and never called by hand; read-only, escalates DRIFT to Marco |
+| **`weekly-security-audit`** | weekly, Mon — read it from the MCP. 🔴 **`enabled: false` as of [MEASURED] 2026-09-15; last run 2026-09-06** | not a station and never called by hand; read-only, escalates DRIFT to Marco |
 
 🔴 **A CADENCE IN THIS TABLE IS STATE, AND TWO ROWS HAVE ALREADY ROTTED. READ THE LIVE CRON FROM THE
 SCHEDULED-TASKS MCP, NEVER FROM HERE.** [MEASURED] 2026-09-05T14:1xZ by Station 04: `00-supervisor`

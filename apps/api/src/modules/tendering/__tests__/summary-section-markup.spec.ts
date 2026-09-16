@@ -23,6 +23,7 @@ function makePrisma(opts: {
   tenderMarkup?: number;
   wasteItems?: unknown[];
   cuttingItems?: unknown[];
+  operationalCostLines?: unknown[];
 }) {
   return {
     tender: {
@@ -39,6 +40,10 @@ function makePrisma(opts: {
     },
     cuttingSheetItem: {
       findMany: jest.fn().mockResolvedValue(opts.cuttingItems ?? [])
+    },
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — fourth stream.
+    scopeOperationalCostLine: {
+      findMany: jest.fn().mockResolvedValue(opts.operationalCostLines ?? [])
     }
   } as never;
 }

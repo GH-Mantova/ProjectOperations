@@ -132,6 +132,16 @@ export type OperationalCostLine = {
   rateOverride: string | number | null;
   plantRateId: string | null;
   sortOrder: number;
+  // Scope Cards S1 (SCOPE_OPERATIONAL_COSTS_PRICED_V1) — new columns.
+  wbsRef?: string | null;
+  sourceRef?: string | null;
+  markupOverride?: number | null;
+  notes?: string | null;
+  // Server-computed money fields (SCOPE_OPERATIONAL_COSTS_PRICED_V1).
+  // The section reads these; it NEVER prices lines itself.
+  lineTotal?: number | null;
+  effectiveMarkup?: number | null;
+  lineTotalWithMarkup?: number | null;
 };
 
 // ── Rate resolution — the manpower / plant override pattern ─────────────
@@ -164,44 +174,41 @@ export function isRateOverridden(
 }
 
 /**
- * A line's total.
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — The section reads the server's
+ * `lineTotalWithMarkup` from each row. No formula is computed here.
  *
- * `qty x (rateOverride ?? rate)` — the formula
- * `apps/api/src/modules/tendering/scope-costs.controller.ts` states, quoted
- * verbatim: "No total is returned or stored. The line total is
- * `qty x (rateOverride ?? rate)`." Days is deliberately NOT a factor: it is a
- * duration recorded against the line, not a multiplier, and inventing a second
- * pricing formula web-side is exactly the drift the API's "no stored copy"
- * note exists to prevent. A lump-sum line therefore totals rate x qty.
+ * For rows that predate S1 and do not carry `lineTotalWithMarkup` the
+ * section contributes zero rather than pricing in the browser. The API
+ * backfills the field on every list/create/update response, so fresh
+ * fetches always have it.
  */
-export function operationalLineTotal(
-  qty: number | null,
-  rate: number | null,
-  rateOverride: number | null
-): number | null {
-  const resolved = resolveLineRate(rate, rateOverride);
-  if (qty === null || resolved === null) return null;
-  if (!Number.isFinite(qty) || !Number.isFinite(resolved)) return null;
-  return qty * resolved;
+export function rowLineTotalWithMarkup(line: OperationalCostLine): number {
+  if (line.lineTotalWithMarkup != null && Number.isFinite(line.lineTotalWithMarkup)) {
+    return Number(line.lineTotalWithMarkup);
+  }
+  return 0;
 }
 
+/** Section totals — two figures, both from the server. */
+export type OperationalSectionTotals = {
+  subtotal: number;
+  withMarkup: number;
+};
+
 /**
- * The section total: the sum of the line totals, with an unpriceable line
- * (no qty, or no rate) contributing zero.
- *
- * This is the ONLY sum in this file, and it is not a card subtotal — it is
- * handed to ScopeCardsTab, which folds it into the single existing card-money
- * computation. See the file header.
+ * The section totals: sum of server-computed `lineTotal` (subtotal) and
+ * `lineTotalWithMarkup` (withMarkup). The section reports BOTH figures
+ * upward so ScopeCardsTab can fold the marked-up total into
+ * `subtotalWithMarkup` (not the raw subtotal).
  */
-export function sumOperationalLines(lines: OperationalCostLine[]): number {
-  return lines.reduce((sum, line) => {
-    const total = operationalLineTotal(
-      toNum(line.qty),
-      toNum(line.rate),
-      toNum(line.rateOverride)
-    );
-    return sum + (total ?? 0);
-  }, 0);
+export function computeOperationalTotals(lines: OperationalCostLine[]): OperationalSectionTotals {
+  let subtotal = 0;
+  let withMarkup = 0;
+  for (const line of lines) {
+    subtotal += (line.lineTotal != null && Number.isFinite(Number(line.lineTotal))) ? Number(line.lineTotal) : 0;
+    withMarkup += rowLineTotalWithMarkup(line);
+  }
+  return { subtotal, withMarkup };
 }
 
 export function fmtMoney(n: number | null): string {
@@ -257,7 +264,7 @@ export const CUSTOM_ITEM_VALUE = "__custom__";
  * re-export and changes no behaviour.
  *
  * Behaviour: choosing a library row reports the row's description, unit and
- * rate upward in one `onPick`; choosing "Custom item" clears the library link
+ * the picked rate upward in one `onPick`; choosing "Custom item" clears the library link
  * and hands the free-text field to the estimator. A line whose library row was
  * later removed (`plantRateId` set null by the schema's SetNull) falls back to
  * custom with its description intact.
@@ -383,6 +390,11 @@ export type OperationalCostPatch = {
   rate?: number | null;
   rateOverride?: number | null;
   plantRateId?: string | null;
+  // Scope Cards S1 — four new fields.
+  wbsRef?: string | null;
+  sourceRef?: string | null;
+  markupOverride?: number | null;
+  notes?: string | null;
 };
 
 /**
@@ -410,7 +422,11 @@ export function OperationalCostRow({
   const lockedRate = toNum(line.rate);
   const rateOverride = toNum(line.rateOverride);
   const overridden = isRateOverridden(rateOverride, lockedRate);
-  const rowTotal = operationalLineTotal(qty, lockedRate, rateOverride);
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — read the server's figure; never
+  // compute it in the browser. The server formula is qty x days x rate and
+  // includes markup; the old browser formula was qty x rate with no days and
+  // no markup and is no longer correct.
+  const rowTotal = line.lineTotalWithMarkup != null ? Number(line.lineTotalWithMarkup) : null;
 
   // The rule, in one place: a unit that carries no duration pins days at 1 and
   // the input is disabled, so there is no keystroke that can put anything else
@@ -618,11 +634,12 @@ export function OperationalCostRow({
         </span>
       </td>
 
-      {/* Total */}
+      {/* Total — server-computed lineTotalWithMarkup (qty x days x rate x markup).
+          SCOPE_OPERATIONAL_COSTS_PRICED_V1: no arithmetic in the browser. */}
       <td
         style={{ ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
         data-testid="other-cost-total"
-        title="Qty x Rate — the formula the API states for this line"
+        title="Qty x Duration x Rate + markup — server-computed (SCOPE_OPERATIONAL_COSTS_PRICED_V1)"
       >
         {fmtMoney(rowTotal)}
       </td>
@@ -697,11 +714,13 @@ export function OperationalCostLinesTable({
 // ── Container ───────────────────────────────────────────────────────────
 
 /**
- * SCOPE_OTHER_COSTS_V1 — the section as the card mounts it.
+ * SCOPE_OTHER_COSTS_V1 / SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the section
+ * as the card mounts it.
  *
- * @param onSectionTotalChange - reports this section's total upward so
- *   ScopeCardsTab can fold it into the ONE place card money is computed. This
- *   component never renders a card subtotal of its own.
+ * @param onSectionTotalChange - reports this section's { subtotal, withMarkup }
+ *   upward so ScopeCardsTab can fold the MARKED-UP total into
+ *   `subtotalWithMarkup`. This component never computes any money; it reads
+ *   the server's `lineTotal` and `lineTotalWithMarkup` off each row.
  */
 export function OtherOperationalCosts({
   tenderId,
@@ -712,7 +731,7 @@ export function OtherOperationalCosts({
   tenderId: string;
   cardId: string;
   canManage?: boolean;
-  onSectionTotalChange?: (cardId: string, total: number) => void;
+  onSectionTotalChange?: (cardId: string, totals: { subtotal: number; withMarkup: number }) => void;
 }) {
   const { authFetch } = useAuth();
   const confirm = useConfirm();
@@ -762,12 +781,15 @@ export function OtherOperationalCosts({
     };
   }, [authFetch]);
 
-  const sectionTotal = useMemo(() => sumOperationalLines(lines), [lines]);
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — both figures come from the server.
+  // The section reports them upward; ScopeCardsTab folds `withMarkup` into
+  // `subtotalWithMarkup` (not the old raw-cost figure).
+  const sectionTotals = useMemo(() => computeOperationalTotals(lines), [lines]);
 
   // Report upward. Deliberately NOT a card subtotal — see the file header.
   useEffect(() => {
-    onSectionTotalChange?.(cardId, sectionTotal);
-  }, [onSectionTotalChange, cardId, sectionTotal]);
+    onSectionTotalChange?.(cardId, sectionTotals);
+  }, [onSectionTotalChange, cardId, sectionTotals]);
 
   const patchLine = useCallback(
     async (lineId: string, patch: OperationalCostPatch) => {
@@ -856,10 +878,22 @@ export function OtherOperationalCosts({
           </span>
         </h3>
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Section total:{" "}
-          <strong style={{ color: "var(--text)" }} data-testid="other-costs-section-total">
-            {fmtMoney(sectionTotal)}
+          Subtotal:{" "}
+          <strong style={{ color: "var(--text)" }} data-testid="other-costs-section-subtotal">
+            {fmtMoney(sectionTotals.subtotal)}
           </strong>
+          {sectionTotals.withMarkup !== sectionTotals.subtotal ? (
+            <span style={{ marginLeft: 8 }}>
+              + markup:{" "}
+              <strong style={{ color: "var(--text)" }} data-testid="other-costs-section-total">
+                {fmtMoney(sectionTotals.withMarkup)}
+              </strong>
+            </span>
+          ) : (
+            <span style={{ marginLeft: 8 }} data-testid="other-costs-section-total">
+              ({fmtMoney(sectionTotals.withMarkup)} incl. markup)
+            </span>
+          )}
         </div>
       </div>
 

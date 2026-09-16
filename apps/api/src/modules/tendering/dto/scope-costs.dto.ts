@@ -93,6 +93,9 @@ export function assertDaysAllowedForUnit(
  * Validation style copied from UpsertWasteDto in scope-waste.controller.ts:
  * `@Type(() => Number)` in front of every numeric so query/form bodies
  * coerce, and nullable strings typed `string | null`.
+ *
+ * Scope Cards S1 (SCOPE_OPERATIONAL_COSTS_PRICED_V1): adds four fields for
+ * the new columns: wbsRef, sourceRef, markupOverride, notes.
  */
 export class UpsertOperationalCostLineDto {
   @IsOptional() @IsString() description?: string;
@@ -105,4 +108,16 @@ export class UpsertOperationalCostLineDto {
   @IsOptional() @Type(() => Number) @IsNumber() rateOverride?: number | null;
   @IsOptional() @IsString() plantRateId?: string | null;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) sortOrder?: number;
+  // Scope Cards S1 — the mock-up's From column: the WBS code string this
+  // cost hangs off (e.g. "DEM1.2").
+  @IsOptional() @IsString() wbsRef?: string | null;
+  // Scope Cards S1 — the mock-up's Source column: free text, a URL, or a
+  // document reference.
+  @IsOptional() @IsString() sourceRef?: string | null;
+  // Scope Cards S1 — per-line markup %.
+  // null means inherit (card.markupOverride ?? tenderEstimate.markup).
+  // A stored 0 is a real override (0% markup), not an absence.
+  @IsOptional() @Type(() => Number) @IsNumber() markupOverride?: number | null;
+  // Scope Cards S1 — the mock-up's per-line comment.
+  @IsOptional() @IsString() notes?: string | null;
 }

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
 import type { Discipline } from "./dto/scope-of-works.dto";
@@ -15,12 +15,21 @@ import {
 } from "./scope-item-pricing";
 
 /**
- * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — marker that operational-cost lines
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 -- marker that operational-cost lines
  * now contribute to tenderPrice as an independently marked-up fourth stream.
  *
  * S2 arms only when this string is on main.
  */
 export const SCOPE_OPERATIONAL_COSTS_PRICED_V1 = "scopecards-s1";
+
+/**
+ * SCOPE_QUOTE_DESTINATION_V1 -- marker that every estimating line now carries
+ * one destination (PRICE / PROVISIONAL / OPTION / INTERNAL). The three legacy
+ * switches - covered-item zeroing, the provisional flag, the discipline OR-rule -
+ * are replaced by
+ * this single column. S2b arms only when this string is on main.
+ */
+export const SCOPE_QUOTE_DESTINATION_V1 = "scopecards-s2a";
 
 // ── Column availability map ─────────────────────────────────────────────
 // Required columns are always rendered. Optional columns are opt-in via
@@ -507,6 +516,8 @@ export class ScopeRedesignService {
       notes?: string | null;
       sortOrder?: number | null;
       cardId?: string | null;
+      // SCOPE_QUOTE_DESTINATION_V1 -- where this cutting line goes on the quote.
+      quoteDestination?: QuoteDestination | null;
     }
   ) {
     await this.requireTender(tenderId);
@@ -565,7 +576,9 @@ export class ScopeRedesignService {
         autoCopied: false,
         ratePerM: priced.ratePerM,
         ratePerHole: priced.ratePerHole,
-        lineTotal: priced.lineTotal
+        lineTotal: priced.lineTotal,
+        // SCOPE_QUOTE_DESTINATION_V1 -- defaults PRICE when absent.
+        quoteDestination: dto.quoteDestination ?? QuoteDestination.PRICE
       },
       include: { otherRate: true }
     });
@@ -601,6 +614,8 @@ export class ScopeRedesignService {
       otherRateId: string | null;
       notes: string | null;
       sortOrder: number | null;
+      // SCOPE_QUOTE_DESTINATION_V1 -- where this cutting line goes on the quote.
+      quoteDestination: QuoteDestination | null;
     }>
   ) {
     const existing = await this.prisma.cuttingSheetItem.findUnique({ where: { id: itemId } });
@@ -665,7 +680,9 @@ export class ScopeRedesignService {
         sortOrder: dto.sortOrder ?? undefined,
         ratePerM: priced.ratePerM,
         ratePerHole: priced.ratePerHole,
-        lineTotal: priced.lineTotal
+        lineTotal: priced.lineTotal,
+        // SCOPE_QUOTE_DESTINATION_V1 -- only overwrite when the DTO carries a non-null value.
+        ...(dto.quoteDestination != null ? { quoteDestination: dto.quoteDestination } : {})
       },
       include: { otherRate: true }
     });
@@ -913,19 +930,16 @@ export class ScopeRedesignService {
     const rateMaps = buildRateMaps(labourRates, plantRates);
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
-    // CARD-PERSIST SLICE 4 — markup resolves over three links, not two:
-    // item.markupOverride ?? card.markupOverride ?? tenderEstimate.markup.
-    // resolveEffectiveMarkup() in scope-item-pricing.ts owns that chain and
-    // is the ONLY place it is written; this loop calls it rather than
-    // inlining, exactly as listItems() in scope-of-works.service.ts does, so
-    // the summary screen and the scope screen cannot show different money for
-    // the same work. `??` and not `||` at every link: a stored 0 is a real
-    // 0% override, not an absence. (Supersedes the PR B2 two-link note, which
-    // read `card.markupOverride ?? tenderMarkup` and skipped the item.)
-    // scope-subcontracted order 3 — each bucket gains provisionalSubtotal /
-    // provisionalWithMarkup. A line is provisional when isProvisional===true
-    // OR its discipline is "Other". Provisional lines add to the provisional
-    // side; priced lines add to subtotal / withMarkup as before.
+    // SCOPE_QUOTE_DESTINATION_V1 -- each bucket carries four pairs instead of two:
+    //   subtotal / withMarkup           -> PRICE destination
+    //   provisionalSubtotal / ...WithMarkup -> PROVISIONAL destination
+    //   optionSubtotal / ...WithMarkup      -> OPTION destination
+    //   internalSubtotal / ...WithMarkup    -> INTERNAL destination (reported, not summed into price)
+    //
+    // Covered-item zeroing (the pricedBySubItemId rule) and the provisional
+    // predicate (its boolean flag OR the discipline test) are removed. The quoteDestination
+    // column already encodes both decisions for every row via the backfill.
+    // Rule B (SUB line prices at selected quote) is unchanged.
     const perDiscipline: Record<
       string,
       {
@@ -934,6 +948,10 @@ export class ScopeRedesignService {
         withMarkup: number;
         provisionalSubtotal: number;
         provisionalWithMarkup: number;
+        optionSubtotal: number;
+        optionWithMarkup: number;
+        internalSubtotal: number;
+        internalWithMarkup: number;
       }
     > = {};
     for (const d of DISCIPLINES)
@@ -942,7 +960,11 @@ export class ScopeRedesignService {
         subtotal: 0,
         withMarkup: 0,
         provisionalSubtotal: 0,
-        provisionalWithMarkup: 0
+        provisionalWithMarkup: 0,
+        optionSubtotal: 0,
+        optionWithMarkup: 0,
+        internalSubtotal: 0,
+        internalWithMarkup: 0
       };
     for (const item of items) {
       const itemDiscipline = (item.card?.discipline ?? "") as Discipline;
@@ -957,26 +979,12 @@ export class ScopeRedesignService {
 
       let totals: { lineTotal: number; lineTotalWithMarkup: number };
 
-      // SUB_LINE_PRICES_LINKED_ITEM — double-count guard (scope-subcontracted order 4).
-      //
-      // Two complementary rules ensure the same work is never priced twice:
-      //
-      // Rule A — a COVERED item (pricedBySubItemId is set) contributes ZERO
-      // labour and plant to its discipline bucket. It still appears in the
-      // scope, carries its description and measurements, and counts in
-      // itemCount. Only its money is zeroed. Waste and cutting are NOT zeroed
-      // — they are separate cost streams billed independently of the labour
-      // contract (see prompt §3).
-      //
-      // Rule B — a SUB discipline line's own price is the selected quote
-      // (amount where isSelected). When no quote is selected the line prices
-      // at zero (visibly incomplete, not silently free).
-      if (item.pricedBySubItemId != null) {
-        // Rule A: this item's work is covered by a SUB line — zero labour/plant.
-        const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
-        totals = { lineTotal: 0, lineTotalWithMarkup: 0 * markupFactor };
-      } else if (itemDiscipline === "SUB") {
-        // Rule B: SUB line — price is the selected quote or zero.
+      // Rule B (scope-subcontracted order 4) -- a SUB discipline line's own
+      // price is the selected quote (amount where isSelected). When no quote
+      // is selected the line prices at zero (visibly incomplete, not silently
+      // free). Covered-item zeroing was removed; INTERNAL destination
+      // rows do the same work and are encoded by the backfill migration.
+      if (itemDiscipline === "SUB") {
         const selectedQuote = item.subLineQuotes[0];
         const quoteAmount = selectedQuote ? Number(selectedQuote.amount) : 0;
         const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
@@ -990,85 +998,141 @@ export class ScopeRedesignService {
         totals = { lineTotal: computed.lineTotal, lineTotalWithMarkup: computed.lineTotalWithMarkup };
       }
 
-      // A line is provisional if it has isProvisional===true OR its discipline
-      // is "Other". This keeps existing Other rows in the provisional block
-      // without any backfill.
-      const isProvisionalLine = item.isProvisional === true || itemDiscipline === "Other";
-      if (isProvisionalLine) {
+      // Route by quoteDestination. INTERNAL is reported but not summed into
+      // tenderPrice, provisionalTotal, or optionsTotal.
+      const dest = (item.quoteDestination as QuoteDestination | undefined) ?? QuoteDestination.PRICE;
+      if (dest === QuoteDestination.PROVISIONAL) {
         bucket.provisionalSubtotal += totals.lineTotal;
         bucket.provisionalWithMarkup += totals.lineTotalWithMarkup;
+      } else if (dest === QuoteDestination.OPTION) {
+        bucket.optionSubtotal += totals.lineTotal;
+        bucket.optionWithMarkup += totals.lineTotalWithMarkup;
+      } else if (dest === QuoteDestination.INTERNAL) {
+        bucket.internalSubtotal += totals.lineTotal;
+        bucket.internalWithMarkup += totals.lineTotalWithMarkup;
       } else {
+        // PRICE (default)
         bucket.subtotal += totals.lineTotal;
         bucket.withMarkup += totals.lineTotalWithMarkup;
       }
     }
 
-    // Per-section markup — waste + cutting are independent cost
-    // streams from the scope-card total. Each aggregates per card and
-    // applies (card.<section>MarkupOverride ?? tenderMarkup) to that
-    // card's subtotal, then sums across cards. NEVER folded into the
+    // Per-section markup -- cutting, waste, and operational costs are independent
+    // cost streams. Each aggregates per card and applies
+    // (card.<section>MarkupOverride ?? tenderMarkup). NEVER folded into the
     // scope discipline total.
+    //
+    // SCOPE_QUOTE_DESTINATION_V1 -- each stream now also splits by
+    // quoteDestination so the four global totals can be derived:
+    //   PRICE side:       subtotal / withMarkup  (existing readers unchanged)
+    //   PROVISIONAL side: provisional.subtotal / provisional.withMarkup
+    //   OPTION side:      option.subtotal / option.withMarkup
+    //   INTERNAL side:    internal.subtotal / internal.withMarkup (reported only)
+    // The top-level pair always means "PRICE" so existing callers of
+    // cutting.withMarkup / waste.withMarkup / operationalCosts.withMarkup
+    // keep their meaning.
     const cuttingItems = await this.prisma.cuttingSheetItem.findMany({
       where: { tenderId },
-      select: { cardId: true, lineTotal: true, card: { select: { cuttingMarkupOverride: true } } }
+      select: {
+        cardId: true,
+        lineTotal: true,
+        quoteDestination: true,
+        card: { select: { cuttingMarkupOverride: true } }
+      }
     });
-    let cuttingSubtotal = 0;
-    let cuttingWithMarkup = 0;
-    const cuttingByCard = new Map<string, { subtotal: number; override: number | null }>();
+    // Per-card accumulators: one bucket per (cardId, destination).
+    type CuttingCardBucket = { subtotal: number; provisional: number; option: number; internal: number; override: number | null };
+    const cuttingByCard = new Map<string, CuttingCardBucket>();
     for (const ci of cuttingItems) {
       const amt = ci.lineTotal ? Number(ci.lineTotal) : 0;
-      cuttingSubtotal += amt;
-      const bucket = cuttingByCard.get(ci.cardId) ?? {
-        subtotal: 0,
+      const existing = cuttingByCard.get(ci.cardId) ?? {
+        subtotal: 0, provisional: 0, option: 0, internal: 0,
         override: ci.card?.cuttingMarkupOverride != null ? Number(ci.card.cuttingMarkupOverride) : null
       };
-      bucket.subtotal += amt;
-      cuttingByCard.set(ci.cardId, bucket);
+      const dest = (ci.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
+      if (dest === QuoteDestination.PROVISIONAL) existing.provisional += amt;
+      else if (dest === QuoteDestination.OPTION) existing.option += amt;
+      else if (dest === QuoteDestination.INTERNAL) existing.internal += amt;
+      else existing.subtotal += amt;
+      cuttingByCard.set(ci.cardId, existing);
     }
-    for (const { subtotal, override } of cuttingByCard.values()) {
-      const rate = override != null ? override : tenderMarkup;
-      cuttingWithMarkup += subtotal * (1 + rate / 100);
+    let cuttingSubtotal = 0;
+    let cuttingWithMarkup = 0;
+    let cuttingProvisionalSubtotal = 0;
+    let cuttingProvisionalWithMarkup = 0;
+    let cuttingOptionSubtotal = 0;
+    let cuttingOptionWithMarkup = 0;
+    let cuttingInternalSubtotal = 0;
+    let cuttingInternalWithMarkup = 0;
+    for (const b of cuttingByCard.values()) {
+      const rate = b.override != null ? b.override : tenderMarkup;
+      const factor = 1 + rate / 100;
+      cuttingSubtotal += b.subtotal;
+      cuttingWithMarkup += b.subtotal * factor;
+      cuttingProvisionalSubtotal += b.provisional;
+      cuttingProvisionalWithMarkup += b.provisional * factor;
+      cuttingOptionSubtotal += b.option;
+      cuttingOptionWithMarkup += b.option * factor;
+      cuttingInternalSubtotal += b.internal;
+      cuttingInternalWithMarkup += b.internal * factor;
     }
 
-    // Waste totals — PR #71. Each ScopeWasteItem has a server-side
-    // lineTotal; we aggregate by discipline (report) and by card
-    // (markup application).
+    // Waste totals -- PR #71. Each ScopeWasteItem has a server-side lineTotal.
+    // Aggregate by discipline (PRICE side only -- byDiscipline was always PRICE),
+    // and by card for markup application.
     const wasteItems = await this.prisma.scopeWasteItem.findMany({
       where: { tenderId },
       select: {
         cardId: true,
         discipline: true,
         lineTotal: true,
+        quoteDestination: true,
         card: { select: { wasteMarkupOverride: true } }
       }
     });
     const wasteByDiscipline: Record<string, number> = {};
     for (const d of DISCIPLINES) wasteByDiscipline[d] = 0;
-    const wasteByCard = new Map<string, { subtotal: number; override: number | null }>();
+    type WasteCardBucket = { subtotal: number; provisional: number; option: number; internal: number; override: number | null };
+    const wasteByCard = new Map<string, WasteCardBucket>();
     for (const w of wasteItems) {
       const amt = w.lineTotal ? Number(w.lineTotal) : 0;
-      if (Object.prototype.hasOwnProperty.call(wasteByDiscipline, w.discipline)) {
+      const dest = (w.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
+      // byDiscipline is PRICE-side only (same as before; the report never broke waste into destinations)
+      if (dest === QuoteDestination.PRICE && Object.prototype.hasOwnProperty.call(wasteByDiscipline, w.discipline)) {
         wasteByDiscipline[w.discipline] += amt;
       }
-      const bucket = wasteByCard.get(w.cardId) ?? {
-        subtotal: 0,
+      const existing = wasteByCard.get(w.cardId) ?? {
+        subtotal: 0, provisional: 0, option: 0, internal: 0,
         override: w.card?.wasteMarkupOverride != null ? Number(w.card.wasteMarkupOverride) : null
       };
-      bucket.subtotal += amt;
-      wasteByCard.set(w.cardId, bucket);
+      if (dest === QuoteDestination.PROVISIONAL) existing.provisional += amt;
+      else if (dest === QuoteDestination.OPTION) existing.option += amt;
+      else if (dest === QuoteDestination.INTERNAL) existing.internal += amt;
+      else existing.subtotal += amt;
+      wasteByCard.set(w.cardId, existing);
     }
     const wasteTotal = Object.values(wasteByDiscipline).reduce((s, v) => s + v, 0);
     let wasteWithMarkup = 0;
-    for (const { subtotal, override } of wasteByCard.values()) {
-      const rate = override != null ? override : tenderMarkup;
-      wasteWithMarkup += subtotal * (1 + rate / 100);
+    let wasteProvisionalSubtotal = 0;
+    let wasteProvisionalWithMarkup = 0;
+    let wasteOptionSubtotal = 0;
+    let wasteOptionWithMarkup = 0;
+    let wasteInternalSubtotal = 0;
+    let wasteInternalWithMarkup = 0;
+    for (const b of wasteByCard.values()) {
+      const rate = b.override != null ? b.override : tenderMarkup;
+      const factor = 1 + rate / 100;
+      wasteWithMarkup += b.subtotal * factor;
+      wasteProvisionalSubtotal += b.provisional;
+      wasteProvisionalWithMarkup += b.provisional * factor;
+      wasteOptionSubtotal += b.option;
+      wasteOptionWithMarkup += b.option * factor;
+      wasteInternalSubtotal += b.internal;
+      wasteInternalWithMarkup += b.internal * factor;
     }
 
-    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth independently-marked-up
-    // stream. Each line's markup resolves through the same chain as scope
-    // items: line.markupOverride ?? card.markupOverride ?? tenderMarkup.
-    // Groups per card for markup application (same pattern as waste/cutting),
-    // and accumulates into a tender-wide operationalCosts block.
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 -- the fourth independently-marked-up
+    // stream. Each line's markup resolves through the same chain as scope items.
     const operationalLines = await this.prisma.scopeOperationalCostLine.findMany({
       where: { card: { tenderId } },
       select: {
@@ -1078,12 +1142,19 @@ export class ScopeRedesignService {
         rate: true,
         rateOverride: true,
         markupOverride: true,
+        quoteDestination: true,
         cardId: true,
         card: { select: { markupOverride: true } }
       }
     });
     let operationalSubtotal = 0;
     let operationalWithMarkup = 0;
+    let operationalProvisionalSubtotal = 0;
+    let operationalProvisionalWithMarkup = 0;
+    let operationalOptionSubtotal = 0;
+    let operationalOptionWithMarkup = 0;
+    let operationalInternalSubtotal = 0;
+    let operationalInternalWithMarkup = 0;
     const operationalByCard = new Map<string, { subtotal: number; withMarkup: number }>();
     for (const ol of operationalLines) {
       const lineTotal = computeOperationalLineTotal(ol);
@@ -1093,32 +1164,60 @@ export class ScopeRedesignService {
         tenderMarkup
       );
       const lineWithMarkup = lineTotal * (1 + effectiveMarkup / 100);
-      operationalSubtotal += lineTotal;
-      operationalWithMarkup += lineWithMarkup;
-      const bucket = operationalByCard.get(ol.cardId) ?? { subtotal: 0, withMarkup: 0 };
-      bucket.subtotal += lineTotal;
-      bucket.withMarkup += lineWithMarkup;
-      operationalByCard.set(ol.cardId, bucket);
+      const dest = (ol.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
+      if (dest === QuoteDestination.PROVISIONAL) {
+        operationalProvisionalSubtotal += lineTotal;
+        operationalProvisionalWithMarkup += lineWithMarkup;
+      } else if (dest === QuoteDestination.OPTION) {
+        operationalOptionSubtotal += lineTotal;
+        operationalOptionWithMarkup += lineWithMarkup;
+      } else if (dest === QuoteDestination.INTERNAL) {
+        operationalInternalSubtotal += lineTotal;
+        operationalInternalWithMarkup += lineWithMarkup;
+      } else {
+        operationalSubtotal += lineTotal;
+        operationalWithMarkup += lineWithMarkup;
+        const bucket = operationalByCard.get(ol.cardId) ?? { subtotal: 0, withMarkup: 0 };
+        bucket.subtotal += lineTotal;
+        bucket.withMarkup += lineWithMarkup;
+        operationalByCard.set(ol.cardId, bucket);
+      }
     }
 
-    // scope-subcontracted order 3 — tenderPrice sums the priced (withMarkup)
-    // side only. provisionalTotal sums the provisionalWithMarkup side across
-    // all disciplines.
+    // SCOPE_QUOTE_DESTINATION_V1 -- four grand totals, all 2 dp:
+    //   tenderPrice     = all four streams' PRICE withMarkup (shape unchanged from S1)
+    //   provisionalTotal = all four streams' PROVISIONAL withMarkup
+    //   optionsTotal    = all four streams' OPTION withMarkup
+    //   internalTotal   = all four streams' INTERNAL withMarkup (reported, not in price)
+    // Never fold a bare subtotal into any of them.
     const scopeWithMarkupTotal = Object.values(perDiscipline).reduce((s, v) => s + v.withMarkup, 0);
-    const provisionalTotal = Object.values(perDiscipline).reduce(
-      (s, v) => s + v.provisionalWithMarkup,
-      0
-    );
-    // Grand total = the FOUR independently-marked-up streams. Never fold a
-    // bare subtotal in — that was the bug the invariant guards.
-    // SCOPE_OPERATIONAL_COSTS_PRICED_V1: operationalWithMarkup is the fourth.
+    const scopeProvisionalTotal = Object.values(perDiscipline).reduce((s, v) => s + v.provisionalWithMarkup, 0);
+    const scopeOptionTotal = Object.values(perDiscipline).reduce((s, v) => s + v.optionWithMarkup, 0);
+    const scopeInternalTotal = Object.values(perDiscipline).reduce((s, v) => s + v.internalWithMarkup, 0);
+
     const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup + operationalWithMarkup;
+    const provisionalTotal = scopeProvisionalTotal + cuttingProvisionalWithMarkup + wasteProvisionalWithMarkup + operationalProvisionalWithMarkup;
+    const optionsTotal = scopeOptionTotal + cuttingOptionWithMarkup + wasteOptionWithMarkup + operationalOptionWithMarkup;
+    const internalTotal = scopeInternalTotal + cuttingInternalWithMarkup + wasteInternalWithMarkup + operationalInternalWithMarkup;
+
     return {
       ...perDiscipline,
       cutting: {
         itemCount: cuttingItems.length,
         subtotal: Number(cuttingSubtotal.toFixed(2)),
-        withMarkup: Number(cuttingWithMarkup.toFixed(2))
+        withMarkup: Number(cuttingWithMarkup.toFixed(2)),
+        provisional: {
+          subtotal: Number(cuttingProvisionalSubtotal.toFixed(2)),
+          withMarkup: Number(cuttingProvisionalWithMarkup.toFixed(2))
+        },
+        option: {
+          subtotal: Number(cuttingOptionSubtotal.toFixed(2)),
+          withMarkup: Number(cuttingOptionWithMarkup.toFixed(2))
+        },
+        internal: {
+          subtotal: Number(cuttingInternalSubtotal.toFixed(2)),
+          withMarkup: Number(cuttingInternalWithMarkup.toFixed(2))
+        }
       },
       waste: {
         itemCount: wasteItems.length,
@@ -1126,12 +1225,36 @@ export class ScopeRedesignService {
           Object.entries(wasteByDiscipline).map(([k, v]) => [k, Number(v.toFixed(2))])
         ),
         subtotal: Number(wasteTotal.toFixed(2)),
-        withMarkup: Number(wasteWithMarkup.toFixed(2))
+        withMarkup: Number(wasteWithMarkup.toFixed(2)),
+        provisional: {
+          subtotal: Number(wasteProvisionalSubtotal.toFixed(2)),
+          withMarkup: Number(wasteProvisionalWithMarkup.toFixed(2))
+        },
+        option: {
+          subtotal: Number(wasteOptionSubtotal.toFixed(2)),
+          withMarkup: Number(wasteOptionWithMarkup.toFixed(2))
+        },
+        internal: {
+          subtotal: Number(wasteInternalSubtotal.toFixed(2)),
+          withMarkup: Number(wasteInternalWithMarkup.toFixed(2))
+        }
       },
       operationalCosts: {
         itemCount: operationalLines.length,
         subtotal: Number(operationalSubtotal.toFixed(2)),
         withMarkup: Number(operationalWithMarkup.toFixed(2)),
+        provisional: {
+          subtotal: Number(operationalProvisionalSubtotal.toFixed(2)),
+          withMarkup: Number(operationalProvisionalWithMarkup.toFixed(2))
+        },
+        option: {
+          subtotal: Number(operationalOptionSubtotal.toFixed(2)),
+          withMarkup: Number(operationalOptionWithMarkup.toFixed(2))
+        },
+        internal: {
+          subtotal: Number(operationalInternalSubtotal.toFixed(2)),
+          withMarkup: Number(operationalInternalWithMarkup.toFixed(2))
+        },
         byCard: Object.fromEntries(
           [...operationalByCard.entries()].map(([cardId, b]) => [
             cardId,
@@ -1140,7 +1263,9 @@ export class ScopeRedesignService {
         )
       },
       tenderPrice: Number(tenderPrice.toFixed(2)),
-      provisionalTotal: Number(provisionalTotal.toFixed(2))
+      provisionalTotal: Number(provisionalTotal.toFixed(2)),
+      optionsTotal: Number(optionsTotal.toFixed(2)),
+      internalTotal: Number(internalTotal.toFixed(2))
     };
   }
 
@@ -1306,10 +1431,16 @@ export class ScopeRedesignService {
    *  - Both items belong to the same tender.
    *  - The target (subItemId) is a SUB-discipline item.
    *  - The source and target are not the same item.
+   *
+   * SCOPE_QUOTE_DESTINATION_V1: linking no longer zeroes the covered item.
+   * When setInternal is true, the covered item's quoteDestination is set to
+   * INTERNAL at the same time as the link is written. Unlink never changes
+   * the destination -- the estimator decides.
+   *
    * @throws BadRequestException on any validation failure
    * @throws NotFoundException when either item or the tender is not found
    */
-  async linkItemToSubLine(tenderId: string, coveredItemId: string, subItemId: string) {
+  async linkItemToSubLine(tenderId: string, coveredItemId: string, subItemId: string, setInternal = false) {
     await this.requireTender(tenderId);
     const [covered, subLine] = await Promise.all([
       this.prisma.scopeOfWorksItem.findUnique({
@@ -1336,7 +1467,10 @@ export class ScopeRedesignService {
     }
     return this.prisma.scopeOfWorksItem.update({
       where: { id: coveredItemId },
-      data: { pricedBySubItemId: subItemId }
+      data: {
+        pricedBySubItemId: subItemId,
+        ...(setInternal ? { quoteDestination: QuoteDestination.INTERNAL } : {})
+      }
     });
   }
 

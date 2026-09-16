@@ -24,6 +24,10 @@ function zeroBucket(): DisciplineBucket {
     withMarkup: 0,
     provisionalSubtotal: 0,
     provisionalWithMarkup: 0,
+    optionSubtotal: 0,
+    optionWithMarkup: 0,
+    internalSubtotal: 0,
+    internalWithMarkup: 0,
   };
 }
 
@@ -49,10 +53,13 @@ export function makeSummary(overrides: Partial<Summary> = {}): Summary {
     SUB: zeroBucket(),
     Other: zeroBucket(),
     cutting: { itemCount: 0, subtotal: 0 },
-    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth stream.
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 -- the fourth stream.
     operationalCosts: { itemCount: 0, subtotal: 0, withMarkup: 0 },
     tenderPrice: 0,
     provisionalTotal: 0,
+    // SCOPE_QUOTE_DESTINATION_V1 -- new totals.
+    optionsTotal: 0,
+    internalTotal: 0,
     ...overrides,
   };
 }

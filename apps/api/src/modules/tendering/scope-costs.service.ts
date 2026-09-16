@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { narrowToNumber, toDecimal } from "./scope-of-works.service";
 import {
@@ -176,7 +177,9 @@ export class ScopeCostsService {
         wbsRef: dto.wbsRef ?? null,
         sourceRef: dto.sourceRef ?? null,
         markupOverride: toDecimal(markupOverrideN),
-        notes: dto.notes ?? null
+        notes: dto.notes ?? null,
+        // SCOPE_QUOTE_DESTINATION_V1 -- defaults PRICE when absent.
+        quoteDestination: dto.quoteDestination ?? QuoteDestination.PRICE
       }
     });
     return this.withMoney(row, ctx);
@@ -233,6 +236,8 @@ export class ScopeCostsService {
       data.markupOverride = toDecimal(narrowToNumber(dto.markupOverride));
     }
     if (dto.notes !== undefined) data.notes = dto.notes ?? null;
+    // SCOPE_QUOTE_DESTINATION_V1 -- only overwrite when the DTO carries it.
+    if (dto.quoteDestination !== undefined) data.quoteDestination = dto.quoteDestination;
 
     // Effective unit/days AFTER the patch, then the lump-sum rule against
     // that pair — not against whichever half the body happened to carry.

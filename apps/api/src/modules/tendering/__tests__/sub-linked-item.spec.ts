@@ -63,8 +63,18 @@ const LINKED_TENDER_PRICE   = SUB_WITH_MARKUP; // $5,850
 function bucket(
   summary: Awaited<ReturnType<ScopeRedesignService["summary"]>>,
   discipline: string
-): { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number } {
-  return (summary as unknown as Record<string, { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number }>)[discipline];
+): {
+  itemCount: number; subtotal: number; withMarkup: number;
+  provisionalSubtotal: number; provisionalWithMarkup: number;
+  optionSubtotal: number; optionWithMarkup: number;
+  internalSubtotal: number; internalWithMarkup: number;
+} {
+  return (summary as unknown as Record<string, {
+    itemCount: number; subtotal: number; withMarkup: number;
+    provisionalSubtotal: number; provisionalWithMarkup: number;
+    optionSubtotal: number; optionWithMarkup: number;
+    internalSubtotal: number; internalWithMarkup: number;
+  }>)[discipline];
 }
 
 function makeRateResolver(): RateResolverService {
@@ -116,6 +126,7 @@ function makeDemItem(overrides: Record<string, unknown> = {}) {
     isProvisional: false,
     provisionalAmount: null,
     pricedBySubItemId: null,
+    quoteDestination: "PRICE",
     subLineQuotes: [],
     card: { discipline: "DEM", markupOverride: null },
     ...overrides
@@ -140,6 +151,7 @@ function makeSubItem(overrides: Record<string, unknown> = {}) {
     isProvisional: false,
     provisionalAmount: null,
     pricedBySubItemId: null,
+    quoteDestination: "PRICE",
     // Selected quote at $4,500
     subLineQuotes: [{ amount: new Prisma.Decimal(SUB_QUOTE_AMOUNT) }],
     card: { discipline: "SUB", markupOverride: null },
@@ -189,56 +201,108 @@ function makeService(
   );
 }
 
-// ── Assertion 1: linked DEM item contributes $0 to DEM bucket ────────────
+// ── Assertion 1: SCOPE_QUOTE_DESTINATION_V1 -- Rule A removed ────────────
+//
+// Rule A zeroed covered items. After S2a that is done by INTERNAL destination.
+// A covered item with PRICE destination now prices its full labour/plant.
 
-describe("SUB_LINE_PRICES_LINKED_ITEM — double-count guard", () => {
-  it("[1] DEM item linked to a SUB line contributes $0 to the DEM bucket", async () => {
-    const demItem = makeDemItem({ pricedBySubItemId: "item-sub-1" });
+describe("SCOPE_QUOTE_DESTINATION_V1 -- Rule A removed, destination drives money", () => {
+  it("[1] DEM item linked to a SUB line but with PRICE destination prices its full amount", async () => {
+    // Rule A is gone. pricedBySubItemId is a link the screen renders, not a zero switch.
+    const demItem = makeDemItem({ pricedBySubItemId: "item-sub-1", quoteDestination: "PRICE" });
     const subItem = makeSubItem();
     const prisma = makePrisma([demItem, subItem]);
     const svc = makeService(prisma);
 
     const summary = await svc.summary("tender-1");
 
-    // DEM bucket: the linked item is zeroed.
-    expect(bucket(summary, "DEM").subtotal).toBe(0);
-    expect(bucket(summary, "DEM").withMarkup).toBe(0);
-    // itemCount still increments (item is visible in the scope)
+    // DEM bucket: the covered item prices normally (Rule A is gone)
+    expect(bucket(summary, "DEM").subtotal).toBeCloseTo(DEM_TOTAL, 2);
+    expect(bucket(summary, "DEM").withMarkup).toBeCloseTo(DEM_WITH_MARKUP, 2);
+    // itemCount still increments
     expect(bucket(summary, "DEM").itemCount).toBe(1);
     // SUB bucket: receives the selected quote amount with markup
     expect(bucket(summary, "SUB").subtotal).toBeCloseTo(SUB_QUOTE_AMOUNT, 2);
     expect(bucket(summary, "SUB").withMarkup).toBeCloseTo(SUB_WITH_MARKUP, 2);
   });
 
-  it("[2] The guard is reversible — unlinking restores the item's full contribution", async () => {
-    // Unlinked item: pricedBySubItemId is null
-    const demItem = makeDemItem({ pricedBySubItemId: null });
+  it("[2] DEM item with INTERNAL destination contributes $0 to tenderPrice (same as old Rule A)", async () => {
+    // This is what the backfill writes for covered items: INTERNAL.
+    const demItem = makeDemItem({ pricedBySubItemId: "item-sub-1", quoteDestination: "INTERNAL" });
     const subItem = makeSubItem();
     const prisma = makePrisma([demItem, subItem]);
     const svc = makeService(prisma);
 
     const summary = await svc.summary("tender-1");
 
-    // DEM bucket: full contribution
-    expect(bucket(summary, "DEM").subtotal).toBeCloseTo(DEM_TOTAL, 2);
-    expect(bucket(summary, "DEM").withMarkup).toBeCloseTo(DEM_WITH_MARKUP, 2);
+    // DEM PRICE bucket: zero (INTERNAL destination)
+    expect(bucket(summary, "DEM").subtotal).toBe(0);
+    expect(bucket(summary, "DEM").withMarkup).toBe(0);
+    // DEM INTERNAL bucket: receives the full amount
+    expect(bucket(summary, "DEM").internalWithMarkup).toBeCloseTo(DEM_WITH_MARKUP, 2);
+    // itemCount still increments
+    expect(bucket(summary, "DEM").itemCount).toBe(1);
+    // tenderPrice = SUB quote only (same as old "linked" behaviour)
+    expect(summary.tenderPrice).toBeCloseTo(LINKED_TENDER_PRICE, 2); // $5,850
   });
 
-  it("[3] Tender total WITH linking equals the SUB quote alone ($5,850)", async () => {
-    const demItem = makeDemItem({ pricedBySubItemId: "item-sub-1" });
+  it("[3] Unlinked item (pricedBySubItemId null, PRICE destination) prices its full amount", async () => {
+    const demItem = makeDemItem({ pricedBySubItemId: null, quoteDestination: "PRICE" });
     const subItem = makeSubItem();
     const prisma = makePrisma([demItem, subItem]);
     const svc = makeService(prisma);
 
-    const linked = await svc.summary("tender-1");
-    expect(linked.tenderPrice).toBeCloseTo(LINKED_TENDER_PRICE, 2); // $5,850
+    const summary = await svc.summary("tender-1");
 
-    // For reference: unlinked total would be $13,650
-    const demItemUnlinked = makeDemItem({ pricedBySubItemId: null });
-    const prismaUnlinked = makePrisma([demItemUnlinked, subItem]);
-    const svcUnlinked = makeService(prismaUnlinked);
-    const unlinked = await svcUnlinked.summary("tender-1");
-    expect(unlinked.tenderPrice).toBeCloseTo(UNLINKED_TENDER_PRICE, 2); // $13,650
+    expect(bucket(summary, "DEM").subtotal).toBeCloseTo(DEM_TOTAL, 2);
+    expect(bucket(summary, "DEM").withMarkup).toBeCloseTo(DEM_WITH_MARKUP, 2);
+    expect(summary.tenderPrice).toBeCloseTo(UNLINKED_TENDER_PRICE, 2); // $13,650
+  });
+
+  it("[4] setInternal: true writes INTERNAL destination on link", async () => {
+    // Test that linkItemToSubLine writes quoteDestination=INTERNAL when setInternal=true.
+    const covered = { id: "item-dem", tenderId: "tender-1", card: { discipline: "DEM" } };
+    const subLine = { id: "item-sub", tenderId: "tender-1", card: { discipline: "SUB" } };
+    const updateMock = jest.fn().mockResolvedValue({ id: "item-dem", quoteDestination: "INTERNAL" });
+    const prisma = {
+      tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeOfWorksItem: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce(covered)
+          .mockResolvedValueOnce(subLine),
+        update: updateMock
+      }
+    } as never;
+    const svc = makeService(prisma);
+    await svc.linkItemToSubLine("tender-1", "item-dem", "item-sub", true);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ quoteDestination: "INTERNAL" })
+      })
+    );
+  });
+
+  it("[5] setInternal: false (default) does NOT change destination on link", async () => {
+    const covered = { id: "item-dem", tenderId: "tender-1", card: { discipline: "DEM" } };
+    const subLine = { id: "item-sub", tenderId: "tender-1", card: { discipline: "SUB" } };
+    const updateMock = jest.fn().mockResolvedValue({ id: "item-dem" });
+    const prisma = {
+      tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeOfWorksItem: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce(covered)
+          .mockResolvedValueOnce(subLine),
+        update: updateMock
+      }
+    } as never;
+    const svc = makeService(prisma);
+    await svc.linkItemToSubLine("tender-1", "item-dem", "item-sub", false);
+    // quoteDestination should NOT be in the data
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ quoteDestination: expect.anything() })
+      })
+    );
   });
 
   it("[6] A SUB line with quotes but none selected prices at $0", async () => {
@@ -252,6 +316,36 @@ describe("SUB_LINE_PRICES_LINKED_ITEM — double-count guard", () => {
 
     expect(bucket(summary, "SUB").subtotal).toBe(0);
     expect(bucket(summary, "SUB").withMarkup).toBe(0);
+  });
+});
+
+// ── SUB_LINE_PRICES_LINKED_ITEM -- legacy name, kept for reference ────────
+// The describe block is renamed above; this is just the unlink test.
+
+describe("unlinkItemFromSubLine", () => {
+  it("unlink clears pricedBySubItemId without changing quoteDestination", async () => {
+    const item = { id: "item-1", tenderId: "tender-1", card: { discipline: "DEM" } };
+    const updateMock = jest.fn().mockResolvedValue({ id: "item-1", pricedBySubItemId: null });
+    const prisma = {
+      tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeOfWorksItem: {
+        findUnique: jest.fn().mockResolvedValue(item),
+        update: updateMock
+      }
+    } as never;
+    const svc = makeService(prisma);
+    await svc.unlinkItemFromSubLine("tender-1", "item-1");
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { pricedBySubItemId: null }
+      })
+    );
+    // Destination is NOT in the data -- unlink never changes it.
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ quoteDestination: expect.anything() })
+      })
+    );
   });
 });
 

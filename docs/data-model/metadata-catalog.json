@@ -6889,6 +6889,12 @@
           "filterable": true,
           "aggregations": []
         },
+        "quoteDestination": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdById": {
           "role": "system",
           "label": null,
@@ -19461,6 +19467,12 @@
           "filterable": true,
           "aggregations": []
         },
+        "quoteDestination": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "provisionalAmount": {
           "role": "measure",
           "label": null,
@@ -19665,6 +19677,12 @@
           "role": "measure-candidate",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "quoteDestination": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         },
         "createdById": {
@@ -20059,6 +20077,12 @@
           "role": "measure-candidate",
           "label": null,
           "filterable": false,
+          "aggregations": []
+        },
+        "quoteDestination": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
           "aggregations": []
         },
         "createdById": {

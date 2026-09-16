@@ -9,7 +9,7 @@ import {
 import { PdfRendererService } from "../../pdf-renderer.service";
 import type { ExportPayload } from "../../../estimate-export/estimate-export.service";
 import { parseDefaultClauses } from "../../../quote/tc-parser";
-import { makeSummary } from "../../../estimate-export/test-support/make-summary";
+import { makeSummary, bucket } from "../../../estimate-export/test-support/make-summary";
 
 function basePayload(
   partial: Partial<ExportPayload> = {},
@@ -69,6 +69,7 @@ function basePayload(
         notes: "Standard strip",
         sortOrder: 0,
         pricedOnSubWbsCode: null,
+        quoteDestination: "PRICE",
       },
     ],
     cuttingItems: { sawCuts: [], coreHoles: [], otherRates: [] },
@@ -78,13 +79,7 @@ function basePayload(
     exclusions: [{ text: "Asbestos removal" }],
     tandc: { clauses: parseDefaultClauses() },
     summary: makeSummary({
-      DEM: {
-        itemCount: 1,
-        subtotal: 10000,
-        withMarkup: 13000,
-        provisionalSubtotal: 0,
-        provisionalWithMarkup: 0,
-      },
+      DEM: bucket({ itemCount: 1, subtotal: 10000, withMarkup: 13000 }),
       tenderPrice: 13000,
     }),
     ...partial,
@@ -236,6 +231,7 @@ describe("Quote HTML builder", () => {
           wasteTonnes: null,
           wasteLoads: null,
           provisionalAmount: "5000",
+          quoteDestination: "PROVISIONAL",
           notes: null,
           sortOrder: 1,
           pricedOnSubWbsCode: null,

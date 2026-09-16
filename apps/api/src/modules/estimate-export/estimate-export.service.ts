@@ -76,9 +76,11 @@ export type ScopeRow = {
   provisionalAmount: string | null;
   notes: string | null;
   sortOrder: number;
-  // scope-subcontracted order 4 — when set, this item's work is priced by
+  // scope-subcontracted order 4 -- when set, this item's work is priced by
   // a SUB line. The builder prints "priced on <wbsCode>" in the Notes column.
   pricedOnSubWbsCode: string | null;
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this line goes.
+  quoteDestination: string;
 };
 
 export type SawCutRow = {
@@ -187,21 +189,25 @@ export type ExportPayload = {
   exclusions: Array<{ text: string }>;
   tandc: { clauses: TcClause[] };
   summary: {
-    // scope-subcontracted order 3 — each discipline bucket carries both
+    // scope-subcontracted order 3 -- each discipline bucket carries both
     // the priced side (subtotal/withMarkup) and the provisional side
     // (provisionalSubtotal/provisionalWithMarkup). tenderPrice is the
     // priced-side total only; provisionalTotal is the provisional side.
-    DEM: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-    CIV: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-    ASB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-    SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-    Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+    // SCOPE_QUOTE_DESTINATION_V1: buckets also carry option*/internal* pairs.
+    DEM: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number; optionSubtotal: number; optionWithMarkup: number; internalSubtotal: number; internalWithMarkup: number };
+    CIV: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number; optionSubtotal: number; optionWithMarkup: number; internalSubtotal: number; internalWithMarkup: number };
+    ASB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number; optionSubtotal: number; optionWithMarkup: number; internalSubtotal: number; internalWithMarkup: number };
+    SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number; optionSubtotal: number; optionWithMarkup: number; internalSubtotal: number; internalWithMarkup: number };
+    Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number; optionSubtotal: number; optionWithMarkup: number; internalSubtotal: number; internalWithMarkup: number };
     cutting: { itemCount: number; subtotal: number };
-    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth independently-marked-up
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 -- the fourth independently-marked-up
     // stream, carried in the summary so the builder can add it to grandTotal.
     operationalCosts: { itemCount: number; subtotal: number; withMarkup: number };
     tenderPrice: number;
     provisionalTotal: number;
+    // SCOPE_QUOTE_DESTINATION_V1 -- new totals.
+    optionsTotal: number;
+    internalTotal: number;
   };
 };
 
@@ -383,9 +389,11 @@ export class EstimateExportService {
         provisionalAmount: toStr(i.provisionalAmount),
         notes: i.notes,
         sortOrder: i.sortOrder,
-        // scope-subcontracted order 4 — carry the SUB line's wbsCode so the
+        // scope-subcontracted order 4 -- carry the SUB line's wbsCode so the
         // builder can annotate the Notes column.
-        pricedOnSubWbsCode: i.pricedBySubItem?.wbsCode ?? null
+        pricedOnSubWbsCode: i.pricedBySubItem?.wbsCode ?? null,
+        // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this line goes.
+        quoteDestination: (i as Record<string, unknown>).quoteDestination as string ?? "PRICE"
       }));
 
     const sawCuts: SawCutRow[] = tender.cuttingSheetItems
@@ -479,25 +487,36 @@ export class EstimateExportService {
     // result, but TypeScript loses that relationship through the spread.
     // Cast to the shape we know is returned so the builders get a stable
     // contract.
-    // scope-subcontracted order 3 — each disc bucket now carries
-    // provisionalSubtotal + provisionalWithMarkup alongside the priced pair.
+    // SCOPE_QUOTE_DESTINATION_V1 -- buckets now also carry option*/internal*.
+    type FullDiscBucket = {
+      itemCount: number; subtotal: number; withMarkup: number;
+      provisionalSubtotal: number; provisionalWithMarkup: number;
+      optionSubtotal: number; optionWithMarkup: number;
+      internalSubtotal: number; internalWithMarkup: number;
+    };
     const summaryTyped = summary as unknown as {
-      DEM: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-      CIV: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-      ASB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-      SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
-      Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
+      DEM: FullDiscBucket;
+      CIV: FullDiscBucket;
+      ASB: FullDiscBucket;
+      SUB: FullDiscBucket;
+      Other: FullDiscBucket;
       cutting: { itemCount: number; subtotal: number };
       operationalCosts: { itemCount: number; subtotal: number; withMarkup: number };
       tenderPrice: number;
       provisionalTotal: number;
+      optionsTotal: number;
+      internalTotal: number;
     };
     const discBucket = (code: Discipline) => ({
       itemCount: summaryTyped[code].itemCount,
       subtotal: round2(summaryTyped[code].subtotal),
       withMarkup: round2(summaryTyped[code].withMarkup),
       provisionalSubtotal: round2(summaryTyped[code].provisionalSubtotal),
-      provisionalWithMarkup: round2(summaryTyped[code].provisionalWithMarkup)
+      provisionalWithMarkup: round2(summaryTyped[code].provisionalWithMarkup),
+      optionSubtotal: round2(summaryTyped[code].optionSubtotal ?? 0),
+      optionWithMarkup: round2(summaryTyped[code].optionWithMarkup ?? 0),
+      internalSubtotal: round2(summaryTyped[code].internalSubtotal ?? 0),
+      internalWithMarkup: round2(summaryTyped[code].internalWithMarkup ?? 0)
     });
 
     return {
@@ -553,7 +572,10 @@ export class EstimateExportService {
           withMarkup: round2(summaryTyped.operationalCosts?.withMarkup ?? 0)
         },
         tenderPrice: round2(summaryTyped.tenderPrice),
-        provisionalTotal: round2(summaryTyped.provisionalTotal)
+        provisionalTotal: round2(summaryTyped.provisionalTotal),
+        // SCOPE_QUOTE_DESTINATION_V1 -- new totals.
+        optionsTotal: round2(summaryTyped.optionsTotal ?? 0),
+        internalTotal: round2(summaryTyped.internalTotal ?? 0)
       }
     };
   }

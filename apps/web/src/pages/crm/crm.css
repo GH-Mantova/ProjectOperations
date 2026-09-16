@@ -226,6 +226,48 @@
   text-align: center;
 }
 
+/* ── Account 360 — crmvis-S3 additions ───────────────────────────────────── */
+
+/* Large avatar for the Account 360 header (44px per the artboard) */
+.crm-avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+}
+
+/* Archived banner — token-only, no hex.
+   background uses color-mix on --status-warning so it never hard-codes amber. */
+.crm-archived-banner {
+  background: color-mix(in srgb, var(--status-warning) 12%, transparent);
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* Muted notice strip under the activity feed (M365 / provisioning notices) */
+.crm-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-zebra);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+/* 6-column KPI grid override — applied when a Value tile is added in a future
+   slice. Currently unused; documented here so the addition is one line in markup. */
+.crm-kpi-grid--6.s7-card-grid--kpi {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 1280px) {
+  .crm-kpi-grid--6.s7-card-grid--kpi {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 /* ── Bar chart (repeat-business panel, crmvis-S2) ─────────────────────────── */
 
 /* Track — full-width container; fill is the ONE colour value for this panel. */

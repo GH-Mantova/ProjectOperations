@@ -53,7 +53,7 @@ export function EmptyTableFirstStep({ onCreate }: EmptyTableFirstStepProps) {
         style={{
           width: "100%",
           maxWidth: 480,
-          border: "1px dashed var(--border-default, #d1d5db)",
+          border: "1px dashed var(--border-default)",
           borderRadius: 8,
           padding: "32px 28px",
           background: "var(--surface-subtle, rgba(0,91,97,0.03))"

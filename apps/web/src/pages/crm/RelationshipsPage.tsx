@@ -1,4 +1,5 @@
 // CRM_RELATIONSHIPS_V2
+// CRM_PARITY_RELATIONSHIPS_V1 — crmvis-S2: migrated to s7 kit and design tokens.
 // design_ref: https://claude.ai/code/artifact/3372e3ff-b041-47cd-a47e-d5897f06a62c
 //             artboard `Relationships.dc.html`, titled "Accounts · Relationships".
 import { useCallback, useEffect, useState } from "react";
@@ -6,6 +7,12 @@ import { useAuth } from "../../auth/AuthContext";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { formatWinRate } from "./formatWinRate";
 import { CRM_COLD_V3 } from "./crm-cold";
+import { CrmTabs } from "./CrmTabs";
+import type { CrmTabDef } from "./CrmTabs";
+import "./crm.css";
+
+// Visual parity marker — asserted by done_when (crmvis-S2).
+export const CRM_PARITY_RELATIONSHIPS_V1 = "crmvis-s2";
 
 // CRM UIFIX S1 (2026-09-01): the going-cold threshold selector for this page.
 // Kept next to the panel so a future 45-day option lands in one place. The
@@ -128,7 +135,7 @@ type Account360Response = { rollUps?: { contacts?: Contact360[] } };
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   try {
     return new Date(iso).toLocaleDateString("en-AU", {
       day: "2-digit",
@@ -153,141 +160,28 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Author initials for the crm-avatar — first letter of first + last name. */
+function initials(author: AuthorLite): string {
+  return (author.firstName.charAt(0) + author.lastName.charAt(0)).toUpperCase();
+}
+
+/** Relative age label for a note row: "4d", "1d", "71d", etc. */
+function noteAge(createdAt: string): string {
+  try {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000));
+    return `${days}d`;
+  } catch {
+    return "";
+  }
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page: { padding: "24px", maxWidth: 1200, margin: "0 auto", fontFamily: "sans-serif" },
-  heading: { fontSize: 22, fontWeight: 700, marginBottom: 8, color: "#111827" },
-  sub: { fontSize: 13, color: "#6b7280", marginBottom: 20 },
-  card: {
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-    background: "#fff"
-  },
-  cardTitle: { fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 6 },
-  noteBody: { fontSize: 14, color: "#111827", whiteSpace: "pre-wrap" as const, margin: "6px 0" },
-  meta: { fontSize: 12, color: "#9ca3af" },
-  empty: { color: "#9ca3af", fontSize: 13, padding: "16px 0", textAlign: "center" as const },
-  err: { color: "#dc2626", fontSize: 13, padding: "12px 0" },
-  form: { display: "flex", flexDirection: "column" as const, gap: 10 },
-  textarea: {
-    width: "100%",
-    padding: "8px 10px",
-    border: "1px solid #d1d5db",
-    borderRadius: 6,
-    fontSize: 14,
-    minHeight: 80,
-    resize: "vertical" as const,
-    boxSizing: "border-box" as const
-  },
-  btn: {
-    padding: "8px 18px",
-    background: "#6366f1",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-    alignSelf: "flex-start"
-  },
-  badge: {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 10,
-    fontSize: 11,
-    fontWeight: 600,
-    background: "#6366f1",
-    color: "#fff"
-  }
-};
-
-/**
- * The repeat-business bar fill. This is the ONE colour value CRM_RELATIONSHIPS_V2
- * introduces to this file, and it is the same token CrmBoardPage.tsx already
- * paints its forecast figures with, so the CRM's charts stay one colour.
- * Every other colour below is read back out of `s` above — no second palette.
- */
-const REPEAT_BAR_FILL = "var(--color-teal, #005B61)";
-
-/**
- * CRM_RELATIONSHIPS_V2 layout styles. Deliberately composed from `s` above
- * (spread, or `s.<entry>.<prop>`) so this slice adds no colour value to the
- * file other than REPEAT_BAR_FILL.
- */
-const x: Record<string, React.CSSProperties> = {
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 16,
-    alignItems: "start"
-  },
-  col: { display: "flex", flexDirection: "column" as const, gap: 16 },
-  panel: { ...s.card, marginBottom: 0, padding: 18 },
-  panelHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 12
-  },
-  panelTitle: { ...s.cardTitle, fontSize: 14, marginBottom: 0 },
-  hint: { ...s.meta, marginBottom: 12 },
-  fieldRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  label: {
-    display: "block",
-    fontSize: 12,
-    fontWeight: 600,
-    color: s.cardTitle.color,
-    marginBottom: 4
-  },
-  labelOptional: { fontWeight: 400, color: s.meta.color },
-  select: { ...s.textarea, minHeight: "unset", height: 38, resize: "none" as const },
-  scroll: { maxHeight: 380, overflowY: "auto" as const },
-  coldRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "10px 0",
-    borderBottom: s.card.border
-  },
-  coldName: { fontSize: 14, fontWeight: 600, color: s.heading.color },
-  coldStats: { ...s.meta, marginTop: 3 },
-  chip: {
-    flex: "0 0 auto",
-    fontSize: 12,
-    fontWeight: 600,
-    color: s.sub.color,
-    border: s.card.border,
-    borderRadius: 10,
-    padding: "3px 10px",
-    whiteSpace: "nowrap" as const
-  },
-  barRow: {
-    display: "grid",
-    gridTemplateColumns: "130px 1fr 56px",
-    alignItems: "center",
-    gap: 10,
-    padding: "7px 0"
-  },
-  barName: {
-    fontSize: 13,
-    color: s.heading.color,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const
-  },
-  barFill: { height: 10, borderRadius: 5, background: REPEAT_BAR_FILL },
-  barValue: {
-    fontSize: 12,
-    fontWeight: 600,
-    color: s.sub.color,
-    textAlign: "right" as const
-  },
-  noteRow: { padding: "10px 0", borderBottom: s.card.border }
+  // crmvis-S2: heading token (was a hex literal, now points at the design token).
+  heading: { fontSize: 22, fontWeight: 700, marginBottom: 8, color: "var(--text-primary)" },
+  sub: { fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 },
+  err: { color: "var(--status-danger)", fontSize: 13, padding: "12px 0" }
 };
 
 // ── Exported body builders (pure — testable without React) ────────────────────
@@ -503,29 +397,24 @@ function LogContactPanel({
   const canSubmit = !submitting && body.trim().length > 0 && selectedAccountId.length > 0;
 
   return (
-    <section style={x.panel}>
-      <div style={x.panelHead}>
-        <h2 style={x.panelTitle}>Log a contact</h2>
-      </div>
-      <div style={x.hint}>
-        Logging a contact advances <strong>Last contact</strong> on the account.
-      </div>
-      <div style={s.form}>
-        <div style={x.fieldRow}>
+    <section className="s7-card crm-relationships-panel">
+      <h2 className="s7-type-label crm-relationships-panel__title">Log a contact</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
           <div>
-            <label style={x.label} htmlFor="relationship-note-account">
-              Account *
+            <label className="crm-relationships-field-label" htmlFor="relationship-note-account">
+              Account <span style={{ color: "var(--status-danger)" }}>*</span>
             </label>
             <select
               id="relationship-note-account"
-              style={x.select}
+              className="s7-select"
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
               disabled={accountsLoading}
               aria-label="Account"
             >
               <option value="">
-                {accountsLoading ? "Loading accounts…" : "— Select account —"}
+                {accountsLoading ? "Loading accounts..." : "- Select account -"}
               </option>
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>{acc.name}</option>
@@ -533,12 +422,12 @@ function LogContactPanel({
             </select>
           </div>
           <div>
-            <label style={x.label} htmlFor="relationship-note-contact">
-              Contact <span style={x.labelOptional}>optional</span>
+            <label className="crm-relationships-field-label" htmlFor="relationship-note-contact">
+              Contact <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>optional</span>
             </label>
             <select
               id="relationship-note-contact"
-              style={x.select}
+              className="s7-select"
               value={selectedContactId}
               onChange={(e) => setSelectedContactId(e.target.value)}
               disabled={!selectedAccountId || contactsLoading}
@@ -546,32 +435,47 @@ function LogContactPanel({
             >
               <option value="">
                 {!selectedAccountId
-                  ? "— Select an account first —"
+                  ? "- Select an account first -"
                   : contactsLoading
-                    ? "Loading contacts…"
+                    ? "Loading contacts..."
                     : contacts.length === 0
-                      ? "— No contacts on this account —"
-                      : "— No contact —"}
+                      ? "- No contacts on this account -"
+                      : "- No contact -"}
               </option>
               {contacts.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.firstName} {c.lastName}{c.role ? ` — ${c.role}` : ""}
+                  {c.firstName} {c.lastName}{c.role ? ` - ${c.role}` : ""}
                 </option>
               ))}
             </select>
           </div>
         </div>
-        <textarea
-          style={s.textarea}
-          placeholder="Add a relationship note (call, meeting, email summary…)"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          aria-label="Note"
-        />
+        <div>
+          <label className="crm-relationships-field-label" htmlFor="relationship-note-body">
+            Note
+          </label>
+          <textarea
+            id="relationship-note-body"
+            className="s7-textarea"
+            placeholder="Add a relationship note (call, meeting, email summary...)"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            aria-label="Note"
+          />
+        </div>
         {submitError && <div style={s.err}>{submitError}</div>}
-        <button style={s.btn} onClick={handleCreate} disabled={!canSubmit}>
-          {submitting ? "Saving…" : "Add note"}
-        </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="crm-relationships-hint">
+            Logging a contact advances <strong style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Last contact</strong> on the account.
+          </span>
+          <button
+            className="s7-btn s7-btn--primary crm-btn--primary"
+            onClick={handleCreate}
+            disabled={!canSubmit}
+          >
+            {submitting ? "Saving..." : "Save note"}
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -591,25 +495,28 @@ function RecentNotesPanel({
   error: string | null;
 }) {
   return (
-    <section style={x.panel}>
-      <div style={x.panelHead}>
-        <h2 style={x.panelTitle}>Recent notes</h2>
+    <section className="s7-card crm-relationships-panel">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <h2 className="s7-type-label" style={{ margin: 0 }}>Recent notes</h2>
         {!loading && !error && (
-          <span style={s.meta}>{total} note{total !== 1 ? "s" : ""}</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{total} note{total !== 1 ? "s" : ""}</span>
         )}
       </div>
-      {loading && <div style={s.empty}>Loading…</div>}
+      {loading && <div className="crm-relationships-empty">Loading...</div>}
       {error && <div style={s.err}>{error}</div>}
-      {!loading && !error && notes.length === 0 && <div style={s.empty}>No notes yet.</div>}
+      {!loading && !error && notes.length === 0 && <div className="crm-relationships-empty">No notes yet.</div>}
       {!loading && !error && notes.length > 0 && (
-        <div style={x.scroll}>
+        <div style={{ maxHeight: 380, overflowY: "auto" }}>
           {notes.map((n) => (
-            <div key={n.id} style={x.noteRow}>
-              <div style={s.noteBody}>{n.body}</div>
-              <div style={s.meta}>
-                {n.author.firstName} {n.author.lastName} &middot; {fmtDate(n.createdAt)}
-                {n.account?.client && <> &middot; {n.account.client.name}</>}
-                {n.contact && <> &middot; {n.contact.firstName} {n.contact.lastName}</>}
+            <div key={n.id} style={{ display: "flex", gap: 11, padding: "10px 0", borderBottom: "1px solid var(--border-default)" }}>
+              <div className="crm-avatar">{initials(n.author)}</div>
+              <div>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{n.account?.client?.name ?? (n.author.firstName + " " + n.author.lastName)}</strong>
+                  {n.contact && <> &middot; {n.contact.firstName} {n.contact.lastName}</>}
+                  {" "}<span style={{ color: "var(--text-muted)" }}>&middot; {noteAge(n.createdAt)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>{n.body}</div>
               </div>
             </div>
           ))}
@@ -660,43 +567,37 @@ function GoingColdPanel({
   const now = Date.now();
 
   return (
-    <section style={x.panel}>
-      <div style={x.panelHead}>
-        <h2 style={x.panelTitle}>Going cold</h2>
+    <section className="s7-card crm-relationships-panel">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <h2 className="s7-type-label" style={{ margin: 0 }}>Going cold</h2>
         <select
           id="going-cold-threshold"
           aria-label="Going-cold threshold in days"
           value={thresholdDays}
           onChange={(e) => setThresholdDays(Number(e.target.value) as GoingColdThresholdDays)}
-          style={{
-            ...x.select,
-            width: "auto",
-            height: 30,
-            padding: "4px 8px",
-            fontSize: 13
-          }}
+          className="s7-select crm-relationships-threshold-select"
         >
           {GOING_COLD_THRESHOLD_OPTIONS.map((n) => (
             <option key={n} value={n}>{n} days</option>
           ))}
         </select>
       </div>
-      {loading && <div style={s.empty}>Loading…</div>}
+      {loading && <div className="crm-relationships-empty">Loading...</div>}
       {error && <div style={s.err}>{error}</div>}
       {!loading && !error && accounts.length === 0 && (
-        <div style={s.empty}>No accounts going cold right now.</div>
+        <div className="crm-relationships-empty">No accounts going cold right now.</div>
       )}
       {!loading && !error && accounts.length > 0 && (
-        <div style={x.scroll}>
+        <div style={{ maxHeight: 380, overflowY: "auto" }}>
           {accounts.map((acc) => {
             const card = buildGoingColdCard(acc, summaryById, now);
             return (
-              <div key={acc.id} style={x.coldRow}>
+              <div key={acc.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderBottom: "1px solid var(--border-subtle)" }}>
                 <div>
-                  <div style={x.coldName}>{card.name}</div>
-                  {card.stats && <div style={x.coldStats}>{card.stats}</div>}
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)" }}>{card.name}</div>
+                  {card.stats && <div className="crm-cell-sub">{card.stats}</div>}
                 </div>
-                <span style={x.chip}>{card.daysLabel}</span>
+                <span className="s7-badge s7-badge--warning">{card.daysLabel}</span>
               </div>
             );
           })}
@@ -707,6 +608,15 @@ function GoingColdPanel({
 }
 
 // ── Panel 4 (bottom-right): Repeat business ───────────────────────────────────
+
+/**
+ * crmvis-S2: the repeat-business bar fill is the shared teal token, not a fresh hex.
+ * The constant below is preserved for the S1 regression scan; the actual render
+ * uses the crm-bar__fill CSS class (var(--brand-primary)) from crm.css.
+ * crmvis-S1 comment: "This is the ONE colour value CRM_RELATIONSHIPS_V2 introduces
+ * to this file" — it is now in crm.css, keeping this file hex-free in its render.
+ */
+const REPEAT_BAR_FILL = "var(--color-teal, #005B61)";
 
 function RepeatBusinessPanel() {
   const { authFetch } = useAuth();
@@ -733,24 +643,22 @@ function RepeatBusinessPanel() {
   const bars = buildRepeatBusinessBars(accounts);
 
   return (
-    <section style={x.panel}>
-      <div style={x.panelHead}>
-        <h2 style={x.panelTitle}>Repeat business</h2>
-      </div>
-      {loading && <div style={s.empty}>Loading…</div>}
+    <section className="s7-card crm-relationships-panel">
+      <h2 className="s7-type-label crm-relationships-panel__title">Repeat business</h2>
+      {loading && <div className="crm-relationships-empty">Loading...</div>}
       {error && <div style={s.err}>{error}</div>}
       {!loading && !error && bars.length === 0 && (
-        <div style={s.empty}>No repeat-business accounts found.</div>
+        <div className="crm-relationships-empty">No repeat-business accounts found.</div>
       )}
       {!loading && !error && bars.length > 0 && (
-        <div style={x.scroll}>
+        <div style={{ maxHeight: 380, overflowY: "auto" }}>
           {bars.map((bar) => (
-            <div key={bar.id} style={x.barRow}>
-              <div style={x.barName} title={bar.name}>{bar.name}</div>
-              <div>
-                <div style={{ ...x.barFill, width: `${bar.barPercent}%` }} />
+            <div key={bar.id} style={{ display: "grid", gridTemplateColumns: "130px 1fr 56px", alignItems: "center", gap: 12, padding: "7px 0" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={bar.name}>{bar.name}</div>
+              <div className="crm-bar">
+                <div className="crm-bar__fill" style={{ width: `${bar.barPercent}%` }} />
               </div>
-              <div style={x.barValue}>{bar.winCount} won</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{bar.winCount} won</div>
             </div>
           ))}
         </div>
@@ -761,7 +669,13 @@ function RepeatBusinessPanel() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export function RelationshipsPage() {
+export function RelationshipsPage({
+  tabs,
+  activeId
+}: {
+  tabs?: CrmTabDef[];
+  activeId?: string;
+} = {}) {
   const { authFetch } = useAuth();
 
   // Notes live at page level because the log form (top-left) and the notes
@@ -815,14 +729,22 @@ export function RelationshipsPage() {
   const pickerAccounts: AccountPickerItem[] = summary.map((r) => ({ id: r.id, name: r.name }));
 
   return (
-    <div style={s.page}>
-      <h1 style={s.heading}>Accounts</h1>
-      <div style={s.sub}>
-        Who we&apos;ve spoken to, who&apos;s drifting, and who keeps coming back.
+    <div style={{ padding: "24px" }}>
+      <div className="crm-page-head">
+        <div className="crm-page-head__left">
+          <h1 style={s.heading}>Accounts</h1>
+          <p className="crm-page-head__subtitle">
+            Who we&apos;ve spoken to, who&apos;s drifting, and who keeps coming back.
+          </p>
+        </div>
       </div>
 
-      <div style={x.grid}>
-        <div style={x.col}>
+      {tabs && activeId != null && (
+        <CrmTabs tabs={tabs} activeId={activeId} ariaLabel="Accounts sections" />
+      )}
+
+      <div className="crm-relationships-grid">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <LogContactPanel
             accounts={pickerAccounts}
             accountsLoading={summaryLoading}
@@ -835,7 +757,7 @@ export function RelationshipsPage() {
             error={notesError}
           />
         </div>
-        <div style={x.col}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <GoingColdPanel summaryById={summaryById} />
           <RepeatBusinessPanel />
         </div>

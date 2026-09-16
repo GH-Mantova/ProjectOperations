@@ -478,20 +478,25 @@ describe("SCOPE_ITEM_LABOUR_STORE_V1 — getCardSummary reads the labour store",
     resolveRate: jest.fn().mockRejectedValue(new Error("not found"))
   } as never;
 
-  function serviceForCard(scopeItems: Array<Record<string, unknown>>) {
+  function serviceForCard(scopeItems: Array<Record<string, unknown>>, internalCount = 0) {
     const prisma = {
       tender: { findUnique: jest.fn(async () => ({ id: "tender-1" })) },
       scopeCard: {
         findFirst: jest.fn(async () => ({
           id: "card-1",
           tenderId: "tender-1",
+          // The service filters INTERNAL items in the DB where clause; the mock
+          // simulates that by receiving the already-filtered list via scopeItems.
           scopeItems,
           peakCrewOverride: null,
           labourDaysOverride: null,
           plantSummaryOverride: null,
           durationOverride: null
         }))
-      }
+      },
+      // SCOPE_QUOTE_DESTINATION_V1 -- getCardSummary issues a separate .count
+      // for INTERNAL items that were excluded from the programme figures.
+      scopeOfWorksItem: { count: jest.fn().mockResolvedValue(internalCount) }
     };
     return new ScopeOfWorksService(prisma as never, minimalRateResolver);
   }
@@ -545,6 +550,36 @@ describe("SCOPE_ITEM_LABOUR_STORE_V1 — getCardSummary reads the labour store",
       // crews are 4 and 6 → peak 6; person-days 20 + 12 = 32 → 32/6 = 5.3
       expect(summary.computed.peakCrew).toBe(6);
       expect(summary.computed.labourDays).toBe(5.3);
+    });
+  });
+
+  // SCOPE_QUOTE_DESTINATION_V1 — INTERNAL items leave the programme
+  it("INTERNAL item is excluded from crew and person-days; internalLinesLeftOut is 1", () => {
+    // The DB where clause filters out INTERNAL items before they reach the
+    // service loop. The mock simulates this by passing an empty scopeItems list
+    // while setting internalCount=1 so the count query returns 1.
+    const svc = serviceForCard(
+      // scopeItems already filtered (DB excluded the INTERNAL row)
+      [{ men: new Prisma.Decimal("3"), days: new Prisma.Decimal("4"), labourItems: null, plantItems: null }],
+      1 // internalCount: one INTERNAL item exists on the card
+    );
+    return svc.getCardSummary("tender-1", "card-1").then((summary) => {
+      // Only the non-INTERNAL item (3 men x 4 days) contributes.
+      expect(summary.computed.peakCrew).toBe(3);
+      expect(summary.computed.labourDays).toBe(4);
+      expect(summary.computed.internalLinesLeftOut).toBe(1);
+    });
+  });
+
+  it("no INTERNAL items: figures unchanged and internalLinesLeftOut is 0", () => {
+    const svc = serviceForCard(
+      [{ men: new Prisma.Decimal("3"), days: new Prisma.Decimal("4"), labourItems: null, plantItems: null }],
+      0 // no INTERNAL items
+    );
+    return svc.getCardSummary("tender-1", "card-1").then((summary) => {
+      expect(summary.computed.peakCrew).toBe(3);
+      expect(summary.computed.labourDays).toBe(4);
+      expect(summary.computed.internalLinesLeftOut).toBe(0);
     });
   });
 });

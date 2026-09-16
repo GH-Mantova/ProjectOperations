@@ -691,3 +691,47 @@ export function matchScenarioRow<R extends ScenarioRow>(
     ) ?? null
   );
 }
+
+// ── RATE_S4_PRICING_FIELD_ROWS ────────────────────────────────────────────
+
+/** One row of the shrunk Fields card — the pricing steps use this field. */
+export type PricingFieldRow = {
+  name: string;
+  /** Where the value comes from. */
+  source: RateFieldSource;
+  /** The step numbers that name this field, as a human-readable string. */
+  steps: string;
+};
+
+/**
+ * Every field named by any pricing step, once per unique name.
+ *
+ * Column-backed fields are marked source "table"; estimator-entered line fields
+ * are marked source "line". The result is ordered: column fields first (in
+ * column order), then line fields, both filtered to only the ones any step
+ * actually names.
+ *
+ * The Fields card in the shrunken form uses this to show "what the pricing
+ * steps use" rather than a full column management table.
+ */
+export function pricingFieldRows(
+  columns: readonly Pick<RateColumn, "id" | "name">[],
+  lineFields: readonly RateLineField[] | null | undefined,
+  steps: readonly ChargeStep[] | null | undefined
+): PricingFieldRow[] {
+  const out: PricingFieldRow[] = [];
+
+  for (const c of columns) {
+    const usedIn = stepsUsingField(steps, c.name);
+    if (usedIn.length === 0) continue;
+    out.push({ name: c.name, source: "table", steps: usedInLabel(usedIn) });
+  }
+
+  for (const f of lineFields ?? []) {
+    const usedIn = stepsUsingField(steps, f.name);
+    if (usedIn.length === 0) continue;
+    out.push({ name: f.name, source: "line", steps: usedInLabel(usedIn) });
+  }
+
+  return out;
+}

@@ -44,6 +44,7 @@
 
 import { Prisma } from "@prisma/client";
 import { Discipline, DISCIPLINES } from "./dto/scope-of-works.dto";
+import { isDurationBearingUnit } from "./dto/scope-costs.dto";
 
 // ── Shared constants ─────────────────────────────────────────────────
 
@@ -366,6 +367,65 @@ export function resolveEffectiveMarkup(
   tenderMarkup: number
 ): number {
   return itemMarkupOverride ?? cardMarkupOverride ?? tenderMarkup;
+}
+
+// ── Scope Cards S1 — operational cost pricing ────────────────────────
+
+/**
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — Compute the line total for one
+ * ScopeOperationalCostLine.
+ *
+ * Formula: qty × days × (rateOverride ?? rate)
+ *
+ * `days` is treated as 1 when the unit is not duration-bearing — the
+ * same rule the DTO enforces at the API boundary. The stored value is
+ * NOT trusted alone; the unit decides.
+ *
+ * Returns 0 when qty or the resolved rate is null/absent.
+ *
+ * This is the ONLY place the formula lives. The controller, the summary
+ * stream, and any future consumer all call this function rather than
+ * inlining.
+ */
+export function computeOperationalLineTotal(line: {
+  qty: Prisma.Decimal | number | null | undefined;
+  unit: string | null | undefined;
+  days: Prisma.Decimal | number | null | undefined;
+  rate: Prisma.Decimal | number | null | undefined;
+  rateOverride: Prisma.Decimal | number | null | undefined;
+}): number {
+  const qtyN = decToNum(line.qty);
+  if (qtyN === null) return 0;
+  const resolvedRate =
+    line.rateOverride != null ? decToNum(line.rateOverride) : decToNum(line.rate);
+  if (resolvedRate === null) return 0;
+  // isDurationBearingUnit (imported from the DTO at the top of this file)
+  // is the single source of truth for which units carry a duration. The
+  // stored days value is overridden to 1 for non-duration units, matching
+  // the API boundary rule.
+  const daysN = isDurationBearingUnit(line.unit) ? (decToNum(line.days) ?? 1) : 1;
+  if (!Number.isFinite(qtyN) || !Number.isFinite(resolvedRate) || !Number.isFinite(daysN)) {
+    return 0;
+  }
+  return qtyN * daysN * resolvedRate;
+}
+
+/**
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — Resolve the effective markup for
+ * one operational cost line.
+ *
+ * Resolution order (same chain as scope-item markup):
+ *   line.markupOverride ?? card.markupOverride ?? tenderMarkup
+ *
+ * A stored 0 is a real override (0% markup), not an absence — `??` and
+ * not `||` at every link. null/undefined means "inherit".
+ */
+export function computeOperationalLineMarkup(
+  lineMarkupOverride: number | null | undefined,
+  cardMarkupOverride: number | null | undefined,
+  tenderMarkup: number
+): number {
+  return lineMarkupOverride ?? cardMarkupOverride ?? tenderMarkup;
 }
 
 /**

@@ -54,8 +54,9 @@ export class ScopeSubLinkedItemController {
     summary: "Link a scope item to a SUB line that prices its work.",
     description:
       "Sets pricedBySubItemId on the covered item. The target must be a SUB-discipline " +
-      "item on the same tender. The covered item's labour and plant stop contributing to " +
-      "its discipline bucket (double-count guard)."
+      "item on the same tender. Linking no longer zeroes the covered item. " +
+      "Pass setInternal: true to set quoteDestination = INTERNAL on the covered item " +
+      "at the same time (SCOPE_QUOTE_DESTINATION_V1)."
   })
   async linkToSubLine(
     @Param("tenderId") tenderId: string,
@@ -63,7 +64,7 @@ export class ScopeSubLinkedItemController {
     @Body() body: unknown
   ) {
     const dto = body as LinkToSubLineDto;
-    return this.service.linkItemToSubLine(tenderId, itemId, dto.subItemId);
+    return this.service.linkItemToSubLine(tenderId, itemId, dto.subItemId, dto.setInternal ?? false);
   }
 
   @Delete("items/:itemId/sub-link")
@@ -71,7 +72,7 @@ export class ScopeSubLinkedItemController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: "Unlink a scope item from its SUB line.",
-    description: "Clears pricedBySubItemId. The item's costs are restored to the discipline bucket."
+    description: "Clears pricedBySubItemId. The destination is unchanged; the estimator decides."
   })
   async unlinkFromSubLine(
     @Param("tenderId") tenderId: string,

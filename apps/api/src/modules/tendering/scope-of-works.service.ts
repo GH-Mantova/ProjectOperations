@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
 import {
@@ -428,6 +428,16 @@ export class ScopeOfWorksService {
     const flatPattern = new RegExp(`^${discipline}\\d+$`);
     const wbsCode = providedWbs && flatPattern.test(providedWbs) ? providedWbs : `${discipline}${itemNumber}`;
     const cardId = await this.getOrCreateCardForDiscipline(tenderId, discipline, actorId);
+    // SCOPE_QUOTE_DESTINATION_V1 -- quoteDestination alias for isProvisional.
+    // When quoteDestination is present it takes precedence; when only
+    // isProvisional is sent, derive the destination. The OR-rule (Other
+    // discipline -> PROVISIONAL) is applied here at birth so the column
+    // is the single source of truth from the moment the row is written.
+    const resolvedDestination = dto.quoteDestination
+      ? dto.quoteDestination
+      : dto.isProvisional === true || discipline === "Other"
+        ? QuoteDestination.PROVISIONAL
+        : QuoteDestination.PRICE;
     return this.prisma.scopeOfWorksItem.create({
       data: {
         tenderId,
@@ -439,6 +449,7 @@ export class ScopeOfWorksService {
         status: "confirmed",
         aiProposed: false,
         createdById: actorId,
+        quoteDestination: resolvedDestination,
         ...deriveDimensionFields(numericFieldsFrom(dto))
       }
     });
@@ -1207,8 +1218,10 @@ export class ScopeOfWorksService {
       where: { id: cardId, tenderId },
       include: {
         scopeItems: {
-          where: { status: { not: "excluded" } },
-          // SCOPE_ITEM_LABOUR_STORE_V1 — labourItems joins the select so
+          // SCOPE_QUOTE_DESTINATION_V1: INTERNAL items leave the programme --
+          // their crew, plant, and duration do not contribute to card figures.
+          where: { status: { not: "excluded" }, quoteDestination: { not: "INTERNAL" } },
+          // SCOPE_ITEM_LABOUR_STORE_V1 -- labourItems joins the select so
           // peakCrew/labourDays can be derived from the labour rows when
           // an item has them (see labourCrewAndDaysForItem below).
           select: { men: true, days: true, labourItems: true, plantItems: true }
@@ -1335,12 +1348,20 @@ export class ScopeOfWorksService {
       : 0;
     const duration = Math.round(Math.max(labourDays, maxPlantDuration) * 10) / 10;
 
+    // SCOPE_QUOTE_DESTINATION_V1 -- count INTERNAL items that were excluded
+    // from the programme figures above. The web renders this as the "-N internal
+    // only" chip in the card header (S2b).
+    const internalLinesLeftOut = await this.prisma.scopeOfWorksItem.count({
+      where: { cardId, status: { not: "excluded" }, quoteDestination: "INTERNAL" }
+    });
+
     return {
       computed: {
         peakCrew,
         labourDays,
         plantSummary,
-        duration
+        duration,
+        internalLinesLeftOut
       },
       overrides: {
         peakCrewOverride: card.peakCrewOverride,
@@ -1542,6 +1563,13 @@ export class ScopeOfWorksService {
     const itemNumber = await this.nextItemNumberInCard(cardId);
     const wbsCode = `${discipline}${card.cardNumber}.${itemNumber}`;
 
+    // SCOPE_QUOTE_DESTINATION_V1 -- same alias logic as createItem.
+    // The OR-rule (Other discipline -> PROVISIONAL) is applied once at birth.
+    const resolvedDestinationInCard = dto.quoteDestination
+      ? dto.quoteDestination
+      : dto.isProvisional === true || discipline === "Other"
+        ? QuoteDestination.PROVISIONAL
+        : QuoteDestination.PRICE;
     return this.prisma.scopeOfWorksItem.create({
       data: {
         tenderId,
@@ -1552,7 +1580,8 @@ export class ScopeOfWorksService {
         description: dto.description ?? "",
         status: "confirmed",
         aiProposed: false,
-        createdById: actorId
+        createdById: actorId,
+        quoteDestination: resolvedDestinationInCard
       },
       include: { card: true }
     });

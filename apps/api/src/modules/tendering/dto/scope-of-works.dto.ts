@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -15,6 +16,7 @@ import {
   ValidateNested
 } from "class-validator";
 import { Type } from "class-transformer";
+import { QuoteDestination } from "@prisma/client";
 import {
   IS_DISCIPLINE_CODES,
   type IsDisciplineCode
@@ -125,10 +127,19 @@ class ScopeItemFieldsBase {
   @ApiPropertyOptional() @IsOptional() @IsString() plantAssetId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() wasteGroup?: string | null;
 
-  // scope-subcontracted order 3 — per-line provisional flag. When true,
+  // scope-subcontracted order 3 -- per-line provisional flag. When true,
   // this item's cost lands below the tender price as a provisional sum.
   // Applies to every discipline. Defaults false (item is priced).
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() isProvisional?: boolean;
+  //
+  // @deprecated Use quoteDestination instead. Kept as a write alias:
+  // when a request carries isProvisional: true and no quoteDestination,
+  // the service writes PROVISIONAL. When quoteDestination is present,
+  // isProvisional is ignored.
+  @ApiPropertyOptional({ deprecated: true }) @IsOptional() @IsBoolean() isProvisional?: boolean;
+
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this line goes
+  // on the client quote.
+  @ApiPropertyOptional({ enum: QuoteDestination }) @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
 
   // Provisional sum amount (discipline=Prv only; ignored otherwise).
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() provisionalAmount?: number | null;
@@ -393,6 +404,15 @@ export class CreateScopeItemInCardDto {
 
   @ApiPropertyOptional({ enum: ROW_TYPES, description: "Legacy row type (defaults to general-labour)." })
   @IsOptional() @IsIn(ROW_TYPES as unknown as string[]) rowType?: RowType;
+
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this item goes on
+  // the client quote. Optional; defaults PRICE (or PROVISIONAL when the card's
+  // discipline is Other, same as createItem).
+  @ApiPropertyOptional({ enum: QuoteDestination }) @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
+
+  // @deprecated alias -- when quoteDestination is absent, isProvisional: true
+  // writes PROVISIONAL. When quoteDestination is present, this is ignored.
+  @ApiPropertyOptional({ deprecated: true }) @IsOptional() @IsBoolean() isProvisional?: boolean;
 }
 
 /** Body for the scope card bulk-reorder endpoint (cardIds in display order). */
@@ -412,6 +432,15 @@ export class LinkToSubLineDto {
     description: "ID of the SUB-discipline scope item that prices the covered item."
   })
   @IsString() @IsNotEmpty() subItemId!: string;
+
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- when true, the covered
+  // item's quoteDestination is set to INTERNAL at the same time as the link
+  // is written. Default false: linking does not change the destination.
+  // Unlink never changes the destination; the estimator decides.
+  @ApiPropertyOptional({
+    description: "When true, sets the covered item's quoteDestination to INTERNAL."
+  })
+  @IsOptional() @IsBoolean() setInternal?: boolean;
 }
 
 /** Body for creating a quote on a SUB scope line. */

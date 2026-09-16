@@ -171,12 +171,29 @@ export async function buildEstimateExcel(
     const prvRow = summary.getRow(rowIdx);
     prvRow.getCell(1).value = "Provisional / Other";
     prvRow.getCell(2).value = "Provisional sums, options, adjustments (not in tender price)";
-    // Item count cell intentionally left blank — the provisional block can
+    // Item count cell intentionally left blank -- the provisional block can
     // span multiple disciplines and a single count would be misleading.
     prvRow.getCell(3).value = null;
     prvRow.getCell(4).value = provisionalTotal;
     prvRow.getCell(4).numFmt = CURRENCY_FMT;
     prvRow.eachCell({ includeEmpty: false }, (cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORANGE_ARGB } };
+      cell.font = { italic: true };
+    });
+  }
+
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- Cost options row.
+  // Only shown when there are OPTION-destination lines priced.
+  const optionsTotal = payload.summary.optionsTotal ?? 0;
+  if (optionsTotal > 0) {
+    rowIdx += 1;
+    const optRow = summary.getRow(rowIdx);
+    optRow.getCell(1).value = "Cost options";
+    optRow.getCell(2).value = "Alternatives priced beside the tender price (not in tender price)";
+    optRow.getCell(3).value = null;
+    optRow.getCell(4).value = optionsTotal;
+    optRow.getCell(4).numFmt = CURRENCY_FMT;
+    optRow.eachCell({ includeEmpty: false }, (cell) => {
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORANGE_ARGB } };
       cell.font = { italic: true };
     });

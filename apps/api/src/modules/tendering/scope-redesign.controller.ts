@@ -1,7 +1,8 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsArray, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsArray, IsEnum, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
 import { Type } from "class-transformer";
+import { QuoteDestination } from "@prisma/client";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -30,7 +31,10 @@ class CreateCuttingItemDto {
   @IsOptional() @IsString() otherRateId?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsInt() sortOrder?: number;
-  // PR B-followup — cardId is now required at both DTO and schema
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this cutting line
+  // goes on the client quote. Optional; defaults PRICE.
+  @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
+  // PR B-followup -- cardId is now required at both DTO and schema
   // levels. Cutting rows must belong to a scope card; cardless
   // creation is no longer a supported state.
   @IsString() @IsNotEmpty() cardId!: string;
@@ -56,6 +60,9 @@ export class UpdateCuttingItemDto {
   @IsOptional() @IsString() otherRateId?: string | null;
   @IsOptional() @IsString() notes?: string | null;
   @IsOptional() @IsInt() sortOrder?: number | null;
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this cutting line
+  // goes on the client quote. Optional; defaults PRICE.
+  @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
 }
 
 /**

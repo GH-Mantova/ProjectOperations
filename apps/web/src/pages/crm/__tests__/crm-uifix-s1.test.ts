@@ -122,9 +122,14 @@ describe("TendersPage outer tab bar wires real content (defect 2)", () => {
     expect(src).not.toContain("Follow-ups coming in S8");
   });
 
-  // Test 7 (spec): exactly one element with role="tablist" renders on the
-  // Tenders page. Without a DOM we prove it structurally: TendersPage renders
-  // the ONLY role="tablist" and TendersRegisterPage does not.
+  // Test 7 (spec): exactly one tab bar renders on the Tenders page.
+  // CRM_PARITY_REGISTER_V1 (crmvis-S4): TendersPage no longer renders the
+  // tablist inline — it passes CrmTabDef[] to TendersRegisterPage which
+  // renders CrmTabs (same pattern as AccountsPage → AccountsListPage).
+  // The structural proof: neither TendersPage.tsx nor TendersRegisterPage.tsx
+  // contains role="tablist" directly; the bar lives inside CrmTabs.tsx. The
+  // one-tab-bar invariant is preserved by the component architecture: only
+  // one CrmTabs is ever mounted for the Tenders screen.
   it("TendersRegisterPage.tsx no longer draws its own role=\"tablist\"", () => {
     // The inner tab bar at line 681 in the old file is gone. If it comes back
     // the "two tab bars on Tenders" defect returns.
@@ -132,10 +137,16 @@ describe("TendersPage outer tab bar wires real content (defect 2)", () => {
     expect(src).not.toMatch(/role\s*=\s*["']tablist["']/);
   });
 
-  it("TendersPage.tsx renders exactly one role=\"tablist\" element", () => {
+  it("TendersPage.tsx uses CrmTabs (passes tabs to TendersRegisterPage) not an inline tablist", () => {
+    // CRM_PARITY_REGISTER_V1: the tablist moved into CrmTabs.tsx via
+    // TendersRegisterPage — TendersPage now builds the CrmTabDef array and
+    // passes it down, exactly as AccountsPage does.
     const src = readCrmSource("TendersPage.tsx");
-    const matches = src.match(/role\s*=\s*["']tablist["']/g) ?? [];
-    expect(matches.length).toBe(1);
+    // TendersPage must NOT have its own inline tablist (that was the old design).
+    expect(src).not.toMatch(/role\s*=\s*["']tablist["']/);
+    // TendersPage must pass tabs to TendersRegisterPage.
+    expect(src).toContain("tabs=");
+    expect(src).toContain("activeId=");
   });
 });
 

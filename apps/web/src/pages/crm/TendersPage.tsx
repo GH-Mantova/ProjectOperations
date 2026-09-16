@@ -9,15 +9,22 @@
 // second tab bar). We now pass the tab down as a prop and
 // TendersRegisterPage renders no inner tablist. One tab bar per page, one
 // URL contract.
+//
+// CRM_PARITY_REGISTER_V1 (crmvis-S4, 2026-09-16) — tab card moved into
+// TendersRegisterPage using the CrmTabs component (same shape as
+// AccountsPage → AccountsListPage). TendersPage builds the tab defs and
+// count data; TendersRegisterPage renders the CrmTabs bar. Hex literals
+// and inline tabBarStyle/tabStyle removed; all colours are tokens.
 
 import { useEffect, useState } from "react";
-import { useSearchParams, NavLink } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import {
   countDistinctOverdueTenders,
   type CrmOverdueTaskRow
 } from "../../components/ShellLayout";
 import { TendersRegisterPage, type TendersRegisterTab } from "./TendersRegisterPage";
+import type { CrmTabDef } from "./CrmTabs";
 
 export type TendersOuterTabId = "register" | "follow-ups";
 
@@ -30,52 +37,6 @@ export const TENDERS_TABS: { id: TendersOuterTabId; label: string; inner: Tender
 export function resolveTendersInnerTab(outer: TendersOuterTabId): TendersRegisterTab {
   return outer === "follow-ups" ? "followups" : "register";
 }
-
-const tabBarStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 0,
-  borderBottom: "2px solid #e5e7eb",
-  padding: "0 24px",
-  background: "var(--surface-1, #fff)"
-};
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "10px 18px",
-    fontSize: 14,
-    fontWeight: active ? 600 : 400,
-    color: active ? "#4f46e5" : "#6b7280",
-    borderBottom: active ? "2px solid #4f46e5" : "2px solid transparent",
-    marginBottom: -2,
-    textDecoration: "none",
-    background: "transparent",
-    cursor: "pointer",
-    transition: "color 0.15s"
-  };
-}
-
-// CRM_CHROME_V1 — plain grey tab figure, colour read back off the existing
-// tabStyle() so it can never drift from the inactive tab text.
-const tabCountStyle: React.CSSProperties = {
-  marginLeft: 6,
-  fontSize: 12,
-  fontWeight: 400,
-  color: tabStyle(false).color
-};
-
-// CRM_CHROME_V1 — the attention count is a pill, not a plain figure. Amber
-// with black text, straight off the shared design tokens (--status-warning is
-// the mock-up's amber); no colour literal is introduced here.
-const tabPillStyle: React.CSSProperties = {
-  marginLeft: 6,
-  display: "inline-block",
-  padding: "1px 7px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 600,
-  background: "var(--status-warning)",
-  color: "var(--text-primary)"
-};
 
 export function TendersPage() {
   const [searchParams] = useSearchParams();
@@ -121,30 +82,27 @@ export function TendersPage() {
     };
   }, [authFetch]);
 
+  // CRM_PARITY_REGISTER_V1: Build CrmTabDef array — passed to
+  // TendersRegisterPage which renders the CrmTabs bar (same pattern as
+  // AccountsPage → AccountsListPage). The Follow-ups count renders as an
+  // amber pill via badge="warning" when non-zero.
+  const tabs: CrmTabDef[] = [
+    {
+      id: "register",
+      label: "Register",
+      to: "/crm/register",
+      count: registerCount
+    },
+    {
+      id: "follow-ups",
+      label: "Follow-ups",
+      to: "/crm/register?tab=follow-ups",
+      badge: followUpCount != null && followUpCount > 0 ? "warning" : undefined,
+      count: followUpCount
+    }
+  ];
+
   return (
-    <div>
-      {/* CRM_NAV_TABS — tenders tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01;
-          CRM_CHROME_V1 counts, 2026-09-04). */}
-      <div style={tabBarStyle} role="tablist" aria-label="Tenders sections">
-        {TENDERS_TABS.map((tab) => (
-          <NavLink
-            key={tab.id}
-            to={tab.id === "register" ? "/crm/register" : `/crm/register?tab=${tab.id}`}
-            style={tabStyle(validTab === tab.id)}
-            role="tab"
-            aria-selected={validTab === tab.id}
-          >
-            {tab.label}
-            {tab.id === "register" && registerCount !== null ? (
-              <span style={tabCountStyle}>{registerCount}</span>
-            ) : null}
-            {tab.id === "follow-ups" && followUpCount !== null ? (
-              <span style={tabPillStyle}>{followUpCount}</span>
-            ) : null}
-          </NavLink>
-        ))}
-      </div>
-      <TendersRegisterPage activeTab={innerTab} />
-    </div>
+    <TendersRegisterPage activeTab={innerTab} tabs={tabs} activeId={validTab} />
   );
 }

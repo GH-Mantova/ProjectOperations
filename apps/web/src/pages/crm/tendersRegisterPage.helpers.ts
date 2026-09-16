@@ -721,3 +721,58 @@ export const KPI_CARD_LABELS = [
   "Never logged",
   "Value at risk"
 ] as const;
+
+// ---------------------------------------------------------------------------
+// CRM_PARITY_REGISTER_V1 — "None set" / "Stalled" display rule
+// ---------------------------------------------------------------------------
+
+/**
+ * Number of days without a logged interaction after which a tender with no
+ * open next-action task is considered "Stalled".
+ *
+ * Pure constant — shared between the display rule and the unit tests so the
+ * number never drifts between the two.
+ */
+export const STALLED_AFTER_DAYS = 30;
+
+/**
+ * Shape of the row fields `isStalled` needs. Every field is already present
+ * on the enriched rows the register builds from its two batch requests.
+ */
+export type StalledCheckRow = {
+  /** ISO string from the last-interaction batch map, or null/undefined when
+   *  the tender has never been logged. */
+  lastInteractionAt?: string | null;
+  /**
+   * Whether the row has an open next-action task. True means the tender has
+   * something to do; false or undefined means no open task was found.
+   * Distinct from `nextActionAt` (the task's dueAt): a task can exist with a
+   * null dueAt — the task's EXISTENCE, not its due date, determines staleness.
+   */
+  hasOpenTask?: boolean;
+};
+
+/**
+ * Returns true when the tender has no open next-action task AND is also
+ * stalled: either it was never logged, or its last logged interaction is
+ * older than STALLED_AFTER_DAYS.
+ *
+ * The "None set / Stalled" display rule (crmvis-S4):
+ *   - No open task → render "None set" (muted italic).
+ *   - No open task AND (never logged OR last logged > 30 days ago) → also
+ *     render a `Stalled` `s7-badge--neutral` beneath.
+ *
+ * @param row   The enriched register row.
+ * @param nowMs Current timestamp in milliseconds (injectable for unit tests).
+ */
+export function isStalled(row: StalledCheckRow, nowMs: number): boolean {
+  // A row with an open next-action task is NOT stalled — it has something to do.
+  if (row.hasOpenTask) return false;
+  // Never logged → stalled.
+  if (!row.lastInteractionAt) return true;
+  // Logged too long ago → stalled.
+  const lastMs = new Date(row.lastInteractionAt).getTime();
+  if (isNaN(lastMs)) return true; // unparseable date treated as never logged
+  const stalledMs = STALLED_AFTER_DAYS * 24 * 60 * 60 * 1000;
+  return nowMs - lastMs > stalledMs;
+}

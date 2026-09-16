@@ -14,6 +14,11 @@ import {
   IS_DISCIPLINE_CODES,
   type IsDisciplineCode
 } from "../personas/definitions/disciplines";
+import {
+  computeOperationalLineMarkup,
+  computeOperationalLineTotal,
+  decToNum
+} from "../tendering/scope-item-pricing";
 
 // PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
 // Display order must match the Quote tab and the cost-summary bar.
@@ -116,6 +121,22 @@ export type OtherRateRow = {
   otherRate: { description: string; unit: string; rate: string } | null;
 };
 
+/** One operational-cost line in the export payload. */
+export type OperationalCostExportRow = {
+  cardId: string;
+  cardCode: string;
+  wbsRef: string | null;
+  description: string;
+  sourceRef: string | null;
+  qty: string | null;
+  unit: string | null;
+  days: string | null;
+  rate: string | null;
+  effectiveMarkup: number;
+  lineTotal: number;
+  lineTotalWithMarkup: number;
+};
+
 export type ExportPayload = {
   tender: {
     id: string;
@@ -158,6 +179,9 @@ export type ExportPayload = {
     coreHoles: CoreHoleRow[];
     otherRates: OtherRateRow[];
   };
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — flat list of operational-cost lines
+  // with server-computed money fields.
+  operationalCosts: OperationalCostExportRow[];
   documents: Array<{ id: string; name: string }>;
   assumptions: Array<{ text: string }>;
   exclusions: Array<{ text: string }>;
@@ -173,6 +197,9 @@ export type ExportPayload = {
     SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
     Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
     cutting: { itemCount: number; subtotal: number };
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth independently-marked-up
+    // stream, carried in the summary so the builder can add it to grandTotal.
+    operationalCosts: { itemCount: number; subtotal: number; withMarkup: number };
     tenderPrice: number;
     provisionalTotal: number;
   };
@@ -290,6 +317,18 @@ export class EstimateExportService {
     // double-implementation of discipline markup / provisional handling.
     const summary = await this.scopeSummary.summary(tenderId);
 
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — fetch operational cost lines with
+    // their card code and markup context so the builder gets money-ready rows.
+    // The money figures are derived here from the same helper summary() uses,
+    // so the Summary sheet and the Operational Costs detail sheet agree.
+    const operationalCostRows = await this.prisma.scopeOperationalCostLine.findMany({
+      where: { card: { tenderId } },
+      orderBy: [{ cardId: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+      include: {
+        card: { select: { markupOverride: true, discipline: true, cardNumber: true } }
+      }
+    });
+
     // T&C: use the per-tender editable copy; fall back to the canonical
     // tc-text.const defaults if the row hasn't been created yet. The Quote
     // tab creates the row lazily on first read, but the PDF may be the first
@@ -401,6 +440,41 @@ export class EstimateExportService {
           : null
       }));
 
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — build the export rows using the
+    // same pricing helpers that summary() uses, so every figure agrees.
+    // The tender markup is extracted from the summary's tenderPrice vs
+    // the discipline totals; we use the same approach as scope-costs.service.ts
+    // by reading TenderEstimate directly.
+    const tenderEstForExport = await this.prisma.tenderEstimate.findUnique({
+      where: { tenderId },
+      select: { markup: true }
+    });
+    const tenderMarkupForExport = tenderEstForExport ? Number(tenderEstForExport.markup) : 30;
+
+    const operationalCosts: OperationalCostExportRow[] = operationalCostRows.map((ol) => {
+      const lineTotal = computeOperationalLineTotal(ol);
+      const effectiveMarkup = computeOperationalLineMarkup(
+        decToNum(ol.markupOverride),
+        ol.card?.markupOverride != null ? Number(ol.card.markupOverride) : null,
+        tenderMarkupForExport
+      );
+      const lineTotalWithMarkup = lineTotal * (1 + effectiveMarkup / 100);
+      return {
+        cardId: ol.cardId,
+        cardCode: ol.card ? `${ol.card.discipline}${ol.card.cardNumber}` : "",
+        wbsRef: ol.wbsRef,
+        description: ol.description,
+        sourceRef: ol.sourceRef,
+        qty: toStr(ol.qty),
+        unit: ol.unit,
+        days: toStr(ol.days),
+        rate: toStr(ol.rateOverride ?? ol.rate),
+        effectiveMarkup: Number(effectiveMarkup.toFixed(2)),
+        lineTotal: Number(lineTotal.toFixed(2)),
+        lineTotalWithMarkup: Number(lineTotalWithMarkup.toFixed(2))
+      };
+    });
+
     // ScopeRedesignService.summary() spreads per-discipline keys into the
     // result, but TypeScript loses that relationship through the spread.
     // Cast to the shape we know is returned so the builders get a stable
@@ -414,6 +488,7 @@ export class EstimateExportService {
       SUB: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
       Other: { itemCount: number; subtotal: number; withMarkup: number; provisionalSubtotal: number; provisionalWithMarkup: number };
       cutting: { itemCount: number; subtotal: number };
+      operationalCosts: { itemCount: number; subtotal: number; withMarkup: number };
       tenderPrice: number;
       provisionalTotal: number;
     };
@@ -457,6 +532,7 @@ export class EstimateExportService {
       },
       scopeItems,
       cuttingItems: { sawCuts, coreHoles, otherRates },
+      operationalCosts,
       documents: tender.tenderDocuments
         .map((d) => ({ id: d.id, name: d.fileLink?.name ?? d.title }))
         .filter((d) => Boolean(d.name)),
@@ -470,6 +546,12 @@ export class EstimateExportService {
         SUB: discBucket("SUB"),
         Other: discBucket("Other"),
         cutting: { itemCount: summaryTyped.cutting.itemCount, subtotal: round2(summaryTyped.cutting.subtotal) },
+        // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth stream in the summary.
+        operationalCosts: {
+          itemCount: summaryTyped.operationalCosts?.itemCount ?? 0,
+          subtotal: round2(summaryTyped.operationalCosts?.subtotal ?? 0),
+          withMarkup: round2(summaryTyped.operationalCosts?.withMarkup ?? 0)
+        },
         tenderPrice: round2(summaryTyped.tenderPrice),
         provisionalTotal: round2(summaryTyped.provisionalTotal)
       }

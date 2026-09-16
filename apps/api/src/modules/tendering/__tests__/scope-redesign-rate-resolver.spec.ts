@@ -30,6 +30,7 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     scopeOfWorksItem: { findMany: jest.fn().mockResolvedValue([]) },
     tenderEstimate: { findUnique: jest.fn().mockResolvedValue({ markup: new Prisma.Decimal(30) }) },
     scopeWasteItem: { findMany: jest.fn().mockResolvedValue([]) },
+    scopeOperationalCostLine: { findMany: jest.fn().mockResolvedValue([]) },
     cuttingSheetItem: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),

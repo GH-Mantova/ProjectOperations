@@ -37,7 +37,32 @@ import {
   type CuttingTakeOffRow
 } from "../CuttingSection";
 import { computeCardBarStats } from "../DisciplineSummaryBar";
-import { sumOperationalLines, type OperationalCostLine } from "../OtherOperationalCosts";
+import type { OperationalCostLine } from "../OtherOperationalCosts";
+
+/**
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — this test's local sum, pinning what
+ * the SECTION contributes to the card fold. Before S1 the section handed
+ * ONE number to the fold; after S1 it hands two (subtotal, withMarkup) via
+ * `computeOperationalTotals` in the component. The fixtures below predate
+ * server pricing (they carry no `lineTotal`), so this reproduces the pre-S1
+ * `qty * (rateOverride ?? rate)` sum locally — the arithmetic the "five
+ * figures reconcile" test was pinning is unchanged.
+ */
+function sumOperationalLines(lines: OperationalCostLine[]): number {
+  return lines.reduce((acc, line) => {
+    if (line.lineTotal != null && Number.isFinite(Number(line.lineTotal))) {
+      return acc + Number(line.lineTotal);
+    }
+    const qty = line.qty == null || line.qty === "" ? null : Number(line.qty);
+    const rate = line.rateOverride != null && line.rateOverride !== ""
+      ? Number(line.rateOverride)
+      : (line.rate == null || line.rate === "" ? null : Number(line.rate));
+    if (qty === null || rate === null || !Number.isFinite(qty) || !Number.isFinite(rate)) {
+      return acc;
+    }
+    return acc + qty * rate;
+  }, 0);
+}
 import { rollUpDiscipline, toCardRollupInput } from "../utils/discipline-rollup";
 import type { ScopeItem } from "../../ScopeQuantitiesTable";
 
@@ -673,9 +698,13 @@ describe("the mount point", () => {
     // disagreeing about what a card is worth.
     const calls = tabSource.match(/computeCardBarStats\(/g) ?? [];
     expect(calls.length).toBe(1);
-    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCosts + cutting");
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1: the section now hands the fold two
+    // figures — bare `otherCostsSubtotal` and marked-up `otherCostsWithMarkup`
+    // — so the assertion below is on the S1 shape, not the pre-S1 single
+    // `otherCosts` variable.
+    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCostsSubtotal + cutting");
     expect(tabSource).toContain(
-      "subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts + cutting"
+      "subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup + cutting"
     );
   });
 

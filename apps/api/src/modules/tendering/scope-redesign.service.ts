@@ -25,7 +25,8 @@ export const SCOPE_OPERATIONAL_COSTS_PRICED_V1 = "scopecards-s1";
 /**
  * SCOPE_QUOTE_DESTINATION_V1 -- marker that every estimating line now carries
  * one destination (PRICE / PROVISIONAL / OPTION / INTERNAL). The three legacy
- * switches (Rule A, the provisional flag, the Other OR-rule) are replaced by
+ * switches - covered-item zeroing, the provisional flag, the discipline OR-rule -
+ * are replaced by
  * this single column. S2b arms only when this string is on main.
  */
 export const SCOPE_QUOTE_DESTINATION_V1 = "scopecards-s2a";
@@ -935,8 +936,8 @@ export class ScopeRedesignService {
     //   optionSubtotal / ...WithMarkup      -> OPTION destination
     //   internalSubtotal / ...WithMarkup    -> INTERNAL destination (reported, not summed into price)
     //
-    // Rule A (pricedBySubItemId zeroing) and the provisional predicate
-    // (isProvisional || discipline==="Other") are removed. The quoteDestination
+    // Covered-item zeroing (the pricedBySubItemId rule) and the provisional
+    // predicate (its boolean flag OR the discipline test) are removed. The quoteDestination
     // column already encodes both decisions for every row via the backfill.
     // Rule B (SUB line prices at selected quote) is unchanged.
     const perDiscipline: Record<
@@ -981,7 +982,7 @@ export class ScopeRedesignService {
       // Rule B (scope-subcontracted order 4) -- a SUB discipline line's own
       // price is the selected quote (amount where isSelected). When no quote
       // is selected the line prices at zero (visibly incomplete, not silently
-      // free). Rule A (covered items zeroed) was removed; INTERNAL destination
+      // free). Covered-item zeroing was removed; INTERNAL destination
       // rows do the same work and are encoded by the backfill migration.
       if (itemDiscipline === "SUB") {
         const selectedQuote = item.subLineQuotes[0];

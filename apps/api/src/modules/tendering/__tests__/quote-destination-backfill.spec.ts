@@ -105,6 +105,7 @@ describe("S2a backfill -- quote_destination derivation from legacy columns", () 
       data: {
         tenderId,
         discipline: "DEM",
+        name: "DEM",
         cardNumber: 1,
         sortOrder: 0,
         createdById: user.id
@@ -116,6 +117,7 @@ describe("S2a backfill -- quote_destination derivation from legacy columns", () 
       data: {
         tenderId,
         discipline: "Other",
+        name: "Other",
         cardNumber: 2,
         sortOrder: 1,
         createdById: user.id

@@ -16,6 +16,7 @@ import {
   isNumberKindColumn,
   matchScenarioRow,
   moveNote,
+  pricingFieldRows,
   rateFieldRows,
   renameWarning,
   resolveScenarioKeys,
@@ -898,10 +899,12 @@ describe("RATE_FIELDS_TABLE_V2 · the rendered card", () => {
     expect(cardMarkup(CORE_ROWS)).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   });
 
-  it("an empty table says so instead of rendering a header over nothing", () => {
+  it("an empty table renders no column management table", () => {
     const markup = cardMarkup([]);
-    expect(markup).not.toContain("<thead>");
-    expect(markup).toContain("No fields yet");
+    // The full-detail table only appears inside the <details> collapsible, which
+    // is suppressed when there are no fields. The card still renders its heading.
+    expect(markup).not.toContain("<details>");
+    expect(markup).toContain("What the pricing steps use");
   });
 });
 
@@ -1382,6 +1385,67 @@ describe("ratesListsHelpers · swapSortOrders", () => {
     expect(result).not.toBeNull();
     const [p0, p1] = result!;
     expect(p0.sortOrder).not.toBe(p1.sortOrder);
+  });
+});
+
+// ── RATE_S4_PRICING_FIELD_ROWS ─────────────────────────────────────────────
+
+describe("ratesListsHelpers · pricingFieldRows", () => {
+  // Table: one column "Rate" (VALUE). Steps name "Rate" and three line fields.
+  const COLS: RateColumn[] = [
+    col({ id: "v1", name: "Rate", dataType: "CURRENCY", role: "VALUE", unit: "hole" })
+  ];
+  const LINE_FIELDS: import("@project-ops/config/charge-step-semantics").RateLineField[] = [
+    { name: "Depth", kind: "number", unit: "mm" },
+    { name: "Elevation", kind: "text", options: ["Floor", "Wall"] },
+    { name: "Holes", kind: "number" }
+  ];
+  const STEPS: ChargeStep[] = [
+    { op: "start", field: "Depth" },
+    { op: "multiply", field: "Rate" },
+    { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+    { op: "multiply", field: "Holes" }
+  ];
+
+  it("returns one row per field named by any step, columns and line fields both", () => {
+    const rows = pricingFieldRows(COLS, LINE_FIELDS, STEPS);
+    expect(rows).toHaveLength(4);
+  });
+
+  it("line fields are marked source = estimate line", () => {
+    const rows = pricingFieldRows(COLS, LINE_FIELDS, STEPS);
+    const lineRows = rows.filter((r) => r.source === "line");
+    expect(lineRows).toHaveLength(3);
+    expect(lineRows.map((r) => r.name)).toStrictEqual(["Depth", "Elevation", "Holes"]);
+  });
+
+  it("column-backed fields are marked source = table", () => {
+    const rows = pricingFieldRows(COLS, LINE_FIELDS, STEPS);
+    const tableRows = rows.filter((r) => r.source === "table");
+    expect(tableRows).toHaveLength(1);
+    expect(tableRows[0].name).toBe("Rate");
+  });
+
+  it("a column not named by any step is omitted", () => {
+    const extra: RateColumn[] = [
+      ...COLS,
+      col({ id: "k1", name: "Category", dataType: "TEXT", role: "KEY" })
+    ];
+    const rows = pricingFieldRows(extra, LINE_FIELDS, STEPS);
+    expect(rows.map((r) => r.name)).not.toContain("Category");
+  });
+
+  it("steps string uses usedInLabel format", () => {
+    const rows = pricingFieldRows(COLS, LINE_FIELDS, STEPS);
+    const rateRow = rows.find((r) => r.name === "Rate")!;
+    expect(rateRow.steps).toBe("step 2");
+    const elevationRow = rows.find((r) => r.name === "Elevation")!;
+    expect(elevationRow.steps).toBe("step 3");
+  });
+
+  it("empty steps returns empty array", () => {
+    expect(pricingFieldRows(COLS, LINE_FIELDS, [])).toHaveLength(0);
+    expect(pricingFieldRows(COLS, LINE_FIELDS, null)).toHaveLength(0);
   });
 });
 

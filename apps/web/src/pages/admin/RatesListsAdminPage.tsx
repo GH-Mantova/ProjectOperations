@@ -5,8 +5,9 @@ import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
-import { FilterableRateGrid, type StructureEditing } from "../../components/rates/FilterableRateGrid";
+import { FilterableRateGrid, type StructureEditing, type StructureAdding } from "../../components/rates/FilterableRateGrid";
 import { ColumnSettingsPanel } from "../../components/rates/ColumnSettingsPanel";
+import { EmptyTableFirstStep } from "../../components/rates/EmptyTableFirstStep";
 import { NoAccess } from "../../components/NoAccess";
 import { markChargedFrom, type RateGridColumn, type RateGridRow } from "../../components/rates/rateGridModel";
 import {
@@ -18,6 +19,7 @@ import {
   groupBindings,
   matchScenarioRow,
   moveNote,
+  pricingFieldRows,
   rateFieldRows,
   renameWarning,
   resolveScenarioKeys,
@@ -30,6 +32,7 @@ import {
   type FieldKind,
   type ListBinding,
   type ListBindingConsumerType,
+  type PricingFieldRow,
   type RateColumn,
   type RateColumnDataType,
   type RateColumnRole,
@@ -962,6 +965,14 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
     () => rateFieldRows(table.columns, table.lineFields ?? [], chargeSteps),
     [table.columns, table.lineFields, chargeSteps]
   );
+
+  // RATE_S4_STRUCTURE_ADDING — the shrunk Fields card shows only fields that
+  // the pricing steps actually name. Same step list, so the two cards agree
+  // without a second fetch.
+  const pricingRows = useMemo(
+    () => pricingFieldRows(table.columns, table.lineFields ?? [], chargeSteps),
+    [table.columns, table.lineFields, chargeSteps]
+  );
   const rowErrors = useMemo(
     () => (rowDraft ? validateRowCells(table.columns, rowDraft) : []),
     [table.columns, rowDraft]
@@ -1023,6 +1034,14 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
     revertPatches: Array<{ id: string; sortOrder: number }>;
   } | null>(null);
 
+  // RATE_S4_STRUCTURE_ADDING — new column flow (header inline + ColumnSettingsPanel in create mode).
+  // `newColName` holds the name typed in the header `+` cell before the settings panel opens.
+  const [newColName, setNewColName] = useState<string | null>(null);
+  const [newColSettingsOpen, setNewColSettingsOpen] = useState(false);
+
+  // Draft row state managed here so it lives with the handlers.
+  const [gridRowDraft, setGridRowDraft] = useState<Record<string, unknown> | null>(null);
+
   /** Mirror of handleDeleteColumn — sends PATCH to update a column. */
   const handleUpdateColumn = async (
     columnId: string,
@@ -1038,6 +1057,24 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
       return;
     }
     setSettingsColumnId(null);
+    await onChanged();
+  };
+
+  /**
+   * RATE_S4_STRUCTURE_ADDING — POST a new row from the in-grid draft.
+   * Cells keyed by column id (never by position — schema.prisma ~6021).
+   */
+  const handleAddRow = async (draft: Record<string, unknown>) => {
+    setPendingError(null);
+    const res = await authFetch(`/rates/tables/${table.id}/rows`, {
+      method: "POST",
+      body: JSON.stringify({ cells: draft })
+    });
+    if (!res.ok) {
+      setPendingError(await readApiErrorMessage(res, "Add row failed."));
+      return;
+    }
+    setGridRowDraft(null);
     await onChanged();
   };
 
@@ -1362,7 +1399,110 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         {pendingError ? <ErrorBanner message={pendingError} onDismiss={() => setPendingError(null)} /> : null}
       </div>
 
-      <FieldsCard fields={fieldRows} onAdd={handleAddColumn} onDelete={handleDeleteColumn} />
+      {/* RATE_S4_STRUCTURE_ADDING — guided first step when the table has no columns */}
+      {table.columns.length === 0 ? (
+        <div className="s7-card">
+          <EmptyTableFirstStep
+            onCreate={({ name, unit }) =>
+              handleAddColumn({ name, role: "VALUE", dataType: "CURRENCY", unit })
+            }
+          />
+        </div>
+      ) : (
+        <RowsCard
+          columns={table.columns}
+          rows={table.rows}
+          lists={lists}
+          // RATE_SCENARIO_PICKER_V2 — the other half of the same answer.
+          highlightRowId={matchedRowId}
+          rowDraft={rowDraft}
+          rowErrors={rowErrors}
+          editRowId={editRowId}
+          editDraft={editDraft}
+          editErrors={editErrors}
+          onStartAdd={startAddRow}
+          onCancelAdd={cancelAddRow}
+          onCommitAdd={commitRow}
+          onChangeDraft={(next) => setRowDraft(next)}
+          onStartEdit={handleEditRow}
+          onCancelEdit={cancelEditRow}
+          onCommitEdit={commitEditRow}
+          onChangeEditDraft={(next) => setEditDraft(next)}
+          onDeleteRow={handleDeleteRow}
+          // RATE_S3_COLUMN_STRUCTURE — admin-only structure editing controls.
+          structureEditing={{
+            onOpenSettings: (col) => setSettingsColumnId(col.key),
+            onMove: (col, dir) => void handleMoveColumn(col.key, dir),
+            onDelete: (col) => void handleDeleteColumn(col.key),
+            canMoveLeft: (col) => {
+              const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+              return sorted[0]?.id !== col.key;
+            },
+            canMoveRight: (col) => {
+              const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+              return sorted[sorted.length - 1]?.id !== col.key;
+            },
+            deleteRefusal,
+            openSettingsKey: settingsColumnId,
+            renderSettings: (col) => {
+              const rateCol = table.columns.find((c) => c.id === col.key);
+              if (!rateCol) return null;
+              return (
+                <ColumnSettingsPanel
+                  column={rateCol}
+                  allColumns={table.columns}
+                  lists={lists ?? []}
+                  chargeSteps={chargeSteps}
+                  onSave={(patch) => handleUpdateColumn(col.key, patch)}
+                  onCancel={() => setSettingsColumnId(null)}
+                />
+              );
+            }
+          }}
+          // RATE_S4_STRUCTURE_ADDING — add-column and add-row in the grid.
+          structureAdding={{
+            onAddColumn: () => {
+              setNewColName("");
+              setNewColSettingsOpen(true);
+            },
+            onAddRow: () => setGridRowDraft(blankRowCells(table.columns)),
+            addRowDraft: gridRowDraft,
+            onDraftChange: setGridRowDraft,
+            onSubmitDraft: () => handleAddRow(gridRowDraft ?? {}),
+            onCancelDraft: () => setGridRowDraft(null),
+            renderDraftCell: (col, value, onChange) => {
+              const rateCol = table.columns.find((c) => c.id === col.key);
+              if (!rateCol) return null;
+              return (
+                <CellEditor
+                  column={rateCol}
+                  value={value}
+                  onChange={onChange}
+                />
+              );
+            }
+          }}
+        />
+      )}
+
+      {/* RATE_S4_STRUCTURE_ADDING — new column ColumnSettingsPanel in create mode */}
+      {newColSettingsOpen ? (
+        <NewColumnPanel
+          name={newColName ?? ""}
+          allColumns={table.columns}
+          lists={lists ?? []}
+          chargeSteps={chargeSteps}
+          onCreate={(col) => {
+            setNewColSettingsOpen(false);
+            setNewColName(null);
+            return handleAddColumn(col);
+          }}
+          onCancel={() => {
+            setNewColSettingsOpen(false);
+            setNewColName(null);
+          }}
+        />
+      ) : null}
 
       <ChargeStepsEditor
         tableId={table.id}
@@ -1432,57 +1572,8 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         </div>
       ) : null}
 
-      <RowsCard
-        columns={table.columns}
-        rows={table.rows}
-        lists={lists}
-        // RATE_SCENARIO_PICKER_V2 — the other half of the same answer.
-        highlightRowId={matchedRowId}
-        rowDraft={rowDraft}
-        rowErrors={rowErrors}
-        editRowId={editRowId}
-        editDraft={editDraft}
-        editErrors={editErrors}
-        onStartAdd={startAddRow}
-        onCancelAdd={cancelAddRow}
-        onCommitAdd={commitRow}
-        onChangeDraft={(next) => setRowDraft(next)}
-        onStartEdit={handleEditRow}
-        onCancelEdit={cancelEditRow}
-        onCommitEdit={commitEditRow}
-        onChangeEditDraft={(next) => setEditDraft(next)}
-        onDeleteRow={handleDeleteRow}
-        // RATE_S3_COLUMN_STRUCTURE — admin-only structure editing controls.
-        structureEditing={{
-          onOpenSettings: (col) => setSettingsColumnId(col.key),
-          onMove: (col, dir) => void handleMoveColumn(col.key, dir),
-          onDelete: (col) => void handleDeleteColumn(col.key),
-          canMoveLeft: (col) => {
-            const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
-            return sorted[0]?.id !== col.key;
-          },
-          canMoveRight: (col) => {
-            const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
-            return sorted[sorted.length - 1]?.id !== col.key;
-          },
-          deleteRefusal,
-          openSettingsKey: settingsColumnId,
-          renderSettings: (col) => {
-            const rateCol = table.columns.find((c) => c.id === col.key);
-            if (!rateCol) return null;
-            return (
-              <ColumnSettingsPanel
-                column={rateCol}
-                allColumns={table.columns}
-                lists={lists ?? []}
-                chargeSteps={chargeSteps}
-                onSave={(patch) => handleUpdateColumn(col.key, patch)}
-                onCancel={() => setSettingsColumnId(null)}
-              />
-            );
-          }
-        }}
-      />
+      {/* RATE_S4_STRUCTURE_ADDING — shrunk Fields card (what pricing steps use), with the steps card. */}
+      <FieldsCard fields={fieldRows} onAdd={handleAddColumn} onDelete={handleDeleteColumn} pricingRows={pricingRows} />
 
       {hubImportPreview ? (
         <HubImportPreviewModal
@@ -1578,10 +1669,25 @@ function KindChip({ kind }: { kind: FieldKind }) {
  * `required` is still enforced by `validateRowCells`. Nothing about how a
  * field is stored changed here.
  */
+/**
+ * RATE_S4_STRUCTURE_ADDING — the shrunk Fields card.
+ *
+ * Shows only: the column management table (for delete/Used-in warnings) plus
+ * the new "What the pricing steps use" mini-table. The Add column form has
+ * moved into the grid header's `+` cell. The full-detail table stays so
+ * `deleteFieldWarning` and `usedInLabel` remain in view — the task requires
+ * both to survive.
+ *
+ * The `pricingRows` prop is the new S4 addition: a summary of fields actually
+ * named by the charge steps, for the "What the pricing steps use" section that
+ * sits with the charge-steps card. Passed as a separate array so this function
+ * keeps the same signature that the tests exercise.
+ */
 export function FieldsCard({
   fields,
   onAdd,
-  onDelete
+  onDelete,
+  pricingRows
 }: {
   fields: RateFieldRow[];
   onAdd: (col: {
@@ -1593,202 +1699,208 @@ export function FieldsCard({
     required?: boolean;
   }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  /** RATE_S4 — the subset the pricing steps actually name. */
+  pricingRows?: PricingFieldRow[];
 }) {
-  const [name, setName] = useState("");
-  const [dataType, setDataType] = useState<RateColumnDataType>("TEXT");
-  const [role, setRole] = useState<RateColumnRole>("KEY");
-  const [unit, setUnit] = useState("");
-  const [listSlug, setListSlug] = useState("");
-  const [required, setRequired] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const canSave = name.trim().length > 0 && (role !== "VALUE" || unit.trim().length > 0) && (dataType !== "LIST_REF" || listSlug.trim().length > 0);
-
-  const submit = async () => {
-    setBusy(true);
-    try {
-      await onAdd({
-        name: name.trim(),
-        dataType,
-        role,
-        unit: unit.trim() || undefined,
-        listSlug: listSlug.trim() || undefined,
-        required
-      });
-      setName("");
-      setUnit("");
-      setListSlug("");
-      setRequired(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="s7-card">
-      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>Fields</h3>
+      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>
+        What the pricing steps use
+      </h3>
       <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 12px", maxWidth: "70ch" }}>
-        What the steps can use. A field from the rate table comes off the matched row; a field from
+        A field from the rate table comes off the matched row; a field from
         the estimate line is what the estimator enters.
       </p>
-      {fields.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No fields yet — add KEY, VALUE, and INFO columns below.</p>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
+      {pricingRows && pricingRows.length > 0 ? (
+        <div style={{ overflowX: "auto", marginBottom: 16 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-default)", color: "var(--text-muted)" }}>
                 <th style={fieldHeadStyle}>Field</th>
                 <th style={fieldHeadStyle}>From</th>
-                <th style={fieldHeadStyle}>Kind</th>
-                <th style={fieldHeadStyle}>Unit</th>
-                <th style={fieldHeadStyle}>Used in</th>
-                <th />
+                <th style={fieldHeadStyle}>Steps</th>
               </tr>
             </thead>
             <tbody>
-              {fields.map((f) => {
-                // The warning is about a delete, so only a row that offers
-                // one carries it. A line field's `Used in` still names its
-                // steps; what it does not do is caution about an action that
-                // is not on the row.
-                const warning = f.id === null ? null : deleteFieldWarning(f.name, f.usedIn);
-                return (
-                  <tr key={`${f.source}:${f.name}`} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                    <td style={fieldCellStyle}>
-                      <span style={{ fontWeight: 600 }}>{f.name}</span>
-                      {/* The list a LIST_REF column draws from. The mock-up has
-                          no place for it; without it nothing on this screen
-                          says which GlobalList feeds the column. */}
-                      {f.listSlug ? (
-                        <span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>
-                          {f.listSlug}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td style={{ ...fieldCellStyle, color: "var(--text-secondary)" }}>
-                      {FIELD_SOURCE_LABELS[f.source]}
-                    </td>
-                    <td style={fieldCellStyle}>
-                      <KindChip kind={f.kind} />
-                    </td>
-                    <td style={{ ...fieldCellStyle, color: "var(--text-muted)" }}>{f.unit ?? "—"}</td>
-                    <td
-                      style={{
-                        ...fieldCellStyle,
-                        color: warning ? "var(--status-warning)" : "var(--text-muted)"
-                      }}
-                      title={warning ?? undefined}
-                    >
-                      {usedInLabel(f.usedIn)}
-                    </td>
-                    <td style={{ ...fieldCellStyle, textAlign: "right" }}>
-                      {/* A line field is declared on the table alongside the
-                          charge steps and has no id and no delete route of its
-                          own, so this slice offers no control for one rather
-                          than a control that cannot work. */}
-                      {f.id === null ? null : (
-                        <button
-                          type="button"
-                          className="s7-btn s7-btn--ghost s7-btn--sm"
-                          onClick={() => void onDelete(f.id as string)}
-                          style={{ minHeight: 32, ...(warning ? { color: "var(--status-danger)" } : null) }}
-                          title={warning ?? undefined}
-                          aria-label={warning ? `Delete ${f.name}. ${warning}` : `Delete ${f.name}`}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {pricingRows.map((r) => (
+                <tr key={`${r.source}:${r.name}`} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                  <td style={{ ...fieldCellStyle, fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ ...fieldCellStyle, color: "var(--text-secondary)" }}>
+                    {FIELD_SOURCE_LABELS[r.source]}
+                  </td>
+                  <td style={{ ...fieldCellStyle, color: "var(--text-muted)" }}>{r.steps}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
 
-      {/* `var(--border, ...)` names no token in tokens.css — the hex fallback
-          was doing the work, in both themes. `--border-default` is the real
-          one, and it is redefined for dark mode. */}
-      <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-default)" }}>
-        <h4 style={{ margin: "0 0 8px", fontSize: 13, textTransform: "uppercase", color: "var(--text-muted)" }}>
-          Add column
-        </h4>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 140px 1fr auto", gap: 8, alignItems: "end" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Name</span>
-            <input
-              className="s7-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Equipment"
-            />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Role</span>
-            <select
-              className="s7-select"
-              value={role}
-              onChange={(e) => setRole(e.target.value as RateColumnRole)}
-            >
-              <option value="KEY">KEY</option>
-              <option value="VALUE">VALUE ($)</option>
-              <option value="INFO">INFO</option>
-            </select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Type</span>
-            <select
-              className="s7-select"
-              value={dataType}
-              onChange={(e) => setDataType(e.target.value as RateColumnDataType)}
-            >
-              <option value="TEXT">TEXT</option>
-              <option value="NUMBER">NUMBER</option>
-              <option value="CURRENCY">CURRENCY</option>
-              <option value="DATE">DATE</option>
-              <option value="BOOL">BOOL</option>
-              <option value="LIST_REF">LIST_REF</option>
-            </select>
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {dataType === "LIST_REF" ? "List slug (e.g. cutting-materials)" : role === "VALUE" ? "Unit (e.g. hr, m, tonne)" : "Unit (optional)"}
-            </span>
-            {dataType === "LIST_REF" ? (
-              <input
-                className="s7-input"
-                value={listSlug}
-                onChange={(e) => setListSlug(e.target.value)}
-                placeholder="cutting-materials"
-              />
-            ) : (
-              <input
-                className="s7-input"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                placeholder={role === "VALUE" ? "hr" : ""}
-              />
-            )}
-          </label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-              <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
-              Required
-            </label>
-            <button
-              type="button"
-              className="s7-btn s7-btn--primary s7-btn--sm"
-              disabled={!canSave || busy}
-              onClick={() => void submit()}
-              style={{ minHeight: 36 }}
-            >
-              {busy ? "Adding…" : "Add"}
-            </button>
+      {/* Full column management table — needed for Used-in warnings and delete controls */}
+      {fields.length === 0 ? null : (
+        <details style={{ marginTop: pricingRows && pricingRows.length > 0 ? 0 : undefined }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: 12,
+              color: "var(--text-muted)",
+              marginBottom: 8,
+              userSelect: "none"
+            }}
+          >
+            All columns ({fields.filter((f) => f.id !== null).length} stored, {fields.filter((f) => f.id === null).length} from estimate line)
+          </summary>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border-default)", color: "var(--text-muted)" }}>
+                  <th style={fieldHeadStyle}>Field</th>
+                  <th style={fieldHeadStyle}>From</th>
+                  <th style={fieldHeadStyle}>Kind</th>
+                  <th style={fieldHeadStyle}>Unit</th>
+                  <th style={fieldHeadStyle}>Used in</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {fields.map((f) => {
+                  // The warning is about a delete, so only a row that offers
+                  // one carries it. A line field's `Used in` still names its
+                  // steps; what it does not do is caution about an action that
+                  // is not on the row.
+                  const warning = f.id === null ? null : deleteFieldWarning(f.name, f.usedIn);
+                  return (
+                    <tr key={`${f.source}:${f.name}`} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                      <td style={fieldCellStyle}>
+                        <span style={{ fontWeight: 600 }}>{f.name}</span>
+                        {/* The list a LIST_REF column draws from. The mock-up has
+                            no place for it; without it nothing on this screen
+                            says which GlobalList feeds the column. */}
+                        {f.listSlug ? (
+                          <span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>
+                            {f.listSlug}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td style={{ ...fieldCellStyle, color: "var(--text-secondary)" }}>
+                        {FIELD_SOURCE_LABELS[f.source]}
+                      </td>
+                      <td style={fieldCellStyle}>
+                        <KindChip kind={f.kind} />
+                      </td>
+                      <td style={{ ...fieldCellStyle, color: "var(--text-muted)" }}>{f.unit ?? "—"}</td>
+                      <td
+                        style={{
+                          ...fieldCellStyle,
+                          color: warning ? "var(--status-warning)" : "var(--text-muted)"
+                        }}
+                        title={warning ?? undefined}
+                      >
+                        {usedInLabel(f.usedIn)}
+                      </td>
+                      <td style={{ ...fieldCellStyle, textAlign: "right" }}>
+                        {/* A line field is declared on the table alongside the
+                            charge steps and has no id and no delete route of its
+                            own, so this slice offers no control for one rather
+                            than a control that cannot work. */}
+                        {f.id === null ? null : (
+                          <button
+                            type="button"
+                            className="s7-btn s7-btn--ghost s7-btn--sm"
+                            onClick={() => void onDelete(f.id as string)}
+                            style={{ minHeight: 32, ...(warning ? { color: "var(--status-danger)" } : null) }}
+                            title={warning ?? undefined}
+                            aria-label={warning ? `Delete ${f.name}. ${warning}` : `Delete ${f.name}`}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/**
+ * RATE_S4_STRUCTURE_ADDING — ColumnSettingsPanel in "create mode".
+ *
+ * Wraps ColumnSettingsPanel with a synthetic "new column" object so the panel
+ * can be reused without building a second form. The panel's `onSave` returns a
+ * patch object; here we translate it into a full `handleAddColumn` call.
+ */
+function NewColumnPanel({
+  name,
+  allColumns,
+  lists,
+  chargeSteps,
+  onCreate,
+  onCancel
+}: {
+  name: string;
+  allColumns: RateColumn[];
+  lists: { name: string; slug: string }[];
+  chargeSteps?: readonly ChargeStep[];
+  onCreate: (col: {
+    name: string;
+    dataType: RateColumnDataType;
+    role: RateColumnRole;
+    unit?: string;
+    listSlug?: string;
+    required?: boolean;
+  }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  // Synthesise a stub RateColumn so ColumnSettingsPanel has something to diff against.
+  const stubColumn: RateColumn = {
+    id: "__new__",
+    name,
+    dataType: "TEXT",
+    role: "KEY",
+    unit: null,
+    listSlug: null,
+    required: false,
+    min: null,
+    max: null,
+    sortOrder: allColumns.length
+  };
+
+  return (
+    <div
+      className="s7-card"
+      style={{ position: "relative" }}
+      data-testid="new-column-panel"
+    >
+      <h4
+        style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-muted)", textTransform: "uppercase" }}
+      >
+        New column
+      </h4>
+      <ColumnSettingsPanel
+        column={stubColumn}
+        allColumns={allColumns}
+        lists={lists}
+        chargeSteps={chargeSteps}
+        onSave={async (patch) => {
+          const finalName = (patch.name ?? name).trim();
+          if (!finalName) return;
+          await onCreate({
+            name: finalName,
+            dataType: patch.dataType ?? stubColumn.dataType,
+            role: patch.role ?? stubColumn.role,
+            unit: patch.unit ?? undefined,
+            listSlug: patch.listSlug ?? undefined,
+            required: patch.required
+          });
+        }}
+        onCancel={onCancel}
+      />
     </div>
   );
 }
@@ -1833,7 +1945,8 @@ function RowsCard({
   onCommitEdit,
   onChangeEditDraft,
   onDeleteRow,
-  structureEditing
+  structureEditing,
+  structureAdding
 }: {
   columns: RateColumn[];
   rows: RateRow[];
@@ -1861,6 +1974,8 @@ function RowsCard({
   onDeleteRow: (id: string) => Promise<void>;
   /** RATE_S3_COLUMN_STRUCTURE — admin-only. Absent on the tender RatesTab. */
   structureEditing?: StructureEditing;
+  /** RATE_S4_STRUCTURE_ADDING — admin-only add-column and add-row in the grid. */
+  structureAdding?: StructureAdding;
 }) {
   const errorByColumn = useMemo(() => {
     const m = new Map<string, string>();
@@ -1899,7 +2014,8 @@ function RowsCard({
     <div className="s7-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Rows</h3>
-        {rowDraft || isEditing ? null : (
+        {/* When structureAdding is present the add-row lives in the grid; keep the button for the legacy path. */}
+        {!structureAdding && (rowDraft || isEditing) ? null : !structureAdding ? (
           <button
             type="button"
             className="s7-btn s7-btn--primary s7-btn--sm"
@@ -1909,46 +2025,43 @@ function RowsCard({
           >
             + Add row
           </button>
-        )}
+        ) : null}
       </div>
 
-      {columns.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>Add columns before you add rows.</p>
-      ) : rows.length === 0 && !rowDraft ? (
+      {rows.length === 0 && !structureAdding ? (
         <EmptyState icon="📊" heading="No rows yet" subtext="Add rows to build this rate table." />
       ) : (
         <>
-          {rows.length > 0 ? (
-            <FilterableRateGrid
-              columns={gridColumns}
-              rows={gridRows}
-              highlightRowId={highlightRowId}
-              testIdPrefix="admin-rates"
-              trailingHeader={<span aria-hidden />}
-              renderTrailing={(gridRow) => (
-                <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => onStartEdit(gridRow.id)}
-                    disabled={isEditing || rowDraft !== null}
-                    style={{ minHeight: 32 }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => void onDeleteRow(gridRow.id)}
-                    style={{ minHeight: 32 }}
-                  >
-                    Delete
-                  </button>
-                </span>
-              )}
-              structureEditing={structureEditing}
-            />
-          ) : null}
+          <FilterableRateGrid
+            columns={gridColumns}
+            rows={gridRows}
+            highlightRowId={highlightRowId}
+            testIdPrefix="admin-rates"
+            trailingHeader={<span aria-hidden />}
+            renderTrailing={(gridRow) => (
+              <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => onStartEdit(gridRow.id)}
+                  disabled={isEditing || rowDraft !== null}
+                  style={{ minHeight: 32 }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => void onDeleteRow(gridRow.id)}
+                  style={{ minHeight: 32 }}
+                >
+                  Delete
+                </button>
+              </span>
+            )}
+            structureEditing={structureEditing}
+            structureAdding={structureAdding}
+          />
           {/* RATE_SCENARIO_PICKER_V2 — the caption is what makes the highlight
               readable. A tinted row with nothing saying why is a row someone
               will read as an error state. Printed only when a row IS
@@ -2015,7 +2128,8 @@ function RowsCard({
               </div>
             </div>
           ) : null}
-          {rowDraft ? (
+          {/* Legacy below-grid add-row panel — kept for the non-structureAdding path */}
+          {!structureAdding && rowDraft ? (
             <div
               style={{
                 marginTop: 12,

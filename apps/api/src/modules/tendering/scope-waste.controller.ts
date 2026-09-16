@@ -1,7 +1,8 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsArray, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
+import { QuoteDestination } from "@prisma/client";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -49,6 +50,9 @@ class UpsertWasteDto {
   @IsOptional() @Type(() => Number) @IsNumber() capacityPerLoad?: number | null;
   @IsOptional() @IsString() capacityUnit?: string | null;
   @IsOptional() @Type(() => Number) @IsNumber() dailyKm?: number | null;
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this waste line goes
+  // on the client quote. Optional; defaults PRICE.
+  @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
 }
 
 class ReorderEntryDto {

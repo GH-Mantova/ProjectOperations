@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
-import { IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
+import { QuoteDestination } from "@prisma/client";
 
 /**
  * SCOPE_OPERATIONAL_COSTS_V1 — units that carry a duration.
@@ -120,4 +121,7 @@ export class UpsertOperationalCostLineDto {
   @IsOptional() @Type(() => Number) @IsNumber() markupOverride?: number | null;
   // Scope Cards S1 — the mock-up's per-line comment.
   @IsOptional() @IsString() notes?: string | null;
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this operational-cost
+  // line goes on the client quote. Optional; defaults PRICE.
+  @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
 }

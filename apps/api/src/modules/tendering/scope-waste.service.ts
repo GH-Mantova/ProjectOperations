@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
@@ -35,6 +35,9 @@ type UpsertWasteDto = {
   capacityPerLoad?: number | null;
   capacityUnit?: string | null;
   dailyKm?: number | null;
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this waste line goes
+  // on the client quote. Optional; defaults PRICE.
+  quoteDestination?: QuoteDestination;
 };
 
 // R3 T-1 — snapshot cost components computed by the engine. Returned by
@@ -229,6 +232,8 @@ export class ScopeWasteService {
         quotedTransportRatePerDay: toDecimal(engine.quotedTransportRatePerDay),
         notes: dto.notes ?? null,
         sortOrder: dto.sortOrder ?? 0,
+        // SCOPE_QUOTE_DESTINATION_V1 -- defaults PRICE when absent.
+        quoteDestination: dto.quoteDestination ?? QuoteDestination.PRICE,
         // PR B3 — manual creates default autoSummed=false. Only
         // sumFromAbove flips this to true on aggregator-created rows.
         autoSummed: false,
@@ -311,6 +316,8 @@ export class ScopeWasteService {
     if (dtoDailyKmN !== undefined) data.dailyKm = toDecimal(dtoDailyKmN);
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    // SCOPE_QUOTE_DESTINATION_V1 -- only overwrite when the DTO carries it.
+    if (dto.quoteDestination !== undefined) data.quoteDestination = dto.quoteDestination;
 
     if (pricingTouched) {
       // Compute effective values for the totals: DTO value (narrowed) wins

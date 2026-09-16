@@ -1461,6 +1461,22 @@ enum TenderPricingBasis {
   IDENTIFIED_RISK
 }
 
+// SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) - where a line goes on the
+// client quote. One destination, four values, default PRICE.
+//   PRICE       -> priced into the tender price (in the tender total)
+//   PROVISIONAL -> a provisional sum, printed under the total
+//   OPTION      -> a cost option, printed beside the total
+//   INTERNAL    -> never crosses to the quote; leaves the programme too
+// Added to ScopeOfWorksItem, ScopeWasteItem, CuttingSheetItem,
+// ScopeOperationalCostLine. All four default to PRICE so existing rows
+// are unchanged until a backfill or an estimator changes the destination.
+enum QuoteDestination {
+  PRICE
+  PROVISIONAL
+  OPTION
+  INTERNAL
+}
+
 // A tender-scope package (e.g. Asbestos, Demolition, Concrete Cutting, Civil).
 // disciplineItemId points at a GlobalListItem in the `tender-package-disciplines`
 // list Ã¢â‚¬" Director-configurable, not a hardcoded enum.
@@ -3720,7 +3736,7 @@ model ScopeOfWorksItem {
   quantity     Decimal? @db.Decimal(12, 3)
   factor       Decimal? @db.Decimal(12, 6)
 
-  // scope-subcontracted order 3 — per-line provisional flag. When true,
+  // scope-subcontracted order 3 -- per-line provisional flag. When true,
   // this item's cost lands in provisionalSubtotal / provisionalWithMarkup
   // rather than the priced side, and is excluded from tenderPrice.
   // Applies to every discipline (not only Other/SUB). The rule is:
@@ -3728,7 +3744,16 @@ model ScopeOfWorksItem {
   // so existing Other rows keep printing in the provisional block without
   // a backfill. DEFAULT false means all existing rows are priced (current
   // behaviour unchanged).
+  //
+  // @deprecated read by nothing after SCOPE_QUOTE_DESTINATION_V1;
+  //   a cleanup PR drops it. Use quoteDestination instead.
   isProvisional     Boolean  @default(false) @map("is_provisional")
+
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this line goes on
+  // the client quote. The backfill migration derives this from isProvisional,
+  // the discipline OR-rule, and pricedBySubItemId so pre-migration tenders
+  // read identically to the cent after the backfill runs.
+  quoteDestination  QuoteDestination @default(PRICE) @map("quote_destination")
   // Provisional sum amount (discipline=Prv only). Final price = this value,
   // no markup applied. Ignored for non-Prv rows.
   provisionalAmount Decimal? @map("provisional_amount") @db.Decimal(12, 2)
@@ -3766,6 +3791,7 @@ model ScopeOfWorksItem {
 
   @@index([tenderId, itemNumber])
   @@index([tenderId, status])
+  @@index([tenderId, quoteDestination])
   @@index([cardId])
   @@index([pricedBySubItemId])
   @@map("scope_of_works_items")
@@ -3899,6 +3925,10 @@ model ScopeWasteItem {
   quotedTransportRatePerDay Decimal?           @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
   notes                     String?
   sortOrder                 Int                @default(0) @map("sort_order")
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this waste line goes
+  // on the client quote. Defaults PRICE (no backfill needed: all existing
+  // waste rows were priced into the total).
+  quoteDestination          QuoteDestination   @default(PRICE) @map("quote_destination")
   createdById               String             @map("created_by_id")
   createdBy                 User               @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt                 DateTime           @default(now()) @map("created_at")
@@ -3983,6 +4013,10 @@ model ScopeOperationalCostLine {
   // The mock-up's per-line comment.
   notes          String?
   sortOrder    Int                @default(0) @map("sort_order")
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this operational-cost
+  // line goes on the client quote. Defaults PRICE (no backfill needed: all
+  // existing operational-cost rows were priced into the total).
+  quoteDestination QuoteDestination @default(PRICE) @map("quote_destination")
   createdById  String             @map("created_by_id")
   createdBy    User               @relation("ScopeOperationalCostLineCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt    DateTime           @default(now()) @map("created_at")
@@ -4200,6 +4234,10 @@ model CuttingSheetItem {
   // manual rows (autoCopied=false) and all core-hole/other-rate rows
   // survive. Mirrors ScopeWasteItem.autoSummed from B3.
   autoCopied   Boolean           @default(false) @map("auto_copied")
+  // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this cutting line
+  // goes on the client quote. Defaults PRICE (no backfill needed: all
+  // existing cutting rows were priced into the total).
+  quoteDestination QuoteDestination @default(PRICE) @map("quote_destination")
   createdById  String            @map("created_by_id")
   createdBy    User              @relation("CuttingSheetItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt    DateTime          @default(now()) @map("created_at")

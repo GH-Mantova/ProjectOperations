@@ -3,6 +3,8 @@ import ExcelJS from "exceljs";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { RateTablesService } from "./rate-tables.service";
+import { RateColumnDataTypeDto, RateColumnRoleDto } from "./dto/rate-column.dto";
 
 // ── Public contract types ────────────────────────────────────────────────────
 
@@ -54,7 +56,8 @@ export type ImportStageResult = {
 export class RateXlsmImportService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly rateTables: RateTablesService
   ) {}
 
   // ── Phase 1: Stage ────────────────────────────────────────────────────────
@@ -74,16 +77,23 @@ export class RateXlsmImportService {
    */
   async stageImport(buffer: Buffer, tableSlug: string): Promise<ImportStageResult> {
     // --- 1. Resolve the target table ----------------------------------------
-    const table = await this.prisma.rateTable.findUnique({
+    const tableRaw = await this.prisma.rateTable.findUnique({
       where: { slug: tableSlug },
       include: { columns: { orderBy: { sortOrder: "asc" } } }
     });
-    if (!table) {
+    if (!tableRaw) {
       throw new NotFoundException(
         `Rate table with slug "${tableSlug}" not found. ` +
           `Create the table before importing into it.`
       );
     }
+    // Use a mutable wrapper so the zero-column path can update the columns list
+    // after creation without re-assigning a Prisma readonly result.
+    const table: {
+      id: string;
+      name: string;
+      columns: typeof tableRaw.columns;
+    } = { id: tableRaw.id, name: tableRaw.name, columns: tableRaw.columns };
 
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -127,6 +137,23 @@ export class RateXlsmImportService {
     if (headerCells.length === 0) {
       errors.push("Header row (row 1) is empty — no columns found.");
       return this.emptyResult(tableSlug, errors, warnings);
+    }
+
+    // --- 3b. Zero-column fast path: create columns from row 1 ------------------
+    // When the table has no columns, infer them from the header row and create
+    // each one via RateTablesService.createColumn (which runs assertStructure).
+    // After creation, re-fetch the table so the normal match path runs against
+    // the newly created columns.
+    if (table.columns.length === 0) {
+      await this.createColumnsFromHeader(table.id, headerCells, sheet);
+      // Re-fetch with the new columns so the match-and-data path below works.
+      const refreshed = await this.prisma.rateTable.findUnique({
+        where: { slug: tableSlug },
+        include: { columns: { orderBy: { sortOrder: "asc" } } }
+      });
+      if (refreshed) {
+        table.columns = refreshed.columns;
+      }
     }
 
     // Build a name-indexed map of the DB columns.
@@ -317,6 +344,92 @@ export class RateXlsmImportService {
       impact: { replaced: 0, inserted: 0, changed: 0 },
       tableSlug
     };
+  }
+
+  /**
+   * Infer columns from the sheet header row and create them via
+   * RateTablesService.createColumn (which runs assertStructure).
+   *
+   * Type inference: scan the data cells in each column.
+   *   - All non-empty values parse as finite numbers AND the heading or any
+   *     cell has a currency hint (£ $ € ¥ or the word "cost"/"rate"/"price"
+   *     case-insensitive in the heading) → CURRENCY.
+   *   - All non-empty values parse as finite numbers → NUMBER.
+   *   - Otherwise → TEXT.
+   *
+   * Role inference (applied after type inference across all columns):
+   *   - Rightmost CURRENCY column → VALUE.
+   *   - TEXT columns → KEY.
+   *   - Everything else (NUMBER, non-rightmost CURRENCY) → INFO.
+   *
+   * Columns are created left-to-right (sheet order). If createColumn throws
+   * (e.g. assertStructure rejects duplicate heading or a missing VALUE unit),
+   * the error propagates unchanged.
+   */
+  private async createColumnsFromHeader(
+    tableId: string,
+    headerCells: string[],
+    sheet: ExcelJS.Worksheet
+  ): Promise<void> {
+    // ── 1. Gather all data values per column position ─────────────────────
+    const colValues: unknown[][] = headerCells.map(() => []);
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // skip header
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const idx = colNumber - 1;
+        if (idx < 0 || idx >= headerCells.length) return;
+        const val = this.extractCellValue(cell.value);
+        if (val !== null && val !== "" && val !== undefined) {
+          colValues[idx].push(val);
+        }
+      });
+    });
+
+    // ── 2. Infer data type for each column ────────────────────────────────
+    const CURRENCY_HEADING_RE = /cost|rate|price|fee|charge|amount/i;
+    const CURRENCY_CHAR_RE = /[£$€¥]/;
+
+    const inferredTypes: RateColumnDataTypeDto[] = headerCells.map((heading, idx) => {
+      const vals = colValues[idx];
+      const allNumeric =
+        vals.length > 0 && vals.every((v) => Number.isFinite(typeof v === "number" ? v : Number(v)));
+      if (!allNumeric) return RateColumnDataTypeDto.TEXT;
+
+      const hasCurrencyHint =
+        CURRENCY_CHAR_RE.test(heading) || CURRENCY_HEADING_RE.test(heading);
+      return hasCurrencyHint ? RateColumnDataTypeDto.CURRENCY : RateColumnDataTypeDto.NUMBER;
+    });
+
+    // ── 3. Infer role for each column ─────────────────────────────────────
+    // Find the rightmost CURRENCY column index (the VALUE slot).
+    let rightmostCurrencyIdx = -1;
+    for (let i = inferredTypes.length - 1; i >= 0; i--) {
+      if (inferredTypes[i] === RateColumnDataTypeDto.CURRENCY) {
+        rightmostCurrencyIdx = i;
+        break;
+      }
+    }
+
+    const inferredRoles: RateColumnRoleDto[] = inferredTypes.map((dt, idx) => {
+      if (idx === rightmostCurrencyIdx) return RateColumnRoleDto.VALUE;
+      if (dt === RateColumnDataTypeDto.TEXT) return RateColumnRoleDto.KEY;
+      return RateColumnRoleDto.INFO;
+    });
+
+    // ── 4. Create columns left-to-right via the guarded birth path ────────
+    for (let i = 0; i < headerCells.length; i++) {
+      await this.rateTables.createColumn(tableId, {
+        name: headerCells[i],
+        dataType: inferredTypes[i],
+        role: inferredRoles[i],
+        sortOrder: i
+        // unit is deliberately omitted — VALUE columns are left unit-less
+        // (S1/S2 surface the missing-unit flag). assertStructure will throw
+        // if the resulting structure is invalid (e.g. no KEY column) and the
+        // error propagates to the caller.
+      });
+    }
   }
 
   private buildNaturalKey(cells: Record<string, unknown>, keyColumnIds: string[]): string {

@@ -58,19 +58,15 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (5)
+## 2. 🔧 In-PR — open right now (1)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-15T22:35Z**, `origin/main`
-> 64053600). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-16T14:20Z**, `origin/main`
+> bdc5d05b). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #1973 | docs(pipeline): a draft leaves `drafts\` when its staging PR merges | CLEAN; CI 15 pass / 0 fail / 0 pending |
-| #1972 | feat(tendering): DraftPanel S3 — carry-over strip and Unfinished drafts picker | BLOCKED; CI 13 pass / 0 fail / 2 pending |
-| #1971 | feat(crm): S2 — Relationships on the s7 kit, full width, Save note | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are CP-26 `[LABEL_PRESENT]` — parked by the `do-not-merge` label, not work |
-| #1967 | feat(tendering): scopecards S1 — operational costs become money | BLOCKED; CI 13 pass / 2 fail / 0 pending. Same CP-26 `[LABEL_PRESENT]` pair |
-| #1960 | feat(rates): S2 — column settings, move and delete from the grid header | DIRTY; CI 14 pass / 1 fail / 0 pending. The red is the hex ratchet, read from the job log, not `check-sot-refs` |
+| #1986 | feat(crm): register residual — Next action CSS, Value chip, Logged by chip, Owner | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are CP-26 `[LABEL_PRESENT]`, read from column 3 of the job log — parked by the `do-not-merge` label, not work. Only Marco removes it |
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z

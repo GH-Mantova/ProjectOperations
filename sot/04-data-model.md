@@ -11,9 +11,9 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-09-14 14:17 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `a5ba7c95a076`)
-- Models: 296 | Enums: 69 | FK edges: 493 | Domains: 23
+- Last updated: 2026-09-16 14:20 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `a351d01ca823`)
+- Models: 296 | Enums: 70 | FK edges: 493 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
 
@@ -894,7 +894,7 @@ graph LR
 
 ### Model: ScopeOfWorksItem
 
-- Table: `scope_of_works_items` | Domain: Estimating | Fields: 76
+- Table: `scope_of_works_items` | Domain: Estimating | Fields: 77
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete SetNull)
@@ -906,17 +906,17 @@ graph LR
   - `subLineQuotes` -> **SubLineQuote**[]
 - Referenced by: **ScopeOfWorksItem**, **SubLineQuote**
 - Suggested measures: itemNumber, days, value, tonnes, coreHoleQty, wasteTonnes, wasteLoads, measurementQty, markupOverride, quantity, provisionalAmount
-- Suggested dimensions: tender, card, rowType, status, materialType, elevation, acmType, acmMaterial, excavationMaterial, wasteType, material, plantAsset, materialKind, createdBy, pricedBySubItem
+- Suggested dimensions: tender, card, rowType, status, materialType, elevation, acmType, acmMaterial, excavationMaterial, wasteType, material, plantAsset, materialKind, quoteDestination, createdBy, pricedBySubItem
 
 ### Model: ScopeOperationalCostLine
 
-- Table: `scope_operational_cost_lines` | Domain: Estimating | Fields: 16
+- Table: `scope_operational_cost_lines` | Domain: Estimating | Fields: 21
 - Belongs to (FK out):
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
   - `plantRate` -> **EstimatePlantRate** (plantRateId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Suggested measures: qty, days, rate, rateOverride
-- Suggested dimensions: card, plantRate, createdBy
+- Suggested measures: qty, days, rate, rateOverride, markupOverride
+- Suggested dimensions: card, plantRate, quoteDestination, createdBy
 
 ### Model: ScopeViewConfig
 
@@ -927,7 +927,7 @@ graph LR
 
 ### Model: ScopeWasteItem
 
-- Table: `scope_waste_items` | Domain: Estimating | Fields: 41
+- Table: `scope_waste_items` | Domain: Estimating | Fields: 42
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
@@ -935,7 +935,7 @@ graph LR
   - `asset` -> **Asset** (assetId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
 - Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal, qtyTrucks, loadsPerTruckPerDay, capacityPerLoad, transportCost, fuelCost, disposalCost, quotedDisposalRate, quotedFuelPricePerLitre, quotedTransportRatePerDay
-- Suggested dimensions: tender, card, discipline, wasteType, transportRate, asset, createdBy
+- Suggested dimensions: tender, card, discipline, wasteType, transportRate, asset, quoteDestination, createdBy
 
 ## Domain: Estimating (Legacy)
 
@@ -949,14 +949,14 @@ graph LR
 
 ### Model: CuttingSheetItem
 
-- Table: `cutting_sheet_items` | Domain: Estimating (Legacy) | Fields: 30
+- Table: `cutting_sheet_items` | Domain: Estimating (Legacy) | Fields: 31
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
   - `otherRate` -> **CuttingOtherRate** (otherRateId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
 - Suggested measures: quantityLm, quantityEach, ratePerM, ratePerHole, lineTotal
-- Suggested dimensions: tender, card, itemType, elevation, material, method, otherRate, createdBy
+- Suggested dimensions: tender, card, itemType, elevation, material, method, otherRate, quoteDestination, createdBy
 
 ### Model: EstimateAssumption
 
@@ -2222,7 +2222,7 @@ graph LR
 
 ### Model: Tender
 
-- Table: `tenders` | Domain: Tendering | Fields: 71
+- Table: `tenders` | Domain: Tendering | Fields: 72
 - Belongs to (FK out):
   - `estimator` -> **User** (estimatorUserId, onDelete SetNull)
   - `assignedEstimator` -> **User** (assignedEstimatorId, onDelete SetNull)
@@ -3407,6 +3407,7 @@ graph LR
 - **ProcurementRequestStatus**: DRAFT, SUBMITTED, APPROVED, ISSUED, RECEIVED, CANCELLED
 - **ProjectActivityAction**: PROJECT_CREATED, STATUS_CHANGED, TEAM_CHANGED, CONTRACT_VALUE_CHANGED, BUDGET_CHANGED, DOCUMENT_ADDED, DOCUMENT_REMOVED, WORKER_ALLOCATED, ASSET_ALLOCATED, TIMESHEET_SUBMITTED, TIMESHEET_REJECTED, PRESTART_SUBMITTED
 - **ProjectStatus**: MOBILISING, ACTIVE, PRACTICAL_COMPLETION, DEFECTS, CLOSED
+- **QuoteDestination**: PRICE, PROVISIONAL, OPTION, INTERNAL
 - **RateColumnDataType**: TEXT, NUMBER, CURRENCY, DATE, BOOL, LIST_REF
 - **RateColumnRole**: KEY, VALUE, INFO
 - **RateTableCategory**: INITIAL_SERVICES, SUBCONTRACTOR

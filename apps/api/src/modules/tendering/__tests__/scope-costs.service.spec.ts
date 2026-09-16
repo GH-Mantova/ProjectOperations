@@ -38,6 +38,11 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     rateOverride: null,
     plantRateId: null,
     sortOrder: 0,
+    // Scope Cards S1 — new columns.
+    wbsRef: null,
+    sourceRef: null,
+    markupOverride: null,
+    notes: null,
     createdById: "user-1",
     createdAt: new Date("2026-09-05T00:00:00Z"),
     updatedAt: new Date("2026-09-05T00:00:00Z"),
@@ -45,23 +50,33 @@ function makeRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildPrisma(opts: { card?: unknown; existing?: unknown } = {}) {
+function buildPrisma(opts: { card?: unknown; existing?: unknown; tenderMarkup?: number } = {}) {
   const cardFindFirst = jest
     .fn()
-    .mockResolvedValue(opts.card === undefined ? { id: CARD_ID } : opts.card);
+    .mockResolvedValue(
+      opts.card === undefined ? { id: CARD_ID, markupOverride: null } : opts.card
+    );
   const findMany = jest.fn().mockResolvedValue([makeRow()]);
   const findUnique = jest
     .fn()
     .mockResolvedValue(opts.existing === undefined ? makeRow() : opts.existing);
-  const create = jest.fn().mockImplementation(async (args: { data: unknown }) => args.data);
+  const create = jest.fn().mockImplementation(async (args: { data: unknown }) => ({
+    ...makeRow(),
+    ...(args.data as Record<string, unknown>)
+  }));
   const update = jest.fn().mockResolvedValue(makeRow());
   const del = jest.fn().mockResolvedValue(makeRow());
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — service now fetches TenderEstimate for markup resolution.
+  const tenderEstimateFindUnique = jest
+    .fn()
+    .mockResolvedValue({ markup: opts.tenderMarkup ?? 30 });
 
   const prisma = {
     scopeCard: { findFirst: cardFindFirst },
-    scopeOperationalCostLine: { findMany, findUnique, create, update, delete: del }
+    scopeOperationalCostLine: { findMany, findUnique, create, update, delete: del },
+    tenderEstimate: { findUnique: tenderEstimateFindUnique }
   };
-  return { prisma, mocks: { cardFindFirst, findMany, findUnique, create, update, del } };
+  return { prisma, mocks: { cardFindFirst, findMany, findUnique, create, update, del, tenderEstimateFindUnique } };
 }
 
 function makeService(prisma: unknown) {
@@ -198,9 +213,11 @@ describe("ScopeCostsService.list", () => {
   it("scopes to the card and orders by sortOrder then createdAt", async () => {
     const { prisma, mocks } = buildPrisma();
     await makeService(prisma).list(TENDER_ID, CARD_ID);
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — assertCard now also selects
+    // markupOverride so the service can resolve markup without an extra query.
     expect(mocks.cardFindFirst).toHaveBeenCalledWith({
       where: { id: CARD_ID, tenderId: TENDER_ID },
-      select: { id: true }
+      select: { id: true, markupOverride: true }
     });
     expect(mocks.findMany).toHaveBeenCalledWith({
       where: { cardId: CARD_ID },
@@ -302,3 +319,60 @@ describe("ScopeCostsService.remove", () => {
     expect(mocks.del).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Scope Cards S1 — money fields on responses
+// ---------------------------------------------------------------------------
+describe("ScopeCostsService — SCOPE_OPERATIONAL_COSTS_PRICED_V1 money fields", () => {
+  it("list() responses carry lineTotal, effectiveMarkup and lineTotalWithMarkup", async () => {
+    // Row: qty=2, unit=day, days=5, rate=400, rateOverride=null => 2x5x400 = 4000
+    const { prisma } = buildPrisma({ tenderMarkup: 25 });
+    prisma.scopeOperationalCostLine.findMany = jest.fn().mockResolvedValue([
+      makeRow({ qty: new Prisma.Decimal("2"), unit: "day", days: new Prisma.Decimal("5"), rate: new Prisma.Decimal("400.00") })
+    ]);
+    const rows = await makeService(prisma).list(TENDER_ID, CARD_ID);
+    expect(rows[0].lineTotal).toBe(4000);
+    expect(rows[0].effectiveMarkup).toBe(25);
+    expect(rows[0].lineTotalWithMarkup).toBe(5000);
+  });
+
+  it("create() response carries money fields", async () => {
+    const { prisma } = buildPrisma({ tenderMarkup: 30 });
+    // The create mock returns the data merged with makeRow(); override qty/days/rate.
+    prisma.scopeOperationalCostLine.create = jest.fn().mockResolvedValue(
+      makeRow({ qty: new Prisma.Decimal("1"), unit: "Lump sum", days: new Prisma.Decimal("7"), rate: new Prisma.Decimal("1000.00") })
+    );
+    const row = await makeService(prisma).create(TENDER_ID, CARD_ID, "user-1", {
+      description: "Site fee",
+      qty: 1,
+      unit: "Lump sum",
+      days: 1,
+      rate: 1000
+    });
+    // Lump sum: 1 x 1 (pinned) x 1000 = 1000
+    expect(row.lineTotal).toBe(1000);
+    expect(row.effectiveMarkup).toBe(30);
+    expect(row.lineTotalWithMarkup).toBe(1300);
+  });
+
+  it("four new fields round-trip through create() data", async () => {
+    const capturedCreate = jest.fn().mockImplementation(
+      async (args: { data: unknown }) => ({ ...makeRow(), ...(args.data as Record<string, unknown>) })
+    );
+    const { prisma } = buildPrisma();
+    prisma.scopeOperationalCostLine.create = capturedCreate;
+    await makeService(prisma).create(TENDER_ID, CARD_ID, "user-1", {
+      description: "Permit",
+      wbsRef: "DEM1.2",
+      sourceRef: "https://council.example.com/permit",
+      markupOverride: 15,
+      notes: "Approved 2026-09-14"
+    });
+    const data = capturedCreate.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.wbsRef).toBe("DEM1.2");
+    expect(data.sourceRef).toBe("https://council.example.com/permit");
+    expect(Number(data.markupOverride)).toBe(15);
+    expect(data.notes).toBe("Approved 2026-09-14");
+  });
+});
+

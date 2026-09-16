@@ -1,4 +1,5 @@
-// SCOPE_OTHER_COSTS_V1 — tests for the "Other operational costs" section.
+// SCOPE_OTHER_COSTS_V1 / SCOPE_OPERATIONAL_COSTS_PRICED_V1 — tests for the
+// "Other operational costs" section.
 //
 // The web workspace has no jsdom and no @testing-library (see
 // discipline-summary-bar.test.tsx). Anything that is a claim about a NUMBER is
@@ -8,6 +9,11 @@
 // no DOM. Anything that is a claim about STRUCTURE — "the section sits between
 // the WBS table and Waste" — is asserted against the mount point's source,
 // because with no renderer there is no other way to pin an ordering.
+//
+// SCOPE_OPERATIONAL_COSTS_PRICED_V1 (S1): the section NO LONGER prices lines
+// in the browser. It reads the server's `lineTotalWithMarkup` off each row.
+// Source assertions confirm there is no `qty *` or `* rate` expression left in
+// OtherOperationalCosts.tsx.
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -21,11 +27,12 @@ import {
   daysForUnit,
   isDurationBearingUnit,
   isRateOverridden,
-  operationalLineTotal,
   resolveLineRate,
-  sumOperationalLines,
+  rowLineTotalWithMarkup,
+  computeOperationalTotals,
   toNum,
   type OperationalCostLine,
+  type OperationalSectionTotals,
   type RateLibraryItem
 } from "../OtherOperationalCosts";
 import { computeCardBarStats } from "../DisciplineSummaryBar";
@@ -153,7 +160,7 @@ describe("the duration-bearing unit list mirrors the API's, exactly", () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────
-// 2. A lump-sum line cannot be given days, and totals rate x qty
+// 2. A lump-sum line cannot be given days; Total comes from the server
 // ───────────────────────────────────────────────────────────────────────
 
 describe("a lump-sum line", () => {
@@ -232,18 +239,27 @@ describe("a lump-sum line", () => {
     expect(daysInput).toContain('data-days-pinned="false"');
   });
 
-  it("totals rate x qty — days is not a factor", () => {
-    // 4 x $1,200 lump sum = $4,800, whatever days says.
-    expect(operationalLineTotal(4, 1200, null)).toBe(4800);
-    // The same line with a (pinned) 1 day and with an illegal 7 days would
-    // price identically, because days is not in the formula at all.
-    const line = makeLine({ unit: "Lump sum", qty: "4", days: "7", rate: "1200" });
-    expect(
-      operationalLineTotal(toNum(line.qty), toNum(line.rate), toNum(line.rateOverride))
-    ).toBe(4800);
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1: the row reads the server's
+  // `lineTotalWithMarkup`; the browser never multiplies qty x rate.
+  it("shows the server's lineTotalWithMarkup in the Total cell", () => {
+    // Server has priced a 4 x $1,200 lump sum (includes markup) as $5,280.
+    const html = renderToStaticMarkup(
+      <table>
+        <tbody>
+          <OperationalCostRow
+            line={makeLine({ unit: "Lump sum", qty: "4", days: "1", rate: "1200", lineTotalWithMarkup: 5280 })}
+            index={0}
+            rateOptions={[]}
+            onPatch={() => undefined}
+            onRemove={() => undefined}
+          />
+        </tbody>
+      </table>
+    );
+    expect(html).toContain("$5,280.00");
   });
 
-  it("shows that total in the row's Total cell", () => {
+  it("shows a dash when lineTotalWithMarkup is absent (row not yet priced by S1 API)", () => {
     const html = renderToStaticMarkup(
       <table>
         <tbody>
@@ -257,7 +273,9 @@ describe("a lump-sum line", () => {
         </tbody>
       </table>
     );
-    expect(html).toContain("$4,800.00");
+    // No lineTotalWithMarkup: shows em-dash, never $4,800 (the pre-S1 computation).
+    expect(html).toContain("—");
+    expect(html).not.toContain("$4,800");
   });
 });
 
@@ -319,13 +337,6 @@ describe("the rate override", () => {
     // The point of the test: the control says $850.00, not "auto-derived value".
     expect(html).toContain("Revert to the locked rate $850.00");
     expect(html).not.toContain("auto-derived value");
-  });
-
-  it("prices the line at the override once one is typed", () => {
-    const line = makeLine({ qty: "2", rate: "375", rateOverride: "400", unit: "Ea" });
-    expect(
-      operationalLineTotal(toNum(line.qty), toNum(line.rate), toNum(line.rateOverride))
-    ).toBe(800);
   });
 });
 
@@ -413,88 +424,167 @@ describe("the shared rate-library item picker", () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────
-// 5. The money reconciles — one sum, two displays
+// 5. SCOPE_OPERATIONAL_COSTS_PRICED_V1 — server-side totals, two figures
 // ───────────────────────────────────────────────────────────────────────
 
-describe("the section total rolls into the card subtotal and the slice-1 bar", () => {
-  // The production path, reproduced exactly:
-  //   items          -> computeCardBarStats            (the ONE card-money fn)
-  //   + section total-> statsByCard fold in ScopeCardsTab
-  //   -> toCardRollupInput -> rollUpDiscipline         (the slice-1 bar)
-  // Nothing here re-derives a card subtotal; the section only contributes its
-  // own total to the existing fold.
-  const items = [makeItem(12500, 12500, "i1"), makeItem(4000, 4000, "i2")];
+describe("SCOPE_OPERATIONAL_COSTS_PRICED_V1 — section reads server money, reports two figures", () => {
+  // Source assertion: the section no longer multiplies qty x rate.
+  // The old operationalLineTotal() was the only place this happened; S1 removed it.
+  const componentSource = readFileSync(
+    repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+    "utf-8"
+  );
 
-  const sectionLines: OperationalCostLine[] = [
-    makeLine({ id: "l1", description: "Traffic control", qty: "3", unit: "day", days: "1", rate: "850" }),
-    makeLine({ id: "l2", description: "Site establishment fee", qty: "1", unit: "Lump sum", days: "1", rate: "1200" }),
-    makeLine({ id: "l3", description: "Council permits", qty: "2", unit: "Ea", days: "1", rate: "375", rateOverride: "400" })
-  ];
+  it("contains no qty-times-rate multiplication (source assertion)", () => {
+    // A multiplication involving qty and rate in the browser would mean the
+    // section is pricing lines itself, which S1 explicitly forbids.
+    expect(componentSource).not.toMatch(/qty\s*\*/);
+    expect(componentSource).not.toMatch(/\*\s*rate/);
+  });
 
-  const fold = (sectionTotal: number) => {
-    const fromItems = computeCardBarStats(items);
-    return {
-      itemCount: fromItems.itemCount,
-      subtotal: fromItems.subtotal + sectionTotal,
-      subtotalWithMarkup: fromItems.subtotalWithMarkup + sectionTotal
+  it("reads lineTotalWithMarkup from the server, not a browser formula", () => {
+    // The attribute is read in OperationalCostRow.
+    expect(componentSource).toContain("lineTotalWithMarkup");
+    // The old pre-S1 helper `operationalLineTotal` no longer exists.
+    expect(componentSource).not.toContain("operationalLineTotal");
+    // The old `sumOperationalLines` no longer exists either.
+    expect(componentSource).not.toContain("sumOperationalLines");
+  });
+
+  describe("rowLineTotalWithMarkup()", () => {
+    it("returns the server figure when present and finite", () => {
+      expect(rowLineTotalWithMarkup(makeLine({ lineTotalWithMarkup: 1100 }))).toBe(1100);
+      expect(rowLineTotalWithMarkup(makeLine({ lineTotalWithMarkup: 0 }))).toBe(0);
+    });
+
+    it("returns 0 for a line without lineTotalWithMarkup (pre-S1 row)", () => {
+      expect(rowLineTotalWithMarkup(makeLine())).toBe(0);
+      expect(rowLineTotalWithMarkup(makeLine({ lineTotalWithMarkup: null }))).toBe(0);
+    });
+  });
+
+  describe("computeOperationalTotals()", () => {
+    it("sums both server figures independently", () => {
+      const lines = [
+        makeLine({ id: "l1", lineTotal: 1000, lineTotalWithMarkup: 1100 }),
+        makeLine({ id: "l2", lineTotal: 500, lineTotalWithMarkup: 650 })
+      ];
+      const totals: OperationalSectionTotals = computeOperationalTotals(lines);
+      expect(totals.subtotal).toBe(1500);
+      expect(totals.withMarkup).toBe(1750);
+    });
+
+    it("contributes zero for an unpriceable line rather than NaN", () => {
+      const totals = computeOperationalTotals([
+        makeLine({ id: "x1", lineTotal: null, lineTotalWithMarkup: null }),
+        makeLine({ id: "x2" }) // no server fields at all
+      ]);
+      expect(totals.subtotal).toBe(0);
+      expect(totals.withMarkup).toBe(0);
+      expect(Number.isNaN(totals.subtotal)).toBe(false);
+      expect(Number.isNaN(totals.withMarkup)).toBe(false);
+    });
+
+    it("returns zero for an empty section", () => {
+      const totals = computeOperationalTotals([]);
+      expect(totals.subtotal).toBe(0);
+      expect(totals.withMarkup).toBe(0);
+    });
+
+    it("uses subtotal for bare cost and withMarkup for marked-up total (they can differ)", () => {
+      const lines = [makeLine({ id: "l1", lineTotal: 1000, lineTotalWithMarkup: 1300 })];
+      const totals = computeOperationalTotals(lines);
+      expect(totals.subtotal).toBe(1000);
+      expect(totals.withMarkup).toBe(1300);
+      expect(totals.subtotal).not.toBe(totals.withMarkup);
+    });
+  });
+
+  describe("two-figure reporting into the card fold", () => {
+    // The production path, reproduced exactly:
+    //   items          -> computeCardBarStats              (the ONE card-money fn)
+    //   + section totals -> statsByCard fold in ScopeCardsTab
+    //   -> toCardRollupInput -> rollUpDiscipline           (the slice-1 bar)
+    //
+    // ScopeCardsTab puts otherCostsSubtotal into `subtotal` and
+    // otherCostsWithMarkup into `subtotalWithMarkup` — the two figures go to
+    // DIFFERENT destinations.
+    const items = [makeItem(12500, 16250, "i1"), makeItem(4000, 5200, "i2")];
+
+    // Mimics the statsByCard fold in ScopeCardsTab with S1 two-figure reporting.
+    const fold = (totals: OperationalSectionTotals) => {
+      const fromItems = computeCardBarStats(items);
+      return {
+        itemCount: fromItems.itemCount,
+        subtotal: fromItems.subtotal + totals.subtotal,
+        subtotalWithMarkup: fromItems.subtotalWithMarkup + totals.withMarkup
+      };
     };
-  };
 
-  const barSubtotal = (sectionTotal: number) =>
-    rollUpDiscipline([toCardRollupInput("card-1", null, fold(sectionTotal))]).subtotal;
+    // The DisciplineSummaryBar reads `subtotalWithMarkup` (the marked-up
+    // figure) — a section that carries its own markup has to move the bar by
+    // its withMarkup total, not the bare cost.
+    const barSubtotal = (totals: OperationalSectionTotals) =>
+      rollUpDiscipline([toCardRollupInput("card-1", null, fold(totals))]).subtotalWithMarkup;
 
-  it("gives the three figures, and they reconcile", () => {
-    const subtotalBefore = fold(0).subtotal;
-    const sectionTotal = sumOperationalLines(sectionLines);
-    const subtotalAfter = fold(sectionTotal).subtotal;
+    it("uses bare subtotal for subtotal and withMarkup for subtotalWithMarkup", () => {
+      // Items: subtotal 16,500 / withMarkup 21,450 (30% markup).
+      // Section: subtotal 1,000 / withMarkup 1,300.
+      const sectionTotals: OperationalSectionTotals = { subtotal: 1000, withMarkup: 1300 };
+      const result = fold(sectionTotals);
+      expect(result.subtotal).toBe(17500);           // 16500 + 1000
+      expect(result.subtotalWithMarkup).toBe(22750); // 21450 + 1300
+    });
 
-    // 1. Subtotal before      $16,500.00   (12,500 + 4,000 WBS items)
-    // 2. Section total         $4,550.00   (2,550 + 1,200 + 800)
-    // 3. Subtotal after       $21,050.00
-    expect(subtotalBefore).toBe(16500);
-    expect(sectionTotal).toBe(4550);
-    expect(subtotalAfter).toBe(21050);
-    expect(subtotalBefore + sectionTotal).toBe(subtotalAfter);
-  });
+    it("moves the bar by the marked-up figure, not the bare cost", () => {
+      const noSection: OperationalSectionTotals = { subtotal: 0, withMarkup: 0 };
+      const withSection: OperationalSectionTotals = { subtotal: 1000, withMarkup: 1300 };
+      const barBefore = barSubtotal(noSection);
+      const barAfter = barSubtotal(withSection);
+      // Bar moves by withMarkup (1300), not subtotal (1000).
+      expect(barAfter - barBefore).toBe(1300);
+    });
 
-  it("moves the slice-1 summary bar by exactly the same amount", () => {
-    const sectionTotal = sumOperationalLines(sectionLines);
-    expect(barSubtotal(0)).toBe(16500);
-    expect(barSubtotal(sectionTotal)).toBe(21050);
-    expect(barSubtotal(sectionTotal) - barSubtotal(0)).toBe(sectionTotal);
-  });
-
-  it("moves the card total and the bar by exactly the added line, when ONE line is added", () => {
-    const twoLines = sectionLines.slice(0, 2);
-    const before = sumOperationalLines(twoLines);
-    const after = sumOperationalLines(sectionLines);
-    const added = after - before;
-
-    expect(before).toBe(3750);
-    expect(added).toBe(800); // Council permits: 2 x $400 override
-    expect(after).toBe(4550);
-
-    expect(fold(after).subtotal - fold(before).subtotal).toBe(added);
-    expect(barSubtotal(after) - barSubtotal(before)).toBe(added);
-  });
-
-  it("contributes nothing for an unpriceable line rather than NaN", () => {
-    const total = sumOperationalLines([
-      makeLine({ id: "x1", qty: null, rate: "100" }),
-      makeLine({ id: "x2", qty: "2", rate: null, rateOverride: null })
-    ]);
-    expect(total).toBe(0);
-    expect(Number.isNaN(total)).toBe(false);
-  });
-
-  it("has an empty section move nothing", () => {
-    expect(sumOperationalLines([])).toBe(0);
-    expect(fold(sumOperationalLines([])).subtotal).toBe(16500);
+    it("contributes nothing for an empty section", () => {
+      const empty: OperationalSectionTotals = { subtotal: 0, withMarkup: 0 };
+      const fromItems = computeCardBarStats(items);
+      const result = fold(empty);
+      expect(result.subtotal).toBe(fromItems.subtotal);
+      expect(result.subtotalWithMarkup).toBe(fromItems.subtotalWithMarkup);
+    });
   });
 });
 
 // ───────────────────────────────────────────────────────────────────────
-// 6. Where the section sits, and what this slice did not touch
+// 6. ScopeCardsTab folds withMarkup into subtotalWithMarkup (source assertion)
+// ───────────────────────────────────────────────────────────────────────
+
+describe("ScopeCardsTab folds the section's withMarkup into subtotalWithMarkup", () => {
+  const tabSource = readFileSync(
+    repoFile("apps/web/src/pages/tendering/scope-cards/ScopeCardsTab.tsx"),
+    "utf-8"
+  );
+
+  it("uses otherCostsWithMarkup for subtotalWithMarkup, not otherCostsSubtotal", () => {
+    // The two-figure reporting invariant: otherCostsSubtotal goes to subtotal,
+    // otherCostsWithMarkup goes to subtotalWithMarkup. If someone accidentally
+    // uses the same figure for both, this goes red.
+    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCostsSubtotal");
+    expect(tabSource).toContain("subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup");
+  });
+
+  it("extracts the two figures from the entry by field name", () => {
+    expect(tabSource).toContain("otherCostsEntry?.subtotal");
+    expect(tabSource).toContain("otherCostsEntry?.withMarkup");
+  });
+
+  it("carries the SCOPE_OPERATIONAL_COSTS_PRICED_V1 marker", () => {
+    expect(tabSource).toContain("SCOPE_OPERATIONAL_COSTS_PRICED_V1");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// 7. Where the section sits, and what this slice did not touch
 // ───────────────────────────────────────────────────────────────────────
 
 describe("the mount point", () => {
@@ -526,8 +616,8 @@ describe("the mount point", () => {
     // is how the card total and the discipline bar start disagreeing.
     const calls = tabSource.match(/computeCardBarStats\(/g) ?? [];
     expect(calls.length).toBe(1);
-    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCosts");
-    expect(tabSource).toContain("subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts");
+    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCostsSubtotal");
+    expect(tabSource).toContain("subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup");
   });
 
   it("carries the slice marker", () => {

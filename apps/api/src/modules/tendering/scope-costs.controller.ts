@@ -17,8 +17,11 @@ import { UpsertOperationalCostLineDto } from "./dto/scope-costs.dto";
  * before being cast to their DTO — the same pattern ScopeWasteController
  * documents, and for the same reason: the qty / rate Decimal sinks.
  *
- * No total is returned or stored. The line total is
- * `qty × (rateOverride ?? rate)`.
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 (Scope Cards S1): every response now
+ * carries `lineTotal`, `effectiveMarkup`, and `lineTotalWithMarkup` —
+ * computed server-side. The formula is qty × days × (rateOverride ?? rate),
+ * where days is 1 for a non-duration unit. The web reads these figures; it
+ * does no pricing arithmetic of its own.
  */
 @ApiTags("Scope of Works — Operational Costs")
 @ApiBearerAuth()

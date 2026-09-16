@@ -38,7 +38,29 @@ import {
   wasteMarkupPhrase
 } from "../ScopeWasteTab";
 import { computeCardBarStats } from "../scope-cards/DisciplineSummaryBar";
-import { sumOperationalLines } from "../scope-cards/OtherOperationalCosts";
+import type { OperationalCostLine } from "../scope-cards/OtherOperationalCosts";
+
+/**
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the section now reports two figures.
+ * This local sum reproduces the pre-S1 `qty * (rateOverride ?? rate)`
+ * arithmetic so this file's fixtures (which carry no server `lineTotal`)
+ * still price the way the assertions were built to expect.
+ */
+function sumOperationalLines(lines: OperationalCostLine[]): number {
+  return lines.reduce((acc, line) => {
+    if (line.lineTotal != null && Number.isFinite(Number(line.lineTotal))) {
+      return acc + Number(line.lineTotal);
+    }
+    const qty = line.qty == null || line.qty === "" ? null : Number(line.qty);
+    const rate = line.rateOverride != null && line.rateOverride !== ""
+      ? Number(line.rateOverride)
+      : (line.rate == null || line.rate === "" ? null : Number(line.rate));
+    if (qty === null || rate === null || !Number.isFinite(qty) || !Number.isFinite(rate)) {
+      return acc;
+    }
+    return acc + qty * rate;
+  }, 0);
+}
 import { rollUpDiscipline, toCardRollupInput } from "../scope-cards/utils/discipline-rollup";
 import type { ScopeItem } from "../ScopeQuantitiesTable";
 
@@ -449,9 +471,13 @@ describe("the card subtotal, before and after this slice", () => {
     expect(wasteMount).not.toContain("TotalChange");
 
     // And the fold expression itself carries no waste term.
-    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCosts + cutting");
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1: the section now hands the fold two
+    // figures — `otherCostsSubtotal` (bare) and `otherCostsWithMarkup` (marked
+    // up) — so the assertion is on the S1 shape. Waste is still not in either
+    // term, which is what this test is really pinning.
+    expect(tabSource).toContain("subtotal: fromItems.subtotal + otherCostsSubtotal + cutting");
     expect(tabSource).toContain(
-      "subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCosts + cutting"
+      "subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup + cutting"
     );
     // Still exactly one place card money is computed.
     expect((tabSource.match(/computeCardBarStats\(/g) ?? []).length).toBe(1);
@@ -461,8 +487,10 @@ describe("the card subtotal, before and after this slice", () => {
     // The reason, pinned at its source. If the server ever stops summing
     // waste into tenderPrice, this assertion fails and the decision above
     // has to be revisited rather than silently inherited.
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1: `operationalWithMarkup` joined the
+    // sum as a fourth independent stream. Waste is still in there.
     expect(serverSummarySource).toContain(
-      "const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup;"
+      "const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup + operationalWithMarkup;"
     );
     // ...from the same rows this section edits...
     expect(serverSummarySource).toContain("this.prisma.scopeWasteItem.findMany({");

@@ -5,6 +5,11 @@ import {
   UpsertOperationalCostLineDto,
   assertDaysAllowedForUnit
 } from "./dto/scope-costs.dto";
+import {
+  computeOperationalLineTotal,
+  computeOperationalLineMarkup,
+  decToNum
+} from "./scope-item-pricing";
 
 /**
  * SCOPE_OPERATIONAL_COSTS_V1 — CRUD for ScopeOperationalCostLine.
@@ -15,43 +20,105 @@ import {
  * checking its tenderId, the same guard `ScopeWasteService.sumFromAbove`
  * uses.
  *
- * NO TOTAL IS STORED OR COMPUTED. The line total is
- * `qty × (rateOverride ?? rate)` and belongs to whoever renders it; a stored
- * copy would be a second source of truth that drifts. Nothing in the pricing
- * path, the card subtotal or the discipline roll-up reads this table yet, so
- * no tender price can move.
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 (Scope Cards S1): every response now
+ * includes `lineTotal`, `effectiveMarkup`, and `lineTotalWithMarkup` —
+ * computed server-side from the line, its card's markupOverride, and the
+ * tender's markup. The formula is qty × days × (rateOverride ?? rate),
+ * where days is 1 for a non-duration unit. The web reads these figures
+ * and does no arithmetic of its own.
  */
+
+/** Shape of the card + tender context needed for markup resolution. */
+type CardMarkupContext = {
+  markupOverride: number | null;
+  tenderMarkup: number;
+};
+
+/** Augment a raw row with the three server-computed money fields. */
+type WithMoney<T> = T & {
+  lineTotal: number;
+  effectiveMarkup: number;
+  lineTotalWithMarkup: number;
+};
+
 @Injectable()
 export class ScopeCostsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Loads the card and asserts it belongs to the tender in the path.
+   * Returns the card id AND the card's markupOverride so the money
+   * computation can resolve markup without a second query.
    *
    * @throws NotFoundException when the card is missing or on another tender
    */
   private async assertCard(tenderId: string, cardId: string) {
     const card = await this.prisma.scopeCard.findFirst({
       where: { id: cardId, tenderId },
-      select: { id: true }
+      select: { id: true, markupOverride: true }
     });
     if (!card) throw new NotFoundException("Card not found on this tender.");
     return card;
   }
 
   /**
+   * Load the tender's markup. Falls back to 30 when TenderEstimate is absent,
+   * the same default as scope-redesign.service.ts summary().
+   */
+  private async tenderMarkup(tenderId: string): Promise<number> {
+    const est = await this.prisma.tenderEstimate.findUnique({
+      where: { tenderId },
+      select: { markup: true }
+    });
+    return est ? Number(est.markup) : 30;
+  }
+
+  /** Attach the three money fields to a raw Prisma row. */
+  private withMoney<T extends {
+    qty: import("@prisma/client").Prisma.Decimal | null;
+    unit: string | null;
+    days: import("@prisma/client").Prisma.Decimal | null;
+    rate: import("@prisma/client").Prisma.Decimal | null;
+    rateOverride: import("@prisma/client").Prisma.Decimal | null;
+    markupOverride: import("@prisma/client").Prisma.Decimal | null;
+  }>(row: T, ctx: CardMarkupContext): WithMoney<T> {
+    const lineTotal = computeOperationalLineTotal(row);
+    const effectiveMarkup = computeOperationalLineMarkup(
+      decToNum(row.markupOverride),
+      ctx.markupOverride,
+      ctx.tenderMarkup
+    );
+    const lineTotalWithMarkup = lineTotal * (1 + effectiveMarkup / 100);
+    return {
+      ...row,
+      lineTotal: Number(lineTotal.toFixed(2)),
+      effectiveMarkup: Number(effectiveMarkup.toFixed(2)),
+      lineTotalWithMarkup: Number(lineTotalWithMarkup.toFixed(2))
+    };
+  }
+
+  /**
    * Lists the operational-cost lines on a card, ordered by sortOrder then
    * createdAt — the same ordering every sibling card-child uses.
    *
-   * @returns the card's ScopeOperationalCostLine rows
+   * Each row now carries `lineTotal`, `effectiveMarkup`, and
+   * `lineTotalWithMarkup` computed server-side.
+   *
+   * @returns the card's ScopeOperationalCostLine rows (with money fields)
    * @throws NotFoundException when the card is missing or on another tender
    */
   async list(tenderId: string, cardId: string) {
-    await this.assertCard(tenderId, cardId);
-    return this.prisma.scopeOperationalCostLine.findMany({
+    const card = await this.assertCard(tenderId, cardId);
+    const tenderMk = await this.tenderMarkup(tenderId);
+    const ctx: CardMarkupContext = {
+      markupOverride: decToNum(card.markupOverride as import("@prisma/client").Prisma.Decimal | null),
+      tenderMarkup: tenderMk
+    };
+    const rows = await this.prisma.scopeOperationalCostLine.findMany({
       where: { cardId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
     });
+    return rows.map((r) => this.withMoney(r, ctx));
   }
 
   /**
@@ -63,7 +130,7 @@ export class ScopeCostsService {
    * a unit carrying no duration cannot be given days other than 1.
    *
    * @param actorId - recorded as createdById
-   * @returns the created row
+   * @returns the created row (with money fields)
    * @throws BadRequestException when description is missing/blank, or when a
    *   non-duration unit carries a days value other than 1
    * @throws NotFoundException when the card is missing or on another tender
@@ -74,7 +141,7 @@ export class ScopeCostsService {
     actorId: string,
     dto: UpsertOperationalCostLineDto
   ) {
-    await this.assertCard(tenderId, cardId);
+    const card = await this.assertCard(tenderId, cardId);
     if (typeof dto.description !== "string" || dto.description.trim() === "") {
       throw new BadRequestException("description is required.");
     }
@@ -83,11 +150,18 @@ export class ScopeCostsService {
     const daysN = narrowToNumber(dto.days);
     const rateN = narrowToNumber(dto.rate);
     const rateOverrideN = narrowToNumber(dto.rateOverride);
+    const markupOverrideN = narrowToNumber(dto.markupOverride);
     const unit = dto.unit ?? null;
 
     assertDaysAllowedForUnit(unit, daysN);
 
-    return this.prisma.scopeOperationalCostLine.create({
+    const tenderMk = await this.tenderMarkup(tenderId);
+    const ctx: CardMarkupContext = {
+      markupOverride: decToNum(card.markupOverride as import("@prisma/client").Prisma.Decimal | null),
+      tenderMarkup: tenderMk
+    };
+
+    const row = await this.prisma.scopeOperationalCostLine.create({
       data: {
         cardId,
         description: dto.description.trim(),
@@ -98,9 +172,14 @@ export class ScopeCostsService {
         rateOverride: toDecimal(rateOverrideN),
         plantRateId: dto.plantRateId ?? null,
         sortOrder: dto.sortOrder ?? 0,
-        createdById: actorId
+        createdById: actorId,
+        wbsRef: dto.wbsRef ?? null,
+        sourceRef: dto.sourceRef ?? null,
+        markupOverride: toDecimal(markupOverrideN),
+        notes: dto.notes ?? null
       }
     });
+    return this.withMoney(row, ctx);
   }
 
   /**
@@ -112,7 +191,7 @@ export class ScopeCostsService {
    * a PATCH that changes only the unit to `Lump sum` on a row already
    * carrying days=3 is rejected rather than quietly leaving an illegal row.
    *
-   * @returns the updated row
+   * @returns the updated row (with money fields)
    * @throws BadRequestException when description is patched to blank, or when
    *   the resulting unit/days pair breaks the lump-sum rule
    * @throws NotFoundException when the row or its card is missing, or the
@@ -124,7 +203,7 @@ export class ScopeCostsService {
     lineId: string,
     dto: UpsertOperationalCostLineDto
   ) {
-    await this.assertCard(tenderId, cardId);
+    const card = await this.assertCard(tenderId, cardId);
     const existing = await this.prisma.scopeOperationalCostLine.findUnique({
       where: { id: lineId }
     });
@@ -147,6 +226,13 @@ export class ScopeCostsService {
     }
     if (dto.plantRateId !== undefined) data.plantRateId = dto.plantRateId ?? null;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    // Scope Cards S1 — the four new fields.
+    if (dto.wbsRef !== undefined) data.wbsRef = dto.wbsRef ?? null;
+    if (dto.sourceRef !== undefined) data.sourceRef = dto.sourceRef ?? null;
+    if (dto.markupOverride !== undefined) {
+      data.markupOverride = toDecimal(narrowToNumber(dto.markupOverride));
+    }
+    if (dto.notes !== undefined) data.notes = dto.notes ?? null;
 
     // Effective unit/days AFTER the patch, then the lump-sum rule against
     // that pair — not against whichever half the body happened to carry.
@@ -162,10 +248,17 @@ export class ScopeCostsService {
     if (dto.unit !== undefined) data.unit = effectiveUnit;
     if (dto.days !== undefined) data.days = toDecimal(narrowToNumber(dto.days));
 
-    return this.prisma.scopeOperationalCostLine.update({
+    const tenderMk = await this.tenderMarkup(tenderId);
+    const ctx: CardMarkupContext = {
+      markupOverride: decToNum(card.markupOverride as import("@prisma/client").Prisma.Decimal | null),
+      tenderMarkup: tenderMk
+    };
+
+    const row = await this.prisma.scopeOperationalCostLine.update({
       where: { id: lineId },
       data
     });
+    return this.withMoney(row, ctx);
   }
 
   /**

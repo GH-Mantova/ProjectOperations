@@ -127,6 +127,21 @@ export async function buildEstimateExcel(
     rowIdx += 1;
   }
 
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — Operational costs summary row.
+  // Uses withMarkup (the independently-marked-up total), the same as the
+  // discipline rows above.
+  const opCosts = payload.summary.operationalCosts;
+  if (opCosts && (opCosts.itemCount > 0 || opCosts.withMarkup > 0)) {
+    const r = summary.getRow(rowIdx);
+    r.getCell(1).value = "OpCosts";
+    r.getCell(2).value = "Operational costs";
+    r.getCell(3).value = opCosts.itemCount;
+    r.getCell(4).value = opCosts.withMarkup;
+    r.getCell(4).numFmt = CURRENCY_FMT;
+    grandTotal += opCosts.withMarkup;
+    rowIdx += 1;
+  }
+
   // Provisional / Other block — shown below TOTAL (ex-GST).
   // scope-subcontracted order 3: aggregate provisionalWithMarkup across ALL
   // disciplines (not just Other). An Other-discipline row with isProvisional=false
@@ -276,6 +291,36 @@ export async function buildEstimateExcel(
   }
 
   autoFit(cuttingSheet, [10, 28, 14, 12, 12, 12, 12, 12, 14, 14]);
+
+  // ── Sheet 4: Operational Costs ──
+  // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — one row per operational cost line.
+  // Columns mirror the mock-up's section: Card, From (WBS Ref), Description,
+  // Source, Qty, Unit, Duration, Rate, Markup%, Total (with markup).
+  const opSheet = wb.addWorksheet("Operational Costs");
+  const opHead = opSheet.getRow(1);
+  ["Card", "From (WBS)", "Description", "Source", "Qty", "Unit", "Duration", "Rate", "Markup %", "Total (incl. markup)"].forEach((h, i) => {
+    opHead.getCell(i + 1).value = h;
+  });
+  applyBrandHeader(opHead);
+
+  let opRow = 2;
+  for (const ol of payload.operationalCosts ?? []) {
+    const r = opSheet.getRow(opRow);
+    r.getCell(1).value = ol.cardCode;
+    r.getCell(2).value = ol.wbsRef ?? null;
+    r.getCell(3).value = ol.description;
+    r.getCell(4).value = ol.sourceRef ?? null;
+    r.getCell(5).value = ol.qty ? n(ol.qty) : null;
+    r.getCell(6).value = ol.unit ?? null;
+    r.getCell(7).value = ol.days ? n(ol.days) : null;
+    r.getCell(8).value = ol.rate ? n(ol.rate) : null;
+    r.getCell(8).numFmt = CURRENCY_FMT;
+    r.getCell(9).value = ol.effectiveMarkup;
+    r.getCell(10).value = ol.lineTotalWithMarkup;
+    r.getCell(10).numFmt = CURRENCY_FMT;
+    opRow += 1;
+  }
+  autoFit(opSheet, [10, 10, 32, 20, 8, 8, 10, 12, 10, 18]);
 
   const out = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
   return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);

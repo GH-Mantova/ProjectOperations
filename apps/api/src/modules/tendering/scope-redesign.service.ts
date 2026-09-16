@@ -7,9 +7,20 @@ import { DISCIPLINES } from "./dto/scope-of-works.dto";
 import {
   buildRateMaps,
   computeScopeItemTotal,
+  computeOperationalLineMarkup,
+  computeOperationalLineTotal,
+  decToNum,
   resolveEffectiveMarkup,
   toPricingInput
 } from "./scope-item-pricing";
+
+/**
+ * SCOPE_OPERATIONAL_COSTS_PRICED_V1 — marker that operational-cost lines
+ * now contribute to tenderPrice as an independently marked-up fourth stream.
+ *
+ * S2 arms only when this string is on main.
+ */
+export const SCOPE_OPERATIONAL_COSTS_PRICED_V1 = "scopecards-s1";
 
 // ── Column availability map ─────────────────────────────────────────────
 // Required columns are always rendered. Optional columns are opt-in via
@@ -1053,6 +1064,43 @@ export class ScopeRedesignService {
       wasteWithMarkup += subtotal * (1 + rate / 100);
     }
 
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1 — the fourth independently-marked-up
+    // stream. Each line's markup resolves through the same chain as scope
+    // items: line.markupOverride ?? card.markupOverride ?? tenderMarkup.
+    // Groups per card for markup application (same pattern as waste/cutting),
+    // and accumulates into a tender-wide operationalCosts block.
+    const operationalLines = await this.prisma.scopeOperationalCostLine.findMany({
+      where: { card: { tenderId } },
+      select: {
+        qty: true,
+        unit: true,
+        days: true,
+        rate: true,
+        rateOverride: true,
+        markupOverride: true,
+        cardId: true,
+        card: { select: { markupOverride: true } }
+      }
+    });
+    let operationalSubtotal = 0;
+    let operationalWithMarkup = 0;
+    const operationalByCard = new Map<string, { subtotal: number; withMarkup: number }>();
+    for (const ol of operationalLines) {
+      const lineTotal = computeOperationalLineTotal(ol);
+      const effectiveMarkup = computeOperationalLineMarkup(
+        decToNum(ol.markupOverride),
+        ol.card?.markupOverride != null ? Number(ol.card.markupOverride) : null,
+        tenderMarkup
+      );
+      const lineWithMarkup = lineTotal * (1 + effectiveMarkup / 100);
+      operationalSubtotal += lineTotal;
+      operationalWithMarkup += lineWithMarkup;
+      const bucket = operationalByCard.get(ol.cardId) ?? { subtotal: 0, withMarkup: 0 };
+      bucket.subtotal += lineTotal;
+      bucket.withMarkup += lineWithMarkup;
+      operationalByCard.set(ol.cardId, bucket);
+    }
+
     // scope-subcontracted order 3 — tenderPrice sums the priced (withMarkup)
     // side only. provisionalTotal sums the provisionalWithMarkup side across
     // all disciplines.
@@ -1061,9 +1109,10 @@ export class ScopeRedesignService {
       (s, v) => s + v.provisionalWithMarkup,
       0
     );
-    // Grand total = the three independently-marked-up streams. Never
-    // fold a bare subtotal in — that was the bug the invariant guards.
-    const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup;
+    // Grand total = the FOUR independently-marked-up streams. Never fold a
+    // bare subtotal in — that was the bug the invariant guards.
+    // SCOPE_OPERATIONAL_COSTS_PRICED_V1: operationalWithMarkup is the fourth.
+    const tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup + operationalWithMarkup;
     return {
       ...perDiscipline,
       cutting: {
@@ -1078,6 +1127,17 @@ export class ScopeRedesignService {
         ),
         subtotal: Number(wasteTotal.toFixed(2)),
         withMarkup: Number(wasteWithMarkup.toFixed(2))
+      },
+      operationalCosts: {
+        itemCount: operationalLines.length,
+        subtotal: Number(operationalSubtotal.toFixed(2)),
+        withMarkup: Number(operationalWithMarkup.toFixed(2)),
+        byCard: Object.fromEntries(
+          [...operationalByCard.entries()].map(([cardId, b]) => [
+            cardId,
+            { subtotal: Number(b.subtotal.toFixed(2)), withMarkup: Number(b.withMarkup.toFixed(2)) }
+          ])
+        )
       },
       tenderPrice: Number(tenderPrice.toFixed(2)),
       provisionalTotal: Number(provisionalTotal.toFixed(2))

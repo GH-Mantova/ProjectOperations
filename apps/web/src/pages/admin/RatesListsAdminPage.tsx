@@ -5,7 +5,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
-import { FilterableRateGrid, type StructureEditing } from "../../components/rates/FilterableRateGrid";
+import { FilterableRateGrid, type StructureAdding, type StructureEditing } from "../../components/rates/FilterableRateGrid";
+import { EmptyTableFirstStep } from "../../components/rates/EmptyTableFirstStep";
 import { ColumnSettingsPanel } from "../../components/rates/ColumnSettingsPanel";
 import { NoAccess } from "../../components/NoAccess";
 import { markChargedFrom, type RateGridColumn, type RateGridRow } from "../../components/rates/rateGridModel";
@@ -18,6 +19,7 @@ import {
   groupBindings,
   matchScenarioRow,
   moveNote,
+  pricingFieldRows,
   rateFieldRows,
   renameWarning,
   resolveScenarioKeys,
@@ -953,6 +955,16 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
   const [hubImportPreview, setHubImportPreview] = useState<HubImportStageResult | null>(null);
   const hubFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // RATE_S3_STRUCTURE_ADDING — in-grid add-row draft state.
+  // Separated from the below-grid `rowDraft` (which is kept for the edit-row
+  // panel). The in-grid draft is the primary add path; the old panel is removed.
+  const [gridRowDraft, setGridRowDraft] = useState<Record<string, unknown> | null>(null);
+  const [gridRowBusy, setGridRowBusy] = useState(false);
+
+  // RATE_S3_STRUCTURE_ADDING — add-column flow: when true the ColumnSettingsPanel
+  // is shown anchored to the `+` header cell in "create" mode.
+  const [addingColumn, setAddingColumn] = useState(false);
+
   const columnErrors = useMemo(() => validateColumnStructure(table.columns), [table.columns]);
 
   // RATE_FIELDS_TABLE_V2 — one derivation, read by the Fields card and by the
@@ -1170,6 +1182,44 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
     await onChanged();
   };
 
+  // RATE_S3_STRUCTURE_ADDING — in-grid add-row handlers.
+  const startGridAddRow = () => {
+    if (table.columns.length === 0) return;
+    setGridRowDraft(blankRowCells(table.columns));
+  };
+  const cancelGridAddRow = () => setGridRowDraft(null);
+
+  const commitGridRow = async () => {
+    if (!gridRowDraft) return;
+    setGridRowBusy(true);
+    setPendingError(null);
+    try {
+      const res = await authFetch(`/rates/tables/${table.id}/rows`, {
+        method: "POST",
+        body: JSON.stringify({ cells: gridRowDraft })
+      });
+      if (!res.ok) {
+        setPendingError(await readApiErrorMessage(res, "Add row failed."));
+        return;
+      }
+      setGridRowDraft(null);
+      await onChanged();
+    } finally {
+      setGridRowBusy(false);
+    }
+  };
+
+  // RATE_S3_STRUCTURE_ADDING — guided first step: create the first VALUE column.
+  const handleCreateFirstColumn = async (payload: { name: string; unit: string }) => {
+    await handleAddColumn({
+      name: payload.name,
+      dataType: "CURRENCY",
+      role: "VALUE",
+      unit: payload.unit,
+      required: false
+    });
+  };
+
   const handleEditRow = (rowId: string) => {
     const row = table.rows.find((r) => r.id === rowId);
     if (!row) return;
@@ -1362,8 +1412,10 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         {pendingError ? <ErrorBanner message={pendingError} onDismiss={() => setPendingError(null)} /> : null}
       </div>
 
-      <FieldsCard fields={fieldRows} onAdd={handleAddColumn} onDelete={handleDeleteColumn} />
-
+      {/* RATE_S3_STRUCTURE_ADDING — charge-steps editor and shrunk Fields card
+          side by side. The Fields card now answers "what the pricing steps use"
+          (Marco ruling 2026-09-14), not the full column list. It moves here
+          to sit with the card that consumes it. */}
       <ChargeStepsEditor
         tableId={table.id}
         tableName={table.name}
@@ -1393,6 +1445,14 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         // loaded, so the Fields card above can fill `Used in` without a second
         // GET and without a stale copy.
         onStepsChange={setChargeSteps}
+      />
+
+      {/* RATE_S3_STRUCTURE_ADDING — shrunk Fields card: only what the steps name. */}
+      <PricingFieldsCard
+        columns={table.columns}
+        lineFields={table.lineFields ?? []}
+        steps={chargeSteps}
+        onDeleteColumn={handleDeleteColumn}
       />
 
       {/* RATE_S3_COLUMN_STRUCTURE — post-move warning for a charged-from shift */}
@@ -1432,57 +1492,84 @@ function RateTableDetail({ table, lists, onChanged }: { table: RateTableFull; li
         </div>
       ) : null}
 
-      <RowsCard
-        columns={table.columns}
-        rows={table.rows}
-        lists={lists}
-        // RATE_SCENARIO_PICKER_V2 — the other half of the same answer.
-        highlightRowId={matchedRowId}
-        rowDraft={rowDraft}
-        rowErrors={rowErrors}
-        editRowId={editRowId}
-        editDraft={editDraft}
-        editErrors={editErrors}
-        onStartAdd={startAddRow}
-        onCancelAdd={cancelAddRow}
-        onCommitAdd={commitRow}
-        onChangeDraft={(next) => setRowDraft(next)}
-        onStartEdit={handleEditRow}
-        onCancelEdit={cancelEditRow}
-        onCommitEdit={commitEditRow}
-        onChangeEditDraft={(next) => setEditDraft(next)}
-        onDeleteRow={handleDeleteRow}
-        // RATE_S3_COLUMN_STRUCTURE — admin-only structure editing controls.
-        structureEditing={{
-          onOpenSettings: (col) => setSettingsColumnId(col.key),
-          onMove: (col, dir) => void handleMoveColumn(col.key, dir),
-          onDelete: (col) => void handleDeleteColumn(col.key),
-          canMoveLeft: (col) => {
-            const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
-            return sorted[0]?.id !== col.key;
-          },
-          canMoveRight: (col) => {
-            const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
-            return sorted[sorted.length - 1]?.id !== col.key;
-          },
-          deleteRefusal,
-          openSettingsKey: settingsColumnId,
-          renderSettings: (col) => {
-            const rateCol = table.columns.find((c) => c.id === col.key);
-            if (!rateCol) return null;
-            return (
-              <ColumnSettingsPanel
-                column={rateCol}
-                allColumns={table.columns}
-                lists={lists ?? []}
-                chargeSteps={chargeSteps}
-                onSave={(patch) => handleUpdateColumn(col.key, patch)}
-                onCancel={() => setSettingsColumnId(null)}
-              />
-            );
-          }
-        }}
-      />
+      {table.columns.length === 0 ? (
+        // RATE_S3_STRUCTURE_ADDING — guided first step: no database-word
+        // instructions. Two plain questions; on submit adds the first VALUE column.
+        <div className="s7-card">
+          <EmptyTableFirstStep onCreateFirstColumn={handleCreateFirstColumn} />
+        </div>
+      ) : (
+        <RowsCard
+          columns={table.columns}
+          rows={table.rows}
+          lists={lists}
+          // RATE_SCENARIO_PICKER_V2 — the other half of the same answer.
+          highlightRowId={matchedRowId}
+          rowDraft={rowDraft}
+          rowErrors={rowErrors}
+          editRowId={editRowId}
+          editDraft={editDraft}
+          editErrors={editErrors}
+          onStartAdd={startAddRow}
+          onCancelAdd={cancelAddRow}
+          onCommitAdd={commitRow}
+          onChangeDraft={(next) => setRowDraft(next)}
+          onStartEdit={handleEditRow}
+          onCancelEdit={cancelEditRow}
+          onCommitEdit={commitEditRow}
+          onChangeEditDraft={(next) => setEditDraft(next)}
+          onDeleteRow={handleDeleteRow}
+          // RATE_S3_COLUMN_STRUCTURE — admin-only structure editing controls.
+          structureEditing={{
+            onOpenSettings: (col) => setSettingsColumnId(col.key),
+            onMove: (col, dir) => void handleMoveColumn(col.key, dir),
+            onDelete: (col) => void handleDeleteColumn(col.key),
+            canMoveLeft: (col) => {
+              const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+              return sorted[0]?.id !== col.key;
+            },
+            canMoveRight: (col) => {
+              const sorted = [...table.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+              return sorted[sorted.length - 1]?.id !== col.key;
+            },
+            deleteRefusal,
+            openSettingsKey: settingsColumnId,
+            renderSettings: (col) => {
+              const rateCol = table.columns.find((c) => c.id === col.key);
+              if (!rateCol) return null;
+              return (
+                <ColumnSettingsPanel
+                  column={rateCol}
+                  allColumns={table.columns}
+                  lists={lists ?? []}
+                  chargeSteps={chargeSteps}
+                  onSave={(patch) => handleUpdateColumn(col.key, patch)}
+                  onCancel={() => setSettingsColumnId(null)}
+                />
+              );
+            }
+          }}
+          // RATE_S3_STRUCTURE_ADDING — add-column and add-row in the grid.
+          structureAdding={{
+            onAddColumn: () => setAddingColumn(true),
+            onAddRow: startGridAddRow,
+            addRowDraft: gridRowDraft
+              ? {
+                  cells: gridRowDraft,
+                  columns: table.columns,
+                  onChange: setGridRowDraft,
+                  errors: validateRowCells(table.columns, gridRowDraft),
+                  onCommit: commitGridRow,
+                  onCancel: cancelGridAddRow,
+                  busy: gridRowBusy
+                }
+              : undefined
+          }}
+          addingColumn={addingColumn}
+          onAddColumnDone={() => setAddingColumn(false)}
+          onAddColumn={handleAddColumn}
+        />
+      )}
 
       {hubImportPreview ? (
         <HubImportPreviewModal
@@ -1793,6 +1880,90 @@ export function FieldsCard({
   );
 }
 
+/**
+ * RATE_S3_STRUCTURE_ADDING — the shrunk Fields card.
+ *
+ * Marco ruling 2026-09-14: shrink FieldsCard to "What the pricing steps use".
+ * A small list — one row per field the steps actually name, showing name,
+ * source (from the column, or from the estimate line) and steps (usedInLabel).
+ * No add, no delete, no role/unit editing (those are the column header now).
+ *
+ * This preserves the standing "what breaks if I change this" answer and the
+ * From-the-estimate-line distinction that a grid of columns structurally cannot
+ * show (line fields like Metres / Holes have no column).
+ *
+ * `rateFieldRows` is kept; `pricingFieldRows` is the shrunk list. `deleteFieldWarning`
+ * and `usedInLabel` are preserved (S2's warnings use them).
+ */
+function PricingFieldsCard({
+  columns,
+  lineFields,
+  steps,
+  onDeleteColumn
+}: {
+  columns: readonly RateColumn[];
+  lineFields: readonly { name: string }[];
+  steps: readonly ChargeStep[];
+  onDeleteColumn: (id: string) => Promise<void>;
+}) {
+  const rows = useMemo(
+    () => pricingFieldRows(columns, lineFields, steps),
+    [columns, lineFields, steps]
+  );
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="s7-card">
+      <h3 className="s7-type-section-heading" style={{ marginTop: 0 }}>
+        What the pricing steps use
+      </h3>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border-default)", color: "var(--text-muted)" }}>
+              <th style={fieldHeadStyle}>Field</th>
+              <th style={fieldHeadStyle}>From</th>
+              <th style={fieldHeadStyle}>Steps</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              // Find the column id (if it is a table column) so we can offer a delete.
+              const col = r.source === "table"
+                ? columns.find((c) => c.name === r.name) ?? null
+                : null;
+              const warning = col ? deleteFieldWarning(col.name, r.steps) : null;
+              return (
+                <tr
+                  key={`${r.source}:${r.name}`}
+                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
+                >
+                  <td style={fieldCellStyle}>
+                    <span style={{ fontWeight: 600 }}>{r.name}</span>
+                  </td>
+                  <td style={{ ...fieldCellStyle, color: "var(--text-secondary)" }}>
+                    {FIELD_SOURCE_LABELS[r.source]}
+                  </td>
+                  <td
+                    style={{
+                      ...fieldCellStyle,
+                      color: warning ? "var(--status-warning)" : "var(--text-muted)"
+                    }}
+                    title={warning ?? undefined}
+                  >
+                    {usedInLabel(r.steps)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ReferenceBadge() {
   return (
     <span
@@ -1833,7 +2004,11 @@ function RowsCard({
   onCommitEdit,
   onChangeEditDraft,
   onDeleteRow,
-  structureEditing
+  structureEditing,
+  structureAdding,
+  addingColumn,
+  onAddColumnDone,
+  onAddColumn
 }: {
   columns: RateColumn[];
   rows: RateRow[];
@@ -1861,6 +2036,21 @@ function RowsCard({
   onDeleteRow: (id: string) => Promise<void>;
   /** RATE_S3_COLUMN_STRUCTURE — admin-only. Absent on the tender RatesTab. */
   structureEditing?: StructureEditing;
+  /** RATE_S3_STRUCTURE_ADDING — admin-only. Absent on the tender RatesTab. */
+  structureAdding?: StructureAdding;
+  /** RATE_S3_STRUCTURE_ADDING — true while the add-column flow is open. */
+  addingColumn?: boolean;
+  /** Called when the add-column panel is dismissed. */
+  onAddColumnDone?: () => void;
+  /** Called when the user adds a column via the `+` header. */
+  onAddColumn?: (col: {
+    name: string;
+    dataType: RateColumnDataType;
+    role: RateColumnRole;
+    unit?: string;
+    listSlug?: string;
+    required?: boolean;
+  }) => Promise<void>;
 }) {
   const errorByColumn = useMemo(() => {
     const m = new Map<string, string>();
@@ -1872,6 +2062,11 @@ function RowsCard({
     editErrors.forEach((e) => m.set(e.columnId, e.message));
     return m;
   }, [editErrors]);
+
+  // RATE_S3_STRUCTURE_ADDING — add-column: draft column name typed in the header,
+  // then the ColumnSettingsPanel in create mode.
+  const [newColName, setNewColName] = useState("");
+  const [newColNameDone, setNewColNameDone] = useState(false);
 
   const canAdd = columns.length > 0;
   const isEditing = editRowId !== null && editDraft !== null;
@@ -1895,11 +2090,41 @@ function RowsCard({
     [rows, columns]
   );
 
+  // When addingColumn flips to false, reset the draft name.
+  useEffect(() => {
+    if (!addingColumn) {
+      setNewColName("");
+      setNewColNameDone(false);
+    }
+  }, [addingColumn]);
+
+  // RATE_S3_STRUCTURE_ADDING — the ColumnSettingsPanel requires a RateColumn
+  // shape for the column being created. We synthesise a placeholder that holds
+  // the name the user typed; the panel owns everything else.
+  const addColPlaceholder: RateColumn | null =
+    addingColumn && newColNameDone
+      ? {
+          id: "__new__",
+          name: newColName.trim(),
+          dataType: "TEXT",
+          role: "KEY",
+          unit: null,
+          listSlug: null,
+          required: false,
+          min: null,
+          max: null,
+          sortOrder: (columns[columns.length - 1]?.sortOrder ?? 0) + 1
+        }
+      : null;
+
   return (
     <div className="s7-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h3 className="s7-type-section-heading" style={{ margin: 0 }}>Rows</h3>
-        {rowDraft || isEditing ? null : (
+        {/* RATE_S3_STRUCTURE_ADDING — the add-row button moves into the grid;
+            keep the fallback button for when structureAdding is absent (e.g.
+            the RatesTab, which does not manage rows). */}
+        {!structureAdding && (rowDraft || isEditing) ? null : !structureAdding ? (
           <button
             type="button"
             className="s7-btn s7-btn--primary s7-btn--sm"
@@ -1909,46 +2134,125 @@ function RowsCard({
           >
             + Add row
           </button>
-        )}
+        ) : null}
       </div>
 
-      {columns.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>Add columns before you add rows.</p>
-      ) : rows.length === 0 && !rowDraft ? (
+      {/* RATE_S3_STRUCTURE_ADDING — add-column name input (typing phase). */}
+      {addingColumn && !newColNameDone ? (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            border: "1px dashed var(--border-subtle)",
+            borderRadius: 6,
+            background: "rgba(0,91,97,0.04)"
+          }}
+        >
+          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600 }}>New column name</p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="s7-input"
+              value={newColName}
+              onChange={(e) => setNewColName(e.target.value)}
+              placeholder="e.g. Equipment"
+              autoFocus
+              data-testid="add-col-name-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newColName.trim()) setNewColNameDone(true);
+                if (e.key === "Escape") onAddColumnDone?.();
+              }}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              disabled={!newColName.trim()}
+              onClick={() => setNewColNameDone(true)}
+              style={{ minHeight: 36, whiteSpace: "nowrap" }}
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={onAddColumnDone}
+              style={{ minHeight: 36 }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* RATE_S3_STRUCTURE_ADDING — ColumnSettingsPanel in create mode. */}
+      {addColPlaceholder && onAddColumn && onAddColumnDone ? (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 6,
+            background: "rgba(0,91,97,0.04)",
+            position: "relative"
+          }}
+        >
+          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600 }}>
+            Column settings — <em>{addColPlaceholder.name}</em>
+          </p>
+          <ColumnSettingsPanel
+            column={addColPlaceholder}
+            allColumns={columns}
+            lists={lists ?? []}
+            onSave={async (patch) => {
+              await onAddColumn({
+                name: addColPlaceholder.name,
+                dataType: patch.dataType ?? addColPlaceholder.dataType,
+                role: patch.role ?? addColPlaceholder.role,
+                unit: patch.unit ?? undefined,
+                listSlug: patch.listSlug ?? undefined,
+                required: patch.required ?? false
+              });
+              onAddColumnDone();
+            }}
+            onCancel={onAddColumnDone}
+          />
+        </div>
+      ) : null}
+
+      {rows.length === 0 && !rowDraft && !structureAdding ? (
         <EmptyState icon="📊" heading="No rows yet" subtext="Add rows to build this rate table." />
       ) : (
         <>
-          {rows.length > 0 ? (
-            <FilterableRateGrid
-              columns={gridColumns}
-              rows={gridRows}
-              highlightRowId={highlightRowId}
-              testIdPrefix="admin-rates"
-              trailingHeader={<span aria-hidden />}
-              renderTrailing={(gridRow) => (
-                <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => onStartEdit(gridRow.id)}
-                    disabled={isEditing || rowDraft !== null}
-                    style={{ minHeight: 32 }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => void onDeleteRow(gridRow.id)}
-                    style={{ minHeight: 32 }}
-                  >
-                    Delete
-                  </button>
-                </span>
-              )}
-              structureEditing={structureEditing}
-            />
-          ) : null}
+          <FilterableRateGrid
+            columns={gridColumns}
+            rows={gridRows}
+            highlightRowId={highlightRowId}
+            testIdPrefix="admin-rates"
+            trailingHeader={<span aria-hidden />}
+            renderTrailing={(gridRow) => (
+              <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => onStartEdit(gridRow.id)}
+                  disabled={isEditing || rowDraft !== null}
+                  style={{ minHeight: 32 }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                  onClick={() => void onDeleteRow(gridRow.id)}
+                  style={{ minHeight: 32 }}
+                >
+                  Delete
+                </button>
+              </span>
+            )}
+            structureEditing={structureEditing}
+            structureAdding={structureAdding}
+          />
           {/* RATE_SCENARIO_PICKER_V2 — the caption is what makes the highlight
               readable. A tinted row with nothing saying why is a row someone
               will read as an error state. Printed only when a row IS

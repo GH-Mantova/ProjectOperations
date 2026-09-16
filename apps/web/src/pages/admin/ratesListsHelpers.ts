@@ -645,6 +645,59 @@ export function moveNote(
   return "Prices are unchanged. What changed is the order the questions get asked in, and how the grid groups.";
 }
 
+// ── RATE_S3_STRUCTURE_ADDING ──────────────────────────────────────────────
+//
+// What the pricing steps actually name — the shrunk Fields card.
+//
+// `rateFieldRows` lists EVERY field the steps can use (all columns + all line
+// fields). This helper lists only the fields the steps ACTUALLY name, which is
+// the compact read Marco ruled on 2026-09-14: "what the pricing steps use".
+//
+// The three columns are name, source, and steps — no role, no kind, no unit,
+// no add/delete controls. Those live in the header (role & unit) and the
+// `rateFieldRows` table (the full picture when wanted).
+
+export type PricingFieldRow = {
+  name: string;
+  source: RateFieldSource;
+  /** One-based step numbers naming this field, ascending, deduplicated. */
+  steps: number[];
+};
+
+/**
+ * The rows for the shrunk "What the pricing steps use" card.
+ *
+ * One row per field a step names (by arithmetic operand OR condition field),
+ * in the order: table columns first (table order), then line fields (declared
+ * order). Only fields that appear in at least one step are included.
+ *
+ * Case in the spec: a table whose steps name one column and three line fields
+ * yields four rows; the three line fields are marked source = "line".
+ */
+export function pricingFieldRows(
+  columns: readonly Pick<RateColumn, "id" | "name">[],
+  lineFields: readonly { name: string }[] | null | undefined,
+  steps: readonly ChargeStep[] | null | undefined
+): PricingFieldRow[] {
+  const out: PricingFieldRow[] = [];
+
+  for (const c of columns) {
+    const usedIn = stepsUsingField(steps, c.name);
+    if (usedIn.length > 0) {
+      out.push({ name: c.name, source: "table", steps: usedIn });
+    }
+  }
+
+  for (const f of lineFields ?? []) {
+    const usedIn = stepsUsingField(steps, f.name);
+    if (usedIn.length > 0) {
+      out.push({ name: f.name, source: "line", steps: usedIn });
+    }
+  }
+
+  return out;
+}
+
 /**
  * The chosen keys with every stale value replaced — the picker's own state,
  * normalised.

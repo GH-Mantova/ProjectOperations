@@ -20,6 +20,7 @@ import {
   type RateGridRow,
   type RateGridRowValue
 } from "./rateGridModel";
+import type { RateColumn } from "../../pages/admin/ratesListsHelpers";
 
 /**
  * RATE_S3_COLUMN_STRUCTURE — admin-only structure controls.
@@ -47,6 +48,40 @@ export type StructureEditing = {
   renderSettings(col: RateGridColumn): ReactNode;
 };
 
+/**
+ * RATE_S3_STRUCTURE_ADDING — admin-only add-column and add-row controls.
+ *
+ * When present:
+ *   - A `+` cell appears at the end of the header row. Clicking it starts
+ *     the add-column flow: an editable header cell whose text becomes the new
+ *     column name, then the S2 `ColumnSettingsPanel` in create mode.
+ *   - A `+ Add a row` line appears after the last data row. When `addRowDraft`
+ *     is set, the draft row is rendered in the grid with one editor per column.
+ *
+ * Absent on the tender RatesTab — every new prop is optional, so the existing
+ * call sites pass nothing and gain nothing.
+ */
+export type StructureAdding = {
+  /** Called when the user clicks the `+` column header button. */
+  onAddColumn(): void;
+  /** Called when the user clicks `+ Add a row`. */
+  onAddRow(): void;
+  /**
+   * When set, a draft row is rendered in-grid with one editor per column.
+   * The parent owns the draft cells (keyed by column id) and the commit/cancel
+   * handlers.
+   */
+  addRowDraft?: {
+    cells: Record<string, unknown>;
+    columns: RateColumn[];
+    onChange: (next: Record<string, unknown>) => void;
+    errors: Array<{ columnId: string; message: string }>;
+    onCommit: () => Promise<void>;
+    onCancel: () => void;
+    busy?: boolean;
+  };
+};
+
 type Props = {
   columns: RateGridColumn[];
   rows: RateGridRow[];
@@ -72,6 +107,12 @@ type Props = {
    * Absent on the tender RatesTab.
    */
   structureEditing?: StructureEditing;
+  /**
+   * RATE_S3_STRUCTURE_ADDING — admin-only. When present, a `+` appears at the
+   * end of the header row (add column) and a `+ Add a row` line appears below
+   * the last data row. Absent on the tender RatesTab.
+   */
+  structureAdding?: StructureAdding;
 };
 
 const ACCENT = "var(--text-accent, #EA580C)";
@@ -88,7 +129,8 @@ export function FilterableRateGrid({
   testIdPrefix,
   emptyState,
   highlightRowId = null,
-  structureEditing
+  structureEditing,
+  structureAdding
 }: Props) {
   const defaultGroupKey =
     groupByKey === undefined
@@ -249,13 +291,36 @@ export function FilterableRateGrid({
               {trailingHeader !== undefined ? (
                 <th style={{ padding: "8px 12px", width: 80 }}>{trailingHeader}</th>
               ) : null}
+              {structureAdding ? (
+                <th style={{ padding: "4px 8px", width: 40 }}>
+                  <button
+                    type="button"
+                    onClick={structureAdding.onAddColumn}
+                    aria-label="Add column"
+                    data-testid={`${testIdPrefix}-add-column`}
+                    style={{
+                      background: "transparent",
+                      border: `1px dashed ${BORDER}`,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      color: MUTED,
+                      fontSize: 16,
+                      lineHeight: 1,
+                      padding: "2px 8px",
+                      fontWeight: 600
+                    }}
+                  >
+                    +
+                  </button>
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + (trailingHeader !== undefined ? 1 : 0)}
+                  colSpan={columns.length + (trailingHeader !== undefined ? 1 : 0) + (structureAdding ? 1 : 0)}
                   style={{ padding: 24, textAlign: "center", color: MUTED }}
                   data-testid={`${testIdPrefix}-empty`}
                 >
@@ -279,11 +344,53 @@ export function FilterableRateGrid({
                   }
                   renderTrailing={renderTrailing}
                   hasTrailing={trailingHeader !== undefined}
+                  hasAddColumn={Boolean(structureAdding)}
                   highlightRowId={highlightRowId}
                   testIdPrefix={testIdPrefix}
                 />
               ))
             )}
+            {structureAdding ? (
+              <>
+                {structureAdding.addRowDraft ? (
+                  <AddRowDraftRow
+                    draft={structureAdding.addRowDraft}
+                    gridColumns={columns}
+                    hasTrailing={trailingHeader !== undefined}
+                    testIdPrefix={testIdPrefix}
+                  />
+                ) : null}
+                <tr>
+                  <td
+                    colSpan={columns.length + (trailingHeader !== undefined ? 1 : 0) + 1}
+                    style={{ padding: "8px 12px" }}
+                  >
+                    <button
+                      type="button"
+                      onClick={structureAdding.onAddRow}
+                      disabled={Boolean(structureAdding.addRowDraft)}
+                      data-testid={`${testIdPrefix}-add-row`}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: structureAdding.addRowDraft ? "default" : "pointer",
+                        color: structureAdding.addRowDraft ? MUTED : BRAND,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        padding: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        opacity: structureAdding.addRowDraft ? 0.4 : 1
+                      }}
+                    >
+                      <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+                      Add a row
+                    </button>
+                  </td>
+                </tr>
+              </>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -1007,6 +1114,7 @@ function GroupSection({
   onToggle,
   renderTrailing,
   hasTrailing,
+  hasAddColumn,
   highlightRowId,
   testIdPrefix
 }: {
@@ -1018,10 +1126,12 @@ function GroupSection({
   onToggle: () => void;
   renderTrailing?: (row: RateGridRow) => ReactNode;
   hasTrailing: boolean;
+  /** RATE_S3_STRUCTURE_ADDING — true when the grid has an add-column `+` header cell. */
+  hasAddColumn?: boolean;
   highlightRowId: string | null;
   testIdPrefix: string;
 }) {
-  const colSpan = columns.length + (hasTrailing ? 1 : 0);
+  const colSpan = columns.length + (hasTrailing ? 1 : 0) + (hasAddColumn ? 1 : 0);
   return (
     <>
       {groupingEnabled ? (
@@ -1064,6 +1174,7 @@ function GroupSection({
             columns={columns}
             renderTrailing={renderTrailing}
             hasTrailing={hasTrailing}
+            hasAddColumn={hasAddColumn}
             highlighted={row.id === highlightRowId}
           />
         ))}
@@ -1076,12 +1187,15 @@ function BodyRow({
   columns,
   renderTrailing,
   hasTrailing,
+  hasAddColumn,
   highlighted = false
 }: {
   row: RateGridRow;
   columns: RateGridColumn[];
   renderTrailing?: (row: RateGridRow) => ReactNode;
   hasTrailing: boolean;
+  /** RATE_S3_STRUCTURE_ADDING — true when the grid has an add-column `+` header cell. */
+  hasAddColumn?: boolean;
   /**
    * RATE_SCENARIO_PICKER_V2 — this is the row the caption under the grid is
    * pointing at. `BodyRow` has exactly ONE call site, so grouped, ungrouped,
@@ -1141,7 +1255,221 @@ function BodyRow({
           {renderTrailing ? renderTrailing(row) : null}
         </td>
       ) : null}
+      {hasAddColumn ? <td style={{ padding: "8px 12px" }} /> : null}
     </tr>
+  );
+}
+
+// ── AddRowDraftRow ────────────────────────────────────────────────────────
+
+/**
+ * RATE_S3_STRUCTURE_ADDING — the draft row rendered in-grid when `addRowDraft`
+ * is set. One editor per column chosen by the column's kind:
+ *   - LIST_REF -> select over that list's items (ListRefCellEditor)
+ *   - number/money -> numeric box
+ *   - everything else -> text input
+ *
+ * Cells are keyed by column id (not position). The parent owns the cells map
+ * and the commit/cancel handlers.
+ */
+function AddRowDraftRow({
+  draft,
+  gridColumns,
+  hasTrailing,
+  testIdPrefix
+}: {
+  draft: NonNullable<StructureAdding["addRowDraft"]>;
+  gridColumns: RateGridColumn[];
+  hasTrailing: boolean;
+  testIdPrefix: string;
+}) {
+  const errorByColumn = new Map<string, string>();
+  for (const e of draft.errors) errorByColumn.set(e.columnId, e.message);
+
+  return (
+    <>
+      <tr
+        style={{
+          background: "rgba(254,170,109,0.06)",
+          borderBottom: "1px solid var(--border-subtle)"
+        }}
+      >
+        {draft.columns.map((c) => {
+          const err = errorByColumn.get(c.id);
+          const align = c.dataType === "NUMBER" || c.dataType === "CURRENCY" ? "right" : "left";
+          return (
+            <td
+              key={c.id}
+              style={{
+                padding: "6px 8px",
+                textAlign: align,
+                verticalAlign: "middle"
+              }}
+            >
+              <InlineCellEditor
+                column={c}
+                value={draft.cells[c.id]}
+                onChange={(v) => draft.onChange({ ...draft.cells, [c.id]: v })}
+                testIdPrefix={testIdPrefix}
+                error={err}
+              />
+            </td>
+          );
+        })}
+        {hasTrailing ? <td style={{ padding: "6px 8px" }} /> : null}
+        {/* The add-column `+` header cell — trailing blank */}
+        <td style={{ padding: "6px 8px" }} />
+      </tr>
+      <tr style={{ background: "rgba(254,170,109,0.04)" }}>
+        <td
+          colSpan={draft.columns.length + (hasTrailing ? 1 : 0) + 1}
+          style={{ padding: "6px 12px", textAlign: "right" }}
+        >
+          <span style={{ display: "inline-flex", gap: 8 }}>
+            <button
+              type="button"
+              className="s7-btn s7-btn--ghost s7-btn--sm"
+              onClick={draft.onCancel}
+              style={{ minHeight: 32 }}
+              data-testid={`${testIdPrefix}-draft-cancel`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="s7-btn s7-btn--primary s7-btn--sm"
+              disabled={draft.errors.length > 0 || draft.busy}
+              onClick={() => void draft.onCommit()}
+              style={{ minHeight: 32 }}
+              data-testid={`${testIdPrefix}-draft-commit`}
+            >
+              {draft.busy ? "Adding…" : "Add the row"}
+            </button>
+          </span>
+        </td>
+      </tr>
+    </>
+  );
+}
+
+/**
+ * RATE_S3_STRUCTURE_ADDING — minimal in-cell editor for the draft row.
+ * Reuses the same logic as the page's `CellEditor` / `ListRefCellEditor` but
+ * lives here so the grid has no page import.
+ */
+function InlineCellEditor({
+  column,
+  value,
+  onChange,
+  testIdPrefix,
+  error
+}: {
+  column: RateColumn;
+  value: unknown;
+  onChange: (next: unknown) => void;
+  testIdPrefix: string;
+  error?: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {column.dataType === "BOOL" ? (
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+            data-testid={`${testIdPrefix}-draft-${column.id}`}
+          />
+          <span style={{ fontSize: 12 }}>{value ? "yes" : "no"}</span>
+        </label>
+      ) : column.dataType === "DATE" ? (
+        <input
+          type="date"
+          className="s7-input"
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={`${testIdPrefix}-draft-${column.id}`}
+        />
+      ) : column.dataType === "NUMBER" || column.dataType === "CURRENCY" ? (
+        <input
+          type="number"
+          inputMode="decimal"
+          className="s7-input"
+          value={value === undefined || value === null ? "" : String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={`${testIdPrefix}-draft-${column.id}`}
+        />
+      ) : column.dataType === "LIST_REF" ? (
+        <InlineListRefEditor
+          listSlug={column.listSlug ?? ""}
+          value={typeof value === "string" ? value : ""}
+          onChange={onChange}
+          testId={`${testIdPrefix}-draft-${column.id}`}
+        />
+      ) : (
+        <input
+          className="s7-input"
+          value={typeof value === "string" ? value : String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={`${testIdPrefix}-draft-${column.id}`}
+        />
+      )}
+      {error ? (
+        <div style={{ fontSize: 11, color: "var(--status-danger)" }}>{error}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * RATE_S3_STRUCTURE_ADDING — list-column editor for the draft row.
+ * Mirrors `ListRefCellEditor` in the page but is self-contained in the grid
+ * component so the grid can render editors without importing the full page.
+ */
+function InlineListRefEditor({
+  listSlug,
+  value,
+  onChange,
+  testId
+}: {
+  listSlug: string;
+  value: string;
+  onChange: (next: string) => void;
+  testId: string;
+}) {
+  const [items, setItems] = useState<Array<{ id: string; value: string; label: string }> | null>(null);
+
+  useEffect(() => {
+    if (!listSlug) return;
+    let cancelled = false;
+    // Use a plain fetch — the grid has no auth context. The page's
+    // ListRefCellEditor uses authFetch; this one mirrors the pattern but relies
+    // on the session cookie (same-origin). For local dev with httpOnly cookies
+    // this is equivalent.
+    fetch(`/api/lists/${listSlug}/items`)
+      .then(async (res) => {
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as Array<{ id: string; value: string; label: string; isArchived: boolean }>;
+        if (!cancelled) setItems(body.filter((i) => !i.isArchived));
+      })
+      .catch(() => { /* ignore network errors; the page's editor handles them */ });
+    return () => { cancelled = true; };
+  }, [listSlug]);
+
+  return (
+    <select
+      className="s7-select"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      data-testid={testId}
+    >
+      <option value="">—</option>
+      {(items ?? []).map((i) => (
+        <option key={i.id} value={i.value}>
+          {i.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

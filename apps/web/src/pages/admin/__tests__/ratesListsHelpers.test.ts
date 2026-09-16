@@ -16,6 +16,7 @@ import {
   isNumberKindColumn,
   matchScenarioRow,
   moveNote,
+  pricingFieldRows,
   rateFieldRows,
   renameWarning,
   resolveScenarioKeys,
@@ -1413,5 +1414,66 @@ describe("ratesListsHelpers · moveNote", () => {
     const note = moveNote({ role: "KEY" }, before, before);
     expect(note).toContain("order the questions");
     expect(note).toContain("grid groups");
+  });
+});
+
+// ── RATE_S3_STRUCTURE_ADDING · pricingFieldRows ───────────────────────────
+//
+// The shrunk "What the pricing steps use" list. One row per field a step
+// names, columns first, line fields after. Only fields actually used appear.
+//
+// Spec case: a table whose steps name one column and three line fields yields
+// four rows; the three line fields are marked source = "line".
+
+describe("ratesListsHelpers · pricingFieldRows", () => {
+  const TABLE_COLUMN = col({
+    id: "tc1",
+    name: "Rate",
+    dataType: "CURRENCY",
+    role: "VALUE",
+    unit: "m"
+  });
+  const LINE_FIELDS = [
+    { name: "Depth" },
+    { name: "Elevation" },
+    { name: "Holes" }
+  ];
+  const STEPS: ChargeStep[] = [
+    { op: "start", field: "Depth" },
+    { op: "multiply", field: "Rate" },
+    { op: "multiply", field: 2, when: { field: "Elevation", cmp: "is", value: "Inverted" } },
+    { op: "multiply", field: "Holes" }
+  ];
+
+  it("one column + three line fields used => four rows in the right order", () => {
+    const rows = pricingFieldRows([TABLE_COLUMN], LINE_FIELDS, STEPS);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toStrictEqual({ name: "Rate", source: "table", steps: [2] });
+    expect(rows[1]).toStrictEqual({ name: "Depth", source: "line", steps: [1] });
+    expect(rows[2]).toStrictEqual({ name: "Elevation", source: "line", steps: [3] });
+    expect(rows[3]).toStrictEqual({ name: "Holes", source: "line", steps: [4] });
+  });
+
+  it("the three line fields are all marked source = 'line'", () => {
+    const rows = pricingFieldRows([TABLE_COLUMN], LINE_FIELDS, STEPS);
+    const lineSources = rows.filter((r) => r.source === "line");
+    expect(lineSources).toHaveLength(3);
+    expect(lineSources.map((r) => r.name)).toStrictEqual(["Depth", "Elevation", "Holes"]);
+  });
+
+  it("fields that are declared but not named in any step do not appear", () => {
+    const unusedCol = col({ id: "tc2", name: "Equipment", dataType: "TEXT", role: "KEY" });
+    const rows = pricingFieldRows([TABLE_COLUMN, unusedCol], LINE_FIELDS, STEPS);
+    expect(rows.map((r) => r.name)).not.toContain("Equipment");
+  });
+
+  it("returns [] when the step list is empty", () => {
+    expect(pricingFieldRows([TABLE_COLUMN], LINE_FIELDS, [])).toHaveLength(0);
+    expect(pricingFieldRows([TABLE_COLUMN], LINE_FIELDS, null)).toHaveLength(0);
+    expect(pricingFieldRows([TABLE_COLUMN], LINE_FIELDS, undefined)).toHaveLength(0);
+  });
+
+  it("returns [] when there are no columns and no line fields", () => {
+    expect(pricingFieldRows([], [], STEPS)).toHaveLength(0);
   });
 });

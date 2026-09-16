@@ -112,6 +112,19 @@
   gap: 4px;
 }
 
+/* Active state: chip has a value selected — teal border + tint background. */
+.crm-filter-chip--active {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-light);
+  color: var(--brand-primary-dark);
+}
+
+/* Inline search input in the filter row — matches chip row height */
+.crm-filter-search {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
 /* ── Page head ────────────────────────────────────────────────────────────── */
 
 .crm-page-head {
@@ -283,3 +296,10 @@
   background: var(--brand-primary);
   border-radius: 999px;
 }
+
+/* ── Tenders Register — crmvis-S4 additions ───────────────────────────────── */
+
+/* No new structural classes needed for S4 beyond the filter-chip active state
+   added above — the page uses crm-page-head, crm-filter-chip, crm-cell-sub,
+   crm-avatar, and s7-badge which are all defined earlier in this file or in
+   the kit. This comment anchors the S4 section for future additions. */

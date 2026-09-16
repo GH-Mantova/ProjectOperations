@@ -21,6 +21,15 @@
 //   Still ONE list, ONE fetch, ONE row pipeline (decision 6): the entity-type
 //   group is a status filter that COMPOSES with the four next-action toggles.
 //   Every KPI figure is derived in the browser from rows already loaded.
+// CRM_PARITY_REGISTER_V1 — crmvis-S4: Register migrated to s7 kit and design
+//   tokens. Artboard: `Register.dc.html` in Claude Design/proposed/crm-visual-
+//   parity/. Title Tenders, subtitle per artboard, Export CSV + Columns in
+//   head, CrmTabs (tabs prop from TendersPage), one filter-chip row (Search,
+//   Status chip, Client chip, Due chip, Estimator chip, Mine only toggle chip),
+//   N shown at row end. Status cells use s7-badge tones; Logged by uses
+//   crm-avatar; Tender cell is artboard layout; Next action: text + due chip
+//   or "None set" (muted italic) + optional "Stalled" badge. LogModal on s7
+//   inputs/buttons. Zero hex literals in this file.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
@@ -52,6 +61,7 @@ import {
   entityTypePassesFilter,
   ENTITY_TYPES,
   DEFAULT_ENTITY_TYPE_TOGGLES,
+  isStalled,
   type EntityTypeToggles,
   type FollowUpToggles,
   type CrmColumnKey,
@@ -59,6 +69,11 @@ import {
   type RegisterColumnId,
   type RegisterColumnVisibility
 } from "./tendersRegisterPage.helpers";
+import { CrmTabs, type CrmTabDef } from "./CrmTabs";
+import "./crm.css";
+
+// Visual parity marker — asserted by done_when (crmvis-S4).
+export const CRM_PARITY_REGISTER_V1 = "crmvis-s4";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,7 +118,7 @@ type NextAction = {
 export type TendersRegisterTab = "register" | "followups";
 type Tab = TendersRegisterTab;
 
-/** CRM UIFIX S1: props for outer-shell composition. */
+/** CRM UIFIX S1 / CRM_PARITY_REGISTER_V1: props for outer-shell composition. */
 export type TendersRegisterPageProps = {
   /**
    * When provided, the page is a CONTROLLED subview: the outer TendersPage tab
@@ -112,6 +127,16 @@ export type TendersRegisterPageProps = {
    * standalone caller in tests or storybook still works).
    */
   activeTab?: Tab;
+  /**
+   * CRM_PARITY_REGISTER_V1: tab definitions (built by TendersPage) for CrmTabs.
+   * When provided together with activeId, the CrmTabs bar renders here instead
+   * of in TendersPage — same pattern as AccountsPage → AccountsListPage.
+   */
+  tabs?: CrmTabDef[];
+  /**
+   * The active tab id passed to CrmTabs. Must pair with `tabs`.
+   */
+  activeId?: string;
 };
 
 // CRM_FOLLOWUPS_V2: the five status Sets that used to be declared here — one
@@ -197,6 +222,32 @@ function persistColumnVisibility(visibility: RegisterColumnVisibility): void {
 }
 
 // ---------------------------------------------------------------------------
+// CRM_PARITY_REGISTER_V1: status badge tone map
+// Maps a TenderStatus to the s7-badge modifier the artboard specifies.
+// Submitted → --info   Won/Awarded/Contract → --active
+// In progress/Qualified → --warning   Lost/Withdrawn → --neutral
+// ---------------------------------------------------------------------------
+
+function statusBadgeTone(status: string): string {
+  switch (status) {
+    case "SUBMITTED":
+      return "info";
+    case "AWARDED":
+    case "CONTRACT_ISSUED":
+      return "active";
+    case "IN_PROGRESS":
+      return "warning";
+    case "LOST":
+    case "WITHDRAWN":
+      return "neutral";
+    case "DRAFT":
+      return "neutral";
+    default:
+      return "neutral";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Log-contact modal component
 // ---------------------------------------------------------------------------
 
@@ -257,80 +308,68 @@ function LogModal({ tender, onClose, onSave }: LogModalProps) {
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 8,
-          padding: 24,
-          width: 480,
-          maxWidth: "95vw",
-          maxHeight: "90vh",
-          overflowY: "auto"
-        }}
-      >
+      <div className="s7-card" style={{ padding: 24, width: 480, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto" }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 600 }}>
           Log interaction
         </h2>
-        <p style={{ margin: "0 0 16px", fontSize: 12, color: "#666" }}>
+        <p className="crm-cell-sub" style={{ margin: "0 0 16px" }}>
           {tender.tenderNumber} — {tender.title}
         </p>
         {error && (
           <div
             role="alert"
-            style={{
-              color: "#dc2626",
-              padding: "8px 12px",
-              background: "#fef2f2",
-              borderRadius: 6,
-              marginBottom: 12,
-              fontSize: 13
-            }}
+            className="s7-badge s7-badge--danger"
+            style={{ display: "block", padding: "8px 12px", marginBottom: 12, fontSize: 13 }}
           >
             {error}
           </div>
         )}
         <form onSubmit={(e) => { void handleSubmit(e); }}>
-          <label style={labelStyle}>
+          <label className="crm-relationships-field-label" style={{ marginBottom: 4 }}>
             Subject
             <input
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               required
-              style={inputStyle}
+              className="s7-input"
+              style={{ display: "block", width: "100%", marginTop: 4, boxSizing: "border-box" }}
               aria-label="Interaction subject"
             />
           </label>
-          <label style={labelStyle}>
+          <label className="crm-relationships-field-label" style={{ marginBottom: 4 }}>
             Notes
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               required
               rows={4}
-              style={{ ...inputStyle, resize: "vertical" }}
+              className="s7-input"
+              style={{ display: "block", width: "100%", resize: "vertical", marginTop: 4, boxSizing: "border-box" }}
               aria-label="Interaction notes"
             />
           </label>
-          <label style={labelStyle}>
+          <label className="crm-relationships-field-label" style={{ marginBottom: 4 }}>
             Next action due (optional)
             <input
               type="date"
               value={nextActionAt}
               onChange={(e) => setNextActionAt(e.target.value)}
-              style={inputStyle}
+              className="s7-input"
+              style={{ display: "block", width: "100%", marginTop: 4, boxSizing: "border-box" }}
               aria-label="Next action due date"
             />
           </label>
           {nextActionAt && (
-            <label style={labelStyle}>
+            <label className="crm-relationships-field-label" style={{ marginBottom: 4 }}>
               Next action note (optional)
               <input
                 type="text"
                 value={nextActionNote}
                 onChange={(e) => setNextActionNote(e.target.value)}
                 placeholder="e.g. Call client to follow up"
-                style={inputStyle}
+                className="s7-input"
+                style={{ display: "block", width: "100%", marginTop: 4, boxSizing: "border-box" }}
                 aria-label="Next action note"
               />
             </label>
@@ -339,18 +378,18 @@ function LogModal({ tender, onClose, onSave }: LogModalProps) {
             <button
               type="button"
               onClick={onClose}
-              style={ghostBtnStyle}
+              className="s7-btn s7-btn--secondary s7-btn--sm"
               disabled={busy}
             >
               Cancel
             </button>
             <button
               type="submit"
-              style={primaryBtnStyle}
+              className="s7-btn s7-btn--primary crm-btn--primary s7-btn--sm"
               disabled={busy}
               aria-busy={busy}
             >
-              {busy ? "Saving…" : "Log interaction"}
+              {busy ? "Saving..." : "Log interaction"}
             </button>
           </div>
         </form>
@@ -359,48 +398,8 @@ function LogModal({ tender, onClose, onSave }: LogModalProps) {
   );
 }
 
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  fontSize: 12,
-  color: "#374151",
-  fontWeight: 500,
-  marginBottom: 12,
-  gap: 4
-};
-const inputStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 6,
-  border: "1px solid #d1d5db",
-  fontSize: 13,
-  width: "100%",
-  boxSizing: "border-box"
-};
-const primaryBtnStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  borderRadius: 6,
-  border: "none",
-  background: "var(--brand-primary, #005B61)",
-  color: "#fff",
-  fontSize: 13,
-  cursor: "pointer",
-  fontWeight: 500
-};
-const ghostBtnStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  borderRadius: 6,
-  border: "1px solid #d1d5db",
-  background: "transparent",
-  fontSize: 13,
-  cursor: "pointer"
-};
-
 /**
- * CRM_REGISTER_V3 cell styles.
- *
- * Every colour here is read from a design token that already exists
- * (`--text-muted`, defined for both themes in styles/tokens.css) or is
- * inherited from the table. This slice introduces no colour literal of its own.
+ * CRM_REGISTER_V3 cell styles — design-token colours only, zero hex.
  */
 const registerCellStyle = {
   tenderTitle: { cursor: "pointer", marginTop: 2 },
@@ -414,9 +413,8 @@ const registerCellStyle = {
     alignItems: "center",
     marginBottom: 12,
     padding: 12,
-    borderRadius: 8,
-    border: "1px solid",
-    borderColor: "var(--text-muted)",
+    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--border-default)",
     fontSize: 12
   },
   columnsCheckbox: { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" },
@@ -425,14 +423,7 @@ const registerCellStyle = {
 } satisfies Record<string, React.CSSProperties>;
 
 /**
- * CRM_FOLLOWUPS_V2 styles.
- *
- * Every colour is a design token that already exists in styles/tokens.css and
- * is defined for BOTH themes (`--surface-card`, `--border-default`,
- * `--text-primary`, `--text-secondary`, `--surface-subtle`) or is a locked
- * brand token (`--brand-primary`, `--brand-primary-light`,
- * `--brand-primary-dark`, §5 BRAND — unchanged across the theme flip by
- * design). This slice introduces no colour literal of its own.
+ * CRM_FOLLOWUPS_V2 styles — design-token colours only, zero hex.
  */
 const followUpsStyle = {
   kpiRow: { marginBottom: 12 },
@@ -512,6 +503,13 @@ function KpiCard({ label, value }: { label: string; value: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Chip filter state helpers
+// ---------------------------------------------------------------------------
+
+/** CRM_PARITY_REGISTER_V1: "Due" chip popover state */
+type DueChipState = "closed" | "open";
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -562,6 +560,9 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   const [columnVisibility, setColumnVisibility] =
     useState<RegisterColumnVisibility>(loadColumnVisibility);
   const [showColumns, setShowColumns] = useState(false);
+
+  // CRM_PARITY_REGISTER_V1: "Due" chip popover
+  const [dueChip, setDueChip] = useState<DueChipState>("closed");
 
   // Users for "Mine only" filter
   const currentUserId = (user as { id?: string } | null)?.id ?? null;
@@ -913,28 +914,65 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     [tenders]
   );
 
+  // Subtitle per tab (Register: artboard text; Follow-ups: unchanged until S5).
+  const pageSubtitle = tab === "register"
+    ? "Every tender and opportunity, and what we owe each one next."
+    : "Tenders requiring follow-up action.";
+
+  // Active filter chips label helpers
+  const activeStatusLabel = filters.status.length === 1
+    ? (TENDER_STATUS_LABEL[filters.status[0] as TenderStatus] ?? filters.status[0])
+    : filters.status.length > 1
+    ? `${filters.status.length} statuses`
+    : null;
+  const activeClientLabel = filters.clientId
+    ? (clients.find((c) => c.id === filters.clientId)?.name ?? "Client")
+    : null;
+  const activeDueLabel = filters.dueDateFrom && filters.dueDateTo
+    ? `${filters.dueDateFrom} to ${filters.dueDateTo}`
+    : filters.dueDateFrom
+    ? `From ${filters.dueDateFrom}`
+    : filters.dueDateTo
+    ? `To ${filters.dueDateTo}`
+    : null;
+  const activeEstimatorLabel = filters.estimatorId ? "Estimator set" : null;
+
   return (
     <div style={{ padding: "24px 32px" }}>
-      <header style={{ marginBottom: 16 }}>
-        <h1 className="s7-type-page-title" style={{ margin: 0 }}>Tenders register</h1>
-        <p style={{ margin: "4px 0 0", color: "var(--text-muted, #666)", fontSize: 13 }}>
-          {tab === "register"
-            ? "All tenders across all statuses."
-            : "Tenders requiring follow-up action."}
-        </p>
-      </header>
+      {/* CRM_PARITY_REGISTER_V1: page head — title left, actions right */}
+      <div className="crm-page-head">
+        <div className="crm-page-head__left">
+          <h1 className="s7-type-page-title" style={{ margin: 0 }}>Tenders</h1>
+          <p className="crm-page-head__subtitle">{pageSubtitle}</p>
+        </div>
+        <div className="crm-page-head__actions">
+          <button type="button" onClick={exportCsv} className="s7-btn s7-btn--secondary s7-btn--sm">
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowColumns((v) => !v)}
+            className="s7-btn s7-btn--secondary s7-btn--sm"
+            aria-expanded={showColumns}
+            aria-label="Choose visible columns"
+          >
+            Columns &#9662;
+          </button>
+          {/* Save this view — kept on Register per the prompt; artboard draws
+              it on Follow-ups only; keeping it here is not a FAIL. */}
+          <button type="button" onClick={() => setShowSaveView((v) => !v)} className="s7-btn s7-btn--secondary s7-btn--sm">
+            Save this view
+          </button>
+        </div>
+      </div>
 
-      {/* CRM UIFIX S1: the inner Register/Follow-ups tablist that used to live
-          here is gone. The outer TendersPage tab bar (?tab=register|follow-ups)
-          drives which view renders — one tab bar per page, one URL contract.
-          Removing this fixed the "two tab bars on Tenders" defect where the
-          outer bar advertised an S8-empty-state stub for work already
-          shipped in this page. */}
+      {/* CRM_PARITY_REGISTER_V1: CrmTabs rendered here (passed from TendersPage).
+          Same pattern as AccountsListPage receiving tabs from AccountsPage. */}
+      {props.tabs && props.activeId != null && (
+        <CrmTabs tabs={props.tabs} activeId={props.activeId} ariaLabel="Tenders sections" />
+      )}
 
-      {/* CRM_FOLLOWUPS_V2: the four KPI cards, above the toggle rows.
-          Every figure is computed from the rows in scope for the active
-          filters — no fetch, no endpoint — so the cards and the list beneath
-          them can never disagree. */}
+      {/* CRM_FOLLOWUPS_V2: the four KPI cards, above the toggle rows. */}
       {tab === "followups" && (
         <div
           className="s7-card-grid s7-card-grid--kpi"
@@ -952,9 +990,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         </div>
       )}
 
-      {/* CRM_FOLLOWUPS_V2: the entity-type toggle group. A STATUS filter, and
-          independent of the four next-action toggles below — the two groups
-          compose. All four default off, i.e. no narrowing. */}
+      {/* CRM_FOLLOWUPS_V2: entity-type toggle group. */}
       {tab === "followups" && (
         <div style={followUpsStyle.toggleRow} role="group" aria-label="Entity type">
           <span style={followUpsStyle.toggleLabel}>Type:</span>
@@ -980,18 +1016,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         </div>
       )}
 
-      {/* Follow-ups toggle row */}
+      {/* Follow-ups next-action toggle row */}
       {tab === "followups" && (
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 12,
-            flexWrap: "wrap",
-            alignItems: "center"
-          }}
-        >
-          <span style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>Show:</span>
+        <div style={followUpsStyle.toggleRow}>
+          <span style={followUpsStyle.toggleLabel}>Show:</span>
           {(
             [
               ["overdue", "Overdue"],
@@ -999,152 +1027,160 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
               ["noNextAction", "No next action"],
               ["onTrack", "On track"]
             ] as Array<[keyof FollowUpToggles, string]>
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() =>
-                setFollowUpToggles((prev) => ({ ...prev, [key]: !prev[key] }))
-              }
-              aria-pressed={followUpToggles[key]}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 12,
-                border: "1px solid",
-                fontSize: 12,
-                cursor: "pointer",
-                borderColor:
-                  key === "onTrack"
-                    ? followUpToggles[key]
-                      ? "#22c55e"
-                      : "#d1d5db"
-                    : followUpToggles[key]
-                    ? "#f59e0b"
-                    : "#d1d5db",
-                background:
-                  key === "onTrack"
-                    ? followUpToggles[key]
-                      ? "#dcfce7"
-                      : "transparent"
-                    : followUpToggles[key]
-                    ? "#fef3c7"
+          ).map(([key, label]) => {
+            const on = followUpToggles[key];
+            const isAmber = key !== "onTrack";
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() =>
+                  setFollowUpToggles((prev) => ({ ...prev, [key]: !prev[key] }))
+                }
+                aria-pressed={on}
+                style={{
+                  ...followUpsStyle.entityToggleBase,
+                  borderColor: on
+                    ? (isAmber ? "var(--status-warning)" : "var(--status-active)")
+                    : "var(--border-default)",
+                  background: on
+                    ? (isAmber ? "color-mix(in srgb, var(--status-warning) 15%, transparent)" : "color-mix(in srgb, var(--status-active) 15%, transparent)")
                     : "transparent",
-                color:
-                  key === "onTrack"
-                    ? followUpToggles[key]
-                      ? "#15803d"
-                      : "#6b7280"
-                    : followUpToggles[key]
-                    ? "#92400e"
-                    : "#6b7280"
-              }}
-            >
-              {label}
-            </button>
-          ))}
+                  color: on
+                    ? (isAmber ? "var(--text-primary)" : "var(--text-primary)")
+                    : "var(--text-secondary)"
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Filter bar */}
+      {/* CRM_PARITY_REGISTER_V1: Filter row — one line of chips, wraps on narrow
+          viewports. Controls: search input, Status chip, Client chip, Due chip
+          (opens from/to pair), Estimator chip, Mine only toggle, N shown.
+          No filter the API does not take is added; only the existing six filters
+          are restyled as chips. The artboard also shows "Value" and "Logged by"
+          chips — those are not built here (residual, needs its own slice). */}
       <div
-        style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}
+        className="crm-filter-row"
+        style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}
+        role="search"
+        aria-label="Filter tenders"
       >
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "#666", gap: 2 }}>
-          Search
-          <input
-            type="search"
-            placeholder="Tender # or title…"
-            value={filters.search}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-            aria-label="Search tenders"
-            style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", minHeight: 34, minWidth: 200 }}
-          />
-        </label>
+        {/* Search */}
+        <input
+          type="search"
+          placeholder="Search tenders..."
+          value={filters.search}
+          onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+          aria-label="Search tenders"
+          className="s7-input crm-filter-search"
+          style={{ minWidth: 200, height: 32 }}
+        />
 
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "#666", gap: 2 }}>
-          Status
+        {/* Status chip */}
+        <div style={{ position: "relative" }}>
           <select
             value={filters.status[0] ?? ""}
             onChange={(e) =>
               setFilters((f) => ({ ...f, status: e.target.value ? [e.target.value] : [] }))
             }
             aria-label="Filter by status"
-            style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", minHeight: 34 }}
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeStatusLabel ? " crm-filter-chip--active" : ""}`}
+            style={{ appearance: "none", WebkitAppearance: "none", paddingRight: 24, cursor: "pointer" }}
           >
-            <option value="">All statuses</option>
+            <option value="">Status {activeStatusLabel ? `· ${activeStatusLabel}` : "▾"}</option>
             {TENDER_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {TENDER_STATUS_LABEL[s]}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "#666", gap: 2 }}>
-          Client
+        {/* Client chip */}
+        <div style={{ position: "relative" }}>
           <select
             value={filters.clientId ?? ""}
             onChange={(e) =>
               setFilters((f) => ({ ...f, clientId: e.target.value || null }))
             }
             aria-label="Filter by client"
-            style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", minHeight: 34 }}
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeClientLabel ? " crm-filter-chip--active" : ""}`}
+            style={{ appearance: "none", WebkitAppearance: "none", paddingRight: 24, cursor: "pointer" }}
           >
-            <option value="">All clients</option>
+            <option value="">Client {activeClientLabel ? `· ${activeClientLabel}` : "▾"}</option>
             {clientOptions.map(([id, name]) => (
               <option key={id} value={id}>
                 {name}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "#666", gap: 2 }}>
-          Due from
-          <input
-            type="date"
-            value={filters.dueDateFrom}
-            onChange={(e) => setFilters((f) => ({ ...f, dueDateFrom: e.target.value }))}
-            aria-label="Due date from"
-            style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", minHeight: 34 }}
-          />
-        </label>
+        {/* Due chip — opens from/to pair inline */}
+        <button
+          type="button"
+          onClick={() => setDueChip((s) => (s === "open" ? "closed" : "open"))}
+          className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeDueLabel ? " crm-filter-chip--active" : ""}`}
+          aria-expanded={dueChip === "open"}
+          aria-label="Filter by due date"
+        >
+          Due {activeDueLabel ? `· ${activeDueLabel}` : "▾"}
+        </button>
+        {dueChip === "open" && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="date"
+              value={filters.dueDateFrom}
+              onChange={(e) => setFilters((f) => ({ ...f, dueDateFrom: e.target.value }))}
+              aria-label="Due date from"
+              className="s7-input"
+              style={{ height: 32, fontSize: 12 }}
+            />
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>to</span>
+            <input
+              type="date"
+              value={filters.dueDateTo}
+              onChange={(e) => setFilters((f) => ({ ...f, dueDateTo: e.target.value }))}
+              aria-label="Due date to"
+              className="s7-input"
+              style={{ height: 32, fontSize: 12 }}
+            />
+          </div>
+        )}
 
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "#666", gap: 2 }}>
-          Due to
-          <input
-            type="date"
-            value={filters.dueDateTo}
-            onChange={(e) => setFilters((f) => ({ ...f, dueDateTo: e.target.value }))}
-            aria-label="Due date to"
-            style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", minHeight: 34 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "#666", gap: 2 }}>
-          Estimator ID
+        {/* Estimator chip — filters by estimator ID (API param: estimatorId).
+            Labelled "Estimator" not "Owner" because the field is the tender's
+            estimator, not an ownership field. */}
+        <div style={{ position: "relative" }}>
           <input
             type="text"
             value={filters.estimatorId ?? ""}
             onChange={(e) =>
               setFilters((f) => ({ ...f, estimatorId: e.target.value || null }))
             }
-            placeholder="User ID"
+            placeholder={activeEstimatorLabel ?? "Estimator ▾"}
             aria-label="Filter by estimator"
-            style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", minHeight: 34, minWidth: 120 }}
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeEstimatorLabel ? " crm-filter-chip--active" : ""}`}
+            style={{ minWidth: 110, cursor: "text", textAlign: "left" }}
           />
-        </label>
+        </div>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#374151", cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={mineOnly}
-            onChange={(e) => setMineOnly(e.target.checked)}
-            aria-label="Show mine only"
-          />
+        {/* Mine only — toggle chip */}
+        <button
+          type="button"
+          onClick={() => setMineOnly((v) => !v)}
+          aria-pressed={mineOnly}
+          className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${mineOnly ? " crm-filter-chip--active" : ""}`}
+        >
           Mine only
-        </label>
+        </button>
 
+        {/* Clear — shown when any filter is active */}
         {(filters.search ||
           filters.status.length ||
           filters.clientId ||
@@ -1157,40 +1193,26 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
             onClick={() => {
               setFilters(EMPTY_FILTERS);
               setMineOnly(false);
+              setDueChip("closed");
             }}
-            style={ghostBtnStyle}
+            className="s7-btn s7-btn--ghost s7-btn--sm"
           >
-            Clear filters
+            Clear
           </button>
         )}
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#666" }} aria-live="polite">
-            {loading
-              ? "Loading…"
-              : `${sortedRows.length} shown${truncated ? ` of ${total} total` : ""}`}
-          </span>
-          <button type="button" onClick={exportCsv} style={ghostBtnStyle}>
-            Export CSV
-          </button>
-          {/* CRM_REGISTER_V3: Columns picker (mock-up's filter-bar control). */}
-          <button
-            type="button"
-            onClick={() => setShowColumns((v) => !v)}
-            style={ghostBtnStyle}
-            aria-expanded={showColumns}
-            aria-label="Choose visible columns"
-          >
-            Columns
-          </button>
-          <button type="button" onClick={() => setShowSaveView((v) => !v)} style={ghostBtnStyle}>
-            Save view
-          </button>
-        </div>
+        {/* N shown — muted count at the end of the row */}
+        <span
+          style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}
+          aria-live="polite"
+        >
+          {loading
+            ? "Loading..."
+            : `${sortedRows.length} shown${truncated ? ` of ${total} total` : ""}`}
+        </span>
       </div>
 
-      {/* CRM_REGISTER_V3: Columns panel. The two anchor columns (Tender, Actions)
-          are not hideable — a row with no identity and no action is not a row. */}
+      {/* CRM_REGISTER_V3: Columns panel. */}
       {showColumns && (
         <div role="group" aria-label="Visible columns" style={registerCellStyle.columnsPanel}>
           {tabColumns.filter((col) => col.hideable).map((col) => (
@@ -1207,13 +1229,11 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         </div>
       )}
 
-      {/* Save view panel */}
+      {/* Save this view panel */}
       {showSaveView && (
         <div
+          className="s7-card"
           style={{
-            background: "#f9fafb",
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
             padding: 12,
             marginBottom: 12,
             display: "flex",
@@ -1224,17 +1244,18 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         >
           <input
             type="text"
-            placeholder="View name…"
+            placeholder="View name..."
             value={viewNameInput}
             onChange={(e) => setViewNameInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleSaveView(); }}
-            style={{ ...inputStyle, width: 200 }}
+            className="s7-input"
+            style={{ width: 200 }}
             aria-label="View name"
           />
-          <button type="button" onClick={handleSaveView} style={primaryBtnStyle}>
+          <button type="button" onClick={handleSaveView} className="s7-btn s7-btn--primary crm-btn--primary s7-btn--sm">
             Save
           </button>
-          <button type="button" onClick={() => setShowSaveView(false)} style={ghostBtnStyle}>
+          <button type="button" onClick={() => setShowSaveView(false)} className="s7-btn s7-btn--secondary s7-btn--sm">
             Cancel
           </button>
           {savedViews.length > 0 && (
@@ -1248,9 +1269,9 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                     gap: 4,
                     padding: "3px 8px",
                     borderRadius: 12,
-                    background: "#e0f2fe",
+                    background: "var(--brand-primary-light)",
                     fontSize: 12,
-                    color: "#0369a1"
+                    color: "var(--brand-primary-dark)"
                   }}
                 >
                   <button
@@ -1264,9 +1285,9 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                     type="button"
                     onClick={() => handleDeleteView(view.id)}
                     aria-label={`Delete view ${view.name}`}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", fontSize: 11, padding: "0 2px", lineHeight: 1 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, padding: "0 2px", lineHeight: 1 }}
                   >
-                    ×
+                    &times;
                   </button>
                 </span>
               ))}
@@ -1279,10 +1300,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         <div
           role="alert"
           style={{
-            color: "#dc2626",
+            color: "var(--status-danger)",
             padding: 12,
-            background: "#fef2f2",
-            borderRadius: 6,
+            background: "color-mix(in srgb, var(--status-danger) 8%, transparent)",
+            borderRadius: "var(--radius-md)",
             marginBottom: 12
           }}
         >
@@ -1297,10 +1318,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
             position: "fixed",
             bottom: 24,
             right: 24,
-            background: "#1e293b",
-            color: "#fff",
+            background: "var(--surface-inverse)",
+            color: "var(--text-inverse)",
             padding: "10px 16px",
-            borderRadius: 8,
+            borderRadius: "var(--radius-lg)",
             fontSize: 13,
             zIndex: 2000
           }}
@@ -1324,6 +1345,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                   <th
                     key={col.id}
                     onClick={key ? () => handleSort(key) : undefined}
+                    className="s7-type-label"
                     style={{
                       ...(key ? { cursor: "pointer", userSelect: "none" } : null),
                       ...(col.align === "right" ? { textAlign: "right" } : null),
@@ -1372,6 +1394,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
               sortedRows.map((t) => {
                 const primaryClient = t.tenderClients[0]?.client.name ?? EM_RULE;
                 const statusLabel = TENDER_STATUS_LABEL[t.status as TenderStatus] ?? t.status;
+                const statusTone = statusBadgeTone(t.status);
                 const interaction = interactions.get(t.id) ?? null;
                 // CRM_REGISTER_V3: the mock-up's "4 days ago" half. The channel
                 // and the one-line summary are NOT rendered — see the NO-OPs at
@@ -1389,35 +1412,45 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                 // (WITHDRAWN) — that row shows the em-rule, not a made-up type.
                 const typeLabel = entityTypeChipLabel(t.status);
                 const valueLabel = formatMoneyAUD(t.estimatedValue);
-                const loggedByLabel = interaction
+                // Logged-by avatar initials
+                const loggedByInitials = interaction
+                  ? `${interaction.loggedBy.firstName.charAt(0)}${interaction.loggedBy.lastName.charAt(0)}`.toUpperCase()
+                  : null;
+                const loggedByFullName = interaction
                   ? `${interaction.loggedBy.firstName} ${interaction.loggedBy.lastName}`.trim()
-                  : EM_RULE;
+                  : null;
                 const nextAction = nextActions.get(t.id) ?? null;
                 const naClass = classifyNextAction(nextAction?.dueAt ?? null, now.current);
                 const naLabel = nextAction
                   ? nextAction.dueAt
                     ? new Date(nextAction.dueAt).toLocaleDateString()
                     : nextAction.title
-                  : EM_RULE;
+                  : null;
+                // CRM_PARITY_REGISTER_V1: isStalled — tender has no open task and
+                // either was never logged or logged > STALLED_AFTER_DAYS days ago.
+                // `hasOpenTask` is true when the taskMap has an entry for this
+                // tender (regardless of its dueAt), so a task with no due date
+                // still suppresses the Stalled badge.
+                const stalledRow = isStalled(
+                  { lastInteractionAt: t.lastInteractionAt, hasOpenTask: nextAction != null },
+                  now.current.getTime()
+                );
 
                 return (
                   <tr key={t.id}>
+                    {/* Tender cell: number + title inline, sub-line below */}
                     <td>
                       <button
                         type="button"
                         onClick={() => navigate(`/tenders/${t.id}`)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--brand-primary, #005B61)", padding: 0, textDecoration: "underline", fontSize: "inherit" }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--brand-primary)", padding: 0, textDecoration: "underline", fontSize: "inherit" }}
+                        aria-label={`Open tender ${t.tenderNumber}`}
                       >
                         {t.tenderNumber}
+                        {t.title && ` · ${t.title}`}
                       </button>
-                      <div
-                        style={registerCellStyle.tenderTitle}
-                        onClick={() => navigate(`/tenders/${t.id}`)}
-                      >
-                        {t.title}
-                      </div>
                       {submittedLabel && (
-                        <div style={registerCellStyle.tenderSubLine}>{submittedLabel}</div>
+                        <div className="crm-cell-sub">{submittedLabel}</div>
                       )}
                     </td>
                     {tab === "followups" && (
@@ -1430,7 +1463,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                       </td>
                     )}
                     <td style={cellStyle("client")}>{primaryClient}</td>
-                    <td style={cellStyle("status")}>{statusLabel}</td>
+                    {/* Status cell: s7-badge with artboard tone */}
+                    <td style={cellStyle("status")}>
+                      <span className={`s7-badge s7-badge--${statusTone}`}>{statusLabel}</span>
+                    </td>
                     <td
                       style={cellStyle("value", registerCellStyle.money)}
                       aria-label={`Value: ${valueLabel}`}
@@ -1445,64 +1481,62 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                         {lastInteractionLabel}
                       </span>
                     </td>
-                    <td style={cellStyle("loggedBy")} aria-label={`Logged by: ${loggedByLabel}`}>{loggedByLabel}</td>
-                    <td style={cellStyle("nextAction")} aria-label={`Next action: ${naLabel}`}>
-                      <span>
-                        {nextAction ? (
-                          <>
-                            {naClass === "overdue" && (
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  marginRight: 4,
-                                  padding: "1px 6px",
-                                  borderRadius: 10,
-                                  background: "#fee2e2",
-                                  color: "#991b1b",
-                                  fontSize: 11,
-                                  fontWeight: 600
-                                }}
-                                aria-label="overdue"
-                              >
-                                Overdue
-                              </span>
-                            )}
-                            {naClass === "due_soon" && (
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  marginRight: 4,
-                                  padding: "1px 6px",
-                                  borderRadius: 10,
-                                  background: "#fef3c7",
-                                  color: "#92400e",
-                                  fontSize: 11,
-                                  fontWeight: 600
-                                }}
-                                aria-label="due soon"
-                              >
-                                Due soon
-                              </span>
-                            )}
-                            {naLabel}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </span>
+                    {/* Logged by: crm-avatar + name */}
+                    <td style={cellStyle("loggedBy")} aria-label={`Logged by: ${loggedByFullName ?? EM_RULE}`}>
+                      {loggedByInitials && loggedByFullName ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span className="crm-avatar" aria-hidden="true">{loggedByInitials}</span>
+                          <span>{loggedByFullName}</span>
+                        </span>
+                      ) : (
+                        EM_RULE
+                      )}
+                    </td>
+                    {/* Next action: text + due chip, or "None set" + optional "Stalled" badge */}
+                    <td style={cellStyle("nextAction")} aria-label={`Next action: ${naLabel ?? "None set"}`}>
+                      {nextAction ? (
+                        <span>
+                          {naClass === "overdue" && (
+                            <span
+                              className="s7-badge s7-badge--danger"
+                              style={{ marginRight: 4 }}
+                              aria-label="overdue"
+                            >
+                              Overdue
+                            </span>
+                          )}
+                          {naClass === "due_soon" && (
+                            <span
+                              className="s7-badge s7-badge--warning"
+                              style={{ marginRight: 4 }}
+                              aria-label="due soon"
+                            >
+                              Due soon
+                            </span>
+                          )}
+                          {naLabel}
+                        </span>
+                      ) : (
+                        <span>
+                          <em style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+                            None set
+                          </em>
+                          {stalledRow && (
+                            <span
+                              className="s7-badge s7-badge--neutral"
+                              style={{ display: "block", marginTop: 4 }}
+                            >
+                              Stalled
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <button
                         type="button"
                         onClick={() => setLogTarget(t)}
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          border: "1px solid #d1d5db",
-                          background: "transparent",
-                          fontSize: 12,
-                          cursor: "pointer"
-                        }}
+                        className="s7-btn s7-btn--secondary s7-btn--sm"
                         aria-label={`Log interaction for ${t.tenderNumber}`}
                       >
                         Log

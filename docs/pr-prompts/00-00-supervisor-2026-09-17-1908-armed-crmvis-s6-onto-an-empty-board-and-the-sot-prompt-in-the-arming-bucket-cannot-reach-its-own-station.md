@@ -234,3 +234,65 @@ else, and must not read a `Dependabot Updates` row into that verdict.
   NOT wedged. The heartbeat ticks only mid-run.
 - **Did not merge anything.** The board was empty when I arrived and the only PR this run creates is
   its own.
+
+---
+
+## ADDENDUM — 2026-09-17T19:40Z, same run, later measurement
+
+Three claims in the report above were true when written and are now superseded by their own
+outcomes. Recorded here rather than left for the next occurrence, because a claim that outlives its
+SHA is how a finished thread gets re-derived.
+
+### The arm completed the whole chain inside this run — `#2017` is open
+
+WHAT I DID NOT DO said *"the watcher has not started it yet."* It had, one second later. [MEASURED]
+from the live daily clone log, found by name shape then mtime and copied before reading
+(`2026-09-18.log`, mtime `2026-09-17T19:36:11Z` — the name is host-local and leads UTC, per §9.5):
+
+```
+[2026-09-17T19:19:52.223Z] [queue] pr-crmvis-s6-bulk-link-ready.md (depth: 1, source: watch)
+[2026-09-17T19:19:53.890Z] [deps] pr-crmvis-s6-bulk-link-ready.md: all dependencies met (merged: [], files: 0, on-main: 1)
+[2026-09-17T19:19:53.890Z] [start] pr-crmvis-s6-bulk-link-ready.md (max-turns=240)
+[2026-09-17T19:33:19.919Z] [merge] pr-crmvis-s6-bulk-link-ready.md: opened PR #2017, policy=tests-docs, waiting.
+[2026-09-17T19:33:27.357Z] [merge] pr-crmvis-s6-bulk-link-ready.md: PR #2017 stays for Marco (escalates:true - held for Marco, labelled do-not-merge)
+[2026-09-17T19:33:30.478Z] [ok] pr-crmvis-s6-bulk-link-ready.md  processed/
+```
+
+Arm at 19:19:51Z → queued in **1 s** → PR open in **13.5 min** → routed and filed. So the board went
+from **0 open / 0 armed** to one open product PR in twenty-five minutes, which is the finding F-1
+was about.
+
+**`#2017` is correct and is NOT work for a station.** `gh pr view 2017` → OPEN, created
+`19:32:53Z`, head `worktree-agent-aaf983d607db97815`, **exactly the three files in the prompt's
+`scope:`** (`AccountLinkPreview.tsx` +335/-425, `crm.css` +294, `crmvis-s6-bulk-link.test.ts` +104),
+title carrying `CRM_PARITY_BULKLINK_V1`, label **`do-not-merge`**. Its RULE-2 verdict is written and
+genuine — `{"ok":false,"marco":true,"fixLane":false,"reason":"escalates:true - held for Marco,
+labelled do-not-merge"}` — so this is `[LABEL_PRESENT]`: **parked by design, nothing to fix, and
+only Marco removes the label.** Three consecutive collect runs have previously listed such PRs among
+"the reds"; this one is not a red.
+
+### F-5 CLOSES — the trunk on `895bdefc` is green
+
+Re-asked per-commit with the full 40-char SHA: `Push on main` **success**, `Deploy` **success**,
+`CI` **success**, `Tendering Browser Smoke` **success**. The fifth row, `Claude Code`, is
+`skipped` on event `issue_comment` and is not a trunk check — reading it into the verdict is the
+§9.5 trunk-aggregate trap, and it is not being read in. **DISPOSITION: ACTIONED.** No successor owes
+this read-back.
+
+### `#2016` — this PR — is green and CLEAN but had not merged at end of run
+
+Auto-merge armed `19:25:37Z` (SQUASH), `mergeable: MERGEABLE`, `mergeStateStatus: CLEAN`, every
+check `pass` with the five `skipping` rows being path-filtered jobs rather than failures, and no
+label. Still `state: OPEN` with `mergedAt: null` fifteen minutes later.
+
+This is DOCTRINE §9.4's *"`CLEAN` can still be refused — policy evaluation lagging the rollup"*, and
+the sanctioned response to it is the one already taken: native auto-merge is armed and will fire on
+the next evaluation. **I did not reach for `--admin` and did not hand-merge.**
+**DISPOSITION: DEFERRED** — the read-back is open by design, not neglected. The next occurrence
+should confirm with `gh pr view 2016 --json state,mergedAt,mergeCommit`; if it is still OPEN and
+CLEAN with auto-merge armed, that is a second instance of the lag and worth recording as a pattern
+rather than re-diagnosed from scratch.
+
+⚠️ `docs/pr-prompts/` now shows `rev-2016-ready.md`. That is the auto-generated **review job** for
+this PR, not a prompt, and it must not be counted as an armed prompt (§9.5). The real armed count is
+**0** — `pr-crmvis-s6-bulk-link-ready.md` was consumed into `processed/` at 19:33:30Z.

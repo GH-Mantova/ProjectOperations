@@ -82,6 +82,9 @@ import "./crm.css";
 // Visual parity marker — asserted by done_when (crmvis-S4).
 export const CRM_PARITY_REGISTER_V1 = "crmvis-s4";
 
+// Follow-ups parity marker — asserted by done_when (crmvis-S5).
+export const CRM_PARITY_FOLLOWUPS_V1 = "crmvis-s5";
+
 // Residual slice marker — asserted by done_when (CRM_REGISTER_RESIDUAL_V1).
 export const CRM_REGISTER_RESIDUAL_V1 = "crm-register-residual-v1";
 
@@ -433,81 +436,33 @@ const registerCellStyle = {
 } satisfies Record<string, React.CSSProperties>;
 
 /**
- * CRM_FOLLOWUPS_V2 styles — design-token colours only, zero hex.
+ * CRM_FOLLOWUPS_V2 / CRM_PARITY_FOLLOWUPS_V1 styles — design-token colours
+ * only, zero hex. S5 migrated toggles and KPI cards to CSS classes; only the
+ * kpiRow margin stays as an inline style (the grid wrapper is already s7-card-
+ * grid--kpi and does not need further CSS rules).
  */
 const followUpsStyle = {
-  kpiRow: { marginBottom: 12 },
-  kpiCard: {
-    background: "var(--surface-card)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "var(--radius-lg)",
-    padding: "12px 16px"
-  },
-  kpiLabel: {
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    color: "var(--text-secondary)"
-  },
-  kpiValue: {
-    fontSize: 22,
-    fontWeight: 600,
-    color: "var(--text-primary)",
-    marginTop: 4,
-    fontVariantNumeric: "tabular-nums"
-  },
-  toggleRow: {
-    display: "flex",
-    gap: 8,
-    marginBottom: 12,
-    flexWrap: "wrap",
-    alignItems: "center"
-  },
-  toggleLabel: { fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 },
-  entityToggleBase: {
-    padding: "4px 10px",
-    borderRadius: 12,
-    border: "1px solid",
-    fontSize: 12,
-    cursor: "pointer"
-  },
-  entityToggleOn: {
-    borderColor: "var(--brand-primary)",
-    background: "var(--brand-primary-light)",
-    color: "var(--brand-primary-dark)"
-  },
-  entityToggleOff: {
-    borderColor: "var(--border-default)",
-    background: "transparent",
-    color: "var(--text-secondary)"
-  },
-  /**
-   * The Type chip. One neutral chip for all four types: the chip TEXT is what
-   * distinguishes a Lead row from a Tender row, and there is no per-type
-   * colour token defined for both themes to reach for. Colouring it would have
-   * meant inventing literals.
-   */
-  typeChip: {
-    display: "inline-block",
-    padding: "1px 8px",
-    borderRadius: 10,
-    border: "1px solid",
-    borderColor: "var(--border-default)",
-    background: "var(--surface-subtle)",
-    color: "var(--text-secondary)",
-    fontSize: 11,
-    fontWeight: 600,
-    whiteSpace: "nowrap"
-  }
+  kpiRow: { marginBottom: 12 }
 } satisfies Record<string, React.CSSProperties>;
 
-/** CRM_FOLLOWUPS_V2: one KPI card. */
-function KpiCard({ label, value }: { label: string; value: string }) {
+/**
+ * CRM_FOLLOWUPS_V2 / CRM_PARITY_FOLLOWUPS_V1: one KPI card.
+ * stripeVariant adds a 3px left border and matching value ink via crm-kpi--stripe-*.
+ */
+function KpiCard({
+  label,
+  value,
+  stripeVariant
+}: {
+  label: string;
+  value: string;
+  stripeVariant?: "danger" | "warning" | "neutral" | "primary";
+}) {
+  const stripeClass = stripeVariant ? ` crm-kpi--stripe-${stripeVariant}` : "";
   return (
-    <div style={followUpsStyle.kpiCard}>
-      <div style={followUpsStyle.kpiLabel}>{label}</div>
-      <div style={followUpsStyle.kpiValue}>{value}</div>
+    <div className={`s7-card crm-kpi${stripeClass}`} style={{ padding: "12px 16px" }}>
+      <div className="s7-type-label crm-kpi__label">{label}</div>
+      <div className="crm-kpi__value">{value}</div>
     </div>
   );
 }
@@ -954,10 +909,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     [tenders]
   );
 
-  // Subtitle per tab (Register: artboard text; Follow-ups: unchanged until S5).
+  // Subtitle per tab (Register: artboard text; Follow-ups: artboard text S5).
   const pageSubtitle = tab === "register"
     ? "Every tender and opportunity, and what we owe each one next."
-    : "Tenders requiring follow-up action.";
+    : "Same list as the register, filtered to what is waiting on you.";
 
   // Active filter chips label helpers
   const activeStatusLabel = filters.status.length === 1
@@ -1015,17 +970,19 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           <button type="button" onClick={exportCsv} className="s7-btn s7-btn--secondary s7-btn--sm">
             Export CSV
           </button>
-          <button
-            type="button"
-            onClick={() => setShowColumns((v) => !v)}
-            className="s7-btn s7-btn--secondary s7-btn--sm"
-            aria-expanded={showColumns}
-            aria-label="Choose visible columns"
-          >
-            Columns &#9662;
-          </button>
-          {/* Save this view — kept on Register per the prompt; artboard draws
-              it on Follow-ups only; keeping it here is not a FAIL. */}
+          {/* CRM_PARITY_FOLLOWUPS_V1: Columns picker is a Register-only action.
+              The artboard draws it on Register; Follow-ups uses the SHOW row. */}
+          {tab === "register" && (
+            <button
+              type="button"
+              onClick={() => setShowColumns((v) => !v)}
+              className="s7-btn s7-btn--secondary s7-btn--sm"
+              aria-expanded={showColumns}
+              aria-label="Choose visible columns"
+            >
+              Columns &#9662;
+            </button>
+          )}
           <button type="button" onClick={() => setShowSaveView((v) => !v)} className="s7-btn s7-btn--secondary s7-btn--sm">
             Save this view
           </button>
@@ -1038,7 +995,84 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         <CrmTabs tabs={props.tabs} activeId={props.activeId} ariaLabel="Tenders sections" />
       )}
 
-      {/* CRM_FOLLOWUPS_V2: the four KPI cards, above the toggle rows. */}
+      {/* CRM_PARITY_FOLLOWUPS_V1: one unified SHOW row — artboard order:
+          next-action four (each with a status dot), entity-type four,
+          Mine only. Filled crm-toggle--on when on, outlined when off.
+          Same state objects and handlers as before; only markup changed. */}
+      {tab === "followups" && (
+        <div className="crm-toggle-row" role="group" aria-label="Show">
+          <span className="s7-type-label" style={{ marginRight: 4 }}>SHOW</span>
+
+          {/* Next-action toggles — with status dots */}
+          <button
+            type="button"
+            onClick={() => setFollowUpToggles((prev) => ({ ...prev, overdue: !prev.overdue }))}
+            aria-pressed={followUpToggles.overdue}
+            className={`crm-toggle${followUpToggles.overdue ? " crm-toggle--on" : ""}`}
+          >
+            <span className="crm-dot crm-dot--danger" aria-hidden="true" />
+            Overdue
+          </button>
+          <button
+            type="button"
+            onClick={() => setFollowUpToggles((prev) => ({ ...prev, dueSoon: !prev.dueSoon }))}
+            aria-pressed={followUpToggles.dueSoon}
+            className={`crm-toggle${followUpToggles.dueSoon ? " crm-toggle--on" : ""}`}
+          >
+            <span className="crm-dot crm-dot--warning" aria-hidden="true" />
+            Due soon
+          </button>
+          <button
+            type="button"
+            onClick={() => setFollowUpToggles((prev) => ({ ...prev, noNextAction: !prev.noNextAction }))}
+            aria-pressed={followUpToggles.noNextAction}
+            className={`crm-toggle${followUpToggles.noNextAction ? " crm-toggle--on" : ""}`}
+          >
+            <span className="crm-dot crm-dot--neutral" aria-hidden="true" />
+            No next action
+          </button>
+          <button
+            type="button"
+            onClick={() => setFollowUpToggles((prev) => ({ ...prev, onTrack: !prev.onTrack }))}
+            aria-pressed={followUpToggles.onTrack}
+            className={`crm-toggle${followUpToggles.onTrack ? " crm-toggle--on" : ""}`}
+          >
+            <span className="crm-dot crm-dot--active" aria-hidden="true" />
+            On track
+          </button>
+
+          {/* Entity-type toggles */}
+          {ENTITY_TYPES.map((def) => {
+            const on = entityTypeToggles[def.id];
+            return (
+              <button
+                key={def.id}
+                type="button"
+                onClick={() => setEntityTypeToggles((prev) => ({ ...prev, [def.id]: !prev[def.id] }))}
+                aria-pressed={on}
+                className={`crm-toggle${on ? " crm-toggle--on" : ""}`}
+              >
+                {def.label}
+              </button>
+            );
+          })}
+
+          {/* Mine only — moves into SHOW row on Follow-ups */}
+          <button
+            type="button"
+            onClick={() => setMineOnly((v) => !v)}
+            aria-pressed={mineOnly}
+            className={`crm-toggle${mineOnly ? " crm-toggle--on" : ""}`}
+          >
+            Mine only
+          </button>
+        </div>
+      )}
+
+      {/* CRM_PARITY_FOLLOWUPS_V1: KPI cards — below the SHOW row, with 3px
+          left stripe and matching value ink per artboard.
+          Overdue → danger, Due this week → warning, Never logged → neutral,
+          Value at risk → primary. */}
       {tab === "followups" && (
         <div
           className="s7-card-grid s7-card-grid--kpi"
@@ -1046,81 +1080,14 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           role="group"
           aria-label="Follow-ups summary"
         >
-          <KpiCard label="Overdue" value={String(kpis.overdue)} />
-          <KpiCard label="Due this week" value={String(kpis.dueThisWeek)} />
-          <KpiCard label="Never logged" value={String(kpis.neverLogged)} />
+          <KpiCard label="Overdue" value={String(kpis.overdue)} stripeVariant="danger" />
+          <KpiCard label="Due this week" value={String(kpis.dueThisWeek)} stripeVariant="warning" />
+          <KpiCard label="Never logged" value={String(kpis.neverLogged)} stripeVariant="neutral" />
           <KpiCard
             label="Value at risk"
             value={kpis.valueAtRisk === null ? EM_RULE : formatMoneyAUD(kpis.valueAtRisk)}
+            stripeVariant="primary"
           />
-        </div>
-      )}
-
-      {/* CRM_FOLLOWUPS_V2: entity-type toggle group. */}
-      {tab === "followups" && (
-        <div style={followUpsStyle.toggleRow} role="group" aria-label="Entity type">
-          <span style={followUpsStyle.toggleLabel}>Type:</span>
-          {ENTITY_TYPES.map((def) => {
-            const on = entityTypeToggles[def.id];
-            return (
-              <button
-                key={def.id}
-                type="button"
-                onClick={() =>
-                  setEntityTypeToggles((prev) => ({ ...prev, [def.id]: !prev[def.id] }))
-                }
-                aria-pressed={on}
-                style={{
-                  ...followUpsStyle.entityToggleBase,
-                  ...(on ? followUpsStyle.entityToggleOn : followUpsStyle.entityToggleOff)
-                }}
-              >
-                {def.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Follow-ups next-action toggle row */}
-      {tab === "followups" && (
-        <div style={followUpsStyle.toggleRow}>
-          <span style={followUpsStyle.toggleLabel}>Show:</span>
-          {(
-            [
-              ["overdue", "Overdue"],
-              ["dueSoon", "Due soon"],
-              ["noNextAction", "No next action"],
-              ["onTrack", "On track"]
-            ] as Array<[keyof FollowUpToggles, string]>
-          ).map(([key, label]) => {
-            const on = followUpToggles[key];
-            const isAmber = key !== "onTrack";
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() =>
-                  setFollowUpToggles((prev) => ({ ...prev, [key]: !prev[key] }))
-                }
-                aria-pressed={on}
-                style={{
-                  ...followUpsStyle.entityToggleBase,
-                  borderColor: on
-                    ? (isAmber ? "var(--status-warning)" : "var(--status-active)")
-                    : "var(--border-default)",
-                  background: on
-                    ? (isAmber ? "color-mix(in srgb, var(--status-warning) 15%, transparent)" : "color-mix(in srgb, var(--status-active) 15%, transparent)")
-                    : "transparent",
-                  color: on
-                    ? (isAmber ? "var(--text-primary)" : "var(--text-primary)")
-                    : "var(--text-secondary)"
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
         </div>
       )}
 
@@ -1297,15 +1264,18 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           />
         </div>
 
-        {/* Mine only — toggle chip */}
-        <button
-          type="button"
-          onClick={() => setMineOnly((v) => !v)}
-          aria-pressed={mineOnly}
-          className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${mineOnly ? " crm-filter-chip--active" : ""}`}
-        >
-          Mine only
-        </button>
+        {/* CRM_PARITY_FOLLOWUPS_V1: Mine only is in the SHOW row on Follow-ups.
+            On Register it stays here as a filter chip. */}
+        {tab === "register" && (
+          <button
+            type="button"
+            onClick={() => setMineOnly((v) => !v)}
+            aria-pressed={mineOnly}
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${mineOnly ? " crm-filter-chip--active" : ""}`}
+          >
+            Mine only
+          </button>
+        )}
 
         {/* Clear — shown when any filter is active */}
         {(filters.search ||
@@ -1473,6 +1443,11 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                   after Tender. */}
               {tabColumns.map((col) => {
                 const key: CrmColumnKey | null = col.sortKey;
+                // CRM_PARITY_FOLLOWUPS_V1: artboard names the first column
+                // "What" on Follow-ups (the column model keeps "Tender" for
+                // the test suite; the label is overridden at render time only).
+                const colLabel =
+                  tab === "followups" && col.id === "tender" ? "What" : col.label;
                 return (
                   <th
                     key={col.id}
@@ -1493,7 +1468,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                         : undefined
                     }
                   >
-                    {col.label}
+                    {colLabel}
                     {key ? sortIndicator(key) : null}
                   </th>
                 );
@@ -1588,7 +1563,16 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                     {tab === "followups" && (
                       <td style={cellStyle("type")} aria-label={`Type: ${typeLabel ?? EM_RULE}`}>
                         {typeLabel ? (
-                          <span style={followUpsStyle.typeChip}>{typeLabel}</span>
+                          // CRM_PARITY_FOLLOWUPS_V1: tinted s7-badge per artboard.
+                          // Tender → --active (teal), Opportunity → --warning (amber),
+                          // Lead → --neutral (grey), Won / lost → --neutral.
+                          <span className={`s7-badge s7-badge--${
+                            typeLabel === "Tender" ? "active"
+                            : typeLabel === "Opportunity" ? "warning"
+                            : "neutral"
+                          }`}>
+                            {typeLabel}
+                          </span>
                         ) : (
                           EM_RULE
                         )}

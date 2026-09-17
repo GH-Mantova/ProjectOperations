@@ -172,7 +172,7 @@ Note the shape: **four of the six were a failed call being read as a meaningful 
    `Write-Host`, or build one value and return it. (#6)
 7. **`$ErrorActionPreference = "Continue"` in git scripts.** Git warns on stderr; `"Stop"` will abort
    you *before your commit* while the log still looks perfectly clean.
-8. **Never pass `-q '<jq>'` to `gh` from PS 5.1** — it re-splits the quoted expression on spaces.
+8. **Keep escaped double quotes out of `-q '<jq>'` / `--jq` when calling `gh` from PS 5.1** — spaces survive intact; it is the escaped double quotes that do not (section 9.4).
    Take raw `--json` and `ConvertFrom-Json`. And **assign-then-foreach**: piping a JSON array
    straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge queue
    select **#552 — the production-data PR.**

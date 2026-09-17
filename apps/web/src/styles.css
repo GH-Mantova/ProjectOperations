@@ -10289,3 +10289,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — card-name pencil affordance.
+   Shows the rename button on hover of the heading or keyboard focus of the button. */
+h3:hover .card-name-rename-btn,
+.card-name-rename-btn:focus-visible {
+  opacity: 1 !important;
+}

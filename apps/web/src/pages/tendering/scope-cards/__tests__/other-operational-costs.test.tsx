@@ -815,3 +815,48 @@ describe("S2b-b: four-way money reporting for operational costs", () => {
     expect(componentSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
   });
 });
+
+
+// ── S3: per-line markup column ───────────────────────────────────────────
+
+describe("S3: SCOPE_LINE_MARKUP_ALL_TYPES_V1 — per-line markup column in OtherOperationalCosts", () => {
+  const componentSource = readFileSync(
+    repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+    "utf-8"
+  );
+
+  it("MARKUP column is present in COLUMNS", () => {
+    expect(componentSource).toContain('"Markup"');
+  });
+
+  it("source does not contain computeWithMarkup (browser pricing removed)", () => {
+    expect(componentSource).not.toContain("computeWithMarkup");
+  });
+
+  it("source does not price lines in the browser (* (1 +)", () => {
+    expect(componentSource).not.toContain("* (1 +");
+  });
+
+  it("row total is server-computed lineTotalWithMarkup", () => {
+    const line = makeLine({ lineTotalWithMarkup: 1250, lineTotal: 1000 });
+    expect(rowLineTotalWithMarkup(line)).toBe(1250);
+  });
+
+  it("renders data-testid other-cost-markup for the markup cell", () => {
+    const line = makeLine({ markupOverride: 25, effectiveMarkup: 25, lineTotalWithMarkup: 1250 });
+    const html = renderToStaticMarkup(
+      <table>
+        <tbody>
+          <OperationalCostRow
+            line={line}
+            index={0}
+            rateOptions={[]}
+            onPatch={() => undefined}
+            onRemove={() => undefined}
+          />
+        </tbody>
+      </table>
+    );
+    expect(html).toContain('data-testid="other-cost-markup"');
+  });
+});

@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
 import { narrowToNumber, toDecimal } from "./scope-of-works.service";
+import { decToNum, resolveEffectiveMarkup } from "./scope-item-pricing";
 
 type UpsertWasteDto = {
   discipline?: string;
@@ -38,6 +39,9 @@ type UpsertWasteDto = {
   // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this waste line goes
   // on the client quote. Optional; defaults PRICE.
   quoteDestination?: QuoteDestination;
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+  // null clears the override. 0 is a real override (0% markup), NOT an absence.
+  markupOverride?: number | null;
 };
 
 // R3 T-1 — snapshot cost components computed by the engine. Returned by
@@ -108,26 +112,69 @@ export class ScopeWasteService {
   ) {}
 
   /**
+   * SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — load the tender's markup.
+   * Falls back to 30 when TenderEstimate is absent (same default as summary()).
+   */
+  private async loadTenderMarkup(tenderId: string): Promise<number> {
+    const est = await this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } });
+    return est ? Number(est.markup) : 30;
+  }
+
+  /**
+   * SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — augment a waste row with
+   * effectiveMarkup and lineTotalWithMarkup. cardWasteOverride is the card's
+   * wasteMarkupOverride (null = not set); tenderMarkup is the tender's markup.
+   */
+  private augmentWasteMoney<T extends {
+    lineTotal: Prisma.Decimal | null;
+    markupOverride: Prisma.Decimal | null;
+  }>(row: T, cardWasteOverride: number | null, tenderMarkup: number): T & {
+    effectiveMarkup: number;
+    lineTotalWithMarkup: number;
+  } {
+    const lineMarkupOverride = decToNum(row.markupOverride);
+    const effectiveMarkup = resolveEffectiveMarkup(lineMarkupOverride, cardWasteOverride, tenderMarkup);
+    const lt = row.lineTotal != null ? Number(row.lineTotal) : 0;
+    const lineTotalWithMarkup = lt * (1 + effectiveMarkup / 100);
+    return {
+      ...row,
+      effectiveMarkup: Number(effectiveMarkup.toFixed(2)),
+      lineTotalWithMarkup: Number(lineTotalWithMarkup.toFixed(2))
+    };
+  }
+
+  /**
    * Lists waste rows for a tender, optionally filtered by discipline
    * and/or cardId, ordered by discipline, sortOrder, createdAt.
    *
    * When cardId is supplied, only rows attached to that card are
    * returned — cardless legacy rows are deliberately excluded.
    *
+   * SCOPE_LINE_MARKUP_ALL_TYPES_V1: each row now also carries
+   * `effectiveMarkup` and `lineTotalWithMarkup` computed server-side.
+   *
    * @param opts - optional `discipline` and/or `cardId` filters
-   * @returns matching ScopeWasteItem rows
+   * @returns matching ScopeWasteItem rows (with money fields)
    */
   async list(tenderId: string, opts?: { discipline?: string; cardId?: string }) {
-    return this.prisma.scopeWasteItem.findMany({
-      where: {
-        tenderId,
-        ...(opts?.discipline ? { discipline: opts.discipline } : {}),
-        // PR B3 — when cardId is supplied, return ONLY rows attached
-        // to that card. Cardless legacy rows are deliberately excluded
-        // (covered by Q7 in B3 investigation — follow-up cleanup).
-        ...(opts?.cardId ? { cardId: opts.cardId } : {})
-      },
-      orderBy: [{ discipline: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }]
+    const [rows, tenderMarkup] = await Promise.all([
+      this.prisma.scopeWasteItem.findMany({
+        where: {
+          tenderId,
+          ...(opts?.discipline ? { discipline: opts.discipline } : {}),
+          // PR B3 — when cardId is supplied, return ONLY rows attached
+          // to that card. Cardless legacy rows are deliberately excluded
+          // (covered by Q7 in B3 investigation — follow-up cleanup).
+          ...(opts?.cardId ? { cardId: opts.cardId } : {})
+        },
+        orderBy: [{ discipline: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+        include: { card: { select: { wasteMarkupOverride: true } } }
+      }),
+      this.loadTenderMarkup(tenderId)
+    ]);
+    return rows.map((row) => {
+      const cardWasteOverride = row.card?.wasteMarkupOverride != null ? Number(row.card.wasteMarkupOverride) : null;
+      return this.augmentWasteMoney(row, cardWasteOverride, tenderMarkup);
     });
   }
 
@@ -197,7 +244,7 @@ export class ScopeWasteService {
     );
     const effectiveLineTotal =
       engine.lineTotal != null ? engine.lineTotal : legacy.lineTotal;
-    return this.prisma.scopeWasteItem.create({
+    const created = await this.prisma.scopeWasteItem.create({
       data: {
         tenderId,
         cardId,
@@ -237,9 +284,17 @@ export class ScopeWasteService {
         // PR B3 — manual creates default autoSummed=false. Only
         // sumFromAbove flips this to true on aggregator-created rows.
         autoSummed: false,
-        createdById: actorId
-      }
+        createdById: actorId,
+        // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- null when absent.
+        markupOverride: dto.markupOverride !== undefined && dto.markupOverride !== null
+          ? toDecimal(dto.markupOverride)
+          : null
+      },
+      include: { card: { select: { wasteMarkupOverride: true } } }
     });
+    const tenderMarkup = await this.loadTenderMarkup(tenderId);
+    const cardWasteOverride = created.card?.wasteMarkupOverride != null ? Number(created.card.wasteMarkupOverride) : null;
+    return this.augmentWasteMoney(created, cardWasteOverride, tenderMarkup);
   }
 
   /**
@@ -318,6 +373,11 @@ export class ScopeWasteService {
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     // SCOPE_QUOTE_DESTINATION_V1 -- only overwrite when the DTO carries it.
     if (dto.quoteDestination !== undefined) data.quoteDestination = dto.quoteDestination;
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- only overwrite when the DTO carries it.
+    // null clears the override; 0 is a real 0% (stored as Decimal 0.00).
+    if (dto.markupOverride !== undefined) {
+      data.markupOverride = dto.markupOverride !== null ? toDecimal(dto.markupOverride) : null;
+    }
 
     if (pricingTouched) {
       // Compute effective values for the totals: DTO value (narrowed) wins
@@ -389,7 +449,14 @@ export class ScopeWasteService {
     // fuelCost, disposalCost, and all snapshot columns are NOT written.
     // The row keeps exactly the values it had before the PATCH.
 
-    return this.prisma.scopeWasteItem.update({ where: { id }, data });
+    const updated = await this.prisma.scopeWasteItem.update({
+      where: { id },
+      data,
+      include: { card: { select: { wasteMarkupOverride: true } } }
+    });
+    const tenderMarkup = await this.loadTenderMarkup(tenderId);
+    const cardWasteOverride = updated.card?.wasteMarkupOverride != null ? Number(updated.card.wasteMarkupOverride) : null;
+    return this.augmentWasteMoney(updated, cardWasteOverride, tenderMarkup);
   }
 
   /**

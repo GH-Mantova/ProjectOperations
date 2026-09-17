@@ -259,7 +259,7 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   `05 lastRunAt = 2026-09-03T14:11:26Z`, concluded "05 did fire", and struck the finding that 05 had
   *also* missed its **09-02** occurrence. Those are claims about two different days, and `lastRunAt`
   speaks to neither but the latest. **A third instrument answers it: the session directory.** Every
-  scheduled run creates `…\local-agent-mode-sessions\<a>\<b>\local_<uuid>\`, whose `CreationTimeUtc`
+  scheduled run creates `…\local-agent-mode-sessions\<a>\<b>\<8-hex>\`, whose `CreationTimeUtc`
   is the fire time to the second. MEASURED 2026-09-03T18:2xZ: **1301** directories retained; 05 has
   exactly two, `2026-09-01T14:11:31Z` and `2026-09-03T14:11:26Z`, and **none on 09-02** — the whole
   of 09-02 holds 7 sessions with a **17.8 h hole from `06:10:27Z` to `23:58:18Z`**, which is the
@@ -267,6 +267,23 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   directory is still on disk two days later, so an absent directory is a real absence and not
   retention. **Group the directories by `CreationTimeUtc` day before calling any single occurrence
   lost** — and re-run that grouping to falsify this note.
+
+  🔴 **THE DIRECTORY NAME CHANGED ON 2026-09-15 AND THE OLD GLOB FAILS TO AN EMPTY ANSWER,
+  NOT AN ERROR.** Until `2026-09-15T23:01:20Z` the directory was named `local_<uuid>`; after it the
+  directory is the uuid's **first 8 hex characters** (the *session id* `list_sessions` returns is
+  still `local_<uuid>` — only the folder changed). [MEASURED] 2026-09-17T11:3xZ by Station 00:
+  `-Filter 'local_*'` → **1535** directories, **ZERO** created on or after 2026-09-17T06:00Z, newest
+  `2026-09-15T23:01:20Z`; POSITIVE control, the same scan with **no name filter** → **1559**, newest
+  twelve all 8-hex, including `cf3cd308` at `2026-09-17T10:08:51Z` — the very occurrence being
+  looked for. **Scan for a directory of ANY name at that depth and read `CreationTimeUtc`.**
+  ⚠️ The positive control this paragraph already carries — *"05's 09-01 directory is still on
+  disk two days later"* — **still passes**, because the old directories were never renamed: it
+  confirms the instrument while the instrument is blind to everything after the rename. That is
+  §9.6 with the emptiness manufactured by a renamed convention, and the two available readings of
+  the zero — *"no occurrence fired"* and *"retention purged them"* — are a false alarm and a false
+  all-clear respectively. ⚠️ **Falsifying probe: run both forms.** If the filtered scan ever
+  returns a directory newer than `2026-09-15T23:01:20Z`, the rename is not what happened and this
+  must be re-measured. Found and landed by Station 00 2026-09-17T11:4xZ.
   **Read the transcript before dispositioning any station as SILENT** (`list_sessions` →
   `read_transcript`, newest session whose title matches the station). Calling a station stopped when
   infrastructure killed it is a §7 false alarm, and a false alarm licenses destructive action.

@@ -1,10 +1,17 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField } from "../../components";
 import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
 import { TipFinderDrawer } from "../../components/TipFinderDrawer";
+import {
+  QuoteDestinationSelect,
+  DESTINATION_ROW_CLASS,
+  DESTINATION_NOTE,
+  type QuoteDestination
+} from "./scope-cards/QuoteDestinationSelect";
 
 // Waste disposal rows for a tender × discipline. truckDays and lineTotal
 // are derived server-side — the UI only submits raw inputs (tonnes, loads,
@@ -53,6 +60,8 @@ type WasteRow = {
   disposalCost: string | null;
   quotedDisposalRate: string | null;
   quotedFuelPricePerLitre: string | null;
+  // SCOPE_QD_UI_SECTIONS_V1 — where this row's cost lands on the client quote.
+  quoteDestination?: QuoteDestination | null;
 };
 
 type WasteRate = {
@@ -178,6 +187,78 @@ export function sumWasteLineTotals(rows: Array<{ lineTotal: string | number | nu
     const n = r.lineTotal === null || r.lineTotal === "" ? 0 : Number(r.lineTotal);
     return sum + (Number.isFinite(n) ? n : 0);
   }, 0);
+}
+
+// ── Four-way money reporting ─────────────────────────────────────────────
+//
+// SCOPE_QD_UI_SECTIONS_V1 — sort each row's server lineTotal into one of four
+// destination piles. Nothing is computed in the browser.
+
+/** One destination's contribution for waste (subtotal only; no per-section
+ *  markup knowledge here — that lives in the independent cost stream). */
+export type WasteDestBucket = { subtotal: number; withMarkup: number };
+
+/** Four-way money shape reported upward. */
+export type WasteFourWay = {
+  price: WasteDestBucket;
+  provisional: WasteDestBucket;
+  option: WasteDestBucket;
+  internal: WasteDestBucket;
+};
+
+/**
+ * Sort waste rows into four piles by destination.
+ * Uses the server's lineTotal; no arithmetic on rates.
+ */
+export function wasteFourWay(
+  rows: Array<{ lineTotal: string | number | null; quoteDestination?: QuoteDestination | null }>
+): WasteFourWay {
+  const result: WasteFourWay = {
+    price: { subtotal: 0, withMarkup: 0 },
+    provisional: { subtotal: 0, withMarkup: 0 },
+    option: { subtotal: 0, withMarkup: 0 },
+    internal: { subtotal: 0, withMarkup: 0 }
+  };
+  for (const row of rows) {
+    const n = row.lineTotal === null || row.lineTotal === "" ? 0 : Number(row.lineTotal);
+    if (!Number.isFinite(n)) continue;
+    const dest: QuoteDestination = row.quoteDestination ?? "PRICE";
+    const key = dest.toLowerCase() as keyof WasteFourWay;
+    if (key in result) {
+      result[key].subtotal += n;
+      result[key].withMarkup += n;
+    }
+  }
+  return result;
+}
+
+// ── Destination row rail helpers (page-local) ────────────────────────────
+
+function wasteDestRowStyle(dest: QuoteDestination): CSSProperties {
+  if (dest === "PROVISIONAL") {
+    return { boxShadow: "inset 3px 0 0 var(--status-accent, var(--brand-secondary))" };
+  }
+  if (dest === "OPTION") {
+    return { boxShadow: "inset 3px 0 0 var(--brand-primary)" };
+  }
+  if (dest === "INTERNAL") {
+    return {
+      boxShadow: "inset 3px 0 0 var(--border-default)",
+      background: "var(--surface-subtle)"
+    };
+  }
+  return {};
+}
+
+function wasteInternalOpacity(
+  dest: QuoteDestination,
+  base: CSSProperties = {}
+): CSSProperties {
+  return dest === "INTERNAL" ? { ...base, opacity: 0.55 } : base;
+}
+
+function wasteDestNote(dest: QuoteDestination): string | null {
+  return DESTINATION_NOTE[dest] ?? null;
 }
 
 /** "+ 30% markup" — the rate actually in force, override first. */
@@ -688,6 +769,7 @@ export function ScopeWasteTab({
                   "",
                   "WBS",
                   "Description",
+                  "Goes to",
                   "Group",
                   "Type",
                   "Facility",
@@ -703,12 +785,15 @@ export function ScopeWasteTab({
                 ].map((h) => (
                   <th
                     key={h}
+                    className={h === "Goes to" ? "inc" : undefined}
                     style={{
                       padding: "6px 4px",
                       textAlign: "left",
                       fontSize: 10,
                       textTransform: "uppercase",
-                      color: "var(--text-muted)"
+                      color: "var(--text-muted)",
+                      whiteSpace: h === "Goes to" ? "nowrap" : undefined,
+                      width: h === "Goes to" ? "1%" : undefined
                     }}
                   >
                     {h}
@@ -731,13 +816,22 @@ export function ScopeWasteTab({
                 const isExpanded = !!expanded[row.id];
                 const rowVariance = variance[row.id];
                 const engineFired = row.transportRateId != null && row.qtyTrucks != null;
+                const rowDest: QuoteDestination = row.quoteDestination ?? "PRICE";
+                const rowDestClass = DESTINATION_ROW_CLASS[rowDest];
+                const rowDestNote = wasteDestNote(rowDest);
+                const rowDestRailStyle = wasteDestRowStyle(rowDest);
+                // Merge rail style with the existing row tint (no-facility amber).
+                // If INTERNAL, it overrides the tint; otherwise both are applied.
+                const mergedRowStyle = {
+                  borderTop: "1px solid var(--border, #e5e7eb)",
+                  background: rowTint,
+                  ...rowDestRailStyle
+                };
                 return (
                 <Fragment key={row.id}>
                 <tr
-                  style={{
-                    borderTop: "1px solid var(--border, #e5e7eb)",
-                    background: rowTint
-                  }}
+                  className={rowDestClass}
+                  style={mergedRowStyle}
                 >
                   <td style={{ padding: 2, textAlign: "center" }}>
                     <button
@@ -750,7 +844,7 @@ export function ScopeWasteTab({
                       {isExpanded ? "−" : "+"}
                     </button>
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <select
                       value={row.wbsRef ?? ""}
                       onChange={(e) => void patchRow(row.id, { wbsRef: e.target.value || null })}
@@ -768,7 +862,7 @@ export function ScopeWasteTab({
                       ))}
                     </select>
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {/* PR B3 — small "auto" badge marks rows created by
                           Sum from above; tells the user this row will be
@@ -801,7 +895,18 @@ export function ScopeWasteTab({
                       />
                     </div>
                   </td>
-                  <td style={{ padding: 2 }}>
+                  {/* Goes to — immediately after Description, per the mock-up. */}
+                  <td
+                    className="inc"
+                    style={{ padding: 2, whiteSpace: "nowrap" }}
+                    data-testid="waste-dest-cell"
+                  >
+                    <QuoteDestinationSelect
+                      value={rowDest}
+                      onChange={(next) => void patchRow(row.id, { quoteDestination: next })}
+                    />
+                  </td>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <select
                       className="s7-select s7-input--sm"
                       value={row.wasteGroup ?? ""}
@@ -829,7 +934,7 @@ export function ScopeWasteTab({
                       ))}
                     </select>
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <select
                       className="s7-select s7-input--sm"
                       value={row.wasteType ?? ""}
@@ -854,7 +959,7 @@ export function ScopeWasteTab({
                       ))}
                     </select>
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     {/* PR B4a — facility filter relaxed: (group, type)
                         only. Picking a facility writes the facility's
                         rate.unit forward to row.unit so the line total
@@ -910,7 +1015,7 @@ export function ScopeWasteTab({
                       ) : null}
                     </div>
                   </td>
-                  <td style={{ padding: 2, fontSize: 11, color: "var(--text-muted)" }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2, fontSize: 11, color: "var(--text-muted)" })}>
                     {/* PR B4a — read-only "Billed by" badge mirrors the
                         facility's rate.unit. Empty when no facility set. */}
                     {row.wasteFacility ? (
@@ -930,7 +1035,7 @@ export function ScopeWasteTab({
                       "—"
                     )}
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <input
                       className="s7-input s7-input--sm"
                       type="number"
@@ -945,7 +1050,7 @@ export function ScopeWasteTab({
                       style={{ width: 70, textAlign: "right" }}
                     />
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <input
                       className="s7-input s7-input--sm"
                       type="number"
@@ -960,7 +1065,7 @@ export function ScopeWasteTab({
                       style={{ width: 70, textAlign: "right" }}
                     />
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <input
                       className="s7-input s7-input--sm"
                       type="number"
@@ -974,7 +1079,7 @@ export function ScopeWasteTab({
                       style={{ width: 60, textAlign: "right" }}
                     />
                   </td>
-                  <td style={{ padding: 2, fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2, fontSize: 12, color: "var(--text-muted)", textAlign: "right" })}>
                     {/* R3 T-1 - truckDays is now server-derived (engine ceil,
                         or legacy /3 fallback). Show as-is. */}
                     {row.truckDays !== null && row.truckDays !== undefined && row.truckDays !== ""
@@ -983,7 +1088,7 @@ export function ScopeWasteTab({
                         ? ceilHalf(row.wasteLoads / 3).toFixed(1) + " d"
                         : "—"}
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                       <input
                         className="s7-input s7-input--sm"
@@ -1002,7 +1107,7 @@ export function ScopeWasteTab({
                       <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{rateLabel}</span>
                     </div>
                   </td>
-                  <td style={{ padding: 2 }}>
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
                     <input
                       className="s7-input s7-input--sm"
                       type="number"
@@ -1017,8 +1122,49 @@ export function ScopeWasteTab({
                       style={{ width: 70, textAlign: "right" }}
                     />
                   </td>
-                  <td style={{ padding: 2, fontWeight: 500, textAlign: "right" }}>
-                    {fmtCurrency(row.lineTotal)}
+                  <td
+                    style={wasteInternalOpacity(rowDest, { padding: 2, fontWeight: 500, textAlign: "right" })}
+                    data-testid="waste-row-line-total"
+                  >
+                    {rowDest === "INTERNAL" ? (
+                      <>
+                        <span style={{ textDecoration: "line-through", textDecorationThickness: "1.5px" }}>
+                          {fmtCurrency(row.lineTotal)}
+                        </span>
+                        {rowDestNote ? (
+                          <div
+                            className="exclnote"
+                            style={{
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                              color: "var(--text-muted)",
+                              marginTop: 2
+                            }}
+                          >
+                            {rowDestNote}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        {fmtCurrency(row.lineTotal)}
+                        {rowDestNote ? (
+                          <div
+                            className="exclnote"
+                            style={{
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                              color: rowDest === "PROVISIONAL"
+                                ? "var(--status-accent, var(--brand-secondary))"
+                                : "var(--brand-primary)",
+                              marginTop: 2
+                            }}
+                          >
+                            {rowDestNote}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </td>
                   <td style={{ padding: 2 }}>
                     {canManage ? (
@@ -1035,7 +1181,7 @@ export function ScopeWasteTab({
                 </tr>
                 {isExpanded ? (
                 <tr style={{ background: "var(--surface-muted, #F6F6F6)" }}>
-                  <td colSpan={15} style={{ padding: "10px 12px" }}>
+                  <td colSpan={16} style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Transport item

@@ -1,4 +1,11 @@
-// SCOPE_CUTTING_V1 — tests for the "Cutting take-off" section.
+// SCOPE_QD_UI_SECTIONS_V1 / SCOPE_CUTTING_V1 — tests for the "Cutting take-off"
+// section.
+//
+// S2b-b adds tests for: the Goes-to column in position (after Description),
+// PATCHing quoteDestination on change, d-prov / d-internal / d-option rail
+// classes, INTERNAL row treatment (struck total, exclnote, .55 opacity on
+// non-control cells), destNote text per destination, and the four-way money
+// shape { price, provisional, option, internal }.
 //
 // The web workspace has no jsdom and no @testing-library (see
 // discipline-summary-bar.test.tsx and other-operational-costs.test.tsx).
@@ -26,8 +33,11 @@ import {
   CuttingTakeOff,
   CuttingTakeOffRowView,
   SAW_ELEVATIONS_BY_RIG,
+  SCOPE_QD_UI_SECTIONS_V1,
   countCannotCut,
   countUnpriced,
+  cuttingFourWay,
+  destNote,
   fmtCuttingMoney,
   rigCannotCut,
   sawCutTakeOff,
@@ -36,6 +46,7 @@ import {
   takeOffRowTotal,
   type CuttingTakeOffRow
 } from "../CuttingSection";
+import { DESTINATION_NOTE } from "../QuoteDestinationSelect";
 import { computeCardBarStats } from "../DisciplineSummaryBar";
 import type { OperationalCostLine } from "../OtherOperationalCosts";
 
@@ -509,11 +520,14 @@ describe("the browser does not re-derive a cutting price", () => {
   });
 
   it("adds only server line totals, and only in the section fold", () => {
-    // `sum + takeOffRowTotal(row)` is the single additive expression, and
-    // takeOffRowTotal returns the server's own lineTotal or zero.
+    // `sum + takeOffRowTotal(row)` is the single additive expression for the
+    // section total. cuttingFourWay() adds two bucket accumulator expressions
+    // (`+= n` for subtotal and withMarkup) — those also come from server line
+    // totals (via takeOffRowTotal), not from rate re-derivation.
     expect(code).toContain("sum + takeOffRowTotal(row)");
     const additions = code.match(/\+(?!\+)/g) ?? [];
-    expect(additions.length).toBe(1);
+    // 1 (sum + takeOffRowTotal) + 2 (bucket += in cuttingFourWay) = 3
+    expect(additions.length).toBe(3);
   });
 });
 
@@ -716,7 +730,7 @@ describe("the mount point", () => {
     expect(folds.length).toBe(1);
   });
 
-  it("adds no API call the card did not already make", () => {
+  it("reads from the cutting-items endpoint the sheet already fetches", () => {
     const componentSource = readFileSync(
       repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
       "utf-8"
@@ -725,18 +739,198 @@ describe("the mount point", () => {
       repoFile("apps/web/src/pages/tendering/ScopeCuttingSheet.tsx"),
       "utf-8"
     );
-    // The one endpoint this section reads is the one the card already fetches
-    // through the cutting sheet below it, and it is read-only.
+    // The GET endpoint is the one the card already fetches through the sheet.
     expect(componentSource).toContain("scope/cutting-items?cardId=");
     expect(sheetSource).toContain("scope/cutting-items?cardId=");
-    expect(componentSource).not.toMatch(/method:\s*"(POST|PATCH|PUT|DELETE)"/);
   });
 
-  it("carries the slice marker", () => {
+  it("PATCHes quoteDestination on the cutting-items route (S2b-b)", () => {
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
+      "utf-8"
+    );
+    // The destination PATCH goes to the cutting-items route, method PATCH.
+    expect(componentSource).toContain('method: "PATCH"');
+    expect(componentSource).toContain("quoteDestination: dest");
+    // POST and DELETE are not added by this slice.
+    expect(componentSource).not.toMatch(/method:\s*"(POST|DELETE)"/);
+  });
+
+  it("carries the slice markers", () => {
     const componentSource = readFileSync(
       repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
       "utf-8"
     );
     expect(componentSource).toContain("SCOPE_CUTTING_V1");
+    expect(componentSource).toContain("SCOPE_QD_UI_SECTIONS_V1");
+    // S2b-b does NOT set SCOPE_QUOTE_DESTINATION_UI_V1 — that is S2b-c.
+    expect(componentSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
+  });
+
+  it("exports SCOPE_QD_UI_SECTIONS_V1 with the expected value", () => {
+    expect(SCOPE_QD_UI_SECTIONS_V1).toBe("scopecards-s2b-b");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// 8. S2b-b — Goes-to column, destination rail and four-way money
+// ───────────────────────────────────────────────────────────────────────
+
+describe("S2b-b: the Goes-to column is in position and the rail renders", () => {
+  it("renders a Goes-to cell immediately after Description in the header", () => {
+    const html = renderToStaticMarkup(<CuttingTakeOff discipline="DEM" rows={TAKE_OFF} />);
+    // "Goes to" header column must be present
+    expect(html).toContain("Goes to");
+    // Order: Description before Goes to, Goes to before Rig
+    const descIdx = html.indexOf(">Description<");
+    const goesIdx = html.indexOf(">Goes to<");
+    const rigIdx = html.indexOf(">Rig<");
+    expect(descIdx).toBeGreaterThan(-1);
+    expect(goesIdx).toBeGreaterThan(-1);
+    expect(rigIdx).toBeGreaterThan(-1);
+    expect(descIdx).toBeLessThan(goesIdx);
+    expect(goesIdx).toBeLessThan(rigIdx);
+  });
+
+  it("renders a destination cell in the row, immediately after the description cell", () => {
+    const row = makeRow({ id: "c1", quoteDestination: "PRICE" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain('data-testid="cutting-dest-cell"');
+    // The WBS ref, description, then the dest cell — in that order.
+    const descIdx = html.indexOf("Slab saw cut");
+    const destIdx = html.indexOf('data-testid="cutting-dest-cell"');
+    expect(descIdx).toBeLessThan(destIdx);
+  });
+
+  it("does not pass optionLetter to QuoteDestinationSelect — the prop is omitted entirely", () => {
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
+      "utf-8"
+    );
+    expect(componentSource).not.toContain("optionLetter");
+  });
+
+  it("a PROVISIONAL row carries d-prov class on the tr", () => {
+    const row = makeRow({ id: "p1", quoteDestination: "PROVISIONAL" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain("d-prov");
+  });
+
+  it("an OPTION row carries d-option class on the tr", () => {
+    const row = makeRow({ id: "o1", quoteDestination: "OPTION" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain("d-option");
+  });
+
+  it("an INTERNAL row carries d-internal class, surface-subtle background and .55 opacity on non-control cells", () => {
+    const row = makeRow({ id: "i1", quoteDestination: "INTERNAL" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain("d-internal");
+    expect(html).toContain("surface-subtle");
+    expect(html).toContain("0.55");
+  });
+
+  it("an INTERNAL priced row shows the total struck through (1.5px) and the destNote", () => {
+    const row = makeRow({ id: "i2", quoteDestination: "INTERNAL", lineTotal: "748.00" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    // Struck total
+    expect(html).toContain("line-through");
+    expect(html).toContain("1.5px");
+    // destNote text
+    expect(html).toContain("internal only");
+    expect(html).toContain("exclnote");
+  });
+
+  it("a PROVISIONAL row shows the destNote text in the correct colour", () => {
+    const row = makeRow({ id: "prov1", quoteDestination: "PROVISIONAL", lineTotal: "400.00" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain("provisional sum");
+    expect(html).toContain("exclnote");
+  });
+
+  it("an OPTION row shows the destNote text", () => {
+    const row = makeRow({ id: "opt1", quoteDestination: "OPTION", lineTotal: "500.00" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain("cost option");
+  });
+
+  it("a PRICE row shows no destNote", () => {
+    const row = makeRow({ id: "pr1", quoteDestination: "PRICE", lineTotal: "200.00" });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).not.toContain("exclnote");
+    expect(destNote("PRICE")).toBeNull();
+  });
+
+  it("destNote matches the DESTINATION_NOTE export from QuoteDestinationSelect", () => {
+    expect(destNote("PROVISIONAL")).toBe(DESTINATION_NOTE.PROVISIONAL);
+    expect(destNote("OPTION")).toBe(DESTINATION_NOTE.OPTION);
+    expect(destNote("INTERNAL")).toBe(DESTINATION_NOTE.INTERNAL);
+    expect(destNote("PRICE")).toBeNull();
+  });
+});
+
+describe("S2b-b: four-way money reporting", () => {
+  it("sorts priced rows into the correct pile by destination", () => {
+    const rows: CuttingTakeOffRow[] = [
+      makeRow({ id: "r1", lineTotal: "100.00", quoteDestination: "PRICE" }),
+      makeRow({ id: "r2", lineTotal: "200.00", quoteDestination: "PROVISIONAL" }),
+      makeRow({ id: "r3", lineTotal: "300.00", quoteDestination: "OPTION" }),
+      makeRow({ id: "r4", lineTotal: "400.00", quoteDestination: "INTERNAL" })
+    ];
+    const fw = cuttingFourWay(rows);
+    expect(fw.price.subtotal).toBe(100);
+    expect(fw.provisional.subtotal).toBe(200);
+    expect(fw.option.subtotal).toBe(300);
+    expect(fw.internal.subtotal).toBe(400);
+  });
+
+  it("defaults null/undefined quoteDestination to PRICE", () => {
+    const rows: CuttingTakeOffRow[] = [
+      makeRow({ id: "d1", lineTotal: "150.00", quoteDestination: null }),
+      makeRow({ id: "d2", lineTotal: "250.00", quoteDestination: undefined })
+    ];
+    const fw = cuttingFourWay(rows);
+    expect(fw.price.subtotal).toBe(400);
+    expect(fw.provisional.subtotal).toBe(0);
+    expect(fw.option.subtotal).toBe(0);
+    expect(fw.internal.subtotal).toBe(0);
+  });
+
+  it("cannot-cut and unpriced rows contribute nothing to any pile", () => {
+    const rows: CuttingTakeOffRow[] = [
+      // cannot-cut
+      makeRow({ id: "cc", equipment: "Roadsaw", elevation: "Wall", lineTotal: "216.00", quoteDestination: "PRICE" }),
+      // unpriced
+      makeRow({ id: "up", lineTotal: null, quoteDestination: "PROVISIONAL" }),
+      // priced, PRICE
+      makeRow({ id: "ok", lineTotal: "500.00", quoteDestination: "PRICE" })
+    ];
+    const fw = cuttingFourWay(rows);
+    expect(fw.price.subtotal).toBe(500);
+    expect(fw.provisional.subtotal).toBe(0);
+  });
+
+  it("withMarkup equals subtotal (no per-section markup on cutting)", () => {
+    const rows: CuttingTakeOffRow[] = [
+      makeRow({ id: "m1", lineTotal: "300.00", quoteDestination: "PROVISIONAL" })
+    ];
+    const fw = cuttingFourWay(rows);
+    expect(fw.provisional.subtotal).toBe(300);
+    expect(fw.provisional.withMarkup).toBe(300);
+  });
+
+  it("the sum of all four piles equals sumCuttingTakeOff", () => {
+    const rows = sawCutTakeOff(TAKE_OFF);
+    const fw = cuttingFourWay(rows);
+    const total = fw.price.subtotal + fw.provisional.subtotal + fw.option.subtotal + fw.internal.subtotal;
+    expect(total).toBeCloseTo(sumCuttingTakeOff(rows));
+  });
+
+  it("does not set SCOPE_QUOTE_DESTINATION_UI_V1 (that is S2b-c)", () => {
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
+      "utf-8"
+    );
+    expect(componentSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
   });
 });

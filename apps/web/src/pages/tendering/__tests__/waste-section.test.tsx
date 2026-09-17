@@ -34,9 +34,12 @@ import {
   WasteSectionSummary,
   fmtWasteMoney,
   sumWasteLineTotals,
+  wasteFourWay,
   wasteLineCountPhrase,
-  wasteMarkupPhrase
+  wasteMarkupPhrase,
+  type WasteFourWay
 } from "../ScopeWasteTab";
+import { DESTINATION_NOTE } from "../scope-cards/QuoteDestinationSelect";
 import { computeCardBarStats } from "../scope-cards/DisciplineSummaryBar";
 import type { OperationalCostLine } from "../scope-cards/OtherOperationalCosts";
 
@@ -529,5 +532,134 @@ describe("the browser does not price waste", () => {
     // quotedTransportRatePerDay is read for the variance display only.
     expect(wasteSource).toContain("quotedTransportRatePerDay");
     expect(wasteSource).not.toMatch(/quotedTransportRatePerDay\s*[*/+-]\s*\w/);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// 7. S2b-b — Goes-to column (after Description), destination rail,
+//    INTERNAL treatment, four-way money reporting
+// ───────────────────────────────────────────────────────────────────────
+
+describe("S2b-b: Goes-to column appears after Description in the waste table header", () => {
+  it("the header includes Goes to, placed after Description and before Group", () => {
+    // Source assertion: the column array lists the header strings in order.
+    const descIdx = wasteSource.indexOf('"Description"');
+    const goesIdx = wasteSource.indexOf('"Goes to"');
+    const groupIdx = wasteSource.indexOf('"Group"');
+    expect(descIdx).toBeGreaterThan(-1);
+    expect(goesIdx).toBeGreaterThan(-1);
+    expect(groupIdx).toBeGreaterThan(-1);
+    expect(descIdx).toBeLessThan(goesIdx);
+    expect(goesIdx).toBeLessThan(groupIdx);
+  });
+
+  it("renders a waste-dest-cell after the description column in each row", () => {
+    // Source assertion: the dest cell follows the description td and appears
+    // before the group <select> value binding.
+    // NOTE: `row.wasteGroup` first appears in a local-variable assignment
+    // (facilitiesForRow call), so we anchor on `value={row.wasteGroup` which
+    // only appears inside the select element in the row renderer.
+    const destCellIdx = wasteSource.indexOf('"waste-dest-cell"');
+    const descInputIdx = wasteSource.indexOf("row.description");
+    const groupSelectIdx = wasteSource.indexOf("value={row.wasteGroup");
+    expect(destCellIdx).toBeGreaterThan(-1);
+    expect(descInputIdx).toBeGreaterThan(-1);
+    expect(groupSelectIdx).toBeGreaterThan(-1);
+    // dest cell is after description input, and before group select
+    expect(descInputIdx).toBeLessThan(destCellIdx);
+    expect(destCellIdx).toBeLessThan(groupSelectIdx);
+  });
+
+  it("does not pass optionLetter — the prop is omitted entirely", () => {
+    expect(wasteSource).not.toContain("optionLetter");
+  });
+
+  it("PATCHes quoteDestination when the destination select fires", () => {
+    expect(wasteSource).toContain("quoteDestination: next");
+  });
+});
+
+describe("S2b-b: destination rail classes and INTERNAL treatment in waste rows", () => {
+  it("source uses DESTINATION_ROW_CLASS for the row className", () => {
+    expect(wasteSource).toContain("DESTINATION_ROW_CLASS");
+    expect(wasteSource).toContain("rowDestClass");
+  });
+
+  it("INTERNAL rows use surface-subtle background and .55 opacity (source assertion)", () => {
+    expect(wasteSource).toContain("surface-subtle");
+    expect(wasteSource).toContain("0.55");
+  });
+
+  it("INTERNAL rows show the total struck through and the destNote (source assertion)", () => {
+    expect(wasteSource).toContain("line-through");
+    expect(wasteSource).toContain("1.5px");
+    expect(wasteSource).toContain("rowDestNote");
+    expect(wasteSource).toContain("exclnote");
+  });
+
+  it("a failed PATCH reverts by calling load() (source assertion)", () => {
+    // patchRow is called; if it fails, load() is called to re-read server state.
+    expect(wasteSource).toContain("void load()");
+  });
+});
+
+describe("S2b-b: four-way money reporting for waste", () => {
+  it("sorts rows into the correct pile by destination", () => {
+    const rows = [
+      { lineTotal: "100.00", quoteDestination: "PRICE" as const },
+      { lineTotal: "200.00", quoteDestination: "PROVISIONAL" as const },
+      { lineTotal: "300.00", quoteDestination: "OPTION" as const },
+      { lineTotal: "400.00", quoteDestination: "INTERNAL" as const }
+    ];
+    const fw: WasteFourWay = wasteFourWay(rows);
+    expect(fw.price.subtotal).toBe(100);
+    expect(fw.provisional.subtotal).toBe(200);
+    expect(fw.option.subtotal).toBe(300);
+    expect(fw.internal.subtotal).toBe(400);
+  });
+
+  it("defaults null/undefined quoteDestination to PRICE", () => {
+    const rows = [
+      { lineTotal: "150.00", quoteDestination: null as null },
+      { lineTotal: "250.00", quoteDestination: undefined as undefined }
+    ];
+    const fw = wasteFourWay(rows);
+    expect(fw.price.subtotal).toBe(400);
+    expect(fw.provisional.subtotal).toBe(0);
+    expect(fw.option.subtotal).toBe(0);
+    expect(fw.internal.subtotal).toBe(0);
+  });
+
+  it("skips rows whose lineTotal is non-numeric", () => {
+    const rows = [
+      { lineTotal: "not-a-number", quoteDestination: "PRICE" as const },
+      { lineTotal: "500.00", quoteDestination: "PRICE" as const }
+    ];
+    const fw = wasteFourWay(rows);
+    expect(fw.price.subtotal).toBe(500);
+    expect(Number.isNaN(fw.price.subtotal)).toBe(false);
+  });
+
+  it("the sum of all four piles equals sumWasteLineTotals", () => {
+    const rows = [
+      { lineTotal: "100.00", autoSummed: false, id: "r1", qty: "5", quoteDestination: "PRICE" as const },
+      { lineTotal: "200.00", autoSummed: true,  id: "r2", qty: "8", quoteDestination: "PROVISIONAL" as const },
+      { lineTotal: "150.00", autoSummed: false, id: "r3", qty: "3", quoteDestination: "INTERNAL" as const }
+    ];
+    const fw = wasteFourWay(rows);
+    const total = fw.price.subtotal + fw.provisional.subtotal + fw.option.subtotal + fw.internal.subtotal;
+    expect(total).toBeCloseTo(sumWasteLineTotals(rows));
+    expect(total).toBe(450);
+  });
+
+  it("destNote text matches DESTINATION_NOTE from QuoteDestinationSelect", () => {
+    // The rendered note comes from DESTINATION_NOTE, used via wasteDestNote helper.
+    expect(DESTINATION_NOTE.PROVISIONAL).toBe("provisional sum");
+    expect(DESTINATION_NOTE.OPTION).toBe("cost option");
+    expect(DESTINATION_NOTE.INTERNAL).toBe("internal only");
+  });
+
+  it("does not set SCOPE_QUOTE_DESTINATION_UI_V1 (S2b-c's marker)", () => {
+    expect(wasteSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
   });
 });

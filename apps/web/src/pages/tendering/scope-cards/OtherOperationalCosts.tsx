@@ -34,6 +34,12 @@ import type { CSSProperties } from "react";
 import { readApiErrorMessage } from "../../../lib/api-errors";
 import { useAuth } from "../../../auth/AuthContext";
 import { useConfirm } from "../../../hooks/useConfirm";
+import {
+  QuoteDestinationSelect,
+  DESTINATION_ROW_CLASS,
+  DESTINATION_NOTE,
+  type QuoteDestination
+} from "./QuoteDestinationSelect";
 
 // ── The lump-sum rule ───────────────────────────────────────────────────
 //
@@ -142,6 +148,9 @@ export type OperationalCostLine = {
   lineTotal?: number | null;
   effectiveMarkup?: number | null;
   lineTotalWithMarkup?: number | null;
+  // SCOPE_QD_UI_SECTIONS_V1 — where this line's cost lands on the client quote.
+  // null / undefined falls back to PRICE (the server default).
+  quoteDestination?: QuoteDestination | null;
 };
 
 // ── Rate resolution — the manpower / plant override pattern ─────────────
@@ -219,6 +228,73 @@ export function fmtMoney(n: number | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(n);
+}
+
+// ── Four-way money reporting ─────────────────────────────────────────────
+//
+// SCOPE_QD_UI_SECTIONS_V1 — each line's destination sorts its server-computed
+// lineTotal / lineTotalWithMarkup into one of four piles. Nothing is computed
+// in the browser.
+
+/** Four-way money shape: { price, provisional, option, internal } each with
+ *  { subtotal, withMarkup } to match the section totals shape. */
+export type OperationalFourWay = {
+  price: OperationalSectionTotals;
+  provisional: OperationalSectionTotals;
+  option: OperationalSectionTotals;
+  internal: OperationalSectionTotals;
+};
+
+/**
+ * Sort operational-cost lines into four piles by destination.
+ * Uses the server's lineTotal / lineTotalWithMarkup — no browser arithmetic.
+ */
+export function computeOperationalFourWay(lines: OperationalCostLine[]): OperationalFourWay {
+  const result: OperationalFourWay = {
+    price: { subtotal: 0, withMarkup: 0 },
+    provisional: { subtotal: 0, withMarkup: 0 },
+    option: { subtotal: 0, withMarkup: 0 },
+    internal: { subtotal: 0, withMarkup: 0 }
+  };
+  for (const line of lines) {
+    const dest: QuoteDestination = line.quoteDestination ?? "PRICE";
+    const key = dest.toLowerCase() as keyof OperationalFourWay;
+    if (key in result) {
+      const sub = (line.lineTotal != null && Number.isFinite(Number(line.lineTotal))) ? Number(line.lineTotal) : 0;
+      result[key].subtotal += sub;
+      result[key].withMarkup += rowLineTotalWithMarkup(line);
+    }
+  }
+  return result;
+}
+
+// ── Destination row rail helpers ─────────────────────────────────────────
+
+function destRowStyle(dest: QuoteDestination): CSSProperties {
+  if (dest === "PROVISIONAL") {
+    return { boxShadow: "inset 3px 0 0 var(--status-accent, var(--brand-secondary))" };
+  }
+  if (dest === "OPTION") {
+    return { boxShadow: "inset 3px 0 0 var(--brand-primary)" };
+  }
+  if (dest === "INTERNAL") {
+    return {
+      boxShadow: "inset 3px 0 0 var(--border-default)",
+      background: "var(--surface-subtle)"
+    };
+  }
+  return {};
+}
+
+function internalOpacity(dest: QuoteDestination, base: CSSProperties = {}): CSSProperties {
+  return dest === "INTERNAL" ? { ...base, opacity: 0.55 } : base;
+}
+
+/**
+ * The note text under the total cell for non-PRICE destinations.
+ */
+export function operationalDestNote(dest: QuoteDestination): string | null {
+  return DESTINATION_NOTE[dest] ?? null;
 }
 
 // ── The shared item picker ──────────────────────────────────────────────
@@ -395,6 +471,8 @@ export type OperationalCostPatch = {
   sourceRef?: string | null;
   markupOverride?: number | null;
   notes?: string | null;
+  // SCOPE_QD_UI_SECTIONS_V1
+  quoteDestination?: QuoteDestination | null;
 };
 
 /**
@@ -454,10 +532,26 @@ export function OperationalCostRow({
     return [...extra, ...UNIT_OPTIONS];
   }, [line.unit]);
 
+  const dest: QuoteDestination = line.quoteDestination ?? "PRICE";
+  const rowClass = DESTINATION_ROW_CLASS[dest];
+  const note = operationalDestNote(dest);
+
   return (
-    <tr data-testid="other-cost-row" data-line-id={line.id}>
+    <tr
+      data-testid="other-cost-row"
+      data-line-id={line.id}
+      className={rowClass}
+      style={destRowStyle(dest)}
+    >
+      {/* Goes to — FIRST column, per the mock-up's "Goes to · From · Item description" order. */}
+      <td className="inc" style={{ ...cellStyle, whiteSpace: "nowrap" }} data-testid="other-cost-dest-cell">
+        <QuoteDestinationSelect
+          value={dest}
+          onChange={(next) => onPatch({ quoteDestination: next })}
+        />
+      </td>
       {/* Item — the shared picker. */}
-      <td style={cellStyle}>
+      <td style={internalOpacity(dest, cellStyle)}>
         <RateLibraryItemPicker
           selectedId={line.plantRateId}
           description={line.description}
@@ -486,7 +580,7 @@ export function OperationalCostRow({
       </td>
 
       {/* Qty */}
-      <td style={cellStyle}>
+      <td style={internalOpacity(dest, cellStyle)}>
         <input
           className="s7-input"
           type="number"
@@ -502,7 +596,7 @@ export function OperationalCostRow({
       </td>
 
       {/* Unit */}
-      <td style={cellStyle}>
+      <td style={internalOpacity(dest, cellStyle)}>
         <select
           className="s7-input"
           value={line.unit ?? ""}
@@ -528,7 +622,7 @@ export function OperationalCostRow({
       </td>
 
       {/* Days — pinned at 1 and greyed for a unit that carries no duration. */}
-      <td style={cellStyle}>
+      <td style={internalOpacity(dest, cellStyle)}>
         <input
           className="s7-input"
           type="number"
@@ -563,7 +657,7 @@ export function OperationalCostRow({
       {/* Rate — the manpower/plant override pattern: the locked rate is the
           placeholder, typing overrides it, and the revert control NAMES the
           rate it returns to rather than saying "auto-derived value". */}
-      <td style={{ ...cellStyle, textAlign: "right" }}>
+      <td style={internalOpacity(dest, { ...cellStyle, textAlign: "right" })}>
         <span
           style={{
             display: "inline-flex",
@@ -635,13 +729,52 @@ export function OperationalCostRow({
       </td>
 
       {/* Total — server-computed lineTotalWithMarkup (qty x days x rate x markup).
-          SCOPE_OPERATIONAL_COSTS_PRICED_V1: no arithmetic in the browser. */}
+          SCOPE_OPERATIONAL_COSTS_PRICED_V1: no arithmetic in the browser.
+          SCOPE_QD_UI_SECTIONS_V1: INTERNAL rows show struck total; destNote below. */}
       <td
-        style={{ ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+        style={internalOpacity(dest, { ...cellStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" })}
         data-testid="other-cost-total"
         title="Qty x Duration x Rate + markup — server-computed (SCOPE_OPERATIONAL_COSTS_PRICED_V1)"
       >
-        {fmtMoney(rowTotal)}
+        {dest === "INTERNAL" ? (
+          <>
+            <span style={{ textDecoration: "line-through", textDecorationThickness: "1.5px" }}>
+              {fmtMoney(rowTotal)}
+            </span>
+            {note ? (
+              <div
+                className="exclnote"
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  color: "var(--text-muted)",
+                  marginTop: 2
+                }}
+              >
+                {note}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {fmtMoney(rowTotal)}
+            {note ? (
+              <div
+                className="exclnote"
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  color: dest === "PROVISIONAL"
+                    ? "var(--status-accent, var(--brand-secondary))"
+                    : "var(--brand-primary)",
+                  marginTop: 2
+                }}
+              >
+                {note}
+              </div>
+            ) : null}
+          </>
+        )}
       </td>
 
       {/* Row remove */}
@@ -662,7 +795,9 @@ export function OperationalCostRow({
   );
 }
 
-const COLUMNS = ["Item", "Qty", "Unit", "Days", "Rate", "Total", ""] as const;
+// SCOPE_QD_UI_SECTIONS_V1 — "Goes to" is the first column per the mock-up's
+// "Goes to · From · Item description …" order.
+const COLUMNS = ["Goes to", "Item", "Qty", "Unit", "Days", "Rate", "Total", ""] as const;
 
 /**
  * The table. Pure presentation, so a test can render it without an auth

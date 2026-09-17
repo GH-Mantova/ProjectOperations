@@ -59,6 +59,10 @@ export type ScopeCardSummary = {
       items: Array<{ variant: string | null; peakQty: number; peakDays: number }>;
     }>;
     duration: number;
+    /** SCOPE_QUOTE_DESTINATION_UI_V1 — count of INTERNAL items excluded from
+     *  the programme figures (peak crew, days). Returned by S2a's API change.
+     *  0 when none exist. */
+    internalLinesLeftOut: number;
   };
   overrides: {
     peakCrewOverride: number | null;

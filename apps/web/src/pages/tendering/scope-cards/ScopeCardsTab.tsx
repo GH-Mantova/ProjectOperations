@@ -71,6 +71,32 @@ type ListResponse = {
   summary: unknown;
 };
 
+// SCOPE_QUOTE_DESTINATION_UI_V1 — Option-letter cascade pure helper.
+//
+// Cost options are lettered Opt A, B, C across all four sections in card order.
+// This pure function assigns letters to ONE card's OPTION items from a flat
+// list (items in the order the table renders them). WBS items feed it here;
+// the same letter sequence applies across sections because WBS items are
+// FIRST and the sections share the same card-level counter.
+//
+// Exported for unit tests. The useMemo below is the only caller in production.
+//
+// Letter encoding: index 0 → "A", 1 → "B", …, 25 → "Z", 26 → "AA", 27 → "AB", …
+export function buildOptionLettersForItems(
+  items: ReadonlyArray<{ id: string; quoteDestination?: string | null; status?: string }>
+): ReadonlyMap<string, string> {
+  const optionItems = items.filter(
+    (i) => (i.quoteDestination ?? "PRICE") === "OPTION" && i.status !== "excluded"
+  );
+  const letters = new Map<string, string>();
+  optionItems.forEach((item, idx) => {
+    letters.set(item.id, idx < 26
+      ? String.fromCharCode(65 + idx)
+      : String.fromCharCode(65 + (idx % 26)) + String.fromCharCode(65 + Math.floor(idx / 26) - 1));
+  });
+  return letters;
+}
+
 export function ScopeCardsTab({
   tenderId,
   tenderTitle
@@ -339,26 +365,57 @@ export function ScopeCardsTab({
   const statsByCard = useMemo(() => {
     const byCard = new Map<string, CardBarStats>();
     for (const card of disciplineCards) {
-      // SCOPE_PROVISIONAL_SPLIT_V1 — pass the discipline so computeCardBarStats
-      // applies both halves of the predicate: isProvisional===true OR discipline==="Other".
-      const fromItems = computeCardBarStats(itemsByCard.get(card.id) ?? [], card.discipline);
+      // SCOPE_QUOTE_DESTINATION_UI_V1 — partition by quoteDestination column.
+      // The discipline parameter and isProvisional flag are retired; S2a
+      // backfilled quoteDestination for all existing rows.
+      const fromItems = computeCardBarStats(itemsByCard.get(card.id) ?? []);
       const otherCostsEntry = otherCostTotals[card.id];
       const otherCostsSubtotal = otherCostsEntry?.subtotal ?? 0;
       const otherCostsWithMarkup = otherCostsEntry?.withMarkup ?? 0;
       const cutting = cuttingTotals[card.id] ?? 0;
-      // ScopeOperationalCostLine: subtotal gets bare cost, subtotalWithMarkup
-      // gets the server's marked-up figure (S1). Cutting has no per-line markup
-      // and goes to both figures at cost (unchanged from SCOPE_CUTTING_V1).
+      // ScopeCardsTab fold — sections report their PRICE money only:
+      //   - WBS items are already partitioned into four piles by computeCardBarStats.
+      //   - OtherOperationalCosts: subtotal/withMarkup carries the PRICE slice.
+      //     (Section S2b-b reports the full section total, which is the PRICE
+      //     portion; option/internal from that section are not yet propagated
+      //     and are not added by this slice — Waste money is not in the card
+      //     fold today and is not added by this slice.)
+      //   - Cutting: no per-line markup; goes to both figures at cost.
       byCard.set(card.id, {
         itemCount: fromItems.itemCount,
         subtotal: fromItems.subtotal + otherCostsSubtotal + cutting,
         subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup + cutting,
         provisionalSubtotal: fromItems.provisionalSubtotal,
-        provisionalWithMarkup: fromItems.provisionalWithMarkup
+        provisionalWithMarkup: fromItems.provisionalWithMarkup,
+        optionSubtotal: fromItems.optionSubtotal,
+        optionWithMarkup: fromItems.optionWithMarkup,
+        internalSubtotal: fromItems.internalSubtotal,
+        internalWithMarkup: fromItems.internalWithMarkup
       });
     }
     return byCard;
   }, [disciplineCards, itemsByCard, otherCostTotals, cuttingTotals]);
+
+  // SCOPE_QUOTE_DESTINATION_UI_V1 — Option letter cascade.
+  //
+  // Cost options are lettered Opt A, B, C in card order across all four
+  // sections (items, operational, waste, cutting), in row order.
+  // Computed ONCE per card here so no section can independently start at A.
+  // Only WBS items are available in this component; operational/waste/cutting
+  // load their own data and their rows are not accessible here. WBS items
+  // come FIRST in the cascade order, so their letters are correct even when
+  // later sections add more option rows.
+  //
+  // The pure helper buildOptionLettersForItems (above) contains the alphabet
+  // encoding and is exported for unit tests.
+  const optionLettersByCard = useMemo(() => {
+    const byCard = new Map<string, ReadonlyMap<string, string>>();
+    for (const card of disciplineCards) {
+      const cardItemsList = itemsByCard.get(card.id) ?? [];
+      byCard.set(card.id, buildOptionLettersForItems(cardItemsList));
+    }
+    return byCard;
+  }, [disciplineCards, itemsByCard]);
 
   // ── The roll-up ──────────────────────────────────────────────────────
   // Peak crew and peak plant are a MAX across the stack; days and money are
@@ -372,7 +429,12 @@ export function ScopeCardsTab({
           toCardRollupInput(
             card.id,
             cardSummaries[card.id],
-            statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 },
+            statsByCard.get(card.id) ?? {
+              itemCount: 0, subtotal: 0, subtotalWithMarkup: 0,
+              provisionalSubtotal: 0, provisionalWithMarkup: 0,
+              optionSubtotal: 0, optionWithMarkup: 0,
+              internalSubtotal: 0, internalWithMarkup: 0
+            },
             // SCOPE_STAGE_GROUP_V1 — the card's stage. null on every card
             // until a human groups two, and null is "a stage of its own",
             // so an ungrouped discipline folds exactly as it did before.
@@ -675,7 +737,8 @@ export function ScopeCardsTab({
                   onMove={(delta) => void moveCardWithinDiscipline(card.id, delta)}
                   concurrentWithPrevious={sharesStageWithPrevious(disciplineCards, card.id)}
                   onToggleStageGroup={() => void toggleStageGroupWithPrevious(card.id)}
-                  stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0 }}
+                  stats={statsByCard.get(card.id) ?? { itemCount: 0, subtotal: 0, subtotalWithMarkup: 0, provisionalSubtotal: 0, provisionalWithMarkup: 0, optionSubtotal: 0, optionWithMarkup: 0, internalSubtotal: 0, internalWithMarkup: 0 }}
+                  optionLetters={optionLettersByCard.get(card.id) ?? new Map()}
                   summary={cardSummaries[card.id] ?? null}
                   cardItems={itemsByCard.get(card.id) ?? []}
                   loadingItems={loadingItems}
@@ -832,6 +895,12 @@ type StackEntryProps = {
   /** SCOPE_CUTTING_V1 — reports the card's concrete cutting take-off total up
    *  to that same fold. Must be referentially stable. */
   onCuttingTotalChange: (cardId: string, total: number) => void;
+  /**
+   * SCOPE_QUOTE_DESTINATION_UI_V1 — Opt A/B/C letters for OPTION items on
+   * this card's WBS table. Computed once per card in ScopeCardsTab from the
+   * loaded WBS items in row order; never per section.
+   */
+  optionLetters: ReadonlyMap<string, string>;
 };
 
 function ScopeCardStackEntry({
@@ -858,7 +927,8 @@ function ScopeCardStackEntry({
   onSetSectionMarkup,
   onItemsChanged,
   onOtherCostTotalChange,
-  onCuttingTotalChange
+  onCuttingTotalChange,
+  optionLetters
 }: StackEntryProps) {
   const cardWbsRefs = useMemo(() => cardItems.map((i) => i.wbsCode), [cardItems]);
   const cardCode = formatCardCode(card.discipline, card.cardNumber);
@@ -924,6 +994,20 @@ function ScopeCardStackEntry({
             Stage {stageIndex + 1} of {stageCount} · {stats.itemCount} item
             {stats.itemCount === 1 ? "" : "s"}
           </span>
+          {(summary?.computed?.internalLinesLeftOut ?? 0) > 0 ? (
+            <span
+              data-testid="scope-card-nomine-chip"
+              title={`${summary!.computed.internalLinesLeftOut} internal only item${summary!.computed.internalLinesLeftOut === 1 ? "" : "s"} — not in these figures`}
+              style={{
+                fontSize: 11,
+                color: "var(--text-muted)",
+                whiteSpace: "nowrap",
+                fontStyle: "italic"
+              }}
+            >
+              −{summary!.computed.internalLinesLeftOut} internal only
+            </span>
+          ) : null}
         </div>
 
         <div style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1072,6 +1156,7 @@ function ScopeCardStackEntry({
                  states in its "Inherits tender markup (N%)" tooltip below. */
               cardMarkup={resolveCardMarkup(card.markupOverride, tenderMarkup)}
               onItemsChanged={onItemsChanged}
+              optionLetters={optionLetters}
             />
           )}
 

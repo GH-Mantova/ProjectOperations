@@ -27,7 +27,8 @@ import {
 import {
   WbsItemTotalCell,
   WbsVsbadge,
-  SCOPE_QD_UI_ITEMS_V1
+  SCOPE_QD_UI_ITEMS_V1,
+  SCOPE_QUOTE_DESTINATION_UI_V1
 } from "../../ScopeQuantitiesTable";
 import {
   SubLinkPicker,
@@ -35,6 +36,7 @@ import {
   type SubLinkableItem
 } from "../SubLinkPicker";
 import { pricedOnLabel } from "../utils/card-display";
+import { buildOptionLettersForItems } from "../ScopeCardsTab";
 
 const repoFile = (relFromRepoRoot: string): string =>
   fileURLToPath(new URL(`../../../../../../../${relFromRepoRoot}`, import.meta.url));
@@ -81,9 +83,15 @@ describe("SCOPE_QD_UI_ITEMS_V1 slice marker", () => {
   it("is exported from ScopeQuantitiesTable", () => {
     expect(SCOPE_QD_UI_ITEMS_V1).toBe("scopecards-s2b-a");
   });
+});
 
-  it("does NOT set SCOPE_QUOTE_DESTINATION_UI_V1 (that is S2b-c's marker)", () => {
-    expect(tableSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
+describe("SCOPE_QUOTE_DESTINATION_UI_V1 slice marker (S2b-c)", () => {
+  it("is exported from ScopeQuantitiesTable", () => {
+    expect(SCOPE_QUOTE_DESTINATION_UI_V1).toBe("scopecards-s2b");
+  });
+
+  it("the marker is present in ScopeQuantitiesTable source", () => {
+    expect(tableSource).toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
   });
 });
 
@@ -166,12 +174,14 @@ describe("QuoteDestinationSelect renders the four options", () => {
     }
   });
 
-  it("the call site in ScopeQuantitiesTable omits optionLetter (S2b-a has no option-letter cascade)", () => {
-    // S2b-a does not wire the option-letter cascade (that is S2b-c). The
-    // call site must not pass optionLetter={undefined} — omit the prop entirely.
+  it("the call site in ScopeQuantitiesTable wires optionLetter from the optionLetters map (S2b-c)", () => {
+    // S2b-c wires the option-letter cascade. The call site must not pass
+    // optionLetter={undefined} — it should pass optionLetter conditionally
+    // from the optionLetters map, or omit the prop.
     expect(tableSource).toContain("<QuoteDestinationSelect");
     expect(tableSource).not.toContain("optionLetter={undefined}");
-    expect(tableSource).not.toContain("optionLetter=");
+    // S2b-c does pass optionLetter (conditionally) at the call site.
+    expect(tableSource).toContain("optionLetter:");
   });
 });
 
@@ -384,10 +394,115 @@ describe("the Goes-to column in the WBS table", () => {
     expect(tableSource).toContain('quoteDestination: dest');
   });
 
-  it("omits optionLetter at the call site — S2b-a does not wire the option-letter cascade", () => {
-    // No optionLetter={undefined} (must omit the prop, not pass undefined)
+  it("wires optionLetter at the call site — S2b-c propagates the option-letter cascade", () => {
+    // No optionLetter={undefined} (must never pass undefined explicitly)
     expect(tableSource).not.toContain("optionLetter={undefined}");
-    // optionLetter= does not appear at all in the table's call site for S2b-a
-    expect(tableSource).not.toContain("optionLetter=");
+    // S2b-c does wire optionLetter at the call site.
+    expect(tableSource).toContain("optionLetter:");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// 9. Opt A / B / C cascade — buildOptionLettersForItems
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The cascade assigns a letter to each OPTION item in the order items are
+// listed. Each CARD restarts at A — the function is called once per card.
+// WBS items are the only rows passed here; operational and cutting rows
+// are loaded inside their own sections and share the same per-card counter.
+
+describe("Opt A/B/C cascade — buildOptionLettersForItems", () => {
+  it("three OPTION items on one card get Opt A, Opt B, Opt C in order", () => {
+    const items = [
+      { id: "i1", quoteDestination: "OPTION", status: "confirmed" },
+      { id: "i2", quoteDestination: "OPTION", status: "confirmed" },
+      { id: "i3", quoteDestination: "OPTION", status: "confirmed" }
+    ];
+    const letters = buildOptionLettersForItems(items);
+    expect(letters.get("i1")).toBe("A");
+    expect(letters.get("i2")).toBe("B");
+    expect(letters.get("i3")).toBe("C");
+  });
+
+  it("a second card starts again at A — cards are independent", () => {
+    // First card: three OPTION items → A, B, C
+    const card1Items = [
+      { id: "c1-i1", quoteDestination: "OPTION", status: "confirmed" },
+      { id: "c1-i2", quoteDestination: "OPTION", status: "confirmed" },
+      { id: "c1-i3", quoteDestination: "OPTION", status: "confirmed" }
+    ];
+    // Second card: one OPTION item → must be A, not D
+    const card2Items = [
+      { id: "c2-i1", quoteDestination: "OPTION", status: "confirmed" }
+    ];
+    const lettersCard1 = buildOptionLettersForItems(card1Items);
+    const lettersCard2 = buildOptionLettersForItems(card2Items);
+    expect(lettersCard1.get("c1-i3")).toBe("C");
+    expect(lettersCard2.get("c2-i1")).toBe("A"); // restarts, not "D"
+  });
+
+  it("non-OPTION items are not lettered", () => {
+    const items = [
+      { id: "price-1", quoteDestination: "PRICE",       status: "confirmed" },
+      { id: "prov-1",  quoteDestination: "PROVISIONAL", status: "confirmed" },
+      { id: "opt-1",   quoteDestination: "OPTION",      status: "confirmed" },
+      { id: "int-1",   quoteDestination: "INTERNAL",    status: "confirmed" }
+    ];
+    const letters = buildOptionLettersForItems(items);
+    expect(letters.has("price-1")).toBe(false);
+    expect(letters.has("prov-1")).toBe(false);
+    expect(letters.has("int-1")).toBe(false);
+    expect(letters.get("opt-1")).toBe("A");
+  });
+
+  it("excluded OPTION items are not lettered — excluded rows carry no destination", () => {
+    const items = [
+      { id: "opt-excl", quoteDestination: "OPTION", status: "excluded" },
+      { id: "opt-conf", quoteDestination: "OPTION", status: "confirmed" }
+    ];
+    const letters = buildOptionLettersForItems(items);
+    expect(letters.has("opt-excl")).toBe(false);
+    expect(letters.get("opt-conf")).toBe("A"); // still A, not B
+  });
+
+  it("null quoteDestination is treated as PRICE — not lettered", () => {
+    const items = [
+      { id: "null-dest", quoteDestination: null,     status: "confirmed" },
+      { id: "opt-1",     quoteDestination: "OPTION", status: "confirmed" }
+    ];
+    const letters = buildOptionLettersForItems(items);
+    expect(letters.has("null-dest")).toBe(false);
+    expect(letters.get("opt-1")).toBe("A");
+  });
+
+  it("an empty list returns an empty map", () => {
+    const letters = buildOptionLettersForItems([]);
+    expect(letters.size).toBe(0);
+  });
+
+  it("a card with no OPTION items returns an empty map", () => {
+    const items = [
+      { id: "p1", quoteDestination: "PRICE",       status: "confirmed" },
+      { id: "p2", quoteDestination: "PROVISIONAL", status: "confirmed" }
+    ];
+    const letters = buildOptionLettersForItems(items);
+    expect(letters.size).toBe(0);
+  });
+
+  it("OPTION items mixed with non-OPTION items letter only the options, in their relative order", () => {
+    // Items: PRICE, OPTION, PROVISIONAL, OPTION, OPTION — the two options
+    // get A then B, and the second option gets B not C.
+    const items = [
+      { id: "p1",   quoteDestination: "PRICE",       status: "confirmed" },
+      { id: "opt1", quoteDestination: "OPTION",      status: "confirmed" },
+      { id: "pv1",  quoteDestination: "PROVISIONAL", status: "confirmed" },
+      { id: "opt2", quoteDestination: "OPTION",      status: "confirmed" },
+      { id: "opt3", quoteDestination: "OPTION",      status: "confirmed" }
+    ];
+    const letters = buildOptionLettersForItems(items);
+    expect(letters.get("opt1")).toBe("A");
+    expect(letters.get("opt2")).toBe("B");
+    expect(letters.get("opt3")).toBe("C");
+    expect(letters.size).toBe(3);
   });
 });

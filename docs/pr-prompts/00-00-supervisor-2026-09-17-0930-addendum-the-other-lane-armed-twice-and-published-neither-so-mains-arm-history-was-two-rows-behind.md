@@ -112,8 +112,24 @@ after_bytes=21391  after_rows=130  BYTE_EQUAL_ASSERT=PASS   (Buffer.compare(src,
 The script exits non-zero and writes nothing on either failure mode - not a superset, or nothing to
 publish - so a row can never be dropped by it and a no-op can never be reported as a publish.
 
-**DISPOSITION: ACTIONED.** Read-back is this PR's own diff on that path - a **`2 0`** numstat,
-insertions only - plus the two counts re-run after the merge, which must agree at 130. The falsifying
+**UPDATE at 09:3xZ, while this PR was green and waiting: a THIRD arm landed, and it is included.
+It is published here rather than left for the next run, because leaving it would have closed the gap to one row instead of to zero and this file's whole defect is that it goes stale by increments.** [MEASURED]
+
+```
+2026-09-17T09:30:54Z  ARMED  pr-transport-capacity-column-order  escalates=true
+      actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=12480  caller=powershell.exe:7440
+local rows 130 -> 131   origin/main rows 128 (unchanged; #1999 merged in between and did not touch this file)
+STRICT_SUPERSET_ASSERT=PASS   rows_to_publish=1   BYTE_EQUAL_ASSERT=PASS
+```
+
+That arm is the third by the same lane in 43 minutes (08:48:33Z, 09:12:13Z, 09:30:54Z), and its subject -
+`pr-transport-capacity-column-order` - is one of the three `ADMIT` candidates this run's own triage listed.
+**It is therefore also the strongest evidence for the 09:10Z F2 and F3:** the lane is working that
+queue continuously, so the decision not to arm and not to move a prompt file this cycle was not caution,
+it was the only reading of BOARD DRIVING condition 3 the measurements support.
+
+**DISPOSITION: ACTIONED.** Read-back is this PR's own diff on that path - a **`3 0`** numstat,
+insertions only - plus the two counts re-run after the merge, which must agree at 131. The falsifying
 probe is section 9.5's own: re-run the local-versus-`origin/main` line-count comparison; if they
 disagree again, another arm has happened since and the defect that nothing commits this file on
 purpose is unchanged. **The DEFECT is not fixed by this run and is not claimed to be** - it is still

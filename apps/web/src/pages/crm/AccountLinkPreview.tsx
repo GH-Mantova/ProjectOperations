@@ -4,15 +4,19 @@
 // from any PROSPECT account created by the S3 backfill.
 //
 // Design decisions (from Marco decision 7):
-//   - NOTHING is written until Commit.
+//   - NOTHING is written until Create.
 //   - Per-row lifecycle select. Bulk-set header applies only to rows with no
 //     manual override already set AND excludes no-history rows.
 //   - "No history" rows have a separate deliberate bulk-set control.
 //   - Proposal rule displayed on screen.
 //   - Ambiguous count MUST be 0 (the relation is 1:1 by construction). If it
-//     is not zero the screen reports it and blocks commit.
+//     is not zero the screen reports it and blocks create.
 //   - This is a one-time catch-up screen. The banner disappears once the
 //     unlinked count reaches 0.
+//
+// crmvis-S6: Restyled as the artboard's dialog (crm-dialog) on the s7 kit.
+
+export const CRM_PARITY_BULKLINK_V1 = "crmvis-s6";
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
@@ -25,6 +29,7 @@ import {
   type PreviewRow,
   type ProposalLifecycle
 } from "./accountLinkPreview.helpers";
+import "./crm.css";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -34,10 +39,18 @@ const LIFECYCLE_OPTIONS: { value: ProposalLifecycle; label: string }[] = [
   { value: "PAST", label: "Past" }
 ];
 
-const LIFECYCLE_COLOUR: Record<ProposalLifecycle, string> = {
-  ACTIVE: "#16a34a",
-  PROSPECT: "#6366f1",
-  PAST: "#9ca3af"
+// Token-based lifecycle badge class — no hex
+const LIFECYCLE_BADGE_CLASS: Record<ProposalLifecycle, string> = {
+  ACTIVE: "s7-badge s7-badge--active",
+  PROSPECT: "s7-badge s7-badge--info",
+  PAST: "s7-badge s7-badge--neutral"
+};
+
+// CSS custom property for lifecycle select tint (token-only)
+const LIFECYCLE_CSS_VAR: Record<ProposalLifecycle, string> = {
+  ACTIVE: "var(--status-active)",
+  PROSPECT: "var(--status-info)",
+  PAST: "var(--status-neutral)"
 };
 
 // ── Format helpers ────────────────────────────────────────────────────────────
@@ -98,7 +111,7 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
 
   const noHistoryCount = rows.filter((r) => r.basis === "no-history").length;
 
-  // What Commit will ACTUALLY write: every create, plus the already-linked rows
+  // What Create will ACTUALLY write: every create, plus the already-linked rows
   // the reviewer has explicitly re-graded. Untouched linked rows return "skip".
   // The button is labelled from this, not from unlinkedRows, so the number on
   // the button is the number of rows that get written.
@@ -190,18 +203,22 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
 
   if (committed) {
     return (
-      <div style={{ padding: "40px 32px", maxWidth: 700 }}>
-        <div
-          style={{
-            padding: 24,
-            background: "#f0fdf4",
-            border: "1px solid #bbf7d0",
-            borderRadius: 8,
-            color: "#15803d"
-          }}
-        >
-          <strong>Done.</strong> All accounts have been committed. The banner will disappear once
-          you refresh the Accounts list.
+      <div className="crm-dialog__backdrop">
+        <div className="crm-dialog" role="dialog" aria-modal="true">
+          <div className="crm-dialog__body" style={{ padding: "40px 32px" }}>
+            <div className="crm-alert--success">
+              <strong>Done.</strong> All accounts have been committed. The banner will disappear
+              once you refresh the Accounts list.
+            </div>
+          </div>
+          <div className="crm-dialog__footer">
+            <button
+              className="s7-btn s7-btn--secondary"
+              onClick={() => onDone?.()}
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -211,438 +228,331 @@ export function AccountLinkPreview({ onDone }: { onDone?: () => void }) {
 
   if (loading) {
     return (
-      <div style={{ padding: "40px 32px" }}>
-        <p style={{ color: "var(--text-muted, #666)" }}>Loading preview{"…"}</p>
+      <div className="crm-dialog__backdrop">
+        <div className="crm-dialog" role="dialog" aria-modal="true">
+          <div className="crm-dialog__body" style={{ padding: "40px 32px" }}>
+            <p style={{ color: "var(--text-muted)" }}>Loading preview{"…"}</p>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ padding: "40px 32px" }}>
-        <div
-          role="alert"
-          style={{
-            color: "#dc2626",
-            padding: 12,
-            background: "#fef2f2",
-            borderRadius: 6
-          }}
-        >
-          {error}
+      <div className="crm-dialog__backdrop">
+        <div className="crm-dialog" role="dialog" aria-modal="true">
+          <div className="crm-dialog__body" style={{ padding: "40px 32px" }}>
+            <div role="alert" className="crm-alert--danger">
+              {error}
+            </div>
+          </div>
+          <div className="crm-dialog__footer">
+            <button
+              className="s7-btn s7-btn--secondary"
+              onClick={() => void load()}
+            >
+              Retry
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => void load()}
-          style={{ marginTop: 12, padding: "8px 16px", cursor: "pointer" }}
-        >
-          Retry
-        </button>
       </div>
     );
   }
 
-  // ── Render: main screen ────────────────────────────────────────────────────
+  // ── Render: main dialog ────────────────────────────────────────────────────
+
+  const createDisabled = committing || ambiguousCount > 0 || pendingWriteCount === 0;
 
   return (
-    <div style={{ padding: "24px 32px" }}>
-      {/* Header */}
-      <h1 style={{ fontFamily: "var(--font-heading, Syne)", fontSize: 22, margin: "0 0 8px 0" }}>
-        Review and link client accounts
-      </h1>
-      <p style={{ color: "var(--text-muted, #6b7280)", margin: "0 0 20px 0", fontSize: 14 }}>
-        This is a one-time catch-up screen. Review the proposed lifecycle for each client, correct
-        any rows, then click <strong>Commit</strong>. Nothing is written until you commit. The
-        banner on the Accounts list disappears once all clients are linked.
-      </p>
+    <div className="crm-dialog__backdrop">
+      <div className="crm-dialog" role="dialog" aria-modal="true" aria-labelledby="crm-dialog-title">
 
-      {/* Proposal rule */}
-      <div
-        style={{
-          background: "#eff6ff",
-          border: "1px solid #bfdbfe",
-          borderRadius: 6,
-          padding: "10px 14px",
-          marginBottom: 20,
-          fontSize: 13,
-          color: "#1e40af"
-        }}
-      >
-        <strong>Proposal rule:</strong> won a tender &rarr; <em>Active</em>; tendered but never won
-        &rarr; <em>Prospect</em>; nothing in 24 months &rarr; <em>Past</em>; no tender history at
-        all &rarr; <em>No history</em> (choose a lifecycle manually before committing).
-        You can override any row before committing.
-      </div>
-
-      {/* Summary counts */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        <CountTile label="Exact matches (1:1)" value={exactMatchCount} />
-        <CountTile label="Ambiguous" value={ambiguousCount} warn={ambiguousCount > 0} />
-        <CountTile label="Already linked (skipped)" value={alreadyLinkedCount} />
-        <CountTile label="No history" value={noHistoryCount} />
-      </div>
-
-      {/* Ambiguous block — design says stop here if non-zero */}
-      {ambiguousCount > 0 && (
-        <div
-          role="alert"
-          style={{
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: 6,
-            padding: "12px 16px",
-            marginBottom: 20,
-            color: "#dc2626"
-          }}
-        >
-          <strong>Ambiguous count is {ambiguousCount}.</strong> The 1:1 assumption is violated.
-          Commit is blocked. Please escalate to Marco.
+        {/* ── Dialog header ──────────────────────────────────────────────── */}
+        <div className="crm-dialog__header">
+          <div>
+            <h1 id="crm-dialog-title" className="crm-dialog__title">
+              Link {exactMatchCount} client{exactMatchCount !== 1 ? "s" : ""} to accounts
+            </h1>
+            <p className="crm-dialog__subtitle">
+              Nothing is written until you press Create. This preview is safe to close.
+            </p>
+          </div>
         </div>
-      )}
 
-      {rows.length === 0 ? (
-        <div
-          style={{
-            padding: 40,
-            textAlign: "center",
-            color: "var(--text-muted, #888)",
-            background: "#fff",
-            border: "1px dashed #e5e7eb",
-            borderRadius: 8
-          }}
-        >
-          No clients found. All clients are already linked.
-        </div>
-      ) : (
-        <>
-          {/* Main bulk-set control — skips no-history rows */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 8,
-              padding: "8px 12px",
-              background: "#f9fafb",
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
-              fontSize: 13
-            }}
-          >
-            <span style={{ color: "#374151", fontWeight: 600 }}>
-              Bulk-set all unoverridden rows (excludes no-history):
-            </span>
-            {LIFECYCLE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => bulkSet(opt.value)}
-                style={{
-                  padding: "4px 12px",
-                  borderRadius: 4,
-                  border: "1px solid #d1d5db",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: LIFECYCLE_COLOUR[opt.value]
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
+        {/* ── Dialog body (scrolls) ──────────────────────────────────────── */}
+        <div className="crm-dialog__body">
+
+          {/* Three KPI tiles */}
+          <div className="crm-dialog__tiles">
+            {/* Tile 1: Exact 1:1 match */}
+            <div className="s7-card crm-kpi">
+              <p className="s7-type-label crm-kpi__label">EXACT 1:1 MATCH</p>
+              <p className="crm-kpi__value">{exactMatchCount}</p>
+              <p className="crm-kpi__sub">every client without an account</p>
+            </div>
+            {/* Tile 2: Ambiguous */}
+            <div className={`s7-card crm-kpi${ambiguousCount > 0 ? " crm-kpi--danger" : ""}`}>
+              <p className="s7-type-label crm-kpi__label">AMBIGUOUS</p>
+              <p className="crm-kpi__value">{ambiguousCount}</p>
+              <p className="crm-kpi__sub">no name matching involved</p>
+            </div>
+            {/* Tile 3: Already linked */}
+            <div className="s7-card crm-kpi">
+              <p className="s7-type-label crm-kpi__label">ALREADY LINKED</p>
+              <p className="crm-kpi__value">{alreadyLinkedCount}</p>
+              <p className="crm-kpi__sub">skipped, never touched</p>
+            </div>
           </div>
 
-          {/* No-history bulk-set control — deliberate action required */}
-          {noHistoryCount > 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 12,
-                padding: "8px 12px",
-                background: "#fafaf9",
-                border: "1px solid #e7e5e4",
-                borderRadius: 6,
-                fontSize: 13
-              }}
-            >
-              <span style={{ color: "#57534e", fontWeight: 600 }}>
-                For rows with no history ({noHistoryCount}):
-              </span>
-              {LIFECYCLE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => bulkSetNoHistory(opt.value)}
-                  style={{
-                    padding: "4px 12px",
-                    borderRadius: 4,
-                    border: "1px solid #d6d3d1",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: LIFECYCLE_COLOUR[opt.value]
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
+          {/* How the match works panel */}
+          <div className="crm-dialog__how-panel">
+            <p className="s7-type-label crm-dialog__how-panel-title">HOW THE MATCH WORKS</p>
+            <ol className="crm-dialog__how-list">
+              <li>
+                <span className="crm-dialog__step-disc">1</span>
+                <span>
+                  Each client is matched by its unique <code>clientId</code> — one client, one
+                  account, guaranteed by the schema.
+                </span>
+              </li>
+              <li>
+                <span className="crm-dialog__step-disc">2</span>
+                <span>
+                  A lifecycle is proposed for each client based on tender history — it is not
+                  applied until you press Create.
+                </span>
+              </li>
+              <li>
+                <span className="crm-dialog__step-disc">3</span>
+                <span>
+                  The operation is additive and reversible — no existing accounts are changed
+                  unless you explicitly override a lifecycle row.
+                </span>
+              </li>
+            </ol>
+          </div>
+
+          {/* Ambiguous block — safety stop, must be 0 before Create */}
+          {ambiguousCount > 0 && (
+            <div role="alert" className="crm-alert--danger crm-dialog__ambiguous-stop">
+              <strong>Ambiguous count is {ambiguousCount}.</strong> The 1:1 assumption is
+              violated. Create is blocked. Please escalate to Marco.
             </div>
           )}
 
-          {/* Preview table */}
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              overflow: "hidden",
-              marginBottom: 20
-            }}
-          >
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "#f6f6f6", textAlign: "left" }}>
-                  <th style={thStyle}>Client name</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Tenders</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Won</th>
-                  <th style={thStyle}>Last tender</th>
-                  <th style={thStyle}>Proposed</th>
-                  <th style={thStyle}>Lifecycle</th>
-                  <th style={thStyle}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const effective = resolveLifecycle(row);
-                  const hasOverride = row.override !== null;
-                  const isLinked = row.existingAccountId !== null;
-                  const isNoHistory = row.basis === "no-history";
-                  // For no-history rows with no override, the select shows placeholder.
-                  // The effective lifecycle is still PROSPECT (the fallback), which
-                  // will be used in the create payload — this is correct per spec.
-                  const selectValue = isNoHistory && !hasOverride ? "" : effective;
-                  return (
-                    <tr
-                      key={row.clientId}
-                      style={{
-                        borderTop: "1px solid #f3f4f6",
-                        background: isLinked ? "#f9fafb" : "#fff"
-                      }}
+          {rows.length === 0 ? (
+            <div className="crm-dialog__empty">
+              No clients found. All clients are already linked.
+            </div>
+          ) : (
+            <>
+              {/* PROPOSED LIFECYCLE header row with Showing N of M */}
+              <div className="crm-dialog__table-header">
+                <span className="s7-type-label">PROPOSED LIFECYCLE &mdash; EDITABLE</span>
+                {rows.length > 0 && (
+                  <span className="crm-dialog__showing">
+                    Showing {rows.length} of {rows.length}
+                  </span>
+                )}
+              </div>
+
+              {/* Main bulk-set control — skips no-history rows */}
+              <div className="crm-dialog__bulk-row">
+                <span className="crm-dialog__bulk-label">
+                  Bulk-set all unoverridden rows (excludes no-history):
+                </span>
+                {LIFECYCLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    className="s7-btn s7-btn--secondary s7-btn--sm crm-dialog__bulk-btn"
+                    onClick={() => bulkSet(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* No-history bulk-set control — deliberate action required */}
+              {noHistoryCount > 0 && (
+                <div className="crm-dialog__bulk-row crm-dialog__bulk-row--nohistory">
+                  <span className="crm-dialog__bulk-label">
+                    For rows with no history ({noHistoryCount}):
+                  </span>
+                  {LIFECYCLE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      className="s7-btn s7-btn--secondary s7-btn--sm crm-dialog__bulk-btn"
+                      onClick={() => bulkSetNoHistory(opt.value)}
                     >
-                      {/* Client name */}
-                      <td style={tdStyle}>
-                        <span style={{ fontWeight: 600 }}>{row.name}</span>
-                      </td>
-                      {/* Tender count */}
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{row.tenderCount}</td>
-                      {/* Won count */}
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{row.wonCount}</td>
-                      {/* Last tender date */}
-                      <td style={tdStyle}>{fmtDate(row.lastTenderAt)}</td>
-                      {/* Proposed lifecycle badge */}
-                      <td style={tdStyle}>
-                        {isNoHistory ? (
-                          // No-history: neutral pill — do not show PROSPECT colour
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 8px",
-                              borderRadius: 10,
-                              background: "transparent",
-                              border: "1px solid #9ca3af",
-                              color: "#6b7280",
-                              fontSize: 11,
-                              fontWeight: 600
-                            }}
-                          >
-                            No history
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 8px",
-                              borderRadius: 10,
-                              background: LIFECYCLE_COLOUR[row.proposed],
-                              color: "#fff",
-                              fontSize: 11,
-                              fontWeight: 600
-                            }}
-                          >
-                            {row.proposed}
-                          </span>
-                        )}
-                      </td>
-                      {/* Editable lifecycle select */}
-                      <td style={tdStyle}>
-                        <select
-                          value={selectValue}
-                          disabled={isLinked}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setRowOverride(
-                              row.clientId,
-                              val === "" ? null : (val as ProposalLifecycle)
-                            );
-                          }}
-                          style={{
-                            padding: "4px 8px",
-                            borderRadius: 4,
-                            border: `1px solid ${hasOverride ? "#6366f1" : "#d1d5db"}`,
-                            fontSize: 12,
-                            fontWeight: hasOverride ? 700 : 400,
-                            color: selectValue === "" ? "#9ca3af" : LIFECYCLE_COLOUR[effective],
-                            background: "#fff",
-                            cursor: isLinked ? "not-allowed" : "pointer"
-                          }}
-                        >
-                          {/* Placeholder shown only for no-history rows before user picks a value */}
-                          {isNoHistory && !hasOverride && (
-                            <option value="" disabled>
-                              — choose —
-                            </option>
-                          )}
-                          {LIFECYCLE_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        {hasOverride && (
-                          <button
-                            title="Reset to proposed"
-                            onClick={() => setRowOverride(row.clientId, null)}
-                            style={{
-                              marginLeft: 4,
-                              background: "transparent",
-                              border: "none",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              color: "#9ca3af"
-                            }}
-                          >
-                            reset
-                          </button>
-                        )}
-                      </td>
-                      {/* Status pill */}
-                      <td style={tdStyle}>
-                        {isLinked ? (
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 8px",
-                              borderRadius: 10,
-                              background: "#f3f4f6",
-                              color: "#6b7280",
-                              fontSize: 11
-                            }}
-                          >
-                            Already linked
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 8px",
-                              borderRadius: 10,
-                              background: "#fff7ed",
-                              border: "1px solid #fed7aa",
-                              color: "#ea580c",
-                              fontSize: 11
-                            }}
-                          >
-                            To link
-                          </span>
-                        )}
-                      </td>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Preview table */}
+              <div className="s7-table-scroll">
+                <table className="s7-table crm-dialog__table">
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th style={{ textAlign: "right" }}>Tenders</th>
+                      <th>Last tender</th>
+                      <th style={{ textAlign: "right" }}>Won</th>
+                      <th>Proposed lifecycle</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const effective = resolveLifecycle(row);
+                      const hasOverride = row.override !== null;
+                      const isLinked = row.existingAccountId !== null;
+                      const isNoHistory = row.basis === "no-history";
+                      // For no-history rows with no override, the select shows placeholder.
+                      // The effective lifecycle is still PROSPECT (the fallback), which
+                      // will be used in the create payload — this is correct per spec.
+                      const selectValue = isNoHistory && !hasOverride ? "" : effective;
+                      return (
+                        <tr
+                          key={row.clientId}
+                          className={isLinked ? "crm-dialog__row--linked" : undefined}
+                        >
+                          {/* Client name */}
+                          <td>
+                            <span style={{ fontWeight: 600 }}>{row.name}</span>
+                          </td>
+                          {/* Tender count */}
+                          <td style={{ textAlign: "right" }}>{row.tenderCount}</td>
+                          {/* Last tender date */}
+                          <td>{fmtDate(row.lastTenderAt)}</td>
+                          {/* Won count */}
+                          <td style={{ textAlign: "right" }}>{row.wonCount}</td>
+                          {/* Proposed lifecycle — tinted badge wrapping select */}
+                          <td>
+                            <div className="crm-dialog__lifecycle-cell">
+                              {isNoHistory ? (
+                                // No-history: neutral badge — do not show PROSPECT colour
+                                <span className="s7-badge s7-badge--neutral crm-dialog__badge-select-wrap">
+                                  <select
+                                    value={selectValue}
+                                    disabled={isLinked}
+                                    className="crm-dialog__badge-select"
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setRowOverride(
+                                        row.clientId,
+                                        val === "" ? null : (val as ProposalLifecycle)
+                                      );
+                                    }}
+                                  >
+                                    {!hasOverride && (
+                                      <option value="" disabled>
+                                        &mdash; choose &mdash;
+                                      </option>
+                                    )}
+                                    {LIFECYCLE_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {" "}&#9662;
+                                </span>
+                              ) : (
+                                <span
+                                  className={`${LIFECYCLE_BADGE_CLASS[hasOverride ? effective : row.proposed]} crm-dialog__badge-select-wrap`}
+                                >
+                                  <select
+                                    value={selectValue}
+                                    disabled={isLinked}
+                                    className="crm-dialog__badge-select"
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setRowOverride(
+                                        row.clientId,
+                                        val === "" ? null : (val as ProposalLifecycle)
+                                      );
+                                    }}
+                                  >
+                                    {LIFECYCLE_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {" "}&#9662;
+                                </span>
+                              )}
+                              {hasOverride && !isLinked && (
+                                <button
+                                  title="Reset to proposed"
+                                  className="crm-dialog__reset-btn"
+                                  onClick={() => setRowOverride(row.clientId, null)}
+                                >
+                                  reset
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Commit error */}
-          {commitError && (
-            <div
-              role="alert"
-              style={{
-                color: "#dc2626",
-                padding: 12,
-                background: "#fef2f2",
-                borderRadius: 6,
-                marginBottom: 12,
-                fontSize: 13
-              }}
-            >
-              {commitError}
-            </div>
+              {/* Rule line */}
+              <p className="crm-dialog__rule-line">
+                Rule used: won a tender &rarr; Active; tendered but never won &rarr; Prospect;
+                nothing in 24 months &rarr; Past; no tender history &rarr; No history (choose
+                manually). Override any row before creating. Bulk-set acts on unoverridden rows.
+              </p>
+
+              {/* Commit error */}
+              {commitError && (
+                <div role="alert" className="crm-alert--danger" style={{ marginTop: 8 }}>
+                  {commitError}
+                </div>
+              )}
+            </>
           )}
+        </div>
 
-          {/* Commit button */}
-          <button
-            onClick={() => void handleCommit()}
-            disabled={committing || ambiguousCount > 0 || pendingWriteCount === 0}
-            style={{
-              padding: "12px 28px",
-              borderRadius: 6,
-              border: "none",
-              background:
-                ambiguousCount > 0 || pendingWriteCount === 0 ? "#9ca3af" : "#4f46e5",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 14,
-              cursor:
-                committing || ambiguousCount > 0 || pendingWriteCount === 0
-                  ? "not-allowed"
-                  : "pointer",
-              minHeight: 44
-            }}
-          >
-            {committing
-              ? "Committing…"
-              : pendingWriteCount === 0
-                ? "Nothing to commit"
-                : `Commit ${pendingWriteCount} row${pendingWriteCount !== 1 ? "s" : ""}`}
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Count tile ────────────────────────────────────────────────────────────────
-
-function CountTile({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
-  return (
-    <div
-      style={{
-        background: warn ? "#fef2f2" : "#fff",
-        border: `1px solid ${warn ? "#fecaca" : "#e5e7eb"}`,
-        borderRadius: 8,
-        padding: "12px 16px",
-        minWidth: 140
-      }}
-    >
-      <div style={{ fontSize: 11, color: "var(--text-muted, #6b7280)", marginBottom: 4 }}>
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 22,
-          fontWeight: 700,
-          color: warn ? "#dc2626" : "#111827"
-        }}
-      >
-        {value}
+        {/* ── Dialog footer (pinned) ─────────────────────────────────────── */}
+        <div className="crm-dialog__footer">
+          <p className="crm-dialog__footer-note">
+            This is a one-time catch-up screen. Nothing is written until you press Create.
+          </p>
+          <div className="crm-dialog__footer-actions">
+            <button
+              className="s7-btn s7-btn--secondary"
+              onClick={() => onDone?.()}
+              disabled={committing}
+            >
+              Cancel
+            </button>
+            <button
+              className="s7-btn s7-btn--primary crm-btn--primary"
+              onClick={() => void handleCommit()}
+              disabled={createDisabled}
+            >
+              {committing
+                ? "Creating…"
+                : pendingWriteCount === 0
+                  ? "Nothing to create"
+                  : `Create ${pendingWriteCount} account${pendingWriteCount !== 1 ? "s" : ""}`}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Table styles ──────────────────────────────────────────────────────────────
-
-const thStyle: React.CSSProperties = { padding: "10px 12px", fontWeight: 600 };
-const tdStyle: React.CSSProperties = { padding: "10px 12px", verticalAlign: "middle" };
+// ── Lifecycle CSS variable helper (for inline style use in badge-select) ──────
+// Used in crm.css via the crm-dialog__lifecycle-cell pattern.
+// Exported so tests can pin it without importing LIFECYCLE_CSS_VAR directly.
+export function lifecycleCssVar(lc: ProposalLifecycle): string {
+  return LIFECYCLE_CSS_VAR[lc];
+}

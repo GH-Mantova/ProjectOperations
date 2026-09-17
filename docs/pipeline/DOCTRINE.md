@@ -305,6 +305,48 @@ its promotion means its chain precondition was met, so drive it like any other. 
 separate from the **forbidden never-arm denylist** enforced in `queue-sync.ps1` (rates-s11c,
 site-dissolution, B-P0a-4-ii..8, B-SD), which nothing ever promotes.
 
+## 8.5 Queue layout -- six states, one location per prompt
+
+The full standard lives in `docs/pipeline/QUEUE-LAYOUT.md` (QUEUE_LAYOUT_V1). This section
+is a summary complete enough to act on without opening that file.
+
+Every prompt lives in exactly one state. The watcher keys on `armed`; the other five are
+Marco's operational categories.
+
+| state | where | meaning |
+|---|---|---|
+| brainstorm | `docs/pr-prompts/brainstorm/` | being thought about; not a prompt yet; nothing reads it |
+| draft | `docs/pr-prompts/draft/` | written, not approved; inert - no gate, no arm, no build |
+| hold | `docs/pr-prompts/*-HOLD.md` | approved and staged; on main; waiting on its gate |
+| armed | `docs/pr-prompts/*-ready.md` | the rename IS the dispatch; the only state `READY_PATTERN` matches |
+| merged | `docs/pr-prompts/merged/` | its PR is confirmed MERGED on main |
+| superseded | `docs/pr-prompts/superseded/` | replaced; the replacement is named inside the file |
+
+**Why hold and armed are filenames, not folders.** `index.mjs:3545` calls
+`fsWatch(PROMPT_DIR, { persistent: true }, ...)` with NO `recursive: true`. On Windows,
+a file-system change inside a subdirectory fires no event; only the 5-minute
+`RESCAN_INTERVAL_MS` sweep would notice. Moving armed into a folder would silently turn
+arming from immediate into eventual. Anyone proposing to move it must change the watch
+first. See `docs/pipeline/QUEUE-LAYOUT.md` for the full mechanical argument.
+
+**merged is not processed.** The retired `processed/` folder was entered when a PR OPENED.
+A prompt could sit there while its PR was still open, closed unmerged, or merged, with
+nothing distinguishing the three. On 2026-09-16 two armed prompts (`ratescol-s4`,
+`scopecards-s2b`) were lost to that blind spot. `merged/` is entered only on a confirmed
+MERGED state.
+
+**Exceptions are not lifecycle states.** They sit under `exceptions/<reason>/` with a
+closed vocabulary: `needs-marco`, `blocked`, `failed`, `paused`, `no-pr-opened`,
+`abandoned`. Adding a seventh reason is a change to QUEUE-LAYOUT.md and the shared
+constant, never a new folder.
+
+**Reports are not prompts.** Breadcrumbs and run reports go in `docs/pr-prompts/reports/`.
+31 report files were sitting loose in the queue root when this standard was written.
+
+**Nothing is ever deleted.** Retiring a prompt means moving it.
+
+**Not yet enforced.** This standard is written in S1 and enforced in S4.
+
 ---
 
 # 🔧 §9. INSTRUMENTS — the measured traps, in one place
@@ -2092,6 +2134,7 @@ made in, so one actor emits different identities depending on where it committed
 | `GH-Mantova <273896040+GH-Mantova@users.noreply.github.com>` | the **GitHub web UI / API** — every squash merge, and every `Merge branch ‘main’ into …` update-branch | GitHub’s own noreply identity |
 | `GH-Mantova <marco@initialservices.net>` | a **fourth pairing, from neither tree** — on this board it is the second lane that opened `#1852` | neither tree’s config |
 | `Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>` | the supervised cloud lane, when it commits somewhere supplying that identity | its own signature |
+| `station-00.interactive-0003 <marco@initialservices.net>` | a **SUPERVISED INTERACTIVE lane**, committing from a dev-tree worktree whose `git config user.name` is the lane id while the email stays Marco's — so attribution **by email alone reads it as a watcher build**, and by name alone as an actor no row lists | that lane's own `git config user.name` in its worktree |
 
 **The row that breaks the table.** the merge-approval receipt on `#1823`, commit `9664f95a`,
 authors as **`PR Supervisor <supervisor@local>`** — while the receipt’s own closing line

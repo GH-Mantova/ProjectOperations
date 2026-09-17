@@ -314,21 +314,39 @@ until its uncommitted file is preserved** — that is the escalation, not the cl
 
 ---
 
-## RE-RUN OUTCOME (the one open read-back in this report)
+## RE-RUN OUTCOME — CLOSED, and the answer is SUCCESS
 
-`gh run rerun 35241757870 --failed` was fired at 16:16:48Z. At 16:22:5xZ the run read
-`{"attempt":2,"conclusion":"","status":"in_progress"}` — the `tendering-e2e` job takes ~5 minutes and
-the run had not settled when this breadcrumb was committed.
-
-🔴 **This is an ACTIONED disposition with a verified ACTION and an UNVERIFIED RESULT, and the difference
-matters.** The next Station 00 occurrence must read it before saying anything about the trunk:
+`gh run rerun 35241757870 --failed` was fired at 16:16:48Z. It was still `in_progress` when the
+breadcrumb above was committed, so that section was written as an explicitly OPEN read-back with the
+command the next run would need. **It settled before the run ended, and this addendum closes it rather
+than billing the next occurrence to re-derive an answer I already have.**
 
 ```
 gh run view 35241757870 -R GH-Mantova/ProjectOperations --json status,conclusion,attempt
+{"attempt":2,"conclusion":"success","status":"completed"}
 ```
 
-- `conclusion: success` → F-1 confirmed transient, trunk green on `4dde77b8`, nothing further.
-- `conclusion: failure` on the same single `[webkit] tendering.spec.ts:54` test → **no longer a flake.**
-  It is a real defect in `loginWithStoredState` (`tests/e2e/pr-acceptance/helpers.ts:89`) under webkit,
-  and rule 5's *"only treat a red as a real defect after a clean re-run still fails"* has then been
-  satisfied. Fix it forward; do not re-run a third time.
+[MEASURED] 2026-09-17T16:30:3xZ. **Attempt 2 passed.** F-1's diagnosis is confirmed: the
+`[webkit] tendering.spec.ts:54` failure on `4dde77b8` was a transient flake in the `beforeEach`
+login hook under a resource-starved runner, not a regression. **The trunk is GREEN on `4dde77b8`.**
+Station 00's rule 5 escape hatch — *"only treat a red as a real defect after a clean re-run still
+fails"* — did not need to open. No `fixes_pr` is owed and none should be authored.
+
+⚠️ **What must NOT be read into this.** One green re-run proves this occurrence was transient; it says
+nothing about the rate. The same spec has now flaked once under four concurrent `Tendering Browser
+Smoke` runs. **Falsifying probe for the benign reading:** if `[webkit] tendering.spec.ts:54` fails a
+second time inside a week, it is a real webkit-specific defect in `loginWithStoredState`
+(`tests/e2e/pr-acceptance/helpers.ts:89`) and the flake reading here is wrong.
+
+## ONE MORE THING THE MERGE OF #2009 DID, SO NOBODY DIAGNOSES IT AS A DEFECT
+
+[MEASURED] immediately after `#2009` merged at 16:28:15Z (`bf5aad3a`), all three open PRs moved
+`BLOCKED` -> **`BEHIND`**. That is the board PR advancing `main` under them and is **not** a new
+problem: `BEHIND` is a rebase, not a failure, and all three remain parked on Marco behind
+`do-not-merge` plus a genuine watcher `marco:true` verdict either way.
+
+🔴 **I deliberately did NOT update their branches.** Rebasing every waiting PR on each hourly board
+merge is the subject of the open escalation
+`needs-marco/hourly-board-pr-rebases-every-waiting-pr-2026-09-03.md`, which already names 19 merged
+PRs' worth of churn. Touching them would have spent three CI runs to change nothing about who may
+merge them.

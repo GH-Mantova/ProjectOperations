@@ -153,6 +153,25 @@ function fromOpenPrs() {
   } catch { return []; }
 }
 
+// A heading is only a heading AT THE START OF A LINE. `text.indexOf('## FINDINGS')` also matches
+// the same characters QUOTED mid-line — and a station report that proves its own structure by
+// pasting a `grep -n "^## "` transcript carries all five contract headings on ONE line, in order.
+// `indexOf` then resolves the findings heading and the next heading to two offsets a few
+// characters apart on that quoted line, so the body this function inspects is that fragment: no
+// disposition in it, too long for the `nothing` escape hatch, REJECT. MEASURED 2026-09-17 by
+// Station 00 on `00-04-scanner-2026-09-17-0611-…md`, which carries two literal
+// `DISPOSITION: ESCALATED` lines and was rejected for carrying none. The same report ADMITted
+// earlier in its own run, before that transcript was pasted in — so the evidence of structural
+// soundness is what broke the structure check. DOCTRINE §9.6: a probe pointed at a document that
+// describes the thing it looks for measures the documentation.
+// Anchored to a line start, not to end-of-line: a heading with trailing text on the same line
+// stays a heading, so no previously-passing report changes verdict.
+function headingIndex(text, heading) {
+  const re = new RegExp('^' + heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'm');
+  const m = re.exec(text);
+  return m ? m.index : -1;
+}
+
 function checkOne(file, name) {
   const fails = [];
   const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
@@ -162,17 +181,17 @@ function checkOne(file, name) {
   // sections present AND in order — order is what makes a report skimmable
   let last = -1;
   for (const s of SECTIONS) {
-    const i = text.indexOf(s);
+    const i = headingIndex(text, s);
     if (i === -1) { fails.push(`missing section: ${s}`); continue; }
     if (i < last) fails.push(`section out of order: ${s}`);
     last = i;
   }
 
   // every finding carries a disposition
-  const fi = text.indexOf('## FINDINGS');
+  const fi = headingIndex(text, '## FINDINGS');
   if (fi !== -1) {
     const end = SECTIONS.slice(SECTIONS.indexOf('## FINDINGS') + 1)
-      .map((s) => text.indexOf(s)).find((i) => i > fi) ?? text.length;
+      .map((s) => headingIndex(text, s)).find((i) => i > fi) ?? text.length;
     const body = text.slice(fi, end);
     const nothing = /\b(none|nothing|no findings)\b/i.test(body) && body.length < 400;
     const found = DISPOSITIONS.filter((d) => body.includes(d)).length;

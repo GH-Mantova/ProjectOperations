@@ -247,12 +247,21 @@ different instrument. 🔧 **Read the not-green COUNT, then the CP-26 verdict to
 alone.** Falsifying probe: `statusCheckRollup` on any labelled PR; if a labelled PR ever shows more
 than two not-green rows, the extra rows are work.
 
-**DISPOSITION: ACTIONED** — fixed, pushed to the PR branch, verified locally 6/6 with the failure
-reproduced first as a positive control. **NOT merged**: RULE 2 and the label both bind, and #2005
-remains Marco's to release. CI on the new head `6824f3fd` was still `in_progress` at my last
-measurement (`CI`, `CodeQL`, `Tendering Browser Smoke`), so **whether the third red is now green is
-[CANNOT MEASURE] from inside this run** — the next occurrence must re-read it, and if
-`API — lint, test, compliance smoke` is still red the fix is wrong and this finding must be re-opened.
+**DISPOSITION: ACTIONED — and CONFIRMED GREEN IN CI, not merely pushed.** [MEASURED] at
+`15:4xZ` on the new head `6824f3fd`, from `statusCheckRollup`:
+**`API — lint, test, compliance smoke` = SUCCESS** (run `35240510178`, job `105267498705`).
+The third red is gone and #2005 is back to exactly the documented parked shape — `NOT_GREEN_COUNT=3`,
+being the two CP-26 rows (one cause, the label) plus `tendering-e2e` still `in_progress` at the
+moment of reading, which is a pending check and not a failure.
+
+This is stated as the earlier draft of this finding would not let it be: that draft recorded the CI
+outcome as `[CANNOT MEASURE]` because the run was still in flight, and it was corrected here rather
+than left to the next occurrence once the measurement became available inside this run.
+
+**NOT merged, and that is unchanged by the fix working.** RULE 2 and the `do-not-merge` label both
+bind, only Marco removes the label, and #2005 remains his to release. Driving it green is the whole of
+what my lane permits. ⚠️ `tendering-e2e` had not concluded when this was written — if it lands red it
+is a NEW finding, not this one.
 
 ### F2 — COLLECT: Station 00's own 14:09Z blind run (3 findings, all dispositioned here)
 

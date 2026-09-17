@@ -1,3 +1,10 @@
+// SCOPE_QD_UI_SECTIONS_V1 — scopecards S2b-b. Adds a Goes-to destination
+// column (QuoteDestinationSelect, placed immediately after Description),
+// destination row-rail classes (d-prov / d-option / d-internal), INTERNAL row
+// treatment, destNote text under the total, and four-way money reporting
+// { price, provisional, option, internal } sorted by each row's destination.
+// Nothing in the card-total or discipline-bar fold changes — S2b-c does that.
+//
 // SCOPE_CUTTING_V1 — "Cutting take-off", the read-only cutting section inside
 // a scope card. Seventh and last slice of the card redesign.
 //
@@ -86,6 +93,16 @@ import type { CSSProperties } from "react";
 import { readApiErrorMessage } from "../../../lib/api-errors";
 import { useAuth } from "../../../auth/AuthContext";
 import { showsCuttingColumn, type Discipline } from "../ScopeQuantitiesTable";
+import {
+  QuoteDestinationSelect,
+  DESTINATION_ROW_CLASS,
+  DESTINATION_NOTE,
+  type QuoteDestination
+} from "./QuoteDestinationSelect";
+
+// SCOPE_QD_UI_SECTIONS_V1 — scopecards S2b-b. The quote-destination control on
+// cutting take-off rows. S2b-c sets the full-screen marker (V1).
+export const SCOPE_QD_UI_SECTIONS_V1 = "scopecards-s2b-b";
 
 // ── The payload ─────────────────────────────────────────────────────────
 
@@ -121,6 +138,9 @@ export type CuttingTakeOffRow = {
   lineTotal: string | null;
   /** True for rows the `Cutting?` tick generated via copy-from-above. */
   autoCopied: boolean;
+  // SCOPE_QD_UI_SECTIONS_V1 — where this row's cost lands on the client quote.
+  // null / undefined falls back to PRICE (the server default).
+  quoteDestination?: QuoteDestination | null;
 };
 
 // ── What a rig can physically do ────────────────────────────────────────
@@ -243,6 +263,55 @@ export function countUnpriced(rows: CuttingTakeOffRow[]): number {
   return rows.filter((r) => takeOffRowState(r) === "unpriced").length;
 }
 
+// ── Four-way money reporting ─────────────────────────────────────────────
+//
+// SCOPE_QD_UI_SECTIONS_V1 — each row's destination sorts its server-computed
+// lineTotal into one of four piles. Nothing is computed in the browser.
+
+/** One destination's contribution: subtotal (bare) and withMarkup (marked up).
+ *  For the cutting section these are equal — no per-section markup is applied
+ *  to cutting — but the shape matches OtherOperationalCosts for consistency.
+ */
+export type CuttingDestBucket = { subtotal: number; withMarkup: number };
+
+/** Four-way money shape reported upward. */
+export type CuttingFourWay = {
+  price: CuttingDestBucket;
+  provisional: CuttingDestBucket;
+  option: CuttingDestBucket;
+  internal: CuttingDestBucket;
+};
+
+function emptyBucket(): CuttingDestBucket {
+  return { subtotal: 0, withMarkup: 0 };
+}
+
+/**
+ * Sort the take-off's priced server row totals into four piles by destination.
+ * Cannot-cut and unpriced rows contribute nothing to any pile.
+ * No arithmetic on rates — only a fold of server lineTotal figures.
+ */
+export function cuttingFourWay(rows: CuttingTakeOffRow[]): CuttingFourWay {
+  const result: CuttingFourWay = {
+    price: emptyBucket(),
+    provisional: emptyBucket(),
+    option: emptyBucket(),
+    internal: emptyBucket()
+  };
+  for (const row of rows) {
+    if (takeOffRowState(row) !== "priced") continue;
+    const n = Number(row.lineTotal);
+    if (!Number.isFinite(n)) continue;
+    const dest: QuoteDestination = row.quoteDestination ?? "PRICE";
+    const key = dest.toLowerCase() as keyof CuttingFourWay;
+    if (key in result) {
+      result[key].subtotal += n;
+      result[key].withMarkup += n;
+    }
+  }
+  return result;
+}
+
 // ── Display formatting (no arithmetic) ──────────────────────────────────
 
 /** Money as the rest of the card shows it. Parse and format; no operator. */
@@ -277,45 +346,151 @@ const cellStyle: CSSProperties = { padding: "6px 10px", verticalAlign: "top" };
 const numericCellStyle: CSSProperties = { ...cellStyle, textAlign: "right", whiteSpace: "nowrap" };
 const mutedStyle: CSSProperties = { color: "var(--text-muted)" };
 
+// ── Destination row rail helpers ─────────────────────────────────────────
+//
+// SCOPE_QD_UI_SECTIONS_V1 — page-local styles on brand tokens only.
+// The 3px left rail is an inset box-shadow so it overlaps no column width.
+
+function destRowStyle(dest: QuoteDestination): CSSProperties {
+  const base: CSSProperties = {};
+  if (dest === "PROVISIONAL") {
+    return {
+      ...base,
+      boxShadow: "inset 3px 0 0 var(--status-accent, var(--brand-secondary))"
+    };
+  }
+  if (dest === "OPTION") {
+    return {
+      ...base,
+      boxShadow: "inset 3px 0 0 var(--brand-primary)"
+    };
+  }
+  if (dest === "INTERNAL") {
+    return {
+      ...base,
+      boxShadow: "inset 3px 0 0 var(--border-default)",
+      background: "var(--surface-subtle)"
+    };
+  }
+  return base;
+}
+
+/** Opacity wrapper for non-control cells on an INTERNAL row (.55). */
+function internalCellStyle(dest: QuoteDestination, base: CSSProperties = {}): CSSProperties {
+  if (dest !== "INTERNAL") return base;
+  return { ...base, opacity: 0.55 };
+}
+
 /**
- * SCOPE_CUTTING_V1 — one take-off row.
+ * The note text under the total cell for non-PRICE destinations.
+ * Returns null for PRICE.
+ */
+export function destNote(dest: QuoteDestination): string | null {
+  return DESTINATION_NOTE[dest] ?? null;
+}
+
+/**
+ * SCOPE_QD_UI_SECTIONS_V1 — one take-off row.
  *
  * A row the rig cannot cut prints the reason IN WORDS across the rate and
  * total cells instead of a figure. Exported so the suite can render it on its
  * own — the container needs an AuthProvider, this does not.
+ *
+ * @param patchDestination - called when the estimator changes the Goes-to
+ *   select. The container owns the PATCH and handles errors. Omit in tests
+ *   that do not exercise the control.
  */
-export function CuttingTakeOffRowView({ row }: { row: CuttingTakeOffRow }) {
+export function CuttingTakeOffRowView({
+  row,
+  patchDestination
+}: {
+  row: CuttingTakeOffRow;
+  patchDestination?: (rowId: string, dest: QuoteDestination) => void;
+}) {
   const state = takeOffRowState(row);
   const reason = rigCannotCut(row.equipment, row.elevation);
+  const dest: QuoteDestination = row.quoteDestination ?? "PRICE";
+  const rowClass = DESTINATION_ROW_CLASS[dest];
+  const note = destNote(dest);
 
   return (
-    <tr data-testid="cutting-take-off-row" data-row-state={state}>
+    <tr
+      data-testid="cutting-take-off-row"
+      data-row-state={state}
+      className={rowClass}
+      style={destRowStyle(dest)}
+    >
       <td style={cellStyle}>{row.wbsRef}</td>
-      <td style={cellStyle}>{orDash(row.description)}</td>
-      <td style={cellStyle}>{orDash(row.equipment)}</td>
-      <td style={cellStyle}>{orDash(row.method)}</td>
-      <td style={cellStyle}>{orDash(row.elevation)}</td>
-      <td style={numericCellStyle}>{fmtCuttingNumber(row.depthMm)}</td>
-      <td style={numericCellStyle}>{fmtCuttingNumber(row.quantityLm)}</td>
+      <td style={internalCellStyle(dest, cellStyle)}>{orDash(row.description)}</td>
+      {/* Goes to — immediately after Description, per the mock-up */}
+      <td className="inc" style={{ ...cellStyle, whiteSpace: "nowrap" }} data-testid="cutting-dest-cell">
+        <QuoteDestinationSelect
+          value={dest}
+          onChange={(next) => patchDestination?.(row.id, next)}
+        />
+      </td>
+      <td style={internalCellStyle(dest, cellStyle)}>{orDash(row.equipment)}</td>
+      <td style={internalCellStyle(dest, cellStyle)}>{orDash(row.method)}</td>
+      <td style={internalCellStyle(dest, cellStyle)}>{orDash(row.elevation)}</td>
+      <td style={internalCellStyle(dest, numericCellStyle)}>{fmtCuttingNumber(row.depthMm)}</td>
+      <td style={internalCellStyle(dest, numericCellStyle)}>{fmtCuttingNumber(row.quantityLm)}</td>
       {state === "cannot-cut" ? (
         <td
           colSpan={2}
-          style={{ ...cellStyle, color: "var(--status-danger)" }}
+          style={internalCellStyle(dest, { ...cellStyle, color: "var(--status-danger)" })}
           data-testid="cutting-row-cannot-cut"
         >
           {reason}
         </td>
       ) : state === "unpriced" ? (
-        <td colSpan={2} style={{ ...cellStyle, ...mutedStyle }} data-testid="cutting-row-unpriced">
+        <td colSpan={2} style={internalCellStyle(dest, { ...cellStyle, ...mutedStyle })} data-testid="cutting-row-unpriced">
           Not yet priced — pick a rig on the cutting sheet below.
         </td>
       ) : (
         <>
-          <td style={numericCellStyle} data-testid="cutting-row-rate">
+          <td style={internalCellStyle(dest, numericCellStyle)} data-testid="cutting-row-rate">
             {fmtCuttingMoney(row.ratePerM)}
           </td>
-          <td style={numericCellStyle} data-testid="cutting-row-total">
-            {fmtCuttingMoney(row.lineTotal)}
+          <td style={internalCellStyle(dest, numericCellStyle)} data-testid="cutting-row-total">
+            {dest === "INTERNAL" ? (
+              <>
+                <span style={{ textDecoration: "line-through", textDecorationThickness: "1.5px" }}>
+                  {fmtCuttingMoney(row.lineTotal)}
+                </span>
+                {note ? (
+                  <div
+                    className="exclnote"
+                    style={{
+                      fontSize: 10,
+                      textTransform: "uppercase",
+                      color: "var(--text-muted)",
+                      marginTop: 2
+                    }}
+                  >
+                    {note}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {fmtCuttingMoney(row.lineTotal)}
+                {note ? (
+                  <div
+                    className="exclnote"
+                    style={{
+                      fontSize: 10,
+                      textTransform: "uppercase",
+                      color: dest === "PROVISIONAL"
+                        ? "var(--status-accent, var(--brand-secondary))"
+                        : "var(--brand-primary)",
+                      marginTop: 2
+                    }}
+                  >
+                    {note}
+                  </div>
+                ) : null}
+              </>
+            )}
           </td>
         </>
       )}
@@ -324,7 +499,7 @@ export function CuttingTakeOffRowView({ row }: { row: CuttingTakeOffRow }) {
 }
 
 /**
- * SCOPE_CUTTING_V1 — the section body: heading, the take-off table and the
+ * SCOPE_QD_UI_SECTIONS_V1 — the section body: heading, the take-off table and the
  * section total.
  *
  * Presentational and auth-free, so the suite can render it directly. It also
@@ -335,12 +510,15 @@ export function CuttingTakeOff({
   discipline,
   rows,
   loading = false,
-  error = null
+  error = null,
+  patchDestination
 }: {
   discipline: Discipline;
   rows: CuttingTakeOffRow[];
   loading?: boolean;
   error?: string | null;
+  /** Called when the estimator changes a row's Goes-to destination. */
+  patchDestination?: (rowId: string, dest: QuoteDestination) => void;
 }) {
   // Asbestos cards never cut. Single source of truth, shared with the
   // `Cutting?` tick this take-off is downstream of.
@@ -400,6 +578,7 @@ export function CuttingTakeOff({
               <tr>
                 <th>WBS</th>
                 <th>Description</th>
+                <th className="inc" style={{ width: "1%", whiteSpace: "nowrap" }}>Goes to</th>
                 <th>Rig</th>
                 <th>Method</th>
                 <th>Elevation</th>
@@ -411,7 +590,7 @@ export function CuttingTakeOff({
             </thead>
             <tbody>
               {takeOff.map((row) => (
-                <CuttingTakeOffRowView key={row.id} row={row} />
+                <CuttingTakeOffRowView key={row.id} row={row} patchDestination={patchDestination} />
               ))}
             </tbody>
           </table>
@@ -444,7 +623,7 @@ export function CuttingTakeOff({
 // ── Container ───────────────────────────────────────────────────────────
 
 /**
- * SCOPE_CUTTING_V1 — the section as the card mounts it.
+ * SCOPE_QD_UI_SECTIONS_V1 — the section as the card mounts it.
  *
  * Reads the card's cutting take-off from the endpoint the card already
  * fetches, and reports the section total upward so ScopeCardsTab can fold it
@@ -508,5 +687,36 @@ export function CuttingSection({
     onSectionTotalChange?.(cardId, sectionTotal);
   }, [onSectionTotalChange, cardId, sectionTotal]);
 
-  return <CuttingTakeOff discipline={discipline} rows={rows} loading={loading} error={error} />;
+  // SCOPE_QD_UI_SECTIONS_V1 — PATCH quoteDestination on a cutting item row.
+  // On error, surface the message and do NOT update local state (the revert
+  // is implicit: the select reverts because rows state is not updated).
+  const patchDestination = useCallback(
+    async (rowId: string, dest: QuoteDestination) => {
+      // Optimistic update so the select feels instant.
+      setRows((prev) =>
+        prev.map((r) => (r.id === rowId ? { ...r, quoteDestination: dest } : r))
+      );
+      const res = await authFetch(
+        `/tenders/${tenderId}/scope/cutting-items/${encodeURIComponent(rowId)}`,
+        { method: "PATCH", body: JSON.stringify({ quoteDestination: dest }) }
+      );
+      if (!res.ok) {
+        // Revert optimistic update and surface error.
+        const msg = await readApiErrorMessage(res);
+        setError(msg);
+        await load();
+      }
+    },
+    [authFetch, tenderId, load]
+  );
+
+  return (
+    <CuttingTakeOff
+      discipline={discipline}
+      rows={rows}
+      loading={loading}
+      error={error}
+      patchDestination={patchDestination}
+    />
+  );
 }

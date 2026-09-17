@@ -1,5 +1,5 @@
-// SCOPE_OTHER_COSTS_V1 / SCOPE_OPERATIONAL_COSTS_PRICED_V1 — tests for the
-// "Other operational costs" section.
+// SCOPE_QD_UI_SECTIONS_V1 / SCOPE_OTHER_COSTS_V1 / SCOPE_OPERATIONAL_COSTS_PRICED_V1
+// — tests for the "Other operational costs" section.
 //
 // The web workspace has no jsdom and no @testing-library (see
 // discipline-summary-bar.test.tsx). Anything that is a claim about a NUMBER is
@@ -24,17 +24,21 @@ import {
   OperationalCostRow,
   RateLibraryItemPicker,
   UNIT_OPTIONS,
+  computeOperationalFourWay,
   daysForUnit,
   isDurationBearingUnit,
   isRateOverridden,
+  operationalDestNote,
   resolveLineRate,
   rowLineTotalWithMarkup,
   computeOperationalTotals,
   toNum,
   type OperationalCostLine,
+  type OperationalFourWay,
   type OperationalSectionTotals,
   type RateLibraryItem
 } from "../OtherOperationalCosts";
+import { DESTINATION_NOTE } from "../QuoteDestinationSelect";
 import { computeCardBarStats } from "../DisciplineSummaryBar";
 import { rollUpDiscipline, toCardRollupInput } from "../utils/discipline-rollup";
 import type { ScopeItem } from "../../ScopeQuantitiesTable";
@@ -626,5 +630,188 @@ describe("the mount point", () => {
       "utf-8"
     );
     expect(componentSource).toContain("SCOPE_OTHER_COSTS_V1");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// 8. S2b-b — Goes-to column (FIRST), destination rail, INTERNAL treatment,
+//    four-way money reporting
+// ───────────────────────────────────────────────────────────────────────
+
+describe("S2b-b: Goes-to column is FIRST in the table header", () => {
+  const componentSource = readFileSync(
+    repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+    "utf-8"
+  );
+
+  it("lists Goes to before Item in the COLUMNS array (source assertion)", () => {
+    // Mock-up order: "Goes to · From · Item description …"
+    const colsIdx = componentSource.indexOf('"Goes to"');
+    const itemIdx = componentSource.indexOf('"Item"');
+    expect(colsIdx).toBeGreaterThan(-1);
+    expect(itemIdx).toBeGreaterThan(-1);
+    expect(colsIdx).toBeLessThan(itemIdx);
+  });
+
+  it("renders a Goes-to cell as the FIRST td in the row", () => {
+    const html = renderToStaticMarkup(
+      <table>
+        <tbody>
+          <OperationalCostRow
+            line={makeLine({ quoteDestination: "PRICE" })}
+            index={0}
+            rateOptions={[]}
+            onPatch={() => undefined}
+            onRemove={() => undefined}
+          />
+        </tbody>
+      </table>
+    );
+    expect(html).toContain('data-testid="other-cost-dest-cell"');
+    // The destination cell appears before the item picker.
+    const destIdx = html.indexOf('data-testid="other-cost-dest-cell"');
+    const qtyIdx = html.indexOf('data-testid="other-cost-qty"');
+    expect(destIdx).toBeLessThan(qtyIdx);
+  });
+
+  it("does not pass optionLetter — the prop is omitted entirely", () => {
+    expect(componentSource).not.toContain("optionLetter");
+  });
+});
+
+describe("S2b-b: destination rail classes and INTERNAL row treatment", () => {
+  function renderRow(overrides: Partial<OperationalCostLine> = {}): string {
+    return renderToStaticMarkup(
+      <table>
+        <tbody>
+          <OperationalCostRow
+            line={makeLine(overrides)}
+            index={0}
+            rateOptions={[]}
+            onPatch={() => undefined}
+            onRemove={() => undefined}
+          />
+        </tbody>
+      </table>
+    );
+  }
+
+  it("a PROVISIONAL row carries d-prov class", () => {
+    expect(renderRow({ quoteDestination: "PROVISIONAL" })).toContain("d-prov");
+  });
+
+  it("an OPTION row carries d-option class", () => {
+    expect(renderRow({ quoteDestination: "OPTION" })).toContain("d-option");
+  });
+
+  it("an INTERNAL row carries d-internal class, surface-subtle background and .55 opacity on non-control cells", () => {
+    const html = renderRow({ quoteDestination: "INTERNAL" });
+    expect(html).toContain("d-internal");
+    expect(html).toContain("surface-subtle");
+    expect(html).toContain("0.55");
+  });
+
+  it("an INTERNAL row shows the total struck through (1.5px) and the destNote", () => {
+    const html = renderRow({ quoteDestination: "INTERNAL", lineTotalWithMarkup: 1100 });
+    expect(html).toContain("line-through");
+    expect(html).toContain("1.5px");
+    expect(html).toContain("internal only");
+    expect(html).toContain("exclnote");
+  });
+
+  it("a PROVISIONAL row shows provisional-sum note", () => {
+    const html = renderRow({ quoteDestination: "PROVISIONAL", lineTotalWithMarkup: 500 });
+    expect(html).toContain("provisional sum");
+    expect(html).toContain("exclnote");
+  });
+
+  it("an OPTION row shows cost-option note", () => {
+    const html = renderRow({ quoteDestination: "OPTION", lineTotalWithMarkup: 700 });
+    expect(html).toContain("cost option");
+    expect(html).toContain("exclnote");
+  });
+
+  it("a PRICE row shows no destNote", () => {
+    const html = renderRow({ quoteDestination: "PRICE", lineTotalWithMarkup: 300 });
+    expect(html).not.toContain("exclnote");
+    expect(operationalDestNote("PRICE")).toBeNull();
+  });
+
+  it("operationalDestNote matches DESTINATION_NOTE from QuoteDestinationSelect", () => {
+    expect(operationalDestNote("PROVISIONAL")).toBe(DESTINATION_NOTE.PROVISIONAL);
+    expect(operationalDestNote("OPTION")).toBe(DESTINATION_NOTE.OPTION);
+    expect(operationalDestNote("INTERNAL")).toBe(DESTINATION_NOTE.INTERNAL);
+    expect(operationalDestNote("PRICE")).toBeNull();
+  });
+});
+
+describe("S2b-b: PATCHes quoteDestination on change", () => {
+  it("the source PATCHes { quoteDestination } when the destination select changes", () => {
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+      "utf-8"
+    );
+    expect(componentSource).toContain("quoteDestination: next");
+  });
+
+  it("the onPatch callback receives { quoteDestination } when the select fires", () => {
+    // This is a source assertion rather than a live event (no jsdom).
+    // The OperationalCostRow renders a QuoteDestinationSelect whose onChange
+    // calls onPatch({ quoteDestination: next }). The test above pins the source.
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+      "utf-8"
+    );
+    expect(componentSource).toContain("onPatch({ quoteDestination: next })");
+  });
+});
+
+describe("S2b-b: four-way money reporting for operational costs", () => {
+  it("sorts lines into the correct pile by destination", () => {
+    const lines: OperationalCostLine[] = [
+      makeLine({ id: "l1", lineTotal: 100, lineTotalWithMarkup: 110, quoteDestination: "PRICE" }),
+      makeLine({ id: "l2", lineTotal: 200, lineTotalWithMarkup: 220, quoteDestination: "PROVISIONAL" }),
+      makeLine({ id: "l3", lineTotal: 300, lineTotalWithMarkup: 330, quoteDestination: "OPTION" }),
+      makeLine({ id: "l4", lineTotal: 400, lineTotalWithMarkup: 440, quoteDestination: "INTERNAL" })
+    ];
+    const fw: OperationalFourWay = computeOperationalFourWay(lines);
+    expect(fw.price.subtotal).toBe(100);
+    expect(fw.price.withMarkup).toBe(110);
+    expect(fw.provisional.subtotal).toBe(200);
+    expect(fw.provisional.withMarkup).toBe(220);
+    expect(fw.option.subtotal).toBe(300);
+    expect(fw.option.withMarkup).toBe(330);
+    expect(fw.internal.subtotal).toBe(400);
+    expect(fw.internal.withMarkup).toBe(440);
+  });
+
+  it("defaults null/undefined quoteDestination to PRICE", () => {
+    const lines: OperationalCostLine[] = [
+      makeLine({ id: "d1", lineTotal: 100, lineTotalWithMarkup: 110, quoteDestination: null }),
+      makeLine({ id: "d2", lineTotal: 50, lineTotalWithMarkup: 55, quoteDestination: undefined })
+    ];
+    const fw = computeOperationalFourWay(lines);
+    expect(fw.price.subtotal).toBe(150);
+    expect(fw.provisional.subtotal).toBe(0);
+    expect(fw.option.subtotal).toBe(0);
+    expect(fw.internal.subtotal).toBe(0);
+  });
+
+  it("a failed PATCH reverts (the container calls load() on error)", () => {
+    // Source assertion: the patchLine catch block calls void load() to re-read
+    // the server state, effectively reverting any optimistic change.
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+      "utf-8"
+    );
+    expect(componentSource).toContain("void load()");
+  });
+
+  it("does not set SCOPE_QUOTE_DESTINATION_UI_V1 (S2b-c's marker)", () => {
+    const componentSource = readFileSync(
+      repoFile("apps/web/src/pages/tendering/scope-cards/OtherOperationalCosts.tsx"),
+      "utf-8"
+    );
+    expect(componentSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
   });
 });

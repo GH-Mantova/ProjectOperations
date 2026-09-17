@@ -25,11 +25,18 @@
 //   tokens. Artboard: `Register.dc.html` in Claude Design/proposed/crm-visual-
 //   parity/. Title Tenders, subtitle per artboard, Export CSV + Columns in
 //   head, CrmTabs (tabs prop from TendersPage), one filter-chip row (Search,
-//   Status chip, Client chip, Due chip, Estimator chip, Mine only toggle chip),
+//   Status chip, Client chip, Due chip, Owner chip, Mine only toggle chip),
 //   N shown at row end. Status cells use s7-badge tones; Logged by uses
 //   crm-avatar; Tender cell is artboard layout; Next action: text + due chip
 //   or "None set" (muted italic) + optional "Stalled" badge. LogModal on s7
 //   inputs/buttons. Zero hex literals in this file.
+// CRM_REGISTER_RESIDUAL_V1 — follow-up to crmvis-S4: two Next action cell CSS
+//   defects fixed (badge stacks under text, Stalled badge no longer block),
+//   Value chip added (valueMin/valueMax, existing API params, no new API work),
+//   Logged by chip added (client-side filter over loaded rows, select options
+//   derived from loggedByName, includes "Never logged"), Owner chip: Estimator
+//   chip relabelled to Owner per Marco 2026-09-16 — "Estimator is the owner."
+//   Field stays estimatorId; no API or DTO changes.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
@@ -74,6 +81,9 @@ import "./crm.css";
 
 // Visual parity marker — asserted by done_when (crmvis-S4).
 export const CRM_PARITY_REGISTER_V1 = "crmvis-s4";
+
+// Residual slice marker — asserted by done_when (CRM_REGISTER_RESIDUAL_V1).
+export const CRM_REGISTER_RESIDUAL_V1 = "crm-register-residual-v1";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -564,6 +574,14 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
   // CRM_PARITY_REGISTER_V1: "Due" chip popover
   const [dueChip, setDueChip] = useState<DueChipState>("closed");
 
+  // CRM_REGISTER_RESIDUAL_V1: "Value" chip popover
+  const [valueChip, setValueChip] = useState<DueChipState>("closed");
+
+  // CRM_REGISTER_RESIDUAL_V1: "Logged by" client-side filter
+  // An empty string means "no filter". The special sentinel "NEVER_LOGGED"
+  // selects rows that have no interaction at all.
+  const [loggedByFilter, setLoggedByFilter] = useState<string>("");
+
   // Users for "Mine only" filter
   const currentUserId = (user as { id?: string } | null)?.id ?? null;
 
@@ -694,9 +712,11 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     [tenders, interactions, nextActions]
   );
 
-  // Client-side filter for search, status, client, mineOnly.
+  // Client-side filter for search, status, client, mineOnly, loggedByFilter.
   const clientFiltered = useMemo(() => {
     const needle = filters.search.trim().toLowerCase();
+    const vMin = filters.valueMin !== "" ? parseFloat(filters.valueMin) : null;
+    const vMax = filters.valueMax !== "" ? parseFloat(filters.valueMax) : null;
     return enrichedRows.filter((t) => {
       if (filters.status.length && !filters.status.includes(t.status)) return false;
       if (filters.clientId && !t.tenderClients.some((tc) => tc.client.id === filters.clientId)) {
@@ -710,9 +730,29 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
       if (mineOnly && currentUserId) {
         if (t.estimator?.id !== currentUserId) return false;
       }
+      // CRM_REGISTER_RESIDUAL_V1: Logged by client-side filter.
+      if (loggedByFilter) {
+        if (loggedByFilter === "NEVER_LOGGED") {
+          if (t.loggedByName !== null) return false;
+        } else {
+          if (t.loggedByName !== loggedByFilter) return false;
+        }
+      }
+      // CRM_REGISTER_RESIDUAL_V1: Value range filter (client-side: valueMin/valueMax
+      // are already serialised into the API query string by buildQueryStringWithPage,
+      // but we also apply them client-side here so the filter composes correctly with
+      // the other client-side filters against the rows already loaded).
+      if (vMin !== null && !isNaN(vMin)) {
+        const v = t.estimatedValue != null ? parseFloat(t.estimatedValue as string) : null;
+        if (v === null || isNaN(v) || v < vMin) return false;
+      }
+      if (vMax !== null && !isNaN(vMax)) {
+        const v = t.estimatedValue != null ? parseFloat(t.estimatedValue as string) : null;
+        if (v === null || isNaN(v) || v > vMax) return false;
+      }
       return true;
     });
-  }, [enrichedRows, filters.search, filters.status, filters.clientId, mineOnly, currentUserId]);
+  }, [enrichedRows, filters.search, filters.status, filters.clientId, filters.valueMin, filters.valueMax, mineOnly, currentUserId, loggedByFilter]);
 
   // Follow-up tab toggle filter. Register tab: no toggle filter applied.
   //
@@ -935,7 +975,33 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     : filters.dueDateTo
     ? `To ${filters.dueDateTo}`
     : null;
-  const activeEstimatorLabel = filters.estimatorId ? "Estimator set" : null;
+  // CRM_REGISTER_RESIDUAL_V1: Owner chip — relabelled from "Estimator".
+  // Marco confirmed 2026-09-16: "Estimator is the owner." The query param and
+  // field name stay estimatorId — this is a display-only relabel.
+  const activeOwnerLabel = filters.estimatorId ? "Owner set" : null;
+  // CRM_REGISTER_RESIDUAL_V1: Value chip label — shows the active bound(s).
+  const activeValueLabel = filters.valueMin && filters.valueMax
+    ? `${filters.valueMin}–${filters.valueMax}`
+    : filters.valueMin
+    ? `≥${filters.valueMin}`
+    : filters.valueMax
+    ? `≤${filters.valueMax}`
+    : null;
+  // CRM_REGISTER_RESIDUAL_V1: Logged by chip label.
+  const activeLoggedByLabel = loggedByFilter
+    ? (loggedByFilter === "NEVER_LOGGED" ? "Never logged" : loggedByFilter)
+    : null;
+  // CRM_REGISTER_RESIDUAL_V1: sorted de-duplicated list of logged-by names from
+  // loaded rows. Used to build the Logged by chip's option list. The option
+  // list can only name people who appear in the rows currently loaded — this
+  // limit is documented in the PR body.
+  const loggedByOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of enrichedRows) {
+      if (t.loggedByName) names.add(t.loggedByName);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [enrichedRows]);
 
   return (
     <div style={{ padding: "24px 32px" }}>
@@ -1058,12 +1124,12 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
         </div>
       )}
 
-      {/* CRM_PARITY_REGISTER_V1: Filter row — one line of chips, wraps on narrow
-          viewports. Controls: search input, Status chip, Client chip, Due chip
-          (opens from/to pair), Estimator chip, Mine only toggle, N shown.
-          No filter the API does not take is added; only the existing six filters
-          are restyled as chips. The artboard also shows "Value" and "Logged by"
-          chips — those are not built here (residual, needs its own slice). */}
+      {/* CRM_PARITY_REGISTER_V1 / CRM_REGISTER_RESIDUAL_V1: Filter row — one
+          line of chips, wraps on narrow viewports. Controls: search input,
+          Status chip, Client chip, Due chip (opens from/to pair), Value chip
+          (opens min/max pair — existing API params valueMin/valueMax), Logged
+          by chip (client-side select over loaded rows), Owner chip, Mine only
+          toggle, N shown. */}
       <div
         className="crm-filter-row"
         style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}
@@ -1153,9 +1219,70 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           </div>
         )}
 
-        {/* Estimator chip — filters by estimator ID (API param: estimatorId).
-            Labelled "Estimator" not "Owner" because the field is the tender's
-            estimator, not an ownership field. */}
+        {/* Value chip — opens min/max pair inline (CRM_REGISTER_RESIDUAL_V1).
+            valueMin and valueMax are existing API params in FiltersForQuery;
+            buildQueryStringWithPage already serialises them. No new API work. */}
+        <button
+          type="button"
+          onClick={() => setValueChip((s) => (s === "open" ? "closed" : "open"))}
+          className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeValueLabel ? " crm-filter-chip--active" : ""}`}
+          aria-expanded={valueChip === "open"}
+          aria-label="Filter by value"
+        >
+          Value {activeValueLabel ? `· ${activeValueLabel}` : "▾"}
+        </button>
+        {valueChip === "open" && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={filters.valueMin}
+              onChange={(e) => setFilters((f) => ({ ...f, valueMin: e.target.value }))}
+              aria-label="Minimum value"
+              placeholder="Min"
+              className="s7-input"
+              style={{ height: 32, fontSize: 12, width: 90 }}
+            />
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>to</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={filters.valueMax}
+              onChange={(e) => setFilters((f) => ({ ...f, valueMax: e.target.value }))}
+              aria-label="Maximum value"
+              placeholder="Max"
+              className="s7-input"
+              style={{ height: 32, fontSize: 12, width: 90 }}
+            />
+          </div>
+        )}
+
+        {/* Logged by chip — client-side filter (CRM_REGISTER_RESIDUAL_V1).
+            Options derived from loaded rows' loggedByName. Includes "Never
+            logged" for rows with no interaction. No API param is added. */}
+        <div style={{ position: "relative" }}>
+          <select
+            value={loggedByFilter}
+            onChange={(e) => setLoggedByFilter(e.target.value)}
+            aria-label="Filter by logged by"
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeLoggedByLabel ? " crm-filter-chip--active" : ""}`}
+            style={{ appearance: "none", WebkitAppearance: "none", paddingRight: 24, cursor: "pointer" }}
+          >
+            <option value="">Logged by {activeLoggedByLabel ? `· ${activeLoggedByLabel}` : "▾"}</option>
+            <option value="NEVER_LOGGED">Never logged</option>
+            {loggedByOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Owner chip — filters by estimatorId (API param: estimatorId).
+            Labelled "Owner" per Marco's decision on 2026-09-16: "Estimator is
+            the owner." The field and query param remain estimatorId; this is a
+            display-only relabel. The previous comment claiming this should stay
+            "Estimator" is superseded by that decision. */}
         <div style={{ position: "relative" }}>
           <input
             type="text"
@@ -1163,10 +1290,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
             onChange={(e) =>
               setFilters((f) => ({ ...f, estimatorId: e.target.value || null }))
             }
-            placeholder={activeEstimatorLabel ?? "Estimator ▾"}
-            aria-label="Filter by estimator"
-            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeEstimatorLabel ? " crm-filter-chip--active" : ""}`}
-            style={{ minWidth: 110, cursor: "text", textAlign: "left" }}
+            placeholder={activeOwnerLabel ?? "Owner ▾"}
+            aria-label="Filter by owner"
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeOwnerLabel ? " crm-filter-chip--active" : ""}`}
+            style={{ minWidth: 90, cursor: "text", textAlign: "left" }}
           />
         </div>
 
@@ -1186,7 +1313,10 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           filters.clientId ||
           filters.dueDateFrom ||
           filters.dueDateTo ||
+          filters.valueMin ||
+          filters.valueMax ||
           filters.estimatorId ||
+          loggedByFilter ||
           mineOnly) && (
           <button
             type="button"
@@ -1194,6 +1324,8 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
               setFilters(EMPTY_FILTERS);
               setMineOnly(false);
               setDueChip("closed");
+              setValueChip("closed");
+              setLoggedByFilter("");
             }}
             className="s7-btn s7-btn--ghost s7-btn--sm"
           >
@@ -1492,14 +1624,21 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                         EM_RULE
                       )}
                     </td>
-                    {/* Next action: text + due chip, or "None set" + optional "Stalled" badge */}
+                    {/* Next action: text above, due chip below (CRM_REGISTER_RESIDUAL_V1).
+                        Artboard stacks the chip UNDER the text in every state.
+                        Populated branch: text in its own block, badge below it
+                        with marginTop: 4 and display: inline-flex.
+                        Empty branch: "None set" in its own block, Stalled badge
+                        below it — badge must NOT use display: block (that
+                        overrides .s7-badge's inline-flex and stretches it). */}
                     <td style={cellStyle("nextAction")} aria-label={`Next action: ${naLabel ?? "None set"}`}>
                       {nextAction ? (
                         <span>
+                          <span style={{ display: "block" }}>{naLabel}</span>
                           {naClass === "overdue" && (
                             <span
                               className="s7-badge s7-badge--danger"
-                              style={{ marginRight: 4 }}
+                              style={{ marginTop: 4 }}
                               aria-label="overdue"
                             >
                               Overdue
@@ -1508,23 +1647,24 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                           {naClass === "due_soon" && (
                             <span
                               className="s7-badge s7-badge--warning"
-                              style={{ marginRight: 4 }}
+                              style={{ marginTop: 4 }}
                               aria-label="due soon"
                             >
                               Due soon
                             </span>
                           )}
-                          {naLabel}
                         </span>
                       ) : (
                         <span>
-                          <em style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
-                            None set
-                          </em>
+                          <span style={{ display: "block" }}>
+                            <em style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+                              None set
+                            </em>
+                          </span>
                           {stalledRow && (
                             <span
                               className="s7-badge s7-badge--neutral"
-                              style={{ display: "block", marginTop: 4 }}
+                              style={{ marginTop: 4 }}
                             >
                               Stalled
                             </span>

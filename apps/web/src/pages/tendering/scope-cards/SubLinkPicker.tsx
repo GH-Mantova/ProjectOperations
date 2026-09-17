@@ -1,3 +1,9 @@
+// SCOPE_QD_UI_ITEMS_V1 — link dialog added: when an estimator links an item
+// that is not already INTERNAL, a ConfirmDialog asks whether to set it to
+// Internal only (confirm) or keep it in the price (decline). Unlink never
+// asks. The dialog state is local to this component; the caller's onLink
+// receives { setInternal: true } only when the estimator confirms.
+//
 // SCOPE_SUB_TAB_V1 — "what work does this subcontract line cover?"
 //
 // scope-subcontracted slice 5. Slice 4 shipped `pricedBySubItemId`, the two
@@ -31,7 +37,8 @@
 // NO MONEY IS COMPUTED HERE. Every figure this file prints came off the wire
 // as `lineTotalWithMarkup`; `subMoney` formats it and nothing multiplies.
 
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
+import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { DISCIPLINE_CODES, DISCIPLINE_LABELS, subMoney } from "./utils/card-display";
 
 /**
@@ -51,6 +58,10 @@ export type SubLinkableItem = {
   lineTotalWithMarkup?: number | string | null;
   /** The SUB line that prices this item's work, or null. */
   pricedBySubItemId?: string | null;
+  // SCOPE_QD_UI_ITEMS_V1 — where this item's cost lands on the quote.
+  // Used to decide whether to show the "Set to Internal only?" dialog on link:
+  // already-INTERNAL items skip the dialog (the flag is already set).
+  quoteDestination?: string | null;
 };
 
 /** The sentinel the "add a link" select sits on; it is never a real item id. */
@@ -177,11 +188,45 @@ const moneyStyle: CSSProperties = {
 };
 
 /**
- * SCOPE_SUB_TAB_V1 — the link control for one SUB line.
+ * SCOPE_QD_UI_ITEMS_V1 — the pending-link state for the internal-only dialog.
  *
- * Presentational and auth-free, so the suite can render it directly with
- * renderToStaticMarkup (the workspace has no jsdom); every write goes back up
- * through `onLink` / `onUnlink` to ScopeQuantitiesTable, which owns authFetch.
+ * When an estimator selects an item from the link dropdown and that item is
+ * not already INTERNAL, the picker holds the candidate here and shows a
+ * ConfirmDialog. The dialog asks whether to set the item to Internal only on
+ * the same PATCH that adds the link:
+ *   confirm → onLink(itemId, { setInternal: true })
+ *   decline → onLink(itemId, { setInternal: false })
+ *
+ * Items that are already INTERNAL skip the dialog entirely — the flag is
+ * already set and asking again adds no information.
+ */
+type PendingLink = {
+  itemId: string;
+  itemWbsCode: string;
+  subLineWbsCode: string;
+};
+
+/**
+ * True when the item-to-be-linked needs the "Set to Internal only?" dialog.
+ *
+ * Exported so the test suite can assert the condition without mounting
+ * the component (renderToStaticMarkup cannot interact with dialogs).
+ */
+export function linkNeedsInternalDialog(item: Pick<SubLinkableItem, "quoteDestination">): boolean {
+  return item.quoteDestination !== "INTERNAL";
+}
+
+/**
+ * SCOPE_SUB_TAB_V1 — the link control for one SUB line.
+ * SCOPE_QD_UI_ITEMS_V1 — adds the "Set to Internal only?" dialog on link.
+ *
+ * When the item is NOT already INTERNAL, linking it triggers a confirm dialog
+ * asking whether to also set the destination to Internal only. Unlink never
+ * asks and never changes the destination.
+ *
+ * `onLink(itemId, opts)` — opts.setInternal is true only when the estimator
+ * confirmed the dialog. The caller (ScopeQuantitiesTable) includes
+ * `{ setInternal: true }` in the sub-link PATCH body when it is set.
  */
 export function SubLinkPicker({
   subLineId,
@@ -197,11 +242,29 @@ export function SubLinkPicker({
   /** Every item on the tender. Filtering is this file's job, not the caller's. */
   items: readonly SubLinkableItem[];
   disabled?: boolean;
-  onLink: (itemId: string) => void;
+  onLink: (itemId: string, opts: { setInternal: boolean }) => void;
   onUnlink: (itemId: string) => void;
 }) {
+  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null);
+
   const linked = linkedItemsForSubLine(items, subLineId);
   const groups = groupCandidatesByDiscipline(linkCandidatesForSubLine(items));
+
+  function handleSelect(itemId: string) {
+    if (itemId === NO_LINK_VALUE) return;
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+    if (linkNeedsInternalDialog(item)) {
+      setPendingLink({
+        itemId,
+        itemWbsCode: item.wbsCode,
+        subLineWbsCode
+      });
+    } else {
+      // Already INTERNAL — link without asking.
+      onLink(itemId, { setInternal: false });
+    }
+  }
 
   return (
     <div
@@ -251,11 +314,7 @@ export function SubLinkPicker({
           aria-label={`Link a WBS item to ${subLineWbsCode}`}
           title="Every item on this tender that no subcontract line is already pricing"
           style={{ height: 28, minWidth: 260, maxWidth: "100%" }}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === NO_LINK_VALUE) return;
-            onLink(value);
-          }}
+          onChange={(e) => handleSelect(e.target.value)}
         >
           <option value={NO_LINK_VALUE}>
             {groups.length === 0 ? "No unlinked items on this tender" : "+ Link a WBS item…"}
@@ -271,6 +330,27 @@ export function SubLinkPicker({
           ))}
         </select>
       </div>
+
+      {/* SCOPE_QD_UI_ITEMS_V1 — "Set to Internal only?" dialog. Appears when
+          the estimator picks a non-INTERNAL item from the link dropdown. */}
+      {pendingLink ? (
+        <ConfirmDialog
+          title={`Set ${pendingLink.itemWbsCode} to Internal only?`}
+          message={`A subcontract quote on ${pendingLink.subLineWbsCode} now sits against this scope. Keep ${pendingLink.itemWbsCode} priced on the card for comparison but out of the tender price and the programme?`}
+          confirmLabel="Internal only"
+          cancelLabel="Keep in the price"
+          onConfirm={() => {
+            const { itemId } = pendingLink;
+            setPendingLink(null);
+            onLink(itemId, { setInternal: true });
+          }}
+          onCancel={() => {
+            const { itemId } = pendingLink;
+            setPendingLink(null);
+            onLink(itemId, { setInternal: false });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

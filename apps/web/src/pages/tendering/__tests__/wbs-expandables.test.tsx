@@ -699,11 +699,12 @@ describe("the ACM class badge is derived from the ACM type", () => {
 // ── Table geometry ───────────────────────────────────────────────────────
 
 describe("the actions column does not move the money columns", () => {
-  it("spans the full 16-column row when a block is open", () => {
+  it("spans the full 17-column row when a block is open", () => {
     // WBS 1 + Description 1 + Manpower 6 + Plant 5 + Markup 1 + Item total 1
-    // + Actions 1. A short colSpan leaves a gap the blocks fall out of; a long
+    // + Goes to 1 (SCOPE_QD_UI_ITEMS_V1) + Actions 1 = 17.
+    // A short colSpan leaves a gap the blocks fall out of; a long
     // one adds a phantom column, which is what would push the money columns.
-    expect(WBS_COLUMN_COUNT).toBe(1 + 1 + 6 + 5 + 1 + 1 + 1);
+    expect(WBS_COLUMN_COUNT).toBe(1 + 1 + 6 + 5 + 1 + 1 + 1 + 1);
   });
 });
 

@@ -58,21 +58,28 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (1)
+## 2. 🔧 In-PR — open right now (3)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-16T14:20Z**, `origin/main`
-> bdc5d05b). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-17T14:25Z**, `origin/main`
+> a2f5e8a6). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #1986 | feat(crm): register residual — Next action CSS, Value chip, Logged by chip, Owner | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are CP-26 `[LABEL_PRESENT]`, read from column 3 of the job log — parked by the `do-not-merge` label, not work. Only Marco removes it |
+| #2005 | feat(tendering): scopecards S3 — per-line markup on all line types + card-name affordance (`SCOPE_LINE_MARKUP_ALL_TYPES_V1`) | BLOCKED; CI 12 pass / **3** fail / 0 pending. Two reds are the CP-26 pair parked by the `do-not-merge` label. The **third red is independent of the label**: `API — lint, test, compliance smoke` FAILURE. Only Marco removes the label; the API red is real work and is not parked |
+| #2002 | feat(rates): transport capacity column order — transport-first, m³ before tonnes | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are the CP-26 pair — parked by the `do-not-merge` label, not work. Only Marco removes it |
+| #1998 | feat(crm): S5 — Follow-ups on the s7 kit, one SHOW row, striped KPI cards (`CRM_PARITY_FOLLOWUPS_V1`) | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are the CP-26 pair — parked by the `do-not-merge` label, not work. Only Marco removes it |
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z
 > and 05:09:13Z, read live from GitHub). A snapshot that names its own date is still read as
 > current by anyone who does not check the date, so it is refreshed rather than left to rot.
 > **Only the snapshot was refreshed — no roadmap STATUS semantics were changed.**
+
+> **Refreshed again 2026-09-17 (Station 05, scheduled).** The table above read "open right now (1)"
+> and named #1986, which had **MERGED at `2026-09-17T03:43:16Z`** — read from `mergedAt` via
+> `gh pr view`, never from the `merged` field of a list response (DOCTRINE §9.4). Same rot as
+> 2026-09-06, same cure. **Only the snapshot was refreshed — no roadmap STATUS semantics were changed.**
 
 The entire 2026-07-27 In-PR set (#779/#787/#789/#796/#797/#808) has since MERGED, as have
 #894 and #895 (both 2026-08-04). Also in-flight but

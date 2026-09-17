@@ -2092,6 +2092,7 @@ made in, so one actor emits different identities depending on where it committed
 | `GH-Mantova <273896040+GH-Mantova@users.noreply.github.com>` | the **GitHub web UI / API** — every squash merge, and every `Merge branch ‘main’ into …` update-branch | GitHub’s own noreply identity |
 | `GH-Mantova <marco@initialservices.net>` | a **fourth pairing, from neither tree** — on this board it is the second lane that opened `#1852` | neither tree’s config |
 | `Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>` | the supervised cloud lane, when it commits somewhere supplying that identity | its own signature |
+| `station-00.interactive-0003 <marco@initialservices.net>` | a **SUPERVISED INTERACTIVE lane**, committing from a dev-tree worktree whose `git config user.name` is the lane id while the email stays Marco's — so attribution **by email alone reads it as a watcher build**, and by name alone as an actor no row lists | that lane's own `git config user.name` in its worktree |
 
 **The row that breaks the table.** the merge-approval receipt on `#1823`, commit `9664f95a`,
 authors as **`PR Supervisor <supervisor@local>`** — while the receipt’s own closing line

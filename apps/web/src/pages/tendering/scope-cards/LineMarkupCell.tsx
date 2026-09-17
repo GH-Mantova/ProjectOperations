@@ -62,8 +62,8 @@ export function LineMarkupCell({
         display: "inline-flex",
         alignItems: "center",
         gap: 2,
-        background: "var(--surface-override, #FDD387)",
-        borderRadius: "var(--radius-sm, 4px)",
+        background: "var(--surface-override)",
+        borderRadius: "var(--radius-sm)",
         padding: "0 2px"
       }
     : {
@@ -90,7 +90,7 @@ export function LineMarkupCell({
         padding: "0 2px",
         textAlign: "right",
         fontVariantNumeric: "tabular-nums",
-        border: "1px dashed var(--border-default, #e5e7eb)",
+        border: "1px dashed var(--border-default)",
         background: "transparent",
         fontSize: 12
       };
@@ -143,8 +143,8 @@ export function LineMarkupCell({
             width: 18,
             height: 18,
             borderRadius: "50%",
-            border: "1px solid var(--border-default, #e5e7eb)",
-            background: "var(--surface-card, #fff)",
+            border: "1px solid var(--border-default)",
+            background: "var(--surface-card)",
             cursor: "pointer",
             fontSize: 11,
             lineHeight: 1,

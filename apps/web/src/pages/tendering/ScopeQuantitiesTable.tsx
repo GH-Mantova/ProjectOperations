@@ -38,10 +38,17 @@ import {
 } from "./scope-cards/SubQuotePicker";
 import type { RateLibraryItem } from "./scope-cards/OtherOperationalCosts";
 import {
-  COVERED_ITEM_TOTAL,
   isCoveredBySubLine,
   pricedOnLabel
 } from "./scope-cards/utils/card-display";
+import {
+  QuoteDestinationSelect,
+  type QuoteDestination
+} from "./scope-cards/QuoteDestinationSelect";
+
+// SCOPE_QD_UI_ITEMS_V1 — scopecards S2b-a. The quote-destination control
+// on every WBS item row, covered-items back to life, and the drawer renamed.
+export const SCOPE_QD_UI_ITEMS_V1 = "scopecards-s2b-a";
 
 // SCOPE_WBS_TABLE_V1 — slice 2 of scope-card-redesign. Replaces the
 // loose-field card stack with a table whose identity columns (WBS,
@@ -422,6 +429,11 @@ export type ScopeItem = {
   // implementation of the same predicate. DEFAULT false means all existing
   // rows are priced (current behaviour unchanged).
   isProvisional?: boolean | null;
+  // SCOPE_QD_UI_ITEMS_V1 — S2a added `quote_destination` to scope_of_works_items
+  // (SCOPE_QUOTE_DESTINATION_V1 on main). listItems returns the whole row so
+  // this field arrives on every read. Declaring it adds NO API surface.
+  // null / undefined = falls back to "PRICE" (the server default).
+  quoteDestination?: QuoteDestination | null;
   // PR B1.7.1 — per-row totals computed server-side in listItems.
   // Both fields are optional so older API responses don't break the
   // type; the header renders "—" when either is null/undefined.
@@ -580,30 +592,9 @@ const groupRuleStyle: CSSProperties = {
   borderLeft: GROUP_RULE_BORDER
 };
 
-/**
- * SCOPE_SUB_TAB_V1 — a covered item's Manpower / Plant column group.
- *
- * Greyed, centred, italic, and carrying the words "priced on SUB1.1" where six
- * inputs used to be. Brand tokens only — `--surface-subtle` and
- * `--text-secondary` are both redefined by tokens.css under
- * `[data-theme="dark"]` and under `prefers-color-scheme: dark`, so the state is
- * legible in either theme without a second colour being written here.
- *
- * `whiteSpace: nowrap` is deliberate and is the standing layout rule: the cell
- * fits its contents and the label never wraps out of its box, while the eleven
- * columns it spans keep the widths the rows above and below give them.
- */
-const coveredGroupCellStyle: CSSProperties = {
-  ...tdBorderStyle,
-  padding: "6px 8px",
-  textAlign: "center",
-  verticalAlign: "middle",
-  whiteSpace: "nowrap",
-  fontStyle: "italic",
-  fontSize: 12,
-  color: "var(--text-secondary)",
-  background: "var(--surface-subtle)"
-};
+// SCOPE_QD_UI_ITEMS_V1 — coveredGroupCellStyle removed; the covered-item
+// placeholder cells are deleted (S2b-a). Covered items now render their inputs
+// plus a vsbadge chip, so the greyed placeholder cells are no longer needed.
 
 /** Boxed group-title header cell (Manpower / Plant). */
 const groupTitleStyle: CSSProperties = {
@@ -647,14 +638,17 @@ const stickyThDescStyle: CSSProperties = { ...thDescStyle, ...stickyHeaderStyle 
  * the expandable row underneath it must span.
  *
  *   WBS 1 + Description 1 + Manpower 6 + Plant 5 + Markup 1 + Item total 1
- *   + Actions 1 = 16.
+ *   + Goes to 1 + Actions 1 = 17.
+ *
+ * SCOPE_QD_UI_ITEMS_V1 — the Goes-to column was added (+1), taking the
+ * total from 16 to 17.
  *
  * A colSpan that is short leaves a gap the blocks fall out of; one that is
  * long widens the table by a phantom column, which moves the money columns'
  * right edge — the exact thing the collapse is not allowed to do. Named here
  * so the number is stated once and can be asserted against the header.
  */
-export const WBS_COLUMN_COUNT = 16;
+export const WBS_COLUMN_COUNT = 17;
 
 /** True when an item with rowCount rows should show the per-row remove button. */
 export function shouldShowPerRowRemove(rowCount: number): boolean {
@@ -2289,14 +2283,20 @@ export function ScopeQuantitiesTable({
     await Promise.all([Promise.resolve(onItemsChanged()), loadTenderItems()]);
   }, [onItemsChanged, loadTenderItems]);
 
+  // SCOPE_QD_UI_ITEMS_V1 — `setInternal` is included in the body when the
+  // estimator confirmed the dialog in SubLinkPicker. It tells the server to
+  // also set quoteDestination to INTERNAL on the covered item in the same
+  // write (S2a's flag, SCOPE_QUOTE_DESTINATION_V1).
   const linkItemToSubLine = useCallback(
-    async (coveredItemId: string, subItemId: string) => {
+    async (coveredItemId: string, subItemId: string, setInternal?: boolean) => {
       setSubError(null);
       try {
+        const body: Record<string, unknown> = { subItemId };
+        if (setInternal) body.setInternal = true;
         const res = await authFetch(`/tenders/${tenderId}/scope/items/${coveredItemId}/sub-link`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subItemId })
+          body: JSON.stringify(body)
         });
         if (!res.ok) throw new Error(await readApiErrorMessage(res));
         await afterSubWrite();
@@ -2569,6 +2569,16 @@ export function ScopeQuantitiesTable({
       }
     },
     [authFetch, tenderId, onItemsChanged]
+  );
+
+  // SCOPE_QD_UI_ITEMS_V1 — PATCH quoteDestination on one item.
+  // Reuses the same patchItem path all other field writes use; a failed write
+  // calls onItemsChanged which re-fetches and reverts the optimistic UI.
+  const patchDestination = useCallback(
+    (itemId: string, dest: QuoteDestination) => {
+      void patchItem(itemId, { quoteDestination: dest });
+    },
+    [patchItem]
   );
 
   /**
@@ -2959,10 +2969,9 @@ export function ScopeQuantitiesTable({
               <th colSpan={5} style={plantGroupTitleStyle}>
                 Plant
               </th>
-              {/* Markup + Item total — labels now sit on the lower band. The
-                  group rule carries through so the Markup boundary is one
-                  unbroken line down the table. */}
-              <th style={{ ...thStyle, ...groupRuleStyle }} colSpan={2} />
+              {/* Markup + Item total + Goes to — labels now sit on the lower band.
+                  SCOPE_QD_UI_ITEMS_V1 — "Goes to" column added (+1 = colSpan 3). */}
+              <th style={{ ...thStyle, ...groupRuleStyle }} colSpan={3} />
               {/* SCOPE_WBS_ACTIONS_V1 — the collapse toggle lives on the
                   column header. Collapsed, the whole column is one re-open
                   control and every cell below it goes empty. */}
@@ -3006,6 +3015,8 @@ export function ScopeQuantitiesTable({
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Total</th>
               <th style={{ ...stickyThStyle, ...groupRuleStyle }}>Markup</th>
               <th style={{ ...stickyThStyle, textAlign: "right" }}>Item total</th>
+              {/* SCOPE_QD_UI_ITEMS_V1 — Goes to column: where this line lands. */}
+              <th style={{ ...stickyThStyle, whiteSpace: "nowrap" }}>Goes to</th>
               {/* SCOPE_WBS_ACTIONS_V1 — Actions label stays on the group band
                   above, with the toggle. */}
               <th style={{ ...stickyThStyle, ...groupRuleStyle }} />
@@ -3183,121 +3194,65 @@ export function ScopeQuantitiesTable({
                       </td>
                     ) : null}
 
-                    {/* ── SCOPE_SUB_TAB_V1 — the covered state ──────────────
-                        THE SINGLE MOST IMPORTANT PIECE OF THIS SLICE.
-
-                        An item whose work a SUB line prices must announce
-                        itself HERE, on its own DEM / CIV / ASB tab, and not
-                        only over on the SUB tab. An estimator watching the
-                        discipline total drop is looking at this row; if it
-                        looks the same as any other row, the double-count guard
-                        slice 4 shipped is invisible, and an invisible guard
-                        reads as a bug.
-
-                        So the two column groups that carry the money — Manpower
-                        and Plant — are replaced by one greyed cell each, and
-                        each says WHICH line took the work: "priced on SUB1.1".
-                        Both cells rowSpan the whole item, because the statement
-                        is about the item, not about one of its rows.
-
-                        The inputs are not disabled-in-place: they are GONE.
-                        A greyed-out day rate still invites a click and still
-                        reads as a number that counts. Nothing on a covered
-                        item's labour or plant counts.
-
-                        Brand tokens only, and both of them flip with the theme
-                        (tokens.css redefines --surface-subtle and
-                        --text-secondary under data-theme="dark" and under
-                        prefers-color-scheme: dark), so the greyed state stays
-                        legible in either. */}
-                    {isCovered ? (
-                      isFirstRow ? (
-                        <CoveredGroupCells rowCount={rowCount} coveredByLabel={coveredByLabel} />
-                      ) : null
-                    ) : (
-                      <>
-                      {/* ── SCOPE_WBS_MANPOWER_V1 — Manpower column group (6 cells per row) ── */}
-                      <ManpowerRowCells
-                        item={item}
-                        rowIdx={rowIdx}
-                        rowState={getRowManpower(item, rowIdx)}
-                        labourTypeOptions={labourTypeOptions}
-                        labourRateById={labourRateById}
-                        isAi={isAi}
-                        showRemove={showPerRowRemove}
-                        onRemoveRow={() => removeRowFromItem(item, rowIdx)}
-                        // SCOPE_MANPOWER_PERSIST_V1 — all five handlers go through
-                        // commitManpowerRow, which writes local state AND patches
-                        // the whole labourItems array. The `rowIdx === 0` guards
-                        // that used to sit on three of them are gone: they were the
-                        // bug. Every row, every field, one call site each.
-                        //
-                        // SCOPE_WBS_INPUTS_V2 — changing the role releases a stale
-                        // rate override. This is not a new rule: onPlantTypeChange
-                        // twenty lines below already clears dayRateOverride the same
-                        // way. A rate typed against Labourer must not survive onto
-                        // Supervisor. The cascade helpers are unchanged; the role
-                        // string is resolved alongside them because the server
-                        // prices from the role, not from the id.
-                        onLabourTypeChange={(typeId) =>
-                          commitManpowerRow(item, rowIdx, {
-                            ...manpowerPatchForTypeChange(typeId),
-                            role: typeId === null ? null : (labourRoleById.get(typeId) ?? null)
-                          })
-                        }
-                        onQtyBlur={(v) => commitManpowerRow(item, rowIdx, { qty: v })}
-                        onDaysBlur={(v) => commitManpowerRow(item, rowIdx, { days: v })}
-                        onShiftChange={(v) =>
-                          // SCOPE_WBS_INPUTS_V2 — same cascade release as the role
-                          // change above: the catalogue rate is shift-resolved, so a
-                          // rate typed against the Weekday shift is stale the moment
-                          // the row goes Night. The stored shift string is unchanged
-                          // ("Day", never the "Weekday" label).
-                          commitManpowerRow(item, rowIdx, manpowerPatchForShiftChange(v))
-                        }
-                        onDayRateOverride={(v) => commitManpowerRow(item, rowIdx, { dayRateOverride: v })}
-                      />
-                      {/* ── SCOPE_WBS_PLANT_V1 — Plant column group (5 cells per row) ── */}
-                      <PlantRowCells
-                        item={item}
-                        rowIdx={rowIdx}
-                        rowState={getRowPlant(item, rowIdx)}
-                        plantTypeGroups={plantTypeGroups}
-                        plantRateById={plantRateById}
-                        isAi={isAi}
-                        // SCOPE_PLANT_PERSIST_V1 — all six handlers go through
-                        // commitPlantRow, which writes local state AND patches
-                        // the whole plantItems array. Every one of them used to
-                        // call setRowPlant and stop, which is why every plant
-                        // field on every row died on reload.
-                        //
-                        // The catalogue NAME and unit are resolved here, from
-                        // plantRateById, for the same reason the manpower Type
-                        // handler resolves the rate-card role here: the server
-                        // reads the name (getCardSummary) and the id alone does
-                        // not carry it.
-                        onPlantTypeChange={(plantRateId) =>
-                          commitPlantRow(
-                            item,
-                            rowIdx,
-                            plantPatchForTypeChange(
-                              plantRateId,
-                              plantRateId ? plantRateById.get(plantRateId) : undefined
-                            )
+                    {/* ── SCOPE_QD_UI_ITEMS_V1 — covered items back to life ─────
+                        S2b-a removes the covered-item placeholder cells. Every item, covered or
+                        not, now renders its inputs and its real total. Covered
+                        items additionally show a vsbadge chip ("⇄ quoted on
+                        SUB1.1") under the total — visible proof of the link
+                        without hiding the money. The destination decides which
+                        total counts; both are priced either way.
+                        Rule: NEVER omit the inputs for any destination. */}
+                    {/* ── SCOPE_WBS_MANPOWER_V1 — Manpower column group (6 cells per row) ── */}
+                    <ManpowerRowCells
+                      item={item}
+                      rowIdx={rowIdx}
+                      rowState={getRowManpower(item, rowIdx)}
+                      labourTypeOptions={labourTypeOptions}
+                      labourRateById={labourRateById}
+                      isAi={isAi}
+                      showRemove={showPerRowRemove}
+                      onRemoveRow={() => removeRowFromItem(item, rowIdx)}
+                      onLabourTypeChange={(typeId) =>
+                        commitManpowerRow(item, rowIdx, {
+                          ...manpowerPatchForTypeChange(typeId),
+                          role: typeId === null ? null : (labourRoleById.get(typeId) ?? null)
+                        })
+                      }
+                      onQtyBlur={(v) => commitManpowerRow(item, rowIdx, { qty: v })}
+                      onDaysBlur={(v) => commitManpowerRow(item, rowIdx, { days: v })}
+                      onShiftChange={(v) =>
+                        commitManpowerRow(item, rowIdx, manpowerPatchForShiftChange(v))
+                      }
+                      onDayRateOverride={(v) => commitManpowerRow(item, rowIdx, { dayRateOverride: v })}
+                    />
+                    {/* ── SCOPE_WBS_PLANT_V1 — Plant column group (5 cells per row) ── */}
+                    <PlantRowCells
+                      item={item}
+                      rowIdx={rowIdx}
+                      rowState={getRowPlant(item, rowIdx)}
+                      plantTypeGroups={plantTypeGroups}
+                      plantRateById={plantRateById}
+                      isAi={isAi}
+                      onPlantTypeChange={(plantRateId) =>
+                        commitPlantRow(
+                          item,
+                          rowIdx,
+                          plantPatchForTypeChange(
+                            plantRateId,
+                            plantRateId ? plantRateById.get(plantRateId) : undefined
                           )
-                        }
-                        onCustomDescription={(desc) =>
-                          commitPlantRow(item, rowIdx, plantPatchForCustomDescription(desc))
-                        }
-                        onRevertToList={() =>
-                          commitPlantRow(item, rowIdx, plantPatchForRevertToList())
-                        }
-                        onQtyBlur={(v) => commitPlantRow(item, rowIdx, { qty: v })}
-                        onDaysBlur={(v) => commitPlantRow(item, rowIdx, { days: v })}
-                        onDayRateOverride={(v) => commitPlantRow(item, rowIdx, { dayRateOverride: v })}
-                      />
-                      </>
-                    )}
+                        )
+                      }
+                      onCustomDescription={(desc) =>
+                        commitPlantRow(item, rowIdx, plantPatchForCustomDescription(desc))
+                      }
+                      onRevertToList={() =>
+                        commitPlantRow(item, rowIdx, plantPatchForRevertToList())
+                      }
+                      onQtyBlur={(v) => commitPlantRow(item, rowIdx, { qty: v })}
+                      onDaysBlur={(v) => commitPlantRow(item, rowIdx, { days: v })}
+                      onDayRateOverride={(v) => commitPlantRow(item, rowIdx, { dayRateOverride: v })}
+                    />
                     {/* SCOPE_WBS_ACTIONS_V1 — the Measurement spanning cell
                         stood here, on every row of every item, painting the
                         full L/H/D/material/waste strip whether or not the item
@@ -3366,6 +3321,27 @@ export function ScopeQuantitiesTable({
                         covered={isCovered}
                         coveredByLabel={coveredByLabel}
                       />
+                    ) : null}
+
+                    {/* ── SCOPE_QD_UI_ITEMS_V1 — Goes to cell — rowspan ─── */}
+                    {isFirstRow ? (
+                      <td
+                        rowSpan={rowCount}
+                        className="inc"
+                        style={{
+                          ...fitCellStyle,
+                          ...tdBorderStyle,
+                          whiteSpace: "nowrap",
+                          verticalAlign: "top"
+                        }}
+                        data-testid="wbs-dest-cell"
+                        data-destination={item.quoteDestination ?? "PRICE"}
+                      >
+                        <QuoteDestinationSelect
+                          value={(item.quoteDestination ?? "PRICE") as QuoteDestination}
+                          onChange={(next) => patchDestination(item.id, next)}
+                        />
+                      </td>
                     ) : null}
 
                     {/* ── SCOPE_WBS_ACTIONS_V1 — Actions cell — rowspan ─── */}
@@ -3560,7 +3536,9 @@ export function ScopeQuantitiesTable({
                         subLineWbsCode={item.wbsCode}
                         items={tenderItems}
                         disabled={isAi}
-                        onLink={(coveredItemId) => void linkItemToSubLine(coveredItemId, item.id)}
+                        onLink={(coveredItemId, opts) =>
+                          void linkItemToSubLine(coveredItemId, item.id, opts.setInternal)
+                        }
                         onUnlink={(coveredItemId) => void unlinkItemFromSubLine(coveredItemId)}
                       />
                       <SubQuotePicker
@@ -3621,9 +3599,12 @@ export function ScopeQuantitiesTable({
         </div>
       </div>
 
+      {/* SCOPE_QD_UI_ITEMS_V1 — renamed from "Excluded" to "Rejected proposals".
+          The drawer holds AI-proposed rows the estimator dismissed (the `x` on
+          a pending row). Nothing with a destination is ever placed here. */}
       {excluded.length > 0 ? (
         <details style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
-          <summary>Excluded ({excluded.length})</summary>
+          <summary>Rejected proposals ({excluded.length})</summary>
           <ul style={{ marginTop: 6, paddingLeft: 16 }}>
             {excluded.map((i) => (
               <li key={i.id} style={{ textDecoration: "line-through" }}>
@@ -3761,69 +3742,51 @@ function WbsBlockCloseButton({ label, onClick }: { label: string; onClick: () =>
 // When Type is unset, Qty / Days / Shift are disabled but the cells
 // are still rendered at full width so column widths are stable.
 
-// ── SCOPE_SUB_TAB_V1 — the covered-item cells ───────────────────────────
+// ── SCOPE_QD_UI_ITEMS_V1 — covered-item chip and total cell ─────────────
 //
-// Both are EXPORTED for the same reason CuttingSection exports
-// CuttingTakeOffRowView: the container needs an AuthProvider and a
-// ConfirmProvider and the workspace has no jsdom, so the only way to assert
-// what a covered row actually renders is to render the cells themselves. The
-// table above renders THESE — there is no second copy — so what the suite pins
-// is what the estimator sees.
+// S2b-a removes the covered-item placeholder cells. The item's inputs are always rendered;
+// the covered state is announced by a vsbadge chip ("⇄ quoted on SUB1.1")
+// under the total, not by replacing the inputs with greyed placeholder cells.
+// `WbsItemTotalCell` is exported for the same reason it always was: the test
+// suite renders it directly via renderToStaticMarkup.
 
 /**
- * The two greyed cells that stand in for a covered item's Manpower and Plant
- * column groups: six columns and five, each saying "priced on SUB1.1", each
- * spanning the whole item because the statement is about the item and not
- * about one of its rows.
+ * SCOPE_QD_UI_ITEMS_V1 — the vsbadge chip that appears under a covered item's
+ * total. Exported so the test suite can assert it renders.
+ *
+ * "⇄ quoted on SUB1.1" — visible, without hiding any input. Both rows are
+ * priced; the destination decides which total counts.
  */
-export function CoveredGroupCells({
-  rowCount,
-  coveredByLabel
-}: {
-  rowCount: number;
-  /** Already formed by pricedOnLabel — e.g. "priced on SUB1.1". */
-  coveredByLabel: string;
-}) {
+export function WbsVsbadge({ coveredByLabel }: { coveredByLabel: string }) {
   const subLine = coveredByLabel.replace("priced on ", "");
   return (
-    <>
-      <td
-        colSpan={6}
-        rowSpan={rowCount}
-        style={coveredGroupCellStyle}
-        data-testid="wbs-covered-manpower"
-        title={`Manpower is priced by the subcontract quote on ${subLine}`}
-      >
-        {coveredByLabel}
-      </td>
-      <td
-        colSpan={5}
-        rowSpan={rowCount}
-        style={{ ...coveredGroupCellStyle, ...groupRuleStyle }}
-        data-testid="wbs-covered-plant"
-        title={`Plant is priced by the subcontract quote on ${subLine}`}
-      >
-        {coveredByLabel}
-      </td>
-    </>
+    <div
+      className="vsbadge"
+      data-testid="wbs-vsbadge"
+      title={`A subcontract quote sits against this scope on ${subLine}. Both are priced; the destination decides which one the total counts.`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        fontSize: 10,
+        color: "var(--text-muted)",
+        whiteSpace: "nowrap",
+        marginTop: 2
+      }}
+    >
+      <span aria-hidden="true">{"⇄"}</span>
+      <span>quoted on {subLine}</span>
+    </div>
   );
 }
 
 /**
- * The Item total cell, and the one distinction this slice turns on.
+ * SCOPE_QD_UI_ITEMS_V1 — the Item total cell.
  *
- * An ordinary item with no figure prints an em dash — "there is no number
- * here". A COVERED item prints `$0.00`, because there is a number, the server
- * decided it (slice 4, Rule A: a covered item contributes zero labour and
- * plant to its discipline bucket), and the number is zero. An em dash or a
- * blank cell would say "nobody has priced this yet" about work that IS priced
- * — deliberately, at nothing, here — and would leave the double-count guard
- * looking exactly like a bug.
- *
- * Two decimals, from COVERED_ITEM_TOTAL rather than this file's whole-dollar
- * fmtCurrency, so it cannot be read as a figure that rounded down to nothing.
- * COVERED_ITEM_TOTAL is a constant string: the client renders the guard's
- * decision and does not re-implement it.
+ * S2b-a: the cell now always shows the server's figure (or an em dash when
+ * absent). For covered items, the `vsbadge` chip appears below the figure to
+ * announce the link — but the figure itself is the real total, not $0.00.
+ * The destination (not the covered flag) now decides which total counts.
  */
 export function WbsItemTotalCell({
   rowCount,
@@ -3836,7 +3799,6 @@ export function WbsItemTotalCell({
   covered: boolean;
   coveredByLabel: string;
 }) {
-  const subLine = coveredByLabel.replace("priced on ", "");
   return (
     <td
       rowSpan={rowCount}
@@ -3845,21 +3807,19 @@ export function WbsItemTotalCell({
         ...tdBorderStyle,
         textAlign: "right",
         fontVariantNumeric: "tabular-nums",
-        color: "var(--text)"
+        color: "var(--text)",
+        verticalAlign: "top"
       }}
-      title={
-        covered
-          ? `This item is priced by the subcontract quote on ${subLine}. Its labour and plant add nothing here.`
-          : "Line total (with markup)"
-      }
+      title="Line total (with markup)"
       data-testid="wbs-item-total"
       data-covered={covered ? "true" : "false"}
     >
-      {covered
-        ? COVERED_ITEM_TOTAL
-        : lineTotalWithMarkup == null
-          ? "—"
-          : fmtCurrency(Number(lineTotalWithMarkup))}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+        <span>
+          {lineTotalWithMarkup == null ? "—" : fmtCurrency(Number(lineTotalWithMarkup))}
+        </span>
+        {covered ? <WbsVsbadge coveredByLabel={coveredByLabel} /> : null}
+      </div>
     </td>
   );
 }

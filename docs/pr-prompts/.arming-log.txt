@@ -126,3 +126,5 @@
 2026-09-17T04:02:51Z  ARMED  pr-scopecards-s2b-a-destination-control-items  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=11432  caller=powershell.exe:25156
 2026-09-17T05:54:57Z  ARMED  pr-scopecards-s2b-b-destination-sections  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=20532  caller=powershell.exe:27456
 2026-09-17T06:44:53Z  ARMED  pr-scopecards-s2b-c-destination-money  escalates=true  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=21820  caller=powershell.exe:6904
+2026-09-17T08:48:33Z  ARMED  pr-crmvis-s5-followups  escalates=true  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=14800  caller=powershell.exe:30476
+2026-09-17T09:12:13Z  ARMED  pr-queue-layout-s1-the-standard  escalates=false  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=12780  caller=powershell.exe:15364

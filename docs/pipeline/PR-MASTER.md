@@ -11,19 +11,29 @@ own worktree stands; what changes is WHERE those worktrees go.
   with `git worktree add`. One folder per PR/branch, named for the PR or the run, removed
   with `git worktree remove` when the PR lands. This covers board PRs, receipt pushes,
   verification checkouts, smoke trees — anything.
-- `C:\PR-Master\drafts\` — prompts and breadcrumbs being written that are not yet in the
-  queue. **A draft leaves this folder the moment its staging PR merges**: move it to
-  `C:\PR-Master\drafts\_staged\` (moved, never deleted — Marco's standing rule). What sits in
-  `drafts\` is then, at a glance, exactly the work that has NOT been staged yet.
-  MEASURED 2026-09-15: without this rule the folder held nine prompt drafts of which
-  **zero** were unstaged — five were already in the queue byte-identical, one had built
-  #1967, one had built #1970, and two were spent copies of prompts already retired to
-  `superseded/`. A folder that looks full of pending work and contains none is worse than
-  an empty one: it is why this lane started re-staging a prompt Station 06 had already
-  staged three minutes earlier.
-- `C:\PR-Master\drafts\_staged\` — drafts whose staging PR has merged. Kept, not deleted:
-  the record of what was drafted, and the thing to diff against when a prompt in the queue
-  looks wrong.
+<!-- SUPERSEDED 2026-09-17 by QUEUE-LAYOUT.md (docs/pipeline/QUEUE-LAYOUT.md).
+     Under the new standard, drafts live IN the repo under docs/pr-prompts/draft/ so the
+     queue can see and measure them. C:\PR-Master\drafts\ and _staged\ still exist for
+     historical content but new drafts must not be written there. The old paragraph is
+     preserved below so a reader who remembers the old rule can find out here that it changed.
+
+     OLD (pre-2026-09-17, out-of-repo drafts):
+     - drafts lived at C:\PR-Master\drafts\ - outside the repo
+     - a draft left that folder when its staging PR merged, moving to _staged\
+     - nothing in the queue could see or measure an out-of-repo draft
+     - MEASURED 2026-09-15: nine prompt drafts in the folder, zero actually unstaged
+
+     NEW (from 2026-09-17, in-repo drafts):
+-->
+- `docs/pr-prompts/draft/` (IN REPO) — prompts that are written but not yet approved.
+  Inert: no gate fires, no arm, no build. A draft leaves this folder when Marco approves
+  it, at which point it is renamed to `*-HOLD.md` in the queue root (or directly to
+  `*-ready.md` if there is no gate). The queue can now see and measure unapproved work.
+  Nothing is deleted: a draft that is abandoned moves to `docs/pr-prompts/superseded/`.
+- `C:\PR-Master\drafts\` (LEGACY, out of repo) — pre-2026-09-17 drafts. Kept for
+  reference; do not write new drafts here. Content may be migrated to `draft/` in S3.
+- `C:\PR-Master\drafts\_staged\` (LEGACY, out of repo) — drafts whose staging PR merged
+  before 2026-09-17. Kept, not deleted, as a historical record.
 - Nothing else belongs in `drafts\`. PR bodies, receipt bodies and review comments are a
   station's working files, not drafts — they go under `C:\PR-Master\scripts\station-NN\`.
   This lane had ten of its own such files in `drafts\` before the rule was written.

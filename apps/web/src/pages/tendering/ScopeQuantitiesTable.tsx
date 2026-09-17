@@ -50,6 +50,10 @@ import {
 // on every WBS item row, covered-items back to life, and the drawer renamed.
 export const SCOPE_QD_UI_ITEMS_V1 = "scopecards-s2b-a";
 
+// SCOPE_QUOTE_DESTINATION_UI_V1 — scopecards S2b-c. Card money sorted by
+// destination, option-letter cascade, and nomine chips. S3 gates on this.
+export const SCOPE_QUOTE_DESTINATION_UI_V1 = "scopecards-s2b";
+
 // SCOPE_WBS_TABLE_V1 — slice 2 of scope-card-redesign. Replaces the
 // loose-field card stack with a table whose identity columns (WBS,
 // Description, Markup, Item total) span all rows of a multi-row item.
@@ -1906,6 +1910,13 @@ type Props = {
    */
   cardMarkup: number;
   onItemsChanged: () => Promise<void> | void;
+  /**
+   * SCOPE_QUOTE_DESTINATION_UI_V1 — Opt A/B/C letters for OPTION items.
+   * Computed once per card in ScopeCardsTab across all four sections in row
+   * order; never per section (two sections would both show an Opt A).
+   * Key: item id. Value: "A" | "B" | "C" | ...
+   */
+  optionLetters?: ReadonlyMap<string, string>;
 };
 
 export function ScopeQuantitiesTable({
@@ -1914,7 +1925,8 @@ export function ScopeQuantitiesTable({
   discipline,
   items,
   cardMarkup,
-  onItemsChanged
+  onItemsChanged,
+  optionLetters
 }: Props) {
   // SCOPE_WBS_INPUTS_V2 — the discipline was destructured and discarded. It
   // now gates the Cutting? tick, computed once here rather than re-derived at
@@ -3340,6 +3352,7 @@ export function ScopeQuantitiesTable({
                         <QuoteDestinationSelect
                           value={(item.quoteDestination ?? "PRICE") as QuoteDestination}
                           onChange={(next) => patchDestination(item.id, next)}
+                          {...(optionLetters?.has(item.id) ? { optionLetter: optionLetters.get(item.id) } : {})}
                         />
                       </td>
                     ) : null}

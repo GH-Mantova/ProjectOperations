@@ -37,6 +37,13 @@ function makeCard(overrides: Partial<CardRollupInput> & { cardId: string }): Car
     duration: 0,
     subtotal: 0,
     subtotalWithMarkup: 0,
+    provisionalSubtotal: 0,
+    provisionalWithMarkup: 0,
+    optionSubtotal: 0,
+    optionWithMarkup: 0,
+    internalSubtotal: 0,
+    internalWithMarkup: 0,
+    internalLinesLeftOut: 0,
     plantSummary: [],
     ...overrides
   };
@@ -345,7 +352,17 @@ describe("toCardRollupInput", () => {
       durationOverride: null
     }
   };
-  const stats = { itemCount: 4, subtotal: 40_000, subtotalWithMarkup: 46_000 };
+  const stats = {
+    itemCount: 4,
+    subtotal: 40_000,
+    subtotalWithMarkup: 46_000,
+    provisionalSubtotal: 0,
+    provisionalWithMarkup: 0,
+    optionSubtotal: 0,
+    optionWithMarkup: 0,
+    internalSubtotal: 0,
+    internalWithMarkup: 0
+  };
 
   it("uses the computed figures when nothing is overridden", () => {
     expect(toCardRollupInput("dem1", summary, stats)).toEqual({
@@ -356,6 +373,13 @@ describe("toCardRollupInput", () => {
       duration: 5,
       subtotal: 40_000,
       subtotalWithMarkup: 46_000,
+      provisionalSubtotal: 0,
+      provisionalWithMarkup: 0,
+      optionSubtotal: 0,
+      optionWithMarkup: 0,
+      internalSubtotal: 0,
+      internalWithMarkup: 0,
+      internalLinesLeftOut: 0,
       plantSummary: summary.computed.plantSummary,
       // SCOPE_STAGE_GROUP_V1 — the card's stage, added by this slice. NOT a
       // figure: every number above is untouched. A caller that passes no
@@ -419,7 +443,17 @@ describe("toCardRollupInput", () => {
       toCardRollupInput(
         "dem2",
         { computed: summary.computed, overrides: { ...summary.overrides, peakCrewOverride: 10 } },
-        { itemCount: 3, subtotal: 60_000, subtotalWithMarkup: 69_000 }
+        {
+          itemCount: 3,
+          subtotal: 60_000,
+          subtotalWithMarkup: 69_000,
+          provisionalSubtotal: 0,
+          provisionalWithMarkup: 0,
+          optionSubtotal: 0,
+          optionWithMarkup: 0,
+          internalSubtotal: 0,
+          internalWithMarkup: 0
+        }
       )
     ]);
     expect(rollup.peakCrew).toBe(10); // max(6, 10) — not 16

@@ -82,6 +82,9 @@ export type CardComputedSummary = {
   labourDays: number;
   plantSummary: RollupPlantGroup[];
   duration: number;
+  /** SCOPE_QUOTE_DESTINATION_UI_V1 — count of INTERNAL items excluded from
+   *  the programme figures. 0 when none exist. */
+  internalLinesLeftOut?: number;
 };
 
 /** The `overrides` half of a card summary. */
@@ -107,6 +110,12 @@ export type CardMoneyStats = {
   // Partitioned from the same server-computed figures the totals are made of.
   provisionalSubtotal: number;
   provisionalWithMarkup: number;
+  // SCOPE_QUOTE_DESTINATION_UI_V1 — option and internal slices, reported and
+  // summed into nothing: options are NEVER in the card/discipline total.
+  optionSubtotal: number;
+  optionWithMarkup: number;
+  internalSubtotal: number;
+  internalWithMarkup: number;
 };
 
 /**
@@ -128,6 +137,14 @@ export type CardRollupInput = {
   // SCOPE_PROVISIONAL_SPLIT_V1 — provisional slice carried from CardMoneyStats.
   provisionalSubtotal: number;
   provisionalWithMarkup: number;
+  // SCOPE_QUOTE_DESTINATION_UI_V1 — option and internal slices carried through.
+  optionSubtotal: number;
+  optionWithMarkup: number;
+  internalSubtotal: number;
+  internalWithMarkup: number;
+  /** Count of INTERNAL items excluded from programme figures for this card.
+   *  Comes from computed.internalLinesLeftOut on the card summary. */
+  internalLinesLeftOut: number;
   plantSummary: RollupPlantGroup[];
   /**
    * Which stage this card runs in. Cards that share a stage key run AT THE
@@ -183,6 +200,15 @@ export type DisciplineRollup = {
   // cards and stages (money sums in both directions, no stage logic needed).
   provisionalSubtotal: number;
   provisionalWithMarkup: number;
+  // SCOPE_QUOTE_DESTINATION_UI_V1 — option and internal slices sum across cards
+  // and stages, same as subtotal. Options are NEVER in the discipline total.
+  optionSubtotal: number;
+  optionWithMarkup: number;
+  internalSubtotal: number;
+  internalWithMarkup: number;
+  /** Total count of INTERNAL items excluded from programme figures across all
+   *  cards in the discipline (sum of per-card internalLinesLeftOut). */
+  internalLinesLeftOut: number;
 };
 
 /** Day figures come off the API already rounded to 1dp; summing them can
@@ -264,6 +290,12 @@ export function toCardRollupInput(
     // from CardMoneyStats; the fold below sums them alongside subtotal.
     provisionalSubtotal: stats.provisionalSubtotal,
     provisionalWithMarkup: stats.provisionalWithMarkup,
+    // SCOPE_QUOTE_DESTINATION_UI_V1 — pass option/internal figures through.
+    optionSubtotal: stats.optionSubtotal ?? 0,
+    optionWithMarkup: stats.optionWithMarkup ?? 0,
+    internalSubtotal: stats.internalSubtotal ?? 0,
+    internalWithMarkup: stats.internalWithMarkup ?? 0,
+    internalLinesLeftOut: summary?.computed?.internalLinesLeftOut ?? 0,
     plantSummary: computed?.plantSummary ?? [],
     stageKey: stageKeyForGroup(stageGroup)
   };
@@ -281,7 +313,12 @@ export const EMPTY_DISCIPLINE_ROLLUP: DisciplineRollup = {
   subtotal: 0,
   subtotalWithMarkup: 0,
   provisionalSubtotal: 0,
-  provisionalWithMarkup: 0
+  provisionalWithMarkup: 0,
+  optionSubtotal: 0,
+  optionWithMarkup: 0,
+  internalSubtotal: 0,
+  internalWithMarkup: 0,
+  internalLinesLeftOut: 0
 };
 
 /**
@@ -395,6 +432,12 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
   // and across stages), so provisional figures need no stage logic of their own.
   let provisionalSubtotal = 0;
   let provisionalWithMarkup = 0;
+  // SCOPE_QUOTE_DESTINATION_UI_V1 — option and internal figures sum the same way.
+  let optionSubtotal = 0;
+  let optionWithMarkup = 0;
+  let internalSubtotal = 0;
+  let internalWithMarkup = 0;
+  let internalLinesLeftOut = 0;
 
   for (const stage of stages) {
     // WITHIN a stage: crew and plant quantity SUM (the cards are on site
@@ -423,6 +466,12 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
       // SCOPE_PROVISIONAL_SPLIT_V1 — sums per card, same as subtotal.
       provisionalSubtotal += card.provisionalSubtotal;
       provisionalWithMarkup += card.provisionalWithMarkup;
+      // SCOPE_QUOTE_DESTINATION_UI_V1 — sums per card, same as subtotal.
+      optionSubtotal += card.optionSubtotal ?? 0;
+      optionWithMarkup += card.optionWithMarkup ?? 0;
+      internalSubtotal += card.internalSubtotal ?? 0;
+      internalWithMarkup += card.internalWithMarkup ?? 0;
+      internalLinesLeftOut += card.internalLinesLeftOut ?? 0;
 
       for (const [category, variants] of foldCardPlant(card)) {
         for (const [variantKey, cardLine] of variants) {
@@ -484,7 +533,12 @@ export function rollUpDisciplineStages(stages: readonly DisciplineStage[]): Disc
     subtotal,
     subtotalWithMarkup,
     provisionalSubtotal,
-    provisionalWithMarkup
+    provisionalWithMarkup,
+    optionSubtotal,
+    optionWithMarkup,
+    internalSubtotal,
+    internalWithMarkup,
+    internalLinesLeftOut
   };
 }
 

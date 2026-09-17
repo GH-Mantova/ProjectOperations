@@ -53,6 +53,11 @@ function makeCard(overrides: Partial<CardRollupInput> & { cardId: string }): Car
     subtotalWithMarkup: 0,
     provisionalSubtotal: 0,
     provisionalWithMarkup: 0,
+    optionSubtotal: 0,
+    optionWithMarkup: 0,
+    internalSubtotal: 0,
+    internalWithMarkup: 0,
+    internalLinesLeftOut: 0,
     plantSummary: [],
     ...overrides
   };
@@ -144,7 +149,14 @@ function flatFoldAsShippedOnMain(cards: readonly CardRollupInput[]): DisciplineR
     // the whole-object comparison in "matches it whole-object too" remains
     // strict: a field left out of either return would fail that assertion.
     provisionalSubtotal: 0,
-    provisionalWithMarkup: 0
+    provisionalWithMarkup: 0,
+    // SCOPE_QUOTE_DESTINATION_UI_V1 — option, internal, and internalLinesLeftOut
+    // are all zero in the reference data (makeCard defaults to 0 for all).
+    optionSubtotal: 0,
+    optionWithMarkup: 0,
+    internalSubtotal: 0,
+    internalWithMarkup: 0,
+    internalLinesLeftOut: 0
   };
 }
 
@@ -221,6 +233,13 @@ function expectSameRollup(actual: DisciplineRollup, expected: DisciplineRollup):
   // to the pre-stage figures, provisional figures included.
   expect(actual.provisionalSubtotal).toBe(expected.provisionalSubtotal);
   expect(actual.provisionalWithMarkup).toBe(expected.provisionalWithMarkup);
+  // SCOPE_QUOTE_DESTINATION_UI_V1 — option, internal, and internalLinesLeftOut
+  // also covered by the flat-fold equivalence.
+  expect(actual.optionSubtotal).toBe(expected.optionSubtotal);
+  expect(actual.optionWithMarkup).toBe(expected.optionWithMarkup);
+  expect(actual.internalSubtotal).toBe(expected.internalSubtotal);
+  expect(actual.internalWithMarkup).toBe(expected.internalWithMarkup);
+  expect(actual.internalLinesLeftOut).toBe(expected.internalLinesLeftOut);
   expect(actual.plantSummary).toEqual(expected.plantSummary);
 }
 

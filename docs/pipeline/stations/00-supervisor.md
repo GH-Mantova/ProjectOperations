@@ -978,6 +978,48 @@ disk copy and count `\r\n` in each, as the table above does. Blob LF + checkout 
 write and do not renormalize. Blob CRLF + checkout LF (the `.arming-log.txt` case) ⇒ the existing
 `git restore --staged` cure.
 
+🔴🔴 **CORRECTED 2026-09-21T18:4xZ — THE DISCRIMINATOR IS RIGHT AND THE WORKED
+ASSIGNMENT ABOVE IS WRONG: `docs/pipeline/sweep-rotation.json` IS A **BLOB-LF / CHECKOUT-CRLF**
+FILE, SO `--renormalize` IS THE WRONG BRANCH FOR IT AND THE PARAGRAPH ABOVE SENDS ITS READER
+THERE BY NAME.** `SWEEP_ROTATION_IS_THE_CONVERT_ON_WRITE_CASE_V1`
+
+[MEASURED] 2026-09-21T18:3xZ by Station 00 (scheduled) at `939c77bc` → `8e5ba6b9`, on exactly the
+hand-off this section describes — Station 04’s rotation advance, swept into board PR `#2057`, whose
+merge then had to be fast-forwarded into the dev tree:
+
+| probe | result |
+|---|---|
+| `git show HEAD:docs/pipeline/sweep-rotation.json` bytes | **2809 B, CRLF=0, bare LF=28** — the blob is stored **LF** |
+| the working copy on disk | **2837 B, CRLF=28, bare LF=0** — the checkout is **CRLF** |
+| `git diff --numstat origin/main -- <path>` | **EMPTY** — no local-only content, so restoring loses nothing |
+| `git merge --ff-only origin/main`, before any cure | `error: Your local changes … would be overwritten by merge` |
+
+That is the **Blob LF + checkout CRLF** row of the discriminator two paragraphs up, i.e. **convert
+on write and do NOT renormalize** — the opposite of what the sentence naming this file prescribes.
+Applying the convert-on-write cure produced **2837 B (2809 + 28 CRs, exactly the blob’s LF count)**,
+`git update-index --refresh` exited **0** with `--porcelain` EMPTY, and the fast-forward succeeded
+on the **first** attempt; all four read-backs passed (`0 0`, `--numstat` EMPTY, `--cached` EMPTY,
+`--porcelain` EMPTY) and the content proof passed too — the new breadcrumb’s marker at depth 1 → 1
+hit, the archived predecessor present, the root copy gone, and 04’s advance (`"last_index": 2`,
+`2026-09-21T18:09:53Z`) still in the working copy.
+
+🔴 **Why this is worth a correction rather than a silent fix: the wrong branch is named by FILE,
+so a reader does not reach the discriminator at all.** The sentence above says *“`--renormalize` is
+still right for `docs/pipeline/sweep-rotation.json`”*, and this is the one file in this section that
+a run meets on a fixed schedule — every collect run that sweeps in 04’s advance. `--renormalize` on
+a blob-LF/checkout-CRLF file stages the LF form as a content change, which is the loop the
+`git restore --staged` note three paragraphs down then undoes, returning the tree to the blocked
+state. Nothing warns at any step.
+
+⚠️ **The RULE is untouched and nothing is retired.** The discriminator — *dump the blob and the
+disk copy and count `\r\n` in each* — is exactly right and is what produced this correction; only
+the worked assignment of this one filename to the renormalize branch is wrong. The `.arming-log.txt`
+case is **not** re-measured here and its row stands as written.
+
+⚠️ **Falsifying probe: the two-row table above.** Dump `git show HEAD:docs/pipeline/sweep-rotation.json`
+and the disk copy and count `\r\n` in each. If the blob ever carries CRLF, this correction is wrong
+and must be re-measured. Found and landed by Station 00 2026-09-21T18:4xZ.
+
 ⚠️ **Falsifying probe: the table above.** Restore any CRLF-checked-out prompt with a byte-exact
 `git show HEAD:` write and run `git update-index --refresh`. If it ever exits 0, this correction is
 wrong and must be re-measured. Found and landed by Station 00 2026-09-21T17:5xZ.

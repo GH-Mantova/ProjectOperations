@@ -21,7 +21,10 @@
     "seed:reference": "tsx prisma/seed-reference-run.ts",
     "seed:users:prod": "tsx prisma/seed-users-prod-run.ts",
     "seed:prod": "tsx prisma/seed-prod.ts",
-    "xero:import-contacts": "tsx scripts/xero-import-contacts.ts"
+    "xero:import-contacts": "tsx scripts/xero-import-contacts.ts",
+    "grants:write": "tsx prisma/role-grants.ts write",
+    "grants:check": "tsx prisma/role-grants.ts check",
+    "grants:report": "tsx prisma/role-grants.ts report"
   },
   "dependencies": {
     "@azure/identity": "^4.13.1",

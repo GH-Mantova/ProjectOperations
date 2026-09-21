@@ -296,6 +296,52 @@ are added to it that were not there on 09-10, and each is a fact rather than a r
   alternative, giving 00 the prune, fails the future half of RULE 1 by widening the single board
   actor's blast radius into machine repair for no reason beyond convenience.
 
+### F6 — The single-actor gate read `armed 0 → 1` in the minute before this run's own merge, and the "second actor" was the watcher enqueuing a review of this run's own PR
+
+`SINGLE_ACTOR_GATE_COUNTS_REV_JOBS_AS_ARMS_V1`
+
+Recorded because it very nearly cost a legitimate merge, and because the cure is already written
+down one section away from the rule that caused it.
+
+BOARD DRIVING condition 3 requires confirming nothing else is mid-mutation **immediately before**
+every board mutation. Run at `2026-09-21T23:30:59Z`, that check returned `armed = 1` against a
+`triage-holds.ps1` reading of `ready=0` taken eight minutes earlier. Under condition 3 as written
+— *"if something else is acting, STOP: that is the LL-38 collision"* — the available conclusion was
+**a second actor armed a prompt mid-run**, and this run stopped the merge on it.
+
+[MEASURED] immediately afterwards, at `cfe8816d`:
+
+| probe | result |
+|---|---|
+| the armed file | **`rev-2067-ready.md`**, mtime `23:30:49Z` — **ten seconds** before the gate ran |
+| `.arming-log.txt`, last 6 rows | newest arm `2026-09-21T19:31:53Z` `pr-scopecards-s5-charge-steps-price-cutting` — **no arm inside this run's window** |
+| watcher node | pid **9744**, start `2026-09-21T07:14:06Z` — unchanged, not restarted |
+
+`rev-<n>-ready.md` is an **auto-generated REVIEW JOB, not a prompt** (DOCTRINE §9.5), and this one
+is the watcher's review of **this run's own board PR `#2067`**, enqueued seconds after it opened.
+There was no second actor and no collision. **The gate measured its own footprint.**
+
+🔧 **A `*-ready.md` count used as a single-actor signal must exclude `rev-*`, exactly as every
+prompt audit already does.** The two instruments this run used disagreed for that reason alone:
+`triage-holds.ps1` prints `rev-* review jobs are excluded` on its own totals line and reported
+`ready=0`; a hand-rolled `Get-ChildItem -Filter '*-ready.md'` does not, and reported 1.
+
+⚠️ **The polarity is the bad one.** This reading fails toward **stopping a station that is acting
+correctly**, and it fires most reliably on a station that has just opened a PR — i.e. at the exact
+moment the gate is consulted. A run that believes it aborts its own merge and leaves its breadcrumb
+untracked, which is the failure the REPORT CONTRACT exists to prevent.
+
+⚠️ Related but not the same as §10.3's `REV_LANE_UNCONSUMED_ON_SECOND_LANE_V1`: that records that
+the review of a second-lane PR is read by nothing. `#2067` is second lane (this station opened it),
+so its `rev-2067` job is another instance of that wasted review — already filed as
+`needs-marco/rev-lane-reviews-second-lane-prs-that-nothing-reads-2026-09-11.md`. What is new here
+is that the same job is also **miscounted as an arm by the safe-to-act gate**.
+
+**DISPOSITION: ACTIONED** — the merge proceeded, on the measurements above rather than on the raw
+count. ⚠️ **Falsifying probe: the three-row table.** Open any `*-ready.md` a single-actor check
+flags and read its name and mtime against `.arming-log.txt`. If the arming log ever carries a
+matching row inside the window, that reading is a real arm and this finding does not apply to it.
+
 ## WHAT I DID NOT DO
 
 - **Armed nothing.** `gates-satisfied = 0` of 16, measured and controlled (F4). Arming on a board

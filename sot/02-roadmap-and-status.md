@@ -58,17 +58,15 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (3)
+## 2. 🔧 In-PR — open right now (1)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-17T14:25Z**, `origin/main`
-> a2f5e8a6). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-21T00:20Z**, `origin/main`
+> 875e1076). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #2005 | feat(tendering): scopecards S3 — per-line markup on all line types + card-name affordance (`SCOPE_LINE_MARKUP_ALL_TYPES_V1`) | BLOCKED; CI 12 pass / **3** fail / 0 pending. Two reds are the CP-26 pair parked by the `do-not-merge` label. The **third red is independent of the label**: `API — lint, test, compliance smoke` FAILURE. Only Marco removes the label; the API red is real work and is not parked |
-| #2002 | feat(rates): transport capacity column order — transport-first, m³ before tonnes | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are the CP-26 pair — parked by the `do-not-merge` label, not work. Only Marco removes it |
-| #1998 | feat(crm): S5 — Follow-ups on the s7 kit, one SHOW row, striped KPI cards (`CRM_PARITY_FOLLOWUPS_V1`) | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds are the CP-26 pair — parked by the `do-not-merge` label, not work. Only Marco removes it |
+| #2017 | feat(crm): S6 — Review-and-link preview as the artboard's dialog on the s7 kit (`CRM_PARITY_BULKLINK_V1`) | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds have ONE cause and are parked by design: the gate's own verdict line, read from column 3 of the CP-26 job log, is `FAIL - CP-26 approval-receipt [LABEL_PRESENT]`, and `gh pr view 2017 --json labels` returns `do-not-merge`. `API — lint, test, compliance smoke` **passes** on this PR. Only Marco removes the label |
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z
@@ -80,6 +78,22 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 > and named #1986, which had **MERGED at `2026-09-17T03:43:16Z`** — read from `mergedAt` via
 > `gh pr view`, never from the `merged` field of a list response (DOCTRINE §9.4). Same rot as
 > 2026-09-06, same cure. **Only the snapshot was refreshed — no roadmap STATUS semantics were changed.**
+
+> **Refreshed again 2026-09-21 (Station 05, scheduled).** The table above read "open right now (3)"
+> and named #2005, #2002 and #1998. All three left the board within **4.5 hours** of the snapshot it
+> carried: #2005 CLOSED UNMERGED `2026-09-17T17:25:24Z`, #1998 MERGED `18:22:10Z`, #2002 MERGED
+> `18:57:07Z` — each read from `state`/`mergedAt`/`closedAt` via `gh pr view`, never from the
+> `merged` field of a list response (DOCTRINE §9.4), with the negative control `gh pr view 999997`
+> exiting 1. Meanwhile #2017 opened and is the only PR on the board (`gh pr list --state open` → 1).
+> **Only the snapshot was refreshed — no roadmap STATUS semantics were changed.**
+>
+> ⚠️ **This is the THIRD consecutive refresh of the same table by this station (09-06, 09-17,
+> 09-21), and the rot is structural, not accidental.** A hand-maintained snapshot of a live board
+> goes stale the moment the board moves, and it carries no probe that would tell a reader it has.
+> The refresh is the additive half of RULE 1 and it does not solve the future half: what would is
+> a generated table or a CI check that fails when a PR named here is no longer open. Both are
+> `scripts/` changes and therefore **outside Station 05's lane** — filed as a finding for Station 00
+> rather than attempted here.
 
 The entire 2026-07-27 In-PR set (#779/#787/#789/#796/#797/#808) has since MERGED, as have
 #894 and #895 (both 2026-08-04). Also in-flight but

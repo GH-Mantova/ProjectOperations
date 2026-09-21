@@ -237,7 +237,7 @@ test.describe("Batch 4 — Quotes (PRs #45, #46, #61, #62, #72, #242, #254, #256
 
     // Cost Options.
     await page.getByRole("button", { name: "Cost Options", exact: true }).click();
-    await expect(page.getByText(/alternative pricing scenarios/)).toBeVisible();
+    await expect(page.getByText(/alternative pricing that appears separately/)).toBeVisible();
     await expect(page.getByRole("button", { name: "+ Add cost option", exact: true })).toBeVisible();
 
     // Assumptions — seeded assumptionMode=linked: per-cost-line sections.

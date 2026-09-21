@@ -69,8 +69,8 @@ type RawLocation = {
   updatedAt: Date;
 };
 
-function nextReviewAt(pricesReviewedAt: Date | null): Date {
-  if (pricesReviewedAt === null) return new Date(0); // due now (epoch = overdue)
+function nextReviewAt(pricesReviewedAt: Date | null | undefined): Date {
+  if (pricesReviewedAt == null) return new Date(0); // due now (epoch = overdue)
   return new Date(pricesReviewedAt.getTime() + REVIEW_CYCLE_MS);
 }
 

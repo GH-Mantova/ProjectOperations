@@ -80,9 +80,9 @@ function SourceChip({ source }: { source: "tender" | "job" }) {
         fontWeight: 700,
         padding: "1px 7px",
         borderRadius: 4,
-        border: `1px solid ${isTender ? "var(--color-secondary, #C77A3A)" : "var(--color-primary, #005B61)"}`,
-        color: isTender ? "var(--color-secondary, #C77A3A)" : "var(--color-primary, #005B61)",
-        background: isTender ? "var(--surface-warning-light, #FFF4E5)" : "var(--surface-primary-light, #E6F0F1)"
+        border: `1px solid ${isTender ? "var(--brand-accent-dark)" : "var(--brand-primary)"}`,
+        color: isTender ? "var(--brand-accent-dark)" : "var(--brand-primary)",
+        background: isTender ? "color-mix(in srgb, var(--status-warning) 12%, transparent)" : "var(--brand-primary-light)"
       }}
     >
       {isTender ? "Tender" : "Job"}
@@ -124,7 +124,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
   }
 
   if (error) {
-    return <p style={{ color: "var(--status-danger, #DC2626)", fontSize: 13 }}>{error}</p>;
+    return <p style={{ color: "var(--status-danger)", fontSize: 13 }}>{error}</p>;
   }
 
   if (!summary) return null;
@@ -144,7 +144,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
         {/* Tile: Planned loads */}
         <div
           style={{
-            border: "1px solid var(--border, #E5E7EB)",
+            border: "1px solid var(--border-default)",
             borderRadius: 8,
             padding: "10px 12px"
           }}
@@ -162,7 +162,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
           <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
             {loads}
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-subtle, #9CA3AF)" }}>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
             accepted tip recommendations
           </div>
         </div>
@@ -170,7 +170,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
         {/* Tile: Planned tonnes */}
         <div
           style={{
-            border: "1px solid var(--border, #E5E7EB)",
+            border: "1px solid var(--border-default)",
             borderRadius: 8,
             padding: "10px 12px"
           }}
@@ -188,7 +188,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
           <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
             {fmtTonnes(tonnes)} t
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-subtle, #9CA3AF)" }}>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
             {rows.length === 0
               ? "no waste types"
               : `across ${new Set(rows.map((r) => r.wasteTypeCode)).size} waste type${
@@ -200,7 +200,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
         {/* Tile: Planned tipping cost */}
         <div
           style={{
-            border: "1px solid var(--border, #E5E7EB)",
+            border: "1px solid var(--border-default)",
             borderRadius: 8,
             padding: "10px 12px"
           }}
@@ -218,7 +218,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
           <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
             {fmtCurrency(total)}
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-subtle, #9CA3AF)" }}>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
             disposal {fmtCurrency(disposal)} &middot; travel {fmtCurrency(travel)}
           </div>
         </div>
@@ -231,7 +231,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
           picks appear here.
         </p>
       ) : (
-        <div style={{ overflowX: "auto", border: "1px solid var(--border, #E5E7EB)", borderRadius: 8 }}>
+        <div style={{ overflowX: "auto", border: "1px solid var(--border-default)", borderRadius: 8 }}>
           <table
             style={{
               borderCollapse: "collapse",
@@ -247,7 +247,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                     <th
                       key={h}
                       style={{
-                        background: "var(--surface-muted, #F3F4F6)",
+                        background: "var(--surface-subtle)",
                         textAlign: ["Tonnes", "Distance", "Disposal fee", "Travel", "Total"].includes(h)
                           ? "right"
                           : "left",
@@ -268,19 +268,19 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-muted, #F3F4F6)", whiteSpace: "nowrap" }}>
+                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-subtle)", whiteSpace: "nowrap" }}>
                     {fmtDate(row.createdAt)}
                   </td>
-                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-muted, #F3F4F6)" }}>
+                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-subtle)" }}>
                     {row.facilityName}
                   </td>
-                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-muted, #F3F4F6)" }}>
+                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-subtle)" }}>
                     {row.wasteTypeCode}
                   </td>
                   <td
                     style={{
                       padding: "7px 10px",
-                      borderTop: "1px solid var(--surface-muted, #F3F4F6)",
+                      borderTop: "1px solid var(--surface-subtle)",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
                       whiteSpace: "nowrap"
@@ -291,7 +291,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   <td
                     style={{
                       padding: "7px 10px",
-                      borderTop: "1px solid var(--surface-muted, #F3F4F6)",
+                      borderTop: "1px solid var(--surface-subtle)",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
                       whiteSpace: "nowrap"
@@ -302,7 +302,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   <td
                     style={{
                       padding: "7px 10px",
-                      borderTop: "1px solid var(--surface-muted, #F3F4F6)",
+                      borderTop: "1px solid var(--surface-subtle)",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
                       whiteSpace: "nowrap"
@@ -313,7 +313,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   <td
                     style={{
                       padding: "7px 10px",
-                      borderTop: "1px solid var(--surface-muted, #F3F4F6)",
+                      borderTop: "1px solid var(--surface-subtle)",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
                       whiteSpace: "nowrap"
@@ -324,7 +324,7 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   <td
                     style={{
                       padding: "7px 10px",
-                      borderTop: "1px solid var(--surface-muted, #F3F4F6)",
+                      borderTop: "1px solid var(--surface-subtle)",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
                       whiteSpace: "nowrap"
@@ -332,10 +332,10 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   >
                     {fmtCurrency(row.totalCost)}
                   </td>
-                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-muted, #F3F4F6)", whiteSpace: "nowrap" }}>
+                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-subtle)", whiteSpace: "nowrap" }}>
                     <SourceChip source={row.source} />
                   </td>
-                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-muted, #F3F4F6)", whiteSpace: "nowrap" }}>
+                  <td style={{ padding: "7px 10px", borderTop: "1px solid var(--surface-subtle)", whiteSpace: "nowrap" }}>
                     {row.createdBy
                       ? `${row.createdBy.firstName[0] ?? ""}. ${row.createdBy.lastName}`
                       : "-"}
@@ -349,9 +349,9 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   colSpan={3}
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
+                    borderTop: "1px solid var(--border-default)",
                     fontWeight: 700,
-                    background: "var(--surface-subtle, #FAFAFA)"
+                    background: "var(--surface-subtle)"
                   }}
                 >
                   Planned tipping cost
@@ -359,11 +359,11 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                 <td
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
+                    borderTop: "1px solid var(--border-default)",
                     textAlign: "right",
                     fontWeight: 700,
                     fontVariantNumeric: "tabular-nums",
-                    background: "var(--surface-subtle, #FAFAFA)",
+                    background: "var(--surface-subtle)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -372,18 +372,18 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                 <td
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
-                    background: "var(--surface-subtle, #FAFAFA)"
+                    borderTop: "1px solid var(--border-default)",
+                    background: "var(--surface-subtle)"
                   }}
                 />
                 <td
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
+                    borderTop: "1px solid var(--border-default)",
                     textAlign: "right",
                     fontWeight: 700,
                     fontVariantNumeric: "tabular-nums",
-                    background: "var(--surface-subtle, #FAFAFA)",
+                    background: "var(--surface-subtle)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -392,11 +392,11 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                 <td
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
+                    borderTop: "1px solid var(--border-default)",
                     textAlign: "right",
                     fontWeight: 700,
                     fontVariantNumeric: "tabular-nums",
-                    background: "var(--surface-subtle, #FAFAFA)",
+                    background: "var(--surface-subtle)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -405,11 +405,11 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                 <td
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
+                    borderTop: "1px solid var(--border-default)",
                     textAlign: "right",
                     fontWeight: 700,
                     fontVariantNumeric: "tabular-nums",
-                    background: "var(--surface-subtle, #FAFAFA)",
+                    background: "var(--surface-subtle)",
                     whiteSpace: "nowrap"
                   }}
                 >
@@ -419,8 +419,8 @@ export function ProjectTippingTab({ projectId }: { projectId: string }) {
                   colSpan={2}
                   style={{
                     padding: "7px 10px",
-                    borderTop: "1px solid var(--border, #E5E7EB)",
-                    background: "var(--surface-subtle, #FAFAFA)"
+                    borderTop: "1px solid var(--border-default)",
+                    background: "var(--surface-subtle)"
                   }}
                 />
               </tr>

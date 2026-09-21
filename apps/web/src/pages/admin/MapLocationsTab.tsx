@@ -461,7 +461,7 @@ export function MapLocationsTab() {
             style={{
               padding: "6px 14px",
               borderRadius: 999,
-              border: `1px solid ${filter === f ? "#005B61" : "var(--border, #e5e5e5)"}`,
+              border: `1px solid ${filter === f ? "var(--brand-primary)" : "var(--border-default)"}`,
               background: filter === f ? "#005B61" : "transparent",
               color: filter === f ? "#fff" : "var(--text)",
               fontWeight: filter === f ? 600 : 400,
@@ -505,8 +505,8 @@ export function MapLocationsTab() {
       {addPanel !== null && (
         <div
           style={{
-            background: "var(--surface-muted, #F6F6F6)",
-            border: "1px solid var(--border, #e5e5e5)",
+            background: "var(--surface-subtle)",
+            border: "1px solid var(--border-default)",
             borderRadius: 8,
             padding: 16,
             marginBottom: 20
@@ -698,7 +698,7 @@ export function MapLocationsTab() {
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: "2px solid var(--border, #e5e5e5)", textAlign: "left" }}>
+            <tr style={{ borderBottom: "2px solid var(--border-default)", textAlign: "left" }}>
               <th style={{ padding: "8px 6px" }}>Name</th>
               <th style={{ padding: "8px 6px" }}>Type</th>
               <th style={{ padding: "8px 6px" }}>Address</th>
@@ -718,7 +718,7 @@ export function MapLocationsTab() {
                 }}
                 onClick={() => setSelectedId(loc.id)}
                 style={{
-                  borderBottom: "1px solid var(--border, #f0f0f0)",
+                  borderBottom: "1px solid var(--border-default)",
                   cursor: "pointer",
                   background:
                     selectedId === loc.id
@@ -772,10 +772,10 @@ export function MapLocationsTab() {
                     loc.pricesReviewedAt ? (
                       fmtReviewDate(loc.pricesReviewedAt)
                     ) : (
-                      <span style={{ color: "var(--text-subtle, #9CA3AF)" }}>&mdash;</span>
+                      <span style={{ color: "var(--text-muted)" }}>&mdash;</span>
                     )
                   ) : (
-                    <span style={{ color: "var(--text-subtle, #9CA3AF)" }}>&mdash;</span>
+                    <span style={{ color: "var(--text-muted)" }}>&mdash;</span>
                   )}
                 </td>
 
@@ -794,25 +794,25 @@ export function MapLocationsTab() {
                     };
                     if (chip.variant === "overdue") {
                       return (
-                        <span style={{ ...chipStyle, borderColor: "#DC2626", color: "#DC2626", background: "#FEF2F2" }}>
+                        <span style={{ ...chipStyle, borderColor: "var(--status-danger)", color: "var(--status-danger)", background: "color-mix(in srgb, var(--status-danger) 10%, transparent)" }}>
                           {chip.label}
                         </span>
                       );
                     }
                     if (chip.variant === "never") {
                       return (
-                        <span style={{ ...chipStyle, borderColor: "#DC2626", color: "#DC2626", background: "#FEF2F2" }}>
+                        <span style={{ ...chipStyle, borderColor: "var(--status-danger)", color: "var(--status-danger)", background: "color-mix(in srgb, var(--status-danger) 10%, transparent)" }}>
                           Never reviewed
                         </span>
                       );
                     }
                     return (
-                      <span style={{ ...chipStyle, borderColor: "#047857", color: "#047857", background: "#ECFDF5" }}>
+                      <span style={{ ...chipStyle, borderColor: "var(--status-active)", color: "var(--status-active)", background: "color-mix(in srgb, var(--status-active) 10%, transparent)" }}>
                         {chip.label}
                       </span>
                     );
                   })() : (
-                    <span style={{ color: "var(--text-subtle, #9CA3AF)" }}>&mdash;</span>
+                    <span style={{ color: "var(--text-muted)" }}>&mdash;</span>
                   )}
                 </td>
 
@@ -868,8 +868,8 @@ export function MapLocationsTab() {
         >
           <div
             style={{
-              background: "#fff",
-              border: "1px solid var(--border, #E5E7EB)",
+              background: "var(--surface-card)",
+              border: "1px solid var(--border-default)",
               borderRadius: 10,
               padding: "14px 16px",
               boxShadow: "0 8px 24px rgba(0,0,0,.08)",

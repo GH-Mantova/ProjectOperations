@@ -44,12 +44,13 @@ const CUTTING_STEPS: ChargeStep[] = [
 ];
 
 // cutting-mm table chargeSteps:
-//   start Rate per m -> multiply depthMm -> divide 25 -> floor 18 -> multiply metres
+//   start Rate per m -> multiply depthMm -> divide 25 -> floor 18 -> multiply 1.25 when method is High-Freq -> multiply metres
 const CUTTING_MM_STEPS: ChargeStep[] = [
   { op: "start", field: "Rate per m" },
   { op: "multiply", field: "depthMm" },
   { op: "divide", field: 25 },
   { op: "floor", value: 18 },
+  { op: "multiply", field: 1.25, when: { field: "method", cmp: "is", value: "High-Freq" } },
   { op: "multiply", field: "metres" }
 ];
 
@@ -79,8 +80,8 @@ function evalCutting(ratePerM: number, method: string, metres: number): number {
   return result.total;
 }
 
-function evalCuttingMm(ratePerM: number, depthMm: number, metres: number): number {
-  const values: StepValues = { "Rate per m": ratePerM, depthMm, metres };
+function evalCuttingMm(ratePerM: number, depthMm: number, metres: number, method = "Fuel"): number {
+  const values: StepValues = { "Rate per m": ratePerM, depthMm, metres, method };
   const result = evaluateSteps(CUTTING_MM_STEPS, values);
   if (result.total === null) throw new Error(`Step total null: ${JSON.stringify(result.issues)}`);
   return result.total;
@@ -101,11 +102,12 @@ function inlineCutting(ratePerM: number, method: string, metres: number): number
   return total;
 }
 
-function inlineCuttingMm(ratePerM: number, depthMm: number, metres: number): number {
+function inlineCuttingMm(ratePerM: number, depthMm: number, metres: number, method = "Fuel"): number {
   // step formula: start ratePerM -> multiply depthMm -> divide 25 -> floor 18 -> multiply metres
   // floor 18 is a LITERAL minimum of $18.00 (not the row value).
   let total = ratePerM * depthMm / 25;
   total = Math.max(total, 18); // floor: literal 18
+  if (method === "High-Freq") total *= 1.25; // METHOD_MULTIPLIER, applied after the stretch as on main
   total *= metres;
   return total;
 }
@@ -310,6 +312,18 @@ describe("cutting-mm steps - Flush-cut", () => {
 
   test("Flush-cut Wall 25mm = $19.80 both ways", () => {
     expect(evalCuttingMm(19.8, 25, 1)).toBeCloseTo(19.8, 2);
+  });
+
+  // Flush-cut allows High-Freq (METHODS_BY_EQUIPMENT); main applies METHOD_MULTIPLIER 1.25
+  // after the depth stretch. The step path must keep that price.
+  test("Flush-cut Floor 25mm High-Freq = $22.50 both ways", () => {
+    expect(evalCuttingMm(18.0, 25, 1, "High-Freq")).toBeCloseTo(22.5, 2);
+    expect(inlineCuttingMm(18.0, 25, 1, "High-Freq")).toBeCloseTo(22.5, 2);
+  });
+
+  test("Flush-cut Wall 80mm High-Freq = $79.20 both ways", () => {
+    expect(evalCuttingMm(19.8, 80, 1, "High-Freq")).toBeCloseTo(79.2, 2);
+    expect(inlineCuttingMm(19.8, 80, 1, "High-Freq")).toBeCloseTo(79.2, 2);
   });
 });
 

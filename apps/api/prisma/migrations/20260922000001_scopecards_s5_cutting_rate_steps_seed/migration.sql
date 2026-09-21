@@ -56,7 +56,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ── 3. Create cutting-mm table (NEW) ─────────────────────────────────────
 -- Keys: Equipment, Elevation. Value: Rate per m.
--- chargeSteps: start rate -> multiply depthMm -> divide 25 -> floor 18 -> multiply metres
+-- chargeSteps: start rate -> multiply depthMm -> divide 25 -> floor 18 -> multiply 1.25 when method is High-Freq -> multiply metres
 -- lineFields: depthMm (number), metres (number), method (text)
 
 INSERT INTO "rate_tables" (id, name, slug, description, category, is_system, is_reference, created_at, updated_at)
@@ -81,6 +81,7 @@ SET
         {"op":"multiply","field":"depthMm"},
         {"op":"divide","field":25},
         {"op":"floor","value":18},
+        {"op":"multiply","field":1.25,"when":{"field":"method","cmp":"is","value":"High-Freq"}},
         {"op":"multiply","field":"metres"}
     ]'::jsonb,
     line_fields = '[

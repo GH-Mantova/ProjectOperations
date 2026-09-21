@@ -1,67 +1,149 @@
 ---
-premise: '! grep -rq "syncRolePermissions" apps/api/src'
-premise_means: There is no runtime reconciler for role->permission assignments; role grants reach prod only via hand-written migrations (the #504/#506/#876 toil).
+premise: '! grep -rq "ROLE_GRANT_REGISTRY_V1" apps/api/src'
+premise_means: Role-to-permission grants are declared only as inline arrays in the dev seed, so a grant added there never reaches production unless someone hand-writes a migration (the #504 / #506 / #876 toil).
 scope:
-  - apps/api/src/common/permissions/**
-  - apps/api/src/modules/permissions/**
+  - apps/api/src/common/permissions/role-grant-registry.ts
+  - apps/api/src/common/permissions/role-grant-diff.ts
+  - apps/api/src/modules/permissions/__tests__/role-grant-registry.spec.ts
+  - apps/api/prisma/role-grants.ts
+  - apps/api/prisma/role-grants.lock.json
   - apps/api/prisma/seed-initial-services.ts
-done_when: pnpm build && grep -rq "syncRolePermissions" apps/api/src
-size: 8
+  - apps/api/package.json
+done_when: pnpm build && pnpm lint && grep -rq "ROLE_GRANT_REGISTRY_V1" apps/api/src && test -f apps/api/prisma/role-grants.lock.json
+size: 5
 gate_allow: none
-seed_only: false
-escalates: false
+seed_only: true
+escalates: true
+module: permissions
 ---
 
-<!-- watcher: do-not-arm -->
+# Role grants: one map in code, delivered to production by generated migrations
 
-# Durable fix: declarative role->permission map + boot-time reconciler
-
-**GATED: this is an AUTHORIZATION-ARCHITECTURE change. Do NOT rename to `-ready` until Marco (or a
-PR-Master pass) has signed off on the design.** Staged non-armed on purpose. It is the durable
-follow-up to #876's one-off migration.
+**Design signed off by Marco 2026-09-21 (option B of three: "approved").** Option A (keep
+hand-writing migrations) and option C (a boot-time reconciler that writes grants when the API
+starts) were both rejected. Do not build either. In particular: **nothing in this PR writes to a
+database at boot, ever.**
 
 ## Problem (root cause)
 
-Permission *definitions* are declared in code (`apps/api/src/common/permissions/permission-registry.ts`)
-and upserted into every DB at boot by `PermissionsService.syncRegistry()`. But role->permission
-*assignments* live ONLY in the TypeScript seed (`seed-initial-services.ts`, `seedRoleWithPermissions`).
-Production runs `prisma migrate deploy`, which never runs the seed — so a grant added only to the seed
-never reaches prod. This has bitten repeatedly: #504 (GlobalList), #506 (super-user never set in prod),
-#876 (field-worker expenses). CP-23 backstops it, but every grant then needs a hand-written migration.
+Permission *definitions* live in code (`apps/api/src/common/permissions/permission-registry.ts`)
+and are upserted by `PermissionsService.syncRegistry()`. Role -> permission *grants* live only as
+inline arrays in the dev seed (`apps/api/prisma/seed-initial-services.ts`, `seedRoleWithPermissions`,
+plus the `viewPermissionCodes` list). Production runs `prisma migrate deploy` and never runs the
+seed, so a grant added only to the seed never reaches production. CP-23 catches the seed edit, but
+every grant then needs a migration written by hand from the precedent
+`20260804120000_grant_field_worker_expenses`.
 
-## Goal
+## The shape (option B)
 
-Make role->permission assignments declarative in code with a deterministic path to production, so a
-grant is a one-line map edit and dev-seed + prod converge by construction.
+```
+role-grant-registry.ts  (the map: role name -> permission codes, the ONE place grants are declared)
+        |
+        |  pnpm --filter @project-ops/api grants:write      (a person runs it, never CI, never boot)
+        v
+migrations/<ts>_role_grants_<slug>/migration.sql   (insert-if-absent, generated from map minus lock)
+role-grants.lock.json                               (updated: what migrations have now delivered)
+        |
+        |  jest spec in CI: map == lock, or fail with the exact command to run
+        v
+seed-initial-services.ts reads the same map  ->  dev seed and production cannot drift
+```
+
+## Grounded on origin/main a9751066 - re-verify before you edit
+
+- `seedRoleWithPermissions(name, description, permissionCodes)` at `seed-initial-services.ts:82-105`
+  (additive: `createMany` + `skipDuplicates`). Called for Project Manager (:115), Senior Estimator
+  (:147), WHS Officer (:169), Accounts (:195), Warehouse Manager (:217), Field Worker (:243).
+- `viewPermissionCodes` list at `:47-66`, granted at `:68`. Admin / Planner / Field are fetched with
+  `findUniqueOrThrow` at `:36-38` - find out exactly which codes each receives in the seed.
+- `RolePermission` at `schema.prisma:459`, `@@unique([roleId, permissionId])`, no code column - a
+  grant is matched through `roles.name` and `permissions.code`.
+- Precedent SQL: `apps/api/prisma/migrations/20260804120000_grant_field_worker_expenses/` - DO $$
+  block, insert-if-absent with `ON CONFLICT DO NOTHING`, `RAISE NOTICE` and skip when the role or
+  permission is absent, id `'rp-fieldworker-' || REPLACE(code,'.','-')`, manual reverse documented.
+  **Copy that shape exactly.**
+- `apps/api` runs scripts with `tsx` (see the `seed*` scripts in `apps/api/package.json`). It has
+  no `resolveJsonModule` - read the lock with `fs.readFileSync` + `JSON.parse`, never `import`.
+- Latest migration on main: `20260917193000_transport_capacity_column_order`.
 
 ## What to build
 
-1. **A role->permissions map as the single source of truth** — e.g.
-   `apps/api/src/common/permissions/role-permission-registry.ts`: for each seeded role
-   (`"Field Worker"`, etc.) list its permission codes. This becomes the ONE place grants are declared.
-2. **`PermissionsService.syncRolePermissions()`** — mirrors `syncRegistry()`: for each role in the
-   map, ensure the `role_permissions` rows exist (insert-if-absent, matched by role name + permission
-   code). Runs at boot, right after `syncRegistry()` (so permission + role rows already exist).
-3. **`seedRoleWithPermissions` consumes the SAME map** — delete the inline permission-code arrays in
-   `seed-initial-services.ts` and read them from the registry, so seed and reconciler can never drift.
-4. **Audit, never silent (respect sot/05's anti-silent-drift lesson):**
-   - Log at boot exactly which grants it ADDED (role + codes + count).
-   - **ADDITIVE ONLY** — it must NEVER delete or overwrite a `role_permissions` row it doesn't know
-     about. Directors can grant extra permissions to a role in the UI; the reconciler must not strip
-     those. It only ensures the code-declared minimums exist.
+1. **`apps/api/src/common/permissions/role-grant-registry.ts`**
+   - `export const ROLE_GRANT_REGISTRY_V1 = "permission-role-reconciler";`
+   - `export const ROLE_GRANTS: Readonly<Record<string, readonly string[]>>` - role name -> sorted,
+     de-duplicated permission codes.
+   - **It must reproduce today's seed grants exactly** - every role the seed grants by an explicit
+     code list, including the `viewPermissionCodes` role and the Field Worker `baseView` spread.
+     Same roles, same codes, nothing added, nothing dropped. A role the seed grants "every
+     permission" (if any) stays out of the map and keeps its current seed code.
+   - Every code in the map must exist in `permission-registry.ts` (asserted by the spec).
+   - A header comment of at most 15 lines explaining the workflow: edit map -> run
+     `grants:write` -> commit the migration + lock -> PR carries `GATE-ALLOW: migrations`.
+
+2. **`apps/api/src/common/permissions/role-grant-diff.ts`** - pure functions, no Prisma:
+   - `diffGrants(map, lock) -> { added: {role, code}[], removed: {role, code}[] }`, sorted.
+   - `renderGrantMigration(added, timestampUtc) -> string` - one DO $$ block in the precedent's
+     shape: per grant, look the role up **by name** and the permission **by code**; if either is
+     missing `RAISE NOTICE` and skip; otherwise insert-if-absent. Id:
+     `'rp-' || <role slug> || '-' || REPLACE(code,'.','-')` (role slug = lower-case, non-alnum ->
+     `-`). A trailing comment block lists the manual reverse, as in the precedent.
+   - **Never creates a role. Never deletes or updates a `role_permissions` row.**
+
+3. **`apps/api/prisma/role-grants.ts`** (run with `tsx`) and three `apps/api/package.json` scripts:
+   - `grants:write` - computes `diffGrants(ROLE_GRANTS, lock)`. If `added` is non-empty, writes
+     `prisma/migrations/<UTC yyyymmddHHMMSS>_role_grants_<first-role-slug>/migration.sql` from
+     `renderGrantMigration`. Then rewrites the lock to equal the map (sorted keys, sorted codes,
+     2-space JSON, trailing newline). **Removals generate no SQL** - they only update the lock and
+     print: `removed from map, NOT revoked in any database: <role> <code>`.
+   - `grants:check` - exits 1 with the diff if map != lock, else prints `role grants: map == lock`.
+   - `grants:report` - read-only. Connects to `DATABASE_URL`, lists every map grant that DB is
+     missing, and prints the SQL `grants:write` would generate for them. **SELECT only.** It never
+     writes. (Marco runs it against production himself; this PR and its builder never do - Azure
+     is a hard stop.)
+
+4. **`apps/api/prisma/role-grants.lock.json`** - bootstrapped **equal to the map**, with **no
+   migration**. Reason: this PR changes where grants are declared, not which grants exist. Any
+   existing production gap is surfaced by `grants:report`, and closing it is a separate decision.
+
+5. **`seed-initial-services.ts` reads the map.** Replace each inline code array with
+   `ROLE_GRANTS["<role name>"]`. `seedRoleWithPermissions` keeps its signature and stays additive.
+   Behaviour of the dev seed must be byte-identical: same roles, same grants.
+
+6. **`apps/api/src/modules/permissions/__tests__/role-grant-registry.spec.ts`** - runs in the
+   existing api jest job (confirm which CI job runs `apps/api` jest and name it in the PR body):
+   - map == lock; on failure the message is exactly:
+     `role grants changed without a migration - run: pnpm --filter @project-ops/api grants:write` followed by
+     the diff.
+   - every code in the map exists in `PERMISSION_REGISTRY` (or whatever the registry export is).
+   - `renderGrantMigration` snapshot for a two-grant fixture: contains `ON CONFLICT DO NOTHING`,
+     `RAISE NOTICE`, and contains none of `DELETE`, `UPDATE`, `TRUNCATE`, `INSERT INTO "roles"`.
+   - `diffGrants` reports a removal without producing SQL for it.
 
 ## Do NOT
-- Do NOT remove, rewrite, or "true-up-by-deleting" any existing grant. Additive only.
-- Do NOT weaken or remove CP-23 in this PR. (A follow-up may argue CP-23 can treat map-driven grants as
-  covered — but that is a separate, reviewed change, not this one.)
-- Do NOT touch Azure / Entra / SharePoint, or change any permission's semantics.
-- Do NOT change the permission-registry definitions; this is only about role->permission *assignments*.
+- Do NOT write to any database at boot, on module init, or from CI. No `onModuleInit`, no
+  `onApplicationBootstrap`, no reconciler service.
+- Do NOT generate a migration in this PR. Do NOT add, remove or change any grant.
+- Do NOT revoke anything, ever. Directors grant extras in the Roles screen; those must survive.
+- Do NOT create roles. A role missing from a database is skipped with a NOTICE.
+- Do NOT touch `permission-registry.ts` definitions, `roles.service.ts`, CP-23 or `pr-gates.mjs`.
+- Do NOT run `grants:report` against anything but the local Docker DB. Do NOT touch Azure /
+  Entra / SharePoint.
 
 ## Verify
-- `pnpm build` + `pnpm lint` pass.
-- A unit test proves `syncRolePermissions()` is idempotent and additive (running twice adds nothing;
-  a pre-existing extra grant survives).
-- `grep -rq "syncRolePermissions" apps/api/src` is true.
+- `pnpm build` + `pnpm lint` pass; `pnpm --filter @project-ops/api test -- role-grant-registry` passes.
+- `pnpm --filter @project-ops/api grants:check` prints `role grants: map == lock`.
+- Seed parity: run `pnpm --filter @project-ops/api seed` against the local Docker DB before and after your change
+  and diff `SELECT r.name, p.code FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN
+  permissions p ON p.id = rp.permission_id ORDER BY 1,2`. The two outputs must be identical; paste
+  the row count in the PR body.
+- Add one fake grant to the map locally, run `grants:write`, confirm a migration folder and lock
+  change appear, then **discard both** - do not commit them. Say in the PR body that you did.
+
+## PR body must carry (column 0, bare)
+```
+SEED-ONLY: dev  -- seed now reads grant arrays from role-grant-registry; no grant added or removed
+```
+(CP-23: this PR edits the seed without a migration, and on purpose.)
 
 ## STANDING AUTHORITY
 
@@ -72,7 +154,6 @@ grant is a one-line map edit and dev-seed + prod converge by construction.
 > indistinguishable from failing** -- the work is discarded either way.
 
 ## Guardrails
-- One attempt. Never exit silently -- say `NO-OP: <reason>` if already done.
-- Never ask a question or "stand by" for approval. Read the CI job log before diagnosing a failure.
-- `pnpm build` + `pnpm lint` must pass. This is a permission change: label the PR do-not-merge so a
-  human reviews the reconciler before it lands.
+- One attempt. Already on `main` -> `NO-OP: <reason>`. Never ask a question or stand by.
+- Read the CI job log before diagnosing a failure. `pnpm build` + `pnpm lint` must pass.
+- This is an authorisation change: label the PR `do-not-merge` so Marco reviews it before it lands.

@@ -92,7 +92,7 @@ import { DataModelMapPage } from "./pages/admin/DataModelMapPage";
 import { FieldDefinitionAdminPage } from "./pages/admin/FieldDefinitionAdminPage";
 import { XeroExchangePage } from "./pages/admin/XeroExchangePage";
 import { AiSettingsPage } from "./personas/pages/AiSettingsPage";
-import { SettingsShell, AdminOnly, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";
+import { SettingsShell, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";
 import { ContractsListPage } from "./pages/contracts/ContractsListPage";
 import { ContractDetailPage } from "./pages/contracts/ContractDetailPage";
 import { HandoverWizardPage } from "./pages/handover/HandoverWizardPage";
@@ -424,9 +424,9 @@ export function App() {
               <Route
                 path="company"
                 element={
-                  <AdminOnly>
+                  <RequirePermissions perms={["company.manage"]}>
                     <AdminCompanyPage />
-                  </AdminOnly>
+                  </RequirePermissions>
                 }
               />
               <Route path="ai" element={<AiSettingsPage />} />

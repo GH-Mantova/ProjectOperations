@@ -1,7 +1,7 @@
 ---
 station: 06-pr-master
 station_doc_version: 1
-contract_version: 1
+contract_version: 3
 ---
 
 <!-- STATION FILE. The scheduled task is a THIN BOOTSTRAP that reads THIS.

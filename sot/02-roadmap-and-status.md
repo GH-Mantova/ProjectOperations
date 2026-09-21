@@ -58,15 +58,19 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (1)
+## 2. 🔧 In-PR — open right now (5)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-21T00:20Z**, `origin/main`
-> 875e1076). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-21T14:25Z**, `origin/main`
+> 524158cd). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
 | PR | Title | Notes |
 |---|---|---|
-| #2017 | feat(crm): S6 — Review-and-link preview as the artboard's dialog on the s7 kit (`CRM_PARITY_BULKLINK_V1`) | BLOCKED; CI 13 pass / 2 fail / 0 pending. Both reds have ONE cause and are parked by design: the gate's own verdict line, read from column 3 of the CP-26 job log, is `FAIL - CP-26 approval-receipt [LABEL_PRESENT]`, and `gh pr view 2017 --json labels` returns `do-not-merge`. `API — lint, test, compliance smoke` **passes** on this PR. Only Marco removes the label |
+| #2051 | feat(map-locations): OPS_M2B_TIPPING_V1 — job Tipping tab + half-yearly price-review reminder | BEHIND; CI 10 pass / 3 fail / 2 pending — RED, opened 14:07:56Z |
+| #2049 | fix(pipeline): lint-station compares contract_version, not station_doc_version | UNKNOWN (mergeability still computing); CI 15 pass / 0 fail / 0 pending — green |
+| #2047 | feat(permissions): role-grant registry v1 — single map drives seed and migrations | BLOCKED; CI 13 pass / 2 fail / 0 pending — RED |
+| #2044 | feat(crm): S8 — Threads, To-dos and the rail on the s7 kit (`CRM_PARITY_THREADS_V1`) | BLOCKED; CI 13 pass / 2 fail / 0 pending — RED |
+| #2042 | feat(client-quotes): scopecards S4b — push panel + diff + grouped Cost Summary (`QUOTE_PUSH_PANEL_V1`) | CLEAN; CI 15 pass / 0 fail / 0 pending — green |
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z
@@ -87,8 +91,13 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 > exiting 1. Meanwhile #2017 opened and is the only PR on the board (`gh pr list --state open` → 1).
 > **Only the snapshot was refreshed — no roadmap STATUS semantics were changed.**
 >
-> ⚠️ **This is the THIRD consecutive refresh of the same table by this station (09-06, 09-17,
-> 09-21), and the rot is structural, not accidental.** A hand-maintained snapshot of a live board
+> ⚠️ **This is now the FOURTH consecutive refresh of the same table by this station (09-06,
+> 09-17, 09-21T00:20Z, 09-21T14:25Z), and the rot is structural, not accidental.** The 09-21T00:20Z
+> refresh named #2017 as the only open PR; **#2017 MERGED at `2026-09-21T06:09:36Z`** — read from
+> `state`/`mergedAt` via `gh pr view 2017`, negative control `gh pr view 999997` exiting 1 — so the
+> snapshot was wrong **14 hours** after it was written, and wrong about **5 of 5** PRs now open.
+> A refresh interval shorter than this station's own cadence is the measurement that settles it:
+> **this table cannot be kept true by a daily station.** A hand-maintained snapshot of a live board
 > goes stale the moment the board moves, and it carries no probe that would tell a reader it has.
 > The refresh is the additive half of RULE 1 and it does not solve the future half: what would is
 > a generated table or a CI check that fails when a PR named here is no longer open. Both are

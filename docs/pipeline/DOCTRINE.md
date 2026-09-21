@@ -1195,6 +1195,34 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   extension-keyed form ever returns 17, this correction is wrong and must be re-measured. Found by
   Station 04 2026-09-15T02:1xZ (F1), landed by Station 00 at 02:4xZ.
 
+  🔴🔴 **CORRECTED 2026-09-21 — THE PROBE’S CORPUS IS STATED AS A COUNT (“the same nine
+  files”), WHICH IS THE FORMULATION `STATION-CAPABILITIES.md` §1 ALREADY FORBIDS, AND THE
+  PER-DOCUMENT PREDICTION OMITS `00-supervisor.md` ENTIRELY — SO A RUN THAT REBUILDS THE PROBE
+  OVER THE STATION DOCS FINDS TWO UNLISTED CITATIONS AND HAS THIS BULLET’S OWN SENTENCE — *“if a
+  NEW raw line citation ever appears in a station doc, this clause is being ignored rather than
+  being wrong”* — TO HAND, AND RE-OPENS CLOSED WORK.** `CITATION_PROBE_CORPUS_IS_A_COUNT_V1`
+  [MEASURED] 2026-09-21T00:0xZ by Station 04 (F2) and re-measured row-for-row by Station 00 at
+  `c5744acf`: `C:\Users\Marco\Claude\Scheduled` holds **11** `SKILL.md`, of which **4** sit behind
+  tasks the scheduled-tasks MCP reports `enabled: true` (`00-supervisor`, `03-machine-minder`,
+  `04-scanner`, `05-sot-keeper`; `weekly-security-audit` is `enabled: false`) — so “five” is wrong
+  in **both** directions; and `docs/pipeline/stations/` holds **7** station docs (`00`–`06`), not
+  four. **`00-supervisor.md` carries two `.gitignore` citations the prediction does not list**, and
+  both resolve correctly: the gitignored-sinks list in its REPORT CONTRACT section (anchor: the
+  sentence beginning *“plus anything under”*) and the `-ready.md` note in its ARM ONE AT A TIME
+  bullet (anchor: *“which `.gitignore`”* in that bullet). They are named by anchor here rather than
+  by line number, per this subsection’s own opening rule.
+
+  🔧 **State the corpus as a RULE, never as a count, exactly as `STATION-CAPABILITIES.md` §1
+  requires: every `SKILL.md` behind an ENABLED task in the scheduled-tasks MCP, plus all SEVEN
+  station docs, plus `DOCTRINE.md`, `STATION-CAPABILITIES.md` and `CLAUDE.md`.** The per-document
+  prediction gains one row and loses none: **`00-supervisor.md` → 2**. ⚠️ **Nothing above is
+  retired** — the dotfile-tolerant regex, the extension-keyed blindness and every other row stand
+  exactly as measured; what is corrected is the corpus spec and the one missing prediction row.
+  ⚠️ **Those counts are STATE — re-measure them, never quote them.** ⚠️ **Falsifying probe: run
+  both regex forms over the corpus as now stated and read the per-document counts.** If
+  `00-supervisor.md` ever returns **0** `.gitignore` citations, this correction is wrong and must
+  be re-measured. Found by Station 04 2026-09-21T00:0xZ (F2), landed by Station 00 at 01:4xZ.
+
 - 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
   `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs
   `execFileSync(process.env.LINT_GIT_BIN || "git", ["show", "origin/main:<path>"])` and on failure

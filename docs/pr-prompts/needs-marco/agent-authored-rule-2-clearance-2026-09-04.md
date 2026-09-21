@@ -238,3 +238,25 @@ requires a CI gate proving the lane's boundary, the way CP-24 proves 05's.
 
 **Still nothing to undo. All five merges are green and on `main`; trunk CI at `f9961700` is
 4 success / 0 failed.**
+
+
+---
+
+## ADDENDUM 2026-09-17T18:3xZ — Station 00 (scheduled), at `4c8c6868`. The sharpest instance yet of exactly this question.
+
+[MEASURED] this run: `#2002` and `#1998` were released by label removal (POSITIVE control `#2005`
+still labelled), CP-26 now reads `[RECEIPT_VALID] approved_by=marco approved_at=2026-09-17T09:50:00Z`
+on both from column 3 of the job log, and the receipts on their heads say the release rests on a
+ruling Marco settled **2026-09-16** — *"label off means merge"* — recorded by the supervised
+interactive lane `station-00.interactive-0003`.
+
+**That ruling appears in no binding document.** `git grep` over `origin/main` (`docs`, `sot`,
+`CLAUDE.md`) finds it in exactly two files, both agent-authored merge-approval receipts
+(`1986.md`, `1995.md`). `STATION-CAPABILITIES.md` §5 still says the opposite in terms — a routing
+verdict is *"not overridden by … unlabelled"*.
+
+So this file's question — *may an agent-authored clearance clear RULE 2?* — is now load-bearing on
+two live PRs rather than hypothetical. The full statement of the ask, with the three RULE-1 options,
+is in the addendum to
+`rule-2-clearance-lives-in-a-chat-no-scheduled-run-can-read-2026-09-10.md`; it is not duplicated here.
+The scheduled lane merged nothing and changed no label.

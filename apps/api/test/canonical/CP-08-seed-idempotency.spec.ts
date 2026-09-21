@@ -386,3 +386,27 @@ describe("Canonical CP-08 — pnpm seed:prod is idempotent and demo-free", () =>
     }
   });
 });
+
+describe("Canonical CP-08 — transport capacity column order", () => {
+  let prisma: PrismaClient;
+  beforeAll(() => { prisma = new PrismaClient(); });
+  afterAll(async () => { await prisma.$disconnect(); });
+
+  it("orders rt-tc KEY columns as transport-type then material-class", async () => {
+    const keys = await prisma.rateColumn.findMany({
+      where: { rateTable: { slug: "transport-capacity" }, role: "KEY" },
+      orderBy: { sortOrder: "asc" },
+      select: { name: true, sortOrder: true }
+    });
+    expect(keys.map((c) => c.name)).toEqual(["Transport type", "Material class"]);
+  });
+
+  it("orders rt-tc VALUE columns as m³ then tonnes", async () => {
+    const values = await prisma.rateColumn.findMany({
+      where: { rateTable: { slug: "transport-capacity" }, role: "VALUE" },
+      orderBy: { sortOrder: "asc" },
+      select: { name: true }
+    });
+    expect(values.map((c) => c.name)).toEqual(["Capacity (m³)", "Capacity (tonnes)"]);
+  });
+});

@@ -303,3 +303,103 @@
    added above — the page uses crm-page-head, crm-filter-chip, crm-cell-sub,
    crm-avatar, and s7-badge which are all defined earlier in this file or in
    the kit. This comment anchors the S4 section for future additions. */
+
+/* ── Follow-ups SHOW toggles — crmvis-S5 ─────────────────────────────────── */
+
+/* Container — one flex row that wraps on narrow viewports, matching the
+   artboard's single SHOW row. The label is an s7-type-label in markup. */
+.crm-toggle-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Base pill — 30px tall, outlined by default. */
+.crm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+/* Filled state — brand-primary fill, white text, brand border. */
+.crm-toggle--on {
+  background: var(--brand-primary);
+  color: var(--text-inverse);
+  border-color: var(--brand-primary);
+}
+
+/* Status dots — small circles, inline with the toggle label. */
+.crm-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.crm-dot--danger {
+  background: var(--status-danger);
+}
+
+.crm-dot--warning {
+  background: var(--status-warning);
+}
+
+.crm-dot--neutral {
+  background: var(--status-neutral);
+}
+
+.crm-dot--active {
+  background: var(--status-active);
+}
+
+/* ── KPI stripe variants — crmvis-S5 ─────────────────────────────────────── */
+
+/* Left stripe: 3px coloured left border on the s7-card.
+   Value ink is the matching semantic colour.
+   Compose as: s7-card crm-kpi crm-kpi--stripe-<variant> on the card element. */
+
+.crm-kpi--stripe-danger {
+  border-left: 3px solid var(--status-danger);
+}
+
+.crm-kpi--stripe-danger .crm-kpi__value {
+  color: var(--status-danger);
+}
+
+.crm-kpi--stripe-warning {
+  border-left: 3px solid var(--status-warning);
+}
+
+.crm-kpi--stripe-warning .crm-kpi__value {
+  color: var(--status-warning);
+}
+
+.crm-kpi--stripe-neutral {
+  border-left: 3px solid var(--status-neutral);
+}
+
+.crm-kpi--stripe-neutral .crm-kpi__value {
+  color: var(--status-neutral);
+}
+
+.crm-kpi--stripe-primary {
+  border-left: 3px solid var(--brand-primary);
+}
+
+.crm-kpi--stripe-primary .crm-kpi__value {
+  color: var(--brand-primary);
+}

@@ -1020,6 +1020,70 @@ case is **not** re-measured here and its row stands as written.
 and the disk copy and count `\r\n` in each. If the blob ever carries CRLF, this correction is wrong
 and must be re-measured. Found and landed by Station 00 2026-09-21T18:4xZ.
 
+🔴🔴 **CORRECTED 2026-09-21T21:5xZ — THE DISCRIMINATOR HAS ONLY TWO BRANCHES AND SOME BLOBS ARE
+**MIXED**: `.arming-log.txt`'s BLOB CARRIES BOTH, SO THE CONVERT-ON-WRITE BRANCH CORRUPTS IT AND
+THE BYTE-EXACT RAW WRITE — WHICH NEITHER BRANCH PRESCRIBES ON ITS OWN — IS WHAT LETS THE
+FAST-FORWARD THROUGH.** `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1`
+
+[MEASURED] 2026-09-21T21:4xZ by Station 00 (scheduled) at `a138460e` → `62d66311`, on
+`docs/pr-prompts/.arming-log.txt` after this run's own board PR `#2063` merged. The discriminator
+two corrections above says to *dump the blob and the disk copy and count `\r\n` in each* — that
+rule is right, and its two named outcomes are not exhaustive:
+
+| probe | result |
+|---|---|
+| `git show HEAD:docs/pr-prompts/.arming-log.txt` bytes | **23089 B, CRLF=138, bare LF=2** — the blob is **MIXED**, not LF and not CRLF |
+| the working copy on disk | 23280 B, CRLF=139, bare LF=2 |
+| `git diff --numstat origin/main -- <path>` | `2 2` — insertions AND deletions, so **not** the append-only superset shape; nothing local-only to lose |
+| **convert-on-write** cure applied (`replace(/\r\n/g,'\n').replace(/\n/g,'\r\n')`) | disk **23091 B** — it normalised the blob's own 2 bare-LF lines into CRLF, i.e. **+2 B against a byte-exact target** |
+| `git update-index --refresh` after convert-on-write | `docs/pr-prompts/.arming-log.txt: needs update`, **exit 1** |
+| `git merge --ff-only origin/main` after convert-on-write | `error: Your local changes … would be overwritten by merge` — **REFUSED** |
+| **raw-Buffer** restore (`fs.writeFileSync(abs, blob)`, no decode, no conversion) | disk **23089 B**, `byteExact=true` |
+| `git update-index --refresh` after the raw write | **exit 0**, `--porcelain` (tracked) **EMPTY** |
+| `git merge --ff-only origin/main` after the raw write | **fast-forwarded on the first attempt** |
+
+🔴 **Why the convert-on-write branch is actively wrong here rather than merely unnecessary.** It is
+written as a cure for *blob LF / checkout CRLF*, and it reaches its target by rewriting **every**
+line ending. On a mixed blob that is a content change: the two bare-LF lines this file happens to
+carry become CRLF, the result is two bytes longer than the blob it was supposed to reproduce, and
+the tree is left in exactly the blocked state the cure exists to clear. Nothing warns — the write
+succeeds, the byte count looks plausible, and only `update-index --refresh`'s exit code dissents.
+
+🔴 **And the renormalize branch is not reached either.** The existing text assigns `.arming-log.txt`
+to the *blob CRLF / checkout LF* row and its `git add --renormalize` → `git restore --staged` cure.
+That cure was **not needed**: after the raw write, `update-index --refresh` exited 0 on the first
+call, so there was nothing to renormalize and nothing to unstage. A run that follows the row as
+written performs two index mutations against a tree that was already clean.
+
+🔧 **So state the restore as the raw form first, and let the two EOL branches be the fallback:**
+**write the blob back as a Buffer, unmodified — `fs.writeFileSync(abs, execFileSync('git',
+['show','HEAD:'+rel]))` — then `git update-index --refresh`. Exit 0 ⇒ done, fast-forward.** Only
+if it exits non-zero do you dump both sides, count `\r\n`, and pick convert-on-write or
+renormalize. The raw write cannot be wrong about a blob's own bytes, which is more than either
+EOL branch can claim, and it is one call shorter in the common case.
+
+⚠️ **The same raw write cleared a second blocker in the same run, and that one is not an EOL case
+at all:** `pr-scopecards-s5-charge-steps-price-cutting-HOLD.md` was sitting as an unstaged ` D`
+(the prompt had been armed, and this run's PR landed its retirement). Restoring it byte-exactly
+from `HEAD` — 21106 B, `byteExact=true` — let the fast-forward delete it cleanly. **A deleted
+tracked file blocks the FF exactly like a modified one, and the sections above only ever discuss
+modified ones.** All four read-backs then passed together: `0\t0`, `--numstat` EMPTY, `--cached`
+EMPTY, `--porcelain` (tracked) EMPTY, with the content proof green — this run's breadcrumb tracked
+on disk, the spent HOLD gone, the `19:31:53Z` arming line present, the archived predecessor in
+`archive/`.
+
+⚠️ **Nothing above is retired.** The discriminator, the convert-on-write cure for a genuinely
+LF blob, the `restore --staged` cure for a genuinely CRLF one, and the append-only save →
+restore → FF → reapply sequence all stand exactly as measured; the `git diff --numstat origin/main`
+superset guard ran first here and is what proved the restore was safe. What is added is a third
+blob shape the two-branch table cannot express, and a cheaper first move for all three.
+
+⚠️ **Falsifying probe: the table above.** Dump `git show HEAD:docs/pr-prompts/.arming-log.txt` and
+count `\r\n` and bare `\n` separately. If the blob is ever pure CRLF or pure LF, this correction
+does not apply to that revision and the two-branch table is sufficient for it. If a raw-Buffer
+restore is ever followed by a non-zero `git update-index --refresh`, the first-move claim is wrong
+and must be re-measured. Found and landed by Station 00 2026-09-21T21:5xZ.
+
 ⚠️ **Falsifying probe: the table above.** Restore any CRLF-checked-out prompt with a byte-exact
 `git show HEAD:` write and run `git update-index --refresh`. If it ever exits 0, this correction is
 wrong and must be re-measured. Found and landed by Station 00 2026-09-21T17:5xZ.

@@ -8,6 +8,7 @@ import { throwIfApiError } from "../../lib/api-errors";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
 import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
 import { GanttChart, type GanttTask } from "./GanttChart";
+import { ProjectTippingTab } from "./ProjectTippingTab";
 
 type Person = { id: string; firstName: string; lastName: string; email?: string } | null;
 
@@ -55,7 +56,7 @@ type ActivityResponse = {
   limit: number;
 };
 
-type Tab = "overview" | "scope" | "schedule" | "diary" | "documents" | "team" | "activity";
+type Tab = "overview" | "scope" | "schedule" | "diary" | "documents" | "team" | "tipping" | "activity";
 
 const TAB_LABEL: Record<Tab, string> = {
   overview: "Overview",
@@ -64,6 +65,7 @@ const TAB_LABEL: Record<Tab, string> = {
   diary: "Daily Diary",
   documents: "Documents",
   team: "Team",
+  tipping: "Tipping",
   activity: "Activity"
 };
 
@@ -244,7 +246,7 @@ export function ProjectDetailPage() {
       </header>
 
       <nav className="admin-page__tabs" role="tablist" aria-label="Project sections">
-        {(["overview", "scope", "schedule", "diary", "documents", "team", "activity"] as Tab[]).map((key) => {
+        {(["overview", "scope", "schedule", "diary", "documents", "team", "tipping", "activity"] as Tab[]).map((key) => {
           const isActive = tab === key;
           return (
             <button
@@ -292,6 +294,11 @@ export function ProjectDetailPage() {
       {tab === "team" && (
         <div role="tabpanel" id="project-tabpanel-team" aria-labelledby="project-tab-team">
           <TeamTab project={project} onProjectUpdated={() => void reload()} />
+        </div>
+      )}
+      {tab === "tipping" && (
+        <div role="tabpanel" id="project-tabpanel-tipping" aria-labelledby="project-tab-tipping">
+          <ProjectTippingTab projectId={project.id} />
         </div>
       )}
       {tab === "activity" && (
@@ -401,7 +408,7 @@ function PersonCard({ role, person }: { role: string; person: Person }) {
           width: 40,
           height: 40,
           borderRadius: "50%",
-          background: person ? "var(--brand-accent, #FEAA6D)" : "var(--surface-subtle, rgba(0,0,0,0.05))",
+          background: person ? "var(--brand-accent)" : "var(--surface-subtle, rgba(0,0,0,0.05))",
           color: "#3E1C00",
           display: "flex",
           alignItems: "center",
@@ -856,7 +863,7 @@ function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProj
                   <tr key={w.id}>
                     <td>
                       {w.workerProfile ? (
-                        <Link to={`/workers/${w.workerProfile.id}`} style={{ color: "var(--brand-accent, #FEAA6D)" }}>
+                        <Link to={`/workers/${w.workerProfile.id}`} style={{ color: "var(--brand-accent)" }}>
                           {name}
                         </Link>
                       ) : (
@@ -921,7 +928,7 @@ function TeamTab({ project, onProjectUpdated }: { project: ProjectDetail; onProj
                   <tr key={a.id}>
                     <td>
                       {a.asset ? (
-                        <Link to={`/assets/${a.asset.id}`} style={{ color: "var(--brand-accent, #FEAA6D)" }}>
+                        <Link to={`/assets/${a.asset.id}`} style={{ color: "var(--brand-accent)" }}>
                           {name}
                         </Link>
                       ) : (
@@ -1609,7 +1616,7 @@ function GanttListView({
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead style={{ background: "var(--surface-muted, #f6f6f6)" }}>
+        <thead style={{ background: "var(--surface-subtle)" }}>
           <tr>
             {["Task", "Discipline", "Start", "End", "Progress", "Assignee"].map((h) => (
               <th
@@ -1629,7 +1636,7 @@ function GanttListView({
         </thead>
         <tbody>
           {tasks.map((t) => (
-            <tr key={t.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+            <tr key={t.id} style={{ borderTop: "1px solid var(--border-default)" }}>
               <td style={{ padding: "6px 8px" }}>
                 <strong>{t.title}</strong>
               </td>

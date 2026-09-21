@@ -18,7 +18,6 @@ import {
 } from "@nestjs/swagger";
 import {
   IsBoolean,
-  IsDecimal,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -68,7 +67,7 @@ export class MapLocationsController {
   constructor(private readonly service: MapLocationsService) {}
 
   @Get()
-  @ApiOperation({ summary: "List active map locations. Filter by ?kind=TIP|POI. TIPs include ratesStatus." })
+  @ApiOperation({ summary: "List active map locations. Filter by ?kind=TIP|POI. TIPs include ratesStatus and review dates." })
   @ApiQuery({ name: "kind", required: false, enum: ["TIP", "POI"] })
   @ApiResponse({ status: 200, description: "Array of map locations." })
   list(@Query("kind") kind?: string) {
@@ -111,9 +110,30 @@ export class MapLocationsController {
   })
   @ApiResponse({ status: 200, description: "Updated location." })
   @ApiResponse({ status: 404, description: "Not found." })
-  @ApiResponse({ status: 409, description: "Facility rename blocked — rate rows reference old name." })
+  @ApiResponse({ status: 409, description: "Facility rename blocked -- rate rows reference old name." })
   update(@Param("id") id: string, @Body() dto: UpdateMapLocationDto) {
     return this.service.update(id, dto);
+  }
+
+  /**
+   * Mark a TIP's prices as reviewed today.
+   * Sets pricesReviewedAt = now(), returns the updated location including nextReviewAt.
+   * Only valid for kind = TIP; returns 400 for POIs.
+   * Requires masterdata.manage.
+   */
+  @Patch(":id/prices-reviewed")
+  @RequirePermissions(MAP_LOCATION_PERMISSION)
+  @ApiOperation({
+    summary: "Mark a TIP's prices as reviewed today (ops-m2b). Requires masterdata.manage.",
+    description:
+      "Sets pricesReviewedAt = now() on a TIP MapLocation. Returns 400 if kind != TIP. " +
+      "nextReviewAt = pricesReviewedAt + 182 days is derived and returned."
+  })
+  @ApiResponse({ status: 200, description: "Updated location with pricesReviewedAt and nextReviewAt." })
+  @ApiResponse({ status: 400, description: "Location is not a TIP." })
+  @ApiResponse({ status: 404, description: "Not found." })
+  markPricesReviewed(@Param("id") id: string) {
+    return this.service.markPricesReviewed(id);
   }
 
   @Delete(":id")

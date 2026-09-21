@@ -4,6 +4,46 @@ import { AddressAutocomplete, type AddressSuggestion } from "../../components/Ad
 import { LocationsMap } from "../../components/LocationsMap";
 import { useConfirm } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
+
+// ---- Price review helpers --------------------------------------------------
+
+function fmtReviewDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+/** Returns the chip content and variant for the Next review cell */
+function reviewChip(nextReviewAt: string | null | undefined): {
+  label: string;
+  variant: "overdue" | "never" | "ok";
+  overdueDays?: number;
+  dueDate?: string;
+} {
+  if (!nextReviewAt) {
+    return { label: "Never reviewed", variant: "never" };
+  }
+  const next = new Date(nextReviewAt);
+  const now = new Date();
+  const diffMs = next.getTime() - now.getTime();
+  const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays <= 0) {
+    const overdueDays = Math.abs(diffDays);
+    return {
+      label: `Overdue - ${overdueDays} day${overdueDays === 1 ? "" : "s"}`,
+      variant: "overdue",
+      overdueDays
+    };
+  }
+  return {
+    label: `Due ${fmtReviewDate(nextReviewAt)}`,
+    variant: "ok",
+    dueDate: fmtReviewDate(nextReviewAt)
+  };
+}
 // ── Types ─────────────────────────────────────────────────────────────────
 
 type MapLocationKind = "TIP" | "POI";
@@ -23,6 +63,9 @@ type MapLocation = {
   notes: string | null;
   isActive: boolean;
   ratesStatus?: "set" | "needed";
+  // ops-m2b: price review fields (present on TIP rows only)
+  pricesReviewedAt?: string | null;
+  nextReviewAt?: string | null;
 };
 
 type AddressFields = {
@@ -149,6 +192,11 @@ export function MapLocationsTab() {
   const [flashMsg, setFlashMsg] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+
+  // ops-m2b: mark prices reviewed dialog
+  const [reviewTarget, setReviewTarget] = useState<MapLocation | null>(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Form state — tip from rates
   const [selectedFacility, setSelectedFacility] = useState("");
@@ -369,6 +417,25 @@ export function MapLocationsTab() {
     }
   };
 
+  const handleMarkReviewed = async () => {
+    if (!reviewTarget) return;
+    setReviewSaving(true);
+    setReviewError(null);
+    try {
+      const res = await authFetch(`/map-locations/${reviewTarget.id}/prices-reviewed`, {
+        method: "PATCH"
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not mark prices reviewed."));
+      flash(`Prices marked reviewed for "${reviewTarget.name}".`);
+      setReviewTarget(null);
+      await load();
+    } catch (err) {
+      setReviewError((err as Error).message);
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
   return (
     <section className="s7-card">
       <h2 className="s7-type-section-heading" style={{ marginTop: 0 }}>Map locations</h2>
@@ -394,7 +461,7 @@ export function MapLocationsTab() {
             style={{
               padding: "6px 14px",
               borderRadius: 999,
-              border: `1px solid ${filter === f ? "#005B61" : "var(--border, #e5e5e5)"}`,
+              border: `1px solid ${filter === f ? "var(--brand-primary)" : "var(--border-default)"}`,
               background: filter === f ? "#005B61" : "transparent",
               color: filter === f ? "#fff" : "var(--text)",
               fontWeight: filter === f ? 600 : 400,
@@ -438,8 +505,8 @@ export function MapLocationsTab() {
       {addPanel !== null && (
         <div
           style={{
-            background: "var(--surface-muted, #F6F6F6)",
-            border: "1px solid var(--border, #e5e5e5)",
+            background: "var(--surface-subtle)",
+            border: "1px solid var(--border-default)",
             borderRadius: 8,
             padding: 16,
             marginBottom: 20
@@ -631,11 +698,13 @@ export function MapLocationsTab() {
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: "2px solid var(--border, #e5e5e5)", textAlign: "left" }}>
+            <tr style={{ borderBottom: "2px solid var(--border-default)", textAlign: "left" }}>
               <th style={{ padding: "8px 6px" }}>Name</th>
               <th style={{ padding: "8px 6px" }}>Type</th>
               <th style={{ padding: "8px 6px" }}>Address</th>
               <th style={{ padding: "8px 6px" }}>Rates</th>
+              <th style={{ padding: "8px 6px" }}>Prices reviewed</th>
+              <th style={{ padding: "8px 6px" }}>Next review</th>
               <th style={{ padding: "8px 6px" }} />
             </tr>
           </thead>
@@ -649,7 +718,7 @@ export function MapLocationsTab() {
                 }}
                 onClick={() => setSelectedId(loc.id)}
                 style={{
-                  borderBottom: "1px solid var(--border, #f0f0f0)",
+                  borderBottom: "1px solid var(--border-default)",
                   cursor: "pointer",
                   background:
                     selectedId === loc.id
@@ -697,20 +766,163 @@ export function MapLocationsTab() {
                     <span style={{ color: "var(--text-muted)" }}>—</span>
                   )}
                 </td>
+                {/* Prices reviewed (TIP only) */}
+                <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>
+                  {loc.kind === "TIP" ? (
+                    loc.pricesReviewedAt ? (
+                      fmtReviewDate(loc.pricesReviewedAt)
+                    ) : (
+                      <span style={{ color: "var(--text-muted)" }}>&mdash;</span>
+                    )
+                  ) : (
+                    <span style={{ color: "var(--text-muted)" }}>&mdash;</span>
+                  )}
+                </td>
+
+                {/* Next review chip (TIP only) */}
+                <td style={{ padding: "8px 6px" }}>
+                  {loc.kind === "TIP" ? (() => {
+                    const chip = reviewChip(loc.nextReviewAt);
+                    const chipStyle = {
+                      display: "inline-block" as const,
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "1px 7px",
+                      borderRadius: 4,
+                      border: "1px solid",
+                      whiteSpace: "nowrap" as const
+                    };
+                    if (chip.variant === "overdue") {
+                      return (
+                        <span style={{ ...chipStyle, borderColor: "var(--status-danger)", color: "var(--status-danger)", background: "color-mix(in srgb, var(--status-danger) 10%, transparent)" }}>
+                          {chip.label}
+                        </span>
+                      );
+                    }
+                    if (chip.variant === "never") {
+                      return (
+                        <span style={{ ...chipStyle, borderColor: "var(--status-danger)", color: "var(--status-danger)", background: "color-mix(in srgb, var(--status-danger) 10%, transparent)" }}>
+                          Never reviewed
+                        </span>
+                      );
+                    }
+                    return (
+                      <span style={{ ...chipStyle, borderColor: "var(--status-active)", color: "var(--status-active)", background: "color-mix(in srgb, var(--status-active) 10%, transparent)" }}>
+                        {chip.label}
+                      </span>
+                    );
+                  })() : (
+                    <span style={{ color: "var(--text-muted)" }}>&mdash;</span>
+                  )}
+                </td>
+
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost"
-                    onClick={() => void handleDelete(loc)}
-                    style={{ fontSize: 12, color: "var(--status-danger)" }}
-                  >
-                    Deactivate
-                  </button>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    {loc.kind === "TIP" && (
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost"
+                        onClick={() => {
+                          setReviewTarget(loc);
+                          setReviewError(null);
+                        }}
+                        style={{ fontSize: 12 }}
+                      >
+                        Mark prices reviewed
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost"
+                      onClick={() => void handleDelete(loc)}
+                      style={{ fontSize: 12, color: "var(--status-danger)" }}
+                    >
+                      Deactivate
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* ops-m2b: Mark prices reviewed dialog */}
+      {reviewTarget && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setReviewTarget(null);
+              setReviewError(null);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: "var(--surface-card)",
+              border: "1px solid var(--border-default)",
+              borderRadius: 10,
+              padding: "14px 16px",
+              boxShadow: "0 8px 24px rgba(0,0,0,.08)",
+              maxWidth: 420,
+              width: "100%",
+              margin: "0 16px"
+            }}
+          >
+            <h4 style={{ margin: "0 0 6px", fontSize: 14 }}>
+              Mark prices reviewed &mdash; {reviewTarget.name}?
+            </h4>
+            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--text-muted)" }}>
+              This confirms you&apos;ve checked this tip&apos;s gate prices in the rate tables today.
+              The next reminder will be in six months (
+              {(() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 182);
+                return d.toLocaleDateString("en-AU", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric"
+                });
+              })()}
+              ). No price is changed here.
+            </p>
+            {reviewError && (
+              <p style={{ color: "var(--status-danger)", margin: "0 0 10px", fontSize: 13 }}>
+                {reviewError}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => {
+                  setReviewTarget(null);
+                  setReviewError(null);
+                }}
+                disabled={reviewSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => void handleMarkReviewed()}
+                disabled={reviewSaving}
+              >
+                {reviewSaving ? "Saving..." : "Mark reviewed"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </section>

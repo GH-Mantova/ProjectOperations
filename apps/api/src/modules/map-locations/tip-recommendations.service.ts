@@ -5,40 +5,50 @@
  * origin, and writes an append-only TipRecommendationLog row when an operator
  * accepts a recommendation ("use this facility").
  *
- * Service location is a contract — the next slice declares
+ * Service location is a contract -- the next slice declares
  * `requires_file_on_main` against this exact path. Do not rename.
  *
  * Costing (v1):
- *   disposalFee = loadTonnes × resolvedRate  (via RateResolverService, "waste" slug)
- *   travelCost  = haversineKm × 2 × OperationsSettings.travelRatePerKm  (round trip)
+ *   disposalFee = loadTonnes x resolvedRate  (via RateResolverService, "waste" slug)
+ *   travelCost  = haversineKm x 2 x OperationsSettings.travelRatePerKm  (round trip)
  *   totalCost   = disposalFee + travelCost
  *
  * TIPs with no matching EstimateWasteRate row are returned greyed as
- * "not-accepted" with zero costs — the caller renders them separately.
+ * "not-accepted" with zero costs -- the caller renders them separately.
  */
 
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Cron } from "@nestjs/schedule";
+import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
+import { NotificationsService } from "../platform/notifications.service";
+import { EmailService } from "../email/email.service";
 
-// ── Office fallback coordinates (Initial Services — Grice St, Clontarf QLD) ──
+// ---- Version marker (required by done_when gate) ---------------------------
+export const OPS_M2B_TIPPING_V1 = "ops-m2b";
+
+// ---- Office fallback coordinates (Initial Services -- Grice St, Clontarf QLD) -
 // Used when the operator selects "office" as the origin rather than a project.
 const OFFICE_LAT = -27.2495;
 const OFFICE_LNG = 153.1053;
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ---- Price review: 182 days = 6 calendar months (26 weeks) -----------------
+const REVIEW_CYCLE_DAYS = 182;
+
+// ---- Types -----------------------------------------------------------------
 
 export type TipOriginType = "project" | "office" | "tender";
 
 export type ComputeRecommendationsDto = {
-  /** Waste type code — must match a row in EstimateWasteRate.wasteType */
+  /** Waste type code -- must match a row in EstimateWasteRate.wasteType */
   wasteTypeCode: string;
   /** Load size in tonnes (positive non-zero) */
   loadTonnes: number;
   /**
-   * "project" → use the project site's stored coords
-   * "office"  → use OFFICE_LAT/LNG
-   * "tender"  → use the tender's site.centreLat/centreLng (OPS-M3)
+   * "project" -> use the project site's stored coords
+   * "office"  -> use OFFICE_LAT/LNG
+   * "tender"  -> use the tender's site.centreLat/centreLng (OPS-M3)
    */
   originType: TipOriginType;
   /** Required when originType = "project" */
@@ -68,18 +78,42 @@ export type TipRecommendationCard = {
   latitude: number;
   longitude: number;
   distanceKm: number;
-  /** null → no rate row exists for this tip × waste type */
+  /** null -> no rate row exists for this tip x waste type */
   disposalFee: number | null;
   /** null when disposalFee is null */
   travelCost: number | null;
   totalCost: number | null;
-  /** Per-tonne rate resolved for this facility × waste type */
+  /** Per-tonne rate resolved for this facility x waste type */
   ratePerTonne: number | null;
   travelRatePerKm: number | null;
   accepted: boolean;
 };
 
-// ── Haversine ────────────────────────────────────────────────────────────────
+export type TippingLogRow = {
+  id: string;
+  createdAt: string;
+  facilityName: string;
+  wasteTypeCode: string;
+  loadTonnes: string;
+  distanceKm: string;
+  disposalFee: string;
+  travelCost: string;
+  totalCost: string;
+  /** "tender" | "job" -- tender rows were planned before award */
+  source: "tender" | "job";
+  createdBy: { firstName: string; lastName: string } | null;
+};
+
+export type TippingLogSummary = {
+  rows: TippingLogRow[];
+  loads: number;
+  tonnes: string;
+  disposal: string;
+  travel: string;
+  total: string;
+};
+
+// ---- Haversine -------------------------------------------------------------
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371; // Earth radius km
@@ -95,7 +129,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return Math.round(distKm * 100) / 100; // 2 dp
 }
 
-// ── Service ──────────────────────────────────────────────────────────────────
+// ---- Service ---------------------------------------------------------------
 
 @Injectable()
 export class TipRecommendationsService {
@@ -103,7 +137,9 @@ export class TipRecommendationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly rateResolver: RateResolverService
+    private readonly rateResolver: RateResolverService,
+    private readonly notifications: NotificationsService,
+    private readonly email: EmailService
   ) {}
 
   /**
@@ -111,7 +147,7 @@ export class TipRecommendationsService {
    *
    * Returns all active TIP MapLocations, each scored with:
    *   - disposal fee (resolved via RateResolverService "waste" slug)
-   *   - travel cost (haversine × 2 × travelRatePerKm from OperationsSettings)
+   *   - travel cost (haversine x 2 x travelRatePerKm from OperationsSettings)
    *   - total cost
    *
    * TIPs with no matching rate row are included but marked accepted=false with
@@ -145,7 +181,7 @@ export class TipRecommendationsService {
 
     for (const tip of tips) {
       if (tip.latitude === null || tip.longitude === null) {
-        // No coordinates — cannot compute distance; include greyed
+        // No coordinates -- cannot compute distance; include greyed
         cards.push({
           mapLocationId: tip.id,
           facilityName: tip.name,
@@ -180,12 +216,12 @@ export class TipRecommendationsService {
           });
           ratePerTonne = resolved.value;
         } catch {
-          // No rate row for this tip × waste type — leave null
+          // No rate row for this tip x waste type -- leave null
         }
       }
 
       if (ratePerTonne === null || travelRatePerKm === null) {
-        // Missing rate or travel rate — cannot price
+        // Missing rate or travel rate -- cannot price
         cards.push({
           mapLocationId: tip.id,
           facilityName: tip.name,
@@ -241,8 +277,9 @@ export class TipRecommendationsService {
   }
 
   /**
-   * Accept a recommendation — writes a TipRecommendationLog row.
+   * Accept a recommendation -- writes a TipRecommendationLog row.
    * The row snapshots prices at decision time; it never recomputes.
+   * ops-m2b: also stores tenderId when originType = "tender".
    */
   async acceptRecommendation(
     dto: AcceptRecommendationDto,
@@ -264,7 +301,7 @@ export class TipRecommendationsService {
     }
     if (tip.latitude === null || tip.longitude === null) {
       throw new BadRequestException(
-        `TIP location "${tip.name}" has no coordinates — cannot compute travel cost.`
+        `TIP location "${tip.name}" has no coordinates -- cannot compute travel cost.`
       );
     }
 
@@ -288,10 +325,10 @@ export class TipRecommendationsService {
       );
     }
 
-    // Resolve rate — must exist to accept
+    // Resolve rate -- must exist to accept
     if (!tip.facility) {
       throw new BadRequestException(
-        `TIP location "${tip.name}" has no facility name — cannot resolve disposal rate.`
+        `TIP location "${tip.name}" has no facility name -- cannot resolve disposal rate.`
       );
     }
     let ratePerTonne: number;
@@ -325,6 +362,8 @@ export class TipRecommendationsService {
         loadTonnes,
         originType,
         projectId: projectId ?? null,
+        // ops-m2b: store tenderId for tender-stage picks
+        tenderId: tenderId ?? null,
         originLat,
         originLng,
         distanceKm: distKm,
@@ -347,7 +386,293 @@ export class TipRecommendationsService {
     return { logId: log.id };
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────────
+  /**
+   * List tipping log rows for a project.
+   *
+   * Returns rows where projectId = the given project, PLUS rows whose
+   * tenderId = the project's sourceTender.id, newest first.
+   * Totals are summed server-side in Decimal to avoid floating-point drift.
+   * Each row carries source: "tender" | "job".
+   *
+   * Guarded by projects.view at the controller layer.
+   */
+  async listForProject(projectId: string): Promise<TippingLogSummary> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, sourceTenderId: true }
+    });
+    if (!project) {
+      throw new NotFoundException(`Project ${projectId} not found.`);
+    }
+
+    // Collect job rows (origin = project)
+    const jobRows = await this.prisma.tipRecommendationLog.findMany({
+      where: { projectId },
+      include: { createdBy: { select: { firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" }
+    });
+
+    // Collect tender rows (planned before award, if the project came from a tender)
+    let tenderRows: typeof jobRows = [];
+    if (project.sourceTenderId) {
+      tenderRows = await this.prisma.tipRecommendationLog.findMany({
+        where: { tenderId: project.sourceTenderId },
+        include: { createdBy: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" }
+      });
+    }
+
+    // Merge: tender rows first if same date, deduplicate by id (a row cannot be both)
+    const seen = new Set<string>();
+    const all: Array<{ row: (typeof jobRows)[0]; source: "tender" | "job" }> = [];
+    for (const r of tenderRows) {
+      if (!seen.has(r.id)) {
+        seen.add(r.id);
+        all.push({ row: r, source: "tender" });
+      }
+    }
+    for (const r of jobRows) {
+      if (!seen.has(r.id)) {
+        seen.add(r.id);
+        all.push({ row: r, source: "job" });
+      }
+    }
+    // Sort merged list newest first
+    all.sort((a, b) => b.row.createdAt.getTime() - a.row.createdAt.getTime());
+
+    // Totals in Decimal -- never float arithmetic on money
+    let sumTonnes = new Decimal(0);
+    let sumDisposal = new Decimal(0);
+    let sumTravel = new Decimal(0);
+    let sumTotal = new Decimal(0);
+
+    for (const { row } of all) {
+      sumTonnes = sumTonnes.add(row.loadTonnes);
+      sumDisposal = sumDisposal.add(row.disposalFee);
+      sumTravel = sumTravel.add(row.travelCost);
+      sumTotal = sumTotal.add(row.totalCost);
+    }
+
+    const rows: TippingLogRow[] = all.map(({ row, source }) => ({
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      facilityName: row.facilityName,
+      wasteTypeCode: row.wasteTypeCode,
+      loadTonnes: row.loadTonnes.toFixed(3),
+      distanceKm: row.distanceKm.toFixed(1),
+      disposalFee: row.disposalFee.toFixed(2),
+      travelCost: row.travelCost.toFixed(2),
+      totalCost: row.totalCost.toFixed(2),
+      source,
+      createdBy: row.createdBy
+        ? { firstName: row.createdBy.firstName, lastName: row.createdBy.lastName }
+        : null
+    }));
+
+    return {
+      rows,
+      loads: all.length,
+      tonnes: sumTonnes.toFixed(3),
+      disposal: sumDisposal.toFixed(2),
+      travel: sumTravel.toFixed(2),
+      total: sumTotal.toFixed(2)
+    };
+  }
+
+  // ---- Daily cron: waste price review digest --------------------------------
+
+  /**
+   * Daily cron at 21:00 UTC -- sends one digest listing all active TIPs that
+   * are due a price review and have not yet been notified this cycle.
+   *
+   * "Due" = pricesReviewedAt is null OR pricesReviewedAt + 182 days <= now.
+   * "Not yet notified this cycle" = pricesReviewNotifiedAt is null OR
+   *   pricesReviewNotifiedAt < pricesReviewedAt (cycle reset by a new review).
+   *
+   * Sends ONE digest per run (not per-tip), then stamps pricesReviewNotifiedAt
+   * on each listed tip so it is not included again until reviewed + 182 days.
+   *
+   * Reads the waste.price_review_due NotificationTriggerConfig for isEnabled,
+   * deliveryMethod, and recipientRoles/recipientUserIds. If disabled or no
+   * recipients, does nothing.
+   */
+  @Cron("0 21 * * *", { name: "waste-price-review", timeZone: "UTC" })
+  async runPriceReviewDigest(): Promise<void> {
+    try {
+      const sent = await this.sendPriceReviewDigest();
+      this.logger.log(`Waste price review digest: ${sent} notifications sent.`);
+    } catch (err) {
+      this.logger.error(`Waste price review digest failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Core logic for the price review digest -- separated so tests can call it
+   * directly without the cron decorator.
+   *
+   * @returns number of in-app notifications created
+   */
+  async sendPriceReviewDigest(): Promise<number> {
+    const trigger = await this.prisma.notificationTriggerConfig.findUnique({
+      where: { trigger: "waste.price_review_due" }
+    });
+    if (!trigger || !trigger.isEnabled) {
+      this.logger.debug("waste.price_review_due trigger not enabled -- skipping digest");
+      return 0;
+    }
+
+    const now = new Date();
+    const reviewCutoff = new Date(now.getTime() - REVIEW_CYCLE_DAYS * 24 * 60 * 60 * 1000);
+
+    // Active TIPs that are due AND not yet notified this cycle
+    const dueTips = await this.prisma.mapLocation.findMany({
+      where: {
+        kind: "TIP",
+        isActive: true,
+        AND: [
+          // Due: never reviewed OR reviewed > 182 days ago
+          {
+            OR: [
+              { pricesReviewedAt: null },
+              { pricesReviewedAt: { lte: reviewCutoff } }
+            ]
+          },
+          // Not yet notified this cycle: never notified OR notified before last review
+          {
+            OR: [
+              { pricesReviewNotifiedAt: null },
+              // pricesReviewedAt is not null here (we reset the cycle when reviewed)
+              // and pricesReviewNotifiedAt < pricesReviewedAt means a new review happened
+              // after the last notification -- the check below handles it
+            ]
+          }
+        ]
+      }
+    });
+
+    // Further filter: skip tips where pricesReviewNotifiedAt >= pricesReviewedAt
+    // (already notified in the current cycle). When pricesReviewedAt is null,
+    // any non-null pricesReviewNotifiedAt means it was already sent this cycle.
+    const unnotified = dueTips.filter((tip) => {
+      if (tip.pricesReviewNotifiedAt === null) return true; // never notified
+      if (tip.pricesReviewedAt === null) return false; // notified but never reviewed -- already sent
+      // notified before the last review -- cycle reset; include again
+      return tip.pricesReviewNotifiedAt < tip.pricesReviewedAt;
+    });
+
+    if (unnotified.length === 0) {
+      this.logger.debug("waste price review: no tips due notification this cycle");
+      return 0;
+    }
+
+    // Resolve recipients
+    const recipients = await this.resolveRecipients(
+      trigger.recipientUserIds,
+      trigger.recipientRoles
+    );
+    if (recipients.length === 0) {
+      this.logger.debug("no recipients configured for waste.price_review_due");
+      return 0;
+    }
+
+    // Build digest content
+    const count = unnotified.length;
+    const tipLines = unnotified.map((tip) => {
+      if (tip.pricesReviewedAt === null) {
+        return `${tip.name} (never reviewed)`;
+      }
+      const daysSince = Math.floor(
+        (now.getTime() - tip.pricesReviewedAt.getTime()) / (24 * 60 * 60 * 1000)
+      );
+      const overdueDays = daysSince - REVIEW_CYCLE_DAYS;
+      return `${tip.name} (overdue ${overdueDays} day${overdueDays === 1 ? "" : "s"})`;
+    });
+
+    const title = `${count} tip${count === 1 ? "" : "s"} are due a price review`;
+    const body =
+      tipLines.join(" and ") +
+      ". Open Map locations -> Tips.";
+    const emailSubject = `Tip price review due -- ${count} facilit${count === 1 ? "y" : "ies"}`;
+
+    const emailHtmlLines = unnotified.map((tip) => {
+      if (tip.pricesReviewedAt === null) {
+        return `<li>${tip.name} -- never reviewed</li>`;
+      }
+      const d = tip.pricesReviewedAt.toLocaleDateString("en-AU", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+      return `<li>${tip.name} -- last reviewed ${d}</li>`;
+    });
+
+    const emailHtml = `<p>Hi,</p>
+<p>These tips haven't had their prices checked in the last six months:</p>
+<ul>${emailHtmlLines.join("")}</ul>
+<p>Check each one's rates, then mark it reviewed in Settings &rarr; Map locations &rarr; Tips.</p>`;
+
+    const emailText =
+      "These tips haven't had their prices checked in the last six months:\n" +
+      tipLines.map((l) => `- ${l}`).join("\n") +
+      "\nCheck each one's rates, then mark it reviewed in Settings -> Map locations -> Tips.";
+
+    // Send email if delivery method includes email
+    if (trigger.deliveryMethod !== "inapp") {
+      void this.email.sendNotificationEmail({
+        trigger: "waste.price_review_due",
+        subject: emailSubject,
+        html: emailHtml,
+        text: emailText
+      });
+    }
+
+    // Send in-app notifications
+    let sent = 0;
+    if (trigger.deliveryMethod !== "email") {
+      for (const user of recipients) {
+        await this.notifications.create({
+          userId: user.id,
+          title,
+          body,
+          severity: "LOW",
+          linkUrl: "/settings/administration/map-locations"
+        });
+        sent += 1;
+      }
+    }
+
+    // Stamp pricesReviewNotifiedAt on all listed tips
+    await this.prisma.mapLocation.updateMany({
+      where: { id: { in: unnotified.map((t) => t.id) } },
+      data: { pricesReviewNotifiedAt: now }
+    });
+
+    return sent;
+  }
+
+  // ---- Private helpers -------------------------------------------------------
+
+  private async resolveRecipients(
+    recipientUserIds: string[],
+    recipientRoles: string[]
+  ): Promise<Array<{ id: string; email: string }>> {
+    if (recipientUserIds.length > 0) {
+      return this.prisma.user.findMany({
+        where: { id: { in: recipientUserIds }, isActive: true },
+        select: { id: true, email: true }
+      });
+    }
+    if (recipientRoles.length > 0) {
+      return this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          userRoles: { some: { role: { name: { in: recipientRoles } } } }
+        },
+        select: { id: true, email: true }
+      });
+    }
+    return [];
+  }
 
   private async resolveOrigin(
     originType: TipOriginType,

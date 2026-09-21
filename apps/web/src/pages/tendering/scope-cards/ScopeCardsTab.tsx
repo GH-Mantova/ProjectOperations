@@ -1257,7 +1257,14 @@ function ScopeCardStackEntry({
 }
 
 /** The card's name in its stack header. Double-click to rename — the same
- *  affordance the card TAB carried before the tabs became disciplines. */
+ *  affordance the card TAB carried before the tabs became disciplines.
+ *
+ *  SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3): pencil glyph ✎ added:
+ *  - aria-hidden on the glyph; aria-label="Rename card" on the wrapper.
+ *  - Brand-muted color; visible on hover AND keyboard focus.
+ *  - Click opens the editor (same handler as double-click).
+ *  - title="Double-click to rename" retained.
+ */
 function CardNameHeading({
   name,
   onRename
@@ -1326,10 +1333,44 @@ function CardNameHeading({
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
-        cursor: "text"
+        cursor: "text",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4
       }}
     >
       {name}
+      {/* SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3): pencil affordance.
+          aria-hidden on the glyph so screen readers hear "Rename card" once. */}
+      <button
+        type="button"
+        aria-label="Rename card"
+        title="Double-click to rename"
+        onClick={() => setEditing(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setEditing(true);
+          }
+        }}
+        className="card-name-rename-btn"
+        style={{
+          background: "none",
+          border: "none",
+          padding: 0,
+          margin: 0,
+          cursor: "pointer",
+          color: "var(--brand-muted, var(--text-muted))",
+          fontSize: 13,
+          lineHeight: 1,
+          display: "inline-flex",
+          alignItems: "center",
+          opacity: 0,
+          transition: "opacity 0.15s"
+        }}
+      >
+        <span aria-hidden="true">&#9998;</span>
+      </button>
     </h3>
   );
 }

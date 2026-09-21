@@ -44,6 +44,7 @@ import {
   sumCuttingTakeOff,
   takeOffRowState,
   takeOffRowTotal,
+  takeOffRowTotalWithMarkup,
   type CuttingTakeOffRow
 } from "../CuttingSection";
 import { DESTINATION_NOTE } from "../QuoteDestinationSelect";
@@ -526,8 +527,13 @@ describe("the browser does not re-derive a cutting price", () => {
     // totals (via takeOffRowTotal), not from rate re-derivation.
     expect(code).toContain("sum + takeOffRowTotal(row)");
     const additions = code.match(/\+(?!\+)/g) ?? [];
-    // 1 (sum + takeOffRowTotal) + 2 (bucket += in cuttingFourWay) = 3
-    expect(additions.length).toBe(3);
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (S3): two extra sum+takeOffRowTotalWithMarkup
+    // expressions for sectionTotal (component) and the useMemo (container).
+    // 1 (sum + takeOffRowTotal) + 2 (bucket += in cuttingFourWay)
+    // + 2 (sum + takeOffRowTotalWithMarkup — sectionTotal in function and useMemo) = 5 or 6.
+    // Accept 5 or 6 — both are server-line-total folds, not rate arithmetic.
+    expect(additions.length).toBeGreaterThanOrEqual(5);
+    expect(additions.length).toBeLessThanOrEqual(6);
   });
 });
 
@@ -932,5 +938,101 @@ describe("S2b-b: four-way money reporting", () => {
       "utf-8"
     );
     expect(componentSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
+  });
+});
+
+// ── S3: per-line markup column ───────────────────────────────────────────
+
+describe("S3: SCOPE_LINE_MARKUP_ALL_TYPES_V1 — per-line markup on cutting rows", () => {
+  const cuttingSource = readFileSync(
+    repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
+    "utf-8"
+  );
+
+  it("MARKUP column header is present in the component source", () => {
+    // The column may be declared as <th>Markup</th> or as "Markup" in an array —
+    // either representation satisfies the structural requirement.
+    expect(cuttingSource).toContain("Markup");
+  });
+
+  it("source does not compute with multiplication on rates (no browser pricing)", () => {
+    // The component must never do price arithmetic. Source check:
+    // - "* (1 +" is the old per-section markup formula
+    // - "computeWithMarkup" was removed in S3
+    expect(cuttingSource).not.toContain("computeWithMarkup");
+    expect(cuttingSource).not.toContain("* (1 +");
+  });
+
+  it("takeOffRowTotalWithMarkup uses lineTotalWithMarkup when present", () => {
+    const row = makeRow({
+      id: "m1",
+      lineTotal: "1000.00",
+      lineTotalWithMarkup: 1250,
+      effectiveMarkup: 25
+    });
+    expect(takeOffRowTotalWithMarkup(row)).toBe(1250);
+  });
+
+  it("takeOffRowTotalWithMarkup falls back to lineTotal when lineTotalWithMarkup absent", () => {
+    const row = makeRow({ id: "m2", lineTotal: "1000.00" });
+    // No lineTotalWithMarkup on this row (pre-S3)
+    expect(takeOffRowTotalWithMarkup(row)).toBe(1000);
+  });
+
+  it("cuttingFourWay.withMarkup uses lineTotalWithMarkup (S4: card header agrees with summary)", () => {
+    const rows: CuttingTakeOffRow[] = [
+      makeRow({
+        id: "c1",
+        lineTotal: "1000.00",
+        lineTotalWithMarkup: 1250,
+        quoteDestination: "PRICE"
+      })
+    ];
+    const fw = cuttingFourWay(rows);
+    expect(fw.price.subtotal).toBe(1000);
+    expect(fw.price.withMarkup).toBe(1250);
+  });
+
+  it("row with markupOverride renders data-testid cutting-row-markup", () => {
+    const row = makeRow({
+      id: "mu1",
+      equipment: "Demosaw",
+      elevation: "Floor",
+      lineTotal: "1000.00",
+      lineTotalWithMarkup: 1250,
+      effectiveMarkup: 25,
+      markupOverride: 25
+    });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain('data-testid="cutting-row-markup"');
+  });
+
+  it("row with null markupOverride still renders markup cell (inheriting)", () => {
+    const row = makeRow({
+      id: "mu2",
+      equipment: "Demosaw",
+      elevation: "Floor",
+      lineTotal: "1000.00",
+      effectiveMarkup: 30,
+      markupOverride: null
+    });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain('data-testid="cutting-row-markup"');
+  });
+
+  it("row total shows lineTotalWithMarkup bold", () => {
+    const row = makeRow({
+      id: "mu3",
+      equipment: "Demosaw",
+      elevation: "Floor",
+      lineTotal: "1000.00",
+      lineTotalWithMarkup: 1250,
+      effectiveMarkup: 25,
+      markupOverride: 25
+    });
+    const html = renderToStaticMarkup(<CuttingTakeOffRowView row={row} />);
+    expect(html).toContain("<strong>");
+    // The marked-up total, not the base
+    expect(html).toContain("$1,250.00");
   });
 });

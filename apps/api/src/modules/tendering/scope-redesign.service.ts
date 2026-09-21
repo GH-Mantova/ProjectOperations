@@ -31,6 +31,14 @@ export const SCOPE_OPERATIONAL_COSTS_PRICED_V1 = "scopecards-s1";
  */
 export const SCOPE_QUOTE_DESTINATION_V1 = "scopecards-s2a";
 
+/**
+ * SCOPE_LINE_MARKUP_ALL_TYPES_V1 -- marker that waste and cutting lines each
+ * carry a per-line markupOverride resolved via resolveEffectiveMarkup(
+ *   line.markupOverride, card.<section>MarkupOverride, tenderMarkup
+ * ). S3 arms only when this string is on main.
+ */
+export const SCOPE_LINE_MARKUP_ALL_TYPES_V1 = "scopecards-s3";
+
 // ── Column availability map ─────────────────────────────────────────────
 // Required columns are always rendered. Optional columns are opt-in via
 // ScopeViewConfig, but only become visible in the UI when the selected
@@ -461,12 +469,40 @@ export class ScopeRedesignService {
   }
 
   // ── Cutting sheet items ──────────────────────────────────────────────
+
+  /**
+   * SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — augment a cutting row
+   * with effectiveMarkup and lineTotalWithMarkup. cardCuttingOverride is the
+   * card's cuttingMarkupOverride (null = not set); tenderMarkup is the tender's
+   * TenderEstimate.markup (default 30 when absent).
+   */
+  private augmentCuttingMoney<T extends {
+    lineTotal: Prisma.Decimal | null;
+    markupOverride: Prisma.Decimal | null;
+  }>(row: T, cardCuttingOverride: number | null, tenderMarkup: number): T & {
+    effectiveMarkup: number;
+    lineTotalWithMarkup: number;
+  } {
+    const lineMarkupOverride = row.markupOverride != null ? Number(row.markupOverride) : null;
+    const effectiveMarkup = resolveEffectiveMarkup(lineMarkupOverride, cardCuttingOverride, tenderMarkup);
+    const lt = row.lineTotal != null ? Number(row.lineTotal) : 0;
+    const lineTotalWithMarkup = lt * (1 + effectiveMarkup / 100);
+    return {
+      ...row,
+      effectiveMarkup: Number(effectiveMarkup.toFixed(2)),
+      lineTotalWithMarkup: Number(lineTotalWithMarkup.toFixed(2))
+    };
+  }
+
   /**
    * Lists cutting sheet items for a tender, ordered by wbsRef then
    * sortOrder, with the `otherRate` relation included.
    *
+   * SCOPE_LINE_MARKUP_ALL_TYPES_V1: each row now also carries
+   * `effectiveMarkup` and `lineTotalWithMarkup` computed server-side.
+   *
    * @param options - optional `cardId` to scope to one card; omitted → whole-tender list
-   * @returns cutting items for the tender (optionally one card)
+   * @returns cutting items for the tender (optionally one card), with money fields
    * @throws NotFoundException when the tender does not exist
    */
   async listCuttingItems(tenderId: string, options?: { cardId?: string }) {
@@ -474,13 +510,19 @@ export class ScopeRedesignService {
     // PR B4b — when cardId is supplied, scope the list to a single
     // card (per-card subtable). Omitted → whole-tender list (legacy
     // callers + admin views).
-    return this.prisma.cuttingSheetItem.findMany({
+    const rows = await this.prisma.cuttingSheetItem.findMany({
       where: {
         tenderId,
         ...(options?.cardId ? { cardId: options.cardId } : {})
       },
       orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }],
-      include: { otherRate: true }
+      include: { otherRate: true, card: { select: { cuttingMarkupOverride: true } } }
+    });
+    const tenderEst = await this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } });
+    const tenderMarkup = tenderEst ? Number(tenderEst.markup) : 30;
+    return rows.map((row) => {
+      const cardCuttingOverride = row.card?.cuttingMarkupOverride != null ? Number(row.card.cuttingMarkupOverride) : null;
+      return this.augmentCuttingMoney(row, cardCuttingOverride, tenderMarkup);
     });
   }
 
@@ -518,6 +560,8 @@ export class ScopeRedesignService {
       cardId?: string | null;
       // SCOPE_QUOTE_DESTINATION_V1 -- where this cutting line goes on the quote.
       quoteDestination?: QuoteDestination | null;
+      // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+      markupOverride?: number | null;
     }
   ) {
     await this.requireTender(tenderId);
@@ -550,38 +594,48 @@ export class ScopeRedesignService {
       if (!card) throw new NotFoundException("Scope card not found on this tender.");
     }
     const priced = await this.pricedCuttingData({ ...dto, tenderId });
-    return this.prisma.cuttingSheetItem.create({
-      data: {
-        tenderId,
-        cardId,
-        createdById: actorId,
-        wbsRef: dto.wbsRef.trim(),
-        description: dto.description?.trim() || null,
-        itemType: dto.itemType,
-        equipment: dto.equipment ?? null,
-        elevation: dto.elevation ?? null,
-        material: dto.material ?? null,
-        depthMm: dto.depthMm ?? null,
-        diameterMm: dto.diameterMm ?? null,
-        quantityLm: dto.quantityLm !== undefined && dto.quantityLm !== null ? new Prisma.Decimal(dto.quantityLm) : null,
-        quantityEach: dto.quantityEach ?? null,
-        shift: dto.shift ?? null,
-        method: dto.method ?? null,
-        shiftLoading: dto.shiftLoading !== undefined && dto.shiftLoading !== null ? new Prisma.Decimal(dto.shiftLoading) : null,
-        otherRateId: dto.otherRateId ?? null,
-        notes: dto.notes ?? null,
-        sortOrder: dto.sortOrder ?? 0,
-        // PR B4b — manual creates default autoCopied=false. The Copy
-        // from above aggregator is the only path that flips this true.
-        autoCopied: false,
-        ratePerM: priced.ratePerM,
-        ratePerHole: priced.ratePerHole,
-        lineTotal: priced.lineTotal,
-        // SCOPE_QUOTE_DESTINATION_V1 -- defaults PRICE when absent.
-        quoteDestination: dto.quoteDestination ?? QuoteDestination.PRICE
-      },
-      include: { otherRate: true }
-    });
+    const [created, tenderEst] = await Promise.all([
+      this.prisma.cuttingSheetItem.create({
+        data: {
+          tenderId,
+          cardId,
+          createdById: actorId,
+          wbsRef: dto.wbsRef.trim(),
+          description: dto.description?.trim() || null,
+          itemType: dto.itemType,
+          equipment: dto.equipment ?? null,
+          elevation: dto.elevation ?? null,
+          material: dto.material ?? null,
+          depthMm: dto.depthMm ?? null,
+          diameterMm: dto.diameterMm ?? null,
+          quantityLm: dto.quantityLm !== undefined && dto.quantityLm !== null ? new Prisma.Decimal(dto.quantityLm) : null,
+          quantityEach: dto.quantityEach ?? null,
+          shift: dto.shift ?? null,
+          method: dto.method ?? null,
+          shiftLoading: dto.shiftLoading !== undefined && dto.shiftLoading !== null ? new Prisma.Decimal(dto.shiftLoading) : null,
+          otherRateId: dto.otherRateId ?? null,
+          notes: dto.notes ?? null,
+          sortOrder: dto.sortOrder ?? 0,
+          // PR B4b — manual creates default autoCopied=false. The Copy
+          // from above aggregator is the only path that flips this true.
+          autoCopied: false,
+          ratePerM: priced.ratePerM,
+          ratePerHole: priced.ratePerHole,
+          lineTotal: priced.lineTotal,
+          // SCOPE_QUOTE_DESTINATION_V1 -- defaults PRICE when absent.
+          quoteDestination: dto.quoteDestination ?? QuoteDestination.PRICE,
+          // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- null stored when absent.
+          markupOverride: dto.markupOverride !== undefined && dto.markupOverride !== null
+            ? new Prisma.Decimal(dto.markupOverride)
+            : null
+        },
+        include: { otherRate: true, card: { select: { cuttingMarkupOverride: true } } }
+      }),
+      this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
+    ]);
+    const tenderMarkup = tenderEst ? Number(tenderEst.markup) : 30;
+    const cardCuttingOverride = created.card?.cuttingMarkupOverride != null ? Number(created.card.cuttingMarkupOverride) : null;
+    return this.augmentCuttingMoney(created, cardCuttingOverride, tenderMarkup);
   }
 
   /**
@@ -616,6 +670,8 @@ export class ScopeRedesignService {
       sortOrder: number | null;
       // SCOPE_QUOTE_DESTINATION_V1 -- where this cutting line goes on the quote.
       quoteDestination: QuoteDestination | null;
+      // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+      markupOverride: number | null;
     }>
   ) {
     const existing = await this.prisma.cuttingSheetItem.findUnique({ where: { id: itemId } });
@@ -649,7 +705,7 @@ export class ScopeRedesignService {
       otherRateId: dto.otherRateId !== undefined ? dto.otherRateId : existing.otherRateId
     };
     const priced = await this.pricedCuttingData({ ...merged, tenderId });
-    return this.prisma.cuttingSheetItem.update({
+    const updated = await this.prisma.cuttingSheetItem.update({
       where: { id: itemId },
       data: {
         wbsRef: dto.wbsRef !== undefined ? dto.wbsRef.trim() : undefined,
@@ -682,10 +738,22 @@ export class ScopeRedesignService {
         ratePerHole: priced.ratePerHole,
         lineTotal: priced.lineTotal,
         // SCOPE_QUOTE_DESTINATION_V1 -- only overwrite when the DTO carries a non-null value.
-        ...(dto.quoteDestination != null ? { quoteDestination: dto.quoteDestination } : {})
+        ...(dto.quoteDestination != null ? { quoteDestination: dto.quoteDestination } : {}),
+        // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- only overwrite when the DTO carries it.
+        ...(dto.markupOverride !== undefined
+          ? {
+              markupOverride: dto.markupOverride !== null
+                ? new Prisma.Decimal(dto.markupOverride)
+                : null
+            }
+          : {})
       },
-      include: { otherRate: true }
+      include: { otherRate: true, card: { select: { cuttingMarkupOverride: true } } }
     });
+    const tenderEst = await this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } });
+    const tenderMarkup = tenderEst ? Number(tenderEst.markup) : 30;
+    const cardCuttingOverride = updated.card?.cuttingMarkupOverride != null ? Number(updated.card.cuttingMarkupOverride) : null;
+    return this.augmentCuttingMoney(updated, cardCuttingOverride, tenderMarkup);
   }
 
   /**
@@ -1031,31 +1099,23 @@ export class ScopeRedesignService {
     // The top-level pair always means "PRICE" so existing callers of
     // cutting.withMarkup / waste.withMarkup / operationalCosts.withMarkup
     // keep their meaning.
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- select markupOverride
+    // per line so each line resolves its own effective markup via
+    // resolveEffectiveMarkup(line.markupOverride, card.cuttingMarkupOverride, tenderMarkup).
+    // The per-card "subtotal then multiply" step is replaced: each line's
+    // lineTotalWithMarkup = lineTotal * (1 + effectiveMarkup / 100).
+    // Equivalence: with no line overrides, results are byte-identical to the
+    // per-card bucket approach because the factor is constant per card.
     const cuttingItems = await this.prisma.cuttingSheetItem.findMany({
       where: { tenderId },
       select: {
         cardId: true,
         lineTotal: true,
+        markupOverride: true,
         quoteDestination: true,
         card: { select: { cuttingMarkupOverride: true } }
       }
     });
-    // Per-card accumulators: one bucket per (cardId, destination).
-    type CuttingCardBucket = { subtotal: number; provisional: number; option: number; internal: number; override: number | null };
-    const cuttingByCard = new Map<string, CuttingCardBucket>();
-    for (const ci of cuttingItems) {
-      const amt = ci.lineTotal ? Number(ci.lineTotal) : 0;
-      const existing = cuttingByCard.get(ci.cardId) ?? {
-        subtotal: 0, provisional: 0, option: 0, internal: 0,
-        override: ci.card?.cuttingMarkupOverride != null ? Number(ci.card.cuttingMarkupOverride) : null
-      };
-      const dest = (ci.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
-      if (dest === QuoteDestination.PROVISIONAL) existing.provisional += amt;
-      else if (dest === QuoteDestination.OPTION) existing.option += amt;
-      else if (dest === QuoteDestination.INTERNAL) existing.internal += amt;
-      else existing.subtotal += amt;
-      cuttingByCard.set(ci.cardId, existing);
-    }
     let cuttingSubtotal = 0;
     let cuttingWithMarkup = 0;
     let cuttingProvisionalSubtotal = 0;
@@ -1064,54 +1124,48 @@ export class ScopeRedesignService {
     let cuttingOptionWithMarkup = 0;
     let cuttingInternalSubtotal = 0;
     let cuttingInternalWithMarkup = 0;
-    for (const b of cuttingByCard.values()) {
-      const rate = b.override != null ? b.override : tenderMarkup;
-      const factor = 1 + rate / 100;
-      cuttingSubtotal += b.subtotal;
-      cuttingWithMarkup += b.subtotal * factor;
-      cuttingProvisionalSubtotal += b.provisional;
-      cuttingProvisionalWithMarkup += b.provisional * factor;
-      cuttingOptionSubtotal += b.option;
-      cuttingOptionWithMarkup += b.option * factor;
-      cuttingInternalSubtotal += b.internal;
-      cuttingInternalWithMarkup += b.internal * factor;
+    for (const ci of cuttingItems) {
+      const amt = ci.lineTotal ? Number(ci.lineTotal) : 0;
+      const cardCuttingOverride = ci.card?.cuttingMarkupOverride != null ? Number(ci.card.cuttingMarkupOverride) : null;
+      const lineMarkupOverride = ci.markupOverride != null ? Number(ci.markupOverride) : null;
+      const effectiveMarkup = resolveEffectiveMarkup(lineMarkupOverride, cardCuttingOverride, tenderMarkup);
+      const lineTotalWithMarkup = amt * (1 + effectiveMarkup / 100);
+      const dest = (ci.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
+      if (dest === QuoteDestination.PROVISIONAL) {
+        cuttingProvisionalSubtotal += amt;
+        cuttingProvisionalWithMarkup += lineTotalWithMarkup;
+      } else if (dest === QuoteDestination.OPTION) {
+        cuttingOptionSubtotal += amt;
+        cuttingOptionWithMarkup += lineTotalWithMarkup;
+      } else if (dest === QuoteDestination.INTERNAL) {
+        cuttingInternalSubtotal += amt;
+        cuttingInternalWithMarkup += lineTotalWithMarkup;
+      } else {
+        cuttingSubtotal += amt;
+        cuttingWithMarkup += lineTotalWithMarkup;
+      }
     }
 
     // Waste totals -- PR #71. Each ScopeWasteItem has a server-side lineTotal.
-    // Aggregate by discipline (PRICE side only -- byDiscipline was always PRICE),
-    // and by card for markup application.
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- select markupOverride per
+    // line; resolve via resolveEffectiveMarkup(line.markupOverride,
+    // card.wasteMarkupOverride, tenderMarkup) so each line contributes its own
+    // lineTotalWithMarkup. The per-card bucket accumulation is replaced with
+    // direct per-line accumulation. Equivalence: no line overrides -> results
+    // byte-identical to the previous per-card approach.
     const wasteItems = await this.prisma.scopeWasteItem.findMany({
       where: { tenderId },
       select: {
         cardId: true,
         discipline: true,
         lineTotal: true,
+        markupOverride: true,
         quoteDestination: true,
         card: { select: { wasteMarkupOverride: true } }
       }
     });
     const wasteByDiscipline: Record<string, number> = {};
     for (const d of DISCIPLINES) wasteByDiscipline[d] = 0;
-    type WasteCardBucket = { subtotal: number; provisional: number; option: number; internal: number; override: number | null };
-    const wasteByCard = new Map<string, WasteCardBucket>();
-    for (const w of wasteItems) {
-      const amt = w.lineTotal ? Number(w.lineTotal) : 0;
-      const dest = (w.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
-      // byDiscipline is PRICE-side only (same as before; the report never broke waste into destinations)
-      if (dest === QuoteDestination.PRICE && Object.prototype.hasOwnProperty.call(wasteByDiscipline, w.discipline)) {
-        wasteByDiscipline[w.discipline] += amt;
-      }
-      const existing = wasteByCard.get(w.cardId) ?? {
-        subtotal: 0, provisional: 0, option: 0, internal: 0,
-        override: w.card?.wasteMarkupOverride != null ? Number(w.card.wasteMarkupOverride) : null
-      };
-      if (dest === QuoteDestination.PROVISIONAL) existing.provisional += amt;
-      else if (dest === QuoteDestination.OPTION) existing.option += amt;
-      else if (dest === QuoteDestination.INTERNAL) existing.internal += amt;
-      else existing.subtotal += amt;
-      wasteByCard.set(w.cardId, existing);
-    }
-    const wasteTotal = Object.values(wasteByDiscipline).reduce((s, v) => s + v, 0);
     let wasteWithMarkup = 0;
     let wasteProvisionalSubtotal = 0;
     let wasteProvisionalWithMarkup = 0;
@@ -1119,17 +1173,32 @@ export class ScopeRedesignService {
     let wasteOptionWithMarkup = 0;
     let wasteInternalSubtotal = 0;
     let wasteInternalWithMarkup = 0;
-    for (const b of wasteByCard.values()) {
-      const rate = b.override != null ? b.override : tenderMarkup;
-      const factor = 1 + rate / 100;
-      wasteWithMarkup += b.subtotal * factor;
-      wasteProvisionalSubtotal += b.provisional;
-      wasteProvisionalWithMarkup += b.provisional * factor;
-      wasteOptionSubtotal += b.option;
-      wasteOptionWithMarkup += b.option * factor;
-      wasteInternalSubtotal += b.internal;
-      wasteInternalWithMarkup += b.internal * factor;
+    for (const w of wasteItems) {
+      const amt = w.lineTotal ? Number(w.lineTotal) : 0;
+      const dest = (w.quoteDestination as QuoteDestination | null) ?? QuoteDestination.PRICE;
+      // byDiscipline is PRICE-side only (same as before; the report never broke waste into destinations)
+      if (dest === QuoteDestination.PRICE && Object.prototype.hasOwnProperty.call(wasteByDiscipline, w.discipline)) {
+        wasteByDiscipline[w.discipline] += amt;
+      }
+      const cardWasteOverride = w.card?.wasteMarkupOverride != null ? Number(w.card.wasteMarkupOverride) : null;
+      const lineMarkupOverride = w.markupOverride != null ? Number(w.markupOverride) : null;
+      const effectiveMarkup = resolveEffectiveMarkup(lineMarkupOverride, cardWasteOverride, tenderMarkup);
+      const lineTotalWithMarkup = amt * (1 + effectiveMarkup / 100);
+      if (dest === QuoteDestination.PROVISIONAL) {
+        wasteProvisionalSubtotal += amt;
+        wasteProvisionalWithMarkup += lineTotalWithMarkup;
+      } else if (dest === QuoteDestination.OPTION) {
+        wasteOptionSubtotal += amt;
+        wasteOptionWithMarkup += lineTotalWithMarkup;
+      } else if (dest === QuoteDestination.INTERNAL) {
+        wasteInternalSubtotal += amt;
+        wasteInternalWithMarkup += lineTotalWithMarkup;
+      } else {
+        // PRICE
+        wasteWithMarkup += lineTotalWithMarkup;
+      }
     }
+    const wasteTotal = Object.values(wasteByDiscipline).reduce((s, v) => s + v, 0);
 
     // SCOPE_OPERATIONAL_COSTS_PRICED_V1 -- the fourth independently-marked-up
     // stream. Each line's markup resolves through the same chain as scope items.

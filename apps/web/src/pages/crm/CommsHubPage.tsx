@@ -6,6 +6,7 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { entityLabel, sortThreadsByActivity } from "./comms-inbox.helpers";
 import { AnchorPicker, buildCreateThreadBody, mapTypeToServer, type PickerSelection } from "./AnchorPicker";
 import { CommsInboxTriage } from "./CommsInboxTriage";
+import "./crm.css";
 
 /**
  * CRM_COMMS_RAIL_V1 (2026-09-04): the unanchored Threads screen is two
@@ -717,47 +718,84 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
     </div>
   );
 
+  // CRM_PARITY_INBOX_V1 (crmvis-S7): the composer is hidden until the user
+  // presses "+ New thread". It is the same AnchorPicker state and
+  // buildCreateThreadBody call as before — only the visibility is gated.
+  const [showComposer, setShowComposer] = useState(false);
+
+  // Close the composer on Escape key.
+  useEffect(() => {
+    if (!showComposer) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowComposer(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showComposer]);
+
+  // Tab subtitle per artboard:
+  //   Inbox: "Everything coming in — leads not yet triaged, live conversations, and what you owe people."
+  //   Threads / To-dos: "Internal threads and to-dos, anchored to an account, tender, job or contract."
+  const pageSubtitle = inboxTab === "inbox"
+    ? "Everything coming in — leads not yet triaged, live conversations, and what you owe people."
+    : "Internal threads and to-dos, anchored to an account, tender, job or contract.";
+
   return (
     <div style={s.page}>
-      <div style={s.header}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Comms hub</h1>
-        <span style={{ fontSize: 12, color: "#6b7280" }}>All records</span>
-      </div>
-
-      <div style={{ ...s.card, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
-        <div style={{ fontSize: 13, color: "#15803d" }}>
-          Inbox view — showing threads across all records. Threads linked to deleted records are
-          shown with an explicit label. Click any thread to open it in the anchored view.
+      {/* CRM_PARITY_INBOX_V1: crm-page-head — title + subtitle on left,
+          Anchor chip + New thread on right. The green notice is gone. */}
+      <div className="crm-page-head">
+        <div className="crm-page-head__left">
+          <h1 className="s7-type-page-title" style={{ margin: 0 }}>Comms hub</h1>
+          <p className="crm-page-head__subtitle">{pageSubtitle}</p>
         </div>
-      </div>
-
-      {/* CRM-S9 composer: pick an anchor + subject then Start. */}
-      <div style={s.card}>
-        <div style={s.cardTitle}>New thread</div>
-        <AnchorPicker
-          authFetch={authFetch}
-          value={pickerSelection}
-          onChange={(sel) => { setPickerSelection(sel); setCreateError(null); }}
-        />
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input
-            style={s.input}
-            placeholder="Subject"
-            value={newSubject}
-            onChange={(e) => setNewSubject(e.target.value)}
-          />
-          <button
-            style={{ ...s.primaryBtn, opacity: canCreate && !creating ? 1 : 0.5, cursor: canCreate && !creating ? "pointer" : "not-allowed" }}
-            onClick={() => void startThread()}
-            disabled={!canCreate || creating}
+        <div className="crm-page-head__actions">
+          {/* Anchor chip — legend; the actual picker is inside the composer */}
+          <span
+            className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${pickerSelection ? " crm-filter-chip--active" : ""}`}
+            aria-label="Anchor filter"
           >
-            {creating ? "Starting…" : "Start"}
+            Anchor: {pickerSelection?.kind === "entity" ? pickerSelection.label : "All"} &#9660;
+          </span>
+          {/* + New thread button */}
+          <button
+            className="s7-btn s7-btn--primary crm-btn--primary"
+            onClick={() => setShowComposer((v) => !v)}
+          >
+            {showComposer ? "Cancel" : "+ New thread"}
           </button>
         </div>
-        {createError && (
-          <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{createError}</div>
-        )}
       </div>
+
+      {/* CRM_PARITY_INBOX_V1: NEW THREAD composer — hidden until showComposer is true */}
+      {showComposer && (
+        <div style={{ ...s.card, marginBottom: 16 }}>
+          <div style={s.cardTitle}>New thread — anchor to</div>
+          <AnchorPicker
+            authFetch={authFetch}
+            value={pickerSelection}
+            onChange={(sel) => { setPickerSelection(sel); setCreateError(null); }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <input
+              style={s.input}
+              placeholder="Subject"
+              value={newSubject}
+              onChange={(e) => setNewSubject(e.target.value)}
+            />
+            <button
+              style={{ ...s.primaryBtn, opacity: canCreate && !creating ? 1 : 0.5, cursor: canCreate && !creating ? "pointer" : "not-allowed" }}
+              onClick={() => void startThread()}
+              disabled={!canCreate || creating}
+            >
+              {creating ? "Starting…" : "Start"}
+            </button>
+          </div>
+          {createError && (
+            <div style={{ color: "var(--status-danger)", fontSize: 12, marginTop: 8 }}>{createError}</div>
+          )}
+        </div>
+      )}
 
       {/* CRM UIFIX S1: the inner Inbox/Threads/To-dos tablist that used to live
           here is gone. The outer CommsPage tab bar drives which tab renders,

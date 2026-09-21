@@ -17,6 +17,13 @@
 // the governed reason list and the client functions all already shipped on
 // /tenders/leads — this mounts them, it does not rebuild them. No second
 // archive path, no second reason list, no second empty-entry rule.
+//
+// CRM_PARITY_INBOX_V1 (crmvis-S7): artboard Intake.dc.html design applied.
+// Control row: Anchor chip (label only) + Channel crm-filter-chip select +
+// Capture a lead (primary). Card: UNTRIAGED · OLDEST FIRST. Rows carry
+// Lead badge (s7-badge--neutral), channel badge (--info/--active), age muted
+// (amber when old), note line, Account link, and the triage action buttons
+// on the right. No hex literals — all colours via var(--) tokens.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
@@ -34,6 +41,10 @@ import {
   type IntakeCaptureChannel,
   type IntakeLead
 } from "./crm-api";
+import "./crm.css";
+
+// ── S7 parity marker ──────────────────────────────────────────────────────────
+export const CRM_PARITY_INBOX_V1 = "crmvis-s7";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,36 +66,23 @@ const CHANNEL_LABEL: Record<IntakeCaptureChannel, string> = {
   other: "Other"
 };
 
-const CHANNEL_COLOUR: Record<IntakeCaptureChannel, { bg: string; fg: string }> = {
-  email: { bg: "#dbeafe", fg: "#1e40af" },
-  phone: { bg: "#d1fae5", fg: "#065f46" },
-  portal: { bg: "#ede9fe", fg: "#5b21b6" },
-  referral: { bg: "#fef3c7", fg: "#92400e" },
-  cold_outreach: { bg: "#fee2e2", fg: "#991b1b" },
-  other: { bg: "#f3f4f6", fg: "#6b7280" }
+// CRM_PARITY_INBOX_V1: channel badge tone per artboard:
+//   email  → info  (blue)
+//   phone  → active (teal — the artboard's "Phone" uses --active)
+//   rest   → neutral
+const CHANNEL_BADGE_TONE: Record<IntakeCaptureChannel, string> = {
+  email: "s7-badge--info",
+  phone: "s7-badge--active",
+  portal: "s7-badge--neutral",
+  referral: "s7-badge--neutral",
+  cold_outreach: "s7-badge--neutral",
+  other: "s7-badge--neutral"
 };
+
+// Age threshold in ms beyond which the age text is shown in warning amber.
+const AGE_AMBER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const INTAKE_PAGE_SIZE = 25;
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-const s: Record<string, React.CSSProperties> = {
-  card: { border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, marginBottom: 12, background: "#fff" },
-  cardTitle: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 12 },
-  input: { padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13, width: "100%" },
-  select: { padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 },
-  primaryBtn: { padding: "8px 14px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 },
-  actionBtn: { padding: "4px 10px", background: "#f0fdf4", color: "#065f46", border: "1px solid #bbf7d0", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 },
-  dontPursueBtn: { padding: "4px 10px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 },
-  secondaryBtn: { padding: "4px 10px", background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 6, cursor: "pointer", fontSize: 12 },
-  badge: { display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600 },
-  empty: { color: "#9ca3af", fontSize: 13, padding: "12px 0" },
-  row: { padding: "12px 0", borderBottom: "1px solid #f3f4f6" },
-  rowTitle: { fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 4 },
-  rowMeta: { display: "flex", flexWrap: "wrap" as const, gap: 6, alignItems: "center", marginBottom: 6 },
-  rowExcerpt: { fontSize: 12, color: "#6b7280", marginBottom: 6 },
-  rowActions: { display: "flex", gap: 8 }
-};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -102,20 +100,12 @@ function fmtAge(iso: string): string {
   }
 }
 
-function accountChip(lead: IntakeLead): React.ReactNode {
-  if (lead.account) {
-    return (
-      <span style={{ ...s.badge, background: "#e0e7ff", color: "#3730a3" }}>
-        {lead.account.lifecycleStatus}
-      </span>
-    );
+function isAgeOld(iso: string): boolean {
+  try {
+    return Date.now() - new Date(iso).getTime() > AGE_AMBER_MS;
+  } catch {
+    return false;
   }
-  const name = lead.client?.name ?? "unknown client";
-  return (
-    <span style={{ ...s.badge, background: "#fef3c7", color: "#92400e" }}>
-      no match, will create {name}
-    </span>
-  );
 }
 
 // ── CRM_CHROME_V1 — pure row-action logic ─────────────────────────────────────
@@ -185,53 +175,66 @@ function DontPursueDialog(props: {
   const [reasonId, setReasonId] = useState("");
   const [detail, setDetail] = useState("");
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50
-      }}
-    >
-      <div style={{ background: "#fff", borderRadius: 10, padding: 24, minWidth: 360, maxWidth: 480 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>
-          Don't pursue — {props.lead.title}
+    <div className="crm-dialog__backdrop">
+      <div className="crm-dialog" style={{ maxWidth: 480 }}>
+        <div className="crm-dialog__header">
+          <div className="crm-dialog__title">
+            Don&apos;t pursue — {props.lead.title}
+          </div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
-            Reason *
-          </label>
-          <select
-            style={{ ...s.select, width: "100%" }}
-            value={reasonId}
-            onChange={(e) => setReasonId(e.target.value)}
-          >
-            <option value="">Select a reason…</option>
-            {props.reasons.filter((r) => r.isActive).map((r) => (
-              <option key={r.id} value={r.id}>{r.label}</option>
-            ))}
-          </select>
+        <div className="crm-dialog__body">
+          <div style={{ marginBottom: 12 }}>
+            <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
+              Reason *
+            </label>
+            <select
+              className="s7-select"
+              style={{ width: "100%" }}
+              value={reasonId}
+              onChange={(e) => setReasonId(e.target.value)}
+            >
+              <option value="">Select a reason…</option>
+              {props.reasons.filter((r) => r.isActive).map((r) => (
+                <option key={r.id} value={r.id}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
+              Detail (optional)
+            </label>
+            <input
+              className="s7-input"
+              style={{ width: "100%" }}
+              placeholder="Additional context…"
+              value={detail}
+              onChange={(e) => setDetail(e.target.value)}
+            />
+          </div>
         </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
-            Detail (optional)
-          </label>
-          <input
-            style={s.input}
-            placeholder="Additional context…"
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button style={s.secondaryBtn} onClick={props.onClose} disabled={props.busy}>
-            Cancel
-          </button>
-          <button
-            style={{ ...s.primaryBtn, background: "#dc2626", opacity: !reasonId || props.busy ? 0.5 : 1 }}
-            disabled={!reasonId || props.busy}
-            onClick={() => props.onConfirm(reasonId, detail)}
-          >
-            {props.busy ? "Saving…" : "Confirm"}
-          </button>
+        <div className="crm-dialog__footer">
+          <div />
+          <div className="crm-dialog__footer-actions">
+            <button
+              className="s7-btn s7-btn--secondary"
+              onClick={props.onClose}
+              disabled={props.busy}
+            >
+              Cancel
+            </button>
+            <button
+              className="s7-btn s7-btn--primary"
+              style={{
+                background: "var(--status-danger)",
+                borderColor: "var(--status-danger)",
+                opacity: !reasonId || props.busy ? 0.5 : 1
+              }}
+              disabled={!reasonId || props.busy}
+              onClick={() => props.onConfirm(reasonId, detail)}
+            >
+              {props.busy ? "Saving…" : "Confirm"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -249,48 +252,57 @@ function PriceItDialog(props: {
   const [siteId, setSiteId] = useState("");
   const [title, setTitle] = useState(props.lead.title);
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50
-      }}
-    >
-      <div style={{ background: "#fff", borderRadius: 10, padding: 24, minWidth: 360, maxWidth: 480 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>
-          Price it — {props.lead.title}
+    <div className="crm-dialog__backdrop">
+      <div className="crm-dialog" style={{ maxWidth: 480 }}>
+        <div className="crm-dialog__header">
+          <div className="crm-dialog__title">
+            Price it — {props.lead.title}
+          </div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
-            Site ID *
-          </label>
-          <input
-            style={s.input}
-            placeholder="site-…"
-            value={siteId}
-            onChange={(e) => setSiteId(e.target.value)}
-          />
+        <div className="crm-dialog__body">
+          <div style={{ marginBottom: 12 }}>
+            <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
+              Site ID *
+            </label>
+            <input
+              className="s7-input"
+              style={{ width: "100%" }}
+              placeholder="site-…"
+              value={siteId}
+              onChange={(e) => setSiteId(e.target.value)}
+            />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
+              Tender title
+            </label>
+            <input
+              className="s7-input"
+              style={{ width: "100%" }}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
         </div>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
-            Tender title
-          </label>
-          <input
-            style={s.input}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button style={s.secondaryBtn} onClick={props.onClose} disabled={props.busy}>
-            Cancel
-          </button>
-          <button
-            style={{ ...s.primaryBtn, opacity: !siteId.trim() || props.busy ? 0.5 : 1 }}
-            disabled={!siteId.trim() || props.busy}
-            onClick={() => props.onConfirm(siteId.trim(), title.trim())}
-          >
-            {props.busy ? "Creating…" : "Create tender"}
-          </button>
+        <div className="crm-dialog__footer">
+          <div />
+          <div className="crm-dialog__footer-actions">
+            <button
+              className="s7-btn s7-btn--secondary"
+              onClick={props.onClose}
+              disabled={props.busy}
+            >
+              Cancel
+            </button>
+            <button
+              className="s7-btn s7-btn--primary crm-btn--primary"
+              style={{ opacity: !siteId.trim() || props.busy ? 0.5 : 1 }}
+              disabled={!siteId.trim() || props.busy}
+              onClick={() => props.onConfirm(siteId.trim(), title.trim())}
+            >
+              {props.busy ? "Creating…" : "Create tender"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -298,13 +310,18 @@ function PriceItDialog(props: {
 }
 
 // ── Capture-a-lead form ───────────────────────────────────────────────────────
+//
+// CRM_PARITY_INBOX_V1: the "+ Capture a lead" button lives in the control row
+// (wired from CommsInboxTriage, not a standalone card). When closed, just the
+// button is visible; when open, the form card expands below the control row.
 
 function CaptureLeadForm(props: {
   onCreated: () => void;
   anchorFilter: PickerSelection | null;
+  open: boolean;
+  onClose: () => void;
 }) {
   const { authFetch } = useAuth();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -328,7 +345,7 @@ function CaptureLeadForm(props: {
       setClientId("");
       setDetail("");
       setChannel("email");
-      setOpen(false);
+      props.onClose();
       props.onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to capture lead.");
@@ -337,37 +354,31 @@ function CaptureLeadForm(props: {
     }
   }, [authFetch, channel, clientId, detail, props, title]);
 
-  if (!open) {
-    return (
-      <div style={{ marginBottom: 12 }}>
-        <button style={s.primaryBtn} onClick={() => setOpen(true)}>
-          + Capture a lead
-        </button>
-      </div>
-    );
-  }
+  if (!props.open) return null;
 
   return (
-    <div style={s.card}>
-      <div style={s.cardTitle}>Capture a lead</div>
+    <div className="s7-card" style={{ marginBottom: 12, padding: 16 }}>
+      <p className="s7-type-card-title" style={{ marginBottom: 12 }}>Capture a lead</p>
       <div style={{ display: "grid", gap: 10 }}>
         <div>
-          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
+          <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
             Title *
           </label>
           <input
-            style={s.input}
+            className="s7-input"
+            style={{ width: "100%" }}
             placeholder="Lead title…"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
         </div>
         <div>
-          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
+          <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
             Client ID *
           </label>
           <input
-            style={s.input}
+            className="s7-input"
+            style={{ width: "100%" }}
             placeholder="client-…"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
@@ -375,11 +386,12 @@ function CaptureLeadForm(props: {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
+            <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
               Channel
             </label>
             <select
-              style={{ ...s.select, width: "100%" }}
+              className="s7-select"
+              style={{ width: "100%" }}
               value={channel}
               onChange={(e) => setChannel(e.target.value as IntakeCaptureChannel)}
             >
@@ -389,11 +401,12 @@ function CaptureLeadForm(props: {
             </select>
           </div>
           <div style={{ flex: 2 }}>
-            <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
+            <label className="s7-type-label" style={{ display: "block", marginBottom: 4 }}>
               Detail (optional)
             </label>
             <input
-              style={s.input}
+              className="s7-input"
+              style={{ width: "100%" }}
               placeholder="e.g. email subject, referrer name"
               value={detail}
               onChange={(e) => setDetail(e.target.value)}
@@ -401,16 +414,23 @@ function CaptureLeadForm(props: {
           </div>
         </div>
       </div>
-      {error && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{error}</div>}
+      {error && (
+        <div style={{ color: "var(--status-danger)", fontSize: 12, marginTop: 8 }}>{error}</div>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button
-          style={{ ...s.primaryBtn, opacity: !title.trim() || !clientId.trim() || busy ? 0.5 : 1 }}
+          className="s7-btn s7-btn--primary crm-btn--primary"
+          style={{ opacity: !title.trim() || !clientId.trim() || busy ? 0.5 : 1 }}
           disabled={!title.trim() || !clientId.trim() || busy}
           onClick={() => void submit()}
         >
           {busy ? "Saving…" : "Capture"}
         </button>
-        <button style={s.secondaryBtn} onClick={() => { setOpen(false); setError(null); }} disabled={busy}>
+        <button
+          className="s7-btn s7-btn--secondary"
+          onClick={() => { props.onClose(); setError(null); }}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -419,6 +439,13 @@ function CaptureLeadForm(props: {
 }
 
 // ── Lead row ──────────────────────────────────────────────────────────────────
+//
+// CRM_PARITY_INBOX_V1: each row carries:
+//   Left: title (600 weight) + Lead badge (s7-badge--neutral) + channel badge
+//         (--info/--active) + age muted (amber when old) + note line
+//         + Account: <link/label>
+//   Right: Archive / Don't pursue (s7-btn--secondary) + Price it
+//          (s7-btn--primary crm-btn--primary) or outlined-danger Delete.
 
 function LeadRow(props: {
   lead: IntakeLead;
@@ -431,6 +458,7 @@ function LeadRow(props: {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const actionSet = leadRowActionSet(lead);
+  const ageOld = isAgeOld(lead.createdAt);
 
   // CRM_CHROME_V1 — DELETE /crm/entries/:id. The server owns the guard; when
   // it refuses with a 400 naming the blocking field, that message is shown on
@@ -484,42 +512,76 @@ function LeadRow(props: {
     }
   }, [lead.id, onRefresh, props.authFetch]);
 
+  // Account display — lifecycle status or "no match" hint
+  const accountDisplay = lead.account
+    ? lead.account.lifecycleStatus
+    : lead.client?.name
+      ? `No match — will create "${lead.client.name}"`
+      : null;
+
   return (
-    <div style={s.row}>
-      <div style={s.rowTitle}>{lead.title}</div>
-      <div style={s.rowMeta}>
-        {lead.captureChannel && (
-          <span style={{
-            ...s.badge,
-            background: CHANNEL_COLOUR[lead.captureChannel].bg,
-            color: CHANNEL_COLOUR[lead.captureChannel].fg
-          }}>
-            {CHANNEL_LABEL[lead.captureChannel]}
+    <div
+      style={{
+        padding: "12px 0",
+        borderBottom: "1px solid var(--border-subtle)",
+        display: "flex",
+        gap: 16,
+        alignItems: "flex-start"
+      }}
+    >
+      {/* Left content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Title + badges + age */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+            {lead.title}
           </span>
-        )}
-        <span style={{ ...s.badge, background: "#f3f4f6", color: "#6b7280" }}>
-          {lead.client?.name ?? "Unknown client"}
-        </span>
-        {accountChip(lead)}
-        <span style={{ fontSize: 11, color: "#9ca3af" }}>{fmtAge(lead.createdAt)}</span>
-      </div>
-      {lead.notes && (
-        <div style={s.rowExcerpt}>
-          {lead.notes.length > 120 ? lead.notes.slice(0, 120) + "…" : lead.notes}
+          {/* Lead type badge — always neutral per artboard */}
+          <span className="s7-badge s7-badge--neutral">Lead</span>
+          {/* Channel badge */}
+          {lead.captureChannel && (
+            <span className={`s7-badge ${CHANNEL_BADGE_TONE[lead.captureChannel]}`}>
+              {CHANNEL_LABEL[lead.captureChannel]}
+            </span>
+          )}
+          {/* Age — amber when old */}
+          <span style={{
+            fontSize: 11,
+            color: ageOld ? "var(--status-warning)" : "var(--text-muted)"
+          }}>
+            {fmtAge(lead.createdAt)}
+          </span>
         </div>
-      )}
-      {lead.captureDetail && !lead.notes && (
-        <div style={s.rowExcerpt}>{lead.captureDetail}</div>
-      )}
-      {rowError && (
-        <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 6 }}>{rowError}</div>
-      )}
-      {/* CRM_CHROME_V1 — [Archive] [Don't pursue] [Price it] in the mock-up's
-          order; [Delete] alone on an empty lead. */}
-      <div style={s.rowActions}>
+
+        {/* Note / excerpt */}
+        {(lead.notes || lead.captureDetail) && (
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
+            {lead.notes
+              ? (lead.notes.length > 120 ? lead.notes.slice(0, 120) + "…" : lead.notes)
+              : lead.captureDetail}
+          </div>
+        )}
+
+        {/* Account line */}
+        {accountDisplay && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Account: <span style={{ color: lead.account ? "var(--brand-primary)" : "var(--text-muted)" }}>
+              {accountDisplay}
+            </span>
+          </div>
+        )}
+
+        {rowError && (
+          <div style={{ color: "var(--status-danger)", fontSize: 12, marginTop: 4 }}>{rowError}</div>
+        )}
+      </div>
+
+      {/* Right: action buttons */}
+      <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
         {actionSet === "delete" ? (
           <button
-            style={s.dontPursueBtn}
+            className="s7-btn s7-btn--secondary"
+            style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)" }}
             onClick={() => void onDelete()}
             disabled={busy}
           >
@@ -528,21 +590,22 @@ function LeadRow(props: {
         ) : (
           <>
             <button
-              style={s.secondaryBtn}
+              className="s7-btn s7-btn--secondary"
               onClick={() => setDialog("archive")}
               disabled={busy}
             >
               Archive
             </button>
             <button
-              style={s.dontPursueBtn}
+              className="s7-btn s7-btn--secondary"
+              style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)" }}
               onClick={() => setDialog("dont-pursue")}
               disabled={busy}
             >
-              Don't pursue
+              Don&apos;t pursue
             </button>
             <button
-              style={s.actionBtn}
+              className="s7-btn s7-btn--primary crm-btn--primary"
               onClick={() => setDialog("price")}
               disabled={busy}
             >
@@ -551,6 +614,7 @@ function LeadRow(props: {
           </>
         )}
       </div>
+
       {dialog === "archive" && (
         <ArchiveEntryModal
           entryId={lead.id}
@@ -588,6 +652,10 @@ function LeadRow(props: {
 /**
  * CommsInboxTriage — the Inbox tab rendered inside CommsHubPage.
  *
+ * CRM_PARITY_INBOX_V1 (crmvis-S7): artboard Intake.dc.html design.
+ * Control row: Anchor label + Channel crm-filter-chip + Capture a lead.
+ * Card: UNTRIAGED · OLDEST FIRST, with artboard-spec row layout.
+ *
  * This is lead-intake's screen inside the Comms hub window.
  * It calls /crm/intake/* only. It does NOT import anything from the comms
  * sub-module and MUST NOT (Marco's decision 3).
@@ -609,6 +677,9 @@ export function CommsInboxTriage(props: {
 
   const [channelFilter, setChannelFilter] = useState<IntakeCaptureChannel | "">("");
   const [reasons, setReasons] = useState<DropReason[]>([]);
+
+  // CRM_PARITY_INBOX_V1: capture form state — open/closed
+  const [captureOpen, setCaptureOpen] = useState(false);
 
   const accountIdFilter = props.anchorFilter?.kind === "entity" && props.anchorFilter.type === "ACCOUNT"
     ? props.anchorFilter.entityId
@@ -661,60 +732,97 @@ export function CommsInboxTriage(props: {
   // createdAt DESC across pages.
   const orderedLeads = useMemo(() => sortLeadsOldestFirst(leads), [leads]);
 
+  // Anchor label text — shown in the "Anchor:" chip legend in the control row.
+  const anchorLabel = accountIdFilter
+    ? (props.anchorFilter?.kind === "entity" ? props.anchorFilter.label : "Account")
+    : "All";
+
   return (
     <div>
-      {/* Filters */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
+      {/* CRM_PARITY_INBOX_V1 — artboard control row:
+          Anchor: All chip (legend) | Channel crm-filter-chip | + Capture a lead */}
+      <div style={{
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        marginBottom: 12,
+        flexWrap: "wrap"
+      }}>
+        {/* Anchor chip — legend only (the actual anchor filter is driven by
+            the parent's AnchorPicker state; we just display it here) */}
+        <span
+          className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${accountIdFilter ? " crm-filter-chip--active" : ""}`}
+          aria-label="Anchor filter"
+        >
+          Anchor: {anchorLabel} &#9660;
+        </span>
+
+        {/* Channel crm-filter-chip select */}
         <select
-          style={s.select}
+          className={`s7-select s7-btn--sm crm-filter-chip${channelFilter ? " crm-filter-chip--active" : ""}`}
+          style={{ height: 32, paddingTop: 0, paddingBottom: 0 }}
           value={channelFilter}
           onChange={(e) => setChannelFilter(e.target.value as IntakeCaptureChannel | "")}
+          aria-label="Channel filter"
         >
-          <option value="">All channels</option>
+          <option value="">Channel: All</option>
           {CAPTURE_CHANNELS.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
+            <option key={c.value} value={c.value}>Channel: {c.label}</option>
           ))}
         </select>
-        {accountIdFilter && (
-          <span style={{ ...s.badge, background: "#e0e7ff", color: "#3730a3" }}>
-            Filtered by account
-          </span>
-        )}
+
+        {/* Unfilterable anchor hint */}
         {unfilterableAnchor && (
-          <span style={{ ...s.badge, background: CHANNEL_COLOUR.referral.bg, color: CHANNEL_COLOUR.referral.fg }}>
-            {unfilterableAnchor.label} — the Inbox can only be filtered by account
+          <span className="s7-badge s7-badge--warning">
+            {unfilterableAnchor.label} — Inbox filters by account only
           </span>
         )}
-        <span style={{ fontSize: 12, color: "#9ca3af" }}>
+
+        {/* Lead count */}
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {total} lead{total === 1 ? "" : "s"}
         </span>
+
+        {/* Capture a lead — primary button, rightmost in the control row */}
+        <button
+          className="s7-btn s7-btn--primary crm-btn--primary"
+          style={{ marginLeft: "auto" }}
+          onClick={() => setCaptureOpen(true)}
+        >
+          + Capture a lead
+        </button>
       </div>
 
-      {/* Capture form */}
+      {/* Capture form — only when open */}
       <CaptureLeadForm
         anchorFilter={props.anchorFilter}
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
         onCreated={() => void loadLeads(1)}
       />
 
-      {/* List */}
-      <div style={s.card}>
-        {/* CRM_CHROME_V1 — the mock-up's header. The "oldest first" half is a
-            promise the page keeps via sortLeadsOldestFirst, within the page. */}
-        <div style={s.cardTitle}>
-          Untriaged · oldest first
-          <span style={{ fontWeight: 400, color: s.empty.color, marginLeft: 8 }}>
+      {/* List card */}
+      <div className="s7-card" style={{ padding: 16 }}>
+        {/* CRM_CHROME_V1 / CRM_PARITY_INBOX_V1 — UNTRIAGED · OLDEST FIRST header */}
+        <div style={{ marginBottom: 12 }}>
+          <span className="s7-type-label" style={{ letterSpacing: "0.04em" }}>
+            UNTRIAGED · OLDEST FIRST
+          </span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 10 }}>
             page {page} of {totalPages}
           </span>
         </div>
 
         {loadError && (
-          <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 8 }}>{loadError}</div>
+          <div style={{ color: "var(--status-danger)", fontSize: 13, marginBottom: 8 }}>
+            {loadError}
+          </div>
         )}
 
         {loading
-          ? <div style={s.empty}>Loading…</div>
+          ? <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "12px 0" }}>Loading…</div>
           : orderedLeads.length === 0
-            ? <div style={s.empty}>No open leads.</div>
+            ? <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "12px 0" }}>No open leads.</div>
             : orderedLeads.map((lead) => (
                 <LeadRow
                   key={lead.id}
@@ -729,14 +837,14 @@ export function CommsInboxTriage(props: {
         {totalPages > 1 && (
           <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
             <button
-              style={s.secondaryBtn}
+              className="s7-btn s7-btn--secondary"
               disabled={page <= 1 || loading}
               onClick={() => void loadLeads(page - 1)}
             >
               Previous
             </button>
             <button
-              style={s.secondaryBtn}
+              className="s7-btn s7-btn--secondary"
               disabled={page >= totalPages || loading}
               onClick={() => void loadLeads(page + 1)}
             >

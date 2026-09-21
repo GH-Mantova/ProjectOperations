@@ -41,6 +41,12 @@ function buildPrismaMock(opts: {
 
   const prisma = {
     tender: { findUnique: tenderFindUnique },
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3): createCuttingItem now
+    // reads the tender markup alongside the insert, so the mock must carry
+    // tenderEstimate or the call throws before any assertion in this file is
+    // reached. null exercises the service's own documented default of 30;
+    // nothing in this spec asserts on markup, so no assertion is weakened.
+    tenderEstimate: { findUnique: jest.fn(async () => null) },
     scopeCard: { findFirst: scopeCardFindFirst },
     cuttingSheetItem: { create: cuttingCreate },
     // pricedCuttingData reads cutting + core-hole rate tables; an

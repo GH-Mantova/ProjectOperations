@@ -138,11 +138,16 @@ describe("the collapsed summary", () => {
   it("shows the line count and BOTH money figures while collapsed", () => {
     const lines = [autoLine(), manualLine()];
     const subtotal = sumWasteLineTotals(lines);
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (S3): withMarkup is now server-supplied —
+    // the component renders `withMarkup ?? subtotal` and never computes it.
+    // The test must supply withMarkup explicitly (1250 * 1.30 = 1625).
+    const withMarkup = 1625;
     const html = renderToStaticMarkup(
       <WasteSectionSummary
         discipline="DEM"
         lineCount={lines.length}
         subtotal={subtotal}
+        withMarkup={withMarkup}
         sectionMarkupOverride={null}
         tenderMarkup={30}
         collapsed
@@ -160,10 +165,12 @@ describe("the collapsed summary", () => {
 
   it("shows exactly the same figures while open — the summary does not move", () => {
     const lines = [autoLine(), manualLine()];
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (S3): withMarkup is server-supplied.
     const props = {
       discipline: "DEM",
       lineCount: lines.length,
       subtotal: sumWasteLineTotals(lines),
+      withMarkup: 1625,
       sectionMarkupOverride: null,
       tenderMarkup: 30
     };
@@ -499,10 +506,10 @@ describe("the card subtotal, before and after this slice", () => {
     expect(serverSummarySource).toContain("this.prisma.scopeWasteItem.findMany({");
     // updated for SCOPE_QUOTE_DESTINATION_V1 (S2a): waste splits four ways
     // ...at the waste section's OWN markup rate, not the scope chain.
-    // S2a dissolved the inline expression into a factor + four-bucket split;
-    // the semantic is identical: each card's subtotal * (1 + rate/100).
-    expect(serverSummarySource).toContain("const factor = 1 + rate / 100;");
-    expect(serverSummarySource).toContain("wasteWithMarkup += b.subtotal * factor;");
+    // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (S3): each line resolved via resolveEffectiveMarkup,
+    // so the S2 bucket-level factor is gone; per-line lineTotalWithMarkup is accumulated directly.
+    expect(serverSummarySource).toContain("wasteWithMarkup += lineTotalWithMarkup;");
+    expect(serverSummarySource).toContain("resolveEffectiveMarkup(lineMarkupOverride, cardWasteOverride, tenderMarkup)");
     // ...and the invariant is stated in words next to it.
     // (the sentence wraps in the source, so match the clause that fits a line)
     expect(serverSummarySource).toContain("NEVER folded into the");

@@ -92,11 +92,13 @@ function buildMocks(existingRow: ReturnType<typeof makeExistingRow>, transportRa
   });
   const update = jest.fn().mockResolvedValue({ ...existingRow });
 
+  const tenderEstimateFindUnique = jest.fn().mockResolvedValue(null); // no markup override; service falls back to 30
   const prisma = {
     scopeWasteItem: { findUnique, update },
     estimatePlantRate: { findUnique },
     operationsSettings: { findUnique },
-    asset: { findUnique }
+    asset: { findUnique },
+    tenderEstimate: { findUnique: tenderEstimateFindUnique }
   };
 
   const rateResolver = {

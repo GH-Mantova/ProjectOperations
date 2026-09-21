@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IsArray, IsEnum, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsArray, IsEnum, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { QuoteDestination } from "@prisma/client";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -34,6 +34,10 @@ class CreateCuttingItemDto {
   // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this cutting line
   // goes on the client quote. Optional; defaults PRICE.
   @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+  // null clears the override (inherit chain). 0 is a real override (0% markup),
+  // NOT an absence -- the resolver uses ?? not ||.
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
   // PR B-followup -- cardId is now required at both DTO and schema
   // levels. Cutting rows must belong to a scope card; cardless
   // creation is no longer a supported state.
@@ -63,6 +67,10 @@ export class UpdateCuttingItemDto {
   // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this cutting line
   // goes on the client quote. Optional; defaults PRICE.
   @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+  // null clears the override (inherit chain). 0 is a real override (0% markup),
+  // NOT an absence -- the resolver uses ?? not ||.
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
 }
 
 /**

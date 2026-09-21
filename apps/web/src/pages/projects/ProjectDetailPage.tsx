@@ -8,6 +8,7 @@ import { throwIfApiError } from "../../lib/api-errors";
 import { AdvanceStatusModal } from "./AdvanceStatusModal";
 import { ConfirmRevertDialog } from "./ConfirmRevertDialog";
 import { GanttChart, type GanttTask } from "./GanttChart";
+import { ProjectTippingTab } from "./ProjectTippingTab";
 
 type Person = { id: string; firstName: string; lastName: string; email?: string } | null;
 
@@ -55,7 +56,7 @@ type ActivityResponse = {
   limit: number;
 };
 
-type Tab = "overview" | "scope" | "schedule" | "diary" | "documents" | "team" | "activity";
+type Tab = "overview" | "scope" | "schedule" | "diary" | "documents" | "team" | "tipping" | "activity";
 
 const TAB_LABEL: Record<Tab, string> = {
   overview: "Overview",
@@ -64,6 +65,7 @@ const TAB_LABEL: Record<Tab, string> = {
   diary: "Daily Diary",
   documents: "Documents",
   team: "Team",
+  tipping: "Tipping",
   activity: "Activity"
 };
 
@@ -244,7 +246,7 @@ export function ProjectDetailPage() {
       </header>
 
       <nav className="admin-page__tabs" role="tablist" aria-label="Project sections">
-        {(["overview", "scope", "schedule", "diary", "documents", "team", "activity"] as Tab[]).map((key) => {
+        {(["overview", "scope", "schedule", "diary", "documents", "team", "tipping", "activity"] as Tab[]).map((key) => {
           const isActive = tab === key;
           return (
             <button
@@ -292,6 +294,11 @@ export function ProjectDetailPage() {
       {tab === "team" && (
         <div role="tabpanel" id="project-tabpanel-team" aria-labelledby="project-tab-team">
           <TeamTab project={project} onProjectUpdated={() => void reload()} />
+        </div>
+      )}
+      {tab === "tipping" && (
+        <div role="tabpanel" id="project-tabpanel-tipping" aria-labelledby="project-tab-tipping">
+          <ProjectTippingTab projectId={project.id} />
         </div>
       )}
       {tab === "activity" && (

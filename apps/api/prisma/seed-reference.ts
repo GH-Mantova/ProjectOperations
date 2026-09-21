@@ -424,6 +424,17 @@ export async function seedNotificationTriggerConfigs(prisma: PrismaClient) {
       trigger: "claim.draft_ready_for_review",
       label: "Draft progress claim ready for review",
       description: "Sent on the 28th of each month when an ACTIVE contract has no progress claim generated yet for the current month. Prompts the responsible user to generate and issue the claim before the cut-off date."
+    },
+    // ops-m2b: daily digest when a TIP facility has not had its prices checked
+    // in the last six months. Seeded enabled with Admin role as recipient
+    // (matches the migration row so running either path yields the same state).
+    {
+      trigger: "waste.price_review_due",
+      label: "Tip price review due",
+      description: "Daily digest: tip facilities whose prices have not been checked in the last six months.",
+      isEnabled: true,
+      deliveryMethod: "both",
+      recipientRoles: ["Admin"]
     }
   ];
   for (const t of triggers) {
@@ -438,7 +449,7 @@ export async function seedNotificationTriggerConfigs(prisma: PrismaClient) {
         description: t.description,
         isEnabled: t.isEnabled ?? false,
         deliveryMethod: t.deliveryMethod ?? "both",
-        recipientRoles: [],
+        recipientRoles: t.recipientRoles ?? [],
         recipientUserIds: t.recipientUserIds ?? []
       }
     });

@@ -4,6 +4,46 @@ import { AddressAutocomplete, type AddressSuggestion } from "../../components/Ad
 import { LocationsMap } from "../../components/LocationsMap";
 import { useConfirm } from "../../hooks/useConfirm";
 import { readApiErrorMessage } from "../../lib/api-errors";
+
+// ---- Price review helpers --------------------------------------------------
+
+function fmtReviewDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+/** Returns the chip content and variant for the Next review cell */
+function reviewChip(nextReviewAt: string | null | undefined): {
+  label: string;
+  variant: "overdue" | "never" | "ok";
+  overdueDays?: number;
+  dueDate?: string;
+} {
+  if (!nextReviewAt) {
+    return { label: "Never reviewed", variant: "never" };
+  }
+  const next = new Date(nextReviewAt);
+  const now = new Date();
+  const diffMs = next.getTime() - now.getTime();
+  const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays <= 0) {
+    const overdueDays = Math.abs(diffDays);
+    return {
+      label: `Overdue - ${overdueDays} day${overdueDays === 1 ? "" : "s"}`,
+      variant: "overdue",
+      overdueDays
+    };
+  }
+  return {
+    label: `Due ${fmtReviewDate(nextReviewAt)}`,
+    variant: "ok",
+    dueDate: fmtReviewDate(nextReviewAt)
+  };
+}
 // ── Types ─────────────────────────────────────────────────────────────────
 
 type MapLocationKind = "TIP" | "POI";
@@ -23,6 +63,9 @@ type MapLocation = {
   notes: string | null;
   isActive: boolean;
   ratesStatus?: "set" | "needed";
+  // ops-m2b: price review fields (present on TIP rows only)
+  pricesReviewedAt?: string | null;
+  nextReviewAt?: string | null;
 };
 
 type AddressFields = {
@@ -149,6 +192,11 @@ export function MapLocationsTab() {
   const [flashMsg, setFlashMsg] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+
+  // ops-m2b: mark prices reviewed dialog
+  const [reviewTarget, setReviewTarget] = useState<MapLocation | null>(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Form state — tip from rates
   const [selectedFacility, setSelectedFacility] = useState("");
@@ -366,6 +414,25 @@ export function MapLocationsTab() {
       setSaveError((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleMarkReviewed = async () => {
+    if (!reviewTarget) return;
+    setReviewSaving(true);
+    setReviewError(null);
+    try {
+      const res = await authFetch(`/map-locations/${reviewTarget.id}/prices-reviewed`, {
+        method: "PATCH"
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, "Could not mark prices reviewed."));
+      flash(`Prices marked reviewed for "${reviewTarget.name}".`);
+      setReviewTarget(null);
+      await load();
+    } catch (err) {
+      setReviewError((err as Error).message);
+    } finally {
+      setReviewSaving(false);
     }
   };
 
@@ -636,6 +703,8 @@ export function MapLocationsTab() {
               <th style={{ padding: "8px 6px" }}>Type</th>
               <th style={{ padding: "8px 6px" }}>Address</th>
               <th style={{ padding: "8px 6px" }}>Rates</th>
+              <th style={{ padding: "8px 6px" }}>Prices reviewed</th>
+              <th style={{ padding: "8px 6px" }}>Next review</th>
               <th style={{ padding: "8px 6px" }} />
             </tr>
           </thead>
@@ -697,20 +766,163 @@ export function MapLocationsTab() {
                     <span style={{ color: "var(--text-muted)" }}>—</span>
                   )}
                 </td>
+                {/* Prices reviewed (TIP only) */}
+                <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>
+                  {loc.kind === "TIP" ? (
+                    loc.pricesReviewedAt ? (
+                      fmtReviewDate(loc.pricesReviewedAt)
+                    ) : (
+                      <span style={{ color: "var(--text-subtle, #9CA3AF)" }}>&mdash;</span>
+                    )
+                  ) : (
+                    <span style={{ color: "var(--text-subtle, #9CA3AF)" }}>&mdash;</span>
+                  )}
+                </td>
+
+                {/* Next review chip (TIP only) */}
+                <td style={{ padding: "8px 6px" }}>
+                  {loc.kind === "TIP" ? (() => {
+                    const chip = reviewChip(loc.nextReviewAt);
+                    const chipStyle = {
+                      display: "inline-block" as const,
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "1px 7px",
+                      borderRadius: 4,
+                      border: "1px solid",
+                      whiteSpace: "nowrap" as const
+                    };
+                    if (chip.variant === "overdue") {
+                      return (
+                        <span style={{ ...chipStyle, borderColor: "#DC2626", color: "#DC2626", background: "#FEF2F2" }}>
+                          {chip.label}
+                        </span>
+                      );
+                    }
+                    if (chip.variant === "never") {
+                      return (
+                        <span style={{ ...chipStyle, borderColor: "#DC2626", color: "#DC2626", background: "#FEF2F2" }}>
+                          Never reviewed
+                        </span>
+                      );
+                    }
+                    return (
+                      <span style={{ ...chipStyle, borderColor: "#047857", color: "#047857", background: "#ECFDF5" }}>
+                        {chip.label}
+                      </span>
+                    );
+                  })() : (
+                    <span style={{ color: "var(--text-subtle, #9CA3AF)" }}>&mdash;</span>
+                  )}
+                </td>
+
                 <td style={{ padding: "8px 6px", textAlign: "right" }}>
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost"
-                    onClick={() => void handleDelete(loc)}
-                    style={{ fontSize: 12, color: "var(--status-danger)" }}
-                  >
-                    Deactivate
-                  </button>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    {loc.kind === "TIP" && (
+                      <button
+                        type="button"
+                        className="s7-btn s7-btn--ghost"
+                        onClick={() => {
+                          setReviewTarget(loc);
+                          setReviewError(null);
+                        }}
+                        style={{ fontSize: 12 }}
+                      >
+                        Mark prices reviewed
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost"
+                      onClick={() => void handleDelete(loc)}
+                      style={{ fontSize: 12, color: "var(--status-danger)" }}
+                    >
+                      Deactivate
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* ops-m2b: Mark prices reviewed dialog */}
+      {reviewTarget && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setReviewTarget(null);
+              setReviewError(null);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              border: "1px solid var(--border, #E5E7EB)",
+              borderRadius: 10,
+              padding: "14px 16px",
+              boxShadow: "0 8px 24px rgba(0,0,0,.08)",
+              maxWidth: 420,
+              width: "100%",
+              margin: "0 16px"
+            }}
+          >
+            <h4 style={{ margin: "0 0 6px", fontSize: 14 }}>
+              Mark prices reviewed &mdash; {reviewTarget.name}?
+            </h4>
+            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--text-muted)" }}>
+              This confirms you&apos;ve checked this tip&apos;s gate prices in the rate tables today.
+              The next reminder will be in six months (
+              {(() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 182);
+                return d.toLocaleDateString("en-AU", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric"
+                });
+              })()}
+              ). No price is changed here.
+            </p>
+            {reviewError && (
+              <p style={{ color: "var(--status-danger)", margin: "0 0 10px", fontSize: 13 }}>
+                {reviewError}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="s7-btn s7-btn--ghost"
+                onClick={() => {
+                  setReviewTarget(null);
+                  setReviewError(null);
+                }}
+                disabled={reviewSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s7-btn s7-btn--primary"
+                onClick={() => void handleMarkReviewed()}
+                disabled={reviewSaving}
+              >
+                {reviewSaving ? "Saving..." : "Mark reviewed"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </section>

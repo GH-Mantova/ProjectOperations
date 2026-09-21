@@ -167,7 +167,11 @@ function lintOne(file, canon, collect) {
     fails.push('names `watcher-launcher.ps1` without naming `watcher-launcher-singlelane.ps1` — singlelane is the real launcher');
 
   const fm2 = isDoctrine ? null : frontMatter(text);
-  return { file, fails, warns, version: fm2 ? Number(fm2.station_doc_version) : null };
+  return {
+    file, fails, warns,
+    version: fm2 ? Number(fm2.station_doc_version) : null,
+    contractVersion: fm2 && fm2.contract_version !== undefined ? Number(fm2.contract_version) : null,
+  };
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -203,10 +207,12 @@ const canon = JSON.parse(readFileSync(CANON_FILE, 'utf8'));
 
 let bad = 0;
 const versions = new Map();
+const contractVersions = new Map();
 for (const f of targets) {
   if (!existsSync(f)) { console.log(C.red('REJECT') + `  ${f} does not exist`); bad++; continue; }
   const r = lintOne(f, canon, null);
   if (r.version !== null) versions.set(f, r.version);
+  if (r.contractVersion !== null && r.contractVersion !== undefined) contractVersions.set(f, r.contractVersion);
   const name = relative(ROOT, resolve(f)).split(sep).join('/');
   if (r.fails.length) {
     bad++;
@@ -218,14 +224,16 @@ for (const f of targets) {
   for (const m of r.warns) console.log(`          ${C.yel('!')} ${m}`);
 }
 
-// every station doc must declare the same contract version
+// every station doc's declared contract_version must match the recorded canonical contract version.
+// station_doc_version is a different quantity — it tracks the doc-vs-bootstrap agreement, and the
+// PREFLIGHT contract owns that rule.
 const contractV = canon['station-contract']?.version;
-const off = [...versions.entries()].filter(([, v]) => v !== contractV);
+const off = [...contractVersions.entries()].filter(([, v]) => v !== contractV);
 if (contractV && off.length) {
   console.log('');
-  console.log(C.yel('NOTE  ') + `  contract is v${contractV}; these declare a different station_doc_version:`);
+  console.log(C.yel('NOTE  ') + `  canonical station-contract is v${contractV}; these declare a different contract_version:`);
   for (const [f, v] of off) console.log(`          ${relative(ROOT, resolve(f)).split(sep).join('/')} -> v${v}`);
-  console.log(C.dim('          the scheduled-task bootstrap must declare the same number, or the run goes read-only'));
+  console.log(C.dim('          the embedded contract block is out of step with the recorded canonical contract — re-sync the doc\'s front matter'));
 }
 
 // ---------------------------------------------------------------------------

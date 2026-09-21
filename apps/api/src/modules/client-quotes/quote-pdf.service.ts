@@ -53,7 +53,9 @@ export class QuotePdfService {
         assumptions: { orderBy: [{ sortOrder: "asc" }] },
         exclusions: { orderBy: { sortOrder: "asc" } },
         scopeItems: { orderBy: { sortOrder: "asc" } },
-        issuedTerms: { select: { content: true } }
+        issuedTerms: { select: { content: true } },
+        // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- cost groups for PDF.
+        costGroups: { orderBy: { sortOrder: "asc" } }
       }
     });
     if (!quote || quote.tenderId !== tenderId) throw new NotFoundException("Quote not found.");
@@ -102,9 +104,19 @@ export class QuotePdfService {
             description: l.description,
             displayDescription: l.displayDescription,
             price: approp ? approp.displayedAmount : toNum(l.price),
-            sortOrder: l.sortOrder
+            sortOrder: l.sortOrder,
+            // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- pass groupId.
+            groupId: l.groupId
           };
         }),
+      // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- cost groups for PDF.
+      costGroups: quote.costGroups.map((g) => ({
+        id: g.id,
+        label: g.label,
+        name: g.name,
+        printMode: g.printMode,
+        sortOrder: g.sortOrder
+      })),
       provisionalLines: quote.provisionalLines.map((l) => ({
         description: l.description,
         price: toNum(l.price),

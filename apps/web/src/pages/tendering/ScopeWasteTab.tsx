@@ -4,7 +4,8 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { NotesField } from "../../components";
-import { SectionMarkupOverride, computeWithMarkup } from "./SectionMarkupOverride";
+import { SectionMarkupOverride } from "./SectionMarkupOverride";
+import { LineMarkupCell } from "./scope-cards/LineMarkupCell";
 import { TipFinderDrawer } from "../../components/TipFinderDrawer";
 import {
   QuoteDestinationSelect,
@@ -62,6 +63,13 @@ type WasteRow = {
   quotedFuelPricePerLitre: string | null;
   // SCOPE_QD_UI_SECTIONS_V1 — where this row's cost lands on the client quote.
   quoteDestination?: QuoteDestination | null;
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — per-line markup fields.
+  // null markupOverride = inherit card.wasteMarkupOverride ?? tenderMarkup.
+  markupOverride?: number | null;
+  /** Server-computed effective markup % for this line. */
+  effectiveMarkup?: number;
+  /** Server-computed line total at effectiveMarkup rate (lineTotalWithMarkup). */
+  lineTotalWithMarkup?: number;
 };
 
 type WasteRate = {
@@ -134,7 +142,7 @@ function fmtCurrency(value: string | number | null): string {
 // marked-up cost stream, computed on the server:
 //
 //   scope-redesign.service.ts summary()
-//     wasteWithMarkup += <ScopeWasteItem.lineTotal per card> * (1 + rate/100)
+//     wasteWithMarkup += lineTotalWithMarkup  (resolveEffectiveMarkup per-line)
 //     tenderPrice = scopeWithMarkupTotal + cuttingWithMarkup + wasteWithMarkup
 //
 // with `rate = card.wasteMarkupOverride ?? tenderMarkup`. The server states
@@ -284,6 +292,7 @@ export function WasteSectionSummary({
   discipline,
   lineCount,
   subtotal,
+  withMarkup,
   sectionMarkupOverride,
   tenderMarkup,
   collapsed,
@@ -292,6 +301,8 @@ export function WasteSectionSummary({
   discipline: string;
   lineCount: number;
   subtotal: number;
+  /** SCOPE_LINE_MARKUP_ALL_TYPES_V1: sum of server lineTotalWithMarkup. */
+  withMarkup?: number;
   sectionMarkupOverride?: number | null;
   tenderMarkup?: number;
   collapsed: boolean;
@@ -356,7 +367,7 @@ export function WasteSectionSummary({
             </span>
             :{" "}
             <strong style={{ color: "var(--text)" }} data-testid="waste-section-with-markup">
-              {fmtWasteMoney(computeWithMarkup(subtotal, sectionMarkupOverride, tenderMarkup))}
+              {fmtWasteMoney(withMarkup ?? subtotal)}
             </strong>
           </>
         ) : null}
@@ -698,6 +709,19 @@ export function ScopeWasteTab({
   // SCOPE_WASTE_SECTION_V1 — one implementation, exported and unit-tested.
   // A sum of the server's own line totals; nothing is re-derived here.
   const subtotal = useMemo(() => sumWasteLineTotals(rows), [rows]);
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — sum of server lineTotalWithMarkup.
+  // Section "with markup" figure = Σ rows' lineTotalWithMarkup (server-provided).
+  const withMarkup = useMemo(
+    () => rows.reduce((sum, r) => {
+      if (r.lineTotalWithMarkup != null && Number.isFinite(r.lineTotalWithMarkup)) {
+        return sum + r.lineTotalWithMarkup;
+      }
+      // Fallback for pre-S3 rows: use lineTotal (no markup applied yet).
+      const n = r.lineTotal === null || r.lineTotal === "" ? 0 : Number(r.lineTotal);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0),
+    [rows]
+  );
   // SoT §10 waste-weight calculator surface (BACKLOG-DECISIONS.md #7):
   // display-only Σ tonnes across all rows so estimators can eyeball the
   // total waste volume they're pricing against. Pure sum — the server's
@@ -716,6 +740,7 @@ export function ScopeWasteTab({
         discipline={discipline}
         lineCount={rows.length}
         subtotal={subtotal}
+        withMarkup={withMarkup}
         sectionMarkupOverride={sectionMarkupOverride}
         tenderMarkup={tenderMarkup}
         collapsed={collapsed}
@@ -780,6 +805,7 @@ export function ScopeWasteTab({
                   "Duration",
                   "$/unit",
                   "$/Load",
+                  "Markup",
                   "Line total",
                   ""
                 ].map((h) => (
@@ -1122,6 +1148,16 @@ export function ScopeWasteTab({
                       style={{ width: 70, textAlign: "right" }}
                     />
                   </td>
+                  {/* SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — markup column after $/Load. */}
+                  <td style={wasteInternalOpacity(rowDest, { padding: 2, whiteSpace: "nowrap" })} data-testid="waste-row-markup">
+                    <LineMarkupCell
+                      markupOverride={row.markupOverride}
+                      effectiveMarkup={row.effectiveMarkup ?? 0}
+                      inheritedPhrase="the card's waste markup"
+                      onPatch={(patch) => void patchRow(row.id, patch)}
+                      disabled={!canManage || rowDest === "INTERNAL"}
+                    />
+                  </td>
                   <td
                     style={wasteInternalOpacity(rowDest, { padding: 2, fontWeight: 500, textAlign: "right" })}
                     data-testid="waste-row-line-total"
@@ -1129,7 +1165,7 @@ export function ScopeWasteTab({
                     {rowDest === "INTERNAL" ? (
                       <>
                         <span style={{ textDecoration: "line-through", textDecorationThickness: "1.5px" }}>
-                          {fmtCurrency(row.lineTotal)}
+                          {fmtCurrency(row.lineTotalWithMarkup ?? row.lineTotal)}
                         </span>
                         {rowDestNote ? (
                           <div
@@ -1147,7 +1183,13 @@ export function ScopeWasteTab({
                       </>
                     ) : (
                       <>
-                        {fmtCurrency(row.lineTotal)}
+                        <strong>{fmtCurrency(row.lineTotalWithMarkup ?? row.lineTotal)}</strong>
+                        {row.lineTotalWithMarkup != null && row.lineTotal != null
+                          && Math.abs(row.lineTotalWithMarkup - Number(row.lineTotal)) > 0.005 ? (
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>
+                            base + {row.effectiveMarkup ?? 0}%
+                          </div>
+                        ) : null}
                         {rowDestNote ? (
                           <div
                             className="exclnote"
@@ -1181,7 +1223,7 @@ export function ScopeWasteTab({
                 </tr>
                 {isExpanded ? (
                 <tr style={{ background: "var(--surface-muted, #F6F6F6)" }}>
-                  <td colSpan={16} style={{ padding: "10px 12px" }}>
+                  <td colSpan={17} style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Transport item

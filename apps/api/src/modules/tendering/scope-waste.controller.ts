@@ -53,6 +53,10 @@ class UpsertWasteDto {
   // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this waste line goes
   // on the client quote. Optional; defaults PRICE.
   @IsOptional() @IsEnum(QuoteDestination) quoteDestination?: QuoteDestination;
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+  // null clears the override (inherit chain). 0 is a real override (0% markup),
+  // NOT an absence -- the resolver uses ?? not ||.
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
 }
 
 class ReorderEntryDto {

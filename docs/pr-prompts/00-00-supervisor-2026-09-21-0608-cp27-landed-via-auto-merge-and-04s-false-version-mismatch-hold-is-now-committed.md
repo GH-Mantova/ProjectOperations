@@ -277,3 +277,38 @@ failure path too. No prompt staged; this addendum is the hand-over.
 ⚠️ **Any run that swept breadcrumbs since this script last changed left the tree the same way.** A
 station reading `dev tree main @ …` in an earlier breadcrumb should not assume the tree was on
 `main` when that line was written.
+
+### F8 — the dev tree carries BOTH documented fast-forward blockers, and the cure's own precondition does not hold — DEFERRED
+
+After restoring the tree to `main` I read `git status --porcelain` rather than assuming, and it
+holds every blocker the station doc describes, simultaneously:
+
+```
+ M docs/data-model/metadata-catalog.json                        <- known, deliberately left alone
+ M docs/pipeline/sweep-rotation.json                            <- modified-tracked FF blocker
+ D docs/pr-prompts/pr-scopecards-s4a-push-by-destination-api-HOLD.md
+ D docs/pr-prompts/pr-sotinpr-freshness-gate-HOLD.md
+?? docs/pr-prompts/pr-lintstation-contract-version-compare-HOLD.md  <- untracked-at-a-now-tracked-path
+```
+
+`main` is **8 behind** `origin/main`. Both failure modes are armed at once: `sweep-rotation.json` is
+locally modified at a path the fast-forward must update (*"Your local changes … would be
+overwritten"*), and `pr-lintstation-…-HOLD.md` is untracked on disk at a path `origin/main` now
+carries, because **#2032 merged it during this run** (*"untracked working tree files would be
+overwritten"*).
+
+**I did not attempt the cure, and the reason is its own precondition.** The documented procedure
+requires `git diff --numstat` to be EMPTY before it starts; here it is not, and two of the entries
+are ` D` deletions of tracked `-HOLD.md` files that are the **live arming record of the prompt the
+watcher is building right now** (`pr-scopecards-s4a-push-by-destination-api`). Restoring a deleted
+tracked file is how a consumed prompt comes back armed (DOCTRINE §9.2), and doing it under a live
+build is the LL-38 shape. A cure whose precondition is false is not a cure; running it anyway is
+exactly the "re-diagnosed from first principles every run" loop the station doc says has already
+been paid for four times.
+
+**DISPOSITION: DEFERRED** — not now, and specifically **not while a build is in flight**. It becomes
+safe the moment the watcher's current build has finished and its `-ready.md` has been consumed, at
+which point the two ` D` entries are settled and the tree can be brought to `origin/main` with the
+documented steps. It becomes **urgent** if a station actually needs a fast-forwarded dev tree —
+nothing this run did required one, because every mutation went through a disposable worktree or a
+branch, which is why this cost nothing today.

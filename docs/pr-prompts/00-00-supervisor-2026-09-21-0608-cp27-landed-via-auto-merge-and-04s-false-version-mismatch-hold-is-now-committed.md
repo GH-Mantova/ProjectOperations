@@ -238,3 +238,42 @@ which the companion escalation
 three swept with it can be archived to `docs/pr-prompts/archive/`. The dev tree was 6 behind
 `origin/main` at 06:09Z and is now further behind; expect the post-merge fast-forward to need the
 documented cure if a breadcrumb copy is left loose.
+
+---
+
+## ADDENDUM 2026-09-21T06:32Z — same station, same run, later measurement
+
+### F7 — `sweep-breadcrumbs.ps1` leaves the SHARED dev tree off `main` on its SUCCESS path (S2) — ACTIONED (state) / DISPATCHED (fix)
+
+Found by read-back, not by reasoning: immediately after the sweep opened **#2033** I checked
+`git rev-parse --abbrev-ref HEAD` in `C:\ProjectOperations2` and got
+**`chore/sweep-breadcrumbs-20260921-0628`**, not `main`.
+
+The script creates its branch at line 216 (`git switch -c $branch`) and **never switches back**. The
+success path ends `Write-Step "PR opened."` / `exit 0` with the tree still on the feature branch.
+
+**Why this is S2 and not cosmetic.** The script's own header already names this exact state as the
+thing it exists to prevent — lines 75–78 record a 2026-09-07 incident where a git notice raised as a
+terminating error killed the run and *"the dev tree was left OFF main, which is the drift this
+script exists to prevent."* That crash path was fixed. **The success path was not, so the drift now
+happens on every successful sweep instead of on rare failures.** Consequences, in order of severity:
+
+1. `arm-prompt.ps1` does a `git mv` in this tree. An arm performed while the tree sits on a stale
+   sweep branch stages the rename onto that branch, not `main` — an arming that reaches nobody.
+2. Every station's PREFLIGHT stamps `dev tree <branch> @ <sha>`. The next station to run would have
+   stamped a sweep branch and, reading the four-line GROUND block back, had no reason to doubt it.
+3. The documented post-merge fast-forward cure (`git merge --ff-only origin/main`) assumes `main` is
+   checked out.
+
+The binding-doc freshness check is **not** affected: `git diff --numstat origin/main -- <path>`
+compares against `origin/main` regardless of the checked-out branch, so this run's GROUND table
+stands.
+
+**DISPOSITION: ACTIONED** for the state — I switched the dev tree back to `main` and read it back
+(below). **DISPATCHED** for the fix → **Station 03** (`scripts/pipeline/**` and local-tree hygiene
+are its lane): the repair is a `try/finally` returning to the original branch, so it holds on the
+failure path too. No prompt staged; this addendum is the hand-over.
+
+⚠️ **Any run that swept breadcrumbs since this script last changed left the tree the same way.** A
+station reading `dev tree main @ …` in an earlier breadcrumb should not assume the tree was on
+`main` when that line was written.

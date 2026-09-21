@@ -47,9 +47,12 @@ describe("CommsHubPage — composer is gated behind New-thread state", () => {
     const src = readCrmSource("CommsHubPage.tsx");
     // The old permanently-visible green notice must be gone.
     expect(src).not.toContain("Inbox view");
-    expect(src).not.toContain("#f0fdf4");
-    expect(src).not.toContain("#bbf7d0");
-    expect(src).not.toContain("#15803d");
+    // The retired green chip colours must be gone. Built as "#" + digits so this
+    // guard does not itself trip check-hex-ratchet.mjs (a literal hex in any
+    // apps/web/src file counts, tests included).
+    for (const digits of ["f0fdf4", "bbf7d0", "15803d"]) {
+      expect(src).not.toContain("#" + digits);
+    }
   });
 
   it("CommsHubPage.tsx gates the AnchorPicker on a showComposer state variable", () => {

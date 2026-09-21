@@ -697,3 +697,145 @@
   align-items: center;
   flex-shrink: 0;
 }
+
+/* ── Thread row — crmvis-S8 ───────────────────────────────────────────────── */
+
+/* Full-width button that acts as a thread list row. */
+.crm-thread-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.crm-thread-row:hover {
+  background: var(--surface-hover);
+}
+
+/* Selected state in the anchored detail panel */
+.crm-thread-row--selected {
+  background: var(--brand-primary-light);
+}
+
+/* Avatar: overrides crm-avatar size for the 30px thread-row variant */
+.crm-thread-row__avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* Subject + anchor chip row */
+.crm-thread-row__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+.crm-thread-row__subject {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Anchor chip — smaller font than the default s7-badge */
+.crm-thread-row__anchor {
+  font-size: 10px;
+}
+
+.crm-thread-row__footer {
+  margin-top: 4px;
+}
+
+/* ── To-do row — crmvis-S8 ────────────────────────────────────────────────── */
+
+.crm-todo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.crm-todo-row__checkbox {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* Danger-ring when the task is overdue and actionable */
+.crm-todo-row__checkbox--overdue {
+  outline: 2px solid var(--status-danger);
+  outline-offset: 1px;
+}
+
+.crm-todo-row__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.crm-todo-row__title--done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* Overdue sub-line — danger ink instead of muted */
+.crm-todo-row__sub--overdue {
+  color: var(--status-danger);
+}
+
+/* ── Rail card — crmvis-S8 ────────────────────────────────────────────────── */
+
+/* Extends s7-card: zero margin-bottom so the flex gap owns the spacing. */
+.crm-rail-card {
+  margin-bottom: 0;
+}
+
+/* Section label (THREADS / MY TO-DOS / ADD A TO-DO) */
+.crm-rail-card__label {
+  margin: 0 0 10px;
+}
+
+/* Field labels inside the composer */
+.crm-rail-card__field-label {
+  margin: 0 0 4px;
+}
+
+/* Assign-to display box — same height as s7-input, read-only */
+.crm-rail-card__assign-box {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: default;
+}
+
+/* Suppress pointer/focus affordances on read-only assign box */
+.crm-rail-card__assign-box--readonly {
+  pointer-events: none;
+}
+
+/* Small avatar variant for the assign-to box (20px) */
+.crm-avatar--sm {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+
+/* Help text and error beneath the Add button */
+.crm-rail-card__help {
+  margin: 8px 0 0;
+}
+
+.crm-rail-card__help--error {
+  color: var(--status-danger);
+}

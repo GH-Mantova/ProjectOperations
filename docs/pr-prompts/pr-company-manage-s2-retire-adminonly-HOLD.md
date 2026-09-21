@@ -1,12 +1,10 @@
 ---
-premise: 'grep -q "AdminOnly" apps/web/src/App.tsx'
-premise_means: App.tsx still wraps the company settings route in the legacy Admin role-name guard, so SLICE 17 is not closed and route access is still decided by a role name rather than a permission code.
+premise: 'grep -q "<AdminOnly" apps/web/src/App.tsx'
+premise_means: App.tsx still wraps the company settings route in the legacy Admin role-name guard, so SLICE 17 is not closed and access to the company screen is still decided by a role name rather than a permission code.
 scope:
   - apps/web/src/App.tsx
-  - apps/web/src/components/SettingsShell.tsx
-  - apps/web/src/components/__tests__/route-guards.authz.test.ts
-done_when: pnpm build && pnpm lint && ! grep -q "AdminOnly" apps/web/src/App.tsx && grep -q "company.manage" apps/web/src/App.tsx
-size: 3
+done_when: pnpm build && pnpm lint && ! grep -q "<AdminOnly" apps/web/src/App.tsx && grep -q "company.manage" apps/web/src/App.tsx
+size: 2
 gate_allow: none
 seed_only: false
 escalates: false
@@ -15,73 +13,65 @@ cluster_order: 2
 requires_on_main: apps/api/src/common/permissions/permission-registry.ts :: company.manage
 ---
 
-# company.manage slice 2 - swap the last `<AdminOnly>` for a permission guard and retire it
+# company.manage slice 2 - swap the last `<AdminOnly>` route guard for a permission guard
 
-**Slice 2 of 2. This closes SLICE 17.**
+**Slice 2 of 2. This closes SLICE 17's last route.** One file: `apps/web/src/App.tsx`.
 
 **Gate:** slice 1 must be on main - `company.manage` present in
 `apps/api/src/common/permissions/permission-registry.ts`. That matters for a real reason, not
 bookkeeping: slice 1's migration grants `company.manage` to every role that already holds
-`platform.admin`. **If this UI guard lands first, every current admin is locked out of the company
+`platform.admin`. **If this guard lands first, every current admin is locked out of the company
 screen until the migration runs.** Do not remove the gate.
 
-## Grounded on origin/main - read before coding
+> Narrowed 2026-09-21 (Marco: *"do as you suggested"*). The earlier version also deleted the
+> `AdminOnly` export from `SettingsShell.tsx` and edited the route-guard test. That took the slice
+> outside the linter's no-screen exemption and forced it to cite a design it does not implement.
+> The guard swap is the whole of the security change and changes no screen, so it ships alone.
+> The dead export and the test's regex clean-up ride along with the next Settings slice that
+> carries a real design.
 
-- **There is exactly ONE `<AdminOnly>` route wrapper left**, at `App.tsx` lines 410-417:
-  ```
-  <Route
-    path="company"
-    element={
-      <AdminOnly>
-        <AdminCompanyPage />
-      </AdminOnly>
-    }
-  />
-  ```
-  (Grep for it - do not trust those line numbers.) `App.tsx:91` imports `AdminOnly` alongside
-  `SettingsShell`, `RequirePermissions` and `SuperUserOnly`.
-- **`AdminOnly` is defined at `SettingsShell.tsx:207`** and its own comment says it is a
-  *"Legacy role-name guard. Kept for compatibility with App.tsx route wrappers until SLICE 17
-  replaces them with `<RequirePermissions>`."* It calls `isAdminUser(user)` and renders
-  `<NoAccess required="role:Admin" .../>`.
-- **`RequirePermissions` already exists in the same file and is already used in `App.tsx`.** Read an
-  existing usage and copy its prop signature exactly - do not invent one.
-- `apps/web/src/components/__tests__/route-guards.authz.test.ts` enforces that admin-rendering routes
-  are guarded, via `const GUARD_RE = /<(?:AdminOnly|SuperUserOnly|RequirePermissions)\b/` (~line 173),
-  and it maintains a `SELF_GUARDED_ROUTES` list. ⚠️ **`/settings/company` appears in that file in
-  more than one place** (around lines 33-35, 162, and 207-208) - read every occurrence before
-  editing, because one of them is a deliberate note about bookmark URLs rendering `NoAccess`.
+## Grounded on origin/main 2b3e1ee7 - re-verify before you edit
+
+- **Exactly ONE `<AdminOnly>` route wrapper is left**, at `App.tsx:427-429`, around
+  `<AdminCompanyPage />` on the `company` route. Grep for it - do not trust the line numbers.
+- **`App.tsx:95`** imports it: `import { SettingsShell, AdminOnly, RequirePermissions, SuperUserOnly } from "./components/SettingsShell";`
+- **The word `AdminOnly` also appears in two comments** in `App.tsx` (`:468` and `:598`, both
+  describing earlier SLICE 17 swaps). They are history, not code. Leave them - which is why this
+  prompt's checks look for the JSX `<AdminOnly`, not the bare word.
+- **`RequirePermissions` is already used in `App.tsx`** (for example the `system.manage` route near
+  `:598`). Copy the prop shape of an existing usage exactly - do not invent one.
+- **The route-guard test keeps passing unchanged.** `route-guards.authz.test.ts:173` accepts
+  `/<(?:AdminOnly|SuperUserOnly|RequirePermissions)\b/`, so a `company` route wrapped in
+  `RequirePermissions` still counts as guarded. That test is **not** in scope and must not be edited.
 
 ## What to build
 
-1. **`App.tsx`** - replace the `<AdminOnly>` wrapper on the `company` route with
-   `<RequirePermissions ...>` guarding on **`company.manage`**, matching the prop shape of the
-   existing `RequirePermissions` usages in the same file. Remove `AdminOnly` from the import on
-   line 91.
+1. Replace the `<AdminOnly>` wrapper on the `company` route with `<RequirePermissions ...>` guarding
+   on **`company.manage`**, in the same prop shape as the existing usages.
+2. Remove `AdminOnly` from the import on `App.tsx:95`. Keep `SettingsShell`, `RequirePermissions`
+   and `SuperUserOnly`.
 
-2. **`SettingsShell.tsx`** - once `App.tsx` no longer references it, **delete the `AdminOnly`
-   export** and its now-dead comment.
-   ⚠️ **First prove it has no other callers:** `grep -rn "AdminOnly" apps/web/src`. If anything
-   outside `App.tsx` and the guard test still imports it, **do not delete it** - leave it, say so
-   plainly in the PR body, and list the callers. A half-removed export that breaks an unrelated page
-   is worse than a legacy guard nobody calls.
-   Leave `isAdminUser` alone unless it becomes entirely unreferenced - it is a separate helper and
-   may back nav visibility elsewhere.
-
-3. **`route-guards.authz.test.ts`** - update `GUARD_RE` to drop the `AdminOnly` alternative once the
-   component is gone, and update the surrounding comments that describe SLICE 17 as pending. **The
-   test must still fail** when a route is left unguarded - after editing, satisfy yourself that the
-   assertion can still fire, and say in the PR body what you did to convince yourself. A guard test
-   that can no longer fail is worse than no test.
+That is the whole slice. The `AdminOnly` export in `SettingsShell.tsx` stays, now unused by any
+route - its own comment already calls it legacy.
 
 ## Do NOT
 
-- **Do NOT touch the API, the permission registry, or any migration** - that was slice 1. If
+- Do NOT touch any file but `apps/web/src/App.tsx` - not `SettingsShell.tsx`, not the guard test.
+- Do NOT touch the API, the permission registry or any migration - that was slice 1. If
   `company.manage` is missing or misspelled, stop and report; do not add it here.
 - Do NOT change any other route's guard, and do not touch `SuperUserOnly`.
-- Do NOT widen `SELF_GUARDED_ROUTES` to make a failing assertion pass - if the test fails, the guard
-  is wrong, not the test.
-- Do NOT touch `sot/` (CP-24) or anything Azure/Entra/SharePoint.
+- Do NOT edit the two history comments that mention `AdminOnly`.
+- Do NOT touch `sot/` (CP-24) or anything Azure / Entra / SharePoint.
+
+## VERIFY before opening the PR
+
+```
+pnpm build && pnpm lint
+pnpm --filter @project-ops/web test -- route-guards.authz        # must pass UNCHANGED
+grep -n "<AdminOnly" apps/web/src/App.tsx                          # must be empty
+grep -n "company.manage" apps/web/src/App.tsx                      # the new guard
+git diff --name-only origin/main                                   # exactly apps/web/src/App.tsx
+```
 
 ## STANDING AUTHORITY
 
@@ -91,12 +81,12 @@ screen until the migration runs.** Do not remove the gate.
 > There is no human in this run. **Finishing the work and then asking for permission is
 > indistinguishable from failing** — the work is discarded either way.
 
-Scope discipline still applies: do not widen beyond the three files in `scope`. That is a scope
-limit, **not** a reason to stop before pushing.
+Scope discipline still applies: one file. That is a scope limit, **not** a reason to stop before
+pushing.
 
 ## Guardrails
 
-- One attempt. If `App.tsx` no longer contains `AdminOnly` on main, say `NO-OP: <reason>` and stop.
+- One attempt. If `App.tsx` no longer contains `<AdminOnly`, say `NO-OP: <reason>` and stop.
 - Never ask a question or "stand by" for approval. There is no human in a headless run.
 - Read the CI job log before diagnosing a failure.
 - `pnpm build` and `pnpm lint` must both pass before you open the PR.

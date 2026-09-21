@@ -11,9 +11,9 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-09-16 14:20 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `a351d01ca823`)
-- Models: 296 | Enums: 70 | FK edges: 493 | Domains: 23
+- Last updated: 2026-09-21 14:18 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `36383d3b651e`)
+- Models: 297 | Enums: 70 | FK edges: 496 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
 
@@ -30,7 +30,7 @@
     6. [Dashboards (3)](#domain-dashboards)
     7. [Directory (12)](#domain-directory)
     8. [Documents (6)](#domain-documents)
-    9. [Estimating (16)](#domain-estimating)
+    9. [Estimating (17)](#domain-estimating)
     10. [Estimating (Legacy) (18)](#domain-estimating-legacy)
     11. [Forms (18)](#domain-forms)
     12. [Integrations (6)](#domain-integrations)
@@ -50,7 +50,7 @@
 
 ### Model quick-jump
 
-[AccessRequest](#model-accessrequest) | [Account](#model-account) | [ActivityEntry](#model-activityentry) | [AgreedRecord](#model-agreedrecord) | [AgreedRecordAttachment](#model-agreedrecordattachment) | [AgreedRecordLine](#model-agreedrecordline) | [AgreedRecordNumberSequence](#model-agreedrecordnumbersequence) | [AgreedRecordPricingLine](#model-agreedrecordpricingline) | [AllocationWeightConfig](#model-allocationweightconfig) | [AllocatorDelegate](#model-allocatordelegate) | [ApiCredential](#model-apicredential) | [ApiKeyType](#model-apikeytype) | [ApprovalDecision](#model-approvaldecision) | [Asset](#model-asset) | [AssetBreakdown](#model-assetbreakdown) | [AssetCategory](#model-assetcategory) | [AssetCheckout](#model-assetcheckout) | [AssetInspection](#model-assetinspection) | [AssetMaintenanceEvent](#model-assetmaintenanceevent) | [AssetMaintenancePlan](#model-assetmaintenanceplan) | [AssetStatusHistory](#model-assetstatushistory) | [AssetUsageReading](#model-assetusagereading) | [AuditLog](#model-auditlog) | [AuthorityRule](#model-authorityrule) | [AutomationRule](#model-automationrule) | [AutomationRuleRun](#model-automationrulerun) | [AvailabilityWindow](#model-availabilitywindow) | [BillingMilestone](#model-billingmilestone) | [BrandAsset](#model-brandasset) | [BrandColorScheme](#model-brandcolorscheme) | [BusinessProcessFlow](#model-businessprocessflow) | [BusinessProcessInstance](#model-businessprocessinstance) | [BusinessProcessStage](#model-businessprocessstage) | [CalendarSyncedEvent](#model-calendarsyncedevent) | [Case](#model-case) | [CaseComment](#model-casecomment) | [CaseNumberSequence](#model-casenumbersequence) | [ClaimLineItem](#model-claimlineitem) | [ClaimNumberSequence](#model-claimnumbersequence) | [Client](#model-client) | [ClientPortalUser](#model-clientportaluser) | [ClientQuote](#model-clientquote) | [ClientSession](#model-clientsession) | [ClientShare](#model-clientshare) | [CommMessage](#model-commmessage) | [CommTask](#model-commtask) | [CommThread](#model-commthread) | [Commitment](#model-commitment) | [CommitmentChange](#model-commitmentchange) | [CommitmentItem](#model-commitmentitem) | [CompanyLegalDocument](#model-companylegaldocument) | [CompanyProfile](#model-companyprofile) | [Competency](#model-competency) | [CompetencyOverride](#model-competencyoverride) | [ComplianceAlert](#model-compliancealert) | [Contact](#model-contact) | [ContactShare](#model-contactshare) | [Contract](#model-contract) | [ContractNumberSequence](#model-contractnumbersequence) | [Conversation](#model-conversation) | [ConversationMessage](#model-conversationmessage) | [CorrectiveAction](#model-correctiveaction) | [CorrespondenceMessage](#model-correspondencemessage) | [CorrespondenceThread](#model-correspondencethread) | [CreditApplication](#model-creditapplication) | [Crew](#model-crew) | [CrewWorker](#model-crewworker) | [CuttingOtherRate](#model-cuttingotherrate) | [CuttingSheetItem](#model-cuttingsheetitem) | [DailyDiary](#model-dailydiary) | [Dashboard](#model-dashboard) | [DashboardWidget](#model-dashboardwidget) | [Docket](#model-docket) | [DocketAttachment](#model-docketattachment) | [DocketNumberSequence](#model-docketnumbersequence) | [DocumentAccessRule](#model-documentaccessrule) | [DocumentLink](#model-documentlink) | [DocumentTag](#model-documenttag) | [DropReason](#model-dropreason) | [EmailLog](#model-emaillog) | [EmailProviderConfig](#model-emailproviderconfig) | [EntityInsurance](#model-entityinsurance) | [EntityLicence](#model-entitylicence) | [EstimateAssumption](#model-estimateassumption) | [EstimateCoreHoleRate](#model-estimatecoreholerate) | [EstimateCuttingLine](#model-estimatecuttingline) | [EstimateCuttingRate](#model-estimatecuttingrate) | [EstimateEnclosureRate](#model-estimateenclosurerate) | [EstimateEquipLine](#model-estimateequipline) | [EstimateExport](#model-estimateexport) | [EstimateFuelRate](#model-estimatefuelrate) | [EstimateItem](#model-estimateitem) | [EstimateLabourLine](#model-estimatelabourline) | [EstimateLabourRate](#model-estimatelabourrate) | [EstimateMaterialDensity](#model-estimatematerialdensity) | [EstimatePlantLine](#model-estimateplantline) | [EstimatePlantRate](#model-estimateplantrate) | [EstimateWasteLine](#model-estimatewasteline) | [EstimateWasteRate](#model-estimatewasterate) | [EstimatorCapacity](#model-estimatorcapacity) | [Expense](#model-expense) | [ExpenseNumberSequence](#model-expensenumbersequence) | [FieldDefinition](#model-fielddefinition) | [FormApproval](#model-formapproval) | [FormAttachment](#model-formattachment) | [FormContentSnippet](#model-formcontentsnippet) | [FormField](#model-formfield) | [FormFieldPushBinding](#model-formfieldpushbinding) | [FormNumberSequence](#model-formnumbersequence) | [FormPublicLink](#model-formpubliclink) | [FormRule](#model-formrule) | [FormSchedule](#model-formschedule) | [FormSection](#model-formsection) | [FormSignature](#model-formsignature) | [FormSubmission](#model-formsubmission) | [FormSubmissionValue](#model-formsubmissionvalue) | [FormTemplate](#model-formtemplate) | [FormTemplateVersion](#model-formtemplateversion) | [FormTriggeredRecord](#model-formtriggeredrecord) | [GanttTask](#model-gantttask) | [GlobalAISettings](#model-globalaisettings) | [GlobalList](#model-globallist) | [GlobalListItem](#model-globallistitem) | [Handover](#model-handover) | [HandoverAttachment](#model-handoverattachment) | [HandoverComplianceItem](#model-handovercomplianceitem) | [HandoverSubcontractor](#model-handoversubcontractor) | [HandoverTemplate](#model-handovertemplate) | [HandoverTemplateField](#model-handovertemplatefield) | [HandoverTemplateSection](#model-handovertemplatesection) | [HandoverValue](#model-handovervalue) | [HazardNumberSequence](#model-hazardnumbersequence) | [HazardObservation](#model-hazardobservation) | [HealthcheckSeedMarker](#model-healthcheckseedmarker) | [IntegrationCredential](#model-integrationcredential) | [InternalMessage](#model-internalmessage) | [Job](#model-job) | [JobActivity](#model-jobactivity) | [JobCloseout](#model-jobcloseout) | [JobConversion](#model-jobconversion) | [JobIssue](#model-jobissue) | [JobNumberSequence](#model-jobnumbersequence) | [JobProgressEntry](#model-jobprogressentry) | [JobRole](#model-jobrole) | [JobRoleRequirement](#model-jobrolerequirement) | [JobSorSnapshot](#model-jobsorsnapshot) | [JobSorSnapshotRate](#model-jobsorsnapshotrate) | [JobStage](#model-jobstage) | [JobStatusHistory](#model-jobstatushistory) | [JobVariation](#model-jobvariation) | [KbArticle](#model-kbarticle) | [LeaveRequest](#model-leaverequest) | [ListBinding](#model-listbinding) | [LookupValue](#model-lookupvalue) | [MapLocation](#model-maplocation) | [MusterAttendee](#model-musterattendee) | [MusterEvent](#model-musterevent) | [Notification](#model-notification) | [NotificationPreference](#model-notificationpreference) | [NotificationTriggerConfig](#model-notificationtriggerconfig) | [OperationsSettings](#model-operationssettings) | [Opportunity](#model-opportunity) | [OtpChallenge](#model-otpchallenge) | [PaymentSchedule](#model-paymentschedule) | [Permission](#model-permission) | [PermissionModule](#model-permissionmodule) | [Persona](#model-persona) | [PersonaCompanyInstruction](#model-personacompanyinstruction) | [PilotFeedback](#model-pilotfeedback) | [PlatformConfig](#model-platformconfig) | [PoReconcileAudit](#model-poreconcileaudit) | [PortalInvite](#model-portalinvite) | [PortalSession](#model-portalsession) | [PreStartChecklist](#model-prestartchecklist) | [PrequalificationRequest](#model-prequalificationrequest) | [ProcurementConfig](#model-procurementconfig) | [ProcurementLine](#model-procurementline) | [ProcurementRequest](#model-procurementrequest) | [ProgressClaim](#model-progressclaim) | [Project](#model-project) | [ProjectActivityLog](#model-projectactivitylog) | [ProjectAllocation](#model-projectallocation) | [ProjectMilestone](#model-projectmilestone) | [ProjectNumberSequence](#model-projectnumbersequence) | [ProjectScopeItem](#model-projectscopeitem) | [PublicHoliday](#model-publicholiday) | [PunchItem](#model-punchitem) | [PurchaseOrder](#model-purchaseorder) | [QuoteAssumption](#model-quoteassumption) | [QuoteCostLine](#model-quotecostline) | [QuoteCostOption](#model-quotecostoption) | [QuoteEmail](#model-quoteemail) | [QuoteExclusion](#model-quoteexclusion) | [QuoteProvisionalLine](#model-quoteprovisionalline) | [QuoteScopeItem](#model-quotescopeitem) | [RateColumn](#model-ratecolumn) | [RateRow](#model-raterow) | [RateTable](#model-ratetable) | [RefreshToken](#model-refreshtoken) | [RelationshipNote](#model-relationshipnote) | [ResourceType](#model-resourcetype) | [Role](#model-role) | [RolePermission](#model-rolepermission) | [SafetyIncident](#model-safetyincident) | [SafetyIncidentNumberSequence](#model-safetyincidentnumbersequence) | [SavedView](#model-savedview) | [ScheduleAllocation](#model-scheduleallocation) | [SchedulingConflict](#model-schedulingconflict) | [ScopeCard](#model-scopecard) | [ScopeOfWorksHeader](#model-scopeofworksheader) | [ScopeOfWorksItem](#model-scopeofworksitem) | [ScopeOperationalCostLine](#model-scopeoperationalcostline) | [ScopeViewConfig](#model-scopeviewconfig) | [ScopeWasteItem](#model-scopewasteitem) | [SearchEntry](#model-searchentry) | [SharePointFileLink](#model-sharepointfilelink) | [SharePointFolderLink](#model-sharepointfolderlink) | [SharePointFolderMapping](#model-sharepointfoldermapping) | [Shift](#model-shift) | [ShiftAssetAssignment](#model-shiftassetassignment) | [ShiftRoleRequirement](#model-shiftrolerequirement) | [ShiftWorkerAssignment](#model-shiftworkerassignment) | [Site](#model-site) | [SiteAttendance](#model-siteattendance) | [SiteGeofence](#model-sitegeofence) | [SorChangeLogEntry](#model-sorchangelogentry) | [SorClientRateCard](#model-sorclientratecard) | [SorClientRateEntry](#model-sorclientrateentry) | [SorPeriod](#model-sorperiod) | [SorRate](#model-sorrate) | [StockCategory](#model-stockcategory) | [StockItem](#model-stockitem) | [StockMovement](#model-stockmovement) | [StocktakeCount](#model-stocktakecount) | [StocktakeSession](#model-stocktakesession) | [SubLineQuote](#model-sublinequote) | [SubcontractorDocument](#model-subcontractordocument) | [SubcontractorRate](#model-subcontractorrate) | [SubcontractorSupplier](#model-subcontractorsupplier) | [SupplierCreditEntry](#model-suppliercreditentry) | [Survey](#model-survey) | [SurveyResponse](#model-surveyresponse) | [SwmsTemplate](#model-swmstemplate) | [SwmsTemplateControl](#model-swmstemplatecontrol) | [SwmsTemplateControlRow](#model-swmstemplatecontrolrow) | [SwmsTemplateSection](#model-swmstemplatesection) | [Tenant](#model-tenant) | [Tender](#model-tender) | [TenderAllocationCandidate](#model-tenderallocationcandidate) | [TenderAllocationRejection](#model-tenderallocationrejection) | [TenderAssumption](#model-tenderassumption) | [TenderClarification](#model-tenderclarification) | [TenderClarificationNote](#model-tenderclarificationnote) | [TenderClient](#model-tenderclient) | [TenderClientNote](#model-tenderclientnote) | [TenderClientPackage](#model-tenderclientpackage) | [TenderDocumentLink](#model-tenderdocumentlink) | [TenderEntry](#model-tenderentry) | [TenderEstimate](#model-tenderestimate) | [TenderExclusion](#model-tenderexclusion) | [TenderFilterPreset](#model-tenderfilterpreset) | [TenderFollowUp](#model-tenderfollowup) | [TenderNote](#model-tendernote) | [TenderOutcome](#model-tenderoutcome) | [TenderPackage](#model-tenderpackage) | [TenderPricingSnapshot](#model-tenderpricingsnapshot) | [TenderRateEntry](#model-tenderrateentry) | [TenderRateSet](#model-tenderrateset) | [TenderReminderLog](#model-tenderreminderlog) | [TenderReminderPolicy](#model-tenderreminderpolicy) | [TenderScopeRevision](#model-tenderscoperevision) | [TenderTandC](#model-tendertandc) | [TenderWithdrawalReview](#model-tenderwithdrawalreview) | [TenderingLabel](#model-tenderinglabel) | [Timesheet](#model-timesheet) | [TipRecommendationLog](#model-tiprecommendationlog) | [User](#model-user) | [UserDashboard](#model-userdashboard) | [UserPersonaSettings](#model-userpersonasettings) | [UserRole](#model-userrole) | [Variation](#model-variation) | [VariationNumberSequence](#model-variationnumbersequence) | [VariationSorLine](#model-variationsorline) | [VendorInvoice](#model-vendorinvoice) | [VendorInvoiceLine](#model-vendorinvoiceline) | [Worker](#model-worker) | [WorkerCompetency](#model-workercompetency) | [WorkerLeave](#model-workerleave) | [WorkerLocationLog](#model-workerlocationlog) | [WorkerProfile](#model-workerprofile) | [WorkerQualification](#model-workerqualification) | [WorkerRoleSuitability](#model-workerrolesuitability) | [WorkerShare](#model-workershare) | [WorkerUnavailability](#model-workerunavailability) | [XeroConnection](#model-xeroconnection) | [XeroSyncLog](#model-xerosynclog)
+[AccessRequest](#model-accessrequest) | [Account](#model-account) | [ActivityEntry](#model-activityentry) | [AgreedRecord](#model-agreedrecord) | [AgreedRecordAttachment](#model-agreedrecordattachment) | [AgreedRecordLine](#model-agreedrecordline) | [AgreedRecordNumberSequence](#model-agreedrecordnumbersequence) | [AgreedRecordPricingLine](#model-agreedrecordpricingline) | [AllocationWeightConfig](#model-allocationweightconfig) | [AllocatorDelegate](#model-allocatordelegate) | [ApiCredential](#model-apicredential) | [ApiKeyType](#model-apikeytype) | [ApprovalDecision](#model-approvaldecision) | [Asset](#model-asset) | [AssetBreakdown](#model-assetbreakdown) | [AssetCategory](#model-assetcategory) | [AssetCheckout](#model-assetcheckout) | [AssetInspection](#model-assetinspection) | [AssetMaintenanceEvent](#model-assetmaintenanceevent) | [AssetMaintenancePlan](#model-assetmaintenanceplan) | [AssetStatusHistory](#model-assetstatushistory) | [AssetUsageReading](#model-assetusagereading) | [AuditLog](#model-auditlog) | [AuthorityRule](#model-authorityrule) | [AutomationRule](#model-automationrule) | [AutomationRuleRun](#model-automationrulerun) | [AvailabilityWindow](#model-availabilitywindow) | [BillingMilestone](#model-billingmilestone) | [BrandAsset](#model-brandasset) | [BrandColorScheme](#model-brandcolorscheme) | [BusinessProcessFlow](#model-businessprocessflow) | [BusinessProcessInstance](#model-businessprocessinstance) | [BusinessProcessStage](#model-businessprocessstage) | [CalendarSyncedEvent](#model-calendarsyncedevent) | [Case](#model-case) | [CaseComment](#model-casecomment) | [CaseNumberSequence](#model-casenumbersequence) | [ClaimLineItem](#model-claimlineitem) | [ClaimNumberSequence](#model-claimnumbersequence) | [Client](#model-client) | [ClientPortalUser](#model-clientportaluser) | [ClientQuote](#model-clientquote) | [ClientSession](#model-clientsession) | [ClientShare](#model-clientshare) | [CommMessage](#model-commmessage) | [CommTask](#model-commtask) | [CommThread](#model-commthread) | [Commitment](#model-commitment) | [CommitmentChange](#model-commitmentchange) | [CommitmentItem](#model-commitmentitem) | [CompanyLegalDocument](#model-companylegaldocument) | [CompanyProfile](#model-companyprofile) | [Competency](#model-competency) | [CompetencyOverride](#model-competencyoverride) | [ComplianceAlert](#model-compliancealert) | [Contact](#model-contact) | [ContactShare](#model-contactshare) | [Contract](#model-contract) | [ContractNumberSequence](#model-contractnumbersequence) | [Conversation](#model-conversation) | [ConversationMessage](#model-conversationmessage) | [CorrectiveAction](#model-correctiveaction) | [CorrespondenceMessage](#model-correspondencemessage) | [CorrespondenceThread](#model-correspondencethread) | [CreditApplication](#model-creditapplication) | [Crew](#model-crew) | [CrewWorker](#model-crewworker) | [CuttingOtherRate](#model-cuttingotherrate) | [CuttingSheetItem](#model-cuttingsheetitem) | [DailyDiary](#model-dailydiary) | [Dashboard](#model-dashboard) | [DashboardWidget](#model-dashboardwidget) | [Docket](#model-docket) | [DocketAttachment](#model-docketattachment) | [DocketNumberSequence](#model-docketnumbersequence) | [DocumentAccessRule](#model-documentaccessrule) | [DocumentLink](#model-documentlink) | [DocumentTag](#model-documenttag) | [DropReason](#model-dropreason) | [EmailLog](#model-emaillog) | [EmailProviderConfig](#model-emailproviderconfig) | [EntityInsurance](#model-entityinsurance) | [EntityLicence](#model-entitylicence) | [EstimateAssumption](#model-estimateassumption) | [EstimateCoreHoleRate](#model-estimatecoreholerate) | [EstimateCuttingLine](#model-estimatecuttingline) | [EstimateCuttingRate](#model-estimatecuttingrate) | [EstimateEnclosureRate](#model-estimateenclosurerate) | [EstimateEquipLine](#model-estimateequipline) | [EstimateExport](#model-estimateexport) | [EstimateFuelRate](#model-estimatefuelrate) | [EstimateItem](#model-estimateitem) | [EstimateLabourLine](#model-estimatelabourline) | [EstimateLabourRate](#model-estimatelabourrate) | [EstimateMaterialDensity](#model-estimatematerialdensity) | [EstimatePlantLine](#model-estimateplantline) | [EstimatePlantRate](#model-estimateplantrate) | [EstimateWasteLine](#model-estimatewasteline) | [EstimateWasteRate](#model-estimatewasterate) | [EstimatorCapacity](#model-estimatorcapacity) | [Expense](#model-expense) | [ExpenseNumberSequence](#model-expensenumbersequence) | [FieldDefinition](#model-fielddefinition) | [FormApproval](#model-formapproval) | [FormAttachment](#model-formattachment) | [FormContentSnippet](#model-formcontentsnippet) | [FormField](#model-formfield) | [FormFieldPushBinding](#model-formfieldpushbinding) | [FormNumberSequence](#model-formnumbersequence) | [FormPublicLink](#model-formpubliclink) | [FormRule](#model-formrule) | [FormSchedule](#model-formschedule) | [FormSection](#model-formsection) | [FormSignature](#model-formsignature) | [FormSubmission](#model-formsubmission) | [FormSubmissionValue](#model-formsubmissionvalue) | [FormTemplate](#model-formtemplate) | [FormTemplateVersion](#model-formtemplateversion) | [FormTriggeredRecord](#model-formtriggeredrecord) | [GanttTask](#model-gantttask) | [GlobalAISettings](#model-globalaisettings) | [GlobalList](#model-globallist) | [GlobalListItem](#model-globallistitem) | [Handover](#model-handover) | [HandoverAttachment](#model-handoverattachment) | [HandoverComplianceItem](#model-handovercomplianceitem) | [HandoverSubcontractor](#model-handoversubcontractor) | [HandoverTemplate](#model-handovertemplate) | [HandoverTemplateField](#model-handovertemplatefield) | [HandoverTemplateSection](#model-handovertemplatesection) | [HandoverValue](#model-handovervalue) | [HazardNumberSequence](#model-hazardnumbersequence) | [HazardObservation](#model-hazardobservation) | [HealthcheckSeedMarker](#model-healthcheckseedmarker) | [IntegrationCredential](#model-integrationcredential) | [InternalMessage](#model-internalmessage) | [Job](#model-job) | [JobActivity](#model-jobactivity) | [JobCloseout](#model-jobcloseout) | [JobConversion](#model-jobconversion) | [JobIssue](#model-jobissue) | [JobNumberSequence](#model-jobnumbersequence) | [JobProgressEntry](#model-jobprogressentry) | [JobRole](#model-jobrole) | [JobRoleRequirement](#model-jobrolerequirement) | [JobSorSnapshot](#model-jobsorsnapshot) | [JobSorSnapshotRate](#model-jobsorsnapshotrate) | [JobStage](#model-jobstage) | [JobStatusHistory](#model-jobstatushistory) | [JobVariation](#model-jobvariation) | [KbArticle](#model-kbarticle) | [LeaveRequest](#model-leaverequest) | [ListBinding](#model-listbinding) | [LookupValue](#model-lookupvalue) | [MapLocation](#model-maplocation) | [MusterAttendee](#model-musterattendee) | [MusterEvent](#model-musterevent) | [Notification](#model-notification) | [NotificationPreference](#model-notificationpreference) | [NotificationTriggerConfig](#model-notificationtriggerconfig) | [OperationsSettings](#model-operationssettings) | [Opportunity](#model-opportunity) | [OtpChallenge](#model-otpchallenge) | [PaymentSchedule](#model-paymentschedule) | [Permission](#model-permission) | [PermissionModule](#model-permissionmodule) | [Persona](#model-persona) | [PersonaCompanyInstruction](#model-personacompanyinstruction) | [PilotFeedback](#model-pilotfeedback) | [PlatformConfig](#model-platformconfig) | [PoReconcileAudit](#model-poreconcileaudit) | [PortalInvite](#model-portalinvite) | [PortalSession](#model-portalsession) | [PreStartChecklist](#model-prestartchecklist) | [PrequalificationRequest](#model-prequalificationrequest) | [ProcurementConfig](#model-procurementconfig) | [ProcurementLine](#model-procurementline) | [ProcurementRequest](#model-procurementrequest) | [ProgressClaim](#model-progressclaim) | [Project](#model-project) | [ProjectActivityLog](#model-projectactivitylog) | [ProjectAllocation](#model-projectallocation) | [ProjectMilestone](#model-projectmilestone) | [ProjectNumberSequence](#model-projectnumbersequence) | [ProjectScopeItem](#model-projectscopeitem) | [PublicHoliday](#model-publicholiday) | [PunchItem](#model-punchitem) | [PurchaseOrder](#model-purchaseorder) | [QuoteAssumption](#model-quoteassumption) | [QuoteCostGroup](#model-quotecostgroup) | [QuoteCostLine](#model-quotecostline) | [QuoteCostOption](#model-quotecostoption) | [QuoteEmail](#model-quoteemail) | [QuoteExclusion](#model-quoteexclusion) | [QuoteProvisionalLine](#model-quoteprovisionalline) | [QuoteScopeItem](#model-quotescopeitem) | [RateColumn](#model-ratecolumn) | [RateRow](#model-raterow) | [RateTable](#model-ratetable) | [RefreshToken](#model-refreshtoken) | [RelationshipNote](#model-relationshipnote) | [ResourceType](#model-resourcetype) | [Role](#model-role) | [RolePermission](#model-rolepermission) | [SafetyIncident](#model-safetyincident) | [SafetyIncidentNumberSequence](#model-safetyincidentnumbersequence) | [SavedView](#model-savedview) | [ScheduleAllocation](#model-scheduleallocation) | [SchedulingConflict](#model-schedulingconflict) | [ScopeCard](#model-scopecard) | [ScopeOfWorksHeader](#model-scopeofworksheader) | [ScopeOfWorksItem](#model-scopeofworksitem) | [ScopeOperationalCostLine](#model-scopeoperationalcostline) | [ScopeViewConfig](#model-scopeviewconfig) | [ScopeWasteItem](#model-scopewasteitem) | [SearchEntry](#model-searchentry) | [SharePointFileLink](#model-sharepointfilelink) | [SharePointFolderLink](#model-sharepointfolderlink) | [SharePointFolderMapping](#model-sharepointfoldermapping) | [Shift](#model-shift) | [ShiftAssetAssignment](#model-shiftassetassignment) | [ShiftRoleRequirement](#model-shiftrolerequirement) | [ShiftWorkerAssignment](#model-shiftworkerassignment) | [Site](#model-site) | [SiteAttendance](#model-siteattendance) | [SiteGeofence](#model-sitegeofence) | [SorChangeLogEntry](#model-sorchangelogentry) | [SorClientRateCard](#model-sorclientratecard) | [SorClientRateEntry](#model-sorclientrateentry) | [SorPeriod](#model-sorperiod) | [SorRate](#model-sorrate) | [StockCategory](#model-stockcategory) | [StockItem](#model-stockitem) | [StockMovement](#model-stockmovement) | [StocktakeCount](#model-stocktakecount) | [StocktakeSession](#model-stocktakesession) | [SubLineQuote](#model-sublinequote) | [SubcontractorDocument](#model-subcontractordocument) | [SubcontractorRate](#model-subcontractorrate) | [SubcontractorSupplier](#model-subcontractorsupplier) | [SupplierCreditEntry](#model-suppliercreditentry) | [Survey](#model-survey) | [SurveyResponse](#model-surveyresponse) | [SwmsTemplate](#model-swmstemplate) | [SwmsTemplateControl](#model-swmstemplatecontrol) | [SwmsTemplateControlRow](#model-swmstemplatecontrolrow) | [SwmsTemplateSection](#model-swmstemplatesection) | [Tenant](#model-tenant) | [Tender](#model-tender) | [TenderAllocationCandidate](#model-tenderallocationcandidate) | [TenderAllocationRejection](#model-tenderallocationrejection) | [TenderAssumption](#model-tenderassumption) | [TenderClarification](#model-tenderclarification) | [TenderClarificationNote](#model-tenderclarificationnote) | [TenderClient](#model-tenderclient) | [TenderClientNote](#model-tenderclientnote) | [TenderClientPackage](#model-tenderclientpackage) | [TenderDocumentLink](#model-tenderdocumentlink) | [TenderEntry](#model-tenderentry) | [TenderEstimate](#model-tenderestimate) | [TenderExclusion](#model-tenderexclusion) | [TenderFilterPreset](#model-tenderfilterpreset) | [TenderFollowUp](#model-tenderfollowup) | [TenderNote](#model-tendernote) | [TenderOutcome](#model-tenderoutcome) | [TenderPackage](#model-tenderpackage) | [TenderPricingSnapshot](#model-tenderpricingsnapshot) | [TenderRateEntry](#model-tenderrateentry) | [TenderRateSet](#model-tenderrateset) | [TenderReminderLog](#model-tenderreminderlog) | [TenderReminderPolicy](#model-tenderreminderpolicy) | [TenderScopeRevision](#model-tenderscoperevision) | [TenderTandC](#model-tendertandc) | [TenderWithdrawalReview](#model-tenderwithdrawalreview) | [TenderingLabel](#model-tenderinglabel) | [Timesheet](#model-timesheet) | [TipRecommendationLog](#model-tiprecommendationlog) | [User](#model-user) | [UserDashboard](#model-userdashboard) | [UserPersonaSettings](#model-userpersonasettings) | [UserRole](#model-userrole) | [Variation](#model-variation) | [VariationNumberSequence](#model-variationnumbersequence) | [VariationSorLine](#model-variationsorline) | [VendorInvoice](#model-vendorinvoice) | [VendorInvoiceLine](#model-vendorinvoiceline) | [Worker](#model-worker) | [WorkerCompetency](#model-workercompetency) | [WorkerLeave](#model-workerleave) | [WorkerLocationLog](#model-workerlocationlog) | [WorkerProfile](#model-workerprofile) | [WorkerQualification](#model-workerqualification) | [WorkerRoleSuitability](#model-workerrolesuitability) | [WorkerShare](#model-workershare) | [WorkerUnavailability](#model-workerunavailability) | [XeroConnection](#model-xeroconnection) | [XeroSyncLog](#model-xerosynclog)
 
 ## How to read this document
 
@@ -190,7 +190,7 @@ graph LR
 - **Dashboards** (3): Dashboard, DashboardWidget, UserDashboard
 - **Directory** (12): Client, ClientPortalUser, ClientQuote, ClientSession, ClientShare, Contact, ContactShare, PrequalificationRequest, SubcontractorDocument, SubcontractorRate, SubcontractorSupplier, SupplierCreditEntry
 - **Documents** (6): DocumentAccessRule, DocumentLink, DocumentTag, SharePointFileLink, SharePointFolderLink, SharePointFolderMapping
-- **Estimating** (16): QuoteAssumption, QuoteCostLine, QuoteCostOption, QuoteEmail, QuoteExclusion, QuoteProvisionalLine, QuoteScopeItem, RateColumn, RateRow, RateTable, ScopeCard, ScopeOfWorksHeader, ScopeOfWorksItem, ScopeOperationalCostLine, ScopeViewConfig, ScopeWasteItem
+- **Estimating** (17): QuoteAssumption, QuoteCostGroup, QuoteCostLine, QuoteCostOption, QuoteEmail, QuoteExclusion, QuoteProvisionalLine, QuoteScopeItem, RateColumn, RateRow, RateTable, ScopeCard, ScopeOfWorksHeader, ScopeOfWorksItem, ScopeOperationalCostLine, ScopeViewConfig, ScopeWasteItem
 - **Estimating (Legacy)** (18): CuttingOtherRate, CuttingSheetItem, EstimateAssumption, EstimateCoreHoleRate, EstimateCuttingLine, EstimateCuttingRate, EstimateEnclosureRate, EstimateEquipLine, EstimateExport, EstimateFuelRate, EstimateItem, EstimateLabourLine, EstimateLabourRate, EstimateMaterialDensity, EstimatePlantLine, EstimatePlantRate, EstimateWasteLine, EstimateWasteRate
 - **Forms** (18): FieldDefinition, FormApproval, FormAttachment, FormContentSnippet, FormField, FormFieldPushBinding, FormNumberSequence, FormPublicLink, FormRule, FormSchedule, FormSection, FormSignature, FormSubmission, FormSubmissionValue, FormTemplate, FormTemplateVersion, FormTriggeredRecord, PreStartChecklist
 - **Integrations** (6): CalendarSyncedEvent, IntegrationCredential, PortalInvite, PortalSession, XeroConnection, XeroSyncLog
@@ -589,7 +589,7 @@ graph LR
 
 ### Model: ClientQuote
 
-- Table: `client_quotes` | Domain: Directory | Fields: 38
+- Table: `client_quotes` | Domain: Directory | Fields: 43
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `client` -> **Client** (clientId)
@@ -597,6 +597,7 @@ graph LR
   - `sentBy` -> **User** (sentById)
   - `issuedTerms` -> **CompanyLegalDocument** (issuedTermsDocumentId, onDelete SetNull)
   - `createdBy` -> **User** (createdById)
+  - `pushedBy` -> **User** (pushedById, onDelete SetNull)
 - Has many:
   - `costLines` -> **QuoteCostLine**[]
   - `provisionalLines` -> **QuoteProvisionalLine**[]
@@ -605,10 +606,11 @@ graph LR
   - `exclusions` -> **QuoteExclusion**[]
   - `emails` -> **QuoteEmail**[]
   - `scopeItems` -> **QuoteScopeItem**[]
-- Referenced by: **QuoteAssumption**, **QuoteCostLine**, **QuoteCostOption**, **QuoteEmail**, **QuoteExclusion**, **QuoteProvisionalLine**, **QuoteScopeItem**
+  - `costGroups` -> **QuoteCostGroup**[]
+- Referenced by: **QuoteAssumption**, **QuoteCostGroup**, **QuoteCostLine**, **QuoteCostOption**, **QuoteEmail**, **QuoteExclusion**, **QuoteProvisionalLine**, **QuoteScopeItem**
 - Suggested measures: adjustmentPct
-- Suggested dimensions: tender, client, sourceTenderEstimate, status, sentBy, issuedTerms, createdBy
-- Time fields: sentAt
+- Suggested dimensions: tender, client, sourceTenderEstimate, status, sentBy, issuedTerms, createdBy, pushedBy
+- Time fields: sentAt, pushedAt
 
 ### Model: ClientSession
 
@@ -790,24 +792,35 @@ graph LR
   - `costLine` -> **QuoteCostLine** (costLineId, onDelete SetNull)
 - Suggested dimensions: quote, costLine
 
-### Model: QuoteCostLine
+### Model: QuoteCostGroup
 
-- Table: `quote_cost_lines` | Domain: Estimating | Fields: 14
+- Table: `quote_cost_groups` | Domain: Estimating | Fields: 9
 - Belongs to (FK out):
   - `quote` -> **ClientQuote** (quoteId, onDelete Cascade)
+- Has many:
+  - `costLines` -> **QuoteCostLine**[]
+- Referenced by: **QuoteCostLine**
+- Suggested dimensions: quote
+
+### Model: QuoteCostLine
+
+- Table: `quote_cost_lines` | Domain: Estimating | Fields: 16
+- Belongs to (FK out):
+  - `quote` -> **ClientQuote** (quoteId, onDelete Cascade)
+  - `group` -> **QuoteCostGroup** (groupId, onDelete SetNull)
 - Has many:
   - `assumptions` -> **QuoteAssumption**[]
 - Referenced by: **QuoteAssumption**
 - Suggested measures: price, baseValue, overrideAmount
-- Suggested dimensions: quote, sourceEstimateLineType
+- Suggested dimensions: quote, group, sourceEstimateLineType
 
 ### Model: QuoteCostOption
 
-- Table: `quote_cost_options` | Domain: Estimating | Fields: 8
+- Table: `quote_cost_options` | Domain: Estimating | Fields: 10
 - Belongs to (FK out):
   - `quote` -> **ClientQuote** (quoteId, onDelete Cascade)
 - Suggested measures: price
-- Suggested dimensions: quote
+- Suggested dimensions: quote, sourceEstimateLineType
 
 ### Model: QuoteEmail
 
@@ -827,11 +840,11 @@ graph LR
 
 ### Model: QuoteProvisionalLine
 
-- Table: `quote_provisional_lines` | Domain: Estimating | Fields: 7
+- Table: `quote_provisional_lines` | Domain: Estimating | Fields: 9
 - Belongs to (FK out):
   - `quote` -> **ClientQuote** (quoteId, onDelete Cascade)
 - Suggested measures: price
-- Suggested dimensions: quote
+- Suggested dimensions: quote, sourceEstimateLineType
 
 ### Model: QuoteScopeItem
 
@@ -927,14 +940,14 @@ graph LR
 
 ### Model: ScopeWasteItem
 
-- Table: `scope_waste_items` | Domain: Estimating | Fields: 42
+- Table: `scope_waste_items` | Domain: Estimating | Fields: 43
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
   - `transportRate` -> **EstimatePlantRate** (transportRateId, onDelete SetNull)
   - `asset` -> **Asset** (assetId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal, qtyTrucks, loadsPerTruckPerDay, capacityPerLoad, transportCost, fuelCost, disposalCost, quotedDisposalRate, quotedFuelPricePerLitre, quotedTransportRatePerDay
+- Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal, qtyTrucks, loadsPerTruckPerDay, capacityPerLoad, transportCost, fuelCost, disposalCost, quotedDisposalRate, quotedFuelPricePerLitre, quotedTransportRatePerDay, markupOverride
 - Suggested dimensions: tender, card, discipline, wasteType, transportRate, asset, quoteDestination, createdBy
 
 ## Domain: Estimating (Legacy)
@@ -949,13 +962,13 @@ graph LR
 
 ### Model: CuttingSheetItem
 
-- Table: `cutting_sheet_items` | Domain: Estimating (Legacy) | Fields: 31
+- Table: `cutting_sheet_items` | Domain: Estimating (Legacy) | Fields: 32
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
   - `otherRate` -> **CuttingOtherRate** (otherRateId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Suggested measures: quantityLm, quantityEach, ratePerM, ratePerHole, lineTotal
+- Suggested measures: quantityLm, quantityEach, ratePerM, ratePerHole, lineTotal, markupOverride
 - Suggested dimensions: tender, card, itemType, elevation, material, method, otherRate, quoteDestination, createdBy
 
 ### Model: EstimateAssumption
@@ -1747,7 +1760,7 @@ graph LR
 
 ### Model: User
 
-- Table: `users` | Domain: Platform | Fields: 186
+- Table: `users` | Domain: Platform | Fields: 187
 - Belongs to (FK out):
   - `createdBy` -> **User** (createdById)
   - `updatedBy` -> **User** (updatedById)
@@ -1824,6 +1837,7 @@ graph LR
   - `billingMilestonesCreated` -> **BillingMilestone**[]
   - `createdQuotes` -> **ClientQuote**[]
   - `sentQuotes` -> **ClientQuote**[]
+  - `pushedQuotes` -> **ClientQuote**[]
   - `sentQuoteEmails` -> **QuoteEmail**[]
   - `sentCorrespondence` -> **CorrespondenceMessage**[]
   - `tenderFilterPresets` -> **TenderFilterPreset**[]
@@ -3615,6 +3629,7 @@ graph LR
 - **PunchItem** (Unclassified) - table `punch_items`
 - **PurchaseOrder** (Procurement) - table `purchase_orders`
 - **QuoteAssumption** (Estimating) - table `quote_assumptions`
+- **QuoteCostGroup** (Estimating) - table `quote_cost_groups`
 - **QuoteCostLine** (Estimating) - table `quote_cost_lines`
 - **QuoteCostOption** (Estimating) - table `quote_cost_options`
 - **QuoteEmail** (Estimating) - table `quote_emails`

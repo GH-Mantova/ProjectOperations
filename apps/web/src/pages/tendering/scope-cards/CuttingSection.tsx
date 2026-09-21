@@ -99,6 +99,7 @@ import {
   DESTINATION_NOTE,
   type QuoteDestination
 } from "./QuoteDestinationSelect";
+import { LineMarkupCell } from "./LineMarkupCell";
 
 // SCOPE_QD_UI_SECTIONS_V1 — scopecards S2b-b. The quote-destination control on
 // cutting take-off rows. S2b-c sets the full-screen marker (V1).
@@ -141,6 +142,13 @@ export type CuttingTakeOffRow = {
   // SCOPE_QD_UI_SECTIONS_V1 — where this row's cost lands on the client quote.
   // null / undefined falls back to PRICE (the server default).
   quoteDestination?: QuoteDestination | null;
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — per-line markup fields.
+  // null markupOverride = inherit card.cuttingMarkupOverride ?? tenderMarkup.
+  markupOverride?: number | null;
+  /** Server-computed effective markup % for this line. */
+  effectiveMarkup?: number;
+  /** Server-computed line total at effectiveMarkup rate (lineTotalWithMarkup). */
+  lineTotalWithMarkup?: number;
 };
 
 // ── What a rig can physically do ────────────────────────────────────────
@@ -234,6 +242,26 @@ export function takeOffRowTotal(row: CuttingTakeOffRow): number {
 }
 
 /**
+ * SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — a row's contribution to
+ * the marked-up card total. Uses the server's `lineTotalWithMarkup` when
+ * present, otherwise falls back to `lineTotal` (pre-S3 rows). Zero for
+ * unpriced and cannot-cut rows.
+ *
+ * S4: this is what the card fold uses for `cutting.withMarkup`, so the
+ * "Card total" in the card header agrees with `GET /scope/summary` for cards
+ * with cutting lines that carry per-line markup overrides.
+ */
+export function takeOffRowTotalWithMarkup(row: CuttingTakeOffRow): number {
+  if (takeOffRowState(row) !== "priced") return 0;
+  if (row.lineTotalWithMarkup != null && Number.isFinite(row.lineTotalWithMarkup)) {
+    return row.lineTotalWithMarkup;
+  }
+  // Fallback: pre-S3 row without lineTotalWithMarkup
+  const n = Number(row.lineTotal);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
  * The take-off the `Cutting?` tick produces: saw-cut rows. Core-hole and
  * other-rate rows live on their own tabs of the Cutrite sheet below, are not
  * generated from a measurement's `Cutting?` tick, and carry no rig / depth /
@@ -289,7 +317,12 @@ function emptyBucket(): CuttingDestBucket {
 /**
  * Sort the take-off's priced server row totals into four piles by destination.
  * Cannot-cut and unpriced rows contribute nothing to any pile.
- * No arithmetic on rates — only a fold of server lineTotal figures.
+ * No arithmetic on rates — only a fold of server lineTotal / lineTotalWithMarkup figures.
+ *
+ * SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3): `withMarkup` now uses
+ * `lineTotalWithMarkup` from the server. Before S3, `withMarkup` equalled
+ * `subtotal` because no per-line markup existed; after S3 the two can differ
+ * when lines carry markup overrides.
  */
 export function cuttingFourWay(rows: CuttingTakeOffRow[]): CuttingFourWay {
   const result: CuttingFourWay = {
@@ -302,11 +335,12 @@ export function cuttingFourWay(rows: CuttingTakeOffRow[]): CuttingFourWay {
     if (takeOffRowState(row) !== "priced") continue;
     const n = Number(row.lineTotal);
     if (!Number.isFinite(n)) continue;
+    const withMarkup = takeOffRowTotalWithMarkup(row);
     const dest: QuoteDestination = row.quoteDestination ?? "PRICE";
     const key = dest.toLowerCase() as keyof CuttingFourWay;
     if (key in result) {
       result[key].subtotal += n;
-      result[key].withMarkup += n;
+      result[key].withMarkup += withMarkup;
     }
   }
   return result;
@@ -396,22 +430,30 @@ export function destNote(dest: QuoteDestination): string | null {
  * total cells instead of a figure. Exported so the suite can render it on its
  * own — the container needs an AuthProvider, this does not.
  *
+ * SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3): added MARKUP column after
+ * Rate (before Total). patchMarkup sends { markupOverride: number | null }.
+ *
  * @param patchDestination - called when the estimator changes the Goes-to
  *   select. The container owns the PATCH and handles errors. Omit in tests
  *   that do not exercise the control.
+ * @param patchMarkup - called when the estimator changes or resets the per-line
+ *   markup override. Sends { markupOverride: number | null }.
  */
 export function CuttingTakeOffRowView({
   row,
-  patchDestination
+  patchDestination,
+  patchMarkup
 }: {
   row: CuttingTakeOffRow;
   patchDestination?: (rowId: string, dest: QuoteDestination) => void;
+  patchMarkup?: (rowId: string, patch: { markupOverride: number | null }) => void;
 }) {
   const state = takeOffRowState(row);
   const reason = rigCannotCut(row.equipment, row.elevation);
   const dest: QuoteDestination = row.quoteDestination ?? "PRICE";
   const rowClass = DESTINATION_ROW_CLASS[dest];
   const note = destNote(dest);
+  const effectiveMarkup = row.effectiveMarkup ?? 0;
 
   return (
     <tr
@@ -436,14 +478,14 @@ export function CuttingTakeOffRowView({
       <td style={internalCellStyle(dest, numericCellStyle)}>{fmtCuttingNumber(row.quantityLm)}</td>
       {state === "cannot-cut" ? (
         <td
-          colSpan={2}
+          colSpan={3}
           style={internalCellStyle(dest, { ...cellStyle, color: "var(--status-danger)" })}
           data-testid="cutting-row-cannot-cut"
         >
           {reason}
         </td>
       ) : state === "unpriced" ? (
-        <td colSpan={2} style={internalCellStyle(dest, { ...cellStyle, ...mutedStyle })} data-testid="cutting-row-unpriced">
+        <td colSpan={3} style={internalCellStyle(dest, { ...cellStyle, ...mutedStyle })} data-testid="cutting-row-unpriced">
           Not yet priced — pick a rig on the cutting sheet below.
         </td>
       ) : (
@@ -451,11 +493,21 @@ export function CuttingTakeOffRowView({
           <td style={internalCellStyle(dest, numericCellStyle)} data-testid="cutting-row-rate">
             {fmtCuttingMoney(row.ratePerM)}
           </td>
+          {/* SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — markup column after Rate. */}
+          <td style={internalCellStyle(dest, { ...cellStyle, whiteSpace: "nowrap" })} data-testid="cutting-row-markup">
+            <LineMarkupCell
+              markupOverride={row.markupOverride}
+              effectiveMarkup={effectiveMarkup}
+              inheritedPhrase="the card's cutting markup"
+              onPatch={(patch) => patchMarkup?.(row.id, patch)}
+              disabled={dest === "INTERNAL"}
+            />
+          </td>
           <td style={internalCellStyle(dest, numericCellStyle)} data-testid="cutting-row-total">
             {dest === "INTERNAL" ? (
               <>
                 <span style={{ textDecoration: "line-through", textDecorationThickness: "1.5px" }}>
-                  {fmtCuttingMoney(row.lineTotal)}
+                  {fmtCuttingMoney(row.lineTotalWithMarkup ?? row.lineTotal)}
                 </span>
                 {note ? (
                   <div
@@ -473,7 +525,13 @@ export function CuttingTakeOffRowView({
               </>
             ) : (
               <>
-                {fmtCuttingMoney(row.lineTotal)}
+                <strong>{fmtCuttingMoney(row.lineTotalWithMarkup ?? row.lineTotal)}</strong>
+                {row.lineTotalWithMarkup != null && row.lineTotal != null
+                  && Math.abs(row.lineTotalWithMarkup - Number(row.lineTotal)) > 0.005 ? (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>
+                    base + {effectiveMarkup}%
+                  </div>
+                ) : null}
                 {note ? (
                   <div
                     className="exclnote"
@@ -511,7 +569,8 @@ export function CuttingTakeOff({
   rows,
   loading = false,
   error = null,
-  patchDestination
+  patchDestination,
+  patchMarkup
 }: {
   discipline: Discipline;
   rows: CuttingTakeOffRow[];
@@ -519,13 +578,21 @@ export function CuttingTakeOff({
   error?: string | null;
   /** Called when the estimator changes a row's Goes-to destination. */
   patchDestination?: (rowId: string, dest: QuoteDestination) => void;
+  /** SCOPE_LINE_MARKUP_ALL_TYPES_V1: called when the estimator changes the per-line markup. */
+  patchMarkup?: (rowId: string, patch: { markupOverride: number | null }) => void;
 }) {
   // Asbestos cards never cut. Single source of truth, shared with the
   // `Cutting?` tick this take-off is downstream of.
   if (!showsCuttingColumn(discipline)) return null;
 
   const takeOff = sawCutTakeOff(rows);
-  const sectionTotal = sumCuttingTakeOff(takeOff);
+  // S4 — card header now agrees with GET /scope/summary for cards with cutting:
+  // sectionTotal uses lineTotalWithMarkup (server-computed) so the fold in
+  // ScopeCardsTab.statsByCard shows a marked-up cutting total that matches the
+  // server's own summary() output. Before S3, withMarkup === subtotal for
+  // cutting (no per-line markup existed), so this change is backwards-compatible
+  // for pre-S3 rows that carry no lineTotalWithMarkup.
+  const sectionTotal = takeOff.reduce((sum, row) => sum + takeOffRowTotalWithMarkup(row), 0);
   const cannotCut = countCannotCut(takeOff);
   const unpriced = countUnpriced(takeOff);
 
@@ -585,12 +652,18 @@ export function CuttingTakeOff({
                 <th style={{ textAlign: "right" }}>Depth (mm)</th>
                 <th style={{ textAlign: "right" }}>Length (Lm)</th>
                 <th style={{ textAlign: "right" }}>Rate ($/m)</th>
+                <th>Markup</th>
                 <th style={{ textAlign: "right" }}>Total</th>
               </tr>
             </thead>
             <tbody>
               {takeOff.map((row) => (
-                <CuttingTakeOffRowView key={row.id} row={row} patchDestination={patchDestination} />
+                <CuttingTakeOffRowView
+                  key={row.id}
+                  row={row}
+                  patchDestination={patchDestination}
+                  patchMarkup={patchMarkup}
+                />
               ))}
             </tbody>
           </table>
@@ -680,7 +753,12 @@ export function CuttingSection({
     void load();
   }, [load, reloadKey]);
 
-  const sectionTotal = useMemo(() => sumCuttingTakeOff(sawCutTakeOff(rows)), [rows]);
+  // S4 — report lineTotalWithMarkup sum so the card header agrees with
+  // GET /scope/summary for cards with cutting lines carrying markup overrides.
+  const sectionTotal = useMemo(
+    () => sawCutTakeOff(rows).reduce((sum, row) => sum + takeOffRowTotalWithMarkup(row), 0),
+    [rows]
+  );
 
   // Report upward. Deliberately NOT a card subtotal — see the file header.
   useEffect(() => {
@@ -710,6 +788,24 @@ export function CuttingSection({
     [authFetch, tenderId, load]
   );
 
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — PATCH markupOverride on a
+  // cutting item row. Exactly one key in the PATCH body. Re-reads after PATCH
+  // so the server's computed effectiveMarkup + lineTotalWithMarkup are fresh.
+  const patchMarkup = useCallback(
+    async (rowId: string, patch: { markupOverride: number | null }) => {
+      const res = await authFetch(
+        `/tenders/${tenderId}/scope/cutting-items/${encodeURIComponent(rowId)}`,
+        { method: "PATCH", body: JSON.stringify(patch) }
+      );
+      if (!res.ok) {
+        const msg = await readApiErrorMessage(res);
+        setError(msg);
+      }
+      await load();
+    },
+    [authFetch, tenderId, load]
+  );
+
   return (
     <CuttingTakeOff
       discipline={discipline}
@@ -717,6 +813,7 @@ export function CuttingSection({
       loading={loading}
       error={error}
       patchDestination={patchDestination}
+      patchMarkup={patchMarkup}
     />
   );
 }

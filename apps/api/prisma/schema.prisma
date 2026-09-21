@@ -3925,6 +3925,11 @@ model ScopeWasteItem {
   quotedTransportRatePerDay Decimal?           @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
   notes                     String?
   sortOrder                 Int                @default(0) @map("sort_order")
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+  // null = inherit card.wasteMarkupOverride ?? TenderEstimate.markup;
+  // any non-null value overrides for this line only. A stored 0 is a real
+  // 0% markup (not an absence -- use ?? not || to resolve this chain).
+  markupOverride            Decimal?           @map("markup_override") @db.Decimal(5, 2)
   // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this waste line goes
   // on the client quote. Defaults PRICE (no backfill needed: all existing
   // waste rows were priced into the total).
@@ -4234,6 +4239,11 @@ model CuttingSheetItem {
   // manual rows (autoCopied=false) and all core-hole/other-rate rows
   // survive. Mirrors ScopeWasteItem.autoSummed from B3.
   autoCopied   Boolean           @default(false) @map("auto_copied")
+  // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
+  // null = inherit card.cuttingMarkupOverride ?? TenderEstimate.markup;
+  // any non-null value overrides for this line only. A stored 0 is a real
+  // 0% markup (not an absence -- use ?? not || to resolve this chain).
+  markupOverride   Decimal?          @map("markup_override") @db.Decimal(5, 2)
   // SCOPE_QUOTE_DESTINATION_V1 (scopecards-s2a) -- where this cutting line
   // goes on the client quote. Defaults PRICE (no backfill needed: all
   // existing cutting rows were priced into the total).

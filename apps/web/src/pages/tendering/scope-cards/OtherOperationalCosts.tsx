@@ -40,6 +40,7 @@ import {
   DESTINATION_NOTE,
   type QuoteDestination
 } from "./QuoteDestinationSelect";
+import { LineMarkupCell } from "./LineMarkupCell";
 
 // ── The lump-sum rule ───────────────────────────────────────────────────
 //
@@ -728,6 +729,18 @@ export function OperationalCostRow({
         </span>
       </td>
 
+      {/* Markup — SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3): per-line markup
+          override cell. Sends exactly one key (markupOverride). */}
+      <td style={internalOpacity(dest, cellStyle)} data-testid="other-cost-markup">
+        <LineMarkupCell
+          markupOverride={line.markupOverride ?? null}
+          effectiveMarkup={line.effectiveMarkup ?? 0}
+          inheritedPhrase="the card's markup"
+          onPatch={(patch) => onPatch({ markupOverride: patch.markupOverride })}
+          disabled={disabled || dest === "INTERNAL"}
+        />
+      </td>
+
       {/* Total — server-computed lineTotalWithMarkup (qty x days x rate x markup).
           SCOPE_OPERATIONAL_COSTS_PRICED_V1: no arithmetic in the browser.
           SCOPE_QD_UI_SECTIONS_V1: INTERNAL rows show struck total; destNote below. */}
@@ -797,7 +810,8 @@ export function OperationalCostRow({
 
 // SCOPE_QD_UI_SECTIONS_V1 — "Goes to" is the first column per the mock-up's
 // "Goes to · From · Item description …" order.
-const COLUMNS = ["Goes to", "Item", "Qty", "Unit", "Days", "Rate", "Total", ""] as const;
+// SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) — Markup column added after Rate.
+const COLUMNS = ["Goes to", "Item", "Qty", "Unit", "Days", "Rate", "Markup", "Total", ""] as const;
 
 /**
  * The table. Pure presentation, so a test can render it without an auth

@@ -6889,6 +6889,18 @@
           "filterable": true,
           "aggregations": []
         },
+        "markupOverride": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "quoteDestination": {
           "role": "dimension",
           "label": null,
@@ -20078,6 +20090,18 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "markupOverride": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
         },
         "quoteDestination": {
           "role": "dimension",

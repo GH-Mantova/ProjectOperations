@@ -322,7 +322,7 @@ Marco's operational categories.
 | merged | `docs/pr-prompts/merged/` | its PR is confirmed MERGED on main |
 | superseded | `docs/pr-prompts/superseded/` | replaced; the replacement is named inside the file |
 
-**Why hold and armed are filenames, not folders.** `index.mjs:3545` calls
+**Why hold and armed are filenames, not folders.** `index.mjs` (anchor: `fsWatch(PROMPT_DIR`) calls
 `fsWatch(PROMPT_DIR, { persistent: true }, ...)` with NO `recursive: true`. On Windows,
 a file-system change inside a subdirectory fires no event; only the 5-minute
 `RESCAN_INTERVAL_MS` sweep would notice. Moving armed into a folder would silently turn
@@ -913,6 +913,37 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   fails.
 
 
+- 🔴 **`Select-String … | Select-Object -ExpandProperty Filename -Unique` COLLAPSES A CORPUS OF
+  IDENTICALLY-NAMED FILES TO ONE, AND THE BOOTSTRAP SWEEP IS EXACTLY SUCH A CORPUS.**
+  `FILENAME_UNIQUE_COLLAPSES_SAME_NAMED_CORPUS_V1` `Select-String`'s `Filename` property is the
+  **basename**, not the path. [MEASURED] 2026-09-21T14:3xZ by Station 04 at `524158cd` over
+  `C:\Users\Marco\Claude\Scheduled\**\SKILL.md` — 11 files, every one named `SKILL.md` — needle
+  `C:\ProjectOperations2\docs\pipeline`:
+
+  | form | result | truth |
+  |---|---|---|
+  | total hits | 17 | 17 |
+  | `… \| Select-Object -ExpandProperty Filename -Unique` — **the failing form** | **1** | 7 |
+  | `… \| Select-Object -ExpandProperty Path -Unique` — the cure | **7** | 7 |
+  | corpus size | 11 | 11 |
+
+  The failing form answers **1** for any truth between 1 and 11, at exit 0, with nothing empty and
+  nothing warning — **§9.6 cannot fire, because the cmdlet answered exactly the question it was
+  asked, about a different quantity from the one the property name implies.**
+  🔴 **It fired live on the probe it most endangers.** §9.1's double-backslash bullet asks *"do the
+  scheduled-task bootstraps name the working copy?"* — a per-FILE question over a directory of
+  identically-named files. 04's first pass reported *"1 file hit"*, whose available write-up was
+  *"only one bootstrap still names the working copy"* — a false drift finding against four healthy
+  files. It was caught only because node, counting per path, answered **3 in each of the four**.
+  This is the same basename collapse §9.5 already records for `check-breadcrumb.mjs`'s *"matched by
+  trailing path segment"*: the pipeline has met it before, in a different instrument, and never
+  generalised it.
+  🔧 **Use `-ExpandProperty Path -Unique`, never `Filename`, whenever the corpus can hold repeated
+  basenames** — `SKILL.md`, `README.md`, `index.mjs` and `package.json` corpora all can.
+  ⚠️ **Falsifying probe: the four-row table above.** Rebuild it over that directory and run both
+  forms; if `Filename -Unique` ever returns 7, this bullet is wrong and must be re-measured. Found
+  by Station 04 2026-09-21T14:3xZ (F3), landed by Station 00 at 15:3xZ.
+
 ## 9.4 GitHub
 
 - ⚠️ **The GitHub MCP token cannot merge, and cannot open PRs (403).** Use `gh` through Desktop
@@ -1222,6 +1253,81 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   both regex forms over the corpus as now stated and read the per-document counts.** If
   `00-supervisor.md` ever returns **0** `.gitignore` citations, this correction is wrong and must
   be re-measured. Found by Station 04 2026-09-21T00:0xZ (F2), landed by Station 00 at 01:4xZ.
+  🔴🔴 **CORRECTED 2026-09-21T15:3xZ — THE DOTFILE-TOLERANT REGEX PRESCRIBED ABOVE MATCHES CLOCK
+  TIMES, SO THE `lint-station.mjs` CHECK THE OPEN ESCALATION ASKS MARCO FOR IS BORN CRYING WOLF —
+  AND THE PER-DOCUMENT PREDICTION OMITS FOUR STATION DOCS, THE FOUR BOOTSTRAPS, AND ONE FIRST-CLASS
+  CITATION IN THIS FILE.** `CITATION_REGEX_MATCHES_TIMESTAMPS_V1` ·
+  `CITATION_PREDICTION_OMITS_FOUR_STATION_DOCS_V1`
+
+  **(a) The regex matches times of day.** `2026-09-06T23` and `14` both satisfy
+  `[A-Za-z0-9_.\-/]+`, so `2026-09-06T23:04` and `14:10` are matched as citations. [MEASURED]
+  2026-09-21T14:2xZ by Station 04 at `524158cd`, both forms over the corpus exactly as the
+  2026-09-21 correction now states it:
+
+  | corpus | extension-keyed | dotfile-tolerant |
+  |---|---|---|
+  | whole corpus | **17** | **136** |
+  | `DOCTRINE.md` alone | — | **88**, of which **56** have an all-numeric or `T\d\d` file part |
+
+  NEGATIVE control, a freshly minted needle → **0 files**; POSITIVE control, **13** files carry a
+  real `.gitignore:<N>` citation. Clock sample: `2026-09-06T03:47` · `2026-08-31T01:21` · `05:27`.
+  ⚠️ **Those counts are STATE — re-measure them, never quote them.**
+  🔴 **This is a live defect in a document Marco is about to build a gate from, not a tidy-up.**
+  `needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md` **ITEM 2** asks him for a
+  `lint-station.mjs` check that validates every `<file>:<N>` citation, and the correction above tells
+  its author which regex to use. Built exactly as prescribed, that check reports scores of
+  unresolvable "citations" that are times of day — and **a gate that fails scores of times on its
+  first run is disabled by its first reader**, leaving the class it exists to catch (the bootstraps'
+  own `.gitignore:107-111`) no better protected than it is today.
+  🔧 **Require the file part to contain a `/` or a `.`, and reject an all-digit or `T\d\d`-terminated
+  file part** — anchor on `(\.?[A-Za-z0-9_.\-]*[/.][A-Za-z0-9_.\-/]*)` with a `(?<!\d{2})(?<!T\d)`
+  guard immediately before the colon. Both real classes survive it: `.gitignore:28` (leading dot, no
+  extension) and `start-watcher.ps1:160`. ⚠️ **Falsifying probe: run the 2026-09-15 regex over
+  `DOCTRINE.md` and count the matches whose file part is all-numeric.** If that count is ever **0**,
+  this correction is wrong and must be re-measured.
+
+  **(b) The prediction was widened at the corpus and not at the prediction.** The 2026-09-21
+  correction restates the corpus as a RULE — *"all SEVEN station docs"* plus *"every `SKILL.md`
+  behind an ENABLED task"* — and then lists per-document predictions for only six documents. So a
+  run that rebuilds the probe meets `01`, `02` and `06` unlisted, has this subsection's own sentence
+  (*"if a NEW raw line citation ever appears in a station doc, this clause is being ignored rather
+  than being wrong"*) to hand, and re-opens closed work — which is the precise failure the
+  2026-09-21 correction exists to prevent, reproduced one revision later in itself. [MEASURED]
+  `.gitignore:<N>` citations per document at `524158cd`:
+
+  | document | predicted | measured |
+  |---|---|---|
+  | `00-supervisor.md` | 2 | **2** ✅ |
+  | `03-machine-minder.md` | **0** | **1** ❌ |
+  | `04-scanner.md` | 1 | **1** ✅ |
+  | `05-sot-keeper.md` | 2 | **2** ✅ |
+  | `STATION-CAPABILITIES.md` | 1 | **1** ✅ |
+  | `CLAUDE.md` | 0 | **0** ✅ |
+  | `01-code-writer.md` | **not listed** | **2** |
+  | `02-board-driver.md` | **not listed** | **1** |
+  | `06-pr-master.md` | **not listed** | **1** |
+  | each of the four enabled `SKILL.md` | **not listed** | **1 each** |
+
+  **Every repo-side citation in that table resolves correctly**; only the four bootstrap ones do
+  not, and those are already ITEM 1 of the escalation named above. So none of this is a new
+  violation — and that is the point.
+
+  **(c) And one the prediction does not cover at all sat in THIS file: a first-class raw
+  line-number citation into `scripts/pr-watcher/index.mjs` in §8.5** — not a quotation of a retired
+  one. It resolved correctly when measured (`fsWatch(PROMPT_DIR` was at exactly the cited line on
+  `origin/main`), and it sat 98.5% of the way down a file this pipeline edits constantly, so any
+  insertion above it would have rotted it silently — this subsection's opening rule, violated in
+  the document that states it. **It has been converted to its symbol anchor in the same PR that
+  landed this correction, which discharges it permanently.** ⚠️ **Falsifying probe: search §8.5 for
+  a raw `<file>:<NNN>` form.** If one is there, the conversion did not land.
+  🔧 **State the prediction as a claim about TRUTH rather than about COUNTS, because a truth claim
+  cannot rot when a document is added to the corpus: *every `<file>:<N>` citation in the corpus
+  resolves, and the only ones that do not are the four bootstraps' `.gitignore:107-111`.*** That
+  replaces the per-document count list above, which is kept only as this correction's evidence.
+  ⚠️ **Falsifying probe: the table above.** If `03-machine-minder.md` ever returns 0, this
+  correction is wrong and must be re-measured. Found by Station 04 2026-09-21T14:2xZ (F1 and F4),
+  landed by Station 00 at 15:3xZ.
+
 
 - 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
   `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs

@@ -1,7 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../../prisma/prisma.service";
+
+// ops-m2b: six calendar months (26 weeks) in milliseconds
+const REVIEW_CYCLE_MS = 182 * 24 * 60 * 60 * 1000;
 
 export type MapLocationKind = "TIP" | "POI";
 
@@ -59,12 +62,20 @@ type RawLocation = {
   facility: string | null;
   notes: string | null;
   isActive: boolean;
+  // ops-m2b: price review fields (TIP rows only, always null for POI)
+  pricesReviewedAt: Date | null;
+  pricesReviewNotifiedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
+function nextReviewAt(pricesReviewedAt: Date | null | undefined): Date {
+  if (pricesReviewedAt == null) return new Date(0); // due now (epoch = overdue)
+  return new Date(pricesReviewedAt.getTime() + REVIEW_CYCLE_MS);
+}
+
 function toDto(loc: RawLocation, ratesStatus?: "set" | "needed") {
-  return {
+  const base = {
     id: loc.id,
     name: loc.name,
     kind: loc.kind,
@@ -82,6 +93,16 @@ function toDto(loc: RawLocation, ratesStatus?: "set" | "needed") {
     updatedAt: loc.updatedAt,
     ...(ratesStatus !== undefined ? { ratesStatus } : {})
   };
+
+  // ops-m2b: expose price-review fields on TIP rows only
+  if (loc.kind === "TIP") {
+    return {
+      ...base,
+      pricesReviewedAt: loc.pricesReviewedAt ?? null,
+      nextReviewAt: nextReviewAt(loc.pricesReviewedAt)
+    };
+  }
+  return base;
 }
 
 @Injectable()
@@ -313,6 +334,27 @@ export class MapLocationsService {
     // Soft delete via isActive flag
     await this.prisma.mapLocation.update({ where: { id }, data: { isActive: false } });
     return { deleted: id };
+  }
+
+  /**
+   * ops-m2b: Mark a TIP's prices as reviewed today.
+   * Sets pricesReviewedAt = now(). Returns 400 if kind != TIP.
+   * nextReviewAt = pricesReviewedAt + 182 days is derived and returned.
+   */
+  async markPricesReviewed(id: string) {
+    const existing = await this.prisma.mapLocation.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`MapLocation ${id} not found.`);
+    if (existing.kind !== "TIP") {
+      throw new BadRequestException(
+        `MapLocation ${id} is not a TIP -- only TIP locations have price reviews.`
+      );
+    }
+    const now = new Date();
+    const updated = await this.prisma.mapLocation.update({
+      where: { id },
+      data: { pricesReviewedAt: now }
+    });
+    return toDto(updated as RawLocation, existing.facility ? "set" : "needed");
   }
 
   async orphanFacilities(): Promise<string[]> {

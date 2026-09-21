@@ -186,7 +186,8 @@ function makeService(mocks: ReturnType<typeof buildMocks>) {
   return new TenderRateSetService(
     mocks.prisma as never,
     mocks.audit as never,
-    mocks.resolver as never
+    mocks.resolver as never,
+    {} as never
   );
 }
 

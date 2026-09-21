@@ -134,3 +134,5 @@
 2026-09-21T04:19:50Z  ARMED  pr-sotinpr-freshness-gate  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=21876  caller=powershell.exe:4880
 2026-09-21T05:54:18Z  ARMED  pr-scopecards-s4a-push-by-destination-api  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=31356  caller=:
 2026-09-21T07:16:21Z  ARMED  pr-crmvis-s7-comms-inbox  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=12596  caller=:
+2026-09-21T08:56:21Z  ARMED  pr-company-manage-s2-retire-adminonly  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=31348  caller=:
+2026-09-21T09:09:59Z  ARMED  pr-scopecards-s4b-push-panel-ui  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=23584  caller=:

@@ -28,6 +28,19 @@ import {
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { TandCSection } from "./QuoteTab";
 import { SendQuoteModal } from "./SendQuoteModal";
+import { QuotePushPanel } from "./QuotePushPanel";
+import {
+  groupCostLines,
+  groupFigures,
+  sourceChip,
+  nextOptionLabel,
+  quoteLineFigures,
+  type CostGroup as CostGroupType,
+  type CostLineWithGroup
+} from "./quotePush.helpers";
+
+// QUOTE_PUSH_PANEL_V1 marker — gates S5 arming.
+export const QUOTE_PUSH_PANEL_V1 = "scopecards-s4b";
 
 type QuoteStatus = "DRAFT" | "SENT" | "SUPERSEDED";
 
@@ -63,9 +76,9 @@ type CostLine = {
   overrideAmount: string | null;
   sortOrder: number;
   isVisible: boolean;
-  // Read-only traceability pointer back to an internal Estimate*Line. Populated
-  // by propose_quote_content when the AI (or user) references a specific
-  // estimate line; null otherwise. No write UI in this build.
+  // QUOTE_PUSH_BY_DESTINATION_V1: group FK (null = typed on this quote, or pre-S4a row)
+  groupId: string | null;
+  // Read-only traceability pointer back to an internal Estimate*Line.
   sourceEstimateLineType: string | null;
   sourceEstimateLineId: string | null;
 };
@@ -75,6 +88,9 @@ type ProvisionalLine = {
   price: string;
   notes: string | null;
   sortOrder: number;
+  // QUOTE_PUSH_BY_DESTINATION_V1: pointer pair (null = typed on this quote)
+  sourceEstimateLineType: string | null;
+  sourceEstimateLineId: string | null;
 };
 type CostOption = {
   id: string;
@@ -83,9 +99,22 @@ type CostOption = {
   price: string;
   notes: string | null;
   sortOrder: number;
+  // QUOTE_PUSH_BY_DESTINATION_V1: pointer pair (null = typed on this quote)
+  sourceEstimateLineType: string | null;
+  sourceEstimateLineId: string | null;
 };
 type AssumptionRow = { id: string; text: string; costLineId: string | null; sortOrder: number };
 type ExclusionRow = { id: string; text: string; sortOrder: number };
+// QUOTE_PUSH_BY_DESTINATION_V1: cost groups included in getOne response
+type CostGroup = {
+  id: string;
+  code: string;
+  label: string;
+  name: string;
+  printMode: string; // "ITEMISED" | "ONE_LINE"
+  sortOrder: number;
+};
+
 type FullQuote = QuoteSummary & {
   client: { id: string; name: string; email: string | null; phone: string | null };
   costLines: CostLine[];
@@ -94,6 +123,11 @@ type FullQuote = QuoteSummary & {
   assumptions: AssumptionRow[];
   exclusions: ExclusionRow[];
   detailLevel?: "simple" | "detailed";
+  // QUOTE_PUSH_BY_DESTINATION_V1
+  costGroups: CostGroup[];
+  pushedAt: string | null;
+  pushedBy: { firstName?: string; lastName?: string; name?: string } | null;
+  ratesLockedAt?: string | null;
 };
 type LineAppropriation = {
   lineId: string;
@@ -109,6 +143,8 @@ type SummaryResult = {
   costOptionsTotal: number;
   clientFacingTotal: number;
   lineAppropriations: LineAppropriation[];
+  // QUOTE_PUSH_BY_DESTINATION_V1: sum of pushed lines before unticking
+  pricedOnEstimate?: number;
 };
 
 function fmtCurrency(n: number | string | null | undefined): string {
@@ -778,6 +814,7 @@ function QuoteEditor({
           onPatch={(id, b) => patch(`/cost-lines/${id}`, b)}
           onDelete={(id) => del(`/cost-lines/${id}`)}
           onPatchQuote={onPatchQuote}
+          onRefresh={onRefresh}
         />
       ) : null}
 
@@ -853,6 +890,191 @@ function QuoteEditor({
   );
 }
 
+// ── Source chip component ──────────────────────────────────────────
+function SourceChipBadge({ line }: { line: { sourceEstimateLineId: string | null; overrideAmount: string | null; pushedAt?: string | null } }) {
+  const chip = sourceChip({
+    sourceEstimateLineId: line.sourceEstimateLineId,
+    overrideAmount: line.overrideAmount,
+    pushedAt: line.pushedAt
+  });
+
+  const chipStyle: React.CSSProperties = {
+    display: "inline-block",
+    marginTop: 3,
+    padding: "1px 6px",
+    fontSize: 10,
+    lineHeight: "14px",
+    borderRadius: 999,
+    whiteSpace: "nowrap"
+  };
+
+  if (chip.kind === "pushed") {
+    Object.assign(chipStyle, {
+      background: "var(--status-success-bg)",
+      color: "var(--status-success)",
+      border: "1px solid var(--status-success-border)"
+    });
+  } else if (chip.kind === "kept") {
+    Object.assign(chipStyle, {
+      background: "var(--status-warn-bg)",
+      color: "var(--status-warn)",
+      border: "1px solid var(--status-warn-border)"
+    });
+  } else {
+    Object.assign(chipStyle, {
+      background: "var(--surface-muted)",
+      color: "var(--text-muted)",
+      border: "1px solid var(--border)",
+      fontStyle: "italic"
+    });
+  }
+
+  return <span style={chipStyle}>{chip.text}</span>;
+}
+
+// ── Cost line row (used inside CostTab for each line) ──────────────
+function CostLineRow({
+  l,
+  canManage,
+  detailLevel,
+  summary,
+  onPatch,
+  onDelete
+}: {
+  l: CostLine;
+  canManage: boolean;
+  detailLevel?: string;
+  summary: SummaryResult;
+  onPatch: (id: string, b: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
+
+  return (
+    <tr
+      style={{
+        borderTop: "1px solid var(--border, #e5e7eb)",
+        opacity: l.isVisible ? 1 : 0.4
+      }}
+    >
+      <td style={{ padding: 4, textAlign: "center" }}>
+        <input
+          type="checkbox"
+          aria-label="Visible on PDF"
+          checked={l.isVisible}
+          disabled={!canManage}
+          onChange={(e) =>
+            void onPatch(l.id, {
+              label: l.label,
+              description: l.description,
+              price: Number(l.price),
+              isVisible: e.target.checked
+            })
+          }
+        />
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input"
+          defaultValue={l.label}
+          disabled={!canManage}
+          style={{ width: 50 }}
+          onBlur={(e) =>
+            e.target.value !== l.label && void onPatch(l.id, { label: e.target.value })
+          }
+        />
+        <SourceChipBadge line={l} />
+      </td>
+      <td style={{ padding: 4 }}>
+        {detailLevel === "simple" ? (
+          <>
+            <input
+              className="s7-input"
+              key={`desc-${l.id}-simple`}
+              defaultValue={l.displayDescription ?? l.description}
+              disabled={!canManage}
+              style={{ width: "100%" }}
+              onBlur={(e) => {
+                const val = e.target.value;
+                if (val !== (l.displayDescription ?? l.description))
+                  void onPatch(l.id, { displayDescription: val });
+              }}
+            />
+            {l.sourceEstimateLineId && l.displayDescription && l.displayDescription !== l.description ? (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, fontStyle: "italic" }}>
+                estimate: {l.description}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <input
+            className="s7-input"
+            defaultValue={l.description}
+            disabled={!canManage}
+            style={{ width: "100%" }}
+            onBlur={(e) =>
+              e.target.value !== l.description &&
+              void onPatch(l.id, { description: e.target.value })
+            }
+          />
+        )}
+      </td>
+      <td style={{ padding: 4 }}>
+        <input
+          className="s7-input"
+          type="number"
+          step="0.01"
+          defaultValue={l.price}
+          disabled={!canManage}
+          style={{ width: 130, textAlign: "right" }}
+          onBlur={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n) && String(n) !== String(l.price))
+              void onPatch(l.id, { label: l.label, description: l.description, price: n });
+          }}
+        />
+      </td>
+      <td style={{ padding: 4, textAlign: "right" }}>
+        {(() => {
+          if (!approp) return <span>&#8212;</span>;
+          return (
+            <OverrideField
+              isOverridden={approp.overrideAmount != null}
+              onRevert={() => void onPatch(l.id, { overrideAmount: null })}
+            >
+              <input
+                className="s7-input"
+                type="number"
+                step="0.01"
+                defaultValue={approp.displayedAmount}
+                key={`approp-${l.id}-${approp.displayedAmount}`}
+                disabled={!canManage}
+                style={{ width: 110, textAlign: "right" }}
+                onBlur={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n) && n !== approp.displayedAmount)
+                    void onPatch(l.id, { overrideAmount: n });
+                }}
+              />
+            </OverrideField>
+          );
+        })()}
+      </td>
+      <td style={{ padding: 4 }}>
+        {canManage ? (
+          <button
+            type="button"
+            className="s7-btn s7-btn--ghost s7-btn--sm"
+            onClick={() => void onDelete(l.id)}
+          >
+            ×
+          </button>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
 // ── Cost Summary tab ────────────────────────────────────────────────
 function CostTab({
   quote,
@@ -861,7 +1083,8 @@ function CostTab({
   onCreate,
   onPatch,
   onDelete,
-  onPatchQuote
+  onPatchQuote,
+  onRefresh
 }: {
   quote: FullQuote;
   summary: SummaryResult;
@@ -870,172 +1093,255 @@ function CostTab({
   onPatch: (id: string, b: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPatchQuote: (b: Record<string, unknown>) => void;
+  onRefresh: () => Promise<void>;
 }) {
   const { authFetch } = useAuth();
   const [suggestion, setSuggestion] = useState<{ suggestedAdjustmentPct: number; rationale: string } | null>(null);
-  const nextLabel = String.fromCharCode(65 + quote.costLines.length); // A, B, C...
+  const [internalLines, setInternalLines] = useState<Array<{ code: string; description: string; price: number }>>([]);
+
+  // Load "Left off this quote" strip — INTERNAL pushable lines
+  useEffect(() => {
+    authFetch(`/tenders/${quote.tenderId}/scope/pushable-lines`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const lines = (await res.json()) as Array<{ quoteDestination: string; code: string; description: string; price: number }>;
+        setInternalLines(lines.filter((l) => l.quoteDestination === "INTERNAL"));
+      })
+      .catch(() => {});
+  }, [quote.tenderId, quote.id]); // authFetch is stable
+
   const addLine = () =>
-    void onCreate({ label: nextLabel, description: "", price: 0 });
+    void onCreate({ label: "", description: "", price: 0 });
+
   const fetchSuggestion = async () => {
     const res = await authFetch(`/tenders/${quote.tenderId}/quotes/client-suggestion/${quote.clientId}`);
     if (res.ok) setSuggestion((await res.json()) as { suggestedAdjustmentPct: number; rationale: string });
   };
 
+  const patchCostGroup = async (groupId: string, body: Record<string, unknown>) => {
+    await authFetch(`/tenders/${quote.tenderId}/quotes/${quote.id}/cost-groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    });
+    await onRefresh();
+  };
+
+  // Group the cost lines
+  const costGroups = (quote as FullQuote & { costGroups?: CostGroup[] }).costGroups ?? [];
+  const groupedSections = groupCostLines(
+    quote.costLines as CostLineWithGroup[],
+    costGroups as CostGroupType[]
+  );
+
+  const tableHeader = (
+    <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+      <tr>
+        <th style={{ textAlign: "center", padding: "6px 4px", width: 36 }} title="Visible on PDF">&#128065;</th>
+        <th style={{ textAlign: "left", padding: "6px 4px", width: 80 }}>Label</th>
+        <th style={{ textAlign: "left", padding: "6px 4px" }}>Description</th>
+        <th style={{ textAlign: "right", padding: "6px 4px", width: 140 }}>Price</th>
+        <th style={{ textAlign: "right", padding: "6px 4px", width: 120 }}>Adjusted</th>
+        <th style={{ width: 40 }} />
+      </tr>
+    </thead>
+  );
+
+  // quoteLineFigures for editor line
+  const lineFigures = quoteLineFigures(summary);
+
   return (
     <div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
-        <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
-          <tr>
-            <th style={{ textAlign: "center", padding: "6px 4px", width: 36 }} title="Visible on PDF">👁</th>
-            <th style={{ textAlign: "left", padding: "6px 4px", width: 60 }}>Label</th>
-            <th style={{ textAlign: "left", padding: "6px 4px" }}>Description</th>
-            <th style={{ textAlign: "right", padding: "6px 4px", width: 140 }}>Price</th>
-            <th style={{ textAlign: "right", padding: "6px 4px", width: 120 }}>Adjusted</th>
-            <th style={{ width: 40 }} />
-          </tr>
-        </thead>
-        <tbody>
-          {quote.costLines.map((l) => (
-            <tr
-              key={l.id}
-              style={{
-                borderTop: "1px solid var(--border, #e5e7eb)",
-                opacity: l.isVisible ? 1 : 0.4
-              }}
-            >
-              <td style={{ padding: 4, textAlign: "center" }}>
-                <input
-                  type="checkbox"
-                  aria-label="Visible on PDF"
-                  checked={l.isVisible}
-                  disabled={!canManage}
-                  onChange={(e) =>
-                    void onPatch(l.id, {
-                      label: l.label,
-                      description: l.description,
-                      price: Number(l.price),
-                      isVisible: e.target.checked
-                    })
-                  }
-                />
-              </td>
-              <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  defaultValue={l.label}
-                  disabled={!canManage}
-                  style={{ width: 50 }}
-                  onBlur={(e) =>
-                    e.target.value !== l.label && void onPatch(l.id, { label: e.target.value })
-                  }
-                />
-                {l.sourceEstimateLineId ? (
-                  <span
-                    title={`Traced from ${l.sourceEstimateLineType ?? "estimate line"} ${l.sourceEstimateLineId}`}
-                    style={{
-                      display: "inline-block",
-                      marginTop: 4,
-                      padding: "1px 6px",
-                      fontSize: 10,
-                      lineHeight: "14px",
-                      borderRadius: 999,
-                      background: "var(--surface-muted, #EEF2FF)",
-                      color: "var(--text-muted, #4338CA)",
-                      border: "1px solid var(--border, #C7D2FE)"
-                    }}
-                  >
-                    from estimate
-                  </span>
-                ) : null}
-              </td>
-              <td style={{ padding: 4 }}>
-                {quote.detailLevel === "simple" ? (
-                  <input
-                    className="s7-input"
-                    key={`desc-${l.id}-simple`}
-                    defaultValue={l.displayDescription ?? l.description}
-                    disabled={!canManage}
-                    style={{ width: "100%" }}
-                    onBlur={(e) => {
-                      const val = e.target.value;
-                      if (val !== (l.displayDescription ?? l.description))
-                        void onPatch(l.id, { displayDescription: val });
-                    }}
-                  />
-                ) : (
-                  <input
-                    className="s7-input"
-                    defaultValue={l.description}
-                    disabled={!canManage}
-                    style={{ width: "100%" }}
-                    onBlur={(e) =>
-                      e.target.value !== l.description &&
-                      void onPatch(l.id, { description: e.target.value })
-                    }
-                  />
-                )}
-              </td>
-              <td style={{ padding: 4 }}>
+      {/* Push panel — mounted at top of Cost Summary tab only.
+          Calls POST :quoteId/push-from-estimate/plan (plan) and
+          POST :quoteId/push-from-estimate (apply via diff modal). */}
+      <QuotePushPanel
+        quote={{
+          id: quote.id,
+          tenderId: quote.tenderId,
+          status: quote.status,
+          pushedAt: (quote as FullQuote & { pushedAt?: string | null }).pushedAt ?? null,
+          pushedBy: (quote as FullQuote & { pushedBy?: unknown }).pushedBy as { firstName?: string; lastName?: string } | null ?? null,
+          sentAt: quote.sentAt,
+          ratesLockedAt: (quote as FullQuote & { ratesLockedAt?: string | null }).ratesLockedAt
+        }}
+        costLines={quote.costLines as CostLineWithGroup[]}
+        onAfterApply={onRefresh}
+      />
+
+      {/* Grouped cost lines */}
+      {groupedSections.map((section, sectionIdx) => {
+        const grp = section.group as CostGroup | null;
+        const figs = groupFigures(
+          grp as CostGroupType | null,
+          section.lines as CostLineWithGroup[],
+          summary.lineAppropriations ?? []
+        );
+        const isOneLine = grp?.printMode === "ONE_LINE";
+
+        return (
+          <div key={grp?.id ?? "ungrouped"} style={{ marginBottom: sectionIdx < groupedSections.length - 1 ? 12 : 0 }}>
+            {grp ? (
+              // Group header row
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 4px",
+                  background: "var(--surface-muted, #F6F6F6)",
+                  borderRadius: "4px 4px 0 0",
+                  borderBottom: "1px solid var(--border, #e5e7eb)"
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 11,
+                    padding: "1px 6px",
+                    borderRadius: 4,
+                    background: "var(--brand-accent)",
+                    color: "#000"
+                  }}
+                >
+                  {grp.label}
+                </span>
                 <input
                   className="s7-input"
-                  type="number"
-                  step="0.01"
-                  defaultValue={l.price}
+                  defaultValue={grp.name}
                   disabled={!canManage}
-                  style={{ width: 130, textAlign: "right" }}
+                  style={{ fontSize: 13, fontWeight: 600, flex: 1 }}
                   onBlur={(e) => {
-                    const n = Number(e.target.value);
-                    if (Number.isFinite(n) && String(n) !== String(l.price))
-                      void onPatch(l.id, { label: l.label, description: l.description, price: n });
+                    if (e.target.value !== grp.name) {
+                      void patchCostGroup(grp.id, { name: e.target.value });
+                    }
                   }}
                 />
-              </td>
-              <td style={{ padding: 4, textAlign: "right" }}>
-                {(() => {
-                  const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
-                  if (!approp) return "—";
-                  return (
-                    <OverrideField
-                      isOverridden={approp.overrideAmount != null}
-                      onRevert={() => void onPatch(l.id, { overrideAmount: null })}
-                    >
-                      <input
-                        className="s7-input"
-                        type="number"
-                        step="0.01"
-                        defaultValue={approp.displayedAmount}
-                        key={`approp-${l.id}-${approp.displayedAmount}`}
-                        disabled={!canManage}
-                        style={{ width: 110, textAlign: "right" }}
-                        onBlur={(e) => {
-                          const n = Number(e.target.value);
-                          if (Number.isFinite(n) && n !== approp.displayedAmount)
-                            void onPatch(l.id, { overrideAmount: n });
-                        }}
-                      />
-                    </OverrideField>
-                  );
-                })()}
-              </td>
-              <td style={{ padding: 4 }}>
-                {canManage ? (
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => void onDelete(l.id)}
-                  >
-                    ×
-                  </button>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                  <input
+                    type="checkbox"
+                    checked={isOneLine}
+                    disabled={!canManage}
+                    onChange={(e) => void patchCostGroup(grp.id, { printMode: e.target.checked ? "ONE_LINE" : "ITEMISED" })}
+                  />
+                  One line
+                </label>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                  {fmtCurrency(figs.subtotal)} · {figs.tickedCount} of {figs.lineCount} ticked
+                </span>
+              </div>
+            ) : section.lines.length > 0 ? (
+              // Ungrouped header
+              <div
+                style={{
+                  padding: "4px 4px",
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  fontStyle: "italic",
+                  borderBottom: "1px solid var(--border, #e5e7eb)"
+                }}
+              >
+                Added on this quote
+              </div>
+            ) : null}
+
+            {isOneLine && grp ? (
+              <div
+                style={{
+                  padding: "6px 8px",
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  fontStyle: "italic",
+                  background: "var(--surface-subtle, rgba(0,0,0,0.02))"
+                }}
+              >
+                prints as one line: {grp.name} — {fmtCurrency(figs.subtotal)}
+              </div>
+            ) : null}
+
+            {section.lines.length > 0 ? (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 0, opacity: isOneLine ? 0.7 : 1 }}>
+                {tableHeader}
+                <tbody>
+                  {section.lines.map((l) => (
+                    <CostLineRow
+                      key={l.id}
+                      l={l as CostLine}
+                      canManage={canManage && !isOneLine ? false : canManage}
+                      detailLevel={quote.detailLevel}
+                      summary={summary}
+                      onPatch={onPatch}
+                      onDelete={onDelete}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </div>
+        );
+      })}
+
+      {/* If no groups at all, show a plain table */}
+      {groupedSections.length === 0 ? (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
+          {tableHeader}
+          <tbody>
+            {quote.costLines.map((l) => (
+              <CostLineRow
+                key={l.id}
+                l={l}
+                canManage={canManage}
+                detailLevel={quote.detailLevel}
+                summary={summary}
+                onPatch={onPatch}
+                onDelete={onDelete}
+              />
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+
       {canManage ? (
-        <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={addLine}>
+        <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" style={{ marginTop: 8 }} onClick={addLine}>
           + Add cost line
         </button>
+      ) : null}
+
+      {/* Editor line — In this quote / Priced on the estimate / unticked */}
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 12,
+          color: "var(--text-muted)",
+          padding: "6px 8px",
+          background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+          borderRadius: 4,
+          border: "1px solid var(--border)"
+        }}
+      >
+        In this quote {fmtCurrency(lineFigures.inThisQuote)} · Priced on the estimate{" "}
+        {fmtCurrency(lineFigures.pricedOnEstimate)} &#8722; unticked{" "}
+        {fmtCurrency(lineFigures.unticked)}
+      </div>
+
+      {/* Left off this quote — INTERNAL lines, never in Preview or the PDF */}
+      {internalLines.length > 0 ? (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: "var(--text-muted)",
+            padding: "6px 8px",
+            background: "var(--surface-subtle, rgba(0,0,0,0.02))",
+            borderRadius: 4,
+            border: "1px solid var(--border)"
+          }}
+        >
+          <strong>Left off this quote:</strong>{" "}
+          {internalLines.length} {internalLines.length === 1 ? "line" : "lines"} ·{" "}
+          {fmtCurrency(internalLines.reduce((s, l) => s + l.price, 0))} ·{" "}
+          {internalLines.map((l) => l.code + " " + l.description).join(", ")}{" "}
+          <span style={{ fontStyle: "italic" }}>— never in Preview or the PDF</span>
+        </div>
       ) : null}
 
       {/* Internal adjustment panel — never appears on the PDF */}
@@ -1043,8 +1349,8 @@ function CostTab({
         style={{
           marginTop: 16,
           padding: 12,
-          borderLeft: "3px solid #005B61",
-          background: "#F0F9FA",
+          borderLeft: "3px solid var(--brand-primary)",
+          background: "var(--surface-subtle, rgba(0,91,97,0.04))",
           borderRadius: 4
         }}
       >
@@ -1117,7 +1423,7 @@ function CostTab({
           <span style={{ color: "var(--text-muted)" }}>Base total:</span>
           <span />
           <strong>{fmtCurrency(summary.baseTotalCostLines)}</strong>
-          <span style={{ color: "#D97706" }}>
+          <span style={{ color: "var(--status-warn, #D97706)" }}>
             Adjustment
             {quote.adjustmentPct !== null && quote.adjustmentPct !== undefined
               ? ` (${Number(quote.adjustmentPct) >= 0 ? "+" : ""}${Number(quote.adjustmentPct)}%)`
@@ -1129,7 +1435,7 @@ function CostTab({
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
             Internal only — not shown on quote
           </span>
-          <strong style={{ color: "#D97706" }}>{fmtCurrency(summary.adjustmentAmount)}</strong>
+          <strong style={{ color: "var(--status-warn, #D97706)" }}>{fmtCurrency(summary.adjustmentAmount)}</strong>
           <span
             style={{
               gridColumn: "1 / -1",
@@ -1140,7 +1446,7 @@ function CostTab({
           />
           <span style={{ fontWeight: 600 }}>Client sees:</span>
           <span />
-          <strong style={{ color: "#005B61", fontSize: 15 }}>
+          <strong style={{ color: "var(--brand-primary)", fontSize: 15 }}>
             {fmtCurrency(summary.clientFacingTotal)}
           </strong>
         </div>
@@ -1167,6 +1473,11 @@ function ProvisionalTab({
 }) {
   return (
     <div>
+      <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 8px" }}>
+        Provisional sums print under the total, never inside it. Whether they print at all is
+        the Provisional sums tick in Quote contents — the destination decides the money exists,
+        the tick decides it shows.
+      </p>
       <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, fontSize: 13 }}>
         <input
           type="checkbox"
@@ -1198,6 +1509,7 @@ function ProvisionalTab({
                     void onPatch(l.id, { description: e.target.value, price: Number(l.price) })
                   }
                 />
+                <SourceChipBadge line={{ sourceEstimateLineId: l.sourceEstimateLineId, overrideAmount: null }} />
               </td>
               <td style={{ padding: 4 }}>
                 <input
@@ -1270,13 +1582,13 @@ function OptionsTab({
   onPatch: (id: string, b: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const nextLabel = String(quote.costOptions.length + 1);
+  // nextOptionLabel replaces the numeric nextLabel from pre-S4b
+  const nextLabel = nextOptionLabel(quote.costOptions.map((o) => o.label));
   return (
     <div>
       <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 8px" }}>
-        Cost options are alternative pricing scenarios that appear separately from the
-        main quote total. Use these for scope variations, optional extras, or alternative
-        approaches.
+        Cost options are alternative pricing that appears separately from the main quote total.
+        They print only while the Cost options tick is on.
       </p>
       <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, fontSize: 13 }}>
         <input
@@ -1290,7 +1602,7 @@ function OptionsTab({
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
         <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
           <tr>
-            <th style={{ textAlign: "left", padding: "6px 4px", width: 60 }}>Label</th>
+            <th style={{ textAlign: "left", padding: "6px 4px", width: 80 }}>Label</th>
             <th style={{ textAlign: "left", padding: "6px 4px" }}>Description</th>
             <th style={{ textAlign: "right", padding: "6px 4px", width: 140 }}>Price</th>
             <th style={{ textAlign: "left", padding: "6px 4px", width: 240 }}>Notes</th>
@@ -1298,83 +1610,96 @@ function OptionsTab({
           </tr>
         </thead>
         <tbody>
-          {quote.costOptions.map((l) => (
-            <tr key={l.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
-              <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  defaultValue={l.label}
-                  disabled={!canManage}
-                  style={{ width: 50 }}
-                  onBlur={(e) =>
-                    void onPatch(l.id, {
-                      label: e.target.value,
-                      description: l.description,
-                      price: Number(l.price)
-                    })
-                  }
-                />
-              </td>
-              <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  defaultValue={l.description}
-                  disabled={!canManage}
-                  style={{ width: "100%" }}
-                  onBlur={(e) =>
-                    void onPatch(l.id, {
-                      label: l.label,
-                      description: e.target.value,
-                      price: Number(l.price)
-                    })
-                  }
-                />
-              </td>
-              <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  type="number"
-                  step="0.01"
-                  defaultValue={l.price}
-                  disabled={!canManage}
-                  style={{ width: 130, textAlign: "right" }}
-                  onBlur={(e) =>
-                    void onPatch(l.id, {
-                      label: l.label,
-                      description: l.description,
-                      price: Number(e.target.value)
-                    })
-                  }
-                />
-              </td>
-              <td style={{ padding: 4 }}>
-                <input
-                  className="s7-input"
-                  defaultValue={l.notes ?? ""}
-                  disabled={!canManage}
-                  onBlur={(e) =>
-                    void onPatch(l.id, {
-                      label: l.label,
-                      description: l.description,
-                      price: Number(l.price),
-                      notes: e.target.value || null
-                    })
-                  }
-                />
-              </td>
-              <td style={{ padding: 4 }}>
-                {canManage ? (
-                  <button
-                    type="button"
-                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                    onClick={() => void onDelete(l.id)}
-                  >
-                    ×
-                  </button>
-                ) : null}
-              </td>
-            </tr>
-          ))}
+          {quote.costOptions.map((l) => {
+            const isPushed = !!l.sourceEstimateLineId;
+            return (
+              <tr key={l.id} style={{ borderTop: "1px solid var(--border, #e5e7eb)" }}>
+                <td style={{ padding: 4 }}>
+                  {isPushed ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>Option {l.label}</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
+                        frozen at push
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      className="s7-input"
+                      defaultValue={l.label}
+                      disabled={!canManage}
+                      style={{ width: 50 }}
+                      onBlur={(e) =>
+                        void onPatch(l.id, {
+                          label: e.target.value,
+                          description: l.description,
+                          price: Number(l.price)
+                        })
+                      }
+                    />
+                  )}
+                </td>
+                <td style={{ padding: 4 }}>
+                  <input
+                    className="s7-input"
+                    defaultValue={l.description}
+                    disabled={!canManage}
+                    style={{ width: "100%" }}
+                    onBlur={(e) =>
+                      void onPatch(l.id, {
+                        label: l.label,
+                        description: e.target.value,
+                        price: Number(l.price)
+                      })
+                    }
+                  />
+                  <SourceChipBadge line={{ sourceEstimateLineId: l.sourceEstimateLineId, overrideAmount: null }} />
+                </td>
+                <td style={{ padding: 4 }}>
+                  <input
+                    className="s7-input"
+                    type="number"
+                    step="0.01"
+                    defaultValue={l.price}
+                    disabled={!canManage}
+                    style={{ width: 130, textAlign: "right" }}
+                    onBlur={(e) =>
+                      void onPatch(l.id, {
+                        label: l.label,
+                        description: l.description,
+                        price: Number(e.target.value)
+                      })
+                    }
+                  />
+                </td>
+                <td style={{ padding: 4 }}>
+                  <input
+                    className="s7-input"
+                    defaultValue={l.notes ?? ""}
+                    disabled={!canManage}
+                    onBlur={(e) =>
+                      void onPatch(l.id, {
+                        label: l.label,
+                        description: l.description,
+                        price: Number(l.price),
+                        notes: e.target.value || null
+                      })
+                    }
+                  />
+                </td>
+                <td style={{ padding: 4 }}>
+                  {canManage ? (
+                    <button
+                      type="button"
+                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                      onClick={() => void onDelete(l.id)}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {canManage ? (
@@ -1710,6 +2035,9 @@ function ExclusionsTab({
 }
 
 // ── Preview tab ────────────────────────────────────────────────────
+// QUOTE_PUSH_PANEL_V1 (scopecards-s4b): renders grouped exactly as the PDF
+// (S4a §6): a group heading per group, itemised lines or one line with
+// name + subtotal, ungrouped lines after, Client-facing total unchanged.
 function PreviewTab({
   quote,
   summary,
@@ -1723,6 +2051,13 @@ function PreviewTab({
   onDownload: () => void;
   onSend: () => void;
 }) {
+  // Grouped sections — same logic as CostTab
+  const costGroups = quote.costGroups ?? [];
+  const groupedSections = groupCostLines(
+    quote.costLines as CostLineWithGroup[],
+    costGroups as CostGroupType[]
+  );
+
   return (
     <div>
       <div style={{ marginBottom: 12, display: "flex", gap: 8 }}>
@@ -1730,7 +2065,7 @@ function PreviewTab({
           type="button"
           className="s7-btn s7-btn--primary"
           onClick={onDownload}
-          style={{ background: "#FEAA6D", borderColor: "#FEAA6D", color: "#000" }}
+          style={{ background: "var(--brand-accent)", borderColor: "var(--brand-accent)", color: "#000" }}
         >
           Download PDF
         </button>
@@ -1745,20 +2080,51 @@ function PreviewTab({
         <p><strong>Client:</strong> {quote.client.name}</p>
         <h4 style={{ marginBottom: 4 }}>Cost summary</h4>
         <ul style={{ margin: "0 0 8px 16px" }}>
-          {quote.costLines.filter((l) => l.isVisible).map((l) => {
-            const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
-            const displayAmount = approp ? approp.displayedAmount : l.price;
-            const displayDesc = l.displayDescription ?? l.description;
+          {groupedSections.map((section) => {
+            const grp = section.group as CostGroup | null;
+            const visibleLines = section.lines.filter((l) => l.isVisible);
+            if (visibleLines.length === 0 && grp !== null) return null;
+
+            const isOneLine = grp?.printMode === "ONE_LINE";
+
+            if (isOneLine && grp) {
+              // ONE_LINE group: emit one entry with the group name and subtotal
+              const subtotal = visibleLines.reduce((s, l) => {
+                const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
+                return s + (approp ? approp.displayedAmount : Number(l.price));
+              }, 0);
+              return (
+                <li key={grp.id} style={{ fontWeight: 600 }}>
+                  {grp.label}) {grp.name} — {fmtCurrency(subtotal)}
+                </li>
+              );
+            }
+
+            // ITEMISED group or ungrouped: one line per visible line
             return (
-              <li key={l.id}>
-                {l.label}) {displayDesc} — {fmtCurrency(displayAmount)}
-              </li>
+              <>
+                {grp ? (
+                  <li key={`grp-${grp.id}`} style={{ listStyle: "none", fontWeight: 700, marginLeft: -16 }}>
+                    {grp.label}. {grp.name}
+                  </li>
+                ) : null}
+                {visibleLines.map((l) => {
+                  const approp = summary.lineAppropriations?.find((a) => a.lineId === l.id);
+                  const displayAmount = approp ? approp.displayedAmount : l.price;
+                  const displayDesc = l.displayDescription ?? l.description;
+                  return (
+                    <li key={l.id}>
+                      {l.label}) {displayDesc} — {fmtCurrency(displayAmount)}
+                    </li>
+                  );
+                })}
+              </>
             );
           })}
         </ul>
         <p>
           Client-facing total:{" "}
-          <strong style={{ color: "#005B61" }}>{fmtCurrency(summary.clientFacingTotal)}</strong>
+          <strong style={{ color: "var(--brand-primary)" }}>{fmtCurrency(summary.clientFacingTotal)}</strong>
         </p>
         {quote.showProvisional && quote.provisionalLines.length > 0 ? (
           <>

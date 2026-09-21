@@ -363,6 +363,99 @@ describe("Quote HTML builder", () => {
     expect(html).not.toMatch(/>A\)<\/td>/);
     expect(html).toContain(">A</td>");
   });
+
+  // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- grouped rendering tests
+
+  it("QUOTE_PUSH_BY_DESTINATION_V1 — ITEMISED group renders heading then each line", () => {
+    const overlay = makeOverlay({
+      costGroups: [
+        { id: "g-1", label: "A", name: "Demolition", printMode: "ITEMISED", sortOrder: 0 }
+      ],
+      costLines: [
+        { id: "cl-1", label: "A1", description: "Strip out level 1", displayDescription: null, price: 8000, sortOrder: 0, groupId: "g-1" },
+        { id: "cl-2", label: "A2", description: "Concrete saw cut", displayDescription: null, price: 5000, sortOrder: 1, groupId: "g-1" }
+      ]
+    });
+    const html = buildQuoteHtml(basePayload(), overlay);
+
+    expect(html).toContain("Demolition");
+    expect(html).toContain("Strip out level 1");
+    expect(html).toContain("Concrete saw cut");
+    // Should not show the group heading as a dollar amount (sentinel -1 → renders as -$1.00 if it leaks)
+    expect(html).not.toContain("-$1.00");
+    expect(html).toContain('class="group-heading"');
+  });
+
+  it("QUOTE_PUSH_BY_DESTINATION_V1 — ONE_LINE group renders group name with summed amount, not individual lines", () => {
+    const overlay = makeOverlay({
+      costGroups: [
+        { id: "g-1", label: "A", name: "Asbestos Removal", printMode: "ONE_LINE", sortOrder: 0 }
+      ],
+      costLines: [
+        { id: "cl-1", label: "A1", description: "Line 1 detail", displayDescription: null, price: 3000, sortOrder: 0, groupId: "g-1" },
+        { id: "cl-2", label: "A2", description: "Line 2 detail", displayDescription: null, price: 7000, sortOrder: 1, groupId: "g-1" }
+      ]
+    });
+    const html = buildQuoteHtml(basePayload(), overlay);
+
+    expect(html).toContain("Asbestos Removal");
+    // Individual line descriptions should NOT appear separately in ONE_LINE mode
+    expect(html).not.toContain("Line 1 detail");
+    expect(html).not.toContain("Line 2 detail");
+  });
+
+  it("QUOTE_PUSH_BY_DESTINATION_V1 — ungrouped lines render after grouped lines", () => {
+    const overlay = makeOverlay({
+      costGroups: [
+        { id: "g-1", label: "A", name: "Demolition", printMode: "ITEMISED", sortOrder: 0 }
+      ],
+      costLines: [
+        { id: "cl-1", label: "A1", description: "Group line", displayDescription: null, price: 8000, sortOrder: 0, groupId: "g-1" },
+        { id: "cl-2", label: "B", description: "Ungrouped adjustment", displayDescription: null, price: 2000, sortOrder: 1, groupId: null }
+      ]
+    });
+    const html = buildQuoteHtml(basePayload(), overlay);
+
+    expect(html).toContain("Group line");
+    expect(html).toContain("Ungrouped adjustment");
+  });
+
+  it("QUOTE_PUSH_BY_DESTINATION_V1 — no groups falls back to flat rendering", () => {
+    const overlay = makeOverlay({
+      costGroups: [],
+      costLines: [
+        { id: "cl-1", label: "A", description: "Demolition", displayDescription: null, price: 13000, sortOrder: 0 },
+        { id: "cl-2", label: "B", description: "Civil restoration", displayDescription: null, price: 2000, sortOrder: 1 }
+      ]
+    });
+    const html = buildQuoteHtml(basePayload(), overlay);
+
+    expect(html).toContain("Demolition");
+    expect(html).toContain("Civil restoration");
+  });
+
+  it("QUOTE_PUSH_BY_DESTINATION_V1 — displayDescription overrides description in ITEMISED group", () => {
+    const overlay = makeOverlay({
+      costGroups: [
+        { id: "g-1", label: "A", name: "Demolition", printMode: "ITEMISED", sortOrder: 0 }
+      ],
+      costLines: [
+        {
+          id: "cl-1",
+          label: "A1",
+          description: "Technical internal description",
+          displayDescription: "Client-facing description",
+          price: 8000,
+          sortOrder: 0,
+          groupId: "g-1"
+        }
+      ]
+    });
+    const html = buildQuoteHtml(basePayload(), overlay);
+
+    expect(html).toContain("Client-facing description");
+    expect(html).not.toContain("Technical internal description");
+  });
 });
 
 describe("Quote HTML → PDF (integration)", () => {

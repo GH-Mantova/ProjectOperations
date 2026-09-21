@@ -35,7 +35,8 @@ function makeService(
   return new ClientQuotesService(
     prisma as never,
     scope as never,
-    audit as never
+    audit as never,
+    { apply: async () => undefined } as never
   );
 }
 

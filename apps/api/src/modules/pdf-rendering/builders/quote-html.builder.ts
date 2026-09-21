@@ -16,6 +16,27 @@ import {
 } from "../../estimate-export/pdf/tc-text.const";
 import { getTemplatesDir } from "../template.helpers";
 
+// QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- overlay cost line now
+// carries groupId so the builder can render grouped vs ungrouped.
+export type OverlayCostLine = {
+  id: string;
+  label: string;
+  description: string;
+  displayDescription: string | null;
+  price: number;
+  sortOrder: number;
+  groupId?: string | null;
+};
+
+// QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- cost group for the PDF.
+export type OverlayCostGroup = {
+  id: string;
+  label: string;
+  name: string;
+  printMode: string; // "ITEMISED" | "ONE_LINE"
+  sortOrder: number;
+};
+
 export type QuoteOverlay = {
   quoteRef: string;
   revision: number;
@@ -36,14 +57,9 @@ export type QuoteOverlay = {
     notes: string | null;
     quoteDiscipline: string | null;
   }>;
-  costLines: Array<{
-    id: string;
-    label: string;
-    description: string;
-    displayDescription: string | null;
-    price: number;
-    sortOrder: number;
-  }>;
+  costLines: Array<OverlayCostLine>;
+  // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- optional groups.
+  costGroups?: Array<OverlayCostGroup>;
   provisionalLines: Array<{
     description: string;
     price: number;
@@ -397,12 +413,57 @@ function coverPage(
     [];
   let total: number;
   if (overlay) {
-    for (const line of overlay.costLines) {
-      nonProv.push({
-        code: line.label,
-        label: line.displayDescription ?? line.description,
-        amount: line.price,
-      });
+    // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- render grouped if
+    // costGroups are present; fall back to the flat line list otherwise.
+    const groups = overlay.costGroups ?? [];
+    if (groups.length > 0) {
+      const groupById = new Map(groups.map((g) => [g.id, g]));
+      // Grouped lines, sorted by group.sortOrder then line.sortOrder.
+      const groupedLines = overlay.costLines.filter((l) => l.groupId);
+      const ungroupedLines = overlay.costLines.filter((l) => !l.groupId);
+
+      // Build group rows.
+      const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
+      for (const g of sortedGroups) {
+        const linesInGroup = groupedLines
+          .filter((l) => l.groupId === g.id)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        if (linesInGroup.length === 0) continue;
+
+        if (g.printMode === "ONE_LINE") {
+          // Sum all visible lines; amount is their sum.
+          const groupAmount = linesInGroup.reduce((s, l) => s + l.price, 0);
+          nonProv.push({ code: g.label, label: g.name, amount: groupAmount });
+        } else {
+          // ITEMISED: group heading then each line.
+          // We render the heading as a pseudo-row with no amount.
+          nonProv.push({ code: g.label, label: g.name, amount: -1 }); // heading marker
+          for (const line of linesInGroup) {
+            nonProv.push({
+              code: line.label,
+              label: line.displayDescription ?? line.description,
+              amount: line.price,
+            });
+          }
+        }
+      }
+      // Ungrouped lines after groups (typed by hand, print as today).
+      for (const line of ungroupedLines.sort((a, b) => a.sortOrder - b.sortOrder)) {
+        nonProv.push({
+          code: line.label,
+          label: line.displayDescription ?? line.description,
+          amount: line.price,
+        });
+      }
+    } else {
+      // No groups: flat rendering as before.
+      for (const line of overlay.costLines) {
+        nonProv.push({
+          code: line.label,
+          label: line.displayDescription ?? line.description,
+          amount: line.price,
+        });
+      }
     }
     total = overlay.clientFacingTotal;
   } else {
@@ -433,10 +494,19 @@ function coverPage(
   html += `<table>
 <thead><tr><th style="width:16%">SCOPE</th><th>DESCRIPTION</th><th class="right" style="width:24%">AMOUNT (EX GST)</th></tr></thead>
 <tbody>`;
-  nonProv.forEach((row, i) => {
-    const cls = i % 2 === 1 ? ' class="alt"' : "";
-    html += `<tr${cls}><td>${esc(row.code)}</td><td>${esc(row.label)}</td><td class="right">${esc(fmtCurrency(row.amount))}</td></tr>`;
-  });
+  {
+    let rowIdx = 0;
+    nonProv.forEach((row) => {
+      if (row.amount === -1) {
+        // Group heading row -- no amount, styled differently.
+        html += `<tr class="group-heading"><td colspan="3"><strong>${esc(row.code)} &mdash; ${esc(row.label)}</strong></td></tr>`;
+        return;
+      }
+      const cls = rowIdx % 2 === 1 ? ' class="alt"' : "";
+      html += `<tr${cls}><td>${esc(row.code)}</td><td>${esc(row.label)}</td><td class="right">${esc(fmtCurrency(row.amount))}</td></tr>`;
+      rowIdx++;
+    });
+  }
   html += `<tr class="total"><td>TOTAL</td><td></td><td class="right">${esc(fmtCurrency(total))}</td></tr>`;
   html += `</tbody></table>`;
 

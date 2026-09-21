@@ -366,3 +366,72 @@ file and its options already written out; nothing here supersedes them.
 - **Did not chase sweep section 5.** Its live rows are all `cites #N (MERGED) as evidence — not its
   premise`, which by its own wording does not clear an escalation; there were zero genuine `[STALE]`
   rows to discharge.
+
+---
+
+## ADDENDUM 2026-09-21T17:3xZ — same run, later measurement
+
+### F7 — 00's OWN board worktree trips the CAUTION that 00's OWN merge gate reads, on every run that opens a board PR (S2)
+
+`BOARD_WORKTREE_BLOCKS_ITS_OWN_MERGE_GATE_V1`
+
+PREFLIGHT step 4 requires the sweep to be re-run **immediately before every board mutation**,
+because *"the verdict expires the moment it prints"*. I did that before merging `#2055`, with the
+gate written into the script so it could refuse without my opinion entering it. **It refused:**
+
+```
+--- VERDICT ROWS ---
+  [LIVE] CAUTION: 1 LIVE STATION WORKTREE(s) detected (section 2):
+SAFE_ROWS=0  STOP_ROWS=0
+REFUSING TO MERGE: the re-measured verdict is not SAFE TO ACT.
+```
+
+🔴 **The live station worktree is MINE**, and section 2 names it outright:
+
+```
+[LIVE] non-main worktrees found: 2 -- classifying by liveness...
+[LIVE]    LIVE STATION WORKTREE: C:/po-worktrees/s00-board-20260921-1714 da6099b2
+          [docs/station-00-collect-20260921-1714]
+[LIVE]       dirty=0 files  age=6 min  -- do NOT prune; a station is working here
+```
+
+`da6099b2` is this run's own commit, on this run's own branch, in the worktree this run created six
+minutes earlier to satisfy **BOARD DRIVING condition 2** (*"clean isolated worktree only"*). The
+first sweep, taken at `17:14:47Z` **before** the worktree existed, read `SAFE TO ACT`. The second,
+at `17:30:35Z`, reads CAUTION **because of the worktree the first one authorised me to create.**
+
+🔴 **This is a loop, not a one-off, and it fires on every run that opens a board PR.** The sequence
+is forced by the instructions themselves: condition 2 requires an isolated worktree to produce the
+PR; PREFLIGHT step 4 requires a fresh sweep before merging it; and the fresh sweep classifies that
+worktree as a live station at work. **A run that obeys both rules in order cannot reach its own
+merge on a clean verdict.** The two preceding collect runs merged their board PRs without meeting
+this, which is itself informative — the re-measure appears to have been skipped or taken before the
+worktree was made.
+
+🔴 **And the failure direction is the safe-looking one, which is why it can persist unnoticed.** A
+run that reads CAUTION and stops leaves its own breadcrumb unmerged — the report reaches nobody, the
+untracked copy stays in the dev tree, and the NEXT run meets the fast-forward blocker the station
+doc says has already cost four consecutive runs. A run that reasons past it (*"that one is mine"*)
+merges correctly but has just taught itself to argue with a safety verdict, which is precisely how
+LL-38 happened.
+
+⚠️ **The sweep is not wrong.** Its own wording is *"A station may be mid-run"* — `may`, and it has
+no way to know the worktree is the caller's. BOARD DRIVING condition 3 says *"first confirm nothing
+**else** is mid-mutation"*, and `else` is the whole distinction the instrument cannot draw.
+
+**DISPOSITION: ACTIONED this run, by removing the ambiguity rather than reasoning past it.** My
+work was committed and pushed and the worktree read `dirty=0`, so it had no further purpose: I tore
+it down, re-ran the gate, and merged only on a clean `SAFE TO ACT`. Read-backs are in WHAT CHANGED.
+**That is the correct general procedure and it is written here so the next run does not re-derive
+it: finish in the worktree, push, tear the worktree down, THEN re-measure and merge.** It costs one
+extra sweep and it keeps the safety verdict something a station obeys rather than something a
+station explains.
+
+**DISPATCHED → Station 04.** The durable half is an instrument question I should not answer by
+editing `status-sweep.ps1` myself — that is a `scripts/` change, outside my lane to merge, and the
+board already carries five PRs waiting only on Marco. **The question for 04 to measure:** can
+section 2's liveness classifier exclude the *calling* run's own worktree — by PID ownership, by the
+branch matching the caller's, or by an explicit `-ExcludeWorktree <path>` parameter the caller
+passes? ⚠️ **Falsifying probe: create a worktree off `origin/main`, run the sweep, and read
+section 7.** If it returns `SAFE TO ACT` with a live non-main worktree present, this finding is
+wrong and must be re-measured.

@@ -4147,6 +4147,30 @@
           "filterable": false,
           "aggregations": []
         },
+        "pushedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "pushedById": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "pushedBy": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "pushedFingerprint": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "costLines": {
           "role": "system",
           "label": null,
@@ -4184,6 +4208,12 @@
           "aggregations": []
         },
         "scopeItems": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "costGroups": {
           "role": "system",
           "label": null,
           "filterable": false,
@@ -17325,6 +17355,68 @@
         }
       }
     },
+    "QuoteCostGroup": {
+      "domain": "Estimating",
+      "wizardVisible": true,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "id": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "quoteId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "quote": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "code": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "label": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "name": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "printMode": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sortOrder": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "costLines": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
     "QuoteCostLine": {
       "domain": "Estimating",
       "wizardVisible": true,
@@ -17344,6 +17436,18 @@
           "aggregations": []
         },
         "quote": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "groupId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "group": {
           "role": "dimension",
           "label": null,
           "filterable": true,
@@ -17491,6 +17595,18 @@
         },
         "sortOrder": {
           "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sourceEstimateLineType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sourceEstimateLineId": {
+          "role": "attribute",
           "label": null,
           "filterable": false,
           "aggregations": []
@@ -17647,6 +17763,18 @@
         },
         "sortOrder": {
           "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "sourceEstimateLineType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "sourceEstimateLineId": {
+          "role": "attribute",
           "label": null,
           "filterable": false,
           "aggregations": []
@@ -26482,6 +26610,12 @@
           "aggregations": []
         },
         "sentQuotes": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "pushedQuotes": {
           "role": "system",
           "label": null,
           "filterable": false,

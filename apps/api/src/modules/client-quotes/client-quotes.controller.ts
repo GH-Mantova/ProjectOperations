@@ -18,12 +18,14 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { ClientQuotesService } from "./client-quotes.service";
 import { QuotePdfService } from "./quote-pdf.service";
+import { QuotePushService } from "./quote-push.service";
 import { QuoteSendService } from "./quote-send.service";
 import {
   CreateClientQuoteDto,
   ReorderDto,
   SendQuoteDto,
   UpdateClientQuoteDto,
+  UpdateCostGroupDto,
   UpsertAssumptionDto,
   UpsertCostLineDto,
   UpsertCostOptionDto,
@@ -41,6 +43,7 @@ export class ClientQuotesController {
   constructor(
     private readonly service: ClientQuotesService,
     private readonly pdf: QuotePdfService,
+    private readonly push: QuotePushService,
     private readonly sender: QuoteSendService
   ) {}
 
@@ -365,6 +368,53 @@ export class ClientQuotesController {
   @ApiResponse({ status: 200, description: "Suggested adjustment % for a client, based on preferenceScore + winRate." })
   suggestion(@Param("clientId") clientId: string) {
     return this.service.suggestion(clientId);
+  }
+
+  // ── Cost groups (QUOTE_PUSH_BY_DESTINATION_V1) ────────────────────
+  @Get(":quoteId/cost-groups")
+  @RequirePermissions("tenders.view")
+  @ApiOperation({ summary: "List cost groups for a client quote." })
+  @ApiResponse({ status: 200, description: "Cost groups." })
+  listCostGroups(@Param("tenderId") tenderId: string, @Param("quoteId") quoteId: string) {
+    return this.service.listCostGroups(tenderId, quoteId);
+  }
+
+  @Patch(":quoteId/cost-groups/:groupId")
+  @RequirePermissions("tenders.manage")
+  @ApiOperation({ summary: "Update a cost group (name and/or printMode)." })
+  @ApiResponse({ status: 200, description: "Updated cost group." })
+  updateCostGroup(
+    @Param("tenderId") tenderId: string,
+    @Param("quoteId") quoteId: string,
+    @Param("groupId") groupId: string,
+    @Body() dto: UpdateCostGroupDto
+  ) {
+    return this.service.updateCostGroup(tenderId, quoteId, groupId, dto);
+  }
+
+  // ── Push from estimate (QUOTE_PUSH_BY_DESTINATION_V1) ─────────────
+  @Post(":quoteId/push-from-estimate/plan")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "Compute push diff without applying (any status, read-only)." })
+  @ApiResponse({ status: 201, description: "Push plan (diff only, not applied)." })
+  pushPlan(
+    @Param("tenderId") tenderId: string,
+    @Param("quoteId") quoteId: string
+  ) {
+    return this.push.plan(tenderId, quoteId);
+  }
+
+  @Post(":quoteId/push-from-estimate")
+  @RequirePermissions("estimates.manage")
+  @ApiOperation({ summary: "Apply push from estimate into quote (DRAFT only; 409 if SENT or SUPERSEDED)." })
+  @ApiResponse({ status: 201, description: "Applied push plan." })
+  @ApiResponse({ status: 409, description: "Quote is not DRAFT." })
+  pushApply(
+    @Param("tenderId") tenderId: string,
+    @Param("quoteId") quoteId: string,
+    @CurrentUser() actor: RequestUser
+  ) {
+    return this.push.apply(tenderId, quoteId, actor.sub);
   }
 
   // ── PDF ────────────────────────────────────────────────────────────

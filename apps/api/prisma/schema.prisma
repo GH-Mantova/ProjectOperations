@@ -197,6 +197,7 @@ model User {
   billingMilestonesCreated   BillingMilestone[]          @relation("BillingMilestoneCreatedBy")
   createdQuotes              ClientQuote[]               @relation("QuoteCreatedBy")
   sentQuotes                 ClientQuote[]               @relation("QuoteSentBy")
+  pushedQuotes               ClientQuote[]               @relation("QuotePushedBy")
   sentQuoteEmails            QuoteEmail[]                @relation("QuoteEmailSentBy")
   sentCorrespondence         CorrespondenceMessage[]     @relation("CorrespondenceSentBy")
   tenderFilterPresets        TenderFilterPreset[]
@@ -4716,7 +4717,7 @@ model ClientQuote {
   clientId               String                 @map("client_id")
   client                 Client                 @relation(fields: [clientId], references: [id])
   // Traceability pointer back to the internal TenderEstimate this quote was
-  // derived from. Nullable Ã¢â‚¬" pre-existing quotes and quotes authored without
+  // derived from. Nullable -- pre-existing quotes and quotes authored without
   // a source estimate stay NULL. SetNull so deleting the estimate leaves the
   // quote intact but unlinked. No pricing behaviour is derived from this.
   sourceTenderEstimateId String?                @map("source_tender_estimate_id")
@@ -4739,7 +4740,7 @@ model ClientQuote {
   sentBy                 User?                  @relation("QuoteSentBy", fields: [sentById], references: [id])
   generatedPdfPath       String?                @map("generated_pdf_path")
   // Effective-dated T&C version pinned at issue time. NULL until the quote
-  // is sent Ã¢â‚¬" at send-time we resolve the currently-active TERMS_AND_CONDITIONS
+  // is sent -- at send-time we resolve the currently-active TERMS_AND_CONDITIONS
   // and stamp its id here. Editing T&Cs later creates a new version; this
   // FK still points at the old one, so the historical PDF renders the
   // legal terms actually agreed to. See ADR: legal-doc-versioning.
@@ -4749,6 +4750,14 @@ model ClientQuote {
   createdBy              User                   @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdAt              DateTime               @default(now()) @map("created_at")
   updatedAt              DateTime               @updatedAt @map("updated_at")
+  // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- push stamp. Fingerprint is
+  // sha256 over pushable lines (type:id:destination:price:description, sorted).
+  // "changed since" = fingerprint(now) !== pushedFingerprint. SetNull on actor
+  // delete so the stamp stays (timestamp is the important part, actor is audit).
+  pushedAt               DateTime?              @map("pushed_at")
+  pushedById             String?                @map("pushed_by_id")
+  pushedBy               User?                  @relation("QuotePushedBy", fields: [pushedById], references: [id], onDelete: SetNull)
+  pushedFingerprint      String?                @map("pushed_fingerprint")
   costLines              QuoteCostLine[]
   provisionalLines       QuoteProvisionalLine[]
   costOptions            QuoteCostOption[]
@@ -4756,6 +4765,7 @@ model ClientQuote {
   exclusions             QuoteExclusion[]
   emails                 QuoteEmail[]
   scopeItems             QuoteScopeItem[]
+  costGroups             QuoteCostGroup[]
   detailLevel            String                 @default("simple") @map("detail_level")
 
   @@unique([tenderId, clientId, revision])
@@ -4765,10 +4775,36 @@ model ClientQuote {
   @@map("client_quotes")
 }
 
+// QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- one group per discipline that
+// has at least one PRICE-destined line. Groups carry the discipline letter (frozen),
+// the client-facing name (editable), and the print mode. A row is used in place of
+// a Json column on ClientQuote so deepCopyFrom can copy groups and the letter + name
+// have a stable home. @@unique([quoteId, code]) enforces one group per discipline.
+model QuoteCostGroup {
+  id        String      @id @default(cuid())
+  quoteId   String      @map("quote_id")
+  quote     ClientQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  code      String
+  label     String
+  name      String
+  printMode String      @default("ITEMISED") @map("print_mode")
+  sortOrder Int         @default(0) @map("sort_order")
+  costLines QuoteCostLine[]
+
+  @@unique([quoteId, code])
+  @@index([quoteId])
+  @@map("quote_cost_groups")
+}
+
 model QuoteCostLine {
   id                     String            @id @default(cuid())
   quoteId                String            @map("quote_id")
   quote                  ClientQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- nullable FK to the group this
+  // line belongs to. Rows typed by hand before this slice have no group (NULL) and
+  // keep printing exactly as today. SetNull: deleting a group unlinks its lines.
+  groupId                String?           @map("group_id")
+  group                  QuoteCostGroup?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
   label                  String
   description            String
   displayDescription     String?           @map("display_description")
@@ -4780,13 +4816,14 @@ model QuoteCostLine {
   // Traceability pointer back to the internal estimate line this quote line
   // was derived from. Polymorphic because the source can be any Estimate*Line
   // variant (labour / plant / equip / waste / cutting), which have no shared
-  // parent table to FK to Ã¢â‚¬" same shape used by AuditLog.entityType/entityId.
+  // parent table to FK to -- same shape used by AuditLog.entityType/entityId.
   // Both nullable; both set together or both NULL.
   sourceEstimateLineType String?           @map("source_estimate_line_type")
   sourceEstimateLineId   String?           @map("source_estimate_line_id")
   assumptions            QuoteAssumption[] @relation("CostLineAssumptions")
 
   @@index([quoteId])
+  @@index([groupId])
   @@index([sourceEstimateLineType, sourceEstimateLineId])
   @@map("quote_cost_lines")
 }
@@ -4799,8 +4836,14 @@ model QuoteProvisionalLine {
   price       Decimal     @db.Decimal(12, 2)
   notes       String?
   sortOrder   Int         @default(0) @map("sort_order")
+  // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- polymorphic pointer back to
+  // the estimate line this row was pushed from. Same shape as QuoteCostLine.
+  // Types: "scope" | "waste" | "cutting" | "operational". Both set or both NULL.
+  sourceEstimateLineType String? @map("source_estimate_line_type")
+  sourceEstimateLineId   String? @map("source_estimate_line_id")
 
   @@index([quoteId])
+  @@index([sourceEstimateLineType, sourceEstimateLineId])
   @@map("quote_provisional_lines")
 }
 
@@ -4813,8 +4856,14 @@ model QuoteCostOption {
   price       Decimal     @db.Decimal(12, 2)
   notes       String?
   sortOrder   Int         @default(0) @map("sort_order")
+  // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- polymorphic pointer back to
+  // the estimate line this row was pushed from. Same shape as QuoteCostLine.
+  // Types: "scope" | "waste" | "cutting" | "operational". Both set or both NULL.
+  sourceEstimateLineType String? @map("source_estimate_line_type")
+  sourceEstimateLineId   String? @map("source_estimate_line_id")
 
   @@index([quoteId])
+  @@index([sourceEstimateLineType, sourceEstimateLineId])
   @@map("quote_cost_options")
 }
 

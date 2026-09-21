@@ -262,6 +262,19 @@ export class ScopeRedesignController {
   summary(@Param("tenderId") tenderId: string) {
     return this.service.summary(tenderId);
   }
+
+  /**
+   * QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- list every non-excluded
+   * estimate line with its price and destination. Used by the push panel (S4b)
+   * and the four-count strip.
+   */
+  @Get("pushable-lines")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List all pushable estimate lines (PRICE/PROVISIONAL/OPTION/INTERNAL) with pricing." })
+  @ApiResponse({ status: 200, description: "All estimate lines with pricing and destination." })
+  listPushableLines(@Param("tenderId") tenderId: string) {
+    return this.service.listPushableLines(tenderId);
+  }
 }
 
 // PR B4b — Per-card cutting controller. Sibling of ScopeCardWasteController.

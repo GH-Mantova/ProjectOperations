@@ -16,7 +16,7 @@ jest.setTimeout(60_000);
 
 describe("ClientQuotesService.getDraftsSummary — batch 2 widget", () => {
   const prisma = new PrismaClient();
-  const service = new ClientQuotesService(prisma as never, {} as never, {} as never);
+  const service = new ClientQuotesService(prisma as never, {} as never, {} as never, {} as never);
 
   let tenderId: string;
   let clientId: string;

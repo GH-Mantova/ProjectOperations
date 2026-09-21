@@ -1406,6 +1406,8 @@ model Tender {
   // EW-1: allocation pool candidates and rejection history.
   allocationCandidates     TenderAllocationCandidate[]
   allocationRejections     TenderAllocationRejection[]
+  // ops-m2b: tip recommendations accepted while this tender was being priced.
+  tipRecommendationLogs    TipRecommendationLog[]      @relation("TipRecommendationLogTender")
 
   @@index([status])
   @@index([estimatorUserId])
@@ -7227,6 +7229,10 @@ model MapLocation {
   facility     String?
   notes        String?
   isActive     Boolean         @default(true) @map("is_active")
+  // ops-m2b: when prices were last reviewed (TIP rows only). NULL = never reviewed.
+  pricesReviewedAt        DateTime? @map("prices_reviewed_at")
+  // ops-m2b: when the price-review notification was last sent for this cycle.
+  pricesReviewNotifiedAt  DateTime? @map("prices_review_notified_at")
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
@@ -7253,10 +7259,14 @@ model TipRecommendationLog {
   facilityLng   Decimal     @map("facility_lng") @db.Decimal(10, 7)
   wasteTypeCode String      @map("waste_type_code")
   loadTonnes    Decimal     @map("load_tonnes") @db.Decimal(8, 3)
-  // Origin: project or office fallback
-  originType    String      @map("origin_type") // "project" | "office"
+  // Origin: project, tender, or office fallback
+  originType    String      @map("origin_type") // "project" | "tender" | "office"
   projectId     String?     @map("project_id")
   project       Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  // ops-m2b: tender-stage picks store tenderId so the job Tipping tab can show them.
+  // NULL for rows written before this migration (backfill is deliberately omitted).
+  tenderId      String?     @map("tender_id")
+  tender        Tender?     @relation("TipRecommendationLogTender", fields: [tenderId], references: [id], onDelete: SetNull)
   originLat     Decimal     @map("origin_lat") @db.Decimal(10, 7)
   originLng     Decimal     @map("origin_lng") @db.Decimal(10, 7)
   // Costing snapshot
@@ -7271,6 +7281,7 @@ model TipRecommendationLog {
 
   @@index([mapLocationId])
   @@index([projectId])
+  @@index([tenderId])
   @@index([createdById])
   @@index([createdAt])
   @@map("tip_recommendation_logs")

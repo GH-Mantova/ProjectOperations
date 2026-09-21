@@ -14177,6 +14177,18 @@
           "filterable": true,
           "aggregations": []
         },
+        "pricesReviewedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "pricesReviewNotifiedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -23880,6 +23892,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "tipRecommendationLogs": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -25996,6 +26014,18 @@
           "aggregations": []
         },
         "project": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "tenderId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tender": {
           "role": "dimension",
           "label": null,
           "filterable": true,

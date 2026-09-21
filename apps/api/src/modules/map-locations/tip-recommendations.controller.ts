@@ -1,12 +1,15 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
+  Query,
   UseGuards
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags
 } from "@nestjs/swagger";
@@ -22,7 +25,7 @@ import {
 
 type RequestUser = { sub: string; permissions: string[] };
 
-// ── DTOs ─────────────────────────────────────────────────────────────────────
+// ---- DTOs ------------------------------------------------------------------
 
 class ComputeRecommendationsDto {
   @IsString()
@@ -69,9 +72,9 @@ class AcceptRecommendationDto {
   tenderId?: string;
 }
 
-// ── Controller ────────────────────────────────────────────────────────────────
+// ---- Controller ------------------------------------------------------------
 
-@ApiTags("Waste — Tip Finder")
+@ApiTags("Waste -- Tip Finder")
 @ApiBearerAuth()
 @Controller("waste/recommendations")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -79,10 +82,33 @@ export class TipRecommendationsController {
   constructor(private readonly service: TipRecommendationsService) {}
 
   /**
+   * List accepted tip recommendations for a project.
+   *
+   * Returns rows where projectId = the project, PLUS rows whose tenderId =
+   * the project's sourceTender.id (tender-stage plans), newest first.
+   * Each row carries source: "tender" | "job". Totals are summed server-side
+   * in Decimal. Requires projects.view.
+   */
+  @Get()
+  @RequirePermissions("projects.view")
+  @ApiOperation({
+    summary: "List accepted tip recommendations for a project (ops-m2b).",
+    description:
+      "Returns job + tender rows for the project, newest first. " +
+      "Totals are summed in Decimal server-side. Requires projects.view."
+  })
+  @ApiQuery({ name: "projectId", required: true, type: String })
+  @ApiResponse({ status: 200, description: "TippingLogSummary" })
+  @ApiResponse({ status: 404, description: "Project not found." })
+  listForProject(@Query("projectId") projectId: string) {
+    return this.service.listForProject(projectId);
+  }
+
+  /**
    * Compute ranked tip recommendations for a given waste type, load size,
    * and origin. Returns every active TIP location with full cost working:
-   *   disposalFee = loadTonnes × resolvedRate
-   *   travelCost  = haversineKm × 2 × travelRatePerKm  (round trip)
+   *   disposalFee = loadTonnes x resolvedRate
+   *   travelCost  = haversineKm x 2 x travelRatePerKm  (round trip)
    *   totalCost   = disposalFee + travelCost
    *
    * TIPs with no rate row for the chosen waste type are included greyed
@@ -95,7 +121,7 @@ export class TipRecommendationsController {
     description:
       "Returns all active TIP locations ranked by total cost. " +
       "Disposal fee resolved via RateResolverService (waste slug). " +
-      "Travel cost = haversine × 2 × OperationsSettings.travelRatePerKm. " +
+      "Travel cost = haversine x 2 x OperationsSettings.travelRatePerKm. " +
       "Requires estimates.view."
   })
   @ApiResponse({ status: 201, description: "Array of TipRecommendationCard ordered by totalCost asc." })
@@ -111,17 +137,19 @@ export class TipRecommendationsController {
   }
 
   /**
-   * Accept a recommendation — writes a TipRecommendationLog row snapshotting
+   * Accept a recommendation -- writes a TipRecommendationLog row snapshotting
    * all costs at the moment of acceptance. Prices change; the log does not
-   * recompute. Requires estimates.manage.
+   * recompute. ops-m2b: also stores tenderId when originType = "tender".
+   * Requires estimates.manage.
    */
   @Post("accept")
   @RequirePermissions("estimates.manage")
   @ApiOperation({
-    summary: "Accept a tip recommendation — writes an immutable cost snapshot log row.",
+    summary: "Accept a tip recommendation -- writes an immutable cost snapshot log row.",
     description:
       "Validates the tip has a rate for the waste type and that travelRatePerKm is configured, " +
-      "then writes a TipRecommendationLog row. Requires estimates.manage."
+      "then writes a TipRecommendationLog row. ops-m2b: tenderId is stored when originType = tender. " +
+      "Requires estimates.manage."
   })
   @ApiResponse({ status: 201, description: "{ logId: string }" })
   @ApiResponse({ status: 400, description: "Missing rate, missing travel rate, or invalid inputs." })

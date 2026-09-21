@@ -11,11 +11,14 @@
 // CommsHubPage renders no inner tablist. One tab bar per page, one URL
 // contract. Anchored /crm/comms?entityType=…&entityId=… links still open the
 // anchored view inside CommsHubPage unchanged.
+//
+// CRM_PARITY_INBOX_V1 (crmvis-S7): tab bar uses crm-tab CSS classes.
 
 import { useEffect, useState } from "react";
 import { useSearchParams, NavLink } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { CommsHubPage, type CommsInnerTab } from "./CommsHubPage";
+import "./crm.css";
 
 export type CommsOuterTabId = "inbox" | "threads" | "todos";
 
@@ -31,41 +34,8 @@ export function resolveCommsInnerTab(outer: CommsOuterTabId): CommsInnerTab {
   return entry ? entry.inner : "inbox";
 }
 
-const tabBarStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 0,
-  borderBottom: "2px solid #e5e7eb",
-  padding: "0 24px",
-  background: "var(--surface-1, #fff)"
-};
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "10px 18px",
-    fontSize: 14,
-    fontWeight: active ? 600 : 400,
-    color: active ? "#4f46e5" : "#6b7280",
-    borderBottom: active ? "2px solid #4f46e5" : "2px solid transparent",
-    marginBottom: -2,
-    textDecoration: "none",
-    background: "transparent",
-    cursor: "pointer",
-    transition: "color 0.15s"
-  };
-}
-
-// CRM_CHROME_V1 — plain grey tab figure, colour read back off the existing
-// tabStyle() so it can never drift from the inactive tab text.
-const tabCountStyle: React.CSSProperties = {
-  marginLeft: 6,
-  fontSize: 12,
-  fontWeight: 400,
-  color: tabStyle(false).color
-};
-
 // CRM_CHROME_V1 — Inbox is the attention count: a red pill with white text,
-// straight off the shared design tokens (--status-danger is the mock-up's
-// red); no colour literal is introduced here.
+// straight off the shared design tokens (--status-danger is the mock-up's red).
 const tabPillStyle: React.CSSProperties = {
   marginLeft: 6,
   display: "inline-block",
@@ -122,13 +92,13 @@ export function CommsPage() {
   return (
     <div>
       {/* CRM_NAV_TABS — comms-hub tab bar (S2, 2026-08-28; UIFIX S1, 2026-09-01;
-          CRM_CHROME_V1 counts, 2026-09-04). */}
-      <div style={tabBarStyle} role="tablist" aria-label="Comms hub sections">
+          CRM_CHROME_V1 counts, 2026-09-04; CRM_PARITY_INBOX_V1 crm-tab classes, 2026-09-21). */}
+      <nav className="crm-tabs" role="tablist" aria-label="Comms hub sections">
         {COMMS_TABS.map((tab) => (
           <NavLink
             key={tab.id}
             to={tab.id === "inbox" ? "/crm/comms" : `/crm/comms?tab=${tab.id}`}
-            style={tabStyle(validTab === tab.id)}
+            className={`crm-tab${validTab === tab.id ? " crm-tab--on" : ""}`}
             role="tab"
             aria-selected={validTab === tab.id}
           >
@@ -136,11 +106,11 @@ export function CommsPage() {
             {counts[tab.id] === null ? null : tab.id === "inbox" ? (
               <span style={tabPillStyle}>{counts.inbox}</span>
             ) : (
-              <span style={tabCountStyle}>{counts[tab.id]}</span>
+              <span className="crm-tab__count">{counts[tab.id]}</span>
             )}
           </NavLink>
         ))}
-      </div>
+      </nav>
       <CommsHubPage activeInnerTab={innerTab} />
     </div>
   );

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PR diff gates (CP-09..CP-13, CP-17, CP-22, CP-23, CP-24, CP-25). Node built-ins only, ASCII-only output.
+// PR diff gates (CP-09..CP-13, CP-17, CP-22, CP-23, CP-24, CP-25, CP-26, CP-27). Node built-ins only, ASCII-only output.
 // Diffs HEAD against the merge-base with origin/main.
 //
 // PR body source (in priority order):
@@ -42,6 +42,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
 import { wasEverEscalated, decideApprovalReceipt } from "./approval-receipt.mjs";
+import { parseInPrSection, decideInPrFreshness } from "./sot-inpr.mjs";
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" });
@@ -470,6 +471,81 @@ function report(level, gate, name, detail) {
   }
 }
 
+// CP-27 - sot/02 In-PR section freshness. The "## 2." section in
+// sot/02-roadmap-and-status.md lists every open PR at the time the doc was
+// last refreshed. In practice this snapshot rots within days: PRs merge or
+// close while the table rows stay, and the header count drifts. This gate
+// blocks a merge whenever the table contains non-OPEN rows or the header
+// count disagrees with the table row count.
+//
+// Failure mode on error: SKIP, not FAIL.
+// Rationale: this gate guards a documentation snapshot, not a merge-safety
+// property. An unrunnable check (missing gh, no auth, network down) must never
+// read as a pass (DOCTRINE SS7), but a hard-fail would block every PR opened
+// in an environment without GitHub CLI configured. The deliberate choice is to
+// fail-open so the gate never becomes a false blocker; the SKIP verdict is
+// explicitly NOT PASS, making the gap visible in the log.
+{
+  const target = "sot/02-roadmap-and-status.md";
+  if (!changedFiles.includes(target)) {
+    report("SKIP", "CP-27", "sot-inpr-freshness", `${target} not changed`);
+  } else {
+    let content;
+    try {
+      content = readFileSync(target, "utf8");
+    } catch (err) {
+      // Cannot read the file -- skip rather than fail-open silently.
+      // DOCTRINE SS7: unrunnable check must never read as passed.
+      report("SKIP", "CP-27", "sot-inpr-freshness", `cannot read ${target}: ${err.message}`);
+      content = null;
+    }
+
+    if (content !== null) {
+      const { declaredCount, prNumbers } = parseInPrSection(content);
+
+      // Resolve each PR's state via gh. Any error -> SKIP (not PASS).
+      // See comment above: fail-open is the deliberate choice because
+      // this gate guards a documentation snapshot, not a merge-safety
+      // property. DOCTRINE SS7 requires we still emit SKIP, not PASS.
+      let states = null;
+      try {
+        const stateMap = new Map();
+        for (const n of prNumbers) {
+          const raw = execFileSync(
+            "gh",
+            ["pr", "view", String(n), "--json", "state", "-q", ".state"],
+            { encoding: "utf8" }
+          );
+          stateMap.set(n, raw.trim());
+        }
+        states = stateMap;
+      } catch (err) {
+        report(
+          "SKIP",
+          "CP-27",
+          "sot-inpr-freshness",
+          `cannot resolve PR states: ${err.message}`
+        );
+        states = null;
+      }
+
+      if (states !== null) {
+        const decision = decideInPrFreshness({ declaredCount, prNumbers, states });
+        if (decision.verdict === "FAIL") {
+          process.stdout.write(
+            "::error::sot/02 In-PR section is stale. " +
+              decision.detail + ". " +
+              "Re-read the live board with 'gh pr list --state open' and rewrite " +
+              "sot/02-roadmap-and-status.md SS2's table and its header count from it.\n"
+          );
+          report("FAIL", "CP-27", "sot-inpr-freshness", decision.detail);
+        } else {
+          report("PASS", "CP-27", "sot-inpr-freshness", decision.detail);
+        }
+      }
+    }
+  }
+}
 
 // CP-26 - do-not-merge label. The `escalates: true` front-matter flag means a human decides the
 // merge. Until 2026-08-17 that was enforced by NOTHING: the watcher ran `gh pr merge --auto` on

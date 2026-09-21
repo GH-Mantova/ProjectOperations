@@ -131,3 +131,4 @@
 2026-09-17T09:30:54Z  ARMED  pr-transport-capacity-column-order  escalates=true  actor=station-00.interactive-0003  by=Marco@LAPTOP-E6NHU4E4  pid=12480  caller=powershell.exe:7440
 2026-09-17T12:19:06Z  ARMED  pr-scopecards-s3-line-markup-all-types  escalates=true  actor=station-00-scheduled  by=Marco@LAPTOP-E6NHU4E4  pid=23320  caller=powershell.exe:7612
 2026-09-17T19:19:51Z  ARMED  pr-crmvis-s6-bulk-link  escalates=true  actor=station-00.sched-1908  by=Marco@LAPTOP-E6NHU4E4  pid=9596  caller=powershell.exe:25828
+2026-09-21T04:19:50Z  ARMED  pr-sotinpr-freshness-gate  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=21876  caller=powershell.exe:4880

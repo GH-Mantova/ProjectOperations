@@ -1199,7 +1199,7 @@ function CostTab({
                     fontSize: 11,
                     padding: "1px 6px",
                     borderRadius: 4,
-                    background: "var(--brand-accent, #FEAA6D)",
+                    background: "var(--brand-accent)",
                     color: "#000"
                   }}
                 >
@@ -1349,7 +1349,7 @@ function CostTab({
         style={{
           marginTop: 16,
           padding: 12,
-          borderLeft: "3px solid var(--brand-primary, #005B61)",
+          borderLeft: "3px solid var(--brand-primary)",
           background: "var(--surface-subtle, rgba(0,91,97,0.04))",
           borderRadius: 4
         }}
@@ -1446,7 +1446,7 @@ function CostTab({
           />
           <span style={{ fontWeight: 600 }}>Client sees:</span>
           <span />
-          <strong style={{ color: "var(--brand-primary, #005B61)", fontSize: 15 }}>
+          <strong style={{ color: "var(--brand-primary)", fontSize: 15 }}>
             {fmtCurrency(summary.clientFacingTotal)}
           </strong>
         </div>
@@ -2065,7 +2065,7 @@ function PreviewTab({
           type="button"
           className="s7-btn s7-btn--primary"
           onClick={onDownload}
-          style={{ background: "var(--brand-accent, #FEAA6D)", borderColor: "var(--brand-accent, #FEAA6D)", color: "#000" }}
+          style={{ background: "var(--brand-accent)", borderColor: "var(--brand-accent)", color: "#000" }}
         >
           Download PDF
         </button>
@@ -2124,7 +2124,7 @@ function PreviewTab({
         </ul>
         <p>
           Client-facing total:{" "}
-          <strong style={{ color: "var(--brand-primary, #005B61)" }}>{fmtCurrency(summary.clientFacingTotal)}</strong>
+          <strong style={{ color: "var(--brand-primary)" }}>{fmtCurrency(summary.clientFacingTotal)}</strong>
         </p>
         {quote.showProvisional && quote.provisionalLines.length > 0 ? (
           <>

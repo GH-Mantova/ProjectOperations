@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "crypto";
 import { SEEDED_DEFAULT_TENANT_ID } from "../src/common/tenancy/tenant.constants";
+import { ROLE_GRANTS } from "../src/common/permissions/role-grant-registry";
 
 const BASE_DATE = new Date("2026-04-20T00:00:00.000Z");
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -44,27 +45,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     create: { name: "Viewer", description: "Read-only visibility across operational modules", isSystem: true }
   });
 
-  const viewPermissionCodes = [
-    "users.view",
-    "roles.view",
-    "permissions.view",
-    "crm.view",
-    "dashboards.view",
-    "masterdata.view",
-    "resources.view",
-    "assets.view",
-    "maintenance.view",
-    "inventory.view",
-    "forms.view",
-    "documents.view",
-    "tenders.view",
-    "tenderdocuments.view",
-    "jobs.view",
-    "scheduler.view",
-    "search.view",
-    "notifications.view",
-    "directory.view"
-  ];
+  const viewPermissionCodes = [...ROLE_GRANTS["Viewer"]];
   const viewPermissions = await prisma.permission.findMany({ where: { code: { in: viewPermissionCodes } } });
   // S3-016 (Marco, 2026-07-13): additive-only — the seed grants baseline
   // permissions but never revokes what an admin set in /admin/settings.
@@ -104,137 +85,34 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
     return role;
   }
 
-  const baseView = [
-    "users.view",
-    "dashboards.view",
-    "masterdata.view",
-    "search.view",
-    "notifications.view"
-  ];
-
   const projectManagerRole = await seedRoleWithPermissions(
     "Project Manager",
     "Project delivery — jobs, scheduling, and resource coordination.",
-    [
-      ...baseView,
-      "masterdata.manage",
-      "jobs.view",
-      "jobs.manage",
-      "resources.view",
-      "resources.manage",
-      "scheduler.view",
-      "scheduler.manage",
-      "tenders.view",
-      "tenderconversion.manage",
-      "projects.view",
-      "projects.manage",
-      "assets.view",
-      "maintenance.view",
-      "forms.view",
-      "forms.manage",
-      "documents.view",
-      "documents.manage",
-      "field.manage",
-      "finance.view",
-      "directory.view",
-      "compliance.view",
-      "safety.view",
-      "safety.manage",
-      "sites.view"
-    ]
+    [...ROLE_GRANTS["Project Manager"]]
   );
 
   const seniorEstimatorRole = await seedRoleWithPermissions(
     "Senior Estimator",
     "Tendering and estimating — full control of rate library and tender pricing.",
-    [
-      ...baseView,
-      "masterdata.manage",
-      "tenders.view",
-      "tenders.manage",
-      "tenderdocuments.view",
-      "tenderdocuments.manage",
-      "estimates.view",
-      "estimates.manage",
-      "estimates.admin",
-      "projects.view",
-      "resources.view",
-      "documents.view",
-      "directory.view",
-      "directory.manage",
-      "ai.persona.tendering"
-    ]
+    [...ROLE_GRANTS["Senior Estimator"]]
   );
 
   const whsOfficerRole = await seedRoleWithPermissions(
     "WHS Officer",
     "Work Health & Safety + commercial compliance — forms, audits, document control.",
-    [
-      ...baseView,
-      "masterdata.manage",
-      "forms.view",
-      "forms.manage",
-      "documents.view",
-      "documents.manage",
-      "audit.view",
-      "tenders.view",
-      "jobs.view",
-      "projects.view",
-      "resources.view",
-      "field.manage",
-      "compliance.view",
-      "compliance.manage",
-      "compliance.admin",
-      "safety.view",
-      "safety.manage",
-      "safety.admin",
-      "sites.view"
-    ]
+    [...ROLE_GRANTS["WHS Officer"]]
   );
 
   const accountsRole = await seedRoleWithPermissions(
     "Accounts",
     "Accounts payable / receivable — tender + job visibility, contract lifecycle access.",
-    [
-      ...baseView,
-      "masterdata.manage",
-      "tenders.view",
-      "tenderdocuments.view",
-      "tenderconversion.manage",
-      "jobs.view",
-      "projects.view",
-      "resources.view",
-      "documents.view",
-      "finance.view",
-      "finance.manage",
-      "directory.view",
-      "directory.manage",
-      "directory.finance",
-      "compliance.view"
-    ]
+    [...ROLE_GRANTS["Accounts"]]
   );
 
   const warehouseManagerRole = await seedRoleWithPermissions(
     "Warehouse Manager",
     "Assets and maintenance — warehouse + equipment lifecycle.",
-    [
-      ...baseView,
-      "masterdata.manage",
-      "assets.view",
-      "assets.manage",
-      "maintenance.view",
-      "maintenance.manage",
-      "inventory.view",
-      "inventory.manage",
-      "procurement.view",
-      "procurement.manage",
-      "procurement.receive",
-      "resources.view",
-      "resources.manage",
-      "jobs.view",
-      "projects.view",
-      "scheduler.view"
-    ]
+    [...ROLE_GRANTS["Warehouse Manager"]]
   );
 
   // Field Worker role — given to provisioned mobile users only. Access is
@@ -243,16 +121,7 @@ export async function seedOperationalRoles(prisma: PrismaClient) {
   const fieldWorkerRole = await seedRoleWithPermissions(
     "Field Worker",
     "Mobile field access — own allocations, pre-starts, timesheets, documents.",
-    [
-      "field.view",
-      "notifications.view",
-      "safety.view",
-      "safety.manage",
-      "sites.view",
-      "sites.manage",
-      "expenses.view",
-      "expenses.manage"
-    ]
+    [...ROLE_GRANTS["Field Worker"]]
   );
 
   return {

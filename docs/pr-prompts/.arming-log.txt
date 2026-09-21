@@ -137,3 +137,4 @@
 2026-09-21T08:56:21Z  ARMED  pr-company-manage-s2-retire-adminonly  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=31348  caller=:
 2026-09-21T09:09:59Z  ARMED  pr-scopecards-s4b-push-panel-ui  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=23584  caller=:
 2026-09-21T10:33:00Z  ARMED  pr-crmvis-s8-comms-threads  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=33220  caller=powershell.exe:29328
+2026-09-21T13:19:01Z  ARMED  pr-ops-m2b-tipping-tab-reminder  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=13084  caller=powershell.exe:2696

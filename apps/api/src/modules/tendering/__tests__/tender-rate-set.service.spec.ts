@@ -115,7 +115,10 @@ function buildMocks(opts: {
   const tableStore = opts.rateTables ?? [];
   const rowStore = opts.rateRows ?? [];
   const rateTableFindMany = jest.fn(
-    async ({ where, include }: { where: { id: { in: string[] } }; include?: { columns?: { where?: { role?: { in: string[] } } } } }) => {
+    async ({ where, include }: { where: { id?: { in: string[] } }; include?: { columns?: { where?: { role?: { in: string[] } } } } }) => {
+      // S5 buildChargeStepsSnapshot() queries by chargeSteps (no id list); no fixture table
+      // here carries charge steps, so that path sees none.
+      if (!where.id) return [];
       const ids = new Set(where.id.in);
       const roleFilter = include?.columns?.where?.role?.in;
       return tableStore

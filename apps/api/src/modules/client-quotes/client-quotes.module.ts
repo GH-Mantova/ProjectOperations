@@ -8,6 +8,7 @@ import { ClientQuotesController } from "./client-quotes.controller";
 import { ClientQuotesDashboardController } from "./client-quotes-dashboard.controller";
 import { ClientQuotesService } from "./client-quotes.service";
 import { QuotePdfService } from "./quote-pdf.service";
+import { QuotePushService } from "./quote-push.service";
 import { QuoteScopeItemsController } from "./quote-scope-items.controller";
 import { QuoteScopeItemsService } from "./quote-scope-items.service";
 import { QuoteSendService } from "./quote-send.service";
@@ -15,7 +16,7 @@ import { QuoteSendService } from "./quote-send.service";
 @Module({
   imports: [AuditModule, TenderingModule, EstimateExportModule, EmailModule, PdfRenderingModule],
   controllers: [ClientQuotesController, ClientQuotesDashboardController, QuoteScopeItemsController],
-  providers: [ClientQuotesService, QuotePdfService, QuoteSendService, QuoteScopeItemsService],
-  exports: [ClientQuotesService, QuoteScopeItemsService]
+  providers: [ClientQuotesService, QuotePdfService, QuotePushService, QuoteSendService, QuoteScopeItemsService],
+  exports: [ClientQuotesService, QuotePushService, QuoteScopeItemsService]
 })
 export class ClientQuotesModule {}

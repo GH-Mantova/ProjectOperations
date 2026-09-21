@@ -18,6 +18,9 @@ import { readApiErrorMessage } from "../../lib/api-errors";
 // type today — the picker still offers it (per spec) so the six-type list
 // stays intact, but selecting it disables the Start button and shows a
 // note. See STOP AND REPORT in docs/plans/crm-build-order-plan.md.
+//
+// CRM_PARITY_INBOX_V1 (crmvis-S7): type chips are s7-badge-styled toggles.
+// No hex literals — all colours via var(--) tokens.
 
 // ── Public shape ─────────────────────────────────────────────────────────────
 
@@ -150,14 +153,19 @@ export async function fetchPickerOptions(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+// CRM_PARITY_INBOX_V1: all colours via var(--) tokens; no hex literals.
+// Type chips are s7-badge-styled toggles:
+//   inactive: s7-badge s7-badge--neutral
+//   active:   s7-badge background=var(--brand-primary) color=var(--text-inverse)
 const styles: Record<string, React.CSSProperties> = {
-  wrap: { border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, background: "#fafafa" },
+  wrap: {
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-md)",
+    padding: 12,
+    background: "var(--surface-zebra)"
+  },
   row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 },
-  typeBtn: { padding: "4px 10px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 },
-  typeBtnActive: { padding: "4px 10px", borderRadius: 999, border: "1px solid #6366f1", background: "#eef2ff", color: "#3730a3", cursor: "pointer", fontSize: 12, fontWeight: 600 },
-  input: { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13, flex: 1, minWidth: 200 },
-  select: { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13, flex: 1, minWidth: 200, background: "#fff" },
-  note: { fontSize: 11, color: "#6b7280" }
+  note: { fontSize: 11, color: "var(--text-muted)" }
 };
 
 export function AnchorPicker(props: {
@@ -203,33 +211,47 @@ export function AnchorPicker(props: {
 
   return (
     <div style={styles.wrap} aria-label="Anchor picker">
+      {/* CRM_PARITY_INBOX_V1: s7-badge-styled toggles — selected = brand-primary fill */}
       <div style={styles.row}>
-        {PICKER_TYPES.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            style={type === t.value ? styles.typeBtnActive : styles.typeBtn}
-            onClick={() => {
-              setType(t.value);
-              onChange(null);
-              setSearch("");
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {PICKER_TYPES.map((t) => {
+          const active = type === t.value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              className="s7-badge"
+              style={{
+                cursor: "pointer",
+                border: active ? "none" : "1px solid var(--border-default)",
+                background: active ? "var(--brand-primary)" : "transparent",
+                color: active ? "var(--text-inverse)" : "var(--text-secondary)",
+                fontWeight: active ? 600 : 400,
+                padding: "4px 10px"
+              }}
+              onClick={() => {
+                setType(t.value);
+                onChange(null);
+                setSearch("");
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {type && !isOther && (
         <div style={styles.row}>
           <input
-            style={styles.input}
+            className="s7-input"
+            style={{ flex: 1, minWidth: 200 }}
             placeholder={`Search ${type.toLowerCase()}s…`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <select
-            style={styles.select}
+            className="s7-select"
+            style={{ flex: 1, minWidth: 200 }}
             value={activeSelectionId}
             onChange={(e) => {
               const id = e.target.value;
@@ -250,7 +272,8 @@ export function AnchorPicker(props: {
       {isOther && (
         <div style={styles.row}>
           <input
-            style={styles.input}
+            className="s7-input"
+            style={{ flex: 1, minWidth: 200 }}
             placeholder="Free-text label (e.g. supplier meeting)"
             value={otherLabel}
             onChange={(e) => {

@@ -1338,6 +1338,241 @@ export class ScopeRedesignService {
     };
   }
 
+  // ── Pushable lines (QUOTE_PUSH_BY_DESTINATION_V1) ────────────────────
+
+  /**
+   * QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) — list every non-excluded
+   * estimate line across all four types with its price (lineTotalWithMarkup)
+   * and quoteDestination. Reuses the same pricing reads as summary() without
+   * duplicating the pricing logic. INTERNAL lines are included so S4b can
+   * show the "Left off this quote" strip.
+   *
+   * @returns every non-excluded estimate line with pricing and destination
+   */
+  async listPushableLines(tenderId: string): Promise<Array<{
+    type: "scope" | "waste" | "cutting" | "operational";
+    id: string;
+    code: string;
+    description: string;
+    cardId: string;
+    cardCode: string;
+    discipline: string;
+    quoteDestination: "PRICE" | "PROVISIONAL" | "OPTION" | "INTERNAL";
+    price: number;
+    priceable: boolean;
+    priceReason: string | null;
+  }>> {
+    await this.requireTender(tenderId);
+
+    // Shared pricing inputs (mirrors summary() reads exactly).
+    const snapshotOpts = { tenderId };
+    const [labourListed, plantListed, tenderEstimate] = await Promise.all([
+      this.rateResolver.listRates("labour", snapshotOpts),
+      this.rateResolver.listRates("plant", snapshotOpts),
+      this.prisma.tenderEstimate.findUnique({ where: { tenderId }, select: { markup: true } })
+    ]);
+    const labourRates = labourListed.map((r) => ({
+      role: String(r.keys["role"] ?? ""),
+      shift: String(r.keys["shift"] ?? "day"),
+      rate: new Prisma.Decimal(r.value)
+    }));
+    const plantRates = plantListed.map((r) => ({
+      id: r.rowId,
+      rate: new Prisma.Decimal(r.value)
+    }));
+    const rateMaps = buildRateMaps(labourRates, plantRates);
+    const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
+
+    const result: Array<{
+      type: "scope" | "waste" | "cutting" | "operational";
+      id: string;
+      code: string;
+      description: string;
+      cardId: string;
+      cardCode: string;
+      discipline: string;
+      quoteDestination: "PRICE" | "PROVISIONAL" | "OPTION" | "INTERNAL";
+      price: number;
+      priceable: boolean;
+      priceReason: string | null;
+    }> = [];
+
+    // 1. Scope items. Include the full card (needed for toPricingInput which expects
+    // the full ScopeCard shape including markupOverride).
+    const scopeItems = await this.prisma.scopeOfWorksItem.findMany({
+      where: { tenderId, status: { not: "excluded" } },
+      include: {
+        card: true,
+        subLineQuotes: { where: { isSelected: true }, select: { amount: true } }
+      },
+      orderBy: [{ wbsCode: "asc" }, { sortOrder: "asc" }]
+    });
+    for (const item of scopeItems) {
+      if (!item.card) continue;
+      const itemDiscipline = item.card.discipline as Discipline;
+      const cardCode = `${item.card.discipline}${item.card.cardNumber}`;
+      const effectiveMarkup = resolveEffectiveMarkup(
+        item.markupOverride != null ? Number(item.markupOverride) : null,
+        item.card.markupOverride != null ? Number(item.card.markupOverride) : null,
+        tenderMarkup
+      );
+
+      let price = 0;
+      let priceable = true;
+      let priceReason: string | null = null;
+
+      if (itemDiscipline === "SUB") {
+        const selectedQuote = item.subLineQuotes[0];
+        if (!selectedQuote) {
+          priceable = false;
+          priceReason = "no quote selected";
+        } else {
+          const quoteAmount = Number(selectedQuote.amount);
+          const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
+          price = round2(quoteAmount * markupFactor);
+        }
+      } else {
+        const computed = computeScopeItemTotal(
+          toPricingInput(item, itemDiscipline),
+          rateMaps,
+          effectiveMarkup
+        );
+        price = round2(computed.lineTotalWithMarkup);
+        // Check priceable: no quantity or no rate.
+        if (price === 0 && computed.lineTotal === 0) {
+          const input = toPricingInput(item, itemDiscipline);
+          const hasMen = Number(input.men ?? 0) > 0;
+          const hasDays = Number(input.days ?? 0) > 0;
+          if (!hasMen && !hasDays) {
+            priceable = false;
+            priceReason = "no quantity";
+          }
+        }
+      }
+
+      const dest = ((item.quoteDestination ?? "PRICE") as string) as "PRICE" | "PROVISIONAL" | "OPTION" | "INTERNAL";
+      result.push({
+        type: "scope",
+        id: item.id,
+        code: item.wbsCode,
+        description: item.description,
+        cardId: item.card.id,
+        cardCode,
+        discipline: item.card.discipline,
+        quoteDestination: dest,
+        price,
+        priceable,
+        priceReason
+      });
+    }
+
+    // 2. Waste items.
+    const wasteItems = await this.prisma.scopeWasteItem.findMany({
+      where: { tenderId },
+      include: {
+        card: { select: { id: true, discipline: true, cardNumber: true, wasteMarkupOverride: true } }
+      },
+      orderBy: [{ cardId: "asc" }, { sortOrder: "asc" }]
+    });
+    for (const w of wasteItems) {
+      if (!w.card) continue;
+      const cardCode = `${w.card.discipline}${w.card.cardNumber}`;
+      const cardWasteOverride = w.card.wasteMarkupOverride != null ? Number(w.card.wasteMarkupOverride) : null;
+      const lineMarkupOverride = w.markupOverride != null ? Number(w.markupOverride) : null;
+      const effectiveMarkup = resolveEffectiveMarkup(lineMarkupOverride, cardWasteOverride, tenderMarkup);
+      const amt = w.lineTotal ? Number(w.lineTotal) : 0;
+      const lineTotalWithMarkup = round2(amt * (1 + effectiveMarkup / 100));
+
+      const priceable = lineTotalWithMarkup > 0 || amt > 0;
+      const priceReason = !priceable ? "no rate" : null;
+      const dest = ((w.quoteDestination ?? "PRICE") as string) as "PRICE" | "PROVISIONAL" | "OPTION" | "INTERNAL";
+      // Waste code: cardCode + " waste"
+      result.push({
+        type: "waste",
+        id: w.id,
+        code: `${cardCode} waste`,
+        description: w.description,
+        cardId: w.card.id,
+        cardCode,
+        discipline: w.discipline,
+        quoteDestination: dest,
+        price: lineTotalWithMarkup,
+        priceable: true, // waste items are always considered priceable (0 just means no disposal yet)
+        priceReason: null
+      });
+    }
+
+    // 3. Cutting items.
+    const cuttingItems = await this.prisma.cuttingSheetItem.findMany({
+      where: { tenderId },
+      include: {
+        card: { select: { id: true, discipline: true, cardNumber: true, cuttingMarkupOverride: true } }
+      },
+      orderBy: [{ wbsRef: "asc" }, { sortOrder: "asc" }]
+    });
+    for (const ci of cuttingItems) {
+      const cardCode = `${ci.card.discipline}${ci.card.cardNumber}`;
+      const cardCuttingOverride = ci.card.cuttingMarkupOverride != null ? Number(ci.card.cuttingMarkupOverride) : null;
+      const lineMarkupOverride = ci.markupOverride != null ? Number(ci.markupOverride) : null;
+      const effectiveMarkup = resolveEffectiveMarkup(lineMarkupOverride, cardCuttingOverride, tenderMarkup);
+      const amt = ci.lineTotal ? Number(ci.lineTotal) : 0;
+      const lineTotalWithMarkup = round2(amt * (1 + effectiveMarkup / 100));
+
+      const priceable = amt > 0 || !!ci.equipment;
+      const priceReason = !priceable ? "no rate" : null;
+      const dest = ((ci.quoteDestination ?? "PRICE") as string) as "PRICE" | "PROVISIONAL" | "OPTION" | "INTERNAL";
+      result.push({
+        type: "cutting",
+        id: ci.id,
+        code: `${ci.wbsRef} cutting`,
+        description: ci.description ?? ci.wbsRef,
+        cardId: ci.card.id,
+        cardCode,
+        discipline: ci.card.discipline,
+        quoteDestination: dest,
+        price: lineTotalWithMarkup,
+        priceable,
+        priceReason
+      });
+    }
+
+    // 4. Operational lines.
+    const operationalLines = await this.prisma.scopeOperationalCostLine.findMany({
+      where: { card: { tenderId } },
+      include: {
+        card: { select: { id: true, discipline: true, cardNumber: true, markupOverride: true } }
+      },
+      orderBy: [{ cardId: "asc" }, { sortOrder: "asc" }]
+    });
+    for (const ol of operationalLines) {
+      const cardCode = `${ol.card.discipline}${ol.card.cardNumber}`;
+      const lineTotal = computeOperationalLineTotal(ol);
+      const effectiveMarkup = computeOperationalLineMarkup(
+        decToNum(ol.markupOverride),
+        ol.card.markupOverride != null ? Number(ol.card.markupOverride) : null,
+        tenderMarkup
+      );
+      const lineTotalWithMarkup = round2(lineTotal * (1 + effectiveMarkup / 100));
+
+      const dest = ((ol.quoteDestination ?? "PRICE") as string) as "PRICE" | "PROVISIONAL" | "OPTION" | "INTERNAL";
+      result.push({
+        type: "operational",
+        id: ol.id,
+        code: `${cardCode} op`,
+        description: ol.description,
+        cardId: ol.card.id,
+        cardCode,
+        discipline: ol.card.discipline,
+        quoteDestination: dest,
+        price: lineTotalWithMarkup,
+        priceable: lineTotal > 0 || (ol.qty != null && Number(ol.qty) > 0),
+        priceReason: null
+      });
+    }
+
+    return result;
+  }
+
   // ── Private ──────────────────────────────────────────────────────────
   private async requireTender(tenderId: string) {
     const t = await this.prisma.tender.findUnique({ where: { id: tenderId }, select: { id: true } });
@@ -1719,4 +1954,8 @@ export class ScopeRedesignService {
       orderBy: { createdAt: "asc" }
     });
   }
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

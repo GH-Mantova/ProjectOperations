@@ -6163,16 +6163,21 @@ model RateRow {
 // carry the original resolved value + an optional override the user
 // edits without touching global rates or other tenders' snapshots.
 model TenderRateSet {
-  id          String            @id @default(cuid())
-  tenderId    String            @unique @map("tender_id")
-  lockedAt    DateTime          @default(now()) @map("locked_at")
-  lockedById  String?           @map("locked_by_id")
-  sourceLabel String?           @map("source_label")
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  tender      Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  lockedBy    User?             @relation("TenderRateSetLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
-  entries     TenderRateEntry[]
+  id                   String            @id @default(cuid())
+  tenderId             String            @unique @map("tender_id")
+  lockedAt             DateTime          @default(now()) @map("locked_at")
+  lockedById           String?           @map("locked_by_id")
+  sourceLabel          String?           @map("source_label")
+  // CHARGE_STEPS_PRICE_CUTTING_V1 - formula copy for locked tenders.
+  // Keyed by rate-table slug; each entry carries { chargeSteps, lineFields,
+  // columns: [{ name, role }] } so a later catalogue edit cannot move a
+  // locked price. Written at lock time for every table slug that has steps.
+  chargeStepsSnapshot  Json?             @map("charge_steps_snapshot")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  tender               Tender            @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  lockedBy             User?             @relation("TenderRateSetLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  entries              TenderRateEntry[]
 
   @@map("tender_rate_sets")
 }

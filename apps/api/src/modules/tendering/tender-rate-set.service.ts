@@ -7,13 +7,15 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
+import { ChargeStepPricingService } from "../rates/charge-step-pricing.service";
 
 @Injectable()
 export class TenderRateSetService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly resolver: RateResolverService
+    private readonly resolver: RateResolverService,
+    private readonly chargeStepPricing: ChargeStepPricingService
   ) {}
 
   /**
@@ -28,20 +30,31 @@ export class TenderRateSetService {
     await this.ensureTenderExists(tenderId);
     const resolved = await this.resolver.enumerateRateSet();
 
+    // CHARGE_STEPS_PRICE_CUTTING_V1 — snapshot the formula for every rate table
+    // that has charge steps. This copy rides the existing rate lock so a later
+    // catalogue edit cannot move a locked price.
+    // Shape: { [slug]: { chargeSteps, lineFields, columns: [{ name, role }] } }
+    const chargeStepsSnapshot = await this.buildChargeStepsSnapshot();
+
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
+      const snapshotValue = Object.keys(chargeStepsSnapshot).length > 0
+        ? (chargeStepsSnapshot as Prisma.InputJsonValue)
+        : undefined;
       const set = await tx.tenderRateSet.upsert({
         where: { tenderId },
         create: {
           tenderId,
           lockedAt: now,
           lockedById: actorId,
-          sourceLabel: sourceLabel?.trim() || null
+          sourceLabel: sourceLabel?.trim() || null,
+          chargeStepsSnapshot: snapshotValue
         },
         update: {
           lockedAt: now,
           lockedById: actorId,
-          sourceLabel: sourceLabel === undefined ? undefined : sourceLabel?.trim() || null
+          sourceLabel: sourceLabel === undefined ? undefined : sourceLabel?.trim() || null,
+          chargeStepsSnapshot: snapshotValue
         }
       });
 
@@ -165,6 +178,38 @@ export class TenderRateSetService {
     });
 
     return { unlocked: true };
+  }
+
+  /**
+   * CHARGE_STEPS_PRICE_CUTTING_V1 — build the chargeStepsSnapshot object.
+   * Loads every rate table that has charge steps configured, and returns a
+   * map keyed by slug with { chargeSteps, lineFields, columns: [{ name, role }] }.
+   * Only slugs with a non-empty steps list are included.
+   */
+  private async buildChargeStepsSnapshot(): Promise<Record<string, unknown>> {
+    const tables = await this.prisma.rateTable.findMany({
+      where: { chargeSteps: { not: Prisma.JsonNull } },
+      select: {
+        slug: true,
+        chargeSteps: true,
+        lineFields: true,
+        columns: {
+          select: { name: true, role: true },
+          orderBy: { sortOrder: "asc" }
+        }
+      }
+    });
+
+    const snapshot: Record<string, unknown> = {};
+    for (const table of tables) {
+      if (!Array.isArray(table.chargeSteps) || table.chargeSteps.length === 0) continue;
+      snapshot[table.slug] = {
+        chargeSteps: table.chargeSteps,
+        lineFields: table.lineFields ?? [],
+        columns: table.columns.map((c) => ({ name: c.name, role: c.role }))
+      };
+    }
+    return snapshot;
   }
 
   private async hydrate(

@@ -11,6 +11,7 @@ import { RateXlsmExportService } from "./rate-xlsm-export.service";
 import { RateXlsmImportService } from "./rate-xlsm-import.service";
 import { SubcontractorArchiveController } from "./subcontractor-archive.controller";
 import { ChargeStepParityService } from "./charge-step-parity.service";
+import { ChargeStepPricingService } from "./charge-step-pricing.service";
 
 @Module({
   imports: [AuditModule],
@@ -24,7 +25,8 @@ import { ChargeStepParityService } from "./charge-step-parity.service";
     RateXlsmExportService,
     RateXlsmImportService,
     RateArchiveService,
-    ChargeStepParityService
+    ChargeStepParityService,
+    ChargeStepPricingService
   ],
   exports: [
     RateTablesService,
@@ -35,7 +37,8 @@ import { ChargeStepParityService } from "./charge-step-parity.service";
     RateXlsmExportService,
     RateXlsmImportService,
     RateArchiveService,
-    ChargeStepParityService
+    ChargeStepParityService,
+    ChargeStepPricingService
   ]
 })
 export class RatesModule {}

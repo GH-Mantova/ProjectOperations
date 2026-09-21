@@ -730,6 +730,36 @@ Similar to Excel pivot tables / Power BI — scoped to IS's own data.
 
 ## SECTION 13 — MODULE REGISTRY
 
+> 🔴 **THIS REGISTRY IS KNOWN INCOMPLETE AS OF 2026-09-21, AND THE GAP IS DECLARED HERE SO NO READER
+> HAS TO RE-DERIVE IT.** §17 of this file requires that *"§13 module registry should always reflect
+> what's on `main`"*. [MEASURED] 2026-09-21T00:3xZ by Station 05 (scheduled) at `origin/main`
+> `875e1076`: **ten business-distinct capabilities have a live module under
+> `apps/api/src/modules/` and are named nowhere in this section** — **CRM, Expenses, Procurement,
+> Inventory, Surveys, Handovers, Geocoding, Map locations, Branding, Public holidays**. CRM is the
+> sharpest case: #1986, #1998 and #2017 are all CRM slices merged or open in the four days before this
+> note. Controls for that reading, both directions: POSITIVE — `Tendering`, `Contracts`, `Quote`,
+> `Rates admin`, `Projects` all PRESENT; NEGATIVE — a freshly minted needle ABSENT.
+>
+> ⚠️ **An earlier instrument in the same run reported THIRTY-SIX, and it was broken.** It compared the
+> 81 **directory slugs** under `apps/api/src/modules` against this section, and its own positive
+> control read absent — a broken instrument, not a finding (DOCTRINE §7 guard 1). This section is
+> keyed by **business name**, not by code slug, so a slug-keyed probe measures a different question.
+> **Ten is the controlled reading; thirty-six is not. Do not re-open it.**
+>
+> **RULED BY MARCO, 2026-09-21, in chat, when the two options were put to him:** the descriptions are
+> to be written by a **development chat**, properly — *not* derived from route and controller names by
+> Station 05. He chose the option that makes each entry say what the module is *for* over the faster
+> machine-derived one. So this note declares the gap and **deliberately does not fill it**: filling it
+> with derived prose is the option he declined. The evidence a development chat needs — each module's
+> `@Controller` prefixes and route counts, measured, with the two recalibrations those numbers
+> required — is in the run breadcrumb
+> `docs/pr-prompts/00-05-sot-keeper-2026-09-21-0045-…md` under **HANDOVER**.
+>
+> **This block is transcription, not judgement.** Station 05 may not author curated prose here; it was
+> in the room when the ruling was given, which DOCTRINE §10.2.1 distinguishes from guessing Marco's
+> intent, and a ruling left only in chat is invisible to every later run (§10.2). **Delete this block
+> in the same PR that adds the ten entries.**
+
 ### ✅ LIVE (merged to main through PR #102)
 
 **COMMERCIAL**

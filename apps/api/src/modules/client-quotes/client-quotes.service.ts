@@ -8,24 +8,10 @@ import { ClientQuoteStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { ScopeRedesignService } from "../tendering/scope-redesign.service";
+import { QuotePushService } from "./quote-push.service";
 
-// PR A1 (2026-05-16) — 4-code discipline system (DEM/CIV/ASB/Other).
-// Legacy 5-code keys are retained as aliases so historical quotes
-// referencing the old codes still render with sensible labels until
-// the data migration sweeps them up. The migration runs in the same
-// PR so the aliases should be unused in practice.
-const DISCIPLINE_LABEL: Record<string, string> = {
-  DEM: "Demolition works",
-  CIV: "Civil works",
-  ASB: "Asbestos removal",
-  Other: "Other (provisional sums, options, adjustments)",
-  // Legacy aliases — kept as a transitional safety net.
-  SO: "Demolition works",
-  Str: "Demolition works",
-  Asb: "Asbestos removal",
-  Civ: "Civil works",
-  Prv: "Other (provisional sums, options, adjustments)"
-};
+// DISCIPLINE_LABEL removed in scopecards-s4a: the legacy per-discipline seed is replaced by QuotePushService.apply().
+// Group naming lives in QuotePushService.DISCIPLINE_GROUP_NAME.
 
 export type LineAppropriation = {
   lineId: string;
@@ -83,7 +69,8 @@ export class ClientQuotesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly scope: ScopeRedesignService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly quotePush: QuotePushService
   ) {}
 
   /**
@@ -154,7 +141,9 @@ export class ClientQuotesService {
         provisionalLines: { orderBy: { sortOrder: "asc" } },
         costOptions: { orderBy: { sortOrder: "asc" } },
         assumptions: { orderBy: [{ costLineId: "asc" }, { sortOrder: "asc" }] },
-        exclusions: { orderBy: { sortOrder: "asc" } }
+        exclusions: { orderBy: { sortOrder: "asc" } },
+        // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- cost groups + push stamp.
+        costGroups: { orderBy: { sortOrder: "asc" } }
       }
     });
     if (!quote || quote.tenderId !== tenderId) throw new NotFoundException("Quote not found.");
@@ -222,7 +211,9 @@ export class ClientQuotesService {
     if (dto.copyFromQuoteId) {
       await this.deepCopyFrom(quote.id, dto.copyFromQuoteId);
     } else {
-      await this.seedSuggestedCostLines(quote.id, tenderId);
+      // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- push from estimate on
+      // creation instead of the legacy per-discipline seed.
+      await this.quotePush.apply(tenderId, quote.id, actorId);
     }
 
     return this.getOne(tenderId, quote.id);
@@ -703,6 +694,35 @@ export class ClientQuotesService {
     };
   }
 
+  // ── Cost groups (QUOTE_PUSH_BY_DESTINATION_V1) ──────────────────────
+  async listCostGroups(tenderId: string, quoteId: string) {
+    await this.requireQuote(tenderId, quoteId);
+    return this.prisma.quoteCostGroup.findMany({
+      where: { quoteId },
+      orderBy: { sortOrder: "asc" }
+    });
+  }
+
+  async updateCostGroup(
+    tenderId: string,
+    quoteId: string,
+    groupId: string,
+    dto: Partial<{ name: string; printMode: string }>
+  ) {
+    await this.requireQuote(tenderId, quoteId);
+    const group = await this.prisma.quoteCostGroup.findUnique({ where: { id: groupId } });
+    if (!group || group.quoteId !== quoteId) throw new NotFoundException("Cost group not found.");
+    const data: Record<string, unknown> = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.printMode !== undefined) {
+      if (!["ITEMISED", "ONE_LINE"].includes(dto.printMode)) {
+        throw new BadRequestException('printMode must be "ITEMISED" or "ONE_LINE".');
+      }
+      data.printMode = dto.printMode;
+    }
+    return this.prisma.quoteCostGroup.update({ where: { id: groupId }, data });
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────
   private async requireTender(tenderId: string) {
     const t = await this.prisma.tender.findUnique({ where: { id: tenderId }, select: { id: true } });
@@ -741,20 +761,48 @@ export class ClientQuotesService {
         provisionalLines: true,
         costOptions: true,
         assumptions: true,
-        exclusions: true
+        exclusions: true,
+        // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- copy groups.
+        costGroups: { orderBy: { sortOrder: "asc" } }
       }
     });
     if (!source) throw new BadRequestException("Source quote for copy not found.");
+
+    // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- copy groups first so we
+    // can map old group IDs to new ones when copying cost lines.
+    const groupIdMap = new Map<string, string>();
+    for (const g of source.costGroups) {
+      const created = await this.prisma.quoteCostGroup.create({
+        data: {
+          quoteId: targetQuoteId,
+          code: g.code,
+          label: g.label,
+          name: g.name,
+          printMode: g.printMode,
+          sortOrder: g.sortOrder
+        }
+      });
+      groupIdMap.set(g.id, created.id);
+    }
+
     // Map old cost-line IDs to new ones so we can re-link assumptions.
     const lineIdMap = new Map<string, string>();
     for (const cl of source.costLines) {
       const created = await this.prisma.quoteCostLine.create({
         data: {
           quoteId: targetQuoteId,
+          // QUOTE_PUSH_BY_DESTINATION_V1 -- map group and copy all push fields.
+          groupId: cl.groupId ? groupIdMap.get(cl.groupId) ?? null : null,
           label: cl.label,
           description: cl.description,
+          displayDescription: cl.displayDescription,
           price: cl.price,
-          sortOrder: cl.sortOrder
+          baseValue: cl.baseValue,
+          overrideAmount: cl.overrideAmount,
+          isVisible: cl.isVisible,
+          sortOrder: cl.sortOrder,
+          sourceEstimateLineType: cl.sourceEstimateLineType,
+          sourceEstimateLineId: cl.sourceEstimateLineId
         }
       });
       lineIdMap.set(cl.id, created.id);
@@ -766,7 +814,10 @@ export class ClientQuotesService {
           description: pv.description,
           price: pv.price,
           notes: pv.notes,
-          sortOrder: pv.sortOrder
+          sortOrder: pv.sortOrder,
+          // QUOTE_PUSH_BY_DESTINATION_V1 -- copy source pointers.
+          sourceEstimateLineType: pv.sourceEstimateLineType,
+          sourceEstimateLineId: pv.sourceEstimateLineId
         }
       });
     }
@@ -778,7 +829,10 @@ export class ClientQuotesService {
           description: op.description,
           price: op.price,
           notes: op.notes,
-          sortOrder: op.sortOrder
+          sortOrder: op.sortOrder,
+          // QUOTE_PUSH_BY_DESTINATION_V1 -- copy source pointers.
+          sourceEstimateLineType: op.sourceEstimateLineType,
+          sourceEstimateLineId: op.sourceEstimateLineId
         }
       });
     }
@@ -816,41 +870,6 @@ export class ClientQuotesService {
     });
   }
 
-  private async seedSuggestedCostLines(quoteId: string, tenderId: string) {
-    const summary = (await this.scope.summary(tenderId)) as unknown as Record<
-      string,
-      { itemCount: number; subtotal: number; withMarkup: number } | { itemCount: number; subtotal: number } | number
-    >;
-    const disciplines = ["DEM", "CIV", "ASB"] as const;
-    let sort = 0;
-    const letters = ["A", "B", "C", "D", "E", "F"];
-    for (const d of disciplines) {
-      const b = summary[d] as { itemCount: number; subtotal: number; withMarkup: number };
-      if (!b || b.itemCount === 0 || !b.withMarkup) continue;
-      await this.prisma.quoteCostLine.create({
-        data: {
-          quoteId,
-          label: letters[sort] ?? String(sort + 1),
-          description: DISCIPLINE_LABEL[d],
-          price: toDec(Number(b.withMarkup.toFixed(2))),
-          sortOrder: sort
-        }
-      });
-      sort += 1;
-    }
-    const cutting = summary.cutting as { itemCount: number; subtotal: number } | undefined;
-    if (cutting && (cutting.itemCount > 0 || cutting.subtotal > 0)) {
-      await this.prisma.quoteCostLine.create({
-        data: {
-          quoteId,
-          label: letters[sort] ?? String(sort + 1),
-          description: "Concrete cutting",
-          price: toDec(Number(cutting.subtotal.toFixed(2))),
-          sortOrder: sort
-        }
-      });
-    }
-  }
 }
 
 function round2(n: number): number {

@@ -21,7 +21,8 @@ function makeService(prisma: ReturnType<typeof mockPrisma>, audit: ReturnType<ty
   return new ClientQuotesService(
     prisma as never,
     {} as never,
-    audit as never
+    audit as never,
+    {} as never
   );
 }
 

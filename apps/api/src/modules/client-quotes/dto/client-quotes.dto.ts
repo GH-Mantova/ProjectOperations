@@ -81,3 +81,9 @@ export class SendQuoteDto {
   @IsString() body!: string;
   @IsBoolean() attachPdf!: boolean;
 }
+
+// QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a)
+export class UpdateCostGroupDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() printMode?: string;
+}

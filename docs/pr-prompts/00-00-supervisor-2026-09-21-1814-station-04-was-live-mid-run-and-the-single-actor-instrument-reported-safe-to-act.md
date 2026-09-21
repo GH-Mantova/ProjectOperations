@@ -302,3 +302,88 @@ the compensating control and it ran clean this cycle.
 - **Did not chase sweep section 5.** Zero genuine `[STALE]` rows; its live content is all
   `cites #N (MERGED) as evidence — not its premise`, which does not clear an escalation.
 - **Left Azure / Entra / SharePoint entirely alone**, as always — absolute.
+
+---
+
+## ADDENDUM 2026-09-21T18:4xZ — same run, later measurement
+
+### F5 — The station doc names `sweep-rotation.json` as the `--renormalize` case; it is the convert-on-write case, and the FF refused until I measured instead of believing it (S2)
+
+`SWEEP_ROTATION_IS_THE_CONVERT_ON_WRITE_CASE_V1`
+
+The FF section of `00-supervisor.md` gives a sound discriminator — *dump the blob and the disk copy
+and count `\r\n` in each* — and then, one sentence earlier, assigns this file to the WRONG branch by
+name: *“`--renormalize` is still right for `docs/pipeline/sweep-rotation.json`, whose smudge is real
+and whose blob direction is the opposite one.”* A reader who trusts the named file never reaches the
+discriminator.
+
+**[MEASURED]** at `939c77bc` → `8e5ba6b9`, on exactly the hand-off this run performed:
+
+| probe | result |
+|---|---|
+| `git show HEAD:docs/pipeline/sweep-rotation.json` | **2809 B, CRLF=0, bare LF=28** — blob is **LF** |
+| the working copy on disk | **2837 B, CRLF=28, bare LF=0** — checkout is **CRLF** |
+| `git diff --numstat origin/main -- <path>` | **EMPTY** — no local-only content, so restoring loses nothing |
+| `git merge --ff-only origin/main`, before any cure | `error: Your local changes … would be overwritten by merge`, exit 1 |
+
+That is **Blob LF + checkout CRLF**, i.e. convert-on-write, the opposite of what the sentence
+naming this file prescribes. `--renormalize` on it would have staged the LF form as a content
+change — the loop the `git restore --staged` note three paragraphs down then undoes, returning the
+tree to the blocked state, with nothing warning at any step.
+
+**DISPOSITION: ACTIONED.** The convert-on-write cure was applied (node, never `git checkout --`,
+§9.2) and produced **2837 B = 2809 + 28 CRs, exactly the blob’s LF count**; `git update-index
+--refresh` exited **0** with `--porcelain` EMPTY; the fast-forward succeeded on the **first**
+attempt. All four read-backs passed — `0 0`, `--numstat` EMPTY, `--cached` EMPTY, `--porcelain`
+EMPTY — **and the content proof passed too**, which `0 0` alone cannot give: the new breadcrumb’s
+marker at depth 1 → 1 hit, the archived predecessor present in `archive/`, the root copy gone, and
+04’s advance (`"last_index": 2`, `2026-09-21T18:09:53Z`) still in the working copy.
+
+The correction is landed in `docs/pipeline/stations/00-supervisor.md` in the same PR as this
+addendum, as a correction beside the existing sentence rather than a deletion of it. ⚠️ **The RULE
+is untouched and nothing is retired** — the discriminator is what produced this finding. The
+`.arming-log.txt` row is **not** re-measured and stands as written.
+
+🔴 **RULE 1.** Complete-and-additive: the immediate half is this run’s FF, already clear; the
+future half is the document, because every collect run meets this exact file on a fixed schedule
+and would meet the same wrong branch. It damages nothing — no rule weakened, no row deleted, the
+existing sentence left in place with the measurement beside it. *“Just fix my own FF and move on”*
+fails the future half; *“delete the wrong sentence”* fails it too, because the next reader loses the
+evidence that the discriminator is the part to trust.
+
+⚠️ **Falsifying probe: the two-row table above.** If the blob ever carries CRLF, this is wrong and
+must be re-measured.
+
+### F6 — My own PR title contaminated the SAFE-TO-ACT grep that gates my own merge (S3)
+
+`VERDICT_GREP_MATCHES_OPEN_PR_TITLES_V1`
+
+The pre-merge gate this station now writes by hand — the shape the 17:14Z run recorded as
+`SAFE_ROWS=n STOP_ROWS=n` — greps the captured sweep for `SAFE TO ACT|DO-NOT-ACT|CAUTION`.
+`status-sweep.ps1` section 1 prints **every open PR’s TITLE**. This run’s PR title contains the
+words *“read SAFE TO ACT”*, so **[MEASURED]** the gate returned `SAFE_ROWS=2` — one being section
+7’s real verdict and the other being my own PR title echoed back:
+
+```
+   [LIVE]    #2057  CLEAN  docs(pr-prompts): station 00 collect - station 04 was live mid-run while the single-actor gate read SAFE TO ACT
+   [LIVE] SAFE TO ACT: no board mutation in progress, no recent remote activity, no live station worktrees.
+SAFE_ROWS=2  STOP_ROWS=0
+```
+
+🔴 **Harmless here, dangerous in the other direction.** A spurious SAFE row cannot turn a STOP into
+a GO — the gate also requires `STOP_ROWS=0`, and section 7 was genuinely `SAFE TO ACT`. But the
+symmetric case is live: **any open PR whose title contains the word “CAUTION” makes `STOP_ROWS` ≥ 1
+and freezes every station’s board mutation**, with no section 7 row behind it and nothing warning.
+Board PR titles are written by this station, so it can contaminate its own gate at will. This is
+§9.6’s minted-needle rule — *a needle is spent the moment it lands in a tracked file* — reaching a
+corpus nobody thought of as a corpus: the sweep’s own echo of the board.
+
+**DISPOSITION: ACTIONED, for the gate; DEFERRED for the wording rule.** The gate is fixed by
+anchoring on the section-7 row rather than on the whole report — match only lines following the
+`==================== 7. VERDICT ====================` header, which cannot be produced by a PR
+title. That is one line in a station-side script and needs no repo change. The durable half — *do
+not put a verdict token in a board PR title* — is real but tiny, and the measured cost of getting
+it wrong is a station refusing its own merge and reporting it loudly, which is the safe direction.
+**What would make it urgent:** any run that reports `STOP_ROWS ≥ 1` with no section 7 STOP row
+behind it. ⚠️ **Falsifying probe: open a PR whose title contains the word CAUTION and run the
+unanchored gate.** If `STOP_ROWS` stays 0, this finding is wrong and must be re-measured.

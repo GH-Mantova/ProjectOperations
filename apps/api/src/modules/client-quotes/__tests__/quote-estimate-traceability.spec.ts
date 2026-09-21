@@ -37,7 +37,7 @@ describe("Quote → Estimate traceability round-trip", () => {
     await prisma.tender.deleteMany({
       where: { tenderNumber: { startsWith: "ZZTEST-TRACE-" } }
     });
-    await prisma.client.deleteMany({ where: { name: "ZZTEST-TRACE Client" } });
+    await prisma.client.deleteMany({ where: { name: { startsWith: "ZZTEST-TRACE" } } });
     await prisma.user.deleteMany({
       where: { email: { in: [
         "zztest-trace@projectops.local",
@@ -156,7 +156,7 @@ describe("Quote → Estimate traceability round-trip", () => {
         passwordHash: "not-a-login"
       }
     });
-    const client = await prisma.client.create({ data: { name: "ZZTEST-TRACE Client" } });
+    const client = await prisma.client.create({ data: { name: "ZZTEST-TRACE S4A Client" } });
     const tender = await prisma.tender.create({
       data: {
         tenantId: SEEDED_DEFAULT_TENANT_ID,
@@ -222,7 +222,7 @@ describe("Quote → Estimate traceability round-trip", () => {
         passwordHash: "not-a-login"
       }
     });
-    const client = await prisma.client.create({ data: { name: "ZZTEST-TRACE Client" } });
+    const client = await prisma.client.create({ data: { name: "ZZTEST-TRACE GRP Client" } });
     const tender = await prisma.tender.create({
       data: {
         tenantId: SEEDED_DEFAULT_TENANT_ID,

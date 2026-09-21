@@ -1,7 +1,7 @@
 ---
 station: 01-code-writer
 station_doc_version: 1
-contract_version: 1
+contract_version: 3
 ---
 
 <!-- STATION FILE. The agent definition is a THIN RUNTIME CONFIG that reads THIS.

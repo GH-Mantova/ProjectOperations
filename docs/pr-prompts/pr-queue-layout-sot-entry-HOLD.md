@@ -13,6 +13,18 @@ station: '05'
 requires_on_main: 'docs/pipeline/QUEUE-LAYOUT.md :: QUEUE_LAYOUT_V1'
 ---
 
+<!-- watcher: do-not-arm -->
+
+> **NEVER ARM THIS PROMPT.** `[MEASURED]` 2026-09-21T17:3xZ by Station 00: the watcher does **not**
+> read a prompt's `station:` front-matter field — `Select-String 'station'` over
+> `scripts/pr-watcher/index.mjs` returns **3** hits, all comments or message strings, and none a
+> front-matter read (POSITIVE control `classifyPolicyFiles` → 2; NEGATIVE control, a freshly minted
+> needle → 0). So arming this would hand a `sot/`-only build to **Station 01**, the watcher's
+> code-writer, and `STATION-CAPABILITIES.md` §5 records `Edit /sot/` as **05 only**. The `station:
+> '05'` field below is documentation, not routing. This marker is the cure DOCTRINE §9.5 prescribes
+> for a never-arm prompt: `lint-prompt.mjs` REJECTs it `[HUMAN_GATE_PRESENT]` before the premise is
+> ever evaluated. **Hand this file to Station 05; do not `git mv` it to `-ready.md`.**
+
 # Queue layout - the sources-of-truth entry
 
 **Station 05 only.** `sot/` belongs to the SoT Keeper and to nobody else. This prompt was authored

@@ -363,3 +363,77 @@ falsifying probe.
 - **Wrote to no gitignored sink.** Nothing went to `docs/qa/qa-findings.md`, `qa-checklist.md`,
   `qa-test-data-registry.md`, `.qa-run.lock` or `qa-run-*.md`. The only files written outside this PR
   were two scratch captures under `C:\po-sup-fix-scripts\`, which carry no findings.
+
+---
+
+## ADDENDUM 2026-09-21T13:24Z — the other lane armed mid-run, F2 is vindicated by measurement, and I have landed the row F1 predicts will die
+
+Same station, same run, later measurement. The mandatory re-sweep **immediately before the merge**
+is what caught this — the verdict expires the moment it prints, and this run is now the worked
+example of why that rule exists.
+
+**`[MEASURED]` the re-sweep's section 3, at 13:2xZ:**
+`[LIVE] watcher build … BUILD IN FLIGHT: pr-ops-m2b-tipping-tab-reminder-ready.md (tick 0.5 min old)`
+— against the 13:09Z sweep's `armed (*-ready.md): 0`.
+
+**`[MEASURED]` the queue and the arming log, immediately after:**
+
+```
+armed now:  pr-ops-m2b-tipping-tab-reminder-ready.md   (+ rev-2050-ready.md, an auto-generated review job, not a prompt)
+newest row: 2026-09-21T13:19:01Z  ARMED  pr-ops-m2b-tipping-tab-reminder  escalates=true
+            actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=13084  caller=powershell.exe:2696
+git status --porcelain -- docs/pr-prompts/.arming-log.txt  ->   M      (modified, UNCOMMITTED)
+```
+
+🔴 **Three things follow, and none of them is an inference.**
+
+**1. F2 was right, and for the exact reason it gave.** `pr-ops-m2b-tipping-tab-reminder` is **one of
+the two prompts F2 named as genuine arming candidates and declined to arm.** The
+`station-00.interactive-0004` lane armed it **13:19:01Z — eleven minutes after this run opened**,
+while the 13:09Z sweep still read `SAFE TO ACT`. Had this run armed on that verdict, both lanes
+would have armed inside the same ten minutes. **BOARD DRIVING condition 3 is not a formality and
+the sweep's safe-to-act gate cannot substitute for it** — this is the third consecutive run to say
+so and the first to be able to point at the collision it prevented.
+
+**2. F1's mechanism is CONFIRMED and narrowed: `arm-prompt.ps1` is not the leak.** The 13:19:01Z arm
+wrote a complete, well-formed row carrying every actor field. So the two rows missing under F1 were
+**written and later removed**, not never-written. That eliminates the benign reading — *"the lane
+armed by some path that does not log"* — and leaves the restore-to-HEAD step named in F1.
+
+**3. That row was sitting in exactly the state F1 says is fatal**, uncommitted in the shared dev
+tree, one board-PR merge away from the fast-forward whose cure deletes it. So I have landed it.
+
+### WHAT CHANGED — one addition to this PR, after the fact
+
+**Committed `docs/pr-prompts/.arming-log.txt` into this board PR**, as DOCTRINE §9.5 requires of any
+run whose cycle includes an arm. I did not arm it; the row is another lane's, and landing it is how
+it survives.
+
+**Every safety condition was measured before the copy, not assumed:**
+
+- `[MEASURED]` §9.5's strict-superset discriminator — `git diff --numstat origin/main -- <path>` →
+  **`1	0`**: one insertion, **zero deletions**. A working copy that is a strict superset of `main`
+  is a file with something in it that has not landed, and restoring it to HEAD would be a deletion
+  rather than a repair.
+- `[MEASURED]` row-by-row, in node: `origin/main rows=139  local rows=140`; **rows on main but not
+  local = 0**; rows local but not on main = **1**, and it is the 13:19:01Z row quoted above. So
+  nothing on `main` is being dropped.
+- `[MEASURED]` the copy itself was byte-exact and read back — **23,089 bytes in, 23,089 out,
+  `Buffer.compare === 0`** — written with node, never `>`, `Out-File` or `Set-Content` (§9.3).
+- `[MEASURED]` after `git add`: `git diff --cached --numstat` → **`1	0`**. The staged change is the
+  one row and nothing else.
+- The copy was made **into the isolated worktree**. Nothing was staged or committed in the shared
+  dev-tree index (§9.2), and the dev tree's own copy is untouched.
+
+**DISPOSITION (F1, revised): ESCALATED — unchanged, and now better evidenced.** The escalation is
+about the *loop*, which is still open: this run landed one row by hand, and the next lane to arm
+between two board PRs will lose the next one the same way. Option **(A)** — make `arm-prompt.ps1`
+land its own row — is the one that ends it, and it is a `scripts/` change and therefore Marco's.
+
+**DISPOSITION (F2, revised): DEFERRED — unchanged, and vindicated.** The other lane is not merely
+"recently active"; it armed a prompt this run was weighing, eleven minutes into the run.
+
+⚠️ **What I did NOT do here, and it is the same line F1 draws:** I copied a row that
+`arm-prompt.ps1` wrote and that I read byte-exact off disk. I still did not reconstruct either of
+the two rows F1 reports missing, because I never observed those bytes. Landing an observed row and
+forging an unobserved one are not the same act.

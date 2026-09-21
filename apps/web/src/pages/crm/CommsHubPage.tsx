@@ -9,6 +9,14 @@ import { CommsInboxTriage } from "./CommsInboxTriage";
 import "./crm.css";
 
 /**
+ * CRM_PARITY_THREADS_V1 (crmvis-s8): Threads tab, To-dos tab and the rail
+ * rebuilt on the s7 kit. Every hex literal replaced with CSS custom properties
+ * via crm-thread-row / crm-todo-row classes (crm.css) and s7-badge / s7-btn
+ * kit classes. RAIL_INK and the STATUS_COLOUR-derived palette are removed.
+ */
+export const CRM_PARITY_THREADS_V1 = "crmvis-s8";
+
+/**
  * CRM_COMMS_RAIL_V1 (2026-09-04): the unanchored Threads screen is two
  * columns, not one — the thread list on the left, a 400px right rail on the
  * right holding "Add a to-do" and a tickable "My to-dos". Before this slice a
@@ -19,9 +27,6 @@ import "./crm.css";
  *
  * The rail belongs to the Threads tab only. The Inbox tab stays full width
  * (the mock-up's Intake artboard is a full-width list with no rail).
- *
- * Colour discipline: this slice adds no colour of its own. Every ink it uses
- * is read from `s` or `STATUS_COLOUR` below, via RAIL_INK.
  */
 
 /**
@@ -133,25 +138,8 @@ export const CRM_COMMS_RAIL_V1 = {
   DUE_SOON_DAYS: 7
 } as const;
 
-const s: Record<string, React.CSSProperties> = {
-  page: { padding: "24px", maxWidth: 1080, margin: "0 auto", fontFamily: "sans-serif" },
-  header: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 },
-  card: { border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, marginBottom: 12, background: "#fff" },
-  cardTitle: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 12 },
-  tabs: { display: "flex", gap: 4, marginBottom: 16 },
-  tab: { padding: "6px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 },
-  input: { padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13, width: "100%" },
-  primaryBtn: { padding: "8px 14px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 },
-  secondaryBtn: { padding: "4px 10px", background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 6, cursor: "pointer", fontSize: 12 },
-  empty: { color: "#9ca3af", fontSize: 13, padding: "12px 0" },
-  msgRow: { padding: "10px 0", borderBottom: "1px solid #f3f4f6" },
-  msgHead: { display: "flex", gap: 8, alignItems: "center", marginBottom: 4 },
-  msgAuthor: { fontSize: 13, fontWeight: 600, color: "#111827" },
-  msgTime: { fontSize: 11, color: "#9ca3af" },
-  taskRow: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #f3f4f6" },
-  badge: { display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600 },
-
-  // ── CRM_COMMS_RAIL_V1 — layout only, no colour ─────────────────────────────
+// Layout-only inline styles — no colour values.
+const layout: Record<string, React.CSSProperties> = {
   railGrid: {
     display: "grid",
     gridTemplateColumns: CRM_COMMS_RAIL_V1.GRID_TEMPLATE,
@@ -159,60 +147,11 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "start"
   },
   rail: { display: "flex", flexDirection: "column", gap: CRM_COMMS_RAIL_V1.GAP },
-  railCardHead: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   composerFields: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 },
-  composerLabel: { fontSize: 11, fontWeight: 600, marginBottom: 4 },
-  assignToBox: { display: "flex", alignItems: "center", gap: 7, height: 34, padding: "0 10px", borderRadius: 6, fontSize: 13, boxSizing: "border-box" },
-  meAvatar: { width: 20, height: 20, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 },
   composerActions: { display: "flex", justifyContent: "flex-end", marginTop: 10 },
-  composerHelp: { fontSize: 11, marginTop: 8 },
-  todoRow: { display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0" },
-  todoCheckbox: { width: 16, height: 16, marginTop: 2, flexShrink: 0 },
-  todoTitle: { fontSize: 13, fontWeight: 600 },
-  todoSubLine: { fontSize: 11, marginTop: 2 },
-  threadRow: { display: "flex", gap: 12, width: "100%", textAlign: "left", padding: "12px 6px", background: "transparent", border: "none", cursor: "pointer" },
-  threadAvatar: { width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 },
-  threadHead: { display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2, flexWrap: "wrap" },
-  threadSubject: { fontSize: 13, fontWeight: 600 },
-  threadFooter: { fontSize: 11, marginTop: 4 }
+  cardHeadRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  paginationRow: { display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }
 };
-
-const STATUS_COLOUR: Record<Task["status"], { bg: string; fg: string }> = {
-  OPEN: { bg: "#dbeafe", fg: "#1e40af" },
-  IN_PROGRESS: { bg: "#fef3c7", fg: "#92400e" },
-  DONE: { bg: "#d1fae5", fg: "#065f46" },
-  CANCELLED: { bg: "#f3f4f6", fg: "#6b7280" }
-};
-
-/**
- * CRM_COMMS_RAIL_V1 palette. Every entry is READ from `s` or `STATUS_COLOUR`
- * above — the rail introduces no colour value of its own, so the Comms hub
- * cannot drift away from the palette the rest of this page already uses.
- */
-const RAIL_INK = {
-  /** Row title ink — the ink message authors already render in. */
-  title: s.msgAuthor.color,
-  /** Field-label ink — the ink card titles already render in. */
-  label: s.cardTitle.color,
-  /** Muted metadata ink — the ink empty states already render in. */
-  muted: s.empty.color,
-  /** Row divider — the rule task rows already draw. */
-  divider: s.taskRow.borderBottom,
-  /** Field border — the border inputs already draw. */
-  fieldBorder: s.input.border,
-  /** Thread-author avatar circle — the neutral pair. */
-  avatarBg: STATUS_COLOUR.CANCELLED.bg,
-  avatarInk: STATUS_COLOUR.CANCELLED.fg,
-  /** Anchor chip on a thread row — the open pair. */
-  anchorBg: STATUS_COLOUR.OPEN.bg,
-  anchorInk: STATUS_COLOUR.OPEN.fg,
-  /** Overdue treatment (chip + sub-line) — the file's needs-attention pair. */
-  overdueBg: STATUS_COLOUR.IN_PROGRESS.bg,
-  overdueInk: STATUS_COLOUR.IN_PROGRESS.fg,
-  /** The composer's "Me" avatar — the primary button's fill and ink. */
-  meBg: s.primaryBtn.background,
-  meInk: s.primaryBtn.color
-} as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -365,10 +304,11 @@ function TodoRow(props: {
   const view = buildTodoRowView(task, nowMs);
   const done = task.status === "DONE";
   return (
-    <div style={{ ...s.todoRow, borderBottom: RAIL_INK.divider }}>
+    <div className="crm-todo-row">
       <input
         type="checkbox"
-        style={{ ...s.todoCheckbox, cursor: canManage ? "pointer" : "not-allowed" }}
+        className={`crm-todo-row__checkbox${view.overdue ? " crm-todo-row__checkbox--overdue" : ""}`}
+        style={{ cursor: canManage ? "pointer" : "not-allowed" }}
         checked={done}
         disabled={!canManage}
         aria-label={`Mark "${task.title}" ${done ? "not done" : "done"}`}
@@ -376,29 +316,18 @@ function TodoRow(props: {
         onChange={() => onToggle(task)}
       />
       <div style={{ flex: 1 }}>
-        <div style={{
-          ...s.todoTitle,
-          textDecoration: done ? "line-through" : "none",
-          color: done ? RAIL_INK.muted : RAIL_INK.title
-        }}>
+        <div className={`crm-todo-row__title${done ? " crm-todo-row__title--done" : ""}`}>
           {task.title}
         </div>
-        <div style={{
-          ...s.todoSubLine,
-          color: view.overdue ? RAIL_INK.overdueInk : RAIL_INK.muted
-        }}>
-          {view.dueLabel} · {entityLabel(task.entityType, task.entityId)}
+        <div className={`crm-cell-sub${view.overdue ? " crm-todo-row__sub--overdue" : ""}`}>
+          {view.dueLabel} &middot; {entityLabel(task.entityType, task.entityId)}
         </div>
         {task.description && (
-          <div style={{ ...s.todoSubLine, color: RAIL_INK.muted }}>{task.description}</div>
+          <div className="crm-cell-sub">{task.description}</div>
         )}
       </div>
       {showStatus && (
-        <span style={{
-          ...s.badge,
-          background: STATUS_COLOUR[task.status].bg,
-          color: STATUS_COLOUR[task.status].fg
-        }}>
+        <span className={`s7-badge s7-badge--${task.status === "OPEN" ? "active" : task.status === "IN_PROGRESS" ? "warning" : task.status === "DONE" ? "active" : "neutral"}`}>
           {STATUS_LABEL[task.status]}
         </span>
       )}
@@ -412,19 +341,19 @@ function ThreadRow(props: { thread: ThreadRowInput; nowMs: number; onOpen: () =>
   return (
     <button
       onClick={props.onOpen}
-      style={{ ...s.threadRow, borderBottom: RAIL_INK.divider }}
+      className="crm-thread-row"
     >
-      <div style={{ ...s.threadAvatar, background: RAIL_INK.avatarBg, color: RAIL_INK.avatarInk }}>
+      <span className="crm-avatar crm-thread-row__avatar">
         {view.initials}
-      </div>
+      </span>
       <div style={{ flex: 1 }}>
-        <div style={s.threadHead}>
-          <span style={{ ...s.threadSubject, color: RAIL_INK.title }}>{view.subject}</span>
-          <span style={{ ...s.badge, background: RAIL_INK.anchorBg, color: RAIL_INK.anchorInk, fontSize: 10 }}>
+        <div className="crm-thread-row__head">
+          <span className="crm-thread-row__subject">{view.subject}</span>
+          <span className="s7-badge s7-badge--active crm-thread-row__anchor">
             {view.anchorLabel}
           </span>
         </div>
-        <div style={{ ...s.threadFooter, color: RAIL_INK.muted }}>{view.ageLabel}</div>
+        <div className="crm-cell-sub crm-thread-row__footer">{view.ageLabel}</div>
       </div>
     </button>
   );
@@ -589,13 +518,8 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
   const anchored = pickerSelection?.kind === "entity" && !!pickerSelection.entityId;
   const canAddTodo = anchored && canManage && todoTitle.trim().length > 0 && !addingTodo;
 
-  const todoHelpText = !canManage
-    ? "Creating a to-do needs the crm.manage permission."
-    : !anchored
-      ? "Pick a record in the anchor picker above — a to-do has to hang off an account, tender, job or contract."
-      : todoTitle.trim().length === 0
-        ? "Give the to-do a title."
-        : `Anchored to ${pickerSelection?.label ?? ""}. Assigned to you.`;
+  // Helper text — only shown while no anchor is selected (artboard spec).
+  const showAnchorHelp = !anchored && canManage;
 
   const addTodo = useCallback(async () => {
     if (pickerSelection?.kind !== "entity" || !pickerSelection.entityId) return;
@@ -646,66 +570,72 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
 
   const meInitials = initialsOf(user ? { firstName: user.firstName, lastName: user.lastName } : null);
 
-  // s.card carries marginBottom for the stacked single-column layout; inside
-  // the rail the flex gap owns the spacing, so the margin is zeroed here.
+  // ADD A TO-DO rail card (artboard spec: s7 card, s7-input, s7-select-styled
+  // date, primary button right-aligned, helper only while unanchored).
   const addTodoCard = (
-    <div style={{ ...s.card, marginBottom: 0 }}>
-      <div style={s.cardTitle}>Add a to-do</div>
+    <div className="s7-card crm-rail-card">
+      <p className="s7-type-label crm-rail-card__label">Add a to-do</p>
       <input
-        style={s.input}
+        className="s7-input"
         placeholder="What needs doing?"
         value={todoTitle}
         onChange={(e) => { setTodoTitle(e.target.value); setTodoError(null); }}
       />
-      <div style={s.composerFields}>
+      <div style={layout.composerFields}>
         <div>
-          <div style={{ ...s.composerLabel, color: RAIL_INK.label }}>Assign to</div>
+          <p className="s7-type-label crm-rail-card__field-label">Assign to</p>
           {/* Not a picker — assigneeId always defaults to the creator. */}
-          <div style={{ ...s.assignToBox, border: RAIL_INK.fieldBorder, color: RAIL_INK.title }}>
-            <span style={{ ...s.meAvatar, background: RAIL_INK.meBg, color: RAIL_INK.meInk }}>
+          <div className="crm-rail-card__assign-box s7-input crm-rail-card__assign-box--readonly">
+            <span className="crm-avatar crm-avatar--sm crm-rail-card__me-avatar">
               {meInitials}
             </span>
             <span>Me</span>
           </div>
         </div>
         <div>
-          <div style={{ ...s.composerLabel, color: RAIL_INK.label }}>Due</div>
+          <p className="s7-type-label crm-rail-card__field-label">Due</p>
           <input
-            style={s.input}
+            className="s7-input"
             type="date"
             value={todoDue}
             onChange={(e) => setTodoDue(e.target.value)}
           />
         </div>
       </div>
-      <div style={s.composerActions}>
+      <div style={layout.composerActions}>
         <button
-          style={{ ...s.primaryBtn, opacity: canAddTodo ? 1 : 0.5, cursor: canAddTodo ? "pointer" : "not-allowed" }}
+          className="s7-btn s7-btn--primary crm-btn--primary"
           onClick={() => void addTodo()}
           disabled={!canAddTodo}
         >
           {addingTodo ? "Adding…" : "Add"}
         </button>
       </div>
-      <div style={{ ...s.composerHelp, color: RAIL_INK.muted }}>{todoHelpText}</div>
-      {todoError && <div style={{ ...s.composerHelp, color: RAIL_INK.overdueInk }}>{todoError}</div>}
+      {showAnchorHelp && (
+        <p className="crm-cell-sub crm-rail-card__help">
+          Pick a record from New thread above &mdash; a to-do hangs off an account, tender, job or contract.
+        </p>
+      )}
+      {todoError && (
+        <p className="crm-cell-sub crm-rail-card__help crm-rail-card__help--error">{todoError}</p>
+      )}
     </div>
   );
 
   const myTodosCard = (
-    <div style={{ ...s.card, marginBottom: 0 }}>
-      <div style={s.railCardHead}>
-        <div style={{ ...s.cardTitle, marginBottom: 0 }}>My to-dos</div>
+    <div className="s7-card crm-rail-card">
+      <div style={layout.cardHeadRow}>
+        <p className="s7-type-label crm-rail-card__label" style={{ marginBottom: 0 }}>My to-dos</p>
         {overdueCount > 0 && (
-          <span style={{ ...s.badge, background: RAIL_INK.overdueBg, color: RAIL_INK.overdueInk }}>
+          <span className="s7-badge s7-badge--danger">
             {overdueCount} overdue
           </span>
         )}
       </div>
       {loadingTasks
-        ? <div style={s.empty}>Loading…</div>
+        ? <p className="crm-cell-sub">Loading&hellip;</p>
         : inboxTasks.length === 0
-          ? <div style={s.empty}>No to-dos assigned to you.</div>
+          ? <p className="crm-cell-sub">No to-dos assigned to you.</p>
           : inboxTasks.map((t) => (
               <TodoRow
                 key={t.id}
@@ -741,7 +671,7 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
     : "Internal threads and to-dos, anchored to an account, tender, job or contract.";
 
   return (
-    <div style={s.page}>
+    <div style={{ padding: "24px", maxWidth: 1080, margin: "0 auto" }}>
       {/* CRM_PARITY_INBOX_V1: crm-page-head — title + subtitle on left,
           Anchor chip + New thread on right. The green notice is gone. */}
       <div className="crm-page-head">
@@ -769,8 +699,8 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
 
       {/* CRM_PARITY_INBOX_V1: NEW THREAD composer — hidden until showComposer is true */}
       {showComposer && (
-        <div style={{ ...s.card, marginBottom: 16 }}>
-          <div style={s.cardTitle}>New thread — anchor to</div>
+        <div className="s7-card" style={{ marginBottom: 16 }}>
+          <p className="s7-type-label" style={{ marginBottom: 10 }}>New thread &mdash; anchor to</p>
           <AnchorPicker
             authFetch={authFetch}
             value={pickerSelection}
@@ -778,13 +708,13 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
           />
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <input
-              style={s.input}
+              className="s7-input"
               placeholder="Subject"
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
             />
             <button
-              style={{ ...s.primaryBtn, opacity: canCreate && !creating ? 1 : 0.5, cursor: canCreate && !creating ? "pointer" : "not-allowed" }}
+              className="s7-btn s7-btn--primary crm-btn--primary"
               onClick={() => void startThread()}
               disabled={!canCreate || creating}
             >
@@ -792,7 +722,7 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
             </button>
           </div>
           {createError && (
-            <div style={{ color: "var(--status-danger)", fontSize: 12, marginTop: 8 }}>{createError}</div>
+            <p style={{ color: "var(--status-danger)", fontSize: 12, marginTop: 8 }}>{createError}</p>
           )}
         </div>
       )}
@@ -810,20 +740,25 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
 
       {inboxTab === "threads" && (
         <>
-          {threadsError && <div style={{ ...s.card, color: "#dc2626" }}>{threadsError}</div>}
+          {threadsError && (
+            <div className="crm-alert--danger" style={{ marginBottom: 16 }}>{threadsError}</div>
+          )}
           {/* CRM_COMMS_RAIL_V1: one screen, two columns — 1fr for the thread
               list, a fixed 400px rail for the to-do composer and My to-dos. */}
-          <div style={s.railGrid}>
+          <div style={layout.railGrid}>
             <div>
               {loadingThreads
-                ? <div style={s.empty}>Loading…</div>
+                ? <p className="crm-cell-sub" style={{ padding: "12px 0" }}>Loading&hellip;</p>
                 : (
-                  <div style={s.card}>
-                    <div style={s.cardTitle}>
-                      Threads — page {inboxThreadsPage} of {inboxThreadsTotalPages || 1}
+                  <div className="s7-card">
+                    <div style={layout.cardHeadRow}>
+                      <p className="s7-type-label" style={{ marginBottom: 0 }}>Threads</p>
+                      <span className="crm-cell-sub">
+                        page {inboxThreadsPage} of {inboxThreadsTotalPages || 1}
+                      </span>
                     </div>
                     {sortedThreads.length === 0
-                      ? <div style={s.empty}>No threads found.</div>
+                      ? <p className="crm-cell-sub">No threads found.</p>
                       : sortedThreads.map((t) => (
                           <ThreadRow
                             key={t.id}
@@ -834,16 +769,16 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
                         ))}
 
                     {inboxThreadsTotalPages > 1 && (
-                      <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+                      <div style={layout.paginationRow}>
                         <button
-                          style={s.secondaryBtn}
+                          className="s7-btn s7-btn--secondary s7-btn--sm"
                           disabled={inboxThreadsPage <= 1}
                           onClick={() => void loadInboxThreads(inboxThreadsPage - 1)}
                         >
                           Previous
                         </button>
                         <button
-                          style={s.secondaryBtn}
+                          className="s7-btn s7-btn--secondary s7-btn--sm"
                           disabled={inboxThreadsPage >= inboxThreadsTotalPages}
                           onClick={() => void loadInboxThreads(inboxThreadsPage + 1)}
                         >
@@ -855,7 +790,7 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
                 )}
             </div>
 
-            <div style={s.rail}>
+            <div style={layout.rail}>
               {addTodoCard}
               {myTodosCard}
             </div>
@@ -865,16 +800,26 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
 
       {inboxTab === "tasks" && (
         <>
-          {tasksError && <div style={{ ...s.card, color: "#dc2626" }}>{tasksError}</div>}
+          {tasksError && (
+            <div className="crm-alert--danger" style={{ marginBottom: 16 }}>{tasksError}</div>
+          )}
           {loadingTasks
-            ? <div style={s.empty}>Loading…</div>
+            ? <p className="crm-cell-sub" style={{ padding: "12px 0" }}>Loading&hellip;</p>
             : (
-              <div style={s.card}>
-                <div style={s.cardTitle}>
-                  My to-dos — page {inboxTasksPage} of {inboxTasksTotalPages || 1}
+              <div className="s7-card">
+                <div style={layout.cardHeadRow}>
+                  <p className="s7-type-label" style={{ marginBottom: 0 }}>My to-dos</p>
+                  {overdueCount > 0 && (
+                    <span className="s7-badge s7-badge--danger">
+                      {overdueCount} overdue
+                    </span>
+                  )}
+                  <span className="crm-cell-sub">
+                    page {inboxTasksPage} of {inboxTasksTotalPages || 1}
+                  </span>
                 </div>
                 {inboxTasks.length === 0
-                  ? <div style={s.empty}>No tasks assigned to you.</div>
+                  ? <p className="crm-cell-sub">No tasks assigned to you.</p>
                   : inboxTasks.map((t) => (
                       // CRM_COMMS_RAIL_V1: same row component as the rail, so
                       // the To-dos tab is tickable too.
@@ -889,16 +834,16 @@ function CommsInboxPage({ activeTab }: { activeTab: CommsInnerTab }) {
                     ))}
 
                 {inboxTasksTotalPages > 1 && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+                  <div style={layout.paginationRow}>
                     <button
-                      style={s.secondaryBtn}
+                      className="s7-btn s7-btn--secondary s7-btn--sm"
                       disabled={inboxTasksPage <= 1}
                       onClick={() => void loadInboxTasks(inboxTasksPage - 1)}
                     >
                       Previous
                     </button>
                     <button
-                      style={s.secondaryBtn}
+                      className="s7-btn s7-btn--secondary s7-btn--sm"
                       disabled={inboxTasksPage >= inboxTasksTotalPages}
                       onClick={() => void loadInboxTasks(inboxTasksPage + 1)}
                     >
@@ -1092,25 +1037,20 @@ export function CommsHubPage(props: CommsHubPageProps = {}) {
   }
 
   return (
-    <div style={s.page}>
-      <div style={s.header}>
+    <div style={{ padding: "24px", maxWidth: 1080, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Comms hub</h1>
-        <span style={{ ...s.badge, background: "#e0e7ff", color: "#3730a3" }}>
+        <span className="s7-badge s7-badge--active">
           {ENTITY_LABEL[entityType] ?? entityType}
         </span>
-        <span style={{ fontSize: 12, color: "#6b7280" }}>{entityId}</span>
+        <span className="crm-cell-sub" style={{ margin: 0 }}>{entityId}</span>
       </div>
 
-      <div style={s.tabs}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {(["threads", "tasks"] as const).map((t) => (
           <button
             key={t}
-            style={{
-              ...s.tab,
-              background: tab === t ? "#6366f1" : "#f3f4f6",
-              color: tab === t ? "#fff" : "#374151",
-              fontWeight: tab === t ? 700 : 400
-            }}
+            className={`s7-btn s7-btn--${tab === t ? "primary crm-btn--primary" : "secondary"}`}
             onClick={() => { setTab(t); setSelectedThread(null); }}
           >
             {t === "threads" ? "Threads" : "To-Do"}
@@ -1118,75 +1058,73 @@ export function CommsHubPage(props: CommsHubPageProps = {}) {
         ))}
       </div>
 
-      {error && <div style={{ ...s.card, color: "#dc2626" }}>{error}</div>}
+      {error && (
+        <div className="crm-alert--danger" style={{ marginBottom: 12 }}>{error}</div>
+      )}
 
       {tab === "threads" && (
         <>
-          <div style={s.card}>
-            <div style={s.cardTitle}>New thread</div>
+          <div className="s7-card" style={{ marginBottom: 12 }}>
+            <p className="s7-type-label" style={{ marginBottom: 10 }}>New thread</p>
             <div style={{ display: "flex", gap: 8 }}>
               <input
-                style={s.input}
+                className="s7-input"
                 placeholder="Subject"
                 value={newSubject}
                 onChange={(e) => setNewSubject(e.target.value)}
               />
-              <button style={s.primaryBtn} onClick={createThread} disabled={loading}>
+              <button
+                className="s7-btn s7-btn--primary crm-btn--primary"
+                onClick={createThread}
+                disabled={loading}
+              >
                 Start
               </button>
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
-            <div style={s.card}>
-              <div style={s.cardTitle}>Threads ({threads.length})</div>
+            <div className="s7-card">
+              <p className="s7-type-label" style={{ marginBottom: 10 }}>Threads ({threads.length})</p>
               {threads.length === 0
-                ? <div style={s.empty}>No threads yet.</div>
+                ? <p className="crm-cell-sub">No threads yet.</p>
                 : threads.map((t) => (
                     <button
                       key={t.id}
                       onClick={() => void openThread(t.id)}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "8px 6px",
-                        background: selectedThread?.id === t.id ? "#eef2ff" : "transparent",
-                        border: "none",
-                        borderBottom: "1px solid #f3f4f6",
-                        cursor: "pointer"
-                      }}
+                      className={`crm-thread-row${selectedThread?.id === t.id ? " crm-thread-row--selected" : ""}`}
+                      style={{ display: "block", width: "100%", textAlign: "left" }}
                     >
                       <div style={{ fontSize: 13, fontWeight: 600 }}>
                         {t.subject ?? "(no subject)"}
                       </div>
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      <div className="crm-cell-sub">
                         Updated {fmtDate(t.updatedAt)}
                       </div>
                     </button>
                   ))}
             </div>
 
-            <div style={s.card}>
+            <div className="s7-card">
               {!selectedThread
-                ? <div style={s.empty}>Select a thread on the left.</div>
+                ? <p className="crm-cell-sub">Select a thread on the left.</p>
                 : (
                   <>
-                    <div style={s.cardTitle}>
+                    <p className="s7-type-label" style={{ marginBottom: 10 }}>
                       {selectedThread.subject ?? "(no subject)"}
-                    </div>
+                    </p>
                     <div style={{ maxHeight: 360, overflowY: "auto", marginBottom: 12 }}>
                       {selectedThread.messages.length === 0
-                        ? <div style={s.empty}>No messages yet.</div>
+                        ? <p className="crm-cell-sub">No messages yet.</p>
                         : selectedThread.messages.map((m) => (
-                            <div key={m.id} style={s.msgRow}>
-                              <div style={s.msgHead}>
-                                <span style={s.msgAuthor}>
+                            <div key={m.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border-subtle)" }}>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                                   {m.author
                                     ? `${m.author.firstName} ${m.author.lastName}`
                                     : "Unknown"}
                                 </span>
-                                <span style={s.msgTime}>{fmtDate(m.createdAt)}</span>
+                                <span className="crm-cell-sub" style={{ margin: 0 }}>{fmtDate(m.createdAt)}</span>
                               </div>
                               <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>
                                 {m.body}
@@ -1196,13 +1134,18 @@ export function CommsHubPage(props: CommsHubPageProps = {}) {
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
-                        style={s.input}
+                        className="s7-input"
                         placeholder="Write a message… use @name to mention"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") void postMessage(); }}
                       />
-                      <button style={s.primaryBtn} onClick={postMessage}>Post</button>
+                      <button
+                        className="s7-btn s7-btn--primary crm-btn--primary"
+                        onClick={postMessage}
+                      >
+                        Post
+                      </button>
                     </div>
                   </>
                 )
@@ -1214,31 +1157,38 @@ export function CommsHubPage(props: CommsHubPageProps = {}) {
 
       {tab === "tasks" && (
         <>
-          <div style={s.card}>
-            <div style={s.cardTitle}>New task</div>
+          <div className="s7-card" style={{ marginBottom: 12 }}>
+            <p className="s7-type-label" style={{ marginBottom: 10 }}>New task</p>
             <div style={{ display: "flex", gap: 8 }}>
               <input
-                style={{ ...s.input, flex: 2 }}
+                className="s7-input"
+                style={{ flex: 2 }}
                 placeholder="Task title"
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
               />
               <input
-                style={{ ...s.input, flex: 1 }}
+                className="s7-input"
+                style={{ flex: 1 }}
                 type="date"
                 value={newTaskDue}
                 onChange={(e) => setNewTaskDue(e.target.value)}
               />
-              <button style={s.primaryBtn} onClick={createTask}>Add</button>
+              <button
+                className="s7-btn s7-btn--primary crm-btn--primary"
+                onClick={createTask}
+              >
+                Add
+              </button>
             </div>
           </div>
 
-          <div style={s.card}>
-            <div style={s.cardTitle}>Tasks ({tasks.length})</div>
+          <div className="s7-card">
+            <p className="s7-type-label" style={{ marginBottom: 10 }}>Tasks ({tasks.length})</p>
             {tasks.length === 0
-              ? <div style={s.empty}>No tasks yet.</div>
+              ? <p className="crm-cell-sub">No tasks yet.</p>
               : tasks.map((t) => (
-                  <div key={t.id} style={s.taskRow}>
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--border-subtle)" }}>
                     <input
                       type="checkbox"
                       checked={t.status === "DONE"}
@@ -1249,25 +1199,21 @@ export function CommsHubPage(props: CommsHubPageProps = {}) {
                         fontSize: 13,
                         fontWeight: 600,
                         textDecoration: t.status === "DONE" ? "line-through" : "none",
-                        color: t.status === "DONE" ? "#9ca3af" : "#111827"
+                        color: t.status === "DONE" ? "var(--text-muted)" : "var(--text-primary)"
                       }}>
                         {t.title}
                       </div>
                       {t.description && (
-                        <div style={{ fontSize: 12, color: "#6b7280" }}>{t.description}</div>
+                        <div className="crm-cell-sub">{t.description}</div>
                       )}
                     </div>
-                    <span style={{
-                      ...s.badge,
-                      background: STATUS_COLOUR[t.status].bg,
-                      color: STATUS_COLOUR[t.status].fg
-                    }}>
+                    <span className={`s7-badge s7-badge--${t.status === "OPEN" ? "active" : t.status === "IN_PROGRESS" ? "warning" : t.status === "DONE" ? "active" : "neutral"}`}>
                       {STATUS_LABEL[t.status]}
                     </span>
-                    <span style={{ fontSize: 11, color: "#6b7280", minWidth: 90, textAlign: "right" }}>
+                    <span className="crm-cell-sub" style={{ margin: 0, minWidth: 90, textAlign: "right" }}>
                       {t.dueAt ? `Due ${fmtDate(t.dueAt)}` : "—"}
                     </span>
-                    <span style={{ fontSize: 11, color: "#6b7280", minWidth: 100 }}>
+                    <span className="crm-cell-sub" style={{ margin: 0, minWidth: 100 }}>
                       {t.assignee ? `${t.assignee.firstName} ${t.assignee.lastName}` : "Unassigned"}
                     </span>
                   </div>

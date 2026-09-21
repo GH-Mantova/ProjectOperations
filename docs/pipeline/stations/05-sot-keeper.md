@@ -300,8 +300,22 @@ remain` on every run. N must be lower than it was before your PR, never higher.
 - Anything requiring judgement is **NEVER auto-edited** — it comes back as a finding for a human.
 - **Never re-stage a stale prompt without checking `main` first.** Five of seven re-queued prompts
   turned out to be already shipped.
-- Regenerating the data-model map **shrinks** tracked `metadata-catalog.json`; that has aborted a
-  slice before. Expect it and say so.
+- Regenerating the data-model map makes tracked `metadata-catalog.json` **look** smaller; that has
+  aborted a slice before. 🔴 **CORRECTED 2026-09-21 — THE SHRINK IS LINE ENDINGS, NOT CONTENT, AND
+  THIS BULLET USED TO TELL YOU TO "EXPECT IT" WITHOUT SAYING IT IS HARMLESS.** The generator writes
+  LF; the tracked working copy on this Windows host is CRLF, so a regenerated catalog is smaller by
+  **exactly its own line count** and not by one byte of content. [MEASURED] 2026-09-21T00:1xZ at
+  `875e1076`, generating into a throwaway tree (`/tmp`) so the dev tree was never touched: tracked
+  **723,969** B vs regenerated **695,182** B, delta **28,787** — and `28,787` is precisely the
+  tracked file's CRLF count. Parsed, the two are equal in every respect that matters: **296 models
+  → 296, 23 domains → 23, 0 keys removed, 0 added, 0 of 296 model entries differing**, and
+  `Buffer.compare` on the two buffers after CRLF normalisation returns **0 — byte-identical**.
+  🔧 **So never judge this file by its byte count** (DOCTRINE §9.3: compare CONTENT, never SIZE,
+  and never across a line-ending boundary). A station that regenerates, sees a large `--numstat`
+  and aborts on the strength of the number is aborting on the instrument, which is the slice this
+  bullet says was already lost once. ⚠️ **Falsifying probe: regenerate into a scratch tree, then
+  compare the two buffers after `replace(/\r\n/g,'\n')`.** If they ever differ, content really did
+  move and this correction is wrong.
 
 ## HARD STOPS — absolute, all stations
 

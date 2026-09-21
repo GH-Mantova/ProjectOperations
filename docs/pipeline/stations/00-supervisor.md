@@ -920,6 +920,67 @@ and the paragraph above tells you to rule the second one out.
    `git diff --numstat` -> EMPTY, `git diff --cached --name-status` -> EMPTY. The first alone
    passes on a dirty tree — that is the trap three paragraphs up.
 
+
+🔴🔴 **STEP 1 AS WRITTEN — `git show HEAD:<path>` PIPED TO A WRITE — LEAVES THE FAST-FORWARD STILL
+REFUSING ON A `text=auto` REPO, AND `--numstat` READS **EMPTY** THE WHOLE TIME, SO EVERY READ-BACK
+IN THIS SECTION SAYS THE TREE IS CLEAN WHILE GIT SAYS IT IS NOT.**
+`FF_RESTORE_MUST_WRITE_THE_WORKING_COPY_EOL_V1`
+
+[MEASURED] 2026-09-21T17:4xZ by Station 00 (scheduled) at `87e22199` → `731708fd`, on
+`docs/pr-prompts/pr-queue-layout-sot-entry-HOLD.md` after its own board PR `#2055` merged. Step 1
+was performed exactly as written — a node write of the bytes `git show HEAD:<path>` returns — and
+the fast-forward then refused **three times**:
+
+| probe | result | what it says |
+|---|---|---|
+| `git show HEAD:<path>` bytes | **3719 B, LF=82, CRLF=0** | the blob is stored **LF** |
+| the restored file on disk | **3719 B, LF=82, CRLF=0** | byte-identical to the blob — step 1 did exactly what it promised |
+| `git diff --numstat` | **EMPTY** | the `text=auto` clean filter normalises on read, so content-wise it matches |
+| `git diff --cached --name-status` | **EMPTY** | nothing staged |
+| `git status --porcelain` | **` M <path>`** | git says modified |
+| `git update-index --refresh` | `<path>: needs update`, **exit 1** | it REFUSES to refresh |
+| `git merge --ff-only origin/main` | `error: Your local changes … would be overwritten by merge` | blocked |
+
+🔴 **The two read-backs this section prescribes are exactly the two that cannot see it.** `--numstat`
+and `--cached` are both EMPTY, which is the documented PASS reading, while `--porcelain` shows ` M`
+and the merge aborts. That is §7's shape inside the cure for a §7 trap — a correct reading of the
+wrong quantity — and it is the same pair that DOCTRINE §9.2's *"`git status` answers a question
+about `HEAD`"* bullet warns about, reached from the opposite direction.
+
+🔴 **And the prescribed next step pushes the wrong way.** Step 2's `git add --renormalize` stages the
+**LF** form, i.e. it resolves the disagreement by changing the INDEX to match the restored file —
+which on this file makes the tree dirty in the index instead of clean, and the `git restore --staged`
+undo three paragraphs up then returns it to exactly the blocked state. The loop closes and nothing
+in it is wrong on its own terms.
+
+🔧 **The cure is one line longer than step 1: restore the bytes, then convert them to the
+WORKING-COPY line ending.** The index records the checked-out (CRLF) form's stat, not the blob's,
+so a byte-exact LF restore is a different file to `update-index`. Still node, still never
+`git checkout -- <path>` (§9.2):
+
+```js
+const blob = execFileSync('git', ['show', 'HEAD:' + rel], { cwd, maxBuffer: 1 << 26 });
+const txt  = blob.toString('utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+fs.writeFileSync(abs, txt, 'utf8');
+```
+
+[MEASURED] the same run: that write produced **3801 B** (3719 + 82 CRs, exactly the LF count),
+`git update-index --refresh` then exited **0** with `--porcelain` EMPTY, and
+`git merge --ff-only origin/main` fast-forwarded on the first attempt. All three read-backs passed:
+`0 0`, `--numstat` EMPTY, `--cached` EMPTY — **and this time the working copy really did carry the
+merged content**, confirmed by grepping the marker the PR had just landed (1 hit) and by
+`git ls-files` showing the new breadcrumb tracked (1).
+
+⚠️ **This does NOT retire step 2.** `--renormalize` is still right for
+`docs/pipeline/sweep-rotation.json`, whose smudge is real and whose blob direction is the opposite
+one. **The discriminator is which way the blob and the checkout disagree:** dump the blob and the
+disk copy and count `\r\n` in each, as the table above does. Blob LF + checkout CRLF ⇒ convert on
+write and do not renormalize. Blob CRLF + checkout LF (the `.arming-log.txt` case) ⇒ the existing
+`git restore --staged` cure.
+
+⚠️ **Falsifying probe: the table above.** Restore any CRLF-checked-out prompt with a byte-exact
+`git show HEAD:` write and run `git update-index --refresh`. If it ever exits 0, this correction is
+wrong and must be re-measured. Found and landed by Station 00 2026-09-21T17:5xZ.
 🔴 **STEP 1 CAN DESTROY ANOTHER ACTOR'S DATA, AND `.arming-log.txt` IS THE FILE IT HAPPENS ON.**
 MEASURED 2026-09-06T08:2xZ. This run armed a prompt at `08:17:13Z` and landed `.arming-log.txt` in
 its board PR; a **second actor** — `actor=marco-delegated`, pid 5564, named by the log's own actor

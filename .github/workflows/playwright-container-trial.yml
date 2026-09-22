@@ -72,7 +72,8 @@ jobs:
       - uses: actions/setup-node@v4.1.0
         with:
           node-version: 22
-          cache: pnpm
+          # No pnpm cache here: this job checks out a caller-chosen ref and runs its
+          # code, so a shared cache could be poisoned by that ref (CodeQL, #2082).
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

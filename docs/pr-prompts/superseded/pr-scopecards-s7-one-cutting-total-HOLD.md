@@ -1,3 +1,12 @@
+<!-- RETIRED 2026-09-22 by station-00.interactive-0004: SPENT, the work SHIPPED.
+     S7 landed as #2093 (CUTTING_ONE_TOTAL_V1), merged 21:24:16Z with Marco's receipt at
+     docs/decisions/merge-approvals/2093.md. On main now: cutting-line-pricing.ts,
+     EstimateCuttingLine.lineTotal (migrations 20260923000002/3/4), and all six readers
+     summing the stored lineTotal.
+     WHY LINT STILL ADMITTED IT: the premise greps 'cuttingLines.reduce' in
+     scope-of-works.service.ts, and that string survives the slice - the reduce now sums
+     l.lineTotal instead of qty x rate. The premise cannot tell the two apart, so a spent
+     prompt kept reading as armable. Arming it would have rebuilt a shipped slice. -->
 ---
 premise: 'grep -q "cuttingLines.reduce" apps/api/src/modules/tendering/scope-of-works.service.ts'
 premise_means: A cutting line's money is worked out in two ways that do not agree. A scope-card cutting row (CuttingSheetItem) is priced once by the server and its lineTotal is stored. An estimate cutting line (EstimateCuttingLine) has nowhere to store a total, so six readers each re-multiply qty x rate for themselves, and the scope-of-works generator picks its rate with a private copy of the row-picker that takes the depth BELOW the requested one and never applies a loading. This slice gives both models one pricing function and gives the estimate line a stored total.

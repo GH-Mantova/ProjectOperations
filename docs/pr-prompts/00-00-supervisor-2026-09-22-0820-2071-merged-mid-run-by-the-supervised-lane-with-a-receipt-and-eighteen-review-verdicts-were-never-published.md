@@ -487,6 +487,20 @@ push to `#2078` with **no** `gh pr edit` after it. Read `autoMergeRequest` immed
 edit` is the cause** and body edits are the thing to re-arm after. Either answer narrows this bullet;
 the run that reads it should record which.
 
+🟢 **THE PROBE RAN IN THIS SAME RUN AND IT ANSWERED: the PUSH is NOT the cause - `gh pr edit` is.**
+[MEASURED] the commit carrying this finding (`a3de06e0`) was pushed to `#2078` with **no** `gh pr
+edit` after it, and `autoMergeRequest` read back **`True`** on the new head six seconds later.
+Against the earlier pair - push **plus** `gh pr edit` -> `False` - the only factor that differs is
+the body edit. **So a push alone preserves the arm, and `gh pr edit` clears it.**
+
+🔧 **The rule narrows accordingly, and it is cheaper than the general one: RE-ARM AND RE-READ AFTER
+ANY `gh pr edit` ON A PR YOU HAVE ALREADY ARMED.** A push does not need it - but re-reading after
+one still costs a single call, and the general form remains correct.
+⚠️ **This is ONE trial, not a proof.** A second confirming pair on another PR would settle it;
+until then the narrowed rule is an [INFERRED] attribution over two [MEASURED] readings, and the
+general rule above is what a careful run should follow. **Falsifying probe: `gh pr edit` on any
+armed PR, then read `autoMergeRequest`.** If it stays `True`, this narrowing is wrong.
+
 **DISPOSITION: ACTIONED** - re-armed and read back `automerge=True` on head `d529c67a`, and the
 discriminating experiment is left set up above rather than left to be re-derived. ⚠️ This is an
 observation about the GitHub API, not about a pipeline instrument, so it is recorded here rather

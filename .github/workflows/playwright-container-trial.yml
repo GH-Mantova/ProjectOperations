@@ -52,6 +52,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          # The dispatch input was declared but never passed on, so every run
+          # tested the default branch. Wire it through so a PR head can be tried.
+          ref: ${{ inputs.ref }}
+
+      # The job runs inside a container as root while the workspace is owned by
+      # the runner uid. checkout marks it safe only in a temporary HOME, so the
+      # root postinstall (git config core.hooksPath) saw 'not in a git directory'
+      # and every dispatch died at pnpm install. Mark it safe for the job.
+      - name: Trust the checked-out workspace (container runs as root)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: pnpm/action-setup@v4.0.0
 

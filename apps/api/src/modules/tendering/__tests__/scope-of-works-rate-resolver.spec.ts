@@ -123,11 +123,20 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
   // surviving resolveRate("plant") caller in this service to cover.
   // Full record in ../scope-of-works.service.ts.
 
-  // ── resolveRate("core-hole") ──────────────────────────────────────
-  describe("createEstimateItemFromScope — core-hole slug", () => {
-    it("calls resolveRate('core-hole') with diameterMm", async () => {
-      const resolveRate = jest.fn().mockResolvedValue({ value: 85, unit: "hole", rowId: "ch-1", source: "legacy" });
-      const rateResolver = makeRateResolver({ resolveRate });
+  // ── listRates("core-hole") via priceCuttingLine ──────────────────
+  // CUTTING_ONE_TOTAL_V1 (scopecards-s7): priceCuttingLine replaces the
+  // resolveRate call. priceCuttingLine calls resolveCoreHoleRate which
+  // uses listRates. lineTotal is stored with rate.
+  describe("createEstimateItemFromScope — core-hole slug (priceCuttingLine)", () => {
+    it("calls listRates('core-hole') and stores rate + lineTotal", async () => {
+      // No chargeStepPricing: unit-test compat path.
+      // diameterMm=100, depthMm=null → 0 → depthUnits=max(1,round(0/10))=1
+      // finalRate = ratePerHole * 1 * 1.0 * 1.0 = 85
+      // lineTotal = qty(3) * 85 = 255.00
+      const listRates = jest.fn().mockResolvedValue([
+        { rowId: "ch-100", keys: { diameterMm: 100 }, value: 85, unit: "hole", source: "legacy" }
+      ]);
+      const rateResolver = makeRateResolver({ listRates });
       const prisma = makePrisma();
       const svc = new ScopeOfWorksService(prisma, rateResolver);
 
@@ -139,17 +148,20 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
-      expect(resolveRate).toHaveBeenCalledWith("core-hole", { diameterMm: 100 }, { tenderId: "t-1" });
+      expect(listRates).toHaveBeenCalledWith("core-hole", { tenderId: "t-1" });
       const cuttingCreate = (prisma as never as { estimateCuttingLine: { create: jest.Mock } }).estimateCuttingLine.create;
       expect(cuttingCreate).toHaveBeenCalledTimes(1);
       const data = (cuttingCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
       expect(data.cuttingType).toBe("Core hole");
-      expect(Number(data.rate)).toBe(85);
+      expect(Number(data.rate)).toBeCloseTo(85, 4);
+      // lineTotal stored: qty=3 * rate=85 = 255.00
+      expect(Number(data.lineTotal)).toBe(255);
     });
 
-    it("tolerates NotFoundException from resolveRate('core-hole') — rate stays 0", async () => {
-      const resolveRate = jest.fn().mockRejectedValue(new NotFoundException("no core-hole rate"));
-      const rateResolver = makeRateResolver({ resolveRate });
+    it("listRates miss — rate=0 and lineTotal=0 (today's miss path)", async () => {
+      // No matching core-hole rate → priceCuttingLine returns null → rate=0, lineTotal=0
+      const listRates = jest.fn().mockResolvedValue([]);
+      const rateResolver = makeRateResolver({ listRates });
       const prisma = makePrisma();
       const svc = new ScopeOfWorksService(prisma, rateResolver);
 
@@ -165,15 +177,19 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       expect(cuttingCreate).toHaveBeenCalledTimes(1);
       const data = (cuttingCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
       expect(Number(data.rate)).toBe(0);
+      expect(Number(data.lineTotal)).toBe(0);
     });
   });
 
-  // ── listRates("cutting") with in-memory range ─────────────────────
-  describe("createEstimateItemFromScope — cutting slug (listRates + range)", () => {
-    it("calls listRates('cutting') and picks deepest-at-or-below depthMm", async () => {
+  // ── listRates("cutting") via priceCuttingLine ─────────────────────
+  // CUTTING_ONE_TOTAL_V1 (scopecards-s7): private row-picker removed;
+  // priceCuttingLine calls resolveCuttingRate which picks next-at-or-above
+  // (Marco's 2026-09-22 ruling). lineTotal is stored with rate.
+  describe("createEstimateItemFromScope — cutting slug (priceCuttingLine)", () => {
+    it("calls listRates('cutting') and picks next-at-or-above depthMm (next-depth-up rule)", async () => {
       const cuttingListedRates = [
-        { rowId: "cr-1", keys: { equipment: "Demosaw", elevation: "Floor", material: "Concrete", depthMm: 100 }, value: 30, unit: "m", source: "legacy" },
-        { rowId: "cr-2", keys: { equipment: "Demosaw", elevation: "Floor", material: "Concrete", depthMm: 200 }, value: 45, unit: "m", source: "legacy" }
+        { rowId: "cr-1", keys: { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 100 }, value: 30, unit: "m", source: "legacy" },
+        { rowId: "cr-2", keys: { equipment: "Demosaw", elevation: "Floor", material: "Any", depthMm: 200 }, value: 45, unit: "m", source: "legacy" }
       ];
       const listRates = jest.fn().mockResolvedValue(cuttingListedRates);
       const rateResolver = makeRateResolver({ listRates });
@@ -187,7 +203,7 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
         cuttingEquipment: "Demosaw",
         elevation: "Floor",
         materialType: "Concrete",
-        depthMm: 150 // between 100 and 200 — should pick 100 (deepest at-or-below)
+        depthMm: 150 // between 100 and 200 — next-at-or-above is 200 (rate=45)
       });
       await svc.createEstimateItemFromScope(scopeItem as never, "t-1", "user-1");
 
@@ -196,7 +212,10 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       expect(cuttingCreate).toHaveBeenCalledTimes(1);
       const data = (cuttingCreate.mock.calls[0][0] as { data: Record<string, unknown> }).data;
       expect(data.cuttingType).toBe("Saw cut");
-      expect(Number(data.rate)).toBe(30); // cr-1: depthMm 100 <= 150, cr-2: 200 > 150
+      // next-depth-up: cr-2 (depthMm 200 >= 150, asc → first) → rate=45
+      expect(Number(data.rate)).toBe(45);
+      // lineTotal stored: qty=5 * rate=45 = 225.00
+      expect(Number(data.lineTotal)).toBe(225);
     });
   });
 

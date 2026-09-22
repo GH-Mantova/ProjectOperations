@@ -414,8 +414,35 @@ written) until 2026-09-04, and PR #1554 sat open on the difference. If you chang
 10.1 in the same PR - and note that adding a NEW lane outside `tests|docs` requires a CI gate
 proving the lane's boundary, the way CP-24 proves 05's.
 
-00 may merge docs-only and `sot/`-only PRs, queue/staging PRs, and anything not watcher-routed - via
+00 may merge docs-only and `sot/`-only PRs, and queue/staging PRs - via
 `pipeline-lib`: **`Assert-SmokedOrEscalate` then `Merge-Pr`**, never by hand.
+
+🔴🔴 **"NOT WATCHER-ROUTED" IS A NECESSARY CONDITION, NEVER A SUFFICIENT ONE, AND THIS
+SENTENCE SAID THE OPPOSITE UNTIL 2026-09-22.** `NOT_WATCHER_ROUTED_IS_NECESSARY_NOT_SUFFICIENT_V1`
+It read *"...and anything not watcher-routed"*, which authorises a merge `DOCTRINE.md` section 10.1
+step 2 **forbids**: a PR no watcher log names is hand-classified by `classifyPolicyFiles`, and any
+path outside `tests|docs` is **Marco’s** unless the PR is a station acting inside its own recorded
+lane (step 3’s exception, which is what this table classifies). The two documents were put to Marco
+on 2026-09-03 (breadcrumb `00-00-supervisor-2026-09-03-2238-...`, F2) and he ruled on 09-04; **the
+ruling landed in section 10.1 step 3 and this sentence was never narrowed to match it**, so the
+permissive half survived eighteen days in the file that is supposed to settle a capability dispute.
+
+[MEASURED] 2026-09-22T00:3xZ by Station 00 (scheduled) at `845e4720`: `#2065`
+(`scripts/pipeline/vm-git-guard.sh`) and `#2059` (`scripts/pipeline/status-sweep.ps1`) were both
+OPEN, CLEAN, **15/15 green**, unlabelled, and carried **0** hits from the section 10.1 step 1 prompt-log
+probe (POSITIVE control `PR #2040` → 1 hit with a real `marco:true` verdict; NEGATIVE control, a
+freshly minted needle → 0). Both are `scripts/`, i.e. outside `tests|docs` AND outside 00’s recorded
+`docs/` lane. **The retired clause licensed two out-of-lane merges on one board, and both PRs exist
+to repair this pipeline’s own instruments** - the class a station is most tempted to merge itself.
+
+⚠️ **Nothing is retired and no gate moves.** The three merge classes above are unchanged, section 10.1
+step 3’s station-lane exception is unchanged, and both merge gates above still bind. What is removed
+is only a clause that made a NECESSARY precondition read as a SUFFICIENT authorisation.
+⚠️ **Falsifying probe: the two readings above.** Re-run the prompt-log probe with both controls on any
+green unlabelled second-lane PR whose files sit outside `tests|docs`. If section 10.1 step 2 ever
+classifies such a PR as anything but Marco’s, this narrowing is wrong and must be re-measured.
+Found and landed by Station 00 2026-09-22T00:4xZ.
+
 ⚠️ The watcher **auto-merges docs PRs itself** under the `tests-docs` policy, so an unmerged docs PR
 is not automatically waiting on a human.
 

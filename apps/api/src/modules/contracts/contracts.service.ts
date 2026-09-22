@@ -283,7 +283,7 @@ export class ContractsService {
           plantLines: Array<{ qty: Prisma.Decimal | number; days: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
           equipLines: Array<{ qty: Prisma.Decimal | number; duration: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
           wasteLines: Array<{ qtyTonnes: Prisma.Decimal | number; tonRate: Prisma.Decimal | number; loads: Prisma.Decimal | number; loadRate: Prisma.Decimal | number }>;
-          cuttingLines: Array<{ qty: Prisma.Decimal | number; rate: Prisma.Decimal | number }>;
+          cuttingLines: Array<{ lineTotal: Prisma.Decimal | number }>;
         }>;
       } | null;
       clientQuotes: Array<{ costLines: Array<{ price: Prisma.Decimal | number }> }>;
@@ -305,7 +305,7 @@ export class ContractsService {
         for (const l of item.wasteLines) {
           lineTotal += Number(l.qtyTonnes) * Number(l.tonRate) + Number(l.loads) * Number(l.loadRate);
         }
-        for (const l of item.cuttingLines) lineTotal += Number(l.qty) * Number(l.rate);
+        for (const l of item.cuttingLines) lineTotal += Number(l.lineTotal);
         if (item.provisionalAmount) provisionalTotal += Number(item.provisionalAmount);
       }
       const total = lineTotal * (1 + markup / 100) + provisionalTotal;
@@ -1608,7 +1608,7 @@ export class ContractsService {
       const plant = item.plantLines.reduce((s, l) => s + Number(l.qty) * Number(l.days) * Number(l.rate), 0);
       const equip = item.equipLines.reduce((s, l) => s + Number(l.qty) * Number(l.duration) * Number(l.rate), 0);
       const waste = item.wasteLines.reduce((s, l) => s + Number(l.qtyTonnes) * Number(l.tonRate) + Number(l.loads) * Number(l.loadRate), 0);
-      const cutting = item.cuttingLines.reduce((s, l) => s + Number(l.qty) * Number(l.rate), 0);
+      const cutting = item.cuttingLines.reduce((s, l) => s + Number(l.lineTotal), 0);
       priceByItem.set(item.id, labour + plant + equip + waste + cutting);
     }
     const markup = await this.prisma.tenderEstimate

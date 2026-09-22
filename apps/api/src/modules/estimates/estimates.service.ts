@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { cuttingLineTotal } from "../tendering/cutting-line-pricing";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -1194,6 +1195,7 @@ export class EstimatesService {
         unit: dto.unit,
         comment: dto.comment ?? null,
         rate: new Prisma.Decimal(dto.rate),
+        lineTotal: cuttingLineTotal({ qty: dto.qty, rate: dto.rate }),
         sortOrder: dto.sortOrder ?? 0
       }
     });
@@ -1215,7 +1217,7 @@ export class EstimatesService {
   async updateCuttingLine(tenderId: string, itemId: string, lineId: string, dto: UpdateCuttingLineDto, actorId?: string) {
     const estimate = await this.requireEstimate(tenderId);
     this.ensureNotLocked(estimate);
-    await this.ensureCuttingLineInItem(itemId, lineId);
+    const existing = await this.ensureCuttingLineInItem(itemId, lineId);
     const data: Prisma.EstimateCuttingLineUpdateInput = {};
     if (dto.cuttingType !== undefined) data.cuttingType = dto.cuttingType;
     if (dto.equipment !== undefined) data.equipment = dto.equipment;
@@ -1228,6 +1230,13 @@ export class EstimatesService {
     if (dto.comment !== undefined) data.comment = dto.comment;
     if (dto.rate !== undefined) data.rate = new Prisma.Decimal(dto.rate);
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    // Recompute lineTotal whenever qty or rate is in the patch, from merged values.
+    // A supplied rate is always stored as given — never re-resolved.
+    if (dto.qty !== undefined || dto.rate !== undefined) {
+      const mergedQty = dto.qty !== undefined ? dto.qty : Number(existing.qty);
+      const mergedRate = dto.rate !== undefined ? dto.rate : Number(existing.rate);
+      data.lineTotal = cuttingLineTotal({ qty: mergedQty, rate: mergedRate });
+    }
     await this.prisma.estimateCuttingLine.update({ where: { id: lineId }, data });
     await this.auditService.write({
       actorId,
@@ -1260,6 +1269,7 @@ export class EstimatesService {
   private async ensureCuttingLineInItem(itemId: string, lineId: string) {
     const line = await this.prisma.estimateCuttingLine.findUnique({ where: { id: lineId } });
     if (!line || line.itemId !== itemId) throw new NotFoundException("Cutting line not found on this item.");
+    return line;
   }
 
   /**
@@ -1402,7 +1412,7 @@ export class EstimatesService {
       const equip = round2(item.equipLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.duration) * toNumber(l.rate), 0));
       const plant = round2(item.plantLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.days) * toNumber(l.rate), 0));
       const waste = round2(item.wasteLines.reduce((sum: number, l) => sum + toNumber(l.qtyTonnes) * toNumber(l.tonRate) + (l.loads ?? 0) * toNumber(l.loadRate), 0));
-      const cutting = round2(item.cuttingLines.reduce((sum: number, l) => sum + toNumber(l.qty) * toNumber(l.rate), 0));
+      const cutting = round2(item.cuttingLines.reduce((sum: number, l) => sum + toNumber(l.lineTotal), 0));
       const subtotal = round2(labour + equip + plant + waste + cutting);
       const markup = toNumber(item.markup);
       const price = round2(subtotal * (1 + markup / 100));

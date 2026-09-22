@@ -8387,6 +8387,18 @@
             "count"
           ]
         },
+        "lineTotal": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
         "sortOrder": {
           "role": "measure-candidate",
           "label": null,

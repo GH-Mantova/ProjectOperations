@@ -707,7 +707,7 @@ export class ProjectsService {
           unit: line.unit,
           sourceEstimateLineId: line.id
         });
-        estimateTotal += Number(line.qty) * Number(line.rate);
+        estimateTotal += Number(line.lineTotal);
       }
     }
 

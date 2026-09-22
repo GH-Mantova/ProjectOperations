@@ -11,6 +11,7 @@ import {
   UpdateScopeItemDto
 } from "./dto/scope-of-works.dto";
 import { assertRowTypeForDiscipline } from "./scope-redesign.service";
+import { priceCuttingLine } from "./cutting-line-pricing";
 import { getScopeCardDefault } from "./scope/card-defaults";
 import {
   buildRateMaps,
@@ -793,28 +794,19 @@ export class ScopeOfWorksService {
     // remaining record of what they were and what they did.
 
     // 6. Cutting line — if lm + equipment set.
+    // CUTTING_ONE_TOTAL_V1 (scopecards-s7): private row-picker replaced by
+    // priceCuttingLine, which calls resolveCuttingRate (next-depth-up rule,
+    // Marco's ruling 2026-09-22). On null, rate=0 / lineTotal=0 (today's miss path).
     if (scopeItem.lm && Number(scopeItem.lm) > 0 && scopeItem.cuttingEquipment) {
       const equipment = scopeItem.cuttingEquipment;
       const elevation = scopeItem.elevation ?? "Floor";
       const material = scopeItem.materialType ?? "Concrete";
       const depthMm = scopeItem.depthMm ?? 150;
-      // rates-consumers SLICE 2 — range query reproduced via listRates.
-      // The original findFirst used depthMm: { lte: depthMm } + orderBy
-      // desc (deepest at-or-below match). resolveRate uses exact key match
-      // so it cannot reproduce this semantic. We use listRates to get all
-      // cutting rows and implement the range logic in-memory, preserving
-      // the exact same pick — deepest active row whose depthMm ≤ requested.
-      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate snapshots apply.
-      const allCuttingRates = await this.rateResolver.listRates("cutting", { tenderId });
-      const cuttingMatch = allCuttingRates
-        .filter(
-          (r) =>
-            r.keys["equipment"] === equipment &&
-            r.keys["elevation"] === elevation &&
-            r.keys["material"] === material &&
-            Number(r.keys["depthMm"]) <= depthMm
-        )
-        .sort((a, b) => Number(b.keys["depthMm"]) - Number(a.keys["depthMm"]))[0] ?? null;
+      const qty = Number(scopeItem.lm);
+      const priced = await priceCuttingLine(
+        { rateResolver: this.rateResolver },
+        { kind: "saw-cut", equipment, elevation, material, depthMm, qty, tenderId }
+      );
       await this.prisma.estimateCuttingLine.create({
         data: {
           itemId: item.id,
@@ -823,14 +815,18 @@ export class ScopeOfWorksService {
           elevation,
           material,
           depthMm,
-          qty: toDecimal(Number(scopeItem.lm)) ?? new Prisma.Decimal(0),
+          qty: toDecimal(qty) ?? new Prisma.Decimal(0),
           unit: "lm",
-          rate: cuttingMatch ? new Prisma.Decimal(cuttingMatch.value) : new Prisma.Decimal(0)
+          rate: priced ? priced.rate : new Prisma.Decimal(0),
+          lineTotal: priced ? priced.lineTotal : new Prisma.Decimal(0)
         }
       });
     }
 
     // 7. Core hole line — if diameter + qty set.
+    // CUTTING_ONE_TOTAL_V1 (scopecards-s7): priceCuttingLine replaces the
+    // resolveRate call. A generated core hole carries no depth and no elevation;
+    // through the core-hole steps that is today's figure exactly.
     if (
       scopeItem.coreHoleQty &&
       Number(scopeItem.coreHoleQty) > 0 &&
@@ -838,25 +834,20 @@ export class ScopeOfWorksService {
       scopeItem.coreHoleDiameterMm > 0
     ) {
       const diameterMm = scopeItem.coreHoleDiameterMm;
-      // rates-consumers SLICE 2 — resolveRate replaces findUnique.
-      // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId so locked-rate
-      // snapshots are applied when this tender has a TenderRateSet.
-      // resolveRate throws NotFoundException on miss; tolerate as rate=0.
-      let coreHoleRateValue = 0;
-      try {
-        const resolvedCoreHole = await this.rateResolver.resolveRate("core-hole", { diameterMm }, { tenderId });
-        coreHoleRateValue = resolvedCoreHole.value;
-      } catch {
-        // Miss tolerated: no rate for this diameter → stays 0.
-      }
+      const qty = Number(scopeItem.coreHoleQty);
+      const priced = await priceCuttingLine(
+        { rateResolver: this.rateResolver },
+        { kind: "core-hole", diameterMm, qty, tenderId }
+      );
       await this.prisma.estimateCuttingLine.create({
         data: {
           itemId: item.id,
           cuttingType: "Core hole",
           diameterMm,
-          qty: toDecimal(Number(scopeItem.coreHoleQty)) ?? new Prisma.Decimal(0),
+          qty: toDecimal(qty) ?? new Prisma.Decimal(0),
           unit: "each",
-          rate: new Prisma.Decimal(coreHoleRateValue)
+          rate: priced ? priced.rate : new Prisma.Decimal(0),
+          lineTotal: priced ? priced.lineTotal : new Prisma.Decimal(0)
         }
       });
     }
@@ -1632,7 +1623,7 @@ export class ScopeOfWorksService {
         (sum, l) => sum + Number(l.qtyTonnes) * Number(l.tonRate) + Number(l.loads) * Number(l.loadRate),
         0
       );
-      const cutting = item.cuttingLines.reduce((sum, l) => sum + Number(l.qty) * Number(l.rate), 0);
+      const cutting = item.cuttingLines.reduce((sum, l) => sum + Number(l.lineTotal), 0);
       const subtotal = labour + plant + equip + waste + cutting;
       const markup = subtotal * (Number(item.markup) / 100);
       map.set(item.id, subtotal + markup);

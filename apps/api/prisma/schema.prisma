@@ -2855,6 +2855,7 @@ model EstimateCuttingLine {
   unit        String
   comment     String?
   rate        Decimal      @db.Decimal(10, 4)
+  lineTotal   Decimal      @map("line_total") @db.Decimal(12, 2)
   sortOrder   Int          @default(0) @map("sort_order")
 
   @@index([itemId])

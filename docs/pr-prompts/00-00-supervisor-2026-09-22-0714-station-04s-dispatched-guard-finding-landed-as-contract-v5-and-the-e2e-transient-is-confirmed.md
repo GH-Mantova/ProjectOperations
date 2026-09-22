@@ -340,6 +340,94 @@ becomes 00’s work after all. ⚠️ **Scope:** this is measured about `#2071` 
 claim that every behind PR on this board self-heals.
 
 
+### F8 — `#2071`’s `do-not-merge` label was REMOVED at 07:40:52Z while a genuine watcher `marco:true` verdict stands. **Unlabelled does NOT release it to a scheduled run.** `UNLABELLED_DOES_NOT_OVERRIDE_WATCHER_ROUTING_V1`
+
+This happened **inside this run**, after the board reading above was taken, and the next scheduled
+00 run meets it in roughly twenty minutes. It is written here rather than left in chat because chat
+is not a durable channel and no other agent reads it.
+
+**[MEASURED] 2026-09-22T07:4xZ.** The label read came from a **list** response first, which is the
+LL-47 form DOCTRINE §9.4 forbids; I re-read it **per-PR** before believing it, and then took the
+event history:
+
+```
+gh pr view 2071 --json labels          -> {"labels":[]}          (per-PR, twice, stable)
+gh api .../issues/2071/events          -> 2026-09-22T02:43:24Z labeled   do-not-merge by GH-Mantova
+                                          2026-09-22T07:40:52Z unlabeled do-not-merge by GH-Mantova
+```
+
+POSITIVE control that the label reader works: `#2076`, which genuinely carries none, also returns
+`[]`; and the same reader returned the populated `do-not-merge` object for `#2071` at 07:2xZ, so
+this is a real transition and not a failed read.
+
+🔴 **The watcher routing verdict is REAL, and it is not the timeout string that can masquerade as
+one.** §10.3 records that a timeout is written byte-identically to a policy routing; this is not
+that. [MEASURED] over `processed\pr-*.log` (prompt logs only, `rev-*` excluded; POSITIVE control
+`PR #2040` → 1, NEGATIVE control `PR #999992` → 0):
+
+```
+pr-scopecards-s6-one-cutting-surface-ready.md.log ::
+  PR #2071 opened - https://github.com/GH-Mantova/ProjectOperations/pull/2071
+  [watcher] merge result for PR #2071: {"ok":false,"marco":true,"fixLane":false,
+                        "reason":"escalates:true - held for Marco, labelled do-not-merge"}
+```
+
+The reason names a **policy decision**, not a timeout. And §10.1’s `PRNUMBER_SCRAPED_FROM_PROSE_V1`
+cross-check passes: the log carrying the verdict also carries that prompt’s own `PR #2071 opened`
+line for the **same** number, so this is a routing and not a number scraped out of agent prose.
+
+🔴 **So the label coming off changes nothing for a SCHEDULED run, and the doctrine names this exact
+case.** `STATION-CAPABILITIES.md` §5: the watcher’s routing is *"a human-review gate, separate from
+the label. **Not overridden by green, unlabelled, or a verified diff — only by an explicit
+instruction from Marco naming that PR.**"* DOCTRINE §10.1 step 1 runs first and wins. A scheduled
+run cannot see chat (§10.2’s last bullet), so it cannot hold such an instruction — **therefore no
+scheduled run may merge `#2071`, however green it goes.**
+
+⚠️ **The likely innocent explanation, and it points the same way.** `.arming-log.txt` records
+`2026-09-22T02:13:25Z ARMED pr-scopecards-s6-one-cutting-surface escalates=true
+actor=station-00.interactive-0004 by=Marco@LAPTOP-E6NHU4E4`. Removing the label is how Marco
+releases a PR to his **supervised** lane (§10.2.1) — a lane that has him live in the chat and writes
+a receipt. That lane is not this one.
+
+🔴 **And a second actor is demonstrably mid-mutation on it right now**, which is BOARD DRIVING
+condition 3’s stop on its own terms. [MEASURED] the head moved three times in six minutes
+(`06b44d7a` → `4304d685` → `278d15ae` → `4e33ff02`), and the CI runs on `278d15ae` came back
+**`cancelled`** for both `CI` and `Tendering Browser Smoke` because the head moved under them.
+
+⚠️ **CP-26 will not save a later run from this.** [MEASURED] there is **no** merge-approval receipt
+for `#2071` (0 matches across **165** receipts on `origin/main`), and CP-26 was `pending` at the
+time of writing on a head that keeps moving. Once it settles on an unlabelled PR with no receipt it
+should report `[RELEASED_NO_RECEIPT]`, which §9.4 calls a real finding — but the gate is armed by
+**labelling**, not by the diff (§10.2.1’s correction), and that is the standing escalation
+`needs-marco/nothing-verifies-a-merge-approval-receipt-2026-09-07.md`. **Do not treat a green CP-26
+here as a release.**
+
+**DISPOSITION: ESCALATED — to Marco, and the question is narrow.** Everything a station may do is
+done: the PR is open, driven, and its only non-label red was confirmed transient (F2). The question
+is his alone because only he knows which lane he intended to release it to.
+
+> **`#2071` — you removed `do-not-merge` at 07:40:52Z. The watcher’s `marco:true` routing still
+> stands, so no scheduled run will merge it, and it will sit open until you say otherwise. Which do
+> you want?**
+>
+> **(a) COMPLETE-AND-ADDITIVE — you merge it yourself, or your supervised lane does, with a
+> `docs/decisions/merge-approvals/2071.md` receipt.** Solves it now (the PR lands) and in future
+> (the receipt makes the lane identifiable from the repo alone, which is the constraint §10.2.1
+> puts on that lane), and damages no data entry. **Both halves pass.**
+> **(b) Tell a scheduled run it may merge this specific PR**, by naming `#2071` in an instruction
+> that reaches the repo — §5’s only stated override. Immediate, but fails the FUTURE half: an
+> instruction in chat is invisible to a scheduled run, so it would have to be committed somewhere,
+> and no channel for that exists today.
+> **(c) Re-apply the label until you are ready.** Immediate and safe, damages nothing — but fails
+> the COMPLETE half: it parks the work rather than landing it.
+
+⚠️ **Falsifying probe for the whole finding:** re-read `gh pr view 2071 --json labels` per-PR and
+the `processed\pr-*.log` verdict. If the label is back, (c) was taken and this is discharged; if a
+`2071.md` receipt appears under `docs/decisions/merge-approvals/`, (a) was taken. **If a scheduled
+run ever merges it with the verdict still standing and no receipt, that is the RULE 2 breach this
+finding exists to prevent** — and it is why the finding is in the breadcrumb rather than in chat.
+
+
 ## WHAT I DID NOT DO
 
 - **I did not merge anything, and I did not touch `#2071` at all this run.** It carries

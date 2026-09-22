@@ -28,6 +28,11 @@ $ErrorActionPreference = "Continue"
 $Repo = "C:\ProjectOperations2"
 $WatcherClone = "C:\po-watcher\ProjectOperations"
 $Queue = Join-Path $Repo "docs\pr-prompts"
+# Section 4C quotes the body of the freshest *state*.md only while it is younger than this.
+# Past it the line is tagged [STALE] and the body is withheld -- see the block at section 4C for
+# the measurement that motivated it. Deliberately a named constant, not a literal, so the next
+# reader can see there IS a threshold and what it is.
+$StateSummaryMaxAgeDays = 3
 Set-Location $Repo
 
 function Section($t) { Write-Host ""; Write-Host ("==================== " + $t + " ====================") }
@@ -491,11 +496,31 @@ if ($stateFiles.Count -gt 0) {
   # UTC + explicit Z, same reason as section 4B above. This is the line a station reads to decide
   # whether the last station summary is worth trusting, so a ten-hour flattery here is the single
   # most consequential local-time render in the sweep.
-  Line "FILE" ("freshest station summary: " + $fresh.Name + "  (" + $fresh.LastWriteTimeUtc.ToString("MM-dd HH:mm") + "Z) -- a SNAPSHOT by whoever last ran; verify claims against GitHub:")
-  Get-Content $fresh.FullName -Tail 22 | Where-Object { $_ -match '\S' } | ForEach-Object {
-    $t = ($_ -replace '[^\x20-\x7E]', ' ')
-    if ($t.Length -gt 118) { $t = $t.Substring(0, 118) }
-    Line "FILE" ("   | " + $t)
+  #
+  # AGE GATE, added 2026-09-21 (Station 04 finding F6, breadcrumb
+  # 00-04-scanner-2026-09-21-1810-...-quoted-into-every-sweep.md; landed by Station 00).
+  # Quoting the body is only defensible while the body is recent. MEASURED 2026-09-21T18:1xZ:
+  # docs/pr-prompts/queue-watch-state.md was 21 days old, UNTRACKED and UNIGNORED (so nothing
+  # will ever commit or remove it), and this block printed ~20 lines of its body into EVERY
+  # station's preflight -- naming an open board of #1443 #1450 #1457 #1460 when the live board
+  # was #2042 #2044 #2047 #2049 #2051. Every quoted number was three weeks dead. The [FILE] tag
+  # and the "verify against GitHub" caveat are honest, but STATION-CAPABILITIES.md section 1 is
+  # that a stale instruction reads exactly like a current one, and this was twenty lines of
+  # confident stale board state printed ABOVE the [LIVE] section that contradicts it.
+  # So past $StateSummaryMaxAgeDays the body is NOT quoted and the line is tagged [STALE] --
+  # which the legend already defines as "proven out of date, NEVER repeat it as current".
+  # The file is still NAMED and DATED, so nothing is hidden; only the misleading body is withheld.
+  $stateAgeDays = [math]::Round((((Get-Date).ToUniversalTime()) - $fresh.LastWriteTimeUtc).TotalDays, 1)
+  $freshStamp   = $fresh.LastWriteTimeUtc.ToString("MM-dd HH:mm") + "Z"
+  if ($stateAgeDays -gt $StateSummaryMaxAgeDays) {
+    Line "STALE" ("no station summary younger than " + $StateSummaryMaxAgeDays + " days -- freshest is " + $fresh.Name + " (" + $freshStamp + ", " + $stateAgeDays + " days old); body deliberately NOT quoted. Read section 1 for the live board.")
+  } else {
+    Line "FILE" ("freshest station summary: " + $fresh.Name + "  (" + $freshStamp + ", " + $stateAgeDays + "d old) -- a SNAPSHOT by whoever last ran; verify claims against GitHub:")
+    Get-Content $fresh.FullName -Tail 22 | Where-Object { $_ -match '\S' } | ForEach-Object {
+      $t = ($_ -replace '[^\x20-\x7E]', ' ')
+      if ($t.Length -gt 118) { $t = $t.Substring(0, 118) }
+      Line "FILE" ("   | " + $t)
+    }
   }
 } else { Line "FILE" "no station summary/state file found" }
 

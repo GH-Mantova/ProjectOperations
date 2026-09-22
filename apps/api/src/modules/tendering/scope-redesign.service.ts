@@ -3,6 +3,7 @@ import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
 import { ChargeStepPricingService } from "../rates/charge-step-pricing.service";
+import { cuttingLineTotal } from "./cutting-line-pricing";
 import type { Discipline } from "./dto/scope-of-works.dto";
 import { DISCIPLINES } from "./dto/scope-of-works.dto";
 import {
@@ -1730,11 +1731,10 @@ export class ScopeRedesignService {
       const rate = allOtherRates.find((r) => r.rowId === dto.otherRateId) ?? null;
       if (!rate) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityEach ?? dto.quantityLm ?? 1);
-      const total = rate.value * qty;
       return {
         ratePerM: null,
         ratePerHole: null,
-        lineTotal: new Prisma.Decimal(total.toFixed(2))
+        lineTotal: cuttingLineTotal({ qty, rate: rate.value })
       };
     }
 
@@ -1752,11 +1752,10 @@ export class ScopeRedesignService {
       }, this.chargeStepPricing);
       if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityLm ?? 0);
-      const total = qty * resolved.finalRate + shiftLoading;
       return {
         ratePerM: new Prisma.Decimal(resolved.finalRate.toFixed(4)),
         ratePerHole: null,
-        lineTotal: new Prisma.Decimal(total.toFixed(2))
+        lineTotal: cuttingLineTotal({ qty, rate: resolved.finalRate, addOn: shiftLoading })
       };
     }
 
@@ -1786,23 +1785,20 @@ export class ScopeRedesignService {
     }
     const qty = dto.quantityEach ?? 0;
     let finalPerHoleRate: number;
-    let total: number;
     if (this.chargeStepPricing) {
       // Step path: ratePerHole already includes depth rounding, elevation, and method.
       // Only multiply by qty (holes count).
       finalPerHoleRate = resolved.ratePerHole;
-      total = finalPerHoleRate * qty + shiftLoading;
     } else {
       // Unit-test compat path: apply depth/elevation/method here.
       // CUTTING_RATE_CORRECTIONS_V1 — D1: depth rounding and minimum.
       const depthUnits = Math.max(1, Math.round(depthMm / 10));
       finalPerHoleRate = resolved.ratePerHole * depthUnits * resolved.elevationMultiplier * resolved.methodMultiplier;
-      total = finalPerHoleRate * qty + shiftLoading;
     }
     return {
       ratePerM: null,
       ratePerHole: new Prisma.Decimal(finalPerHoleRate.toFixed(4)),
-      lineTotal: new Prisma.Decimal(total.toFixed(2))
+      lineTotal: cuttingLineTotal({ qty, rate: finalPerHoleRate, addOn: shiftLoading })
     };
   }
 
@@ -1843,7 +1839,7 @@ export class ScopeRedesignService {
         (sum, l) => sum + Number(l.qtyTonnes) * Number(l.tonRate) + Number(l.loads) * Number(l.loadRate),
         0
       );
-      const cutting = item.cuttingLines.reduce((sum, l) => sum + Number(l.qty) * Number(l.rate), 0);
+      const cutting = item.cuttingLines.reduce((sum, l) => sum + Number(l.lineTotal), 0);
       // Per-item subtotal only — markup applied at the discipline summary
       // level so the grand total reflects tender-level markup.
       map.set(item.id, labour + plant + equip + waste + cutting);

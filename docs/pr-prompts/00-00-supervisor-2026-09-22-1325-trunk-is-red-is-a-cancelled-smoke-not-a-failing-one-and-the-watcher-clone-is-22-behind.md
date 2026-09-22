@@ -279,3 +279,82 @@ at `744abe54`, not from the PR page.
 - **Did not fix `status-sweep.ps1` (F1) in this PR.** A code change to the instrument every station
   opens with should not ride in on a breadcrumb sweep.
 - **Did not touch Azure, Entra or SharePoint**, and did not write production data.
+
+---
+
+## ADDENDUM 2026-09-22T13:35Z @ `3b241738` — F2 IS TWO DIFFERENT THINGS, AND THE COMMON ONE IS NOT A DEFECT
+
+`SMOKE_CANCELLATION_IS_PENDING_EVICTION_V1`
+
+Written after the body above was merged (#2085), because a **third** cancellation occurred during
+this run and it carries the discriminator the body did not have. The body's F2 offered two readings —
+*"concurrency fires on pushes regardless of the expression"* or *"two cancellations coincided"* —
+and **both are wrong.** The dispatch to Station 04 below is narrowed accordingly.
+
+**[MEASURED] The discriminator is `jobs`, and it separates the three cleanly.**
+`gh run view <id> -R GH-Mantova/ProjectOperations --json createdAt,updatedAt,conclusion,jobs`:
+
+| run | created | cancelled | jobs | what actually happened |
+|---|---|---|---|---|
+| 35704419954 | 08:22:09Z | 08:35:27Z | **`[]`** | never started — evicted 2 s after run 35705634836 was created at 08:35:25Z |
+| 35732962684 | 13:21:45Z | 13:28:06Z | **`[]`** | never started — evicted 2 s after run 35733645143 was created at 13:28:04Z |
+| 35727963197 | 12:34:06Z | 12:42:23Z | **1 job, `tendering-e2e`, ran 7m55s, `The operation was canceled.`** | it RAN and was killed mid-flight, with no successor run queued |
+
+**Two of the three never executed a single job.** A run with `jobs: []` did not fail, did not time
+out and did not break — it sat *pending* in the concurrency group
+`Tendering Browser Smoke-refs/heads/main` and was evicted when a newer run queued behind it.
+`cancel-in-progress` is FALSE for push events, which is precisely why: a false setting makes the
+incoming run **wait** rather than cancel, and GitHub holds at most one pending run per group, so the
+one already waiting is dropped. Main is taking pushes faster than a ~13-minute smoke completes, so
+this will keep happening. **It is the designed behaviour of a serialised workflow under a fast push
+rate, not a defect and not work.**
+
+The third row is the real anomaly and is unchanged: a job that genuinely ran for 7m55s against a
+60-minute timeout, cancelled with nothing queued behind it.
+
+**[MEASURED] So F1 is sharper than the body states.** The `TRUNK IS RED` headline on `49262485` was
+produced by a run in the *pending-evicted* class on one occasion and the *killed-mid-flight* class on
+another — and the sweep cannot tell them apart, because it reads `conclusion` and never asks `jobs`.
+On a routine eviction the headline is not merely imprecise, it is reporting a code emergency for a
+run that never compiled a line.
+
+**[MEASURED] Trunk at `3b241738` has no failing job** — `CI` and `CodeQL` in_progress, `Deploy` and
+`Tendering Browser Smoke` pending, nothing failed. Still not a claim that it is green.
+
+⚠️ **Instrument note, recorded because it nearly ended this addendum:** immediately after the reads
+above, `gh run list --workflow "Tendering Browser Smoke" --branch main --limit 3` returned three
+runs with ids **~1.1 million lower** (`34565338245`, `34562808890`, `34560314487`), all `success` —
+i.e. it served old runs at the top of a list ordered newest-first, two minutes after the same query
+had returned the current ones. Read as current that is a clean "smoke is green on main" and it is
+**not true of any of the last three runs**. The per-commit form with the FULL SHA (§9.4) was
+unaffected and is what the rows above use. **Falsifying probe:** run the two forms back to back and
+compare the ids; if `--branch main --limit 3` ever disagrees with `--commit <full sha>` about the
+newest run, do not use the branch form.
+
+### F2 — REVISED DISPOSITION
+
+**DISPATCHED to Station 04 (Scanner), narrowed.** The 14-day audit still stands, but the question is
+no longer *"do cancellations coincide with a later run?"* — for the `jobs: []` class the answer is
+measured and YES, and those rows should be **excluded from the count, not investigated.**
+
+**Station 04: partition every cancelled `Tendering Browser Smoke` run on main over 14 days by
+whether `jobs` is empty.**
+
+- `jobs: []` ⇒ pending eviction. Expected. Count them, and report the RATE — if a large share of
+  main pushes never get a smoke run at all, that is a coverage finding worth its own escalation, and
+  it is a completely different finding from a red trunk.
+- `jobs` non-empty ⇒ a run that was killed mid-flight. **That is the class worth a log.** Today it
+  has exactly one member (`35727963197`, 12:34Z). If 14 days turns up only that one, it is a
+  one-off Actions event and belongs to Marco; if it recurs, it is a real defect.
+
+**Falsifying probe for this addendum: the `jobs` column in the table above.** If a cancelled run
+with `jobs: []` is ever found that does NOT have a successor run created within a few seconds of its
+cancellation, the eviction mechanism is not what is happening and this must be re-measured.
+
+### F1 — REVISED DISPOSITION
+
+**Still DEFERRED**, and the deferred fix is now a better-specified one: `status-sweep.ps1` should
+not count `cancelled` as `failed` at all, and where it does surface a cancellation it should ask
+`jobs` so it can say *"pending-evicted, never ran"* rather than `TRUNK IS RED`. Same reason for
+deferring: it is a code change to the instrument every station opens with, and it deserves its own
+PR rather than riding a breadcrumb sweep.

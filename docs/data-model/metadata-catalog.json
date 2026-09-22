@@ -25331,6 +25331,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "chargeStepsSnapshot": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,

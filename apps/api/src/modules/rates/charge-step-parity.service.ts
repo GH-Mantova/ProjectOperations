@@ -3,8 +3,8 @@
 // Charge-step parity harness — first slice of the rates-parity-gate cluster.
 //
 // For every priced line it is handed, the harness:
-//   1. Loads the RateTable matching the slug (cached per slug within the
-//      service instance — one DB round-trip per table, not one per line).
+//   1. Loads the RateTable matching the slug (via shared ChargeStepPricingService
+//      loader — one loader, one DB round-trip per table, not one per line).
 //   2. Evaluates the stored chargeSteps with evaluateSteps against the matched
 //      row's cells and any declared lineFields.
 //   3. Compares the step total to the value the current pricing path resolved.
@@ -22,36 +22,34 @@
 //     StepArithmeticTypeError) is caught, logged as a disagreement of its own
 //     kind, and the method returns normally — the caller's resolved price is
 //     unaffected.
-//   - chargeSteps for each table are cached per slug so a request that prices
-//     many lines for the same table pays one DB round-trip, not one per line.
+//   - chargeSteps for each table are cached per slug (in ChargeStepPricingService)
+//     so a request that prices many lines for the same table pays one DB
+//     round-trip, not one per line.
 //
 // OBSERVATION WINDOW: not yet started. This file ships the harness; the soak
 // begins once the PR is merged and deployed. No production figures are
 // available from the code-writer worktree.
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { evaluateSteps } from "./rate-step-evaluator";
 import type { ChargeStep } from "./rate-step-evaluator";
 import { readStoredLineFields } from "./rate-tables.service";
 import { buildStepValues } from "@project-ops/config/charge-step-semantics";
 import type { RateLineField, StepValueColumn } from "@project-ops/config/charge-step-semantics";
+import { ChargeStepPricingService } from "./charge-step-pricing.service";
 
 // ---------------------------------------------------------------------------
-// Internal cache structure
+// Internal cache structure (kept for backward-compatibility with unit tests
+// that construct ChargeStepParityService directly with a PrismaService mock.
+// In production (NestJS DI context) the shared loader in ChargeStepPricingService
+// is used instead — one loader, one DB path.)
 // ---------------------------------------------------------------------------
 
-/**
- * What the harness caches per table slug.
- * `steps: null` means the table has no chargeSteps — checkParity returns
- * immediately without logging (there is nothing to compare).
- */
 interface CachedTable {
   id: string;
   steps: ChargeStep[] | null;
-  /** KEY + VALUE + INFO columns — used to build the values map. */
   columns: StepValueColumn[];
-  /** KEY columns only — used for row matching. */
   keyColumnIds: Set<string>;
   lineFields: RateLineField[];
 }
@@ -65,13 +63,23 @@ export class ChargeStepParityService {
   private readonly logger = new Logger(ChargeStepParityService.name);
 
   /**
-   * Per-slug cache for the table's steps, columns, and lineFields.
-   * Safe as a class-level map (singleton service): step lists and column
-   * definitions change only via admin actions, not during a pricing run.
+   * Per-slug cache — used only when pricingService is unavailable (unit-test
+   * path). In NestJS context the cache lives in ChargeStepPricingService.
    */
   private readonly tableCache = new Map<string, CachedTable>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  /**
+   * In NestJS DI context: both prisma AND pricingService are injected.
+   * The shared loader in pricingService is used for loadTable / findMatchedCells.
+   *
+   * In unit tests: only prisma is passed (second arg absent or prisma as never).
+   * The legacy private loadTable / findMatchedCells fall back to the prisma arg.
+   * This keeps all existing tests passing without modification.
+   */
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly pricingService?: ChargeStepPricingService
+  ) {}
 
   /**
    * RATE_PARITY_HARNESS_V1 — public entry point.
@@ -115,48 +123,93 @@ export class ChargeStepParityService {
     tenderId: string | undefined
   ): Promise<void> {
     // 1. Load (and cache) the table.
-    let cached: CachedTable;
-    try {
-      cached = await this.loadTable(tableSlug);
-    } catch (err) {
-      this.logger.warn({
-        event: "charge-step-parity-load-error",
-        tableSlug,
-        tenderId,
-        keys,
-        err: err instanceof Error ? err.message : String(err)
-      });
-      return;
-    }
-
-    if (!cached.steps) {
-      // No charge steps configured on this table — nothing to compare.
-      return;
-    }
-
-    // 2. Find the matched row's cells. Legacy slugs have no RateTable rows;
-    //    the cells map will be null and numeric-literal-only steps still work.
+    // In NestJS context: delegate to ChargeStepPricingService (shared loader).
+    // In unit-test context (pricingService absent): use the local loader.
+    let tableId: string;
+    let steps: ChargeStep[] | null;
+    let columns: StepValueColumn[];
+    let lineFields: RateLineField[];
     let cells: Record<string, unknown> | null;
-    try {
-      cells = await this.findMatchedCells(cached, keys);
-    } catch (err) {
-      this.logger.warn({
-        event: "charge-step-parity-row-lookup-error",
-        tableSlug,
-        tenderId,
-        keys,
-        err: err instanceof Error ? err.message : String(err)
-      });
-      return;
+
+    if (this.pricingService) {
+      // Production path — shared loader in ChargeStepPricingService.
+      let cached: Awaited<ReturnType<ChargeStepPricingService["loadTable"]>>;
+      try {
+        cached = await this.pricingService.loadTable(tableSlug);
+      } catch (err) {
+        this.logger.warn({
+          event: "charge-step-parity-load-error",
+          tableSlug,
+          tenderId,
+          keys,
+          err: err instanceof Error ? err.message : String(err)
+        });
+        return;
+      }
+
+      if (!cached.steps) return;
+
+      try {
+        cells = await this.pricingService.findMatchedCells(cached, keys);
+      } catch (err) {
+        this.logger.warn({
+          event: "charge-step-parity-row-lookup-error",
+          tableSlug,
+          tenderId,
+          keys,
+          err: err instanceof Error ? err.message : String(err)
+        });
+        return;
+      }
+
+      tableId = cached.id;
+      steps = cached.steps;
+      columns = cached.columns;
+      lineFields = cached.lineFields;
+    } else {
+      // Unit-test path — local loader (backward compat with existing tests).
+      let legacyCached: CachedTable;
+      try {
+        legacyCached = await this.loadTable(tableSlug);
+      } catch (err) {
+        this.logger.warn({
+          event: "charge-step-parity-load-error",
+          tableSlug,
+          tenderId,
+          keys,
+          err: err instanceof Error ? err.message : String(err)
+        });
+        return;
+      }
+
+      if (!legacyCached.steps) return;
+
+      try {
+        cells = await this.findMatchedCells(legacyCached, keys);
+      } catch (err) {
+        this.logger.warn({
+          event: "charge-step-parity-row-lookup-error",
+          tableSlug,
+          tenderId,
+          keys,
+          err: err instanceof Error ? err.message : String(err)
+        });
+        return;
+      }
+
+      tableId = legacyCached.id;
+      steps = legacyCached.steps;
+      columns = legacyCached.columns;
+      lineFields = legacyCached.lineFields;
     }
 
     // 3. Build the values map using the shared buildStepValues function —
     //    exactly the same function the editor preview calls, so the values
     //    map is identical to what the editor used when the rule was authored.
     const values = buildStepValues(
-      cached.columns,
+      columns,
       cells,
-      cached.lineFields
+      lineFields
       // lineValues omitted — the harness has no per-line estimator input.
       // A line field with no sample is absent from the map; evaluateSteps
       // handles it as a missing-operand issue, not a throw.
@@ -167,7 +220,7 @@ export class ChargeStepParityService {
     let divergeAtStepIndex: number | null = null;
 
     try {
-      const evaluation = evaluateSteps(cached.steps, values);
+      const evaluation = evaluateSteps(steps, values);
       stepTotal = evaluation.total;
 
       if (stepTotal === null) {
@@ -177,7 +230,7 @@ export class ChargeStepParityService {
         this.logger.warn({
           event: "charge-step-parity-step-null-total",
           tableSlug,
-          tableId: cached.id,
+          tableId,
           tenderId,
           keys,
           resolvedValue,
@@ -207,7 +260,7 @@ export class ChargeStepParityService {
       this.logger.warn({
         event: "charge-step-parity-eval-threw",
         tableSlug,
-        tableId: cached.id,
+        tableId,
         tenderId,
         keys,
         resolvedValue,
@@ -223,7 +276,7 @@ export class ChargeStepParityService {
       this.logger.log({
         event: "charge-step-parity-agree",
         tableSlug,
-        tableId: cached.id,
+        tableId,
         tenderId
       });
     } else {
@@ -232,7 +285,7 @@ export class ChargeStepParityService {
       this.logger.warn({
         event: "charge-step-parity-disagree",
         tableSlug,
-        tableId: cached.id,
+        tableId,
         tenderId,
         keys,
         resolvedValue,
@@ -242,11 +295,11 @@ export class ChargeStepParityService {
     }
   }
 
-  /**
-   * Load (and cache) the table data for a given slug.
-   * Returns a CachedTable where `steps` is null when the table has no steps.
-   * @throws When the DB query itself fails — the caller catches this.
-   */
+  // ---------------------------------------------------------------------------
+  // Legacy loader (unit-test compatibility path — used when ChargeStepPricingService
+  // is not injected). In NestJS DI context the pricing service's versions are used.
+  // ---------------------------------------------------------------------------
+
   private async loadTable(tableSlug: string): Promise<CachedTable> {
     const hit = this.tableCache.get(tableSlug);
     if (hit) return hit;
@@ -264,8 +317,6 @@ export class ChargeStepParityService {
       }
     });
 
-    // If the slug is not found in RateTable (e.g. a legacy-only slug),
-    // store a sentinel with no steps so we do not query again.
     if (!table) {
       const empty: CachedTable = {
         id: "",
@@ -279,9 +330,6 @@ export class ChargeStepParityService {
     }
 
     const rawSteps = table.chargeSteps;
-    // Stored steps were validated by validateChargeSteps on write (rate-tables.service.ts);
-    // the harness is read-only and every evaluation runs under try/catch, so a malformed
-    // row is logged as a disagreement, never thrown into a price.
     const steps: ChargeStep[] | null =
       Array.isArray(rawSteps) && rawSteps.length > 0
         ? (rawSteps as unknown as ChargeStep[])
@@ -312,15 +360,6 @@ export class ChargeStepParityService {
     return cached;
   }
 
-  /**
-   * Find the matched RateRow for the given keys and return its full cells
-   * object. Mirrors the key-matching logic in RateResolverService.tryRateTable:
-   * case-insensitive column-name matching with id fallback.
-   *
-   * Returns null when no row matches — evaluateSteps will receive an empty
-   * (or partial) values map, which surfaces missing-operand issues rather
-   * than producing a plausible-looking wrong number.
-   */
   private async findMatchedCells(
     cached: CachedTable,
     keys: Record<string, unknown>
@@ -335,7 +374,6 @@ export class ChargeStepParityService {
 
     if (rows.length === 0) return null;
 
-    // Build a normalised-key index so column-name matching is case-insensitive.
     const keysLower: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(keys)) {
       keysLower[k.trim().toLowerCase()] = v;
@@ -346,12 +384,11 @@ export class ChargeStepParityService {
 
     const match = rows.find((r) => {
       const cells = (r.cells as Record<string, unknown> | null) ?? {};
-      // Only match on KEY columns — VALUE columns are not in `keys`.
       return cached.columns.every((c) => {
-        if (!cached.keyColumnIds.has(c.id)) return true; // not a KEY — skip
+        if (!cached.keyColumnIds.has(c.id)) return true;
         const colNameLower = c.name.trim().toLowerCase();
         const callerVal = keys[c.name] ?? keysLower[colNameLower] ?? keys[c.id];
-        if (callerVal === undefined) return true; // caller did not supply this key
+        if (callerVal === undefined) return true;
         return norm(cells[c.id]) === norm(callerVal);
       });
     });

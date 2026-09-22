@@ -4,12 +4,10 @@ permissions:
   contents: read
 
 on:
+  # Run it against a branch with: gh workflow run playwright-container-trial.yml --ref <branch>
+  # (it checks out the ref it was dispatched on; there is deliberately no 'ref' input -
+  # checking out a caller-chosen ref is the CodeQL cache-poisoning pattern, #2082).
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Branch, tag, or commit SHA to run against
-        required: false
-        default: main
 
 jobs:
   tendering-e2e-container:
@@ -55,10 +53,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4.2.2
-        with:
-          # The dispatch input was declared but never passed on, so every run
-          # tested the default branch. Wire it through so a PR head can be tried.
-          ref: ${{ inputs.ref }}
 
       # The job runs inside a container as root while the workspace is owned by
       # the runner uid. checkout marks it safe only in a temporary HOME, so the
@@ -72,8 +66,7 @@ jobs:
       - uses: actions/setup-node@v4.1.0
         with:
           node-version: 22
-          # No pnpm cache here: this job checks out a caller-chosen ref and runs its
-          # code, so a shared cache could be poisoned by that ref (CodeQL, #2082).
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

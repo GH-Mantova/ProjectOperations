@@ -1,7 +1,7 @@
 ---
 station: 02-board-driver
 station_doc_version: 1
-contract_version: 3
+contract_version: 4
 ---
 
 <!-- STATION FILE. The scheduled task is a THIN BOOTSTRAP that reads THIS.
@@ -26,7 +26,7 @@ contract_version: 3
 
 ## PREFLIGHT — run this before anything else
 
-<!-- CANONICAL-BLOCK: station-contract v3 — byte-identical in every station doc.
+<!-- CANONICAL-BLOCK: station-contract v4 — byte-identical in every station doc.
      lint-station.mjs fails on any edit. Change it once, re-record the hash, ship all seven together. -->
 
 **Four steps, in order. If step 1 fails, you stop.**
@@ -164,7 +164,12 @@ docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md
 the `# Overnight-QA scheduled task` comment in `.gitignore` — `docs/qa/qa-checklist.md`, `docs/qa/qa-findings.md`,
 `docs/qa/qa-test-data-registry.md`, `docs/qa/.qa-run.lock`, and the `docs/qa/qa-run-*.md` pattern —
 plus anything under `processed|failed|paused|blocked|awaiting-review|reviewed|needs-marco|no-pr-opened`
-(`.gitignore:76-83`). The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
+(`.gitignore:76-83`). 🔴 **`needs-marco/` is gitignored by RULE and partly TRACKED in FACT, so
+"appending there is safe because nothing is tracked" is false for exactly the files stations write
+to.** [MEASURED] 2026-09-22 by Station 04: **6 of 61** files under that gitignored folder are tracked,
+and `git check-ignore` cannot tell you which - it answers about the ignore RULE, never about the
+index. Ask `git ls-files -- docs/pr-prompts/needs-marco/` before you append to any file there, or
+your edit rides into another actor's commit. The `docs/qa/` directory itself is tracked — e.g. `docs/qa/sot-refs-baseline.json`
 is checked in and CI ratchets against it — so it is those five files, not the folder, that swallow
 findings. **If your finding lives only in a gitignored path, you have not reported it.** The
 breadcrumb is untracked until the next board PR commits it — say so in your chat report so Station
@@ -173,10 +178,27 @@ breadcrumb is untracked until the next board PR commits it — say so in your ch
 **Where you write it decides whether it survives.** Two homes are correct: **inside your own run's
 PR**, which is best — the breadcrumb lands with the change it describes and needs nobody to sweep it
 up — or the **dev tree** at `C:\ProjectOperations2\docs\pr-prompts\`, where Station 00 collects it.
-**Never leave it in a disposable worktree.** The worktree is torn down at the end of the run and the
-report dies with it, with no error and no trace: a station that believes it reported is
-indistinguishable from one that did. A breadcrumb filename matches no watcher glob, so leaving it
+**Never leave it in a disposable worktree, and never in the Cowork session's `outputs` folder.** The
+worktree is torn down at the end of the run and the report dies with it, with no error and no trace;
+the session's `outputs` folder is disposable in exactly the same way, and it is where your shell
+already opens, so it is the easier of the two to fall into. A station that believes it reported is
+indistinguishable from one that did. [MEASURED] 2026-09-22: a blind run wrote its entire report
+there - correct content, complete dispositions, a `## FOR MARCO` section - and it reached nobody. A breadcrumb filename matches no watcher glob, so leaving it
 untracked in the queue root arms nothing.
+
+🔴 **A breadcrumb left in the dev tree BLOCKS the next fast-forward, and that is every station's
+problem, not Station 00's.** Once a PR lands that exact path on `main`, the dev tree is holding an
+untracked file at a path the fast-forward must create, and `git merge --ff-only` refuses - while
+`git diff --numstat` and `git diff --cached --name-status` both read EMPTY, which is the documented
+PASS reading. A TRACKED file you left modified or deleted there blocks it identically. **Cure 1
+avoids all of it: write the breadcrumb inside your own run's PR worktree.** If you did write one into
+the dev tree, restore each blocking path byte-exactly from `HEAD` with a raw-Buffer node write -
+`fs.writeFileSync(abs, execFileSync('git', ['show', 'HEAD:' + rel]))` - then `git update-index
+--refresh`; exit 0 means fast-forward now. Never `git checkout -- <path>`, never `git clean`
+(DOCTRINE §9.2 - consumed prompts come back armed). Read back **all four**: `git rev-list
+--left-right --count HEAD...origin/main` -> `0 0`, `--numstat` EMPTY, `--cached` EMPTY, and
+`git status --porcelain` (tracked) EMPTY. The first three pass on a dirty tree; only the fourth
+catches it.
 
 **Fixed section order, every station, every run:**
 
@@ -212,7 +234,7 @@ pasted into an instruction document.
 its last run and dispositions each finding — that is the only channel that closes. If you are not 00,
 your job ends at writing the breadcrumb.
 
-<!-- END-CANONICAL-BLOCK: station-contract v3 -->
+<!-- END-CANONICAL-BLOCK: station-contract v4 -->
 
 ## AUTHORITY — what this station may and may not do
 

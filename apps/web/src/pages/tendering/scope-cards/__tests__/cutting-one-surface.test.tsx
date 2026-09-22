@@ -9,7 +9,7 @@
 //   1. The tab source mounts exactly one cutting surface (ScopeCuttingSheet,
 //      no CuttingSection).
 //   2. The heading "Concrete cutting" appears exactly once on the sheet (no
-//      collision — the guard that made #1682 impossible is carried here).
+//      collision — the guard that made PR 1682 impossible is carried here).
 //   3. ASB cards still render no cutting section at all.
 //   4. The header carries all 14 mock-up columns in the correct order.
 //   5. A core-hole row renders O with a figure; Material is muted.
@@ -99,13 +99,13 @@ describe("the card mounts exactly one cutting surface", () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────
-// 3. Heading collision guard — the fix that prevented #1682
+// 3. Heading collision guard — the fix that prevented PR 1682
 //    (carried from cutting-section.test.tsx before its retirement)
 // ───────────────────────────────────────────────────────────────────────
 
 describe("heading collision guard (from cutting-section.test.tsx)", () => {
   it("the sheet source contains exactly one 'Concrete cutting' string", () => {
-    // #1682: getByText("Concrete cutting") resolved to two elements when both
+    // PR 1682: getByText("Concrete cutting") resolved to two elements when both
     // CuttingSection and ScopeCuttingSheet rendered the heading. With one
     // surface there can only be one. We count occurrences in the rendered
     // strings (non-comment lines only).

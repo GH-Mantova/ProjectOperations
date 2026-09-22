@@ -24,6 +24,16 @@
 #   [ -f "$HOME/.profile" ] && sed -i '/^export PATH="\$HOME\/.local\/bin:\$PATH"$/d' "$HOME/.profile"
 set -euo pipefail
 
+# Captured BEFORE ensure_on_path mutates THIS process's PATH. The reachability
+# verdict at the foot of this file must probe the CALLER's environment, and a
+# `bash -c` launched from inside this installer inherits the installer's own
+# exported PATH - which ensure_on_path has by then put BIN on. Probing without
+# this capture reports ACTIVE in every world, including one where the shim has
+# been deleted (the installer recreates it), i.e. the same lie in a new coat.
+# [MEASURED] 2026-09-21T22:3xZ: the first cut of this fix did exactly that -
+# three worlds, one answer. DOCTRINE 7: prove the check can produce both.
+CALLER_PATH="${PATH}"
+
 BIN="${HOME}/.local/bin"
 mkdir -p "$BIN"
 
@@ -129,10 +139,76 @@ else
   fi
 fi
 
-RESOLVED="$(bash -lc 'command -v git' 2>/dev/null || true)"
-if [ "$RESOLVED" != "${BIN}/git" ]; then
-  echo "FAIL: bash -lc 'command -v git' resolved to '${RESOLVED}', expected '${BIN}/git'"; exit 1
+# --------------------------------------------------------------------------
+# REACHABILITY VERDICT - GUARD_REACHABILITY_VERDICT_V1
+#
+# Every control above forces PATH="${BIN}:${PATH}" on the call it tests. So
+# each one proves the shim's LOGIC and NONE of them proves the shim is
+# REACHABLE from the shell a station is actually given.
+#
+# Stations run through `bash -c "<command>"`: non-interactive AND non-login.
+# Such a shell sources NEITHER ~/.bashrc (skipped when non-interactive) NOR
+# ~/.profile (login shells only), so the export ensure_on_path wrote is never
+# read - and its own `export PATH` dies with this installer process.
+#
+# The control that stood here was `bash -lc 'command -v git'` - a LOGIN shell,
+# the one shape no station ever gets. It PASSES while the guard is inert. That
+# is DOCTRINE 7 sitting in the first step of every station's preflight: a
+# confident, coherent, WRONG reading that converts "I must be careful with git
+# here" into "the guard has this".
+#
+# [MEASURED] 2026-09-21T22:2xZ, two independent sessions on one day (Station 04
+# at 22:10Z, Station 00 at 22:2xZ): this installer printed its pass line, and
+# seconds later `bash -c` resolved /usr/bin/git and `git rev-parse` against the
+# mount SUCCEEDED at exit 0. Station 00 reproduced it and quoted the pass line
+# in its own GROUND block before noticing - which is the cost, exactly.
+#
+# Making the protection AUTOMATIC is not available here, and that was measured
+# rather than assumed: /usr/local/bin and /usr/local/sbin are both NON-WRITABLE
+# in this VM, so the shim cannot be placed on the default PATH; and BASH_ENV
+# cannot help because this installer is a child process and cannot export into
+# its caller's environment. So the honest move is not to claim a protection
+# that is absent - MEASURE which of the two states holds, and say so.
+# --------------------------------------------------------------------------
+
+RESOLVED_LOGIN="$(bash -lc 'command -v git' 2>/dev/null || true)"
+# env PATH="${CALLER_PATH}" - probe the CALLER's shell, never this installer's.
+# See the CALLER_PATH capture at the top of this file for why a bare `bash -c`
+# here answers ACTIVE unconditionally.
+RESOLVED_STATION="$(env PATH="${CALLER_PATH}" bash -c 'command -v git' 2>/dev/null || true)"
+
+# Install integrity: if even a LOGIN shell cannot resolve the shim, the install
+# itself failed - a different fault from the PATH gap reported below.
+if [ "$RESOLVED_LOGIN" != "${BIN}/git" ]; then
+  echo "FAIL: install is broken - bash -lc 'command -v git' resolved to '${RESOLVED_LOGIN}', expected '${BIN}/git'"
+  exit 1
 fi
 
-echo "vm-git-guard installed at ${BIN}/git - refuses mounted paths and mounted cwd, allows everything else (three controls passed)"
-echo "persistence controls passed: .bashrc byte-identical on re-run; login shell resolves shim"
+if [ "$RESOLVED_STATION" = "${BIN}/git" ]; then
+  echo "vm-git-guard ACTIVE at ${BIN}/git - refuses mounted paths and mounted cwd, allows everything else (three controls passed)"
+  echo "reachability control passed: a non-interactive 'bash -c' - the shell a station is given - resolves the shim"
+  exit 0
+fi
+
+cat <<MSG
+vm-git-guard INSTALLED BUT INERT - the shim is correct and UNREACHABLE from your shell.
+
+  bash -lc 'command -v git' -> ${RESOLVED_LOGIN}
+      (a LOGIN shell: resolves the shim - this is what the old control tested)
+  bash -c  'command -v git' -> ${RESOLVED_STATION}
+      (the shell a STATION IS GIVEN: resolves the real git - no protection)
+
+The three logic controls above passed because each forces PATH="${BIN}:\$PATH"
+on the call it tests. Your shell does not, and a non-interactive non-login bash
+reads neither ~/.bashrc nor ~/.profile, so the PATH export written by this
+installer is never sourced.
+
+=> THE DEVICE-BRIDGE GIT BAN IS NOT MECHANICAL IN THIS SHELL. It is back to
+   being remembered - which DOCTRINE 9.2 records as having failed seven times.
+   Do NOT run git against a mounted folder. Use a shell on the Windows host, or
+   the GitHub API, exactly as the refusal message would have told you.
+
+To get the protection for one call, put the shim on PATH yourself:
+   PATH="${BIN}:\$PATH" git <args>
+MSG
+exit 2

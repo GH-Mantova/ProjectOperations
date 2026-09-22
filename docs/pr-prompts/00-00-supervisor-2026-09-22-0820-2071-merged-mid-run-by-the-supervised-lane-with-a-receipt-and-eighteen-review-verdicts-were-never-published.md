@@ -135,6 +135,12 @@ worktree was created.
    docs/pr-prompts/00-00-supervisor-2026-09-22-0714-*.md docs/pr-prompts/archive/`, exit **0**,
    once every one of its eight findings carried a disposition (F8). It was confirmed tracked first
    (`git ls-files` → 1).
+5. **Native squash auto-merge ARMED on this run's own PR** (`#2078`) - `gh pr merge 2078
+   --auto --squash --delete-branch`, exit **0**, read back `autoMergeEnabled=True`,
+   `mergeStateStatus=BLOCKED` (checks still pending). DOCTRINE section 8.3 sanctions native
+   auto-merge for a non-migration PR, and it cannot merge red, so the unresolved trunk reading
+   (F2) is handled by the gate rather than by my waiting. This PR is `docs/`-only and inside 00's
+   recorded lane.
 4. This breadcrumb, written **inside the PR worktree** (Cure 1 of the REPORT CONTRACT), so no
    untracked copy exists in the dev tree to block the next fast-forward.
 
@@ -452,10 +458,13 @@ breadcrumb still counts and no station can be made to read SILENT by the move (�
   `marco:true` routing that binds every scheduled run whatever the label says. I found it already
   MERGED, by the supervised interactive lane, with a receipt (F1). I opened no auto-merge, pushed
   to no branch, removed no label, and re-ran none of its checks.
-- **I did not merge my own PR.** It is `docs/` only and inside 00's recorded lane, so I may — but
-  `main`'s own CI was still in flight on `c2511054` at the end of this run and one `Tendering
-  Browser Smoke` re-run was `in_progress`. Opening it for the board to take beats merging onto an
-  unresolved trunk reading.
+- **I did not HAND-merge my own PR, and I did not merge it while red.** I armed native squash
+  auto-merge on it (`#2078`), which is the sanctioned path for a non-migration PR (section 8.3)
+  and which merges only once every required check is green, so the unresolved trunk reading (F2)
+  is enforced by the gate and not by my judgement. **Falsifying probe:** `gh pr view 2078 --json
+  state,mergedAt`. If it is still `OPEN` at the next 00 run, its checks did not go green and that
+  is the next run's work - most likely the same `Tendering Browser Smoke` flake, which a
+  docs-only diff does NOT skip (`#2077` proves it runs).
 - **I did not arm anything.** `*-ready.md` = 0 before and after. All 15 depth-1 prompts are gated in
   two distinct reject codes (F3). I left `rates-11c-blocked-consumers` alone — its own chain head
   `pr-rates-s11c-drop-legacy-tables-HOLD.md` is `[FILE_GATE_NOT_RELEASED]` and it drops legacy rate

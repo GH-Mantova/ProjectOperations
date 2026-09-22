@@ -517,8 +517,14 @@ than in DOCTRINE section 9 until the cause is known.
   and which merges only once every required check is green, so the unresolved trunk reading (F2)
   is enforced by the gate and not by my judgement. **Falsifying probe:** `gh pr view 2078 --json
   state,mergedAt`. If it is still `OPEN` at the next 00 run, its checks did not go green and that
-  is the next run's work - most likely the same `Tendering Browser Smoke` flake, which a
-  docs-only diff does NOT skip (`#2077` proves it runs).
+  is the next run's work. ⚠️ **CORRECTED IN-RUN:** an earlier draft of this line said a docs-only
+  diff does not skip `Tendering Browser Smoke` and cited `#2077`. That is wrong, and the error is
+  the one section 9.4 keeps recording - **I compared runs from two different EVENTS.** `#2077`'s
+  failing run was `event=push` on `main` (F2's table records it), not its `pull_request` run.
+  [MEASURED] on this PR: `gh pr checks 2078` reports `tendering-e2e  skipping`, while
+  `Changed-path filter` passes in 7s. **So the changed-path filter DOES skip the e2e suite for a
+  docs-only PULL REQUEST, and does not skip it for a PUSH to `main`** - which is also why a
+  docs-only merge can turn the trunk red (F2) while its own PR was green.
 - **I did not arm anything.** `*-ready.md` = 0 before and after. All 15 depth-1 prompts are gated in
   two distinct reject codes (F3). I left `rates-11c-blocked-consumers` alone — its own chain head
   `pr-rates-s11c-drop-legacy-tables-HOLD.md` is `[FILE_GATE_NOT_RELEASED]` and it drops legacy rate

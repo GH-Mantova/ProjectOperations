@@ -224,7 +224,19 @@ will keep producing 1-, 2- or 4-failure runs that look like different defects.
 ~10:24Z, still `in_progress` at 10:36Z. I did not trigger it and could not attribute it
 (`[CANNOT MEASURE]`, see the actor note above).
 
-**DISPOSITION: DEFERRED.** Real, named, and not urgent this hour: main's **required** checks (CI,
+**RESOLVED AT 10:41Z, BEFORE THIS RUN ENDED — THE RE-RUN CAME BACK GREEN AND THE FLAKE READING HOLDS.**
+[MEASURED] `gh api .../actions/runs/35710623788` -> `status: completed`, `conclusion: success` on
+attempt 2. Re-derived across the whole commit, `gh run list --commit eb3086faca9d4d646321eafaba556098c7c74f2a`
+(full 40-char SHA per §9.4, `-R` passed, `GHEXIT=0`, 8 rows): **Deploy success, CI success,
+Tendering Browser Smoke success, CodeQL success** — every push/dynamic workflow GREEN. The only
+remaining `failure` rows are the three `workflow_dispatch` container-trial runs of F2, which are
+not a required check on `main`. **Trunk is green; the same code and the same suite passed on the
+re-run with no change to the tree.** That is the clean-diff re-run the station doc requires before
+calling a red transient, and it passed — so this was a flake, and the docs-only-delta argument is
+confirmed rather than merely argued.
+
+**DISPOSITION: ACTIONED** (the red is cleared and verified green) **with the underlying test-isolation
+defect DEFERRED.** Real, named, and not urgent: main's **required** checks (CI,
 Deploy, CodeQL) are all green on `eb3086fa`, the board holds exactly one PR and it is docs-only,
 and a re-run is already running that will settle the transient half. It becomes **urgent** the
 moment attempt 2 comes back red on the same four tests — that would refute the docs-only-delta

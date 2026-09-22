@@ -305,6 +305,41 @@ F4 with their conditions re-measured rather than repeated.
 tracked set with `git ls-tree -r` and matches by trailing path segment, so an archived breadcrumb
 still counts and no station can be made to read SILENT by the move (§9.5).
 
+### F7 — `#2071` goes BEHIND on every `main` advance and an EXISTING actor clears it within ~3 minutes, so 00 must NOT update that branch. `PR2071_HAS_AN_AUTO_UPDATER_V1`
+
+Two consecutive runs have now hesitated over the same question — the 06:14Z run recorded *"I did
+not push to its branch — a second lane was pushing to it eight times in three hours and pushing
+under that is the LL-38 shape"*, reaching the right answer by caution rather than by measurement.
+My own merge made the question live again: `#2071` read `BEHIND` the moment `origin/main` advanced
+to `e0d2d1c8`, and my station doc’s ACTIVE DRIVE MANDATE rule 2 says a behind branch is *"work, not
+a blocker to hand back"*.
+
+**[MEASURED] it is already somebody’s work.** `gh pr view 2071 --json commits`: the last three
+commits on that branch are all `Merge branch ‘main’ into feat/scopecards-s6-one-cutting-surface`,
+at `05:30:21Z`, `06:38:22Z` and `06:54:22Z` — each shortly after a `main` advance (`#2072` 05:28Z,
+`#2073` 06:35Z, `#2074` 06:41Z). Per DOCTRINE §10.2.1’s identity table, an update-branch merge
+commit is the GitHub API’s own signature.
+
+**POSITIVE CONTROL, and it is what turns the inference into a measurement:** I merged `#2075` at
+`07:31:52Z` and then waited without touching the branch. [MEASURED] at `07:37:06Z` its head had
+moved `06b44d7a` → `4304d685` at **`07:34:24Z`** — a **fourth** update-branch, **2.5 minutes** after
+my merge — and `mergeStateStatus` had returned from `BEHIND` to `BLOCKED`, i.e. back to the label
+and nothing else.
+
+🔴 **So "drive the behind branch" is the WRONG action here, and it is wrong in the LL-38 direction.**
+Updating it myself would have put a second actor on a branch an existing one services on a cadence,
+and it would have spent a full `Tendering Browser Smoke` cycle on a suite this very branch has
+already flaked on once today (F2). The gain would have been zero: `#2071` cannot merge regardless,
+because only Marco removes `do-not-merge`.
+
+**DISPOSITION: ACTIONED** — the action was to leave it alone, and the value is the measurement that
+makes that a decision rather than a hesitation. ⚠️ **Falsifying probe:** after the next `main`
+advance, read `gh pr view 2071 --json headRefOid,mergeStateStatus` twice, five minutes apart. If the
+head does **not** move and `BEHIND` persists, the auto-updater has stopped and updating the branch
+becomes 00’s work after all. ⚠️ **Scope:** this is measured about `#2071` only. It is not a general
+claim that every behind PR on this board self-heals.
+
+
 ## WHAT I DID NOT DO
 
 - **I did not merge anything, and I did not touch `#2071` at all this run.** It carries

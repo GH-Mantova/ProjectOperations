@@ -139,3 +139,4 @@
 2026-09-21T10:33:00Z  ARMED  pr-crmvis-s8-comms-threads  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=33220  caller=powershell.exe:29328
 2026-09-21T13:19:01Z  ARMED  pr-ops-m2b-tipping-tab-reminder  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=13084  caller=powershell.exe:2696
 2026-09-21T19:31:53Z  ARMED  pr-scopecards-s5-charge-steps-price-cutting  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=35484  caller=powershell.exe:28804
+2026-09-22T02:13:25Z  ARMED  pr-scopecards-s6-one-cutting-surface  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=19768  caller=powershell.exe:12816

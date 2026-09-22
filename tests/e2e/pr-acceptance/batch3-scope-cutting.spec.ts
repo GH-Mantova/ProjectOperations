@@ -46,7 +46,10 @@ async function openCivCuttingSheet(page: Page): Promise<void> {
   // a stray saw cut on DEM for the rest of the run. Wait for the CIV-only
   // scope line first; it is the same string the discipline-scoping test uses.
   await expect(page.getByText(/Showing items linked to CIV scope/)).toBeVisible();
-  await expect(page.getByText("Concrete cutting")).toBeVisible();
+  // CUTTING_ONE_SURFACE_V1 (scopecards-s6): single element — the two-surface
+  // situation that turned #1682 red is gone. Assert count=1 so a regression
+  // to two surfaces fails here rather than in Playwright strict mode.
+  await expect(page.getByText("Concrete cutting", { exact: true })).toHaveCount(1);
 }
 
 test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
@@ -189,7 +192,7 @@ test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
         });
       } catch {
         await page.reload();
-        await expect(page.getByText("Concrete cutting")).toBeVisible();
+        await expect(page.getByText("Concrete cutting", { exact: true })).toHaveCount(1);
         await expect(page.getByRole("button", { name: "Core holes (2)" })).toBeVisible();
       }
       await page.getByRole("button", { name: "Core holes (2)" }).click();

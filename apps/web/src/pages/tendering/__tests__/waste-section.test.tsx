@@ -372,21 +372,24 @@ describe("Sum from items above", () => {
 
 describe("the mount point", () => {
   it("keeps the mock-up's fixed order: WBS -> Other costs -> Waste -> Cutting", () => {
+    // CUTTING_ONE_SURFACE_V1 (scopecards-s6): CuttingSection is gone.
+    // ScopeCuttingSheet is the only cutting surface and sits directly under Waste.
     const wbsTable = tabSource.indexOf("<ScopeQuantitiesTable");
     const otherCosts = tabSource.indexOf("<OtherOperationalCosts");
     const waste = tabSource.indexOf("<ScopeWasteTab");
-    const cuttingSection = tabSource.indexOf("<CuttingSection");
     const cuttingSheet = tabSource.indexOf("<ScopeCuttingSheet");
 
-    for (const i of [wbsTable, otherCosts, waste, cuttingSection, cuttingSheet]) {
+    for (const i of [wbsTable, otherCosts, waste, cuttingSheet]) {
       expect(i).toBeGreaterThan(-1);
     }
 
     expect(wbsTable).toBeLessThan(otherCosts);
     expect(otherCosts).toBeLessThan(waste); // Waste AFTER Other operational costs
-    expect(waste).toBeLessThan(cuttingSection); // and BEFORE Cutting
-    // The take-off heads the cutting area; the Cutrite sheet stays below it.
-    expect(cuttingSection).toBeLessThan(cuttingSheet);
+    expect(waste).toBeLessThan(cuttingSheet); // and BEFORE Cutting (one surface only)
+
+    // CuttingSection is gone — verify this so the test is not accidentally
+    // passing because we have two surfaces again.
+    expect(tabSource).not.toContain("<CuttingSection");
   });
 });
 

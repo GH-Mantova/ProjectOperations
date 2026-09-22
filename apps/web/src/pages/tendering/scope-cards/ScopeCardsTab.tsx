@@ -22,7 +22,6 @@ import {
 import { ScopeWasteTab } from "../ScopeWasteTab";
 import { ScopeCuttingSheet } from "../ScopeCuttingSheet";
 import { OtherOperationalCosts } from "./OtherOperationalCosts";
-import { CuttingSection } from "./CuttingSection";
 import {
   DISCIPLINE_CODES,
   DISCIPLINE_LABELS,
@@ -331,10 +330,11 @@ export function ScopeCardsTab({
     });
   }, []);
 
-  // SCOPE_CUTTING_V1 — the same arrangement for the concrete cutting take-off.
-  // The section reports the total of the server's OWN line totals; it prices
-  // nothing itself. An asbestos card has no cutting section, so it reports
-  // nothing and its entry stays absent, which reads as 0 in the fold below.
+  // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — the same arrangement for the
+  // concrete cutting section. ScopeCuttingSheet now reports the total of the
+  // server's OWN line totals; it prices nothing itself. An asbestos card has
+  // no cutting section, so it reports nothing and its entry stays absent,
+  // which reads as 0 in the fold below.
   const [cuttingTotals, setCuttingTotals] = useState<Record<string, number>>({});
   const handleCuttingTotal = useCallback((cardId: string, total: number) => {
     setCuttingTotals((prev) => (prev[cardId] === total ? prev : { ...prev, [cardId]: total }));
@@ -354,14 +354,14 @@ export function ScopeCardsTab({
   // gets the section's marked-up total. The two figures can differ when a line
   // carries a markup override or the card/tender markup is non-zero.
   //
-  // SCOPE_CUTTING_V1 — the concrete cutting take-off joins the SAME fold, for
-  // the same reason, and on the same terms: `cutting` is a sum of the line
-  // totals the server's cutting rate resolver produced (#1437), added at cost
-  // to both figures. No cutting price, multiplier or rig selection is
-  // computed here or in CuttingSection — the card's per-section cutting markup
-  // (`cuttingMarkupOverride`) is a separate cost stream owned by the cutting
-  // sheet, and applying it here would be a second implementation of money the
-  // server already decided.
+  // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — the concrete cutting section
+  // joins the SAME fold, for the same reason, and on the same terms: `cutting`
+  // is a sum of the line totals the server's cutting rate resolver produced
+  // (#1437), added at cost to both figures. No cutting price, multiplier or
+  // rig selection is computed here or in ScopeCuttingSheet — the card's
+  // per-section cutting markup (`cuttingMarkupOverride`) is a separate cost
+  // stream owned by the cutting sheet, and applying it here would be a second
+  // implementation of money the server already decided.
   const statsByCard = useMemo(() => {
     const byCard = new Map<string, CardBarStats>();
     for (const card of disciplineCards) {
@@ -892,8 +892,8 @@ type StackEntryProps = {
    *  section { subtotal, withMarkup } up to the single card-money fold.
    *  Must be referentially stable. */
   onOtherCostTotalChange: (cardId: string, totals: { subtotal: number; withMarkup: number }) => void;
-  /** SCOPE_CUTTING_V1 — reports the card's concrete cutting take-off total up
-   *  to that same fold. Must be referentially stable. */
+  /** CUTTING_ONE_SURFACE_V1 (scopecards-s6) — reports the card's concrete
+   *  cutting section total up to that same fold. Must be referentially stable. */
   onCuttingTotalChange: (cardId: string, total: number) => void;
   /**
    * SCOPE_QUOTE_DESTINATION_UI_V1 — Opt A/B/C letters for OPTION items on
@@ -1212,43 +1212,34 @@ function ScopeCardStackEntry({
             }}
           />
 
-          {/* SCOPE_CUTTING_V1 — asbestos cards never cut, so neither the
-              take-off nor the sheet it reads renders on one. The rule lives in
+          {/* CUTTING_ONE_SURFACE_V1 (scopecards-s6) — one concrete cutting
+              section. Asbestos cards never cut; the gate is
               showsCuttingColumn(discipline) in ScopeQuantitiesTable.tsx — the
               ERP's single source of truth for which disciplines cut, and the
-              same function that gates the `Cutting?` tick this take-off is
-              downstream of. The literal discipline code that used to be
-              written here is gone; there is one predicate, not two. */}
+              same function that gates the `Cutting?` tick. Directly under
+              Waste, per the mock-up's card order:
+                WBS items -> Other operational costs -> Waste ->
+                Concrete cutting -> + Add WBS item -> subtotal.
+              CuttingSection (the read-only take-off) is gone; ScopeCuttingSheet
+              is the only cutting surface and now also reports the section total
+              upward via onSectionTotalChange so the fold below stays correct. */}
           {showsCuttingColumn(card.discipline as TableDiscipline) ? (
-            <>
-              {/* Directly under Waste, per the mock-up's card order:
-                  WBS items -> Other operational costs -> Waste ->
-                  Concrete cutting -> + Add WBS item -> subtotal.
-                  The take-off is the READ view of what the editable Cutrite
-                  sheet below has produced; every figure in it is the
-                  server's. */}
-              <CuttingSection
-                tenderId={tenderId}
-                cardId={card.id}
-                discipline={card.discipline as TableDiscipline}
-                onSectionTotalChange={onCuttingTotalChange}
-              />
-              <ScopeCuttingSheet
-                tenderId={tenderId}
-                wbsRefs={cardWbsRefs}
-                canManage={true}
-                cuttingNotes={card.cuttingNotes}
-                onCuttingNotesChange={async (v) => {
-                  await onSetCardNotes({ cuttingNotes: v });
-                }}
-                cardId={card.id}
-                tenderMarkup={tenderMarkup}
-                sectionMarkupOverride={card.cuttingMarkupOverride}
-                onSectionMarkupChange={async (next) => {
-                  await onSetSectionMarkup("cutting", next);
-                }}
-              />
-            </>
+            <ScopeCuttingSheet
+              tenderId={tenderId}
+              wbsRefs={cardWbsRefs}
+              canManage={true}
+              cuttingNotes={card.cuttingNotes}
+              onCuttingNotesChange={async (v) => {
+                await onSetCardNotes({ cuttingNotes: v });
+              }}
+              cardId={card.id}
+              tenderMarkup={tenderMarkup}
+              sectionMarkupOverride={card.cuttingMarkupOverride}
+              onSectionMarkupChange={async (next) => {
+                await onSetSectionMarkup("cutting", next);
+              }}
+              onSectionTotalChange={onCuttingTotalChange}
+            />
           ) : null}
         </div>
       )}

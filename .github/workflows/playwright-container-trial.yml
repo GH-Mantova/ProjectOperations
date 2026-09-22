@@ -31,6 +31,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      # Firefox refuses to launch as root when $HOME belongs to another user (the
+      # image's /github/home is owned by pwuser). Playwright's documented fix.
+      HOME: /root
       DATABASE_URL: postgresql://project_ops:project_ops@postgres:5432/project_operations?schema=public
       API_PORT: 3000
       API_PREFIX: api/v1

@@ -341,6 +341,63 @@ rather than re-filed, because the row is state and the paragraph recording it sa
 survivable only because the COLLECT step already crosses `lastRunAt` from the MCP, which this
 defect does not touch — and that cross-check is what I ran.
 
+### F8 — `#2080` finished its review GREEN with a MERGE verdict, carries NO RULE-2 verdict, and is left for Marco under the escalates exception. `PR2080_PROSE_SCRAPE_NOT_A_ROUTING_V1`
+
+Added at 10:47Z, after the watcher went idle and its reviewer finished — i.e. after the WHAT I DID
+NOT DO entry below was written. The entry stands; this records what changed and why the answer did
+not.
+
+**[MEASURED] The review completed and the verdict is MERGE.** `restart-watcher-if-wedged.ps1` now
+returns `VERDICT: OK - nothing armed and the watcher is alive`, `armed prompts waiting: 0` — the
+`rev-2080` prompt was consumed. The verdict exists in exactly ONE of the three homes §9.5 names:
+present at `C:\po-watcher\ProjectOperations\docs\pr-reviews\pr-2080-review.md`, **absent** from the
+dev tree and from `C:\po-watcher\verdicts-archive\`. It reads `VERDICT: MERGE`, with the S6 marker
+`CUTTING_ONE_SURFACE_V1` measured present on main and all required checks green.
+
+⚠️ **That single home is the 09:30Z run's F1 recurring the same hour it was reported** — a verdict
+that lives only in the clone is not published, and the previous breadcrumb is titled after exactly
+this. One more instance, same shape, no new cause.
+
+**[MEASURED] `gh pr checks 2080` — every required check PASSES**, the rest `skipping` (docs-only):
+Changed-path filter, CodeQL (actions + javascript-typescript), `PR gates — diff checks`,
+`Approval receipt (CP-26)`, `Pipeline — watcher + linter tests`, `Pipeline — arm-prompt tests`,
+`E2E restoration markers`. `mergeStateStatus: CLEAN`, `labels: []` read **per-PR** (LL-47), not
+from a listing.
+
+**[MEASURED] §10.1 step 1 returns a hit, and the hit is a PROSE SCRAPE, not a routing.** One
+processed log names the PR — `processed/rev-2080-ready.md.log` line 7 — and it is the *reviewer's
+own sentence*: `Verdict: **MERGE**. PR #2080 is a docs-only staging of the S7 HOLD prompt …`.
+Searching for an actual watcher routing line, `merge result for PR #2080`, returns **0**, against a
+POSITIVE control of **699** `marco.:true` verdicts in the same corpus (regex form, per §10.1's
+quote-safety note) and a NEGATIVE control `PR #999994` of **0**. This is precisely
+`PRNUMBER_SCRAPED_FROM_PROSE_V1`: the number is scraped out of free prose by `extractPrNumber`, so
+**step 1 must NOT be read as "this PR was routed and cleared."**
+
+**So it falls to §10.1 step 2, hand-classified:** its one file is
+`docs/pr-prompts/pr-scopecards-s7-one-cutting-total-HOLD.md` — non-empty diff, no `(^|/)migrations/`
+path, and inside `^(tests|docs)/`, so `classifyPolicyFiles` admits it to the **`tests-docs`** lane.
+`[NO LANE VERDICT — hand-classified]`, tests-docs eligible, not Marco's on the policy gate.
+
+**DISPOSITION: ESCALATED — left for Marco, deliberately, and the policy gate is not what decides it.**
+The staged prompt's own frontmatter carries **`escalates: true`** (the reviewer flags it under
+*Risks Marco should know*). The ACTIVE DRIVE MANDATE's standing exception is explicit — *"a
+prompt/PR flagged `escalates:true` … is OPENED and driven green but NOT auto-merged — it is left
+for Marco"* — and that is the half that governs here, not the tests-docs classification. **Its
+drive-green half is already satisfied: the PR is CLEAN and every required check is green, so there
+is no work left on it.** Marco merges, or a later run does if he rules the exception does not reach
+a staging PR whose payload is merely inert until armed.
+
+⚠️ **The question for Marco, and it is a real one rather than a status update:** does the
+`escalates: true` exception attach to a **staging** PR that only lands a `-HOLD.md` (inert, nothing
+armed, nothing run), or only to the **build** PR opened once that prompt is armed? RULE 1 favours
+the complete-and-additive reading — **(a) the exception attaches to the build PR only**, because it
+solves the ambiguity permanently and damages nothing: the HOLD lands inert, `queue-sync`'s never-arm
+denylist and the arming decision both still require a human, and the flag still gates the PR that
+actually ships code. **(b) the exception attaches to any PR carrying the flag in its diff** is safe
+but fails the "solves it completely" half — it makes every staging PR wait on Marco by hand, which
+is the human decision this lane exists to remove, and it is why eight of the last nine merges on
+this board were the pipeline reporting on itself.
+
 ## WHAT I DID NOT DO
 
 - **Did not mutate the board — deliberately, and this is the run's main decision.**

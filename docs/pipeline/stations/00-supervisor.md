@@ -1,7 +1,7 @@
 ---
 station: 00-supervisor
 station_doc_version: 1
-contract_version: 4
+contract_version: 5
 ---
 
 <!-- STATION FILE. The scheduled task is a THIN BOOTSTRAP that reads THIS.
@@ -12,7 +12,7 @@ contract_version: 4
 
 ## PREFLIGHT — run this before anything else
 
-<!-- CANONICAL-BLOCK: station-contract v4 — byte-identical in every station doc.
+<!-- CANONICAL-BLOCK: station-contract v5 — byte-identical in every station doc.
      lint-station.mjs fails on any edit. Change it once, re-record the hash, ship all seven together. -->
 
 **Four steps, in order. If step 1 fails, you stop.**
@@ -38,16 +38,46 @@ below then makes you stop on it.
 
 🔴 **Install the device-bridge git guard FIRST — before any VM-side call.** Run
 `scripts/pipeline/vm-git-guard.sh` once, at the top of the run:
-`bash "$HOME/mnt/ProjectOperations2/scripts/pipeline/vm-git-guard.sh"`. It is idempotent, it
-persists itself onto `PATH`, and it refuses `git` **only** against a mounted folder — git elsewhere
+`bash "$HOME/mnt/ProjectOperations2/scripts/pipeline/vm-git-guard.sh"`. It is idempotent, it writes
+the shim and a `PATH` export, and it refuses `git` **only** against a mounted folder — git elsewhere
 in the VM is untouched. Without it, a cut-short call against the mount leaves a 0-byte `index.lock`
 with no owning Windows process; it never expires, and it freezes every station (DOCTRINE §9.2).
-**Quote the installer's last line under WHAT I MEASURED, pass or fail.** An install nobody can see
-in the report is indistinguishable from one that never ran — which is why the bullets telling
-stations not to run `git` there did not stop the next occurrence. **A failed install is a FINDING,
-not a STOP:** say so and carry on. Widening the stop contract — which belongs to an unreachable
-machine — would turn a missing shell script into a frozen board, the very outcome the guard exists
-to remove. A guard you could not install is never a licence to run your own `git` against the mount.
+**Quote the installer's last line under WHAT I MEASURED, and quote its EXIT CODE, whichever outcome
+you got.** An install nobody can see in the report is indistinguishable from one that never ran —
+which is why the bullets telling stations not to run `git` there did not stop the next occurrence.
+🔴 **Read the exit status of the INSTALLER, never of a pipeline you appended to it.** Piping the run
+into `tail` / `Select-Object` makes the status that of the pipeline's LAST stage; two runs on
+2026-09-22 recorded a guard exit of `0` that way against a true exit of `2`.
+
+🔴 **THE INSTALLER HAS THREE OUTCOMES, NOT TWO, AND THE MIDDLE ONE IS THE ONE A STATION ACTUALLY
+GETS.** Before `#2065` (merged 2026-09-22T02:58Z) it certified success while inert; it now reports
+the truth on the first call. [MEASURED] 2026-09-22, independently by Station 04 at 06:16Z and
+Station 00 at 07:3xZ:
+
+| exit | headline | what it means | what you do |
+|---|---|---|---|
+| non-zero | install failed — the shim was not written | no protection, and no shim on disk | a FINDING, not a STOP: quote it and carry on |
+| **2** | **`vm-git-guard INSTALLED BUT INERT - the shim is correct and UNREACHABLE from your shell.`** | the shim is byte-correct and **not on your `PATH`** | a FINDING, not a STOP: quote it and carry on |
+| 0 | installed and reachable | the ban is mechanical for this shell | nothing further |
+
+**Exit 2 is the EXPECTED outcome for a station, not an anomaly.** The installer writes its `PATH`
+export into `~/.bashrc` and `~/.profile`; the shell a station is given is **non-interactive and
+non-login**, so it sources neither and resolves the real `git`. Controls, measured both times:
+`bash -lc 'command -v git'` → the shim; `bash -c 'command -v git'` → `/usr/bin/git`. **So the
+device-bridge git ban is REMEMBERED, not mechanical** — which DOCTRINE §9.2 records as having failed
+seven times. A block that promises otherwise tells you a protection is in force when it is not.
+
+🔧 **The only protection available inside your own shell is the one-call form the installer prints
+as its last line. Use it verbatim, with the session path the installer gave you:**
+
+```
+PATH="<installer's path>/.local/bin:$PATH" git <args>
+```
+
+Widening the stop contract — which belongs to an unreachable machine — would turn a missing or inert
+shell script into a frozen board, the very outcome the guard exists to remove. **A guard you could
+not install, or one that reports itself INERT, is never a licence to run your own `git` against the
+mount.**
 
 Then start a shell on the Windows host (`start_process`, shell `powershell.exe`). If Desktop
 Commander is absent, or the call fails **after** the load:
@@ -220,7 +250,7 @@ pasted into an instruction document.
 its last run and dispositions each finding — that is the only channel that closes. If you are not 00,
 your job ends at writing the breadcrumb.
 
-<!-- END-CANONICAL-BLOCK: station-contract v4 -->
+<!-- END-CANONICAL-BLOCK: station-contract v5 -->
 
 ## AUTHORITY — what this station may and may not do
 
@@ -264,7 +294,8 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   | `lastRunAt` vs newest breadcrumb | What happened | How to confirm |
   |---|---|---|
   | `lastRunAt` older than one cadence | **the occurrence never fired** — nothing ran | `cronExpression` / `nextRunAt`; was the desktop app up? |
-  | `lastRunAt` fresh, no breadcrumb | **it started and died, or ran and did not report** | read the session transcript — the only channel that names the cause |
+  | `lastRunAt` fresh, no breadcrumb, **and its session is still `running`** | **mid-run inside your window — NOT a defect.** 00 is hourly and 04 every 4 h, so 00 lands inside a live 04 run on every one of 04’s occurrences by construction (`STATION-CAPABILITIES.md` §6) | `list_sessions` for that station’s newest session. Its state field is **not a lock** (§9.5) and must not be used as one — but a fresh `lastRunAt` and a running session settle this row together |
+  | `lastRunAt` fresh, no breadcrumb, session **not** running | **it started and died, or ran and did not report** | read the session transcript — the only channel that names the cause |
   | both fresh and aligned | healthy | nothing further |
 
   🔴 **A run can be recorded in `lastRunAt` having executed NOTHING.** MEASURED 2026-09-03:

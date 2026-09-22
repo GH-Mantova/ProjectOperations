@@ -575,7 +575,9 @@ describe("EstimatesService — summary", () => {
         { qtyTonnes: decimal("4"), tonRate: decimal("150"), loads: 2, loadRate: decimal("50") }
       ],
       cuttingLines: [
-        { qty: decimal("10"), rate: decimal("80") }
+        // CUTTING_ONE_TOTAL_V1: the summary now reads the stored line total, so the
+        // fixture carries it (10 x 80 = 800) instead of implying it from qty x rate.
+        { qty: decimal("10"), rate: decimal("80"), lineTotal: decimal("800") }
       ]
     };
     // Item B — provisional 1500 → passes through at cost, no markup

@@ -1196,6 +1196,29 @@ still cost a run its collect evidence.
    `git ls-files docs/pr-prompts` and match by **basename** — `check-breadcrumb.mjs` matches by
    trailing path segment (§9.5), so an archived breadcrumb is already reported and already counts
    for `--freshness`. A dev-tree `git status` cannot see that: it answers about the dev tree.
+
+   🔴🔴 **AND `git ls-files` IN THE DEV TREE IS THE WRONG INSTRUMENT FOR THIS CURE, BECAUSE THAT
+   TREE IS ROUTINELY BEHIND — SO THE CURE INHERITS THE STALENESS IT EXISTS TO REMOVE AND ANSWERS
+   *"UNREPORTED"* ABOUT A BREADCRUMB THE PREVIOUS RUN ALREADY LANDED.**
+   `TRACKED_SET_PROBE_MUST_ASK_ORIGIN_MAIN_V1` [MEASURED] 2026-09-22T20:1xZ by Station 00
+   (scheduled), dev tree `25aa3115`, `origin/main` `a9ee8740` (2 ahead):
+   `git ls-files docs/pr-prompts` in the dev tree returned **NO** row for
+   `00-04-scanner-2026-09-22-1810-…md` while the POSITIVE control
+   (`00-00-supervisor-2026-09-22`) returned **18** rows — so the probe was working and its answer
+   was still wrong. The same file in a worktree checked out **at `origin/main`** reports ` M`,
+   not `??`, and `git diff --numstat` against it is **EMPTY**: the breadcrumb and Station 04's
+   `sweep-rotation.json` advance had **both** been landed an hour earlier by `#2096`.
+   🔴 **The available conclusion was the one this very section warns about** — *"this station's
+   finding reached nobody"* — and acting on it commits a SECOND tracked copy at the root path,
+   which is the 2026-09-07 duplicate this section exists to prevent, reached **through its own
+   cure.** This is §9.2's *"on a tree that is behind `origin/main`, `git status` answers a question
+   about `HEAD`"* bullet, applied to `ls-files` instead of `status`.
+   🔧 **Ask `origin/main` explicitly, never the dev tree's index:**
+   `git ls-tree -r --name-only origin/main -- docs/pr-prompts/` (trailing slash AND `-r` — §9.2),
+   matched by basename. That is the same set `check-breadcrumb.mjs` builds, so the two agree by
+   construction. ⚠️ **Falsifying probe: run both forms whenever the dev tree is behind**
+   (`git rev-list --left-right --count HEAD...origin/main` ≠ `0 0`). If they ever agree on a
+   breadcrumb landed after the dev tree's HEAD, this correction is wrong and must be re-measured.
 2. **Extend the delete-the-disk-copy rule above to archiving.** That section covers the untracked
    copy of a breadcrumb your PR **added**; the same applies, at the ROOT path and with the same
    read-backs, to one your PR **archived**. Cure 1 there — write it inside the worktree — cannot

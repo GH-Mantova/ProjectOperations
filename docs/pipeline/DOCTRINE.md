@@ -964,8 +964,13 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   finished: there is no agent-side action behind it. **The falsifying probe is the verdict line itself**
   — pull it from column 3 of the CP-26 job log, per §9.1.
 - 🔴 **A `--jq` expression survives the `-Command` layer intact — spaces included — but escaped
-  double quotes DO NOT.** `join(\",\")` arrives as `join(,\)` and jq fails LOUDLY with
-  `failed to parse jq expression`. Keep double quotes out of jq expressions, or use `--json` plus
+  double quotes DO NOT.** `join(\",\")` arrives MANGLED and jq fails LOUDLY with `failed to parse jq expression`.
+  ⚠️ **The arrival string is ILLUSTRATION and has drifted once — do not read a different mangling
+  as a non-reproduction.** Recorded as `join(,\)`; [MEASURED] 2026-09-22T18:1xZ by Station 04 at
+  `25aa3115` through the direct Desktop Commander shell it arrives as `join(\",\)` — the first double
+  quote survives — and `gh` reports `invalid escape sequence "\)" in string literal`, exit 1. **The
+  headline rule is unchanged and was re-confirmed both times**; the POSITIVE control, the plain
+  single-quoted form, returned a correct label reading on an open PR. Keep double quotes out of jq expressions, or use `--json` plus
   `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach**, because piping a JSON
   array straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge
   queue select **#552 — the production-data PR.**

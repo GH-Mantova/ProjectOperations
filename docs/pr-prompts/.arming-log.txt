@@ -140,3 +140,5 @@
 2026-09-21T13:19:01Z  ARMED  pr-ops-m2b-tipping-tab-reminder  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=13084  caller=powershell.exe:2696
 2026-09-21T19:31:53Z  ARMED  pr-scopecards-s5-charge-steps-price-cutting  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=35484  caller=powershell.exe:28804
 2026-09-22T02:13:25Z  ARMED  pr-scopecards-s6-one-cutting-surface  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=19768  caller=powershell.exe:12816
+2026-09-22T17:25:14Z  ARMED  pr-scopecards-s7-one-cutting-total  escalates=true  actor=station-00.sched  by=Marco@LAPTOP-E6NHU4E4  pid=33416  caller=powershell.exe:16316
+2026-09-22T17:26:49Z  DISARMED  pr-scopecards-s7-one-cutting-total  reason=prose-human-gate-'Arming is Marco''s'-missed-at-arm-time  actor=station-00.sched  restage-b-moved-to=no-pr-opened/  HOLD-restored-byte-exact-from-HEAD

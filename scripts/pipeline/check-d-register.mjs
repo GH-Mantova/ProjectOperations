@@ -223,6 +223,16 @@ export function runChecker({ repoRoot, registered } = {}) {
   // Paths to exclude entirely (relative to repo root, normalised to forward slashes)
   const EXCLUDED_REL_PREFIXES = [
     "docs/pr-prompts/superseded/",
+    // Consumed and historical prompts: kept for the record, not live citations.
+    "docs/pr-prompts/processed/",
+    "docs/pr-prompts/archive/",
+    // The checker's own corpus. Its spec cites deliberately unregistered tokens
+    // (a positive control needs an unregistered token), and the D-namespace chain
+    // documents quote them. Scanning them makes the checker fail on itself, which
+    // is what kept slice 5 (flip to FAIL) unarmable - measured 2026-09-22: 36 of 36
+    // findings came from these paths and none was a real unregistered citation.
+    "scripts/pipeline/__tests__/check-d-register.spec.mjs",
+    "docs/pr-prompts/pr-dns-s5-checker-flip-to-fail",
     "sot/05-decisions-and-lessons.md",
     "scripts/workflows/vendor/",
   ];

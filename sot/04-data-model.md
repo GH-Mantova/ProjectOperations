@@ -11,9 +11,9 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-09-21 14:18 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `36383d3b651e`)
-- Models: 297 | Enums: 70 | FK edges: 496 | Domains: 23
+- Last updated: 2026-09-22 14:29 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `f06a485c0fcb`)
+- Models: 297 | Enums: 70 | FK edges: 497 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
 
@@ -2236,7 +2236,7 @@ graph LR
 
 ### Model: Tender
 
-- Table: `tenders` | Domain: Tendering | Fields: 72
+- Table: `tenders` | Domain: Tendering | Fields: 73
 - Belongs to (FK out):
   - `estimator` -> **User** (estimatorUserId, onDelete SetNull)
   - `assignedEstimator` -> **User** (assignedEstimatorId, onDelete SetNull)
@@ -2273,6 +2273,7 @@ graph LR
   - `sorSnapshots` -> **JobSorSnapshot**[]
   - `allocationCandidates` -> **TenderAllocationCandidate**[]
   - `allocationRejections` -> **TenderAllocationRejection**[]
+  - `tipRecommendationLogs` -> **TipRecommendationLog**[]
 - Has one (back-relation):
   - `sourceJob` -> **Job**
   - `jobConversion` -> **JobConversion**
@@ -2281,7 +2282,7 @@ graph LR
   - `tandC` -> **TenderTandC**
   - `rateSet` -> **TenderRateSet**
   - `opportunity` -> **Opportunity**
-- Referenced by: **ClientQuote**, **CorrespondenceThread**, **CuttingSheetItem**, **EstimateExport**, **Handover**, **HazardObservation**, **Job**, **JobConversion**, **JobSorSnapshot**, **Opportunity**, **Project**, **SafetyIncident**, **ScopeCard**, **ScopeOfWorksHeader**, **ScopeOfWorksItem**, **ScopeViewConfig**, **ScopeWasteItem**, **TenderAllocationCandidate**, **TenderAllocationRejection**, **TenderAssumption**, **TenderClarification**, **TenderClarificationNote**, **TenderClient**, **TenderClientNote**, **TenderDocumentLink**, **TenderEntry**, **TenderEstimate**, **TenderExclusion**, **TenderFollowUp**, **TenderNote**, **TenderOutcome**, **TenderPackage**, **TenderPricingSnapshot**, **TenderRateSet**, **TenderScopeRevision**, **TenderTandC**, **TenderWithdrawalReview**
+- Referenced by: **ClientQuote**, **CorrespondenceThread**, **CuttingSheetItem**, **EstimateExport**, **Handover**, **HazardObservation**, **Job**, **JobConversion**, **JobSorSnapshot**, **Opportunity**, **Project**, **SafetyIncident**, **ScopeCard**, **ScopeOfWorksHeader**, **ScopeOfWorksItem**, **ScopeViewConfig**, **ScopeWasteItem**, **TenderAllocationCandidate**, **TenderAllocationRejection**, **TenderAssumption**, **TenderClarification**, **TenderClarificationNote**, **TenderClient**, **TenderClientNote**, **TenderDocumentLink**, **TenderEntry**, **TenderEstimate**, **TenderExclusion**, **TenderFollowUp**, **TenderNote**, **TenderOutcome**, **TenderPackage**, **TenderPricingSnapshot**, **TenderRateSet**, **TenderScopeRevision**, **TenderTandC**, **TenderWithdrawalReview**, **TipRecommendationLog**
 - Suggested measures: revisionNumber, leadTimeDays, estimatedValue
 - Suggested dimensions: status, withdrawalState, allocationState, folderProvisioningStatus, estimator, assignedEstimator, site, tenant
 - Time fields: dueDate, proposedStartDate, submittedAt, ratesSnapshotAt, wonAt, lostAt
@@ -2473,7 +2474,7 @@ graph LR
 
 ### Model: TenderRateSet
 
-- Table: `tender_rate_sets` | Domain: Tendering | Fields: 10
+- Table: `tender_rate_sets` | Domain: Tendering | Fields: 11
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `lockedBy` -> **User** (lockedById, onDelete SetNull)
@@ -2988,11 +2989,12 @@ graph LR
 
 ### Model: MapLocation
 
-- Table: `map_locations` | Domain: Unclassified | Fields: 16
+- Table: `map_locations` | Domain: Unclassified | Fields: 18
 - Has many:
   - `tipRecommendationLogs` -> **TipRecommendationLog**[]
 - Referenced by: **TipRecommendationLog**
 - Suggested dimensions: kind, categoryId, state
+- Time fields: pricesReviewedAt, pricesReviewNotifiedAt
 
 ### Model: MusterAttendee
 
@@ -3196,13 +3198,14 @@ graph LR
 
 ### Model: TipRecommendationLog
 
-- Table: `tip_recommendation_logs` | Domain: Unclassified | Fields: 20
+- Table: `tip_recommendation_logs` | Domain: Unclassified | Fields: 22
 - Belongs to (FK out):
   - `mapLocation` -> **MapLocation** (mapLocationId, onDelete Restrict)
   - `project` -> **Project** (projectId, onDelete SetNull)
+  - `tender` -> **Tender** (tenderId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
 - Suggested measures: loadTonnes, travelCost, totalCost
-- Suggested dimensions: mapLocation, wasteTypeCode, originType, project, createdBy
+- Suggested dimensions: mapLocation, wasteTypeCode, originType, project, tender, createdBy
 
 ### Model: VendorInvoice
 

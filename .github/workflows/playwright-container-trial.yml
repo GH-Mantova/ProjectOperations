@@ -4,12 +4,10 @@ permissions:
   contents: read
 
 on:
+  # Run it against a branch with: gh workflow run playwright-container-trial.yml --ref <branch>
+  # (it checks out the ref it was dispatched on; there is deliberately no 'ref' input -
+  # checking out a caller-chosen ref is the CodeQL cache-poisoning pattern, #2082).
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Branch, tag, or commit SHA to run against
-        required: false
-        default: main
 
 jobs:
   tendering-e2e-container:
@@ -31,6 +29,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      # Firefox refuses to launch as root when $HOME belongs to another user (the
+      # image's /github/home is owned by pwuser). Playwright's documented fix.
+      HOME: /root
       DATABASE_URL: postgresql://project_ops:project_ops@postgres:5432/project_operations?schema=public
       API_PORT: 3000
       API_PREFIX: api/v1
@@ -52,6 +53,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4.2.2
+
+      # The job runs inside a container as root while the workspace is owned by
+      # the runner uid. checkout marks it safe only in a temporary HOME, so the
+      # root postinstall (git config core.hooksPath) saw 'not in a git directory'
+      # and every dispatch died at pnpm install. Mark it safe for the job.
+      - name: Trust the checked-out workspace (container runs as root)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: pnpm/action-setup@v4.0.0
 

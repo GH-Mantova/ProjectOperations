@@ -1,3 +1,15 @@
+<!-- RETIRED 2026-09-22 by Marco ("retire 7" in chat), via station-00.interactive-0004.
+     Criterion 4 of this prompt says: if the container is not meaningfully faster,
+     say so and stop - close it, do not ship a lateral move. It is not faster.
+     Measured after #2082 made the trial runnable (it had never produced a usable
+     run; every dispatch died at pnpm install). Same commit, host vs container:
+       fa1b03eb  host 709s  container 908s
+       bf7e43a7  host 918s  container 863s
+     Both green on both commits, so the verdicts agree - the saving is what is
+     missing. The host job spends only 40-56s installing browsers, which caps any
+     saving at about a minute, and run-to-run noise is ~200s.
+     The trial workflow stays on main: it is now working and is the instrument that
+     measured this. -->
 ---
 premise: 'grep -q "playwright install --with-deps" .github/workflows/playwright.yml'
 premise_means: >-

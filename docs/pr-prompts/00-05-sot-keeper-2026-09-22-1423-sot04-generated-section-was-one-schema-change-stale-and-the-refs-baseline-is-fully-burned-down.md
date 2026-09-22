@@ -313,6 +313,40 @@ probes read EMPTY and will not catch it, and the note that this was *caused* by 
 sweep landing a path the dev tree already held untracked — so it will recur on every sweep unless
 the sweep also clears what it swept.
 
+🟢 **SELF-CORRECTED AT 15:0xZ, BEFORE THIS PR WAS REVIEWED — THE BLOCKER NEVER MATERIALISED, AND
+THE PARAGRAPHS ABOVE WOULD OTHERWISE HAVE OUTLIVED THEIR OWN SHA.** [MEASURED] on re-reading the
+dev tree after the worktree teardown: `git rev-parse --short HEAD` → **`304e41b6`** (was
+`58a53a11`), `git rev-list --left-right --count HEAD...origin/main` → **`0 0`**,
+`git ls-files --error-unmatch docs/pr-prompts/00-04-scanner-2026-09-22-1411-BLIND-*.md` → **exit 0,
+the path is now TRACKED**, the file is still on disk, and `git status --porcelain` no longer lists
+it. Remaining untracked in the dev tree: `queue-watch-state.md`, `.queue-sync-ledger.txt` and
+`Claude Design/docs/index.html` — none of which `main` has landed. **The fast-forward happened and
+succeeded.**
+
+⚠️ **The CAUSE is [INFERRED], and the two candidates are not equivalent.** Either (a) the untracked
+copy was **byte-identical** to the blob `#2087` landed — which it should have been, since `#2087`
+swept that very file up unchanged — and git therefore had nothing to overwrite; or (b) Station 00
+cleared it by hand between 14:2xZ and 15:0xZ. I cannot separate them after the fact: the
+fast-forward is not re-runnable and I did not hash the untracked copy before it was consumed.
+**[CANNOT MEASURE] which.**
+
+🔧 **What the next run should take from this, and it sharpens the REPORT CONTRACT's red block
+rather than contradicting it.** That block says an untracked file at a path the fast-forward must
+create makes `git merge --ff-only` refuse. On the evidence here the refusal is conditional on the
+untracked content **differing** from what `main` lands — a breadcrumb swept up verbatim by a board
+PR is the benign case and passes straight through. The dangerous case the block is really guarding
+is a breadcrumb the station **edited after** the sweep copied it, or one at a colliding path written
+by a different actor. **Falsifying probe:** before the next sweep, hash the untracked breadcrumb in
+the dev tree and the blob the board PR lands; if they are identical and the fast-forward still
+refuses, this reading is wrong and candidate (b) is the explanation. **Nothing in the red block is
+retired** — it costs nothing to keep, and F5's original advice (write the breadcrumb inside your own
+PR, as this one is) avoids both cases outright.
+
+**REVISED DISPOSITION: ACTIONED — by the system, not by me; nothing remains for 00 to clear.** The
+dispatch above is withdrawn. What is handed to 00 instead is the *sharpening* in the paragraph above
+and the still-open question of whether its own sweep should clear what it swept, which is a question
+about the sweep and not about today's board.
+
 ## WHAT I DID NOT DO
 
 - **Did not touch `scripts/`, `apps/`, `.github/`, `packages/`, `package.json` or

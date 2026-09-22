@@ -162,6 +162,24 @@ deprecate-then-cleanup Marco ruled for `isProvisional` in S2a. Say so in a comme
 - **`e2e/`** - find the `tendering-e2e` spec that reads *"Concrete cutting"* and make its expectation
   single-element. Do not weaken it to a partial match.
 
+### 6. Depths with no priced row - Marco, 2026-09-22 (ruled on #2061)
+
+> Marco: *"Ringsaw Wall at 275 mm: if there is no 275 mm depth charge for that, then [use the next
+> depth up]. Once a rate is entered (say a new line on the concrete cutting table) for that depth,
+> the system should be able to identify it from the table."*
+
+The server already does this on `main`. `priceSawCutFromRates` in `scope-redesign.service.ts`
+picks the shallowest row **at or above** the requested depth from the live table rows. **Keep that
+lookup exactly as it is.** It is row-picking, and section 3's deletions do not touch it. This slice
+must not break it on the screen either:
+
+- The Depth dropdown offers the depths the table prices, built from the API rows (section 3). A row
+  added to the table later appears as an option **with no code change**.
+- A depth that arrives from outside the dropdown (Copy from above, an import, an older line, e.g.
+  275 mm on Ringsaw Wall) is **shown as stored, never coerced or blanked**. It prices at the next
+  depth up, using the server's figure.
+- Test: in `cutting-one-surface.test.tsx`, a fixture row at a depth absent from the option list
+  still renders its stored depth, and the options come from the rows passed in, not a literal list.
 ## Do NOT
 
 - Do NOT keep both surfaces, and do NOT hide one behind a flag. One section or say `NO-OP`.

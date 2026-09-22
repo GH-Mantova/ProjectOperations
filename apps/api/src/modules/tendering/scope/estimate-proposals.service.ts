@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
+import { cuttingLineTotal } from "../cutting-line-pricing";
 import type { ConversationMessage } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../prisma/prisma.service";
@@ -284,6 +285,7 @@ export class EstimateProposalsService {
           unit: c.unit,
           comment: c.comment ?? null,
           rate: new Prisma.Decimal(c.rate),
+          lineTotal: cuttingLineTotal({ qty: c.qty, rate: c.rate }),
           sortOrder: i
         }
       });

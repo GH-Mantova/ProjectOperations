@@ -452,6 +452,46 @@ Its eight findings, each re-measured against the live system rather than carried
 its tracked set with `git ls-tree -r` and matches by trailing path segment, so an archived
 breadcrumb still counts and no station can be made to read SILENT by the move (§9.5).
 
+### F9 - ARMING NATIVE AUTO-MERGE IS NOT STICKY: a later push to the same branch CLEARED it, silently, and the PR would have sat OPEN forever. `AUTOMERGE_CLEARED_BY_A_LATER_PUSH_V1`
+
+My station doc's ACTIVE DRIVE MANDATE rule 1 says in as many words: *"Read back the merge state and
+confirm it reached `main`; do not stop at 'auto-merge enabled'."* That instruction is usually read as
+being about the MERGE. [MEASURED] this run, it is also about the ARM.
+
+| t | action | `autoMergeRequest` read back per-PR |
+|---|---|---|
+| 08:4xZ | `gh pr merge 2078 --auto --squash --delete-branch`, exit 0, on head `42044d37` | **`True`** |
+| 08:5xZ | one further commit pushed to the same branch (`d529c67a`), then `gh pr edit --body-file` | **`False`** |
+| 08:5xZ | `gh pr merge 2078 --auto --squash --delete-branch` again, exit 0 | **`True`**, head `d529c67a` |
+
+POSITIVE control that the reader works: it returned `True` twice, on two different heads, and the
+`gh pr edit` in between returned exit 0 with `BODY_HAS_AUTOMERGE_PARA=True`, so nothing about the
+call failed. Nothing warned, nothing was empty, and every exit code was 0 - which is section 7's
+shape rather than section 9.6's.
+
+🔴 **The cost is total and silent.** An arm that is cleared leaves a green, unlabelled, in-lane PR
+sitting OPEN with nothing to merge it and no red to explain why. The next collect run reads a PR it
+believes a previous run already armed, and the board stalls on a PR that everybody thinks is moving.
+This is the same class as the `[LIVE]` rule - *true when measured, not true now* - applied to a
+setting rather than to a reading.
+
+⚠️ **The CAUSE is [CANNOT MEASURE] from this run.** Two candidates fired between the two readings -
+the push and the `gh pr edit` - and I did not separate them, because the correction to the body and
+the correction to the breadcrumb had to go out together. 🔧 **So the rule stated here is the one that
+holds whichever it was: RE-ARM AND RE-READ AFTER EVERY MUTATION OF A PR YOU HAVE ALREADY ARMED,
+including a body edit.** It costs one call and it cannot be wrong.
+
+⚠️ **Falsifying probe, and this run sets it up deliberately:** the commit carrying THIS finding is a
+push to `#2078` with **no** `gh pr edit` after it. Read `autoMergeRequest` immediately afterwards.
+**`False` ⇒ the PUSH is the cause** and the rule can be narrowed to pushes; **`True` ⇒ the `gh pr
+edit` is the cause** and body edits are the thing to re-arm after. Either answer narrows this bullet;
+the run that reads it should record which.
+
+**DISPOSITION: ACTIONED** - re-armed and read back `automerge=True` on head `d529c67a`, and the
+discriminating experiment is left set up above rather than left to be re-derived. ⚠️ This is an
+observation about the GitHub API, not about a pipeline instrument, so it is recorded here rather
+than in DOCTRINE section 9 until the cause is known.
+
 ## WHAT I DID NOT DO
 
 - **I did not merge anything, and I did not touch `#2071` at any point.** It carried a real watcher

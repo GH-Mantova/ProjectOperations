@@ -33,7 +33,13 @@ const ROOT = process.cwd();
 const CONTRACT_FROM = '2026-08-25T0000';
 
 // station -> cadence in hours. A station is SILENT past 2x its cadence.
-const CADENCE = { '00': 2, '02': null, '03': 24, '04': 4, '05': 24 };
+// DERIVED FROM THE LIVE CRON, not from a station doc's prose. Verify with the scheduled-tasks
+// MCP (list_scheduled_tasks) before changing any row:
+//   00 `5 * * * *` hourly  |  03 `0 9 * * *` daily  |  04 `0 */4 * * *` 4h  |  05 `10 0 * * *` daily
+// 00 read `2` here against an hourly cron, so its SILENT threshold was 4h and it could miss
+// THREE consecutive occurrences while printing `ok`. Measured 2026-09-22 by Station 00 and
+// recorded unfixed in the 09-22 13:25Z, 14:14Z and 15:14Z breadcrumbs before this correction.
+const CADENCE = { '00': 1, '02': null, '03': 24, '04': 4, '05': 24 };
 
 const SECTIONS = ['## GROUND', '## WHAT I MEASURED', '## WHAT CHANGED', '## FINDINGS', '## WHAT I DID NOT DO'];
 const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];

@@ -46,7 +46,10 @@ async function openCivCuttingSheet(page: Page): Promise<void> {
   // a stray saw cut on DEM for the rest of the run. Wait for the CIV-only
   // scope line first; it is the same string the discipline-scoping test uses.
   await expect(page.getByText(/Showing items linked to CIV scope/)).toBeVisible();
-  await expect(page.getByText("Concrete cutting")).toBeVisible();
+  // CUTTING_ONE_SURFACE_V1 (scopecards-s6): single element — the two-surface
+  // situation that turned #1682 red is gone. Assert count=1 so a regression
+  // to two surfaces fails here rather than in Playwright strict mode.
+  await expect(page.getByRole("heading", { name: /^Concrete cutting\s*\(\d+ items?\)$/ })).toHaveCount(1);
 }
 
 test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
@@ -184,15 +187,15 @@ test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
       // been seen serving a transiently stale (empty) cutting list even
       // though the rows are committed (verified by the poll above).
       try {
-        await expect(page.getByRole("button", { name: "Core holes (2)" })).toBeVisible({
+        await expect(page.getByRole("heading", { name: /^Concrete cutting\s*\(2 items\)$/ })).toBeVisible({
           timeout: 5000
         });
       } catch {
         await page.reload();
-        await expect(page.getByText("Concrete cutting")).toBeVisible();
-        await expect(page.getByRole("button", { name: "Core holes (2)" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: /^Concrete cutting\s*\(\d+ items?\)$/ })).toHaveCount(1);
+        await expect(page.getByRole("heading", { name: /^Concrete cutting\s*\(2 items\)$/ })).toBeVisible();
       }
-      await page.getByRole("button", { name: "Core holes (2)" }).click();
+      // CUTTING_ONE_SURFACE_V1: no per-type tabs any more - all row types share one table.
 
       // The 150 mm row uses the diameter library dropdown ("Custom…"
       // option present); the 700 mm row renders a free input instead.
@@ -253,12 +256,12 @@ test.describe("Batch 3 — Concrete cutting sheet (PRs #37, #44, #60)", () => {
         .toBe(1);
       await openCivCuttingSheet(page);
       await expect(page.getByText(/Showing items linked to CIV scope/)).toBeVisible();
-      await expect(page.getByRole("button", { name: "Saw cuts (1)" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Concrete cutting\s*\(1 item\)$/ })).toBeVisible();
 
       // DEM card: the CIV row is filtered out.
       await page.getByText("Demolition", { exact: true }).first().click();
       await expect(page.getByText(/Showing items linked to DEM scope/)).toBeVisible();
-      await expect(page.getByRole("button", { name: "Saw cuts (0)" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Concrete cutting\s*\(0 items\)$/ })).toBeVisible();
 
       // ASB card: no cutting sheet at all (asbestos work is never priced
       // through the cutting schedule).

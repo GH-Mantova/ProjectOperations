@@ -469,11 +469,13 @@ describe("a SUB line with quotes and none selected is visibly incomplete", () =>
     expect(html).toContain('data-testid="sub-quote-incomplete-note"');
     expect(html).toContain('data-incomplete="true"');
     expect(html).toContain("var(--text-muted)");
+    // CUTTING_ONE_SURFACE_V1 (scopecards-s6): CuttingSection.tsx is gone;
+    // ScopeCuttingSheet is the single surface and carries the empty/unpriced state.
     const cutting = readFileSync(
-      repoFile("apps/web/src/pages/tendering/scope-cards/CuttingSection.tsx"),
+      repoFile("apps/web/src/pages/tendering/ScopeCuttingSheet.tsx"),
       "utf8"
     );
-    expect(cutting).toContain("cutting-section-unpriced-note");
+    expect(cutting).toContain("cutting-section-empty");
     expect(quotePickerSource).not.toMatch(/role="alert"/);
   });
 

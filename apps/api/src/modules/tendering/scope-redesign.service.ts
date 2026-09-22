@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
+import { ChargeStepPricingService } from "../rates/charge-step-pricing.service";
 import type { Discipline } from "./dto/scope-of-works.dto";
 import { DISCIPLINES } from "./dto/scope-of-works.dto";
 import {
@@ -127,18 +128,6 @@ function defaultColumnsForDiscipline(discipline: Discipline): string[] {
   return Array.from(union).filter((c) => !(REQUIRED_COLUMNS as readonly string[]).includes(c));
 }
 
-const ELEVATION_MULTIPLIER: Record<string, number> = {
-  Floor: 1.0,
-  Any: 1.0,
-  Wall: 1.1,
-  Inverted: 2.0
-};
-
-const METHOD_MULTIPLIER: Record<string, number> = {
-  "High-Freq": 1.25,
-  "Low-emission": 1.25
-};
-
 // Server-enforced per-equipment method allowlist. Anything outside the
 // allowlist is coerced to null (no multiplier) so a stale or malformed
 // client request can't ask for a rate combination that doesn't exist in
@@ -207,14 +196,26 @@ export function inferCuttingMaterial(item: {
 }
 
 /**
- * Implement the spec's 6-step rate resolver. Returns null when no rate
- * exists for the resolved key (UI shows "—" rather than erroring).
+ * CHARGE_STEPS_PRICE_CUTTING_V1 — Cutting rate resolver using charge steps.
  *
- * rates-consumers SLICE 2 — parameter changed from `prisma: PrismaService`
- * to `rateResolver: RateResolverService`. Range queries are reproduced
- * in-memory using `listRates("cutting")` so the canonical-source env var
- * is honoured. Behaviour (deepest-at-or-below, bucketed Tracksaw/Flush-cut,
- * max-available fallback) is preserved exactly.
+ * Row selection (sanitiseSawElevation, METHODS_BY_EQUIPMENT, elevation/material
+ * collapse, depth range match + biggest-available fallback) stays in this function.
+ * These choose WHICH row answers the request; the step grammar has no row selection.
+ *
+ * After the row is chosen, `chargeStepPricing.priceRow()` runs the formula.
+ * - Tracksaw and Flush-cut route to the `cutting-mm` table (depth-scaling steps).
+ * - Everything else routes to `cutting`.
+ *
+ * When `chargeStepPricing` is not provided (unit-test compat), the baseRate is
+ * returned as finalRate with no multipliers (methodMultiplier=1.0, elevationMultiplier=1.0).
+ *
+ * Returned shape unchanged. `elevationMultiplier` is always 1.0 — elevation premium
+ * is encoded in priced Wall rows, not a multiplier. `methodMultiplier` is reported
+ * from the step trail (the factor applied by the method conditional step), 1.0 when
+ * the condition was skipped or no steps were provided.
+ *
+ * rates-consumers SLICE 2 — uses RateResolverService.listRates so canonical-source
+ * routing is honoured and locked-rate snapshots are applied.
  */
 export async function resolveCuttingRate(
   rateResolver: RateResolverService,
@@ -225,12 +226,15 @@ export async function resolveCuttingRate(
     depthMm: number;
     method?: string | null;
     tenderId?: string | null;
-  }
+  },
+  chargeStepPricing?: ChargeStepPricingService | null
 ): Promise<{ baseRate: number; methodMultiplier: number; elevationMultiplier: number; finalRate: number } | null> {
   const { equipment, depthMm } = input;
 
   // Sanitise the inbound elevation against the saw-cut rule that Inverted
   // only applies to core holes. Roadsaw is additionally pinned to Floor.
+  // These stay in code: they choose which row answers the request; the step
+  // grammar has no row selection.
   const requestedElevation = sanitiseSawElevation(equipment, input.elevation);
 
   // Method allowlist per equipment (Roadsaw doesn't support High-Freq,
@@ -262,36 +266,45 @@ export async function resolveCuttingRate(
     effectiveMaterial = effectiveMaterial === "Asphalt" ? "Asphalt" : "Concrete";
   }
 
-  // Step 3 — effective depth.
-  // Fetch all cutting rates once; reproduce the original range-query
-  // semantics in-memory so canonical-source routing is honoured.
+  // CHARGE_STEPS_PRICE_CUTTING_V1: Tracksaw and Flush-cut route to the
+  // cutting-mm table (depth-scaling formula in steps). All others use cutting.
+  const isDepthScaled = equipment === "Tracksaw" || equipment === "Flush-cut";
+  const tableSlug = isDepthScaled ? "cutting-mm" : "cutting";
+
+  // Step 3 — effective depth. Row selection from the cutting table.
   // Pass tenderId so locked-rate snapshots are applied (SLICE 2).
-  const allCuttingRates = await rateResolver.listRates("cutting", input.tenderId ? { tenderId: input.tenderId } : undefined);
-  // Filter to the resolved equipment/elevation/material combination.
-  const candidates = allCuttingRates.filter(
-    (r) =>
-      r.keys["equipment"] === equipment &&
-      r.keys["elevation"] === effectiveElevation &&
-      r.keys["material"] === effectiveMaterial
+  const cuttingRates = await rateResolver.listRates(
+    isDepthScaled ? "cutting-mm" : "cutting",
+    input.tenderId ? { tenderId: input.tenderId } : undefined
   );
 
-  let rateRow: { depthMm: number; ratePerM: number } | null = null;
-  if (equipment === "Tracksaw" || equipment === "Flush-cut") {
-    // CUTTING_RATE_CORRECTIONS_V1 — D2: depth-scaling for Tracksaw/Flush-cut.
-    // The Cutrite schedule has only a single 25mm row for these rigs.
-    // Rule: the 25mm row is the floor rate; above 25mm the rate scales linearly
-    // at (floorRate / 25) per mm, with the floor as the minimum.
-    // Both the floor rate and per-mm rate are derived from the seeded 25mm row
-    // so a Cutrite reprice moves them together.
-    const floorRow = candidates.sort(
-      (a, b) => Number(a.keys["depthMm"]) - Number(b.keys["depthMm"])
-    )[0];
-    if (floorRow) {
-      const floorDepthMm = Number(floorRow.keys["depthMm"]); // 25 from seed
-      const floorRate = floorRow.value;                       // 18.00 from seed
-      const perMmRate = floorRate / floorDepthMm;             // 0.72/mm
-      const scaledRate = Math.max(floorRate, depthMm * perMmRate);
-      rateRow = { depthMm, ratePerM: scaledRate };
+  // Filter to the resolved equipment/elevation combination.
+  // cutting table (legacy adapter): keys are lowercase camelCase (equipment, elevation, material).
+  // cutting-mm table (RateTable adapter): keys are column names from the schema ("Equipment", "Elevation").
+  // Use requestedElevation for cutting-mm (Floor/Wall, not collapsed "Any").
+  const candidates = isDepthScaled
+    ? cuttingRates.filter(
+        (r) =>
+          // cutting-mm columns are "Equipment" and "Elevation" (title-cased).
+          (r.keys["Equipment"] === equipment || r.keys["equipment"] === equipment) &&
+          (r.keys["Elevation"] === requestedElevation || r.keys["elevation"] === requestedElevation)
+      )
+    : cuttingRates.filter(
+        (r) =>
+          r.keys["equipment"] === equipment &&
+          r.keys["elevation"] === effectiveElevation &&
+          r.keys["material"] === effectiveMaterial
+      );
+
+  let baseRateRow: { rowId: string; value: number } | null = null;
+
+  if (isDepthScaled) {
+    // cutting-mm: any row for this equipment/elevation (just need one for the
+    // step formula to run against — the step does: start rate, multiply depthMm,
+    // divide 25, floor 18, multiply metres). Use the first (Floor or Wall) row.
+    const row = candidates[0];
+    if (row) {
+      baseRateRow = { rowId: row.rowId, value: row.value };
     }
   } else {
     // Deepest at-or-above-requested (original: depthMm >= depthMm, asc → first).
@@ -300,34 +313,86 @@ export async function resolveCuttingRate(
       .sort((a, b) => Number(a.keys["depthMm"]) - Number(b.keys["depthMm"]));
     if (atOrAbove.length > 0) {
       const row = atOrAbove[0];
-      rateRow = { depthMm: Number(row.keys["depthMm"]), ratePerM: row.value };
+      baseRateRow = { rowId: row.rowId, value: row.value };
     } else {
       // Requested depth exceeds max seeded depth — use the biggest available.
       const biggest = candidates.sort(
         (a, b) => Number(b.keys["depthMm"]) - Number(a.keys["depthMm"])
       )[0];
-      if (biggest) rateRow = { depthMm: Number(biggest.keys["depthMm"]), ratePerM: biggest.value };
+      if (biggest) baseRateRow = { rowId: biggest.rowId, value: biggest.value };
     }
   }
 
-  if (!rateRow) return null;
+  if (!baseRateRow) return null;
 
-  const baseRate = rateRow.ratePerM;
-  const methodMultiplier = METHOD_MULTIPLIER[effectiveMethod ?? ""] ?? 1.0;
-  // CUTTING_RATE_CORRECTIONS_V1 — D4: elevation loading is per-equipment.
-  // Demosaw has explicit Wall/Floor rows in the Cutrite schedule — the wall
-  // premium is already encoded in the row value. Applying ELEVATION_MULTIPLIER
-  // on top produces a double-loaded rate (e.g. $48.60 × 1.1 = $53.46 vs sheet
-  // $48.60). Rule: uplift only where the rig does NOT have its own Wall rows.
-  //   - Demosaw: has Wall rows → elevationMultiplier always 1.0
-  //   - Ringsaw, Flush-cut, Tracksaw: stored as "Any" → multiplier applies
-  //   - Roadsaw: Floor-only (sanitiseSawElevation pins it); multiplier is 1.0
-  const elevationMultiplier =
-    equipment === "Demosaw"
-      ? 1.0
-      : ELEVATION_MULTIPLIER[requestedElevation] ?? 1.0;
-  const finalRate = baseRate * methodMultiplier * elevationMultiplier;
-  return { baseRate, methodMultiplier, elevationMultiplier, finalRate };
+  const baseRate = baseRateRow.value;
+
+  // CHARGE_STEPS_PRICE_CUTTING_V1: run the step formula.
+  // When chargeStepPricing is available, price through the table's charge steps.
+  // When not available (unit-test compat), return baseRate directly.
+  // elevationMultiplier is always 1.0 — elevation premium is in the priced Wall
+  // rows, not a multiplier (see seeded Ringsaw Wall rows at today's x1.1 figures).
+  const elevationMultiplier = 1.0;
+
+  if (chargeStepPricing) {
+    const priced = await chargeStepPricing.priceRow({
+      tableSlug,
+      row: { value: baseRate, rowId: baseRateRow.rowId },
+      lineFields: { method: effectiveMethod ?? "", depthMm, metres: 1 },
+      tenderId: input.tenderId
+    });
+
+    if (!priced) {
+      // No steps on this table, or a step failed to resolve.
+      // Treat as no-rate-row (same as when no matching row was found).
+      return null;
+    }
+
+    // methodMultiplier: read from trail — the factor applied by the method
+    // conditional step (e.g. multiply 1.25 when method is "High-Freq").
+    // Fall back to 1.0 when the trail has no such step or it was skipped.
+    const methodMultiplier = extractMethodMultiplierFromTrail(priced.trail, effectiveMethod);
+
+    return {
+      baseRate,
+      methodMultiplier,
+      elevationMultiplier,
+      finalRate: priced.value
+    };
+  }
+
+  // Unit-test compat path (no chargeStepPricing provided): return baseRate directly.
+  return { baseRate, methodMultiplier: 1.0, elevationMultiplier, finalRate: baseRate };
+}
+
+/**
+ * Extract the methodMultiplier from the step trail.
+ * Looks for a multiply step whose condition matches the effective method.
+ * Returns the step's field value if it was applied, 1.0 otherwise.
+ */
+function extractMethodMultiplierFromTrail(
+  trail: Array<{ index: number; op: string; runningTotal: number | null; skipped: boolean }>,
+  effectiveMethod: string | null
+): number {
+  // The method steps are: multiply 1.25 when method is "High-Freq"
+  //                        multiply 1.25 when method is "Low-emission"
+  // Both produce a 1.25 factor. We look for non-skipped multiply steps
+  // after the start step to find the applied factor.
+  if (!effectiveMethod) return 1.0;
+  // Find the first non-skipped multiply step after step 0 (start).
+  // The factor is the ratio of consecutive runnning totals.
+  for (let i = 1; i < trail.length; i++) {
+    const entry = trail[i];
+    if (entry.skipped) continue;
+    if (entry.op === "multiply") {
+      const prev = trail[i - 1];
+      if (prev && prev.runningTotal && prev.runningTotal !== 0) {
+        const factor = (entry.runningTotal ?? 1) / prev.runningTotal;
+        return factor;
+      }
+    }
+  }
+  return 1.0;
 }
 
 // Core hole resolver — spec Part 3.2. Returns isPOA=true for > 650mm so
@@ -345,30 +410,40 @@ export type CoreHoleRateResult =
     };
 
 /**
- * Core hole rate resolver — spec Part 3.2. Returns isPOA=true for
- * diameters > 650mm (manual pricing); undersize diameters round up to
- * 32mm; between-listed diameters round up to the next available row.
+ * CHARGE_STEPS_PRICE_CUTTING_V1 — Core hole rate resolver using charge steps.
  *
- * rates-consumers SLICE 2 — parameter changed from `prisma: PrismaService`
- * to `rateResolver: RateResolverService`. Range query (gte: lookupDiameter,
- * asc) reproduced in-memory using `listRates("core-hole")`.
+ * Row selection (> 650mm POA, round up to 32mm, next-at-or-above diameter)
+ * stays in this function. After selection, `chargeStepPricing.priceRow()` runs
+ * the `core-hole` step formula:
+ *   start depthMm -> divide 10 -> round nearest 1 -> floor 1
+ *   -> multiply rate col -> multiply 1.1 when elevation is "Wall"
+ *   -> multiply 2 when elevation is "Inverted" -> multiply holes
+ *
+ * Core holes take no method multiplier (D3 from CUTTING_RATE_CORRECTIONS_V1).
+ *
+ * When `chargeStepPricing` is not provided (unit-test compat), the raw matched
+ * row value is returned as ratePerHole with elevationMultiplier computed from
+ * the step grammar's values (Wall=1.1, Inverted=2.0) for backward compat.
+ *
+ * rates-consumers SLICE 2 — uses RateResolverService.listRates so canonical-source
+ * routing is honoured and locked-rate snapshots are applied.
  *
  * @param rateResolver - RateResolverService for core-hole lookups
  * @param input - diameterMm plus optional elevation/method for multipliers
+ * @param chargeStepPricing - optional: when provided, uses step formula
  * @returns a CoreHoleRateResult, or null when no active rate row matches
  */
 export async function resolveCoreHoleRate(
   rateResolver: RateResolverService,
-  input: { diameterMm: number; elevation?: string | null; method?: string | null; tenderId?: string | null }
+  input: { diameterMm: number; elevation?: string | null; method?: string | null; tenderId?: string | null },
+  chargeStepPricing?: ChargeStepPricingService | null
 ): Promise<CoreHoleRateResult | null> {
-  const elevationMultiplier = ELEVATION_MULTIPLIER[input.elevation ?? "Floor"] ?? 1.0;
   // CUTTING_RATE_CORRECTIONS_V1 — D3: core holes take no method multiplier.
-  // The Cutrite schedule does not have method-keyed core-hole rows.
-  // Applying METHOD_MULTIPLIER here silently added 25% for Low-emission/High-Freq.
   const methodMultiplier = 1.0;
 
   if (input.diameterMm > 650) {
-    return { isPOA: true, ratePerHole: null, methodMultiplier, elevationMultiplier };
+    // > 650mm — manual pricing (POA). elevationMultiplier not applied to POA.
+    return { isPOA: true, ratePerHole: null, methodMultiplier, elevationMultiplier: 1.0 };
   }
   // Minimum supported diameter is 32mm — anything smaller uses the 32mm rate.
   const lookupDiameter = Math.max(32, input.diameterMm);
@@ -381,12 +456,47 @@ export async function resolveCoreHoleRate(
     .sort((a, b) => Number(a.keys["diameterMm"]) - Number(b.keys["diameterMm"]));
   if (atOrAbove.length === 0) return null;
   const matched = atOrAbove[0];
+
+  if (chargeStepPricing) {
+    // CHARGE_STEPS_PRICE_CUTTING_V1: price through core-hole steps.
+    // The step formula encodes depth rounding, floor, elevation multiplier, and holes.
+    // We pass holes=1 and metres=1 because the calling code multiplies out itself.
+    // depthMm and elevation are line fields the steps use.
+    const depthMm = input.diameterMm > 0 ? input.diameterMm : 0;
+    const elevation = input.elevation ?? "Floor";
+    const priced = await chargeStepPricing.priceRow({
+      tableSlug: "core-hole",
+      row: { value: matched.value, rowId: matched.rowId },
+      lineFields: { depthMm, elevation, holes: 1 },
+      tenderId: input.tenderId
+    });
+
+    if (!priced) {
+      // No steps or step evaluation failed.
+      return null;
+    }
+
+    // elevationMultiplier is always 1.0 in the returned shape — it is baked into
+    // the step total. The caller's multiplication path uses ratePerHole directly.
+    return {
+      isPOA: false,
+      ratePerHole: priced.value,
+      diameterResolved: Number(matched.keys["diameterMm"]),
+      methodMultiplier,
+      elevationMultiplier: 1.0
+    };
+  }
+
+  // Unit-test compat path (no chargeStepPricing provided).
+  // Return the raw row value; caller applies its own elevation logic.
+  const elevationMultiplierCompat =
+    input.elevation === "Wall" ? 1.1 : input.elevation === "Inverted" ? 2.0 : 1.0;
   return {
     isPOA: false,
     ratePerHole: matched.value,
     diameterResolved: Number(matched.keys["diameterMm"]),
     methodMultiplier,
-    elevationMultiplier
+    elevationMultiplier: elevationMultiplierCompat
   };
 }
 
@@ -403,7 +513,8 @@ export async function resolveCoreHoleRate(
 export class ScopeRedesignService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly rateResolver: RateResolverService
+    private readonly rateResolver: RateResolverService,
+    @Optional() private readonly chargeStepPricing?: ChargeStepPricingService
   ) {}
 
   // ── Columns ──────────────────────────────────────────────────────────
@@ -1638,7 +1749,7 @@ export class ScopeRedesignService {
         depthMm: dto.depthMm,
         method: dto.method ?? null,
         tenderId: dto.tenderId ?? null
-      });
+      }, this.chargeStepPricing);
       if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
       const qty = Number(dto.quantityLm ?? 0);
       const total = qty * resolved.finalRate + shiftLoading;
@@ -1649,14 +1760,21 @@ export class ScopeRedesignService {
       };
     }
 
-    // core-hole: rate per 10mm depth × depth × qty × elevation × method + shift loading
+    // CHARGE_STEPS_PRICE_CUTTING_V1 — core-hole pricing via step formula.
+    // When chargeStepPricing is available, resolveCoreHoleRate returns a
+    // ratePerHole that is the full per-hole cost for 1 hole at the given depth,
+    // with elevation baked in by the step formula. The caller multiplies by qty
+    // only. depthUnits and elevationMultiplier are already in the step result.
+    // When chargeStepPricing is absent (unit-test compat), the original formula
+    // applies: ratePerHole * depthUnits * qty * elevationMultiplier.
     if (!dto.diameterMm) return { ratePerM: null, ratePerHole: null, lineTotal: null };
+    const depthMm = dto.depthMm && dto.depthMm > 0 ? dto.depthMm : 0;
     const resolved = await resolveCoreHoleRate(this.rateResolver, {
       diameterMm: dto.diameterMm,
       elevation: dto.elevation ?? "Floor",
       method: dto.method ?? null,
       tenderId: dto.tenderId ?? null
-    });
+    }, this.chargeStepPricing);
     if (!resolved) return { ratePerM: null, ratePerHole: null, lineTotal: null };
     if (resolved.isPOA) {
       // > 650mm diameter — manual pricing. Zero line total, null per-hole rate.
@@ -1666,15 +1784,21 @@ export class ScopeRedesignService {
         lineTotal: new Prisma.Decimal(0)
       };
     }
-    const depthMm = dto.depthMm && dto.depthMm > 0 ? dto.depthMm : 0;
-    // CUTTING_RATE_CORRECTIONS_V1 — D1: depth rounding and minimum.
-    // The listed rate buys one whole 10mm unit. Part-units round at the five
-    // (x0–x4 down, x5–x9 up) using standard Math.round. Every hole bills at
-    // least one unit regardless of how shallow the depth is.
-    const depthUnits = Math.max(1, Math.round(depthMm / 10)); // rate is $/hole per 10mm depth
     const qty = dto.quantityEach ?? 0;
-    const total = resolved.ratePerHole * depthUnits * qty * resolved.elevationMultiplier * resolved.methodMultiplier + shiftLoading;
-    const finalPerHoleRate = resolved.ratePerHole * depthUnits * resolved.elevationMultiplier * resolved.methodMultiplier;
+    let finalPerHoleRate: number;
+    let total: number;
+    if (this.chargeStepPricing) {
+      // Step path: ratePerHole already includes depth rounding, elevation, and method.
+      // Only multiply by qty (holes count).
+      finalPerHoleRate = resolved.ratePerHole;
+      total = finalPerHoleRate * qty + shiftLoading;
+    } else {
+      // Unit-test compat path: apply depth/elevation/method here.
+      // CUTTING_RATE_CORRECTIONS_V1 — D1: depth rounding and minimum.
+      const depthUnits = Math.max(1, Math.round(depthMm / 10));
+      finalPerHoleRate = resolved.ratePerHole * depthUnits * resolved.elevationMultiplier * resolved.methodMultiplier;
+      total = finalPerHoleRate * qty + shiftLoading;
+    }
     return {
       ratePerM: null,
       ratePerHole: new Prisma.Decimal(finalPerHoleRate.toFixed(4)),

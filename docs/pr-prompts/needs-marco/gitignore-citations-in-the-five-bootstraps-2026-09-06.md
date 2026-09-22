@@ -211,3 +211,78 @@ specification so the check, when Marco approves it, is not born unable to see it
 Reported in full in
 `docs/pr-prompts/00-00-supervisor-2026-09-15-0240-addendum-the-citation-probe-is-blind-to-dotfiles-and-the-security-audit-task-is-off.md`
 finding 2, because this folder is gitignored and reaches nobody on its own.
+
+---
+
+## ADDENDUM 2026-09-22T05:5xZ — ITEM 2's CHECK IS SUPPRESSED BY `lint-station.mjs`'s OWN GUARD, AND ITS CORPUS CANNOT SEE ITEM 1
+
+Landed by scheduled Station 00 at `cf8c87ac`, collecting Station 04's 2026-09-22T02:11Z breadcrumb
+(`00-04-scanner-2026-09-22-0211-lint-stations-own-neargitignore-guard-suppresses-all-thirty-gitignore-citations-the-item-2-check-would-validate.md`,
+findings F1 and F2), which lands in the same PR and carries the full measurements, controls and
+falsifying probes. **This addendum is the summary; that breadcrumb is the evidence.**
+
+**The 2026-09-15 addendum above pins ITEM 2's regex so the check is not born blind. It is born blind
+anyway, and the regex is not the reason.**
+
+`lint-station.mjs` **already collects citations**, at anchor `function repoPathsIn` — the second
+`for (const m of text.matchAll(` in that function. Both the existing collector and any replacement
+built at that anchor are filtered by `const nearGitignore`:
+
+```js
+const nearGitignore = (t, i) => /gitignor/i.test(t.slice(Math.max(0, i - 240), i + 240));
+```
+
+🔴 **The window `[i-240, i+240]` contains the match itself, and the literal text `.gitignore:107-111`
+contains `gitignor` at offset 1 — so the guard is self-satisfying on exactly the class it must not
+suppress.** [MEASURED] 2026-09-22T02:1xZ at `3f8c51f7`, lint-station's own two predicates applied
+verbatim to the 14-file corpus:
+
+| instrument | matched | survived `nearGitignore` |
+|---|---|---|
+| the **shipped** collector (`repoPathsIn`, second `matchAll`) | 0 | 0 |
+| ITEM 2's **pinned** regex (the 2026-09-15 guarded form) | 47 | 14 |
+| …of which the `.gitignore:<N>` class | **30** | 🔴 **0** |
+
+Mechanism proof, two calls anyone can re-run: `nearGitignore('.gitignore:115', 0)` → **true**;
+`nearGitignore('docs/x.md:42', 0)` → **false**. The guard's stated intent (*"a path named inside an
+explicit gitignore warning is NOT a claim that the file exists"*) is **correct for path EXISTENCE and
+wrong for LINE-NUMBER validity** — a `.gitignore` line citation is a claim about `.gitignore`, which
+is tracked and always present.
+
+🔴 **The shipped collector also discards the line number**, adding only the file part to `found`. So
+ITEM 2 is not *"build a check"*; it is **"make the existing collector assert the cited line, and
+exempt the `.gitignore` class from `nearGitignore`"** — a smaller and differently-shaped change than
+this escalation currently describes.
+
+🔴 **And ITEM 2's gate can never reach ITEM 1.** `lint-station.mjs`'s targets are
+`[DOCTRINE, ...stationDocs()]`, and `stationDocs()` reads `STATION_DIR` only —
+`C:\Users\Marco\Claude\Scheduled` appears in that file once, in the known-folder-map allowlist, never
+as a lint target. **The four rotten bootstrap pastes live in a layer the gate cannot see**, even once
+the suppression is fixed.
+
+**RULE 1 options, complete-and-additive first:**
+
+- **(A) — complete and additive.** In `repoPathsIn`, split the two concerns: keep `nearGitignore` on
+  the *existence* pass, and in a separate *citation* pass assert the cited line exists **and** carries
+  expected content, with **no** `nearGitignore` exemption. Run that pass over the corpus as the RULE
+  states it — every `SKILL.md` behind an ENABLED task (read from the scheduled-tasks MCP), plus the
+  seven station docs, plus `DOCTRINE.md`, `STATION-CAPABILITIES.md` and `CLAUDE.md`. Solves it
+  immediately (the 30 suppressed citations become visible) and in future (a new citation class is
+  caught, and ITEM 1's layer is in scope). Damages no data entry — it is a linter warning path.
+- **(B) — fails the *completely* half.** Fix only the regex, as the 2026-09-15 addendum currently
+  prescribes. The widened regex matches all 30 and `nearGitignore` discards all 30, so the gate ships
+  green and the class stays unprotected. **This is the option this escalation as written produces.**
+- **(C) — fails the *future* half.** Hand-correct the four rotten pastes (ITEM 1) and build no check.
+  Fixes today's instances; the class recurs, as it has twice.
+
+⚠️ **`IN RANGE` is not `RESOLVES`, and any check built on range alone certifies this class as
+healthy.** 04's first pass printed `IN RANGE` for all four bootstrap citations — `.gitignore:107-111`
+is within a 151-line file — and the available write-up was *"the bootstrap citations resolve"*, the
+exact polarity that retires a live escalation. It was caught only by asking what line 107 **says**.
+
+⚠️ **ITEM 1 status at 2026-09-22: still entirely unactioned, day 16.** All four ENABLED bootstraps
+carry `.gitignore:107-111`; the five QA sinks are at **115–119**, under the
+`# Overnight-QA scheduled task` comment at 113 — off by exactly eight. The repair
+(`scripts/pipeline/lint-station.mjs`) is `scripts/`, outside both Station 04's read-only lane and
+Station 00's recorded `docs/` lane, and the bootstraps are the one layer no agent can edit. **Both
+halves are yours.**

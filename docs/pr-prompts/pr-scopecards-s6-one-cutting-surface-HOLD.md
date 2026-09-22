@@ -168,7 +168,7 @@ deprecate-then-cleanup Marco ruled for `isProvisional` in S2a. Say so in a comme
 > depth up]. Once a rate is entered (say a new line on the concrete cutting table) for that depth,
 > the system should be able to identify it from the table."*
 
-The server already does this on `main`. `priceSawCutFromRates` in `scope-redesign.service.ts`
+The server already does this on `main`. `resolveCuttingRate` (`scope-redesign.service.ts:220`, the at-or-above filter at `:310-313`)
 picks the shallowest row **at or above** the requested depth from the live table rows. **Keep that
 lookup exactly as it is.** It is row-picking, and section 3's deletions do not touch it. This slice
 must not break it on the screen either:

@@ -21,7 +21,9 @@ module: tendering
 cluster: scopecards
 cluster_order: 11
 design_ref: Claude Design/proposed/s8-s9-haulage-capacity/haulage-capacity-mockup.html
-requires_on_main: 'apps/web/src/pages/tendering/ScopeCuttingSheet.tsx :: CUTTING_ONE_SURFACE_V1'
+requires_on_main:
+  - apps/web/src/pages/tendering/ScopeCuttingSheet.tsx :: CUTTING_ONE_SURFACE_V1
+  - apps/api/src/modules/tendering/travel-time.ts :: TRAVEL_TIME_PORT_V1
 ---
 
 # Scope Cards S9 - the transport capacity matrix actually sizes the load

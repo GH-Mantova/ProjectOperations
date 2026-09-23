@@ -5,13 +5,14 @@
  * Scans the repository for D<n> citations and warns about any that are NOT
  * defined as rows in the decision register in sot/05-decisions-and-lessons.md.
  *
- * MODE: WARN_ONLY — prints findings, exits 0. Slice 5 will flip this to FAIL.
+ * MODE: ENFORCE — prints findings; exits 1 when any unregistered citation is found.
  *
  * Usage:
  *   node scripts/pipeline/check-d-register.mjs
  *
  * Exit codes:
- *   0 — always (WARN_ONLY mode). Findings are printed but do not block.
+ *   0 — no unregistered D<n> citations found.
+ *   1 — one or more unregistered D<n> citations found.
  *
  * Exclusions (measured false positives — do not add without justifying in PR body):
  *   - docs/pr-prompts/superseded/**          archived history, not live citations
@@ -26,11 +27,12 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // The symbol slice 5 looks for to flip behaviour
 // ---------------------------------------------------------------------------
-export const D_REGISTER_MODE = "WARN_ONLY";
+export const D_REGISTER_MODE = "ENFORCE";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -289,10 +291,18 @@ export function runChecker({ repoRoot, registered } = {}) {
 // CLI entry point (only runs when executed directly, not when imported)
 // ---------------------------------------------------------------------------
 
+// fileURLToPath, not a hand-rolled strip of the file: URL. The previous form,
+//   import.meta.url.replace(/^file:\/\/\/?/, "")
+// consumed the THIRD slash of "file:///home/..." and yielded the RELATIVE path
+// "home/...", which resolve() then re-anchored to process.cwd(). On Windows the
+// drive letter made it whole again and the bug was invisible; on POSIX isMain was
+// false whenever cwd was not the script's own directory, so the CLI block silently
+// did not run - exit 0, no output, whatever the tree contained. ENFORCE cannot ship
+// on an entry point that only runs on one platform.
 const isMain =
   // node check-d-register.mjs (process.argv[1] is the script path)
   process.argv[1] &&
-  resolve(process.argv[1]) === resolve(import.meta.url.replace(/^file:\/\/\/?/, "").replace(/^\/([A-Za-z]:)/, "$1"));
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
   const repoRoot = resolve(process.cwd());
@@ -301,7 +311,7 @@ if (isMain) {
     registered = parseRegister(repoRoot);
   } catch (err) {
     process.stderr.write("BROKEN: could not parse sot/05-decisions-and-lessons.md: " + err.message + "\n");
-    process.exit(0); // WARN_ONLY: even parse failures don't block
+    process.exit(0); // parse failure: emit BROKEN message, don't block on missing register
   }
 
   console.log("=== D-register checker (mode: " + D_REGISTER_MODE + ") ===");
@@ -325,11 +335,11 @@ if (isMain) {
       console.log("");
     }
     console.log(
-      "These are WARNINGS only (" + D_REGISTER_MODE + "). " +
-      "Slice 5 will flip D_REGISTER_MODE to FAIL after triage."
+      "Register the D-ID in sot/05-decisions-and-lessons.md, or fix the citation. " +
+      "(mode: " + D_REGISTER_MODE + ")"
     );
   }
 
-  // WARN_ONLY: always exit 0
-  process.exit(0);
+  // ENFORCE: non-zero exit when unregistered citations were found
+  process.exit(findings.length > 0 ? 1 : 0);
 }

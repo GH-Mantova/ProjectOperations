@@ -15,9 +15,14 @@
 import assert from "node:assert/strict";
 import { test, describe } from "node:test";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { runChecker, D_REGISTER_MODE } from "../check-d-register.mjs";
+
+const __filename = fileURLToPath(import.meta.url);
+const CHECKER_PATH = resolve(dirname(__filename), "..", "check-d-register.mjs");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,12 +76,12 @@ function cleanup(dir) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Module contract: D_REGISTER_MODE must be "WARN_ONLY"
+// 1. Module contract: D_REGISTER_MODE must be "ENFORCE"
 // ---------------------------------------------------------------------------
 
 describe("module contract", () => {
-  test("D_REGISTER_MODE is exported and equals WARN_ONLY", () => {
-    assert.equal(D_REGISTER_MODE, "WARN_ONLY");
+  test("D_REGISTER_MODE is exported and equals ENFORCE", () => {
+    assert.equal(D_REGISTER_MODE, "ENFORCE");
   });
 });
 
@@ -454,6 +459,153 @@ describe("mixed registered and unregistered in same file", () => {
       const d99Hits = findings.filter((f) => f.token === "D99");
       assert.equal(d48Hits.length, 0, "D48 must not appear in findings");
       assert.ok(d99Hits.length > 0, "D99 must appear in findings");
+    } finally {
+      cleanup(dir);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 13. CLI exit codes under ENFORCE
+//
+// Spawns the checker as a subprocess with cwd set to a temp repo — exercises
+// the CLI entry point (isMain branch) that runChecker() alone cannot cover.
+// Each test asserts BOTH directions: an unregistered citation exits non-zero,
+// a clean tree exits zero. If either half were missing, a broken exit path
+// (always-0 or always-1) would still pass.
+// ---------------------------------------------------------------------------
+
+describe("CLI exit codes (ENFORCE)", () => {
+  test("unregistered D99 → non-zero exit", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "apps/api/src/example.ts": "// D99 cites an unregistered decision",
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.notEqual(
+        result.status,
+        0,
+        `expected non-zero exit for unregistered D99; got status=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("only registered citations → exit 0", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "apps/api/src/example.ts": "// D48 registered decision anchored here",
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.equal(
+        result.status,
+        0,
+        `expected exit 0 for clean tree; got status=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("empty tree (no D citations at all) → exit 0", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "apps/api/src/example.ts": "// no D citations here",
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.equal(
+        result.status,
+        0,
+        `expected exit 0 for no-citation tree; got status=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("exclusions still hold under ENFORCE — TFM-D3 alone does not fail the build", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "apps/api/src/service.ts": "// TFM-D3: T-number is the idempotency key",
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.equal(
+        result.status,
+        0,
+        `TFM-D3 must remain excluded under ENFORCE; got status=${result.status}\nstdout: ${result.stdout}`
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("exclusions still hold under ENFORCE — bare D3 (not TFM-D3) DOES fail", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "apps/api/src/service.ts": "// D3 idempotency key (no TFM prefix)",
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.notEqual(
+        result.status,
+        0,
+        `bare unregistered D3 must fail under ENFORCE; got status=${result.status}\nstdout: ${result.stdout}`
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("exclusions still hold under ENFORCE — mergeCells('A1:D1') alone does not fail", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "apps/api/src/estimate-excel.builder.ts":
+        '  summary.mergeCells("A1:D1");',
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.equal(
+        result.status,
+        0,
+        `mergeCells D1 must remain excluded under ENFORCE; got status=${result.status}\nstdout: ${result.stdout}`
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("exclusions still hold under ENFORCE — superseded/ dir alone does not fail", () => {
+    const dir = makeFakeRepo(["D48"], {
+      "docs/pr-prompts/superseded/old-prompt.md":
+        "This old prompt mentioned D99 which is not registered",
+    });
+    try {
+      const result = spawnSync(process.execPath, [CHECKER_PATH], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      assert.equal(
+        result.status,
+        0,
+        `superseded/ must remain excluded under ENFORCE; got status=${result.status}\nstdout: ${result.stdout}`
+      );
     } finally {
       cleanup(dir);
     }

@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { cuttingLineTotal } from "../tendering/cutting-line-pricing";
+import { listMatrixTransportTypes } from "../tendering/transport-capacity";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -143,6 +144,20 @@ export class EstimatesService {
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { item: "asc" }]
     });
   }
+
+  /**
+   * TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- list the distinct transport
+   * types from the transport-capacity matrix's own Transport type KEY column.
+   *
+   * Used by the Rates & Lists admin UI to populate the Transport type select on
+   * transport-category plant rates WITHOUT a hard-coded list. Options are read
+   * live from the matrix so they cannot drift from what Marco has configured there.
+   *
+   * @returns ordered list of transport type strings from the matrix
+   */
+  async listPlantTransportTypes(): Promise<string[]> {
+    return listMatrixTransportTypes(this.rateResolver);
+  }
   /**
    * Create (id undefined) or update (id given) a plant rate; audited.
    * Unit defaults to "day", fuelRate to 0.
@@ -150,17 +165,21 @@ export class EstimatesService {
    * @returns the created/updated rate row
    */
   async upsertPlantRate(id: string | undefined, dto: UpsertPlantRateDto, actorId?: string) {
-    const data = {
+    const base = {
       item: dto.item,
       unit: dto.unit ?? "day",
       rate: new Prisma.Decimal(dto.rate),
       fuelRate: new Prisma.Decimal(dto.fuelRate ?? "0"),
       isActive: dto.isActive ?? true,
-      sortOrder: dto.sortOrder ?? 0
+      sortOrder: dto.sortOrder ?? 0,
+      // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- nullable; absent means
+      // "no matrix default". Only written when the DTO carries the field so an
+      // update that does not include transportType leaves the existing value alone.
+      ...(dto.transportType !== undefined ? { transportType: dto.transportType ?? null } : {})
     };
     const record = id
-      ? await this.prisma.estimatePlantRate.update({ where: { id }, data })
-      : await this.prisma.estimatePlantRate.create({ data });
+      ? await this.prisma.estimatePlantRate.update({ where: { id }, data: base })
+      : await this.prisma.estimatePlantRate.create({ data: base });
     await this.auditService.write({
       actorId,
       action: id ? "estimates.plantRate.update" : "estimates.plantRate.create",

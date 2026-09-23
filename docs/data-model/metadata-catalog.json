@@ -9273,6 +9273,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "transportType": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
         "createdAt": {
           "role": "system",
           "label": null,
@@ -20254,6 +20260,12 @@
             "max",
             "count"
           ]
+        },
+        "capacitySource": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         },
         "notes": {
           "role": "attribute",

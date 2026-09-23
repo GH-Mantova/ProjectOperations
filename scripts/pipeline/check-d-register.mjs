@@ -27,6 +27,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // The symbol slice 5 looks for to flip behaviour
@@ -290,10 +291,18 @@ export function runChecker({ repoRoot, registered } = {}) {
 // CLI entry point (only runs when executed directly, not when imported)
 // ---------------------------------------------------------------------------
 
+// fileURLToPath, not a hand-rolled strip of the file: URL. The previous form,
+//   import.meta.url.replace(/^file:\/\/\/?/, "")
+// consumed the THIRD slash of "file:///home/..." and yielded the RELATIVE path
+// "home/...", which resolve() then re-anchored to process.cwd(). On Windows the
+// drive letter made it whole again and the bug was invisible; on POSIX isMain was
+// false whenever cwd was not the script's own directory, so the CLI block silently
+// did not run - exit 0, no output, whatever the tree contained. ENFORCE cannot ship
+// on an entry point that only runs on one platform.
 const isMain =
   // node check-d-register.mjs (process.argv[1] is the script path)
   process.argv[1] &&
-  resolve(process.argv[1]) === resolve(import.meta.url.replace(/^file:\/\/\/?/, "").replace(/^\/([A-Za-z]:)/, "$1"));
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
   const repoRoot = resolve(process.cwd());

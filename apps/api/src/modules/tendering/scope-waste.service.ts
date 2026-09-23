@@ -10,6 +10,7 @@ import {
   deriveCycle,
   type TravelEstimate
 } from "./travel-time";
+import { resolveCapacityPerLoad } from "./transport-capacity";
 
 type UpsertWasteDto = {
   discipline?: string;
@@ -49,6 +50,10 @@ type UpsertWasteDto = {
   markupOverride?: number | null;
   // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link. null clears it.
   mapLocationId?: string | null;
+  // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- provenance of capacityPerLoad.
+  // "manual" when the estimator typed a figure. "matrix" is set by the server
+  // when the resolver fills the default; the client does NOT need to send this.
+  capacitySource?: string | null;
 };
 
 // R3 T-1 — snapshot cost components computed by the engine. Returned by
@@ -229,8 +234,40 @@ export class ScopeWasteService {
     const ratePerLoadN = narrowToNumber(dto.ratePerLoad);
     const qtyTrucksN = narrowToNumber(dto.qtyTrucks);
     const loadsPerTruckPerDayN = narrowToNumber(dto.loadsPerTruckPerDay);
-    const capacityPerLoadN = narrowToNumber(dto.capacityPerLoad);
+    let capacityPerLoadN = narrowToNumber(dto.capacityPerLoad);
     const dailyKmN = narrowToNumber(dto.dailyKm);
+
+    // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- when the estimator has
+    // NOT typed a capacity figure, try to fill it from the matrix using the
+    // plant rate's transport type and the line's waste group. A typed figure
+    // always wins (capacityPerLoadN != null). Matrix fill only fires when:
+    //   1. capacityPerLoadN is null (no typed figure)
+    //   2. transportRateId is set (a rig is linked)
+    //   3. the rig has a transportType set
+    //   4. the line has a wasteGroup
+    // Returns null when any of those conditions are unmet, or on any error.
+    let capacitySource: string | null = dto.capacitySource ?? null;
+    if (capacityPerLoadN == null && dto.transportRateId) {
+      const plantRate = await this.prisma.estimatePlantRate.findUnique({
+        where: { id: dto.transportRateId },
+        select: { transportType: true }
+      });
+      if (plantRate?.transportType) {
+        const resolved = await resolveCapacityPerLoad(this.rateResolver, {
+          wasteGroup: dto.wasteGroup ?? null,
+          transportType: plantRate.transportType,
+          capacityUnit: dto.capacityUnit ?? null
+        });
+        if (resolved !== null) {
+          capacityPerLoadN = resolved.capacity;
+          capacitySource = "matrix";
+        }
+      }
+    } else if (capacityPerLoadN != null && dto.capacitySource === undefined) {
+      // Estimator typed a figure explicitly -- mark it as manual.
+      capacitySource = "manual";
+    }
+
     // R3 T-1 - engine fires when a transport line is picked (transportRateId set)
     // AND we have qtyTrucks + loadsPerTruckPerDay + capacityPerLoad. If ANY are
     // missing the engine returns nulls and we fall back to the legacy path.
@@ -314,6 +351,8 @@ export class ScopeWasteService {
         loadsPerTruckPerDay: toDecimal(effectiveLoadsPerTruckPerDay),
         capacityPerLoad: toDecimal(capacityPerLoadN),
         capacityUnit: dto.capacityUnit ?? null,
+        // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- record provenance.
+        capacitySource: capacitySource,
         dailyKm: toDecimal(effectiveDailyKm),
         transportCost: toDecimal(engine.transportCost),
         fuelCost: toDecimal(engine.fuelCost),
@@ -417,7 +456,55 @@ export class ScopeWasteService {
     }
     if (dtoQtyTrucksN !== undefined) data.qtyTrucks = dtoQtyTrucksN != null ? Math.trunc(dtoQtyTrucksN) : null;
     if (dtoLoadsPerTruckPerDayN !== undefined) data.loadsPerTruckPerDay = toDecimal(dtoLoadsPerTruckPerDayN);
-    if (dtoCapacityPerLoadN !== undefined) data.capacityPerLoad = toDecimal(dtoCapacityPerLoadN);
+    // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- capacity resolution on update.
+    // Three cases:
+    //   a) DTO carries a non-null capacityPerLoad -> typed figure, mark "manual".
+    //   b) DTO carries capacityPerLoad: null (explicit clear) -> try matrix fill.
+    //   c) DTO does not include capacityPerLoad -> keep existing, no change.
+    let resolvedCapacitySource: string | null | undefined = undefined; // undefined = don't write
+    if (dtoCapacityPerLoadN !== undefined) {
+      if (dtoCapacityPerLoadN !== null) {
+        // Case a: typed figure. Write it and mark as manual.
+        data.capacityPerLoad = toDecimal(dtoCapacityPerLoadN);
+        resolvedCapacitySource = "manual";
+      } else {
+        // Case b: explicit clear. Try matrix fill.
+        const eTransportRateId = dto.transportRateId !== undefined
+          ? dto.transportRateId
+          : existing.transportRateId;
+        const eCapacityUnit = dto.capacityUnit !== undefined
+          ? dto.capacityUnit
+          : existing.capacityUnit;
+        const eWasteGroup = dto.wasteGroup !== undefined
+          ? dto.wasteGroup
+          : existing.wasteGroup;
+        let matrixCapacity: number | null = null;
+        if (eTransportRateId) {
+          const plantRate = await this.prisma.estimatePlantRate.findUnique({
+            where: { id: eTransportRateId },
+            select: { transportType: true }
+          });
+          if (plantRate?.transportType) {
+            const resolved = await resolveCapacityPerLoad(this.rateResolver, {
+              wasteGroup: eWasteGroup ?? null,
+              transportType: plantRate.transportType,
+              capacityUnit: eCapacityUnit ?? null
+            });
+            if (resolved !== null) {
+              matrixCapacity = resolved.capacity;
+            }
+          }
+        }
+        data.capacityPerLoad = toDecimal(matrixCapacity);
+        resolvedCapacitySource = matrixCapacity !== null ? "matrix" : null;
+      }
+    } else if (dto.capacitySource !== undefined) {
+      // DTO explicitly sets capacitySource (rare -- the client can override provenance).
+      resolvedCapacitySource = dto.capacitySource ?? null;
+    }
+    if (resolvedCapacitySource !== undefined) {
+      data.capacitySource = resolvedCapacitySource;
+    }
     if (dto.capacityUnit !== undefined) data.capacityUnit = dto.capacityUnit;
     if (dtoDailyKmN !== undefined) data.dailyKm = toDecimal(dtoDailyKmN);
     if (dto.notes !== undefined) data.notes = dto.notes;
@@ -519,7 +606,12 @@ export class ScopeWasteService {
         : (data.loadsPerTruckPerDay != null
             ? Number(data.loadsPerTruckPerDay)
             : (existing.loadsPerTruckPerDay ? Number(existing.loadsPerTruckPerDay) : null));
-      const eCapacityPerLoad = dtoCapacityPerLoadN !== undefined ? dtoCapacityPerLoadN : existing.capacityPerLoad ? Number(existing.capacityPerLoad) : null;
+      // TRANSPORT_CAPACITY_MATRIX_V1 -- use the resolved capacity (which may have
+      // been filled from the matrix if the DTO sent capacityPerLoad: null).
+      // data.capacityPerLoad was written by the resolution block above when case b applied.
+      const eCapacityPerLoad = dtoCapacityPerLoadN !== undefined
+        ? (dtoCapacityPerLoadN ?? (data.capacityPerLoad != null ? Number(data.capacityPerLoad) : null))
+        : (existing.capacityPerLoad ? Number(existing.capacityPerLoad) : null);
       const eCapacityUnit = dto.capacityUnit !== undefined ? dto.capacityUnit : existing.capacityUnit;
       const eDailyKm = dtoDailyKmN !== undefined
         ? dtoDailyKmN

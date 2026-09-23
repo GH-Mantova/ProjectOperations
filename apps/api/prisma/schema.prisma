@@ -2624,6 +2624,12 @@ model EstimatePlantRate {
   fuelRate             Decimal                    @default(0) @map("fuel_rate") @db.Decimal(10, 2)
   isActive             Boolean                    @default(true) @map("is_active")
   sortOrder            Int                        @default(0) @map("sort_order")
+  // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- which matrix transport type
+  // this rig corresponds to. Null means "no matrix default"; the estimator
+  // must type a capacity manually. Set in Rates & Lists admin for Truck-category
+  // rows. The option list comes from the matrix's own Transport type KEY column
+  // so code and matrix cannot drift.
+  transportType        String?                    @map("transport_type")
   createdAt            DateTime                   @default(now()) @map("created_at")
   updatedAt            DateTime                   @updatedAt @map("updated_at")
   // R3 T-1 â€” waste transport lines reference a Transport Fees row here.
@@ -3927,6 +3933,12 @@ model ScopeWasteItem {
   // NULL behaves exactly like the live-lookup path (no data loss on revert).
   // backfill: false -- existing rows intentionally left NULL.
   quotedTransportRatePerDay Decimal?           @map("quoted_transport_rate_per_day") @db.Decimal(10, 2)
+  // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- provenance of the stored
+  // capacityPerLoad. "matrix" = resolved from the transport-capacity reference
+  // table at create/update time. "manual" = typed by the estimator (overrides
+  // the matrix). NULL = row predates this column (unknown provenance). Never
+  // written back to the matrix -- this is a one-way annotation on the line.
+  capacitySource            String?            @map("capacity_source")
   notes                     String?
   sortOrder                 Int                @default(0) @map("sort_order")
   // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.

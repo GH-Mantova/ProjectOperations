@@ -146,3 +146,4 @@
 2026-09-23T01:06:09Z  ARMED  pr-scopecards-s7b-cutting-in-the-card-fold  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=11636  caller=powershell.exe:8900
 2026-09-23T01:47:18Z  ARMED  pr-scopecards-s8a-travel-time-snapshot  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=32240  caller=powershell.exe:20128
 2026-09-23T05:29:49Z  ARMED  pr-scopecards-s9-transport-capacity-matrix  escalates=true  actor=station-00.sched-0514  by=Marco@LAPTOP-E6NHU4E4  pid=39824  caller=powershell.exe:11012
+2026-09-23T16:23:37Z  ARMED  pr-field-service-nul-separator  escalates=false  actor=station-00.sched  by=Marco@LAPTOP-E6NHU4E4  pid=17596  caller=powershell.exe:36068

@@ -157,6 +157,17 @@ export type ListedRate = {
    * on — see above.
    */
   fuelRate: number | null;
+  /**
+   * TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) — all VALUE columns beyond
+   * valueCols[0], keyed by column name. Always present; `{}` when the table has
+   * only one VALUE column or the source is legacy. The primary VALUE column
+   * (`value`) is NOT duplicated here — only the secondary-and-beyond columns
+   * are included so callers can read e.g. "Capacity (m3)" without ambiguity.
+   *
+   * Like `fuelRate`, this is reported verbatim and never filtered or ordered on.
+   * `0` is a real value, `null` is absent/non-numeric.
+   */
+  extraValues: Record<string, number>;
   source: RateSource;
 };
 
@@ -714,6 +725,13 @@ export class RateResolverService {
     // `undefined` on every table that has no such column, which is every kind
     // but plant; those rows report `fuelRate: null`.
     const fuelCol = valueCols.find((c) => c.name === PLANT_FUEL_COLUMN_NAME);
+    // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) — secondary VALUE columns
+    // beyond valueCols[0]. They are NOT included in `value` (which is
+    // valueCols[0] only), but are collected here so the transport-capacity
+    // resolver can read e.g. "Capacity (m3)" without a separate DB query.
+    // The fuelCol special case is preserved as-is; it is NOT included in
+    // extraValueCols to avoid double-reporting.
+    const extraValueCols = valueCols.slice(1).filter((c) => c !== fuelCol);
     const rows = await this.prisma.rateRow.findMany({
       where: { rateTableId: table.id, isActive: true },
       orderBy: { sortOrder: "asc" }
@@ -742,6 +760,15 @@ export class RateResolverService {
           fuelRate = Number.isNaN(n) ? null : n;
         }
       }
+      // TRANSPORT_CAPACITY_MATRIX_V1 — collect secondary VALUE columns.
+      const extraValues: Record<string, number> = {};
+      for (const col of extraValueCols) {
+        const rawExtra = cells[col.id] ?? cells[col.name];
+        if (rawExtra !== undefined && rawExtra !== null) {
+          const n = Number(rawExtra);
+          if (!Number.isNaN(n)) extraValues[col.name] = n;
+        }
+      }
       return {
         rowId: row.id,
         keys,
@@ -756,6 +783,7 @@ export class RateResolverService {
         // already orders by it; reading the column changes neither.
         sortOrder: row.sortOrder,
         fuelRate,
+        extraValues,
         source: "ratetable" as const
       };
     });
@@ -778,9 +806,9 @@ export class RateResolverService {
           // All three shift entries come from the same row, so all three
           // report that row's isActive and that row's sortOrder.
           entries.push(
-            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, source: "legacy" },
-            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, source: "legacy" }
+            { rowId: row.id, keys: { role: row.role, shift: "day" }, info: {}, value: Number(row.dayRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, extraValues: {}, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "night" }, info: {}, value: Number(row.nightRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, extraValues: {}, source: "legacy" },
+            { rowId: row.id, keys: { role: row.role, shift: "weekend" }, info: {}, value: Number(row.weekendRate), unit: "day", isActive: row.isActive, sortOrder: row.sortOrder, fuelRate: null, extraValues: {}, source: "legacy" }
           );
         }
         return entries;
@@ -807,6 +835,7 @@ export class RateResolverService {
           // fuel cost recorded, never null. Converted with Number() exactly
           // like the adjacent `value: Number(row.rate)`.
           fuelRate: Number(row.fuelRate),
+          extraValues: {},
           source: "legacy" as const
         }));
       }
@@ -829,6 +858,7 @@ export class RateResolverService {
           sortOrder: row.sortOrder,
           // No fuel concept on this kind — see the ListedRate doc comment.
           fuelRate: null,
+          extraValues: {},
           source: "legacy" as const
         }));
       }
@@ -855,6 +885,7 @@ export class RateResolverService {
           isActive: row.isActive,
           sortOrder: row.sortOrder,
           fuelRate: null,
+          extraValues: {},
           source: "legacy" as const
         }));
       }
@@ -876,6 +907,7 @@ export class RateResolverService {
           // fabricated one. Making this a number means a migration.
           sortOrder: null,
           fuelRate: null,
+          extraValues: {},
           source: "legacy" as const
         }));
       }
@@ -892,6 +924,7 @@ export class RateResolverService {
           isActive: row.isActive,
           sortOrder: row.sortOrder,
           fuelRate: null,
+          extraValues: {},
           source: "legacy" as const
         }));
       }
@@ -911,6 +944,7 @@ export class RateResolverService {
           isActive: row.isActive,
           sortOrder: row.sortOrder,
           fuelRate: null,
+          extraValues: {},
           source: "legacy" as const
         }));
       }
@@ -930,6 +964,7 @@ export class RateResolverService {
           isActive: row.isActive,
           sortOrder: row.sortOrder,
           fuelRate: null,
+          extraValues: {},
           source: "legacy" as const
         }));
       }

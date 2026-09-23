@@ -14,6 +14,14 @@ F1, complete-and-additive first.
 And a warning about the instrument itself: **the sweep told me that escalation was dead and to
 clear it.** It was not dead. F2.
 
+🔴 **One thing I could not resolve, and it needs one line from you. At 00:26:41Z, mid-run, 18 of the
+62 files in `needs-marco/` were deleted from the dev tree** — including the escalation my own
+previous run wrote 31 minutes earlier. The pattern looks like deliberate consolidation (a
+`CONSOLIDATED-` file survived while three of its constituents went), and you were at the board
+seventeen minutes before. **Did you clear these 18?** If yes, nothing is wrong. If no, something on
+the box is deleting your escalation queue and nothing would have reported it. 16 of the 18 are
+recoverable in substance from the tracked breadcrumbs. F8.
+
 ## GROUND
 
 ```
@@ -190,6 +198,24 @@ folders: `needs-marco/` 62 · `no-pr-opened/` 111 · `failed/` 59 · `blocked/` 
 zero open PRs, zero armed prompts, trunk green, watcher healthy. The binding constraint is one
 level up — **`Claude Design/` has no lane, so the mockup-carrying staging PRs this pipeline is now
 producing each need Marco by hand** (F1).
+
+**13. The two deleted escalations with no tracked mention anywhere — and only one is really lost.**
+[MEASURED] over the 675 breadcrumbs in `docs/pr-prompts/archive/`, negative control a freshly minted
+needle → **0**:
+
+- `estimating-four-decisions-behind-package-9-2026-09-04.md` — **not named in any tracked file.** Its
+  content is gone. It is the only one of the 18 for which that is true in substance as well as in
+  name, and from its title it is a PRODUCT decision — four estimating decisions behind package 9 —
+  i.e. exactly the class §5.5 reserves to Marco and that no station can reconstruct.
+- `scopecards-s9-staging-pr-carries-a-claude-design-file-outside-station-00s-lane-2026-09-22.md` — not
+  named in `archive/` **because it was written 31 minutes ago and had not been archived yet**. Its
+  substance is NOT lost: my 23:30Z run restated it in full in its own F2, and that breadcrumb is
+  being committed to `archive/` **in this very PR**. It is restated again in F1 above.
+
+🟢 That second row is the *"restate it in the breadcrumb because `needs-marco/` is gitignored and the
+file alone reaches nobody"* rule doing precisely the job it was written for, against a failure mode
+nobody anticipated — the file being deleted rather than merely unread. Worth recording as evidence
+the rule earns its cost.
 
 ## WHAT CHANGED
 
@@ -422,6 +448,82 @@ reached from a different direction.
 added as the counter-example rather than as a closure. **I did not edit the binding documents to
 shorten them**: a station trimming its own binding law is exactly the change a reader should
 distrust, and §5.5 makes the scope of a station's required reading Marco's call.
+
+---
+
+**F8 — 18 of the 62 files in `needs-marco/` were DELETED from the dev tree at 00:26:41Z, DURING
+this run, by an actor I cannot identify. One of them is the escalation my own previous run wrote
+31 minutes earlier.** Severity **S1**.
+
+I found this only because F1 sent me to annotate that escalation and the file was not there.
+
+[MEASURED] 2026-09-23T00:2xZ–00:3xZ, dev tree at `0e2458f4`:
+
+| probe | result |
+|---|---|
+| distinct `needs-marco/*.md` the sweep ITERATED at `00:16:50Z` (section 5, from `$Queue = C:\ProjectOperations2\docs\pr-prompts`) | **62** |
+| `*.md` on disk now, PowerShell `Get-ChildItem <dir>\*.md -File` | **44** |
+| `*.md` on disk now, node `readdirSync` — an INDEPENDENT instrument | **44** |
+| set difference | **18 missing, 0 added** |
+| `Test-Path` on the F1 escalation by full path | **False** |
+| `needs-marco/` directory `LastWriteTimeUtc` | **`2026-09-23T00:26:41Z`** |
+
+The two counts agree across two independent instruments and the sweep’s own iteration is the third,
+so this is not the `-Include` / trailing-wildcard family of §9.1 traps: I used the bare-directory
+`\*.md` form with no `-Recurse`, which §9.1’s own fixture table records as the CORRECT form, and node
+bypasses PowerShell entirely. **The 18 are gone, not mis-counted.**
+
+⚠️ **The 62-vs-44 gap is NOT the same thing as the sweep’s section-4 `needs-marco/: 62` line, and I
+nearly filed it as one.** Section 4 counts `Join-Path $d "*" -File` — **every file**, not `*.md`. That
+is a different quantity and on this directory it happens to equal the section-5 figure. The deletion
+is established by the section-5 ITERATION, which is `*.md` and therefore comparable to my count.
+
+**Where they went: nowhere I can find.** 0 of 18 in `needs-marco/discharged/`, 0 in
+`docs/pr-prompts/archive/`, 0 in the queue root, 0 in `C:\po-watcher\verdicts-archive\`, **1** in
+the watcher clone. **0 in the Recycle Bin** — which is a discriminator worth recording: an Explorer
+delete lands there, so this was a programmatic or shift-delete, not a drag to the bin.
+
+**What it was NOT.** `status-sweep.ps1` contains **0** `Remove-Item` / `Move-Item` occurrences, so
+the instrument I ran at 00:16:50Z did not do it. It was not a `git clean`: 38 of the 44 survivors are
+untracked and gitignored exactly like the 18, and a clean would have taken them too. And it was not
+me — every mutating command this run ran inside the worktree `C:\po-wt\collect0923` under
+`Push-Location`; in the dev tree I ran only `git fetch`, reads, and one `node` script that exited **2**
+on `EXISTS=false` **before writing anything**.
+
+🔴 **What it plausibly WAS, and I am not asserting it.** The pattern looks like deliberate triage
+rather than corruption: `CONSOLIDATED-stale-remote-heads-one-question-2026-09-21.md` **survived**
+while three of its constituents (`stale-remote-heads-and-auto-delete-2026-09-08`,
+`stale-remote-heads-need-auto-delete-on-merge-2026-09-10`, `remote-branches-outlive-their-prs-2026-09-05`)
+were removed — which is what consolidating duplicates looks like. And `#2100` merged at `00:09:53Z`,
+seventeen minutes before, so Marco was demonstrably at the board. **Marco pruning his own escalation
+queue is entirely his prerogative and would make this a non-event.** I cannot demonstrate it: there
+were **0** other `claude` node processes and **0** `git` processes when I looked, no `index.lock`, and
+`needs-marco/` is gitignored so there is no history to read. The actor is **[CANNOT MEASURE]**.
+
+**Why it is still S1 rather than a shrug.** Two independent things are true at once. (i) If it was
+deliberate, nothing recorded the decision — `needs-marco/discharged/` exists for exactly this and its
+newest `_DISCHARGE-NOTE-*` is from **2026-09-10**, so 18 escalations left the queue with no note,
+which is the failure `_DISCHARGE-NOTE` was invented to prevent. (ii) If it was NOT deliberate, 18 open
+questions to Marco vanished silently and nothing anywhere would have reported it — this run found it
+by accident, on the way to a different task.
+
+🟢 **Mitigation, measured: the substance is mostly recoverable.** **16 of the 18** are named in the
+**tracked** breadcrumb corpus under `docs/pr-prompts/archive/` (675 breadcrumbs searched; NEGATIVE
+control, a freshly minted needle — **0**), so their existence, their subject and usually their
+measurement survive on `main` even though the escalation files do not. The two with no tracked
+mention at all are named in WHAT I MEASURED §13.
+
+**DISPOSITION: ESCALATED.** Deletion of Marco’s escalation queue is irreversible and its actor is
+unidentifiable from the repo, which is two independent entries on §5’s hard-stop list — I did not
+attempt to “restore” anything, because writing 18 files back into a queue Marco may have
+deliberately cleared would be the destructive move here, not the cautious one. **The question for
+Marco is one line: did you clear these 18 at 00:26Z?** If yes, nothing is wrong and the only gap is
+the missing `_DISCHARGE-NOTE`. If no, this is an unattributed destructive actor on the box and the
+next step is his, not a station’s.
+
+⚠️ **Falsifying probe:** re-run the set difference — the sweep’s section-5 iteration against
+`readdirSync` on `needs-marco/` — at the next occurrence. If the 18 reappear, they were moved by
+something that put them back and this finding is wrong.
 
 ---
 

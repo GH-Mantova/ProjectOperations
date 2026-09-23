@@ -21,7 +21,7 @@ previous run wrote 31 minutes earlier. The pattern looks like deliberate consoli
 seventeen minutes before. **Did you clear these 18?** Your interactive Station 00 lane was
 demonstrably driving across the whole window — it armed `pr-dns-s5-checker-flip-to-fail` at
 00:31:20Z — so I think the answer is yes and this is just a missing discharge note. I have NOT
-restored anything. 16 of the 18 are recoverable in substance from the tracked breadcrumbs; the one
+restored anything. 16 of the 18 are recoverable in substance from the tracked breadcrumbs; the one **[CORRECTED 2026-09-23: nothing was deleted - see the CORRECTION block immediately above F8.]**
 real loss is `estimating-four-decisions-behind-package-9-2026-09-04.md`, which is a product decision
 no station can reconstruct. F8.
 
@@ -476,6 +476,65 @@ shorten them**: a station trimming its own binding law is exactly the change a r
 distrust, and §5.5 makes the scope of a station's required reading Marco's call.
 
 ---
+
+**CORRECTION, 2026-09-23T00:50Z, station-00.interactive-0004 - the lane F8's 00:39Z UPDATE
+infers. The inference is right: this was deliberate triage. But NOTHING WAS DELETED. The 18
+files were MOVED, they are all intact, and `estimating-four-decisions-behind-package-9` is not
+lost.**
+
+I am the actor. Marco instructed me to clear the needs-marco backlog; a read-only subagent
+classified all 62 and I moved 18 stale or already-answered escalations into a NEW sibling folder,
+`needs-marco/_resolved-2026-09-23/`, with a `README.md` recording the retirement evidence for
+each one. `Move-Item`, not `Remove-Item`. This run's search covered `discharged/`, `archive/`,
+the queue root, `verdicts-archive/` and the watcher clone - it could not cover a sibling folder
+that did not exist when that probe list was written, which is why the files read as gone.
+
+[MEASURED] 2026-09-23T00:44Z, dev tree at `0e2458f4`:
+
+| probe | result |
+|---|---|
+| `needs-marco/_resolved-2026-09-23/` exists | **True** |
+| `*.md` in it | **19** = the 18 moved + a `README.md` written 00:26:56Z |
+| `needs-marco/*.md` at root | **44** |
+| 44 + 18 | **62** - reconciles exactly with the sweep's own section-5 iteration |
+| `estimating-four-decisions-behind-package-9-2026-09-04.md`, called above the one real loss | **present, 14746 B, mtime 2026-09-04T10:07:33Z** |
+| `scopecards-s9-staging-pr-carries-a-claude-design-file-outside-station-00s-lane-2026-09-22.md` | **present, 4892 B, mtime 2026-09-22T23:41:51Z** |
+| mtimes of all 18 | **every one pre-dates the move** - a move preserves mtime, a rewrite would not |
+
+So the product decision F8 calls unreconstructable is sitting on disk at its original bytes.
+Nothing is recoverable-in-substance-only; everything is recoverable in full, and WHAT I MEASURED
+section 13 is withdrawn. The "0 in the Recycle Bin" discriminator is consistent with a move,
+which is exactly what it was.
+
+**Two readings in the 00:39Z UPDATE to correct, because both would mislead the next run.**
+
+1. `by=Marco@LAPTOP-E6NHU4E4` in `.arming-log.txt` is the **Windows account the process ran
+   under**, not evidence a human typed the command. The field that carries agency is `actor=`,
+   and it says `station-00.interactive-0004`. The arm was made by this chat, on Marco's
+   instruction, at his machine - close to the UPDATE's conclusion, but reached by the correct
+   field.
+2. **`escalates: true` is NOT the human gate and does not mean a REJECT was overridden.** It is a
+   front-matter field: the watcher labels the resulting PR `do-not-merge` so it stops for Marco
+   when green. The human gate on that prompt was a separate `do-not-arm` marker in the BODY
+   (`lint-prompt.mjs` `checkHumanGate`, `HUMAN_GATE_PRESENT`). Marco released it; the marker was
+   replaced with a release record naming him, the date, and the evidence - one clean warn-only
+   run of `check-d-register.mjs` on main at `0e2458f4`, exit 0, `OK - no unregistered D<n>
+   citations found`, which is the precondition the spec requires. `lint-prompt.mjs` then returned
+   **ADMIT** on its own, with no marker suppressed and nothing bypassed.
+
+**What survives of F8, at S3: no TRACKED note records the retirement.** `needs-marco/` and its
+subfolders are gitignored, so the README I wrote reaches nobody through git, and `discharged/`'s
+newest `_DISCHARGE-NOTE-*` is still from 2026-09-10. That half of the finding was right for the
+right reason - 18 escalations left the queue and the only record of why sits in an ignored
+folder. It stays open. This block is the first tracked record of the move.
+
+**Lesson: concurrency, not corruption.** Before an S1 "an unidentified actor deleted X",
+enumerate sibling directories created inside the window and compare mtimes - a move and a delete
+differ in exactly that evidence, and both instruments were to hand. The 00:39Z re-measurement
+that found the arming row is the same discipline arriving one probe short.
+
+---
+
 
 **F8 — 18 of the 62 files in `needs-marco/` were DELETED from the dev tree at 00:26:41Z, DURING
 this run. One of them is the escalation my own previous run wrote 31 minutes earlier.**

@@ -16,7 +16,15 @@ on:
     # the label after a release cannot re-run CI, so the required check keeps
     # reporting the stale LABEL_PRESENT verdict and the PR stays blocked on a fact
     # that is no longer true (measured on #1510 and #1511, 2026-09-02).
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # `edited` is here for the SAME reason, one gate along: check-pr-title.mjs reads
+    # the title from the event payload, and its own failure message tells you to fix
+    # it with `gh pr edit <n> --title ...`. A title edit fires ONLY the `edited` type,
+    # so without it the prescribed cure can never clear the check it was prescribed
+    # for -- and a re-run does not help either, because a re-run replays the ORIGINAL
+    # payload and re-reads the OLD title. Measured on #2108, 2026-09-23: title renamed
+    # to a resolving scope at 01:39:53Z, head SHA unchanged, ZERO runs after 01:31:06Z,
+    # and the board still reported TITLE_SCOPE_UNRESOLVED against the old title.
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
 
 # Cancel a PR's in-flight run when a newer commit is pushed to the same PR.
 # Pushes to main are never cancelled — every trunk commit gets a full run.

@@ -116,9 +116,9 @@ export function PlantTransportTypesPanel() {
           padding: 10,
           borderRadius: 6,
           background: "rgba(220,38,38,0.08)",
-          borderLeft: "3px solid #dc2626",
+          borderLeft: "3px solid var(--status-danger)",
           fontSize: 12,
-          color: "#dc2626"
+          color: "var(--status-danger)"
         }}>
           {error}
         </div>
@@ -137,14 +137,14 @@ export function PlantTransportTypesPanel() {
                   <th key={h} style={{
                     textAlign: h === "Rate / day" ? "right" : "left",
                     padding: "7px 10px",
-                    background: "var(--surface-subtle, #f3f4f6)",
+                    background: "var(--surface-subtle)",
                     fontWeight: 600,
                     fontSize: 10.5,
                     letterSpacing: "0.05em",
                     textTransform: "uppercase",
                     color: "var(--text-muted)",
                     whiteSpace: "nowrap",
-                    borderBottom: "1px solid var(--border, #e5e7eb)"
+                    borderBottom: "1px solid var(--border-default)"
                   }}>
                     {h}
                   </th>
@@ -153,7 +153,7 @@ export function PlantTransportTypesPanel() {
             </thead>
             <tbody>
               {plantRates.map((p) => (
-                <tr key={p.id} style={{ borderTop: "1px solid var(--surface-subtle, #f3f4f6)" }}>
+                <tr key={p.id} style={{ borderTop: "1px solid var(--surface-subtle)" }}>
                   <td style={{ padding: "7px 10px" }}>
                     {p.item}
                     {!p.isActive ? (
@@ -194,9 +194,9 @@ export function PlantTransportTypesPanel() {
                         fontWeight: 700,
                         padding: "1px 7px",
                         borderRadius: 4,
-                        border: "1px solid var(--brand-primary, #005B61)",
-                        color: "var(--brand-primary, #005B61)",
-                        background: "var(--brand-primary-light, #e6f0f1)",
+                        border: "1px solid var(--brand-primary)",
+                        color: "var(--brand-primary)",
+                        background: "var(--brand-primary-light)",
                         whiteSpace: "nowrap"
                       }}>
                         Sizes loads
@@ -208,9 +208,9 @@ export function PlantTransportTypesPanel() {
                         fontWeight: 700,
                         padding: "1px 7px",
                         borderRadius: 4,
-                        border: "1px solid var(--border, #e5e7eb)",
+                        border: "1px solid var(--border-default)",
                         color: "var(--text-muted)",
-                        background: "#fff",
+                        background: "var(--surface-card)",
                         whiteSpace: "nowrap"
                       }}>
                         No capacity default

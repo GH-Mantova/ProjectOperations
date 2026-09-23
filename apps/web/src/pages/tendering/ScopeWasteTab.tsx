@@ -1401,7 +1401,7 @@ export function ScopeWasteTab({
                               <span style={{
                                 fontSize: 10,
                                 background: "rgba(0,91,97,0.10)",
-                                color: "var(--brand-primary, #005B61)",
+                                color: "var(--brand-primary)",
                                 borderRadius: 3,
                                 padding: "1px 5px",
                                 marginBottom: 2,
@@ -1416,7 +1416,7 @@ export function ScopeWasteTab({
                               <span style={{
                                 fontSize: 10,
                                 background: "rgba(180,83,9,0.10)",
-                                color: "#92400e",
+                                color: "var(--status-warning)",
                                 borderRadius: 3,
                                 padding: "1px 5px",
                                 marginBottom: 2,

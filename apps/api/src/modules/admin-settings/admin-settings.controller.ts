@@ -31,6 +31,13 @@ class UpdateOperationsSettingsDto {
   fuelPriceFetchedAt?: string | null;
   @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsNumber() @Min(0)
   travelRatePerKm?: number | null;
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsNumber()
+  roadDistanceFactor?: number | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsNumber() @Min(1)
+  avgTruckSpeedKmh?: number | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsNumber() @Min(0)
+  tipTurnaroundMinutes?: number | null;
 }
 
 class SetIntegrationValueDto {

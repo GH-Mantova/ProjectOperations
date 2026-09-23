@@ -1520,7 +1520,14 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   `runVerdictArchiveSweep`), on the same `RESCAN_INTERVAL_MS` cadence as the counted line, so idle
   is stated rather than inferred. 🔧 **But this line is NOT the freeze probe and must never be wired
   into one.** A log line proves a **code path ran**; only a GAP catches a freeze. **The authoritative
-  freeze probe remains the `ts` field inside `.queue-state.json`** — sample it **twice, more than
+  freeze probe remains the `ts` field inside `.queue-state.json`, which lives BESIDE THE SCRIPT
+  at `<watcher clone>/scripts/pr-watcher/.queue-state.json` (anchor: `const QUEUE_STATE_FILE` in
+  `index.mjs`) and NOT beside the queue in `docs/pr-prompts/`** — [MEASURED] 2026-09-22T23:3xZ by
+  Station 03, which probed the natural guess — the same filename beside the QUEUE — and got **False in
+  BOTH trees**, no error, exit 0: the available conclusion is *"the watcher writes no queue state"*,
+  which retires this pipeline’s only authoritative freeze probe on a path typo, and a run that then
+  falls back to heartbeat age alone has nothing left to separate idle from wedged (§9.6, inside a
+  §9.5 cure). Sample it **twice, more than
   five minutes apart**, and compare the delta against `RESCAN_INTERVAL_MS` (5 min): `ts` unchanged
   across that window is a frozen rescan loop, whatever the log says. ⚠️ **Both observables die
   together after `pauseQueue`**, which sets `queuePaused` and makes `rescan()` return before both

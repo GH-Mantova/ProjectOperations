@@ -58,19 +58,14 @@ OAuth2, MYOB CSV, M365 SSO + local JWT + Super User, AI providers + BYOK encrypt
 
 ---
 
-## 2. 🔧 In-PR — open right now (5)
+## 2. 🔧 In-PR — open right now (0)
 
-> Live snapshot read from GitHub at reconcile time (**2026-09-21T14:25Z**, `origin/main`
-> 524158cd). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
+> Live snapshot read from GitHub at reconcile time (**2026-09-23T14:33Z**, `origin/main`
+> 7207606e). For richer status/blocker detail run `scripts/pipeline/bring-up-to-speed.ps1` —
 > its `[LIVE]` lines beat this table the moment it drifts.
 
-| PR | Title | Notes |
-|---|---|---|
-| #2051 | feat(map-locations): OPS_M2B_TIPPING_V1 — job Tipping tab + half-yearly price-review reminder | BEHIND; CI 10 pass / 3 fail / 2 pending — RED, opened 14:07:56Z |
-| #2049 | fix(pipeline): lint-station compares contract_version, not station_doc_version | UNKNOWN (mergeability still computing); CI 15 pass / 0 fail / 0 pending — green |
-| #2047 | feat(permissions): role-grant registry v1 — single map drives seed and migrations | BLOCKED; CI 13 pass / 2 fail / 0 pending — RED |
-| #2044 | feat(crm): S8 — Threads, To-dos and the rail on the s7 kit (`CRM_PARITY_THREADS_V1`) | BLOCKED; CI 13 pass / 2 fail / 0 pending — RED |
-| #2042 | feat(client-quotes): scopecards S4b — push panel + diff + grouped Cost Summary (`QUOTE_PUSH_PANEL_V1`) | CLEAN; CI 15 pass / 0 fail / 0 pending — green |
+**The board is empty.** `gh pr list --state open` returned **0** PRs (exit 0; negative control
+`gh pr view 999997` exit 1). There is nothing to list here.
 
 > **Why this table moved on 2026-09-06.** It had read "open right now (2)" since 2026-08-04
 > while naming #894 and #895, both of which merged that same day (`mergedAt` 2026-08-04T04:41:46Z

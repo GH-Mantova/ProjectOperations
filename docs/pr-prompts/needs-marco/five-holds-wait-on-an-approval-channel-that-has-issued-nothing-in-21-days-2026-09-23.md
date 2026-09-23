@@ -138,3 +138,82 @@ what it was built to do.
 
 A chat-level "release the prompts" does not satisfy any of these, because the gate reads the
 filesystem, not the conversation. **The unblocking action is naming a file.**
+
+---
+
+## ADDENDUM 2026-09-23T22:45Z — Station 00 (scheduled). A SECOND item, on the same release event.
+
+**This is not the approvals-channel defect above. It is the opposite one**, and it arrived through
+the same chat action ("Release the nine prompts", 2026-09-24). The item above is a gate too *tight*
+to open — five holds waiting on approval files that were never written. This item is a gate that
+**has** been opened, where nothing says **for whom**.
+
+**[MEASURED] 2026-09-23T22:2xZ at `d6c086c8`.** `pr-fv2-formrule-contract-HOLD.md` is the **only** one
+of the thirteen depth-1 holds that lints **ADMIT, exit 0**. Every other hold rejects: 7
+`HUMAN_GATE_PRESENT`, 4 `FILE_GATE_NOT_RELEASED`, 1 `GATE_NOT_RELEASED`. It carries **no**
+`requires_merged`, **no** `requires_file_on_main` and **no** `requires_on_main` — all three spellings
+checked — its premise is TRUE, and its scope overlaps **zero** files with any of the three open PRs.
+
+So every mechanical gate on it is open. What it still is, from its own front matter:
+`gate_allow: migrations`, `escalates: true`, and a `rollback_strategy` beginning *"This is a
+destructive column drop and is deliberately irreversible for the dropped column values."* It drops
+five columns from `FormRule`.
+
+**The only thing holding it is a sentence in `docs/pipeline/stations/00-supervisor.md`:** *"Never-arm
+list still stands: `pr-fv2-formrule-contract`, `pr-siteid-notnull-backfill` … those are
+**Marco-run**."*
+
+**And the prompt now carries a release note that reads against it.** Verbatim from the file:
+
+> `<!-- RELEASED 2026-09-24 by Marco - see the release note below. -->`
+> *"This prompt sat on the Station 00 Marco-run list (`docs/pipeline/stations/00-supervisor.md`)
+> behind a linter-visible marker, so `lint-prompt.mjs` rejected it `[HUMAN_GATE_PRESENT]` before the
+> premise was ever evaluated. Marco released it in chat on 2026-09-24 ("Release the nine prompts")
+> and `station-00.interactive-0004` removed the marker and recorded this note."*
+
+**[MEASURED] the marker state, with a positive control.** `pr-fv2-formrule-contract`: `watcher:
+do-not-arm` **0**, `DO NOT ARM` (case-sensitive) 0, `Arm ONLY` 0 — **unmarked**.
+`pr-siteid-notnull-backfill`, the other name on the same never-arm sentence: `watcher: do-not-arm`
+**1** — still marked, still rejecting. And `queue-sync.ps1`'s `$Forbidden` denylist holds
+`rates-s11c`, `site-dissolution`, `b-p0a-4-ii`, `b-p0a-5/6/7/8`, `b-sd` — **neither
+`fv2-formrule-contract` nor `siteid-notnull-backfill` is on it.**
+
+🔴 **So this prompt's never-arm status is now enforced by nothing but a station reading a sentence
+and applying it** — and the marker that used to enforce it mechanically was removed deliberately, as
+part of the release.
+
+**Two readings, and they prescribe opposite actions.**
+
+- **(a)** *Marco released it, therefore Station 00 may arm it.* The release note's plain sense.
+- **(b)** *The prompt is **Marco-run**; removing the marker unblocked `arm-prompt.ps1` **for Marco**,
+  because the marker was rejecting it for every actor including him. Station 00's never-arm entry is
+  untouched.*
+
+Reading (b) is what the never-arm sentence actually says, and it explains why the marker had to be
+removed at all. **I applied (b) and armed nothing.** But nothing in either document names the actor,
+and reading (a) on an irreversible column drop is a one-way door — so the next station to meet the
+release note without meeting the never-arm sentence can reasonably reach the other answer.
+
+**THE QUESTION, RULE 1 ordered:**
+
+> **(a) COMPLETE + ADDITIVE — make a release name its actor, once.** Add `released_for: marco` (or
+> `released_for: station-00`) to a released prompt's front matter, and amend the never-arm list in
+> `00-supervisor.md` to either drop `pr-fv2-formrule-contract` or annotate it *"released 2026-09-24,
+> still Marco-run"*. Solves it immediately — this prompt stops being ambiguous today — and in future,
+> because the other eight prompts released in the same action, and every future release, carry their
+> own answer. It writes no data anything reads, removes no gate, and weakens nothing. **Fails neither
+> half of RULE 1.**
+> **(b) ADDITIVE BUT INCOMPLETE — re-add `<!-- watcher: do-not-arm -->` to this one prompt.** Restores
+> the mechanical block, but it also re-blocks *your own* `arm-prompt.ps1`, which is exactly what the
+> 09-24 release removed, and it says nothing about the other eight. **Fails the *future* half.**
+> **(c) COMPLETE BUT DAMAGING — treat the release as an arming licence.** One sentence in
+> `00-supervisor.md` and Station 00 arms it on the next run. It does resolve the ambiguity
+> permanently, and it hands an autonomous station an irreversible five-column DROP on the strength of
+> a chat quotation no station can verify. **Fails the *without damaging* half. Not recommended;
+> stated for completeness.**
+
+⚠️ **Note for whoever performed the 09-24 release:** across the nine prompts, this run measures
+**zero** additional prompts that Station 00 can arm. For `pr-tipid-s3` the item above already records
+why (three `requires_on_main` gates still bind). For `pr-fv2-formrule-contract` the reason is
+different and is this addendum: the release cleared the only *mechanical* layer, and the *remembered*
+layer — the never-arm list — was not updated either way.

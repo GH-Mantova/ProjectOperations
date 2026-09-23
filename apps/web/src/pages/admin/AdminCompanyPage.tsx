@@ -537,6 +537,10 @@ type OperationsSettings = {
   fuelPriceSource: string | null;
   fuelPriceFetchedAt: string | null;
   travelRatePerKm: string | number | null;
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- straight-line cycle settings.
+  roadDistanceFactor: string | number | null;
+  avgTruckSpeedKmh: number | null;
+  tipTurnaroundMinutes: number | null;
   updatedAt: string;
   updatedById: string | null;
 };
@@ -592,6 +596,10 @@ function OperationsSettingsPanel() {
   const [fuelPrice, setFuelPrice] = useState("");
   const [fuelSource, setFuelSource] = useState("");
   const [travelRate, setTravelRate] = useState("");
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+  const [roadDistanceFactor, setRoadDistanceFactor] = useState("");
+  const [avgTruckSpeedKmh, setAvgTruckSpeedKmh] = useState("");
+  const [tipTurnaroundMinutes, setTipTurnaroundMinutes] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<FuelPriceRefreshResult | null>(null);
   const loadedRef = useRef(false);
@@ -607,6 +615,10 @@ function OperationsSettingsPanel() {
         setFuelPrice(body.fuelPricePerLitre != null ? String(body.fuelPricePerLitre) : "");
         setFuelSource(body.fuelPriceSource ?? "");
         setTravelRate(body.travelRatePerKm != null ? String(body.travelRatePerKm) : "");
+        // TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+        setRoadDistanceFactor(body.roadDistanceFactor != null ? String(body.roadDistanceFactor) : "");
+        setAvgTruckSpeedKmh(body.avgTruckSpeedKmh != null ? String(body.avgTruckSpeedKmh) : "");
+        setTipTurnaroundMinutes(body.tipTurnaroundMinutes != null ? String(body.tipTurnaroundMinutes) : "");
         loadedRef.current = true;
       }
     } catch (err) {
@@ -628,6 +640,10 @@ function OperationsSettingsPanel() {
       patch.fuelPricePerLitre = fuelPrice.trim() === "" ? null : Number(fuelPrice);
       patch.fuelPriceSource = fuelSource.trim() === "" ? null : fuelSource.trim();
       patch.travelRatePerKm = travelRate.trim() === "" ? null : Number(travelRate);
+      // TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+      patch.roadDistanceFactor = roadDistanceFactor.trim() === "" ? null : Number(roadDistanceFactor);
+      patch.avgTruckSpeedKmh = avgTruckSpeedKmh.trim() === "" ? null : Number(avgTruckSpeedKmh);
+      patch.tipTurnaroundMinutes = tipTurnaroundMinutes.trim() === "" ? null : Number(tipTurnaroundMinutes);
       const response = await authFetch("/admin/settings/operations", {
         method: "PATCH",
         body: JSON.stringify(patch)
@@ -822,7 +838,59 @@ function OperationsSettingsPanel() {
               min="0"
               value={travelRate}
               onChange={(e) => setTravelRate(e.target.value)}
-              placeholder="Interim flat rate — replaced by fuel × consumption × distance in T-1"
+              placeholder="Interim flat rate — replaced by fuel x consumption x distance in T-1"
+            />
+          </label>
+
+          {/* TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- straight-line cycle settings.
+              Leave all three unset to keep the feature silent on every waste line. */}
+          <div
+            style={{
+              marginTop: 8,
+              paddingTop: 8,
+              borderTop: "1px dashed var(--border)"
+            }}
+          >
+            <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--text-muted)" }}>
+              Haulage cycle estimation (S8a). Leave unset to keep the feature silent —
+              loads per day and daily km will not be filled in automatically while any
+              of these three are blank.
+            </p>
+          </div>
+          <label className="estimate-editor__field">
+            <span>Road distance factor</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={roadDistanceFactor}
+              onChange={(e) => setRoadDistanceFactor(e.target.value)}
+              placeholder="e.g. 1.30 — multiplies straight-line distance"
+            />
+          </label>
+          <label className="estimate-editor__field">
+            <span>Average truck speed (km/h)</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="1"
+              min="1"
+              value={avgTruckSpeedKmh}
+              onChange={(e) => setAvgTruckSpeedKmh(e.target.value)}
+              placeholder="e.g. 45"
+            />
+          </label>
+          <label className="estimate-editor__field">
+            <span>Minutes at the tip (per load)</span>
+            <input
+              className="s7-input"
+              type="number"
+              step="1"
+              min="0"
+              value={tipTurnaroundMinutes}
+              onChange={(e) => setTipTurnaroundMinutes(e.target.value)}
+              placeholder="e.g. 30"
             />
           </label>
 

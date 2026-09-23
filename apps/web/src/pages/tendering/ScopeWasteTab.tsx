@@ -70,6 +70,12 @@ type WasteRow = {
   effectiveMarkup?: number;
   /** Server-computed line total at effectiveMarkup rate (lineTotalWithMarkup). */
   lineTotalWithMarkup?: number;
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link and travel snapshot.
+  mapLocationId?: string | null;
+  travelKm?: string | null;
+  travelMinutesOneWay?: number | null;
+  travelSource?: string | null;
+  travelDetail?: string | null;
 };
 
 type WasteRate = {
@@ -81,6 +87,14 @@ type WasteRate = {
   tonRate: string;
   loadRate: string;
   isActive: boolean;
+};
+
+// TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- map locations of kind TIP for the
+// tip picker. Only name and id are needed for the select.
+type TipLocation = {
+  id: string;
+  name: string;
+  suburb: string;
 };
 
 // R3 T-1 - Transport Fees are EstimatePlantRate rows where category === "Truck"
@@ -413,6 +427,8 @@ export function ScopeWasteTab({
   const [rates, setRates] = useState<WasteRate[]>([]);
   // R3 T-1 - Transport Fees plant rates for the transport picker.
   const [transportRates, setTransportRates] = useState<PlantRate[]>([]);
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- TIP map locations for the tip picker.
+  const [tipLocations, setTipLocations] = useState<TipLocation[]>([]);
   // R3 T-1 - per-row expand toggle for the cost-engine detail panel.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // R3 T-1 - variance check results keyed by row id (populated on expand).
@@ -450,10 +466,12 @@ export function ScopeWasteTab({
       const wasteUrl = cardId
         ? `/tenders/${tenderId}/scope/waste?cardId=${encodeURIComponent(cardId)}`
         : `/tenders/${tenderId}/scope/waste?discipline=${discipline}`;
-      const [rowsResp, ratesResp, plantResp] = await Promise.all([
+      const [rowsResp, ratesResp, plantResp, tipsResp] = await Promise.all([
         authFetch(wasteUrl),
         authFetch(`/estimate-rates/waste`),
-        authFetch(`/estimate-rates/plant`)
+        authFetch(`/estimate-rates/plant`),
+        // TRAVEL_TIME_PORT_V1 -- load TIP map locations for the tip picker.
+        authFetch(`/map-locations?kind=TIP`)
       ]);
       if (!rowsResp.ok) throw new Error(await readApiErrorMessage(rowsResp));
       setRows((await rowsResp.json()) as WasteRow[]);
@@ -464,6 +482,10 @@ export function ScopeWasteTab({
       if (plantResp.ok) {
         const arr = (await plantResp.json()) as PlantRate[];
         setTransportRates(arr.filter((r) => r.isActive && isTransportPlantRate(r)));
+      }
+      if (tipsResp.ok) {
+        const arr = (await tipsResp.json()) as TipLocation[];
+        setTipLocations(arr);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -1224,7 +1246,78 @@ export function ScopeWasteTab({
                 {isExpanded ? (
                 <tr style={{ background: "var(--surface-muted, #F6F6F6)" }}>
                   <td colSpan={17} style={{ padding: "10px 12px" }}>
+                    {/* TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- cycle line.
+                        Shown when a travel snapshot exists on the row.
+                        Badge: "estimated, no route" for straight-line source.
+                        Manual loads shows "Manual" instead of the cycle. */}
+                    {row.travelSource === "straight-line" ? (
+                      <div
+                        style={{
+                          marginBottom: 10,
+                          padding: "8px 12px",
+                          borderLeft: "3px solid var(--brand-primary)",
+                          background: "var(--surface-subtle)",
+                          borderRadius: "0 4px 4px 0",
+                          fontSize: 13
+                        }}
+                        data-testid="waste-row-cycle-line"
+                      >
+                        <strong>
+                          Straight line {row.travelKm != null ? Number(row.travelKm).toFixed(1) : "?"} km
+                          {" · "}
+                          {row.travelMinutesOneWay != null ? row.travelMinutesOneWay : "?"} min each way
+                          {row.loadsPerTruckPerDay != null
+                            ? ` · ${Number(row.loadsPerTruckPerDay)} loads/day`
+                            : null}
+                        </strong>
+                        {" "}
+                        <span
+                          style={{
+                            display: "inline-block",
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: "1px 7px",
+                            borderRadius: 4,
+                            border: "1px solid var(--border-default)",
+                            background: "var(--status-warning)",
+                            color: "var(--text-primary)"
+                          }}
+                        >
+                          estimated, no route
+                        </span>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                          {row.travelDetail ?? ""}
+                        </div>
+                      </div>
+                    ) : null}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                      {/* TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip picker. */}
+                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
+                        Tip (map location)
+                        <select
+                          className="s7-select s7-input--sm"
+                          value={row.mapLocationId ?? ""}
+                          disabled={!canManage}
+                          onChange={(e) => {
+                            const next = e.target.value || null;
+                            void patchRow(row.id, { mapLocationId: next });
+                          }}
+                          style={{ minWidth: 200 }}
+                          title="Pick a tip from Map Locations to enable travel-time estimation"
+                        >
+                          <option value="">— no tip linked —</option>
+                          {/* Keep the existing selection even if it is not in the active list */}
+                          {row.mapLocationId &&
+                          !tipLocations.some((t) => t.id === row.mapLocationId) ? (
+                            <option value={row.mapLocationId}>{row.mapLocationId}</option>
+                          ) : null}
+                          {tipLocations.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}{t.suburb ? ` — ${t.suburb}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Transport item
                         <select

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Haulage and capacity mock-up</title>
+<style>
+:root{--p:#005B61;--pl:#E6F0F1;--acc:#FEAA6D;--accd:#C77A3A;--dark:#242424;--page:#F6F6F6;--card:#fff;--t1:#111;--t2:#6B7280;--t3:#9CA3AF;--bd:#E5E7EB;--bs:#F3F4F6;--ok:#047857;--okl:#ECFDF5;--warnl:#FFF4E5;--r:8px}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--t1);font:14px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:1040px;margin:0 auto}h1{font-size:24px;margin:0 0 6px}
+.lede{color:var(--t2);margin:0 0 22px;max-width:76ch}
+h2.sec{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--t2);margin:28px 0 10px;display:flex;gap:10px;align-items:center}
+h2.sec .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--acc);color:var(--dark);font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.frame{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd)}
+.crumb{font-size:12px;color:var(--t2)}.crumb b{color:var(--t1)}
+.ex{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accd);margin-left:auto}
+.body{padding:16px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}@media(max-width:820px){.grid{grid-template-columns:1fr 1fr}}
+.f{border:1px solid var(--bd);border-radius:var(--r);padding:8px 10px;background:#fff}
+.f .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2)}
+.f .v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.f .v.ghost{color:var(--t3);font-weight:400}
+.f .s{font-size:11px;color:var(--t3);margin-top:2px}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--bd);background:#fff;color:var(--t2)}
+.chip.m{border-color:var(--p);color:var(--p);background:var(--pl)}
+.chip.man{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.est{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.rt{border-color:var(--ok);color:var(--ok);background:var(--okl)}
+.cycle{margin-top:12px;border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 var(--r) var(--r) 0;padding:10px 12px;font-size:13px;background:#fff}
+.cycle b{font-variant-numeric:tabular-nums}
+.cycle .sub{color:var(--t2);font-size:12px;margin-top:4px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:var(--r)}
+th{background:var(--bs);text-align:left;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--t2);padding:7px 10px;white-space:nowrap}
+td{padding:7px 10px;border-top:1px solid var(--bs);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.note{font-size:12px;color:var(--t2);margin-top:10px}
+code{font:11.5px ui-monospace,Menlo,monospace;background:var(--bs);padding:1px 4px;border-radius:3px}
+.calls{display:grid;gap:10px;margin-top:10px}
+.call{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 var(--r) var(--r) 0;padding:10px 14px;font-size:13px}
+</style></head><body><div class="wrap">
+<h1>Haulage cycle and load capacity</h1>
+<p class="lede">The screens behind S8 and S9, and what they produce. Every figure is an example, not your data. Two new ideas appear on a waste line: how long the run to the tip takes, and how much goes on the truck. Both fill themselves in and both can be overruled by whoever is pricing.</p>
+
+<h2 class="sec"><span class="n">1</span>A waste line, filled in from the tip and the matrix</h2>
+<div class="frame">
+ <div class="bar"><span class="crumb">Tender T26-0412 / Scope of works / <b>Waste</b></span><span class="ex">Example data</span></div>
+ <div class="body">
+  <div class="grid">
+   <div class="f"><div class="k">Waste group</div><div class="v">Rubble</div><div class="s">material class for the matrix</div></div>
+   <div class="f"><div class="k">Tip</div><div class="v">Rochedale Transfer Station</div><div class="s">picked from map locations</div></div>
+   <div class="f"><div class="k">Transport</div><div class="v">Truck &amp; dog</div><div class="s">from the plant rate</div></div>
+   <div class="f"><div class="k">Quantity</div><div class="v">184.000 t</div><div class="s">summed from above</div></div>
+  </div>
+  <div class="grid" style="margin-top:10px">
+   <div class="f"><div class="k">Capacity per load</div><div class="v ghost">26</div><div class="s"><span class="chip m">Matrix</span> Rubble &middot; Truck &amp; dog &middot; 26 t</div></div>
+   <div class="f"><div class="k">Loads per truck per day</div><div class="v ghost">4</div><div class="s"><span class="chip m">From cycle</span> 8 h shift</div></div>
+   <div class="f"><div class="k">Trucks</div><div class="v">2</div><div class="s">typed</div></div>
+   <div class="f"><div class="k">Daily km</div><div class="v ghost">147</div><div class="s"><span class="chip m">From cycle</span> 4 loads &times; 2 &times; 18.4 km</div></div>
+  </div>
+  <div class="cycle"><b>Straight line 18.4 km &middot; 25 min each way &middot; 4 loads/day</b> <span class="chip est">Estimated, no route</span>
+   <div class="sub">25 min out, 25 min back, 30 min at the tip = 80 min a load, so 4 loads fit an 8-hour day shift. The 8-hour shift is used for this field only.</div></div>
+  <p class="note">Grey figures are filled in. Type over any of them and it turns into a typed figure that nothing recalculates. Clear it and the filled-in figure comes back.</p>
+ </div>
+</div>
+
+<h2 class="sec"><span class="n">2</span>The same line once routing is switched on, and once overruled</h2>
+<div class="frame"><div class="body">
+ <div class="cycle"><b>Route 21.6 km &middot; 32 min each way &middot; 3 loads/day</b> <span class="chip rt">Azure Maps</span>
+  <div class="sub">Peak 38 min, off-peak 26 min, averaged. Sampled for the next working day.</div></div>
+ <div class="grid" style="margin-top:12px">
+  <div class="f"><div class="k">Capacity per load</div><div class="v">22</div><div class="s"><span class="chip man">Manual</span> matrix says 26 t</div></div>
+  <div class="f"><div class="k">Loads per truck per day</div><div class="v">5</div><div class="s"><span class="chip man">Manual</span> cycle says 3</div></div>
+  <div class="f"><div class="k">Trucks</div><div class="v">2</div><div class="s">typed</div></div>
+  <div class="f"><div class="k">Daily km</div><div class="v ghost">216</div><div class="s"><span class="chip m">From cycle</span> 5 loads &times; 2 &times; 21.6 km</div></div>
+ </div>
+ <p class="note">A typed figure always wins and is never quietly recalculated, but what the matrix and the cycle would have said stays visible beside it. Nothing here writes back to the matrix.</p>
+</div></div>
+
+<h2 class="sec"><span class="n">3</span>Rates &amp; Lists &mdash; the transport rate says which rig it is</h2>
+<div class="frame">
+ <div class="bar"><span class="crumb">Settings / Rates &amp; Lists / <b>Plant &mdash; transport</b></span><span class="ex">Example data</span></div>
+ <div class="body"><div class="tw"><table>
+  <tr><th>Rate</th><th>Category</th><th>Transport type</th><th class="n">Rate / day</th><th></th></tr>
+  <tr><td>Truck &amp; dog (26 t)</td><td>Truck</td><td>Truck &amp; dog</td><td class="n">$1,450.00</td><td><span class="chip m">Sizes loads</span></td></tr>
+  <tr><td>Tandem tipper</td><td>Truck</td><td>Tandem tipper</td><td class="n">$980.00</td><td><span class="chip m">Sizes loads</span></td></tr>
+  <tr><td>Semi tipper (subbie)</td><td>Truck</td><td><span style="color:var(--t3)">&mdash;</span></td><td class="n">$1,320.00</td><td><span class="chip">No capacity default</span></td></tr>
+ </table></div>
+ <p class="note">The Transport type list is the matrix's own list, so the two can never drift apart. Leave it blank and that rate simply has no capacity default &mdash; the estimator types one, exactly as today.</p></div>
+</div>
+
+<h2 class="sec"><span class="n">4</span>Operations settings &mdash; the three numbers behind the cycle</h2>
+<div class="frame"><div class="body"><div class="tw"><table>
+ <tr><th>Setting</th><th class="n">Example</th><th>What it does</th></tr>
+ <tr><td>Road distance factor</td><td class="n">1.30</td><td>Multiplies straight-line distance when no route is available</td></tr>
+ <tr><td>Average truck speed</td><td class="n">45 km/h</td><td>Turns that distance into minutes</td></tr>
+ <tr><td>Minutes at the tip</td><td class="n">30</td><td>Added to each round trip before loads per day are worked out</td></tr>
+ <tr><td>Normal-hours departure</td><td class="n">10:00</td><td>First sample once routing is on</td></tr>
+ <tr><td>Peak departure</td><td class="n">07:00</td><td>Second sample; the two are averaged</td></tr>
+</table></div>
+<p class="note">Leave the first three unset and nothing is filled in &mdash; every line behaves exactly as it does today. That is also the way to switch the whole thing off.</p></div></div>
+
+<h2 class="sec">What this changes, for you to confirm</h2>
+<div class="calls">
+ <div class="call"><b>Nothing existing moves.</b> No saved line is repriced or resized. The filled-in figures only appear where the field was left empty.</div>
+ <div class="call"><b>A waste line now points at a tip.</b> Today it holds the tip's name as text, which nothing can route to. The line gets a real link to the map location, and without one there is no cycle and no route.</div>
+ <div class="call"><b>Straight line is never chosen, only fallen back to.</b> It is badged "estimated, no route" and the estimator cannot select it. Once Azure Maps is on, the badge reads "Azure Maps" and shows both sampled times.</div>
+ <div class="call"><b>The matrix is read, never written.</b> A typed capacity stays on its line and never pushes back to the table.</div>
+</div>
+</div></body></html>

@@ -18,9 +18,12 @@ clear it.** It was not dead. F2.
 62 files in `needs-marco/` were deleted from the dev tree** — including the escalation my own
 previous run wrote 31 minutes earlier. The pattern looks like deliberate consolidation (a
 `CONSOLIDATED-` file survived while three of its constituents went), and you were at the board
-seventeen minutes before. **Did you clear these 18?** If yes, nothing is wrong. If no, something on
-the box is deleting your escalation queue and nothing would have reported it. 16 of the 18 are
-recoverable in substance from the tracked breadcrumbs. F8.
+seventeen minutes before. **Did you clear these 18?** Your interactive Station 00 lane was
+demonstrably driving across the whole window — it armed `pr-dns-s5-checker-flip-to-fail` at
+00:31:20Z — so I think the answer is yes and this is just a missing discharge note. I have NOT
+restored anything. 16 of the 18 are recoverable in substance from the tracked breadcrumbs; the one
+real loss is `estimating-four-decisions-behind-package-9-2026-09-04.md`, which is a product decision
+no station can reconstruct. F8.
 
 ## GROUND
 
@@ -216,6 +219,29 @@ needle → **0**:
 file alone reaches nobody"* rule doing precisely the job it was written for, against a failure mode
 nobody anticipated — the file being deleted rather than merely unread. Worth recording as evidence
 the rule earns its cost.
+
+**14. The board moved under me while I worked, and both movements are Marco’s.** [MEASURED] at
+`00:39:22Z`, against the same probes read at `00:16:50Z`:
+
+| | 00:16:50Z | 00:39:22Z |
+|---|---|---|
+| `*-ready.md` at depth 1 | **0** | **2** — `pr-dns-s5-checker-flip-to-fail-ready.md` (00:31:07Z), `rev-2106-ready.md` (00:32:31Z) |
+| `.queue-state.json` | `armed=0` | `armed=2, owned=2, runnable=2`, `ts=2026-09-23T00:39:12Z` |
+| `needs-marco/*.md` | **62** | **44** |
+
+`rev-2106-ready.md` is the review lane enqueueing a job against **my own PR**. Per §10.3
+`REV_LANE_UNCONSUMED_ON_SECOND_LANE_V1`, `verdictApproves` has exactly one call site, inside
+`waitForPolicyMerge`, which never runs for a PR the watcher did not open — so that review is
+**unread by construction** and occupies the single lane for the length of a full review. That is the
+known residual already filed as
+`needs-marco/rev-lane-reviews-second-lane-prs-that-nothing-reads-2026-09-11.md`; I am recording the
+instance, not re-filing it.
+
+🔴 **The operational point: my sweep’s `SAFE TO ACT` verdict was 22 minutes old and had expired.**
+§7 says `[LIVE]` means *"true when measured"*, and the station doc says to re-run the gate
+immediately before every board mutation. I did, and the re-measurement is what found the arm, the
+review job and the corroboration for F8. Condition 3 re-checked at the moment of merging:
+`index.lock` **False / False**, `git` processes **0**, no PR touched in the last 2 min.
 
 ## WHAT CHANGED
 
@@ -452,8 +478,9 @@ distrust, and §5.5 makes the scope of a station's required reading Marco's call
 ---
 
 **F8 — 18 of the 62 files in `needs-marco/` were DELETED from the dev tree at 00:26:41Z, DURING
-this run, by an actor I cannot identify. One of them is the escalation my own previous run wrote
-31 minutes earlier.** Severity **S1**.
+this run. One of them is the escalation my own previous run wrote 31 minutes earlier.**
+Severity **S2** (opened as S1; downgraded at 00:39Z when the arming log identified an interactive
+Station 00 lane driven by Marco active across the whole window — see the UPDATE below).
 
 I found this only because F1 sent me to annotate that escalation and the file was not there.
 
@@ -498,7 +525,27 @@ were removed — which is what consolidating duplicates looks like. And `#2100` 
 seventeen minutes before, so Marco was demonstrably at the board. **Marco pruning his own escalation
 queue is entirely his prerogative and would make this a non-event.** I cannot demonstrate it: there
 were **0** other `claude` node processes and **0** `git` processes when I looked, no `index.lock`, and
-`needs-marco/` is gitignored so there is no history to read. The actor is **[CANNOT MEASURE]**.
+`needs-marco/` is gitignored so there is no history to read.
+
+🟢 **UPDATE 00:39Z — corroborating evidence found after this finding was first written, and it
+points firmly at deliberate triage by Marco.** `.arming-log.txt` gained a row while I was still
+measuring:
+
+```
+2026-09-23T00:31:20Z  ARMED  pr-dns-s5-checker-flip-to-fail  escalates=true
+  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=17220  caller=powershell.exe:18268
+```
+
+So a **supervised interactive Station 00 lane, driven by Marco at his own machine, was active on
+this box across the whole window**: `#2100` merged `00:09:53Z`, the 18 files removed `00:26:41Z`,
+a prompt armed `00:31:20Z`. `escalates=true` on that arm means he armed something the linter
+REJECTs as human-gated — which only the human the gate names may do. That is a person working his
+own queue, not an anomaly. Three of the four `interactive-0004` rows before it carry the same
+actor and the same `by=Marco@...` field, so the identity is established by pattern and not by one
+reading. **I am therefore NOT reporting this as an unattributed destructive actor**, and the
+severity below should be read as *"confirm and write the discharge note"*, not *"something is
+wrong on the box"*. Strictly the actor remains **[INFERRED]**, because nothing ties that session
+to the deletion directly — pids 17220 and 18268 had already exited when I looked for them.
 
 **Why it is still S1 rather than a shrug.** Two independent things are true at once. (i) If it was
 deliberate, nothing recorded the decision — `needs-marco/discharged/` exists for exactly this and its

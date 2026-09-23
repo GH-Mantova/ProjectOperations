@@ -40,7 +40,6 @@ Owns **board mutation** and **watcher health**. Nothing else may merge or restar
 |---|---|---|
 | `pipeline\bring-up-to-speed.ps1` | Full situational report + act/do-not-act verdict. | **First, every cycle.** |
 | `pipeline\board-status.ps1` (root) | Open PRs and their real merge state. | Every cycle. |
-| `pipeline\why-blocked.ps1` | Why a specific PR is BLOCKED when its checks look green. | A PR is BLOCKED with no visible red. |
 | `pipeline\check-gate-markers.ps1` | Does every PR needing a `GATE-ALLOW` marker have one, bare at column 0? | CP-11/12/13 red. |
 | `pipeline\read-gate-failure.ps1` | Pull the real failure out of a gate job log. | Before diagnosing ANY red (never diagnose from the PR page). |
 | `pipeline\assess-conflicts.ps1` | Assess — **not resolve** — conflicts on every DIRTY PR, in an isolated worktree. | A PR is DIRTY. |
@@ -61,6 +60,7 @@ Owns **board mutation** and **watcher health**. Nothing else may merge or restar
 | `pipeline\queue-sync.ps1` | Reconciles prompts **armed by commit** into the **filesystem** queue the watcher reads. Additive; never pulls, deletes or overwrites. | Run when armed-on-main and on-disk disagree. Arms escalating prompts too — they are merge-gated, not run-gated. |
 | `pipeline\fix-datamodel-drift.ps1` / `resolve-and-regen.ps1` / `resolve-generated-conflicts.ps1` | Regenerate the generated data-model map on a branch whose drift check is red. | **Regenerate, never hand-merge a generated file.** Regenerate AFTER the final rebase — ordering matters. |
 | `pipeline\fix-gate-markers.ps1` | Adds missing `GATE-ALLOW` markers and pushes. | A PR-body edit alone does NOT retrigger the workflow. |
+| `pipeline\why-blocked.ps1` | Why a specific PR is BLOCKED when its checks look green. **Its diagnostic METHOD is a REST squash-merge attempt** — the refusal text is the only place GitHub spells out the exact rule violation. | **MUTATING, and it was filed under Read-only until 2026-09-23** — where rule 2 above ("READ-ONLY scripts are always safe to run") made the misfiling a licence. It now refuses a hold label, a watcher `marco:true` verdict and an already-merged PR before it attempts anything, and reads back `before`/`after` state. A PR is BLOCKED with no visible red. |
 | `restart-watcher-if-wedged.ps1` (root) | The sanctioned WEDGED check. `-WhatIf` to look, `-Fix` to act. | The one watcher case `supervise-watcher.ps1` cannot handle. An idle watcher with 0 armed prompts is CORRECT, not wedged. |
 | `clear-stale-index-lock.ps1` (root) | Clears a STALE `.git/index.lock` — only if no git process is running. | Prove it is stale first. A 3-day-old lock once froze the repo. |
 

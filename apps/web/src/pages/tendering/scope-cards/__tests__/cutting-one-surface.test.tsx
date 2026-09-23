@@ -1,5 +1,7 @@
 // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — tests for the single concrete
 // cutting surface.
+// CUTTING_IN_THE_FOLD_V1 (scopecards-s7b) — updated assertions for the new
+// { subtotal, withMarkup } upward-report shape.
 //
 // Scopecards S6 deletes CuttingSection (the read-only take-off) and makes
 // ScopeCuttingSheet the only cutting surface on the card. These tests replace
@@ -18,6 +20,7 @@
 //   8. Depth: a row at a depth absent from the option list still renders its
 //      stored depth; options come from the rows passed in, not a literal list.
 //   9. CUTTING_ONE_SURFACE_V1 sentinel is exported.
+//  10. CUTTING_IN_THE_FOLD_V1: onSectionTotalChange reports { subtotal, withMarkup }.
 //
 // The web workspace has no jsdom; the house pattern is followed throughout:
 //   - claims about numbers  -> exported pure helpers
@@ -28,7 +31,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { CUTTING_ONE_SURFACE_V1 } from "../../ScopeCuttingSheet";
+import { CUTTING_ONE_SURFACE_V1, CUTTING_IN_THE_FOLD_V1 } from "../../ScopeCuttingSheet";
 
 const repoFile = (relFromRepoRoot: string): string =>
   fileURLToPath(new URL(`../../../../../../../${relFromRepoRoot}`, import.meta.url));
@@ -53,6 +56,37 @@ describe("CUTTING_ONE_SURFACE_V1 sentinel", () => {
 
   it("is present in the sheet source", () => {
     expect(sheetSource).toContain("CUTTING_ONE_SURFACE_V1");
+  });
+});
+
+describe("CUTTING_IN_THE_FOLD_V1 sentinel (scopecards-s7b)", () => {
+  it("is exported with the correct value", () => {
+    expect(CUTTING_IN_THE_FOLD_V1).toBe("scopecards-s7b");
+  });
+
+  it("is present in the sheet source", () => {
+    expect(sheetSource).toContain("CUTTING_IN_THE_FOLD_V1");
+  });
+
+  it("onSectionTotalChange reports { subtotal, withMarkup } — not a bare number", () => {
+    // S7b upgraded the upward report from (cardId, total: number) to
+    // (cardId, totals: { subtotal: number; withMarkup: number }).
+    // The old single-number signature must be gone.
+    expect(sheetSource).toContain("subtotal: number; withMarkup: number");
+    expect(sheetSource).not.toMatch(/onSectionTotalChange\?:\s*\(cardId: string, total: number\)/);
+  });
+
+  it("cuttingTotals in ScopeCardsTab is Record<string, { subtotal, withMarkup }>", () => {
+    // The fold now uses the same shape as operational costs.
+    expect(tabSource).toContain('Record<string, { subtotal: number; withMarkup: number }>');
+    // The old single-number state is gone.
+    expect(tabSource).not.toContain('Record<string, number>');
+  });
+
+  it("the stale 'no per-line markup; goes to both figures at cost' comment is removed", () => {
+    // S7b replaced this comment — cutting now applies markup via the server's
+    // lineTotalWithMarkup, exactly as operational costs does.
+    expect(tabSource).not.toContain("no per-line markup; goes to both figures at cost");
   });
 });
 
@@ -275,8 +309,12 @@ describe("the browser does not compute a cutting price", () => {
   });
 
   it("the section total is a fold of server line totals only", () => {
-    // The only arithmetic in the component is the reduce over server lineTotal.
+    // The visible subtotal is a reduce over server lineTotal (all rows).
+    // The upward-reported priceTotals uses computeCuttingPriceTotals which accesses
+    // lineTotalWithMarkup from each row. Both patterns are present in source.
     expect(sheetSource).toContain("i.lineTotal ? Number(i.lineTotal) : 0");
+    // computeCuttingPriceTotals accesses row.lineTotalWithMarkup; the type also names it.
+    expect(sheetSource).toContain("lineTotalWithMarkup");
   });
 });
 

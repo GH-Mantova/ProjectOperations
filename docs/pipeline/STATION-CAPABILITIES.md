@@ -526,22 +526,30 @@ one.** ⚠️ **Falsifying probe: read both crons and both `lastRunAt` values fr
 occurrence. If they are ever more than ten minutes apart, this correction is wrong.** Found and
 landed by Station 00 2026-09-07T18:1xZ.
 
-🔴 **AND THE CADENCE IS STORED IN A THIRD PLACE THAT THE CORRECTION DID NOT REACH.**
-`scripts/pipeline/check-breadcrumb.mjs` keeps its own `CADENCE` map, and `00` in it still reads
-**2**. [MEASURED] 2026-09-05T15:1xZ at `52232fec`, anchor `const CADENCE =`:
-`{ '00': 2, '02': null, '03': 24, '04': 4, '05': 24 }`; NEGATIVE control `zzzNoSuchNeedleZzz` over
-the same file -> **0**. The table row above was corrected in **#1670** twenty-four minutes earlier
-and the instrument was not, so `--freshness` -- the probe the COLLECT step is told to *start* with
--- will not call `00` **SILENT** until **4 h**, i.e. only after **three** consecutive missed hourly
-runs. `03` (`24`) and `04` (`4`) match their live crons; `00` is the only wrong row.
+🟢 **LANDED 2026-09-22 — THE CADENCE MAP’S THIRD STORAGE LOCATION IS NOW CORRECT, AND THE
+PARAGRAPH THAT SAID OTHERWISE OUTLIVED ITS OWN TRUTH BY A DAY.** `CADENCE_THIRD_LOCATION_LANDED_V1`
+`scripts/pipeline/check-breadcrumb.mjs` keeps its own `CADENCE` map. It read `'00': 2` from
+2026-09-05 until **PR #2090** (`dd772da4`, *"silence detector had station 00 at a 2h cadence
+against an hourly cron"*), merged **2026-09-22T16:44:04Z**. [MEASURED] 2026-09-23T18:2xZ by
+Station 00 at `dfea18ed`, anchor `const CADENCE =` read from `origin/main`:
+`{ '00': 1, '02': null, '03': 24, '04': 4, '05': 24 }` — every row now matches its live cron.
+The landed value is confirmed in BEHAVIOUR as well as in source: `--freshness` run the same minute
+printed `00  last 2026-09-23T17:30:00Z  0.8h ago  (cadence 1h)  ok`, `CLEAN`, exit **0**.
 
-⚠️ **So a green `ok` from `--freshness` is a weaker statement about `00` than about any other
-station**, and it is weak in escalation #23's exact direction -- toward not noticing a missed run.
-Cross it against `lastRunAt` from the scheduled-tasks MCP, which the COLLECT step already requires
-and which this defect does not touch. 🔧 The fix is one character (`'00': 1`), but it is a
-`scripts/` change and therefore outside Station 00's recorded lane to merge; it is filed for Marco
-in the needs-marco queue alongside the `lint-station.mjs` version-field question. **Do not read this
-paragraph as the fix having landed** -- the falsifying probe is the `const CADENCE =` line itself.
+🔴 **The two instructions this paragraph used to carry are RETIRED — do not follow them.** It
+said *"a green `ok` from `--freshness` is a weaker statement about `00` than about any other
+station"*, and it said the fix was *"filed for Marco in the needs-marco queue"*. Both are false
+now, and the second is the expensive one: a run doing queue triage on that sentence re-surfaces a
+discharged item to Marco, which is the exact cost `#2090` was merged to remove.
+
+⚠️ **What SURVIVES is the rule, and it is the half that saves a careful reader: read the live
+cron from the scheduled-tasks MCP, never from this file — and cross `--freshness` against
+`lastRunAt` anyway.** That cross-check was never a patch for a wrong constant. `lastRunAt` is a
+DIFFERENT instrument, and the station doc’s own table records failure shapes `--freshness` cannot
+distinguish at any cadence value, because it compares breadcrumb dates and nothing else.
+⚠️ **The cadence values above are STATE — re-measure them, never quote them. Falsifying probe:
+the `const CADENCE =` line itself.** If `'00'` ever shows anything but the live cron’s hours, this
+is wrong again. Found by Station 04 2026-09-23T18:1xZ (F1), landed by Station 00 at 18:3xZ.
 
 ---
 

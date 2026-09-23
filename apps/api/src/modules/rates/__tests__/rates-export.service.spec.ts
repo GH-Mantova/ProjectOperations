@@ -76,6 +76,10 @@ function makePlantListedRate(overrides: Partial<{
     // is 0, not null. The export sheets do not render it today — pass an
     // override if a test ever asserts on it.
     fuelRate: overrides.fuelRate !== undefined ? overrides.fuelRate : 0,
+    // TRANSPORT_CAPACITY_MATRIX_V1. The legacy adapters have a single VALUE
+    // column, so the resolver yields `{}` here - the export sheets do not read
+    // it. Present because ListedRate requires it.
+    extraValues: {},
     source: "legacy"
   };
 }
@@ -111,6 +115,8 @@ function makeWasteListedRate(overrides: Partial<{
     sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
     // Waste has no fuel concept — `fuelRate` is null on every non-plant kind.
     fuelRate: null,
+    // TRANSPORT_CAPACITY_MATRIX_V1: single-VALUE-column legacy table, so `{}`.
+    extraValues: {},
     source: "legacy"
   };
 }

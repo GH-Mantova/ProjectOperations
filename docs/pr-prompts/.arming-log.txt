@@ -145,3 +145,4 @@
 2026-09-23T00:31:20Z  ARMED  pr-dns-s5-checker-flip-to-fail  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=17220  caller=powershell.exe:18268
 2026-09-23T01:06:09Z  ARMED  pr-scopecards-s7b-cutting-in-the-card-fold  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=11636  caller=powershell.exe:8900
 2026-09-23T01:47:18Z  ARMED  pr-scopecards-s8a-travel-time-snapshot  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=32240  caller=powershell.exe:20128
+2026-09-23T05:29:49Z  ARMED  pr-scopecards-s9-transport-capacity-matrix  escalates=true  actor=station-00.sched-0514  by=Marco@LAPTOP-E6NHU4E4  pid=39824  caller=powershell.exe:11012

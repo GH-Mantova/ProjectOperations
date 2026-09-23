@@ -1,9 +1,19 @@
 // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — one concrete cutting section.
+// CUTTING_IN_THE_FOLD_V1 (scopecards-s7b) — cutting joins the card fold on
+// the same terms as every other section.
 //
 // Scopecards S6 collapses the two-surface situation (read-only take-off +
 // editable Cutrite sheet) into a single editor that carries the mock-up's full
 // column set. CuttingSection.tsx (the read-only take-off) is deleted; this
 // file is the only cutting surface on the card.
+//
+// S7b upgrades the upward report from a single number at cost to the same
+// { subtotal, withMarkup } pair used by every other section, and filters the
+// price slice (PRICE or null destination only) before reporting upward.
+// The visible section subtotal on the sheet continues to count ALL rows —
+// the sheet is the estimator's cutting worksheet, and Internal-only rows
+// must still appear in the total the estimator sees. Only what is reported
+// upward to ScopeCardsTab.statsByCard is the price slice.
 //
 // The approved mock-up's column order:
 //   Goes to | From | Type | Description | Equipment | Elevation | Material |
@@ -24,8 +34,8 @@
 // values from the fields the earlier slices stored; no new logic is added here.
 //
 // Every figure comes from the server. No rate is computed in this file.
-// The section reports its subtotal upward via onSectionTotalChange so the fold
-// in ScopeCardsTab.statsByCard stays correct.
+// The section reports its price-slice totals upward via onSectionTotalChange so
+// the fold in ScopeCardsTab.statsByCard stays correct.
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -43,6 +53,37 @@ import { LineMarkupCell } from "./scope-cards/LineMarkupCell";
 
 // CUTTING_ONE_SURFACE_V1 — scopecards-s6 sentinel. Grep-able by the gate.
 export const CUTTING_ONE_SURFACE_V1 = "scopecards-s6";
+
+// CUTTING_IN_THE_FOLD_V1 — scopecards-s7b sentinel. Grep-able by the gate.
+export const CUTTING_IN_THE_FOLD_V1 = "scopecards-s7b";
+
+/** Minimal shape of a cutting row for the price-slice fold. */
+export type CuttingRowForFold = {
+  quoteDestination?: string | null;
+  lineTotal: string | null;
+  lineTotalWithMarkup?: number | null;
+};
+
+/** The price-slice totals: sum of PRICE (or null) rows' lineTotal and
+ *  lineTotalWithMarkup. Exported for unit tests; the component calls this
+ *  via its priceTotals useMemo. */
+export function computeCuttingPriceTotals(
+  rows: CuttingRowForFold[]
+): { subtotal: number; withMarkup: number } {
+  let subtotal = 0;
+  let withMarkup = 0;
+  for (const row of rows) {
+    const dest = row.quoteDestination ?? "PRICE";
+    if (dest !== "PRICE") continue;
+    const lt = row.lineTotal ? Number(row.lineTotal) : 0;
+    const ltm = (row.lineTotalWithMarkup != null && Number.isFinite(row.lineTotalWithMarkup))
+      ? row.lineTotalWithMarkup
+      : lt;
+    subtotal += lt;
+    withMarkup += ltm;
+  }
+  return { subtotal, withMarkup };
+}
 
 type ItemType = "saw-cut" | "core-hole" | "other-rate";
 
@@ -167,10 +208,12 @@ export function ScopeCuttingSheet({
   tenderMarkup?: number;
   sectionMarkupOverride?: number | null;
   onSectionMarkupChange?: (next: number | null) => Promise<void> | void;
-  // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — reports the sum of the server's
-  // line totals upward so ScopeCardsTab.statsByCard stays correct.
-  // Called whenever the loaded items change. Must be referentially stable.
-  onSectionTotalChange?: (cardId: string, total: number) => void;
+  // CUTTING_IN_THE_FOLD_V1 (scopecards-s7b) — reports the price-slice of the
+  // server's per-row totals upward so ScopeCardsTab.statsByCard stays correct.
+  // Only PRICE or null destination rows are included in the reported figures;
+  // the visible sheet subtotal still counts all rows (see file-top comment).
+  // Shape matches operational-costs for consistency. Must be referentially stable.
+  onSectionTotalChange?: (cardId: string, totals: { subtotal: number; withMarkup: number }) => void;
 }) {
   const { authFetch } = useAuth();
   const confirm = useConfirm();
@@ -228,19 +271,32 @@ export function ScopeCuttingSheet({
     });
   }, [items, discipline]);
 
-  // Section total: sum of the server's line totals.
+  // Visible section subtotal: sum of ALL rows' line totals (all destinations).
+  // This is what the estimator sees on the cutting worksheet — Internal-only
+  // rows must still appear in the total the estimator reads. Only what is
+  // reported upward to ScopeCardsTab is filtered to the price slice.
   // No arithmetic on rates — only a fold of server-computed figures.
   const subtotal = useMemo(
     () => disciplineItems.reduce((sum, i) => sum + (i.lineTotal ? Number(i.lineTotal) : 0), 0),
     [disciplineItems]
   );
 
-  // Report upward so ScopeCardsTab.statsByCard stays correct.
+  // Price-slice totals reported upward to ScopeCardsTab.statsByCard.
+  // Only PRICE (or null, which means PRICE) destination rows are included.
+  // withMarkup uses the server's lineTotalWithMarkup when present, falling
+  // back to lineTotal (same pattern as OtherOperationalCosts).
+  // Uses the exported computeCuttingPriceTotals helper — single implementation.
+  const priceTotals = useMemo(
+    () => computeCuttingPriceTotals(disciplineItems),
+    [disciplineItems]
+  );
+
+  // Report the price slice upward so ScopeCardsTab.statsByCard stays correct.
   useEffect(() => {
     if (cardId && onSectionTotalChange) {
-      onSectionTotalChange(cardId, subtotal);
+      onSectionTotalChange(cardId, priceTotals);
     }
-  }, [cardId, subtotal, onSectionTotalChange]);
+  }, [cardId, priceTotals, onSectionTotalChange]);
 
   const addItem = async (type: ItemType) => {
     if (!canManage) return;

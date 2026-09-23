@@ -330,14 +330,20 @@ export function ScopeCardsTab({
     });
   }, []);
 
-  // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — the same arrangement for the
-  // concrete cutting section. ScopeCuttingSheet now reports the total of the
-  // server's OWN line totals; it prices nothing itself. An asbestos card has
-  // no cutting section, so it reports nothing and its entry stays absent,
-  // which reads as 0 in the fold below.
-  const [cuttingTotals, setCuttingTotals] = useState<Record<string, number>>({});
-  const handleCuttingTotal = useCallback((cardId: string, total: number) => {
-    setCuttingTotals((prev) => (prev[cardId] === total ? prev : { ...prev, [cardId]: total }));
+  // CUTTING_IN_THE_FOLD_V1 (scopecards-s7b) — the same arrangement for the
+  // concrete cutting section. ScopeCuttingSheet reports the PRICE slice of the
+  // server's own per-row totals, markup included, on the same terms as
+  // operational costs. An asbestos card has no cutting section, so it reports
+  // nothing and its entry stays absent, which reads as 0 in the fold below.
+  const [cuttingTotals, setCuttingTotals] = useState<Record<string, { subtotal: number; withMarkup: number }>>({});
+  const handleCuttingTotal = useCallback((cardId: string, totals: { subtotal: number; withMarkup: number }) => {
+    setCuttingTotals((prev) => {
+      const existing = prev[cardId];
+      if (existing && existing.subtotal === totals.subtotal && existing.withMarkup === totals.withMarkup) {
+        return prev;
+      }
+      return { ...prev, [cardId]: totals };
+    });
   }, []);
 
   // THE ONE PLACE CARD MONEY IS COMPUTED.
@@ -354,14 +360,12 @@ export function ScopeCardsTab({
   // gets the section's marked-up total. The two figures can differ when a line
   // carries a markup override or the card/tender markup is non-zero.
   //
-  // CUTTING_ONE_SURFACE_V1 (scopecards-s6) — the concrete cutting section
-  // joins the SAME fold, for the same reason, and on the same terms: `cutting`
-  // is a sum of the line totals the server's cutting rate resolver produced
-  // (#1437), added at cost to both figures. No cutting price, multiplier or
-  // rig selection is computed here or in ScopeCuttingSheet — the card's
-  // per-section cutting markup (`cuttingMarkupOverride`) is a separate cost
-  // stream owned by the cutting sheet, and applying it here would be a second
-  // implementation of money the server already decided.
+  // CUTTING_IN_THE_FOLD_V1 (scopecards-s7b) — cutting now joins on the SAME
+  // terms as operational costs: the section reports the PRICE slice of the
+  // server's per-row totals, markup included. `subtotal` gets the bare cost of
+  // PRICE cutting rows; `subtotalWithMarkup` gets the marked-up total.
+  // No cutting price, multiplier or rig selection is computed here or in
+  // ScopeCuttingSheet — the server already decided those figures.
   const statsByCard = useMemo(() => {
     const byCard = new Map<string, CardBarStats>();
     for (const card of disciplineCards) {
@@ -372,7 +376,9 @@ export function ScopeCardsTab({
       const otherCostsEntry = otherCostTotals[card.id];
       const otherCostsSubtotal = otherCostsEntry?.subtotal ?? 0;
       const otherCostsWithMarkup = otherCostsEntry?.withMarkup ?? 0;
-      const cutting = cuttingTotals[card.id] ?? 0;
+      const cuttingEntry = cuttingTotals[card.id];
+      const cuttingSubtotal = cuttingEntry?.subtotal ?? 0;
+      const cuttingWithMarkup = cuttingEntry?.withMarkup ?? 0;
       // ScopeCardsTab fold — sections report their PRICE money only:
       //   - WBS items are already partitioned into four piles by computeCardBarStats.
       //   - OtherOperationalCosts: subtotal/withMarkup carries the PRICE slice.
@@ -380,11 +386,12 @@ export function ScopeCardsTab({
       //     portion; option/internal from that section are not yet propagated
       //     and are not added by this slice — Waste money is not in the card
       //     fold today and is not added by this slice.)
-      //   - Cutting: no per-line markup; goes to both figures at cost.
+      //   - Cutting: reports the PRICE slice of the server's per-row totals,
+      //     markup included, on the same terms as operational costs.
       byCard.set(card.id, {
         itemCount: fromItems.itemCount,
-        subtotal: fromItems.subtotal + otherCostsSubtotal + cutting,
-        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup + cutting,
+        subtotal: fromItems.subtotal + otherCostsSubtotal + cuttingSubtotal,
+        subtotalWithMarkup: fromItems.subtotalWithMarkup + otherCostsWithMarkup + cuttingWithMarkup,
         provisionalSubtotal: fromItems.provisionalSubtotal,
         provisionalWithMarkup: fromItems.provisionalWithMarkup,
         optionSubtotal: fromItems.optionSubtotal,
@@ -892,9 +899,10 @@ type StackEntryProps = {
    *  section { subtotal, withMarkup } up to the single card-money fold.
    *  Must be referentially stable. */
   onOtherCostTotalChange: (cardId: string, totals: { subtotal: number; withMarkup: number }) => void;
-  /** CUTTING_ONE_SURFACE_V1 (scopecards-s6) — reports the card's concrete
-   *  cutting section total up to that same fold. Must be referentially stable. */
-  onCuttingTotalChange: (cardId: string, total: number) => void;
+  /** CUTTING_IN_THE_FOLD_V1 (scopecards-s7b) — reports the card's concrete
+   *  cutting section { subtotal, withMarkup } (PRICE slice) up to that same fold.
+   *  Must be referentially stable. */
+  onCuttingTotalChange: (cardId: string, totals: { subtotal: number; withMarkup: number }) => void;
   /**
    * SCOPE_QUOTE_DESTINATION_UI_V1 — Opt A/B/C letters for OPTION items on
    * this card's WBS table. Computed once per card in ScopeCardsTab from the

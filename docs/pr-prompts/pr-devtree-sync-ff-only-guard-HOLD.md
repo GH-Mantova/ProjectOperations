@@ -64,4 +64,9 @@ exit 0 without a PR: if the premise is false, say so in the log and stop loudly.
 ## Why this is a HOLD
 
 The rule it encodes is Marco's to ratify: it forbids a command several concurrent chats currently use
-routinely. Escalated by Station 00 in its 2026-08-28T08:08Z breadcrumb. Arm only after he answers.
+routinely. Escalated by Station 00 in its 2026-08-28T08:08Z breadcrumb.
+
+**RELEASED 2026-09-24 by Marco** ("Release the nine prompts", in chat), recorded by
+`station-00.interactive-0004`. He is the person the escalation was waiting on and this is his answer,
+so the human hold above is spent. Nothing else about the slice changes: the premise still has to
+pass, and the PR still opens unmerged for review.

@@ -23,11 +23,21 @@ backfill: false
 rollback_strategy: "This is a destructive column drop and is deliberately irreversible for the dropped column *values*: an earlier rules-storage slice already backfilled every legacy row (sourceFieldKey, targetFieldKey, operator, comparisonValue, effect) into the richer `definition` Json tree and both evaluators have been reading `definition` exclusively since that slice's soak period began — `definition` is the single source of truth by the time this migration runs, so no runtime code depends on the dropped columns. If a rollback is genuinely needed, add the five columns back as nullable in a follow-up migration and leave them NULL; do NOT attempt to reverse-populate them from `definition` in this PR or any rollback migration — that would reintroduce a second writable rule store and recreate exactly the drift risk section 3.5 eliminated. Confirm with `prisma migrate status` that this is the next unapplied migration before merging (any merge is a separate, later, human-driven step — this PR itself stays unmerged)."
 ---
 
-<!-- watcher: do-not-arm -->
-<!-- Station 00 never-arm list (docs/pipeline/stations/00-supervisor.md): this prompt is
-     Marco-run. The marker above is what makes lint-prompt.mjs REJECT it [HUMAN_GATE_PRESENT]
-     before the premise is evaluated, the same way its list-mate
-     pr-siteid-notnull-backfill-HOLD.md is already gated. -->
+<!-- RELEASED 2026-09-24 by Marco - see the release note below. -->
+
+## HUMAN GATE: RELEASED 2026-09-24
+
+This prompt sat on the Station 00 Marco-run list (`docs/pipeline/stations/00-supervisor.md`) behind
+a linter-visible marker, so `lint-prompt.mjs` rejected it `[HUMAN_GATE_PRESENT]` before the premise
+was ever evaluated. Marco released it in chat on 2026-09-24 ("Release the nine prompts") and
+`station-00.interactive-0004` removed the marker and recorded this note.
+
+**What the release does and does not cover.** It clears the human hold only. This slice still drops
+five columns and that drop is deliberately irreversible for the dropped *values*, so the
+`rollback_strategy` in the front matter governs: `definition` must already be the single source of
+truth, both evaluators must have been reading it through the soak, and `prisma migrate status` must
+show this as the next unapplied migration. The PR opens unmerged; merging stays a separate,
+human-driven step.
 
 # Contract slice — drop legacy FormRule columns after soak
 

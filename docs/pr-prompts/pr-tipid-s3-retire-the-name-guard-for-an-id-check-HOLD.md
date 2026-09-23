@@ -34,13 +34,18 @@ ruling, option (d).
 
 ## 🔴 HARD STOP — ENFORCED BY THREE MACHINE GATES, NOT BY THIS PARAGRAPH
 
-<!-- watcher: do-not-arm -->
+**HUMAN LAYER RELEASED 2026-09-24 by Marco** ("Release the nine prompts", in chat), removed and
+recorded by `station-00.interactive-0004`. This is the reviewable diff the design asked for: the
+decision to make this slice armable now carries a name and a date instead of a judgement call at
+2am. The release clears ONE of the two layers. The three `requires_on_main` gates below are
+untouched and are still checked **even after arming** (`lint-prompt.mjs:808`,
+`ARMED_GATE_STILL_CHECKED`), so a measured reality still has to arrive before anything runs.
 
-**This prompt cannot be armed while the marker above is present.** `lint-prompt.mjs:728` matches it
-and returns `HUMAN_GATE_PRESENT`, and it fires **before** the premise is evaluated, so no amount of
-"the work still looks needed" gets past it. `arm-prompt.ps1` runs the lint and refuses on a non-zero
-exit. **Removing that one line is itself a reviewable PR** — which is the point: the decision to make
-this slice armable becomes a diff with a name on it, instead of a judgement call at 2am.
+**How it was held until now.** `lint-prompt.mjs:728` matched the marker and returned
+`HUMAN_GATE_PRESENT` before the premise was evaluated, so no amount of "the work still looks
+needed" got past it, and `arm-prompt.ps1` refused on the non-zero exit. That is why removing the
+one line had to be a reviewable PR rather than a judgement call at 2am - and it is the PR you are
+reading.
 
 Underneath the marker, three `requires_on_main` gates encode the preconditions. They are checked
 **even after arming** — `lint-prompt.mjs:808`, `ARMED_GATE_STILL_CHECKED`: *"a gate check gated on
@@ -66,9 +71,10 @@ and this guard is protecting the thing that matters. **Removing it before the fl
 decision, and because its own precondition (a full real pricing cycle on `ratetable`) has never been
 met.
 
-**Marco, when you are ready to release this slice:** delete the `<!-- watcher: do-not-arm -->` line
-above in a PR. The three gates will still hold it until the receipt and the 11c marker are genuinely
-on `main`. Both layers have to clear — a human intent, and a measured reality.
+**Marco released this slice on 2026-09-24** and the marker above was deleted in this PR, which is
+exactly the path this paragraph prescribed. The three gates still hold it until the receipt and the
+11c marker are genuinely on `main`. Both layers have to clear - a human intent, now given, and a
+measured reality, still pending.
 
 ## Why the guard cannot simply be deleted early
 

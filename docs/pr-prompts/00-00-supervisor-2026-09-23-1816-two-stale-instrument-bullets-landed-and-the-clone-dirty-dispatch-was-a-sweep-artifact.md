@@ -357,3 +357,56 @@ something to lag behind. Recorded here so the disposition closes rather than bei
   fast-forward, and deleting another actor's artifact to tidy a `git status` is not a repair.
 - **I did not run `smoke-pr.ps1`.** This PR is docs-only; there is no code path for an acceptance
   suite to exercise, and no `apps/web/**` change to capture visual acceptance screens for.
+
+---
+
+## ADDENDUM to the 18:13Z run (same station, same run, later measurement)
+
+### F8 — the post-merge fast-forward cure re-dirtied the dev tree at its own step 4, and the three read-backs step 5 named all passed while it was dirty.
+
+Found while fast-forwarding the dev tree after this run’s own board PR `#2129` merged. The FF
+succeeded on the first attempt, then **step 4** — *"restore any breadcrumb you deleted … from the
+**new** HEAD"* — left the tree modified, because it was performed as a raw-Buffer write of an
+**LF** blob into a **CRLF** working copy.
+
+`[MEASURED]` at `2564de0d`, on Station 04’s breadcrumb — a path that was UNTRACKED in the dev tree
+and became TRACKED by this run’s PR, which is a file class none of the section’s existing rows
+covers:
+
+| probe | result |
+|---|---|
+| `git show HEAD:<path>` | **28640 B**, stored **LF** |
+| step 4 as written, raw-Buffer write | disk **28640 B**, `byteExact=true` |
+| `git rev-list --left-right --count HEAD...origin/main` | **`0 0`** — PASSES |
+| `git diff --numstat` | **EMPTY** — PASSES |
+| `git diff --cached --name-status` | **EMPTY** — PASSES |
+| `git status --porcelain --untracked-files=no` | **` M <path>`** — the only probe that dissents |
+| converted to the working-copy EOL | disk **29028 B** = 28640 + **388** CRs, exactly the blob’s LF count |
+| `git update-index --refresh` after the conversion | **exit 0**, `--porcelain` **EMPTY** |
+
+The blocker step ahead of the FF already had this rule — `FF_RESTORE_MUST_WRITE_THE_WORKING_COPY_EOL_V1`
+— and the restore step **after** it never got it. A run following steps 1–5 literally therefore ends
+with a tree it has been told is clean and that `git` considers modified, and the NEXT run opens on a
+dirty tree and fails the FF-cure precondition for a reason unrelated to its own cause.
+
+⚠️ **Cure 1 avoided it for my OWN breadcrumb** — written inside the PR worktree, never deleted,
+never restored. I met the trap only on **another station’s** breadcrumb, which had to be copied into
+the worktree because Station 04 may not commit to the shared dev tree. That is a structural
+consequence of the 04-hands-off-to-00 arrangement, not an avoidable slip.
+
+⚠️ **[CANNOT MEASURE]** whether the fast-forward had already written that path to disk itself before
+my restore overwrote it. The merge’s own summary printed `create mode 100644 <path>`, and the
+section’s 2026-09-05 measurement asserts the opposite for a *deleted tracked* path — which is a
+different case from an *untracked path the merge newly tracks*. I did not sample the disk between the
+FF and the restore, so the step may be redundant as well as wrong. The next run to take this path
+should `Test-Path` before restoring; that is one call and it settles it.
+
+**DISPOSITION: ACTIONED.** The dev tree was repaired in the same run — convert-on-write, then all
+FOUR read-backs green (`0 0`, `--numstat` EMPTY, `--cached` EMPTY, `--porcelain` (tracked) EMPTY),
+with the content proof passing (`0975b1dd56b1ee8b` on disk, `TRUNK_ROW_DISCHARGED_V1` and
+`CADENCE_THIRD_LOCATION_LANDED_V1` present, the predecessor breadcrumb gone from the queue root).
+The cure itself was corrected in `docs/pipeline/stations/00-supervisor.md` — step 4 now carries the
+EOL rule, step 5 now reads back all four probes, and the measurement above is recorded there as
+`FF_RESTORE_OF_A_NEWLY_TRACKED_PATH_NEEDS_THE_EOL_V1` with its falsifying probe. Landed as a second
+board PR in the same run rather than deferred to the next, because a correction that lives only in a
+breadcrumb is a note and the next run would pay for it again.

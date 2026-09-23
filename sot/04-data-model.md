@@ -11,9 +11,9 @@
 > generator run: re-merge the regenerated map while preserving the appended design sections.
 > Business meaning (domains, field roles) is curated in `docs/data-model/metadata-catalog.json`.
 
-- Last updated: 2026-09-22 14:29 UTC
-- Generated from: `apps/api/prisma/schema.prisma` (sha256 `f06a485c0fcb`)
-- Models: 297 | Enums: 70 | FK edges: 497 | Domains: 23
+- Last updated: 2026-09-23 14:28 UTC
+- Generated from: `apps/api/prisma/schema.prisma` (sha256 `765369a06fc8`)
+- Models: 297 | Enums: 70 | FK edges: 498 | Domains: 23
 
 <!-- SOT04-GENERATED:BEGIN -->
 
@@ -120,6 +120,7 @@ graph LR
   estimating --> estimating_legacy
   estimating --> platform
   estimating --> tendering
+  estimating --> unclassified
   forms --> assets
   forms --> directory
   forms --> jobs
@@ -940,15 +941,17 @@ graph LR
 
 ### Model: ScopeWasteItem
 
-- Table: `scope_waste_items` | Domain: Estimating | Fields: 43
+- Table: `scope_waste_items` | Domain: Estimating | Fields: 51
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
   - `transportRate` -> **EstimatePlantRate** (transportRateId, onDelete SetNull)
   - `asset` -> **Asset** (assetId, onDelete SetNull)
+  - `mapLocation` -> **MapLocation** (mapLocationId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
 - Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal, qtyTrucks, loadsPerTruckPerDay, capacityPerLoad, transportCost, fuelCost, disposalCost, quotedDisposalRate, quotedFuelPricePerLitre, quotedTransportRatePerDay, markupOverride
-- Suggested dimensions: tender, card, discipline, wasteType, transportRate, asset, quoteDestination, createdBy
+- Suggested dimensions: tender, card, discipline, wasteType, transportRate, asset, quoteDestination, mapLocation, createdBy
+- Time fields: travelResolvedAt
 
 ## Domain: Estimating (Legacy)
 
@@ -985,10 +988,10 @@ graph LR
 
 ### Model: EstimateCuttingLine
 
-- Table: `estimate_cutting_lines` | Domain: Estimating (Legacy) | Fields: 14
+- Table: `estimate_cutting_lines` | Domain: Estimating (Legacy) | Fields: 15
 - Belongs to (FK out):
   - `item` -> **EstimateItem** (itemId, onDelete Cascade)
-- Suggested measures: qty, rate
+- Suggested measures: qty, rate, lineTotal
 - Suggested dimensions: item, cuttingType, elevation, material
 
 ### Model: EstimateCuttingRate
@@ -1070,13 +1073,13 @@ graph LR
 
 ### Model: EstimatePlantRate
 
-- Table: `estimate_plant_rates` | Domain: Estimating (Legacy) | Fields: 12
+- Table: `estimate_plant_rates` | Domain: Estimating (Legacy) | Fields: 13
 - Has many:
   - `wasteTransportItems` -> **ScopeWasteItem**[]
   - `operationalCostLines` -> **ScopeOperationalCostLine**[]
 - Referenced by: **ScopeOperationalCostLine**, **ScopeWasteItem**
 - Suggested measures: rate, fuelRate
-- Suggested dimensions: category
+- Suggested dimensions: category, transportType
 
 ### Model: EstimateWasteLine
 
@@ -2989,10 +2992,11 @@ graph LR
 
 ### Model: MapLocation
 
-- Table: `map_locations` | Domain: Unclassified | Fields: 18
+- Table: `map_locations` | Domain: Unclassified | Fields: 19
 - Has many:
   - `tipRecommendationLogs` -> **TipRecommendationLog**[]
-- Referenced by: **TipRecommendationLog**
+  - `scopeWasteItems` -> **ScopeWasteItem**[]
+- Referenced by: **ScopeWasteItem**, **TipRecommendationLog**
 - Suggested dimensions: kind, categoryId, state
 - Time fields: pricesReviewedAt, pricesReviewNotifiedAt
 
@@ -3021,7 +3025,7 @@ graph LR
 
 ### Model: OperationsSettings
 
-- Table: `operations_settings` | Domain: Unclassified | Fields: 9
+- Table: `operations_settings` | Domain: Unclassified | Fields: 12
 - Belongs to (FK out):
   - `updatedBy` -> **User** (updatedById, onDelete SetNull)
 - Suggested measures: fuelPricePerLitre, travelRatePerKm, sopaResponseDays

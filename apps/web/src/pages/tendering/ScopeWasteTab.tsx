@@ -76,6 +76,11 @@ type WasteRow = {
   travelMinutesOneWay?: number | null;
   travelSource?: string | null;
   travelDetail?: string | null;
+  // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- where capacityPerLoad came from.
+  // "matrix" = filled from the transport-capacity reference table.
+  // "manual" = typed by the estimator.
+  // null/undefined = predates this column (unknown provenance).
+  capacitySource?: string | null;
 };
 
 type WasteRate = {
@@ -107,6 +112,9 @@ type PlantRate = {
   fuelRate: string;
   isActive: boolean;
   category: string | null;
+  // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- which matrix transport type
+  // this rig corresponds to. Null when not set (no matrix default available).
+  transportType?: string | null;
 };
 
 function isTransportPlantRate(p: PlantRate): boolean {
@@ -1371,6 +1379,67 @@ export function ScopeWasteTab({
                       </label>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Capacity / load
+                        {/* TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- source badge.
+                            Shows where the stored capacity came from. When the rig has a
+                            transport type and the line has a waste group, the server fills
+                            capacityPerLoad from the matrix automatically. The estimator's
+                            own figure always wins; clearing it returns to the matrix. */}
+                        {(() => {
+                          const pickedRate = row.transportRateId
+                            ? transportRates.find((p) => p.id === row.transportRateId)
+                            : null;
+                          const hasRig = !!pickedRate;
+                          const rigHasType = !!pickedRate?.transportType;
+                          const hasWasteGroup = !!row.wasteGroup;
+                          if (row.capacitySource === "matrix" && row.capacityPerLoad) {
+                            // Matrix-filled: show the provenance.
+                            const matClass = row.wasteGroup ?? "?";
+                            const matType = pickedRate?.transportType ?? "?";
+                            const matVal = row.capacityPerLoad;
+                            const matUnit = row.capacityUnit ?? "t";
+                            return (
+                              <span style={{
+                                fontSize: 10,
+                                background: "rgba(0,91,97,0.10)",
+                                color: "var(--brand-primary)",
+                                borderRadius: 3,
+                                padding: "1px 5px",
+                                marginBottom: 2,
+                                display: "inline-block"
+                              }}>
+                                Matrix: {matClass} — {matType} — {matVal} {matUnit}
+                              </span>
+                            );
+                          }
+                          if (row.capacitySource === "manual") {
+                            return (
+                              <span style={{
+                                fontSize: 10,
+                                background: "rgba(180,83,9,0.10)",
+                                color: "var(--status-warning)",
+                                borderRadius: 3,
+                                padding: "1px 5px",
+                                marginBottom: 2,
+                                display: "inline-block"
+                              }}>
+                                Manual
+                              </span>
+                            );
+                          }
+                          if (hasRig && (!rigHasType || !hasWasteGroup)) {
+                            return (
+                              <span style={{
+                                fontSize: 10,
+                                color: "var(--text-muted)",
+                                marginBottom: 2,
+                                display: "inline-block"
+                              }}>
+                                No matrix row — enter a capacity
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                         <input
                           className="s7-input s7-input--sm"
                           type="number"
@@ -1383,7 +1452,7 @@ export function ScopeWasteTab({
                               void patchRow(row.id, { capacityPerLoad: n });
                           }}
                           style={{ width: 80, textAlign: "right" }}
-                          title="Default from the Transport Capacity table; per-line override stays local"
+                          title="Default from the Transport Capacity table; per-line override stays local. Clear to re-resolve from the matrix."
                         />
                       </label>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>

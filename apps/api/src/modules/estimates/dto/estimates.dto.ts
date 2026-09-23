@@ -63,6 +63,13 @@ export class UpsertPlantRateDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   /** Manual ordering hint (lower first). */
   @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+  /**
+   * TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- which transport-capacity
+   * matrix type this rig corresponds to. Null/absent = "no matrix default".
+   * The option list is read from the matrix's own Transport type KEY column
+   * (GET /estimate-rates/plant/transport-types) -- never a hard-coded list.
+   */
+  @IsOptional() @IsString() transportType?: string | null;
 }
 
 /**

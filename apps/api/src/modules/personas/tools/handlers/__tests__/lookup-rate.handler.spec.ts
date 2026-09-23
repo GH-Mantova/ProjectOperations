@@ -15,6 +15,9 @@ function makeRate(overrides: Partial<ListedRate> & { keys: ListedRate["keys"] })
     isActive: overrides.isActive !== undefined ? overrides.isActive : true,
     sortOrder: overrides.sortOrder !== undefined ? overrides.sortOrder : 0,
     fuelRate: overrides.fuelRate !== undefined ? overrides.fuelRate : null,
+    // TRANSPORT_CAPACITY_MATRIX_V1: required on ListedRate; `{}` unless a test
+    // is exercising a multi-VALUE-column table.
+    extraValues: overrides.extraValues ?? {},
     source: overrides.source ?? "legacy"
   };
 }

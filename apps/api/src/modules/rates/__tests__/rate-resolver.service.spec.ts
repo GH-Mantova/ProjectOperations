@@ -565,6 +565,9 @@ describe("RateResolverService", () => {
         isActive: true,
         sortOrder: 7,
         fuelRate: 140,
+        // TRANSPORT_CAPACITY_MATRIX_V1: listRates always returns extraValues.
+        // `{}` here because this fixture's table has a single VALUE column.
+        extraValues: {},
         source: "ratetable"
       });
       expect(out[1]).toEqual({
@@ -576,6 +579,7 @@ describe("RateResolverService", () => {
         isActive: true,
         sortOrder: 3,
         fuelRate: 165,
+        extraValues: {},
         source: "ratetable"
       });
       // Legacy path must NOT be consulted when ratetable answered.

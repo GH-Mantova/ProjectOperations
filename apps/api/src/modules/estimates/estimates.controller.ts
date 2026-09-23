@@ -125,6 +125,24 @@ export class EstimatesController {
   }
 
   /**
+   * TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- list the distinct transport
+   * types from the transport-capacity matrix's own Transport type KEY column.
+   *
+   * Used by the Rates & Lists admin UI to populate the Transport type select on
+   * transport-category plant rates. The list is read live from the matrix so it
+   * cannot drift from what Marco has configured in Rates & Lists.
+   *
+   * @returns ordered array of transport type strings
+   */
+  @Get("estimate-rates/plant/transport-types")
+  @RequirePermissions("estimates.view")
+  @ApiOperation({ summary: "List transport types from the capacity matrix" })
+  @ApiResponse({ status: 200, description: "Transport type strings from the matrix." })
+  listPlantTransportTypes() {
+    return this.service.listPlantTransportTypes();
+  }
+
+  /**
    * Create a plant rate.
    *
    * @param dto - plant item, unit (defaults "day"), rate and optional fuelRate

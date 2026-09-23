@@ -40,6 +40,8 @@ import {
   type RateRow
 } from "./ratesListsHelpers";
 import { VendorRatesTab } from "../settings/reference-data/VendorRatesTab";
+// TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) — plant transport-type admin panel.
+import { PlantTransportTypesPanel } from "./PlantTransportTypesPanel";
 // RATE_FIELDS_TABLE_V2 — `FIELD_SOURCE_LABELS` is imported, never copied. The
 // charge-steps card owns the two words ("the rate table" / "the estimate
 // line") and labels its operand `<optgroup>`s with them; the `From` column
@@ -115,7 +117,7 @@ type WhereUsed = {
 
 // ── Top-level page ───────────────────────────────────────────────────────
 
-type TopTab = "rates" | "subcontractors" | "suppliers" | "lists";
+type TopTab = "rates" | "subcontractors" | "suppliers" | "lists" | "plant";
 
 export function RatesListsAdminPage() {
   const { user } = useAuth();
@@ -189,6 +191,11 @@ export function RatesListsAdminPage() {
             Lists
           </TopTabButton>
         ) : null}
+        {canManageRates ? (
+          <TopTabButton active={tab === "plant"} onClick={() => setTab("plant")}>
+            Plant — transport
+          </TopTabButton>
+        ) : null}
       </div>
 
       <div style={{ marginTop: 20 }}>
@@ -200,6 +207,11 @@ export function RatesListsAdminPage() {
           <VendorRatesTab entityType="supplier" />
         ) : null}
         {tab === "lists" && canManageLists ? <ListsPanel /> : null}
+        {/* TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) — assign a matrix
+            Transport type to each transport-category plant rate so the scope-card
+            engine can derive capacity per load from the matrix instead of requiring
+            the estimator to type a figure manually. */}
+        {tab === "plant" && canManageRates ? <PlantTransportTypesPanel /> : null}
       </div>
     </div>
   );

@@ -98,9 +98,12 @@ export class AdminSettingsService {
 
   /**
    * Update the operations settings singleton. All fields are optional and
-   * nullable — pass `null` to clear a value, omit to leave unchanged. When
+   * nullable -- pass `null` to clear a value, omit to leave unchanged. When
    * fuelPricePerLitre is updated, fuelPriceFetchedAt is stamped to `now()`
    * unless the caller supplied one (T-2 will pass the feed timestamp).
+   *
+   * TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- three new cycle-computation
+   * fields: roadDistanceFactor, avgTruckSpeedKmh, tipTurnaroundMinutes.
    */
   async updateOperationsSettings(
     actorId: string,
@@ -109,6 +112,10 @@ export class AdminSettingsService {
       fuelPriceSource?: string | null;
       fuelPriceFetchedAt?: string | null;
       travelRatePerKm?: number | null;
+      // TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+      roadDistanceFactor?: number | null;
+      avgTruckSpeedKmh?: number | null;
+      tipTurnaroundMinutes?: number | null;
     }
   ) {
     if (dto.fuelPricePerLitre != null && dto.fuelPricePerLitre < 0) {
@@ -117,11 +124,23 @@ export class AdminSettingsService {
     if (dto.travelRatePerKm != null && dto.travelRatePerKm < 0) {
       throw new BadRequestException("travelRatePerKm must be >= 0.");
     }
+    if (dto.roadDistanceFactor != null && dto.roadDistanceFactor <= 0) {
+      throw new BadRequestException("roadDistanceFactor must be > 0.");
+    }
+    if (dto.avgTruckSpeedKmh != null && dto.avgTruckSpeedKmh <= 0) {
+      throw new BadRequestException("avgTruckSpeedKmh must be > 0.");
+    }
+    if (dto.tipTurnaroundMinutes != null && dto.tipTurnaroundMinutes < 0) {
+      throw new BadRequestException("tipTurnaroundMinutes must be >= 0.");
+    }
     const data: {
       fuelPricePerLitre?: number | null;
       fuelPriceSource?: string | null;
       fuelPriceFetchedAt?: Date | null;
       travelRatePerKm?: number | null;
+      roadDistanceFactor?: number | null;
+      avgTruckSpeedKmh?: number | null;
+      tipTurnaroundMinutes?: number | null;
       updatedById: string;
     } = { updatedById: actorId };
     if (dto.fuelPricePerLitre !== undefined) {
@@ -135,6 +154,10 @@ export class AdminSettingsService {
       data.fuelPriceFetchedAt = dto.fuelPriceFetchedAt ? new Date(dto.fuelPriceFetchedAt) : null;
     }
     if (dto.travelRatePerKm !== undefined) data.travelRatePerKm = dto.travelRatePerKm;
+    // TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+    if (dto.roadDistanceFactor !== undefined) data.roadDistanceFactor = dto.roadDistanceFactor;
+    if (dto.avgTruckSpeedKmh !== undefined) data.avgTruckSpeedKmh = dto.avgTruckSpeedKmh;
+    if (dto.tipTurnaroundMinutes !== undefined) data.tipTurnaroundMinutes = dto.tipTurnaroundMinutes;
 
     return this.prisma.operationsSettings.upsert({
       where: { id: SINGLETON_ID },

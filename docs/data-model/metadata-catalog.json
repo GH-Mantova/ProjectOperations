@@ -14218,6 +14218,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "scopeWasteItems": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -14620,6 +14626,24 @@
             "max",
             "count"
           ]
+        },
+        "roadDistanceFactor": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "avgTruckSpeedKmh": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "tipTurnaroundMinutes": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         },
         "sopaResponseDays": {
           "role": "measure",
@@ -20259,6 +20283,48 @@
           "role": "dimension",
           "label": null,
           "filterable": true,
+          "aggregations": []
+        },
+        "mapLocationId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "mapLocation": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "travelKm": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelMinutesOneWay": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelSource": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelDetail": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelResolvedAt": {
+          "role": "time",
+          "label": null,
+          "filterable": false,
           "aggregations": []
         },
         "createdById": {

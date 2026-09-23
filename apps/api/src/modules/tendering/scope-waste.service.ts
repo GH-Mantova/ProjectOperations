@@ -1,10 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
 import { narrowToNumber, toDecimal } from "./scope-of-works.service";
 import { decToNum, resolveEffectiveMarkup } from "./scope-item-pricing";
+import {
+  StraightLineTravelProvider,
+  deriveCycle,
+  type TravelEstimate
+} from "./travel-time";
 
 type UpsertWasteDto = {
   discipline?: string;
@@ -42,6 +47,8 @@ type UpsertWasteDto = {
   // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- per-line markup override.
   // null clears the override. 0 is a real override (0% markup), NOT an absence.
   markupOverride?: number | null;
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link. null clears it.
+  mapLocationId?: string | null;
 };
 
 // R3 T-1 — snapshot cost components computed by the engine. Returned by
@@ -88,7 +95,15 @@ const PRICING_INPUTS = new Set<keyof UpsertWasteDto>([
   "dailyKm",
   "wasteType",
   "wasteFacility",
+  // TRAVEL_TIME_PORT_V1 -- a tip change triggers travel re-resolve.
+  "mapLocationId",
 ]);
+
+// TRAVEL_TIME_PORT_V1 -- inputs that trigger a travel re-resolve on update.
+// Subset of PRICING_INPUTS; used to decide whether the travel snapshot must
+// be refreshed (tip change, or a new create). Site coordinates are stable
+// within a tender session and are not tracked here.
+const TRAVEL_INPUTS = new Set<keyof UpsertWasteDto>(["mapLocationId"]);
 
 // Waste disposal rows live on their own table (ScopeWasteItem). Each row's
 // truckDays and lineTotal are derived server-side so the UI only submits
@@ -105,6 +120,8 @@ const PRICING_INPUTS = new Set<keyof UpsertWasteDto>([
  */
 @Injectable()
 export class ScopeWasteService {
+  private readonly logger = new Logger(ScopeWasteService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly rateResolver: RateResolverService,
@@ -234,6 +251,33 @@ export class ScopeWasteService {
       // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId for snapshot lookup.
       tenderId
     });
+    // TRAVEL_TIME_PORT_V1 -- resolve travel when the line has a tip link.
+    // Never throws; a null estimate means no snapshot is stored.
+    let travelEstimate: TravelEstimate | null = null;
+    if (dto.mapLocationId) {
+      travelEstimate = await this.resolveTravelEstimate(dto.mapLocationId, tenderId);
+    }
+
+    // Derive loadsPerTruckPerDay and dailyKm from the travel estimate when
+    // the estimator left those fields empty. Typed values always win.
+    let effectiveLoadsPerTruckPerDay = loadsPerTruckPerDayN;
+    let effectiveDailyKm = dailyKmN;
+    if (travelEstimate !== null) {
+      const settings = await this.prisma.operationsSettings.findUnique({
+        where: { id: "singleton" },
+        select: { tipTurnaroundMinutes: true }
+      });
+      const tipTurnaround = settings?.tipTurnaroundMinutes ?? 30;
+      const { derivedLoadsPerTruckPerDay, derivedDailyKm } = this.deriveTravelDefaults(
+        travelEstimate,
+        tipTurnaround,
+        loadsPerTruckPerDayN,
+        dailyKmN
+      );
+      if (derivedLoadsPerTruckPerDay !== null) effectiveLoadsPerTruckPerDay = derivedLoadsPerTruckPerDay;
+      if (derivedDailyKm !== null) effectiveDailyKm = derivedDailyKm;
+    }
+
     const legacy = this.deriveTotals(
       tonnesN,
       m3N,
@@ -267,10 +311,10 @@ export class ScopeWasteService {
         transportRateId: dto.transportRateId ?? null,
         assetId: dto.assetId ?? null,
         qtyTrucks: qtyTrucksN != null ? Math.trunc(qtyTrucksN) : null,
-        loadsPerTruckPerDay: toDecimal(loadsPerTruckPerDayN),
+        loadsPerTruckPerDay: toDecimal(effectiveLoadsPerTruckPerDay),
         capacityPerLoad: toDecimal(capacityPerLoadN),
         capacityUnit: dto.capacityUnit ?? null,
-        dailyKm: toDecimal(dailyKmN),
+        dailyKm: toDecimal(effectiveDailyKm),
         transportCost: toDecimal(engine.transportCost),
         fuelCost: toDecimal(engine.fuelCost),
         disposalCost: toDecimal(engine.disposalCost),
@@ -288,7 +332,14 @@ export class ScopeWasteService {
         // SCOPE_LINE_MARKUP_ALL_TYPES_V1 (scopecards-s3) -- null when absent.
         markupOverride: dto.markupOverride !== undefined && dto.markupOverride !== null
           ? toDecimal(dto.markupOverride)
-          : null
+          : null,
+        // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link + snapshot.
+        mapLocationId: dto.mapLocationId ?? null,
+        travelKm: travelEstimate !== null ? toDecimal(travelEstimate.km) : null,
+        travelMinutesOneWay: travelEstimate?.minutesOneWay ?? null,
+        travelSource: travelEstimate?.source ?? null,
+        travelDetail: travelEstimate?.detail ?? null,
+        travelResolvedAt: travelEstimate?.resolvedAt ?? null
       },
       include: { card: { select: { wasteMarkupOverride: true } } }
     });
@@ -378,6 +429,76 @@ export class ScopeWasteService {
     if (dto.markupOverride !== undefined) {
       data.markupOverride = dto.markupOverride !== null ? toDecimal(dto.markupOverride) : null;
     }
+    // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link.
+    // Always write the FK when the DTO carries mapLocationId (null clears it).
+    if (dto.mapLocationId !== undefined) {
+      data.mapLocation = dto.mapLocationId
+        ? { connect: { id: dto.mapLocationId } }
+        : { disconnect: true };
+    }
+
+    // TRAVEL_TIME_PORT_V1 -- re-resolve travel when the tip changed.
+    // Also re-resolve on a create-like path where existingMapLocationId is null.
+    const travelInputTouched = (Object.keys(dto) as Array<keyof UpsertWasteDto>).some(
+      (key) => TRAVEL_INPUTS.has(key)
+    );
+    const effectiveMapLocationId =
+      dto.mapLocationId !== undefined ? dto.mapLocationId : existing.mapLocationId;
+
+    let updateTravelEstimate: TravelEstimate | null | undefined = undefined; // undefined = don't touch
+    if (travelInputTouched) {
+      if (effectiveMapLocationId) {
+        updateTravelEstimate = await this.resolveTravelEstimate(effectiveMapLocationId, tenderId);
+      } else {
+        // Tip was cleared -- clear the snapshot too.
+        updateTravelEstimate = null;
+      }
+    }
+
+    // When travel was re-resolved, apply derived defaults for empty fields.
+    // "Typed figure always wins": only fill when the field is absent from the
+    // DTO AND not already set on the existing row.
+    if (updateTravelEstimate !== undefined && updateTravelEstimate !== null) {
+      const settings = await this.prisma.operationsSettings.findUnique({
+        where: { id: "singleton" },
+        select: { tipTurnaroundMinutes: true }
+      });
+      const tipTurnaround = settings?.tipTurnaroundMinutes ?? 30;
+      // For update, "typed" means either the DTO brought a value OR the row
+      // already has a non-null value that was not cleared this PATCH.
+      const existingLoads = existing.loadsPerTruckPerDay != null
+        ? Number(existing.loadsPerTruckPerDay)
+        : null;
+      const existingDailyKm = existing.dailyKm != null ? Number(existing.dailyKm) : null;
+      const dtoLoads = dtoLoadsPerTruckPerDayN; // undefined if DTO didn't carry it
+      const dtoDailyKm = dtoDailyKmN; // undefined if DTO didn't carry it
+
+      // Field is "empty" when DTO left it undefined AND existing row has no value.
+      const loadsIsEmpty = dtoLoads === undefined && existingLoads === null;
+      const dailyKmIsEmpty = dtoDailyKm === undefined && existingDailyKm === null;
+
+      const { derivedLoadsPerTruckPerDay, derivedDailyKm } = this.deriveTravelDefaults(
+        updateTravelEstimate,
+        tipTurnaround,
+        loadsIsEmpty ? null : 1, // pass a non-null to signal "do not override"
+        dailyKmIsEmpty ? null : 1
+      );
+      if (loadsIsEmpty && derivedLoadsPerTruckPerDay !== null) {
+        data.loadsPerTruckPerDay = toDecimal(derivedLoadsPerTruckPerDay);
+      }
+      if (dailyKmIsEmpty && derivedDailyKm !== null) {
+        data.dailyKm = toDecimal(derivedDailyKm);
+      }
+    }
+
+    // Write travel snapshot when it was resolved (null = clear it).
+    if (updateTravelEstimate !== undefined) {
+      data.travelKm = updateTravelEstimate !== null ? toDecimal(updateTravelEstimate.km) : null;
+      data.travelMinutesOneWay = updateTravelEstimate?.minutesOneWay ?? null;
+      data.travelSource = updateTravelEstimate?.source ?? null;
+      data.travelDetail = updateTravelEstimate?.detail ?? null;
+      data.travelResolvedAt = updateTravelEstimate?.resolvedAt ?? null;
+    }
 
     if (pricingTouched) {
       // Compute effective values for the totals: DTO value (narrowed) wins
@@ -392,10 +513,19 @@ export class ScopeWasteService {
       const eTransportRateId = dto.transportRateId !== undefined ? dto.transportRateId : existing.transportRateId;
       const eAssetId = dto.assetId !== undefined ? dto.assetId : existing.assetId;
       const eQtyTrucks = dtoQtyTrucksN !== undefined ? (dtoQtyTrucksN != null ? Math.trunc(dtoQtyTrucksN) : null) : existing.qtyTrucks;
-      const eLoadsPerTruckPerDay = dtoLoadsPerTruckPerDayN !== undefined ? dtoLoadsPerTruckPerDayN : existing.loadsPerTruckPerDay ? Number(existing.loadsPerTruckPerDay) : null;
+      // Use the possibly-derived value if it was written into data above.
+      const eLoadsPerTruckPerDay = dtoLoadsPerTruckPerDayN !== undefined
+        ? dtoLoadsPerTruckPerDayN
+        : (data.loadsPerTruckPerDay != null
+            ? Number(data.loadsPerTruckPerDay)
+            : (existing.loadsPerTruckPerDay ? Number(existing.loadsPerTruckPerDay) : null));
       const eCapacityPerLoad = dtoCapacityPerLoadN !== undefined ? dtoCapacityPerLoadN : existing.capacityPerLoad ? Number(existing.capacityPerLoad) : null;
       const eCapacityUnit = dto.capacityUnit !== undefined ? dto.capacityUnit : existing.capacityUnit;
-      const eDailyKm = dtoDailyKmN !== undefined ? dtoDailyKmN : existing.dailyKm ? Number(existing.dailyKm) : null;
+      const eDailyKm = dtoDailyKmN !== undefined
+        ? dtoDailyKmN
+        : (data.dailyKm != null
+            ? Number(data.dailyKm)
+            : (existing.dailyKm ? Number(existing.dailyKm) : null));
       const eWasteType = dto.wasteType !== undefined ? dto.wasteType : existing.wasteType;
       const eWasteFacility = dto.wasteFacility !== undefined ? dto.wasteFacility : existing.wasteFacility;
       // Pass the existing snapshot so the engine can re-use it when the
@@ -852,6 +982,92 @@ export class ScopeWasteService {
       seen.add(u.id);
       return true;
     });
+  }
+
+  // ---- TRAVEL_TIME_PORT_V1 (scopecards-s8a) ---------------------------------
+
+  /**
+   * Resolve the straight-line travel estimate for a waste line.
+   *
+   * Returns the TravelEstimate when both the tip and the tender's site have
+   * coordinates AND OperationsSettings has roadDistanceFactor + avgTruckSpeedKmh
+   * populated. Returns null in all other cases -- callers must never fail
+   * a save because travel resolution returned null.
+   *
+   * Never throws. Errors are caught and logged; the return value is null.
+   */
+  private async resolveTravelEstimate(
+    mapLocationId: string,
+    tenderId: string
+  ): Promise<TravelEstimate | null> {
+    try {
+      const [tip, tender, settings] = await Promise.all([
+        this.prisma.mapLocation.findUnique({
+          where: { id: mapLocationId },
+          select: { latitude: true, longitude: true }
+        }),
+        this.prisma.tender.findUnique({
+          where: { id: tenderId },
+          select: { siteId: true }
+        }),
+        this.prisma.operationsSettings.findUnique({ where: { id: "singleton" } })
+      ]);
+
+      if (tip === null || tender === null) return null;
+      if (tip.latitude === null || tip.longitude === null) return null;
+
+      // Load site coordinates
+      const site = await this.prisma.site.findUnique({
+        where: { id: tender.siteId },
+        select: { centreLat: true, centreLng: true }
+      });
+      if (!site?.centreLat || !site?.centreLng) return null;
+
+      const provider = new StraightLineTravelProvider(
+        settings?.roadDistanceFactor != null ? Number(settings.roadDistanceFactor) : null,
+        settings?.avgTruckSpeedKmh ?? null
+      );
+
+      return await provider.resolve(
+        { lat: Number(site.centreLat), lng: Number(site.centreLng) },
+        { lat: Number(tip.latitude), lng: Number(tip.longitude) }
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Travel resolve failed for mapLocationId=${mapLocationId} tenderId=${tenderId}: ` +
+        String((err as Error)?.message ?? err)
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Derive default loadsPerTruckPerDay and dailyKm from a travel estimate
+   * when the estimator left those fields empty.
+   *
+   * "Typed figure always wins": when dtoLoadsPerTruckPerDay or dtoDailyKm
+   * is already set (non-null), the derived value is NOT applied.
+   */
+  private deriveTravelDefaults(
+    estimate: TravelEstimate,
+    tipTurnaroundMinutes: number,
+    dtoLoadsPerTruckPerDay: number | null | undefined,
+    dtoDailyKm: number | null | undefined
+  ): {
+    derivedLoadsPerTruckPerDay: number | null;
+    derivedDailyKm: number | null;
+  } {
+    const { loadsPerDay } = deriveCycle({
+      minutesOneWay: estimate.minutesOneWay,
+      tipTurnaroundMinutes
+    });
+
+    const derivedLoadsPerTruckPerDay = dtoLoadsPerTruckPerDay == null ? loadsPerDay : null;
+    // dailyKm = loadsPerDay * 2 * travelKm (round trip per load)
+    const derivedDailyKm =
+      dtoDailyKm == null ? loadsPerDay * 2 * estimate.km : null;
+
+    return { derivedLoadsPerTruckPerDay, derivedDailyKm };
   }
 
   // CEILING(loads / 3) rounded up to nearest half-day.

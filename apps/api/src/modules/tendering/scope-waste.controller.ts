@@ -57,6 +57,8 @@ class UpsertWasteDto {
   // null clears the override (inherit chain). 0 is a real override (0% markup),
   // NOT an absence -- the resolver uses ?? not ||.
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link. null clears the link.
+  @IsOptional() @IsString() mapLocationId?: string | null;
 }
 
 class ReorderEntryDto {

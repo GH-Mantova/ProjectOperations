@@ -3938,6 +3938,16 @@ model ScopeWasteItem {
   // on the client quote. Defaults PRICE (no backfill needed: all existing
   // waste rows were priced into the total).
   quoteDestination          QuoteDestination   @default(PRICE) @map("quote_destination")
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link and travel snapshot.
+  // All nullable; absent means the line has no tip link and behaves
+  // byte-identically to its pre-s8a state. No backfill.
+  mapLocationId             String?            @map("map_location_id")
+  mapLocation               MapLocation?       @relation("ScopeWasteItemTip", fields: [mapLocationId], references: [id], onDelete: SetNull)
+  travelKm                  Decimal?           @map("travel_km") @db.Decimal(8, 2)
+  travelMinutesOneWay       Int?               @map("travel_minutes_one_way")
+  travelSource              String?            @map("travel_source")
+  travelDetail              String?            @map("travel_detail")
+  travelResolvedAt          DateTime?          @map("travel_resolved_at")
   createdById               String             @map("created_by_id")
   createdBy                 User               @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt                 DateTime           @default(now()) @map("created_at")
@@ -3947,6 +3957,7 @@ model ScopeWasteItem {
   @@index([cardId])
   @@index([transportRateId])
   @@index([assetId])
+  @@index([mapLocationId])
   @@map("scope_waste_items")
 }
 
@@ -4396,6 +4407,14 @@ model OperationsSettings {
   fuelPriceSource    String?   @map("fuel_price_source")
   fuelPriceFetchedAt DateTime? @map("fuel_price_fetched_at")
   travelRatePerKm    Decimal?  @map("travel_rate_per_km") @db.Decimal(6, 2)
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- straight-line cycle computation.
+  // All nullable; unset means the travel feature stays silent (returns null,
+  // no snapshot, no defaults filled). Marco's worked example: 45 min each
+  // way, 30 min at the tip, 8-hour shift = 4 loads/day (roadDistanceFactor
+  // and avgTruckSpeedKmh derive the 45 min from haversine distance).
+  roadDistanceFactor   Decimal? @map("road_distance_factor") @db.Decimal(4, 2)
+  avgTruckSpeedKmh     Int?     @map("avg_truck_speed_kmh")
+  tipTurnaroundMinutes Int?     @map("tip_turnaround_minutes")
   // AU Security of Payment Act â€” statutory window (business days) in which
   // a respondent must issue a payment schedule after receiving a payment
   // claim. Varies by state (NSW 10, QLD 15, VIC 10, etc.); Marco sets the
@@ -7238,6 +7257,8 @@ model MapLocation {
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
   tipRecommendationLogs TipRecommendationLog[]
+  // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- waste lines that point at this tip.
+  scopeWasteItems       ScopeWasteItem[]       @relation("ScopeWasteItemTip")
 
   @@index([kind, facility])
   @@index([isActive])

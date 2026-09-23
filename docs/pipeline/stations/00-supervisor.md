@@ -968,10 +968,66 @@ and the paragraph above tells you to rule the second one out.
    `.arming-log.txt` in its board PR, so every arming run now lands that file and meets this on the
    fast-forward afterwards.
 3. `git merge --ff-only origin/main`.
-4. Restore any breadcrumb you deleted in the untracked cure above, from the **new** HEAD.
-5. Read back all three: `git rev-list --left-right --count HEAD...origin/main` -> `0 0`,
-   `git diff --numstat` -> EMPTY, `git diff --cached --name-status` -> EMPTY. The first alone
-   passes on a dirty tree — that is the trap three paragraphs up.
+4. Restore any breadcrumb you deleted in the untracked cure above, from the **new** HEAD — and
+   restore it with the **WORKING-COPY line ending**, not as a raw Buffer. See the correction
+   immediately below: on a `text=auto` repo the raw form leaves that path ` M` and the FF you just
+   completed then reads as a dirty tree.
+5. Read back all **four**: `git rev-list --left-right --count HEAD...origin/main` -> `0 0`,
+   `git diff --numstat` -> EMPTY, `git diff --cached --name-status` -> EMPTY, **and
+   `git status --porcelain --untracked-files=no` -> EMPTY**. The first alone passes on a dirty
+   tree — that is the trap three paragraphs up — and **the first THREE together also pass on the
+   dirty tree step 4 itself creates**, which is the correction below.
+
+🔴🔴 **STEP 4 IS WHERE THE CURE RE-DIRTIES THE TREE IT JUST CLEANED, AND THE THREE
+READ-BACKS THIS SECTION PRESCRIBED CANNOT SEE IT. THE EOL RULE PROVED FOR THE *MODIFIED TRACKED*
+CASE WAS NEVER APPLIED TO THE *RESTORE* STEP.** `FF_RESTORE_OF_A_NEWLY_TRACKED_PATH_NEEDS_THE_EOL_V1`
+The `FF_RESTORE_MUST_WRITE_THE_WORKING_COPY_EOL_V1` and `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1
+corrections above are about restoring a file to clear a blocker **before** the fast-forward. Step 4
+restores one **after** it, and it inherits exactly the same trap with none of the same guidance.
+
+[MEASURED] 2026-09-23T18:3xZ by Station 00 (scheduled) at `2564de0d`, on
+Station 04’s breadcrumb — a path that was **UNTRACKED** in the dev tree and became **TRACKED** by
+this run’s own board PR, which is a file class none of the rows above covers:
+
+| probe | result |
+|---|---|
+| `git show HEAD:<path>` bytes, after the FF | **28640 B**, stored **LF** |
+| step 4 performed as written — raw-Buffer write of those bytes | disk **28640 B**, `byteExact=true` |
+| `git rev-list --left-right --count HEAD...origin/main` | **`0	0`** — PASSES |
+| `git diff --numstat` | **EMPTY** — PASSES |
+| `git diff --cached --name-status` | **EMPTY** — PASSES |
+| `git status --porcelain --untracked-files=no` | **` M <path>`** — the only probe that dissents |
+| the same restore converted to the working-copy EOL | disk **29028 B** = 28640 + **388** CRs, exactly the blob’s LF count |
+| `git update-index --refresh` after the conversion | **exit 0**, `--porcelain` **EMPTY** |
+
+🔴 **So a run that follows steps 1–5 exactly, and reads the three read-backs step 5 named, ends
+with a tree it has been told is clean and that `git` considers modified** — and the next run then
+opens on a dirty tree and fails the FF-cure precondition (*"`--numstat` EMPTY"*) for a reason that
+has nothing to do with its own cause. That is the same loop this section already records twice,
+reached through the one step that had no EOL rule attached.
+
+🔧 **Restore with the conversion, and read back the FOURTH probe.** Still node, still never
+`git checkout -- <path>` (DOCTRINE §9.2):
+
+```js
+const blob = execFileSync('git', ['show', 'HEAD:' + rel], { cwd, maxBuffer: 1 << 26 });
+const txt  = blob.toString('utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+fs.writeFileSync(abs, txt, 'utf8');   // then: git update-index --refresh, expect exit 0
+```
+
+⚠️ **Cure 1 still avoids all of it** — write your own breadcrumb inside your own PR worktree and
+you never delete or restore one. This run did exactly that for its **own** breadcrumb and met the
+trap only on **another station’s**, which it had to copy into the worktree because 04 cannot commit.
+⚠️ **And the raw-first rule above is NOT retired:** `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1`
+measured a **mixed**-EOL blob that only a raw write reproduces. The discriminator is unchanged — dump
+the blob and count `\r\n` against bare `\n`. What is added is that **the cheap first move must be
+followed by `git update-index --refresh` and its exit code obeyed**, on the restore step as well as
+on the blocker step: exit 0 done, non-zero pick a branch. Here raw exited **1** and convert-on-write
+exited **0**.
+⚠️ **Falsifying probe: the table above.** Delete a tracked-on-`origin/main` breadcrumb from the dev
+tree, fast-forward, restore it byte-exactly from the new `HEAD`, and run all four read-backs. If
+`git status --porcelain` is EMPTY, this correction is wrong and must be re-measured. Found and landed
+by Station 00 2026-09-23T18:4xZ.
 
 
 🔴🔴 **STEP 1 AS WRITTEN — `git show HEAD:<path>` PIPED TO A WRITE — LEAVES THE FAST-FORWARD STILL

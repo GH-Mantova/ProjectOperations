@@ -1901,14 +1901,36 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   line, re-derive it from its own source.** Provenance is not correctness. Both instances were
   settled by asking the underlying instrument directly rather than by re-reading the sweep.
 
-  ⚠️ **The trunk row has a fix OPEN and GREEN on the board as `#1852` (`TRUNK_VERDICT_SCOPED_V1`),
-  and it is Marco's to merge**, so that row is expected to die. It is written with the probe that
-  kills it rather than left to outlive its own truth — the failure this section's opening bullets
-  record. **Verified against the PR's DIFF, never its title:** applying its denylist
-  (`workflowName -eq "Dependabot Updates" -or event -eq "schedule"`) to this same commit gives
-  `trunkRuns=5, otherRuns=1` → **4 success / 0 failed → `(trunk green)`**. ⚠️ The denylist is
-  deliberate and must not be "simplified" into an allowlist: **`CodeQL` runs as event `dynamic`**
-  and IS a trunk check, so an `event -eq push` allowlist would silently drop it.
+  🟢 **THE TRUNK ROW IS DISCHARGED — `#1852` (`TRUNK_VERDICT_SCOPED_V1`) MERGED
+  2026-09-11T02:11:13Z at `ec7dd590`, AND THIS PARAGRAPH WENT ON CALLING IT "OPEN AND GREEN ON THE
+  BOARD" FOR THIRTEEN DAYS.** `TRUNK_ROW_DISCHARGED_V1` [MEASURED] 2026-09-23T18:2xZ by Station 00
+  at `dfea18ed`: `gh pr view 1852 -R <owner>/<repo> --json number,state,mergedAt` →
+  `{"mergedAt":"2026-09-11T02:11:13Z","number":1852,"state":"MERGED"}`, and the denylist is live on
+  `origin/main` in `scripts/pipeline/status-sweep.ps1`, read by `git show origin/main:<path>`:
+  `if ($r.workflowName -eq "Dependabot Updates" -or $r.event -eq "schedule") { $otherRuns += $r }`.
+  **The measurement in the table above stands exactly as taken** — a single Dependabot run flipped
+  the headline from `(trunk green)` to `TRUNK IS RED` with no commit between the two readings — and
+  it is now a DISCHARGED instance rather than a live one.
+
+  🔴 **This bullet named the probe that would kill it, and nobody ran the probe for thirteen
+  days. That is the finding, not the stale sentence: a falsifying probe nobody executes is a
+  comment.** The bullet is still the best-behaved one in this section — it wrote its own death
+  certificate — which is exactly why the gap is worth recording rather than quietly closing.
+
+  ⚠️ **The clone row above is the SURVIVING live instance**, re-measured 2026-09-23T18:1xZ by
+  Station 04 with both `git status` forms against the clone in the same minute, still disagreeing.
+  So the headline keeps a worked example and **must survive any edit to this row: provenance is not
+  correctness — re-derive a `[LIVE]` line from its own source before you ACT on it.**
+
+  ⚠️ **The landed script added a THIRD verdict state this bullet never described:**
+  `[CANNOT MEASURE] no trunk-CI run on this commit; NOT a green trunk`. A reader comparing the
+  bullet against the script therefore finds three branches, not two, and that third one is correct
+  behaviour rather than drift. ⚠️ The denylist is deliberate and must not be "simplified" into an
+  allowlist: **`CodeQL` runs as event `dynamic`** and IS a trunk check, so an `event -eq push`
+  allowlist would silently drop it. ⚠️ **Falsifying probe: `gh pr view 1852 --json state,mergedAt`
+  plus the denylist line above.** If `#1852` ever reads OPEN, or the denylist is absent from
+  `origin/main`, this discharge is wrong and must be re-measured. Found by Station 04
+  2026-09-23T18:1xZ (F2), landed by Station 00 at 18:3xZ.
 
   ⚠️ **Falsifying probe, per row: for the clone, run both `git status` forms against it in the same
   minute; for the trunk, re-run `gh run list --commit <full sha> --json conclusion,workflowName,event`

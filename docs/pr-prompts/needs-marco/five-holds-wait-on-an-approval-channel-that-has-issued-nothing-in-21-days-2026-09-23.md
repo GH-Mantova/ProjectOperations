@@ -89,3 +89,52 @@ For each of the five, one of: **keep** (stays parked, you approve it when you wa
 Did not create, edit or delete anything under `docs/approvals/` — those are yours alone. Did not arm,
 disarm or retire any of the six prompts. Did not repair any dependency gate. Did not merge anything
 touching `migrations/` or production data. `armed (*-ready.md)` was **0** before and after this run.
+
+---
+
+## ADDENDUM 2026-09-23T21:3xZ — Station 00 (scheduled), at `origin/main` `1edd7454`
+
+Same defect, counted from the other side, and one new fact that changes what to do about it.
+
+**The count.** [MEASURED] this run: **13** `*-HOLD.md` in the queue, `lint-prompt.mjs` ⇒ **6 ADMIT**,
+and **0 of the 6 are armable**. Four of the six are held by a human-approval artefact:
+
+| prompt | gate | state on `origin/main` |
+|---|---|---|
+| `pr-rates-s11c-drop-legacy-tables` | `docs/approvals/rates-s11c-drop-legacy-tables-approved-by-marco.md` | **ABSENT** |
+| `pr-tenant-mt4-s2-ownership-migration` | `docs/approvals/tenant-mt4-s2-ownership-migration-approved-by-marco.md` | **ABSENT** |
+| `pr-tipid-s3-retire-the-name-guard...` | `requires_on_main: docs/data-model/rates-migration/STEP-11C-DONE.md` (+ the backfill audit) | **ABSENT** — only the 11C drop above can produce it, so this is *transitively* the same approval |
+| `pr-fv2-output-channels` | `requires_file_on_main: .../form-digests.service.ts` | **ABSENT** — chained behind `pr-fv2-ai-digests`, itself gated |
+
+**`docs/approvals/` holds exactly TWO files on `origin/main`** — `README.md` and
+`watcher-identity-approved-by-marco.md`. [MEASURED] `git ls-tree -r origin/main -- docs/approvals`.
+One approval has ever been issued through this channel.
+
+**The new fact, and it is the reason for this addendum.** A release *was* performed and it cleared
+the wrong layer. `pr-tipid-s3-retire-the-name-guard-for-an-id-check-HOLD.md` carries, in its own
+body: *"HUMAN LAYER RELEASED 2026-09-24 by Marco ('Release the nine prompts', in chat), removed and
+recorded by `station-00.interactive-0004`"* — and, correctly, its own next sentence: *"The release
+clears ONE of the two layers. The three `requires_on_main` gates below are"* still in force.
+
+So nine prompts had their prose hard-stop lifted, and this run measures **zero** additional armable
+prompts as a result. **Anyone who issued that release may reasonably believe the queue was
+unblocked. It was not.** That is the gap worth closing — not the gate itself, which is doing exactly
+what it was built to do.
+
+**The ask, RULE 1 ordered.**
+
+> **(a) complete + additive — write the two approval files you actually intend.**
+> `docs/approvals/rates-s11c-drop-legacy-tables-approved-by-marco.md` and
+> `docs/approvals/tenant-mt4-s2-ownership-migration-approved-by-marco.md`. That arms those two, and
+> once 11C lands its `STEP-11C-DONE.md` it transitively releases `tipid-s3`. Both remain
+> destructive / production-data slices, so they stay yours to merge regardless — approving the
+> *arming* does not approve the *merge*.
+> **(b) additive but incomplete — approve `tenant-mt4-s2` only**, leaving the rates chain
+> (11C -> tipid-s3) parked. Fails the *future* half of RULE 1: these same prompts resurface on every
+> collect run.
+> **(c) complete but damaging — retire the `requires_file_on_main` approval gates.** Fails the
+> *without damaging* half outright: that gate is the only thing between an autonomous station and a
+> permanent `DROP` of the legacy rate tables. Recorded for completeness; **not recommended.**
+
+A chat-level "release the prompts" does not satisfy any of these, because the gate reads the
+filesystem, not the conversation. **The unblocking action is naming a file.**

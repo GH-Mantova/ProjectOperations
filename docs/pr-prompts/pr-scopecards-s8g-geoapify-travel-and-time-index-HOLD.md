@@ -27,7 +27,15 @@ cluster_order: 14
 requires_on_main: 'apps/api/src/modules/tendering/travel-time.ts :: TRAVEL_TIME_PORT_V1'
 ---
 
-<!-- watcher: do-not-arm | MARCO GATE: arm only after Marco confirms the Geoapify key in the ERP vault is live and its plan permits the Routing API (the existing key is registered for geocoding). Only Marco removes this line. -->
+<!-- GATE RELEASED 2026-09-24 by Marco, in chat to Station 06, his words: "the geoapify key is set
+     up, release s8g's gate". The human marker that stood here is therefore removed. It had asked for
+     his confirmation that the Geoapify key in the ERP vault is live and that its plan permits the
+     Routing API, because the existing key was registered for geocoding. He has confirmed the key is
+     set up. The plan half rests on that statement and was NOT independently measured by any station:
+     if the plan refuses routing, the factory in `tendering.module.ts` selects the straight-line
+     provider and every affected line carries the estimated badge, so the failure mode is a badge on
+     the line, not a broken save or a wrong price. Recorded by Station 06; the release is Marco's.
+     `escalates: true` stands - the built PR still stops for him before it merges. -->
 
 # Scope Cards S8g - Geoapify road routing, an editable traffic index, and honest trip arithmetic
 

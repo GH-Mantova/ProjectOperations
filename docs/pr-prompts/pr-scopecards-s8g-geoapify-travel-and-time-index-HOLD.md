@@ -41,8 +41,8 @@ requires_on_main: 'apps/api/src/modules/tendering/travel-time.ts :: TRAVEL_TIME_
 
 **Replaces the held Azure Maps prompt** (`pr-scopecards-s8b-azure-maps-travel-HOLD.md`). Marco chose
 Geoapify, which the ERP already holds a key for (`integration-keys.registry.ts` slug `geoapify`,
-`GEOAPIFY_API_KEY`, resolvable through `apiKeys.resolve("geoapify", "company")`). **Do not arm the
-Azure Maps prompt**; Station 00 retires it once this one lands.
+`GEOAPIFY_API_KEY`, resolvable through `apiKeys.resolve("geoapify", "company")`). **The Azure Maps
+prompt is superseded and must never be promoted**; Station 00 retires it once this one lands.
 
 Builds on what is already on main: the travel-time port (#2109), the capacity matrix defaults
 (#2114) and the tip finder (#819, #1039).

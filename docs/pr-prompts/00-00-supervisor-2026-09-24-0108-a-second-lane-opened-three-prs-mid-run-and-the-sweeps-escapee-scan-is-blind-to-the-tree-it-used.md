@@ -454,3 +454,88 @@ blind run.
 - **Did not invoke another station's skill.**
 
 <run-summary>A second lane opened three staging PRs one minute before I reached the board, so the single-actor gate failed and I withheld every merge but my own; Marco's three PRs are still his by freshly re-taken lane verdicts, the trunk is 4/4 green, nothing is armable, and the sweep's worktree-escapee scan was measured blind to the very tree that second lane used.</run-summary>
+
+---
+
+## ADDENDUM 2026-09-24T01:43Z — same station, same run, later measurement. **F4's REMEDY IS REFUTED: THE LEVER I CLAIMED TO PULL DOES NOT EXIST.**
+
+F4 above says *"this run left all three branches alone. Nothing is lost: their existing checks stand
+against their existing heads."* **That was my intention and it is not what happened.** This station's
+own meta-lesson is *"your report described your intentions, not your effects"*, so it is corrected
+here rather than left for the next run to re-derive from the board.
+
+**The merge, read back two ways.** `Assert-SmokedOrEscalate -PR 2145` → `True`; `Merge-Pr -PR 2145` →
+`True`, exit 0. `gh pr view 2145 --json state,mergedAt,mergeCommit` → `MERGED`,
+`2026-09-24T01:32:27Z`, merge commit **`db4c3502`**; `git rev-parse --short origin/main` →
+**`db4c3502`**, the same commit, so it reached `main`. ⚠️ The parameter is `-PR`, not `-Number`; the
+wrong name binds `$PR` to 0 and the guard throws `#0 reports NO checks at all` — loudly, which is the
+guard working.
+
+**Post-merge fast-forward: clean on the FIRST attempt, and cure 1 is why.** All **four** read-backs,
+the fourth being the only one that can see a dirty tree: `git rev-list --left-right --count
+HEAD...origin/main` → **`0	0`**; `git diff --numstat` → **EMPTY**; `git diff --cached --name-status`
+→ **EMPTY**; `git status --porcelain --untracked-files=no` → **EMPTY**. Content proof: this
+breadcrumb `git ls-files` → **1** (tracked); the archived predecessor `Test-Path` → **True**; root
+breadcrumbs remaining → **1**. Teardown: `git worktree list` → the dev tree alone at `db4c3502`;
+`git ls-remote --heads origin board/collect-2026-09-24-0132` → **empty**.
+
+### 🔴 THE CORRECTION — ALL SIX OPEN PR BRANCHES WERE UPDATED 105 SECONDS AFTER MY MERGE, BY SOMETHING THAT WAS NOT THIS RUN.
+
+[MEASURED] `git log -3` on two of the six branches, after `git fetch origin "+refs/heads/*:refs/remotes/origin/*"`:
+
+```
+49e3ab73  2026-09-24T11:34:14+10:00  GH-Mantova | Merge branch 'main' into feat/devtree-reset-guard
+db4c3502  2026-09-24T11:32:26+10:00  GH-Mantova | docs(pr-prompts): station 00 collect … (#2145)
+68532402  2026-09-24T11:02:49+10:00  GH-Mantova | Merge branch 'main' into feat/devtree-reset-guard
+
+84ffe55d  2026-09-24T11:34:11+10:00  GH-Mantova | Merge branch 'main' into docs/stage-sec-a3-no-credential-logs
+db4c3502  2026-09-24T11:32:26+10:00  GH-Mantova | docs(pr-prompts): station 00 collect … (#2145)
+507bbaea  2026-09-24T11:16:41+10:00  PR Supervisor | docs(pr-prompts): stage sec-auth A3 … as HOLD
+```
+
+(Local time, UTC+10 — `01:34:11–01:34:14Z`.) `git rev-list --count <headRefOid>..origin/main` → **0
+on all six**, with the **POSITIVE control** that makes that zero readable:
+`ff46a3b3..origin/main` → **1** and `a30e9971..origin/main` → **3**. So the zeros are real and every
+open head now contains `db4c3502`. The `68532402` row is the previous run's 01:02 update, the same
+shape.
+
+🔧 **I did not run `gh pr update-branch` at any point, and the merge path does not.** [MEASURED]
+`Select-String` over `scripts\pipeline\*.ps1`: **5** hits for `update-branch`, all in
+`enable-automerge.ps1`, `merge-queue.ps1`, `monitor-board.ps1` and a comment in
+`assess-conflicts.ps1` — **none in `pipeline-lib.ps1`, none on `Merge-Pr`'s path**, and none of those
+three scripts was invoked this run. `.github\workflows\*.yml` → **0** hits. POSITIVE control
+`Merge-Pr` → 3; NEGATIVE control, freshly minted needle → 0.
+
+⚠️ **The CAUSE is [CANNOT MEASURE] after two honest attempts.** `gh api repos/…` returns
+`allow_update_branch=True`, which only *permits* the update button and does not auto-update on its
+own, so that is not it. The surviving candidate is the **second lane of F2**, which was demonstrably
+live on this board minutes earlier and would have swept all six. I am not asserting that; I am naming
+it as the candidate and stopping, rather than substituting an inference.
+
+### What this does to F4
+
+🔴 **F4's CONCLUSION IS STRENGTHENED AND ITS REMEDY IS DEAD.** The measured cost is unchanged and now
+better attested: **every board-PR merge costs every open PR a full CI cycle**, and on this board that
+is now **six** PRs, not three. What is refuted is my claim that a station can decline to spend it.
+The update happened 105 seconds after the merge with no action from this run, so *"I will simply not
+update their branches"* is **not an available lever** — a run that believes it is will make the same
+claim, observe the same auto-update, and re-derive this from scratch.
+
+🔧 **The only lever a station actually holds is the one F4 already named as Marco's: merge FEWER
+board PRs.** That is now the whole of the remedy, which is why this correction matters more than the
+sentence it fixes. **DISPOSITION of F4: ESCALATED, unchanged in destination
+(`hourly-board-pr-rebases-every-waiting-pr-2026-09-03.md`) and sharpened in content.**
+
+⚠️ **And I paid the cost knowingly to land this.** This addendum is a second board PR in one hour —
+the exact pattern F4 criticises in `#2140`/`#2141` — and it will trigger a seventh auto-update sweep.
+I judged that worth one cycle because the alternative is a **materially wrong mechanism claim sitting
+in the tracked breadcrumb corpus**, which is the channel the next run reads. A PR comment was written
+first (`#2145#issuecomment-5805884015`) and is **not** sufficient: no station reads PR comments.
+
+⚠️ **Falsifying probe:** after the next board-PR merge, `git fetch origin "+refs/heads/*:refs/remotes/origin/*"`
+and read `git log -1` on any open PR branch. If no `Merge branch 'main' into …` commit appears within
+a few minutes, the auto-update is not systematic and this correction must be re-measured.
+
+**DISPOSITION of this addendum: ACTIONED** — the record now matches the effects, read back rather
+than asserted. **Nothing else above changes:** F1 still escalated, F2's withholding still correct, F3
+still dispatched to 06, F5/F6/F7 unchanged.

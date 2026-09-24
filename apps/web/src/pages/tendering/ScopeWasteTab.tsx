@@ -81,6 +81,19 @@ type WasteRow = {
   // "manual" = typed by the estimator.
   // null/undefined = predates this column (unknown provenance).
   capacitySource?: string | null;
+  // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- editable traffic index and derived fields.
+  // travelIndex: the modelled traffic allowance (>= 1.00).
+  // travelIndexSource: "geoapify" | "manual" | "none".
+  // travelPlanningMinutesOneWay: average(baseline, baseline x index) -- used for cycle.
+  // totalTripKm: trips x 2 x one-way km; fuel is charged on this.
+  // loadsSource: "cycle" (derived from planning minutes) | "manual" | null.
+  // dailyKmSource: "derived" (totalTripKm / trucks) | "manual" | null.
+  travelIndex?: number | null;
+  travelIndexSource?: string | null;
+  travelPlanningMinutesOneWay?: number | null;
+  totalTripKm?: number | null;
+  loadsSource?: string | null;
+  dailyKmSource?: string | null;
 };
 
 type WasteRate = {
@@ -188,6 +201,11 @@ function fmtCurrency(value: string | number | null): string {
 /** The plant constant for this section, exported so the source marker is
  *  reachable from a test as a value and not only as a comment. */
 export const SCOPE_WASTE_SECTION_V1 = "SCOPE_WASTE_SECTION_V1";
+
+/** WASTE_TRAVEL_INDEX_UI_V1 (scopecards-s8h) -- travel strip, editable traffic
+ *  allowance, provenance chips, totals strip, infeasible-cycle state, and the
+ *  tip-finder mapLocationId fix.  */
+export const WASTE_TRAVEL_INDEX_UI_V1 = "scopecards-s8h";
 
 /** Money in the card's house format — two decimals, matching
  *  `fmtCuttingMoney` so the sections either side read the same. */
@@ -378,7 +396,7 @@ export function WasteSectionSummary({
 
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
         Subtotal:{" "}
-        <strong style={{ color: "var(--text)" }} data-testid="waste-section-subtotal">
+        <strong style={{ color: "var(--text-primary)" }} data-testid="waste-section-subtotal">
           {fmtWasteMoney(subtotal)}
         </strong>
         {tenderMarkup !== undefined ? (
@@ -388,7 +406,7 @@ export function WasteSectionSummary({
               {wasteMarkupPhrase(sectionMarkupOverride, tenderMarkup)}
             </span>
             :{" "}
-            <strong style={{ color: "var(--text)" }} data-testid="waste-section-with-markup">
+            <strong style={{ color: "var(--text-primary)" }} data-testid="waste-section-with-markup">
               {fmtWasteMoney(withMarkup ?? subtotal)}
             </strong>
           </>
@@ -683,17 +701,20 @@ export function ScopeWasteTab({
     await load();
   };
 
-  // OPS-M3 — Called when the user presses "Use this facility" inside the
-  // TipFinderDrawer. Writes the facility name to the row, fires the accept
-  // POST (already done inside TipFinderPanel), and handles dailyKm auto-fill.
+  // OPS-M3 / WASTE_TRAVEL_INDEX_UI_V1 (scopecards-s8h) -- Called when the
+  // user presses "Use this facility" inside the TipFinderDrawer. Writes both
+  // the facility name AND the mapLocationId to the row (same patch the tip
+  // dropdown makes at row.mapLocationId). Without the id, the tip sticks as a
+  // name but the travel-estimate re-resolve never fires (the server needs the
+  // id to look up coordinates).
   //
   // distanceKm is the one-way haversine from m2's response; round trip =
-  // round(distanceKm × 2, 1). We do NOT recompute — we use exactly what m2
+  // round(distanceKm x 2, 1). We do NOT recompute -- we use exactly what m2
   // returned.
   const handleTipChosen = useCallback(
     async (
       facilityName: string,
-      _mapLocationId: string,
+      mapLocationId: string,
       distanceKm: number
     ) => {
       if (!tipDrawer) return;
@@ -704,9 +725,10 @@ export function ScopeWasteTab({
         return;
       }
 
-      // 1. Write facility to the waste row (triggers rate-resolver reprice).
-      //    DO NOT write any rate / $/unit / $/load — r3-t1 owns that.
-      await patchRow(rowId, { wasteFacility: facilityName });
+      // 1. Write facility + mapLocationId to the waste row.
+      //    mapLocationId triggers the server's travel re-resolve (same as
+      //    the tip dropdown). DO NOT write any rate / $/unit / $/load.
+      await patchRow(rowId, { wasteFacility: facilityName, mapLocationId });
 
       // 2. dailyKm auto-fill logic.
       if (distanceKm > 0) {
@@ -803,7 +825,7 @@ export function ScopeWasteTab({
         the server&apos;s. This section is priced as its own cost stream, with its own markup —
         it is not added into the card subtotal above, which carries the scope disciplines.
         <span> · </span>
-        <strong style={{ color: "var(--text)" }}>{totalTonnes.toFixed(2)} t</strong> across all
+        <strong style={{ color: "var(--text-primary)" }}>{totalTonnes.toFixed(2)} t</strong> across all
         lines.
       </p>
 
@@ -818,7 +840,7 @@ export function ScopeWasteTab({
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+            <thead style={{ background: "var(--surface-page)" }}>
               <tr>
                 {[
                   "",
@@ -879,7 +901,7 @@ export function ScopeWasteTab({
                 // Merge rail style with the existing row tint (no-facility amber).
                 // If INTERNAL, it overrides the tint; otherwise both are applied.
                 const mergedRowStyle = {
-                  borderTop: "1px solid var(--border, #e5e7eb)",
+                  borderTop: "1px solid var(--border-default)",
                   background: rowTint,
                   ...rowDestRailStyle
                 };
@@ -929,8 +951,8 @@ export function ScopeWasteTab({
                           style={{
                             fontSize: 9,
                             padding: "1px 5px",
-                            background: "#FEAA6D",
-                            color: "#fff",
+                            background: "var(--brand-accent)",
+                            color: "var(--brand-dark)",
                             borderRadius: 999,
                             fontWeight: 700,
                             whiteSpace: "nowrap"
@@ -1080,7 +1102,7 @@ export function ScopeWasteTab({
                         style={{
                           display: "inline-block",
                           padding: "1px 6px",
-                          background: "var(--surface-muted, #F6F6F6)",
+                          background: "var(--surface-page)",
                           borderRadius: 4,
                           fontFamily: "ui-monospace, monospace"
                         }}
@@ -1252,54 +1274,714 @@ export function ScopeWasteTab({
                   </td>
                 </tr>
                 {isExpanded ? (
-                <tr style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+                <tr style={{ background: "var(--surface-page)" }}>
                   <td colSpan={17} style={{ padding: "10px 12px" }}>
-                    {/* TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- cycle line.
-                        Shown when a travel snapshot exists on the row.
-                        Badge: "estimated, no route" for straight-line source.
-                        Manual loads shows "Manual" instead of the cycle. */}
-                    {row.travelSource === "straight-line" ? (
-                      <div
-                        style={{
-                          marginBottom: 10,
-                          padding: "8px 12px",
-                          borderLeft: "3px solid var(--brand-primary)",
-                          background: "var(--surface-subtle)",
-                          borderRadius: "0 4px 4px 0",
-                          fontSize: 13
-                        }}
-                        data-testid="waste-row-cycle-line"
-                      >
-                        <strong>
-                          Straight line {row.travelKm != null ? Number(row.travelKm).toFixed(1) : "?"} km
-                          {" · "}
-                          {row.travelMinutesOneWay != null ? row.travelMinutesOneWay : "?"} min each way
-                          {row.loadsPerTruckPerDay != null
-                            ? ` · ${Number(row.loadsPerTruckPerDay)} loads/day`
-                            : null}
-                        </strong>
-                        {" "}
-                        <span
-                          style={{
-                            display: "inline-block",
-                            fontSize: 10.5,
-                            fontWeight: 700,
-                            padding: "1px 7px",
-                            borderRadius: 4,
-                            border: "1px solid var(--border-default)",
-                            background: "var(--status-warning)",
-                            color: "var(--text-primary)"
-                          }}
-                        >
-                          estimated, no route
-                        </span>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                          {row.travelDetail ?? ""}
+
+                    {/* ── WASTE_TRAVEL_INDEX_UI_V1 (scopecards-s8h) ──────────────
+                        Travel strip: headline + chain + allowance edit + totals.
+                        Three states:
+                          "route"        -> Geoapify routed line (§1 / §2 / §3)
+                          "straight-line" -> fallback, no route (§4 right / §7)
+                          infeasible     -> cycle > shift (§4 left)
+                        Infeasible is detected from the server: loadsSource =
+                        "cycle" AND loadsPerTruckPerDay is null (engine could not
+                        fit a whole load into an 8-hour shift).
+                        DO NOT compute trips / duration / fuel / price here.
+                        Fold server figures only.
+                    ──────────────────────────────────────────────────────────── */}
+
+                    {(() => {
+                      // ── Infeasible-cycle state (§4 left) ──────────────────────
+                      // Server signals: loadsSource = "cycle" and loadsPerTruckPerDay null.
+                      const isInfeasible =
+                        row.loadsSource === "cycle" &&
+                        (row.loadsPerTruckPerDay === null || row.loadsPerTruckPerDay === "");
+                      // Cycle minutes for display: 2 x planning + 30 min at tip.
+                      // travelPlanningMinutesOneWay is server-supplied; 30 is the
+                      // domain constant for tip turnaround (travel-time.ts).
+                      const cycleMinutes =
+                        row.travelPlanningMinutesOneWay != null
+                          ? row.travelPlanningMinutesOneWay * 2 + 30
+                          : null;
+
+                      if (isInfeasible && row.travelKm != null) {
+                        return (
+                          <div
+                            style={{
+                              marginBottom: 10,
+                              padding: "8px 12px",
+                              borderLeft: "3px solid var(--status-danger)",
+                              background: "var(--surface-subtle)",
+                              borderRadius: "0 4px 4px 0",
+                              fontSize: 13
+                            }}
+                            data-testid="waste-row-cycle-line"
+                            data-infeasible="true"
+                          >
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <strong>
+                                {cycleMinutes != null ? `Cycle ${cycleMinutes} min` : "Cycle - min"}
+                              </strong>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  padding: "1px 7px",
+                                  borderRadius: 4,
+                                  border: "1px solid var(--status-danger)",
+                                  background: "color-mix(in srgb, var(--status-danger) 10%, transparent)",
+                                  color: "var(--status-danger)"
+                                }}
+                              >
+                                No whole load fits an 8-hour shift
+                              </span>
+                            </div>
+                            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 0" }}>
+                              Loads per day cannot be worked out, so trips, duration and
+                              price are left blank rather than guessed. The line still
+                              saves. Fix it by choosing a closer tip, lowering the
+                              allowance, or planning this one by hand.
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      // ── Fallback state: straight-line (§4 right / §7) ─────────
+                      if (row.travelSource === "straight-line") {
+                        const baselineMin = row.travelMinutesOneWay ?? null;
+                        const planMin = row.travelPlanningMinutesOneWay ?? baselineMin;
+                        return (
+                          <div
+                            style={{
+                              marginBottom: 10,
+                              padding: "8px 12px",
+                              borderLeft: "3px solid var(--status-accent, var(--brand-secondary))",
+                              background: "var(--surface-subtle)",
+                              borderRadius: "0 4px 4px 0",
+                              fontSize: 13
+                            }}
+                            data-testid="waste-row-cycle-line"
+                          >
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <strong>
+                                Straight line {row.travelKm != null ? Number(row.travelKm).toFixed(1) : "?"} km
+                                {" · "}
+                                {baselineMin != null ? baselineMin : "?"} min each way
+                              </strong>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  padding: "1px 7px",
+                                  borderRadius: 4,
+                                  border: "1px solid var(--status-accent, var(--brand-secondary))",
+                                  background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                  color: "var(--status-accent, var(--brand-secondary))"
+                                }}
+                              >
+                                Estimated, no route
+                              </span>
+                            </div>
+                            {/* Allowance row for fallback: reads 1.00, note explains why */}
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: 8, fontSize: 12 }}>
+                              <span style={{ color: "var(--text-muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700 }}>
+                                Traffic allowance
+                              </span>
+                              <span
+                                style={{
+                                  border: "1px solid var(--border-default)",
+                                  borderRadius: 6,
+                                  padding: "2px 8px",
+                                  background: "var(--surface-card)",
+                                  fontVariantNumeric: "tabular-nums"
+                                }}
+                              >
+                                {row.travelIndex != null ? Number(row.travelIndex).toFixed(2) : "1.00"}
+                              </span>
+                              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                No route means no suggested allowance, so it sits at 1.00 until you change it.
+                                The badge is not selectable -- straight line is only ever fallen back to.
+                                Saving still works.
+                              </span>
+                            </div>
+                            {/* Chain: Baseline -> allowance -> Planning */}
+                            {baselineMin != null ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 6,
+                                  alignItems: "center",
+                                  marginTop: 8,
+                                  fontSize: 12.5,
+                                  color: "var(--text-muted)",
+                                  fontVariantNumeric: "tabular-nums"
+                                }}
+                              >
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Baseline</b>
+                                  {baselineMin} min
+                                </span>
+                                <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>&times;</span>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Traffic allowance</b>
+                                  {row.travelIndex != null ? Number(row.travelIndex).toFixed(2) : "1.00"}
+                                </span>
+                                <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>=</span>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Planning</b>
+                                  {planMin != null ? planMin : "?"} min each way
+                                </span>
+                              </div>
+                            ) : null}
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                              {row.travelDetail ?? ""}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── Routed state: Geoapify route (§1 / §2 / §3) ──────────
+                      if (row.travelSource === "route" && row.travelKm != null) {
+                        const baselineMin = row.travelMinutesOneWay ?? null;
+                        const travelIdx = row.travelIndex ?? null;
+                        const adjustedMin =
+                          baselineMin != null && travelIdx != null
+                            ? Math.round(baselineMin * travelIdx)
+                            : null;
+                        const planMin = row.travelPlanningMinutesOneWay ?? null;
+                        const idxSource = row.travelIndexSource ?? null;
+                        const isManualIdx = idxSource === "manual";
+                        const isNoneIdx = idxSource === "none";
+
+                        return (
+                          <div
+                            style={{
+                              marginBottom: 10,
+                              padding: "8px 12px",
+                              borderLeft: "3px solid var(--brand-primary)",
+                              background: "var(--surface-subtle)",
+                              borderRadius: "0 4px 4px 0",
+                              fontSize: 13
+                            }}
+                            data-testid="waste-row-cycle-line"
+                          >
+                            {/* Headline: km + source chip */}
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <strong>Route {Number(row.travelKm).toFixed(1)} km one way</strong>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  padding: "1px 7px",
+                                  borderRadius: 4,
+                                  border: "1px solid var(--status-active)",
+                                  background: "color-mix(in srgb, var(--status-active) 10%, transparent)",
+                                  color: "var(--status-active)"
+                                }}
+                              >
+                                Geoapify route
+                              </span>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  padding: "1px 7px",
+                                  borderRadius: 4,
+                                  border: "1px solid var(--border-default)",
+                                  background: "var(--surface-card)",
+                                  color: "var(--text-muted)"
+                                }}
+                              >
+                                Truck profile
+                              </span>
+                            </div>
+
+                            {/* Chain: Baseline x allowance = Adjusted -> average -> Planning */}
+                            {baselineMin != null ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 6,
+                                  alignItems: "center",
+                                  marginTop: 8,
+                                  fontSize: 12.5,
+                                  color: "var(--text-muted)",
+                                  fontVariantNumeric: "tabular-nums"
+                                }}
+                              >
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Baseline</b>
+                                  {baselineMin} min
+                                </span>
+                                <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>&times;</span>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Traffic allowance</b>
+                                  {travelIdx != null ? Number(travelIdx).toFixed(2) : "—"}
+                                </span>
+                                <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>=</span>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Adjusted</b>
+                                  {adjustedMin != null ? adjustedMin : "?"} min
+                                </span>
+                                <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>&#8594; average &#8594;</span>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
+                                  <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Planning</b>
+                                  {planMin != null ? planMin : "?"} min each way
+                                </span>
+                              </div>
+                            ) : null}
+
+                            {/* Allowance note */}
+                            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "8px 0 0" }}>
+                              Baseline is Geoapify&apos;s free-flow time for this route.
+                              The allowance is <strong>modelled</strong> -- their approximated-traffic
+                              time divided by their free-flow time -- not measured peak-hour traffic.
+                              Planning time is the average of baseline and adjusted, as agreed.
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
+
+                    {/* ── Sizing grid: allowance + derived fields ──────────────── */}
+                    {(() => {
+                      const hasTravel = row.travelSource === "route" || row.travelSource === "straight-line";
+                      const isInfeasible =
+                        row.loadsSource === "cycle" &&
+                        (row.loadsPerTruckPerDay === null || row.loadsPerTruckPerDay === "");
+                      const travelIdx = row.travelIndex ?? null;
+                      const idxSource = row.travelIndexSource ?? null;
+                      const isManualIdx = idxSource === "manual";
+                      const isFallback = row.travelSource === "straight-line";
+                      const pickedRate = row.transportRateId
+                        ? transportRates.find((p) => p.id === row.transportRateId)
+                        : null;
+                      const rigHasType = !!pickedRate?.transportType;
+                      const hasWasteGroup = !!row.wasteGroup;
+
+                      return (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+
+                          {/* Traffic allowance (editable) -- shown when travel snapshot exists */}
+                          {hasTravel ? (
+                            <div
+                              style={{
+                                border: "1px solid var(--brand-primary)",
+                                boxShadow: "0 0 0 2px var(--brand-primary-light, rgba(0,91,97,0.12))",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "var(--surface-card)",
+                                minWidth: 140
+                              }}
+                            >
+                              <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>
+                                Traffic allowance
+                              </div>
+                              <div
+                                style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums", marginTop: 2 }}
+                                data-testid="waste-travel-allowance-value"
+                              >
+                                {travelIdx != null ? Number(travelIdx).toFixed(2) : (isFallback ? "1.00" : "—")}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                                {isManualIdx ? (
+                                  <span>
+                                    <span
+                                      style={{
+                                        display: "inline-block",
+                                        fontSize: 10.5,
+                                        fontWeight: 700,
+                                        padding: "1px 6px",
+                                        borderRadius: 4,
+                                        border: "1px solid var(--status-warning)",
+                                        background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                        color: "var(--status-warning)"
+                                      }}
+                                      data-testid="waste-allowance-manual-chip"
+                                    >
+                                      Manual
+                                    </span>
+                                    {" "}
+                                    {canManage ? (
+                                      <button
+                                        type="button"
+                                        className="s7-btn s7-btn--ghost s7-btn--sm"
+                                        style={{ fontSize: 10.5, padding: "0 4px", color: "var(--brand-primary)", fontWeight: 600 }}
+                                        onClick={() => void patchRow(row.id, { travelIndex: null })}
+                                        data-testid="waste-allowance-return-auto"
+                                      >
+                                        Return to automatic
+                                      </button>
+                                    ) : null}
+                                  </span>
+                                ) : isFallback ? (
+                                  <span style={{ color: "var(--text-muted)" }}>
+                                    No route was available to suggest an allowance, so it reads 1.00.
+                                  </span>
+                                ) : (
+                                  <span>
+                                    <span
+                                      style={{
+                                        display: "inline-block",
+                                        fontSize: 10.5,
+                                        fontWeight: 700,
+                                        padding: "1px 6px",
+                                        borderRadius: 4,
+                                        border: "1px solid var(--brand-primary)",
+                                        background: "var(--brand-primary-light, rgba(0,91,97,0.10))",
+                                        color: "var(--brand-primary)"
+                                      }}
+                                    >
+                                      Suggested
+                                    </span>
+                                    {" "}editable per line
+                                  </span>
+                                )}
+                              </div>
+                              {/* Editable allowance input */}
+                              {canManage && !isFallback ? (
+                                <div style={{ marginTop: 6 }}>
+                                  <input
+                                    className="s7-input s7-input--sm"
+                                    type="number"
+                                    step="0.01"
+                                    min="1.00"
+                                    defaultValue={travelIdx != null ? Number(travelIdx).toFixed(2) : ""}
+                                    placeholder="e.g. 1.20"
+                                    onBlur={(e) => {
+                                      const raw = e.target.value.trim();
+                                      if (raw === "") return;
+                                      const n = Number(raw);
+                                      if (!Number.isFinite(n) || n < 1) return;
+                                      if (n !== travelIdx)
+                                        void patchRow(row.id, { travelIndex: n });
+                                    }}
+                                    style={{ width: 80, textAlign: "right" }}
+                                    data-testid="waste-allowance-input"
+                                    title="Modelled traffic allowance (>= 1.00). Raises planning time; never raises kilometres."
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {/* Cycle (server-derived, read-only) */}
+                          {hasTravel && !isInfeasible ? (
+                            <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 120 }}>
+                              <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Cycle</div>
+                              <div style={{ fontSize: 15, fontWeight: 400, fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", marginTop: 2 }}>
+                                {(() => {
+                                  const p = row.travelPlanningMinutesOneWay;
+                                  if (p == null) return "—";
+                                  const cycMin = p * 2 + 30;
+                                  return `${cycMin} min`;
+                                })()}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                                {row.travelPlanningMinutesOneWay != null
+                                  ? `${row.travelPlanningMinutesOneWay} out \xB7 ${row.travelPlanningMinutesOneWay} back \xB7 30 at the tip`
+                                  : ""}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {/* Loads / truck / day -- with provenance chip */}
+                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 140 }}>
+                            <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Loads per truck per day</div>
+                            <div
+                              style={{ fontSize: 15, fontWeight: isInfeasible ? 400 : 600, fontVariantNumeric: "tabular-nums", color: isInfeasible ? "var(--text-muted)" : "var(--text)", marginTop: 2 }}
+                              data-testid="waste-loads-per-day-value"
+                            >
+                              {isInfeasible ? "—" : (row.loadsPerTruckPerDay != null ? Number(row.loadsPerTruckPerDay) : "—")}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                              {row.loadsSource === "manual" && !isInfeasible ? (
+                                <span>
+                                  <span
+                                    style={{
+                                      display: "inline-block",
+                                      fontSize: 10.5,
+                                      fontWeight: 700,
+                                      padding: "1px 6px",
+                                      borderRadius: 4,
+                                      border: "1px solid var(--status-warning)",
+                                      background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                      color: "var(--status-warning)"
+                                    }}
+                                    data-testid="waste-loads-manual-chip"
+                                  >
+                                    Manual
+                                  </span>
+                                  {" "}
+                                  {canManage ? (
+                                    <button
+                                      type="button"
+                                      className="s7-btn s7-btn--ghost s7-btn--sm"
+                                      style={{ fontSize: 10.5, padding: "0 4px", color: "var(--brand-primary)", fontWeight: 600 }}
+                                      onClick={() => void patchRow(row.id, { loadsPerTruckPerDay: null })}
+                                      data-testid="waste-loads-return-auto"
+                                    >
+                                      Return to automatic
+                                    </button>
+                                  ) : null}
+                                </span>
+                              ) : row.loadsSource === "cycle" && !isInfeasible ? (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                    border: "1px solid var(--brand-primary)",
+                                    background: "var(--brand-primary-light, rgba(0,91,97,0.10))",
+                                    color: "var(--brand-primary)"
+                                  }}
+                                >
+                                  From cycle
+                                </span>
+                              ) : null}
+                            </div>
+                            {/* Loads/day input for manual override (or when cycle unavailable) */}
+                            {canManage && !isInfeasible ? (
+                              <div style={{ marginTop: 4 }}>
+                                <input
+                                  className="s7-input s7-input--sm"
+                                  type="number"
+                                  step="0.1"
+                                  defaultValue={row.loadsPerTruckPerDay ?? ""}
+                                  onBlur={(e) => {
+                                    const n = e.target.value === "" ? null : Number(e.target.value);
+                                    if (String(n) !== String(row.loadsPerTruckPerDay))
+                                      void patchRow(row.id, { loadsPerTruckPerDay: n });
+                                  }}
+                                  style={{ width: 70, textAlign: "right" }}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {/* Capacity / load -- with provenance chip */}
+                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 140 }}>
+                            <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Capacity per load</div>
+                            <div style={{ fontSize: 15, fontWeight: 400, fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", marginTop: 2 }}>
+                              {row.capacityPerLoad != null
+                                ? `${Number(row.capacityPerLoad)} ${row.capacityUnit ?? "t"}`
+                                : "—"}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                              {(() => {
+                                if (row.capacitySource === "matrix" && row.capacityPerLoad) {
+                                  const matClass = row.wasteGroup ?? "?";
+                                  const matType = pickedRate?.transportType ?? "?";
+                                  return (
+                                    <span
+                                      style={{
+                                        display: "inline-block",
+                                        fontSize: 10.5,
+                                        fontWeight: 700,
+                                        padding: "1px 6px",
+                                        borderRadius: 4,
+                                        border: "1px solid var(--brand-primary)",
+                                        background: "var(--brand-primary-light, rgba(0,91,97,0.10))",
+                                        color: "var(--brand-primary)"
+                                      }}
+                                    >
+                                      Matrix
+                                    </span>
+                                  );
+                                }
+                                if (row.capacitySource === "manual") {
+                                  return (
+                                    <span
+                                      style={{
+                                        display: "inline-block",
+                                        fontSize: 10.5,
+                                        fontWeight: 700,
+                                        padding: "1px 6px",
+                                        borderRadius: 4,
+                                        border: "1px solid var(--status-warning)",
+                                        background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                        color: "var(--status-warning)"
+                                      }}
+                                    >
+                                      Manual
+                                    </span>
+                                  );
+                                }
+                                if (pickedRate && (!rigHasType || !hasWasteGroup)) {
+                                  return <span style={{ color: "var(--text-muted)" }}>No matrix row -- enter a capacity</span>;
+                                }
+                                return null;
+                              })()}
+                            </div>
+                            {canManage ? (
+                              <div style={{ marginTop: 4, display: "flex", gap: 4, alignItems: "center" }}>
+                                <input
+                                  className="s7-input s7-input--sm"
+                                  type="number"
+                                  step="0.01"
+                                  defaultValue={row.capacityPerLoad ?? ""}
+                                  onBlur={(e) => {
+                                    const n = e.target.value === "" ? null : Number(e.target.value);
+                                    if (String(n) !== String(row.capacityPerLoad))
+                                      void patchRow(row.id, { capacityPerLoad: n });
+                                  }}
+                                  style={{ width: 70, textAlign: "right" }}
+                                  title="Default from the Transport Capacity table; clear to re-resolve from the matrix."
+                                />
+                                <select
+                                  className="s7-select s7-input--sm"
+                                  value={row.capacityUnit ?? ""}
+                                  onChange={(e) => {
+                                    const next = e.target.value || null;
+                                    void patchRow(row.id, { capacityUnit: next });
+                                  }}
+                                  style={{ width: 60 }}
+                                >
+                                  <option value="">—</option>
+                                  <option value="t">t</option>
+                                  <option value="m3">m3</option>
+                                </select>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {/* Daily km -- with provenance chip */}
+                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 120 }}>
+                            <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Daily km</div>
+                            <div style={{ fontSize: 15, fontWeight: 400, fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", marginTop: 2 }}>
+                              {row.dailyKm != null ? Number(row.dailyKm) : "—"}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                              {row.dailyKmSource === "manual" ? (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                    border: "1px solid var(--status-warning)",
+                                    background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                    color: "var(--status-warning)"
+                                  }}
+                                >
+                                  Manual
+                                </span>
+                              ) : row.dailyKmSource === "derived" ? (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                    border: "1px solid var(--brand-primary)",
+                                    background: "var(--brand-primary-light, rgba(0,91,97,0.10))",
+                                    color: "var(--brand-primary)"
+                                  }}
+                                >
+                                  From cycle
+                                </span>
+                              ) : null}
+                            </div>
+                            {/* OPS-M3 -- suggest affordance when tip finder computed a different distance */}
+                            {kmSuggest[row.id] !== undefined ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                                <span style={{ color: "var(--status-info)", fontSize: 10 }}>
+                                  Map: {kmSuggest[row.id]} km
+                                </span>
+                                {canManage ? (
+                                  <button
+                                    type="button"
+                                    className="s7-btn s7-btn--ghost s7-btn--sm"
+                                    style={{ fontSize: 10, padding: "0 4px" }}
+                                    onClick={() => {
+                                      const val = kmSuggest[row.id];
+                                      void patchRow(row.id, { dailyKm: val });
+                                      const inputEl = dailyKmRefs.current[row.id];
+                                      if (inputEl) inputEl.value = String(val);
+                                      setKmSuggest((prev) => {
+                                        const next = { ...prev };
+                                        delete next[row.id];
+                                        return next;
+                                      });
+                                    }}
+                                    title="Apply the map-derived distance"
+                                  >
+                                    Apply
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                                  style={{ fontSize: 10, padding: "0 4px" }}
+                                  onClick={() =>
+                                    setKmSuggest((prev) => {
+                                      const next = { ...prev };
+                                      delete next[row.id];
+                                      return next;
+                                    })
+                                  }
+                                  title="Dismiss suggestion"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ) : null}
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                              <input
+                                ref={(el) => { dailyKmRefs.current[row.id] = el; }}
+                                className="s7-input s7-input--sm"
+                                type="number"
+                                step="0.1"
+                                defaultValue={row.dailyKm ?? ""}
+                                disabled={!canManage}
+                                onBlur={(e) => {
+                                  const n = e.target.value === "" ? null : Number(e.target.value);
+                                  if (String(n) !== String(row.dailyKm))
+                                    void patchRow(row.id, { dailyKm: n });
+                                }}
+                                style={{ width: 70, textAlign: "right" }}
+                                title="Round-trip km to the tip (auto-filled from tip finder)."
+                              />
+                              {canManage ? (
+                                <button
+                                  type="button"
+                                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                                  title={
+                                    row.wasteFacility
+                                      ? "Open tip map -- find the current facility and update km"
+                                      : "Set a facility first to use the map"
+                                  }
+                                  disabled={!row.wasteFacility}
+                                  onClick={() =>
+                                    setTipDrawer({ rowId: row.id, mode: "map" })
+                                  }
+                                  style={{ fontSize: 10, padding: "1px 5px" }}
+                                >
+                                  Map
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+
                         </div>
-                      </div>
-                    ) : null}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-                      {/* TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip picker. */}
+                      );
+                    })()}
+
+                    {/* ── Transport pickers ────────────────────────────────────── */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", marginBottom: 8 }}>
+                      {/* WASTE_TRAVEL_INDEX_UI_V1 -- tip picker. */}
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Tip (map location)
                         <select
@@ -1313,7 +1995,7 @@ export function ScopeWasteTab({
                           style={{ minWidth: 200 }}
                           title="Pick a tip from Map Locations to enable travel-time estimation"
                         >
-                          <option value="">— no tip linked —</option>
+                          <option value="">-- no tip linked --</option>
                           {/* Keep the existing selection even if it is not in the active list */}
                           {row.mapLocationId &&
                           !tipLocations.some((t) => t.id === row.mapLocationId) ? (
@@ -1321,7 +2003,7 @@ export function ScopeWasteTab({
                           ) : null}
                           {tipLocations.map((t) => (
                             <option key={t.id} value={t.id}>
-                              {t.name}{t.suburb ? ` — ${t.suburb}` : ""}
+                              {t.name}{t.suburb ? ` -- ${t.suburb}` : ""}
                             </option>
                           ))}
                         </select>
@@ -1338,7 +2020,7 @@ export function ScopeWasteTab({
                           }}
                           style={{ minWidth: 200 }}
                         >
-                          <option value="">— pick a truck / transport —</option>
+                          <option value="">-- pick a truck / transport --</option>
                           {transportRates.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.item} (${Number(p.rate).toFixed(0)}/{p.unit})
@@ -1361,229 +2043,121 @@ export function ScopeWasteTab({
                           style={{ width: 60, textAlign: "right" }}
                         />
                       </label>
-                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
-                        Loads / truck / day
-                        <input
-                          className="s7-input s7-input--sm"
-                          type="number"
-                          step="0.1"
-                          defaultValue={row.loadsPerTruckPerDay ?? ""}
-                          disabled={!canManage}
-                          onBlur={(e) => {
-                            const n = e.target.value === "" ? null : Number(e.target.value);
-                            if (String(n) !== String(row.loadsPerTruckPerDay))
-                              void patchRow(row.id, { loadsPerTruckPerDay: n });
-                          }}
-                          style={{ width: 70, textAlign: "right" }}
-                        />
-                      </label>
-                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
-                        Capacity / load
-                        {/* TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- source badge.
-                            Shows where the stored capacity came from. When the rig has a
-                            transport type and the line has a waste group, the server fills
-                            capacityPerLoad from the matrix automatically. The estimator's
-                            own figure always wins; clearing it returns to the matrix. */}
-                        {(() => {
-                          const pickedRate = row.transportRateId
-                            ? transportRates.find((p) => p.id === row.transportRateId)
-                            : null;
-                          const hasRig = !!pickedRate;
-                          const rigHasType = !!pickedRate?.transportType;
-                          const hasWasteGroup = !!row.wasteGroup;
-                          if (row.capacitySource === "matrix" && row.capacityPerLoad) {
-                            // Matrix-filled: show the provenance.
-                            const matClass = row.wasteGroup ?? "?";
-                            const matType = pickedRate?.transportType ?? "?";
-                            const matVal = row.capacityPerLoad;
-                            const matUnit = row.capacityUnit ?? "t";
-                            return (
-                              <span style={{
-                                fontSize: 10,
-                                background: "rgba(0,91,97,0.10)",
-                                color: "var(--brand-primary)",
-                                borderRadius: 3,
-                                padding: "1px 5px",
-                                marginBottom: 2,
-                                display: "inline-block"
-                              }}>
-                                Matrix: {matClass} — {matType} — {matVal} {matUnit}
-                              </span>
-                            );
-                          }
-                          if (row.capacitySource === "manual") {
-                            return (
-                              <span style={{
-                                fontSize: 10,
-                                background: "rgba(180,83,9,0.10)",
-                                color: "var(--status-warning)",
-                                borderRadius: 3,
-                                padding: "1px 5px",
-                                marginBottom: 2,
-                                display: "inline-block"
-                              }}>
-                                Manual
-                              </span>
-                            );
-                          }
-                          if (hasRig && (!rigHasType || !hasWasteGroup)) {
-                            return (
-                              <span style={{
-                                fontSize: 10,
-                                color: "var(--text-muted)",
-                                marginBottom: 2,
-                                display: "inline-block"
-                              }}>
-                                No matrix row — enter a capacity
-                              </span>
-                            );
-                          }
-                          return null;
-                        })()}
-                        <input
-                          className="s7-input s7-input--sm"
-                          type="number"
-                          step="0.01"
-                          defaultValue={row.capacityPerLoad ?? ""}
-                          disabled={!canManage}
-                          onBlur={(e) => {
-                            const n = e.target.value === "" ? null : Number(e.target.value);
-                            if (String(n) !== String(row.capacityPerLoad))
-                              void patchRow(row.id, { capacityPerLoad: n });
-                          }}
-                          style={{ width: 80, textAlign: "right" }}
-                          title="Default from the Transport Capacity table; per-line override stays local. Clear to re-resolve from the matrix."
-                        />
-                      </label>
-                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
-                        Capacity unit
-                        <select
-                          className="s7-select s7-input--sm"
-                          value={row.capacityUnit ?? ""}
-                          disabled={!canManage}
-                          onChange={(e) => {
-                            const next = e.target.value || null;
-                            void patchRow(row.id, { capacityUnit: next });
-                          }}
-                          style={{ width: 70 }}
-                        >
-                          <option value="">—</option>
-                          <option value="t">t</option>
-                          <option value="m3">m³</option>
-                        </select>
-                      </label>
-                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
-                        Daily km (per truck)
-                        {/* OPS-M3 — suggest affordance when user already typed a value
-                            but the tip finder computed a different round-trip distance */}
-                        {kmSuggest[row.id] !== undefined ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
-                            <span style={{ color: "#0369a1", fontSize: 10 }}>
-                              Map: {kmSuggest[row.id]} km
-                            </span>
-                            {canManage ? (
-                              <button
-                                type="button"
-                                className="s7-btn s7-btn--ghost s7-btn--sm"
-                                style={{ fontSize: 10, padding: "0 4px" }}
-                                onClick={() => {
-                                  const val = kmSuggest[row.id];
-                                  void patchRow(row.id, { dailyKm: val });
-                                  const inputEl = dailyKmRefs.current[row.id];
-                                  if (inputEl) inputEl.value = String(val);
-                                  setKmSuggest((prev) => {
-                                    const next = { ...prev };
-                                    delete next[row.id];
-                                    return next;
-                                  });
-                                }}
-                                title="Apply the map-derived distance"
-                              >
-                                Apply
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="s7-btn s7-btn--ghost s7-btn--sm"
-                              style={{ fontSize: 10, padding: "0 4px" }}
-                              onClick={() =>
-                                setKmSuggest((prev) => {
-                                  const next = { ...prev };
-                                  delete next[row.id];
-                                  return next;
-                                })
-                              }
-                              title="Dismiss suggestion"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                        ) : null}
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <input
-                            ref={(el) => { dailyKmRefs.current[row.id] = el; }}
-                            className="s7-input s7-input--sm"
-                            type="number"
-                            step="0.1"
-                            defaultValue={row.dailyKm ?? ""}
-                            disabled={!canManage}
-                            onBlur={(e) => {
-                              const n = e.target.value === "" ? null : Number(e.target.value);
-                              if (String(n) !== String(row.dailyKm))
-                                void patchRow(row.id, { dailyKm: n });
-                            }}
-                            style={{ width: 70, textAlign: "right" }}
-                            title="Round-trip km to the tip (auto-filled from tip finder)."
-                          />
-                          {canManage ? (
-                            <button
-                              type="button"
-                              className="s7-btn s7-btn--ghost s7-btn--sm"
-                              title={
-                                row.wasteFacility
-                                  ? "Open tip map — find the current facility and update km"
-                                  : "Set a facility first to use the map"
-                              }
-                              disabled={!row.wasteFacility}
-                              onClick={() =>
-                                setTipDrawer({ rowId: row.id, mode: "map" })
-                              }
-                              style={{ fontSize: 10, padding: "1px 5px" }}
-                            >
-                              Map
-                            </button>
-                          ) : null}
-                        </div>
-                      </label>
                     </div>
-                    <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, flexWrap: "wrap" }}>
+
+                    {/* ── Totals strip (§1) ────────────────────────────────────── */}
+                    {(() => {
+                      const isInfeasible =
+                        row.loadsSource === "cycle" &&
+                        (row.loadsPerTruckPerDay === null || row.loadsPerTruckPerDay === "");
+                      const qty = row.qty != null ? Number(row.qty) : null;
+                      const cap = row.capacityPerLoad != null ? Number(row.capacityPerLoad) : null;
+                      const trucks = row.qtyTrucks ?? null;
+
+                      return (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 16,
+                            flexWrap: "wrap",
+                            padding: "10px 12px",
+                            border: "1px solid var(--border-default)",
+                            borderRadius: 8,
+                            background: "var(--surface-subtle)",
+                            fontSize: 12.5,
+                            fontVariantNumeric: "tabular-nums",
+                            marginBottom: 8
+                          }}
+                          data-testid="waste-totals-strip"
+                        >
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Quantity</b>
+                            {qty != null ? `${qty.toFixed(3)} ${row.unit ?? "t"}` : "—"}
+                          </div>
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Required trips</b>
+                            {isInfeasible ? "—" : (row.wasteLoads != null
+                              ? <span>{row.wasteLoads}{qty != null && cap != null
+                                  ? <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>ceil({qty.toFixed(0)} / {cap})</span>
+                                  : null}</span>
+                              : "—")}
+                          </div>
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Trucks</b>
+                            {trucks ?? "—"}
+                          </div>
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Duration</b>
+                            {isInfeasible ? "—" : (row.truckDays != null
+                              ? <span>
+                                  {Number(row.truckDays).toFixed(1)} days
+                                  {row.wasteLoads != null && row.loadsPerTruckPerDay != null && trucks != null
+                                    ? <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                                        ceil({row.wasteLoads} / {Math.round(Number(row.loadsPerTruckPerDay) * trucks)})
+                                      </span>
+                                    : null}
+                                </span>
+                              : "—")}
+                          </div>
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Total route km</b>
+                            {row.totalTripKm != null
+                              ? <span>
+                                  {Number(row.totalTripKm).toFixed(1)}
+                                  {row.wasteLoads != null && row.travelKm != null
+                                    ? <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                                        {row.wasteLoads} &times; 2 &times; {Number(row.travelKm).toFixed(1)}
+                                      </span>
+                                    : null}
+                                </span>
+                              : "—"}
+                          </div>
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Fuel charged on</b>
+                            <span data-testid="waste-fuel-charged-km">
+                              {row.totalTripKm != null
+                                ? `${Number(row.totalTripKm).toFixed(1)} km`
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 8px" }}>
+                      Fuel follows the trips that actually happen, including the last part-used day.
+                      It is not a full day&apos;s kilometres multiplied by rounded days.
+                    </p>
+
+                    {/* ── Cost summary ─────────────────────────────────────────── */}
+                    <div style={{ display: "flex", gap: 16, fontSize: 12, flexWrap: "wrap" }}>
                       <span>Transport cost: <strong>{fmtCurrency(row.transportCost)}</strong></span>
                       <span>Fuel cost (of that): <strong>{fmtCurrency(row.fuelCost)}</strong></span>
                       <span>Disposal cost: <strong>{fmtCurrency(row.disposalCost)}</strong></span>
                       <span>Line total: <strong>{fmtCurrency(row.lineTotal)}</strong></span>
                       {!engineFired ? (
                         <span style={{ color: "var(--text-muted)" }}>
-                          Engine idle — pick a transport item + trucks + loads/day + capacity/load.
+                          Engine idle -- pick a transport item + trucks + loads/day + capacity/load.
                         </span>
                       ) : null}
                     </div>
+
                     {rowVariance && rowVariance.hasVariance ? (
                       <div style={{ marginTop: 10, padding: 8, background: "rgba(254, 170, 109, 0.16)", borderRadius: 4, fontSize: 12 }}>
-                        <strong style={{ color: "#B45309" }}>Rate variance since quoted:</strong>{" "}
+                        <strong style={{ color: "var(--status-warning)" }}>Rate variance since quoted:</strong>{" "}
                         {rowVariance.disposalDelta != null ? (
                           <span>
-                            disposal ${rowVariance.quotedDisposalRate ?? "?"} → ${rowVariance.currentDisposalRate ?? "?"}
+                            disposal ${rowVariance.quotedDisposalRate ?? "?"} -&gt; ${rowVariance.currentDisposalRate ?? "?"}
                             {" "}
                           </span>
                         ) : null}
                         {rowVariance.fuelDelta != null ? (
                           <span>
-                            · fuel ${rowVariance.quotedFuelPricePerLitre ?? "?"}/L → ${rowVariance.currentFuelPricePerLitre ?? "?"}/L
+                            &middot; fuel ${rowVariance.quotedFuelPricePerLitre ?? "?"}/L -&gt; ${rowVariance.currentFuelPricePerLitre ?? "?"}/L
                           </span>
                         ) : null}
                         {rowVariance.transportDelta != null ? (
                           <span>
-                            · transport ${rowVariance.quotedTransportRatePerDay ?? "?"}/day → ${rowVariance.currentTransportRatePerDay ?? "?"}/day
+                            &middot; transport ${rowVariance.quotedTransportRatePerDay ?? "?"}/day -&gt; ${rowVariance.currentTransportRatePerDay ?? "?"}/day
                           </span>
                         ) : null}
                         {canManage ? (

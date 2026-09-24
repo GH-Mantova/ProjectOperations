@@ -126,20 +126,13 @@ export class FormSectionInputDto {
 }
 
 /**
- * Legacy show/hide-style rule stored as a FormRule row — distinct from
- * the richer JSON FieldRule contract evaluated by RulesEngineService.
+ * A FormRule row's payload -- a canonical FieldRule contract stored as JSON
+ * in `definition`. The legacy show/hide primitive columns were dropped by
+ * migration `fv2_formrule_contract`.
  */
 export class FormRuleInputDto {
-  /** Field key whose value triggers the rule. */
-  @IsString() sourceFieldKey!: string;
-  /** Field key the effect is applied to. */
-  @IsString() targetFieldKey!: string;
-  /** Comparison operator name (string-typed; semantics are interpreted downstream). */
-  @IsString() operator!: string;
-  /** Optional comparison value (text-serialised). */
-  @IsOptional() @IsString() comparisonValue?: string;
-  /** Effect applied when the comparison matches; defaults to "SHOW". */
-  @IsOptional() @IsString() effect?: string;
+  /** Canonical FieldRule contract tree evaluated by the client and server. */
+  @IsOptional() definition?: unknown;
 }
 
 /**

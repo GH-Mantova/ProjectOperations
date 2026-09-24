@@ -549,11 +549,7 @@ export class FormsService {
         : [{ title: "Section 1", sectionOrder: 1, fields: [] }],
       rules: latest
         ? latest.rules.map((rule) => ({
-            sourceFieldKey: rule.sourceFieldKey,
-            targetFieldKey: rule.targetFieldKey,
-            operator: rule.operator,
-            comparisonValue: rule.comparisonValue ?? undefined,
-            effect: rule.effect
+            definition: rule.definition ?? undefined
           }))
         : []
     };
@@ -778,11 +774,7 @@ export class FormsService {
       await tx.formRule.createMany({
         data: (dto.rules ?? []).map((rule) => ({
           versionId: version.id,
-          sourceFieldKey: rule.sourceFieldKey,
-          targetFieldKey: rule.targetFieldKey,
-          operator: rule.operator,
-          comparisonValue: rule.comparisonValue ?? null,
-          effect: rule.effect ?? "SHOW"
+          definition: (rule.definition ?? Prisma.JsonNull) as Prisma.InputJsonValue
         }))
       });
     }

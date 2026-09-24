@@ -295,7 +295,16 @@ describe("FormsService.createTemplate", () => {
       {
         ...VALID_TEMPLATE_DTO,
         rules: [
-          { sourceFieldKey: "notes", targetFieldKey: "signoff", operator: "EQUALS", comparisonValue: "yes" }
+          {
+            definition: {
+              trigger: "on_change",
+              conditionGroup: {
+                logic: "AND",
+                conditions: [{ fieldKey: "notes", operator: "equals", value: "yes" }]
+              },
+              actions: [{ type: "show", target: "signoff" }]
+            }
+          }
         ]
       } as never,
       "user-1"
@@ -306,10 +315,7 @@ describe("FormsService.createTemplate", () => {
         data: expect.arrayContaining([
           expect.objectContaining({
             versionId: "ver-new",
-            sourceFieldKey: "notes",
-            targetFieldKey: "signoff",
-            operator: "EQUALS",
-            effect: "SHOW"
+            definition: expect.objectContaining({ trigger: "on_change" })
           })
         ])
       })

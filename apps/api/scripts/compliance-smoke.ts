@@ -259,11 +259,14 @@ async function main() {
       ],
       rules: [
         {
-          sourceFieldKey: "site_ready",
-          targetFieldKey: "comments",
-          operator: "equals",
-          comparisonValue: "No",
-          effect: "require"
+          definition: {
+            trigger: "on_change",
+            conditionGroup: {
+              logic: "AND",
+              conditions: [{ fieldKey: "site_ready", operator: "equals", value: "No" }]
+            },
+            actions: [{ type: "require", target: "comments" }]
+          }
         }
       ]
     }).expect(201);

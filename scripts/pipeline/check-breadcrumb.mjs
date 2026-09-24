@@ -13,14 +13,28 @@
 // Exit 0 = clean.  Exit 1 = a breadcrumb is malformed.  Exit 2 = a station is silent
 // (only with --freshness; never in CI, where no station has run).
 //
-// Run from the repo root.
+// Runs from any working directory.
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
+// Every path below is resolved from THIS MODULE's location, never from process.cwd().
+// A station's shell opens in the Cowork session's outputs folder, which is not a git
+// repository (DOCTRINE section 9.4), and section 9.1's "-File" cure moves a script out of
+// the repo as well. A cwd-relative constant therefore made these scripts report a fact
+// about the WORLD -- "the rotation has no state", "docs/pr-prompts does not exist" -- for
+// what was only a wrong working directory. The *_REL names are what messages print, so
+// output stays repo-relative and machine-independent; the resolved names are what fs and
+// git touch.
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+// DIR stays repo-relative on purpose: it is a git PATHSPEC and it is the key shape of
+// `trackedSet`, whose members come from `git ls-tree` as repo-relative paths. Comparing an
+// absolute path against that set would miss every entry and report every breadcrumb
+// UNTRACKED -- a uniform wrong answer at exit 0, which is the section 9.6 shape.
 const DIR = 'docs/pr-prompts';
-const ROOT = process.cwd();
+const DIR_ABS = join(ROOT, DIR);
 
 // The report contract became real when PR #1309 merged at 2026-08-24T22:26Z.
 // Breadcrumbs written before it are NOT retroactively failed: introducing a gate by
@@ -104,7 +118,7 @@ function tracked() {
   const probes = [`git ls-tree -r --name-only origin/main -- ${DIR}`, `git ls-files ${DIR}`];
   for (const cmd of probes) {
     try {
-      const set = new Set(execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024 })
+      const set = new Set(execSync(cmd, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024 })
         .split('\n').map((s) => s.trim()).filter(Boolean));
       if (set.size) return set;
     } catch { /* instrument unavailable — try the next one */ }
@@ -153,6 +167,7 @@ export function breadcrumbsFromPrFiles(prs, dir, nameRe) {
 function fromOpenPrs() {
   try {
     const raw = execSync('gh pr list --state open --limit 100 --json files', {
+      cwd: ROOT,
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 32 * 1024 * 1024,
     });
     return breadcrumbsFromPrFiles(JSON.parse(raw), DIR, NAME_RE);
@@ -222,14 +237,14 @@ const args = process.argv.slice(2);
 const freshness = args.includes('--freshness');
 const only = (() => { const i = args.indexOf('--station'); return i === -1 ? null : args[i + 1]; })();
 
-if (!existsSync(DIR)) { console.error(C.red('REJECT') + `  ${DIR} does not exist`); process.exit(1); }
+if (!existsSync(DIR_ABS)) { console.error(C.red('REJECT') + `  ${DIR} does not exist`); process.exit(1); }
 
 const trackedSet = tracked();
 // Freshness must count breadcrumbs that LANDED on main but are not in THIS working
 // directory, or a tree behind main reports a station SILENT on the very run whose
 // breadcrumb just merged. Structural checks still run only on files present on
 // disk — a file we cannot read cannot be validated.
-const onDisk = readdirSync(DIR).filter((f) => NAME_RE.test(f));
+const onDisk = readdirSync(DIR_ABS).filter((f) => NAME_RE.test(f));
 const fromMain = trackedSet
   ? [...trackedSet].map((p) => p.slice(p.lastIndexOf('/') + 1)).filter((f) => NAME_RE.test(f))
   : [];
@@ -252,14 +267,14 @@ for (const f of all.sort()) {
 
   // Landed on main, absent from this working tree: it counts for freshness and
   // is by definition tracked, so there is nothing left to check here.
-  if (!existsSync(`${DIR}/${f}`)) continue;
+  if (!existsSync(join(DIR_ABS, f))) continue;
 
   if (`${date}T${hhmm}` < CONTRACT_FROM) { skipped++; continue; }
   if (trackedSet && !trackedSet.has(`${DIR}/${f}`)) {
     console.log(C.yel('NOTE  ') + `  ${f} is UNTRACKED — it reaches nobody until a board PR commits it`);
   }
   checked++;
-  const fails = checkOne(`${DIR}/${f}`, f);
+  const fails = checkOne(join(DIR_ABS, f), f);
   if (fails.length) {
     bad++;
     console.log(C.red('REJECT') + `  ${f}`);

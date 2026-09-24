@@ -11,18 +11,29 @@
 //   node scripts/pipeline/next-sweep.mjs --advance   # ...and record that it ran
 //   node scripts/pipeline/next-sweep.mjs --status    # show the whole rotation
 //
-// Run from the repo root.
+// Runs from any working directory.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const FILE = 'docs/pipeline/sweep-rotation.json';
+// Every path below is resolved from THIS MODULE's location, never from process.cwd().
+// A station's shell opens in the Cowork session's outputs folder, which is not a git
+// repository (DOCTRINE section 9.4), and section 9.1's "-File" cure moves a script out of
+// the repo as well. A cwd-relative constant therefore made these scripts report a fact
+// about the WORLD -- "the rotation has no state", "docs/pr-prompts does not exist" -- for
+// what was only a wrong working directory. The *_REL names are what messages print, so
+// output stays repo-relative and machine-independent; the resolved names are what fs and
+// git touch.
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const FILE_REL = 'docs/pipeline/sweep-rotation.json';
+const FILE = fileURLToPath(new URL('../../' + FILE_REL, import.meta.url));
 const args = process.argv.slice(2);
 const advance = args.includes('--advance');
 const status = args.includes('--status');
 const stampArg = (() => { const i = args.indexOf('--utc'); return i === -1 ? null : args[i + 1]; })();
 
 if (!existsSync(FILE)) {
-  console.error(`REJECT  ${FILE} is missing — the rotation has no state, so "rotate" cannot mean anything`);
+  console.error(`REJECT  ${FILE_REL} is missing — the rotation has no state, so "rotate" cannot mean anything`);
   process.exit(1);
 }
 

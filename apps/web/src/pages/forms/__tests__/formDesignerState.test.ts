@@ -51,7 +51,6 @@ function seedDraft(): DesignerDraft {
         ]
       }
     ],
-    rules: []
   };
 }
 
@@ -323,23 +322,10 @@ describe("moveFieldInDraft", () => {
 });
 
 describe("deleteFieldFromDraft", () => {
-  it("removes the field and cascades any rule referencing its key", () => {
-    const draft: DesignerDraft = {
-      ...seedDraft(),
-      rules: [
-        {
-          tempId: "r1",
-          sourceFieldKey: "machine",
-          targetFieldKey: "hours",
-          operator: "equals",
-          comparisonValue: "CAT 320",
-          effect: "SHOW"
-        }
-      ]
-    };
+  it("removes the field from its section", () => {
+    const draft: DesignerDraft = { ...seedDraft() };
     const next = deleteFieldFromDraft(draft, "sec1", "f1");
     expect(next.sections[0].fields.map((f) => f.tempId)).toEqual(["f2"]);
-    expect(next.rules).toEqual([]);
   });
 });
 
@@ -367,12 +353,11 @@ describe("section state (cog popover targets)", () => {
 });
 
 describe("setDraftLayout (Classic/Card toggle)", () => {
-  it("switches the layout without touching sections or rules", () => {
+  it("switches the layout without touching sections", () => {
     const draft = seedDraft();
     const next = setDraftLayout(draft, "card");
     expect(next.layout).toBe("card");
     expect(next.sections).toBe(draft.sections);
-    expect(next.rules).toBe(draft.rules);
   });
 });
 

@@ -212,7 +212,7 @@ retired `local_*` filter — the 2026-09-15 rename correction) and reading `Crea
 | `b1aab07d` | 2026-09-24T14:09:48.2511937Z | 04's run, = its `lastRunAt` to the millisecond |
 
 Two of the three rows are a positive control calibrating the instrument against `lastRunAt` values
-that were never in doubt. The 14:55Z MCP read then agreed with the directory to the millisecond
+that were never in doubt. The later MCP read then agreed with the directory to the millisecond
 (`14:22:54.276` vs `14:22:54.2759161`), which closes it: **05 ran on schedule; there is no gap.**
 
 **Why this earns a finding rather than a note.** The station doc's cross-check table treats

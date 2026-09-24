@@ -340,7 +340,39 @@ closed vocabulary: `needs-marco`, `blocked`, `failed`, `paused`, `no-pr-opened`,
 `abandoned`. Adding a seventh reason is a change to QUEUE-LAYOUT.md and the shared
 constant, never a new folder.
 
-**Reports are not prompts.** Breadcrumbs and run reports go in `docs/pr-prompts/reports/`.
+**Reports are not prompts.** Under this standard, breadcrumbs and run reports will go in
+`docs/pr-prompts/reports/`.
+
+🔴🔴 **THAT DIRECTORY IS NOT BUILT AND IS NOT THE LIVE DESTINATION — WRITE YOUR BREADCRUMB AT
+DEPTH 1, AS THE STATION CONTRACT SAYS.** `REPORTS_DIR_NOT_BUILT_V1` The sentence above is written
+in the PRESENT tense inside the document every station is told it can trust, and it contradicts the
+station-contract REPORT CONTRACT — the canonical block byte-identical in all seven station docs —
+which sends breadcrumbs to
+`docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md`, i.e. **depth 1**. The
+*"Not yet enforced"* line below is true of the whole section and is not enough on its own: a run
+that reads §8.5 last acts on the present-tense sentence, not on the caveat four lines under it.
+
+[MEASURED] 2026-09-24T02:1xZ by Station 04 at `fcdf66c0` (F5), re-measured by Station 00 at
+03:3xZ at `ea1d6500`:
+
+| probe | result |
+|---|---|
+| `docs/pr-prompts/reports/` on disk | **ABSENT** |
+| `git ls-tree -r --name-only origin/main -- docs/pr-prompts/reports/` | **0** |
+| tracked breadcrumbs (`/00-NN-`) on `origin/main` — POSITIVE control | **642** (`archive/` 641, depth 1 **1**) |
+| a freshly minted needle over the same tree listing — NEGATIVE control | **0** |
+
+🔴 **The cost is not cosmetic.** `check-breadcrumb.mjs`’s structure pass iterates
+`readdirSync(DIR)` at **depth 1 only** (§9.5), so a report written into `reports/` would fail no
+check, appear in no validator output, and be seen by nobody — the nine-day `qa-findings.md` failure
+with a different path, reached through a binding instruction rather than through a `.gitignore`
+line.
+
+🔧 **Until S4 lands, the live destination is depth 1.** When S4 builds `reports/`, retire this
+block in the same PR that lands it. ⚠️ **Falsifying probe: `git ls-tree -r --name-only origin/main
+-- docs/pr-prompts/reports/`** (trailing slash AND `-r`, §9.2). If it ever returns a path, `reports/`
+exists and this correction is spent. Found by Station 04 2026-09-24T02:1xZ (F5), landed by
+Station 00 at 03:3xZ.
 31 report files were sitting loose in the queue root when this standard was written.
 
 **Nothing is ever deleted.** Retiring a prompt means moving it.

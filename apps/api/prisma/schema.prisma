@@ -3954,6 +3954,25 @@ model ScopeWasteItem {
   travelSource              String?            @map("travel_source")
   travelDetail              String?            @map("travel_detail")
   travelResolvedAt          DateTime?          @map("travel_resolved_at")
+  // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- traffic index, planning minutes,
+  // total trip km, and provenance flags. All nullable; absent = row predates S8g
+  // or has no route. No backfill.
+  //   travelIndex              -> estimator-editable modelled traffic allowance
+  //                              (approximated/free_flow, floor 1.00, 2 dp).
+  //                              NOT measured peak-hour traffic.
+  //   travelIndexSource        -> "geoapify" | "manual" | "none"
+  //   travelPlanningMinutesOneWay -> average(baseline, baseline x index); used for
+  //                              cycle time and loadsPerDay; not km.
+  //   totalTripKm              -> trips x 2 x one-way km. Index changes do NOT
+  //                              move this; it moves only when trips or route change.
+  //   loadsSource              -> "cycle" (derived from planning minutes) | "manual"
+  //   dailyKmSource            -> "derived" (totalTripKm / trucks) | "manual"
+  travelIndex               Decimal?           @map("travel_index") @db.Decimal(4, 2)
+  travelIndexSource         String?            @map("travel_index_source")
+  travelPlanningMinutesOneWay Int?             @map("travel_planning_minutes_one_way")
+  totalTripKm               Decimal?           @map("total_trip_km") @db.Decimal(10, 2)
+  loadsSource               String?            @map("loads_source")
+  dailyKmSource             String?            @map("daily_km_source")
   createdById               String             @map("created_by_id")
   createdBy                 User               @relation("ScopeWasteItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt                 DateTime           @default(now()) @map("created_at")
@@ -4421,12 +4440,16 @@ model OperationsSettings {
   roadDistanceFactor   Decimal? @map("road_distance_factor") @db.Decimal(4, 2)
   avgTruckSpeedKmh     Int?     @map("avg_truck_speed_kmh")
   tipTurnaroundMinutes Int?     @map("tip_turnaround_minutes")
-  // AU Security of Payment Act â€" statutory window (business days) in which
+  // AU Security of Payment Act -- statutory window (business days) in which
   // a respondent must issue a payment schedule after receiving a payment
   // claim. Varies by state (NSW 10, QLD 15, VIC 10, etc.); Marco sets the
   // value for the jurisdiction the tenant operates in. NULL = fall back to
   // SOPA_DEFAULT_RESPONSE_DAYS in the contracts service.
   sopaResponseDays   Int?      @map("sopa_response_days")
+  // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- Geoapify vehicle mode for the
+  // routing API. NULL = default "truck". Marco can change without a deploy.
+  // Valid values: "truck" | "medium_truck" | "heavy_truck" (Geoapify modes).
+  routeVehicleMode   String?   @map("route_vehicle_mode")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   updatedById        String?   @map("updated_by_id")
   updatedBy          User?     @relation("OperationsSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)

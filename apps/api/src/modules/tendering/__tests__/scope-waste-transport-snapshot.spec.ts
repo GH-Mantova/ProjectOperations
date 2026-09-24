@@ -125,7 +125,7 @@ describe("computeCostEngine — snapshot precedence", () => {
     const liveRate = makeTransportRate(1400); // higher than snapshot
     const { prisma, rateResolver, notifications } = buildMocks(row, liveRate);
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
 
     // Trigger a reprice via a pricing-input PATCH (qty change).
     // The engine should use the existing snapshot ($1,200), not the live rate ($1,400).
@@ -162,7 +162,7 @@ describe("computeCostEngine — live rate fallback when snapshot is NULL", () =>
     const liveRate = makeTransportRate(1200);
     const { prisma, rateResolver, notifications } = buildMocks(row, liveRate);
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
 
     await svc.update("tender-1", "item-1", { qty: 500 });
 
@@ -203,7 +203,7 @@ describe("update() — notes-only PATCH does not reprice", () => {
     const liveRate = makeTransportRate(1400);
     const { prisma, rateResolver, notifications } = buildMocks(row, liveRate);
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
 
     // Notes-only PATCH: only description field that is NOT in PRICING_INPUTS
     await svc.update("tender-1", "item-1", { notes: "updated notes" });
@@ -238,7 +238,7 @@ describe("update() — notes-only PATCH does not reprice", () => {
     const liveRate = makeTransportRate(1400);
     const { prisma, rateResolver, notifications } = buildMocks(row, liveRate);
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
 
     await svc.update("tender-1", "item-1", { description: "New description" });
 
@@ -276,7 +276,7 @@ describe("variance() — transport threshold", () => {
     const rateResolver = { resolveRate: jest.fn().mockResolvedValue({ value: 85, unit: "t" }) };
     const notifications = { create: jest.fn() };
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
     const result = await svc.variance("tender-1", "item-1");
 
     expect(result.transportDelta).toBeCloseTo(1.0, 2);
@@ -305,7 +305,7 @@ describe("variance() — transport threshold", () => {
     const rateResolver = { resolveRate: jest.fn().mockResolvedValue({ value: 85, unit: "t" }) };
     const notifications = { create: jest.fn() };
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
     const result = await svc.variance("tender-1", "item-1");
 
     expect(result.transportDelta).toBeCloseTo(0.5, 2);
@@ -332,7 +332,7 @@ describe("variance() — transport threshold", () => {
     const rateResolver = { resolveRate: jest.fn().mockResolvedValue({ value: 86, unit: "t" }) };
     const notifications = { create: jest.fn() };
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
     const result = await svc.variance("tender-1", "item-1");
 
     expect(result.hasVariance).toBe(true);
@@ -359,7 +359,7 @@ describe("variance() — transport threshold", () => {
     const rateResolver = { resolveRate: jest.fn().mockResolvedValue({ value: 85, unit: "t" }) };
     const notifications = { create: jest.fn() };
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
     const result = await svc.variance("tender-1", "item-1");
 
     // No snapshot means we cannot compute a delta
@@ -428,7 +428,7 @@ describe("escalateVariance() — transport-only variance notification body", () 
     const rateResolver = { resolveRate: jest.fn().mockResolvedValue({ value: 85, unit: "t" }) };
     const notifications = { create: notificationsCreate };
 
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, {} as never);
     await svc.escalateVariance("tender-1", "item-1", "actor-1");
 
     expect(notificationsCreate).toHaveBeenCalledTimes(1);

@@ -249,21 +249,21 @@ describe("fallback state (source assertions)", () => {
     expect(wasteSource).toContain("no suggested allowance");
   });
 
-  it("fallback does NOT show Geoapify route chip (green ok-border chip)", () => {
-    // The Geoapify route chip uses ok-border styling (green). The fallback uses
-    // status-accent/orange styling. We verify the ok-border chip render appears
+  it("fallback does NOT show Geoapify route chip (status-active chip)", () => {
+    // The route chip is styled --status-active (the palette positive colour) and
+    // the fallback --status-warning. We verify that chip render appears
     // inside the route branch (after the `travelSource === "route"` guard), not
     // inside the fallback branch.
     const routeBranchAt = wasteSource.indexOf('travelSource === "route" && row.travelKm');
-    const geoapifyChipRender = wasteSource.indexOf("ok-border");
+    const geoapifyChipRender = wasteSource.indexOf("var(--status-active)");
     expect(routeBranchAt).toBeGreaterThan(-1);
     expect(geoapifyChipRender).toBeGreaterThan(-1);
-    // The ok-border chip must appear inside the route branch (after the guard).
+    // That chip must appear inside the route branch (after the guard).
     expect(geoapifyChipRender).toBeGreaterThan(routeBranchAt);
-    // Fallback (straight-line) uses orange styling, not ok-border.
+    // Fallback (straight-line) uses --status-warning, never --status-active.
     const straightLineAt = wasteSource.indexOf('travelSource === "straight-line"');
     const fallbackSection = wasteSource.slice(straightLineAt, routeBranchAt);
-    expect(fallbackSection).not.toContain("ok-border");
+    expect(fallbackSection).not.toContain("var(--status-active)");
   });
 });
 

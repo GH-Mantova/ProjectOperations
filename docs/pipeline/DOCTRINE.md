@@ -1059,6 +1059,47 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach**, because piping a JSON
   array straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge
   queue select **#552 — the production-data PR.**
+
+  🔴🔴 **THIRD ARRIVAL SHAPE, 2026-09-24 — `& powershell.exe -NoProfile -Command $str` ISSUED
+  FROM INSIDE A `.ps1` STRIPS THE QUOTES AND RE-PARSES THE jq EXPRESSION’S `|` AS A POWERSHELL
+  PIPELINE OPERATOR, SO `gh` IS NEVER INVOKED AND NO `gh`-SIDE jq FINGERPRINT EXISTS TO GREP FOR.**
+  `JQ_TRAP_THIRD_TRANSPORT_IS_CALLER_SIDE_V1`
+
+  Both shapes recorded above attribute the failure to `gh` (`failed to parse jq expression`,
+  `invalid escape sequence`). In this third transport the jq expression is **truncated at the pipe**
+  and its tail is executed as a caller-side command, so a run that greps for a `gh`-side signature as
+  the trap’s fingerprint finds nothing and has *"the jq trap no longer reproduces"* available — which
+  retires a live trap on the one reading that stops an agent merging Marco’s work.
+
+  [MEASURED] 2026-09-24T14:1xZ by Station 04 at `11c07025` (F1, DISPATCHED to 00), reproduced
+  independently by Station 00 at 16:3xZ at `65e5d1bc`, PS 5.1.26100.9444, from a `.ps1` run with
+  `-File` so no `-Command` layer of the caller’s own is in play:
+
+  | probe | result |
+  |---|---|
+  | the argument as it ARRIVED | `--jq .labels[] \| join(",")` — **quotes gone**, `\|` now a PowerShell pipeline operator |
+  | who raised the error | **the child PowerShell**, at `line:1`: `CommandNotFoundException: The term 'join' is not recognized` |
+  | a `gh`-side jq fingerprint anywhere in the output | **NONE** — `failed to parse jq expression` and `invalid escape sequence` both **absent** |
+  | exit code | **1** — loud, never silent |
+  | POSITIVE control: plain single-quoted `--jq '.labels[].name'`, issued directly | exit **0**, `do-not-merge` on open `#2167` — a correct label reading |
+  | NEGATIVE control: a freshly minted needle over the same output | **0** |
+  | control that the CALLER is the parser: the same `& powershell.exe -Command` with **no `gh` at all** | still mangled — `ParserError: Missing expression after unary operator ','`, **not** `CommandNotFoundException` |
+
+  🔧 **The fingerprint is the ABSENCE of a `gh`-side jq error PLUS an error raised by a PowerShell —
+  never a particular exception type.** The last row is why: change the payload and the caller-side
+  error changes CLASS, from `CommandNotFoundException` to a bare `ParserError`. That is the same
+  lesson the paragraph above already teaches about the arrival STRING (*"ILLUSTRATION … do not read a
+  different mangling as a non-reproduction"*), applied to the error CLASS, which carried no such
+  warning — and the error class is what a reader actually greps for.
+
+  ⚠️ **The headline rules are untouched and were re-confirmed on both runs:** keep double quotes out
+  of jq expressions, or use `--json` plus `ConvertFrom-Json`; and every form measured failed **loudly**
+  at exit 1, never silently. What is added is a transport and a fingerprint, not a new prohibition.
+  ⚠️ **Falsifying probe: the table above.** Issue `--jq ".labels[] | join(\",\")"` through
+  `& powershell.exe -NoProfile -Command $str` from inside a `.ps1`. If `gh` itself ever raises the
+  error, or the output ever carries `failed to parse jq expression`, this row is wrong and must be
+  re-measured. Found by Station 04 2026-09-24T14:1xZ (F1), re-measured and landed by Station 00 at
+  2026-09-24T16:3xZ.
 - 🔴 **`@(ConvertFrom-Json …).Count` answers `1` for an EMPTY array and `1` for a
   forty-element one.** PS 5.1 emits a parsed JSON array as a **single object**, so an array
   subexpression wrapping the call — inline or piped — counts one item regardless of length.

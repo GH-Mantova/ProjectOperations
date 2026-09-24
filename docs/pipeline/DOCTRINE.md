@@ -702,6 +702,59 @@ here now because they are true for **every** station.
   🔧 **Count Windows-path occurrences in node, or put the single-backslash needle in DOUBLE quotes**
   — and control any path search against a path you know is present. Found by Station 04
   2026-09-06T22:1xZ (F4), landed by Station 00 at 23:3xZ.
+- 🔴 **A `\b` — OR ANY BACKSLASH ESCAPE — WRITTEN FOR A `node -e` REGEX ARRIVES DOUBLED WHEN THAT
+  SOURCE IS CARRIED IN A POWERSHELL DOUBLE-QUOTED STRING, BECAUSE POWERSHELL DOES NOT CONSUME
+  BACKSLASHES — AND THE NEGATIVE CONTROL THIS DOCUMENT PRESCRIBES CARRIES THE SAME ESCAPE, SO IT
+  RETURNS ZERO FOR THE WRONG REASON AND CANNOT CATCH IT.**
+  `NODE_E_REGEX_BACKSLASH_DOUBLES_THROUGH_POWERSHELL_V1`
+
+  **Mechanism.** PowerShell double quotes expand `$` and backticks and leave `\` **alone**. A writer
+  escaping *"for the shell"* therefore writes four backslashes before the `b`; node receives that
+  verbatim as JS source, the string literal evaluates to two, and `new RegExp` compiles a **literal
+  backslash** followed by `b` — a sequence that occurs in no log this pipeline writes. Nothing warns,
+  nothing is empty in a way §9.6 can see, and the call exits 0.
+
+  [MEASURED] 2026-09-24T04:2xZ by Station 00 (scheduled) at `45bbffbc`, on §10.1 step 1’s lane probe
+  — *"RULE 2 … has exactly one live probe"* — over the 948 `docs/pr-prompts/processed/pr-*.log`:
+
+  | form | #2148 | #2135 | #2131 | #2127 | POSITIVE control | NEGATIVE control |
+  |---|---|---|---|---|---|---|
+  | a `RegExp` built with a shell-escaped `\b` — **the failing form** | **0** | **0** | 0 | **0** | `marco.:true` → **706**, PASSES | a `\b`-bearing needle → 0 |
+  | `indexOf` plus an explicit next-character digit guard — **the cure** | **2** | **1** | 0 | **2** | `PR #2147` / `PR #2150`, board PRs the watcher never opened → **0 / 0** | a backslash-free minted needle → 0 |
+
+  🔴 **The cost is the worst shape available in this document: a uniform zero across a heterogeneous
+  set, on the one probe §10.1 calls RULE 2’s only live probe.** Three of those four PRs carry a real
+  `marco:true` verdict — `#2148` (label), `#2135` (`.claude/hooks/guard.mjs`), `#2127`
+  (`apps/api/…/field.service.ts`). Read through the failing form all four answer **`NO LOG`**, whose
+  prescribed reading in §10.1 step 2 is *"it did not come through the watcher"*. **Three live Marco
+  routings would have been hand-classified as second lane**, on a board where 00 may merge. That is
+  §9.6 with a merge button attached, reached through the NEEDLE rather than through the corpus.
+
+  🔴 **And the standard control pair is structurally blind to it.** The positive control that passed
+  (`marco.:true`) contains no backslash, so it certifies the corpus and the reader and says nothing
+  about the escape; the negative control shape this document prescribes everywhere carries the same
+  `\b` and returns 0 for the wrong reason. **Both controls passed while every real query was broken** —
+  the run that met this caught it on the uniform zero, not on its controls.
+
+  🔧 **Two cures, and the first is free: put NO backslash in a needle that crosses a PowerShell layer
+  into `node -e`.** Match with `indexOf` plus an explicit next-character guard, which is what the `\b`
+  was for. If a regex is genuinely required, build the boundary from a character class rather than an
+  escape — or **write the script to a `.mjs` file and run it from disk**, so no shell layer ever
+  touches the source. That second form is what landed this bullet.
+
+  ⚠️ **A control must carry the SAME escape as the query it certifies.** A backslash-free control over a
+  backslash-bearing needle certifies nothing, and that is a rule about every probe in §9, not only this
+  one.
+
+  ⚠️ **This is NOT the single-quoted Windows-path bullet above.** That one is about a path literal
+  inside PowerShell’s own `Select-String`; this one is about a regex escape surviving into a **different
+  language’s** parser, and its blast radius is every `node -e` one-liner — the transport §9.3 recommends
+  for exactly the file work stations do most.
+
+  ⚠️ **Falsifying probe: the two-row table above.** Re-run both forms over
+  `docs/pr-prompts/processed/pr-*.log` for a PR you know carries a watcher verdict. If the
+  shell-escaped form ever returns a non-zero count, this bullet is wrong and must be re-measured.
+  Found and landed by Station 00 2026-09-24T04:3xZ.
 - 🔴 **`gh run view <run> --job <job> --log` EMITS THREE TAB-SEPARATED COLUMNS, AND COLUMN 1 IS THE
   JOB NAME — so grepping the whole line for anything that appears in the job's own name matches EVERY
   LINE OF THE LOG.** [MEASURED] 2026-09-07T18:4xZ by Station 00 on the `Approval receipt (CP-26)` job of

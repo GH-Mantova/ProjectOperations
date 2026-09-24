@@ -941,7 +941,7 @@ graph LR
 
 ### Model: ScopeWasteItem
 
-- Table: `scope_waste_items` | Domain: Estimating | Fields: 51
+- Table: `scope_waste_items` | Domain: Estimating | Fields: 57
 - Belongs to (FK out):
   - `tender` -> **Tender** (tenderId, onDelete Cascade)
   - `card` -> **ScopeCard** (cardId, onDelete Cascade)
@@ -949,7 +949,7 @@ graph LR
   - `asset` -> **Asset** (assetId, onDelete SetNull)
   - `mapLocation` -> **MapLocation** (mapLocationId, onDelete SetNull)
   - `createdBy` -> **User** (createdById, onDelete Restrict)
-- Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal, qtyTrucks, loadsPerTruckPerDay, capacityPerLoad, transportCost, fuelCost, disposalCost, quotedDisposalRate, quotedFuelPricePerLitre, quotedTransportRatePerDay, markupOverride
+- Suggested measures: qty, wasteLoads, truckDays, ratePerTonne, ratePerLoad, lineTotal, qtyTrucks, loadsPerTruckPerDay, capacityPerLoad, transportCost, fuelCost, disposalCost, quotedDisposalRate, quotedFuelPricePerLitre, quotedTransportRatePerDay, markupOverride, totalTripKm
 - Suggested dimensions: tender, card, discipline, wasteType, transportRate, asset, quoteDestination, mapLocation, createdBy
 - Time fields: travelResolvedAt
 
@@ -3025,7 +3025,7 @@ graph LR
 
 ### Model: OperationsSettings
 
-- Table: `operations_settings` | Domain: Unclassified | Fields: 12
+- Table: `operations_settings` | Domain: Unclassified | Fields: 13
 - Belongs to (FK out):
   - `updatedBy` -> **User** (updatedById, onDelete SetNull)
 - Suggested measures: fuelPricePerLitre, travelRatePerKm, sopaResponseDays

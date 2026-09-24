@@ -37,14 +37,31 @@
 // Exit 2 = could not tell (bad input) — deliberately NOT an alarm.
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+// Every path below is resolved from THIS MODULE's location, never from process.cwd().
+// A station's shell opens in the Cowork session's outputs folder, which is not a git
+// repository (DOCTRINE section 9.4), and section 9.1's "-File" cure moves a script out of
+// the repo as well. A cwd-relative constant therefore made these scripts report a fact
+// about the WORLD -- "the rotation has no state", "docs/pr-prompts does not exist" -- for
+// what was only a wrong working directory. The *_REL names are what messages print, so
+// output stays repo-relative and machine-independent; the resolved names are what fs and
+// git touch.
+const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 export const DEFAULT_THRESHOLD_HOURS = 6;
+// PAUSE_FILE stays repo-relative: it is EXPORTED, it is asserted on by
+// __tests__/pipeline-heartbeat.test.mjs, and it is printed in operator guidance where an
+// absolute path on one machine would be useless. PAUSE_FILE_ABS is what fs touches.
 export const PAUSE_FILE = "docs/pipeline/pause.json";
+const PAUSE_FILE_ABS = join(REPO_ROOT, PAUSE_FILE);
 // A pause may not exceed this. An UNBOUNDED pause is an off switch, and an off switch
 // behind a JSON file is how an alarm dies quietly: `"until": "2099-01-01"` would silence
 // this check forever and nothing would ever say so. Chosen to cover a long weekend.
 export const MAX_PAUSE_HOURS = 72;
 const DIR = "docs/pr-prompts";
+const DIR_ABS = join(REPO_ROOT, DIR);
 
 // Same shape lint-station and check-breadcrumb use. Kept local rather than imported so
 // this check has no dependency on the thing it is watching.
@@ -125,12 +142,12 @@ export function evaluateHeartbeat({ nowMs, newest, pause, thresholdHours = DEFAU
 const invokedDirectly = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, "/")}`).href;
 if (invokedDirectly) {
   const thresholdHours = Number(process.env.HEARTBEAT_THRESHOLD_HOURS || DEFAULT_THRESHOLD_HOURS);
-  if (!existsSync(DIR)) {
-    console.log(`SKIP: ${DIR} not found — run from the repo root.`);
+  if (!existsSync(DIR_ABS)) {
+    console.log(`SKIP: ${DIR} not found at ${DIR_ABS} — this script resolves it from its own location, so a missing directory is a real absence, not a wrong working directory.`);
     process.exit(2);
   }
-  const newest = newestBreadcrumb(readdirSync(DIR));
-  const pause = existsSync(PAUSE_FILE) ? parsePause(readFileSync(PAUSE_FILE, "utf8")) : null;
+  const newest = newestBreadcrumb(readdirSync(DIR_ABS));
+  const pause = existsSync(PAUSE_FILE_ABS) ? parsePause(readFileSync(PAUSE_FILE_ABS, "utf8")) : null;
   const r = evaluateHeartbeat({ nowMs: Date.now(), newest, pause, thresholdHours });
   console.log(`[heartbeat] ${r.state.toUpperCase()}: ${r.message}`);
   process.exit(r.ok ? 0 : 1);

@@ -144,6 +144,20 @@ export function TipFinderDrawer({
             initialTenderId={tenderId}
             onFacilityChosen={onFacilityChosen}
           />
+          {/* WASTE_TRAVEL_INDEX_UI_V1 (scopecards-s8h) -- explain the distance
+              discrepancy between the finder list and the line price. The finder
+              ranks on straight-line (fast and free); once you select a tip the
+              line prices on the real route. Both figures are correct for their
+              purpose -- the screen says so here so nobody reads it as a bug. */}
+          <p
+            style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 16 }}
+            data-testid="tip-finder-rank-note"
+          >
+            The finder ranks on straight-line distance, which is fast and free.
+            Once you select a tip, the line saves that facility and prices it on
+            the <strong>real route</strong> -- so the distance on the line may
+            differ from the distance shown here. That is expected.
+          </p>
         </div>
       </div>
     </>

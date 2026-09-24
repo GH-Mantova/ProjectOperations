@@ -375,3 +375,36 @@ worktrees are not 00's lane.
   not read and no claim above rests on it.
 - **Did not leave this report in the session `outputs` folder.** It was staged there only because the
   file tool cannot reach `C:\po-wt`, then copied into this PR's worktree — read back below.
+
+---
+
+## ADDENDUM — 2026-09-24T18:4xZ, same run, later measurement  `ADDENDUM_0029_V1`
+
+**Two things happened after the body above was written and merged as #2174, and leaving them only in
+a PR body would put this run's WHAT CHANGED out of date in the tracked tree.**
+
+### A — Station 04's run landed its breadcrumb at 18:10Z, four minutes before I started
+
+`00-04-scanner-2026-09-24-1810-repo-hygiene-571-of-577-local-heads-have-no-live-remote-and-a-jq-string-literal-reads-as-an-unlabelled-board.md`
+arrived at depth 1 **after** my COLLECT pass had already counted 1 breadcrumb. This is exactly the
+mid-run collision the four-row table predicts (00 hourly × 04 every 4 h) and it is **not** a defect —
+but it does mean a collect can be complete when taken and incomplete ten minutes later. Its F1 (571 of
+577 local heads stale) and F2 (`sup-cwd-paths` holds the only copy of 2 files, branch absent from the
+21 live remote heads) are **ESCALATED by 04 to Marco** and are left with him; F2 sharpens this run's
+own F5 with the branch-side fact that the work is unpushed.
+
+### B — 04's F3 was DISPATCHED to this station, and it is landed, not deferred
+
+F3: a `--jq` string literal silently reads the parked board as **released**. Landed into DOCTRINE §9.4
+as `JQ_STRING_LITERAL_STRIPPED_UNDER_FILE_TOO_V1` in **#2175**, with the `instruments` canonical hash
+deliberately re-recorded (`35ed506f13509629`). Edited with node by concatenation, anchored by symbol,
+**byte delta asserted 226,897 → 229,899 = +3002 expected +3002, match true**; `lint-station.mjs`
+**REJECTed 1 of 8 before** the re-record and **ADMITs all 8 after**, which is the control pair proving
+the gate was doing work rather than rubber-stamping.
+
+⚠️ **It does not touch this run's own label readings.** Every label in WHAT I MEASURED above was read
+with `--json` plus `ConvertFrom-Json` after assignment — never `--jq`, never with a string literal —
+which is the form §9.4 already prescribes. The five `do-not-merge` readings stand.
+
+**So this run has TWO merged PRs and one breadcrumb: #2174 (collect + F1 correction) and #2175 (04's
+dispatched F3).** Recorded here so the next collect does not have to reconstruct it from the board.

@@ -24,7 +24,25 @@ cluster_order: 2
 requires_on_main: apps/api/src/modules/auth/otp-delivery.port.ts :: SEC_A3_NO_CREDENTIAL_LOGS_V1
 ---
 
-<!-- watcher: do-not-arm | MARCO GATE: arm only after Marco confirms in Azure that the API App Service has JWT_ACCESS_SECRET and JWT_REFRESH_SECRET set, each 32+ characters, different from each other, not a placeholder. Only Marco removes this line. -->
+<!-- MARCO GATE (Marco calls it "M2") - RELEASED 2026-09-24 by Marco, in chat, to Station 00.
+     The gate line this replaces read: "MARCO GATE: [conditional arming] after Marco confirms in
+     Azure that the API App Service has JWT_ACCESS_SECRET and JWT_REFRESH_SECRET set, each 32+
+     characters, different from each other, not a placeholder. Only Marco removes this line."
+
+     Marco's confirmation, as he gave it: he has personally verified in the production API App
+     Service that JWT_ACCESS_SECRET and JWT_REFRESH_SECRET are both present, each at least 32
+     characters, neither a placeholder, and the two values different from each other. He stated
+     the secret values were not disclosed. No secret value is recorded here, and no agent saw one.
+     No agent read, set or changed any Azure setting: Marco performed the verification himself.
+
+     THIS RELEASES THAT ONE HUMAN GATE AND NOTHING ELSE. Every other dependency stands, unchanged:
+       - front matter requires_on_main: SEC_A3_NO_CREDENTIAL_LOGS_V1 must be merged to main first,
+         so A3 still precedes A1 (A3 is PR #2148, open and unmerged at the time of this release);
+       - the Guardrail below that STOPs with NO-OP if that marker is absent from main;
+       - escalates: true, and the do-not-merge label on the resulting PR;
+       - the "BEFORE MERGE (Marco)" block this PR body must open with.
+     A2 was NOT released: pr-sec-a2-email-codes-and-reset-links-HOLD.md keeps its own separate gate
+     (production email), and no other human gate anywhere was touched. -->
 
 # Security A1: refuse to start in production on a missing or published JWT secret
 

@@ -64,14 +64,6 @@ type TemplateVersion = {
       }>;
     }>;
   }>;
-  rules: Array<{
-    id: string;
-    sourceFieldKey: string;
-    targetFieldKey: string;
-    operator: string;
-    comparisonValue?: string | null;
-    effect: string;
-  }>;
 };
 
 type Template = {
@@ -117,8 +109,7 @@ export function FormDesignerPage() {
             code: data.code,
             description: data.description ?? undefined,
             layout,
-            sections: [{ tempId: uid(), title: "Section 1", sectionOrder: 1, fields: [] }],
-            rules: []
+            sections: [{ tempId: uid(), title: "Section 1", sectionOrder: 1, fields: [] }]
           });
           return;
         }
@@ -156,14 +147,6 @@ export function FormDesignerPage() {
                 config: (b.config ?? {}) as Record<string, unknown>
               }))
             }))
-          })),
-          rules: latest.rules.map((rule) => ({
-            tempId: uid(),
-            sourceFieldKey: rule.sourceFieldKey,
-            targetFieldKey: rule.targetFieldKey,
-            operator: rule.operator,
-            comparisonValue: rule.comparisonValue ?? "",
-            effect: rule.effect
           }))
         });
       } catch (err) {
@@ -294,13 +277,6 @@ export function FormDesignerPage() {
           minRepeat: section.minRepeat,
           maxRepeat: section.maxRepeat,
           fields: section.fields.map(fieldToPublishPayload)
-        })),
-        rules: draft.rules.map((rule) => ({
-          sourceFieldKey: rule.sourceFieldKey,
-          targetFieldKey: rule.targetFieldKey,
-          operator: rule.operator,
-          comparisonValue: rule.comparisonValue,
-          effect: rule.effect
         }))
       };
       const response = await authFetch(`/forms/templates/${templateId}/versions`, {

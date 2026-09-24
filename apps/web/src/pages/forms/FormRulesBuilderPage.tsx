@@ -10,6 +10,8 @@ import type {
   RuleActionType
 } from "@project-ops/config/forms-rule-definition";
 
+export const FORMRULE_LEGACY_PAYLOAD_RETIRED_V1 = "formrule-legacy-payload-retire";
+
 /**
  * F-2c — full-screen visual builder for FieldRule[] attached to one
  * FormTemplateVersion. Loads the template, lets the author pick a target
@@ -332,8 +334,7 @@ export function FormRulesBuilderPage() {
             // rule builder state — explicit array means "replace".
             actions: rulesByField[field.fieldKey] ?? []
           }))
-        })),
-        rules: []
+        }))
       };
       const res = await authFetch(`/forms/templates/${templateId}/versions`, {
         method: "POST",

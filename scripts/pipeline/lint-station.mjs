@@ -15,11 +15,22 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.cwd();
-const STATION_DIR = 'docs/pipeline/stations';
-const DOCTRINE = 'docs/pipeline/DOCTRINE.md';
-const CANON_FILE = join(STATION_DIR, '_canonical-blocks.json');
+// Every path below is resolved from THIS MODULE's location, never from process.cwd().
+// A station's shell opens in the Cowork session's outputs folder, which is not a git
+// repository (DOCTRINE section 9.4), and section 9.1's "-File" cure moves a script out of
+// the repo as well. A cwd-relative constant therefore made these scripts report a fact
+// about the WORLD -- "the rotation has no state", "docs/pr-prompts does not exist" -- for
+// what was only a wrong working directory. The *_REL names are what messages print, so
+// output stays repo-relative and machine-independent; the resolved names are what fs and
+// git touch.
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const STATION_DIR_REL = 'docs/pipeline/stations';
+const STATION_DIR = join(ROOT, STATION_DIR_REL);
+const DOCTRINE = join(ROOT, 'docs/pipeline/DOCTRINE.md');
+const CANON_FILE_REL = STATION_DIR_REL + '/_canonical-blocks.json';
+const CANON_FILE = join(ROOT, CANON_FILE_REL);
 
 const C = process.stdout.isTTY
   ? { red: (s) => `\x1b[31m${s}\x1b[0m`, grn: (s) => `\x1b[32m${s}\x1b[0m`,
@@ -51,13 +62,13 @@ let TRACKED = null;
 function isTracked(p) {
   if (TRACKED === null) {
     try {
-      TRACKED = new Set(execSync('git ls-files', { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+      TRACKED = new Set(execSync('git ls-files', { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
         .split('\n').map((x) => x.trim()).filter(Boolean));
     } catch {
       TRACKED = false;   // git unavailable — say so at the end rather than passing silently
     }
   }
-  if (TRACKED === false) return existsSync(p);
+  if (TRACKED === false) return existsSync(join(ROOT, p));
   if (TRACKED.has(p)) return true;
   const dir = p.replace(/\/$/, '') + '/';
   for (const t of TRACKED) if (t.startsWith(dir)) return true;
@@ -194,13 +205,17 @@ if (writeCanonical) {
     }
   }
   writeFileSync(CANON_FILE, JSON.stringify(collected, null, 2) + '\n', 'utf8');
-  console.log(C.grn('WROTE ') + `  ${CANON_FILE}`);
+  console.log(C.grn('WROTE ') + `  ${CANON_FILE_REL}`);
   for (const [k, v] of Object.entries(collected)) console.log(`          ${k} v${v.version} ${v.sha}`);
   process.exit(0);
 }
 
 if (!existsSync(CANON_FILE)) {
-  console.error(C.red('REJECT') + `  ${CANON_FILE} is missing — run: node scripts/pipeline/lint-station.mjs --write-canonical`);
+  console.error(C.red('REJECT') + `  ${CANON_FILE_REL} is missing from this checkout (looked in ${CANON_FILE})`);
+  console.error('        This file is TRACKED, so the ordinary cause is an incomplete checkout, not a missing recording.');
+  console.error('        Do NOT reach for --write-canonical to clear this: it RE-RECORDS the canonical block hashes');
+  console.error('        from whatever the station docs currently say, which silently blesses any drift in the very');
+  console.error('        blocks this gate exists to protect. Run it only when you deliberately mean to re-record.');
   process.exit(1);
 }
 const canon = JSON.parse(readFileSync(CANON_FILE, 'utf8'));
@@ -254,7 +269,8 @@ if (contractV && off.length) {
 //
 // The two needles below are the forms actually MEASURED on 2026-09-03, each verified
 // against a positive fixture and a negative control before being written here.
-const AGENT_DIR = '.claude/agents';
+const AGENT_DIR_REL = '.claude/agents';
+const AGENT_DIR = join(ROOT, AGENT_DIR_REL);
 const MOJIBAKE_SIG = /â€[”“™œ]|Ã¢â‚¬/g;
 const REPLACEMENT_CHAR = /�/g;
 
@@ -262,20 +278,21 @@ let agentBad = 0;
 let agentSeen = 0;
 if (existsSync(AGENT_DIR)) {
   for (const f of readdirSync(AGENT_DIR).filter((n) => n.endsWith('.md')).sort()) {
-    const p = `${AGENT_DIR}/${f}`;
+    const p = join(AGENT_DIR, f);
+    const pRel = `${AGENT_DIR_REL}/${f}`;
     const text = readFileSync(p, 'utf8');
     const sigs = (text.match(MOJIBAKE_SIG) || []).length;
     const fffd = (text.match(REPLACEMENT_CHAR) || []).length;
     agentSeen++;
     if (!sigs && !fffd) continue;
     agentBad++;
-    console.log(C.red('REJECT') + `  ${p}`);
+    console.log(C.red('REJECT') + `  ${pRel}`);
     if (sigs) console.log(`          ${C.red('x')} ${sigs} CP1252 double-encode sequence(s) — re-decode and rewrite with node; never Set-Content/Out-File -Encoding UTF8 (DOCTRINE §9.3)`);
     if (fffd) console.log(`          ${C.red('x')} ${fffd} U+FFFD replacement character(s)`);
   }
-  if (!agentBad) console.log(C.grn('ADMIT ') + `  ${AGENT_DIR}/*.md` + C.dim(`  (${agentSeen} agent definitions, encoding clean)`));
+  if (!agentBad) console.log(C.grn('ADMIT ') + `  ${AGENT_DIR_REL}/*.md` + C.dim(`  (${agentSeen} agent definitions, encoding clean)`));
 } else {
-  console.log(C.yel('NOTE  ') + `  ${AGENT_DIR} is absent — agent-definition encoding gate did not run`);
+  console.log(C.yel('NOTE  ') + `  ${AGENT_DIR_REL} is absent — agent-definition encoding gate did not run`);
 }
 
 console.log('');

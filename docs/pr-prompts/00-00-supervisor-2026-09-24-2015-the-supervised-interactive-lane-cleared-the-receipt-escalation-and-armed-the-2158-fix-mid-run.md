@@ -314,3 +314,64 @@ than these three instances.
 - **Did not go near Azure, Entra or SharePoint.** Nothing this run came close.
 - **Did not diagnose any red from the diff or the PR page.** The three open PRs' reds are the CP-26
   `[LABEL_PRESENT]` pair, read from the per-PR label state rather than from a checks rollup.
+
+---
+
+## ADDENDUM 2026-09-24T20:33Z — the dev tree is dirty with the OTHER lane's work, and one of the three paths is the append-only trap
+
+Measured **after** this run's PR was opened and its own worktree torn down, so that the dev tree
+reading is of what the other lane left and not of anything this run did. `git diff --cached
+--name-status` in the dev tree is **EMPTY** — this run staged nothing there.
+
+[MEASURED] `git status --porcelain --untracked-files=no` in `C:\ProjectOperations2`, 20:32:40Z:
+
+```
+ M docs/pr-prompts/.arming-log.txt
+ D docs/pr-prompts/needs-marco/duplicate-verdict-guard-prs-2166-vs-2167-2026-09-24.md
+ D docs/pr-prompts/pr-formrule-legacy-payload-retire-HOLD.md
+```
+
+All three are `station-00.interactive-0004`'s in-flight work, and all three are benign as state: the
+`D` rows are the two halves of moves it completed — `discharged_copy_present=True` for the discharged
+escalation, `armed_copy_present=True` for `pr-formrule-legacy-payload-retire-ready.md`. Nothing is
+lost and nothing is wedged.
+
+🔴 **What matters is what they do to the NEXT fast-forward, and one of them is the documented
+data-loss trap.** A deleted tracked file blocks `git merge --ff-only` exactly like a modified one, so
+the next run to fast-forward this tree meets three blockers at once. On `.arming-log.txt` the cure as
+written in `00-supervisor.md` step 1 — `git show HEAD:<path>` piped to a write — **silently destroys
+a record that exists nowhere else.**
+
+[MEASURED] the discriminator that subsection names, `git diff --numstat origin/main --
+docs/pr-prompts/.arming-log.txt`:
+
+```
+1	0	docs/pr-prompts/.arming-log.txt
+```
+
+**Insertions with ZERO deletions** — the working copy is a strict superset of `origin/main`, which is
+precisely the shape on which *"restoring to HEAD is a deletion, not a repair."* The single local-only
+line, quoted whole, is the arm this run reported in F2:
+
+```
+2026-09-24T20:21:20Z  ARMED  pr-formrule-legacy-payload-retire  escalates=false
+  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=33512  caller=powershell.exe:45520
+```
+
+Local **156** lines against `origin/main`'s **155**; `Compare-Object` returns exactly one `=>` row.
+
+🔧 **So the next run that fast-forwards this tree must use the append-only sequence — save → restore
+→ FF → REAPPLY — on `.arming-log.txt`, and must not use it on the other two**, which carry nothing
+local-only. All three restores are still node, still never `git checkout -- <path>` and never
+`git clean` (§9.2 — consumed prompts come back armed), and the read-back is all four probes, because
+the first three pass on a dirty tree.
+
+⚠️ **And the cheaper answer may be to wait rather than to cure.** These are the other lane's paths.
+If its own board PR lands them, the blockers clear themselves and no restore is needed at all —
+`.arming-log.txt`'s superset shape is exactly *"something in it has not landed yet."* A run meeting
+this should check whether that lane's PR is open before reaching for the restore.
+
+**DISPOSITION: DEFERRED.** This run deliberately left all three alone — they are another actor's
+uncommitted work in a shared tree, and touching them is LL-38. It becomes urgent the moment a run
+needs the fast-forward, which is every run that arms or archives. What is recorded here is the one
+thing that makes that run safe: **which of the three is append-only, and what the line says.**

@@ -396,7 +396,7 @@ export function WasteSectionSummary({
 
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
         Subtotal:{" "}
-        <strong style={{ color: "var(--text)" }} data-testid="waste-section-subtotal">
+        <strong style={{ color: "var(--text-primary)" }} data-testid="waste-section-subtotal">
           {fmtWasteMoney(subtotal)}
         </strong>
         {tenderMarkup !== undefined ? (
@@ -406,7 +406,7 @@ export function WasteSectionSummary({
               {wasteMarkupPhrase(sectionMarkupOverride, tenderMarkup)}
             </span>
             :{" "}
-            <strong style={{ color: "var(--text)" }} data-testid="waste-section-with-markup">
+            <strong style={{ color: "var(--text-primary)" }} data-testid="waste-section-with-markup">
               {fmtWasteMoney(withMarkup ?? subtotal)}
             </strong>
           </>
@@ -825,7 +825,7 @@ export function ScopeWasteTab({
         the server&apos;s. This section is priced as its own cost stream, with its own markup —
         it is not added into the card subtotal above, which carries the scope disciplines.
         <span> · </span>
-        <strong style={{ color: "var(--text)" }}>{totalTonnes.toFixed(2)} t</strong> across all
+        <strong style={{ color: "var(--text-primary)" }}>{totalTonnes.toFixed(2)} t</strong> across all
         lines.
       </p>
 
@@ -840,7 +840,7 @@ export function ScopeWasteTab({
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+            <thead style={{ background: "var(--surface-page)" }}>
               <tr>
                 {[
                   "",
@@ -901,7 +901,7 @@ export function ScopeWasteTab({
                 // Merge rail style with the existing row tint (no-facility amber).
                 // If INTERNAL, it overrides the tint; otherwise both are applied.
                 const mergedRowStyle = {
-                  borderTop: "1px solid var(--border, #e5e7eb)",
+                  borderTop: "1px solid var(--border-default)",
                   background: rowTint,
                   ...rowDestRailStyle
                 };
@@ -951,8 +951,8 @@ export function ScopeWasteTab({
                           style={{
                             fontSize: 9,
                             padding: "1px 5px",
-                            background: "#FEAA6D",
-                            color: "#fff",
+                            background: "var(--brand-accent)",
+                            color: "var(--brand-dark)",
                             borderRadius: 999,
                             fontWeight: 700,
                             whiteSpace: "nowrap"
@@ -1102,7 +1102,7 @@ export function ScopeWasteTab({
                         style={{
                           display: "inline-block",
                           padding: "1px 6px",
-                          background: "var(--surface-muted, #F6F6F6)",
+                          background: "var(--surface-page)",
                           borderRadius: 4,
                           fontFamily: "ui-monospace, monospace"
                         }}
@@ -1274,7 +1274,7 @@ export function ScopeWasteTab({
                   </td>
                 </tr>
                 {isExpanded ? (
-                <tr style={{ background: "var(--surface-muted, #F6F6F6)" }}>
+                <tr style={{ background: "var(--surface-page)" }}>
                   <td colSpan={17} style={{ padding: "10px 12px" }}>
 
                     {/* ── WASTE_TRAVEL_INDEX_UI_V1 (scopecards-s8h) ──────────────
@@ -1330,7 +1330,7 @@ export function ScopeWasteTab({
                                   padding: "1px 7px",
                                   borderRadius: 4,
                                   border: "1px solid var(--status-danger)",
-                                  background: "var(--status-danger-bg, #FEF2F2)",
+                                  background: "color-mix(in srgb, var(--status-danger) 10%, transparent)",
                                   color: "var(--status-danger)"
                                 }}
                               >
@@ -1377,7 +1377,7 @@ export function ScopeWasteTab({
                                   padding: "1px 7px",
                                   borderRadius: 4,
                                   border: "1px solid var(--status-accent, var(--brand-secondary))",
-                                  background: "var(--status-warning-bg, #FFF4E5)",
+                                  background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
                                   color: "var(--status-accent, var(--brand-secondary))"
                                 }}
                               >
@@ -1394,7 +1394,7 @@ export function ScopeWasteTab({
                                   border: "1px solid var(--border-default)",
                                   borderRadius: 6,
                                   padding: "2px 8px",
-                                  background: "var(--surface-card, #fff)",
+                                  background: "var(--surface-card)",
                                   fontVariantNumeric: "tabular-nums"
                                 }}
                               >
@@ -1420,17 +1420,17 @@ export function ScopeWasteTab({
                                   fontVariantNumeric: "tabular-nums"
                                 }}
                               >
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Baseline</b>
                                   {baselineMin} min
                                 </span>
                                 <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>&times;</span>
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Traffic allowance</b>
                                   {row.travelIndex != null ? Number(row.travelIndex).toFixed(2) : "1.00"}
                                 </span>
                                 <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>=</span>
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Planning</b>
                                   {planMin != null ? planMin : "?"} min each way
                                 </span>
@@ -1478,9 +1478,9 @@ export function ScopeWasteTab({
                                   fontWeight: 700,
                                   padding: "1px 7px",
                                   borderRadius: 4,
-                                  border: "1px solid var(--ok-border, #047857)",
-                                  background: "var(--ok-bg, #ECFDF5)",
-                                  color: "var(--ok-text, #047857)"
+                                  border: "1px solid var(--status-active)",
+                                  background: "color-mix(in srgb, var(--status-active) 10%, transparent)",
+                                  color: "var(--status-active)"
                                 }}
                               >
                                 Geoapify route
@@ -1493,7 +1493,7 @@ export function ScopeWasteTab({
                                   padding: "1px 7px",
                                   borderRadius: 4,
                                   border: "1px solid var(--border-default)",
-                                  background: "var(--surface-card, #fff)",
+                                  background: "var(--surface-card)",
                                   color: "var(--text-muted)"
                                 }}
                               >
@@ -1515,22 +1515,22 @@ export function ScopeWasteTab({
                                   fontVariantNumeric: "tabular-nums"
                                 }}
                               >
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Baseline</b>
                                   {baselineMin} min
                                 </span>
                                 <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>&times;</span>
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Traffic allowance</b>
                                   {travelIdx != null ? Number(travelIdx).toFixed(2) : "—"}
                                 </span>
                                 <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>=</span>
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Adjusted</b>
                                   {adjustedMin != null ? adjustedMin : "?"} min
                                 </span>
                                 <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>&#8594; average &#8594;</span>
-                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card, #fff)", color: "var(--text)" }}>
+                                <span style={{ border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 8px", background: "var(--surface-card)", color: "var(--text-primary)" }}>
                                   <b style={{ display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>Planning</b>
                                   {planMin != null ? planMin : "?"} min each way
                                 </span>
@@ -1578,7 +1578,7 @@ export function ScopeWasteTab({
                                 boxShadow: "0 0 0 2px var(--brand-primary-light, rgba(0,91,97,0.12))",
                                 borderRadius: 8,
                                 padding: "8px 10px",
-                                background: "var(--surface-card, #fff)",
+                                background: "var(--surface-card)",
                                 minWidth: 140
                               }}
                             >
@@ -1601,9 +1601,9 @@ export function ScopeWasteTab({
                                         fontWeight: 700,
                                         padding: "1px 6px",
                                         borderRadius: 4,
-                                        border: "1px solid var(--status-accent, #C77A3A)",
-                                        background: "var(--status-warning-bg, #FFF4E5)",
-                                        color: "var(--status-accent, #C77A3A)"
+                                        border: "1px solid var(--status-warning)",
+                                        background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                        color: "var(--status-warning)"
                                       }}
                                       data-testid="waste-allowance-manual-chip"
                                     >
@@ -1675,7 +1675,7 @@ export function ScopeWasteTab({
 
                           {/* Cycle (server-derived, read-only) */}
                           {hasTravel && !isInfeasible ? (
-                            <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card, #fff)", minWidth: 120 }}>
+                            <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 120 }}>
                               <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Cycle</div>
                               <div style={{ fontSize: 15, fontWeight: 400, fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", marginTop: 2 }}>
                                 {(() => {
@@ -1694,7 +1694,7 @@ export function ScopeWasteTab({
                           ) : null}
 
                           {/* Loads / truck / day -- with provenance chip */}
-                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card, #fff)", minWidth: 140 }}>
+                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 140 }}>
                             <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Loads per truck per day</div>
                             <div
                               style={{ fontSize: 15, fontWeight: isInfeasible ? 400 : 600, fontVariantNumeric: "tabular-nums", color: isInfeasible ? "var(--text-muted)" : "var(--text)", marginTop: 2 }}
@@ -1712,9 +1712,9 @@ export function ScopeWasteTab({
                                       fontWeight: 700,
                                       padding: "1px 6px",
                                       borderRadius: 4,
-                                      border: "1px solid var(--status-accent, #C77A3A)",
-                                      background: "var(--status-warning-bg, #FFF4E5)",
-                                      color: "var(--status-accent, #C77A3A)"
+                                      border: "1px solid var(--status-warning)",
+                                      background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                      color: "var(--status-warning)"
                                     }}
                                     data-testid="waste-loads-manual-chip"
                                   >
@@ -1770,7 +1770,7 @@ export function ScopeWasteTab({
                           </div>
 
                           {/* Capacity / load -- with provenance chip */}
-                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card, #fff)", minWidth: 140 }}>
+                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 140 }}>
                             <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Capacity per load</div>
                             <div style={{ fontSize: 15, fontWeight: 400, fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", marginTop: 2 }}>
                               {row.capacityPerLoad != null
@@ -1808,9 +1808,9 @@ export function ScopeWasteTab({
                                         fontWeight: 700,
                                         padding: "1px 6px",
                                         borderRadius: 4,
-                                        border: "1px solid var(--status-accent, #C77A3A)",
-                                        background: "var(--status-warning-bg, #FFF4E5)",
-                                        color: "var(--status-accent, #C77A3A)"
+                                        border: "1px solid var(--status-warning)",
+                                        background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                        color: "var(--status-warning)"
                                       }}
                                     >
                                       Manual
@@ -1856,7 +1856,7 @@ export function ScopeWasteTab({
                           </div>
 
                           {/* Daily km -- with provenance chip */}
-                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card, #fff)", minWidth: 120 }}>
+                          <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 10px", background: "var(--surface-card)", minWidth: 120 }}>
                             <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Daily km</div>
                             <div style={{ fontSize: 15, fontWeight: 400, fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", marginTop: 2 }}>
                               {row.dailyKm != null ? Number(row.dailyKm) : "—"}
@@ -1870,9 +1870,9 @@ export function ScopeWasteTab({
                                     fontWeight: 700,
                                     padding: "1px 6px",
                                     borderRadius: 4,
-                                    border: "1px solid var(--status-accent, #C77A3A)",
-                                    background: "var(--status-warning-bg, #FFF4E5)",
-                                    color: "var(--status-accent, #C77A3A)"
+                                    border: "1px solid var(--status-warning)",
+                                    background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                    color: "var(--status-warning)"
                                   }}
                                 >
                                   Manual
@@ -1897,7 +1897,7 @@ export function ScopeWasteTab({
                             {/* OPS-M3 -- suggest affordance when tip finder computed a different distance */}
                             {kmSuggest[row.id] !== undefined ? (
                               <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
-                                <span style={{ color: "#0369a1", fontSize: 10 }}>
+                                <span style={{ color: "var(--status-info)", fontSize: 10 }}>
                                   Map: {kmSuggest[row.id]} km
                                 </span>
                                 {canManage ? (
@@ -2063,7 +2063,7 @@ export function ScopeWasteTab({
                             padding: "10px 12px",
                             border: "1px solid var(--border-default)",
                             borderRadius: 8,
-                            background: "var(--surface-subtle, #F3F4F6)",
+                            background: "var(--surface-subtle)",
                             fontSize: 12.5,
                             fontVariantNumeric: "tabular-nums",
                             marginBottom: 8
@@ -2143,7 +2143,7 @@ export function ScopeWasteTab({
 
                     {rowVariance && rowVariance.hasVariance ? (
                       <div style={{ marginTop: 10, padding: 8, background: "rgba(254, 170, 109, 0.16)", borderRadius: 4, fontSize: 12 }}>
-                        <strong style={{ color: "#B45309" }}>Rate variance since quoted:</strong>{" "}
+                        <strong style={{ color: "var(--status-warning)" }}>Rate variance since quoted:</strong>{" "}
                         {rowVariance.disposalDelta != null ? (
                           <span>
                             disposal ${rowVariance.quotedDisposalRate ?? "?"} -&gt; ${rowVariance.currentDisposalRate ?? "?"}

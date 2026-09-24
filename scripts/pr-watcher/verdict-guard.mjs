@@ -154,7 +154,8 @@ function extractPaths(text) {
  *
  * A path "matches" if it:
  *  - appears verbatim in prFiles (after normalisation), OR
- *  - is a suffix of a prFiles entry (to tolerate future repo-prefix changes).
+ *  - is a suffix of a prFiles entry (to tolerate future repo-prefix changes), OR
+ *  - is a suffix of a prFiles entry preceded by a space (top-level dir with a space).
  *
  * @param {string} candidate  normalised extracted path
  * @param {Set<string>} prSet  normalised prFiles as a Set for O(1) lookup
@@ -164,7 +165,59 @@ function extractPaths(text) {
 function pathMatches(candidate, prSet, prArr) {
   if (prSet.has(candidate)) return true;
   // Suffix match: the PR file ends with /candidate or equals candidate
-  return prArr.some((pf) => pf === candidate || pf.endsWith("/" + candidate));
+  return prArr.some(
+    (pf) =>
+      pf === candidate ||
+      pf.endsWith("/" + candidate) ||
+      pf.endsWith(" " + candidate),
+  );
+}
+
+// SPACED_PATH_CANDIDATES_V1
+//
+// A top-level directory whose name contains a space (this repo has
+// `Claude Design/` and `Claude outputs/`) truncates every un-backticked
+// citation in pass 2, because PATH_TOKEN_RE stops at whitespace. Two
+// measured occurrences twenty days apart: PR #1573 and PR #2157.
+//
+// Recovery is derived from prFiles rather than hard-coded: for any PR
+// file whose first segment contains a space, we know that a pass-2 token
+// starting with the LAST word of that segment is very likely the
+// truncated form of it, and we offer the full path as an additional
+// candidate. This only ever ADDS candidates and never accepts one that
+// isn't already a prFile — so the guard can only get more permissive
+// where it was previously wrong, never wrong in a new way.
+//
+// Widening PATH_TOKEN_RE to allow `\s` in the first segment would be a
+// strictly worse fix: it would swallow prose ("see docs/foo.md" would
+// extract "see docs/foo.md") and turn every verdict into phantom
+// citations. We do the reconstruction downstream instead.
+function buildSpacedPrefixRecovery(prNorm) {
+  const byLastWord = new Map();
+  for (const pf of prNorm) {
+    const slash = pf.indexOf("/");
+    if (slash <= 0) continue;
+    const firstSeg = pf.slice(0, slash);
+    if (!/\s/.test(firstSeg)) continue;
+    const lastSpace = firstSeg.lastIndexOf(" ");
+    const lastWord = firstSeg.slice(lastSpace + 1);
+    if (!byLastWord.has(lastWord)) byLastWord.set(lastWord, new Set());
+    byLastWord.get(lastWord).add(firstSeg);
+  }
+  return byLastWord;
+}
+
+function expandSpacedCandidates(candidate, recovery) {
+  if (recovery.size === 0) return [candidate];
+  const firstSlash = candidate.indexOf("/");
+  if (firstSlash <= 0) return [candidate];
+  const firstWord = candidate.slice(0, firstSlash);
+  const prefixes = recovery.get(firstWord);
+  if (!prefixes) return [candidate];
+  const rest = candidate.slice(firstSlash + 1);
+  const out = [candidate];
+  for (const p of prefixes) out.push(`${p}/${rest}`);
+  return out;
 }
 
 // WHICH LINES ASSERT WHAT THE PR CHANGED.
@@ -241,8 +294,13 @@ export function validateVerdict({ verdictText, prFiles }) {
     return { ok: true };
   }
 
+  const recovery = buildSpacedPrefixRecovery(prNorm);
   const unmatched = checked
-    .filter((p) => !pathMatches(p, prSet, prNorm))
+    .filter((p) =>
+      !expandSpacedCandidates(p, recovery).some((v) =>
+        pathMatches(v, prSet, prNorm),
+      ),
+    )
     .sort();
 
   // Deduplicate (extractPaths already returns unique, but keep it explicit)

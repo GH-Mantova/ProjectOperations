@@ -3031,6 +3031,17 @@ async function drain() {
               const dest = path.join(BLOCKED_DIR, name);
               const logDest = path.join(BLOCKED_DIR, `${name}.log`);
               const noteDest = path.join(BLOCKED_DIR, `${name}.guard-block.md`);
+              // A path containing a space was truncated by verdict-guard's pass-2
+              // extractor when every unmatched path is a suffix of a real PR file
+              // modulo a leading space-separated token. See SPACED_PATH_CANDIDATES_V1
+              // in verdict-guard.mjs — that fix should keep this branch dark, but if
+              // something drives us here anyway, the diagnosis and remedy are not
+              // "re-queue" and definitely not "delete the reviewer's citations".
+              const looksLikeSpaceTruncation =
+                guardResult.unmatched.length > 0 &&
+                guardResult.unmatched.every((u) =>
+                  guardPrFiles.some((pf) => pf.endsWith(" " + u)),
+                );
               const note = [
                 `# Verdict-guard block — ${name}`,
                 ``,
@@ -3041,11 +3052,23 @@ async function drain() {
                 ``,
                 ...guardResult.unmatched.map((p) => `  - ${p}`),
                 ``,
-                `This usually means the review agent ran against a stale local main`,
-                `(syncMain() only advances inside the AUTO_MERGE block for non-gated PRs).`,
-                ``,
-                `Action: re-queue this review prompt after the watcher clone is updated,`,
-                `or remove the phantom file references from the verdict and re-queue.`,
+                ...(looksLikeSpaceTruncation
+                  ? [
+                      `A path containing a space was truncated by the verdict extractor:`,
+                      `each unmatched path above IS a real file in this PR, but its`,
+                      `top-level directory name contains a space (e.g. \`Claude Design/\`).`,
+                      `PATH_TOKEN_RE stops at whitespace, so the leading word was dropped.`,
+                      ``,
+                      `Action: fix the extractor in scripts/pr-watcher/verdict-guard.mjs.`,
+                      `Do NOT delete the verdict's citations to satisfy the parser.`,
+                    ]
+                  : [
+                      `This usually means the review agent ran against a stale local main`,
+                      `(syncMain() only advances inside the AUTO_MERGE block for non-gated PRs).`,
+                      ``,
+                      `Action: re-queue this review prompt after the watcher clone is updated,`,
+                      `or remove the phantom file references from the verdict and re-queue.`,
+                    ]),
                 ``,
               ].join("\n");
               try {

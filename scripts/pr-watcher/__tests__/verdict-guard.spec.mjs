@@ -393,3 +393,81 @@ test("a bare path outside any fence or command still blocks", () => {
     "apps/web/src/pages/admin/RatesListsAdminPage.tsx",
   ]);
 });
+
+// ---------------------------------------------------------------------------
+// SPACED_PATH_CANDIDATES_V1 (2026-09-24)
+//
+// PATH_TOKEN_RE stops at whitespace, so an un-backticked citation of
+// `Claude Design/proposed/foo.html` yields the pass-2 token `Design/proposed/foo.html`.
+// That token is a real suffix of the real PR file modulo a leading space-separated
+// token, and the guard now accepts it via two independent paths:
+//   - pathMatches accepts endsWith(" " + candidate)
+//   - validateVerdict expands candidates using prFiles-derived spaced prefixes
+// Measured regressions: PR #1573 (2026-09-04), PR #2157 (2026-09-24).
+// ---------------------------------------------------------------------------
+
+test("bare Claude Design path in a verdict matches the corresponding PR file", () => {
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "The mockup at Claude Design/proposed/s8h-traffic-index/s8h-traffic-index-mockup.html",
+    "renders as intended.",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: [
+      "Claude Design/proposed/s8h-traffic-index/s8h-traffic-index-mockup.html",
+    ],
+  });
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test("backtick-quoted Claude Design path still matches", () => {
+  const verdictText =
+    "MERGE. Touches `Claude Design/proposed/foo.html` only.";
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["Claude Design/proposed/foo.html"],
+  });
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test("truncated bare path whose full form is NOT in the PR still blocks", () => {
+  // "Design/proposed/ghost.html" has no matching PR file under any spaced prefix;
+  // the guard must still reject it. Adding candidates is safe precisely because
+  // this negative case still fires.
+  const verdictText =
+    "MERGE. Also updates Design/proposed/ghost.html.";
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["Claude Design/proposed/real.html"],
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unmatched, ["Design/proposed/ghost.html"]);
+});
+
+test("multiple spaced prefixes in PR: each contributes its own recovery", () => {
+  // `Claude outputs` is the other real spaced top-level. The recovery table
+  // is derived from prFiles, so both prefixes must recover their own paths.
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "See Design/proposed/a.html and outputs/logs/b.txt.",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: [
+      "Claude Design/proposed/a.html",
+      "Claude outputs/logs/b.txt",
+    ],
+  });
+
+  assert.deepEqual(result, { ok: true });
+});

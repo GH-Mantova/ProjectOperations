@@ -148,3 +148,4 @@
 2026-09-23T05:29:49Z  ARMED  pr-scopecards-s9-transport-capacity-matrix  escalates=true  actor=station-00.sched-0514  by=Marco@LAPTOP-E6NHU4E4  pid=39824  caller=powershell.exe:11012
 2026-09-23T16:23:37Z  ARMED  pr-field-service-nul-separator  escalates=false  actor=station-00.sched  by=Marco@LAPTOP-E6NHU4E4  pid=17596  caller=powershell.exe:36068
 2026-09-23T20:35:38Z  ARMED  pr-devtree-sync-ff-only-guard  escalates=false  actor=station-00.sched-2023z  by=Marco@LAPTOP-E6NHU4E4  pid=36644  caller=powershell.exe:20148
+2026-09-24T02:34:54Z  ARMED  pr-sec-a3-no-credential-logs  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=39072  caller=powershell.exe:6396

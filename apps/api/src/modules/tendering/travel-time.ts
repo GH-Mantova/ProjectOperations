@@ -1,14 +1,20 @@
 /**
- * travel-time.ts -- TRAVEL_TIME_PORT_V1 (scopecards-s8a)
+ * travel-time.ts -- TRAVEL_TIME_PORT_V1 (scopecards-s8a) extended by S8g
  *
  * The one place travel time is resolved and recorded for a waste line.
  * S8a ships only the straight-line fallback (StraightLineTravelProvider).
- * S8b wires a real routing provider behind the same TravelTimeProvider
- * interface -- that slice is held until Marco provisions the Azure Maps key.
+ * S8g wires the Geoapify routing provider and adds honest trip arithmetic:
+ *   - Road km from Geoapify free_flow distance (never multiplied by index).
+ *   - Traffic index = approximated / free_flow (modelled allowance, not
+ *     measured peak-hour traffic). Estimator may edit.
+ *   - planning = average(baseline, baseline x index).
+ *   - Total trip km = trips x 2 x one-way km.
+ *   - Required trips = ceil(quantity / capacity per load).
+ *   - Duration days = ceil(trips / (trucks x loads per day)).
  *
  * Marco's rules (carried verbatim):
  *   - Haulage is priced on actual truck travel time, averaged between normal
- *     and peak hours (the averaging arrives with the provider, in S8b).
+ *     and peak hours.
  *   - Straight-line distance is only ever an automatic fallback, badged.
  *     It is never an option the estimator selects.
  *   - A tip about 45 minutes away is roughly a 2-hour round trip, so an
@@ -126,4 +132,99 @@ export function deriveCycle({
   }
   const loadsPerDay = Math.max(0, Math.floor(shiftMinutes / cycleMinutes));
   return { loadsPerDay };
+}
+
+// ---- S8g: Planning minutes (index-adjusted average) -----------------------
+
+/**
+ * Derives the planning minutes from the baseline and the traffic index.
+ *
+ * Formula: average(baseline, baseline x index)
+ *   = baseline x (1 + index) / 2
+ *
+ * The index is a MODELLED TRAFFIC ALLOWANCE, not measured peak-hour traffic.
+ * Index NEVER multiplies kilometres -- it moves cycle time only.
+ *
+ * @param baseline - free-flow one-way minutes
+ * @param index    - traffic index (>= 1.00)
+ * @returns planning minutes (rounded to nearest integer)
+ */
+export function planningMinutes({
+  baseline,
+  index
+}: {
+  baseline: number;
+  index: number;
+}): number {
+  const adjusted = baseline * index;
+  // average(baseline, adjusted)
+  return Math.round((baseline + adjusted) / 2);
+}
+
+// ---- S8g: Required trips ---------------------------------------------------
+
+/**
+ * Required trips = ceil(quantity / capacityPerLoad).
+ * 3.5 capacities = 4 trips; 4.5 = 5 trips.
+ *
+ * @returns number of trips (always a positive integer, or 0 when quantity is 0)
+ */
+export function requiredTrips({
+  quantity,
+  capacityPerLoad
+}: {
+  quantity: number;
+  capacityPerLoad: number;
+}): number {
+  if (quantity <= 0 || capacityPerLoad <= 0) return 0;
+  return Math.ceil(quantity / capacityPerLoad);
+}
+
+// ---- S8g: Duration days ---------------------------------------------------
+
+/**
+ * Duration days = ceil(trips / (trucks x loadsPerDay)).
+ *
+ * When loadsPerDay is 0 the line is in an infeasible-cycle state.
+ * Returns `{ infeasibleCycle: true }` rather than dividing by zero.
+ *
+ * @returns `{ durationDays }` on success or `{ infeasibleCycle: true }` when loadsPerDay === 0.
+ */
+export function durationDays({
+  trips,
+  trucks,
+  loadsPerDay
+}: {
+  trips: number;
+  trucks: number;
+  loadsPerDay: number;
+}): { durationDays: number; infeasibleCycle?: false } | { infeasibleCycle: true } {
+  if (loadsPerDay === 0) return { infeasibleCycle: true };
+  if (trucks <= 0 || trips <= 0) return { durationDays: 0 };
+  return { durationDays: Math.ceil(trips / (trucks * loadsPerDay)) };
+}
+
+// ---- S8g: Total trip km ---------------------------------------------------
+
+/**
+ * Total trip kilometres = trips x 2 x one-way road km.
+ *
+ * Changing the traffic index does NOT change this figure.
+ * It only changes when the number of trips or the route changes.
+ *
+ * Acceptance examples:
+ *   8 trips, 20 km one-way -> 320 km  (regardless of index)
+ *
+ * @param trips     - required trips (from requiredTrips)
+ * @param oneWayKm  - one-way road km from the route (NOT multiplied by any index)
+ * @returns total km, rounded to 2 dp
+ */
+export function totalTripKm({
+  trips,
+  oneWayKm
+}: {
+  trips: number;
+  oneWayKm: number;
+}): number {
+  return Math.round(trips * 2 * oneWayKm * 100) / 100;
 }

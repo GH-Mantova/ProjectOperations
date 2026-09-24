@@ -165,15 +165,20 @@ function buildMocks(opts: {
 
   const notifications = { create: jest.fn().mockResolvedValue({}) };
 
-  return { prisma, rateResolver, notifications, mocks: { create, update, findUnique } };
+  // ApiKeysService mock. By default returns null (no Geoapify key) so the
+  // service falls back to StraightLineTravelProvider -- matches the S8a
+  // baseline of every pre-existing test in this file.
+  const apiKeys = { resolve: jest.fn().mockResolvedValue(null) };
+
+  return { prisma, rateResolver, notifications, apiKeys, mocks: { create, update, findUnique } };
 }
 
 // ---- Test 1: no mapLocationId = byte-identical to today --------------------
 
 describe("TRAVEL_TIME_PORT_V1 - no tip link", () => {
   it("create without mapLocationId does not write any travel columns", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks();
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     await svc.create("tender-1", "user-1", {
       description: "Rubble disposal",
@@ -200,8 +205,8 @@ describe("TRAVEL_TIME_PORT_V1 - no tip link", () => {
 
 describe("TRAVEL_TIME_PORT_V1 - with tip link", () => {
   it("create with mapLocationId stores the travel snapshot", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks();
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     await svc.create("tender-1", "user-1", {
       description: "Rubble disposal",
@@ -226,8 +231,8 @@ describe("TRAVEL_TIME_PORT_V1 - with tip link", () => {
   });
 
   it("derived loadsPerTruckPerDay is written when field was left empty", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks();
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     await svc.create("tender-1", "user-1", {
       description: "Rubble disposal",
@@ -253,8 +258,8 @@ describe("TRAVEL_TIME_PORT_V1 - with tip link", () => {
 
 describe("TRAVEL_TIME_PORT_V1 - typed field survives", () => {
   it("a typed loadsPerTruckPerDay survives a save that would derive a different figure", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks();
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     const TYPED_LOADS = 7; // far above what the straight-line would derive (~3-4)
     await svc.create("tender-1", "user-1", {
@@ -276,8 +281,8 @@ describe("TRAVEL_TIME_PORT_V1 - typed field survives", () => {
 
 describe("TRAVEL_TIME_PORT_V1 - typed dailyKm survives", () => {
   it("a typed dailyKm survives a save that would derive a different figure", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks();
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     const TYPED_KM = 999;
     await svc.create("tender-1", "user-1", {
@@ -310,8 +315,8 @@ describe("TRAVEL_TIME_PORT_V1 - clearing typed restores derived", () => {
       loadsPerTruckPerDay: new Prisma.Decimal("7")
     });
 
-    const { prisma, rateResolver, notifications, mocks } = buildMocks({ existingRow: existing });
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     // Clear the typed value (set to null) -- this is a pricing-input touch.
     await svc.update("tender-1", "item-1", {
@@ -340,10 +345,10 @@ describe("TRAVEL_TIME_PORT_V1 - provider failure", () => {
     // Tip has no coordinates.
     const tipNoCoords = makeTip({ latitude: null, longitude: null });
 
-    const { prisma, rateResolver, notifications, mocks } = buildMocks({
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({
       tip: tipNoCoords
     });
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     // Should not throw.
     await expect(
@@ -367,10 +372,10 @@ describe("TRAVEL_TIME_PORT_V1 - provider failure", () => {
   });
 
   it("a provider that fails (missing site coords) leaves the save successful with no snapshot", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks({
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({
       site: null // no site coordinates
     });
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     await expect(
       svc.create("tender-1", "user-1", {
@@ -388,10 +393,10 @@ describe("TRAVEL_TIME_PORT_V1 - provider failure", () => {
   });
 
   it("missing opsSettings leaves the save successful with no snapshot", async () => {
-    const { prisma, rateResolver, notifications, mocks } = buildMocks({
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({
       opsSettings: null // settings not configured
     });
-    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never);
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
 
     await expect(
       svc.create("tender-1", "user-1", {
@@ -406,5 +411,170 @@ describe("TRAVEL_TIME_PORT_V1 - provider failure", () => {
     const createCall = mocks.create.mock.calls[0]?.[0];
     const data = createCall?.data as Record<string, unknown> | undefined;
     expect(data?.travelSource).toBeNull();
+  });
+});
+
+// ---- S8g: GEOAPIFY_ROUTE_TRAVEL_V1 ----------------------------------------
+// Verifies the service picks the Geoapify provider when a key resolves,
+// falls back to straight-line when it does not, and records the S8g
+// snapshot fields (travelIndex, planningMinutesOneWay, dailyKmSource).
+
+describe("GEOAPIFY_ROUTE_TRAVEL_V1 - provider selection and fallback", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("falls back to straight-line when no Geoapify key is configured", async () => {
+    // Default buildMocks returns apiKeys.resolve = null.
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    // Stub fetch so any accidental Geoapify call is visible in the test.
+    const fetchSpy = jest.fn();
+    globalThis.fetch = fetchSpy as never;
+
+    await svc.create("tender-1", "user-1", {
+      description: "Rubble disposal",
+      discipline: "DEM",
+      cardId: "card-1",
+      qty: 184,
+      mapLocationId: "tip-1"
+    });
+
+    // Straight-line path -- no HTTP call.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const data = mocks.create.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data.travelSource).toBe("straight-line");
+  });
+
+  it("uses Geoapify when the key resolves, records travelIndexSource=geoapify", async () => {
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    apiKeys.resolve.mockResolvedValue("secret-key");
+
+    globalThis.fetch = (async (url: string) => {
+      // Both traffic models return the same distance; index 1560s/1500s = 1.04.
+      if (String(url).includes("traffic=free_flow")) {
+        return { ok: true, json: async () => ({ features: [{ properties: { distance: 20_000, time: 1500 } }] }) };
+      }
+      return { ok: true, json: async () => ({ features: [{ properties: { distance: 20_000, time: 1560 } }] }) };
+    }) as never;
+
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.create("tender-1", "user-1", {
+      description: "Rubble disposal",
+      discipline: "DEM",
+      cardId: "card-1",
+      qty: 184,
+      mapLocationId: "tip-1"
+    });
+
+    const data = mocks.create.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data.travelSource).toBe("route");
+    expect(data.travelKm).not.toBeNull();
+    // Index recorded as geoapify-sourced.
+    expect(data.travelIndexSource).toBe("geoapify");
+    // Planning minutes populated (average of baseline and index-adjusted).
+    expect(data.travelPlanningMinutesOneWay).not.toBeNull();
+  });
+
+  it("Geoapify provider failure falls back to straight-line, save succeeds", async () => {
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks();
+    apiKeys.resolve.mockResolvedValue("secret-key");
+
+    // Every Geoapify request returns a 5xx -> provider returns null -> service
+    // must fall back to StraightLineTravelProvider.
+    globalThis.fetch = (async () => ({ ok: false, status: 503, json: async () => ({}) })) as never;
+
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await expect(
+      svc.create("tender-1", "user-1", {
+        description: "Rubble disposal",
+        discipline: "DEM",
+        cardId: "card-1",
+        qty: 184,
+        mapLocationId: "tip-1"
+      })
+    ).resolves.not.toThrow();
+
+    const data = mocks.create.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    // Badged as straight-line (the fallback).
+    expect(data.travelSource).toBe("straight-line");
+  });
+
+  it("passes routeVehicleMode from OperationsSettings to the Geoapify provider", async () => {
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({
+      opsSettings: makeOpsSettings({ routeVehicleMode: "heavy_truck" })
+    });
+    apiKeys.resolve.mockResolvedValue("secret-key");
+
+    let capturedMode: string | null = null;
+    globalThis.fetch = (async (url: string) => {
+      const m = /mode=([^&]+)/.exec(String(url));
+      if (m) capturedMode = decodeURIComponent(m[1]);
+      return { ok: true, json: async () => ({ features: [{ properties: { distance: 20_000, time: 1500 } }] }) };
+    }) as never;
+
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+    await svc.create("tender-1", "user-1", {
+      description: "Rubble disposal",
+      discipline: "DEM",
+      cardId: "card-1",
+      qty: 184,
+      mapLocationId: "tip-1"
+    });
+
+    expect(capturedMode).toBe("heavy_truck");
+    // Silence unused-var lint (mocks captured for symmetry with other tests).
+    void mocks;
+  });
+});
+
+// ---- S8g: travelIndex DTO handling on update ------------------------------
+// Editing the index changes time-based figures but never km/trip. Clearing
+// the index (explicit null) returns the field to automatic.
+
+describe("GEOAPIFY_ROUTE_TRAVEL_V1 - travelIndex DTO", () => {
+  it("dto.travelIndex sets travelIndexSource=manual on update", async () => {
+    const existing = makeExistingRow({
+      mapLocationId: "tip-1",
+      travelKm: new Prisma.Decimal("20"),
+      travelMinutesOneWay: 25,
+      travelSource: "route",
+      travelIndex: new Prisma.Decimal("1.05"),
+      travelIndexSource: "geoapify"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.update("tender-1", "item-1", { travelIndex: 1.4 });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    // Prisma.Decimal wrap -- serialised value is 1.4.
+    expect(String(data.travelIndex)).toBe("1.4");
+    expect(data.travelIndexSource).toBe("manual");
+    // Planning minutes recomputed: average(25, 25 * 1.4) = average(25, 35) = 30.
+    expect(data.travelPlanningMinutesOneWay).toBe(30);
+  });
+
+  it("dto.travelIndex=null clears the manual override (returns to automatic)", async () => {
+    const existing = makeExistingRow({
+      mapLocationId: "tip-1",
+      travelKm: new Prisma.Decimal("20"),
+      travelMinutesOneWay: 25,
+      travelSource: "route",
+      travelIndex: new Prisma.Decimal("1.4"),
+      travelIndexSource: "manual"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.update("tender-1", "item-1", { travelIndex: null });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data.travelIndex).toBeNull();
+    expect(data.travelIndexSource).toBeNull();
   });
 });

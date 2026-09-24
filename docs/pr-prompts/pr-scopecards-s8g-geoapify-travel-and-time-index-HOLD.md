@@ -27,14 +27,22 @@ cluster_order: 14
 requires_on_main: 'apps/api/src/modules/tendering/travel-time.ts :: TRAVEL_TIME_PORT_V1'
 ---
 
-<!-- watcher: do-not-arm | MARCO GATE: arm only after Marco confirms the Geoapify key in the ERP vault is live and its plan permits the Routing API (the existing key is registered for geocoding). Only Marco removes this line. -->
+<!-- GATE RELEASED 2026-09-24 by Marco, in chat to Station 06, his words: "the geoapify key is set
+     up, release s8g's gate". The human marker that stood here is therefore removed. It had asked for
+     his confirmation that the Geoapify key in the ERP vault is live and that its plan permits the
+     Routing API, because the existing key was registered for geocoding. He has confirmed the key is
+     set up. The plan half rests on that statement and was NOT independently measured by any station:
+     if the plan refuses routing, the factory in `tendering.module.ts` selects the straight-line
+     provider and every affected line carries the estimated badge, so the failure mode is a badge on
+     the line, not a broken save or a wrong price. Recorded by Station 06; the release is Marco's.
+     `escalates: true` stands - the built PR still stops for him before it merges. -->
 
 # Scope Cards S8g - Geoapify road routing, an editable traffic index, and honest trip arithmetic
 
 **Replaces the held Azure Maps prompt** (`pr-scopecards-s8b-azure-maps-travel-HOLD.md`). Marco chose
 Geoapify, which the ERP already holds a key for (`integration-keys.registry.ts` slug `geoapify`,
-`GEOAPIFY_API_KEY`, resolvable through `apiKeys.resolve("geoapify", "company")`). **Do not arm the
-Azure Maps prompt**; Station 00 retires it once this one lands.
+`GEOAPIFY_API_KEY`, resolvable through `apiKeys.resolve("geoapify", "company")`). **The Azure Maps
+prompt is superseded and must never be promoted**; Station 00 retires it once this one lands.
 
 Builds on what is already on main: the travel-time port (#2109), the capacity matrix defaults
 (#2114) and the tip finder (#819, #1039).

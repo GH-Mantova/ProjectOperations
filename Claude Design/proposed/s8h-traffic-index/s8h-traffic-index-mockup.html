@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Traffic index mock-up</title>
+<style>
+:root{--p:#005B61;--pl:#E6F0F1;--acc:#FEAA6D;--accd:#C77A3A;--dark:#242424;--page:#F6F6F6;--card:#fff;--t1:#111;--t2:#6B7280;--t3:#9CA3AF;--bd:#E5E7EB;--bs:#F3F4F6;--ok:#047857;--okl:#ECFDF5;--warnl:#FFF4E5;--dang:#DC2626;--dangl:#FEF2F2;--r:8px}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--t1);font:14px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:1060px;margin:0 auto}h1{font-size:24px;margin:0 0 6px}
+.lede{color:var(--t2);margin:0 0 22px;max-width:76ch}
+h2.sec{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--t2);margin:28px 0 10px;display:flex;gap:10px;align-items:center}
+h2.sec .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--acc);color:var(--dark);font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.frame{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd)}
+.crumb{font-size:12px;color:var(--t2)}.crumb b{color:var(--t1)}
+.ex{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accd);margin-left:auto}
+.body{padding:16px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}@media(max-width:860px){.grid{grid-template-columns:1fr 1fr}}
+.f{border:1px solid var(--bd);border-radius:var(--r);padding:8px 10px;background:#fff}
+.f .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2)}
+.f .v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.f .v.ghost{color:var(--t3);font-weight:400}
+.f .s{font-size:11px;color:var(--t3);margin-top:2px}
+.f.edit{border-color:var(--p);box-shadow:0 0 0 2px var(--pl)}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--bd);background:#fff;color:var(--t2)}
+.chip.m{border-color:var(--p);color:var(--p);background:var(--pl)}
+.chip.man{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.est{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.rt{border-color:var(--ok);color:var(--ok);background:var(--okl)}
+.chip.bad{border-color:var(--dang);color:var(--dang);background:var(--dangl)}
+.tr{margin-top:12px;border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 var(--r) var(--r) 0;padding:11px 13px;background:#fff}
+.tr .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.tr b{font-variant-numeric:tabular-nums}
+.chain{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:12.5px;color:var(--t2);font-variant-numeric:tabular-nums}
+.chain .box{border:1px solid var(--bd);border-radius:6px;padding:3px 8px;background:#fff;color:var(--t1)}
+.chain .box b{display:block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--t2)}
+.chain .op{color:var(--t3);font-weight:700}
+.note{font-size:12px;color:var(--t2);margin-top:10px}
+.link{color:var(--p);font-weight:600;text-decoration:underline;font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:860px){.two{grid-template-columns:1fr}}
+.tot{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--r);background:var(--bs);font-size:12.5px;font-variant-numeric:tabular-nums}
+.tot div b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);font-weight:700}
+.same{border-color:var(--ok);background:var(--okl)}
+.calls{display:grid;gap:10px;margin-top:10px}
+.call{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 var(--r) var(--r) 0;padding:10px 14px;font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:var(--r)}
+th{background:var(--bs);text-align:left;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--t2);padding:7px 10px;white-space:nowrap}
+td{padding:7px 10px;border-top:1px solid var(--bs);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+</style></head><body><div class="wrap">
+<h1>Traffic index and the trip arithmetic</h1>
+<p class="lede">The waste-line screen for the Geoapify slice. Every figure is an example. The estimator sees where the travel time came from, can overrule the traffic allowance, and can always see that changing it never changes the kilometres driven.</p>
+
+<h2 class="sec"><span class="n">1</span>A routed line, everything automatic</h2>
+<div class="frame">
+ <div class="bar"><span class="crumb">Tender T26-0412 / Scope of works / <b>Waste</b> / Rubble &rarr; Rochedale Transfer Station</span><span class="ex">Example data</span></div>
+ <div class="body">
+  <div class="tr">
+   <div class="hd"><b>Route 21.6 km one way</b> <span class="chip rt">Geoapify route</span> <span class="chip">Truck profile</span></div>
+   <div class="chain">
+    <span class="box"><b>Baseline</b>26 min</span><span class="op">&times;</span>
+    <span class="box"><b>Traffic allowance</b>1.22</span><span class="op">=</span>
+    <span class="box"><b>Adjusted</b>32 min</span><span class="op">&rarr; average &rarr;</span>
+    <span class="box"><b>Planning</b>29 min each way</span>
+   </div>
+   <p class="note">Baseline is Geoapify's free-flow time for this route. The allowance is <b>modelled</b> &mdash; their approximated-traffic time divided by their free-flow time &mdash; not measured peak-hour traffic. Planning time is the average of baseline and adjusted, as agreed.</p>
+  </div>
+  <div class="grid" style="margin-top:12px">
+   <div class="f edit"><div class="k">Traffic allowance</div><div class="v">1.22</div><div class="s"><span class="chip m">Suggested</span> editable per line</div></div>
+   <div class="f"><div class="k">Cycle</div><div class="v ghost">88 min</div><div class="s">29 out &middot; 29 back &middot; 30 at the tip</div></div>
+   <div class="f"><div class="k">Loads per truck per day</div><div class="v ghost">5</div><div class="s"><span class="chip m">From cycle</span> whole loads in 8 h</div></div>
+   <div class="f"><div class="k">Capacity per load</div><div class="v ghost">26 t</div><div class="s"><span class="chip m">Matrix</span> Rubble &middot; Truck &amp; dog</div></div>
+  </div>
+  <div class="tot">
+   <div><b>Quantity</b>468.000 t</div>
+   <div><b>Required trips</b>18 &nbsp;<span style="color:var(--t3)">ceil(468 &divide; 26)</span></div>
+   <div><b>Trucks</b>2</div>
+   <div><b>Duration</b>2 days &nbsp;<span style="color:var(--t3)">ceil(18 &divide; 10)</span></div>
+   <div><b>Total route km</b>777.6 &nbsp;<span style="color:var(--t3)">18 &times; 2 &times; 21.6</span></div>
+   <div><b>Fuel charged on</b>777.6 km</div>
+  </div>
+  <p class="note">Fuel follows the trips that actually happen, including the last part-used day. It is not a full day's kilometres multiplied by rounded days.</p>
+ </div>
+</div>
+
+<h2 class="sec"><span class="n">2</span>The estimator raises the allowance to 1.60</h2>
+<div class="two">
+ <div class="frame"><div class="bar"><span class="crumb"><b>Before</b> &middot; allowance 1.22</span></div><div class="body">
+  <div class="chain"><span class="box"><b>Planning</b>29 min</span><span class="box"><b>Cycle</b>88 min</span><span class="box"><b>Loads/day</b>5</span><span class="box"><b>Duration</b>2 days</span></div>
+  <div class="tot same" style="margin-top:10px"><div><b>Trips</b>18</div><div><b>Total route km</b>777.6</div><div><b>Fuel</b>on 777.6 km</div></div>
+ </div></div>
+ <div class="frame"><div class="bar"><span class="crumb"><b>After</b> &middot; allowance 1.60 <span class="chip man">Manual</span></span></div><div class="body">
+  <div class="chain"><span class="box"><b>Planning</b>34 min</span><span class="box"><b>Cycle</b>98 min</span><span class="box"><b>Loads/day</b>4</span><span class="box"><b>Duration</b>3 days</span></div>
+  <div class="tot same" style="margin-top:10px"><div><b>Trips</b>18</div><div><b>Total route km</b>777.6</div><div><b>Fuel</b>on 777.6 km</div></div>
+ </div></div>
+</div>
+<p class="note">Green means unchanged, and it must be: the allowance buys time, not distance. A day of truck hire is added; not a litre of extra fuel. Loads per day steps 5 &rarr; 4 at a threshold &mdash; the job does not get 31% longer because the number did.</p>
+
+<h2 class="sec"><span class="n">3</span>An overruled figure, and how to give it back</h2>
+<div class="frame"><div class="body">
+ <div class="grid">
+  <div class="f"><div class="k">Loads per truck per day</div><div class="v">6</div><div class="s"><span class="chip man">Manual</span> cycle says 4 &nbsp;<span class="link">Return to automatic</span></div></div>
+  <div class="f"><div class="k">Traffic allowance</div><div class="v">1.60</div><div class="s"><span class="chip man">Manual</span> suggested 1.22 &nbsp;<span class="link">Return to automatic</span></div></div>
+  <div class="f"><div class="k">Capacity per load</div><div class="v ghost">26 t</div><div class="s"><span class="chip m">Matrix</span></div></div>
+  <div class="f"><div class="k">Daily km</div><div class="v ghost">216</div><div class="s"><span class="chip m">From cycle</span></div></div>
+ </div>
+ <p class="note">A figure you typed stays yours &mdash; a new route or a new allowance will not quietly overwrite it. Automatic figures refresh whenever the route, the allowance, capacity, trucks or quantity change. "Return to automatic" is how a typed figure goes back.</p>
+</div></div>
+
+<h2 class="sec"><span class="n">4</span>When no whole load fits, and when there is no route</h2>
+<div class="two">
+ <div class="frame"><div class="bar"><span class="crumb">Tip 2 h 10 min away</span></div><div class="body">
+  <div class="tr" style="border-left-color:var(--dang)"><div class="hd"><b>Cycle 290 min</b> <span class="chip bad">No whole load fits an 8-hour shift</span></div>
+   <div class="note">Loads per day cannot be worked out, so trips, duration and price are left blank rather than guessed. The line still saves. Fix it by choosing a closer tip, lowering the allowance, or planning this one by hand.</div></div>
+ </div></div>
+ <div class="frame"><div class="bar"><span class="crumb">Routing unavailable</span></div><div class="body">
+  <div class="tr" style="border-left-color:var(--accd)"><div class="hd"><b>Straight line 18.4 km &middot; 25 min each way</b> <span class="chip est">Estimated, no route</span></div>
+   <div class="chain"><span class="box"><b>Baseline</b>25 min</span><span class="op">&times;</span><span class="box"><b>Traffic allowance</b>1.00</span><span class="op">=</span><span class="box"><b>Planning</b>25 min</span></div>
+   <div class="note">No route means no suggested allowance, so it sits at 1.00 until you change it. The badge is not selectable &mdash; straight line is only ever fallen back to. Saving still works.</div></div>
+ </div></div>
+</div>
+
+<h2 class="sec"><span class="n">5</span>Find tip &mdash; and why its number differs</h2>
+<div class="frame">
+ <div class="bar"><span class="crumb">Waste line / <b>Find tip</b></span><span class="ex">Example data</span></div>
+ <div class="body"><div class="tw"><table>
+  <tr><th>Facility</th><th class="n">Distance</th><th class="n">Disposal</th><th class="n">Travel</th><th class="n">Total</th><th></th></tr>
+  <tr><td>Rochedale Transfer Station</td><td class="n">16.8 km</td><td class="n">$1,680.00</td><td class="n">$318.20</td><td class="n">$1,998.20</td><td><span class="chip m">Selected</span></td></tr>
+  <tr><td>Wacol Recycling</td><td class="n">19.4 km</td><td class="n">$1,160.00</td><td class="n">$276.40</td><td class="n">$1,436.40</td><td><span class="link">Select</span></td></tr>
+ </table></div>
+ <p class="note">The finder ranks on straight-line distance, which is fast and free. Once you select a tip, the line saves that facility and prices it on the <b>real route</b> &mdash; so the line reads 21.6 km where the finder said 16.8 km. The screen says exactly that under the list, so nobody reads it as a discrepancy.</p>
+ </div>
+</div>
+
+<h2 class="sec">What this changes, for you to confirm</h2>
+<div class="calls">
+ <div class="call"><b>The allowance is modelled, and labelled that way.</b> Geoapify gives a busy-road estimate, not measured traffic on the day. The wording on screen says so, everywhere the number appears.</div>
+ <div class="call"><b>Kilometres never move with the allowance.</b> Section 2 is the proof panel, and it is a test as well as a picture.</div>
+ <div class="call"><b>Fuel figures will change on existing lines.</b> Today a final part-day is billed as a full day of driving. After this it is billed for the trips that happen. Day hire is untouched.</div>
+ <div class="call"><b>"Find tip" now actually sticks.</b> Today it resolves a tip and throws the id away, so the line keeps a name and a straight-line distance. After this, selecting a tip behaves exactly like choosing it on the row.</div>
+</div>
+</div></body></html>

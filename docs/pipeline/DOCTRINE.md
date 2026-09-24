@@ -1100,6 +1100,43 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   error, or the output ever carries `failed to parse jq expression`, this row is wrong and must be
   re-measured. Found by Station 04 2026-09-24T14:1xZ (F1), re-measured and landed by Station 00 at
   2026-09-24T16:3xZ.
+  🔴🔴 **FOURTH TRANSPORT, 2026-09-24 — THE STRIPPING IS NOT CONFINED TO `-Command`, AND NOT TO
+  *ESCAPED* QUOTES: A `.ps1` RUN WITH `-File` STRIPS BARE DOUBLE QUOTES OUT OF A `--jq` ARGUMENT
+  TOO. SO §9.1’S CURE — *“put anything containing `$` in a `.ps1` and run it with `-File`”* — DOES
+  NOT DODGE THIS TRAP, AND A RUN THAT MOVES ITS ONE-LINER INTO A SCRIPT TO ESCAPE §9.1 CARRIES THIS
+  ONE IN WITH IT.** `JQ_STRING_LITERAL_STRIPPED_UNDER_FILE_TOO_V1`
+
+  [MEASURED] 2026-09-24T18:1xZ by Station 04 (F3), over ten probes, **every one of them run under
+  `powershell.exe -File <script.ps1>`** — no `-Command` layer of any kind in play:
+
+  | probe | result | truth |
+  |---|---|---|
+  | `gh pr view <N> --json labels --jq '[.labels[].name]\|join(",")' 2>$null`, all five open PRs | **EMPTY on all five** | all five carry `do-not-merge` |
+  | the discriminating control `--jq '"LITERAL"'` | jq receives `LITERAL` — **the quotes are gone** | should receive `"LITERAL"` |
+  | `--jq '.labels[].name'` · `--jq '[.labels[].name]\|@csv'` · `--jq '.labels\|length'` — no string literal | correct values, exit **0** | correct |
+
+  **Two corrections to the rows above, and the second is the one that bites.** (1) **Not just
+  `-Command`** — the three transports already recorded all name a `-Command` layer; this one has
+  none. (2) **Not just *escaped* quotes** — bare double quotes inside a single-quoted PowerShell
+  string are stripped identically, so there is no quoting escape: single quotes survive the shell
+  but jq rejects them as string delimiters.
+
+  🔴 **The cost, measured on the live board: all five open PRs read back an EMPTY label list, which
+  is byte-identical to “the board is released”** — against a truth of `do-not-merge` on all five.
+  That is §9.6 with a merge button attached, reached through the QUOTING of a filter rather than
+  through the corpus, and it lands on the one fact this board most depends on.
+
+  🔧 **But the failure is LOUD — exit 1, explicit stderr — and it went silent only because the probe
+  wrote `2>$null`.** So the rule is NOT “avoid `--jq`”. It is: **never discard stderr and never skip
+  `$LASTEXITCODE` on a `gh --jq` call, and prefer `@csv` or a bare path over any jq string literal.**
+  The sound alternative remains `--json` plus `ConvertFrom-Json` after assignment (§9.4, above).
+
+  ⚠️ **Blast radius among committed callers is ZERO** — [MEASURED] the same run: every `--jq` under
+  `scripts/` uses no inner string literal (`scripts/security-audit.ps1` is the only caller). **The
+  exposure is ad-hoc agent probes**, which is where it has now bitten twice from two directions.
+  ⚠️ **Falsifying probe: the `--jq '"LITERAL"'` control row.** Run it through `-File`; if jq ever
+  receives `"LITERAL"` with its quotes intact, this row is wrong and must be re-measured. Found by
+  Station 04 2026-09-24T18:1xZ (F3), landed by Station 00 at 2026-09-24T18:4xZ.
 - 🔴 **`@(ConvertFrom-Json …).Count` answers `1` for an EMPTY array and `1` for a
   forty-element one.** PS 5.1 emits a parsed JSON array as a **single object**, so an array
   subexpression wrapping the call — inline or piped — counts one item regardless of length.

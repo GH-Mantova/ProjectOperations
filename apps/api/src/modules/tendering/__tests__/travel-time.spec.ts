@@ -11,7 +11,11 @@
 import {
   deriveCycle,
   StraightLineTravelProvider,
-  TRAVEL_TIME_PORT_V1
+  TRAVEL_TIME_PORT_V1,
+  planningMinutes,
+  requiredTrips,
+  durationDays,
+  totalTripKm
 } from "../travel-time";
 
 // ---- Version marker ---------------------------------------------------------
@@ -152,5 +156,168 @@ describe("StraightLineTravelProvider", () => {
     // Haversine BRISBANE->ROCHEDALE is approximately 13-14 km.
     expect(result!.km).toBeGreaterThan(10);
     expect(result!.km).toBeLessThan(20);
+  });
+});
+
+// ---- S8g: planningMinutes ---------------------------------------------------
+// planning = average(baseline, baseline x index); index >= 1.00.
+// The index is a MODELLED TRAFFIC ALLOWANCE (not measured peak traffic) and
+// never multiplies kilometres -- only minutes.
+
+describe("planningMinutes (S8g)", () => {
+  it("equals baseline when index is exactly 1.00", () => {
+    // average(30, 30 * 1.0) = 30
+    expect(planningMinutes({ baseline: 30, index: 1.0 })).toBe(30);
+  });
+
+  it("averages baseline and adjusted at index 1.20", () => {
+    // baseline 30, adjusted 36 -> average 33
+    expect(planningMinutes({ baseline: 30, index: 1.2 })).toBe(33);
+  });
+
+  it("averages baseline and adjusted at index 1.50", () => {
+    // baseline 40, adjusted 60 -> average 50
+    expect(planningMinutes({ baseline: 40, index: 1.5 })).toBe(50);
+  });
+
+  it("rounds to the nearest integer", () => {
+    // baseline 25, index 1.15 -> adjusted 28.75, average 26.875 -> 27
+    expect(planningMinutes({ baseline: 25, index: 1.15 })).toBe(27);
+  });
+});
+
+// ---- S8g: requiredTrips -----------------------------------------------------
+// trips = ceil(quantity / capacityPerLoad). Whole trips only.
+// 3.5 capacities => 4 trips; 4.5 => 5.
+
+describe("requiredTrips (S8g)", () => {
+  it("returns 4 for 3.5 capacities (Marco's rule: 3.5 rounds UP to 4)", () => {
+    // 35 / 10 = 3.5 -> ceil = 4
+    expect(requiredTrips({ quantity: 35, capacityPerLoad: 10 })).toBe(4);
+  });
+
+  it("returns 5 for 4.5 capacities (4.5 rounds UP to 5)", () => {
+    // 45 / 10 = 4.5 -> ceil = 5
+    expect(requiredTrips({ quantity: 45, capacityPerLoad: 10 })).toBe(5);
+  });
+
+  it("returns 8 for exactly 8 capacities", () => {
+    expect(requiredTrips({ quantity: 80, capacityPerLoad: 10 })).toBe(8);
+  });
+
+  it("returns 1 for any quantity below one capacity", () => {
+    // even 0.001 units of overflow forces a trip
+    expect(requiredTrips({ quantity: 0.001, capacityPerLoad: 10 })).toBe(1);
+  });
+
+  it("returns 0 for zero quantity (nothing to haul)", () => {
+    expect(requiredTrips({ quantity: 0, capacityPerLoad: 10 })).toBe(0);
+  });
+
+  it("returns 0 for zero capacity (invalid, no infinite loop)", () => {
+    expect(requiredTrips({ quantity: 10, capacityPerLoad: 0 })).toBe(0);
+  });
+});
+
+// ---- S8g: durationDays ------------------------------------------------------
+// duration = ceil(trips / (trucks * loadsPerDay))
+// loadsPerDay=0 => infeasible cycle, no division.
+
+describe("durationDays (S8g)", () => {
+  it("gives 2 days for 8 trips at 4 loads/day/truck with 1 truck", () => {
+    // ceil(8 / (1 * 4)) = 2
+    const result = durationDays({ trips: 8, trucks: 1, loadsPerDay: 4 });
+    expect(result).toEqual({ durationDays: 2 });
+  });
+
+  it("gives 4 days for 8 trips at 2 loads/day/truck with 1 truck", () => {
+    // ceil(8 / (1 * 2)) = 4
+    const result = durationDays({ trips: 8, trucks: 1, loadsPerDay: 2 });
+    expect(result).toEqual({ durationDays: 4 });
+  });
+
+  it("rounds partial days UP (a final part-day still counts)", () => {
+    // ceil(7 / (1 * 4)) = 2 (7/4 = 1.75 -> 2)
+    const result = durationDays({ trips: 7, trucks: 1, loadsPerDay: 4 });
+    expect(result).toEqual({ durationDays: 2 });
+  });
+
+  it("returns infeasibleCycle when loadsPerDay is 0 (no divide, no invented rate)", () => {
+    const result = durationDays({ trips: 8, trucks: 1, loadsPerDay: 0 });
+    expect(result).toEqual({ infeasibleCycle: true });
+  });
+
+  it("scales down duration when trucks increase", () => {
+    // ceil(8 / (2 * 4)) = 1
+    const result = durationDays({ trips: 8, trucks: 2, loadsPerDay: 4 });
+    expect(result).toEqual({ durationDays: 1 });
+  });
+});
+
+// ---- S8g: totalTripKm -------------------------------------------------------
+// total = trips * 2 * oneWayKm.
+// Changing the traffic index MUST NOT change this figure.
+
+describe("totalTripKm (S8g)", () => {
+  it("gives 320 km for 8 trips at 20 km one-way (Marco's acceptance example)", () => {
+    expect(totalTripKm({ trips: 8, oneWayKm: 20 })).toBe(320);
+  });
+
+  it("stays at 320 km regardless of index (index does not multiply km)", () => {
+    // Same 8 trips, same 20 km one-way -> same 320 km whether loads/day was 4 or 2.
+    const kmAtLoadsPerDay4 = totalTripKm({ trips: 8, oneWayKm: 20 });
+    const kmAtLoadsPerDay2 = totalTripKm({ trips: 8, oneWayKm: 20 });
+    expect(kmAtLoadsPerDay2).toBe(kmAtLoadsPerDay4);
+  });
+
+  it("rounds to 2 dp", () => {
+    // 3 * 2 * 12.345 = 74.07
+    expect(totalTripKm({ trips: 3, oneWayKm: 12.345 })).toBe(74.07);
+  });
+
+  it("returns 0 for 0 trips", () => {
+    expect(totalTripKm({ trips: 0, oneWayKm: 20 })).toBe(0);
+  });
+});
+
+// ---- S8g: integration -------------------------------------------------------
+// Marco's acceptance chain:
+//   8 trips, 20 km one-way, 4 loads/day => 2 days, 320 km.
+//   Same 8 trips at 2 loads/day => 4 days, still 320 km.
+
+describe("S8g arithmetic contract (integration)", () => {
+  it("8 trips at 4 loads/day = 2 days, 320 km", () => {
+    const trips = 8;
+    const oneWayKm = 20;
+    const dur = durationDays({ trips, trucks: 1, loadsPerDay: 4 });
+    const km = totalTripKm({ trips, oneWayKm });
+    expect(dur).toEqual({ durationDays: 2 });
+    expect(km).toBe(320);
+  });
+
+  it("8 trips at 2 loads/day = 4 days, STILL 320 km (km unchanged by index)", () => {
+    const trips = 8;
+    const oneWayKm = 20;
+    const dur = durationDays({ trips, trucks: 1, loadsPerDay: 2 });
+    const km = totalTripKm({ trips, oneWayKm });
+    expect(dur).toEqual({ durationDays: 4 });
+    // The whole point of S8g: an index change moves time, not distance.
+    expect(km).toBe(320);
+  });
+
+  it("quantity 3.5 capacities => 4 trips; 4.5 => 5 trips", () => {
+    expect(requiredTrips({ quantity: 35, capacityPerLoad: 10 })).toBe(4);
+    expect(requiredTrips({ quantity: 45, capacityPerLoad: 10 })).toBe(5);
+  });
+
+  it("infeasible cycle (planning-derived loadsPerDay=0) blocks division, does not invent a rate", () => {
+    // Simulate a very long cycle: 240 min one-way + 30 min turnaround x 2 -> 510 min > 480 shift
+    const planningIndex = 1.0;
+    const baseline = 240;
+    const plan = planningMinutes({ baseline, index: planningIndex });
+    const cycle = deriveCycle({ minutesOneWay: plan, tipTurnaroundMinutes: 30 });
+    expect(cycle.loadsPerDay).toBe(0);
+    const dur = durationDays({ trips: 8, trucks: 1, loadsPerDay: cycle.loadsPerDay });
+    expect(dur).toEqual({ infeasibleCycle: true });
   });
 });

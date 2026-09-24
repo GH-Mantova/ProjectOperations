@@ -3,14 +3,24 @@ import { Prisma, QuoteDestination } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../platform/notifications.service";
 import { RateResolverService } from "../rates/rate-resolver.service";
+import { ApiKeysService } from "../api-keys/api-keys.service";
 import { narrowToNumber, toDecimal } from "./scope-of-works.service";
 import { decToNum, resolveEffectiveMarkup } from "./scope-item-pricing";
 import {
   StraightLineTravelProvider,
   deriveCycle,
-  type TravelEstimate
+  planningMinutes,
+  requiredTrips,
+  durationDays as deriveDurationDays,
+  totalTripKm as deriveTotalTripKm,
+  type TravelEstimate,
+  type TravelTimeProvider
 } from "./travel-time";
+import { GeoapifyRouteProvider } from "./providers/geoapify-route.provider";
 import { resolveCapacityPerLoad } from "./transport-capacity";
+
+// S8g extended travel estimate: carries the suggestedIndex from Geoapify.
+type ExtendedTravelEstimate = TravelEstimate & { suggestedIndex?: number | null };
 
 type UpsertWasteDto = {
   discipline?: string;
@@ -54,6 +64,10 @@ type UpsertWasteDto = {
   // "manual" when the estimator typed a figure. "matrix" is set by the server
   // when the resolver fills the default; the client does NOT need to send this.
   capacitySource?: string | null;
+  // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- editable traffic index.
+  // null clears a manual override (returns to automatic geoapify suggestion).
+  // The index is a MODELLED TRAFFIC ALLOWANCE, not measured peak-hour traffic.
+  travelIndex?: number | null;
 };
 
 // R3 T-1 — snapshot cost components computed by the engine. Returned by
@@ -63,6 +77,8 @@ type UpsertWasteDto = {
 type EngineResult = {
   loads: number | null;
   durationDays: number | null;
+  // S8g: infeasible-cycle flag (loadsPerDay = 0). When true, loads/duration/cost are null.
+  infeasibleCycle: boolean;
   transportCost: number | null;
   fuelCost: number | null;
   disposalCost: number | null;
@@ -73,6 +89,9 @@ type EngineResult = {
   // EstimatePlantRate at the moment the line is priced. Returned by
   // computeCostEngine alongside the other two snapshots.
   quotedTransportRatePerDay: number | null;
+  // S8g: total route kilometres for the job (trips x 2 x one-way km).
+  // Fuel is charged on this, not on dailyKm x duration x trucks.
+  totalTripKm: number | null;
 };
 
 // PRICING_INPUTS — the set of DTO keys whose presence in a PATCH means we
@@ -102,12 +121,16 @@ const PRICING_INPUTS = new Set<keyof UpsertWasteDto>([
   "wasteFacility",
   // TRAVEL_TIME_PORT_V1 -- a tip change triggers travel re-resolve.
   "mapLocationId",
+  // GEOAPIFY_ROUTE_TRAVEL_V1 -- an index change reprices duration and cost.
+  "travelIndex",
 ]);
 
 // TRAVEL_TIME_PORT_V1 -- inputs that trigger a travel re-resolve on update.
 // Subset of PRICING_INPUTS; used to decide whether the travel snapshot must
 // be refreshed (tip change, or a new create). Site coordinates are stable
 // within a tender session and are not tracked here.
+// Note: travelIndex does NOT trigger a re-resolve (it's an edit on top of the
+// existing snapshot, not a reason to call the API again).
 const TRAVEL_INPUTS = new Set<keyof UpsertWasteDto>(["mapLocationId"]);
 
 // Waste disposal rows live on their own table (ScopeWasteItem). Each row's
@@ -130,7 +153,8 @@ export class ScopeWasteService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rateResolver: RateResolverService,
-    private readonly notifications: NotificationsService
+    private readonly notifications: NotificationsService,
+    private readonly apiKeys: ApiKeysService
   ) {}
 
   /**
@@ -268,6 +292,55 @@ export class ScopeWasteService {
       capacitySource = "manual";
     }
 
+    // S8g: Resolve travel BEFORE the engine so the first save has consistent
+    // loads, duration, km, fuel and total.
+    // TRAVEL_TIME_PORT_V1 -- resolve travel when the line has a tip link.
+    // Never throws; a null estimate means no snapshot is stored.
+    let travelEstimate: ExtendedTravelEstimate | null = null;
+    if (dto.mapLocationId) {
+      travelEstimate = await this.resolveTravelEstimate(dto.mapLocationId, tenderId) as ExtendedTravelEstimate | null;
+    }
+
+    // S8g: derive traffic index, planning minutes, loadsPerDay, totalTripKm.
+    // A typed travelIndex from the DTO wins over the suggested one from Geoapify.
+    const s8g = this.deriveS8gFields({
+      travelEstimate,
+      dtoTravelIndex: dto.travelIndex,
+      dtoLoadsPerTruckPerDay: loadsPerTruckPerDayN,
+      dtoDailyKm: dailyKmN,
+      dtoQtyTrucks: qtyTrucksN != null ? Math.trunc(qtyTrucksN) : null,
+      capacityPerLoad: capacityPerLoadN,
+      // qty for required-trips calc
+      qty: tonnesN,
+      m3: m3N,
+      capacityUnit: dto.capacityUnit ?? null,
+      tipTurnaroundMinutes: null // loaded inside the function from DB on first call
+    });
+
+    // Load opsSettings once for both S8g defaults and the engine fuel calc.
+    const settings = await this.prisma.operationsSettings.findUnique({
+      where: { id: "singleton" },
+      select: { tipTurnaroundMinutes: true }
+    });
+    const tipTurnaround = settings?.tipTurnaroundMinutes ?? 30;
+
+    // Recompute S8g with the actual tipTurnaround.
+    const s8gFull = this.deriveS8gFields({
+      travelEstimate,
+      dtoTravelIndex: dto.travelIndex,
+      dtoLoadsPerTruckPerDay: loadsPerTruckPerDayN,
+      dtoDailyKm: dailyKmN,
+      dtoQtyTrucks: qtyTrucksN != null ? Math.trunc(qtyTrucksN) : null,
+      capacityPerLoad: capacityPerLoadN,
+      qty: tonnesN,
+      m3: m3N,
+      capacityUnit: dto.capacityUnit ?? null,
+      tipTurnaroundMinutes: tipTurnaround
+    });
+
+    const effectiveLoadsPerTruckPerDay = s8gFull.effectiveLoadsPerTruckPerDay;
+    const effectiveDailyKm = s8gFull.effectiveDailyKm;
+
     // R3 T-1 - engine fires when a transport line is picked (transportRateId set)
     // AND we have qtyTrucks + loadsPerTruckPerDay + capacityPerLoad. If ANY are
     // missing the engine returns nulls and we fall back to the legacy path.
@@ -278,8 +351,10 @@ export class ScopeWasteService {
       capacityUnit: dto.capacityUnit ?? null,
       capacityPerLoad: capacityPerLoadN,
       qtyTrucks: qtyTrucksN != null ? Math.trunc(qtyTrucksN) : null,
-      loadsPerTruckPerDay: loadsPerTruckPerDayN,
-      dailyKm: dailyKmN,
+      loadsPerTruckPerDay: effectiveLoadsPerTruckPerDay,
+      // S8g: pass totalTripKm for fuel arithmetic; dailyKm stays stored but no longer drives fuel.
+      totalTripKm: s8gFull.totalTripKm,
+      dailyKm: effectiveDailyKm,
       transportRateId: dto.transportRateId ?? null,
       assetId: dto.assetId ?? null,
       wasteType: dto.wasteType ?? null,
@@ -288,32 +363,6 @@ export class ScopeWasteService {
       // SLICE 2 (SNAPSHOT_LIST_APPLIED) — pass tenderId for snapshot lookup.
       tenderId
     });
-    // TRAVEL_TIME_PORT_V1 -- resolve travel when the line has a tip link.
-    // Never throws; a null estimate means no snapshot is stored.
-    let travelEstimate: TravelEstimate | null = null;
-    if (dto.mapLocationId) {
-      travelEstimate = await this.resolveTravelEstimate(dto.mapLocationId, tenderId);
-    }
-
-    // Derive loadsPerTruckPerDay and dailyKm from the travel estimate when
-    // the estimator left those fields empty. Typed values always win.
-    let effectiveLoadsPerTruckPerDay = loadsPerTruckPerDayN;
-    let effectiveDailyKm = dailyKmN;
-    if (travelEstimate !== null) {
-      const settings = await this.prisma.operationsSettings.findUnique({
-        where: { id: "singleton" },
-        select: { tipTurnaroundMinutes: true }
-      });
-      const tipTurnaround = settings?.tipTurnaroundMinutes ?? 30;
-      const { derivedLoadsPerTruckPerDay, derivedDailyKm } = this.deriveTravelDefaults(
-        travelEstimate,
-        tipTurnaround,
-        loadsPerTruckPerDayN,
-        dailyKmN
-      );
-      if (derivedLoadsPerTruckPerDay !== null) effectiveLoadsPerTruckPerDay = derivedLoadsPerTruckPerDay;
-      if (derivedDailyKm !== null) effectiveDailyKm = derivedDailyKm;
-    }
 
     const legacy = this.deriveTotals(
       tonnesN,
@@ -354,6 +403,7 @@ export class ScopeWasteService {
         // TRANSPORT_CAPACITY_MATRIX_V1 (scopecards-s9) -- record provenance.
         capacitySource: capacitySource,
         dailyKm: toDecimal(effectiveDailyKm),
+        dailyKmSource: s8gFull.dailyKmSource,
         transportCost: toDecimal(engine.transportCost),
         fuelCost: toDecimal(engine.fuelCost),
         disposalCost: toDecimal(engine.disposalCost),
@@ -378,7 +428,13 @@ export class ScopeWasteService {
         travelMinutesOneWay: travelEstimate?.minutesOneWay ?? null,
         travelSource: travelEstimate?.source ?? null,
         travelDetail: travelEstimate?.detail ?? null,
-        travelResolvedAt: travelEstimate?.resolvedAt ?? null
+        travelResolvedAt: travelEstimate?.resolvedAt ?? null,
+        // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- index, planning minutes, total km.
+        travelIndex: s8gFull.travelIndex !== null ? toDecimal(s8gFull.travelIndex) : null,
+        travelIndexSource: s8gFull.travelIndexSource,
+        travelPlanningMinutesOneWay: s8gFull.planningMinutesOneWay,
+        totalTripKm: engine.totalTripKm !== null ? toDecimal(engine.totalTripKm) : null,
+        loadsSource: engine.infeasibleCycle ? "cycle" : (engine.loads !== null ? "cycle" : null)
       },
       include: { card: { select: { wasteMarkupOverride: true } } }
     });
@@ -506,7 +562,12 @@ export class ScopeWasteService {
       data.capacitySource = resolvedCapacitySource;
     }
     if (dto.capacityUnit !== undefined) data.capacityUnit = dto.capacityUnit;
-    if (dtoDailyKmN !== undefined) data.dailyKm = toDecimal(dtoDailyKmN);
+    if (dtoDailyKmN !== undefined) {
+      data.dailyKm = toDecimal(dtoDailyKmN);
+      // When the estimator explicitly types a dailyKm, mark provenance as manual.
+      // When they clear it (null), mark as derived (will be recalculated below).
+      data.dailyKmSource = dtoDailyKmN !== null ? "manual" : "derived";
+    }
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
     // SCOPE_QUOTE_DESTINATION_V1 -- only overwrite when the DTO carries it.
@@ -523,6 +584,18 @@ export class ScopeWasteService {
         ? { connect: { id: dto.mapLocationId } }
         : { disconnect: true };
     }
+    // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- editable traffic index.
+    // DTO carries travelIndex -> manual. null -> return to automatic.
+    if (dto.travelIndex !== undefined) {
+      if (dto.travelIndex !== null) {
+        data.travelIndex = toDecimal(dto.travelIndex);
+        data.travelIndexSource = "manual";
+      } else {
+        // Clear manual override -- let the next re-resolve fill it.
+        data.travelIndex = null;
+        data.travelIndexSource = null;
+      }
+    }
 
     // TRAVEL_TIME_PORT_V1 -- re-resolve travel when the tip changed.
     // Also re-resolve on a create-like path where existingMapLocationId is null.
@@ -532,25 +605,27 @@ export class ScopeWasteService {
     const effectiveMapLocationId =
       dto.mapLocationId !== undefined ? dto.mapLocationId : existing.mapLocationId;
 
-    let updateTravelEstimate: TravelEstimate | null | undefined = undefined; // undefined = don't touch
+    let updateTravelEstimate: ExtendedTravelEstimate | null | undefined = undefined; // undefined = don't touch
     if (travelInputTouched) {
       if (effectiveMapLocationId) {
-        updateTravelEstimate = await this.resolveTravelEstimate(effectiveMapLocationId, tenderId);
+        updateTravelEstimate = await this.resolveTravelEstimate(effectiveMapLocationId, tenderId) as ExtendedTravelEstimate | null;
       } else {
         // Tip was cleared -- clear the snapshot too.
         updateTravelEstimate = null;
       }
     }
 
+    // Load opsSettings for tipTurnaround (used by S8g derivation).
+    const opsSettings = await this.prisma.operationsSettings.findUnique({
+      where: { id: "singleton" },
+      select: { tipTurnaroundMinutes: true }
+    });
+    const tipTurnaround = opsSettings?.tipTurnaroundMinutes ?? 30;
+
     // When travel was re-resolved, apply derived defaults for empty fields.
     // "Typed figure always wins": only fill when the field is absent from the
     // DTO AND not already set on the existing row.
     if (updateTravelEstimate !== undefined && updateTravelEstimate !== null) {
-      const settings = await this.prisma.operationsSettings.findUnique({
-        where: { id: "singleton" },
-        select: { tipTurnaroundMinutes: true }
-      });
-      const tipTurnaround = settings?.tipTurnaroundMinutes ?? 30;
       // For update, "typed" means either the DTO brought a value OR the row
       // already has a non-null value that was not cleared this PATCH.
       const existingLoads = existing.loadsPerTruckPerDay != null
@@ -560,31 +635,106 @@ export class ScopeWasteService {
       const dtoLoads = dtoLoadsPerTruckPerDayN; // undefined if DTO didn't carry it
       const dtoDailyKm = dtoDailyKmN; // undefined if DTO didn't carry it
 
+      // Determine effective travelIndex for S8g (DTO wins, then existing, then suggested).
+      const effectiveTravelIndex = dto.travelIndex !== undefined
+        ? dto.travelIndex
+        : existing.travelIndex != null
+          ? Number(existing.travelIndex)
+          : null;
+
+      // S8g: when tip changed, update the suggested index from new route.
+      // Only set if the estimator hasn't typed one (or cleared it this PATCH).
+      const indexSource = dto.travelIndex !== undefined
+        ? (dto.travelIndex !== null ? "manual" : null)
+        : existing.travelIndexSource;
+
+      if (updateTravelEstimate.suggestedIndex != null && indexSource !== "manual" && dto.travelIndex === undefined) {
+        // New route has a suggested index and no manual override exists -- apply it.
+        data.travelIndex = toDecimal(updateTravelEstimate.suggestedIndex);
+        data.travelIndexSource = "geoapify";
+      } else if (dto.travelIndex !== undefined) {
+        // Already handled above.
+      } else if (existing.travelIndex == null && updateTravelEstimate.suggestedIndex == null) {
+        data.travelIndexSource = "none";
+      }
+
+      // S8g: compute planning minutes from effective index.
+      const resolvedIndex = data.travelIndex != null
+        ? Number(data.travelIndex)
+        : effectiveTravelIndex ?? 1.0;
+      const planMins = planningMinutes({ baseline: updateTravelEstimate.minutesOneWay, index: resolvedIndex });
+      data.travelPlanningMinutesOneWay = planMins;
+
+      // Derive loadsPerDay from planning minutes.
+      const { loadsPerDay } = deriveCycle({ minutesOneWay: planMins, tipTurnaroundMinutes: tipTurnaround });
+
       // Field is "empty" when DTO left it undefined AND existing row has no value.
       const loadsIsEmpty = dtoLoads === undefined && existingLoads === null;
       const dailyKmIsEmpty = dtoDailyKm === undefined && existingDailyKm === null;
 
-      const { derivedLoadsPerTruckPerDay, derivedDailyKm } = this.deriveTravelDefaults(
-        updateTravelEstimate,
-        tipTurnaround,
-        loadsIsEmpty ? null : 1, // pass a non-null to signal "do not override"
-        dailyKmIsEmpty ? null : 1
-      );
-      if (loadsIsEmpty && derivedLoadsPerTruckPerDay !== null) {
-        data.loadsPerTruckPerDay = toDecimal(derivedLoadsPerTruckPerDay);
+      if (loadsIsEmpty) {
+        data.loadsPerTruckPerDay = toDecimal(loadsPerDay);
+        data.loadsSource = loadsPerDay === 0 ? "cycle" : "cycle";
       }
-      if (dailyKmIsEmpty && derivedDailyKm !== null) {
-        data.dailyKm = toDecimal(derivedDailyKm);
+      if (dailyKmIsEmpty) {
+        // dailyKm = loadsPerDay * 2 * one-way km (S8g: stored but no longer drives fuel directly)
+        const derivedDKm = loadsPerDay * 2 * updateTravelEstimate.km;
+        data.dailyKm = toDecimal(derivedDKm);
+        data.dailyKmSource = "derived";
       }
     }
 
     // Write travel snapshot when it was resolved (null = clear it).
     if (updateTravelEstimate !== undefined) {
-      data.travelKm = updateTravelEstimate !== null ? toDecimal(updateTravelEstimate.km) : null;
-      data.travelMinutesOneWay = updateTravelEstimate?.minutesOneWay ?? null;
-      data.travelSource = updateTravelEstimate?.source ?? null;
-      data.travelDetail = updateTravelEstimate?.detail ?? null;
-      data.travelResolvedAt = updateTravelEstimate?.resolvedAt ?? null;
+      if (updateTravelEstimate !== null) {
+        data.travelKm = toDecimal(updateTravelEstimate.km);
+        data.travelMinutesOneWay = updateTravelEstimate.minutesOneWay;
+        data.travelSource = updateTravelEstimate.source;
+        data.travelDetail = updateTravelEstimate.detail;
+        data.travelResolvedAt = updateTravelEstimate.resolvedAt;
+        // If no index was set yet and we got a suggestion, record it.
+        if (data.travelIndex === undefined && updateTravelEstimate.suggestedIndex != null) {
+          const existingIsManual = existing.travelIndexSource === "manual";
+          if (!existingIsManual) {
+            data.travelIndex = toDecimal(updateTravelEstimate.suggestedIndex);
+            data.travelIndexSource = "geoapify";
+          }
+        } else if (data.travelIndex === undefined && updateTravelEstimate.suggestedIndex == null) {
+          data.travelIndex = null;
+          data.travelIndexSource = "none";
+        }
+        // If not already set, compute planning minutes from the now-effective index.
+        if (data.travelPlanningMinutesOneWay === undefined) {
+          const idx = data.travelIndex != null
+            ? Number(data.travelIndex)
+            : existing.travelIndex != null
+              ? Number(existing.travelIndex)
+              : 1.0;
+          data.travelPlanningMinutesOneWay = planningMinutes({ baseline: updateTravelEstimate.minutesOneWay, index: idx });
+        }
+      } else {
+        // Tip cleared -- clear all travel snapshot and S8g fields.
+        data.travelKm = null;
+        data.travelMinutesOneWay = null;
+        data.travelSource = null;
+        data.travelDetail = null;
+        data.travelResolvedAt = null;
+        data.travelIndex = null;
+        data.travelIndexSource = null;
+        data.travelPlanningMinutesOneWay = null;
+        data.totalTripKm = null;
+        data.loadsSource = null;
+      }
+    }
+
+    // When a travelIndex is being changed (but NOT a tip change), we need to
+    // recompute planning minutes from the existing travel baseline.
+    if (dto.travelIndex !== undefined && !travelInputTouched && updateTravelEstimate === undefined) {
+      const baseline = existing.travelMinutesOneWay ?? null;
+      if (baseline !== null) {
+        const idx = dto.travelIndex !== null ? dto.travelIndex : 1.0;
+        data.travelPlanningMinutesOneWay = planningMinutes({ baseline, index: idx });
+      }
     }
 
     if (pricingTouched) {
@@ -620,6 +770,49 @@ export class ScopeWasteService {
             : (existing.dailyKm ? Number(existing.dailyKm) : null));
       const eWasteType = dto.wasteType !== undefined ? dto.wasteType : existing.wasteType;
       const eWasteFacility = dto.wasteFacility !== undefined ? dto.wasteFacility : existing.wasteFacility;
+
+      // S8g: compute totalTripKm for the engine.
+      // Use the planning minutes for loadsPerDay (if we have them).
+      const ePlanningMinutes = data.travelPlanningMinutesOneWay !== undefined
+        ? data.travelPlanningMinutesOneWay
+        : (existing.travelPlanningMinutesOneWay ?? null);
+      const eTravelKm = updateTravelEstimate !== undefined && updateTravelEstimate !== null
+        ? updateTravelEstimate.km
+        : (existing.travelKm != null ? Number(existing.travelKm) : null);
+
+      // Compute totalTripKm: trips x 2 x one-way km.
+      let eTotalTripKm: number | null = null;
+      if (eTravelKm !== null && eCapacityPerLoad != null && eCapacityPerLoad > 0) {
+        const preferM3 = eCapacityUnit === "m3" || eCapacityUnit === "m³";
+        const primary = preferM3 ? m3 : tonnes;
+        const secondary = preferM3 ? tonnes : m3;
+        const wasteAmt = primary != null && primary > 0 ? primary : (secondary != null && secondary > 0 ? secondary : null);
+        if (wasteAmt != null) {
+          const trips = requiredTrips({ quantity: wasteAmt, capacityPerLoad: eCapacityPerLoad });
+          eTotalTripKm = deriveTotalTripKm({ trips, oneWayKm: eTravelKm });
+          data.totalTripKm = toDecimal(eTotalTripKm);
+        }
+      }
+
+      // S8g: also update planning minutes-derived loadsPerDay if
+      // loadsPerTruckPerDay is "cycle" source AND planning minutes changed.
+      const existingLoadsSource = existing.loadsSource;
+      const existingIsManualLoads = existingLoadsSource === "manual" || dtoLoadsPerTruckPerDayN !== undefined;
+      if (!existingIsManualLoads && ePlanningMinutes !== null && eLoadsPerTruckPerDay !== null) {
+        // loadsPerDay was cycle-derived -- may need refresh if planning minutes changed.
+        // Only refresh when data.travelPlanningMinutesOneWay was written (meaning it changed).
+        if (data.travelPlanningMinutesOneWay !== undefined) {
+          // ePlanningMinutes was resolved from data.travelPlanningMinutesOneWay
+          // (which we set as a plain int in this write path) or from existing.
+          // Narrow the Prisma update-input union back to number for deriveCycle.
+          const planMinsNum =
+            typeof ePlanningMinutes === "number" ? ePlanningMinutes : Number(ePlanningMinutes);
+          const { loadsPerDay } = deriveCycle({ minutesOneWay: planMinsNum, tipTurnaroundMinutes: tipTurnaround });
+          data.loadsPerTruckPerDay = toDecimal(loadsPerDay);
+          data.loadsSource = "cycle";
+        }
+      }
+
       // Pass the existing snapshot so the engine can re-use it when the
       // transport rate hasn't changed (snapshot-present -> use it).
       // If transportRateId changed in this PATCH, clear the snapshot so
@@ -632,13 +825,19 @@ export class ScopeWasteService {
           ? Number(existing.quotedTransportRatePerDay)
           : null;
 
+      // Re-read effective loadsPerTruckPerDay after S8g may have written it.
+      const finalLoadsPerTruckPerDay = data.loadsPerTruckPerDay != null
+        ? Number(data.loadsPerTruckPerDay)
+        : eLoadsPerTruckPerDay;
+
       const engine = await this.computeCostEngine({
         qty: tonnes,
         m3: m3,
         capacityUnit: eCapacityUnit,
         capacityPerLoad: eCapacityPerLoad,
         qtyTrucks: eQtyTrucks,
-        loadsPerTruckPerDay: eLoadsPerTruckPerDay,
+        loadsPerTruckPerDay: finalLoadsPerTruckPerDay,
+        totalTripKm: eTotalTripKm,
         dailyKm: eDailyKm,
         transportRateId: eTransportRateId,
         assetId: eAssetId,
@@ -659,13 +858,20 @@ export class ScopeWasteService {
         engine.durationDays != null ? engine.durationDays : legacy.truckDays
       );
       data.lineTotal = toDecimal(effectiveLineTotal);
-      // Engine snapshot components — re-derived on every pricing write.
+      // Engine snapshot components -- re-derived on every pricing write.
       data.transportCost = toDecimal(engine.transportCost);
       data.fuelCost = toDecimal(engine.fuelCost);
       data.disposalCost = toDecimal(engine.disposalCost);
       data.quotedDisposalRate = toDecimal(engine.quotedDisposalRate);
       data.quotedFuelPricePerLitre = toDecimal(engine.quotedFuelPricePerLitre);
       data.quotedTransportRatePerDay = toDecimal(engine.quotedTransportRatePerDay);
+      // S8g: persist totalTripKm from engine (may differ if engine recomputed trips).
+      if (engine.totalTripKm !== null) {
+        data.totalTripKm = toDecimal(engine.totalTripKm);
+      }
+      if (engine.infeasibleCycle) {
+        data.loadsSource = "cycle";
+      }
     }
     // When pricingTouched is false: lineTotal, truckDays, transportCost,
     // fuelCost, disposalCost, and all snapshot columns are NOT written.
@@ -751,6 +957,8 @@ export class ScopeWasteService {
     capacityPerLoad: number | null | undefined;
     qtyTrucks: number | null | undefined;
     loadsPerTruckPerDay: number | null | undefined;
+    // S8g: totalTripKm drives fuel when present. dailyKm is kept for storage.
+    totalTripKm?: number | null;
     dailyKm: number | null | undefined;
     transportRateId: string | null | undefined;
     assetId: string | null | undefined;
@@ -765,28 +973,40 @@ export class ScopeWasteService {
     // transportRateId the snapshot is cleared (null) by the caller so the
     // engine re-fetches and records the new live rate.
     existingQuotedTransportRatePerDay: number | null;
-    // SLICE 2 (SNAPSHOT_LIST_APPLIED) — tender id for snapshot lookup.
+    // SLICE 2 (SNAPSHOT_LIST_APPLIED) -- tender id for snapshot lookup.
     tenderId?: string | null;
   }): Promise<EngineResult> {
     const empty: EngineResult = {
       loads: null,
       durationDays: null,
+      infeasibleCycle: false,
       transportCost: null,
       fuelCost: null,
       disposalCost: null,
       lineTotal: null,
       quotedDisposalRate: null,
       quotedFuelPricePerLitre: null,
-      quotedTransportRatePerDay: null
+      quotedTransportRatePerDay: null,
+      totalTripKm: null
     };
     // Engine gate: transport line picked + the three sizing inputs.
     if (
       !input.transportRateId ||
       input.qtyTrucks == null || !(input.qtyTrucks > 0) ||
-      input.loadsPerTruckPerDay == null || !(input.loadsPerTruckPerDay > 0) ||
       input.capacityPerLoad == null || !(input.capacityPerLoad > 0)
     ) {
       return empty;
+    }
+    // S8g: distinguish "not-yet-configured" (null) from "infeasible" (0).
+    // null = no cycle derivation has happened yet (line hasn't been priced
+    //        against a resolved route); return empty, unflagged.
+    // 0    = deriveCycle returned 0 -- cycle exceeds the shift, so no
+    //        loads-per-day is achievable. Flag infeasibleCycle; no division.
+    if (input.loadsPerTruckPerDay == null) {
+      return empty;
+    }
+    if (input.loadsPerTruckPerDay === 0) {
+      return { ...empty, infeasibleCycle: true };
     }
     // Waste amount: choose the side that matches capacityUnit; if the
     // matching side is empty, fall through to the other side so the
@@ -802,8 +1022,22 @@ export class ScopeWasteService {
           : null;
     if (wasteAmount == null) return empty;
 
-    const loads = Math.ceil(wasteAmount / Number(input.capacityPerLoad));
-    const durationDays = Math.ceil(loads / Number(input.qtyTrucks) / Number(input.loadsPerTruckPerDay));
+    // S8g: use requiredTrips (ceil) for trips, not loads directly.
+    const loads = requiredTrips({ quantity: wasteAmount, capacityPerLoad: Number(input.capacityPerLoad) });
+    const durationResult = deriveDurationDays({
+      trips: loads,
+      trucks: Number(input.qtyTrucks),
+      loadsPerDay: Number(input.loadsPerTruckPerDay)
+    });
+    if ("infeasibleCycle" in durationResult) {
+      return { ...empty, infeasibleCycle: true };
+    }
+    const durationDays = durationResult.durationDays;
+
+    // S8g: totalTripKm = trips x 2 x one-way km (if available).
+    const computedTotalTripKm = input.totalTripKm != null
+      ? input.totalTripKm
+      : null;
 
     // Transport rate row - $/day fee.
     // Precedence: snapshot present -> use it (price at quote time).
@@ -824,13 +1058,15 @@ export class ScopeWasteService {
       quotedTransportRatePerDay = transportFeePerDay;
     }
 
-    // Fuel per day - manual this slice. Requires the asset's per-truck
-    // consumption + the OperationsSettings fuel price + a dailyKm. Any
-    // missing input drops the fuel term to 0 (the estimator can still
-    // add it as a separate manual override later).
-    let fuelPerDay = 0;
+    // S8g: Fuel is charged on TOTAL TRIP KM (trips x 2 x one-way km),
+    // not on dailyKm x durationDays x trucks.
+    // fuelCost = fuelPrice * consumption / 100 * totalTripKm (whole job, once)
+    // dailyKm stays stored and available for display, but no longer drives fuel.
+    // When totalTripKm is unavailable (no route yet), fall back to dailyKm
+    // x durationDays x trucks for backward compatibility (pre-S8g lines).
+    let fuelCostTotal = 0;
     let quotedFuelPricePerLitre: number | null = null;
-    if (input.assetId && input.dailyKm != null && input.dailyKm > 0) {
+    if (input.assetId) {
       const [asset, opsSettings] = await Promise.all([
         this.prisma.asset.findUnique({
           where: { id: input.assetId },
@@ -849,14 +1085,21 @@ export class ScopeWasteService {
           ? Number(opsSettings.fuelPricePerLitre)
           : null;
       if (fuelConsumption != null && fuelPrice != null) {
-        fuelPerDay = (fuelPrice * fuelConsumption * Number(input.dailyKm)) / 100;
         quotedFuelPricePerLitre = fuelPrice;
+        if (computedTotalTripKm != null && computedTotalTripKm > 0) {
+          // S8g path: fuel on total trip km, once for the whole job.
+          fuelCostTotal = (fuelPrice * fuelConsumption * computedTotalTripKm) / 100;
+        } else if (input.dailyKm != null && input.dailyKm > 0) {
+          // Pre-S8g / no-route fallback: per-day x duration x trucks.
+          const fuelPerDay = (fuelPrice * fuelConsumption * Number(input.dailyKm)) / 100;
+          fuelCostTotal = fuelPerDay * durationDays * Number(input.qtyTrucks);
+        }
       }
     }
 
     const transportCost =
-      (transportFeePerDay + fuelPerDay) * durationDays * Number(input.qtyTrucks);
-    const fuelCost = fuelPerDay * durationDays * Number(input.qtyTrucks);
+      (transportFeePerDay * durationDays * Number(input.qtyTrucks)) + fuelCostTotal;
+    const fuelCost = fuelCostTotal;
 
     // Disposal cost - resolve via the rate resolver so we honour the
     // canonical-source flip (R0 decision: one price source).
@@ -887,13 +1130,15 @@ export class ScopeWasteService {
     return {
       loads,
       durationDays,
+      infeasibleCycle: false,
       transportCost: Math.round(transportCost * 100) / 100,
       fuelCost: Math.round(fuelCost * 100) / 100,
       disposalCost: disposalCost != null ? Math.round(disposalCost * 100) / 100 : null,
       lineTotal,
       quotedDisposalRate,
       quotedFuelPricePerLitre,
-      quotedTransportRatePerDay
+      quotedTransportRatePerDay,
+      totalTripKm: computedTotalTripKm !== null ? Math.round(computedTotalTripKm * 100) / 100 : null
     };
   }
 
@@ -1088,10 +1333,19 @@ export class ScopeWasteService {
    *
    * Never throws. Errors are caught and logged; the return value is null.
    */
+  /**
+   * Resolve a travel estimate for a waste line.
+   *
+   * S8g: uses GeoapifyRouteProvider when a key is available, falls back to
+   * StraightLineTravelProvider. A provider failure falls back to straight
+   * line, badged exactly as today. A save never fails because routing failed.
+   *
+   * IMPORTANT: the API key is never logged or returned in any response.
+   */
   private async resolveTravelEstimate(
     mapLocationId: string,
     tenderId: string
-  ): Promise<TravelEstimate | null> {
+  ): Promise<ExtendedTravelEstimate | null> {
     try {
       const [tip, tender, settings] = await Promise.all([
         this.prisma.mapLocation.findUnique({
@@ -1115,15 +1369,35 @@ export class ScopeWasteService {
       });
       if (!site?.centreLat || !site?.centreLng) return null;
 
-      const provider = new StraightLineTravelProvider(
-        settings?.roadDistanceFactor != null ? Number(settings.roadDistanceFactor) : null,
-        settings?.avgTruckSpeedKmh ?? null
-      );
+      const from = { lat: Number(site.centreLat), lng: Number(site.centreLng) };
+      const to = { lat: Number(tip.latitude), lng: Number(tip.longitude) };
 
-      return await provider.resolve(
-        { lat: Number(site.centreLat), lng: Number(site.centreLng) },
-        { lat: Number(tip.latitude), lng: Number(tip.longitude) }
-      );
+      // S8g: select provider. Geoapify when key resolves, else straight line.
+      let provider: TravelTimeProvider;
+      const geoapifyKey = await this.apiKeys.resolve("geoapify", "company").catch(() => null);
+      if (geoapifyKey) {
+        const vehicleMode = settings?.routeVehicleMode ?? "truck";
+        provider = new GeoapifyRouteProvider(geoapifyKey, vehicleMode);
+      } else {
+        provider = new StraightLineTravelProvider(
+          settings?.roadDistanceFactor != null ? Number(settings.roadDistanceFactor) : null,
+          settings?.avgTruckSpeedKmh ?? null
+        );
+      }
+
+      const estimate = await provider.resolve(from, to);
+      if (estimate === null) {
+        // Provider failed -- fall back to straight line if we used Geoapify.
+        if (geoapifyKey) {
+          const fallback = new StraightLineTravelProvider(
+            settings?.roadDistanceFactor != null ? Number(settings.roadDistanceFactor) : null,
+            settings?.avgTruckSpeedKmh ?? null
+          );
+          return await fallback.resolve(from, to) as ExtendedTravelEstimate | null;
+        }
+        return null;
+      }
+      return estimate as ExtendedTravelEstimate;
     } catch (err) {
       this.logger.warn(
         `Travel resolve failed for mapLocationId=${mapLocationId} tenderId=${tenderId}: ` +
@@ -1137,29 +1411,140 @@ export class ScopeWasteService {
    * Derive default loadsPerTruckPerDay and dailyKm from a travel estimate
    * when the estimator left those fields empty.
    *
+   * S8g: uses planning minutes (average of baseline and index-adjusted) for
+   * the cycle, not raw minutesOneWay. Index defaults to 1.0 when not set,
+   * meaning planning = baseline until an index is supplied.
+   *
    * "Typed figure always wins": when dtoLoadsPerTruckPerDay or dtoDailyKm
    * is already set (non-null), the derived value is NOT applied.
    */
   private deriveTravelDefaults(
-    estimate: TravelEstimate,
+    estimate: ExtendedTravelEstimate,
     tipTurnaroundMinutes: number,
     dtoLoadsPerTruckPerDay: number | null | undefined,
-    dtoDailyKm: number | null | undefined
+    dtoDailyKm: number | null | undefined,
+    travelIndex: number | null = null
   ): {
     derivedLoadsPerTruckPerDay: number | null;
     derivedDailyKm: number | null;
   } {
+    // S8g: use planning minutes for the cycle (baseline x index averaged).
+    const effectiveIndex = travelIndex ?? (estimate as ExtendedTravelEstimate).suggestedIndex ?? 1.0;
+    const planMins = planningMinutes({ baseline: estimate.minutesOneWay, index: effectiveIndex });
+
     const { loadsPerDay } = deriveCycle({
-      minutesOneWay: estimate.minutesOneWay,
+      minutesOneWay: planMins,
       tipTurnaroundMinutes
     });
 
     const derivedLoadsPerTruckPerDay = dtoLoadsPerTruckPerDay == null ? loadsPerDay : null;
-    // dailyKm = loadsPerDay * 2 * travelKm (round trip per load)
+    // dailyKm = loadsPerDay * 2 * travelKm (round trip per load, for storage/display)
     const derivedDailyKm =
       dtoDailyKm == null ? loadsPerDay * 2 * estimate.km : null;
 
     return { derivedLoadsPerTruckPerDay, derivedDailyKm };
+  }
+
+  /**
+   * S8g: Derive all S8g-specific fields from a travel estimate and DTO inputs.
+   * Used during create (and indirectly during update via the helper).
+   * Pure function - reads no DB.
+   */
+  private deriveS8gFields(input: {
+    travelEstimate: ExtendedTravelEstimate | null;
+    dtoTravelIndex: number | null | undefined;
+    dtoLoadsPerTruckPerDay: number | null | undefined;
+    dtoDailyKm: number | null | undefined;
+    dtoQtyTrucks: number | null;
+    capacityPerLoad: number | null;
+    qty: number | null | undefined;
+    m3: number | null | undefined;
+    capacityUnit: string | null | undefined;
+    tipTurnaroundMinutes: number | null;
+  }): {
+    travelIndex: number | null;
+    travelIndexSource: string | null;
+    planningMinutesOneWay: number | null;
+    effectiveLoadsPerTruckPerDay: number | null;
+    effectiveDailyKm: number | null;
+    loadsSource: string | null;
+    dailyKmSource: string | null;
+    totalTripKm: number | null;
+  } {
+    const { travelEstimate, dtoTravelIndex, dtoLoadsPerTruckPerDay, dtoDailyKm, tipTurnaroundMinutes } = input;
+
+    if (travelEstimate === null) {
+      // No route -- pass typed values through unchanged.
+      return {
+        travelIndex: dtoTravelIndex !== undefined ? dtoTravelIndex : null,
+        travelIndexSource: null,
+        planningMinutesOneWay: null,
+        effectiveLoadsPerTruckPerDay: dtoLoadsPerTruckPerDay ?? null,
+        effectiveDailyKm: dtoDailyKm ?? null,
+        loadsSource: null,
+        dailyKmSource: dtoDailyKm != null ? "manual" : null,
+        totalTripKm: null
+      };
+    }
+
+    // Determine effective index.
+    let travelIndex: number | null;
+    let travelIndexSource: string | null;
+    if (dtoTravelIndex !== undefined && dtoTravelIndex !== null) {
+      travelIndex = dtoTravelIndex;
+      travelIndexSource = "manual";
+    } else if (travelEstimate.suggestedIndex != null) {
+      travelIndex = travelEstimate.suggestedIndex;
+      travelIndexSource = "geoapify";
+    } else {
+      travelIndex = null;
+      travelIndexSource = "none";
+    }
+
+    // Planning minutes.
+    const effectiveIndex = travelIndex ?? 1.0;
+    const planMins = planningMinutes({ baseline: travelEstimate.minutesOneWay, index: effectiveIndex });
+
+    // Loads per day from planning minutes.
+    const tt = tipTurnaroundMinutes ?? 30;
+    const { loadsPerDay } = deriveCycle({ minutesOneWay: planMins, tipTurnaroundMinutes: tt });
+
+    // Apply derived values only when the estimator left them empty.
+    const effectiveLoadsPerTruckPerDay = dtoLoadsPerTruckPerDay != null ? dtoLoadsPerTruckPerDay : loadsPerDay;
+    const loadsSource = dtoLoadsPerTruckPerDay != null ? null : "cycle";
+
+    const derivedDailyKm = loadsPerDay * 2 * travelEstimate.km;
+    const effectiveDailyKm = dtoDailyKm != null ? dtoDailyKm : derivedDailyKm;
+    const dailyKmSource = dtoDailyKm != null ? "manual" : "derived";
+
+    // Total trip km.
+    let totalTripKm: number | null = null;
+    const capPerLoad = input.capacityPerLoad;
+    if (capPerLoad != null && capPerLoad > 0) {
+      const preferM3 = input.capacityUnit === "m3" || input.capacityUnit === "m³";
+      const primary = preferM3 ? input.m3 : input.qty;
+      const secondary = preferM3 ? input.qty : input.m3;
+      const wasteAmt = primary != null && (primary as number) > 0
+        ? Number(primary)
+        : secondary != null && (secondary as number) > 0
+          ? Number(secondary)
+          : null;
+      if (wasteAmt != null) {
+        const trips = requiredTrips({ quantity: wasteAmt, capacityPerLoad: capPerLoad });
+        totalTripKm = deriveTotalTripKm({ trips, oneWayKm: travelEstimate.km });
+      }
+    }
+
+    return {
+      travelIndex,
+      travelIndexSource,
+      planningMinutesOneWay: planMins,
+      effectiveLoadsPerTruckPerDay,
+      effectiveDailyKm,
+      loadsSource,
+      dailyKmSource,
+      totalTripKm
+    };
   }
 
   // CEILING(loads / 3) rounded up to nearest half-day.

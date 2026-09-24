@@ -59,6 +59,11 @@ class UpsertWasteDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) markupOverride?: number | null;
   // TRAVEL_TIME_PORT_V1 (scopecards-s8a) -- tip link. null clears the link.
   @IsOptional() @IsString() mapLocationId?: string | null;
+  // GEOAPIFY_ROUTE_TRAVEL_V1 (scopecards-s8g) -- editable modelled traffic index.
+  // null clears a manual override and returns the line to automatic. The index is
+  // a MODELLED TRAFFIC ALLOWANCE, NOT measured or peak-hour traffic.
+  // Floor 1.00; values below 1.00 are rejected by the engine.
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(1) travelIndex?: number | null;
 }
 
 class ReorderEntryDto {

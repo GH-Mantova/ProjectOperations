@@ -236,6 +236,19 @@ re-measured.**
   `index.lock` with no Windows process and freezes every station;
 - run any `.ps1` — so no `status-sweep.ps1`, no `bring-up-to-speed.ps1`, no
   `restart-watcher-if-wedged.ps1`, no `smoke-pr.ps1`, no `arm-prompt.ps1`, no `pipeline-lib.ps1`;
+- run `scripts/pipeline/check-breadcrumb.mjs`, in either form. 🔴 **It is a `git` caller and a
+  `gh` caller, not a pure file reader**, so a blind run that calls it breaks the §9.2 device-bridge
+  git ban it has just promised to keep. [MEASURED] 2026-09-24T08:1xZ by Station 00 (blind) from the
+  script’s own source and re-confirmed 10:2xZ by Station 00 (sighted): it shells
+  `git ls-tree -r --name-only origin/main -- <dir>` and `git ls-files <dir>` to build its tracked set,
+  and `gh pr list --state open --limit 100 --json files`. **A blind run therefore claims NO
+  `--freshness` verdict and must not write `breadcrumb-clean`.** ⚠️ The worked counter-example is
+  live in the queue: the 2026-09-24T05:14Z breadcrumb ran the validator from the mount and certified
+  in its own WHAT I MEASURED that *“this is not a `git` call and not a GitHub-side read”* — it is
+  both, and that breadcrumb is the template the next blind run copies. ⚠️ **Falsifying probe:**
+  `Select-String -Path scripts/pipeline/check-breadcrumb.mjs -Pattern 'ls-tree|ls-files|gh pr list'`.
+  If it ever returns 0 the script has stopped shelling out and this bullet is wrong. Found by
+  Station 00 2026-09-24T08:1xZ (F1), landed by Station 00 at 10:3xZ;
 - therefore claim ANY liveness, smoke, safe-to-act or merge verdict;
 - mutate the board. The GitHub MCP token is write-403 (§3, GitHub), so a blind run cannot open a PR
   "instead" — its breadcrumb stays untracked in the dev tree until a sighted run sweeps it up, and

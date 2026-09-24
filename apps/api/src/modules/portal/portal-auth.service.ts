@@ -18,6 +18,7 @@ import {
   PortalResetPasswordDto
 } from "./dto/portal-login.dto";
 import { CreatePortalInviteDto } from "./dto/portal-invite.dto";
+import { isProductionRuntime } from "../../config/runtime-env";
 
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -256,10 +257,18 @@ export class PortalAuthService {
     const baseUrl = this.configService.get<string>("portal.publicUrl", "http://localhost:5173");
     const resetUrl = `${baseUrl}/portal/reset-password?token=${token}`;
 
-    // Until the email service is wired, log the URL server-side only. Never
-    // return it in the response — that would let an unauthenticated caller
-    // take over any account by submitting an email.
-    this.logger.log(`Portal password reset link generated for ${user.email}: ${resetUrl}`);
+    // SEC-A3: in production, log only the user ID -- never the email or the
+    // reset URL (which carries the reset JWT). Outside production the full URL
+    // is still logged so developers / e2e tests can complete the flow without
+    // a real mailer.
+    if (isProductionRuntime()) {
+      this.logger.log(`Portal password reset requested for user ${user.id}`);
+    } else {
+      // Until the email service is wired, log the URL server-side only. Never
+      // return it in the response — that would let an unauthenticated caller
+      // take over any account by submitting an email.
+      this.logger.log(`Portal password reset link generated for ${user.email}: ${resetUrl}`);
+    }
 
     await this.auditService.write({
       actorId: user.id,

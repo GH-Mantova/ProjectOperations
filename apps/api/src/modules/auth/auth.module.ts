@@ -18,7 +18,12 @@ import { EntraAuthService } from "./entra-auth.service";
 import { EntraTokenValidatorService } from "./entra-token-validator.service";
 import { LocalAuthProvider } from "./local-auth.provider";
 import { OtpAuthProvider } from "./otp-auth.provider";
-import { LoggingOtpDelivery, OTP_DELIVERY_PORT } from "./otp-delivery.port";
+import {
+  DisabledOtpDelivery,
+  LoggingOtpDelivery,
+  OTP_DELIVERY_PORT
+} from "./otp-delivery.port";
+import { isProductionRuntime } from "../../config/runtime-env";
 
 @Module({
   imports: [
@@ -45,9 +50,14 @@ import { LoggingOtpDelivery, OTP_DELIVERY_PORT } from "./otp-delivery.port";
     EntraTokenValidatorService,
     EntraAuthService,
     OtpAuthProvider,
-    // Dev/CI delivery: logs the code. Production email delivery (Graph
-    // / SMTP) is a separate, Marco-supervised adapter registered later.
-    { provide: OTP_DELIVERY_PORT, useClass: LoggingOtpDelivery }
+    // SEC-A3: use DisabledOtpDelivery in production (no code ever reaches the
+    // log). LoggingOtpDelivery is kept for dev / CI / e2e so the flow still
+    // works without a real mailer. Real email delivery is wired in A2.
+    {
+      provide: OTP_DELIVERY_PORT,
+      useFactory: () =>
+        isProductionRuntime() ? new DisabledOtpDelivery() : new LoggingOtpDelivery()
+    }
   ],
   exports: [AuthService, EntraAuthService, EntraTokenValidatorService]
 })

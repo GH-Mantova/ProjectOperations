@@ -457,6 +457,47 @@ here now because they are true for **every** station.
   transport, and deleting it would cost the next run the pair. ⚠️ **Falsifying probe: the two rows
   above.** If the nested row ever prints `ROW_B_nested_Command:42`, this correction is wrong and must
   be re-measured. Found and landed by Station 00 2026-09-14T18:3xZ.
+- 🔴🔴 **`cmd /c "<command> & echo %ERRORLEVEL%"` PRINTS THE **PREVIOUS** EXIT CODE, BECAUSE `cmd`
+  EXPANDS `%ERRORLEVEL%` WHEN IT *PARSES* THE LINE AND NOT WHEN EXECUTION REACHES THE `echo` — SO THE
+  IDIOM EMITS A WELL-FORMED, PLAUSIBLE INTEGER THAT DESCRIBES A DIFFERENT COMMAND.**
+  `CMD_CHAIN_ERRORLEVEL_IS_PARSE_TIME_V1`
+
+  This is the `cmd` half of the `-Command` bullet above: a Windows shell layer substituting a value
+  **before** the command runs, so the caller reads something the command never produced. The
+  `-Command` layer eats `$`; `cmd` eats `%ERRORLEVEL%`. Neither warns, and both exit 0.
+
+  [MEASURED] 2026-09-24T18:1xZ by Station 04 (F3b) at `11c07025`, on a query whose truth is known in
+  **both** directions — `git check-ignore -v`, which exits **0 with a match line** for an ignored
+  file and **1 with empty output** for a tracked one:
+
+  | form | output | reads as | truth |
+  |---|---|---|---|
+  | `cmd /c "git check-ignore -v <breadcrumb> & echo IGNORE_EXIT=%ERRORLEVEL%"` — **the failing form** | `IGNORE_EXIT=0`, **no match line** | *"this file is ignored"* | **wrong** |
+  | the same query from `powershell.exe -File`, reading `$LASTEXITCODE` on the next line | exit **1**, empty output | *"NOT ignored"* | **right** |
+  | POSITIVE control, `docs/qa/qa-findings.md` through the sound form | exit **0**, `.gitignore:116:docs/qa/qa-findings.md` | *"ignored"* | right |
+
+  🔴 **The two readings are opposite and the failing form is internally incoherent** — exit 0 means
+  *ignored*, and an ignored file always prints its rule, so `0` with no match line is a state
+  `check-ignore` cannot produce. Nothing in the output says so.
+
+  🔴 **It bit the report that found it.** Station 04 used the idiom for `ADVANCE_EXIT` and
+  `BREADCRUMB_EXIT` and wrote both into WHAT CHANGED as `[MEASURED]`. Both were re-measured from
+  `$LASTEXITCODE` and both genuinely were `0` — **so the published numbers were right by luck, not by
+  measurement**, which is the distinction §7 exists to protect. Corroboration for each was
+  independent of the exit code anyway (`next-sweep.mjs` printed `advanced: last_index=2`;
+  `check-breadcrumb.mjs` printed its own `ADMIT` and `CLEAN`), which is the only reason nothing was
+  published false.
+
+  🔧 **Never read an exit code out of a `cmd /c` `&` chain.** Three sound forms, and there is no
+  fourth: `powershell.exe -File <script.ps1>` reading `$LASTEXITCODE` **on the following line**;
+  `cmd /v:on` with delayed expansion `!ERRORLEVEL!`; or giving the command its own invocation and
+  reading the transport's own exit code. ⚠️ **This composes with §9.4's CWD bullet** — a `gh` or
+  `git` call whose exit code you are discarding *and* mis-reading fails twice over, silently.
+
+  ⚠️ **Falsifying probe: the three rows above.** Run `git check-ignore -v` through both forms against
+  one genuinely ignored file and one genuinely tracked one. **The chained form returns the SAME
+  answer for both**; if it ever discriminates them, this bullet is wrong and must be re-measured.
+  Found by Station 04 2026-09-24T18:1xZ (F3b), landed by Station 00 at 2026-09-24T19:3xZ.
 - ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
   **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
   the first read), but early returns are real — one was observed the same run on a line with no `#`.
@@ -1059,6 +1100,84 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach**, because piping a JSON
   array straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge
   queue select **#552 — the production-data PR.**
+
+  🔴🔴 **THIRD ARRIVAL SHAPE, 2026-09-24 — `& powershell.exe -NoProfile -Command $str` ISSUED
+  FROM INSIDE A `.ps1` STRIPS THE QUOTES AND RE-PARSES THE jq EXPRESSION’S `|` AS A POWERSHELL
+  PIPELINE OPERATOR, SO `gh` IS NEVER INVOKED AND NO `gh`-SIDE jq FINGERPRINT EXISTS TO GREP FOR.**
+  `JQ_TRAP_THIRD_TRANSPORT_IS_CALLER_SIDE_V1`
+
+  Both shapes recorded above attribute the failure to `gh` (`failed to parse jq expression`,
+  `invalid escape sequence`). In this third transport the jq expression is **truncated at the pipe**
+  and its tail is executed as a caller-side command, so a run that greps for a `gh`-side signature as
+  the trap’s fingerprint finds nothing and has *"the jq trap no longer reproduces"* available — which
+  retires a live trap on the one reading that stops an agent merging Marco’s work.
+
+  [MEASURED] 2026-09-24T14:1xZ by Station 04 at `11c07025` (F1, DISPATCHED to 00), reproduced
+  independently by Station 00 at 16:3xZ at `65e5d1bc`, PS 5.1.26100.9444, from a `.ps1` run with
+  `-File` so no `-Command` layer of the caller’s own is in play:
+
+  | probe | result |
+  |---|---|
+  | the argument as it ARRIVED | `--jq .labels[] \| join(",")` — **quotes gone**, `\|` now a PowerShell pipeline operator |
+  | who raised the error | **the child PowerShell**, at `line:1`: `CommandNotFoundException: The term 'join' is not recognized` |
+  | a `gh`-side jq fingerprint anywhere in the output | **NONE** — `failed to parse jq expression` and `invalid escape sequence` both **absent** |
+  | exit code | **1** — loud, never silent |
+  | POSITIVE control: plain single-quoted `--jq '.labels[].name'`, issued directly | exit **0**, `do-not-merge` on open `#2167` — a correct label reading |
+  | NEGATIVE control: a freshly minted needle over the same output | **0** |
+  | control that the CALLER is the parser: the same `& powershell.exe -Command` with **no `gh` at all** | still mangled — `ParserError: Missing expression after unary operator ','`, **not** `CommandNotFoundException` |
+
+  🔧 **The fingerprint is the ABSENCE of a `gh`-side jq error PLUS an error raised by a PowerShell —
+  never a particular exception type.** The last row is why: change the payload and the caller-side
+  error changes CLASS, from `CommandNotFoundException` to a bare `ParserError`. That is the same
+  lesson the paragraph above already teaches about the arrival STRING (*"ILLUSTRATION … do not read a
+  different mangling as a non-reproduction"*), applied to the error CLASS, which carried no such
+  warning — and the error class is what a reader actually greps for.
+
+  ⚠️ **The headline rules are untouched and were re-confirmed on both runs:** keep double quotes out
+  of jq expressions, or use `--json` plus `ConvertFrom-Json`; and every form measured failed **loudly**
+  at exit 1, never silently. What is added is a transport and a fingerprint, not a new prohibition.
+  ⚠️ **Falsifying probe: the table above.** Issue `--jq ".labels[] | join(\",\")"` through
+  `& powershell.exe -NoProfile -Command $str` from inside a `.ps1`. If `gh` itself ever raises the
+  error, or the output ever carries `failed to parse jq expression`, this row is wrong and must be
+  re-measured. Found by Station 04 2026-09-24T14:1xZ (F1), re-measured and landed by Station 00 at
+  2026-09-24T16:3xZ.
+  🔴🔴 **FOURTH TRANSPORT, 2026-09-24 — THE STRIPPING IS NOT CONFINED TO `-Command`, AND NOT TO
+  *ESCAPED* QUOTES: A `.ps1` RUN WITH `-File` STRIPS BARE DOUBLE QUOTES OUT OF A `--jq` ARGUMENT
+  TOO. SO §9.1’S CURE — *“put anything containing `$` in a `.ps1` and run it with `-File`”* — DOES
+  NOT DODGE THIS TRAP, AND A RUN THAT MOVES ITS ONE-LINER INTO A SCRIPT TO ESCAPE §9.1 CARRIES THIS
+  ONE IN WITH IT.** `JQ_STRING_LITERAL_STRIPPED_UNDER_FILE_TOO_V1`
+
+  [MEASURED] 2026-09-24T18:1xZ by Station 04 (F3), over ten probes, **every one of them run under
+  `powershell.exe -File <script.ps1>`** — no `-Command` layer of any kind in play:
+
+  | probe | result | truth |
+  |---|---|---|
+  | `gh pr view <N> --json labels --jq '[.labels[].name]\|join(",")' 2>$null`, all five open PRs | **EMPTY on all five** | all five carry `do-not-merge` |
+  | the discriminating control `--jq '"LITERAL"'` | jq receives `LITERAL` — **the quotes are gone** | should receive `"LITERAL"` |
+  | `--jq '.labels[].name'` · `--jq '[.labels[].name]\|@csv'` · `--jq '.labels\|length'` — no string literal | correct values, exit **0** | correct |
+
+  **Two corrections to the rows above, and the second is the one that bites.** (1) **Not just
+  `-Command`** — the three transports already recorded all name a `-Command` layer; this one has
+  none. (2) **Not just *escaped* quotes** — bare double quotes inside a single-quoted PowerShell
+  string are stripped identically, so there is no quoting escape: single quotes survive the shell
+  but jq rejects them as string delimiters.
+
+  🔴 **The cost, measured on the live board: all five open PRs read back an EMPTY label list, which
+  is byte-identical to “the board is released”** — against a truth of `do-not-merge` on all five.
+  That is §9.6 with a merge button attached, reached through the QUOTING of a filter rather than
+  through the corpus, and it lands on the one fact this board most depends on.
+
+  🔧 **But the failure is LOUD — exit 1, explicit stderr — and it went silent only because the probe
+  wrote `2>$null`.** So the rule is NOT “avoid `--jq`”. It is: **never discard stderr and never skip
+  `$LASTEXITCODE` on a `gh --jq` call, and prefer `@csv` or a bare path over any jq string literal.**
+  The sound alternative remains `--json` plus `ConvertFrom-Json` after assignment (§9.4, above).
+
+  ⚠️ **Blast radius among committed callers is ZERO** — [MEASURED] the same run: every `--jq` under
+  `scripts/` uses no inner string literal (`scripts/security-audit.ps1` is the only caller). **The
+  exposure is ad-hoc agent probes**, which is where it has now bitten twice from two directions.
+  ⚠️ **Falsifying probe: the `--jq '"LITERAL"'` control row.** Run it through `-File`; if jq ever
+  receives `"LITERAL"` with its quotes intact, this row is wrong and must be re-measured. Found by
+  Station 04 2026-09-24T18:1xZ (F3), landed by Station 00 at 2026-09-24T18:4xZ.
 - 🔴 **`@(ConvertFrom-Json …).Count` answers `1` for an EMPTY array and `1` for a
   forty-element one.** PS 5.1 emits a parsed JSON array as a **single object**, so an array
   subexpression wrapping the call — inline or piped — counts one item regardless of length.

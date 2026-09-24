@@ -455,3 +455,70 @@ was not written at all).
 - **Did not invoke another station's skill.**
 
 <run-summary>Sighted run: the trunk was red on a docs-only commit, which cannot cause a code failure — a clean re-run cleared it and main is 4/4 green; the three open PRs are all Marco's by freshly re-taken lane verdicts, nothing is armable but a never-arm prompt, and every station reported on cadence.</run-summary>
+
+---
+
+## ADDENDUM 2026-09-24T01:00Z — same station, same run, later measurement. THE BODY ABOVE DESCRIBES THIS RUN'S INTENTIONS AND IS WRONG ABOUT TWO OF ITS EFFECTS.
+
+The `WHAT I DID NOT DO` list above opens *"**Did not merge anything.**"* It was true when written and
+**false ten minutes later**. This station's own meta-lesson is *"your report described your
+intentions, not your effects"*, so this is corrected in place rather than left for the next run to
+discover from the board.
+
+**Two further mutations after the body above was written, both read back:**
+
+**4. Merged this run's OWN board PR, `#2140`.** Through the sanctioned primitive, not by hand:
+`Assert-SmokedOrEscalate -PR 2140` → `True`, then `Merge-Pr -PR 2140`. **Read back two ways:**
+`gh pr view 2140 --json state,mergedAt,mergeCommit` → `MERGED`, `2026-09-24T00:49:29Z`, merge commit
+`d1e69cab`; and `git rev-parse --short origin/main` → **`d1e69cab`** — the same commit, so it reached
+`main` and I am not stopping at "auto-merge enabled". Lane: Station 00, `docs/`, its recorded lane in
+`STATION-CAPABILITIES.md` §5, which §10.1 step 3 defers to by name. **This does not contradict F1:**
+F1 is about the three PRs that are *Marco's*, and `#2140` is none of them.
+
+⚠️ **On the first attempt `Assert-SmokedOrEscalate -Number 2140` FAILED LOUD**, and correctly: the
+parameter is `-PR`, so `$PR` bound to **0** and the guard threw
+`Assert-SmokeGreen: #0 reports NO checks at all. That is not a pass.` A guard that refuses on a
+mis-bound argument instead of passing on a zero is the guard working; recorded because the next
+reader of this library will make the same mistake.
+
+**5. Updated all three of Marco's PR branches, which MY OWN MERGE had just put BEHIND.**
+[MEASURED] immediately after `#2140` landed: `#2135`, `#2131`, `#2127` all read `BEHIND` — they had
+all read `CLEAN` before it. `gh pr update-branch` on each, **exit 0 / `✓ PR branch updated`** three
+times. **Read back at +45 s:** all three `BLOCKED`, which on a just-updated branch is checks-pending,
+not a defect. **Read back again at +4 min:** `pass=13 fail=0 pending=2` on **each of the three** —
+**zero failures anywhere**, CI simply still finishing.
+
+🔧 **Updating a branch is not merging, and it is squarely rule 2's *"behind-branches are work, not
+blockers to hand back"*.** I caused the BEHIND by merging my own board PR, so leaving three of
+Marco's PRs un-mergeable behind my own housekeeping would have been handing him my mess. The merge
+gate on all three is untouched: no label added or removed, no `marco:true` cleared, nothing merged.
+
+**6. Resolved `armed=1`, which appeared only after the merge, rather than reporting it.**
+[MEASURED] the one file is **`rev-2140-ready.md`** (mtime `2026-09-24T00:49:03Z`) — the watcher's
+auto-generated REVIEW JOB for the PR I had just opened, matching `READY_PATTERN`
+(`/^(pr|rev)-.*-ready\.md$/i`, read from `origin/main`) but **not a prompt**: §9.5 says to exclude
+`rev-*` from prompt audits. **The real armed-prompt count is still 0**, so F3 stands unchanged. Its
+verdict will be read by nothing, because `#2140` is second-lane and `verdictApproves` has exactly one
+call site inside `waitForPolicyMerge` (`REV_LANE_UNCONSUMED_ON_SECOND_LANE_V1`) — already filed as
+`needs-marco/rev-lane-reviews-second-lane-prs-that-nothing-reads-2026-09-11.md`, not a new finding,
+and moot here since the PR is already merged.
+
+**Post-merge fast-forward of the dev tree: clean, and cure 1 is why.** `git merge --ff-only
+origin/main` succeeded on the **first** attempt with no blocker to cure — because this breadcrumb was
+written inside the PR worktree and the two archived files were tracked and unmodified at their root
+paths. **All FOUR read-backs, the fourth being the only one that can see a dirty tree:**
+`git rev-list --left-right --count HEAD...origin/main` → **`0	0`**; `git diff --numstat` → **EMPTY**;
+`git diff --cached --name-status` → **EMPTY**; `git status --porcelain --untracked-files=no` →
+**EMPTY**. **Content proof:** the new breadcrumb `git ls-files` → **1** (tracked); both archived
+copies `Test-Path` → **True**; root breadcrumbs remaining → **1**, this one, which is the current
+cycle and correctly not archived.
+
+**Teardown.** `git worktree remove C:\po-wt\collect0924 --force` then `git worktree prune`;
+`git worktree list` → **`C:/ProjectOperations2 d1e69cab [main]` and nothing else**. Remote branch
+deleted by `Merge-Pr`: `git ls-remote --heads origin board/collect-2026-09-24-0014` → **empty**.
+A second short-lived worktree (`C:\po-wt\add0924`) carried this addendum and is torn down the same
+way.
+
+**DISPOSITION of this addendum: ACTIONED** — the record now matches the effects, read back rather
+than asserted. **Nothing here changes any finding above**: F1 still escalated and untouched, F3 still
+0 armed, F2 still the transient trunk red cleared by a re-run.

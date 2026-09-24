@@ -483,3 +483,71 @@ reporting one. 04's read-only authority contained it today; **00 and 02 have no 
    mechanically checks the bootstraps at all. Its option 1 — defer the paths to the station doc and
    extend `lint-station.mjs` to diff every bootstrap against the doc it points at — is the
    complete-and-additive one. It needs you because it writes under `C:\Users\Marco\Claude\Scheduled`.
+
+---
+
+## ADDENDUM 2026-09-24T22:5xZ — the post-merge fast-forward DID need a restore, and this file predicted it would not
+
+Written after `#2181` merged (`2026-09-24T22:44:53Z`, merge commit `4a8ddcdb`) and the dev tree was
+fast-forwarded. **Correcting a claim this breadcrumb makes about itself**, because it is a claim
+about the data-loss trap, which is the one place a false *"I did not do that"* is most expensive.
+
+🔴 **What this file says under WHAT CHANGED item 3:** *"After this PR merges, the dev tree's
+fast-forward has nothing to block on, and no `git show HEAD:` restore is performed on the
+append-only file at all."*
+
+**The first half is right about CONTENT and wrong about the FAST-FORWARD.** [MEASURED] immediately
+after the merge, with the dev tree 4 behind `4a8ddcdb`:
+
+| probe | result |
+|---|---|
+| `git diff --numstat origin/main -- docs/pr-prompts/.arming-log.txt` | **EMPTY** — the working copy already equalled `origin/main`; both arming lines had landed |
+| `git status --porcelain --untracked-files=no` | still ` M` / ` D` on all three paths — because it answers about **HEAD**, not about `origin/main` (§9.2) |
+| `git merge --ff-only origin/main`, attempted with those rows present | would refuse: the FF must update paths whose working tree differs from **HEAD** |
+
+**So landing the paths removed the data-loss risk but not the FF blocker**, and the two are different
+things. `git status` reporting against HEAD is exactly the §9.2 bullet, met from the direction this
+file did not anticipate.
+
+🔧 **What was actually done, in order, and every step is §9.2-safe:**
+
+1. **Raw-Buffer restore from `HEAD` of all four paths** — the cheap first move, per
+   `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1`. All four `byteExact=true`:
+   `.arming-log.txt` **25,784 B**, the discharged escalation **5,570 B**, the two retired HOLDs
+   **10,213 B** and **7,186 B**. **This restore could not lose the 20:21:20Z line**, because it
+   restores from the **post-merge HEAD**, which already carried it — that is the whole point of
+   having landed it first, and it is why the sequence is safe in this order and would not have been
+   in the other.
+2. `git update-index --refresh` → **exit 1**, naming two paths still needing update.
+3. **EOL discriminator on the one that mattered**, per the measured rule — dump the blob and the disk
+   copy and count `\r\n` against bare `\n`:
+   `needs-marco/duplicate-verdict-guard-…md` blob = **`{bytes:5570, crlf:0, bare:68}`**, i.e.
+   **blob LF / checkout CRLF** ⇒ **convert-on-write**, not `--renormalize`. Applied: 5,570 → 5,657 B.
+4. `git merge --ff-only origin/main` → **fast-forwarded on the first attempt**, `755f3440..4a8ddcdb`.
+
+**All four read-backs, together:** `git rev-list --left-right --count HEAD...origin/main` → **`0 0`**
+· `git diff --numstat` → **EMPTY** · `git diff --cached --name-status` → **EMPTY** ·
+`git status --porcelain docs/pr-prompts` → **EMPTY**.
+
+⚠️ **One path was deliberately NOT restored and still reads ` M`: `docs/data-model/metadata-catalog.json`.**
+It is another actor's, and touching it is LL-38. It is also **outside the FF range** —
+`git diff --name-only HEAD origin/main -- <path>` was **EMPTY**, and `git diff --numstat origin/main
+-- <path>` was **EMPTY** too — so it could not block the fast-forward and did not. `git diff --cached`
+was EMPTY throughout, so nothing of that actor's was ever staged into anything of mine.
+
+⚠️ **And the stale root copies are now gone.** The 2115Z and 2211Z breadcrumbs were proved
+content-identical to the `archive/` blobs this PR landed (11,410 B and 18,708 B, compared after
+LF-normalising both sides) and then deleted from depth 1. `git status --porcelain docs/pr-prompts` is
+**EMPTY**, so the 2026-09-07 duplicate-basename trap is closed for this cycle rather than handed on.
+
+🔧 **The correction for the next run, stated as a rule rather than as this instance:** *landing a
+blocking path in your own board PR removes the DATA-LOSS risk, not the FF blocker. You will still
+restore from the new `HEAD` afterwards — and that restore is safe precisely because the content
+already landed.* Do it raw first, obey `update-index --refresh`'s exit code, and only then reach for
+an EOL branch.
+
+⚠️ **Falsifying probe:** land a dirty tracked path in a board PR, merge it, then fast-forward the dev
+tree **without** restoring. If `git merge --ff-only` succeeds, this addendum is wrong and must be
+re-measured.
+
+**DISPOSITION: ACTIONED** — the tree is at `origin/main`, clean, and the claim is corrected here.

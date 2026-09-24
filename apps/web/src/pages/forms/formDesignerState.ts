@@ -135,22 +135,12 @@ export type DraftSection = {
   maxRepeat?: number;
 };
 
-export type DraftRule = {
-  tempId: string;
-  sourceFieldKey: string;
-  targetFieldKey: string;
-  operator: string;
-  comparisonValue: string;
-  effect: string;
-};
-
 export type DesignerDraft = {
   name: string;
   code: string;
   description?: string;
   layout: FormLayout;
   sections: DraftSection[];
-  rules: DraftRule[];
 };
 
 export type PaletteGroup = {
@@ -454,9 +444,6 @@ export function deleteFieldFromDraft(
   sectionTempId: string,
   fieldTempId: string
 ): DesignerDraft {
-  const deletedKey = draft.sections
-    .find((s) => s.tempId === sectionTempId)
-    ?.fields.find((f) => f.tempId === fieldTempId)?.fieldKey;
   return {
     ...draft,
     sections: draft.sections.map((section) => {
@@ -465,10 +452,7 @@ export function deleteFieldFromDraft(
         ...section,
         fields: reorderFields(section.fields.filter((f) => f.tempId !== fieldTempId))
       };
-    }),
-    rules: deletedKey
-      ? draft.rules.filter((r) => r.sourceFieldKey !== deletedKey && r.targetFieldKey !== deletedKey)
-      : draft.rules
+    })
   };
 }
 

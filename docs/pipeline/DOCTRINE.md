@@ -457,6 +457,47 @@ here now because they are true for **every** station.
   transport, and deleting it would cost the next run the pair. ⚠️ **Falsifying probe: the two rows
   above.** If the nested row ever prints `ROW_B_nested_Command:42`, this correction is wrong and must
   be re-measured. Found and landed by Station 00 2026-09-14T18:3xZ.
+- 🔴🔴 **`cmd /c "<command> & echo %ERRORLEVEL%"` PRINTS THE **PREVIOUS** EXIT CODE, BECAUSE `cmd`
+  EXPANDS `%ERRORLEVEL%` WHEN IT *PARSES* THE LINE AND NOT WHEN EXECUTION REACHES THE `echo` — SO THE
+  IDIOM EMITS A WELL-FORMED, PLAUSIBLE INTEGER THAT DESCRIBES A DIFFERENT COMMAND.**
+  `CMD_CHAIN_ERRORLEVEL_IS_PARSE_TIME_V1`
+
+  This is the `cmd` half of the `-Command` bullet above: a Windows shell layer substituting a value
+  **before** the command runs, so the caller reads something the command never produced. The
+  `-Command` layer eats `$`; `cmd` eats `%ERRORLEVEL%`. Neither warns, and both exit 0.
+
+  [MEASURED] 2026-09-24T18:1xZ by Station 04 (F3b) at `11c07025`, on a query whose truth is known in
+  **both** directions — `git check-ignore -v`, which exits **0 with a match line** for an ignored
+  file and **1 with empty output** for a tracked one:
+
+  | form | output | reads as | truth |
+  |---|---|---|---|
+  | `cmd /c "git check-ignore -v <breadcrumb> & echo IGNORE_EXIT=%ERRORLEVEL%"` — **the failing form** | `IGNORE_EXIT=0`, **no match line** | *"this file is ignored"* | **wrong** |
+  | the same query from `powershell.exe -File`, reading `$LASTEXITCODE` on the next line | exit **1**, empty output | *"NOT ignored"* | **right** |
+  | POSITIVE control, `docs/qa/qa-findings.md` through the sound form | exit **0**, `.gitignore:116:docs/qa/qa-findings.md` | *"ignored"* | right |
+
+  🔴 **The two readings are opposite and the failing form is internally incoherent** — exit 0 means
+  *ignored*, and an ignored file always prints its rule, so `0` with no match line is a state
+  `check-ignore` cannot produce. Nothing in the output says so.
+
+  🔴 **It bit the report that found it.** Station 04 used the idiom for `ADVANCE_EXIT` and
+  `BREADCRUMB_EXIT` and wrote both into WHAT CHANGED as `[MEASURED]`. Both were re-measured from
+  `$LASTEXITCODE` and both genuinely were `0` — **so the published numbers were right by luck, not by
+  measurement**, which is the distinction §7 exists to protect. Corroboration for each was
+  independent of the exit code anyway (`next-sweep.mjs` printed `advanced: last_index=2`;
+  `check-breadcrumb.mjs` printed its own `ADMIT` and `CLEAN`), which is the only reason nothing was
+  published false.
+
+  🔧 **Never read an exit code out of a `cmd /c` `&` chain.** Three sound forms, and there is no
+  fourth: `powershell.exe -File <script.ps1>` reading `$LASTEXITCODE` **on the following line**;
+  `cmd /v:on` with delayed expansion `!ERRORLEVEL!`; or giving the command its own invocation and
+  reading the transport's own exit code. ⚠️ **This composes with §9.4's CWD bullet** — a `gh` or
+  `git` call whose exit code you are discarding *and* mis-reading fails twice over, silently.
+
+  ⚠️ **Falsifying probe: the three rows above.** Run `git check-ignore -v` through both forms against
+  one genuinely ignored file and one genuinely tracked one. **The chained form returns the SAME
+  answer for both**; if it ever discriminates them, this bullet is wrong and must be re-measured.
+  Found by Station 04 2026-09-24T18:1xZ (F3b), landed by Station 00 at 2026-09-24T19:3xZ.
 - ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
   **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
   the first read), but early returns are real — one was observed the same run on a line with no `#`.

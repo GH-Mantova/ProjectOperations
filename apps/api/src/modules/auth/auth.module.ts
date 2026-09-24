@@ -30,7 +30,7 @@ import { isProductionRuntime } from "../../config/runtime-env";
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>("auth.accessSecret", "replace-me-access")
+        secret: configService.getOrThrow<string>("auth.accessSecret")
       })
     }),
     ThrottlerModule.forRoot({

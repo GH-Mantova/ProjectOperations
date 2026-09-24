@@ -15,10 +15,7 @@ import { PortalRateLimitGuard } from "./portal-rate-limit.guard";
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>(
-          "auth.portalAccessSecret",
-          configService.get<string>("auth.accessSecret", "replace-me-access")
-        )
+        secret: configService.getOrThrow<string>("auth.portalAccessSecret")
       })
     }),
     AuditModule

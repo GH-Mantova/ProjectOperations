@@ -377,3 +377,76 @@ of you.
 
 Nothing else needs you. The watcher is up, no station is silent, nothing is looping, no lock is
 stale, and `armed = 0` with nothing armable is the machinery correctly waiting.
+
+
+---
+
+## ADDENDUM — 2026-09-24T08:0xZ, measured AFTER the sections above were written
+
+**A SECOND LANE became active mid-run, and it is Marco's. Board mutation stopped here.**
+
+Between this run's opening measurement (dev tree `git status --porcelain --untracked-files=no`
+**EMPTY**, `armed = 0`) and its closing one, the dev tree went dirty with work that is **not mine**:
+
+```
+ M docs/pr-prompts/.arming-log.txt                  (+1 line: 151 on origin/main -> 152 on disk)
+ D docs/pr-prompts/pr-fv2-formrule-contract-HOLD.md (-103)
+```
+
+That is the signature of an ARM — `arm-prompt.ps1`'s `git mv` of a tracked `-HOLD.md`.
+
+**[MEASURED] The arming log names the actor, and it is not a station:**
+
+```
+2026-09-24T07:29:26Z  ARMED  pr-fv2-formrule-contract  escalates=true
+  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=30680  caller=powershell.exe:26696
+```
+
+`station-00.interactive-0004` is the **SUPERVISED INTERACTIVE lane** — DOCTRINE §10.2.1, Marco
+directing a session turn by turn. The same actor id appears on the 2026-09-23T01:47:18Z row. So this
+is **not** a rogue arm and not a defect: it is the one actor entitled to override the permanent
+never-arm denylist that `pr-fv2-formrule-contract` sits on, doing so deliberately. Corroborating,
+same window: **`#2155`** opened `2026-09-24T07:43:54Z` by `GH-Mantova`, one file,
+`docs/pr-prompts/pr-scopecards-s8g-geoapify-travel-and-time-index-HOLD.md`, CLEAN, unlabelled; and
+the watcher node **restarted** — pid **38776** at run start, pid **42212** started `07:35:07Z` — then
+picked up `rev-2154-ready.md` (07:38:12Z) and `rev-2155-ready.md` (07:47:12Z).
+
+🔴 **I would have mis-dated this arm by eleven hours from the obvious instrument.**
+`pr-fv2-formrule-contract-ready.md`'s mtime is **`2026-09-23T20:30:49Z`** — `git mv` preserves
+mtime, so an armed `-ready.md`'s mtime dates its AUTHORSHIP, not its arming (DOCTRINE §9.5). The
+arming log is the only clock that dates an arm, and it is the one quoted above. Read from the mtime,
+the available finding was *"a prompt has been armed and unseen since last night"* — confident,
+coherent, wrong, and it is the failure §9.5 records verbatim.
+
+**[MEASURED] no collision in flight at the moment of reading:** `git` processes touching our trees
+**0**; `index.lock` absent in BOTH trees; one watcher node.
+
+**DISPOSITION: ESCALATED** — to Marco, as a *notice*, not a question. Nothing is wrong. What it
+changes is my own scope: the single-actor assumption this station drives the board under was false
+for the second half of this run, so **no further board mutation was made after detection**, which is
+the disposition breadcrumb `…-2026-09-24-0132-…` already set as precedent for a second lane opening
+PRs mid-run.
+
+**What I deliberately did NOT do about it, and why each would have been wrong:**
+
+- **Did not disarm `pr-fv2-formrule-contract-ready.md`.** DOCTRINE §5b: *"Arming a prompt IS the
+  decision to run it."* The denylist binds STATIONS; the actor here is Marco's lane. Disarming would
+  be a station overriding Marco — the 2026-07-20 cautious-sweep incident exactly, which *"silently
+  discards work Marco asked for."*
+- **Did not commit the arm.** §9.5 requires the run that ARMS to commit `.arming-log.txt` in its
+  board PR. That run is Marco's lane, which has `#2155` open. Sweeping another actor's arm decision
+  into **my** PR is the shared-index collision LL-38 and §9.2 both record. ⚠️ **But it must reach
+  `main` by someone**: the tracked deletion of `pr-fv2-formrule-contract-HOLD.md` will block the
+  next `git merge --ff-only` in the dev tree until it is committed, and `--numstat` will read
+  non-empty for the next run, which is the FF-cure precondition failing for a cause unrelated to its
+  own. **Named here so the next run meets it already diagnosed.**
+- **Did not merge `#2155`.** It is docs-only and would pass the policy gate, but it is a second
+  lane's staging PR opened fifteen minutes earlier by the actor who is evidently still working.
+- **Did not merge `#2154`**, mine — outside this station's lane regardless.
+
+## ADDENDUM — `#2154` at hand-over
+
+Opened **`#2154`**; branch updated onto `main` (`ca04826b`), head `60c95cee`.
+**14 of 15 checks SUCCESS, 0 failures**, `tendering-e2e` still IN_PROGRESS at hand-over.
+`autoMergeRequest = null` — deliberately not armed. Final board: **3 open** — `#2148` (Marco's,
+doubly gated), `#2154` (mine, his to merge), `#2155` (his lane's).

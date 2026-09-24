@@ -162,4 +162,69 @@ for (const rx of FORCE_MAIN) {
   }
 }
 
+// -----------------------------------------------------------------------------------------
+// 4. DEVTREE_RESET - `git reset` in the shared dev tree C:\ProjectOperations2 is forbidden.
+//    (Marker token: DEVTREE_RESET - do not remove; the premise for this rule greps for it.)
+//
+//    Measured 2026-08-28: the dev tree's reflog showed HEAD advanced to origin/main four times
+//    in one day by `reset: moving to origin/main`. `reset` fails in two directions at once:
+//      * A mixed reset moves HEAD and the index but never writes new files into the working
+//        tree. Prompts added on `main` by a board PR therefore stay invisible to the watcher,
+//        which globs the disk - they look landed but are unarmable (three prompts staged by
+//        #1370/#1371 were tracked-on-main and absent from disk within the hour).
+//      * The shared index is visible to concurrent chats. A reset silently discards their
+//        staged arming renames, leaving no trace anywhere except the reflog.
+//
+//    Correct instrument: `git fetch` + `git merge --ff-only`. A refusal from `--ff-only` is
+//    information (the tree has diverged), not an obstacle.
+//
+//    Blast radius guarded: the shared dev tree top-level ONLY. Worktrees, C:\po-watcher, and
+//    everywhere else keep `reset` - legitimate feature-branch rewinds and rebases still work.
+// -----------------------------------------------------------------------------------------
+function isDevTree(pathStr) {
+  if (!pathStr) return false;
+  const norm = String(pathStr).replace(/\//g, "\\").toLowerCase();
+  const DEV = "c:\\projectoperations2";
+  if (norm !== DEV && !norm.startsWith(DEV + "\\")) return false;
+  // A worktree checked out under the dev tree is not "the dev tree" - allow.
+  if (norm.includes("\\.claude\\worktrees\\")) return false;
+  return true;
+}
+
+const cwdCandidates = [];
+if (payload && payload.cwd) cwdCandidates.push(String(payload.cwd));
+{
+  const cdMatch = command.match(/(?:^|[;&|]|\s)cd\s+["']?((?:[a-zA-Z]:)?[\\\/][^"'\s;&|]+)/i);
+  if (cdMatch) cwdCandidates.push(cdMatch[1]);
+  const gitCMatch = command.match(/\bgit\s+-C\s+["']?([^"'\s;&|]+)/i);
+  if (gitCMatch) cwdCandidates.push(gitCMatch[1]);
+  const gitDirMatch = command.match(/--git-dir=["']?([^"'\s;&|]+)/i);
+  if (gitDirMatch) cwdCandidates.push(gitDirMatch[1].replace(/[\\\/]\.git[\\\/]?$/, ""));
+}
+
+// git ... reset - allow option tokens (-C <dir>, -c <k=v>, --git-dir=X, other -X) between
+// `git` and `reset`. Refuses to false-positive on `git commit -m "reset foo"` because `commit`
+// is not an option token, so the loop bails before reaching `reset`.
+const RESET_RE = /(?:^|[;&|\s])git(?:\s+(?:-C\s+\S+|-c\s+\S+|-\S+))*\s+reset\b/i;
+
+if (cwdCandidates.some(isDevTree) && RESET_RE.test(command)) {
+  block(
+    "BLOCKED - `git reset` in the shared dev tree C:\\ProjectOperations2. (DEVTREE_RESET)\n\n" +
+      "`git reset` is the wrong instrument for dev-tree sync and fails in two directions at once:\n" +
+      "  * A mixed reset moves HEAD and the index but never writes new files into the working\n" +
+      "    tree. A prompt added on `main` by a board PR therefore stays invisible to the watcher,\n" +
+      "    which globs the disk - it looks landed but is unarmable.\n" +
+      "  * The shared index is visible to concurrent chats. A reset silently discards their\n" +
+      "    staged arming renames, leaving no trace anywhere except the reflog.\n\n" +
+      "Do this instead:\n" +
+      "  git fetch origin +refs/heads/main:refs/remotes/origin/main\n" +
+      "  git merge --ff-only origin/main\n\n" +
+      "A refusal from `--ff-only` is INFORMATION, not an obstacle: it means the tree has diverged\n" +
+      "and needs inspection before proceeding. Do NOT paper over it with `reset`.\n\n" +
+      "This rule guards ONLY the shared dev tree top-level. `git reset` in a worktree, in\n" +
+      "C:\\po-watcher, or on a feature branch elsewhere is still allowed.\n\n" +
+      "Blocked: " + command.slice(0, 180)
+  );
+}
+
 process.exit(0); // allow

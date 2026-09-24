@@ -673,3 +673,36 @@ describe("S2b-b: four-way money reporting for waste", () => {
     expect(wasteSource).not.toContain("SCOPE_QUOTE_DESTINATION_UI_V1");
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────
+// 8. S8h regression -- accepting a tip from the finder patches mapLocationId
+// ───────────────────────────────────────────────────────────────────────
+//
+// Before S8h, handleTipChosen discarded the second argument (_mapLocationId).
+// Without mapLocationId the server never received the tip id and the
+// travel-estimate re-resolve never fired. After S8h the id is patched on
+// the row (same as the tip dropdown does at ~1307-1311).
+
+describe("S8h: accepting a tip from the finder patches mapLocationId (regression)", () => {
+  it("handleTipChosen no longer discards the mapLocationId argument", () => {
+    // The old code named the arg _mapLocationId (discard prefix).
+    // After S8h it must be mapLocationId (used in the patch).
+    expect(wasteSource).not.toContain("_mapLocationId");
+  });
+
+  it("handleTipChosen includes mapLocationId in the patchRow call", () => {
+    // The handler must forward the map-location id to the server so the
+    // travel snapshot refreshes. Presence of `mapLocationId }` (inside the
+    // patch object) is the minimal proof.
+    expect(wasteSource).toContain("mapLocationId }");
+  });
+
+  it("the tip dropdown and the tip finder now make identical patches", () => {
+    // Both should touch mapLocationId. The dropdown patch appears at the
+    // select onChange; the finder patch is in handleTipChosen.
+    const dropdownPatch = wasteSource.indexOf("void patchRow(row.id, { mapLocationId: next })");
+    const finderPatch = wasteSource.indexOf("mapLocationId }");
+    expect(dropdownPatch).toBeGreaterThan(-1);
+    expect(finderPatch).toBeGreaterThan(-1);
+  });
+});

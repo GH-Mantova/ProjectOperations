@@ -14663,6 +14663,12 @@
             "count"
           ]
         },
+        "routeVehicleMode": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "updatedAt": {
           "role": "system",
           "label": null,
@@ -20335,6 +20341,48 @@
         },
         "travelResolvedAt": {
           "role": "time",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelIndex": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelIndexSource": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "travelPlanningMinutesOneWay": {
+          "role": "measure-candidate",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "totalTripKm": {
+          "role": "measure",
+          "label": null,
+          "filterable": false,
+          "aggregations": [
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count"
+          ]
+        },
+        "loadsSource": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "dailyKmSource": {
+          "role": "attribute",
           "label": null,
           "filterable": false,
           "aggregations": []

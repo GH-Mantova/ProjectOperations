@@ -149,3 +149,7 @@
 2026-09-23T16:23:37Z  ARMED  pr-field-service-nul-separator  escalates=false  actor=station-00.sched  by=Marco@LAPTOP-E6NHU4E4  pid=17596  caller=powershell.exe:36068
 2026-09-23T20:35:38Z  ARMED  pr-devtree-sync-ff-only-guard  escalates=false  actor=station-00.sched-2023z  by=Marco@LAPTOP-E6NHU4E4  pid=36644  caller=powershell.exe:20148
 2026-09-24T02:34:54Z  ARMED  pr-sec-a3-no-credential-logs  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=39072  caller=powershell.exe:6396
+2026-09-24T07:29:26Z  ARMED  pr-fv2-formrule-contract  escalates=true  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=30680  caller=powershell.exe:26696
+2026-09-24T08:18:50Z  ARMED  pr-scopecards-s8g-geoapify-travel-and-time-index  escalates=true  actor=station-06.g8  by=Marco@LAPTOP-E6NHU4E4  pid=22748  caller=powershell.exe:36544
+2026-09-24T12:22:24Z  ARMED  pr-scopecards-s8h-traffic-index-ui  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=31636  caller=powershell.exe:16808
+2026-09-24T13:35:34Z  ARMED  pr-verdictguard-spaced-path-candidates  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=32008  caller=powershell.exe:11800

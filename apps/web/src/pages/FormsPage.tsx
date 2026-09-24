@@ -22,7 +22,6 @@ type TemplateVersion = {
   versionNumber: number;
   status: string;
   sections: TemplateSection[];
-  rules: Array<{ id: string; sourceFieldKey: string; targetFieldKey: string; effect: string }>;
 };
 
 type TemplateRecord = {
@@ -79,15 +78,6 @@ const emptyTemplateForm = {
           optionsJson: undefined
         }
       ]
-    }
-  ],
-  rules: [
-    {
-      sourceFieldKey: "fit_for_work",
-      targetFieldKey: "hazard_notes",
-      operator: "equals",
-      comparisonValue: "No",
-      effect: "REQUIRE"
     }
   ]
 };
@@ -269,16 +259,7 @@ export function FormsPage() {
                 ))}
               </div>
 
-              <div className="subsection">
-                <strong>Rules</strong>
-                {selectedVersion?.rules.map((rule) => (
-                  <div key={rule.id} className="record-row">
-                    <span>{`${rule.sourceFieldKey} -> ${rule.targetFieldKey}`}</span>
-                    <span className="muted-text">{rule.effect}</span>
-                  </div>
-                ))}
-                {(selectedVersion?.rules.length ?? 0) === 0 ? <p className="muted-text">No rules configured.</p> : null}
-              </div>
+
             </div>
           ) : (
             <p className="muted-text">No form templates yet.</p>

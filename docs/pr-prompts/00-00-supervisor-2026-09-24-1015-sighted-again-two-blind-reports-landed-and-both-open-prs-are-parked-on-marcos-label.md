@@ -349,6 +349,45 @@ open one.
 - **Did not archive `0814` or `0915`.** They are this cycle and belong in the root until their
   findings are carried; the four older ones are archived.
 
+## HANDOVER — the next run inherits a fast-forward that WILL refuse
+
+This run opened **PR #2162** (`board/sup-2026-09-24-1015`). When it merges, the dev tree at
+`C:\ProjectOperations2` is left holding blockers of **both** documented classes at once, and the
+three read-backs the station doc prescribes are exactly the ones that cannot see them:
+
+| path class | dev-tree state now | after #2162 merges |
+|---|---|---|
+| `00-...-0814-....md`, `00-...-0915-....md`, `00-...-1015-....md` | **untracked** at depth 1 | become **tracked**; `git merge --ff-only` refuses to overwrite an untracked file |
+| `00-...-0514-....md`, `00-...-0614-....md`, `00-04-scanner-...-0610-....md` | tracked, present at depth 1 | archived by this PR, so the FF must **delete** them |
+
+⚠️ `0714` is already tracked on `origin/main` and **absent from the dev tree**, which is the correct
+post-merge state from an earlier run — leave it alone.
+
+🔧 **The order that works, every step §9.2-safe. Never `git checkout -- <path>`, never `git clean`
+(consumed prompts come back armed), never `reset --hard`:**
+
+1. For each blocking path, restore it byte-exactly from `HEAD` with a **raw-Buffer** node write —
+   `fs.writeFileSync(abs, execFileSync("git", ["show", "HEAD:" + rel]))` — then
+   `git update-index --refresh`. **Exit 0 ⇒ done.** Only on non-zero do you dump the blob and the
+   disk copy, count `\r\n` against bare `\n`, and pick convert-on-write or `--renormalize`.
+   The raw write cannot be wrong about a blob’s own bytes, and it is one call shorter.
+2. `git merge --ff-only origin/main`.
+3. Restore anything you deleted, from the **new** `HEAD`, the same raw-first way.
+
+🔴 **Read back all FOUR, not three.** `git rev-list --left-right --count HEAD...origin/main` → `0 0`,
+`git diff --numstat` → EMPTY, `git diff --cached --name-status` → EMPTY, **and**
+`git status --porcelain --untracked-files=no` → EMPTY. **The first three pass on a dirty tree** —
+that is the trap the station doc records three times, and only the fourth probe dissents.
+
+**This run did not perform the fast-forward itself**, because #2162 had not merged inside its slot
+and fast-forwarding to an unmerged target is not a thing to do. It is named here so the next run
+diagnoses it from the record instead of from first principles, which four consecutive runs have
+already paid for.
+
+**And the first board action for the next sighted run** is to arm
+`pr-verdictguard-spaced-path-candidates-HOLD.md` (ADMIT, size 3) — after re-running the sweep
+immediately beforehand, because the SAFE TO ACT verdict expires the moment it prints.
+
 ## FOR MARCO — three lines
 
 **Nothing is broken.** Trunk is green, the watcher is alive and supervised, no station is silent, no

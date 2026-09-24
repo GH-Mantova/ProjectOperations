@@ -1574,7 +1574,6 @@ watcher.
 - `scripts/board-status.ps1` — open PRs and their real merge state.
 - `scripts/pipeline/read-gate-failure.ps1` — **before diagnosing ANY red.** Never diagnose a
   failure from the PR page; read the job log.
-- `scripts/pipeline/why-blocked.ps1` — a PR is BLOCKED with every visible check green.
 - `scripts/pipeline/check-gate-markers.ps1` — CP-11/12/13 red (missing `GATE-ALLOW`).
 - `scripts/pipeline/assess-conflicts.ps1` — assess, do **not** resolve, a DIRTY PR.
 - `scripts/watcher-loop-check.ps1`, `scripts/pipeline/find-watcher.ps1` — watcher looks idle.
@@ -1594,6 +1593,18 @@ watcher.
 - `scripts/pipeline/fix-datamodel-drift.ps1`, `resolve-and-regen.ps1` — **regenerate a generated
   file, never hand-merge it**, and regenerate AFTER the final rebase.
 - `scripts/pipeline/fix-gate-markers.ps1` — a PR-body edit alone does NOT retrigger the workflow.
+- `scripts/pipeline/why-blocked.ps1` — a PR is BLOCKED with every visible check green.
+  🔴 **It is MUTATING, and it sat in the READ-ONLY list above until 2026-09-23.** Its diagnostic
+  method is a REST **squash-merge attempt** — GitHub's refusal text is the only place the exact rule
+  violation is spelled out — and until that date the entire eight-line file was that attempt, with
+  no label check, no RULE 2 check and no dry run. [MEASURED] 2026-09-23T19:2xZ: run against **#2127**,
+  a PR carrying `{"ok":false,"marco":true}`, it issued the merge and was refused by the branch
+  ruleset alone (*"5 of 9 required status checks are in progress"*) — **stopped by timing, not by
+  the script and not by this list.** It now refuses a hold label, a watcher `marco:true` verdict and
+  an already-merged PR before it attempts anything. It also used to `Set-Location` into
+  `C:\po-watcher\ProjectOperations` and never return, leaving the CALLER's shell standing in the one
+  tree where git mutation is an absolute stop (DOCTRINE §4); it now passes `-R` and changes no
+  directory.
 - `scripts/restart-watcher-if-wedged.ps1` — the sanctioned WEDGED check (`-WhatIf`, then `-Fix`).
   An idle watcher with 0 armed prompts is CORRECT, not wedged.
 - `scripts/clear-stale-index-lock.ps1` — prove the lock is stale first.

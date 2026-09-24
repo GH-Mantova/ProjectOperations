@@ -1,4 +1,17 @@
-# Station 00 — Supervisor | 2026-09-24T06:14Z–2026-09-24T07:0xZ
+# Station 00 — Supervisor | 2026-09-24T06:14Z–2026-09-24T06:40Z
+
+> **CORRECTION, same run, 2026-09-24T06:4xZ.** The header first read `06:14Z–07:0xZ`. That was an
+> estimate written before the run ended, and it was wrong by ~25 minutes in the direction that
+> matters: this pipeline has an open escalation about Station 00 overrunning its hourly slot
+> (`station-00-overruns-its-hourly-slot-and-eats-the-next-occurrence-2026-09-07.md`), so an inflated
+> end time in this station's own report is a false data point for exactly the metric under watch.
+> **[MEASURED]** the true end: board PR `#2152` `mergedAt=2026-09-24T06:37:19Z`, and
+> `(Get-Date).ToUniversalTime()` read `2026-09-24T06:39:23Z` at the final read-back. Run length
+> ~25 min against a 60 min cadence; the next occurrence (`nextRunAt 2026-09-24T07:13:52Z`) was never
+> at risk. The cause was mine and is worth naming because it is the trap this station's own doc
+> records as RULE 2: the shell's `Get-Date` prints Brisbane (UTC+10) and the logs print UTC, and a
+> header drafted mid-run off the wrong one drifts. **Nothing else in this report is affected** — every
+> other timestamp in it is quoted from a UTC-stamped instrument, not from the local clock.
 
 **SIGHTED run.** Desktop Commander connected, `powershell.exe` ran on the Windows host, and the
 whole lane (COLLECT / ARM / DISPATCH / MERGE) was available. Doc version and bootstrap AGREE

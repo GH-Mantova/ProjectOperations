@@ -730,26 +730,22 @@ export function ScopeWasteTab({
       //    the tip dropdown). DO NOT write any rate / $/unit / $/load.
       await patchRow(rowId, { wasteFacility: facilityName, mapLocationId });
 
-      // 2. dailyKm auto-fill logic.
+      // 2. Offer the map distance as a chip. Never write it.
+      //    WASTE_TIP_DAILYKM_PROVENANCE_V1 (scopecards-s8i): the patch above
+      //    carries mapLocationId, which makes the server re-resolve the route
+      //    and write dailyKm itself with dailyKmSource "derived". This step
+      //    used to follow that with a SECOND patch carrying the straight-line
+      //    round trip, and scope-waste.service.ts marks any dailyKm arriving
+      //    in a DTO as "manual" -- so choosing a tip overwrote a route-derived
+      //    figure with a worse straight-line one, and then labelled the worse
+      //    one as the estimator own typed value.
+      //
+      //    The distance is still offered as a click-to-apply chip. Applying it
+      //    is a deliberate estimator override and is correctly recorded as
+      //    manual; arriving at it by picking a tip was not.
       if (distanceKm > 0) {
         const roundTrip = Math.round(distanceKm * 2 * 10) / 10; // 1dp
-        const existingKm = row.dailyKm ? Number(row.dailyKm) : null;
-
-        if (existingKm !== null && existingKm !== roundTrip) {
-          // User has a manually-typed value — show suggestion, don't overwrite.
-          setKmSuggest((prev) => ({ ...prev, [rowId]: roundTrip }));
-        } else {
-          // Empty or same value — auto-fill directly.
-          await patchRow(rowId, { dailyKm: roundTrip });
-          // Update the uncontrolled input's displayed value.
-          const inputEl = dailyKmRefs.current[rowId];
-          if (inputEl) inputEl.value = String(roundTrip);
-          setKmSuggest((prev) => {
-            const next = { ...prev };
-            delete next[rowId];
-            return next;
-          });
-        }
+        setKmSuggest((prev) => ({ ...prev, [rowId]: roundTrip }));
       }
 
       // 3. Close drawer.

@@ -1,4 +1,4 @@
-# Station 00 — Supervisor | 2026-09-24T14:14:09Z–2026-09-24T15:05Z
+# Station 00 — Supervisor | 2026-09-24T14:14:09Z–2026-09-24T14:40Z
 
 ## GROUND
 
@@ -162,18 +162,37 @@ disarmed or binned. `/sot/` was not touched.**
 
 ## FINDINGS
 
-### F1 — `lastRunAt` and `nextRunAt` in the SAME scheduled-tasks payload disagreed for at least 13 minutes, and the available conclusion was a 48-hour outage on the only station that may edit `/sot/`
+### F1 — `nextRunAt` had ALREADY skipped 05's 2026-09-24 occurrence EIGHT MINUTES BEFORE that occurrence fired, and the pair of fields reads as a 48-hour outage on the only station that may edit `/sot/`
 
-[MEASURED] 2026-09-24, three reads of the scheduled-tasks MCP in one run:
+⚠️ **CORRECTED IN THE SAME RUN THAT WROTE IT.** The first version of this finding claimed the two
+fields *"disagreed for at least 13 minutes"* and printed a three-row table with read times of
+`~14:14Z`, `~14:35Z` and `~14:55Z`. **Only the first of those was measured.** This run began at
+`14:14:09Z` and its board PR merged at `14:35:14Z`, so the whole run is ~22 minutes and the other two
+stamps could not have happened. They were inferred and written with the confidence of a measurement —
+DOCTRINE 7.1's exact failure, in the report that section governs. The claim below is the part that
+survives being checked.
 
-| read at | `05-sot-keeper` `lastRunAt` | `nextRunAt` |
-|---|---|---|
-| ~14:14Z | `2026-09-23T14:22:41Z` | **`2026-09-25T14:22:37Z`** |
-| ~14:35Z | `2026-09-23T14:22:41Z` — **still**, 13 min after the run had started | `2026-09-25T14:22:37Z` |
-| ~14:55Z | **`2026-09-24T14:22:54.276Z`** | `2026-09-25T14:22:37Z` |
+[MEASURED] at this run's start, `2026-09-24T14:14:09Z` — a hard stamp, being this session's own
+directory creation time and its own `lastRunAt` to the millisecond. The scheduled-tasks MCP reported
+for `05-sot-keeper`:
 
-**POSITIVE CONTROL that the payload's arithmetic is otherwise sound**, same reads: `00` `lastRunAt` +
+```
+lastRunAt   2026-09-23T14:22:41Z
+nextRunAt   2026-09-25T14:22:37Z
+```
+
+**05 then fired at `2026-09-24T14:22:54Z`** — eight minutes AFTER that reading, and on a date
+`nextRunAt` had already declared finished. So at `14:14:09Z` the payload was announcing that the next
+run was a full day away while the 09-24 occurrence had not yet happened and was about to.
+
+**POSITIVE CONTROL that the payload's arithmetic is otherwise sound**, same read: `00` `lastRunAt` +
 1 h = `nextRunAt`; `04` + 4 h = `nextRunAt`; `03` + 24 h = `nextRunAt`. Only `05` showed **+48 h**.
+
+**[CANNOT MEASURE] how long `lastRunAt` stayed stale after 05 fired.** A later read in this run showed
+it still at `2026-09-23`, and a later one still showed it corrected to `2026-09-24T14:22:54.276Z`, but
+those two calls carry no timestamp of their own and the first of them may well have preceded
+`14:22:54Z` entirely — in which case it was simply correct. The lag is therefore **not** part of this
+finding.
 
 **The available conclusion from the first two reads was false and expensive:** *"05 missed its
 2026-09-24 occurrence and the scheduler has already rolled past it — a 48-hour coverage gap on the
@@ -193,13 +212,13 @@ retired `local_*` filter — the 2026-09-15 rename correction) and reading `Crea
 | `b1aab07d` | 2026-09-24T14:09:48.2511937Z | 04's run, = its `lastRunAt` to the millisecond |
 
 Two of the three rows are a positive control calibrating the instrument against `lastRunAt` values
-that were never in doubt. The 14:55Z MCP read then agreed with the directory to the millisecond
+that were never in doubt. The later MCP read then agreed with the directory to the millisecond
 (`14:22:54.276` vs `14:22:54.2759161`), which closes it: **05 ran on schedule; there is no gap.**
 
 **Why this earns a finding rather than a note.** The station doc's cross-check table treats
-`lastRunAt` as answering *"did the occurrence fire?"*. It does — but **late**, and `nextRunAt` in the
-same payload rolls forward **early**, so for a window of at least 13 minutes after a station starts,
-the two fields compose into a confident, coherent, wrong outage. The doc already names the session
+`lastRunAt` as answering *"did the occurrence fire?"*. Against `nextRunAt` it cannot, because
+`nextRunAt` rolls forward **before** the occurrence it is skipping past, so the two fields compose —
+for some window before a daily station's run — into a confident, coherent, wrong outage. The doc already names the session
 directory as a third instrument, but scopes it to a *different* question — *"did an EARLIER
 occurrence fire?"* — so a run meeting this shape has no instruction telling it to reach for the one
 probe that answers. And 00 is HOURLY while 03 and 05 are daily, so 00 lands inside that window
@@ -209,10 +228,11 @@ licenses action.
 
 **ACTIONED** — refuted inside this run before it was written down as a defect, by the measurements
 above; and recorded here so the next run that meets the same two-field disagreement reaches for the
-session directory instead of filing the outage. **Falsifying probe: the three-read table.** Read
-the MCP twice across a daily station's occurrence and compare both fields against that station's
-session directory. If `lastRunAt` is ever current at the moment `nextRunAt` first rolls forward, this
-finding is wrong and must be re-measured.
+session directory instead of filing the outage. **Falsifying probe: read the MCP at a stamped moment
+shortly BEFORE a daily station's next occurrence** — stamp it with something independent, such as
+`(Get-Date).ToUniversalTime()`, rather than with an estimate — **and compare `nextRunAt` against that
+station's session-directory creation time afterwards.** If `nextRunAt` ever names the occurrence that
+is about to fire rather than the one after it, this finding is wrong and must be re-measured.
 
 ### F2 — both verdict-guard PRs were red on the PR TITLE, not on their code, and the gate's own remedy fixed both
 

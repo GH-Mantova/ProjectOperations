@@ -92,3 +92,57 @@ green-able but unmergeable until a receipt exists.
 Re-ask `gh pr view <n> --json labels` per PR for #2148, #2166, #2167 and re-read CP-26's verdict token
 from the newest run. If any of the three reports `[LABEL_PRESENT]` again, the label was re-applied and
 this escalation is spent. If any reports `PASS`, a receipt landed and that PR is mine to merge.
+
+---
+
+## CORRECTION 2026-09-24T19:42Z — two of the three were RE-PARKED 23 minutes later, by the same unattributable handle. Only #2148 is still released.
+
+**true at** `origin/main` **6be40896** · raised by the same Station 00 run, after #2177 merged.
+
+This file's own falsifying probe fired on the first re-check, which is why it is corrected here rather
+than left to rot. [MEASURED] full `labeled`/`unlabeled` history for `do-not-merge`,
+`gh api repos/GH-Mantova/ProjectOperations/issues/<n>/timeline`, exit 0 on all three:
+
+| PR | labeled | unlabeled | **re-labeled** |
+|---|---|---|---|
+| #2167 | 13:53:29Z | 19:06:23Z | **19:29:16Z** |
+| #2166 | 13:44:06Z | 19:05:39Z | **19:29:14Z** |
+| #2148 | 02:56:08Z | 19:01:50Z | — **still released** |
+
+Every event is `by=GH-Mantova`. The two re-labels are **two seconds apart**, which is a
+programmatic write rather than two hand clicks.
+
+### What changes, and what does not
+
+**Changes:** the headline. Only **#2148** is released-without-a-receipt right now; #2166 and #2167 are
+back in the `[LABEL_PRESENT]` state, which DOCTRINE §9.4 classes as **parked by design, nothing to
+do**. Their `[RELEASED_NO_RECEIPT]` readings quoted above were true when measured at 19:20Z and are
+now spent. Do not act on them.
+
+**Does not change — and is sharpened:** the question this file asks. In one 28-minute window the
+`do-not-merge` label was removed from three PRs and re-applied to two, and **every one of those five
+writes is `GH-Mantova`**, so no instrument available to a scheduled run can say whether any of them
+was you. That is precisely why a headless run cannot author a receipt, and it is now demonstrated on
+live traffic rather than argued from the README. If anything the case for option (A) — *release by
+committing the receipt, or leave an attributable one-line PR comment* — is stronger: a release that
+is a label toggle is not only unattributable, it is not even stable for half an hour.
+
+### A second lane was live throughout, and that is worth your attention separately
+
+[MEASURED] `git worktree list` in the dev tree gained `C:/po-wt/stage-formrule-web`
+[`docs/stage-formrule-legacy-payload-retire`] at `041fad08`, committed **2026-09-24T19:25:00+10:00**,
+whose PR **#2176** (`f9b5ad4c docs(board): stage the FormRule legacy-payload retirement prompt`)
+merged while this run was building #2177. Its untracked prompt file also blocked this run's
+fast-forward until proved byte-identical to `origin/main` (`b30abf42` on both sides) and re-created
+from the merge.
+
+Nothing collided — #2177 and #2176 touched disjoint paths and the dev-tree index was EMPTY before and
+after my commit — but this is DOCTRINE §10's second-lane case and LL-38's shape, and the re-label at
+19:29Z falls inside that lane's window. **If that lane is yours, the two re-parks are explained and
+the only open item is #2148's receipt.** If it is not, the re-label has no known author.
+
+### Falsifying probe, restated
+
+Re-ask `gh pr view <n> --json labels` per PR and re-read CP-26's verdict token from the newest run.
+**#2148** is the live one: `[RELEASED_NO_RECEIPT]` means it still needs a receipt; `PASS` means one
+landed and it is mergeable; `[LABEL_PRESENT]` means it too was re-parked and this file is fully spent.

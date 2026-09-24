@@ -1301,7 +1301,7 @@ export class FieldService {
         jobRef: row.project.projectNumber,
         regularHours: row.hoursWorked.toString(),
         notes: truncateNotes(row.description),
-        sortKey: `${workerName.toLowerCase()} ${row.date.toISOString()}`
+        sortKey: `${workerName.toLowerCase()}\u0000${row.date.toISOString()}`
       };
     });
 

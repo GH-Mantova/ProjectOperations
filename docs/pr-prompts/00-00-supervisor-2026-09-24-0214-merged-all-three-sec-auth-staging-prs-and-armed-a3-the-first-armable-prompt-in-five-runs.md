@@ -488,3 +488,56 @@ the prescribed route. Verified in the worktree index as `M docs/pipeline/sweep-r
 - **Did not invoke another station's skill.**
 
 <run-summary>Merged all three sec-auth staging PRs my predecessor had withheld under the single-actor gate, taking their lane verdicts fresh rather than on trust, which cut the board from six open PRs to three; armed pr-sec-a3-no-credential-logs, the first armable prompt in five runs, against six measured gate checks; confirmed the previous run's auto-update correction with the falsifying probe it asked for and timed it at 96-250 seconds; and found the sanctioned merge primitive returns a two-element array rather than a boolean, so every documented `if (Assert-SmokedOrEscalate ...)` is a truthiness test that cannot fail.</run-summary>
+
+---
+
+## ADDENDUM 2026-09-24T02:47Z — same station, same run, later measurement. **F2's open question is CLOSED: the watcher DID consume the armed prompt and is building it now.**
+
+F2 above left consumption `[MEASURED]` as *not yet observed* at `02:40:31Z` and carried a falsifying
+probe for the next run. **It resolved inside this run, so it is answered here rather than left to be
+re-derived from the board.** This is appended to the same board PR, not raised as a second one —
+landing a second board PR is exactly the cost F4 escalates, and one commit on an open PR costs
+nothing extra.
+
+**The sanctioned liveness check, and the one line in it that settles the question**
+(`scripts\restart-watcher-if-wedged.ps1`, report-only, no `-Fix`, at `02:47:15Z`):
+
+```
+armed prompts waiting: 1
+watcher process:       ALIVE (pid 38776)
+restart churn:         0 cycle(s) in 20 min  (starts=0 exits=0, threshold 4)
+queue last moved:      63 min ago  (rev-2146-ready.md)
+heartbeat last write:  0 min ago
+
+VERDICT: HEALTHY - no action.
+```
+
+🔧 **`heartbeat last write: 0 min ago` is the discriminator, and it is the one instrument I was
+missing at `02:40Z`.** The heartbeat **ticks only mid-run**, 60 seconds apart. The sweep measured it
+at **31 min** at `02:16:04Z`, when nothing was armed and the watcher was correctly idle. It is now
+**0 min**. A heartbeat that went from 31 minutes stale to fresh across the arming is a positive
+signal that the watcher woke on the rename — not merely an absence of a wedge.
+
+⚠️ **And it explains why `processed/` was still empty, which I had wrongly treated as the pickup
+signal.** Per `DOCTRINE` §8.5, the retired `processed/` folder was entered **when a PR OPENED**, not
+when a prompt was picked up. So a build legitimately in flight leaves `-ready.md` exactly where it is
+and writes nothing to `processed/`. **`-ready.md` still on disk is therefore not evidence of
+non-consumption at all** — it is the expected state for the entire 10–40 minute build window, and my
+`02:40Z` measurement could never have distinguished the two. The heartbeat can, and nothing else I
+reached for could.
+
+⚠️ **Falsifying probe, corrected and sharpened for the next run.** Do **not** test
+`Test-Path …-ready.md` or `processed/`. Run `restart-watcher-if-wedged.ps1` and read **two** lines
+together: if `heartbeat last write` is stale **and** `armed prompts waiting` is ≥ 1, that is a real
+`WEDGED` and it is Station 03's. If the heartbeat is fresh, the build is running however quiet it
+looks — **never restart on that** (the station doc's BUSY row: killing a healthy agent mid-merge is
+worse than the stall you were trying to fix).
+
+**Expected next state:** a PR for `pr-sec-a3-no-credential-logs`, touching `apps/api/**`, which
+`classifyPolicyFiles` will route `marco:true` and the watcher will label `do-not-merge` — the prompt's
+own guardrail asks for that label explicitly. **It is not mine to merge**, and the next run should not
+try.
+
+**DISPOSITION of this addendum: ACTIONED** — the question F2 left open is measured and closed, and
+the probe it carried forward is corrected before anyone runs the wrong one. **Nothing else above
+changes:** F1, F3–F8 stand as written.

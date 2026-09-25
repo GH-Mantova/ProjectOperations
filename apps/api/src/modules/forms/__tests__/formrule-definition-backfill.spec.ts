@@ -6,21 +6,17 @@ import type {
 } from "@project-ops/config/forms-rule-definition";
 
 /**
- * Gate A — FormRule.definition backfill correctness (pipeline-correctness-gates SLICE 2)
+ * Gate A — FormRule.definition contract correctness (F-2c)
  *
- * Closes the #923 class: the migration backfill for FormRule.definition used
- * `lower(operator)` and `lower(effect)` to normalise legacy UPPERCASE flat
- * columns. Before 23dcf30b the backfill omitted `lower()` so the produced JSONB
- * contained `"operator":"EQUALS"` which is not a member of ConditionOperator.
+ * After the F-2c contract drop (this PR), the five legacy flat columns
+ * (sourceFieldKey, targetFieldKey, operator, comparisonValue, effect) are
+ * gone. FormRule.definition is the single source of truth.
  *
  * This suite:
- *   1. Seeds a legacy-shape form_rules row with UPPERCASE operator + effect,
- *      definition NULL.
- *   2. Runs the IDENTICAL backfill UPDATE the migration applies.
- *   3. Asserts the produced definition is contract-valid (lowercase operator,
- *      lowercase action type, correct FieldRule shape).
- *   3b. Negative control: proves the validator CAN reject an uppercase operator
- *       so the gate is a proven instrument and not a tautology.
+ *   1. Seeds a form_rules row with a correctly-shaped definition JSON.
+ *   2. Asserts the stored definition passes the FieldRule contract validator.
+ *   3. Negative controls: proves the validator can reject uppercase operator
+ *      and action type (instrument is not a tautology).
  *
  * Serial suite, real Postgres, self-cleaning via ZZTEST- code prefix.
  */
@@ -139,13 +135,23 @@ function validateFieldRule(raw: unknown): ValidationResult {
 
 // ── Suite ────────────────────────────────────────────────────────────────────
 
-describe("FormRule.definition backfill — Gate A contract correctness", () => {
+describe("FormRule.definition — Gate A contract correctness (F-2c)", () => {
   const prisma = new PrismaClient();
 
   const TEMPLATE_CODE = "ZZTEST-GATE-A-BACKFILL";
 
   let versionId: string;
   let ruleId: string;
+
+  // Canonical definition seeded directly (legacy columns no longer exist after F-2c).
+  const SEED_DEFINITION = {
+    trigger: "on_change",
+    conditionGroup: {
+      logic: "AND",
+      conditions: [{ fieldKey: "hazard_type", operator: "equals", value: "chemical" }],
+    },
+    actions: [{ type: "show", target: "hazard_detail" }],
+  };
 
   async function cleanup(): Promise<void> {
     await prisma.formRule.deleteMany({
@@ -176,46 +182,14 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
     });
     versionId = version.id;
 
-    // Seed a LEGACY-shape row: UPPERCASE operator + effect, definition NULL.
-    // This is the exact state rows would be in before the F-2a migration ran.
+    // Seed a definition-only row (F-2c: legacy flat columns have been dropped).
     const rule = await prisma.formRule.create({
       data: {
         versionId,
-        sourceFieldKey: "hazard_type",
-        targetFieldKey: "hazard_detail",
-        operator: "EQUALS",   // uppercase — the pre-fix bug
-        comparisonValue: "chemical",
-        effect: "SHOW",       // uppercase
-        definition: undefined, // NULL — backfill pending
+        definition: SEED_DEFINITION,
       },
     });
     ruleId = rule.id;
-
-    // Run the EXACT backfill SQL from migration 20260804_fv2_formrule_expand.
-    // We scope it to our test row by id so we don't touch real data.
-    await prisma.$executeRawUnsafe(`
-      UPDATE "form_rules"
-      SET "definition" = jsonb_build_object(
-        'trigger', 'on_change',
-        'conditionGroup', jsonb_build_object(
-          'logic', 'AND',
-          'conditions', jsonb_build_array(
-            jsonb_build_object(
-              'fieldKey', source_field_key,
-              'operator', lower(operator),
-              'value',    comparison_value
-            )
-          )
-        ),
-        'actions', jsonb_build_array(
-          jsonb_build_object(
-            'type',   lower(effect),
-            'target', target_field_key
-          )
-        )
-      )
-      WHERE id = '${ruleId}' AND "definition" IS NULL
-    `);
   });
 
   afterAll(async () => {
@@ -223,9 +197,9 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
     await prisma.$disconnect();
   });
 
-  // ── Positive: backfill produces a contract-valid FieldRule ─────────────────
+  // ── Positive: definition is stored and contract-valid ──────────────────────
 
-  it("populates definition (not NULL) after the backfill", async () => {
+  it("stores definition (not NULL)", async () => {
     const row = await prisma.formRule.findUniqueOrThrow({ where: { id: ruleId } });
     expect(row.definition).not.toBeNull();
   });
@@ -236,21 +210,18 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
     expect(def["trigger"]).toBe("on_change");
   });
 
-  it("lowercases the operator — 'EQUALS' becomes 'equals' (canonical ConditionOperator)", async () => {
+  it("stores lowercase operator (canonical ConditionOperator)", async () => {
     const row = await prisma.formRule.findUniqueOrThrow({ where: { id: ruleId } });
     const def = row.definition as unknown as FieldRule;
     const condition = def.conditionGroup.conditions[0] as { operator: ConditionOperator };
     expect(condition.operator).toBe("equals");
-    // Belt-and-braces: confirm uppercase form is gone
-    expect(condition.operator).not.toBe("EQUALS");
   });
 
-  it("lowercases the action type — 'SHOW' becomes 'show' (canonical RuleActionType)", async () => {
+  it("stores lowercase action type (canonical RuleActionType)", async () => {
     const row = await prisma.formRule.findUniqueOrThrow({ where: { id: ruleId } });
     const def = row.definition as unknown as FieldRule;
     const action = def.actions[0] as { type: RuleActionType };
     expect(action.type).toBe("show");
-    expect(action.type).not.toBe("SHOW");
   });
 
   it("passes full FieldRule contract validation", async () => {
@@ -260,7 +231,7 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("preserves the fieldKey and comparison value from legacy columns", async () => {
+  it("preserves fieldKey and value in the stored definition", async () => {
     const row = await prisma.formRule.findUniqueOrThrow({ where: { id: ruleId } });
     const def = row.definition as unknown as FieldRule;
     const condition = def.conditionGroup.conditions[0] as {
@@ -274,18 +245,18 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
     expect(action.target).toBe("hazard_detail");
   });
 
-  // ── 3b. Negative control: validator MUST reject uppercase operator ──────────
+  // ── Negative controls: validator MUST reject invalid shapes ────────────────
   // This proves the instrument can fail — a gate that never fails is not a gate.
 
-  it("negative control — validator rejects an uppercase operator (pre-fix 'EQUALS')", () => {
-    const preFixDefinition: unknown = {
+  it("negative control — validator rejects an uppercase operator ('EQUALS')", () => {
+    const invalidDefinition: unknown = {
       trigger: "on_change",
       conditionGroup: {
         logic: "AND",
         conditions: [
           {
             fieldKey: "hazard_type",
-            operator: "EQUALS", // uppercase — the bug that existed before 23dcf30b
+            operator: "EQUALS",
             value: "chemical",
           },
         ],
@@ -293,13 +264,13 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
       actions: [{ type: "show", target: "hazard_detail" }],
     };
 
-    const result = validateFieldRule(preFixDefinition);
+    const result = validateFieldRule(invalidDefinition);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("EQUALS"))).toBe(true);
   });
 
-  it("negative control — validator rejects an uppercase action type (pre-fix 'SHOW')", () => {
-    const preFixDefinition: unknown = {
+  it("negative control — validator rejects an uppercase action type ('SHOW')", () => {
+    const invalidDefinition: unknown = {
       trigger: "on_change",
       conditionGroup: {
         logic: "AND",
@@ -309,13 +280,13 @@ describe("FormRule.definition backfill — Gate A contract correctness", () => {
       },
       actions: [
         {
-          type: "SHOW", // uppercase — would have been produced without lower(effect)
+          type: "SHOW",
           target: "hazard_detail",
         },
       ],
     };
 
-    const result = validateFieldRule(preFixDefinition);
+    const result = validateFieldRule(invalidDefinition);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("SHOW"))).toBe(true);
   });

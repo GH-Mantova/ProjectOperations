@@ -256,16 +256,11 @@ async function main() {
             }
           ]
         }
-      ],
-      rules: [
-        {
-          sourceFieldKey: "site_ready",
-          targetFieldKey: "comments",
-          operator: "equals",
-          comparisonValue: "No",
-          effect: "require"
-        }
       ]
+      // No `rules` on this payload: this slice drops the legacy FormRule
+      // columns and `UpsertFormTemplateDto` no longer declares the field.
+      // The global ValidationPipe runs with forbidNonWhitelisted, so an
+      // undeclared property is a 400, not a quietly dropped one.
     }).expect(201);
 
     const latestVersion = formTemplateResponse.body.versions?.[0];

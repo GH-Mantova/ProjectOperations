@@ -546,16 +546,7 @@ export class FormsService {
               snippetCode: (field as { snippetCode?: string | null }).snippetCode ?? undefined
             }))
           }))
-        : [{ title: "Section 1", sectionOrder: 1, fields: [] }],
-      rules: latest
-        ? latest.rules.map((rule) => ({
-            sourceFieldKey: rule.sourceFieldKey,
-            targetFieldKey: rule.targetFieldKey,
-            operator: rule.operator,
-            comparisonValue: rule.comparisonValue ?? undefined,
-            effect: rule.effect
-          }))
-        : []
+        : [{ title: "Section 1", sectionOrder: 1, fields: [] }]
     };
 
     const created = await this.prisma.$transaction((tx) =>
@@ -772,19 +763,6 @@ export class FormsService {
           });
         }
       }
-    }
-
-    if ((dto.rules ?? []).length > 0) {
-      await tx.formRule.createMany({
-        data: (dto.rules ?? []).map((rule) => ({
-          versionId: version.id,
-          sourceFieldKey: rule.sourceFieldKey,
-          targetFieldKey: rule.targetFieldKey,
-          operator: rule.operator,
-          comparisonValue: rule.comparisonValue ?? null,
-          effect: rule.effect ?? "SHOW"
-        }))
-      });
     }
 
     return template;

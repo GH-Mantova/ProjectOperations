@@ -234,6 +234,89 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\script
     return $path
 }
 
+# ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1 (2026-09-25).
+#
+# Helper: walk the Win32_Process ancestry of a node PID to determine whether
+# any ancestor is a powershell.exe running start-watcher.ps1. Returns a
+# structured result; does NOT log -- the caller owns all logging.
+#
+# Contract:
+#   NodePid     -- PID of the watcher node to inspect.
+# Returns [pscustomobject] @{
+#   NodePid            -- the input PID (echoed for logging)
+#   ParentPid          -- immediate parent PID (0 if unreadable)
+#   GrandparentPid     -- grandparent PID (0 if unreadable)
+#   SupervisedByWrapper -- $true when any ancestor matches start-watcher.ps1
+#   WrapperPid         -- PID of the start-watcher.ps1 ancestor (0 if none)
+#   WrapperParentPid   -- PID of the wrapper's own parent (0 if none/unreadable)
+#   WalkFailed         -- $true when a CIM error stopped the walk early
+#   FailureReason      -- reason string when WalkFailed is $true, else ''
+# }
+function Get-WatcherNodeAncestry {
+    param(
+        [Parameter(Mandatory=$true)][int] $NodePid
+    )
+
+    $result = [pscustomobject]@{
+        NodePid             = $NodePid
+        ParentPid           = 0
+        GrandparentPid      = 0
+        SupervisedByWrapper = $false
+        WrapperPid          = 0
+        WrapperParentPid    = 0
+        WalkFailed          = $false
+        FailureReason       = ''
+    }
+
+    try {
+        # Walk up to 5 ancestors; that is more than enough to cover any realistic
+        # supervisor nesting depth and prevents an infinite loop on orphaned PIDs.
+        $currentPid = $NodePid
+        $depth      = 0
+        $firstParent = $true
+        while ($depth -lt 5 -and $currentPid -gt 0) {
+            $proc = Get-CimInstance -ClassName Win32_Process `
+                        -Filter ("ProcessId=" + $currentPid) `
+                        -ErrorAction Stop |
+                    Select-Object -First 1
+            if ($null -eq $proc) { break }
+
+            $parentPid = [int]$proc.ParentProcessId
+            if ($firstParent) {
+                $result.ParentPid = $parentPid
+                $firstParent = $false
+            } elseif ($depth -eq 1) {
+                $result.GrandparentPid = $parentPid
+            }
+
+            # Check this process: is it a powershell.exe running start-watcher.ps1?
+            if ($proc.Name -like 'powershell*' -and
+                $proc.CommandLine -like '*start-watcher.ps1*') {
+                $result.SupervisedByWrapper = $true
+                $result.WrapperPid          = [int]$proc.ProcessId
+
+                # Also note the wrapper's own parent (the outer supervisor PID).
+                $wrapperParent = Get-CimInstance -ClassName Win32_Process `
+                                     -Filter ("ProcessId=" + $parentPid) `
+                                     -ErrorAction SilentlyContinue |
+                                 Select-Object -First 1
+                if ($null -ne $wrapperParent) {
+                    $result.WrapperParentPid = [int]$wrapperParent.ProcessId
+                }
+                break
+            }
+
+            $currentPid = $parentPid
+            $depth++
+        }
+    } catch {
+        $result.WalkFailed     = $true
+        $result.FailureReason  = $_.Exception.Message
+    }
+
+    return $result
+}
+
 # Pure function: decide what to do after the watcher exits. Extracted so the
 # BRANCH LOGIC (rather than the whole while-loop-plus-Start-Job) can be tested
 # without booting a live supervisor. Prior to 2026-08-18 the decision was
@@ -245,6 +328,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\script
 # no Write-Output, no logging inside this function -- the caller owns log I/O
 # using the LogMessage field. Any stray output would pollute nothing here
 # (structured return) but would corrupt Sup-Log's REASON parsing upstream.
+#
+# ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1: the adopt branch now probes the node's
+# ancestry before committing to adopt. An optional -AncestryProbe scriptblock
+# parameter lets tests inject a stub (defaults to calling Get-WatcherNodeAncestry).
 function Resolve-WatcherExitAction {
     param(
         [Parameter(Mandatory=$true)][int]      $ExitCode,
@@ -253,7 +340,8 @@ function Resolve-WatcherExitAction {
         [AllowEmptyString()][string]           $CloneRoot,
         [AllowEmptyString()][string]           $LastReasonKey,
         [int]                                  $SameCount,
-        [int]                                  $MaxSameFail
+        [int]                                  $MaxSameFail,
+        [scriptblock]                          $AncestryProbe = $null
     )
 
     # WATCHDOG KILL takes precedence over the exit code.
@@ -303,9 +391,92 @@ function Resolve-WatcherExitAction {
     # Exit 0: either the single-instance guard (adopt) or a genuine Ctrl+C.
     $reason = Get-ChildFailureReason -OutputLines $ChildOutput -CloneRoot $CloneRoot
     if ($reason -match 'SINGLE-INSTANCE') {
+        # ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1 (2026-09-25).
+        # Before adopting, verify the running node is NOT already supervised by
+        # a start-watcher.ps1 ancestor. If it IS, returning 'adopt' would leave
+        # two wrappers competing; the correct action is to exit so the already-
+        # supervising wrapper continues alone.
+        #
+        # Parse the node PID out of the SINGLE-INSTANCE line. The real format is
+        # "SINGLE-INSTANCE: watcher already running (PID <n>)." but we also
+        # accept the test variant "(pid <n>)" via case-insensitive match.
+        $nodePidParsed   = 0
+        $pidParseOk      = $reason -imatch '\bpid\s+(\d+)' -and [int]::TryParse($Matches[1], [ref]$nodePidParsed)
+
+        if (-not $pidParseOk) {
+            # Cannot parse the PID -- fall back to adopt and tag the anomaly.
+            return [pscustomobject]@{
+                Action       = 'adopt'
+                LogMessage   = ("ADOPT: ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED -- could not parse node PID from SINGLE-INSTANCE line; adopting without ancestry check. ($reason)")
+                NewReasonKey = ''
+                NewSameCount = 0
+                Reason       = $reason
+            }
+        }
+
+        # Select the probe. Use the injected scriptblock if supplied; otherwise
+        # default to the real I/O helper defined above this function.
+        $probe = $AncestryProbe
+        if ($null -eq $probe) {
+            $probe = { param($probePid) Get-WatcherNodeAncestry -NodePid $probePid }
+        }
+
+        $ancestry = $null
+        try {
+            $ancestry = & $probe $nodePidParsed
+        } catch {
+            # Probe threw -- treat as unreadable and fall back to adopt.
+            return [pscustomobject]@{
+                Action       = 'adopt'
+                LogMessage   = ("ADOPT: ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED -- ancestry probe threw: " + $_.Exception.Message + "; adopting without ancestry check. ($reason)")
+                NewReasonKey = ''
+                NewSameCount = 0
+                Reason       = $reason
+            }
+        }
+
+        if ($null -eq $ancestry) {
+            return [pscustomobject]@{
+                Action       = 'adopt'
+                LogMessage   = ("ADOPT: ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED -- ancestry probe returned null; adopting without ancestry check. ($reason)")
+                NewReasonKey = ''
+                NewSameCount = 0
+                Reason       = $reason
+            }
+        }
+
+        if ($ancestry.WalkFailed) {
+            # CIM walk failed partway -- fall back to adopt (do not block).
+            return [pscustomobject]@{
+                Action       = 'adopt'
+                LogMessage   = ("ADOPT: ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED -- ancestry walk failed for node PID " + $nodePidParsed + ": " + $ancestry.FailureReason + "; adopting without ancestry check. ($reason)")
+                NewReasonKey = ''
+                NewSameCount = 0
+                Reason       = $reason
+            }
+        }
+
+        if ($ancestry.SupervisedByWrapper) {
+            # The node already has a start-watcher.ps1 wrapper in its ancestry.
+            # This wrapper is redundant; exit so the running one continues alone.
+            $exitMsg = ("EXIT-SUPERVISED: watcher node PID " + $nodePidParsed +
+                        " is already supervised by start-watcher.ps1 PID " + $ancestry.WrapperPid +
+                        " (wrapper PID " + $ancestry.WrapperParentPid +
+                        "). This wrapper is redundant; exiting so the running one continues alone. ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1")
+            return [pscustomobject]@{
+                Action       = 'exit-supervised'
+                LogMessage   = $exitMsg
+                NewReasonKey = ''
+                NewSameCount = 0
+                Reason       = $reason
+            }
+        }
+
+        # Walk completed; no start-watcher.ps1 ancestor found. Safe to adopt.
         return [pscustomobject]@{
             Action       = 'adopt'
-            LogMessage   = "ADOPT: a watcher node is already running and no wrapper was supervising it. Adopting rather than exiting. ($reason)"
+            LogMessage   = ("ADOPT: watcher node PID " + $nodePidParsed +
+                            " has no start-watcher.ps1 ancestor; adopting it. ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1 (verified). ($reason)")
             NewReasonKey = ''
             NewSameCount = 0
             Reason       = $reason
@@ -470,8 +641,9 @@ $wdGraceInit   = [scriptblock]::Create(
 $null = Start-Job -Name pr-watcher-heartbeat-watchdog -InitializationScript $wdGraceInit -ScriptBlock {
     param($PromptDir, $Heartbeat, $HungMin, $PollSec, $SupLog, $KillFlag, $StateMaxAgeMin,
           $WatcherLane, $WatcherLanes, $LaneClassifyScript, $EscalationDir)
+    # WATCHDOG_LINE_CARRIES_PID_V1 -- every watchdog line names its writing process; a duplicate job becomes visible the moment it recurs.
     function WD-Log([string]$m) {
-        try { Add-Content -Path $SupLog -Value ("[{0}] WATCHDOG {1}" -f (Get-Date -Format o), $m) -Encoding UTF8 } catch {}
+        try { Add-Content -Path $SupLog -Value ("[{0}] WATCHDOG[pid={1}] {2}" -f (Get-Date -Format o), $PID, $m) -Encoding UTF8 } catch {}
     }
     $laneDesc = if ($null -eq $WatcherLane) { 'unset (single-lane)' } else { "lane=$WatcherLane of $WatcherLanes" }
     WD-Log "started (hungMin=$HungMin pollSec=$PollSec heartbeat=$Heartbeat killFlag=$KillFlag stateMaxAgeMin=$StateMaxAgeMin PR_WATCHER_LANE=$laneDesc)"
@@ -880,6 +1052,13 @@ while ($true) {
                 }
             }
         }
+        'exit-supervised' {
+            # ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1: the matched node is already
+            # supervised by another start-watcher.ps1 wrapper. This wrapper is
+            # redundant; exit cleanly so the running wrapper continues alone.
+            Sup-Log "Exiting: another wrapper owns the running node."
+            break
+        }
         'exit-deliberate' {
             # Genuine Ctrl+C. Respect it so a manual stop actually stops things.
             # (The watcher is an fs.watch daemon, so it does NOT exit 0 on an empty queue.)
@@ -887,5 +1066,5 @@ while ($true) {
         }
     }
 
-    if ($decision.Action -eq 'exit-deliberate') { break }
+    if ($decision.Action -eq 'exit-deliberate' -or $decision.Action -eq 'exit-supervised') { break }
 }

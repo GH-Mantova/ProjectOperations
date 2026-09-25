@@ -179,8 +179,17 @@ Section "2. WATCHER (running process, not a file)"
 $w = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like "*pr-watcher*" })
 if ($w.Count -eq 0) { Line "LIVE" "watcher node: NOT RUNNING  <-- the queue will not drain" }
 else { foreach ($x in $w) { Line "LIVE" ("watcher node: RUNNING pid " + $x.ProcessId) } }
+# WRAPPER_COUNT_ANOMALY_V1 -- 2+ wrappers is the defect, not health; call it out with each wrapper's PID and start time.
 $sup = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like "*supervise-watcher*" -or $_.CommandLine -like "*watcher-launcher*" })
-Line "LIVE" ("auto-restart wrapper: " + $(if ($sup.Count) { "alive (" + $sup.Count + ")" } else { "NOT RUNNING -- watcher will not self-restart" }))
+if ($sup.Count -gt 1) {
+  Line "LIVE" ("auto-restart wrapper: ANOMALY -- " + $sup.Count + " wrappers alive (expected 1). WRAPPER_COUNT_ANOMALY_V1")
+  foreach ($wrapperProc in $sup) {
+    $startLocal = try { ([datetime]$wrapperProc.CreationDate).ToString("MM-dd HH:mm") + " local" } catch { "(start time unreadable)" }
+    Line "LIVE" ("   wrapper pid " + $wrapperProc.ProcessId + " started " + $startLocal)
+  }
+} else {
+  Line "LIVE" ("auto-restart wrapper: " + $(if ($sup.Count) { "alive (" + $sup.Count + ")" } else { "NOT RUNNING -- watcher will not self-restart" }))
+}
 $hb = Join-Path $WatcherClone "scripts\pr-watcher\heartbeat.log"
 if (Test-Path $hb) {
   # LOCAL vs LOCAL ON PURPOSE -- do NOT "fix" this to LastWriteTimeUtc. Get-Date is local, so the

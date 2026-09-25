@@ -29,7 +29,7 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync<AuthenticatedUser & { type?: string }>(
         token,
         {
-          secret: this.configService.get<string>("auth.accessSecret", "replace-me-access")
+          secret: this.configService.getOrThrow<string>("auth.accessSecret")
         }
       );
 

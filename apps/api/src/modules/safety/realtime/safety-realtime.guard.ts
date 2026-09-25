@@ -42,7 +42,7 @@ export class SafetyRealtimeAuthGuard implements CanActivate {
     let payload: AuthenticatedUser & { type?: string };
     try {
       payload = await this.jwtService.verifyAsync<AuthenticatedUser & { type?: string }>(token, {
-        secret: this.configService.get<string>("auth.accessSecret", "replace-me-access")
+        secret: this.configService.getOrThrow<string>("auth.accessSecret")
       });
     } catch {
       throw new UnauthorizedException("Invalid or expired access token.");

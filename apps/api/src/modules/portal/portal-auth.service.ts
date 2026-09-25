@@ -71,10 +71,7 @@ export class PortalAuthService {
   }
 
   async refresh(input: PortalRefreshDto) {
-    const refreshSecret = this.configService.get<string>(
-      "auth.portalRefreshSecret",
-      this.configService.get<string>("auth.refreshSecret", "replace-me-refresh")
-    );
+    const refreshSecret = this.configService.getOrThrow<string>("auth.portalRefreshSecret");
 
     let payload: { sub: string; email: string; clientId: string; type: string };
     try {
@@ -245,10 +242,7 @@ export class PortalAuthService {
 
     if (!user || !user.isActive) return generic;
 
-    const secret = this.configService.get<string>(
-      "auth.portalResetSecret",
-      this.configService.get<string>("auth.accessSecret", "replace-me-access")
-    );
+    const secret = this.configService.getOrThrow<string>("auth.portalResetSecret");
     const token = await this.jwtService.signAsync(
       { sub: user.id, email: user.email, type: "portal-reset" },
       { secret, expiresIn: Math.floor(RESET_TTL_MS / 1000) }
@@ -282,10 +276,7 @@ export class PortalAuthService {
   }
 
   async resetPassword(input: PortalResetPasswordDto) {
-    const secret = this.configService.get<string>(
-      "auth.portalResetSecret",
-      this.configService.get<string>("auth.accessSecret", "replace-me-access")
-    );
+    const secret = this.configService.getOrThrow<string>("auth.portalResetSecret");
 
     let payload: { sub: string; email: string; type: string };
     try {
@@ -385,14 +376,8 @@ export class PortalAuthService {
     email: string,
     clientId: string
   ): Promise<IssuedTokens> {
-    const accessSecret = this.configService.get<string>(
-      "auth.portalAccessSecret",
-      this.configService.get<string>("auth.accessSecret", "replace-me-access")
-    );
-    const refreshSecret = this.configService.get<string>(
-      "auth.portalRefreshSecret",
-      this.configService.get<string>("auth.refreshSecret", "replace-me-refresh")
-    );
+    const accessSecret = this.configService.getOrThrow<string>("auth.portalAccessSecret");
+    const refreshSecret = this.configService.getOrThrow<string>("auth.portalRefreshSecret");
     const accessTtl = this.configService.get<string>("auth.portalAccessTtl", "30m");
 
     const accessToken = await this.jwtService.signAsync(

@@ -605,12 +605,21 @@ export class ScopeWasteService {
     const effectiveMapLocationId =
       dto.mapLocationId !== undefined ? dto.mapLocationId : existing.mapLocationId;
 
+    // WASTE_TRAVEL_INDEX_RESET_V1 (scopecards-s8i) -- "Return to automatic" sends
+    // travelIndex: null. Restoring the automatic figure means asking the route
+    // provider for its suggestion again: nothing persists the suggested index,
+    // so without a re-resolve the only number available is 1.00 -- and 1.00 is
+    // not the suggestion, it is the absence of one.
+    const indexResetToAutomatic = dto.travelIndex === null;
+
     let updateTravelEstimate: ExtendedTravelEstimate | null | undefined = undefined; // undefined = don't touch
-    if (travelInputTouched) {
+    if (travelInputTouched || indexResetToAutomatic) {
       if (effectiveMapLocationId) {
         updateTravelEstimate = await this.resolveTravelEstimate(effectiveMapLocationId, tenderId) as ExtendedTravelEstimate | null;
-      } else {
-        // Tip was cleared -- clear the snapshot too.
+      } else if (travelInputTouched) {
+        // Tip was cleared -- clear the snapshot too. A bare index reset on a row
+        // with no tip must NOT wipe the snapshot: there is nothing to re-resolve,
+        // and the index correctly falls back to 1.00 further down.
         updateTravelEstimate = null;
       }
     }
@@ -642,21 +651,29 @@ export class ScopeWasteService {
           ? Number(existing.travelIndex)
           : null;
 
-      // S8g: when tip changed, update the suggested index from new route.
-      // Only set if the estimator hasn't typed one (or cleared it this PATCH).
+      // S8g: when the tip changed, update the suggested index from the new route.
+      // WASTE_TRAVEL_INDEX_RESET_V1 (s8i): a reset -- dto.travelIndex === null --
+      // is ALSO a request for the suggestion. That is what "Return to automatic"
+      // means on screen. The old condition required dto.travelIndex to be ABSENT,
+      // so the one case that most needed the suggestion was the one case excluded
+      // from getting it, and the row was left carrying no index at all.
+      const wantsAutomaticIndex = dto.travelIndex === undefined || dto.travelIndex === null;
       const indexSource = dto.travelIndex !== undefined
         ? (dto.travelIndex !== null ? "manual" : null)
         : existing.travelIndexSource;
 
-      if (updateTravelEstimate.suggestedIndex != null && indexSource !== "manual" && dto.travelIndex === undefined) {
-        // New route has a suggested index and no manual override exists -- apply it.
+      if (wantsAutomaticIndex && indexSource !== "manual" && updateTravelEstimate.suggestedIndex != null) {
+        // A suggestion exists and nothing manual is standing -- apply it.
         data.travelIndex = toDecimal(updateTravelEstimate.suggestedIndex);
         data.travelIndexSource = "geoapify";
-      } else if (dto.travelIndex !== undefined) {
-        // Already handled above.
-      } else if (existing.travelIndex == null && updateTravelEstimate.suggestedIndex == null) {
+      } else if (wantsAutomaticIndex && updateTravelEstimate.suggestedIndex == null) {
+        // No suggestion to restore (straight-line fallback, or the provider
+        // offered none). Automatic then means "no index" -- recorded as such,
+        // never stored as a 1.00 that would later read as a measured figure.
+        data.travelIndex = null;
         data.travelIndexSource = "none";
       }
+      // A manual dto.travelIndex was already written further up.
 
       // S8g: compute planning minutes from effective index.
       const resolvedIndex = data.travelIndex != null
@@ -727,8 +744,13 @@ export class ScopeWasteService {
       }
     }
 
-    // When a travelIndex is being changed (but NOT a tip change), we need to
-    // recompute planning minutes from the existing travel baseline.
+    // When a travelIndex is being changed and there was NO re-resolve, recompute
+    // planning minutes from the existing travel baseline.
+    // WASTE_TRAVEL_INDEX_RESET_V1: after the change above, a reset on a row that
+    // HAS a tip re-resolves, so it no longer lands here -- its planning minutes
+    // come from the restored suggestion. What still lands here is a typed index,
+    // and a reset on a row with no tip at all. For that second case 1.00 is the
+    // honest answer: with no route there is no suggestion to restore.
     if (dto.travelIndex !== undefined && !travelInputTouched && updateTravelEstimate === undefined) {
       const baseline = existing.travelMinutesOneWay ?? null;
       if (baseline !== null) {

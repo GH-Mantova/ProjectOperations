@@ -58,7 +58,8 @@ STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask
 Two decisions are still OPEN and **this slice does not close either**:
 
 - **Brand files are links, not uploads.** There is no upload infrastructure in the API - measured:
-  `git grep -l 'FileInterceptor|multer|@UploadedFile' apps/api/src` returns nothing.
+  `git grep -l 'FileInterceptor|multer|@UploadedFile' apps/api/src` returns nothing. The four URL
+  fields in this slice are the existing capability preserved, not the answer to that decision.
 - **A preset sets colours only.** No per-scheme radius, type scale or spacing exists in the schema.
 
 Both must be visible to the user and stated in the PR body. See "What this must say about itself".
@@ -67,7 +68,8 @@ Both must be visible to the user and stated in the PR body. See "What this must 
 
 - `BrandingController` (`apps/api/src/modules/branding/branding.controller.ts`) exposes
   `GET /admin/branding`, `GET /admin/branding/color-schemes`, `POST /admin/branding/color-schemes`,
-  `DELETE /admin/branding/color-schemes/:id`, `PUT /admin/branding/active-color-scheme`.
+  `DELETE /admin/branding/color-schemes/:id`, `PUT /admin/branding/active-color-scheme`,
+  `PUT /admin/branding/assets`, `DELETE /admin/branding/assets/:kind`.
   Every route requires `company.manage`; **every write also calls `assertSuperUser`**
   (`branding.service.ts:387`), which throws `ForbiddenException` on a non-super-user.
 - `UpsertColorSchemeDto` carries fifteen colours: `name`, `primaryColorHex`, `secondaryColorHex`
@@ -87,7 +89,7 @@ Both must be visible to the user and stated in the PR body. See "What this must 
 ### 1. `lib/branding-api.ts` - one typed client
 
 `getBranding()`, `listColorSchemes()`, `upsertColorScheme()`, `deleteColorScheme()`,
-`setActiveColorScheme()`. Each returns the parsed body or throws with the API's message via the
+`setActiveColorScheme()`, `upsertAsset()`, `deleteAsset()`. Each returns the parsed body or throws with the API's message via the
 existing `readApiErrorMessage` helper. No component calls `authFetch` for branding directly.
 
 ### 2. `BrandThemeSection.tsx` - the screen
@@ -115,6 +117,14 @@ Marker `export const BRAND_THEME_BUILDER_V1 = "brandtheme-s7a";`
   `RatesListsAdminPage` lesson already cited in `branding.service.ts:384`.
 - **Delete** - offered only for a scheme that is not the company default, behind a confirmation naming
   the consequence. `Default` is never deletable. The active scheme must be replaced first.
+- **Brand files - the four asset URLs, and they are NOT optional in this slice.** `LOGO_LIGHT`,
+  `LOGO_DARK`, `FAVICON`, `PDF_LETTERHEAD`, each a URL field showing the current value and writable
+  through `PUT /admin/branding/assets` (which also mirrors the legacy string column, so unmigrated
+  readers keep agreeing). **Removing the six legacy inputs without these would remove the only way to
+  edit logos, favicon and letterhead** - a capability regression dressed as a redesign. The letterhead
+  field carries the D8 note: system-generated documents only; uploaded documents are never restyled.
+  S7b later improves this surface (clear/replace affordances, and upload if D-2 is ever answered); it
+  is not what makes the four editable.
 
 ### 3. `AdminCompanyPage.tsx`
 
@@ -145,6 +155,15 @@ mock-ups' own terms: drag-and-drop asset upload, and per-scheme radius, type sca
 6. No-scheme: with `activeColorSchemeId: null` the legacy strings are absent and the built-in-theme
    wording is present.
 7. Delete is unavailable for the active scheme and for `Default`, and available otherwise.
+8. **No capability is lost.** All four asset kinds render with their current value, each is editable,
+   and saving one issues `PUT /admin/branding/assets` with that kind. A test asserts all four are
+   present and writable — this is the regression guard for deleting the legacy fields.
+9. **Two different invalid states, two different behaviours.** A malformed hex (`#10111`) blocks save
+   and issues no request; a valid but low-contrast colour (`#D8DCE3` on the card, 1.4:1) warns and
+   saves. A test covers both, because collapsing them would either block legitimate palettes or let
+   a typo through.
+10. **The preview shows the scheme being edited**, so the contrast grades and the picture cannot
+    disagree. A test asserts the preview receives the draft palette, not the saved one.
 
 ## Traps
 
@@ -161,6 +180,7 @@ mock-ups' own terms: drag-and-drop asset upload, and per-scheme radius, type sca
 
 ## Screenshots required in the PR body
 
-Light mode only, since that is the decision: the builder with a full palette; the builder with
-`Default` (two colours); the no-scheme state; the read-only state; and one showing a failing contrast
-pair with its badge. Five images. A green build is not evidence the screen looks right.
+Light mode only, since that is the decision: the builder with a full palette **including the brand
+file fields**; the builder with `Default` (two colours); the no-scheme state; the read-only state;
+one showing a failing contrast pair with its badge; and one showing a malformed hex blocking save.
+Six images. A green build is not evidence the screen looks right.

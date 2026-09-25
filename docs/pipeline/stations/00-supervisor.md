@@ -1171,6 +1171,61 @@ if it exits non-zero do you dump both sides, count `\r\n`, and pick convert-on-w
 renormalize. The raw write cannot be wrong about a blob's own bytes, which is more than either
 EOL branch can claim, and it is one call shorter in the common case.
 
+🔴🔴 **`git update-index --refresh` IS A WHOLE-INDEX OPERATION AND ITS EXIT CODE IS NOT A PER-FILE
+VERDICT — SO THE RAW-FIRST DISCRIMINATOR ABOVE FIRES FOR A FILE YOU DID NOT TOUCH, AND PUSHES THE
+RUN INTO THE CONVERT-ON-WRITE BRANCH THAT THE SAME SECTION MEASURES AS CORRUPTING A MIXED-EOL
+BLOB.** `UPDATE_INDEX_REFRESH_EXIT_IS_NOT_PER_FILE_V1`
+
+The rule immediately above says: raw-Buffer write, **then `git update-index --refresh`. Exit 0 ⇒
+done. Only if it exits non-zero do you dump both sides, count `\r\n`, and pick convert-on-write or
+renormalize.** That reads as a question about the path you just restored. It is not: `--refresh`
+walks the WHOLE index and exits non-zero if **any** path needs updating.
+
+[MEASURED] 2026-09-25T00:3xZ by Station 00 (scheduled), executing this very cure after `#2185`
+merged, dev tree `d8eea113` → `23e1739f`, restoring the two breadcrumbs the run had just swept in:
+
+| probe | result |
+|---|---|
+| `git show HEAD:<path>` bytes, both breadcrumbs | 14,023 B and 26,871 B |
+| raw-Buffer restore of each | disk 14,023 B / 26,871 B, `byteExact=true` **both** |
+| `git update-index --refresh` after each raw restore | **exit 1** — so the rule says "pick an EOL branch" |
+| convert-on-write fallback, taken on that signal | 14,255 B and 27,341 B — **the files were changed for no reason** |
+| `git update-index --refresh` after the conversion | **exit 1 again** |
+| what `--refresh` actually named, read instead of counted | `docs/data-model/metadata-catalog.json: needs update` — **neither restored file** |
+| `git status --porcelain -- <the two breadcrumbs>` | **EMPTY** — both were clean after the RAW write |
+| `git diff --numstat origin/main -- docs/data-model/metadata-catalog.json` | **EMPTY** — a pure CRLF smudge, no local-only content, last written by `#2161` the previous day |
+
+🔴 **The raw write was right both times and the instrument said otherwise, twice.** The dirty path
+was an unrelated generated file that predated the run by a day — exactly the state a shared dev tree
+is usually in. Nothing is empty and nothing warns, so §9.6 cannot fire: the command answered
+correctly about a different quantity from the one the rule's sentence names.
+
+🔴 **The cost is directional.** The needless branch it selects is convert-on-write, which
+`FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1` above measures as **actively corrupting** a
+mixed-EOL blob (`.arming-log.txt` came back two bytes longer than the blob it was meant to
+reproduce, and the fast-forward then refused). So on a tree with any unrelated dirty file, the
+cheap-and-correct first move is discarded on the strength of a reading that was never about it.
+
+🔧 **Read the NAMES `--refresh` prints, never its exit code alone — or ask the per-file question
+directly.** `git update-index --refresh` prints one `<path>: needs update` line per offending path;
+if your restored path is not among them, the restore is done and you do not pick an EOL branch. The
+per-file form is `git status --porcelain -- <path>`, where EMPTY is the answer. Both are one call.
+
+⚠️ **Nothing above is retired.** Raw-Buffer-first is still the correct first move — it was correct
+on both files here — and both EOL branches stand exactly as measured for the cases they were
+measured on. What is corrected is only the **discriminator that chooses between them**.
+
+⚠️ **This composes with the four read-backs in step 5.** The fourth, `git status --porcelain
+--untracked-files=no`, is likewise whole-tree: on this run it read ` M docs/data-model/metadata-catalog.json`
+**after** a fast-forward that was entirely clean, because that smudge predated the run. A
+pre-existing dirty path does not make your fast-forward dirty — scope the fourth read-back to the
+paths you touched, and report any other dirty path as the separate pre-existing fact it is.
+
+⚠️ **Falsifying probe: the table above.** Restore a byte-exact blob into a tree that carries one
+unrelated modified tracked file, then run `git update-index --refresh` and read its output rather
+than its exit code. If it ever exits 0 while an unrelated path is dirty, this correction is wrong
+and must be re-measured. Found and landed by Station 00 2026-09-25T00:4xZ.
+
 ⚠️ **The same raw write cleared a second blocker in the same run, and that one is not an EOL case
 at all:** `pr-scopecards-s5-charge-steps-price-cutting-HOLD.md` was sitting as an unstaged ` D`
 (the prompt had been armed, and this run's PR landed its retirement). Restoring it byte-exactly

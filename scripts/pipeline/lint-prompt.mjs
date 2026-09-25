@@ -1261,6 +1261,17 @@ export function checkHumanGate(bodyText) {
 
   // Marker 1: <!-- watcher: do-not-arm --> (HTML comment, whitespace-tolerant, case-insensitive)
   const DO_NOT_ARM_COMMENT = /<!--\s*watcher:\s*do-not-arm\s*-->/i;
+  // Marker 1b: the DECORATED form, e.g. <!-- watcher: do-not-arm | MARCO GATE: ... -->.
+  // REJECTED, not accepted as a gate. MEASURED 2026-09-25 on origin/main 99036e3d: four live
+  // prompts carried this form, and NOT ONE of them was held by a marker rule. Two
+  // (scopecards-s8b, sec-a2) were held only because their decorated text happened to contain
+  // the words "arm only", which Marker 3 catches; vendor-invoice-ocr was held by unrelated
+  // prose elsewhere in its body. Reword the sentence and the gate evaporates - which is
+  // exactly what happened to a prompt drafted that day whose decorated marker read "release
+  // this line once he approves" and linted PROMOTE. arm-prompt.ps1 could not see any of the
+  // four either. A marker that looks like a gate and holds nothing is worse than no marker,
+  // because everyone downstream reads it as one.
+  const DECORATED_MARKER = /<!--\s*watcher:\s*do-not-arm\s*[^->]/i;
   // Marker 2: a line containing the EXACT sequence DO NOT ARM (case-sensitive)
   const DO_NOT_ARM_CAPS = /DO NOT ARM/;
   // Marker 3: a line containing "Arm ONLY" (conditional arming, CASE-INSENSITIVE).
@@ -1271,6 +1282,23 @@ export function checkHumanGate(bodyText) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
+
+    if (DECORATED_MARKER.test(line) && !DO_NOT_ARM_COMMENT.test(line)) {
+      return {
+        ok: false,
+        code: "DECORATED_GATE_MARKER",
+        msg:
+          "DECORATED_GATE_MARKER: line " + lineNum + " carries a decorated do-not-arm marker.\n" +
+          "        Matched: " + line.trim() + "\n" +
+          "        This form is NOT a gate. arm-prompt.ps1 matches only the bare comment, and\n" +
+          "        this linter's marker rule does the same - a decorated marker holds a prompt\n" +
+          "        only by accident, when its prose happens to contain \"DO NOT ARM\" or\n" +
+          "        \"Arm ONLY\". Rewording the reason then silently releases the gate.\n" +
+          "        Write it as two things instead:\n" +
+          "          <!-- watcher: do-not-arm -->\n" +
+          "        and the reason as ordinary prose on the lines beneath it.",
+      };
+    }
 
     if (DO_NOT_ARM_COMMENT.test(line)) {
       return {

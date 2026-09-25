@@ -7,7 +7,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { validateVerdict, looksLikeCommand } from "../verdict-guard.mjs";
+import {
+  validateVerdict,
+  looksLikeCommand,
+  isLikelySpaceTruncation,
+} from "../verdict-guard.mjs";
 
 // (a) Verdict names one file that IS in prFiles → ok:true
 test("returns ok:true when the only cited file is in prFiles", () => {
@@ -392,4 +396,129 @@ test("a bare path outside any fence or command still blocks", () => {
   assert.deepEqual(result.unmatched, [
     "apps/web/src/pages/admin/RatesListsAdminPage.tsx",
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// SPACED_PATH_CANDIDATES_V1
+//
+// PATH_TOKEN_RE excludes whitespace, so a bare (un-backticked) reference to a
+// file under a top-level directory whose name contains a space — the repo has
+// `Claude Design/` and `Claude outputs/` — gets truncated:
+// `Claude Design/proposed/x.html` matches only `Design/proposed/x.html`. That
+// truncated token is not the name of any real file, and the resulting block
+// note used to blame syncMain() and suggest deleting the reviewer's evidence.
+//
+// MEASURED: two occurrences in docs/pr-prompts/blocked/, 20 days apart —
+// rev-1573-ready.md.guard-block.md (PR #1573, 6 tokens all beginning `Design/`)
+// and rev-2157-ready.md.guard-block.md (PR #2157, `Design/proposed/...`).
+//
+// The rescue derives the spaced prefixes from prFiles themselves, offers the
+// fully-prefixed variant as an ADDITIONAL candidate in pass 2, and relaxes
+// pathMatches to also accept a `" " + candidate` suffix. Both are purely
+// additive — a candidate is only accepted when it resolves to a real prFile.
+// ---------------------------------------------------------------------------
+
+test("SPACED_PATH_CANDIDATES_V1: bare Claude Design/... in a verdict matches the real PR file", () => {
+  // The rev-2157 shape, distilled: an un-backticked reference to a file whose
+  // top-level directory contains a space. Without the rescue, extractPaths
+  // returns `Design/proposed/s8h-traffic-index/s8h-traffic-index-mockup.html`,
+  // which does not exist and blocks the verdict.
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "Reviewed the mockup at Claude Design/proposed/s8h-traffic-index/s8h-traffic-index-mockup.html",
+    "and it renders the traffic index legend correctly.",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: [
+      "Claude Design/proposed/s8h-traffic-index/s8h-traffic-index-mockup.html",
+    ],
+  });
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test("SPACED_PATH_CANDIDATES_V1: rev-1573 shape — multiple bare Claude Design/... citations, all match", () => {
+  // Six independent tokens truncated identically was the fingerprint that
+  // distinguished the truncation defect from a stale clone in the field.
+  const prFiles = [
+    "Claude Design/a/one.html",
+    "Claude Design/a/two.html",
+    "Claude Design/b/three.html",
+    "Claude Design/b/four.html",
+    "Claude Design/c/five.html",
+    "Claude Design/c/six.html",
+  ];
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "Checked all six files:",
+    ...prFiles.map((p) => `- ${p}`),
+  ].join("\n");
+
+  assert.deepEqual(validateVerdict({ verdictText, prFiles }), { ok: true });
+});
+
+test("SPACED_PATH_CANDIDATES_V1: a genuinely absent file under a spaced prefix still blocks", () => {
+  // The rescue must not paper over real over-claims. `Claude Design/x/ghost.html`
+  // is not in prFiles, so the block must fire — with the ORIGINAL truncated
+  // token, since the extractor cannot know which spaced prefix was intended
+  // when none of the prFiles produce a matching fully-prefixed candidate.
+  const verdictText = [
+    "VERDICT: MERGE",
+    "",
+    "Reviewed Claude Design/x/ghost.html and it looks right.",
+  ].join("\n");
+
+  const result = validateVerdict({
+    verdictText,
+    prFiles: ["Claude Design/x/real.html"],
+  });
+
+  assert.equal(result.ok, false);
+  // The truncated variant is what the extractor produced; the fully-prefixed
+  // variant is added but also does not resolve, so both remain unmatched. We
+  // assert on the presence of the truncated form — that is the shape the block
+  // note will display, and the diagnosis helper will identify the class.
+  assert(result.unmatched.includes("Design/x/ghost.html"));
+});
+
+test("SPACED_PATH_CANDIDATES_V1: pathMatches suffix rescue when spacedPrefixes is empty", () => {
+  // Defence in depth: even if a PR had no spaced top-level directories, a
+  // verdict that names a file whose original path had a space-truncated
+  // prefix should still match via the ` + candidate` suffix rule. Contrived:
+  // a hypothetical prFile "Claude Design/foo.ts" is present, and the verdict
+  // names bare "Design/foo.ts". Both mechanisms (candidate expansion AND
+  // suffix relaxation) resolve this, which is intentional redundancy.
+  const result = validateVerdict({
+    verdictText: "Touches Design/foo.ts.",
+    prFiles: ["Claude Design/foo.ts"],
+  });
+  assert.deepEqual(result, { ok: true });
+});
+
+test("isLikelySpaceTruncation: every unmatched path is ` ` + suffix of a prFile → true", () => {
+  assert.equal(
+    isLikelySpaceTruncation(
+      ["Design/a.html", "Design/b.html"],
+      ["Claude Design/a.html", "Claude Design/b.html"],
+    ),
+    true,
+  );
+});
+
+test("isLikelySpaceTruncation: any path that is not a space-truncated suffix → false", () => {
+  assert.equal(
+    isLikelySpaceTruncation(
+      ["Design/a.html", "apps/api/src/ghost.ts"],
+      ["Claude Design/a.html", "apps/api/src/real.ts"],
+    ),
+    false,
+  );
+});
+
+test("isLikelySpaceTruncation: empty unmatched list → false (no diagnosis to make)", () => {
+  assert.equal(isLikelySpaceTruncation([], ["Claude Design/a.html"]), false);
 });

@@ -48,7 +48,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getToken as getAppInstallationToken, isAuthLive } from "./app-auth.mjs";
-import { validateVerdict } from "./verdict-guard.mjs";
+import { validateVerdict, isLikelySpaceTruncation } from "./verdict-guard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Isolation: the watcher can run against a dedicated clone (its own .git)
@@ -3031,6 +3031,31 @@ async function drain() {
               const dest = path.join(BLOCKED_DIR, name);
               const logDest = path.join(BLOCKED_DIR, `${name}.log`);
               const noteDest = path.join(BLOCKED_DIR, `${name}.guard-block.md`);
+              // SPACED_PATH_CANDIDATES_V1: distinguish the parser-truncation shape
+              // from the stale-clone shape. The old note prescribed a re-queue or
+              // "remove the phantom file references from the verdict" — the second
+              // being exactly the incentive verdict-guard.mjs's own comment warns
+              // against (deleting the reviewer's evidence to satisfy a parser bug).
+              const spaceTruncated = isLikelySpaceTruncation(
+                guardResult.unmatched,
+                guardPrFiles,
+              );
+              const diagnosis = spaceTruncated
+                ? [
+                    `Every unmatched path is a suffix of a real PR file preceded by a space —`,
+                    `a path containing a space was truncated by the extractor (PATH_TOKEN_RE`,
+                    `excludes whitespace). This is a verdict-guard defect, not a stale clone.`,
+                    ``,
+                    `Action: fix scripts/pr-watcher/verdict-guard.mjs (see SPACED_PATH_CANDIDATES_V1)`,
+                    `and re-queue. Do NOT edit the verdict to remove the citations — they are correct.`,
+                  ]
+                : [
+                    `This usually means the review agent ran against a stale local main`,
+                    `(syncMain() only advances inside the AUTO_MERGE block for non-gated PRs).`,
+                    ``,
+                    `Action: re-queue this review prompt after the watcher clone is updated,`,
+                    `or remove the phantom file references from the verdict and re-queue.`,
+                  ];
               const note = [
                 `# Verdict-guard block — ${name}`,
                 ``,
@@ -3041,11 +3066,7 @@ async function drain() {
                 ``,
                 ...guardResult.unmatched.map((p) => `  - ${p}`),
                 ``,
-                `This usually means the review agent ran against a stale local main`,
-                `(syncMain() only advances inside the AUTO_MERGE block for non-gated PRs).`,
-                ``,
-                `Action: re-queue this review prompt after the watcher clone is updated,`,
-                `or remove the phantom file references from the verdict and re-queue.`,
+                ...diagnosis,
                 ``,
               ].join("\n");
               try {

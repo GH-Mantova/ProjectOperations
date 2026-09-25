@@ -19,7 +19,12 @@ cluster_order: 3
 requires_on_main: apps/api/src/modules/auth/otp-delivery.port.ts :: SEC_A3_NO_CREDENTIAL_LOGS_V1
 ---
 
-<!-- watcher: do-not-arm | MARCO GATE: arm only after Marco has switched production email on (API App Service: MAIL_AUTH_MODE=managed-identity and AZURE_MAIL_SENDER_USER_ID set) and the ERP's email Test connection passes. Only Marco removes this line. -->
+<!-- watcher: do-not-arm -->
+
+**GATE (normalised 2026-09-25).** MARCO GATE: arm only after Marco has switched production email on (API App Service: MAIL_AUTH_MODE=managed-identity and AZURE_MAIL_SENDER_USER_ID set) and the ERP's email Test connection passes. Only Marco removes this line.
+
+The bare marker line above is what holds this prompt. The reason is prose so that
+rewording it can never remove the gate. Only a human deletes the marker.
 
 # Security A2: email the sign-in code and the portal reset link
 

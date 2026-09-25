@@ -559,7 +559,11 @@ describe("GEOAPIFY_ROUTE_TRAVEL_V1 - travelIndex DTO", () => {
     expect(data.travelPlanningMinutesOneWay).toBe(30);
   });
 
-  it("dto.travelIndex=null clears the manual override (returns to automatic)", async () => {
+  it("dto.travelIndex=null with no route to re-resolve records no index, not 1.00", async () => {
+    // WASTE_TRAVEL_INDEX_RESET_V1: with no Geoapify key the provider falls back
+    // to straight-line, which offers no suggested index. "Automatic" then means
+    // "no index" -- and must NOT be stored as 1.00, which would later read as a
+    // measured figure rather than the absence of one.
     const existing = makeExistingRow({
       mapLocationId: "tip-1",
       travelKm: new Prisma.Decimal("20"),
@@ -575,6 +579,203 @@ describe("GEOAPIFY_ROUTE_TRAVEL_V1 - travelIndex DTO", () => {
 
     const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
     expect(data.travelIndex).toBeNull();
-    expect(data.travelIndexSource).toBeNull();
+    expect(data.travelIndexSource).toBe("none");
+  });
+});
+
+// ---- WASTE_TRAVEL_INDEX_RESET_V1 (scopecards-s8i) ---------------------------
+//
+// Behaviour test for the journey the estimator actually takes on the line:
+//
+//   suggested  ->  manual  ->  automatic
+//
+// The defect this covers: the third step sent travelIndex: null, and the API's
+// index-only path substituted 1.00 for the missing value instead of restoring
+// the route's suggestion. Planning time, loads per day, duration and price all
+// derive from that index, so "Return to automatic" silently repriced the line
+// against a traffic allowance of 1.00 that no route had ever suggested.
+
+describe("WASTE_TRAVEL_INDEX_RESET_V1 - suggested, manual, back to automatic", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  // Geoapify stub: 20 km either way; free-flow 1500 s (25 min), approximated
+  // 1560 s (26 min). Suggested index = 1560 / 1500 = 1.04.
+  function stubGeoapify() {
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).includes("traffic=free_flow")) {
+        return { ok: true, json: async () => ({ features: [{ properties: { distance: 20_000, time: 1500 } }] }) };
+      }
+      return { ok: true, json: async () => ({ features: [{ properties: { distance: 20_000, time: 1560 } }] }) };
+    }) as never;
+  }
+
+  function routedRow(overrides: Record<string, unknown> = {}) {
+    return makeExistingRow({
+      mapLocationId: "tip-1",
+      travelKm: new Prisma.Decimal("20"),
+      travelMinutesOneWay: 25,
+      travelSource: "route",
+      travelPlanningMinutesOneWay: 26,
+      // a cycle-derived loads figure, so a recalculation is visible
+      loadsPerTruckPerDay: new Prisma.Decimal("4"),
+      loadsSource: "cycle",
+      qtyTrucks: 1,
+      capacityPerLoad: new Prisma.Decimal("10"),
+      qty: 184,
+      ...overrides
+    });
+  }
+
+  it("step 2 of 3: a typed index is recorded as manual and reprices the line", async () => {
+    const existing = routedRow({
+      travelIndex: new Prisma.Decimal("1.04"),
+      travelIndexSource: "geoapify"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.update("tender-1", "item-1", { travelIndex: 1.4 });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(String(data.travelIndex)).toBe("1.4");
+    expect(data.travelIndexSource).toBe("manual");
+    // average(25, 25 * 1.4) = average(25, 35) = 30
+    expect(data.travelPlanningMinutesOneWay).toBe(30);
+  });
+
+  it("step 3 of 3: returning to automatic restores the suggested index, not 1.00", async () => {
+    stubGeoapify();
+    const existing = routedRow({
+      travelIndex: new Prisma.Decimal("1.4"),
+      travelIndexSource: "manual"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    apiKeys.resolve.mockResolvedValue("secret-key");
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.update("tender-1", "item-1", { travelIndex: null });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+
+    // The suggestion is back, and it is the route's, not a placeholder.
+    expect(String(data.travelIndex)).toBe("1.04");
+    expect(data.travelIndexSource).toBe("geoapify");
+    expect(data.travelIndex).not.toBeNull();
+
+    // Planning minutes recomputed from the restored index, not from 1.00.
+    // average(25, 25 * 1.04) = average(25, 26) = 25.5 -> the helper's rounding.
+    const planning = data.travelPlanningMinutesOneWay as number;
+    expect(planning).toBeGreaterThan(25);
+    expect(planning).toBeLessThanOrEqual(26);
+
+    // Loads per day was cycle-derived, so it is refreshed rather than left at
+    // the figure the manual index produced.
+    expect(data.loadsPerTruckPerDay).toBeDefined();
+    expect(data.loadsSource).toBe("cycle");
+  });
+
+  it("a manual index is NOT overwritten by a re-resolve it did not ask for", async () => {
+    // Guard on the change above: widening the reset path must not let a tip
+    // change quietly discard an override the estimator typed.
+    stubGeoapify();
+    const existing = routedRow({
+      travelIndex: new Prisma.Decimal("1.4"),
+      travelIndexSource: "manual"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    apiKeys.resolve.mockResolvedValue("secret-key");
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    // A tip change, with no travelIndex in the DTO at all.
+    await svc.update("tender-1", "item-1", { mapLocationId: "tip-1" });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data.travelIndexSource).not.toBe("geoapify");
+  });
+});
+
+// ---- WASTE_TIP_DAILYKM_PROVENANCE_V1 (scopecards-s8i) ----------------------
+//
+// Behaviour test for the second journey: the estimator picks a facility in the
+// tip finder.
+//
+// The defect this covers lived in the web, but its damage is visible here, so
+// this is where it can be tested: the web workspace has no jsdom and no
+// @testing-library (house pattern), and the observable outcome of choosing a
+// tip is what the API stores. ScopeWasteTab used to send a SECOND patch after
+// the mapLocationId one, carrying the straight-line round trip as dailyKm. The
+// service marks ANY dailyKm arriving in a DTO as "manual", so the route-derived
+// figure was overwritten with a worse number wearing the estimator's name.
+
+describe("WASTE_TIP_DAILYKM_PROVENANCE_V1 - choosing a tip", () => {
+  it("leaves dailyKm derived from the route, with dailyKmSource 'derived'", async () => {
+    const existing = makeExistingRow({
+      mapLocationId: null,
+      dailyKm: null,
+      qtyTrucks: 1,
+      capacityPerLoad: new Prisma.Decimal("10"),
+      qty: 184
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    // Exactly the patch the finder sends now: facility + id, and nothing else.
+    await svc.update("tender-1", "item-1", {
+      wasteFacility: "Rochedale Transfer Station",
+      mapLocationId: "tip-1"
+    });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(data.dailyKm).not.toBeNull();
+    expect(data.dailyKmSource).toBe("derived");
+    // The route snapshot is what produced it.
+    expect(data.travelKm).not.toBeNull();
+  });
+
+  it("the follow-up patch the UI used to send is what flipped provenance to manual", async () => {
+    // This is the contract the web must not violate again: a dailyKm in the DTO
+    // IS an estimator override, by definition. The fix is not to change this
+    // rule -- it is to stop the UI from sending a figure nobody typed.
+    const existing = makeExistingRow({
+      mapLocationId: "tip-1",
+      travelKm: new Prisma.Decimal("20"),
+      travelMinutesOneWay: 25,
+      travelSource: "route",
+      dailyKm: new Prisma.Decimal("52"),
+      dailyKmSource: "derived"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.update("tender-1", "item-1", { dailyKm: 34.4 });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    expect(String(data.dailyKm)).toBe("34.4");
+    expect(data.dailyKmSource).toBe("manual");
+  });
+
+  it("a genuine estimator override still survives a later tip change", async () => {
+    // "Typed figure always wins" -- removing the automatic write must not also
+    // remove the estimator's ability to hold a figure of their own.
+    const existing = makeExistingRow({
+      mapLocationId: "tip-1",
+      travelKm: new Prisma.Decimal("20"),
+      travelMinutesOneWay: 25,
+      travelSource: "route",
+      dailyKm: new Prisma.Decimal("34.4"),
+      dailyKmSource: "manual"
+    });
+    const { prisma, rateResolver, notifications, apiKeys, mocks } = buildMocks({ existingRow: existing });
+    const svc = new ScopeWasteService(prisma as never, rateResolver as never, notifications as never, apiKeys as never);
+
+    await svc.update("tender-1", "item-1", { mapLocationId: "tip-1" });
+
+    const data = mocks.update.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+    // The typed figure is not overwritten by the re-resolve.
+    expect(data.dailyKm).toBeUndefined();
+    expect(data.dailyKmSource).toBeUndefined();
   });
 });

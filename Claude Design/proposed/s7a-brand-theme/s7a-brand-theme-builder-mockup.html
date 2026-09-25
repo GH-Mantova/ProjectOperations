@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brand and theme builder</title>
+<style>
+:root{--p:#005B61;--pl:#E6F0F1;--acc:#FEAA6D;--accd:#C77A3A;--page:#F6F6F6;--card:#fff;--t1:#111;--t2:#6B7280;--t3:#9CA3AF;--bd:#E5E7EB;--bs:#F3F4F6;--ok:#047857;--okl:#ECFDF5;--warnl:#FFF4E5;--dang:#DC2626;--dangl:#FEF2F2;--r:8px}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--t1);font:14px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:1080px;margin:0 auto}h1{font-size:24px;margin:0 0 6px}
+.lede{color:var(--t2);margin:0 0 22px;max-width:76ch}
+h2.sec{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--t2);margin:26px 0 10px;display:flex;gap:10px;align-items:center}
+h2.sec .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#242424;font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.frame{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.crumb{font-size:12px;color:var(--t2)}.crumb b{color:var(--t1)}
+.ex{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accd);margin-left:auto}
+.body{padding:16px}
+.two{display:grid;grid-template-columns:1fr 340px;gap:16px}@media(max-width:860px){.two{grid-template-columns:1fr}}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--bd);background:#fff;color:var(--t2)}
+.chip.on{border-color:var(--p);color:var(--p);background:var(--pl)}
+.chip.ok{border-color:var(--ok);color:var(--ok);background:var(--okl)}
+.chip.warn{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.bad{border-color:var(--dang);color:var(--dang);background:var(--dangl)}
+.schemes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.sc{border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;background:#fff}
+.sc.sel{border-color:var(--p);box-shadow:0 0 0 2px var(--pl)}
+.sw{display:flex;height:40px}.sw i{flex:1}.sw i.a{flex:0 0 34%}
+.sc .m{padding:8px 10px}.sc .nm{font-weight:600;font-size:13px;display:flex;gap:6px;align-items:center}
+.sc .s{font-size:11px;color:var(--t3);margin-top:2px}
+.sc.new{border-style:dashed;display:flex;align-items:center;justify-content:center;color:var(--t2);font-size:13px;min-height:78px}
+.grp{margin-top:14px}.grp .h{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);font-weight:700;margin-bottom:6px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.f{border:1px solid var(--bd);border-radius:var(--r);padding:7px 9px;background:#fff;display:flex;gap:8px;align-items:center}
+.f .box{width:26px;height:22px;border-radius:4px;border:1px solid var(--bd);flex:none}
+.f .k{font-size:10.5px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em}
+.f .v{font-size:12.5px;font-variant-numeric:tabular-nums}
+.f.bad{border-color:var(--dang);background:var(--dangl)}
+.pv{border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.pv .side{background:#17191C;color:#f2f2ef;padding:8px 10px;font-size:11.5px}
+.pv .pg{background:#EEEEEA;padding:10px}
+.pv .cd{background:#fff;border:1px solid #d9d9d2;border-radius:6px;padding:9px 10px;font-size:12px}
+.pv .btn{display:inline-block;margin-top:8px;background:#2F3237;color:#fff;border-radius:5px;padding:4px 10px;font-size:11.5px}
+.cg{margin-top:10px;display:flex;flex-direction:column;gap:4px;font-size:11.5px}
+.cg .r{display:flex;justify-content:space-between;gap:10px}
+.cg .r span:first-child{color:var(--t2)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.btn{border:1px solid var(--bd);background:#fff;border-radius:var(--r);padding:6px 12px;font-size:13px}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#242424;font-weight:600}
+.btn.dis{opacity:.45}
+.note{font-size:12px;color:var(--t2);margin-top:10px}
+.callout{border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 var(--r) var(--r) 0;padding:10px 13px;background:#fff;font-size:12.5px;margin-top:10px}
+.callout.warn{border-left-color:var(--accd);background:var(--warnl)}
+.callout.open{border-left-color:var(--dang)}
+.state{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:860px){.state{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+<h1>Brand and theme</h1>
+<p class="lede">Settings &rsaquo; Company &rsaquo; Brand &amp; theme &mdash; the screen that replaces the six legacy text inputs. It edits the colour schemes that already exist in the database, previews them, grades their contrast, and sets the company default. Every figure is an example.</p>
+
+<h2 class="sec"><span class="n">1</span>The builder, as a super-user sees it</h2>
+<div class="frame">
+ <div class="bar"><span class="crumb">Settings &rsaquo; Company &rsaquo; <b>Brand &amp; theme</b></span><span class="chip on">Light mode only</span><span class="ex">Example data</span></div>
+ <div class="body">
+  <div class="schemes">
+   <div class="sc sel"><div class="sw"><i style="background:#005B61"></i><i class="a" style="background:#FEAA6D"></i></div><div class="m"><div class="nm">Default <span class="chip on">Company default</span></div><div class="s">Two colours set &middot; the rest from the built-in theme</div></div></div>
+   <div class="sc"><div class="sw"><i style="background:#2F3237"></i><i class="a" style="background:#E8A33D"></i></div><div class="m"><div class="nm">Graphite</div><div class="s">All fifteen colours set</div></div></div>
+   <div class="sc"><div class="sw"><i style="background:#2F5FD0"></i><i class="a" style="background:#16B1C9"></i></div><div class="m"><div class="nm">Harbour</div><div class="s">All fifteen colours set</div></div></div>
+   <div class="sc new">+ New scheme</div>
+  </div>
+
+  <div class="two" style="margin-top:16px">
+   <div>
+    <div class="grp"><div class="h">Brand</div><div class="fields">
+     <div class="f"><span class="box" style="background:#005B61"></span><span><span class="k">Primary</span><br><span class="v">#005B61</span></span></div>
+     <div class="f"><span class="box" style="background:#FEAA6D"></span><span><span class="k">Accent</span><br><span class="v">#FEAA6D</span></span></div>
+    </div></div>
+    <div class="grp"><div class="h">Sidebar</div><div class="fields">
+     <div class="f"><span class="box" style="background:#000"></span><span><span class="k">Background</span><br><span class="v">#000000</span></span></div>
+     <div class="f"><span class="box" style="background:#A8AEBB"></span><span><span class="k">Text</span><br><span class="v">#A8AEBB</span></span></div>
+     <div class="f"><span class="box" style="background:#fff"></span><span><span class="k">Text active</span><br><span class="v">#FFFFFF</span></span></div>
+    </div></div>
+    <div class="grp"><div class="h">Surfaces and text</div><div class="fields">
+     <div class="f"><span class="box" style="background:#F6F6F6"></span><span><span class="k">Page</span><br><span class="v">#F6F6F6</span></span></div>
+     <div class="f"><span class="box" style="background:#fff"></span><span><span class="k">Card</span><br><span class="v">#FFFFFF</span></span></div>
+     <div class="f"><span class="box" style="background:#000"></span><span><span class="k">Text primary</span><br><span class="v">#000000</span></span></div>
+     <div class="f"><span class="box" style="background:#6B7280"></span><span><span class="k">Text secondary</span><br><span class="v">#6B7280</span></span></div>
+     <div class="f bad"><span class="box" style="background:#D8DCE3"></span><span><span class="k">Text muted</span><br><span class="v">#D8DCE3 <span class="chip bad">not a valid colour yet</span></span></span></div>
+    </div></div>
+    <div class="grp"><div class="h">Status</div><div class="fields">
+     <div class="f"><span class="box" style="background:#005B61"></span><span><span class="k">Active</span><br><span class="v">#005B61</span></span></div>
+     <div class="f"><span class="box" style="background:#F59E0B"></span><span><span class="k">Warning</span><br><span class="v">#F59E0B</span></span></div>
+     <div class="f"><span class="box" style="background:#EF4444"></span><span><span class="k">Danger</span><br><span class="v">#EF4444</span></span></div>
+     <div class="f"><span class="box" style="background:#3B82F6"></span><span><span class="k">Info</span><br><span class="v">#3B82F6</span></span></div>
+     <div class="f"><span class="box" style="background:#6B7280"></span><span><span class="k">Neutral</span><br><span class="v">#6B7280</span></span></div>
+    </div></div>
+    <div class="acts">
+     <button class="btn pri">Save scheme</button>
+     <button class="btn">Set as company default</button>
+     <button class="btn dis">Delete</button>
+     <span class="chip warn">Unsaved changes</span>
+    </div>
+    <p class="note">Two separate actions on purpose. Editing a scheme never makes it the company default, and making it the default never saves an edit you were still working on.</p>
+   </div>
+
+   <div>
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);font-weight:700;margin-bottom:6px">Preview &mdash; Graphite</div>
+    <div class="pv">
+     <div class="side">Tendering &middot; Accounts &middot; Settings</div>
+     <div class="pg"><div class="cd"><b>Open tenders</b><br>14 open &middot; 6 submitted<br><span class="btn" style="background:#E8A33D;color:#1a1200;display:inline-block;margin-top:8px;padding:4px 10px;border-radius:5px;font-size:11.5px">New tender</span></div></div>
+    </div>
+    <div class="cg">
+     <div class="r"><span>Sidebar text on sidebar</span><span><b>7.9:1</b> <span class="chip ok">AAA</span></span></div>
+     <div class="r"><span>Body text on card</span><span><b>18.1:1</b> <span class="chip ok">AAA</span></span></div>
+     <div class="r"><span>Accent button label</span><span><b>9.2:1</b> <span class="chip ok">AAA</span></span></div>
+     <div class="r"><span>Muted text on card</span><span><b>1.4:1</b> <span class="chip bad">Fails</span></span></div>
+     <div class="r"><span>Warning on card</span><span><span class="chip">unknown</span></span></div>
+    </div>
+    <p class="note">The preview paints itself only &mdash; it never touches the page around it. A failing pair warns; it does not block saving. "Unknown" is shown when a colour is missing or invalid, never a made-up number.</p>
+   </div>
+  </div>
+
+  <div class="callout"><b>This palette applies in light mode.</b> Dark mode keeps the built-in theme, so switching to dark still gives a readable screen whatever the company palette says.</div>
+ </div>
+</div>
+
+<h2 class="sec"><span class="n">2</span>Three states that decide whether it is honest</h2>
+<div class="state">
+ <div class="frame"><div class="bar"><span class="crumb"><b>No company palette set</b></span></div><div class="body">
+  <p style="margin:0 0 8px;font-size:13px">No company palette is set, so everyone sees the built-in theme.</p>
+  <div class="schemes" style="grid-template-columns:1fr 1fr"><div class="sc"><div class="sw"><i style="background:#005B61"></i><i class="a" style="background:#FEAA6D"></i></div><div class="m"><div class="nm">Built-in</div><div class="s">What the app looks like now</div></div></div><div class="sc new">+ New scheme</div></div>
+  <p class="note">The six legacy text inputs and the line "No active palette selected &mdash; showing legacy string fields" are gone. The screen says what is true and offers the next step.</p>
+ </div></div>
+ <div class="frame"><div class="bar"><span class="crumb"><b>Read-only</b></span><span class="chip">company.manage, not a super-user</span></div><div class="body">
+  <div class="f" style="max-width:260px"><span class="box" style="background:#005B61"></span><span><span class="k">Primary</span><br><span class="v">#005B61</span></span></div>
+  <div class="acts"><button class="btn dis">Save scheme</button><button class="btn dis">Set as company default</button></div>
+  <p class="note">Everything is visible &mdash; palette, preview, contrast grades &mdash; and nothing is editable. One line says why: brand changes need a super-user account. No control is shown that would fail on save.</p>
+ </div></div>
+</div>
+
+<div class="callout warn" style="margin-top:14px"><b>Deleting the company default is refused.</b> "Default" cannot be deleted at all. Any other scheme deletes behind a confirmation that names what happens. A scheme that is currently the company default must be replaced first &mdash; deleting it would silently return everyone to the built-in theme.</div>
+
+<h2 class="sec"><span class="n">3</span>What this screen does not yet do</h2>
+<div class="callout open"><b>Brand files are links, not uploads.</b> The four brand files &mdash; logo light, logo dark, favicon, PDF letterhead &mdash; are set by pasting a link. Drag-and-drop upload is a separate, open decision: it needs somewhere to store files, which the system does not have yet.</div>
+<div class="callout open"><b>A preset sets colours, and only colours.</b> Graphite and Harbour change the palette. They do not change corner radius, type or spacing, so Graphite will not look like the sharp-cornered industrial theme in the older mock-up. Per-scheme shape and typography is a separate, open decision.</div>
+<p class="note" style="max-width:76ch">Both are listed here rather than left to be discovered on the screen. Neither of them blocks this slice, and neither is closed by shipping it.</p>
+</div></body></html>

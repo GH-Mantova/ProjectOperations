@@ -2105,7 +2105,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         options?: string[];
       }[];
     }[];
-    rules?: { ruleId: string; sourceFieldKey: string; targetFieldKey: string; operator: string; comparisonValue: string; effect: string }[];
+    rules?: { ruleId: string; definition: object }[];
   }): Promise<{ templateVersionId: string; fieldIdByKey: Map<string, string> }> {
     const versionId = `${options.templateId}-v1`;
     const template = await prisma.formTemplate.upsert({
@@ -2197,11 +2197,7 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
         data: {
           id: rule.ruleId,
           versionId,
-          sourceFieldKey: rule.sourceFieldKey,
-          targetFieldKey: rule.targetFieldKey,
-          operator: rule.operator,
-          comparisonValue: rule.comparisonValue,
-          effect: rule.effect
+          definition: rule.definition
         }
       });
     }
@@ -2263,8 +2259,22 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       }
     ],
     rules: [
-      { ruleId: "form-tpl-001-r1", sourceFieldKey: "hazard_assessment_complete", targetFieldKey: "hazard_notes", operator: "equals", comparisonValue: "false", effect: "SHOW" },
-      { ruleId: "form-tpl-001-r2", sourceFieldKey: "defects_identified", targetFieldKey: "defect_details", operator: "equals", comparisonValue: "true", effect: "SHOW" }
+      {
+        ruleId: "form-tpl-001-r1",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "hazard_assessment_complete", operator: "equals", value: "false" }] },
+          actions: [{ type: "show", target: "hazard_notes" }]
+        }
+      },
+      {
+        ruleId: "form-tpl-001-r2",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "defects_identified", operator: "equals", value: "true" }] },
+          actions: [{ type: "show", target: "defect_details" }]
+        }
+      }
     ]
   });
 
@@ -2321,10 +2331,38 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       }
     ],
     rules: [
-      { ruleId: "form-tpl-002-r1", sourceFieldKey: "fluid_levels_ok", targetFieldKey: "issues_found", operator: "equals", comparisonValue: "false", effect: "SHOW" },
-      { ruleId: "form-tpl-002-r2", sourceFieldKey: "lights_signals_ok", targetFieldKey: "issues_found", operator: "equals", comparisonValue: "false", effect: "SHOW" },
-      { ruleId: "form-tpl-002-r3", sourceFieldKey: "tracks_tyres_ok", targetFieldKey: "issues_found", operator: "equals", comparisonValue: "false", effect: "SHOW" },
-      { ruleId: "form-tpl-002-r4", sourceFieldKey: "guards_covers_secure", targetFieldKey: "issues_found", operator: "equals", comparisonValue: "false", effect: "SHOW" }
+      {
+        ruleId: "form-tpl-002-r1",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "fluid_levels_ok", operator: "equals", value: "false" }] },
+          actions: [{ type: "show", target: "issues_found" }]
+        }
+      },
+      {
+        ruleId: "form-tpl-002-r2",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "lights_signals_ok", operator: "equals", value: "false" }] },
+          actions: [{ type: "show", target: "issues_found" }]
+        }
+      },
+      {
+        ruleId: "form-tpl-002-r3",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "tracks_tyres_ok", operator: "equals", value: "false" }] },
+          actions: [{ type: "show", target: "issues_found" }]
+        }
+      },
+      {
+        ruleId: "form-tpl-002-r4",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "guards_covers_secure", operator: "equals", value: "false" }] },
+          actions: [{ type: "show", target: "issues_found" }]
+        }
+      }
     ]
   });
 
@@ -2392,7 +2430,14 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       }
     ],
     rules: [
-      { ruleId: "form-tpl-003-r1", sourceFieldKey: "person_injured", targetFieldKey: "injury_description", operator: "equals", comparisonValue: "true", effect: "SHOW" }
+      {
+        ruleId: "form-tpl-003-r1",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "person_injured", operator: "equals", value: "true" }] },
+          actions: [{ type: "show", target: "injury_description" }]
+        }
+      }
     ]
   });
 
@@ -2452,7 +2497,14 @@ export async function seedInitialServicesDataset(prisma: PrismaClient): Promise<
       }
     ],
     rules: [
-      { ruleId: "form-tpl-004-r1", sourceFieldKey: "cylinders_taken", targetFieldKey: "cylinder_set_id", operator: "equals", comparisonValue: "true", effect: "SHOW" }
+      {
+        ruleId: "form-tpl-004-r1",
+        definition: {
+          trigger: "on_change",
+          conditionGroup: { logic: "AND", conditions: [{ fieldKey: "cylinders_taken", operator: "equals", value: "true" }] },
+          actions: [{ type: "show", target: "cylinder_set_id" }]
+        }
+      }
     ]
   });
 

@@ -155,3 +155,4 @@
 2026-09-24T13:35:34Z  ARMED  pr-verdictguard-spaced-path-candidates  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=32008  caller=powershell.exe:11800
 2026-09-24T20:21:20Z  ARMED  pr-formrule-legacy-payload-retire  escalates=false  actor=station-00.interactive-0004  by=Marco@LAPTOP-E6NHU4E4  pid=33512  caller=powershell.exe:45520
 2026-09-24T22:33:26Z  ARMED  pr-sec-a1-auth-secret-fail-fast  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=1552  caller=powershell.exe:29492
+2026-09-25T01:29:14Z  ARMED  pr-watcher-adopt-ancestry-and-watchdog-identity  escalates=true  actor=station-00.sched0114  by=Marco@LAPTOP-E6NHU4E4  pid=42636  caller=powershell.exe:23260

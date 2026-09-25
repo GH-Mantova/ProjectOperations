@@ -914,6 +914,47 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   squash merges, which is every merge in this repo, and `gh pr list --limit N` silently TRUNCATES
   at N — `--limit 600` returned 600 rows and a different, wrong answer from `--limit 2000`.
 
+- 🔴 **`.git/packed-refs` SILENTLY SERVES A STALE `origin/main`, AND A LOOSE REF SHADOWS IT WITH NO
+  WARNING — SO A RUN THAT READS REF FILES INSTEAD OF INVOKING `git` GETS A WELL-FORMED 40-HEX SHA
+  THAT IS SIMPLY WRONG.** `PACKED_REFS_SERVES_A_STALE_ORIGIN_MAIN_V1`
+
+  Git resolves the **loose** ref at `.git/refs/remotes/origin/main` and ignores `packed-refs`
+  whenever a loose ref for that name exists. `packed-refs` is only rewritten when refs are packed,
+  so between packings it holds an arbitrarily old value. Nothing reconciles the two, nothing warns,
+  and both files contain a plausible 40-hex SHA — so **§9.6 cannot fire: nothing is empty and no
+  query failed.**
+
+  [MEASURED] 2026-09-24T23:1xZ by Station 00 (blind run, F3), and **re-measured 2026-09-25T00:23Z by
+  Station 00 (sighted) at a DIFFERENT commit**, which is what turns it from a lag into a staleness:
+
+  | probe | 2026-09-24T23:1xZ (blind) | 2026-09-25T00:23Z (sighted) |
+  |---|---|---|
+  | `.git/refs/remotes/origin/main` — the loose ref | `d8eea113…` | **`54b7cbbf…`** |
+  | `.git/packed-refs` row for `refs/remotes/origin/main` | `66194af6…` | **`66194af6…`** |
+  | `git rev-parse origin/main` — the authority | *(not run: blind)* | **`54b7cbbf…`** |
+
+  🔴 **The packed value did not move while the loose ref advanced twice.** It is not lagging by one
+  commit, it is a frozen snapshot, and `git` agreed with the loose ref on both readings.
+
+  🔴 **It is newly dangerous because of the blind-run path.** `STATION-CAPABILITIES.md` §3 forbids
+  running `git` against the Windows `.git` from the device bridge (§9.2 above — a cut-short call
+  leaves a 0-byte `index.lock` that freezes every station), so a blind run is pushed toward reading
+  ref files directly. **`packed-refs` is the more discoverable of the two files** — it is a single
+  named file at a fixed path, while the loose ref requires knowing the `refs/remotes/<remote>/<branch>`
+  layout — so the failure mode selects for the wrong one. A GROUND block stamped from it names a
+  commit the tree is not on.
+
+  🔧 **Read the LOOSE ref first, and treat `packed-refs` as a fallback only when no loose ref exists
+  for that name.** When a shell is available, neither file is the answer: `git rev-parse origin/main`
+  is, and it is one call. Say in the report which of the three you used.
+
+  ⚠️ **Falsifying probe: the table above.** Read both files and `git rev-parse origin/main` in the
+  same minute in a tree that has fetched recently. If `packed-refs` ever agrees with the loose ref
+  *after* a fetch that moved it, this bullet is not wrong — it simply means the refs were packed in
+  between; re-run it after the next fetch. The bullet is wrong only if `git` is ever observed
+  resolving the **packed** value while a differing loose ref exists. Found by Station 00 (blind run)
+  2026-09-24T23:1xZ (F3), re-measured and landed by Station 00 at 2026-09-25T00:3xZ.
+
 ## 9.3 Files and encoding
 
 - ⚠️ **`Get-Content` reports FALSE MOJIBAKE.** The console encoding mangles the display, not the file.

@@ -307,6 +307,10 @@ model User {
   // Tip Finder recommendation log entries created by this user.
   tipRecommendationLogs TipRecommendationLog[] @relation("TipRecommendationLogCreatedBy")
 
+  // S7c-1: per-user display density + colour scheme preference.
+  // A missing row means the user has not personalised either -- falls back to defaults.
+  appearancePreference UserAppearancePreference?
+
   // SLICE 5 (settings-restructure): per-user notification channel preferences.
   // A missing row means "inherit admin default". onDelete: Cascade so removing
   // a user deletes their preferences automatically.
@@ -6628,7 +6632,9 @@ model BrandColorScheme {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  activeOn CompanyProfile[] @relation("CompanyProfileActiveColorScheme")
+  activeOn             CompanyProfile[]            @relation("CompanyProfileActiveColorScheme")
+  // S7c-1: users who have selected this scheme as their personal preference.
+  userPreferences      UserAppearancePreference[]
 
   @@map("brand_color_scheme")
 }
@@ -6654,6 +6660,23 @@ model BrandAsset {
 
   @@unique([profileId, kind])
   @@map("brand_asset")
+}
+
+// S7c-1: per-user display density and colour scheme choice.
+// One row per user who has personalised at least one setting. No row = no
+// personalisation; the reader falls back to default (comfortable density,
+// company active scheme). onDelete: Cascade so removing a user removes their
+// preferences automatically.
+model UserAppearancePreference {
+  userId         String            @id @map("user_id")
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "comfortable" | "compact"; null = default (comfortable)
+  density        String?
+  colourSchemeId String?           @map("colour_scheme_id")
+  colourScheme   BrandColorScheme? @relation(fields: [colourSchemeId], references: [id], onDelete: SetNull)
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@map("user_appearance_preferences")
 }
 
 // Effective-dated, versioned company legal documents. Editing content

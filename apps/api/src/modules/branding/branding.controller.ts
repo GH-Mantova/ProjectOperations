@@ -130,17 +130,18 @@ export class BrandingController {
 }
 
 /**
- * Unprivileged read — any authenticated user may call GET /branding/active.
+ * Unprivileged read routes for any authenticated user.
+ *
+ * GET /branding/active — returns the active brand colours (17 keys).
+ * GET /branding/schemes — returns all saved colour schemes for the personal
+ *   picker (id, name, isCompanyDefault, and the 15 colour fields). No audit
+ *   fields, no asset URLs. A user without company.manage gets 200.
  *
  * NOTE: PermissionsGuard is intentionally OMITTED. Its source shows that when
  * no @RequirePermissions decorator is present, the guard returns true (allow),
- * so including it would be harmless — but the spec requires only JwtAuthGuard
+ * so including it would be harmless -- but the spec requires only JwtAuthGuard
  * here to make the intent explicit and prevent future reviewers from adding a
  * blanket class-level @RequirePermissions that would lock out regular users.
- *
- * Returns EXACTLY seventeen keys: the original four (primaryColorHex,
- * secondaryColorHex, logoLightUrl, logoDarkUrl) plus the thirteen S3 palette
- * columns. No scheme ids, names, lists, favicon, or letterhead.
  */
 @ApiTags("Branding")
 @ApiBearerAuth()
@@ -153,10 +154,21 @@ export class BrandingViewerController {
   @ApiOperation({
     summary:
       "Return the active brand colours and logo URLs for the current company. " +
-      "Available to every authenticated user — primary, accent, and S3 palette " +
+      "Available to every authenticated user -- primary, accent, and S3 palette " +
       "are applied across the app. Returns exactly seventeen keys."
   })
   getActiveBranding() {
     return this.service.getActiveBrandingForViewer();
+  }
+
+  @Get("schemes")
+  @ApiOperation({
+    summary:
+      "List every saved colour scheme. Available to every authenticated user -- " +
+      "this is the list the personal colour picker shows. Returns id, name, " +
+      "isCompanyDefault, and the 15 colour fields per scheme. No audit fields."
+  })
+  listSchemesForViewer() {
+    return this.service.listSchemesForViewer();
   }
 }

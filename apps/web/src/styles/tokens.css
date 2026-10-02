@@ -270,6 +270,12 @@
   font-size: 13px;
 }
 
+.s7-btn--xs {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .s7-btn--primary {
   background: var(--brand-accent);
   color: #000000;
@@ -299,6 +305,18 @@
 
 .s7-btn--ghost:hover:not(:disabled) {
   background: var(--border-subtle);
+}
+
+/* Danger: the token mixed toward black so white text passes WCAG AA (~5.3:1).
+   Text is the keyword white, not --text-inverse, which turns near-black in dark mode. */
+.s7-btn--danger {
+  background: color-mix(in srgb, var(--status-danger) 82%, black);
+  border-color: color-mix(in srgb, var(--status-danger) 82%, black);
+  color: white;
+}
+.s7-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--status-danger) 70%, black);
+  border-color: color-mix(in srgb, var(--status-danger) 70%, black);
 }
 
 /* Inputs per 7.0 */

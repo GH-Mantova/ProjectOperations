@@ -30,7 +30,7 @@ import { CurrentUser } from "../../../common/auth/current-user.decorator";
 import { JwtAuthGuard } from "../../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../../common/auth/permissions.decorator";
-import { COMM_ENTITY_TYPES, CommsService } from "./comms.service";
+import { COMM_CHANNELS, COMM_ENTITY_TYPES, CommsService } from "./comms.service";
 
 const TASK_STATUSES = ["OPEN", "IN_PROGRESS", "DONE", "CANCELLED"] as const;
 
@@ -92,10 +92,12 @@ class ListTasksQueryDto {
   @IsOptional() @Type(() => Number) limit?: number;
 }
 
-/** CRM-S7/S8: Log a contact interaction on a tender or opportunity. */
+/** CRM-S7/S8/CRM_INTERACTION_CHANNEL_V1: Log a contact interaction on a tender or opportunity. */
 class LogContactDto {
   @IsIn(COMM_ENTITY_TYPES as unknown as string[]) entityType!: string;
   @IsNotEmpty() @IsString() entityId!: string;
+  /** CRM_INTERACTION_CHANNEL_V1: required. One of phone | email | meeting | site_visit | other. */
+  @IsIn(COMM_CHANNELS as unknown as string[]) channel!: string;
   @IsNotEmpty() @IsString() subject!: string;
   @IsNotEmpty() @IsString() body!: string;
   /** CRM-S8: optional next-action due date (ISO string). Creates a CommTask in the same transaction. */
@@ -280,6 +282,7 @@ export class CommsController {
     return this.service.logContact({
       entityType: dto.entityType as never,
       entityId: dto.entityId,
+      channel: dto.channel,
       subject: dto.subject,
       body: dto.body,
       createdById: actor.sub,

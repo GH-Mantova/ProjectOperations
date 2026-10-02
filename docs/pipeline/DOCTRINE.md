@@ -2183,6 +2183,23 @@ failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:
   survives being re-derived from its own source on both rows, this bullet is unnecessary. Found and
   landed by Station 00 2026-09-10T22:1xZ.
 
+### 9.5.1 DISPOSITIONS -- the four spellings a finding may end in
+
+Every finding a station reports must land in exactly one of these four dispositions. Station
+docs defer to DOCTRINE for the canonical spellings; use these forms verbatim.
+
+- **ACTIONED** -- fixed this run; say how you verified.
+- **DISPATCHED** -- handed to another station; name the station and what was handed over. The
+  register is tracked under `docs/pipeline/dispatched/`. The dispatcher runs
+  `node scripts/pipeline/dispatch.mjs open ... --record-into <PR worktree>` in the same PR as
+  the breadcrumb that dispatches it, and the receiving station runs
+  `node scripts/pipeline/dispatch.mjs close --id <id> ...` in the PR that lands the work. The
+  sweep reads open dispatches from `origin/main` in Section 5. A dispatched finding without an
+  open register entry is a lie, not a hand-off.
+- **ESCALATED** -- needs Marco; brings a question with options. Lives under
+  `docs/pr-prompts/needs-marco/` (gitignored); the sweep cross-checks against GitHub.
+- **DEFERRED** -- real, not now; say what would make it urgent.
+
 ## 9.6 The rule behind all of them
 
 🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is

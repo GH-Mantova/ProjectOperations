@@ -714,6 +714,90 @@ foreach ($f in $nm) {
 }
 
 # ------------------------------------------------------------------------------------------------
+# DISPATCH_REGISTER_V1 -- Section 5 continuation: open dispatched findings
+# Reads from origin/main (DOCTRINE section 9), not the working copy.
+# ------------------------------------------------------------------------------------------------
+$dispatchFolder = "docs/pipeline/dispatched"
+$dispatchListRaw = ""
+$dispatchGitOk = $true
+try {
+  $dispatchListRaw = git ls-tree --name-only "origin/main" "$dispatchFolder/" 2>&1
+  if ($LASTEXITCODE -ne 0) { $dispatchGitOk = $false }
+} catch {
+  $dispatchGitOk = $false
+}
+
+if (-not $dispatchGitOk) {
+  Line "FILE" "dispatch register: git or origin/main unreachable -- dispatch check skipped"
+} else {
+  # Filter to *.md files directly in the dispatched folder (not in closed/).
+  $dispatchEntries = @($dispatchListRaw -split "`n" | Where-Object {
+    $_ -match "\.md$" -and $_ -notmatch "/"
+  } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+
+  if ($dispatchEntries.Count -eq 0) {
+    # Check whether the folder itself is present on origin/main.
+    $folderCheckRaw = ""
+    try {
+      $folderCheckRaw = git ls-tree --name-only "origin/main" "docs/pipeline/" 2>&1
+    } catch { $folderCheckRaw = "" }
+    $folderPresent = ($folderCheckRaw -split "`n" | Where-Object { $_.Trim() -eq "dispatched" }).Count -gt 0
+    if ($folderPresent) {
+      Line "LIVE" "no open dispatches"
+    } else {
+      Line "LIVE" "[CANNOT MEASURE] dispatched register absent on origin/main"
+    }
+  } else {
+    $nowUtcForDispatch = [System.DateTime]::UtcNow
+    foreach ($dispatchEntry in $dispatchEntries) {
+      $dispatchPath = $dispatchFolder + "/" + $dispatchEntry
+      $dispatchContent = ""
+      try {
+        $dispatchContent = git show ("origin/main:" + $dispatchPath) 2>&1
+        if ($LASTEXITCODE -ne 0) {
+          Line "FILE" ("dispatch: could not read " + $dispatchPath + " from origin/main -- skipped")
+          continue
+        }
+      } catch {
+        Line "FILE" ("dispatch: could not read " + $dispatchPath + " -- skipped")
+        continue
+      }
+
+      # Parse front matter fields.
+      $dispatchId       = ""
+      $dispatchTo       = ""
+      $dispatchOpenedAt = ""
+      $dispatchFinding  = ""
+      foreach ($dispatchLine in ($dispatchContent -split "`n")) {
+        if ($dispatchLine -match "^id:\s*(.+)$")         { $dispatchId       = $Matches[1].Trim() }
+        if ($dispatchLine -match "^to:\s*(.+)$")         { $dispatchTo       = $Matches[1].Trim() }
+        if ($dispatchLine -match "^opened_at:\s*(.+)$")  { $dispatchOpenedAt = $Matches[1].Trim() }
+        if ($dispatchLine -match "^finding:\s*(.+)$")    { $dispatchFinding  = $Matches[1].Trim() }
+      }
+
+      # Compute age in UTC days.
+      $dispatchAgeStr = "?"
+      if ($dispatchOpenedAt -ne "") {
+        try {
+          $dispatchOpenedDate = [System.DateTime]::Parse($dispatchOpenedAt, $null, [System.Globalization.DateTimeStyles]::RoundtripKind)
+          $dispatchAgeSpan = $nowUtcForDispatch - $dispatchOpenedDate
+          $dispatchAgeStr = [string][int][Math]::Floor($dispatchAgeSpan.TotalDays)
+        } catch { $dispatchAgeStr = "?" }
+      }
+
+      $dispatchLine = ("dispatched: " + $dispatchId + "  to=" + $dispatchTo + "  age=" + $dispatchAgeStr + "d  finding=" + $dispatchFinding)
+
+      # Flag stale dispatches (older than 7 days).
+      if ($dispatchAgeStr -ne "?" -and ([int]$dispatchAgeStr) -gt 7) {
+        $dispatchLine = $dispatchLine + " <-- STALE DISPATCH"
+      }
+
+      Line "LIVE" $dispatchLine
+    }
+  }
+}
+
+# ------------------------------------------------------------------------------------------------
 Section "6. BACKLOG GATES"
 # ------------------------------------------------------------------------------------------------
 if ($nodeOk -and (Test-Path (Join-Path $Repo "scripts\pipeline\check-backlog.mjs"))) {

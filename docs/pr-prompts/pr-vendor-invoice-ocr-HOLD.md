@@ -11,7 +11,12 @@ gate_allow: env-vars
 seed_only: false
 escalates: false
 ---
-<!-- watcher: do-not-arm | GATED: arm after pr-procurement-three-way-match AND pr-integration-keys-settings MERGED, and Marco has entered a doc-AI key in Integration settings -->
+<!-- watcher: do-not-arm -->
+
+**GATE (normalised 2026-09-25).** GATED: arm after pr-procurement-three-way-match AND pr-integration-keys-settings MERGED, and Marco has entered a doc-AI key in Integration settings
+
+The bare marker line above is what holds this prompt. The reason is prose so that
+rewording it can never remove the gate. Only a human deletes the marker.
 # HOLD — Vendor-invoice OCR intake
 
 STATUS: DRAFTED, STAGED, DO NOT ARM YET - but the CODE gates are now CLEARED. Re-verified against

@@ -75,6 +75,8 @@ export class QuotePdfService {
     const overlay: QuoteOverlay = {
       quoteRef: quote.quoteRef,
       revision: quote.revision,
+      // QUOTE_PDF_FIXES_V1 — sentAt drives the cover "Date:" field.
+      sentAt: quote.sentAt,
       assumptionMode: (quote.assumptionMode === "linked" ? "linked" : "free") as "linked" | "free",
       showProvisional: quote.showProvisional,
       showCostOptions: quote.showCostOptions,
@@ -184,6 +186,8 @@ export class QuotePdfService {
       displayHeaderFooter: true,
       headerHtml: headerTemplate(overlay.quoteRef, ctx, {
         ratesLockedAt: base.tender.rateSet?.lockedAt ?? null,
+        // QUOTE_PDF_FIXES_V1 — revision in the teal band.
+        revision: overlay.revision,
       }),
       footerHtml: footerTemplate(ctx),
       margin: { top: "35mm", bottom: "22mm" },

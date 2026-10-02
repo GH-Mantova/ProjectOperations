@@ -225,6 +225,20 @@ if (Test-Path (Join-Path $WatcherClone ".git")) {
 # was still classified LIVE. That is the same never-clearing-flag shape DOCTRINE 9.5 records for
 # list_sessions -- and status-sweep.ps1 is the instrument 9.5 names as the CURE for it.
 # Dirtiness is not discarded, it is re-aimed: it no longer blocks the board, it warns before a prune.
+#
+# WORKTREE_ORPHAN_ASKS_THE_BOARD_V1 -- added 2026-10-02. A worktree whose branch carries an OPEN PR
+# is NOT an orphan to prune, even if it is old. After the recency classifier calls something orphaned,
+# we ask the board once per branch (cached) before printing the prune wording. If gh is unreachable
+# the prune wording is WITHHELD -- the dangerous default must never win on a measurement failure.
+# The retained row is NOT added to $liveWorktrees: it is not a live station worktree and must not
+# gate section 7's safe-to-act verdict. (DOCTRINE 9.4 -- pass -R, test $LASTEXITCODE before parsing.)
+$GhRepoOwner = "GH-Mantova/ProjectOperations"
+# Cache: branch name -> hashtable with keys: reachable (bool), prNumber (int or 0)
+$branchPrCache = @{}
+# Whether gh was reachable at all (set on first lookup; assumed ok until proven otherwise)
+$ghBoardReachable = $true
+$ghBoardChecked = $false
+
 $wt = @(git worktree list 2>$null | Where-Object { $_ -notmatch "\[main\]$" -and $_ -notmatch [regex]::Escape($Repo) })
 $liveWorktrees = @()
 if ($wt.Count -gt 0) {
@@ -246,13 +260,76 @@ if ($wt.Count -gt 0) {
       Line "LIVE" ("   LIVE STATION WORKTREE: " + $wtLine)
       Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min  -- do NOT prune; a station is working here")
     } else {
-      Line "LIVE" ("   orphaned worktree (aborted run leftover -- investigate/prune): " + $wtLine)
-      Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min")
-      if ($dirtyCount -gt 0) {
-        # Orphaned but dirty: safe to prune ONLY after the uncommitted work is preserved.
-        # This is the half of the old rule worth keeping -- it warns, it no longer blocks the board.
-        Line "LIVE" ("      <-- HOLDS UNCOMMITTED WORK (" + $dirtyCount + " file(s)). PRESERVE OR COMMIT BEFORE PRUNING; 'git worktree remove' will refuse, and --force would discard it.")
-        Line "LIVE" ("          list it first: git -C " + $wtPath + " status --porcelain")
+      # --- WORKTREE_ORPHAN_ASKS_THE_BOARD_V1: ask the board before printing the prune wording ---
+      # Parse the branch from the third whitespace token: "[<branch>]" -> strip brackets.
+      $wtTokens = $wtLine -split '\s+'
+      $wtBranchRaw = if ($wtTokens.Count -ge 3) { $wtTokens[2].Trim() } else { "" }
+      $wtBranch = $wtBranchRaw -replace '^\[', '' -replace '\]$', ''
+
+      # Determine whether this branch has an open PR. Cache by branch name to avoid
+      # repeated gh calls for the same branch (DOCTRINE 9.4 -- cost stated plainly in prompt).
+      $openPrNumber = 0
+      $boardReachable = $true
+      if ($wtBranch -ne "" -and $wtBranch -ne "(detached)") {
+        if ($branchPrCache.ContainsKey($wtBranch)) {
+          $cachedEntry = $branchPrCache[$wtBranch]
+          $boardReachable = $cachedEntry.reachable
+          $openPrNumber = $cachedEntry.prNumber
+        } else {
+          # Pass -R so the call works from any CWD (DOCTRINE 9.4: a gh call from a non-repo CWD
+          # answers empty for every question at exit 1 -- test $LASTEXITCODE before parsing).
+          $ghPrJson = gh pr list -R $GhRepoOwner --head $wtBranch --state open --json number 2>$null
+          $ghPrExitCode = $LASTEXITCODE
+          if ($ghPrExitCode -ne 0) {
+            $boardReachable = $false
+            $ghBoardReachable = $false
+          } else {
+            $ghBoardChecked = $true
+            # Assign-then-foreach to avoid PS 5.1 array-collapse on ConvertFrom-Json (DOCTRINE 9.4).
+            $ghPrParsed = $ghPrJson | ConvertFrom-Json
+            $ghPrList = @()
+            foreach ($ghPrItem in $ghPrParsed) { $ghPrList += $ghPrItem }
+            if ($ghPrList.Count -gt 0) { $openPrNumber = $ghPrList[0].number }
+          }
+          $branchPrCache[$wtBranch] = @{ reachable = $boardReachable; prNumber = $openPrNumber }
+        }
+      }
+
+      if (-not $boardReachable) {
+        Line "LIVE" ("   orphaned worktree (age=" + $ageMinutes + " min): " + $wtLine)
+        Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min")
+        Line "LIVE" ("      [CANNOT MEASURE] board not reachable; prune advice withheld")
+      } elseif ($openPrNumber -gt 0) {
+        Line "LIVE" ("   RETAINED - branch has OPEN PR #" + $openPrNumber + "; do NOT prune: " + $wtLine)
+        Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min  -- branch=" + $wtBranch)
+        # Do NOT add to $liveWorktrees: not a live station worktree; must not gate section 7 verdict.
+      } else {
+        Line "LIVE" ("   orphaned worktree (aborted run leftover -- investigate/prune): " + $wtLine)
+        Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min")
+        if ($dirtyCount -gt 0) {
+          # Orphaned but dirty: before telling the reader to preserve work, probe whether the working
+          # copy actually differs from origin/main (DOCTRINE 9.2/9.3 -- an EOL smudge or a generated
+          # file regenerated identically produces a dirty count with nothing local to lose).
+          $dirtyFilePaths = @($dirtyOutput | Where-Object { $_ -match '\S' } | ForEach-Object { $_.Substring(3).Trim() })
+          $trueLocalChanges = $false
+          foreach ($dirtyFilePath in $dirtyFilePaths) {
+            $diffOut = git -C $wtPath diff --numstat origin/main -- $dirtyFilePath 2>$null
+            if ($diffOut -and ($diffOut | Where-Object { $_ -match '\S' })) {
+              $trueLocalChanges = $true
+              break
+            }
+          }
+          if ($trueLocalChanges) {
+            # Orphaned but dirty: safe to prune ONLY after the uncommitted work is preserved.
+            # This is the half of the old rule worth keeping -- it warns, it no longer blocks the board.
+            Line "LIVE" ("      <-- HOLDS UNCOMMITTED WORK (" + $dirtyCount + " file(s)). PRESERVE OR COMMIT BEFORE PRUNING; 'git worktree remove' will refuse, and --force would discard it.")
+            Line "LIVE" ("          list it first: git -C " + $wtPath + " status --porcelain")
+          } else {
+            # Every dirty file matches origin/main byte-for-byte (e.g. CRLF smudge, regenerated file).
+            # Nothing local to lose -- prune is safe without preserving.
+            Line "LIVE" ("      dirty=" + $dirtyCount + " file(s) but ALL match origin/main (e.g. CRLF smudge or regenerated file) -- no local work to preserve; safe to prune.")
+          }
+        }
       }
     }
   }

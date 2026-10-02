@@ -487,6 +487,199 @@ Describe 'Resolve-WatchdogJudgedAgeMinutes -- WATCHDOG_RESTART_GRACE_V1' {
     }
 }
 
+Describe 'Resolve-WatcherExitAction -- ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1' {
+
+    # All tests inject an -AncestryProbe stub so no real CIM I/O is performed
+    # and the tests are deterministic regardless of running processes.
+
+    $singleInstanceLine = 'SINGLE-INSTANCE: watcher already running (PID 12345). Not starting another.'
+    $singleInstanceNoFlag = { Clear-KillFlag }
+
+    Context 'ancestry probe confirms supervised -- exit-supervised action' {
+
+        It 'returns exit-supervised when the probe reports SupervisedByWrapper=$true' {
+            Clear-KillFlag
+            $fakeAncestry = [pscustomobject]@{
+                NodePid             = 12345
+                ParentPid           = 44740
+                GrandparentPid      = 1724
+                SupervisedByWrapper = $true
+                WrapperPid          = 44740
+                WrapperParentPid    = 1724
+                WalkFailed          = $false
+                FailureReason       = ''
+            }
+            $probe = { param($probePid) $fakeAncestry }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($singleInstanceLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $probe
+            $d.Action | Should Be 'exit-supervised'
+            ($d.LogMessage -match 'EXIT-SUPERVISED') | Should Be $true
+            ($d.LogMessage -match 'ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1') | Should Be $true
+            ($d.LogMessage -match '12345') | Should Be $true
+            ($d.LogMessage -match '44740') | Should Be $true
+        }
+
+        It 'exit-supervised log message names the supervisor PID and wrapper parent PID' {
+            Clear-KillFlag
+            $fakeAncestry = [pscustomobject]@{
+                NodePid             = 42212
+                ParentPid           = 44740
+                GrandparentPid      = 1724
+                SupervisedByWrapper = $true
+                WrapperPid          = 44740
+                WrapperParentPid    = 1724
+                WalkFailed          = $false
+                FailureReason       = ''
+            }
+            $probe = { param($probePid) $fakeAncestry }
+            $lineVariant = 'SINGLE-INSTANCE: watcher already running (PID 42212). Not starting another.'
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($lineVariant) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $probe
+            $d.Action | Should Be 'exit-supervised'
+            ($d.LogMessage -match 'PID 44740') | Should Be $true
+            ($d.LogMessage -match '1724') | Should Be $true
+        }
+    }
+
+    Context 'ancestry probe confirms orphaned -- correct adopt log line' {
+
+        It 'returns adopt (verified) when no wrapper ancestor is found' {
+            Clear-KillFlag
+            $fakeAncestry = [pscustomobject]@{
+                NodePid             = 12345
+                ParentPid           = 8000
+                GrandparentPid      = 4
+                SupervisedByWrapper = $false
+                WrapperPid          = 0
+                WrapperParentPid    = 0
+                WalkFailed          = $false
+                FailureReason       = ''
+            }
+            $probe = { param($probePid) $fakeAncestry }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($singleInstanceLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $probe
+            $d.Action | Should Be 'adopt'
+            ($d.LogMessage -match 'ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1 \(verified\)') | Should Be $true
+            ($d.LogMessage -match 'no start-watcher.ps1 ancestor') | Should Be $true
+        }
+
+        It 'adopt (verified) log line includes the node PID' {
+            Clear-KillFlag
+            $fakeAncestry = [pscustomobject]@{
+                NodePid             = 12345
+                ParentPid           = 8000
+                GrandparentPid      = 4
+                SupervisedByWrapper = $false
+                WrapperPid          = 0
+                WrapperParentPid    = 0
+                WalkFailed          = $false
+                FailureReason       = ''
+            }
+            $probe = { param($probePid) $fakeAncestry }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($singleInstanceLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $probe
+            ($d.LogMessage -match '12345') | Should Be $true
+        }
+    }
+
+    Context 'walk failure -- fallback to adopt with CHECK_FAILED tag' {
+
+        It 'falls back to adopt when WalkFailed is $true' {
+            Clear-KillFlag
+            $fakeAncestry = [pscustomobject]@{
+                NodePid             = 12345
+                ParentPid           = 0
+                GrandparentPid      = 0
+                SupervisedByWrapper = $false
+                WrapperPid          = 0
+                WrapperParentPid    = 0
+                WalkFailed          = $true
+                FailureReason       = 'Access denied'
+            }
+            $probe = { param($probePid) $fakeAncestry }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($singleInstanceLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $probe
+            $d.Action | Should Be 'adopt'
+            ($d.LogMessage -match 'ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED') | Should Be $true
+        }
+
+        It 'falls back to adopt when the probe throws' {
+            Clear-KillFlag
+            $throwingProbe = { param($probePid) throw 'CIM offline' }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($singleInstanceLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $throwingProbe
+            $d.Action | Should Be 'adopt'
+            ($d.LogMessage -match 'ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED') | Should Be $true
+        }
+
+        It 'falls back to adopt when probe returns null' {
+            Clear-KillFlag
+            $nullProbe = { param($probePid) $null }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($singleInstanceLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $nullProbe
+            $d.Action | Should Be 'adopt'
+            ($d.LogMessage -match 'ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED') | Should Be $true
+        }
+    }
+
+    Context 'PID parse failure -- fallback to adopt with CHECK_FAILED tag' {
+
+        It 'falls back to adopt with CHECK_FAILED when the SINGLE-INSTANCE line has no PID' {
+            Clear-KillFlag
+            $noPidLine = 'SINGLE-INSTANCE: watcher already running (no pid here).'
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($noPidLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5
+            $d.Action | Should Be 'adopt'
+            ($d.LogMessage -match 'ADOPT_REQUIRES_NO_WRAPPER_ANCESTOR_V1:CHECK_FAILED') | Should Be $true
+        }
+    }
+
+    Context 'pid format variants -- case-insensitive matching' {
+
+        It 'parses lowercase "pid 999" in the SINGLE-INSTANCE line' {
+            Clear-KillFlag
+            $lowerPidLine = 'SINGLE-INSTANCE: another watcher is running (pid 999)'
+            $capturedPid  = 0
+            $capturingProbe = {
+                param($probePid)
+                $script:capturedPid = $probePid
+                [pscustomobject]@{
+                    NodePid             = $probePid
+                    ParentPid           = 0
+                    GrandparentPid      = 0
+                    SupervisedByWrapper = $false
+                    WrapperPid          = 0
+                    WrapperParentPid    = 0
+                    WalkFailed          = $false
+                    FailureReason       = ''
+                }
+            }
+            $d = Resolve-WatcherExitAction -ExitCode 0 -WatchdogFlagPath $flagPath `
+                    -ChildOutput @($lowerPidLine) -CloneRoot $tmpRepo `
+                    -LastReasonKey '' -SameCount 0 -MaxSameFail 5 `
+                    -AncestryProbe $capturingProbe
+            $d.Action | Should Be 'adopt'
+            # The probe was called; verify the parsed PID was correct.
+            ($d.LogMessage -match '999') | Should Be $true
+        }
+    }
+}
+
 # Clean up temp dirs and env vars so a follow-up test run starts fresh.
 Remove-Item -Path $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item Env:PR_WATCHER_SUPERVISOR_DOTSOURCE_ONLY -ErrorAction SilentlyContinue

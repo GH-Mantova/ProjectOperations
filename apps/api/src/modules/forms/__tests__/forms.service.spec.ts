@@ -115,7 +115,6 @@ type TxClient = {
   formTemplateVersion: { create: jest.Mock; findFirst: jest.Mock };
   formSection: { create: jest.Mock };
   formField: { createMany: jest.Mock };
-  formRule: { createMany: jest.Mock };
 };
 
 function buildTxClient(): TxClient {
@@ -129,8 +128,7 @@ function buildTxClient(): TxClient {
       findFirst: jest.fn().mockResolvedValue(null)
     },
     formSection: { create: jest.fn().mockResolvedValue({ id: "sec-new" }) },
-    formField: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    formRule: { createMany: jest.fn().mockResolvedValue({ count: 0 }) }
+    formField: { createMany: jest.fn().mockResolvedValue({ count: 0 }) }
   };
 }
 
@@ -286,35 +284,6 @@ describe("FormsService.createTemplate", () => {
     expect(result.id).toBe("tpl-new");
   });
 
-  it("creates form rules when rules are supplied in the DTO", async () => {
-    const { service, tx } = buildService();
-    tx.formTemplate.create.mockResolvedValueOnce({ id: "tpl-new" });
-    tx.formTemplateVersion.create.mockResolvedValueOnce({ id: "ver-new", templateId: "tpl-new", versionNumber: 1 });
-
-    await service.createTemplate(
-      {
-        ...VALID_TEMPLATE_DTO,
-        rules: [
-          { sourceFieldKey: "notes", targetFieldKey: "signoff", operator: "EQUALS", comparisonValue: "yes" }
-        ]
-      } as never,
-      "user-1"
-    );
-
-    expect(tx.formRule.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.arrayContaining([
-          expect.objectContaining({
-            versionId: "ver-new",
-            sourceFieldKey: "notes",
-            targetFieldKey: "signoff",
-            operator: "EQUALS",
-            effect: "SHOW"
-          })
-        ])
-      })
-    );
-  });
 });
 
 describe("FormsService.createNextVersion", () => {

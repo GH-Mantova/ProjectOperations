@@ -10363,36 +10363,6 @@
           "filterable": false,
           "aggregations": []
         },
-        "sourceFieldKey": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "targetFieldKey": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "operator": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "comparisonValue": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
-        "effect": {
-          "role": "attribute",
-          "label": null,
-          "filterable": false,
-          "aggregations": []
-        },
         "definition": {
           "role": "system",
           "label": null,

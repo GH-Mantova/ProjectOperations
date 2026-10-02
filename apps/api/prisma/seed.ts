@@ -3287,11 +3287,14 @@ async function main() {
     await prisma.formRule.create({
       data: {
         versionId: version2.id,
-        sourceFieldKey: "fit_for_work",
-        targetFieldKey: "hazard_notes",
-        operator: "equals",
-        comparisonValue: "No",
-        effect: "REQUIRE"
+        definition: {
+          trigger: "on_change",
+          conditionGroup: {
+            logic: "AND",
+            conditions: [{ fieldKey: "fit_for_work", operator: "equals", value: "No" }]
+          },
+          actions: [{ type: "require", target: "hazard_notes" }]
+        }
       }
     });
 

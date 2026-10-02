@@ -126,23 +126,6 @@ export class FormSectionInputDto {
 }
 
 /**
- * Legacy show/hide-style rule stored as a FormRule row — distinct from
- * the richer JSON FieldRule contract evaluated by RulesEngineService.
- */
-export class FormRuleInputDto {
-  /** Field key whose value triggers the rule. */
-  @IsString() sourceFieldKey!: string;
-  /** Field key the effect is applied to. */
-  @IsString() targetFieldKey!: string;
-  /** Comparison operator name (string-typed; semantics are interpreted downstream). */
-  @IsString() operator!: string;
-  /** Optional comparison value (text-serialised). */
-  @IsOptional() @IsString() comparisonValue?: string;
-  /** Effect applied when the comparison matches; defaults to "SHOW". */
-  @IsOptional() @IsString() effect?: string;
-}
-
-/**
  * Payload for createTemplate (new template + version 1) and
  * createNextVersion (template metadata patch + new version). Templates
  * are immutable-by-version — every edit produces a new
@@ -163,8 +146,6 @@ export class UpsertFormTemplateDto {
   @IsOptional() @IsArray() associationScopes?: string[];
   /** Sections, ordered; at least one required. */
   @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => FormSectionInputDto) sections!: FormSectionInputDto[];
-  /** Optional legacy FormRule[] for the version. */
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => FormRuleInputDto) rules?: FormRuleInputDto[];
 }
 
 /**

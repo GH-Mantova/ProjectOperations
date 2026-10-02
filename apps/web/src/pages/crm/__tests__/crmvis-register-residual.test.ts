@@ -180,21 +180,37 @@ describe("Logged by filter — client-side narrow (CRM_REGISTER_RESIDUAL_V1)", (
 });
 
 // ---------------------------------------------------------------------------
-// 5. Owner chip: accessible name and query param
+// 5. Owner chip: accessible name and state key
+//
+// CRM_OWNER_PICKER_V1 updates: the chip is now a <select> picker (not a text
+// input), so the assertions below are updated to match the new implementation.
+// The accessible name and state key (estimatorId) are preserved.
 // ---------------------------------------------------------------------------
 
-describe("Owner chip — relabelled from Estimator (CRM_REGISTER_RESIDUAL_V1)", () => {
+describe("Owner chip — CRM_OWNER_PICKER_V1 picker (updated from CRM_REGISTER_RESIDUAL_V1)", () => {
   it('chip has aria-label "Filter by owner"', () => {
     expect(src).toContain('aria-label="Filter by owner"');
   });
 
-  it("chip placeholder/label says Owner, not Estimator", () => {
-    // The Owner chip placeholder must say "Owner"
-    expect(src).toContain('"Owner ▾"');
+  it("chip is now a <select> element, not a text input", () => {
+    // CRM_OWNER_PICKER_V1: replaced <input type=\"text\"> with <select>
+    expect(src).toContain('aria-label="Filter by owner"');
+    // The old input type="text" for owner is gone
+    expect(src).not.toMatch(/type="text"[\s\S]{0,300}aria-label="Filter by owner"/);
   });
 
-  it("query param is still estimatorId (no rename)", () => {
-    // The Owner chip must still set filters.estimatorId
+  it("chip default option starts with 'Owner' and includes the down-arrow sentinel", () => {
+    // The default (clear) <option> renders "Owner ▾" or "Owner · <label>".
+    // The source renders this as: Owner {activeOwnerLabel ? `· ${activeOwnerLabel}` : "▾"}
+    // so both "Owner" and the "▾" string appear as source literals.
+    expect(src).toContain('"Filter by owner"');
+    expect(src).toContain('"▾"');
+    // The option text starts with "Owner" in source
+    expect(src).toMatch(/option value=""\s*>Owner/);
+  });
+
+  it("state key is still filters.estimatorId (no rename)", () => {
+    // The owner picker still writes to filters.estimatorId
     expect(src).toContain("estimatorId: e.target.value || null");
   });
 
@@ -205,5 +221,9 @@ describe("Owner chip — relabelled from Estimator (CRM_REGISTER_RESIDUAL_V1)", 
 
   it("carries the CRM_REGISTER_RESIDUAL_V1 marker", () => {
     expect(src).toContain("CRM_REGISTER_RESIDUAL_V1");
+  });
+
+  it("carries the CRM_OWNER_PICKER_V1 marker", () => {
+    expect(src).toContain("CRM_OWNER_PICKER_V1");
   });
 });

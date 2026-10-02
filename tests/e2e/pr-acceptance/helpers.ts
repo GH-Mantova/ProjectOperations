@@ -76,9 +76,25 @@ async function loginWithStoredState(
     origins?: Array<{ localStorage?: Array<{ name: string; value: string }> }>;
   };
   const entries = (state.origins ?? []).flatMap((origin) => origin.localStorage ?? []);
-  // Reach the app origin first so localStorage is writable; if another session
-  // is already stored, /login harmlessly redirects to / on the same origin.
-  await page.goto("/login");
+  // WEBKIT_LOGIN_READY_PROBE_V1
+  //
+  // The original sequence was:
+  //   goto("/login")  →  evaluate (seed localStorage)  →  goto("/")
+  //
+  // Under WebKit, goto("/login") follows the client-side redirect to "/" before
+  // Playwright resolves the promise, so the page is already at "/" when evaluate
+  // runs. The subsequent goto("/") is then a same-URL navigation that does NOT
+  // remount React. AuthProvider has already captured its in-memory state from
+  // readStoredState() at mount, so the localStorage seed is invisible to React,
+  // and the app sits on the login screen waiting for auth that never arrives.
+  //
+  // Fix: use waitUntil:"commit" so goto("/login") resolves as soon as the HTTP
+  // response headers are committed — before JavaScript runs and before any
+  // client-side redirect fires. localStorage.setItem() at this point writes into
+  // the /login document's origin storage BEFORE AuthProvider mounts, so the
+  // subsequent goto("/") is a true cross-URL navigation that boots React fresh
+  // and readStoredState() finds the correct tokens on first call.
+  await page.goto("/login", { waitUntil: "commit" });
   await page.evaluate((items) => {
     window.localStorage.clear();
     for (const { name, value } of items) {
@@ -86,7 +102,19 @@ async function loginWithStoredState(
     }
   }, entries);
   await page.goto("/");
-  await page.getByRole("heading", { name: "Home" }).waitFor({ state: "visible" });
+  // Bounded timeout with a diagnostic message: a silent 60 s burn is not
+  // acceptable in a shared helper. 20 s is generous for a warm dev server.
+  const homeHeading = page.getByRole("heading", { name: "Home" });
+  await homeHeading.waitFor({ state: "visible", timeout: 20_000 }).catch(async (err: unknown) => {
+    const url = page.url();
+    const headings = await page.getByRole("heading").allTextContents().catch(() => [] as string[]);
+    throw new Error(
+      `loginWithStoredState: "Home" heading not visible after 20 s.\n` +
+        `  page.url()  = ${url}\n` +
+        `  headings    = ${JSON.stringify(headings)}\n` +
+        `  original    = ${String(err)}`
+    );
+  });
 }
 
 export async function loginAsAdmin(page: Page): Promise<void> {

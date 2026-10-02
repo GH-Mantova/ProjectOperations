@@ -34,7 +34,42 @@ function stripSuffix(raw) {
 // Matches a path-like token: must contain at least one `/`, must have a
 // file extension (dot followed by 1–10 non-dot, non-space word chars at end,
 // optionally followed by the line-number suffix we strip).
+//
+// SPACED_PATH_CANDIDATES_V1: this regex excludes whitespace from BOTH segments,
+// so a bare (un-backticked) reference to a file under a top-level directory whose
+// name contains a space — the repo has `Claude Design/` and `Claude outputs/` —
+// gets truncated. `Claude Design/proposed/x.html` matches only `Design/proposed/x.html`.
+// Widening the regex to allow whitespace in the first segment would swallow the
+// prose preceding any path (`see docs/foo.md` -> `see docs/foo.md`), which is worse.
+// The rescue is done downstream: spacedPrefixesFromPrFiles derives the known spaced
+// top-level directories from prFiles, extractPaths offers the fully-prefixed variant
+// as an ADDITIONAL candidate, and pathMatches also accepts a `" " + candidate`
+// suffix. The guard only ever GAINS candidates, and a candidate is only accepted
+// when it resolves to a real file in the PR, so this cannot weaken the guard.
 const PATH_TOKEN_RE = /[^\s`'"<>()[\]{}|,;]+\/[^\s`'"<>()[\]{}|,;]+\.[a-zA-Z0-9]{1,10}(:\d+(-\d+)?)?/g;
+
+/**
+ * SPACED_PATH_CANDIDATES_V1
+ *
+ * Derive the set of top-level directory names in prFiles that contain a space.
+ * Extracted from prFiles rather than hard-coded: whichever spaced top-levels the
+ * PR actually touches are the only ones the extractor could have truncated in a
+ * verdict about this PR.
+ *
+ * @param {string[]} prFiles  normalised prFiles
+ * @returns {Set<string>}
+ */
+function spacedPrefixesFromPrFiles(prFiles) {
+  const prefixes = new Set();
+  for (const pf of prFiles) {
+    const firstSlash = pf.indexOf("/");
+    if (firstSlash > 0) {
+      const top = pf.slice(0, firstSlash);
+      if (top.includes(" ")) prefixes.add(top);
+    }
+  }
+  return prefixes;
+}
 
 // Prefix for paths that are legitimately absent from prFiles (they are the
 // review/prompt files themselves, written by the watcher).
@@ -107,9 +142,13 @@ export function looksLikeCommand(span) {
  * Line-number suffixes and trailing punctuation are stripped.
  *
  * @param {string} text
+ * @param {Set<string>} [spacedPrefixes]  known spaced top-level directory names
+ *        (see spacedPrefixesFromPrFiles). On every pass-2 token hit whose first
+ *        segment matches a spaced prefix's trailing space-separated word, the
+ *        fully-prefixed variant is added as an ADDITIONAL candidate.
  * @returns {string[]} unique, sorted extracted paths
  */
-function extractPaths(text) {
+function extractPaths(text, spacedPrefixes = new Set()) {
   const found = new Set();
 
   // Pass 1: backtick spans
@@ -143,6 +182,22 @@ function extractPaths(text) {
     const stripped = normPath(stripSuffix(raw));
     if (stripped && /\//.test(stripped)) {
       found.add(stripped);
+      // SPACED_PATH_CANDIDATES_V1: for each known spaced top-level prefix, if the
+      // truncated token's first segment matches the prefix's trailing space-separated
+      // word (e.g. "Design" is the trailing word of "Claude Design"), also offer the
+      // fully-prefixed variant as a candidate. See spacedPrefixesFromPrFiles.
+      const firstSlash = stripped.indexOf("/");
+      if (firstSlash > 0) {
+        const firstSeg = stripped.slice(0, firstSlash);
+        for (const prefix of spacedPrefixes) {
+          const sp = prefix.lastIndexOf(" ");
+          if (sp < 0) continue;
+          const lastWord = prefix.slice(sp + 1);
+          if (firstSeg === lastWord) {
+            found.add(prefix.slice(0, sp + 1) + stripped);
+          }
+        }
+      }
     }
   }
 
@@ -163,8 +218,18 @@ function extractPaths(text) {
  */
 function pathMatches(candidate, prSet, prArr) {
   if (prSet.has(candidate)) return true;
-  // Suffix match: the PR file ends with /candidate or equals candidate
-  return prArr.some((pf) => pf === candidate || pf.endsWith("/" + candidate));
+  // Suffix match: the PR file ends with /candidate or equals candidate.
+  // SPACED_PATH_CANDIDATES_V1: also accept " " + candidate as suffix, which
+  // catches the case where PATH_TOKEN_RE truncated the leading space-separated
+  // word of a top-level directory name (e.g. real path "Claude Design/x.html"
+  // extracts as "Design/x.html"; the char preceding "Design/" is a space, not
+  // a slash, so the /-anchored suffix alone would miss it).
+  return prArr.some(
+    (pf) =>
+      pf === candidate ||
+      pf.endsWith("/" + candidate) ||
+      pf.endsWith(" " + candidate),
+  );
 }
 
 // WHICH LINES ASSERT WHAT THE PR CHANGED.
@@ -227,7 +292,10 @@ export function validateVerdict({ verdictText, prFiles }) {
 
   // Narrow to the verdict's own claim when it makes one; otherwise scan it all.
   const claims = inScopeAssertions(verdictText ?? "");
-  const candidates = extractPaths(claims ?? verdictText ?? "");
+  // SPACED_PATH_CANDIDATES_V1: give the extractor knowledge of the PR's spaced
+  // top-level directories so its bare-token pass can rescue truncated citations.
+  const spacedPrefixes = spacedPrefixesFromPrFiles(prNorm);
+  const candidates = extractPaths(claims ?? verdictText ?? "", spacedPrefixes);
 
   // Filter out paths that are legitimately not in prFiles (review/prompt files
   // written by the watcher itself — the agent won't have touched those).
@@ -252,4 +320,32 @@ export function validateVerdict({ verdictText, prFiles }) {
     return { ok: true };
   }
   return { ok: false, unmatched: uniqueUnmatched };
+}
+
+/**
+ * SPACED_PATH_CANDIDATES_V1
+ *
+ * Diagnose whether an unmatched-paths list is the artefact of a top-level
+ * directory name containing a space (the extractor truncated the prefix)
+ * rather than a stale clone. When EVERY unmatched path is a proper suffix of
+ * some real prFile preceded by a space, the culprit is the parser, not
+ * out-of-date state — and the operator note should say so rather than send
+ * the next actor after a re-queue or, worse, prescribe deleting the
+ * reviewer's evidence to satisfy a parser bug.
+ *
+ * With the extractor rescue in place this predicate should never fire on a
+ * live block; it is retained so the diagnosis is correct if the rescue is
+ * ever reverted or a new truncation variant slips through.
+ *
+ * @param {string[]} unmatched
+ * @param {string[]} prFiles
+ * @returns {boolean}
+ */
+export function isLikelySpaceTruncation(unmatched, prFiles) {
+  if (!Array.isArray(unmatched) || unmatched.length === 0) return false;
+  const prNorm = (prFiles ?? []).map(normPath);
+  return unmatched.every((u) => {
+    const candidate = normPath(u);
+    return prNorm.some((pf) => pf.endsWith(" " + candidate));
+  });
 }

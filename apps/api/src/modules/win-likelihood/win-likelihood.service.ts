@@ -7,6 +7,7 @@ import {
   ValueBand,
   WinLikelihoodFeaturesService
 } from "./win-likelihood-features.service";
+import { HISTORY_TENDER_STATUSES_ARRAY } from "../tendering/tender-status";
 
 // ─── Confidence thresholds ────────────────────────────────────────────────────
 // Exported so tests and future callers can reference canonical thresholds.
@@ -273,7 +274,7 @@ export class WinLikelihoodService {
     return this.prisma.tender.findMany({
       where: {
         id: { not: excludeTenderId },
-        status: { in: ["WON", "LOST", "CLOSED", "NO_BID"] }
+        status: { in: HISTORY_TENDER_STATUSES_ARRAY }
       },
       select: {
         id: true,

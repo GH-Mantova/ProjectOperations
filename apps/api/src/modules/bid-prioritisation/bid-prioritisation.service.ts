@@ -5,6 +5,7 @@ import {
   WhyFactor,
   WinLikelihoodService
 } from "../win-likelihood/win-likelihood.service";
+import { TERMINAL_TENDER_STATUSES_ARRAY } from "../tendering/tender-status";
 
 // ─── Configuration constant ───────────────────────────────────────────────────
 // TODO: replace with admin-configurable config row (AppConfig key: bid_priority_weight)
@@ -26,10 +27,9 @@ export interface BidPriorityItem {
   insufficientData: boolean;
 }
 
-// ─── Closed statuses (mirror win-likelihood.service.ts fetchClosedTenders) ───
-// Open tenders are those whose status is NOT in this set. Uses notIn rather
-// than a positive allowlist so new active statuses are included automatically.
-const CLOSED_STATUSES = ["WON", "LOST", "CLOSED", "NO_BID", "WITHDRAWN"] as const;
+// Open tenders are those whose status is NOT in TERMINAL_TENDER_STATUSES.
+// Uses notIn rather than a positive allowlist so new active statuses are
+// included automatically.
 
 /**
  * Compute the expected-value priority ranking for all open tenders.
@@ -61,7 +61,7 @@ export class BidPrioritisationService {
     // Single query — fetch all open tenders with client info.
     const openTenders = await this.prisma.tender.findMany({
       where: {
-        status: { notIn: [...CLOSED_STATUSES] }
+        status: { notIn: TERMINAL_TENDER_STATUSES_ARRAY }
       },
       select: {
         id: true,

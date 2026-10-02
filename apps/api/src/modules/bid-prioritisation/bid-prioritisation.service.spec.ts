@@ -2,6 +2,7 @@ import {
   BidPrioritisationService,
   BID_PRIORITY_WEIGHT
 } from "./bid-prioritisation.service";
+import { TERMINAL_TENDER_STATUSES_ARRAY } from "../tendering/tender-status";
 
 // ─── Mock builder helpers ─────────────────────────────────────────────────────
 
@@ -266,5 +267,54 @@ describe("BidPrioritisationService — getRankedOpenTenders", () => {
     const result = await svc.getRankedOpenTenders();
 
     expect(result[0].client).toBeNull();
+  });
+
+  // ─── Regression: won statuses excluded from open tenders ─────────────────────
+  // This test fails on origin/main because CLOSED_STATUSES used the stale vocab.
+  // After this fix TERMINAL_TENDER_STATUSES_ARRAY drives the notIn filter.
+
+  it("Prisma notIn filter includes AWARDED, CONTRACT_ISSUED, and CONVERTED (regression: stale CLOSED_STATUSES)", () => {
+    // Assert that the vocabulary used for the notIn query includes all three won statuses.
+    // When the production code used CLOSED_STATUSES = [WON, LOST, CLOSED, NO_BID, WITHDRAWN],
+    // these three statuses were absent and would have been returned as "open" work.
+    expect(TERMINAL_TENDER_STATUSES_ARRAY).toContain("AWARDED");
+    expect(TERMINAL_TENDER_STATUSES_ARRAY).toContain("CONTRACT_ISSUED");
+    expect(TERMINAL_TENDER_STATUSES_ARRAY).toContain("CONVERTED");
+  });
+
+  it("SUBMITTED tender appears in ranked list (open status is NOT excluded)", async () => {
+    // Verifies that a real open-status tender still flows through.
+    // The mock prisma returns whatever tenders we give it (the notIn is enforced
+    // by Prisma at DB level; here we verify the service processes a SUBMITTED tender).
+    const tender = makeTender({ id: "t-submitted", title: "Submitted Tender" });
+    const wl = makeWlResult({ pointEstimate: 0.6 });
+
+    const prisma = makePrisma([tender]);
+    const winLikelihood = makeWinLikelihood([wl]);
+    const svc = new BidPrioritisationService(prisma as never, winLikelihood as never);
+
+    const result = await svc.getRankedOpenTenders();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].tenderId).toBe("t-submitted");
+  });
+
+  it("Prisma findMany is called with notIn: TERMINAL_TENDER_STATUSES_ARRAY (regression: AWARDED absent from old CLOSED_STATUSES)", async () => {
+    const prisma = makePrisma([]);
+    const winLikelihood = makeWinLikelihood([]);
+    const svc = new BidPrioritisationService(prisma as never, winLikelihood as never);
+
+    await svc.getRankedOpenTenders();
+
+    const callArg = (prisma.tender.findMany as jest.Mock).mock.calls[0][0];
+    const notInList: string[] = callArg.where.status.notIn;
+
+    // All three won statuses must be in the notIn list.
+    // On origin/main this assertion fails because CLOSED_STATUSES lacked them.
+    expect(notInList).toContain("AWARDED");
+    expect(notInList).toContain("CONTRACT_ISSUED");
+    expect(notInList).toContain("CONVERTED");
+    // WITHDRAWN must also be present
+    expect(notInList).toContain("WITHDRAWN");
   });
 });

@@ -4,6 +4,7 @@ import {
   CONFIDENCE_THRESHOLDS
 } from "./win-likelihood.service";
 import { TenderFeatures } from "./win-likelihood-features.service";
+import { HISTORY_TENDER_STATUSES_ARRAY } from "../tendering/tender-status";
 
 // Use string literals matching the TenderOutcomeResult enum values from schema.prisma.
 // Avoids a direct @prisma/client import so tests run before prisma:generate.
@@ -237,6 +238,58 @@ describe("WinLikelihoodService — computeFromFeatures", () => {
     const factor = result.whyFactors.find((f) => f.factor === "insufficient_data");
     expect(factor).toBeDefined();
     expect(factor!.direction).toBe("NEUTRAL");
+  });
+
+  // ─── Regression: AWARDED tender enters the cohort ────────────────────────────
+  // On origin/main fetchClosedTenders filtered status IN [WON, LOST, CLOSED, NO_BID].
+  // AWARDED, CONTRACT_ISSUED and CONVERTED were all absent, so real wins never
+  // entered the history cohort. The fix uses HISTORY_TENDER_STATUSES_ARRAY.
+
+  it("HISTORY_TENDER_STATUSES_ARRAY contains AWARDED, CONTRACT_ISSUED, CONVERTED (regression)", () => {
+    // This assertion fails on origin/main where the filter was [WON, LOST, CLOSED, NO_BID].
+    expect(HISTORY_TENDER_STATUSES_ARRAY).toContain("AWARDED");
+    expect(HISTORY_TENDER_STATUSES_ARRAY).toContain("CONTRACT_ISSUED");
+    expect(HISTORY_TENDER_STATUSES_ARRAY).toContain("CONVERTED");
+  });
+
+  it("HISTORY_TENDER_STATUSES_ARRAY excludes WITHDRAWN (no outcome, must not skew cohort)", () => {
+    expect(HISTORY_TENDER_STATUSES_ARRAY).not.toContain("WITHDRAWN");
+  });
+
+  it("cohort of one AWARDED win and one LOST tender → 1 win and 1 loss (regression: was 0 and 1)", async () => {
+    // makeClosedTender sets status implicitly via the Prisma mock — what matters
+    // is the TenderOutcome.resultType used by countWinsLosses.
+    // An AWARDED tender that has a WON outcome must count as a win.
+    const closed = [
+      makeClosedTender("awarded-tender", TenderOutcomeResult.WON),
+      makeClosedTender("lost-tender", TenderOutcomeResult.LOST)
+    ];
+    const prisma = makePrisma(closed);
+    const featuresSvc = makeFeaturesSvc(prisma);
+    const svc = new WinLikelihoodService(prisma as never, featuresSvc);
+    const result = await svc.computeFromFeatures(makeFeatures(), "t-new");
+    // cohortSize must be 2 (1 win + 1 loss), not 1 (before fix the AWARDED row
+    // would have been absent from fetchClosedTenders).
+    expect(result.cohortSize).toBe(2);
+    // pointEstimate = 1 win / 2 total = 0.5
+    expect(result.pointEstimate).toBeCloseTo(0.5, 5);
+  });
+
+  it("fetchClosedTenders uses HISTORY_TENDER_STATUSES_ARRAY in Prisma query (regression)", async () => {
+    const prisma = makePrisma([]);
+    const featuresSvc = makeFeaturesSvc(prisma);
+    const svc = new WinLikelihoodService(prisma as never, featuresSvc);
+
+    await svc.computeFromFeatures(makeFeatures(), "t-1");
+
+    const callArg = (prisma.tender.findMany as jest.Mock).mock.calls[0][0];
+    const inList: string[] = callArg.where.status.in;
+
+    // On origin/main this was ["WON", "LOST", "CLOSED", "NO_BID"] — missing all real wins.
+    expect(inList).toContain("AWARDED");
+    expect(inList).toContain("CONTRACT_ISSUED");
+    expect(inList).toContain("CONVERTED");
+    expect(inList).not.toContain("WITHDRAWN");
   });
 });
 

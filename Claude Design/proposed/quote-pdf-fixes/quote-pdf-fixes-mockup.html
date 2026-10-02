@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quote PDF Fixes Mock-up</title>
+<style>
+/* Content and layout follow the "Quote PDF As Built" artifact and quote-html.builder.ts @ origin/main 7d9926ae.
+   Brand teal #005B61 and light grey from the builder's BRAND block. Example data. */
+*{box-sizing:border-box}
+body{margin:0;background:#E9ECEF;color:#111;font:14px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:1120px;margin:0 auto}h1{font-size:24px;margin:0 0 6px}
+.lede{color:#4B5563;margin:0 0 22px;max-width:80ch}
+h2.sec{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:#6B7280;margin:30px 0 10px;display:flex;gap:10px;align-items:center}
+h2.sec .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#FEAA6D;color:#242424;font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}@media(max-width:860px){.pair{grid-template-columns:minmax(0,1fr)}}
+.cap{font-size:12px;font-weight:700;margin:0 0 6px;display:flex;gap:8px;align-items:center}
+.tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px}
+.bad{background:#FEE2E2;color:#991B1B}.ok{background:#DCFCE7;color:#166534}
+/* paper */
+.sheet{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);font-family:Outfit,-apple-system,"Segoe UI",sans-serif;font-size:11px;color:#222;overflow:hidden}
+.band{background:#005B61;color:#fff;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;font-family:Helvetica,Arial,sans-serif}
+.band b{font-size:13px}.band span{font-size:9.5px}
+.dc{font-size:8.5px;color:#555;padding:3px 14px;border-bottom:1px solid #eee;font-family:Helvetica,Arial,sans-serif}
+.pg{padding:12px 14px}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:3px 16px;font-size:10.5px}
+.meta .l{color:#666;font-weight:600;margin-right:4px}
+.hl{color:#111;background:#FFF7D6;outline:1px dashed #C77A3A;border-radius:2px;padding:0 2px}
+.sh{font-weight:700;color:#005B61;font-size:11px;margin:10px 0 2px;letter-spacing:.03em}
+.rule{border-top:1.5px solid #005B61;margin-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:10px}
+th{background:#005B61;color:#fff;text-align:left;padding:4px 6px;font-weight:700}
+th.g{background:#EEF0F1;color:#333}
+td{padding:4px 6px;border-bottom:1px solid #eee}
+.r{text-align:right}
+tr.tot td{font-weight:700;border-top:1.5px solid #005B61;background:#F3F7F7}
+.tc{column-count:2;column-gap:12px;font-size:8px;line-height:1.5;text-align:justify}
+.tc h4{font-size:8.5px;margin:4px 0 2px;color:#005B61}
+.tc p{margin:0 0 4px}
+.tc p.pre{white-space:pre-line}
+.acc .hd{background:#005B61;color:#fff;font-weight:700;padding:5px 8px;font-size:10.5px}
+.acc .in{font-size:9.5px;color:#444;margin:6px 0}
+.acc .lb{font-size:8.5px;color:#666;font-weight:700;margin-top:6px}
+.acc .nm{font-weight:700;font-size:10.5px;margin:2px 0 8px}
+.line{border-bottom:1px solid #999;height:18px}.fl{font-size:8.5px;color:#666;margin:2px 0 6px}
+.note{font-size:12.5px;color:#4B5563;margin:8px 0 0}
+.ui{background:#fff;border:1px solid #D1D5DB;border-radius:10px;padding:14px 16px;font-size:13px}
+.ui .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;font:inherit;font-size:12.5px}
+.btn.p{background:#FEAA6D;border-color:#FEAA6D}
+.chip{font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;background:#E6F0F1;color:#005B61}
+.calls{display:grid;gap:10px;margin-top:10px}
+.call{background:#fff;border:1px solid #E5E7EB;border-left:3px solid #005B61;border-radius:0 8px 8px 0;padding:11px 14px;font-size:13px}
+.call.q{border-left-color:#C77A3A}
+.call ol{margin:6px 0 0;padding-left:20px}.call li{margin-bottom:4px}
+</style></head><body><div class="wrap">
+
+<h1>Quote PDF: six fixes to the signed-off design</h1>
+<p class="lede">Each pair below is the same part of the same quote, before and after. Highlighted text is what changes. Nothing else on the PDF moves: same pages, same order, same fonts, same totals. The quote screen doesn't change either (section 5). The two choices are recorded at the bottom.</p>
+
+<!-- 1 -->
+<h2 class="sec"><span class="n">1</span>Page 1 header: which revision, and which date</h2>
+<div class="pair">
+ <div><p class="cap">Today <span class="tag bad">re-stamps itself</span></p>
+  <div class="sheet"><div class="band"><b>INITIAL SERVICES</b><span>Quote No. IS-2609-0412</span></div>
+  <div class="dc">Electronic document | Uncontrolled when printed | Printed on: 02/10/2026</div>
+  <div class="pg"><div class="meta">
+   <div><span class="l">Company:</span>Wattlebank Constructions Pty Ltd</div><div><span class="l">Quote No:</span>IS-2609-0412</div>
+   <div><span class="l">Attention:</span>Dianne Park</div><div><span class="l">Date:</span>02/10/2026</div>
+   <div><span class="l">Project:</span>Northshore Tower — L3 &amp; 4</div><div><span class="l">Rate basis:</span>Rates as of 05/09/2026</div>
+  </div></div></div>
+  <p class="note">This is revision 2, sent on 10/09/2026. Downloaded today, it says 02/10/2026 and nothing shows it's revision 2. The client can't tell which version they're holding.</p></div>
+ <div><p class="cap">After <span class="tag ok">stored date + revision</span></p>
+  <div class="sheet"><div class="band"><b>INITIAL SERVICES</b><span>Quote No. IS-2609-0412 <span class="hl">· Rev 2</span></span></div>
+  <div class="dc">Electronic document | Uncontrolled when printed | Printed on: 02/10/2026</div>
+  <div class="pg"><div class="meta">
+   <div><span class="l">Company:</span>Wattlebank Constructions Pty Ltd</div><div><span class="l">Quote No:</span>IS-2609-0412 <span class="hl">Rev 2</span></div>
+   <div><span class="l">Attention:</span>Dianne Park</div><div><span class="l">Date:</span><span class="hl">10/09/2026</span></div>
+   <div><span class="l">Project:</span>Northshore Tower — L3 &amp; 4</div><div><span class="l">Rate basis:</span>Rates as of 05/09/2026</div>
+  </div></div></div>
+  <p class="note">"Date" is the day the quote was <b>sent</b>, so it never changes. A quote not yet sent shows today's date, as it does now. "Printed on" in the grey strip stays the print date: that's the document-control stamp, and it should change.</p></div>
+</div>
+
+<!-- 2 -->
+<h2 class="sec"><span class="n">2</span>Cost options: the grey header</h2>
+<div class="pair">
+ <div><p class="cap">Today <span class="tag bad">no total, header style never applies</span></p>
+  <div class="sheet"><div class="pg"><div class="sh">COST OPTIONS</div><div class="rule"></div>
+  <table><tr><th>OPTION</th><th>DESCRIPTION</th><th class="r">PRICE</th></tr>
+  <tr><td>OPT-1</td><td>Out-of-hours works premium, 6:00pm to 5:00am</td><td class="r">$38,600</td></tr>
+  <tr><td>OPT-2</td><td>Dilapidation report, adjoining tenancies</td><td class="r">$4,750</td></tr></table></div></div></div>
+ <div><p class="cap">After <span class="tag ok">grey header, no total (Marco, 2 Oct)</span></p>
+  <div class="sheet"><div class="pg"><div class="sh">COST OPTIONS</div><div class="rule"></div>
+  <table><tr><th class="g hl">OPTION</th><th class="g hl">DESCRIPTION</th><th class="g r hl">PRICE</th></tr>
+  <tr><td>OPT-1</td><td>Out-of-hours works premium, 6:00pm to 5:00am</td><td class="r">$38,600</td></tr>
+  <tr><td>OPT-2</td><td>Dilapidation report, adjoining tenancies</td><td class="r">$4,750</td></tr></table></div></div>
+  <p class="note">The grey header is what the stylesheet always meant (it was written for a cell type the table doesn't use). No total row: options are separate choices and the client adds up what they pick (Marco, 2 Oct).</p></div>
+</div>
+
+<!-- 3 -->
+<h2 class="sec"><span class="n">3</span>Terms and conditions keep their line breaks</h2>
+<div class="pair">
+ <div><p class="cap">Today <span class="tag bad">clauses 1–4 run together</span></p>
+  <div class="sheet"><div class="pg"><div class="tc">
+   <h4>1. DEFINITIONS</h4><p>Contractor – The demolition contractor issuing this quotation. Client – The person or entity accepting the quotation. Works – The demolition and associated services described in the quotation. Quote – The written price, scope, and assumptions issued by the Contractor.</p>
+   <h4>2. ACCEPTANCE OF QUOTE</h4><p>The Client accepts the Quote by: a) signing or otherwise approving it; b) issuing a purchase order or confirmation (including email); or c) permitting the Contractor to commence the Works. These Terms &amp; Conditions form part of the agreement upon acceptance.</p>
+  </div></div></div></div>
+ <div><p class="cap">After <span class="tag ok">as written in the terms</span></p>
+  <div class="sheet"><div class="pg"><div class="tc">
+   <h4>1. DEFINITIONS</h4><p class="pre">Contractor – The demolition contractor issuing this quotation.
+Client – The person or entity accepting the quotation.
+Works – The demolition and associated services described in the quotation.
+Quote – The written price, scope, and assumptions issued by the Contractor.</p>
+   <h4>2. ACCEPTANCE OF QUOTE</h4><p class="pre">The Client accepts the Quote by:
+a) signing or otherwise approving it;
+b) issuing a purchase order or confirmation (including email); or
+c) permitting the Contractor to commence the Works.
+These Terms &amp; Conditions form part of the agreement upon acceptance.</p>
+  </div></div></div>
+  <p class="note">The wording is unchanged; only the line breaks that are already in the terms text now print. This matters most for the a)/b)/c) list that defines how a client accepts.</p></div>
+</div>
+
+<!-- 4 -->
+<h2 class="sec"><span class="n">4</span>The signature page: the client's real name</h2>
+<div class="pair">
+ <div><p class="cap">Today <span class="tag bad">shouted, and a placeholder can print</span></p>
+  <div class="sheet"><div class="pg acc"><div class="hd">ACCEPTANCE</div>
+   <div class="in">By signing below, the client acknowledges they have read, understood and agree to the Terms and Conditions of this quotation.</div>
+   <div class="lb">FOR AND ON BEHALF OF:</div><div class="nm">WATTLEBANK CONSTRUCTIONS PTY LTD</div>
+   <div class="line"></div><div class="fl">Signature</div>
+   <p class="note" style="font-size:10px;margin:6px 0 0">With no client linked (internal estimate preview) this line reads <b>[CLIENT COMPANY NAME]</b>, brackets and all.</p></div></div></div>
+ <div><p class="cap">After <span class="tag ok">as stored</span></p>
+  <div class="sheet"><div class="pg acc"><div class="hd">ACCEPTANCE</div>
+   <div class="in">By signing below, the client acknowledges they have read, understood and agree to the Terms and Conditions of this quotation.</div>
+   <div class="lb">FOR AND ON BEHALF OF:</div><div class="nm"><span class="hl">Wattlebank Constructions Pty Ltd</span></div>
+   <div class="line"></div><div class="fl">Signature</div>
+   <p class="note" style="font-size:10px;margin:6px 0 0">With no client linked: <span class="hl">a blank ruled line labelled "Client name"</span>, to be filled in by hand.</p></div></div>
+  <p class="note">The legal entity name prints exactly as it's recorded (capitals, "Pty Ltd" and all), the same as on page 1.</p></div>
+</div>
+
+<!-- 5 -->
+<h2 class="sec"><span class="n">5</span>The screen that produces it: unchanged</h2>
+<div class="ui"><div class="row"><b>Quote IS-2609-0412</b><span class="chip">Rev 2 · Sent 10/09/2026</span><span style="flex:1"></span><button class="btn">Preview</button><button class="btn p">Download PDF</button></div>
+<p class="note" style="margin-top:8px">No change to the quote screen, its toggles or its buttons. Everything above happens inside the PDF builder, from data the quote already has: revision, sent date, option prices.</p></div>
+
+<h2 class="sec">Decided 2 October</h2>
+<div class="calls">
+ <div class="call"><b>Date on page 1:</b> the date the quote was sent; today's date while it is still a draft.</div>
+ <div class="call"><b>Cost options:</b> grey header, no total row.</div>
+ <div class="call"><b>Not in this batch, on purpose:</b> making "detailed" the default layout (still waiting on your call, punch list 1.5.4), the 6pt terms size, and the signature block landing alone on a page. Each changes the signed-off design rather than fixing a defect in it.</div>
+</div>
+</div></body></html>

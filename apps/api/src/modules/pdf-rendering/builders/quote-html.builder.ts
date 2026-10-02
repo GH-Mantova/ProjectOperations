@@ -16,6 +16,8 @@ import {
 } from "../../estimate-export/pdf/tc-text.const";
 import { getTemplatesDir } from "../template.helpers";
 
+export const QUOTE_PDF_FIXES_V1 = "quote-pdf-fixes-s1";
+
 // QUOTE_PUSH_BY_DESTINATION_V1 (scopecards-s4a) -- overlay cost line now
 // carries groupId so the builder can render grouped vs ungrouped.
 export type OverlayCostLine = {
@@ -40,6 +42,7 @@ export type OverlayCostGroup = {
 export type QuoteOverlay = {
   quoteRef: string;
   revision: number;
+  sentAt: Date | null;
   assumptionMode: "free" | "linked";
   showProvisional: boolean;
   showCostOptions: boolean;
@@ -255,7 +258,7 @@ tr.disc-header td {
   font-size: 8.5pt;
   padding: 4pt 6pt;
 }
-tr.cost-opt-header td {
+tr.cost-opt-header th {
   background: ${BRAND.lightGrey};
   color: ${BRAND.darkGrey};
   font-weight: 700;
@@ -291,6 +294,7 @@ tr.cost-opt-header td {
 .tc-clause p {
   color: #333;
   text-align: justify;
+  white-space: pre-line;
 }
 
 /* ── Acceptance block ──────────────────────────────── */
@@ -391,11 +395,17 @@ function coverPage(
   // never falls back to the print date, which is what the header displays and
   // what this row exists to distinguish itself from.
   const rateBasisText = esc(rateBasisLine(p.tender.rateSet?.lockedAt ?? null));
+  // QUOTE_PDF_FIXES_V1 — "Date:" is the sent date; while draft (or estimate preview) it is today.
+  const coverDate = fmtDate(overlay?.sentAt ?? new Date());
+  // QUOTE_PDF_FIXES_V1 — "Quote No:" includes revision for issued quotes.
+  const refValue = !isEstimatePreview
+    ? `${quoteRef} Rev ${overlay!.revision}`
+    : quoteRef;
   html += `<div class="meta-grid">
   <div><span class="label">Company:</span> <span class="value">${esc(primaryClient?.name ?? "—")}</span></div>
-  <div><span class="label">${esc(refLabel)}</span> <span class="value">${esc(quoteRef)}</span></div>
+  <div><span class="label">${esc(refLabel)}</span> <span class="value">${esc(refValue)}</span></div>
   <div><span class="label">Attention:</span> <span class="value">${esc(primaryClient?.contactName ?? "—")}</span></div>
-  <div><span class="label">Date:</span> <span class="value">${fmtDate(new Date())}</span></div>
+  <div><span class="label">Date:</span> <span class="value">${coverDate}</span></div>
   <div><span class="label">Phone:</span> <span class="value">${esc(primaryClient?.contactPhone ?? "—")}</span></div>
   <div><span class="label">Rate basis:</span> <span class="value">${rateBasisText}</span></div>
   <div><span class="label">Project:</span> <span class="value">${esc(p.tender.title)}</span></div>
@@ -864,13 +874,19 @@ function assumptionsPage(
 
 // ── Acceptance block ────────────────────────────────────────────────
 function acceptanceBlock(p: ExportPayload): string {
-  const clientName =
-    p.tender.clients[0]?.name ?? "[CLIENT COMPANY NAME]";
+  // QUOTE_PDF_FIXES_V1 — print name as stored (no toUpperCase). With no
+  // client, show a blank ruled line labelled "Client name" rather than
+  // a placeholder literal.
+  const clientName = p.tender.clients[0]?.name ?? null;
   let html = `<div class="acceptance-wrapper">`;
   html += `<div class="acceptance-header">ACCEPTANCE</div>`;
   html += `<div class="acceptance-intro">By signing below, the client acknowledges they have read, understood and agree to the Terms and Conditions of this quotation.</div>`;
   html += `<div class="sign-field-label">FOR AND ON BEHALF OF:</div>`;
-  html += `<div style="font-weight:700;font-size:9pt;margin-bottom:8pt">${esc(clientName.toUpperCase())}</div>`;
+  if (clientName !== null) {
+    html += `<div style="font-weight:700;font-size:9pt;margin-bottom:8pt">${esc(clientName)}</div>`;
+  } else {
+    html += `<div class="sign-field"></div><div class="sign-field-name">Client name</div>`;
+  }
   html += `<div class="sign-fields">`;
   const fields = [
     "Signature",
@@ -915,6 +931,8 @@ const DEFAULT_PDF_COMPANY_CONTEXT: PdfCompanyContext = {
 export type HeaderTemplateOptions = {
   isEstimatePreview?: boolean;
   ratesLockedAt?: Date | null;
+  // QUOTE_PDF_FIXES_V1 — when set, the teal band reads "Quote No. <ref> · Rev <n>".
+  revision?: number;
 };
 
 // RATE_BASIS_STAMP_V1 — the client-facing document must never invent a
@@ -933,7 +951,12 @@ function headerTemplate(
   ctx: PdfCompanyContext = DEFAULT_PDF_COMPANY_CONTEXT,
   options: HeaderTemplateOptions = {},
 ): string {
-  const { isEstimatePreview = false, ratesLockedAt = null } = options;
+  const { isEstimatePreview = false, ratesLockedAt = null, revision } = options;
+  // QUOTE_PDF_FIXES_V1 — teal band shows revision when supplied.
+  const quoteLabel =
+    revision !== undefined
+      ? `Quote No. ${esc(quoteRef)} · Rev ${revision}`
+      : `Quote No. ${esc(quoteRef)}`;
   const logo = logoBase64();
   const rightMeta = ctx.headerRightMeta ?? DEFAULT_PDF_COMPANY_CONTEXT.headerRightMeta ?? "";
   const rateBasis = esc(rateBasisLine(ratesLockedAt));
@@ -960,7 +983,7 @@ function headerTemplate(
     <img src="data:image/png;base64,${logo}" style="height:28pt;width:auto">
     <span style="font-weight:700;font-size:12pt;flex:1">${esc(ctx.tradingName.toUpperCase())}</span>
     <span style="font-size:6.5pt;text-align:right;white-space:nowrap">${esc(rightMeta)}</span>
-    <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:8pt">Quote No. ${esc(quoteRef)}</span>
+    <span style="position:absolute;bottom:2pt;left:50%;transform:translateX(-50%);font-weight:700;font-size:8pt">${quoteLabel}</span>
   </div>
   <div style="height:2pt;background:${BRAND.orange}"></div>
   <div style="text-align:right;font-size:6pt;color:#777;padding:2pt 15mm 0 15mm;line-height:1.4">${rateBasis} &nbsp;|&nbsp; Electronic document &nbsp;|&nbsp; Uncontrolled when printed &nbsp;|&nbsp; Printed on: <span class="date"></span></div>

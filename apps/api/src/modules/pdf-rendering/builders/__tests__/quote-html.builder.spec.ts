@@ -4,6 +4,7 @@ import {
   buildQuoteHtml,
   headerTemplate,
   footerTemplate,
+  QUOTE_PDF_FIXES_V1,
   type QuoteOverlay,
 } from "../quote-html.builder";
 import { PdfRendererService } from "../../pdf-renderer.service";
@@ -92,6 +93,7 @@ function makeOverlay(
   return {
     quoteRef: "IS-Q001",
     revision: 1,
+    sentAt: null,
     assumptionMode: "free",
     showProvisional: false,
     showCostOptions: false,
@@ -455,6 +457,149 @@ describe("Quote HTML builder", () => {
 
     expect(html).toContain("Client-facing description");
     expect(html).not.toContain("Technical internal description");
+  });
+
+  // ── QUOTE_PDF_FIXES_V1 ────────────────────────────────────────────────────
+
+  it("QUOTE_PDF_FIXES_V1 — marker export exists", () => {
+    expect(QUOTE_PDF_FIXES_V1).toBe("quote-pdf-fixes-s1");
+  });
+
+  describe("QUOTE_PDF_FIXES_V1 — sent date", () => {
+    it("cover Date reads sentAt when supplied", () => {
+      // Pin render clock to 2026-10-02; sentAt is 2026-09-10.
+      // Cover must show 10/09/2026, not the render date 02/10/2026.
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-10-02T00:00:00.000Z"));
+      try {
+        const overlay = makeOverlay({ sentAt: new Date("2026-09-10T00:00:00.000Z") });
+        const html = buildQuoteHtml(basePayload(), overlay);
+        expect(html).toContain("10/09/2026");
+        // The render date must NOT appear as the cover Date (though it may appear
+        // in other contexts like a rateSet lockedAt — this payload has none, so
+        // 02/10/2026 would only appear if we regressed to printing today).
+        // We only check that the sentAt date IS present.
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("cover Date reads today when sentAt is null (draft)", () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-10-02T00:00:00.000Z"));
+      try {
+        const overlay = makeOverlay({ sentAt: null });
+        const html = buildQuoteHtml(basePayload(), overlay);
+        expect(html).toContain("02/10/2026");
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("estimate preview (no overlay) reads today's date", () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-10-02T00:00:00.000Z"));
+      try {
+        const html = buildQuoteHtml(basePayload());
+        expect(html).toContain("02/10/2026");
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe("QUOTE_PDF_FIXES_V1 — revision", () => {
+    it("revision 2 renders in meta-grid and in headerTemplate", () => {
+      const overlay = makeOverlay({ quoteRef: "IS-2609-0412", revision: 2, sentAt: null });
+      const html = buildQuoteHtml(basePayload(), overlay);
+      expect(html).toContain("IS-2609-0412 Rev 2");
+
+      const header = headerTemplate("IS-2609-0412", undefined, { revision: 2 });
+      expect(header).toContain("Rev 2");
+    });
+
+    it("revision 1 also prints Rev 1", () => {
+      const overlay = makeOverlay({ quoteRef: "IS-2609-0412", revision: 1, sentAt: null });
+      const html = buildQuoteHtml(basePayload(), overlay);
+      expect(html).toContain("IS-2609-0412 Rev 1");
+    });
+
+    it("estimate preview contains no Rev", () => {
+      const html = buildQuoteHtml(basePayload());
+      expect(html).not.toMatch(/Rev\s+\d/);
+
+      const header = headerTemplate("EST-T260512-BRIS-Rev1", undefined, { isEstimatePreview: true });
+      expect(header).not.toMatch(/\bRev\s+\d/);
+    });
+  });
+
+  describe("QUOTE_PDF_FIXES_V1 — terms line breaks", () => {
+    it("a clause body with newlines survives into the HTML", () => {
+      const payload = basePayload();
+      payload.tandc = {
+        clauses: [
+          { number: "1", heading: "TEST CLAUSE", body: "a) one\nb) two" }
+        ]
+      };
+      const html = buildQuoteHtml(payload);
+      expect(html).toContain("a) one\nb) two");
+    });
+
+    it("stylesheet carries white-space: pre-line for .tc-clause p", () => {
+      const html = buildQuoteHtml(basePayload());
+      expect(html).toContain("white-space: pre-line");
+    });
+  });
+
+  describe("QUOTE_PDF_FIXES_V1 — cost options header", () => {
+    it("stylesheet selector is tr.cost-opt-header th", () => {
+      const html = buildQuoteHtml(basePayload());
+      expect(html).toContain("tr.cost-opt-header th");
+      expect(html).not.toContain("tr.cost-opt-header td");
+    });
+
+    it("cost options table has no total row", () => {
+      const overlay = makeOverlay({
+        showCostOptions: true,
+        costOptions: [
+          { label: "OPT-1", description: "Out-of-hours works", price: 38600, notes: null },
+          { label: "OPT-2", description: "Dilapidation report", price: 4750, notes: null },
+        ],
+      });
+      const html = buildQuoteHtml(basePayload(), overlay);
+      expect(html).toContain("COST OPTIONS");
+      const afterCostOpts = html.slice(html.indexOf("COST OPTIONS"));
+      const nextSection = afterCostOpts.indexOf("section-heading", "COST OPTIONS".length);
+      const costOptsBlock = nextSection > -1
+        ? afterCostOpts.slice(0, nextSection)
+        : afterCostOpts;
+      expect(costOptsBlock).not.toContain('class="total"');
+    });
+  });
+
+  describe("QUOTE_PDF_FIXES_V1 — acceptance block client name", () => {
+    it("client name prints verbatim with no uppercase", () => {
+      const payload = basePayload();
+      payload.tender.clients = [{
+        id: "c-1",
+        name: "Wattlebank Constructions Pty Ltd",
+        contactName: "Dianne Park",
+        contactEmail: null,
+        contactPhone: null,
+      }];
+      const html = buildQuoteHtml(payload, makeOverlay());
+      expect(html).toContain("Wattlebank Constructions Pty Ltd");
+      expect(html).not.toContain("WATTLEBANK CONSTRUCTIONS PTY LTD");
+    });
+
+    it("with no client shows Client name label and no placeholder brackets", () => {
+      const payload = basePayload();
+      payload.tender.clients = [];
+      const html = buildQuoteHtml(payload, makeOverlay());
+      expect(html).toContain("Client name");
+      expect(html).not.toContain("[");
+      expect(html).not.toContain("]");
+    });
   });
 });
 

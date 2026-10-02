@@ -1209,6 +1209,8 @@ function readYamlFrontMatterDeps(body, deps) {
         if (listVal !== "") deps.requiresFilesOnMain.push(listVal);
       } else if (currentKey === "requires_on_main") {
         if (listVal !== "") deps.requiresOnMain.push(listVal);
+      } else if (currentKey === "scope") {
+        if (listVal !== "") deps.scope.push(listVal);
       }
       continue;
     }
@@ -1235,13 +1237,15 @@ function readYamlFrontMatterDeps(body, deps) {
       // escalates:true means a human decides the merge. Until 2026-08-17 the watcher did not
       // know this word existed and enabled auto-merge on every PR it opened.
       deps.escalates = /^true$/i.test(inline);
+    } else if (currentKey === "scope") {
+      if (inline !== "") deps.scope.push(inline);
     }
     currentKey = null;
   }
 }
 
 export function parseWatcherFrontMatter(body) {
-  const deps = { requiresMerged: [], requiresFilesOnMain: [], requiresOnMain: [], fixesPr: null, escalates: false };
+  const deps = { requiresMerged: [], requiresFilesOnMain: [], requiresOnMain: [], fixesPr: null, escalates: false, scope: [] };
   for (const line of body.split("\n")) {
     const t = line.trim();
     if (t === "") continue;
@@ -1262,6 +1266,7 @@ export function parseWatcherFrontMatter(body) {
   deps.requiresMerged = [...new Set(deps.requiresMerged)];
   deps.requiresFilesOnMain = [...new Set(deps.requiresFilesOnMain)];
   deps.requiresOnMain = [...new Set(deps.requiresOnMain)];
+  deps.scope = [...new Set(deps.scope)];
   return deps;
 }
 
@@ -1711,6 +1716,142 @@ function extractPrNumber(text) {
   const hashMatch = text.match(/(?:PR|pr|pull request)\s*#(\d+)/);
   if (hashMatch) return Number(hashMatch[1]);
   return null;
+}
+
+// PR_NUMBER_FROM_THE_BOARD_V1
+//
+// Test whether a single file path matches a glob pattern. Supports:
+//   - Literal paths (no wildcards): exact or trailing-segment match
+//   - Globs with * (matches within one path segment, not /)
+//   - Globs with ** (matches any sequence of segments)
+// Zero external dependencies — uses only string / regex ops.
+// Pure, exported for unit tests.
+export function matchesGlob(filePath, glob) {
+  // Normalise separators to forward-slash.
+  const fp = filePath.replace(/\\/g, "/");
+  const gl = glob.replace(/\\/g, "/");
+  // Build a regex from the glob.
+  // Escape all regex special chars except * (and /), then handle ** vs *.
+  let regexSrc = "";
+  for (let i = 0; i < gl.length; i++) {
+    const c = gl[i];
+    if (c === "*" && gl[i + 1] === "*") {
+      // ** — match any sequence of chars including /
+      regexSrc += ".*";
+      i++; // skip second *
+      // skip the trailing slash after ** if present
+      if (gl[i + 1] === "/") i++;
+    } else if (c === "*") {
+      // * — match any sequence of chars except /
+      regexSrc += "[^/]*";
+    } else if (/[.+^${}()|[\]\\]/.test(c)) {
+      regexSrc += "\\" + c;
+    } else {
+      regexSrc += c;
+    }
+  }
+  const re = new RegExp("^" + regexSrc + "$");
+  return re.test(fp);
+}
+
+// Match a PR's changed file paths against an array of scope globs.
+// Returns true if at least one file path matches at least one glob.
+// Pure, exported for unit tests.
+export function prTouchesScope(prFiles, scopeGlobs) {
+  if (!Array.isArray(prFiles) || prFiles.length === 0) return false;
+  if (!Array.isArray(scopeGlobs) || scopeGlobs.length === 0) return false;
+  for (const file of prFiles) {
+    const fp = typeof file === "string" ? file : (file.path ?? "");
+    if (!fp) continue;
+    for (const glob of scopeGlobs) {
+      if (matchesGlob(fp, glob)) return true;
+    }
+  }
+  return false;
+}
+
+// PR_NUMBER_FROM_THE_BOARD_V1
+//
+// Resolve which PR a just-finished build produced by querying the GitHub board
+// rather than scraping the agent's prose.
+//
+// Parameters:
+//   agentOutput    — the full stdout+stderr of the agent run (kept for cross-check)
+//   runStartedAtMs — Date.now() taken just before the child was spawned
+//   scope          — array of file-glob strings from the prompt's `scope` field
+//   listPrs        — injectable async fn() → array of PR objects
+//                    (defaults to calling `gh pr list --state all --limit 30 ...`)
+//                    Injected in tests; omit in production.
+//
+// Returns one of:
+//   number            — exactly one candidate found; use this PR number
+//   null              — zero candidates; no PR was opened
+//   { ambiguous: [] } — two or more candidates; fail closed
+//   { error: string } — gh unreachable; fail closed
+//
+// Side effects: logs to console via `log()`.
+export async function resolveBuiltPr({
+  agentOutput,
+  runStartedAtMs,
+  scope = [],
+  listPrs,
+} = {}) {
+  // Default listPrs: call gh pr list with the required fields.
+  const fetchPrs = listPrs ?? (async () => {
+    return runGh(
+      ["pr", "list", "--state", "all", "--limit", "30",
+       "--json", "number,createdAt,headRefName,files,author"],
+      { json: true },
+    );
+  });
+
+  let allPrs;
+  try {
+    allPrs = await fetchPrs();
+  } catch (err) {
+    log("pr-resolve", `[CANNOT MEASURE] gh pr list failed: ${err.message}`);
+    return { error: `gh pr list failed: ${err.message}` };
+  }
+
+  if (!Array.isArray(allPrs)) {
+    log("pr-resolve", "[CANNOT MEASURE] gh pr list returned non-array");
+    return { error: "gh pr list returned non-array" };
+  }
+
+  // Window: PR must have been created within 60s before the run started.
+  const windowMs = runStartedAtMs - 60_000;
+
+  const candidates = allPrs.filter((pr) => {
+    const createdMs = Date.parse(pr.createdAt);
+    if (!Number.isFinite(createdMs) || createdMs < windowMs) return false;
+    // Files intersect scope?
+    const prFiles = (pr.files ?? []).map((f) => typeof f === "string" ? f : (f.path ?? ""));
+    return prTouchesScope(prFiles, scope);
+  });
+
+  if (candidates.length === 0) {
+    log("pr-resolve", `board: 0 candidates in window (run started ${new Date(runStartedAtMs).toISOString()}, scope=[${scope.join(", ")}])`);
+    return null;
+  }
+
+  if (candidates.length >= 2) {
+    const nums = candidates.map((p) => p.number);
+    log("pr-resolve", `[pr-resolve] AMBIGUOUS candidates: ${nums.join(", ")}`);
+    return { ambiguous: nums };
+  }
+
+  // Exactly one candidate.
+  const boardPr = candidates[0];
+  const boardNum = boardPr.number;
+
+  // Cross-check against prose scrape (kept as a diagnostic, board always wins).
+  const proseNum = extractPrNumber(agentOutput);
+  if (proseNum !== null && proseNum !== boardNum) {
+    log("pr-resolve", `[pr-resolve] DISAGREE board=#${boardNum} prose=#${proseNum} — using board`);
+  }
+
+  log("pr-resolve", `board: resolved PR #${boardNum} (created ${boardPr.createdAt})`);
+  return boardNum;
 }
 
 // escalates:true — a human decides this merge, so the watcher must NOT enable auto-merge.
@@ -3122,7 +3263,59 @@ async function drain() {
     // on that number would violate the manual-review gate.
     let mergeReport = "";
     if (AUTO_MERGE && !reviewJob) {
-      const prNumber = extractPrNumber(agentOutput);
+      // PR_NUMBER_FROM_THE_BOARD_V1 — ask the board first; prose scrape is only a
+      // cross-check (kept inside resolveBuiltPr). scope comes from the prompt's
+      // front matter so the window narrows to files this prompt was supposed to touch.
+      const boardResult = await resolveBuiltPr({
+        agentOutput,
+        runStartedAtMs,
+        scope: deps.scope,
+      });
+
+      // Ambiguous or gh-unreachable: fail closed. Never restage, never merge.
+      if (boardResult !== null && typeof boardResult === "object") {
+        const isAmbiguous = Array.isArray(boardResult.ambiguous);
+        const candidates = isAmbiguous ? boardResult.ambiguous : [];
+        const label = isAmbiguous ? "AMBIGUOUS" : "CANNOT MEASURE";
+        log("pr-resolve", `[pr-resolve] ${label} — moving ${name} to failed/, NOT restaging`);
+        const dest = path.join(FAILED_DIR, name);
+        const logDest = path.join(FAILED_DIR, `${name}.log`);
+        const reportDest = path.join(FAILED_DIR, `${name}.report.md`);
+        const reportLines = [
+          `# PR-resolve ${label} — ${name}`,
+          ``,
+          `Written: ${ts()}`,
+          `Board result: ${JSON.stringify(boardResult)}`,
+          ``,
+          isAmbiguous
+            ? `Two or more in-window PRs touch the prompt's scope — cannot determine which one this build produced.`
+            : `The GitHub board was unreachable or returned an error — failing closed to prevent a duplicate-PR restage.`,
+          ``,
+          ...(isAmbiguous
+            ? [
+                `Candidate PRs:`,
+                ...candidates.map((n) => `  - #${n}`),
+                ``,
+              ]
+            : [`Error: ${boardResult.error}`, ``]),
+          `Investigate and merge the correct PR by hand.`,
+          ``,
+        ].join("\n");
+        try {
+          await rename(filePath, dest);
+          await writeFile(logDest, logBody);
+          await writeFile(reportDest, reportLines, "utf-8");
+          log("FAIL", `${name} → failed/ (pr-resolve ${label})`);
+        } catch (err) {
+          log("error", `pr-resolve fail-closed move: ${err.message}`);
+        }
+        seen.delete(name);
+        running = false;
+        drain();
+        return;
+      }
+
+      const prNumber = boardResult;
       if (prNumber == null) {
         // Agent exited 0 but never opened a PR.
         //

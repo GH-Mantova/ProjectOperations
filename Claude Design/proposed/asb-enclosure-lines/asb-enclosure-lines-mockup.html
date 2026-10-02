@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Enclosure Lines Mock-up</title>
+<style>
+/* Follows the approved "Scope of Works — Discipline Cards" mock-up (its ASB "Enclosure, monitoring & clearance"
+   expandable) and tokens.css @ origin/main 7d9926ae. Enclosure rates are the seeded EstimateEnclosureRate rows.
+   Labour, plant and markup figures are EXAMPLES. */
+:root{--p:#005B61;--pl:#E6F0F1;--acc:#FEAA6D;--accd:#C77A3A;--page:#F6F6F6;--card:#fff;--t1:#111;--t2:#6B7280;--t3:#9CA3AF;--bd:#E5E7EB;--bs:#F3F4F6;--ok:#047857;--okl:#ECFDF5;--warnl:#FFF4E5;--dang:#DC2626;--dangl:#FEF2F2;--mp:#0E6E73;--pp:#B45309}
+*{box-sizing:border-box}body{margin:0;background:#ECEEF0;color:var(--t1);font:14px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:1140px;margin:0 auto}h1{font-size:24px;margin:0 0 6px}
+.lede{color:#4B5563;margin:0 0 22px;max-width:80ch}
+h2.sec{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--t2);margin:30px 0 10px;display:flex;gap:10px;align-items:center}
+h2.sec .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#242424;font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.frame{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap;background:#fff}
+.crumb{font-size:12px;color:var(--t2)}.crumb b{color:var(--t1)}
+.ex{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accd);margin-left:auto}
+.body{padding:14px 16px}
+.asbnote{border:1px solid #F5C08A;background:var(--warnl);border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:12px}
+.cardhd{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.cardhd b{font-size:15px}
+.badge{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--dang);color:var(--dang);background:var(--dangl)}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--bd);background:#fff;color:var(--t2);white-space:nowrap}
+.chip.m{border-color:var(--p);color:var(--p);background:var(--pl)}
+.chip.new{border-color:var(--ok);color:var(--ok);background:var(--okl)}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{background:var(--bs);text-align:left;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--t2);padding:7px 9px;white-space:nowrap}
+th.mp{background:#E3F1F2;color:var(--mp)}th.pp{background:#FDF0E3;color:var(--pp)}
+td{padding:6px 9px;border-top:1px solid var(--bs);white-space:nowrap;vertical-align:middle}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.wbs{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--t2)}
+.hl{background:#FFF7D6;outline:1px dashed var(--accd);border-radius:2px;padding:0 3px}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.lnk{font:inherit;font-size:11.5px;border:1px dashed var(--bd);background:#fff;border-radius:5px;padding:2px 7px;color:var(--p);cursor:pointer;white-space:nowrap}
+.lnk.on{border-style:solid;border-color:var(--p);background:var(--pl);font-weight:600}
+.exbox{margin:8px 0 0 0;border:1px solid var(--p);border-radius:8px;background:#F4FAFA;padding:10px 12px}
+.exhd{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.exhd .t{font-weight:700;font-size:13px;color:var(--p)}
+.exhd .hint{font-size:11.5px;color:var(--t2)}
+.exhd .grow{flex:1}
+.mini{font:inherit;font-size:11.5px;border:1px solid var(--p);color:var(--p);background:#fff;border-radius:5px;padding:2px 8px}
+select.s,input.q{font:inherit;font-size:12.5px;height:28px;border:1px solid var(--bd);border-radius:5px;padding:0 6px;background:#fff}
+input.q{width:70px;text-align:right}
+input.r{width:90px;text-align:right;color:var(--t3)}
+.rm{border:0;background:none;color:var(--t3);font-size:15px;cursor:pointer}
+tr.sub td{background:#fff;font-weight:700;border-top:1.5px solid var(--p)}
+.note{font-size:12.5px;color:#4B5563;margin:10px 0 0}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}@media(max-width:860px){.pair{grid-template-columns:minmax(0,1fr)}}
+.cap{font-size:12px;font-weight:700;margin:0 0 6px}
+tr.tot td{font-weight:700;border-top:1.5px solid var(--p);background:#F3F7F7}
+.ref{border:1px solid var(--dang);background:var(--dangl);border-radius:8px;padding:9px 12px;font-size:12.5px}
+.calls{display:grid;gap:10px;margin-top:10px}
+.call{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 8px 8px 0;padding:11px 14px;font-size:13px}
+.call.q{border-left-color:var(--accd)}
+</style></head><body><div class="wrap">
+
+<h1>Asbestos: enclosure, air monitoring and clearance on the card</h1>
+<p class="lede">The layout comes from the approved Discipline Cards mock-up. Your answer of 2 Oct is built in: the labour to build and strip the enclosure stays as men × days, and the enclosure itself, air monitoring and clearance are added on top, priced from the enclosure rate table. Section 1 is the screen; sections 2 and 3 are what it produces. Enclosure rates are the real seeded rows; labour, plant and markup figures are examples.</p>
+
+<!-- 1 -->
+<h2 class="sec"><span class="n">1</span>The asbestos item, with its enclosure lines open</h2>
+<div class="frame">
+ <div class="bar"><span class="crumb">T26-0412 / Scope of works / <b>ASB</b> / Card 2</span><span class="chip m">Rates locked 05/09/2026</span><span class="ex">Example data</span></div>
+ <div class="body">
+  <div class="asbnote"><b>Asbestos register cross-referenced.</b> Concrete cutting is not available on asbestos cards. <span class="hl">Enclosure materials and hire, air monitoring and clearance are priced from the enclosure rate table. The labour to build and strip the enclosure stays as men × days.</span></div>
+  <div class="cardhd"><b>ASB2 · Class A: friable lagging</b><span class="badge">Class A</span><span class="chip">Pipe lagging</span></div>
+
+  <div class="tw"><table>
+   <tr><th>WBS</th><th>Line type</th><th class="mp">Manpower</th><th class="mp n">Qty</th><th class="mp n">Days</th><th class="mp">Shift</th><th class="mp n">Day rate</th><th class="mp n">Total</th><th class="pp">Plant</th><th class="pp n">Qty</th><th class="pp n">Days</th><th class="pp n">Day rate</th><th class="pp n">Total</th><th>Actions</th></tr>
+   <tr><td class="wbs">ASB2.1</td><td>Asbestos removal</td><td>Asbestos labourer</td><td class="n">3</td><td class="n">4</td><td>Night</td><td class="n">$1,000.00</td><td class="n">$12,000.00</td><td>Decontamination unit</td><td class="n">1</td><td class="n">4</td><td class="n">$420.00</td><td class="n">$1,680.00</td>
+    <td rowspan="3"><div class="acts"><button class="lnk">+ Add row</button><button class="lnk on">✓ Enclosure &amp; monitoring (3)</button><button class="lnk">+ Add comment</button></div></td></tr>
+   <tr><td class="wbs">ASB2.1</td><td>Asbestos removal</td><td>Asbestos supervisor</td><td class="n">1</td><td class="n">4</td><td>Night</td><td class="n">$1,150.00</td><td class="n">$4,600.00</td><td>HEPA vacuum</td><td class="n">2</td><td class="n">4</td><td class="n">$100.00</td><td class="n">$800.00</td></tr>
+   <tr><td class="wbs">ASB2.1</td><td><span class="hl">Enclosure: labour</span></td><td>Asbestos labourer</td><td class="n">2</td><td class="n">2</td><td>Weekday</td><td class="n">$650.00</td><td class="n">$2,600.00</td><td></td><td></td><td></td><td></td><td></td></tr>
+  </table></div>
+
+  <div class="exbox">
+   <div class="exhd"><span class="t">Enclosure, monitoring &amp; clearance</span><span class="hint">priced from the enclosure rate table · added on top of the labour above</span><span class="grow"></span><button class="mini">+ add another</button></div>
+   <div class="tw" style="border-color:#CFE3E4"><table>
+    <tr><th>Item</th><th class="n">Qty</th><th>Unit</th><th class="n">Rate</th><th class="n">Total</th><th></th></tr>
+    <tr><td><select class="s"><option>ACM enclosure (Class A, friable)</option><option>ACM enclosure (Class B, non-friable)</option><option>Air monitoring</option><option>Clearance certificate</option></select></td><td class="n"><input class="q" value="38"></td><td>m²</td><td class="n"><input class="q r" placeholder="185.00"></td><td class="n">$7,030.00</td><td><button class="rm">×</button></td></tr>
+    <tr><td><select class="s"><option>Air monitoring</option></select></td><td class="n"><input class="q" value="4"></td><td>day</td><td class="n"><input class="q r" placeholder="540.00"></td><td class="n">$2,160.00</td><td><button class="rm">×</button></td></tr>
+    <tr><td><select class="s"><option>Clearance certificate</option></select></td><td class="n"><input class="q" value="1"></td><td>ea</td><td class="n"><input class="q r" placeholder="850.00"></td><td class="n">$850.00</td><td><button class="rm">×</button></td></tr>
+    <tr class="sub"><td colspan="4">Enclosure, monitoring &amp; clearance</td><td class="n">$10,040.00</td><td></td></tr>
+   </table></div>
+   <p class="note" style="margin-top:6px">The unit and rate come from the tender's locked rate set (here 05/09/2026), or from the live table if rates aren't locked. The grey rate is the locked rate; typing over it is an override, as on other lines. Changing the rate table later doesn't change a line already added.</p>
+  </div>
+ </div>
+</div>
+
+<!-- 2 -->
+<h2 class="sec"><span class="n">2</span>What the item adds up to, before and after</h2>
+<div class="pair">
+ <div><p class="cap">Today: the enclosure, monitoring and clearance can't be entered</p>
+  <div class="tw"><table>
+   <tr><th>ASB2.1</th><th class="n">Amount</th></tr>
+   <tr><td>Manpower (incl. enclosure labour)</td><td class="n">$19,200.00</td></tr>
+   <tr><td>Plant</td><td class="n">$2,480.00</td></tr>
+   <tr><td style="color:#9CA3AF">Enclosure, monitoring &amp; clearance</td><td class="n" style="color:#9CA3AF">not possible</td></tr>
+   <tr><td>Subtotal</td><td class="n">$21,680.00</td></tr>
+   <tr><td>Markup 15%</td><td class="n">$3,252.00</td></tr>
+   <tr class="tot"><td>Item total</td><td class="n">$24,932.00</td></tr></table></div>
+  <p class="note">Today an estimator either leaves these $10,040 of costs out, or guesses them into labour days.</p></div>
+ <div><p class="cap">After</p>
+  <div class="tw"><table>
+   <tr><th>ASB2.1</th><th class="n">Amount</th></tr>
+   <tr><td>Manpower (incl. enclosure labour)</td><td class="n">$19,200.00</td></tr>
+   <tr><td>Plant</td><td class="n">$2,480.00</td></tr>
+   <tr><td><span class="hl">Enclosure, monitoring &amp; clearance</span></td><td class="n"><span class="hl">$10,040.00</span></td></tr>
+   <tr><td>Subtotal</td><td class="n">$31,720.00</td></tr>
+   <tr><td>Markup 15% (the item's markup)</td><td class="n">$4,758.00</td></tr>
+   <tr class="tot"><td>Item total</td><td class="n">$36,478.00</td></tr></table></div>
+  <p class="note">Labour and plant are unchanged; a test pins that. The new lines take the item's markup.</p></div>
+</div>
+
+<!-- 3 -->
+<h2 class="sec"><span class="n">3</span>Where it lands on the quote</h2>
+<div class="frame"><div class="bar"><span class="crumb">Quote IS-2609-0412 · Cost Summary</span><span class="ex">Example data</span></div><div class="body">
+ <div class="tw"><table>
+  <tr><th>Item</th><th>Goes to</th><th class="n">Amount (ex GST)</th></tr>
+  <tr><td>ASB2.1 Remove friable pipe lagging to riser</td><td>In the price</td><td class="n"><span class="hl">$36,478.00</span></td></tr></table></div>
+ <p class="note">One line, as now. The enclosure costs ride inside their item, under the item's "Goes to". If the item is a provisional sum, they are too. The client sees one figure per item, not a separate line for air monitoring.</p>
+</div></div>
+
+<!-- 4 -->
+<h2 class="sec"><span class="n">4</span>On a demolition card</h2>
+<div class="ref">The <b>Enclosure &amp; monitoring</b> action only appears on asbestos (ASB) items. The server also refuses an enclosure line on any other discipline, so it can't be added by another route.</div>
+
+<h2 class="sec">For you to confirm</h2>
+<div class="calls">
+ <div class="call q"><b>The "Enclosure: labour" label.</b> The existing "enclosure" line type is renamed on screen so nobody reads it as the whole enclosure cost. Wording only; no data changes. Keep the rename, or leave the label as it is?</div>
+ <div class="call">Lines follow their item's "Goes to" and markup (your answer of 2 Oct).</div>
+ <div class="call">Rates come from the locked rate set, or the live table when rates aren't locked, and stay as priced once added.</div>
+</div>
+</div></body></html>

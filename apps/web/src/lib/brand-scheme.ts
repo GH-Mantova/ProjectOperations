@@ -19,6 +19,14 @@
  * clearUserBrandOverride(). Clearing re-applies the cached company scheme
  * without a page reload. The override key is also cleared on logout via
  * BrandSchemeProvider's existing user-null cleanup path.
+ *
+ * BRAND_LIGHT_ONLY_V1: Marco ruled 2026-09-25 (D-1) that the company palette
+ * applies in LIGHT mode only. Dark mode must keep tokens.css unmodified.
+ * applyBrandScheme now writes a single <style id="brand-scheme"> element into
+ * <head> with properties scoped to light mode only — no inline custom
+ * properties are written on documentElement. This means toggling dark/light
+ * (ThemeToggle or OS change) requires NO re-apply and NO reload; the cascade
+ * handles it automatically.
  */
 import { Fragment, createElement, useEffect, type ReactNode } from "react";
 import { useAuth } from "../auth/AuthContext";
@@ -33,6 +41,15 @@ export const BRAND_SCHEME_STORAGE_KEY = "projectops.brand-scheme";
  * Precedence: override > company scheme > tokens.css default.
  */
 export const BRAND_OVERRIDE_STORAGE_KEY = "projectops.brand-override";
+
+/**
+ * BRAND_LIGHT_ONLY_V1 — marker required by the done-when gate.
+ * Presence in this file is the CI signal that the light-only behaviour is active.
+ */
+export const BRAND_LIGHT_ONLY_V1 = "brandtheme-light-only";
+
+/** The id of the injected style element. */
+const BRAND_STYLE_ID = "brand-scheme";
 
 /** Hex must be either #RRGGBB (6 digits) or #RRGGBBAA (8 digits). */
 const HEX_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
@@ -64,7 +81,7 @@ export interface BrandScheme {
  * Maps each BrandScheme S3 field to its CSS custom property.
  * Each field overrides the corresponding token tokens.css already declares,
  * so a NULL/absent value correctly restores the tokens.css default by simply
- * not writing the inline style.
+ * not emitting the declaration.
  */
 const S3_PROP_MAP: ReadonlyArray<[keyof BrandScheme, string]> = [
   ["sidebarBgHex", "--surface-sidebar"],
@@ -82,13 +99,6 @@ const S3_PROP_MAP: ReadonlyArray<[keyof BrandScheme, string]> = [
   ["statusNeutralHex", "--status-neutral"]
 ];
 
-/** All CSS custom properties this module manages (for clearBrandScheme). */
-const ALL_CSS_PROPS = [
-  "--brand-primary",
-  "--brand-accent",
-  ...S3_PROP_MAP.map(([, prop]) => prop)
-];
-
 // ── Core primitives ───────────────────────────────────────────────────────────
 
 function isValidHex(value: unknown): value is string {
@@ -96,37 +106,92 @@ function isValidHex(value: unknown): value is string {
 }
 
 /**
- * Applies a brand scheme to CSS custom properties on the document root.
- * Each hex value is validated before being written; invalid values are silently
- * skipped, leaving the tokens.css defaults in place.
- * One invalid value skips THAT property only — the rest are still applied.
+ * Builds the CSS text for the brand-scheme style element.
+ * Properties are scoped to light mode only — two selectors cover both the
+ * explicit [data-theme="light"] case and the "system" case when the OS is
+ * reporting light (prefers-color-scheme: light with no explicit theme attr).
+ *
+ * No dark-mode selector is emitted, so tokens.css dark blocks retain
+ * full authority in dark mode.
+ *
+ * Hex values are validated by isValidHex before being interpolated into the
+ * CSS text. Invalid values are silently skipped (that property is omitted).
+ * This is a defensive measure: we are writing raw CSS text, so untrusted
+ * values must never reach the stylesheet.
  */
-export function applyBrandScheme(scheme: BrandScheme): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
+function buildBrandCss(scheme: BrandScheme): string {
+  const declarations: string[] = [];
+
   if (isValidHex(scheme.primaryColorHex)) {
-    root.style.setProperty("--brand-primary", scheme.primaryColorHex);
+    declarations.push(`  --brand-primary: ${scheme.primaryColorHex};`);
   }
   if (isValidHex(scheme.secondaryColorHex)) {
-    root.style.setProperty("--brand-accent", scheme.secondaryColorHex);
+    declarations.push(`  --brand-accent: ${scheme.secondaryColorHex};`);
   }
   for (const [field, prop] of S3_PROP_MAP) {
     const value = scheme[field];
     if (isValidHex(value)) {
-      root.style.setProperty(prop, value);
+      declarations.push(`  ${prop}: ${value};`);
     }
   }
+
+  if (declarations.length === 0) return "";
+
+  const block = declarations.join("\n");
+
+  return [
+    `:root[data-theme="light"] {`,
+    block,
+    `}`,
+    ``,
+    `@media (prefers-color-scheme: light) {`,
+    `  :root:not([data-theme]) {`,
+    declarations.map((d) => `  ${d}`).join("\n"),
+    `  }`,
+    `}`
+  ].join("\n");
 }
 
 /**
- * Removes all inline custom properties managed by this module,
+ * Applies a brand scheme to the document by writing a single
+ * <style id="brand-scheme"> element into <head>. Properties are scoped to
+ * light mode only — dark mode is unaffected and tokens.css keeps full authority.
+ *
+ * The element is replaced (not duplicated) on each call. If the generated CSS
+ * is empty (all values invalid/null), any existing element is removed so the
+ * cascade falls back to tokens.css.
+ *
+ * No inline properties are written on documentElement for the managed
+ * palette tokens. density (data-density) and theme (data-theme) attributes
+ * remain unaffected.
+ */
+export function applyBrandScheme(scheme: BrandScheme): void {
+  if (typeof document === "undefined") return;
+
+  // Remove any existing element first (replace semantics, no duplication).
+  const existing = document.getElementById(BRAND_STYLE_ID);
+  if (existing) {
+    existing.parentNode?.removeChild(existing);
+  }
+
+  const css = buildBrandCss(scheme);
+  if (!css) return;
+
+  const style = document.createElement("style");
+  style.id = BRAND_STYLE_ID;
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+/**
+ * Removes the <style id="brand-scheme"> element from <head>,
  * restoring tokens.css defaults. Call on unmount and when user goes null.
  */
 export function clearBrandScheme(): void {
   if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  for (const prop of ALL_CSS_PROPS) {
-    root.style.removeProperty(prop);
+  const el = document.getElementById(BRAND_STYLE_ID);
+  if (el) {
+    el.parentNode?.removeChild(el);
   }
 }
 

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register channel and owner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700&display=swap">
+<style>
+  :root { --teal:#005B61; --ink:#111827; --mute:#6B7280; --faint:#9CA3AF; --line:#E5E7EB; --soft:#F3F4F6; --bg:#F6F6F6; --peach:#FEAA6D; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'Outfit',system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-family:'Syne',sans-serif; font-size:24px; margin:0 0 4px; letter-spacing:-.02em; }
+  .lede { color:var(--mute); font-size:14px; margin:0 0 20px; line-height:1.5; }
+  .panel { background:#FFF; border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); padding:18px; margin-bottom:22px; }
+  .ptitle { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--teal); margin:0 0 4px; }
+  .psub { font-size:13px; color:var(--mute); margin:0 0 14px; line-height:1.5; }
+  .btn { height:32px; padding:0 12px; border-radius:8px; font-size:12.5px; font-weight:500; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:#FFF; color:#000; white-space:nowrap; }
+  .btn--on { border-color:var(--teal); color:var(--teal); background:#E6F0F1; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+  .search { flex:1 1 170px; min-width:0; height:32px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; padding:0 11px; color:var(--faint); font-size:12.5px; }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:860px; }
+  th { font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--mute); text-align:left; padding:0 11px 9px 0; white-space:nowrap; }
+  td { padding:11px 11px 11px 0; font-size:13px; border-top:1px solid var(--soft); vertical-align:top; }
+  .sub { font-size:11.5px; color:var(--faint); }
+  .chip { font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .av { width:20px; height:20px; border-radius:50%; background:var(--teal); color:#FFF; font-size:9px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
+  .who { display:flex; align-items:center; gap:6px; }
+  .hl { background:#FFF3C4; border-radius:3px; padding:0 2px; color:#111; }
+  .note { font-size:12.5px; color:#7C4A12; background:#FEF6EE; border:1px solid var(--peach); border-radius:10px; padding:10px 14px; line-height:1.55; margin-top:12px; }
+  .grid2 { display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:22px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0,1fr); } }
+  /* dropdown */
+  .dd { position:relative; display:inline-block; }
+  .menu { margin-top:6px; width:260px; max-width:100%; background:#FFF; border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:6px; }
+  .mi { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 10px; border-radius:7px; font-size:13px; }
+  .mi--on { background:#E6F0F1; color:var(--teal); font-weight:600; }
+  .mi .n { color:var(--faint); font-size:12px; }
+  .sep { height:1px; background:var(--soft); margin:5px 4px; }
+  /* modal */
+  .modal { max-width:480px; border:1px solid var(--line); border-radius:12px; padding:22px; background:#FFF; box-shadow:0 12px 32px rgba(0,0,0,.14); }
+  .modal h2 { margin:0 0 4px; font-size:16px; }
+  .lab { display:block; font-size:12.5px; font-weight:600; color:#374151; margin:12px 0 5px; }
+  .req { color:#B91C1C; }
+  .inp { width:100%; height:34px; border:1px solid var(--line); border-radius:8px; padding:0 10px; font:inherit; font-size:13px; color:var(--ink); display:flex; align-items:center; }
+  .inp--ph { color:var(--faint); }
+  .ta { height:76px; align-items:flex-start; padding-top:8px; }
+  .seg { display:flex; flex-wrap:wrap; gap:6px; }
+  .seg span { height:30px; padding:0 12px; border:1px solid var(--line); border-radius:999px; font-size:12.5px; display:inline-flex; align-items:center; }
+  .seg .on { border-color:var(--teal); background:var(--teal); color:#FFF; font-weight:600; }
+  .err { font-size:12px; color:#B91C1C; margin-top:5px; }
+  .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  .primary { background:var(--teal); color:#FFF; border-color:var(--teal); }
+  .today { font-size:12px; color:var(--mute); border-left:3px solid var(--line); padding-left:10px; margin-top:12px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tenders register: channel, summary and owner picker</h1>
+  <p class="lede">Punch list 10.2.1 and 10.2.2. Builds on the approved artboard <code>Claude Design/proposed/crm-visual-parity/Register.dc.html</code>. <span class="hl">Highlighted</span> text is what changes.</p>
+
+  <!-- PANEL 1: the output -->
+  <div class="panel">
+    <div class="ptitle">1 · Output: the register rows</div>
+    <p class="psub">Last interaction shows the channel and how long ago, with the one-line summary underneath, as the artboard drew it. The Owner chip is now a picker; here it is filtered to one owner.</p>
+    <div class="chips">
+      <div class="search">Search</div>
+      <span class="btn">Status ▾</span>
+      <span class="btn">Client ▾</span>
+      <span class="btn btn--on"><span class="hl">Owner: M. Cattaneo</span> ✕</span>
+      <span class="btn">Logged by ▾</span>
+      <span class="btn">Value ▾</span>
+      <span class="btn">Due ▾</span>
+      <span class="sub" style="margin-left:auto;">4 shown</span>
+    </div>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th style="padding-left:6px;">Tender</th><th>Client</th><th>Status</th><th>Value</th><th>Last interaction</th><th>Logged by</th><th>Next action</th><th></th></tr></thead>
+      <tbody>
+        <tr>
+          <td style="padding-left:6px;"><div style="font-weight:600;">T-2418 · Northshore demolition</div><div class="sub">Submitted 12 Aug</div></td>
+          <td>Hansen Yuncken</td>
+          <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Submitted</span></td>
+          <td>$1.84M</td>
+          <td><div><span class="hl">Phone</span> — 4 days ago</div><div class="sub"><span class="hl">Chased addendum 3</span></div></td>
+          <td><div class="who"><span class="av">MC</span> M. Cattaneo</div></td>
+          <td><div>Re-chase the QS</div><span class="chip" style="background:#FEE2E2;color:#991B1B;">3 days over</span></td>
+          <td><span class="btn" style="height:28px;font-size:12px;">Log</span></td>
+        </tr>
+        <tr>
+          <td style="padding-left:6px;"><div style="font-weight:600;">T-2402 · Parramatta carpark</div><div class="sub">Submitted 28 Jul</div></td>
+          <td>John Holland Group</td>
+          <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Submitted</span></td>
+          <td>$980k</td>
+          <td><div style="color:#B45309;"><span class="hl">Email</span> — 30 days ago</div><div class="sub"><span class="hl">Submitted the tender</span></div></td>
+          <td><div class="who"><span class="av">MC</span> M. Cattaneo</div></td>
+          <td><div style="color:#9CA3AF;font-style:italic;">None set</div><span class="chip" style="background:#F3F4F6;color:#6B7280;">Stalled</span></td>
+          <td><span class="btn" style="height:28px;font-size:12px;border-color:#FEAA6D;color:#7C4A12;">Log</span></td>
+        </tr>
+        <tr>
+          <td style="padding-left:6px;"><div style="font-weight:600;">T-2390 · Lutwyche strip-out</div><div class="sub">Submitted 19 Jul</div></td>
+          <td>Hutchinson Builders</td>
+          <td><span class="chip" style="background:#E6F0F1;color:#005B61;">Submitted</span></td>
+          <td>$265k</td>
+          <td><div>12 days ago</div><div class="sub"><span class="hl">Left voicemail for Dan re site access</span></div></td>
+          <td><div class="who"><span class="av">MC</span> M. Cattaneo</div></td>
+          <td><div>Call Dan back</div><span class="chip" style="background:#FEF3C7;color:#92400E;">In 2 days</span></td>
+          <td><span class="btn" style="height:28px;font-size:12px;">Log</span></td>
+        </tr>
+        <tr>
+          <td style="padding-left:6px;"><div style="font-weight:600;">Mascot warehouse demo</div><div class="sub">Opportunity · qualified</div></td>
+          <td>Lendlease</td>
+          <td><span class="chip" style="background:#FEF3C7;color:#92400E;">Qualified</span></td>
+          <td>$1.35M</td>
+          <td><div style="color:#9CA3AF;font-style:italic;">Never logged</div></td>
+          <td><div style="color:#9CA3AF;">—</div></td>
+          <td><div style="color:#9CA3AF;font-style:italic;">None set</div><span class="chip" style="background:#F3F4F6;color:#6B7280;">Stalled</span></td>
+          <td><span class="btn" style="height:28px;font-size:12px;border-color:#FEAA6D;color:#7C4A12;">Log</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="note"><b>Older logs (row 3).</b> Logs made before this change have no channel, so they show just “12 days ago”. Most of them also carry the old default subject (“Contact — 20/09/2026”), which says nothing. In that case the summary line shows the <b>first line of the notes</b> instead. A real subject is always shown as typed.</div>
+  </div>
+
+  <div class="grid2">
+    <!-- PANEL 2: owner picker -->
+    <div class="panel">
+      <div class="ptitle">2 · UI: the Owner picker</div>
+      <p class="psub">Replaces the free-text box. Names come from the owners of the tenders already loaded on the page, so view-only CRM users see the same list. No staff lookup, no permission change.</p>
+      <div class="dd">
+        <span class="btn btn--on">Owner: M. Cattaneo ▾</span>
+        <div class="menu" role="listbox" aria-label="Owner">
+          <div class="mi"><span>Any owner</span></div>
+          <div class="sep"></div>
+          <div class="mi mi--on"><span>M. Cattaneo</span><span class="n">41</span></div>
+          <div class="mi"><span>P. Nair</span><span class="n">37</span></div>
+          <div class="mi"><span>R. Silva</span><span class="n">22</span></div>
+          <div class="mi"><span>J. Okafor</span><span class="n">9</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span style="font-style:italic;">Unassigned</span><span class="n">14</span></div>
+        </div>
+      </div>
+      <div class="today"><b>Today:</b> a text box labelled “Owner ▾” that only works if you paste a user's database ID.</div>
+      <div class="note">Sorted by name. The count is how many loaded tenders each person owns. <b>Mine only</b> stays as its own chip and works as it does now.</div>
+    </div>
+
+    <!-- PANEL 3: log modal -->
+    <div class="panel">
+      <div class="ptitle">3 · UI: the Log form</div>
+      <p class="psub">Channel is the first question and is required. Subject becomes “Summary”, the line shown on the register.</p>
+      <div class="modal">
+        <h2>Log interaction</h2>
+        <div class="sub" style="margin-bottom:6px;">T-2418 — Northshore demolition</div>
+        <span class="lab"><span class="hl">Channel</span> <span class="req">*</span></span>
+        <div class="seg"><span class="on">Phone</span><span>Email</span><span>Meeting</span><span>Site visit</span><span>Other</span></div>
+        <span class="lab"><span class="hl">Summary</span> <span class="req">*</span> <span style="font-weight:400;color:#9CA3AF;">one line, shown on the register</span></span>
+        <div class="inp">Chased addendum 3</div>
+        <span class="lab">Notes <span class="req">*</span></span>
+        <div class="inp ta">Spoke to the QS. Addendum 3 drawings expected Thursday; pricing holds until then.</div>
+        <span class="lab">Next action due (optional)</span>
+        <div class="inp">25/09/2026</div>
+        <span class="lab">Next action note (optional)</span>
+        <div class="inp">Re-chase the QS</div>
+        <div class="actions"><span class="btn">Cancel</span><span class="btn primary">Log</span></div>
+      </div>
+      <div class="today"><b>Today:</b> no channel. Subject is pre-filled with “Contact — &lt;today's date&gt;”. <b>Proposed:</b> Summary starts empty with the placeholder “e.g. Chased addendum 3”. Saving without a channel shows “Pick how you made contact.” under the channel row.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

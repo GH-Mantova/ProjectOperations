@@ -8,6 +8,10 @@
  * TRAP 4: this file contains ZERO #RRGGBB literals. All hex fixture values
  * are assembled from string parts (HASH + digits) so the hex ratchet never
  * counts a colour literal here. Do not inline them back.
+ *
+ * BRAND_LIGHT_ONLY_V1: applyBrandScheme now writes a <style id="brand-scheme">
+ * element instead of inline custom properties on documentElement. Tests that
+ * previously asserted inline properties now assert the stylesheet element.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,23 +44,59 @@ const OVERRIDE_ACCENT = HASH + "33BB44";
 
 // ── DOM / localStorage stubs ─────────────────────────────────────────────────
 
-type StyleMap = Record<string, string>;
+/**
+ * A minimal stub for a style element.
+ * textContent holds the CSS text; id mirrors the real DOM API.
+ */
+type StyleElementStub = {
+  id: string;
+  textContent: string;
+  parentNode: { removeChild: (el: StyleElementStub) => void } | null;
+};
 
+/**
+ * makeDocumentStub returns a stub that:
+ * - tracks a collection of created style elements by id
+ * - head.appendChild inserts them into the collection
+ * - getElementById retrieves them
+ * - documentElement.style is a no-op (no inline properties expected)
+ *
+ * Updated for BRAND_LIGHT_ONLY_V1: applyBrandScheme no longer writes inline
+ * properties; it injects a <style id="brand-scheme"> element instead.
+ */
 function makeDocumentStub() {
-  const styleMap: StyleMap = {};
-  return {
+  const elements: Map<string, StyleElementStub> = new Map();
+
+  const stub = {
     documentElement: {
       style: {
-        setProperty(prop: string, value: string) {
-          styleMap[prop] = value;
-        },
-        removeProperty(prop: string) {
-          delete styleMap[prop];
-        },
-        _map: styleMap
+        // These should NOT be called in the new implementation.
+        // Kept as no-ops so old paths don't throw if accidentally called.
+        setProperty(_prop: string, _value: string) {},
+        removeProperty(_prop: string) {}
       }
-    }
+    },
+    head: {
+      appendChild(el: StyleElementStub) {
+        el.parentNode = {
+          removeChild(child: StyleElementStub) {
+            elements.delete(child.id);
+          }
+        };
+        elements.set(el.id, el);
+      }
+    },
+    getElementById(id: string): StyleElementStub | null {
+      return elements.get(id) ?? null;
+    },
+    createElement(_tag: string): StyleElementStub {
+      return { id: "", textContent: "", parentNode: null };
+    },
+    // Expose internal state for assertions.
+    _elements: elements
   };
+
+  return stub;
 }
 
 function makeLocalStorageStub(initialData: Record<string, string> = {}) {
@@ -71,6 +111,12 @@ function makeLocalStorageStub(initialData: Record<string, string> = {}) {
     }),
     _store: store
   };
+}
+
+/** Helper: get the text of the brand-scheme style element from the stub. */
+function getBrandCss(docStub: ReturnType<typeof makeDocumentStub>): string | null {
+  const el = docStub._elements.get("brand-scheme");
+  return el ? el.textContent : null;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -95,14 +141,15 @@ describe("applyBrandScheme / clearBrandScheme", () => {
     vi.unstubAllGlobals();
   });
 
-  it("valid pair sets both --brand-primary and --brand-accent", async () => {
+  it("valid pair sets both --brand-primary and --brand-accent in the stylesheet", async () => {
     const { applyBrandScheme } = await import("../brand-scheme");
 
     applyBrandScheme({ primaryColorHex: PRIMARY, secondaryColorHex: ACCENT });
 
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + PRIMARY);
+    expect(css).toContain("--brand-accent: " + ACCENT);
   });
 
   it("accepts 8-digit #RRGGBBAA hex", async () => {
@@ -110,12 +157,13 @@ describe("applyBrandScheme / clearBrandScheme", () => {
 
     applyBrandScheme({ primaryColorHex: PRIMARY_ALPHA, secondaryColorHex: ACCENT_ALPHA });
 
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY_ALPHA);
-    expect(map["--brand-accent"]).toBe(ACCENT_ALPHA);
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + PRIMARY_ALPHA);
+    expect(css).toContain("--brand-accent: " + ACCENT_ALPHA);
   });
 
-  describe("invalid hex values — property must be ABSENT (not just no throw)", () => {
+  describe("invalid hex values — property must be ABSENT from stylesheet", () => {
     const invalidValues = [
       { label: "word colour", value: "red" },
       { label: "short hex", value: "#12" },
@@ -129,27 +177,24 @@ describe("applyBrandScheme / clearBrandScheme", () => {
 
         applyBrandScheme({ primaryColorHex: value, secondaryColorHex: value });
 
-        const map = docStub.documentElement.style._map;
-        expect("--brand-primary" in map).toBe(false);
-        expect("--brand-accent" in map).toBe(false);
+        // All values invalid — no CSS element should be emitted.
+        const css = getBrandCss(docStub);
+        expect(css).toBeNull();
       });
     }
   });
 
-  it("clearBrandScheme removes both custom properties", async () => {
+  it("clearBrandScheme removes the style element", async () => {
     const { applyBrandScheme, clearBrandScheme } = await import("../brand-scheme");
 
     applyBrandScheme({ primaryColorHex: PRIMARY, secondaryColorHex: ACCENT });
 
-    // Verify they were set first.
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
+    // Element must exist.
+    expect(getBrandCss(docStub)).not.toBeNull();
 
     clearBrandScheme();
 
-    expect("--brand-primary" in map).toBe(false);
-    expect("--brand-accent" in map).toBe(false);
+    expect(getBrandCss(docStub)).toBeNull();
   });
 
   it("localStorage that throws does not prevent applyBrandScheme from working", async () => {
@@ -171,15 +216,16 @@ describe("applyBrandScheme / clearBrandScheme", () => {
       applyBrandScheme({ primaryColorHex: PRIMARY, secondaryColorHex: ACCENT })
     ).not.toThrow();
 
-    // The CSS properties should still be applied.
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
+    // The brand-scheme style element should still be present.
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + PRIMARY);
+    expect(css).toContain("--brand-accent: " + ACCENT);
   });
 
   // ── S3 palette tests ──────────────────────────────────────────────────────
 
-  it("a valid full palette (all 15 properties) sets all fifteen custom properties", async () => {
+  it("a valid full palette (all 15 properties) emits all fifteen declarations in the stylesheet", async () => {
     const { applyBrandScheme } = await import("../brand-scheme");
 
     applyBrandScheme({
@@ -200,24 +246,23 @@ describe("applyBrandScheme / clearBrandScheme", () => {
       statusNeutralHex: STATUS_NEUTRAL
     });
 
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
-    expect(map["--surface-sidebar"]).toBe(SIDEBAR_BG);
-    expect(map["--sidebar-text"]).toBe(SIDEBAR_TEXT);
-    expect(map["--sidebar-text-active"]).toBe(SIDEBAR_TEXT_ACTIVE);
-    expect(map["--surface-page"]).toBe(SURFACE_PAGE);
-    expect(map["--surface-card"]).toBe(SURFACE_CARD);
-    expect(map["--text-primary"]).toBe(TEXT_PRIMARY);
-    expect(map["--text-secondary"]).toBe(TEXT_SECONDARY);
-    expect(map["--text-muted"]).toBe(TEXT_MUTED);
-    expect(map["--status-active"]).toBe(STATUS_ACTIVE);
-    expect(map["--status-warning"]).toBe(STATUS_WARNING);
-    expect(map["--status-danger"]).toBe(STATUS_DANGER);
-    expect(map["--status-info"]).toBe(STATUS_INFO);
-    expect(map["--status-neutral"]).toBe(STATUS_NEUTRAL);
-    // Exactly 15 properties written.
-    expect(Object.keys(map).length).toBe(15);
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + PRIMARY);
+    expect(css).toContain("--brand-accent: " + ACCENT);
+    expect(css).toContain("--surface-sidebar: " + SIDEBAR_BG);
+    expect(css).toContain("--sidebar-text: " + SIDEBAR_TEXT);
+    expect(css).toContain("--sidebar-text-active: " + SIDEBAR_TEXT_ACTIVE);
+    expect(css).toContain("--surface-page: " + SURFACE_PAGE);
+    expect(css).toContain("--surface-card: " + SURFACE_CARD);
+    expect(css).toContain("--text-primary: " + TEXT_PRIMARY);
+    expect(css).toContain("--text-secondary: " + TEXT_SECONDARY);
+    expect(css).toContain("--text-muted: " + TEXT_MUTED);
+    expect(css).toContain("--status-active: " + STATUS_ACTIVE);
+    expect(css).toContain("--status-warning: " + STATUS_WARNING);
+    expect(css).toContain("--status-danger: " + STATUS_DANGER);
+    expect(css).toContain("--status-info: " + STATUS_INFO);
+    expect(css).toContain("--status-neutral: " + STATUS_NEUTRAL);
   });
 
   it("one invalid value among twelve valid ones skips only the bad property and applies all siblings", async () => {
@@ -242,31 +287,30 @@ describe("applyBrandScheme / clearBrandScheme", () => {
       statusNeutralHex: STATUS_NEUTRAL
     });
 
-    const map = docStub.documentElement.style._map;
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
 
-    // The bad one must be ABSENT.
-    expect("--status-danger" in map).toBe(false);
+    // The bad one must be ABSENT from the stylesheet.
+    expect(css).not.toContain("--status-danger:");
 
     // Every valid sibling must be present.
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
-    expect(map["--surface-sidebar"]).toBe(SIDEBAR_BG);
-    expect(map["--sidebar-text"]).toBe(SIDEBAR_TEXT);
-    expect(map["--sidebar-text-active"]).toBe(SIDEBAR_TEXT_ACTIVE);
-    expect(map["--surface-page"]).toBe(SURFACE_PAGE);
-    expect(map["--surface-card"]).toBe(SURFACE_CARD);
-    expect(map["--text-primary"]).toBe(TEXT_PRIMARY);
-    expect(map["--text-secondary"]).toBe(TEXT_SECONDARY);
-    expect(map["--text-muted"]).toBe(TEXT_MUTED);
-    expect(map["--status-active"]).toBe(STATUS_ACTIVE);
-    expect(map["--status-warning"]).toBe(STATUS_WARNING);
-    expect(map["--status-info"]).toBe(STATUS_INFO);
-    expect(map["--status-neutral"]).toBe(STATUS_NEUTRAL);
-    // 14 properties written (15 minus the 1 invalid).
-    expect(Object.keys(map).length).toBe(14);
+    expect(css).toContain("--brand-primary: " + PRIMARY);
+    expect(css).toContain("--brand-accent: " + ACCENT);
+    expect(css).toContain("--surface-sidebar: " + SIDEBAR_BG);
+    expect(css).toContain("--sidebar-text: " + SIDEBAR_TEXT);
+    expect(css).toContain("--sidebar-text-active: " + SIDEBAR_TEXT_ACTIVE);
+    expect(css).toContain("--surface-page: " + SURFACE_PAGE);
+    expect(css).toContain("--surface-card: " + SURFACE_CARD);
+    expect(css).toContain("--text-primary: " + TEXT_PRIMARY);
+    expect(css).toContain("--text-secondary: " + TEXT_SECONDARY);
+    expect(css).toContain("--text-muted: " + TEXT_MUTED);
+    expect(css).toContain("--status-active: " + STATUS_ACTIVE);
+    expect(css).toContain("--status-warning: " + STATUS_WARNING);
+    expect(css).toContain("--status-info: " + STATUS_INFO);
+    expect(css).toContain("--status-neutral: " + STATUS_NEUTRAL);
   });
 
-  it("clearBrandScheme removes all fifteen custom properties including S3 palette", async () => {
+  it("clearBrandScheme removes the style element (including after full palette apply)", async () => {
     const { applyBrandScheme, clearBrandScheme } = await import("../brand-scheme");
 
     applyBrandScheme({
@@ -276,20 +320,14 @@ describe("applyBrandScheme / clearBrandScheme", () => {
       statusDangerHex: STATUS_DANGER
     });
 
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--surface-sidebar"]).toBe(SIDEBAR_BG);
-    expect(map["--status-danger"]).toBe(STATUS_DANGER);
+    expect(getBrandCss(docStub)).not.toBeNull();
 
     clearBrandScheme();
 
-    expect("--brand-primary" in map).toBe(false);
-    expect("--brand-accent" in map).toBe(false);
-    expect("--surface-sidebar" in map).toBe(false);
-    expect("--status-danger" in map).toBe(false);
+    expect(getBrandCss(docStub)).toBeNull();
   });
 
-  it("null S3 fields do not set the corresponding CSS property (tokens.css fallback applies)", async () => {
+  it("null S3 fields do not emit the corresponding CSS property (tokens.css fallback applies)", async () => {
     const { applyBrandScheme } = await import("../brand-scheme");
 
     applyBrandScheme({
@@ -299,13 +337,13 @@ describe("applyBrandScheme / clearBrandScheme", () => {
       statusDangerHex: null
     });
 
-    const map = docStub.documentElement.style._map;
+    const css = getBrandCss(docStub);
     // Null fields must be absent so cascade takes over.
-    expect("--surface-sidebar" in map).toBe(false);
-    expect("--status-danger" in map).toBe(false);
+    expect(css).not.toContain("--surface-sidebar:");
+    expect(css).not.toContain("--status-danger:");
     // Original pair still applied.
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
+    expect(css).toContain("--brand-primary: " + PRIMARY);
+    expect(css).toContain("--brand-accent: " + ACCENT);
   });
 });
 
@@ -345,10 +383,11 @@ describe("S6 per-user override — three-way precedence", () => {
     // Import the module — the IIFE runs immediately.
     await import("../brand-scheme");
 
-    const map = docStub.documentElement.style._map;
+    const css = getBrandCss(docStub);
     // Override takes precedence — we should see OVERRIDE_PRIMARY, not PRIMARY.
-    expect(map["--brand-primary"]).toBe(OVERRIDE_PRIMARY);
-    expect(map["--brand-accent"]).toBe(OVERRIDE_ACCENT);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + OVERRIDE_PRIMARY);
+    expect(css).toContain("--brand-accent: " + OVERRIDE_ACCENT);
   });
 
   it("module-load IIFE falls through to company scheme (level 2) when no override is cached", async () => {
@@ -357,20 +396,20 @@ describe("S6 per-user override — three-way precedence", () => {
 
     await import("../brand-scheme");
 
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + PRIMARY);
+    expect(css).toContain("--brand-accent: " + ACCENT);
   });
 
   it("module-load IIFE writes nothing (level 3) when both caches are empty", async () => {
     // No keys in localStorage.
     await import("../brand-scheme");
 
-    const map = docStub.documentElement.style._map;
-    expect(Object.keys(map).length).toBe(0);
+    expect(getBrandCss(docStub)).toBeNull();
   });
 
-  it("setUserBrandOverride writes the key and immediately applies the override", async () => {
+  it("setUserBrandOverride writes the key and immediately applies the override in the stylesheet", async () => {
     const { setUserBrandOverride } = await import("../brand-scheme");
 
     setUserBrandOverride(overrideScheme);
@@ -380,10 +419,11 @@ describe("S6 per-user override — three-way precedence", () => {
       "projectops.brand-override",
       JSON.stringify(overrideScheme)
     );
-    // CSS must reflect the override.
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(OVERRIDE_PRIMARY);
-    expect(map["--brand-accent"]).toBe(OVERRIDE_ACCENT);
+    // Stylesheet must reflect the override.
+    const css = getBrandCss(docStub);
+    expect(css).not.toBeNull();
+    expect(css).toContain("--brand-primary: " + OVERRIDE_PRIMARY);
+    expect(css).toContain("--brand-accent: " + OVERRIDE_ACCENT);
   });
 
   it("clearUserBrandOverride removes the override key and re-applies the company scheme without reload", async () => {
@@ -395,8 +435,8 @@ describe("S6 per-user override — three-way precedence", () => {
     const { clearUserBrandOverride } = await import("../brand-scheme");
 
     // The IIFE applied the override at module load; confirm that.
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(OVERRIDE_PRIMARY);
+    const css1 = getBrandCss(docStub);
+    expect(css1).toContain("--brand-primary: " + OVERRIDE_PRIMARY);
 
     // Clear the override.
     clearUserBrandOverride();
@@ -404,8 +444,10 @@ describe("S6 per-user override — three-way precedence", () => {
     // Override key must be removed.
     expect(lsStub.removeItem).toHaveBeenCalledWith("projectops.brand-override");
     // Company scheme must now be active — no reload needed.
-    expect(map["--brand-primary"]).toBe(PRIMARY);
-    expect(map["--brand-accent"]).toBe(ACCENT);
+    const css2 = getBrandCss(docStub);
+    expect(css2).not.toBeNull();
+    expect(css2).toContain("--brand-primary: " + PRIMARY);
+    expect(css2).toContain("--brand-accent: " + ACCENT);
   });
 
   it("clearUserBrandOverride falls back to tokens.css when no company scheme is cached", async () => {
@@ -415,14 +457,12 @@ describe("S6 per-user override — three-way precedence", () => {
     const { clearUserBrandOverride } = await import("../brand-scheme");
 
     // IIFE applied override at load.
-    const map = docStub.documentElement.style._map;
-    expect(map["--brand-primary"]).toBe(OVERRIDE_PRIMARY);
+    expect(getBrandCss(docStub)).not.toBeNull();
 
     clearUserBrandOverride();
 
-    // Both properties should be absent (tokens.css level 3 takes over).
-    expect("--brand-primary" in map).toBe(false);
-    expect("--brand-accent" in map).toBe(false);
+    // Style element should be absent (tokens.css level 3 takes over).
+    expect(getBrandCss(docStub)).toBeNull();
   });
 
   it("BRAND_OVERRIDE_STORAGE_KEY exports the correct key string", async () => {
@@ -461,9 +501,8 @@ describe("S6 logout — override key cleared via BrandSchemeProvider's null-user
     clearBrandScheme();
     localStorage.removeItem(BRAND_OVERRIDE_STORAGE_KEY);
 
-    // CSS properties cleared.
-    const map = docStub.documentElement.style._map;
-    expect("--brand-primary" in map).toBe(false);
+    // Style element must be removed.
+    expect(getBrandCss(docStub)).toBeNull();
 
     // Override key removed.
     expect(lsStub.removeItem).toHaveBeenCalledWith("projectops.brand-override");

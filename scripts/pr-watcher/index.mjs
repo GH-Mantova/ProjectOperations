@@ -471,14 +471,17 @@ export function readFixesPr(filePath, { readFileSyncImpl = readFileSync } = {}) 
 
 // Pure — compute the insertion index for a prompt joining the queue.
 // Priority: fix jobs jump to the front (behind any currently-running job,
-// which the caller has already shifted out); rev/review jobs stack behind
-// existing fix + review jobs; ordinary jobs run in lexicographic name order
-// behind fix + review jobs. Multiple fix jobs stack in arrival order.
+// which the caller has already shifted out); priority reviews (watcher-opened
+// PRs) stack next; rev/review jobs stack behind; ordinary jobs run in
+// lexicographic name order behind fix + review jobs. Multiple fix jobs stack
+// in arrival order. REVIEW_PRIORITY_WATCHER_PRS_V1
 export function computeQueueInsertIndex(queueMeta, incoming) {
-  const { isFix, isReview, name } = incoming;
+  const { isFix, isReview, isPriorityReview, name } = incoming;
   let i = 0;
   while (i < queueMeta.length && queueMeta[i].isFix) i++;
   if (isFix) return i;
+  while (i < queueMeta.length && queueMeta[i].isPriorityReview) i++;
+  if (isPriorityReview) return i;
   while (i < queueMeta.length && queueMeta[i].isReview) i++;
   if (isReview) return i;
   while (i < queueMeta.length && queueMeta[i].name <= name) i++;
@@ -981,15 +984,33 @@ function enqueue(name, { source = "watch" } = {}) {
   }
   seen.add(name);
   if (isFix) fixLanePaths.add(filePath);
-  const queueMeta = queue.map((p) => ({
-    name: path.basename(p),
-    isFix: fixLanePaths.has(p),
-    isReview: isReviewJob(path.basename(p)),
-  }));
-  const insertAt = computeQueueInsertIndex(queueMeta, { isFix, isReview, name });
+  // REVIEW_PRIORITY_WATCHER_PRS_V1 — a review job whose PR was opened by this
+  // watcher instance is promoted to the priority-review tier.
+  const isPriorityReview =
+    isReview && reviewJobPrNumber(name) !== null && watcherOpenedPrs.has(reviewJobPrNumber(name));
+  const queueMeta = queue.map((p) => {
+    const pName = path.basename(p);
+    const pIsReview = isReviewJob(pName);
+    const pPriorityReview =
+      pIsReview && reviewJobPrNumber(pName) !== null && watcherOpenedPrs.has(reviewJobPrNumber(pName));
+    return {
+      name: pName,
+      isFix: fixLanePaths.has(p),
+      isReview: pIsReview,
+      isPriorityReview: pPriorityReview,
+    };
+  });
+  const insertAt = computeQueueInsertIndex(queueMeta, { isFix, isReview, isPriorityReview, name });
   queue.splice(insertAt, 0, filePath);
   if (isFix) {
     log("fix-lane", `${name} jumped to front (fixes PR #${fixesPr})`);
+  }
+  if (isPriorityReview) {
+    // Count ordinary (non-priority) reviews that this job jumped ahead of.
+    const jumped = queueMeta.slice(insertAt).filter((m) => m.isReview && !m.isPriorityReview).length;
+    if (jumped > 0) {
+      log("queue", `rev-${reviewJobPrNumber(name)}-ready.md jumped ahead of ${jumped} review(s) (watcher-opened PR)`);
+    }
   }
   const tail = `depth: ${queue.length}${running ? ", busy" : ""}, source: ${source}`;
   log("queue", `${name} (${tail})`);
@@ -2513,27 +2534,83 @@ function killCurrentChildTree() {
 
 // --- Reviewed-set helpers (auto-review) ---
 
+// REVIEW_PRIORITY_WATCHER_PRS_V1 — pure read/write pair exposed for tests.
+// readReviewedStateFile / writeReviewedStateFile take an explicit path so
+// unit tests can inject a tmp dir without touching the production state.
+
+export async function readReviewedStateFile(filePath) {
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+export async function writeReviewedStateFile(filePath, reviewed, watcherOpened) {
+  const tmp = filePath + ".tmp";
+  const data = JSON.stringify(
+    {
+      reviewed: [...reviewed].sort((a, b) => a - b),
+      watcherOpened: [...watcherOpened],
+    },
+    null,
+    2,
+  );
+  await writeFile(tmp, data, "utf-8");
+  await rename(tmp, filePath);
+}
+
 async function loadReviewedSet() {
   const set = new Set();
   try {
-    const raw = await readFile(REVIEWED_STATE_FILE, "utf-8");
-    const data = JSON.parse(raw);
-    if (Array.isArray(data.reviewed)) {
+    const data = await readReviewedStateFile(REVIEWED_STATE_FILE);
+    if (data && Array.isArray(data.reviewed)) {
       for (const n of data.reviewed) {
         if (typeof n === "number") set.add(n);
       }
     }
   } catch (err) {
-    if (err.code !== "ENOENT") {
-      log("review", `warning: could not load reviewed-set (${err.message}) — starting empty`);
-    }
+    log("review", `warning: could not load reviewed-set (${err.message}) — starting empty`);
   }
   return set;
 }
 
+// REVIEW_PRIORITY_WATCHER_PRS_V1 — load the watcher-opened set from the
+// shared state file. Backward-compat: a file with only `reviewed` key is
+// fine; watcherOpened simply initialises to empty.
+export async function loadWatcherOpenedSet() {
+  const set = new Set();
+  const order = [];
+  try {
+    const data = await readReviewedStateFile(REVIEWED_STATE_FILE);
+    if (data && Array.isArray(data.watcherOpened)) {
+      for (const n of data.watcherOpened) {
+        if (typeof n === "number" && !set.has(n)) {
+          set.add(n);
+          order.push(n);
+        }
+      }
+    }
+  } catch (err) {
+    log("review", `warning: could not load watcher-opened set (${err.message}) — starting empty`);
+  }
+  return { set, order };
+}
+
 async function saveReviewedSet(set) {
   const tmp = REVIEWED_STATE_FILE + ".tmp";
-  const data = JSON.stringify({ reviewed: [...set].sort((a, b) => a - b) }, null, 2);
+  // REVIEW_PRIORITY_WATCHER_PRS_V1 — write both keys atomically so the file
+  // always carries reviewed + watcherOpened together.
+  const data = JSON.stringify(
+    {
+      reviewed: [...set].sort((a, b) => a - b),
+      watcherOpened: [...watcherOpenedOrder],
+    },
+    null,
+    2,
+  );
   try {
     await writeFile(tmp, data, "utf-8");
     await rename(tmp, REVIEWED_STATE_FILE);
@@ -2546,6 +2623,25 @@ async function saveReviewedSet(set) {
     } catch (err2) {
       log("review", `state save failed again (${err2.message}) — continuing (worst case: duplicate review next tick)`);
     }
+  }
+}
+
+// REVIEW_PRIORITY_WATCHER_PRS_V1 — record that THIS watcher opened prNumber.
+// Adds to the module-level set + order array, trims to the 200 most-recent,
+// and persists alongside the reviewed-set in the same atomic write.
+async function recordWatcherOpenedPr(prNumber) {
+  if (!watcherOpenedPrs.has(prNumber)) {
+    watcherOpenedPrs.add(prNumber);
+    watcherOpenedOrder.push(prNumber);
+    if (watcherOpenedOrder.length > 200) {
+      const dropped = watcherOpenedOrder.shift();
+      watcherOpenedPrs.delete(dropped);
+    }
+  }
+  // Persist even if the number was already in the set — a restart may have
+  // wiped the in-memory state and we want the file to stay current.
+  if (reviewedSet !== null) {
+    await saveReviewedSet(reviewedSet);
   }
 }
 
@@ -2595,6 +2691,14 @@ async function loadReviewTemplate() {
     return false;
   }
 }
+
+// REVIEW_PRIORITY_WATCHER_PRS_V1 — module-level set of PR numbers that THIS
+// watcher instance opened. Review jobs for these PRs are promoted to the
+// priority-review tier so they decide auto-merge in time.
+// watcherOpenedOrder mirrors the set as an insertion-ordered array so we can
+// trim to the 200 most-recent entries cheaply.
+let watcherOpenedPrs = new Set();
+let watcherOpenedOrder = [];
 
 // Poll GitHub for newly-opened PRs and write a review prompt for each.
 // This function only WRITES files — the normal queue drain handles execution.
@@ -3409,6 +3513,9 @@ async function drain() {
         return;
       } else {
         log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
+        // REVIEW_PRIORITY_WATCHER_PRS_V1 — remember this PR so its review job
+        // gets promoted to the priority-review tier in the queue.
+        await recordWatcherOpenedPr(prNumber);
         // escalates:true short-circuits BOTH merge paths — the flag means a human decides, so
         // auto-merge is never enabled regardless of AUTO_MERGE_POLICY.
         // FIXES_PR_ESCALATION — `deps.fixesPr` (front matter `fixes_pr: N`) is threaded in
@@ -3764,6 +3871,14 @@ async function main() {
   watcher.on("error", (err) => log("error", `fs.watch: ${err.message}`));
 
   const rescanTimer = setInterval(rescan, RESCAN_INTERVAL_MS);
+
+  // REVIEW_PRIORITY_WATCHER_PRS_V1 — load the watcher-opened set at startup
+  // (unconditionally — recordWatcherOpenedPr runs regardless of AUTO_REVIEW).
+  {
+    const loaded = await loadWatcherOpenedSet();
+    watcherOpenedPrs = loaded.set;
+    watcherOpenedOrder = loaded.order;
+  }
 
   // Auto-review: load template, seed reviewed-set, start poll loop
   let reviewPollTimer = null;

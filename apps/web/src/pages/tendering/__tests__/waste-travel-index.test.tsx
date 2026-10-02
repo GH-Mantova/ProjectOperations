@@ -312,3 +312,39 @@ describe("no client-side pricing of travel fields", () => {
     expect(wasteSource).not.toMatch(/let lineTotal\s*=/);
   });
 });
+
+// WASTE_TIP_DAILYKM_PROVENANCE_V1 (scopecards-s8i)
+//
+// The behaviour of this journey is tested where it is observable -- in the API,
+// in scope-waste-travel.spec.ts, because the web workspace has no jsdom and no
+// @testing-library and the outcome that matters is what gets stored. These are
+// the falsifying probes for the regression coming back into this file.
+
+describe("WASTE_TIP_DAILYKM_PROVENANCE_V1 - the tip finder writes no dailyKm", () => {
+  it("handleTipChosen still patches the facility and the map location id", () => {
+    expect(wasteSource).toContain("mapLocationId }");
+  });
+
+  it("handleTipChosen no longer patches dailyKm", () => {
+    // The removed line was: await patchRow(rowId, { dailyKm: roundTrip });
+    // Any reappearance of a dailyKm patch keyed on rowId (the finder's row
+    // handle) is the defect returning. The estimator's own input patches on
+    // row.id, which is a different handle and stays legal.
+    expect(wasteSource).not.toContain("patchRow(rowId, { dailyKm");
+  });
+
+  it("the map distance is still OFFERED, so a deliberate override survives", () => {
+    // setKmSuggest is the click-to-apply chip. Applying it is a real override
+    // and is correctly recorded as manual; arriving at it by picking a tip was
+    // not, which is the whole distinction this slice restores.
+    expect(wasteSource).toContain("setKmSuggest((prev) => ({ ...prev, [rowId]: roundTrip }))");
+  });
+
+  it("the estimator's own dailyKm input still patches", () => {
+    expect(wasteSource).toContain("patchRow(row.id, { dailyKm");
+  });
+
+  it("records why, so the next reader does not restore the auto-fill", () => {
+    expect(wasteSource).toContain("WASTE_TIP_DAILYKM_PROVENANCE_V1");
+  });
+});

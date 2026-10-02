@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Waste Panel Mock-up</title>
+<style>
+/* Same visual language as Claude Design/proposed/s8h-traffic-index (the approved S8h mock-up). Example data only. */
+:root{--p:#005B61;--pl:#E6F0F1;--acc:#FEAA6D;--accd:#C77A3A;--dark:#242424;--page:#F6F6F6;--card:#fff;--t1:#111;--t2:#6B7280;--t3:#9CA3AF;--bd:#E5E7EB;--bs:#F3F4F6;--ok:#047857;--okl:#ECFDF5;--warnl:#FFF4E5;--dang:#DC2626;--dangl:#FEF2F2;--r:8px}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--t1);font:14px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+.wrap{max-width:1100px;margin:0 auto}h1{font-size:24px;margin:0 0 6px}
+.lede{color:var(--t2);margin:0 0 22px;max-width:78ch}
+h2.sec{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--t2);margin:30px 0 10px;display:flex;gap:10px;align-items:center}
+h2.sec .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--acc);color:var(--dark);font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.frame{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.crumb{font-size:12px;color:var(--t2)}.crumb b{color:var(--t1)}
+.ex{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accd);margin-left:auto}
+.body{padding:16px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}.two>*{min-width:0}@media(max-width:900px){.two{grid-template-columns:minmax(0,1fr)}}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--bd);background:#fff;color:var(--t2);white-space:nowrap}
+.chip.m{border-color:var(--p);color:var(--p);background:var(--pl)}
+.chip.man{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.est{border-color:var(--accd);color:var(--accd);background:var(--warnl)}
+.chip.rt{border-color:var(--ok);color:var(--ok);background:var(--okl)}
+.chip.bad{border-color:var(--dang);color:var(--dang);background:var(--dangl)}
+.note{font-size:12px;color:var(--t2);margin-top:10px}
+.link{color:var(--p);font-weight:600;text-decoration:underline;font-size:12px;cursor:pointer}
+.btn{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;border:1px solid var(--bd);background:#fff;font:inherit;font-size:12.5px;font-weight:500;cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc)}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{background:var(--bs);text-align:left;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--t2);padding:7px 10px;white-space:nowrap}
+td{padding:7px 10px;border-top:1px solid var(--bs);white-space:nowrap;vertical-align:middle}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+select.dest{height:26px;font-size:11px;padding:0 4px;border:1px solid var(--bd);border-radius:4px;background:#fff;min-width:96px;max-width:112px}
+select.dest.bad{min-width:0;width:44px}
+/* before: the box column */
+.stack{display:flex;flex-direction:column;gap:6px}
+.bx{border:1px solid var(--bd);border-radius:6px;padding:6px 9px;background:#fff;font-size:12.5px}
+.bx .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2)}
+.bx.dup{border-color:var(--dang);background:var(--dangl)}
+/* after */
+.panel{background:#F2F8F8;border-top:1px solid var(--bd);padding:14px 16px}
+.blk{background:#fff;border:1px solid var(--bd);border-radius:var(--r);padding:11px 13px;margin-bottom:10px}
+.blk h4{margin:0 0 8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--t2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tiprow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tiprow select{height:32px;min-width:0;max-width:100%;flex:1 1 220px;font:inherit;font-size:13px;border:1px solid var(--p);border-radius:6px;padding:0 8px;box-shadow:0 0 0 2px var(--pl)}
+.chain{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--t2);font-variant-numeric:tabular-nums}
+.chain .box{border:1px solid var(--bd);border-radius:6px;padding:4px 9px;background:#fff;color:var(--t1);min-width:84px}
+.chain .box b{display:block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--t2)}
+.chain .box .s{display:block;font-size:10.5px;color:var(--t3)}
+.chain .op{color:var(--t3);font-weight:700}
+.kms{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:600px){.kms{grid-template-columns:1fr}}
+.km{border:1px solid var(--bd);border-radius:6px;padding:8px 10px}
+.km .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.km .k{font-size:12px;font-weight:600}
+.km .s{font-size:11px;color:var(--t2)}
+.drawer{border-left:3px solid var(--p)}
+.ctx{font-size:12.5px;color:var(--t2);padding:8px 12px;background:var(--bs);border-radius:6px}
+.ctx b{color:var(--t1)}
+.ask{border:1px solid var(--accd);background:var(--warnl);border-radius:6px;padding:10px 12px;font-size:12.5px}
+.ask input{height:28px;width:90px;margin:0 6px;border:1px solid var(--bd);border-radius:4px;padding:0 6px}
+.win{background:var(--okl)}
+.wrong{background:var(--dangl)}
+.out{border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.calls{display:grid;gap:10px;margin-top:10px}
+.call{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--p);border-radius:0 var(--r) var(--r) 0;padding:10px 14px;font-size:13px}
+.call.q{border-left-color:var(--accd)}
+</style></head><body><div class="wrap">
+
+<h1>Waste panel: one panel, one tip, one plan</h1>
+<p class="lede">S8j for the waste line. It changes the <b>layout</b> and the <b>tip advice</b>. It does not change how a line is priced: every figure on a saved line comes out the same as today. Example data throughout. Section 5 shows the output, so you can see what moves and what doesn't.</p>
+
+<!-- ============ 1 ============ -->
+<h2 class="sec"><span class="n">1</span>The waste row: "Goes to" becomes readable</h2>
+<div class="two">
+ <div class="frame"><div class="bar"><span class="crumb"><b>Today</b></span><span class="chip bad">column squeezed to 1%</span></div><div class="body"><div class="tw"><table>
+  <tr><th>Waste</th><th class="n">Qty</th><th>Facility</th><th>Goes to</th><th class="n">Total</th></tr>
+  <tr><td>Rubble</td><td class="n">100.000 t</td><td>Kedron Transfer</td><td><select class="dest bad"><option>In the price</option></select></td><td class="n">$7,752.92</td></tr>
+ </table></div><p class="note">The select shows "In th". The shared control has no width, and the waste table tells the browser to collapse the column.</p></div></div>
+ <div class="frame"><div class="bar"><span class="crumb"><b>After</b></span><span class="chip rt">96–112 px, shared fix</span></div><div class="body"><div class="tw"><table>
+  <tr><th>Waste</th><th class="n">Qty</th><th>Tip</th><th>Goes to</th><th class="n">Total</th></tr>
+  <tr><td>Rubble</td><td class="n">100.000 t</td><td>Kedron Transfer</td><td><select class="dest"><option>In the price</option><option>Provisional</option><option>Cost option</option><option>Internal only</option></select></td><td class="n">$7,752.92</td></tr>
+ </table></div><p class="note">The same width goes on the shared control, so the cutting sheet, quantities table and other operational costs get it too. All four screens get screenshots before and after.</p></div></div>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2 class="sec"><span class="n">2</span>The expanded panel, before and after</h2>
+<div class="two">
+ <div class="frame"><div class="bar"><span class="crumb"><b>Today</b>: one box per field, in file order</span></div><div class="body"><div class="stack">
+  <div class="bx dup"><span class="k">Facility</span> Kedron Transfer &nbsp;<span class="btn">Find tip</span></div>
+  <div class="bx"><span class="k">Loads per truck per day</span> 6 <span class="chip m">cycle</span></div>
+  <div class="bx"><span class="k">Capacity per load</span> 26 t</div>
+  <div class="bx"><span class="k">Daily km</span> 170.4 <span class="chip m">derived</span> &nbsp;<span class="btn">Map</span></div>
+  <div class="bx dup"><span class="k">Tip (map location)</span> Kedron Transfer Station</div>
+  <div class="bx"><span class="k">Transport item</span> Truck &amp; dog</div>
+  <div class="bx"><span class="k">Trucks</span> 1</div>
+  <div class="bx"><span class="k">Strip</span> Required trips 4 · Trucks 1 · Total route km 113.6 · Fuel charged on 113.6</div>
+ </div><p class="note">Three ways to set the tip (red), two buttons that open the same drawer, and trips, loads per day and two different kilometre figures in no particular order.</p></div></div>
+
+ <div class="frame"><div class="bar"><span class="crumb"><b>After</b>: three blocks, read top to bottom</span></div>
+ <div class="panel">
+  <div class="blk"><h4>Tip</h4>
+   <div class="tiprow"><select aria-label="Tip"><option>Kedron Transfer Station · $61.95/t · route ✓</option><option>Wacol Recycling · $60.00/t · route ✓</option><option>Old Quarry Rd (no map location) · $58.00/t</option></select><button class="btn">Find tip</button></div>
+   <p class="note" style="margin-top:6px">One control. Picking a tip saves the facility and its map location together, in one change, and never writes daily km.</p>
+  </div>
+  <div class="blk"><h4>Route &amp; travel <span class="chip rt">Geoapify route</span></h4>
+   <div class="chain"><span class="box"><b>One way</b>14.2 km</span><span class="box"><b>Planning</b>22 min each way</span><span class="box"><b>Traffic allowance</b>1.18 <span class="s">suggested</span></span><span class="box"><b>Cycle</b>74 min<span class="s">22 + 22 + 30 at tip</span></span></div>
+   <p class="note">Unchanged from S8h. Moved up so it sits under the tip that produces it.</p>
+  </div>
+  <div class="blk"><h4>Trip plan</h4>
+   <div class="chain">
+    <span class="box"><b>Quantity</b>100 t</span><span class="op">÷</span>
+    <span class="box"><b>Capacity / load</b>26 t<span class="s">matrix</span></span><span class="op">=</span>
+    <span class="box"><b>Trips</b>4<span class="s">4 × 25 t</span></span><span class="op">·</span>
+    <span class="box"><b>Loads / truck / day</b>6 <span class="s"><span class="chip m">from cycle</span></span></span><span class="op">·</span>
+    <span class="box"><b>Trucks</b>1</span><span class="op">→</span>
+    <span class="box"><b>Duration</b>1 day</span>
+   </div>
+   <div class="kms" style="margin-top:10px">
+    <div class="km"><div class="k">Total route km: the whole job</div><div class="v">113.6</div><div class="s">4 trips × 2 × 14.2 km · <b>fuel is charged on this</b></div></div>
+    <div class="km"><div class="k">Daily km: one truck, one full day</div><div class="v">170.4 <span class="chip m">derived</span></div><div class="s">6 loads × 2 × 14.2 km &nbsp;<span class="chip">Map distance 24.0 km · apply</span></div></div>
+   </div>
+   <p class="note">Trips and loads per day are side by side but kept separate, because they are different numbers. Daily km can be bigger than the whole job when the job finishes in part of a day. The labels say which is which, so nobody reads that as a mistake. The click-to-apply map chip from #2184 stays exactly as it is.</p>
+  </div>
+ </div></div>
+</div>
+
+<!-- ============ 3 ============ -->
+<h2 class="sec"><span class="n">3</span>A tip with no map location</h2>
+<div class="frame"><div class="panel">
+ <div class="blk"><h4>Tip</h4><div class="tiprow"><select aria-label="Tip"><option>Old Quarry Rd (no map location) · $58.00/t</option></select><button class="btn">Find tip</button></div></div>
+ <div class="blk"><h4>Route &amp; travel <span class="chip est">Estimated, no route</span></h4>
+  <div class="chain"><span class="box"><b>Straight line</b>18.4 km</span><span class="box"><b>Planning</b>25 min each way</span><span class="box"><b>Traffic allowance</b>1.00</span></div>
+  <p class="note">This facility isn't linked to a map location, so there is no route and the line uses the badged straight-line estimate. Linking it is a separate action in Map locations. There's no second picker here.</p></div>
+</div></div>
+
+<!-- ============ 4 ============ -->
+<h2 class="sec"><span class="n">4</span>Find tip: compares one real trip, and the origin is context</h2>
+<div class="two">
+ <div class="frame"><div class="bar"><span class="crumb"><b>Today</b>: ranks on the whole 100 t</span></div><div class="body">
+  <div class="tw"><table><tr><th>Facility</th><th class="n">Dist</th><th class="n">Disposal</th><th class="n">Travel</th><th class="n">Total</th></tr>
+   <tr class="wrong"><td>Wacol <span class="chip bad">Cheapest</span></td><td class="n">22 km</td><td class="n">$6,000.00</td><td class="n">$110.00</td><td class="n">$6,110.00</td></tr>
+   <tr><td>Kedron</td><td class="n">12 km</td><td class="n">$6,195.00</td><td class="n">$60.00</td><td class="n">$6,255.00</td></tr></table></div>
+  <p class="note">Disposal is counted for the whole job but travel for only one return trip, so distance barely counts. Here it recommends the wrong tip.</p>
+ </div></div>
+ <div class="frame drawer"><div class="bar"><span class="crumb"><b>After</b>: Find tip</span><span class="ex">Example data</span></div><div class="body">
+  <div class="ctx">From the tender site: <b>14 Boundary St, West End</b></div>
+  <p class="note" style="margin:8px 0">Compared on <b>one trip of 25 t</b>. This line is 100 t in 4 trips, so the comparison uses the trips the line will actually run.</p>
+  <div class="tw"><table><tr><th>Facility</th><th class="n">Dist</th><th class="n">Disposal</th><th class="n">Travel</th><th class="n">Per trip</th><th></th></tr>
+   <tr class="win"><td>Kedron <span class="chip rt">Cheapest</span></td><td class="n">12 km</td><td class="n">$1,548.75</td><td class="n">$60.00</td><td class="n">$1,608.75</td><td><button class="btn pri">Use</button></td></tr>
+   <tr><td>Wacol</td><td class="n">22 km</td><td class="n">$1,500.00</td><td class="n">$110.00</td><td class="n">$1,610.00</td><td><button class="btn">Use</button></td></tr></table></div>
+  <p class="note">The finder ranks on straight-line distance. The line then prices the chosen tip on the real route, as in S8h.</p>
+  <div class="ask" style="margin-top:10px"><b>When this line has no capacity per load yet:</b><br>Capacity per load<input value="" placeholder="t"><button class="btn">Compare</button><br><span style="color:var(--t2)">Needed to work out how many trips the line takes. Nothing is compared until it's entered. The finder never falls back to the whole quantity.</span></div>
+ </div></div>
+</div>
+
+<!-- ============ 5 ============ -->
+<h2 class="sec"><span class="n">5</span>The output: the priced line, before and after</h2>
+<div class="frame"><div class="bar"><span class="crumb">Rubble 100 t → Kedron · what the line contributes to the quote</span><span class="ex">Example rates</span></div><div class="body">
+ <div class="out"><table>
+  <tr><th>Component</th><th>Worked from</th><th class="n">Today</th><th class="n">After S8j</th></tr>
+  <tr><td>Disposal</td><td>100 t × $61.95/t</td><td class="n">$6,195.00</td><td class="n">$6,195.00</td></tr>
+  <tr><td>Truck hire</td><td>1 truck × 1 day × $1,450.00</td><td class="n">$1,450.00</td><td class="n">$1,450.00</td></tr>
+  <tr><td>Fuel</td><td>113.6 total route km × $0.95</td><td class="n">$107.92</td><td class="n">$107.92</td></tr>
+  <tr><td><b>Line total</b></td><td></td><td class="n"><b>$7,752.92</b></td><td class="n"><b>$7,752.92</b></td></tr>
+ </table></div>
+ <p class="note"><b>Identical by design.</b> S8j touches no API and no pricing engine, and a test pins total route km and the line total for a fixed row. What can change is <b>which tip an estimator picks</b>, because Find tip now recommends correctly. When a different tip is picked, the line reprices on that tip's real route, exactly as it does today.</p>
+</div></div>
+
+<h2 class="sec">For you to confirm</h2>
+<div class="calls">
+ <div class="call q"><b>"Goes to" width: shared fix across all four screens</b> (recommended, matches the original card design), or the waste table only?</div>
+ <div class="call"><b>One tip control</b> replaces Facility + Tip (map location) + the Map button. Both values are still saved on the line.</div>
+ <div class="call"><b>Find tip compares per trip</b>, using the line's own trips (an override is respected), and asks rather than guesses when capacity or tonnage is missing.</div>
+ <div class="call"><b>"Coming from" stops being a field.</b> The tender site shows as a line of text in the drawer.</div>
+</div>
+</div></body></html>

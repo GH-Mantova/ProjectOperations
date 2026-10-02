@@ -371,6 +371,14 @@ function Assert-TargetValid {
         Write-Fail "HOLD file body contains <!-- watcher: do-not-arm --> marker. Not arming."
         exit 1
     }
+    # The DECORATED form - <!-- watcher: do-not-arm | MARCO GATE: ... --> - was invisible to the
+    # regex above, so a prompt could carry a marker that reads as a gate and arm anyway. MEASURED
+    # 2026-09-25: four live prompts carried it and none was held by a marker rule. Refuse it here
+    # too, so the arming tool does not depend on the linter noticing prose.
+    if ($body -match '<!--\s*watcher:\s*do-not-arm\s*[^->]') {
+        Write-Fail "HOLD file body contains a DECORATED do-not-arm marker. Use the bare form and put the reason in prose beneath it. Not arming."
+        exit 1
+    }
     # Check line-by-line for DO NOT ARM so partial-line matches don't count.
     $lines = $body -split "`r?`n"
     foreach ($line in $lines) {

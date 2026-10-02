@@ -6,6 +6,7 @@ import { TENDER_WINLOSS_REPORT_DEFS } from "./tender-winloss-report.definitions"
 import { ESTIMATING_ANALYTICS_REPORT_DEFS } from "./estimating-analytics-report.definitions";
 import { resolveSelfFilter } from "./report-self-filter";
 import { dateRangeFilter, decimalToNumber, parseFromDate, parseToDate } from "./reporting.helpers";
+import { WON_TENDER_STATUSES_ARRAY } from "../tendering/tender-status";
 
 // Cross-module BI reporting layer (slice 1).
 //
@@ -195,7 +196,10 @@ const REPORT_DEFS: ReportDefinition[] = [
     async run(prisma, params) {
       const submittedAt = dateRangeFilter(params.from, params.to);
       const where: Prisma.TenderWhereInput = {
-        status: { in: ["SUBMITTED", "AWARDED", "LOST", "CONTRACT_ISSUED"] },
+        // SUBMITTED plus all won statuses (AWARDED, CONTRACT_ISSUED, CONVERTED) plus LOST.
+        // Using an explicit list here so the query is intentional about which statuses
+        // carry win-rate signal, rather than including all terminal statuses.
+        status: { in: ["SUBMITTED", ...WON_TENDER_STATUSES_ARRAY, "LOST"] },
         // EA-GATE exposure fix: tender-win-rate names individuals; apply the
         // same self-filter as the EA reports so a plain estimator only sees
         // her own win rate. Without this anyone holding reporting.view could
@@ -217,7 +221,7 @@ const REPORT_DEFS: ReportDefinition[] = [
         const name = formatEstimatorName(estimator);
         const bucket = buckets.get(name) ?? { submitted: 0, awarded: 0, lost: 0 };
         bucket.submitted += 1;
-        if (t.status === "AWARDED" || t.status === "CONTRACT_ISSUED") bucket.awarded += 1;
+        if (WON_TENDER_STATUSES_ARRAY.includes(t.status)) bucket.awarded += 1;
         if (t.status === "LOST") bucket.lost += 1;
         buckets.set(name, bucket);
       }
@@ -234,7 +238,7 @@ const REPORT_DEFS: ReportDefinition[] = [
           };
         })
         .sort((a, b) => Number(b.submitted) - Number(a.submitted));
-      const totals = rows.reduce(
+      const totalsRaw = rows.reduce(
         (acc, row) => {
           acc.submitted += Number(row.submitted);
           acc.awarded += Number(row.awarded);
@@ -243,6 +247,14 @@ const REPORT_DEFS: ReportDefinition[] = [
         },
         { submitted: 0, awarded: 0, lost: 0 }
       );
+      const totalResolved = totalsRaw.awarded + totalsRaw.lost;
+      const totals = {
+        ...totalsRaw,
+        winRatePct:
+          totalResolved === 0
+            ? 0
+            : Math.round((totalsRaw.awarded / totalResolved) * 1000) / 10
+      };
       return { rows, totals };
     }
   },

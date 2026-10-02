@@ -67,7 +67,7 @@ function Test-IsWorktree([string]$p) {
 if ($Remove) {
   if (-not (Test-Path $wt)) {
     Write-Host "not present: $wt"
-    & git -C $Repo worktree prune
+    & git -C $Repo worktree prune | Out-Null
     exit 0
   }
   if (-not (Test-IsWorktree $wt)) {
@@ -75,9 +75,9 @@ if ($Remove) {
     Write-Host "         Quarantine it by hand: move it to C:\PR-Master\_retired-<yyyy-MM-dd>\. Never delete."
     exit 4
   }
-  & git -C $Repo worktree remove --force $wt
+  & git -C $Repo worktree remove --force $wt | Out-Host
   if ($LASTEXITCODE -ne 0) { Write-Host "git worktree remove failed ($LASTEXITCODE)"; exit 5 }
-  & git -C $Repo worktree prune
+  & git -C $Repo worktree prune | Out-Null
   Write-Host "removed: $wt"
   exit 0
 }
@@ -85,7 +85,7 @@ if ($Remove) {
 # --- create ------------------------------------------------------------------------------
 if (-not (Test-Path $Root)) { New-Item -ItemType Directory -Path $Root -Force | Out-Null }
 
-& git -C $Repo worktree prune
+& git -C $Repo worktree prune | Out-Null
 
 if (Test-Path $wt) {
   if (-not (Test-IsWorktree $wt)) {
@@ -98,18 +98,18 @@ if (Test-Path $wt) {
     exit 4
   }
   Write-Host "replacing existing worktree $wt (-Force)"
-  & git -C $Repo worktree remove --force $wt
+  & git -C $Repo worktree remove --force $wt | Out-Host
   if ($LASTEXITCODE -ne 0) { Write-Host "git worktree remove failed ($LASTEXITCODE)"; exit 5 }
-  & git -C $Repo worktree prune
+  & git -C $Repo worktree prune | Out-Null
 }
 
-if (-not $NoFetch) { & git -C $Repo fetch origin --quiet }
+if (-not $NoFetch) { & git -C $Repo fetch origin --quiet | Out-Host }
 
 if ($Branch) {
   & git -C $Repo branch -D $Branch 2>&1 | Out-Null
-  & git -C $Repo worktree add -b $Branch $wt $Ref
+  & git -C $Repo worktree add -b $Branch $wt $Ref | Out-Host
 } else {
-  & git -C $Repo worktree add --detach $wt $Ref
+  & git -C $Repo worktree add --detach $wt $Ref | Out-Host
 }
 if ($LASTEXITCODE -ne 0) { Write-Host "git worktree add failed ($LASTEXITCODE)"; exit 5 }
 
@@ -123,6 +123,6 @@ Write-Host "worktree: $wt"
 Write-Host "ref:      $Ref -> $head"
 if ($Branch) { Write-Host "branch:   $Branch" } else { Write-Host "branch:   (detached)" }
 
-# The ONLY success-stream output: the path.
+# The ONLY success-stream output: the path. NEW_WORKTREE_PATH_ONLY_V1
 Write-Output $wt
 exit 0

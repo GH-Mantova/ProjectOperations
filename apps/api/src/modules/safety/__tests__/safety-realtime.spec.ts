@@ -287,8 +287,14 @@ describe("SafetyRealtimeAuthGuard", () => {
   }
 
   function build(jwt: Partial<JwtService>, cfgGet?: (key: string, fallback: string) => string) {
+    const resolveConfig = cfgGet ?? ((_key: string, fallback: string) => fallback);
     const config = {
-      get: cfgGet ?? ((_key: string, fallback: string) => fallback)
+      get: resolveConfig,
+      // SEC-A1: the guard now reads the signing secret with getOrThrow, which takes no
+      // fallback argument. Route it through the SAME resolver so a test that passes
+      // cfgGet still controls the secret the guard verifies with - a bare stub here
+      // would silently disconnect those tests from what they are asserting.
+      getOrThrow: (key: string) => resolveConfig(key, `test-secret-for-${key}`)
     } as unknown as ConfigService;
     return new SafetyRealtimeAuthGuard(jwt as JwtService, config);
   }

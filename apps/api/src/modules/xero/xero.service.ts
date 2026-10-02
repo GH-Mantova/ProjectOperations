@@ -94,10 +94,7 @@ export class XeroService {
     // userId, stored in-memory keyed by raw token. The callback verifies the
     // token exists and is not expired, then deletes it (one-shot).
     const raw = randomBytes(24).toString("hex");
-    const secret = this.configService.get<string>(
-      "auth.accessSecret",
-      "replace-me-access"
-    );
+    const secret = this.configService.getOrThrow<string>("auth.accessSecret");
     const signature = createHmac("sha256", secret).update(`${raw}:${userId}`).digest("hex");
     const stateToken = `${raw}.${signature}`;
 
@@ -126,10 +123,7 @@ export class XeroService {
     if (!raw || !sig) {
       throw new UnauthorizedException("OAuth state format is malformed.");
     }
-    const secret = this.configService.get<string>(
-      "auth.accessSecret",
-      "replace-me-access"
-    );
+    const secret = this.configService.getOrThrow<string>("auth.accessSecret");
     const expected = createHmac("sha256", secret)
       .update(`${raw}:${info.userId}`)
       .digest("hex");

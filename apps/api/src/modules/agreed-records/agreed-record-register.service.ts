@@ -38,6 +38,12 @@ import { EmailService } from "../email/email.service";
  * `finance.manage` to raise a claim. These are the same codes the existing
  * progress-claim surface in ContractsController uses.
  */
+
+/** SOR_CLAIM_ONCE_V1: an item appearing on ANY claim line of this contract, in
+ * ANY month, at ANY claim status, is already claimed and must not be billed again.
+ * DRAFT counts; partial claiming is out of scope. */
+export const SOR_CLAIM_ONCE_V1 = "sor-claim-once-s1";
+
 @Injectable()
 export class AgreedRecordRegisterService {
   private readonly logger = new Logger(AgreedRecordRegisterService.name);
@@ -54,11 +60,17 @@ export class AgreedRecordRegisterService {
    * Combined per-job register: every VC on the job's contract and every AR on
    * the job, each carrying its SoR version and status. Sorted createdAt desc
    * within each list.
+   *
+   * SOR_CLAIM_ONCE_V1: each row gains a `claimedOn` field pointing to the
+   * EARLIEST claim carrying that item (any month, any status). `isEligible`
+   * is false whenever `claimedOn` is non-null.
    */
   async getRegisterForJob(jobId: string): Promise<JobRegister> {
     const contractId = await this.resolveContractId(jobId);
 
-    const [variations, agreedRecords] = await Promise.all([
+    // Load AR ids for this job so we can query their claim lines when there
+    // is no contract (AR-only path).
+    const [variations, agreedRecords, claimLines] = await Promise.all([
       contractId
         ? this.prisma.variation.findMany({
             where: { contractId },
@@ -73,13 +85,61 @@ export class AgreedRecordRegisterService {
         where: { jobId },
         orderBy: { createdAt: "desc" },
       }),
+      // SOR_CLAIM_ONCE_V1: load every claim line on this contract/AR set that
+      // references a variation or agreed record. We need claim.id, claimMonth,
+      // and status to populate claimedOn.
+      contractId
+        ? this.prisma.claimLineItem.findMany({
+            where: {
+              claim: { contractId },
+              OR: [{ variationId: { not: null } }, { agreedRecordId: { not: null } }],
+            },
+            select: {
+              variationId: true,
+              agreedRecordId: true,
+              claimId: true,
+              claim: { select: { claimMonth: true, status: true } },
+            },
+          })
+        : // No contract: query by agreedRecordId IN job's ARs.
+          // We do a two-step: first get the AR ids, then the lines.
+          // But since we already have agreedRecords above, use them after resolution.
+          Promise.resolve(null),
     ]);
+
+    // For the no-contract path, load AR-sourced claim lines separately.
+    let resolvedClaimLines: ClaimLineRef[];
+    if (claimLines === null) {
+      // No contract — query AR lines by AR ids from this job.
+      const arIds = agreedRecords.map((ar) => ar.id);
+      if (arIds.length > 0) {
+        resolvedClaimLines = await this.prisma.claimLineItem.findMany({
+          where: {
+            agreedRecordId: { in: arIds },
+          },
+          select: {
+            variationId: true,
+            agreedRecordId: true,
+            claimId: true,
+            claim: { select: { claimMonth: true, status: true } },
+          },
+        });
+      } else {
+        resolvedClaimLines = [];
+      }
+    } else {
+      resolvedClaimLines = claimLines;
+    }
+
+    // Build lookup maps: itemId -> earliest claim line
+    const variationClaimMap = buildClaimMap(resolvedClaimLines, "variationId");
+    const arClaimMap = buildClaimMap(resolvedClaimLines, "agreedRecordId");
 
     return {
       jobId,
       contractId,
-      variations: variations.map((v) => this.toVariationRow(v)),
-      agreedRecords: agreedRecords.map((ar) => this.toAgreedRecordRow(ar)),
+      variations: variations.map((v) => this.toVariationRow(v, variationClaimMap.get(v.id) ?? null)),
+      agreedRecords: agreedRecords.map((ar) => this.toAgreedRecordRow(ar, arClaimMap.get(ar.id) ?? null)),
     };
   }
 
@@ -91,6 +151,8 @@ export class AgreedRecordRegisterService {
    * VC: approvedAmount must be set (an approved VC without a dollar figure
    * cannot be claimed). AR: status APPROVED **and both signatures present** —
    * the same two-signature gate S7 enforces at submit time.
+   *
+   * SOR_CLAIM_ONCE_V1: rows with claimedOn !== null are excluded.
    */
   async getEligibleForClaim(jobId: string): Promise<JobRegister> {
     const register = await this.getRegisterForJob(jobId);
@@ -116,6 +178,9 @@ export class AgreedRecordRegisterService {
    * failing the whole request, and are reported back in `skipped` so the
    * caller can show what was left off. If NOTHING survives the filter the
    * call is rejected — writing an empty claim would look like success.
+   *
+   * SOR_CLAIM_ONCE_V1: items on a line of ANOTHER claim of this contract
+   * (any month, any status) are added to `skipped` and never written.
    */
   async raiseClaim(jobId: string, actorId: string, dto: RaiseClaimInput): Promise<RaiseClaimResult> {
     const contractId = await this.resolveContractId(jobId);
@@ -156,16 +221,49 @@ export class AgreedRecordRegisterService {
         : Promise.resolve([]),
     ]);
 
+    // SOR_CLAIM_ONCE_V1: load every claim line on this contract that references
+    // a variation or agreed record (any month, any status — DRAFT counts).
+    const existingClaimLines = await this.prisma.claimLineItem.findMany({
+      where: {
+        claim: { contractId },
+        OR: [{ variationId: { not: null } }, { agreedRecordId: { not: null } }],
+      },
+      select: { variationId: true, agreedRecordId: true, claimId: true },
+    });
+    const alreadyClaimedVariationIds = new Set(
+      existingClaimLines.map((l) => l.variationId).filter((id): id is string => !!id),
+    );
+    const alreadyClaimedArIds = new Set(
+      existingClaimLines.map((l) => l.agreedRecordId).filter((id): id is string => !!id),
+    );
+
     const includedVariationIds = new Set(variations.map((v) => v.id));
     const includedAgreedRecordIds = new Set(agreedRecords.map((ar) => ar.id));
-    const skipped = [
+    const skipped: string[] = [
       ...requestedVariationIds.filter((id) => !includedVariationIds.has(id)),
       ...requestedAgreedRecordIds.filter((id) => !includedAgreedRecordIds.has(id)),
     ];
 
-    if (variations.length === 0 && agreedRecords.length === 0) {
+    // SOR_CLAIM_ONCE_V1: drop any requested id that is already on a claim line
+    // for this contract. Add to skipped.
+    const approvedVariations = variations.filter((v) => {
+      if (alreadyClaimedVariationIds.has(v.id)) {
+        skipped.push(v.id);
+        return false;
+      }
+      return true;
+    });
+    const approvedAgreedRecords = agreedRecords.filter((ar) => {
+      if (alreadyClaimedArIds.has(ar.id)) {
+        skipped.push(ar.id);
+        return false;
+      }
+      return true;
+    });
+
+    if (approvedVariations.length === 0 && approvedAgreedRecords.length === 0) {
       throw new BadRequestException(
-        "None of the selected items are claimable — a variation needs an approved amount, and an agreed record must be APPROVED with both signatures.",
+        "None of the selected items are claimable — a variation needs an approved amount, an agreed record must be APPROVED with both signatures, and neither may already be on a previous claim.",
       );
     }
 
@@ -213,7 +311,7 @@ export class AgreedRecordRegisterService {
     let sortOrder = (maxSort?.sortOrder ?? -1) + 1;
 
     const creates: Prisma.ClaimLineItemCreateManyInput[] = [];
-    for (const v of variations) {
+    for (const v of approvedVariations) {
       if (alreadyOnClaim.variationIds.has(v.id)) continue;
       const amount = v.approvedAmount ?? new Prisma.Decimal(0);
       creates.push({
@@ -228,7 +326,7 @@ export class AgreedRecordRegisterService {
         sortOrder: sortOrder++,
       });
     }
-    for (const ar of agreedRecords) {
+    for (const ar of approvedAgreedRecords) {
       if (alreadyOnClaim.agreedRecordIds.has(ar.id)) continue;
       const amount = ar.totalPricedAmount ?? new Prisma.Decimal(0);
       creates.push({
@@ -296,7 +394,7 @@ export class AgreedRecordRegisterService {
     return job.survivingProject?.contract?.id ?? null;
   }
 
-  private toVariationRow(v: VariationWithFirstSorLine): VariationRow {
+  private toVariationRow(v: VariationWithFirstSorLine, claimedOn: ClaimedOn | null): VariationRow {
     return {
       kind: "VARIATION",
       id: v.id,
@@ -305,12 +403,13 @@ export class AgreedRecordRegisterService {
       status: v.status,
       sorVersion: v.sorLines[0]?.sorVersion ?? null,
       amount: v.approvedAmount?.toFixed(2) ?? v.pricedAmount?.toFixed(2) ?? null,
-      isEligible: v.approvedAmount !== null,
+      isEligible: v.approvedAmount !== null && claimedOn === null,
+      claimedOn,
       createdAt: v.createdAt,
     };
   }
 
-  private toAgreedRecordRow(ar: AgreedRecordRowSource): AgreedRecordRow {
+  private toAgreedRecordRow(ar: AgreedRecordRowSource, claimedOn: ClaimedOn | null): AgreedRecordRow {
     const workerSigned = !!ar.workerSignaturePath;
     const clientRepSigned = !!ar.clientRepSignaturePath;
     return {
@@ -323,7 +422,8 @@ export class AgreedRecordRegisterService {
       amount: ar.totalPricedAmount?.toFixed(2) ?? null,
       workerSigned,
       clientRepSigned,
-      isEligible: ar.status === AgreedRecordStatus.APPROVED && workerSigned && clientRepSigned,
+      isEligible: ar.status === AgreedRecordStatus.APPROVED && workerSigned && clientRepSigned && claimedOn === null,
+      claimedOn,
       createdAt: ar.createdAt,
     };
   }
@@ -376,6 +476,13 @@ export interface RaiseClaimResult {
   skipped: string[];
 }
 
+/** Pointer to the earliest claim that carries this item. */
+export interface ClaimedOn {
+  claimId: string;
+  claimMonth: string;
+  claimStatus: string;
+}
+
 export interface VariationRow {
   kind: "VARIATION";
   id: string;
@@ -385,6 +492,7 @@ export interface VariationRow {
   sorVersion: string | null;
   amount: string | null;
   isEligible: boolean;
+  claimedOn: ClaimedOn | null;
   createdAt: Date;
 }
 
@@ -399,6 +507,7 @@ export interface AgreedRecordRow {
   workerSigned: boolean;
   clientRepSigned: boolean;
   isEligible: boolean;
+  claimedOn: ClaimedOn | null;
   createdAt: Date;
 }
 
@@ -432,6 +541,14 @@ type AgreedRecordRowSource = {
   createdAt: Date;
 };
 
+/** A raw row from the claimLineItem query used to build claimedOn maps. */
+type ClaimLineRef = {
+  variationId: string | null;
+  agreedRecordId: string | null;
+  claimId: string;
+  claim: { claimMonth: Date; status: string };
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** UTC start-of-month, matching ContractsService's private helper exactly. */
@@ -454,4 +571,30 @@ function collectSources(lineItems: { variationId?: string | null; agreedRecordId
       lineItems.map((li) => li.agreedRecordId).filter((id): id is string => !!id),
     ),
   };
+}
+
+/**
+ * SOR_CLAIM_ONCE_V1: Build a map from itemId -> earliest ClaimedOn.
+ * "Earliest" = sort by claimMonth asc, break ties by claimId asc.
+ */
+function buildClaimMap(lines: ClaimLineRef[], field: "variationId" | "agreedRecordId"): Map<string, ClaimedOn> {
+  const map = new Map<string, ClaimedOn>();
+  // Sort once: claimMonth asc, then claimId asc for tie-break.
+  const sorted = [...lines].sort((a, b) => {
+    const diff = a.claim.claimMonth.getTime() - b.claim.claimMonth.getTime();
+    if (diff !== 0) return diff;
+    return a.claimId.localeCompare(b.claimId);
+  });
+  for (const line of sorted) {
+    const itemId = line[field];
+    if (!itemId) continue;
+    if (!map.has(itemId)) {
+      map.set(itemId, {
+        claimId: line.claimId,
+        claimMonth: line.claim.claimMonth.toISOString(),
+        claimStatus: line.claim.status,
+      });
+    }
+  }
+  return map;
 }

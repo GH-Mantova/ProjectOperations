@@ -7,6 +7,12 @@ import { readApiErrorMessage } from "../lib/api-errors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type ClaimedOn = {
+  claimId: string;
+  claimMonth: string; // ISO string, e.g. "2026-09-01T00:00:00.000Z"
+  claimStatus: string;
+};
+
 type VariationRow = {
   kind: "VARIATION";
   id: string;
@@ -16,6 +22,7 @@ type VariationRow = {
   sorVersion: string | null;
   amount: string | null;
   isEligible: boolean;
+  claimedOn: ClaimedOn | null;
   createdAt: string;
 };
 
@@ -30,6 +37,7 @@ type AgreedRecordRow = {
   workerSigned: boolean;
   clientRepSigned: boolean;
   isEligible: boolean;
+  claimedOn: ClaimedOn | null;
   createdAt: string;
 };
 
@@ -105,12 +113,34 @@ function fmtMoney(v: string | null | undefined): string {
   }).format(n);
 }
 
+/** Three-letter month abbreviations used in claim labels. */
+const MONTH_ABBREVS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * Format a claimMonth ISO string as "Mon YYYY".
+ * e.g. "2026-09-01T00:00:00.000Z" -> "Sep 2026"
+ * Uses a hard-coded abbreviation table so the output is environment-independent.
+ */
+function fmtClaimMonth(isoMonth: string): string {
+  const d = new Date(isoMonth);
+  const mon = MONTH_ABBREVS[d.getUTCMonth()];
+  const yr = d.getUTCFullYear();
+  return `${mon} ${yr}`;
+}
+
 /**
  * Cross-reference a register row against the eligible-for-claim list to derive
  * whether the item is claimable and, if not, why.
+ *
+ * SOR_CLAIM_ONCE_V1: a claimed item is checked FIRST — it is approved by
+ * definition but must not be billed again.
  */
-function eligibilityReason(row: RegisterRow, eligibleIds: Set<string>): string | null {
+export function eligibilityReason(row: RegisterRow, eligibleIds: Set<string>): string | null {
   if (eligibleIds.has(row.id)) return null;
+  // Check claimedOn first — a claimed item is approved by definition.
+  if (row.claimedOn) {
+    return `Already claimed — ${fmtClaimMonth(row.claimedOn.claimMonth)} claim`;
+  }
   if (row.kind === "VARIATION") {
     return "Not approved";
   }
@@ -342,6 +372,7 @@ export function JobSorRegisterPage() {
                 <th>Status</th>
                 <th>SoR Version</th>
                 <th>Amount</th>
+                <th>Claim</th>
                 <th>Signatures</th>
               </tr>
             </thead>
@@ -392,6 +423,25 @@ export function JobSorRegisterPage() {
                       {row.sorVersion ?? <span style={{ color: "var(--text-muted)" }}>—</span>}
                     </td>
                     <td style={{ fontWeight: 600 }}>{fmtMoney(row.amount)}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {row.claimedOn ? (
+                        <span
+                          style={{
+                            background: "color-mix(in srgb, var(--status-info) 12%, transparent)",
+                            color: "var(--status-info)",
+                            borderRadius: 4,
+                            padding: "2px 8px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          On {fmtClaimMonth(row.claimedOn.claimMonth)} claim
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                      )}
+                    </td>
                     <td style={{ fontSize: 12 }}>
                       {row.kind === "AGREED_RECORD" ? (
                         <span>

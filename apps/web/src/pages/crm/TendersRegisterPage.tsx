@@ -37,6 +37,11 @@
 //   derived from loggedByName, includes "Never logged"), Owner chip: Estimator
 //   chip relabelled to Owner per Marco 2026-09-16 — "Estimator is the owner."
 //   Field stays estimatorId; no API or DTO changes.
+// CRM_OWNER_PICKER_V1 — Owner chip becomes a picker derived from loaded tender
+//   rows. Marco ruling 2026-10-02: names come from the tenders already on screen
+//   (everyone who owns at least one loaded tender, plus "Unassigned"). No
+//   permission change, no /users fetch. estimatorId filter is now client-side
+//   only; the server no longer receives estimatorId from this page.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, Skeleton } from "@project-ops/ui";
@@ -70,6 +75,8 @@ import {
   DEFAULT_ENTITY_TYPE_TOGGLES,
   isStalled,
   CHANNEL_LABEL,
+  ownerOptions,
+  UNASSIGNED_OWNER,
   type EntityTypeToggles,
   type FollowUpToggles,
   type CrmColumnKey,
@@ -639,7 +646,11 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchAllPages<TenderRow>(authFetch, withFilters);
+      // CRM_OWNER_PICKER_V1: owner filter is applied client-side from loaded rows;
+      // do NOT send estimatorId to the server from this page. FiltersForQuery is
+      // shared with the tendering page so the type is unchanged — we simply pass
+      // null here. The tendering page's own estimator filter is unaffected.
+      const result = await fetchAllPages<TenderRow>(authFetch, { ...withFilters, estimatorId: null });
       setTenders(result.items);
       setTotal(result.total);
       setTruncated(result.truncated);
@@ -744,7 +755,13 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     [tenders, interactions, nextActions]
   );
 
-  // Client-side filter for search, status, client, mineOnly, loggedByFilter.
+  // CRM_OWNER_PICKER_V1: owner options come from ALL loaded rows, BEFORE the
+  // owner filter is applied. Picking one owner must not shrink the option list
+  // to that single name — the full owner roster stays visible at all times.
+  const ownerPickerOptions = useMemo(() => ownerOptions(enrichedRows), [enrichedRows]);
+
+  // Client-side filter for search, status, client, mineOnly, loggedByFilter,
+  // and owner (CRM_OWNER_PICKER_V1).
   const clientFiltered = useMemo(() => {
     const needle = filters.search.trim().toLowerCase();
     const vMin = filters.valueMin !== "" ? parseFloat(filters.valueMin) : null;
@@ -770,6 +787,17 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           if (t.loggedByName !== loggedByFilter) return false;
         }
       }
+      // CRM_OWNER_PICKER_V1: owner filter — client-side, from the loaded rows.
+      // filters.estimatorId holds either a real estimator id or UNASSIGNED_OWNER.
+      // A saved view carrying an id that matches no loaded row still filters; its
+      // chip shows "Owner: unknown" with the clear control.
+      if (filters.estimatorId) {
+        if (filters.estimatorId === UNASSIGNED_OWNER) {
+          if (t.estimator != null) return false;
+        } else {
+          if (t.estimator?.id !== filters.estimatorId) return false;
+        }
+      }
       // CRM_REGISTER_RESIDUAL_V1: Value range filter (client-side: valueMin/valueMax
       // are already serialised into the API query string by buildQueryStringWithPage,
       // but we also apply them client-side here so the filter composes correctly with
@@ -784,7 +812,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
       }
       return true;
     });
-  }, [enrichedRows, filters.search, filters.status, filters.clientId, filters.valueMin, filters.valueMax, mineOnly, currentUserId, loggedByFilter]);
+  }, [enrichedRows, filters.search, filters.status, filters.clientId, filters.estimatorId, filters.valueMin, filters.valueMax, mineOnly, currentUserId, loggedByFilter]);
 
   // Follow-up tab toggle filter. Register tab: no toggle filter applied.
   //
@@ -1008,10 +1036,13 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
     : filters.dueDateTo
     ? `To ${filters.dueDateTo}`
     : null;
-  // CRM_REGISTER_RESIDUAL_V1: Owner chip — relabelled from "Estimator".
-  // Marco confirmed 2026-09-16: "Estimator is the owner." The query param and
-  // field name stay estimatorId — this is a display-only relabel.
-  const activeOwnerLabel = filters.estimatorId ? "Owner set" : null;
+  // CRM_OWNER_PICKER_V1: Owner chip active label — derived from the loaded owner
+  // options. If the saved id matches a loaded option use its label; otherwise
+  // fall back to "unknown" so the chip remains visible and clearable.
+  // Marco confirmed 2026-09-16: "Estimator is the owner." Field stays estimatorId.
+  const activeOwnerLabel = filters.estimatorId
+    ? (ownerPickerOptions.find((o) => o.id === filters.estimatorId)?.label ?? "unknown")
+    : null;
   // CRM_REGISTER_RESIDUAL_V1: Value chip label — shows the active bound(s).
   const activeValueLabel = filters.valueMin && filters.valueMax
     ? `${filters.valueMin}–${filters.valueMax}`
@@ -1323,23 +1354,34 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
           </select>
         </div>
 
-        {/* Owner chip — filters by estimatorId (API param: estimatorId).
-            Labelled "Owner" per Marco's decision on 2026-09-16: "Estimator is
-            the owner." The field and query param remain estimatorId; this is a
-            display-only relabel. The previous comment claiming this should stay
-            "Estimator" is superseded by that decision. */}
+        {/* Owner chip — CRM_OWNER_PICKER_V1: picker derived from loaded tender
+            rows. Names come from the estimators on the rows already in the
+            browser; no /users fetch, no permission change.
+            Marco ruling 2026-10-02: field stays estimatorId; this is a
+            display-only picker that composes with the Mine only toggle.
+            Reuses the Client chip's markup and classes verbatim. */}
         <div style={{ position: "relative" }}>
-          <input
-            type="text"
+          <select
             value={filters.estimatorId ?? ""}
             onChange={(e) =>
               setFilters((f) => ({ ...f, estimatorId: e.target.value || null }))
             }
-            placeholder={activeOwnerLabel ?? "Owner ▾"}
             aria-label="Filter by owner"
             className={`s7-btn s7-btn--secondary s7-btn--sm crm-filter-chip${activeOwnerLabel ? " crm-filter-chip--active" : ""}`}
-            style={{ minWidth: 90, cursor: "text", textAlign: "left" }}
-          />
+            style={{ appearance: "none", WebkitAppearance: "none", paddingRight: 24, cursor: "pointer" }}
+          >
+            <option value="">Owner {activeOwnerLabel ? `· ${activeOwnerLabel}` : "▾"}</option>
+            {ownerPickerOptions.filter((o) => o.id !== UNASSIGNED_OWNER).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label} ({o.count})
+              </option>
+            ))}
+            {ownerPickerOptions.some((o) => o.id === UNASSIGNED_OWNER) && (
+              <option value={UNASSIGNED_OWNER}>
+                Unassigned ({ownerPickerOptions.find((o) => o.id === UNASSIGNED_OWNER)!.count})
+              </option>
+            )}
+          </select>
         </div>
 
         {/* CRM_PARITY_FOLLOWUPS_V1: Mine only is in the SHOW row on Follow-ups.

@@ -9,7 +9,12 @@ gate_allow: none
 seed_only: false
 escalates: false
 ---
-<!-- watcher: do-not-arm | GATED: arm ONLY after the Job/Project model merge (B-P0a, job-project-model-merge) has MERGED to main. Merging the UI before the model is merged will fight the split data model. -->
+<!-- watcher: do-not-arm -->
+
+**GATE (normalised 2026-09-25).** GATED: arm ONLY after the Job/Project model merge (B-P0a, job-project-model-merge) has MERGED to main. Merging the UI before the model is merged will fight the split data model.
+
+The bare marker line above is what holds this prompt. The reason is prose so that
+rewording it can never remove the gate. Only a human deletes the marker.
 
 # Merge Jobs + Projects into one "Jobs" surface
 

@@ -56,7 +56,12 @@ const baseSelectStyle: CSSProperties = {
   padding: "2px 4px",
   borderRadius: "var(--radius-sm)",
   fontFamily: "inherit",
-  cursor: "pointer"
+  cursor: "pointer",
+  // WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- readable "Goes to" column across
+  // all four screens: ScopeWasteTab, ScopeCuttingSheet, ScopeQuantitiesTable,
+  // OtherOperationalCosts. Values from Discipline Cards mock-up v26 .destsel.
+  minWidth: 96,
+  maxWidth: 112
 };
 
 const selectStyleByDest: Record<QuoteDestination, CSSProperties> = {

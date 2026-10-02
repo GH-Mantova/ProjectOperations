@@ -24,7 +24,12 @@ cluster_order: 13
 requires_on_main: 'apps/api/src/modules/tendering/travel-time.ts :: TRAVEL_TIME_PORT_V1'
 ---
 
-<!-- watcher: do-not-arm | MARCO GATE: arm only after Marco has created the Azure Maps account and told Station 06 how the API authenticates (key in the vault, or the App Service identity). Only Marco removes this line. -->
+<!-- watcher: do-not-arm -->
+
+**GATE (normalised 2026-09-25).** MARCO GATE: arm only after Marco has created the Azure Maps account and told Station 06 how the API authenticates (key in the vault, or the App Service identity). Only Marco removes this line.
+
+The bare marker line above is what holds this prompt. The reason is prose so that
+rewording it can never remove the gate. Only a human deletes the marker.
 
 # Scope Cards S8b - real road travel time, normal and peak, averaged
 

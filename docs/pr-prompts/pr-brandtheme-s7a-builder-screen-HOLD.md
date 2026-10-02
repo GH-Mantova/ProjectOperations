@@ -9,6 +9,7 @@ premise_means: >-
   test file, and setUserBrandOverride has no caller outside brand-scheme.ts. POSITIVE CONTROL:
   grep -rl "contrastRatio" apps/web/src returns 3 files, so the zeros above are real.
 requires_on_main: 'apps/web/src/components/ThemeBuilderPreview.tsx :: ThemeBuilderPreview'
+requires_file_on_main: apps/web/src/lib/__tests__/brand-scheme-light-only.test.ts
 design_ref: Claude Design/proposed/s7a-brand-theme/s7a-brand-theme-builder-mockup.html
 scope:
   - apps/web/src/pages/admin/BrandThemeSection.tsx
@@ -40,6 +41,10 @@ cluster_order: 7
      is Marco's. `escalates: true` stands - the built PR still stops for him before it merges.
      The two OPEN decisions (real asset upload; per-preset radius, type scale and density) are NOT
      answered by this approval and stay open - see "What this must say about itself". -->
+
+**WAITS FOR THE LIGHT-ONLY APPLY SLICE (added 2026-10-02, Marco approved).** `requires_file_on_main` holds
+this prompt until `pr-brandtheme-light-only-apply` lands. Until then, activating Harbour or Graphite would
+write inline colour properties that override the dark theme for every user. Do not arm before that gate releases.
 
 **MOCK-UP APPROVED 2026-10-02.** Build to the mock-up at the `design_ref`. Marco's three confirmed
 decisions below still bind, and the two open decisions stay open and visible.

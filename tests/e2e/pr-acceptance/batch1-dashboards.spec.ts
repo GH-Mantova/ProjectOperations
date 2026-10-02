@@ -258,9 +258,14 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
   });
 
   // ── SLICE 5: Dashboard-level filter bar — set filter, both widgets receive it ──
+  // BATCH1_DASHBOARD_SLICES_ISOLATED_V1 — each SLICE (5, 7, 4, 6) runs in its own
+  // test.describe.serial block so one test's residue cannot reach the next, and each
+  // test navigates to / before acting to start from a known state.
 
+  test.describe.serial("SLICE 5 isolated", () => {
   test("SLICE 5 — dashboard-level filter bar renders and accepts input for report widgets", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.goto("/");
     page.on("dialog", (dialog) => void dialog.accept());
     const nav = page.getByRole("navigation", { name: "Main navigation" });
 
@@ -272,6 +277,8 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
       await page.getByTestId("confirm-dialog-confirm").click();
       await expect(residue).toHaveCount(before - 1);
     }
+    // Assert zero residue BEFORE creating (not loop-and-continue).
+    await expect(residue).toHaveCount(0);
 
     // Create a scratch dashboard (select a category to enable Create).
     await nav.getByRole("button", { name: "New dashboard" }).click();
@@ -344,11 +351,14 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
+  }); // end SLICE 5 isolated
 
   // ── SLICE 7: Reporting dashboard starter template ────────────────────────
 
+  test.describe.serial("SLICE 7 isolated", () => {
   test("SLICE 7 — create dashboard from Reporting dashboard template and see widgets on canvas", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.goto("/");
     page.on("dialog", (dialog) => void dialog.accept());
     const nav = page.getByRole("navigation", { name: "Main navigation" });
 
@@ -360,6 +370,8 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
       await page.getByTestId("confirm-dialog-confirm").click();
       await expect(residue).toHaveCount(before - 1);
     }
+    // Assert zero residue BEFORE creating.
+    await expect(residue).toHaveCount(0);
 
     // Open the New dashboard modal.
     await nav.getByRole("button", { name: "New dashboard" }).click();
@@ -392,11 +404,14 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
+  }); // end SLICE 7 isolated
 
   // ── SLICE 4: Report chart widget — add to dashboard, assert chart title ──
 
+  test.describe.serial("SLICE 4 isolated", () => {
   test("SLICE 4 — add a report chart widget from the gallery and see its chart title", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.goto("/");
     page.on("dialog", (dialog) => void dialog.accept());
     const nav = page.getByRole("navigation", { name: "Main navigation" });
 
@@ -408,6 +423,8 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
       await page.getByTestId("confirm-dialog-confirm").click();
       await expect(residue).toHaveCount(before - 1);
     }
+    // Assert zero residue BEFORE creating.
+    await expect(residue).toHaveCount(0);
 
     // Create a scratch dashboard (blank start, select one category to enable Create).
     await nav.getByRole("button", { name: "New dashboard" }).click();
@@ -462,11 +479,14 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
+  }); // end SLICE 4 isolated
 
   // ── SLICE 6: Per-widget export — Export button triggers download ──────────
 
+  test.describe.serial("SLICE 6 isolated", () => {
   test("SLICE 6 — Export button on a report widget triggers a download (Content-Disposition)", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.goto("/");
     page.on("dialog", (dialog) => void dialog.accept());
     const nav = page.getByRole("navigation", { name: "Main navigation" });
 
@@ -478,6 +498,8 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
       await page.getByTestId("confirm-dialog-confirm").click();
       await expect(residue).toHaveCount(before - 1);
     }
+    // Assert zero residue BEFORE creating.
+    await expect(residue).toHaveCount(0);
 
     // Create a scratch dashboard.
     await nav.getByRole("button", { name: "New dashboard" }).click();
@@ -529,4 +551,5 @@ test.describe("Batch 1 — Dashboards, KPIs & Widgets (PRs #6, #15, #29, #30, #3
     await page.getByTestId("confirm-dialog-confirm").click();
     await expect(nav.getByRole("link", { name: dashName })).not.toBeVisible();
   });
+  }); // end SLICE 6 isolated
 });

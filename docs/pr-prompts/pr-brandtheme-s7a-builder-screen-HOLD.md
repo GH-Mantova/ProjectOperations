@@ -34,12 +34,15 @@ cluster: brandtheme
 cluster_order: 7
 ---
 
-<!-- watcher: do-not-arm -->
+<!-- GATE RELEASED 2026-10-02 by Marco, in chat to Station 06, his words: "s7a approved". The
+     mock-up at the design_ref (blob b66d8d9f, sent to him 2026-09-25 and re-sent 2026-10-02) is
+     approved, so the human marker that stood here is removed. Recorded by Station 06; the release
+     is Marco's. `escalates: true` stands - the built PR still stops for him before it merges.
+     The two OPEN decisions (real asset upload; per-preset radius, type scale and density) are NOT
+     answered by this approval and stay open - see "What this must say about itself". -->
 
-**MARCO GATE.** The mock-up at the `design_ref` was sent to Marco on 2026-09-25 and he has not
-approved it yet. The marker line directly above is what holds this prompt; only Marco deletes it,
-and deleting it is his approval of that mock-up. Both instruments enforce it in the bare form:
-`lint-prompt.mjs` reports `HUMAN_GATE_PRESENT`, and `arm-prompt.ps1` refuses to rename the file.
+**MOCK-UP APPROVED 2026-10-02.** Build to the mock-up at the `design_ref`. Marco's three confirmed
+decisions below still bind, and the two open decisions stay open and visible.
 
 # Brand & theme S7a: the builder screen, in light mode, with nothing pretending to be finished
 

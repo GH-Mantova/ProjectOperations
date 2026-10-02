@@ -58,7 +58,7 @@ export class AuthService {
   }
 
   async resetPassword(input: ResetPasswordDto) {
-    const resetSecret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
+    const resetSecret = this.configService.getOrThrow<string>("auth.accessSecret");
     let payload: { sub: string; email: string; purpose: string };
     try {
       payload = await this.jwtService.verifyAsync(input.tempToken, { secret: resetSecret });
@@ -93,7 +93,7 @@ export class AuthService {
   }
 
   private async issueResetToken(userId: string, email: string): Promise<string> {
-    const secret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
+    const secret = this.configService.getOrThrow<string>("auth.accessSecret");
     return this.jwtService.signAsync(
       { sub: userId, email, purpose: "password-reset" },
       { secret, expiresIn: "15m" as never }
@@ -134,7 +134,7 @@ export class AuthService {
   }
 
   async refresh(input: RefreshTokenDto) {
-    const refreshSecret = this.configService.get<string>("auth.refreshSecret", "replace-me-refresh");
+    const refreshSecret = this.configService.getOrThrow<string>("auth.refreshSecret");
 
     let payload: { sub: string; email: string };
 
@@ -351,8 +351,8 @@ export class AuthService {
     isSuperUser = false,
     tenantId: string | null = null
   ) {
-    const accessSecret = this.configService.get<string>("auth.accessSecret", "replace-me-access");
-    const refreshSecret = this.configService.get<string>("auth.refreshSecret", "replace-me-refresh");
+    const accessSecret = this.configService.getOrThrow<string>("auth.accessSecret");
+    const refreshSecret = this.configService.getOrThrow<string>("auth.refreshSecret");
     const accessTtl = this.configService.get<string>("auth.accessTtl", "15m");
     const refreshTtl = this.configService.get<string>("auth.refreshTtl", "7d");
 

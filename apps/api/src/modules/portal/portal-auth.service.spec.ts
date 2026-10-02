@@ -39,7 +39,11 @@ describe("PortalAuthService — requestPasswordReset log behaviour (SEC-A3)", ()
       get: jest.fn((key: string, fallback: unknown) => {
         if (key === "portal.publicUrl") return "http://localhost:5173";
         return fallback;
-      })
+      }),
+      // SEC-A1: the portal service now reads its signing secrets with getOrThrow,
+      // which takes no fallback argument. Deterministic per-key value, so a portal
+      // token is never signed with a placeholder secret in a test.
+      getOrThrow: jest.fn((key: string) => `test-secret-for-${key}`)
     } as unknown as ConfigService;
 
     const passwordService = {

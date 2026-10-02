@@ -12,7 +12,7 @@ import { KeyValidationService } from "./key-validation.service";
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>("JWT_ACCESS_SECRET", "replace-me-access")
+        secret: configService.getOrThrow<string>("auth.accessSecret")
       })
     })
   ],

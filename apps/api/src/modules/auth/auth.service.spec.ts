@@ -32,7 +32,11 @@ describe("AuthService", () => {
   } as unknown as JwtService;
 
   const configService = {
-    get: jest.fn((key: string, fallback: string) => fallback)
+    get: jest.fn((key: string, fallback: string) => fallback),
+    // SEC-A1: the service now reads its signing secrets with getOrThrow, which takes
+    // no fallback argument. The mock returns a deterministic per-key value so no test
+    // depends on a placeholder secret arriving through a fallback.
+    getOrThrow: jest.fn((key: string) => `test-secret-for-${key}`)
   } as unknown as ConfigService;
 
   const auditService = {

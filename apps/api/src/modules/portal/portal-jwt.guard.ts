@@ -26,10 +26,7 @@ export class PortalJwtGuard implements CanActivate {
     }
 
     const token = authorization.slice("Bearer ".length);
-    const secret = this.configService.get<string>(
-      "auth.portalAccessSecret",
-      this.configService.get<string>("auth.accessSecret", "replace-me-access")
-    );
+    const secret = this.configService.getOrThrow<string>("auth.portalAccessSecret");
 
     let payload: PortalUserPayload;
     try {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // retire-escalation.mjs -- move a needs-marco escalation to discharged/ and write a
 // tracked note in docs/pipeline/discharges/ so any station can verify a retirement.
+// RETIRE_ESCALATION_V1
 //
 // WHY THIS EXISTS (measured 2026-10-02 at origin/main cf09be41):
 //   Retiring an escalation left no tracked record. docs/pr-prompts/needs-marco/ is

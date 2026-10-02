@@ -2700,6 +2700,12 @@
           "label": null,
           "filterable": false,
           "aggregations": []
+        },
+        "userPreferences": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
         }
       }
     },
@@ -27149,6 +27155,12 @@
           "filterable": false,
           "aggregations": []
         },
+        "appearancePreference": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
         "notificationPreferences": {
           "role": "system",
           "label": null,
@@ -27330,6 +27342,50 @@
           "aggregations": []
         },
         "reminderPolicyUpdates": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        }
+      }
+    },
+    "UserAppearancePreference": {
+      "domain": "Platform",
+      "wizardVisible": false,
+      "label": null,
+      "reviewed": false,
+      "fields": {
+        "userId": {
+          "role": "system",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "user": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "density": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "colourSchemeId": {
+          "role": "attribute",
+          "label": null,
+          "filterable": false,
+          "aggregations": []
+        },
+        "colourScheme": {
+          "role": "dimension",
+          "label": null,
+          "filterable": true,
+          "aggregations": []
+        },
+        "updatedAt": {
           "role": "system",
           "label": null,
           "filterable": false,

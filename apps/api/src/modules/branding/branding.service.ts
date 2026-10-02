@@ -116,6 +116,45 @@ export class BrandingService {
     return this.prisma.brandColorScheme.findMany({ orderBy: { name: "asc" } });
   }
 
+  /**
+   * S7c-1: viewer-safe list of all colour schemes for the personal picker.
+   * Returns only id, name, isCompanyDefault, and the 15 colour fields.
+   * No audit fields, no asset URLs. Available to every authenticated user.
+   */
+  async listSchemesForViewer() {
+    const [schemes, profile] = await Promise.all([
+      this.prisma.brandColorScheme.findMany({
+        select: {
+          id: true,
+          name: true,
+          primaryColorHex: true,
+          secondaryColorHex: true,
+          sidebarBgHex: true,
+          sidebarTextHex: true,
+          sidebarTextActiveHex: true,
+          surfacePageHex: true,
+          surfaceCardHex: true,
+          textPrimaryHex: true,
+          textSecondaryHex: true,
+          textMutedHex: true,
+          statusActiveHex: true,
+          statusWarningHex: true,
+          statusDangerHex: true,
+          statusInfoHex: true,
+          statusNeutralHex: true
+        },
+        orderBy: { name: "asc" }
+      }),
+      this.prisma.companyProfile.findUnique({
+        where: { id: COMPANY_PROFILE_ID },
+        select: { activeColorSchemeId: true }
+      })
+    ]);
+
+    const activeId = profile?.activeColorSchemeId ?? null;
+    return schemes.map((s) => ({ ...s, isCompanyDefault: s.id === activeId }));
+  }
+
   /** Create-or-update by name. Idempotent — the seed relies on this shape. */
   async upsertColorScheme(actorId: string, dto: UpsertColorSchemeDto) {
     this.assertHex(dto.primaryColorHex, "primaryColorHex");

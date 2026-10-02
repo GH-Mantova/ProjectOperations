@@ -89,6 +89,7 @@ import { VariationsModule } from "./modules/variations/variations.module";
 import { FieldDefinitionsModule } from "./modules/field-definitions/field-definitions.module";
 import { AgreedRecordsModule } from "./modules/agreed-records/agreed-records.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
+import { AppearancePreferencesModule } from "./modules/appearance-preferences/appearance-preferences.module";
 
 @Module({
   providers: [
@@ -192,7 +193,8 @@ import { TenantsModule } from "./modules/tenants/tenants.module";
     VariationsModule,
     FieldDefinitionsModule,
     AgreedRecordsModule,
-    TenantsModule
+    TenantsModule,
+    AppearancePreferencesModule
   ]
 })
 export class AppModule {}

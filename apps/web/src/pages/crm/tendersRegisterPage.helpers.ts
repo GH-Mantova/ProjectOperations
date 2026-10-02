@@ -723,6 +723,74 @@ export const KPI_CARD_LABELS = [
 ] as const;
 
 // ---------------------------------------------------------------------------
+// CRM_OWNER_PICKER_V1 — owner options derived from loaded rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Sentinel id used when a tender row has no estimator.
+ * Exported so the filter predicate and the chip can reference the same string.
+ */
+export const UNASSIGNED_OWNER = "__unassigned";
+
+/** Shape of a single entry in the owner picker. */
+export type OwnerOption = {
+  id: string;
+  label: string;
+  count: number;
+};
+
+/**
+ * Derive an owner picker option list from a set of loaded tender rows.
+ *
+ * Rules (Marco 2026-10-02):
+ *   - One entry per distinct estimator id. Label is "F. Lastname"
+ *     (first initial + ". " + last name), matching the Logged-by avatar name
+ *     style. Count is the number of rows owned by that estimator.
+ *   - Sorted by label, then by id for tie-breaking (stable deterministic
+ *     order when two owners happen to share the same initial and last name but
+ *     have different ids — see test 2).
+ *   - A single `{ id: UNASSIGNED_OWNER, label: "Unassigned", count }` entry is
+ *     appended LAST, but only when at least one row has no estimator.
+ *
+ * Pure helper — no React, no side effects.
+ */
+export function ownerOptions(
+  rows: Array<{ estimator?: { id: string; firstName: string; lastName: string } | null }>
+): OwnerOption[] {
+  const map = new Map<string, { label: string; count: number }>();
+  let unassignedCount = 0;
+
+  for (const row of rows) {
+    if (!row.estimator) {
+      unassignedCount += 1;
+    } else {
+      const { id, firstName, lastName } = row.estimator;
+      const initial = firstName.length > 0 ? firstName.charAt(0).toUpperCase() : "";
+      const label = initial ? `${initial}. ${lastName}` : lastName;
+      if (map.has(id)) {
+        map.get(id)!.count += 1;
+      } else {
+        map.set(id, { label, count: 1 });
+      }
+    }
+  }
+
+  const result: OwnerOption[] = Array.from(map.entries())
+    .map(([id, { label, count }]) => ({ id, label, count }))
+    .sort((a, b) => {
+      const byLabel = a.label.localeCompare(b.label);
+      if (byLabel !== 0) return byLabel;
+      return a.id.localeCompare(b.id);
+    });
+
+  if (unassignedCount > 0) {
+    result.push({ id: UNASSIGNED_OWNER, label: "Unassigned", count: unassignedCount });
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // CRM_PARITY_REGISTER_V1 — "None set" / "Stalled" display rule
 // ---------------------------------------------------------------------------
 

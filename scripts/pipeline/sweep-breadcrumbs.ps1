@@ -141,9 +141,13 @@ if ($staged.Count -gt 0) {
 # before our own filter even runs. Tracked files never appear here, which is why
 # a deletion cannot reach the commit.
 
+# SWEEP_COLLECTS_REVIEW_VERDICTS_V1: docs/pr-reviews is scanned alongside the two
+# breadcrumb roots so reviewer verdicts (MERGE / FIX / BLOCK) reach origin/main the
+# same way breadcrumbs do - one actor, one PR, no hand-sweeps. The admit filter below
+# is NAMED, not widened: only `pr-<digits>-review.md` under that root is a candidate.
 $candidates = (Invoke-Git -GitArgs @(
         "ls-files", "--others", "--exclude-standard", "--",
-        "docs/pr-prompts", "docs/pipeline"
+        "docs/pr-prompts", "docs/pipeline", "docs/pr-reviews"
     )).Output |
     ForEach-Object { ([string]$_).Trim() } |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
@@ -168,8 +172,12 @@ foreach ($path in $candidates) {
 
     $isPromptBreadcrumb = ($path -like "docs/pr-prompts/00-*.md")
     $isPipelineDoc = ($path -like "docs/pipeline/*")
+    # Named match, anchored to the directory and the exact leaf shape. Anything else
+    # under docs/pr-reviews/ (notes, drafts, non-verdict files) is left alone, the way
+    # the arming-file refusal leaves *-ready.md and *-HOLD.md alone.
+    $isReviewVerdict = ($path -match '^docs/pr-reviews/pr-\d+-review\.md$')
 
-    if ($isPromptBreadcrumb -or $isPipelineDoc) {
+    if ($isPromptBreadcrumb -or $isPipelineDoc -or $isReviewVerdict) {
         $sweepable += $path
     }
 }
@@ -188,7 +196,7 @@ if ($refused.Count -gt 0) {
 # ---------------------------------------------------------------------------
 
 if ($sweepable.Count -eq 0) {
-    Write-Output "nothing to sweep: no untracked breadcrumbs under docs/pr-prompts/ or docs/pipeline/."
+    Write-Output "nothing to sweep: no untracked breadcrumbs under docs/pr-prompts/, docs/pipeline/, or docs/pr-reviews/."
     exit 0
 }
 

@@ -697,12 +697,14 @@ describe("S8h: accepting a tip from the finder patches mapLocationId (regression
     expect(wasteSource).toContain("mapLocationId }");
   });
 
-  it("the tip dropdown and the tip finder now make identical patches", () => {
-    // Both should touch mapLocationId. The dropdown patch appears at the
-    // select onChange; the finder patch is in handleTipChosen.
-    const dropdownPatch = wasteSource.indexOf("void patchRow(row.id, { mapLocationId: next })");
+  it("the tip select and the tip finder both write mapLocationId (s8j: select replaced dropdown)", () => {
+    // WASTE_PANEL_LAYOUT_V1 (scopecards-s8j): the old standalone mapLocationId select is
+    // gone (replaced by the combined Tip select that writes wasteFacility + mapLocationId).
+    // The Tip select onChange includes mapLocationId; the finder's handleTipChosen includes it too.
+    // Both touch mapLocationId -- the intent of the S8h test is preserved.
+    const tipSelectPatch = wasteSource.indexOf("mapLocationId: matchedTip");
     const finderPatch = wasteSource.indexOf("mapLocationId }");
-    expect(dropdownPatch).toBeGreaterThan(-1);
-    expect(finderPatch).toBeGreaterThan(-1);
+    expect(tipSelectPatch).toBeGreaterThan(-1); // Tip select writes mapLocationId
+    expect(finderPatch).toBeGreaterThan(-1);    // handleTipChosen writes mapLocationId
   });
 });

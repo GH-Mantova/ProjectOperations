@@ -96,12 +96,17 @@ test.describe("Batch 3 — Scope of Works waste subtable (PRs #72, #176, #179, #
     await expect(type.getByRole("option", { name: "Green waste" })).toHaveCount(0);
     await type.selectOption({ label: "Concrete/Brick — mixed" });
 
-    // Facility narrows to the (group, type) pair — Alex Fraser only.
+    // WASTE_PANEL_LAYOUT_V1 — the old Facility select was replaced by a
+    // Tip select whose option labels now carry rate/route decorations
+    // ("Alex Fraser · $35.00/t · route ✓"), so selectOption() has to drive
+    // by value (the raw facility name) rather than label. The cascade
+    // narrowing on (group, type) is unchanged — BMI Acacia Ridge is still
+    // absent from the Rubble/Concrete-Brick-mixed option set.
     const facility = row
       .getByRole("combobox")
       .filter({ has: page.getByRole("option", { name: "Alex Fraser" }) });
     await expect(facility.getByRole("option", { name: "BMI Acacia Ridge" })).toHaveCount(0);
-    await facility.selectOption({ label: "Alex Fraser" });
+    await facility.selectOption({ value: "Alex Fraser" });
 
     // "Billed by" badge carries the facility rate's unit forward (m³ here).
     await expect(row.getByText("m³", { exact: true })).toBeVisible();

@@ -237,6 +237,23 @@ export type TipFinderPanelProps = {
     mapLocationId: string,
     distanceKm: number
   ) => void;
+  /**
+   * WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- When true, the "Coming from"
+   * field is hidden and `tenderAddress` is shown as plain text instead.
+   * The request still sends originType: "tender" and tenderId.
+   * Only the admin page's TipFinderPanel uses the full field set.
+   */
+  hideComingFrom?: boolean;
+  /**
+   * WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- Tender site address displayed
+   * as text when hideComingFrom is true.
+   */
+  tenderAddress?: string;
+  /**
+   * WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- Comparison context note shown
+   * above the results (e.g. "Compared on one trip of 25 t (100 t in 4 trips)").
+   */
+  perTripNote?: string;
 };
 
 export function TipFinderPanel({
@@ -244,7 +261,10 @@ export function TipFinderPanel({
   initialLoadTonnes,
   initialOriginType,
   initialTenderId,
-  onFacilityChosen
+  onFacilityChosen,
+  hideComingFrom = false,
+  tenderAddress,
+  perTripNote
 }: TipFinderPanelProps = {}) {
   const { authFetch } = useAuth();
 
@@ -405,8 +425,36 @@ export function TipFinderPanel({
         the configured rate per kilometre.
       </p>
 
-      {/* Three-input form */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+      {/* WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- When opened from a waste row,
+          the tender address is shown as text and "Coming from" is not a field. */}
+      {hideComingFrom ? (
+        <div
+          style={{
+            fontSize: 12.5,
+            color: "var(--text-muted)",
+            padding: "8px 12px",
+            background: "var(--surface-subtle)",
+            borderRadius: 6,
+            marginBottom: 12
+          }}
+          data-testid="tip-finder-tender-address"
+        >
+          From the tender site:{" "}
+          <strong style={{ color: "var(--text-primary)" }}>
+            {tenderAddress ?? "tender site"}
+          </strong>
+        </div>
+      ) : null}
+
+      {/* Three-input form (two inputs when hideComingFrom is true) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: hideComingFrom ? "1fr 1fr" : "1fr 1fr 1fr",
+          gap: 12,
+          marginBottom: 16
+        }}
+      >
         {/* Waste type */}
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Waste type</span>
@@ -449,47 +497,56 @@ export function TipFinderPanel({
           )}
         </label>
 
-        {/* Origin */}
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Coming from</span>
-          {/* When opened from a tender row, origin is locked to the tender site */}
-          {originType === "tender" ? (
-            <div
-              className="s7-input"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                fontSize: 13,
-                color: "var(--text-muted)",
-                background: "var(--surface-muted, #F6F6F6)"
-              }}
-            >
-              Tender site
-            </div>
-          ) : (
-            <select
-              className="s7-input"
-              value={originType === "office" ? "office" : projectId}
-              onChange={(e) => {
-                if (e.target.value === "office") {
-                  setOriginType("office");
-                  setProjectId("");
-                } else {
-                  setOriginType("project");
-                  setProjectId(e.target.value);
-                }
-              }}
-            >
-              <option value="office">Office</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.projectNumber} — {p.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </label>
+        {/* Origin -- hidden when opened from a waste row (hideComingFrom) */}
+        {!hideComingFrom ? (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Coming from</span>
+            {/* When opened from a tender row, origin is locked to the tender site */}
+            {originType === "tender" ? (
+              <div
+                className="s7-input"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  fontSize: 13,
+                  color: "var(--text-muted)",
+                  background: "var(--surface-muted, #F6F6F6)"
+                }}
+              >
+                Tender site
+              </div>
+            ) : (
+              <select
+                className="s7-input"
+                value={originType === "office" ? "office" : projectId}
+                onChange={(e) => {
+                  if (e.target.value === "office") {
+                    setOriginType("office");
+                    setProjectId("");
+                  } else {
+                    setOriginType("project");
+                    setProjectId(e.target.value);
+                  }
+                }}
+              >
+                <option value="office">Office</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.projectNumber} — {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        ) : null}
       </div>
+
+      {/* WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- per-trip context note */}
+      {perTripNote ? (
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 12px" }}>
+          {perTripNote}
+        </p>
+      ) : null}
 
       {computeError && (
         <p style={{ color: "var(--status-danger)", fontSize: 13, margin: "0 0 12px" }}>

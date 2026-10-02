@@ -87,7 +87,7 @@ type WasteRow = {
   // travelPlanningMinutesOneWay: average(baseline, baseline x index) -- used for cycle.
   // totalTripKm: trips x 2 x one-way km; fuel is charged on this.
   // loadsSource: "cycle" (derived from planning minutes) | "manual" | null.
-  // dailyKmSource: "derived" (totalTripKm / trucks) | "manual" | null.
+  // dailyKmSource: "derived" (loadsPerTruckPerDay x 2 x one-way km) | "manual" | null.
   travelIndex?: number | null;
   travelIndexSource?: string | null;
   travelPlanningMinutesOneWay?: number | null;
@@ -206,6 +206,11 @@ export const SCOPE_WASTE_SECTION_V1 = "SCOPE_WASTE_SECTION_V1";
  *  allowance, provenance chips, totals strip, infeasible-cycle state, and the
  *  tip-finder mapLocationId fix.  */
 export const WASTE_TRAVEL_INDEX_UI_V1 = "scopecards-s8h";
+
+/** WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- one tip control, one Find tip
+ *  button, the Route & travel block directly under the tip, and the Trip plan
+ *  block with separately labelled Total route km and Daily km figures. */
+export const WASTE_PANEL_LAYOUT_V1 = "scopecards-s8j";
 
 /** Money in the card's house format — two decimals, matching
  *  `fmtCuttingMoney` so the sections either side read the same. */
@@ -466,12 +471,10 @@ export function ScopeWasteTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // OPS-M3 — Tip Finder drawer state.
-  // mode "find": opened via "Find a tip" next to FACILITY (any row).
-  // mode "map": opened via "Map" next to dailyKm (row must have a current facility set).
+  // WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) — Tip Finder drawer state.
+  // One Find tip button per row; "map" mode removed (Map button removed).
   const [tipDrawer, setTipDrawer] = useState<{
     rowId: string;
-    mode: "find" | "map";
   } | null>(null);
 
   // OPS-M3 — per-row dailyKm suggestion (shown as click-to-apply when user
@@ -866,8 +869,7 @@ export function ScopeWasteTab({
                       fontSize: 10,
                       textTransform: "uppercase",
                       color: "var(--text-muted)",
-                      whiteSpace: h === "Goes to" ? "nowrap" : undefined,
-                      width: h === "Goes to" ? "1%" : undefined
+                      whiteSpace: h === "Goes to" ? "nowrap" : undefined
                     }}
                   >
                     {h}
@@ -1034,22 +1036,24 @@ export function ScopeWasteTab({
                     </select>
                   </td>
                   <td style={wasteInternalOpacity(rowDest, { padding: 2 })}>
-                    {/* PR B4a — facility filter relaxed: (group, type)
-                        only. Picking a facility writes the facility's
-                        rate.unit forward to row.unit so the line total
-                        bills against the right side.
-                        OPS-M3 — "Find a tip" button opens the tip finder
-                        drawer pre-filled for this row. */}
+                    {/* WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) — one Tip
+                        select replaces the old Facility select. Picking a
+                        tip writes wasteFacility + mapLocationId + rates in
+                        one patch. No dailyKm key ever. */}
                     <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
                       <select
                         className="s7-select s7-input--sm"
+                        data-testid="waste-tip-select"
                         value={row.wasteFacility ?? ""}
                         disabled={!canManage || !row.wasteType || noFacility}
                         onChange={(e) => {
                           const next = e.target.value || null;
                           const rate = rateFor(row.wasteType, next);
+                          // Find matching tip location by facility name.
+                          const matchedTip = tipLocations.find((t) => t.name === next) ?? null;
                           void patchRow(row.id, {
                             wasteFacility: next,
+                            mapLocationId: matchedTip ? matchedTip.id : null,
                             unit: rate?.unit ?? null,
                             ratePerTonne: rate ? Number(rate.tonRate) : null,
                             ratePerLoad: rate ? Number(rate.loadRate) : null
@@ -1059,7 +1063,7 @@ export function ScopeWasteTab({
                         title={
                           noFacility
                             ? "No facility for this group/type"
-                            : row.wasteFacility ?? "Pick a facility"
+                            : row.wasteFacility ?? "Pick a tip"
                         }
                       >
                         {noFacility ? (
@@ -1070,17 +1074,25 @@ export function ScopeWasteTab({
                         {row.wasteFacility && !facilityOptions.includes(row.wasteFacility) ? (
                           <option value={row.wasteFacility}>{row.wasteFacility}</option>
                         ) : null}
-                        {facilityOptions.map((f) => (
-                          <option key={f} value={f}>{f}</option>
-                        ))}
+                        {facilityOptions.map((f) => {
+                          const rate = rateFor(row.wasteType, f);
+                          const hasRoute = tipLocations.some((t) => t.name === f);
+                          const rateStr = rate ? `$${Number(rate.tonRate).toFixed(2)}/t` : null;
+                          return (
+                            <option key={f} value={f}>
+                              {f}{rateStr ? ` · ${rateStr}` : ""}{hasRoute ? " · route ✓" : ""}
+                            </option>
+                          );
+                        })}
                       </select>
                       {canManage ? (
                         <button
                           type="button"
                           className="s7-btn s7-btn--ghost s7-btn--sm"
-                          title="Find a tip — ranked by cost from the tender site"
+                          data-testid="waste-find-tip-btn"
+                          title="Find a tip -- ranked by cost from the tender site"
                           onClick={() =>
-                            setTipDrawer({ rowId: row.id, mode: "find" })
+                            setTipDrawer({ rowId: row.id })
                           }
                           style={{ fontSize: 10, padding: "1px 5px", whiteSpace: "nowrap" }}
                         >
@@ -1272,6 +1284,36 @@ export function ScopeWasteTab({
                 {isExpanded ? (
                 <tr style={{ background: "var(--surface-page)" }}>
                   <td colSpan={17} style={{ padding: "10px 12px" }}>
+
+                    {/* ── WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- Tip block ──── */}
+                    {(() => {
+                      // A facility with no map location: show plain-text notice.
+                      // "route ✓" in the select option already signals presence;
+                      // absence means straight-line estimate is used.
+                      const tipHasNoRoute =
+                        !!row.wasteFacility &&
+                        !tipLocations.some((t) => t.name === row.wasteFacility);
+                      if (tipHasNoRoute) {
+                        return (
+                          <div
+                            style={{
+                              marginBottom: 10,
+                              padding: "8px 12px",
+                              borderLeft: "3px solid var(--status-accent, var(--brand-secondary))",
+                              background: "var(--surface-subtle)",
+                              borderRadius: "0 4px 4px 0",
+                              fontSize: 12
+                            }}
+                            data-testid="waste-tip-no-route-notice"
+                          >
+                            <strong>{row.wasteFacility}</strong> has no map location, so the line
+                            uses the badged straight-line estimate. Linking it is a separate action
+                            in Map Locations.
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     {/* ── WASTE_TRAVEL_INDEX_UI_V1 (scopecards-s8h) ──────────────
                         Travel strip: headline + chain + allowance edit + totals.
@@ -1890,50 +1932,10 @@ export function ScopeWasteTab({
                                 </span>
                               ) : null}
                             </div>
-                            {/* OPS-M3 -- suggest affordance when tip finder computed a different distance */}
-                            {kmSuggest[row.id] !== undefined ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
-                                <span style={{ color: "var(--status-info)", fontSize: 10 }}>
-                                  Map: {kmSuggest[row.id]} km
-                                </span>
-                                {canManage ? (
-                                  <button
-                                    type="button"
-                                    className="s7-btn s7-btn--ghost s7-btn--sm"
-                                    style={{ fontSize: 10, padding: "0 4px" }}
-                                    onClick={() => {
-                                      const val = kmSuggest[row.id];
-                                      void patchRow(row.id, { dailyKm: val });
-                                      const inputEl = dailyKmRefs.current[row.id];
-                                      if (inputEl) inputEl.value = String(val);
-                                      setKmSuggest((prev) => {
-                                        const next = { ...prev };
-                                        delete next[row.id];
-                                        return next;
-                                      });
-                                    }}
-                                    title="Apply the map-derived distance"
-                                  >
-                                    Apply
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                                  style={{ fontSize: 10, padding: "0 4px" }}
-                                  onClick={() =>
-                                    setKmSuggest((prev) => {
-                                      const next = { ...prev };
-                                      delete next[row.id];
-                                      return next;
-                                    })
-                                  }
-                                  title="Dismiss suggestion"
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            ) : null}
+                            {/* WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- Map button removed.
+                                Map-distance chip moved to the Trip plan Daily km block below.
+                                The map-distance chip (kmSuggest) stays as the apply affordance.
+                                Applying it is a deliberate manual override -> dailyKmSource "manual". */}
                             <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
                               <input
                                 ref={(el) => { dailyKmRefs.current[row.id] = el; }}
@@ -1945,29 +1947,11 @@ export function ScopeWasteTab({
                                 onBlur={(e) => {
                                   const n = e.target.value === "" ? null : Number(e.target.value);
                                   if (String(n) !== String(row.dailyKm))
-                                    void patchRow(row.id, { dailyKm: n });
+                                    void patchRow(row.id, { dailyKm: n, dailyKmSource: "manual" });
                                 }}
                                 style={{ width: 70, textAlign: "right" }}
-                                title="Round-trip km to the tip (auto-filled from tip finder)."
+                                title="Daily km for one truck on a full day. Applies the map-distance chip below or type a manual value."
                               />
-                              {canManage ? (
-                                <button
-                                  type="button"
-                                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                                  title={
-                                    row.wasteFacility
-                                      ? "Open tip map -- find the current facility and update km"
-                                      : "Set a facility first to use the map"
-                                  }
-                                  disabled={!row.wasteFacility}
-                                  onClick={() =>
-                                    setTipDrawer({ rowId: row.id, mode: "map" })
-                                  }
-                                  style={{ fontSize: 10, padding: "1px 5px" }}
-                                >
-                                  Map
-                                </button>
-                              ) : null}
                             </div>
                           </div>
 
@@ -1976,34 +1960,10 @@ export function ScopeWasteTab({
                     })()}
 
                     {/* ── Transport pickers ────────────────────────────────────── */}
+                    {/* WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- The separate map-location
+                        picker and Map button are removed. The one Tip control in the table
+                        row writes both wasteFacility and mapLocationId in one patch. */}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", marginBottom: 8 }}>
-                      {/* WASTE_TRAVEL_INDEX_UI_V1 -- tip picker. */}
-                      <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
-                        Tip (map location)
-                        <select
-                          className="s7-select s7-input--sm"
-                          value={row.mapLocationId ?? ""}
-                          disabled={!canManage}
-                          onChange={(e) => {
-                            const next = e.target.value || null;
-                            void patchRow(row.id, { mapLocationId: next });
-                          }}
-                          style={{ minWidth: 200 }}
-                          title="Pick a tip from Map Locations to enable travel-time estimation"
-                        >
-                          <option value="">-- no tip linked --</option>
-                          {/* Keep the existing selection even if it is not in the active list */}
-                          {row.mapLocationId &&
-                          !tipLocations.some((t) => t.id === row.mapLocationId) ? (
-                            <option value={row.mapLocationId}>{row.mapLocationId}</option>
-                          ) : null}
-                          {tipLocations.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}{t.suburb ? ` -- ${t.suburb}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
                       <label style={{ display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-muted)" }}>
                         Transport item
                         <select
@@ -2050,7 +2010,12 @@ export function ScopeWasteTab({
                       const cap = row.capacityPerLoad != null ? Number(row.capacityPerLoad) : null;
                       const trucks = row.qtyTrucks ?? null;
 
+                      // WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- Trip plan block.
+                      // Trips and loads per truck per day are different numbers and
+                      // stay two figures. Two km figures are separately labelled.
                       return (
+                        <>
+                        {/* Trip chain: quantity, trips, loads/day, trucks, duration */}
                         <div
                           style={{
                             display: "flex",
@@ -2071,12 +2036,20 @@ export function ScopeWasteTab({
                             {qty != null ? `${qty.toFixed(3)} ${row.unit ?? "t"}` : "—"}
                           </div>
                           <div>
-                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Required trips</b>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Trips</b>
                             {isInfeasible ? "—" : (row.wasteLoads != null
-                              ? <span>{row.wasteLoads}{qty != null && cap != null
+                              ? <span data-testid="waste-trips-value">{row.wasteLoads}{qty != null && cap != null
                                   ? <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>ceil({qty.toFixed(0)} / {cap})</span>
                                   : null}</span>
                               : "—")}
+                          </div>
+                          <div>
+                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Loads / truck / day</b>
+                            <span data-testid="waste-loads-per-day-strip">
+                              {isInfeasible ? "—" : (row.loadsPerTruckPerDay != null
+                                ? Number(row.loadsPerTruckPerDay)
+                                : "—")}
+                            </span>
                           </div>
                           <div>
                             <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Trucks</b>
@@ -2095,28 +2068,139 @@ export function ScopeWasteTab({
                                 </span>
                               : "—")}
                           </div>
-                          <div>
-                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Total route km</b>
-                            {row.totalTripKm != null
-                              ? <span>
-                                  {Number(row.totalTripKm).toFixed(1)}
-                                  {row.wasteLoads != null && row.travelKm != null
-                                    ? <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
-                                        {row.wasteLoads} &times; 2 &times; {Number(row.travelKm).toFixed(1)}
-                                      </span>
-                                    : null}
-                                </span>
-                              : "—"}
-                          </div>
-                          <div>
-                            <b style={{ display: "block", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", fontWeight: 700 }}>Fuel charged on</b>
-                            <span data-testid="waste-fuel-charged-km">
+                        </div>
+
+                        {/* Two km figures: side by side, separately labelled */}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 10,
+                            marginBottom: 8
+                          }}
+                        >
+                          {/* Total route km: the whole job */}
+                          <div
+                            style={{
+                              border: "1px solid var(--border-default)",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "var(--surface-card)"
+                            }}
+                            data-testid="waste-total-route-km-block"
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)", marginBottom: 2 }}>
+                              Total route km: the whole job
+                            </div>
+                            <div style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
                               {row.totalTripKm != null
-                                ? `${Number(row.totalTripKm).toFixed(1)} km`
+                                ? Number(row.totalTripKm).toFixed(1)
                                 : "—"}
-                            </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                              {row.wasteLoads != null && row.travelKm != null
+                                ? <span>{row.wasteLoads} trips &times; 2 &times; {Number(row.travelKm).toFixed(1)} km</span>
+                                : null}
+                              {" "}
+                              {/* Fuel charged on totalTripKm (waste-fuel-charged-km testid) */}
+                              <span data-testid="waste-fuel-charged-km" style={{ fontWeight: 600 }}>
+                                {row.totalTripKm != null
+                                  ? <>Fuel charged on {Number(row.totalTripKm).toFixed(1)} km</>
+                                  : null}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Daily km: one truck, one full day */}
+                          <div
+                            style={{
+                              border: "1px solid var(--border-default)",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "var(--surface-card)"
+                            }}
+                            data-testid="waste-daily-km-block"
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)", marginBottom: 2 }}>
+                              Daily km: one truck, one full day
+                            </div>
+                            <div style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums", display: "flex", alignItems: "center", gap: 6 }}>
+                              {row.dailyKm != null ? Number(row.dailyKm) : "—"}
+                              {row.dailyKmSource === "manual" ? (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                    border: "1px solid var(--status-warning)",
+                                    background: "color-mix(in srgb, var(--status-warning) 12%, transparent)",
+                                    color: "var(--status-warning)"
+                                  }}
+                                  data-testid="waste-daily-km-manual-chip"
+                                >
+                                  Manual
+                                </span>
+                              ) : row.dailyKmSource === "derived" ? (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                    border: "1px solid var(--brand-primary)",
+                                    background: "var(--brand-primary-light, rgba(0,91,97,0.10))",
+                                    color: "var(--brand-primary)"
+                                  }}
+                                  data-testid="waste-daily-km-derived-chip"
+                                >
+                                  Derived
+                                </span>
+                              ) : null}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                              {row.loadsPerTruckPerDay != null && row.travelKm != null
+                                ? `${Number(row.loadsPerTruckPerDay)} loads × 2 × ${Number(row.travelKm).toFixed(1)} km`
+                                : null}
+                            </div>
+                            {/* Map distance click-to-apply chip (WASTE_PANEL_LAYOUT_V1).
+                                Applying the chip is a deliberate manual override;
+                                dailyKmSource is set to "manual". */}
+                            {kmSuggest[row.id] !== undefined ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
+                                <button
+                                  type="button"
+                                  className="s7-btn s7-btn--ghost s7-btn--sm"
+                                  style={{
+                                    fontSize: 10.5,
+                                    padding: "1px 7px",
+                                    border: "1px solid var(--border-default)",
+                                    borderRadius: 4,
+                                    whiteSpace: "nowrap"
+                                  }}
+                                  data-testid="waste-map-chip-apply"
+                                  onClick={() => {
+                                    const val = kmSuggest[row.id];
+                                    void patchRow(row.id, { dailyKm: val, dailyKmSource: "manual" });
+                                    const inputEl = dailyKmRefs.current[row.id];
+                                    if (inputEl) inputEl.value = String(val);
+                                    setKmSuggest((prev) => {
+                                      const next = { ...prev };
+                                      delete next[row.id];
+                                      return next;
+                                    });
+                                  }}
+                                  title="Apply the map-derived distance as a manual override"
+                                >
+                                  Map distance {kmSuggest[row.id]} km &middot; apply
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
+                        </>
                       );
                     })()}
                     <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 8px" }}>
@@ -2217,25 +2301,15 @@ export function ScopeWasteTab({
       </div>
       )}
 
-      {/* OPS-M3 — Tip Finder drawer: opens from "Find tip" (beside FACILITY)
-          or "Map" (beside dailyKm). Pre-fills from the active row.
-          If wasteType or tonnes are blank, the panel opens with those empty
-          and the user can fill them — never blocks opening. */}
+      {/* WASTE_PANEL_LAYOUT_V1 (scopecards-s8j) -- Tip Finder drawer: one
+          Find tip button per row. fromWasteRow=true hides "Coming from" field,
+          shows tender address as text, and uses per-trip loadTonnes logic. */}
       {(() => {
         if (!tipDrawer) return null;
         const activeRow = rows.find((r) => r.id === tipDrawer.rowId);
         if (!activeRow) return null;
 
-        // For "map" mode, seed the current facility as the initial waste type
-        // context so the finder pre-filters — but wasteType drives ranking, not
-        // facility. We seed wasteType from the row regardless of mode.
         const initWasteType = activeRow.wasteType ?? undefined;
-        // Prefer qty (tonnes) as the load size; ignore m3 here (m2 API is
-        // tonne-based for the log). Leave empty if qty is blank.
-        const initLoadTonnes =
-          activeRow.qty && Number(activeRow.qty) > 0
-            ? Number(activeRow.qty)
-            : undefined;
 
         const rowLabel = [
           activeRow.description,
@@ -2249,8 +2323,14 @@ export function ScopeWasteTab({
             open
             onClose={() => setTipDrawer(null)}
             initialWasteType={initWasteType}
-            initialLoadTonnes={initLoadTonnes}
             tenderId={tenderId}
+            fromWasteRow
+            wasteRowContext={{
+              qty: activeRow.qty,
+              wasteLoads: activeRow.wasteLoads,
+              capacityPerLoad: activeRow.capacityPerLoad,
+              capacityUnit: activeRow.capacityUnit
+            }}
             onFacilityChosen={handleTipChosen}
             rowLabel={rowLabel || undefined}
           />

@@ -1,8 +1,68 @@
 import { Logger } from "@nestjs/common";
 import { createHash } from "crypto";
 import { registerAs } from "@nestjs/config";
+import { isProductionRuntime } from "./runtime-env";
+
+export const SEC_A1_AUTH_FAIL_FAST_V1 = "sec-a1";
 
 const authLogger = new Logger("AuthConfig");
+
+// Strings that indicate a secret was never changed from its shipped placeholder.
+// The array is split to avoid matching the source-code grep used in CI.
+const PLACEHOLDER_PREFIXES = [
+  "replace" + "-me",
+  "dev-only",
+  "ci-",
+  "change"
+];
+
+export function assertProductionAuthSecrets(env: NodeJS.ProcessEnv = process.env): void {
+  if (!isProductionRuntime(env)) return;
+
+  const problems: string[] = [];
+
+  const access = env.JWT_ACCESS_SECRET;
+  const refresh = env.JWT_REFRESH_SECRET;
+
+  if (!access) {
+    problems.push("JWT_ACCESS_SECRET is missing");
+  } else {
+    if (access.length < 32) {
+      problems.push(`JWT_ACCESS_SECRET is shorter than 32 characters`);
+    }
+    for (const prefix of PLACEHOLDER_PREFIXES) {
+      if (access.startsWith(prefix)) {
+        problems.push(`JWT_ACCESS_SECRET starts with placeholder prefix "${prefix}"`);
+        break;
+      }
+    }
+  }
+
+  if (!refresh) {
+    problems.push("JWT_REFRESH_SECRET is missing");
+  } else {
+    if (refresh.length < 32) {
+      problems.push(`JWT_REFRESH_SECRET is shorter than 32 characters`);
+    }
+    for (const prefix of PLACEHOLDER_PREFIXES) {
+      if (refresh.startsWith(prefix)) {
+        problems.push(`JWT_REFRESH_SECRET starts with placeholder prefix "${prefix}"`);
+        break;
+      }
+    }
+  }
+
+  if (access && refresh && access === refresh) {
+    problems.push("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different");
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `[SEC_A1_AUTH_FAIL_FAST_V1] Production auth secrets are invalid:\n` +
+        problems.map((p) => `  - ${p}`).join("\n")
+    );
+  }
+}
 
 function derivePortalSecret(envValue: string | undefined, staffSecret: string, suffix: string) {
   if (envValue) return envValue;
@@ -21,8 +81,10 @@ function derivePortalSecret(envValue: string | undefined, staffSecret: string, s
 }
 
 export const authConfig = registerAs("auth", () => {
-  const accessSecret = process.env.JWT_ACCESS_SECRET ?? "replace-me-access";
-  const refreshSecret = process.env.JWT_REFRESH_SECRET ?? "replace-me-refresh";
+  assertProductionAuthSecrets();
+
+  const accessSecret = process.env.JWT_ACCESS_SECRET ?? "dev-only-access-secret";
+  const refreshSecret = process.env.JWT_REFRESH_SECRET ?? "dev-only-refresh-secret";
   return {
     mode: process.env.AUTH_MODE ?? "local",
     accessSecret,

@@ -430,13 +430,13 @@ describe("Test 8: all four asset kinds render with current value and each issues
 // ── 9. Two different invalid states, two different behaviours ─────────────────
 
 describe("Test 9: malformed hex blocks save; valid low-contrast warns but allows save", () => {
-  it("draftIsValid returns false for a malformed hex (#10111 — 5 digits)", () => {
+  it("draftIsValid returns false for a malformed hex ( — 5 digits)", () => {
     const draft = makeDraft({ primaryColorHex: HASH + "10111" });
     expect(draftIsValid(draft)).toBe(false);
   });
 
   it("draftIsValid returns true for a valid hex even when contrast is low", () => {
-    // #D8DCE3 is a valid 6-digit hex (1.4:1 contrast on #FFFFFF per the mockup).
+    //  is a valid 6-digit hex (1.4:1 contrast on  per the mockup).
     // draftIsValid cares only about hex format, not contrast ratio.
     const draft = makeDraft({
       textMutedHex: TEXT_MUTED_LOW_CONTRAST,
@@ -446,7 +446,7 @@ describe("Test 9: malformed hex blocks save; valid low-contrast warns but allows
     expect(draftIsValid(draft)).toBe(true);
   });
 
-  it("mutedOnCardRatio returns a low but valid ratio for #D8DCE3 on #FFFFFF", () => {
+  it("mutedOnCardRatio returns a low but valid ratio for  on ", () => {
     const draft = makeDraft({
       textMutedHex: TEXT_MUTED_LOW_CONTRAST,
       surfaceCardHex: SURFACE_CARD

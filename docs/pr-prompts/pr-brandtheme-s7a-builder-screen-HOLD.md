@@ -44,7 +44,8 @@ cluster_order: 7
 
 **WAITS FOR THE LIGHT-ONLY APPLY SLICE (added 2026-10-02, Marco approved).** `requires_file_on_main` holds
 this prompt until `pr-brandtheme-light-only-apply` lands. Until then, activating Harbour or Graphite would
-write inline colour properties that override the dark theme for every user. Do not arm before that gate releases.
+write inline colour properties that override the dark theme for every user. It stays held until that gate
+releases. (Released 2026-10-02: the light-only apply slice is on main and lint-prompt reports GATE_RELEASED.)
 
 **MOCK-UP APPROVED 2026-10-02.** Build to the mock-up at the `design_ref`. Marco's three confirmed
 decisions below still bind, and the two open decisions stay open and visible.

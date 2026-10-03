@@ -1,0 +1,7 @@
+{
+  "lanes": {
+    "sot":        { "match": "all-paths-under", "prefix": "sot/" },
+    "instrument": { "match": "instrument-lane-json", "file": "scripts/pipeline/instrument-lane.json" }
+  },
+  "_readme": "The only list of lanes where authority:standing is accepted in an approval receipt. Changing this file is never a standing matter: it is outside every lane. sot: every diff path starts with sot/ (apart from the receipt itself). instrument: every diff path apart from the receipt is in instrument-lane.json (its files, or its tests glob), and that file is unchanged. CP26_ARMED_BY_DIFF_V1"
+}

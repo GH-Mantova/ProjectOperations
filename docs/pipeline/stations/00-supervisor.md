@@ -462,6 +462,20 @@ EXCEPTION - escalates PRs: a prompt/PR flagged `escalates:true` or sitting in `n
 OPENED and driven green but NOT auto-merged - it is left for Marco. Any `do-not-merge` / hold label
 also stands off. `#552` (production data) and `#538` (real human identity) remain refused in code.
 
+**Before `Merge-Pr`, check whether a receipt is required.** From CP26_ARMED_BY_DIFF_V1, any PR whose
+diff touches a migration file or a file outside tests/ or docs/ requires a receipt. Check the diff
+with `classifyPolicyFiles`. If a receipt is required, commit `docs/decisions/merge-approvals/<N>.md`
+to the PR branch with the correct `authority:` field before merging.
+- For a PR released by Marco (label removed, or he said so in this session): `authority: personal`,
+  `approved_by: marco`.
+- For a sot/-only doc-reconcile PR: commit a receipt with `authority: standing`, `lane: sot`,
+  `approved_by: station-00`.
+- For an instrument-lane PR (when the instrument-lane file is on main): commit a
+  receipt with `authority: standing`, `lane: instrument`, `approved_by: station-00`.
+
+See `docs/decisions/merge-approvals/README.md` and `STATION-CAPABILITIES.md` section 5 for the
+full receipt template.
+
 **2. Fix any failed PR - it is yours, not an escalation.** If a PR fails CI, has a conflict, or its
 branch is behind, YOU fix it. Read the job log first (`gh run view <run> --job <job> --log`) - never
 diagnose from the diff or the PR page. Rebase/update the branch, resolve conflicts in a clean

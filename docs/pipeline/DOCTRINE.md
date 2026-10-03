@@ -2535,6 +2535,15 @@ though CI enforces it. The honest boundary today is the instrument: `bd-push-sli
 receipt into the PR branch before it arms auto-merge, and refuses to arm without one. That is a
 constraint on one script, which is weaker than CI and must be said plainly rather than dressed up.
 
+**DATED NOTE, 2026-10-03 (CP26_ARMED_BY_DIFF_V1).** The paragraph above is the measured record as of
+2026-09-01; it is kept in full because §1 says never delete a measured record. What changed in this
+PR: CP-26 is now armed by the diff. Any PR whose diff contains a migration file, or any file outside
+tests/ or docs/, requires a receipt regardless of label history. The `NEVER_ESCALATED` pass now
+requires both `!everLabeled` AND `!requiredByDiff`. Standing receipts are checked against
+`scripts/pr-gates/standing-lanes.json`. Personal receipts pass as `RECEIPT_VALID_UNCORROBORATED`
+until `MARCO_APPROVER_LOGIN` is configured (see `docs/runbooks/marco-approver-identity.md`).
+This is the CI gate §10.1 step 3's proviso was waiting for.
+
 🔴🔴 **THE RECEIPT'S AUTHORING COMMIT NAMES ITS OWN ACTOR IN THE GIT IDENTITY, AND THE SQUASH MERGE
 IS THE ONLY THING THAT HIDES IT.** [MEASURED] 2026-09-08T00:3xZ by Station 00 (scheduled) via
 `gh pr view <N> --json commits` then `gh api repos/GH-Mantova/ProjectOperations/commits/<sha>`, over

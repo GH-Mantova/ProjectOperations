@@ -1,5 +1,10 @@
 import { TooltipSelect, type TooltipSelectOption } from "../../../components";
 import type { ScopeItem } from "../ScopeQuantitiesTable";
+import {
+  EnclosureLinesTable,
+  enclosureLineCount
+} from "./EnclosureLinesTable";
+import type { EnclosureLine } from "../../../lib/enclosure-lines-api";
 
 // ── SCOPE_WBS_ACTIONS_V1 — the ACM expandable (asbestos cards only) ──────
 //
@@ -26,6 +31,11 @@ import type { ScopeItem } from "../ScopeQuantitiesTable";
 /** Stored ACM type values. These are the strings already in the database. */
 export const ACM_TYPE_FRIABLE = "friable";
 export const ACM_TYPE_BONDED = "bonded";
+
+// ASB_ENCLOSURE_LINES_UI_V1 — note text shown inside the ACM block.
+// Exact wording per brief (2026-10-03).
+export const ASB_CARD_ENCLOSURE_NOTE =
+  "Enclosure materials and hire, air monitoring and clearance are priced from the enclosure rate table. The labour to build and strip the enclosure stays as men × days.";
 
 /**
  * ACM type options.
@@ -105,13 +115,19 @@ type AcmSource = Pick<
  * enclosureRequired is explicitly false has been answered, but the button's
  * count is "what has been recorded here", and counting an unticked box would
  * put a tick on every asbestos item on the card.
+ *
+ * ASB_ENCLOSURE_LINES_UI_V1 — also includes the count of priced enclosure
+ * lines if `enclosureLines` is supplied. The lines are fetched by
+ * EnclosureLinesTable and reported upward via onLinesChanged; the caller
+ * (ScopeQuantitiesTable) caches the count per item and passes it here.
  */
-export function acmFactCount(item: AcmSource): number {
+export function acmFactCount(item: AcmSource, pricedLineCount = 0): number {
   let n = 0;
   if (typeof item.acmType === "string" && item.acmType.trim() !== "") n += 1;
   if (typeof item.acmMaterial === "string" && item.acmMaterial.trim() !== "") n += 1;
   if (item.enclosureRequired === true) n += 1;
   if (item.airMonitoring === true) n += 1;
+  n += pricedLineCount;
   return n;
 }
 
@@ -119,6 +135,12 @@ export type WbsAcmBlockProps = {
   item: ScopeItem;
   isAi: boolean;
   onPatch: (body: Record<string, unknown>) => void;
+  // ASB_ENCLOSURE_LINES_UI_V1 — the enclosure lines table is mounted inside
+  // this block. tenderId is required for the table's API calls (itemId is
+  // taken from item.id). onLinesChanged is called whenever the line list
+  // changes so the parent can refresh the item total and the action count.
+  tenderId: string;
+  onLinesChanged?: (lines: EnclosureLine[]) => void;
 };
 
 const labelStyle = {
@@ -126,7 +148,7 @@ const labelStyle = {
   fontWeight: 600,
   textTransform: "uppercase" as const,
   letterSpacing: "0.05em",
-  color: "var(--text-muted, #6b7280)",
+  color: "var(--text-muted)",
   marginBottom: 2
 };
 
@@ -134,28 +156,48 @@ const labelStyle = {
  * SCOPE_WBS_ACTIONS_V1 — ACM type, ACM material, the derived class badge, and
  * the enclosure / air-monitoring ticks.
  *
- * Rendered ONLY on an asbestos card, and only when the estimator has opened it
- * from the actions column; the caller owns both conditions and the block
- * starts closed.
+ * ASB_ENCLOSURE_LINES_UI_V1 — also mounts the EnclosureLinesTable below the
+ * ticks. Rendered ONLY on an asbestos card, and only when the estimator has
+ * opened it from the actions column; the caller owns both conditions and the
+ * block starts closed.
  */
-export function WbsAcmBlock({ item, isAi, onPatch }: WbsAcmBlockProps) {
+export function WbsAcmBlock({ item, isAi, onPatch, tenderId, onLinesChanged }: WbsAcmBlockProps) {
   const acmClass = acmClassForType(item.acmType);
 
   return (
     <div
       data-testid="wbs-acm-block"
       style={{
-        border: "1px solid var(--border-default, #e5e7eb)",
+        border: "1px solid var(--border-default)",
         borderRadius: 6,
         padding: 8,
-        background: "var(--surface-muted, #FAFAFA)",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 12,
-        alignItems: "flex-end",
-        maxWidth: 720
+        background: "var(--surface-muted)",
+        maxWidth: 860
       }}
     >
+      {/* ASB_ENCLOSURE_LINES_UI_V1 — note explaining the pricing model */}
+      <p
+        data-testid="wbs-acm-note"
+        style={{
+          fontSize: 12.5,
+          color: "var(--text-secondary)",
+          margin: "0 0 8px 0",
+          padding: "6px 10px",
+          background: "var(--surface-warning-subtle)",
+          border: "1px solid var(--border-warning)",
+          borderRadius: 6
+        }}
+      >
+        {ASB_CARD_ENCLOSURE_NOTE}
+      </p>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "flex-end"
+        }}
+      >
       <div style={{ display: "flex", flexDirection: "column", width: 180 }}>
         <span className="s7-type-label" style={labelStyle}>
           ACM type
@@ -205,11 +247,11 @@ export function WbsAcmBlock({ item, isAi, onPatch }: WbsAcmBlockProps) {
             whiteSpace: "nowrap",
             background:
               acmClass === "A"
-                ? "var(--status-danger, #EF4444)"
+                ? "var(--status-danger)"
                 : acmClass === "B"
-                  ? "var(--status-warning, #B45309)"
-                  : "var(--surface-muted, #f3f4f6)",
-            color: acmClass === null ? "var(--text-muted, #6b7280)" : "#fff"
+                  ? "var(--status-warning)"
+                  : "var(--surface-muted)",
+            color: acmClass === null ? "var(--text-muted)" : "var(--color-white)"
           }}
         >
           {acmClassLabel(acmClass)}
@@ -239,6 +281,21 @@ export function WbsAcmBlock({ item, isAi, onPatch }: WbsAcmBlockProps) {
         />
         <span style={{ fontSize: 12 }}>Air monitoring</span>
       </label>
+      </div>{/* end controls flex row */}
+
+      {/* ASB_ENCLOSURE_LINES_UI_V1 — the priced enclosure / monitoring /
+          clearance table, rendered below the tick fields. */}
+      <EnclosureLinesTable
+        tenderId={tenderId}
+        itemId={item.id}
+        isReadOnly={isAi}
+        onLinesChanged={onLinesChanged}
+      />
     </div>
   );
 }
+
+// Re-export so callers that import from this module can get the count helper.
+export { enclosureLineCount };
+// Re-export the EnclosureLine type so callers can wire the callback.
+export type { EnclosureLine };

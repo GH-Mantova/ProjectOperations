@@ -1954,6 +1954,11 @@ export function ScopeQuantitiesTable({
   // SCOPE_WBS_PLANT_V1 — per-row plant local state.
   const [itemPlantRows, setItemPlantRows] = useState<ItemPlantRows>(new Map());
 
+  // ASB_ENCLOSURE_LINES_UI_V1 — per-item enclosure line count, reported
+  // upward by EnclosureLinesTable via WbsAcmBlock's onLinesChanged callback.
+  // Used by acmFactCount to include priced lines in the action-button count.
+  const [itemEnclosureCounts, setItemEnclosureCounts] = useState<Map<string, number>>(new Map());
+
   // SCOPE_WBS_TABLE_V1 — per-item row counts (slice 2: local state only;
   // slices 3/4 will bind each row to an actual manpower/plant record).
   // Initialised to 1 for every item. When items changes (add/delete),
@@ -3069,7 +3074,11 @@ export function ScopeQuantitiesTable({
                 : "";
               const measurementsHere = measurementCount(item);
               const commentsHere = commentCount(item);
-              const acmHere = isAsbestos ? acmFactCount(item) : 0;
+              // ASB_ENCLOSURE_LINES_UI_V1 — include the count of priced enclosure
+              // lines; those are tracked in itemEnclosureCounts which is updated
+              // whenever EnclosureLinesTable reports a change via onLinesChanged.
+              const enclosureLinesHere = isAsbestos ? (itemEnclosureCounts.get(item.id) ?? 0) : 0;
+              const acmHere = isAsbestos ? acmFactCount(item, enclosureLinesHere) : 0;
 
               // Render rowCount <tr> elements; identity columns span all.
               const rows = Array.from({ length: rowCount }, (_, rowIdx) => {
@@ -3479,6 +3488,20 @@ export function ScopeQuantitiesTable({
                           item={item}
                           isAi={isAi}
                           onPatch={(body) => void patchItem(item.id, body)}
+                          tenderId={tenderId}
+                          onLinesChanged={(lines) => {
+                            // ASB_ENCLOSURE_LINES_UI_V1 — track the count so
+                            // acmFactCount includes priced lines, and call
+                            // onItemsChanged so card totals and the discipline
+                            // bar refresh after any add/patch/delete.
+                            const itemId = item.id;
+                            setItemEnclosureCounts((prev) => {
+                              const next = new Map(prev);
+                              next.set(itemId, lines.length);
+                              return next;
+                            });
+                            void onItemsChanged();
+                          }}
                         />
                       ) : null}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

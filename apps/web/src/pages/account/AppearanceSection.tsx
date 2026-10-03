@@ -392,7 +392,7 @@ export function AppearanceSection() {
 
       {schemeState.status === "error" && (
         <p
-          style={{ color: "var(--text-danger, #b3261e)", fontSize: 13 }}
+          style={{ color: "var(--status-danger)", fontSize: 13 }}
           data-testid="load-error"
         >
           {schemeState.message}
@@ -486,7 +486,7 @@ export function AppearanceSection() {
           {saveError && (
             <p
               style={{
-                color: "var(--text-danger, #b3261e)",
+                color: "var(--status-danger)",
                 fontSize: 13,
                 marginTop: 10
               }}

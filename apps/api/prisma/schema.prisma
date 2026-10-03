@@ -3794,6 +3794,11 @@ model ScopeOfWorksItem {
   // Back-relation: quotes received for this item when it is a SUB line.
   subLineQuotes SubLineQuote[]
 
+  // ASB_ENCLOSURE_LINES_V1 -- enclosure, air monitoring and clearance lines
+  // on ASB items. Only ASB discipline items may carry these; enforced in the
+  // service layer, not by a DB constraint.
+  enclosureLines ScopeItemEnclosureLine[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -4077,6 +4082,43 @@ model ScopeOperationalCostLine {
   @@index([cardId, sortOrder])
   @@index([plantRateId])
   @@map("scope_operational_cost_lines")
+}
+
+// ASB_ENCLOSURE_LINES_V1 -- enclosure, air monitoring and clearance lines
+// priced on an ASB scope item from the enclosure rate table.
+//
+// Decision (2026-10-02): enclosure rates are materials/hire only. Labour to
+// build and strip stays as men x days on the existing item. These lines are
+// ADDED on top. They follow the parent item's quote destination and its
+// markup chain (item.markupOverride ?? card.markupOverride ?? tender markup).
+//
+// No FK to EstimateEnclosureRate: legacy rate tables are slated for
+// retirement (pr-rates-s11c-drop-legacy-tables). The key + snapshot survive.
+model ScopeItemEnclosureLine {
+  id          String           @id @default(cuid())
+  // Parent item. Cascade: deleting the scope item removes its lines.
+  scopeItemId String           @map("scope_item_id")
+  scopeItem   ScopeOfWorksItem @relation(fields: [scopeItemId], references: [id], onDelete: Cascade)
+  // Rate key resolved under the "enclosure" slug -- the enclosureType field
+  // from EstimateEnclosureRate. Stored as a plain string so the line survives
+  // the legacy-table retirement.
+  enclosureType String  @map("enclosure_type")
+  // Quantity and unit, both snapshotted at create so the line never drifts
+  // when the rate table is later edited.
+  qty           Decimal @db.Decimal(10, 3)
+  unit          String
+  // Rate snapshotted at create from the enclosure rate table.
+  rate          Decimal @db.Decimal(10, 2)
+  // Per-line override of `rate`. Same null-means-inherit semantics as
+  // ScopeOperationalCostLine.rateOverride: null = use the snapshotted rate;
+  // a stored 0 is a real value ("this line is free").
+  rateOverride  Decimal? @map("rate_override") @db.Decimal(10, 2)
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([scopeItemId, sortOrder])
+  @@map("scope_item_enclosure_lines")
 }
 
 // Client-facing scope table on a ClientQuote Ã¢â‚¬" editable independently of

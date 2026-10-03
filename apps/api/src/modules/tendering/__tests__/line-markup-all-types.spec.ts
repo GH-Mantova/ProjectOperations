@@ -44,6 +44,8 @@ function makePrisma(opts: {
     tender: {
       findUnique: jest.fn().mockResolvedValue({ id: "t-1" })
     },
+    scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
     scopeOfWorksItem: {
       findMany: jest.fn().mockResolvedValue(opts.scopeItems ?? [])
     },

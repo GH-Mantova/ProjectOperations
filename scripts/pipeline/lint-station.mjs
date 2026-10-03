@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, resolve, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Every path below is resolved from THIS MODULE's location, never from process.cwd().
 // A station's shell opens in the Cowork session's outputs folder, which is not a git
@@ -185,7 +185,62 @@ function lintOne(file, canon, collect) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// BOOTSTRAP_PREFLIGHT_CHECK_V1 — the scheduled-task bootstraps.
+//
+// The scheduled-task bootstraps (C:\Users\Marco\Claude\Scheduled\<station>\SKILL.md) are
+// the first thing a scheduled station reads: they install vm-git-guard, load the ToolSearch
+// schema, run `git show origin/main` against the binding docs and stamp a GROUND block.
+// No gate had ever looked at them. On 2026-10-02 at origin/main c145476c, four of five
+// bootstraps cited a `.gitignore:107-111` line range that had moved to 115-119, and 0 of
+// 5 named ToolSearch, vm-git-guard or `show origin/main` at all.
+//
+// This check is honest about its range: GitHub CI cannot see Marco's PC, so there it
+// prints SKIP (yellow) and the SKIP is never counted as ADMIT evidence. On the Windows
+// host it runs on every station run that follows this doc.
+//
+// We do not print the bootstraps' content beyond the failing item — they are Marco's files.
+export const BOOTSTRAP_NEEDLES = ['ToolSearch', 'vm-git-guard', 'show origin/main', 'GROUND block'];
+const BOOTSTRAP_FORBIDDEN_RE = /\.gitignore:\d+/g;
+
+export function checkBootstraps(dir) {
+  if (!dir) return { skipped: true, dir, reason: 'no PO_BOOTSTRAP_DIR and no USERPROFILE' };
+  if (!existsSync(dir)) return { skipped: true, dir, reason: 'no bootstrap folder on this machine' };
+  const entries = readdirSync(dir).sort();
+  const results = [];
+  for (const name of entries) {
+    if (name.startsWith('_')) continue;
+    const p = join(dir, name, 'SKILL.md');
+    if (!existsSync(p)) continue;
+    const text = readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+    if (!/^## STEP 1/m.test(text)) {
+      results.push({ name, path: p, status: 'no-step', fails: [] });
+      continue;
+    }
+    const fails = [];
+    for (const needle of BOOTSTRAP_NEEDLES) {
+      if (!text.includes(needle)) fails.push(`missing required needle: \`${needle}\``);
+    }
+    const giMatches = text.match(BOOTSTRAP_FORBIDDEN_RE) || [];
+    for (const m of giMatches) {
+      fails.push(`cites gitignore line numbers (\`${m}\`) — line numbers move; cite the comment anchor instead`);
+    }
+    results.push({ name, path: p, status: fails.length ? 'reject' : 'clean', fails });
+  }
+  return { skipped: false, dir, results };
+}
+
+export function resolveBootstrapDir(env = process.env) {
+  if (env.PO_BOOTSTRAP_DIR) return env.PO_BOOTSTRAP_DIR;
+  if (env.USERPROFILE) return join(env.USERPROFILE, 'Claude', 'Scheduled');
+  return null;
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
+// Guard the CLI block so tests can `import { checkBootstraps }` without triggering
+// a full lint run against the current checkout and a top-level process.exit().
+const IS_CLI = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (IS_CLI) {
 const args = process.argv.slice(2);
 const writeCanonical = args.includes('--write-canonical');
 const explicit = args.filter((a) => !a.startsWith('--'));
@@ -295,8 +350,32 @@ if (existsSync(AGENT_DIR)) {
   console.log(C.yel('NOTE  ') + `  ${AGENT_DIR_REL} is absent — agent-definition encoding gate did not run`);
 }
 
+const BOOTSTRAP_DIR = resolveBootstrapDir();
+const bootstrap = checkBootstraps(BOOTSTRAP_DIR);
+let bootstrapBad = 0;
+if (bootstrap.skipped) {
+  console.log(C.yel('SKIP  ') + `  bootstraps: ${bootstrap.reason} — checked ${bootstrap.dir ?? '(no path resolved)'} (not an ADMIT)`);
+} else {
+  const clean = bootstrap.results.filter((r) => r.status === 'clean');
+  const noStep = bootstrap.results.filter((r) => r.status === 'no-step');
+  const bootstrapRejects = bootstrap.results.filter((r) => r.status === 'reject');
+  bootstrapBad = bootstrapRejects.length;
+  for (const r of bootstrapRejects) {
+    console.log(C.red('REJECT') + `  bootstraps/${r.name}/SKILL.md`);
+    for (const m of r.fails) console.log(`          ${C.red('x')} ${m}`);
+  }
+  for (const r of noStep) {
+    console.log(C.yel('NOTE  ') + `  bootstraps: ${r.name} has no STEP block — not checked`);
+  }
+  if (!bootstrapRejects.length) {
+    console.log(C.grn('ADMIT ') + `  bootstraps/*/SKILL.md` + C.dim(`  (${clean.length} bootstrap(s) checked, all clean; dir=${bootstrap.dir})`));
+  }
+}
+
 console.log('');
 if (TRACKED === false) console.log(C.yel('NOTE  ') + '  git ls-files was unavailable — fell back to filesystem existence, which is weaker');
 console.log(bad ? C.red(`REJECT: ${bad} of ${targets.length} docs failed`) : C.grn(`ADMIT: all ${targets.length} docs clean`));
 if (agentBad) console.log(C.red(`REJECT: ${agentBad} of ${agentSeen} agent definitions are encoding-damaged`));
-process.exit(bad || agentBad ? 1 : 0);
+if (bootstrapBad) console.log(C.red(`REJECT: ${bootstrapBad} bootstrap(s) failed preflight checks`));
+process.exit(bad || agentBad || bootstrapBad ? 1 : 0);
+}

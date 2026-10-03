@@ -8,6 +8,7 @@ size: 8
 gate_allow: none
 seed_only: false
 escalates: false
+module: jobs
 ---
 <!-- watcher: do-not-arm -->
 

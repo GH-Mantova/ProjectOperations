@@ -17,6 +17,7 @@ done_when: >-
 size: 8
 gate_allow: migrations
 escalates: true
+module: rates
 backfill: false
 seed_only: false
 rollback_strategy: >-

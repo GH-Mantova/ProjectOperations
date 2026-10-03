@@ -11,6 +11,7 @@ size: 4
 gate_allow: migrations
 seed_only: false
 escalates: true
+module: tenants
 rollback_strategy: PRODUCTION DATA. The UPDATE is idempotent (WHERE tenant_id IS NULL) and re-runnable. The NOT NULL constraint is the irreversible half - to revert, drop the three NOT NULL constraints, which restores the previous shape but NOT the knowledge of which rows were originally blank. That knowledge lives only in the CSV export taken in pre-flight step 1, which is why the export is mandatory BEFORE the migration runs. If the run aborts mid-flight the constraint is simply not applied and the migration can be re-run after investigating.
 cluster: tenant-mt4
 cluster_order: 2

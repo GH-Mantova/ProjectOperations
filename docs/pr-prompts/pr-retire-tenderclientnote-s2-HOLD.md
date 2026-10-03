@@ -13,6 +13,7 @@ size: 6
 gate_allow: migrations
 seed_only: false
 escalates: true
+module: admin-imports
 rollback_strategy: Destructive and forward-only — a dropped table cannot be restored by a down migration. The recovery path is the JSON export this slice produces BEFORE the drop (all 127 rows with ids, authors and timestamps), plus the fact that every note's content already exists in tender_clarification_notes. If the drop fails mid-flight the table is simply still present and the migration can be re-run; if it succeeds and was wrong, restore from the export plus a database point-in-time restore.
 backfill: false
 requires_file_on_main: docs/approvals/retire-tenderclientnote-s2-approved-by-marco.md

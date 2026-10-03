@@ -3,8 +3,7 @@
 <!-- QUEUE_LAYOUT_V1 -->
 
 Written 2026-09-17, S1 of 4. This document is the canonical source for the queue folder
-standard. It is NOT yet enforced by CI or code - that is S4's job. Anyone reading this
-before S4 merges is reading a standard that is written but not guarded.
+standard.
 
 ## The six states
 
@@ -66,17 +65,19 @@ vocabulary - these are the only valid values:
 - `no-pr-opened`
 - `abandoned`
 
-Adding a seventh reason is a change to this document AND to the shared constant that S2
-will introduce. It is never done by creating a new folder unilaterally. If a situation
-does not fit any of the six reasons, that is evidence the vocabulary is incomplete and the
-question goes to Marco.
+Adding a seventh reason is a change to this document AND to the shared constant in
+`scripts/pipeline/queue-layout.mjs`. It is never done by creating a new folder unilaterally.
+If a situation does not fit any of the six reasons, that is evidence the vocabulary is
+incomplete and the question goes to Marco.
 
 ## Reports are not prompts
 
-Station breadcrumbs and run reports belong in `docs/pr-prompts/reports/`, not in the
+Station breadcrumbs and run reports belong in `docs/pr-prompts/archive/`, not in the
 queue root. When this document was written, 31 report files were sitting loose in the
-queue root. S3's migration will move them; this document records why they do not belong
-there: a report is evidence of a run, not a unit of work to dispatch.
+queue root. S3's migration was cancelled by decision (see below). The `archive/` folder
+replaces `reports/` everywhere in this document: a report is evidence of a run, not a
+unit of work to dispatch. Root-level `00-NN-…` breadcrumbs are in transit to `archive/`
+and pass the layout guard; see "In force from 2026-10-02" below.
 
 ## Nothing is ever deleted
 
@@ -85,17 +86,71 @@ stated when `processed/` was introduced - is that no prompt file is deleted. A r
 tracing a PR back to its prompt can always find the prompt because it was moved, never
 removed.
 
-This rule binds S3's migration: every file that moves in S3 was moved, verifiably, to a
+This rule binds any future migration: every file that moves was moved, verifiably, to a
 named destination. No file disappears.
 
-## Not in force yet
+## In force from 2026-10-02 (QUEUE_LAYOUT_LINE_AT_TODAY_V1)
 
-This standard is WRITTEN in S1 (this PR) and ENFORCED in S4. Between S1 and S4:
+Marco's three rulings on 2026-10-02 set the enforcement line.
 
-- S2 introduces the shared constant and the path guard (code only, guard is a warning).
-- S3 migrates the existing queue to match this layout.
-- S4 turns the guard on in CI (lint fails on a violation).
+**Ruling 1 — Draw the line at today.** No existing file moves. S3's migration is
+**cancelled by decision, not pending**. Only files a PR **adds or renames** under
+`docs/pr-prompts/` must follow the layout. The ~1,400 files that existed before
+2026-10-02 are grandfathered. `check-queue-layout.mjs --legacy-report` prints the
+count and state breakdown as a historical record.
 
-Until S4 merges, a station that follows this layout is doing the right thing; a station
-that does not is not yet failing CI. Raise a discrepancy with Marco rather than silently
-non-conforming.
+**Ruling 2 — Tracked files only.** The watcher's own gitignored working folders
+(`processed/`, `failed/`, `blocked/`, `paused/`, `no-pr-opened/`, `awaiting-review/`,
+`reviewed/`) are out of scope. The watcher is not changed.
+
+**Ruling 3 — `archive/` is the reports folder.** Reports pass through the queue root
+as `00-NN-…` breadcrumbs and are swept to `archive/`. No `reports/` folder is
+created, and no station, script or bootstrap changes.
+
+### What the guard checks
+
+`check-queue-layout.mjs --range <base>...<head>` lists every file that a PR **adds**
+(status `A`) or **renames to** (status `R` destination) under `docs/pr-prompts/`. It
+classifies each path using `classifyQueuePath` from `scripts/pipeline/queue-layout.mjs`
+and exits 1 on any violation, 0 otherwise. Edits (`M`) and deletes (`D`) of existing
+files are never checked — touching a legacy file is not a layout event.
+
+### Valid destinations for new or renamed files
+
+| destination | result |
+|---|---|
+| root `*-HOLD.md` | ok — hold |
+| root name matching breadcrumb `NAME_RE` | ok — report in transit to `archive/` |
+| root file in `ROOT_FIXED_FILES` (README, BACKLOG, etc.) | ok — queue-file |
+| root `TEMPLATE-*.md` | ok — queue-file |
+| root `*-ready.md` | **violation**: armed prompts are never tracked |
+| any other root file | **violation** |
+| `archive/**` | ok — archived report |
+| `superseded/**` | ok — superseded prompt |
+| `merged/**` | ok — merged prompt |
+| `draft/**` | ok — draft prompt |
+| `brainstorm/**` | ok — brainstorm note |
+| `exceptions/<reason>/**` with `<reason>` in the closed list | ok — exception |
+| `exceptions/<anything else>/**` | **violation**: names the closed list |
+| `needs-marco/**` | ok **with warning** — gitignored folder force-added; prefer `exceptions/needs-marco/` |
+| `binned-shipped-*/**`, `processed/**`, any other folder | **violation**: legacy or unknown folder |
+
+### Shared constant
+
+`scripts/pipeline/queue-layout.mjs` is the single source of truth for:
+
+- `NAME_RE` — breadcrumb filename regex (also re-exported from `check-breadcrumb.mjs`)
+- `EXCEPTION_REASONS` — the closed vocabulary of valid exception reasons
+- `ROOT_FIXED_FILES` — infrastructure files allowed at the queue root
+- `classifyQueuePath(path)` — the classifier used by the guard
+
+### CI step
+
+The guard runs in the `pipeline-tests` job as a **pull-request-only** step. Push to main
+is not checked: main only changes by PR merge, and the PR was already checked.
+
+## Previous status note
+
+The "Not in force yet" section that appeared in S1 has been replaced by this section.
+S2 (shared constant and path guard) and S4 (CI enforcement) were done together in one PR
+on 2026-10-02. S3 (migration of existing files) is cancelled by Marco's ruling 1 above.

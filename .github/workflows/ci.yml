@@ -422,6 +422,14 @@ jobs:
       # D-namespace S4: warn-only register checker. Exits 0 always; findings are
       # printed for slice 5 triage before the mode is flipped to FAIL.
       - run: node scripts/pipeline/check-d-register.mjs
+      # QUEUE_LAYOUT_LINE_AT_TODAY_V1: every added or renamed file under docs/pr-prompts/
+      # in this PR must follow the layout standard (docs/pipeline/QUEUE-LAYOUT.md).
+      # Only checks files that are A (added) or R-destination (renamed) — M and D are
+      # never layout events, so this gate cannot trip on legacy files that predate the line.
+      # Exit 2 ([CANNOT MEASURE]) turns the step red; exit 1 means a real violation.
+      - name: Queue layout — new/renamed files must follow the layout standard
+        if: github.event_name == 'pull_request'
+        run: node scripts/pipeline/check-queue-layout.mjs --range "origin/${{ github.base_ref }}...HEAD"
 
   pipeline-tests-windows:
     name: Pipeline — arm-prompt tests (Windows)

@@ -31,6 +31,9 @@ escalates: true
 module: watcher
 ---
 
+> **WITHDRAWN 2026-10-03 (Marco's ruling, Station 06).** Not built. Marco ruled to retire the watcher's tests/docs auto-merge lane (see `pr-watcher-retire-docs-automerge-lane-HOLD.md`), so reviewing lane PRs first no longer buys anything. Do not arm. Kept for history only.
+
+
 # Watcher: reviews that decide an auto-merge go to the front of the review queue
 
 STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.

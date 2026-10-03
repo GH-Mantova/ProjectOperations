@@ -10,14 +10,23 @@ Files changed in this PR (authoritative — from `gh pr view --json files` at en
 
 OPERATING RULE: The file list above is authoritative. Do NOT derive the PR's changes from a local `git diff` in this clone — this clone's `main` is not kept in sync and its worktree may be on a different branch. Fetch the diff via `gh pr diff <N>` if you need the hunks.
 
+VERDICT_HEAD_SHA_ANCHOR_V1 — you are reviewing commit {{HEAD_SHA}}. Check out THAT EXACT commit
+and review only it. Write {{HEAD_SHA}} as the reviewed SHA in your verdict file even if the branch
+moves on while you work — the watcher re-reviews a newer head itself. NEVER write a SHA you did
+not review. A verdict with no REVIEWED-SHA line, or with a SHA that differs from the PR's current
+head at merge time, approves nothing.
+
 1. Follow the pr-fix-reviewer process (.claude/agents/pr-fix-reviewer.md) in full:
    scope compliance against the originating prompt (find it in
    docs/pr-prompts/processed/ by matching the branch/title), CI status,
    diff-stat match, and any deferred local verification the PR body names
    (e.g. pnpm test:canonical scoped to the PR's specs via --testPathPattern).
 2. Write the verdict to docs/pr-reviews/pr-{{PR_NUMBER}}-review.md
-   (create the folder if needed). Verdict line first: MERGE / FIX / BLOCK,
-   then findings. Plain ASCII.
+   (create the folder if needed). Verdict line first: MERGE / FIX / BLOCK.
+   The SECOND LINE must be: REVIEWED-SHA: {{HEAD_SHA}}
+   Then findings. Plain ASCII. Example first two lines:
+       VERDICT: MERGE
+       REVIEWED-SHA: {{HEAD_SHA}}
    Use that RELATIVE path verbatim — never reconstruct it as an absolute
    Windows path (mangled absolutes have created junk folders at repo root).
 3. Do NOT merge, close, or comment on the PR. Do NOT modify any branch.

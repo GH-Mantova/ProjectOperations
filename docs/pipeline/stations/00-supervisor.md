@@ -279,12 +279,24 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   files were dead. 🔧 **Clear them during COLLECT, and never on the tag alone:** open each file,
   re-ask its PR individually with `gh pr view <n> -R <owner>/<repo> --json state,mergedAt` (a
   LIST response's `merged` field is unusable — DOCTRINE §9.4) with a negative control, confirm
-  nothing GENERAL survives the merged PR, then `Move-Item` it into
-  `docs/pr-prompts/needs-marco/discharged/` — **never delete**, and leave a
-  `_DISCHARGE-NOTE-*.md` beside them naming what was measured. ⚠️ That folder is gitignored, so
-  the note reaches nobody on its own: **say in your breadcrumb what you discharged**, or the
-  clearing itself is unreported. ⚠️ **Falsifying probe: re-run the sweep and read section 5.** If a
-  name you moved is still tagged, the move did not take; if a NEW `[STALE]` row names a file that
+  nothing GENERAL survives the merged PR, then retire it with `retire-escalation.mjs`:
+
+  ```
+  node scripts/pipeline/retire-escalation.mjs \
+    --file docs/pr-prompts/needs-marco/<name>.md \
+    --actor <your station id> \
+    --evidence "<one measured line proving it is resolved>" \
+    --record-into <path to this run's breadcrumb PR worktree>
+  ```
+
+  The script moves the file to `docs/pr-prompts/needs-marco/discharged/` and writes a tracked
+  note to `docs/pipeline/discharges/` in the PR worktree. **Never delete.** The note is committed
+  in the same PR as the breadcrumb — no separate "say in your breadcrumb what you discharged" step
+  is required, because the record is already in git. ⚠️ **Before reporting an escalation as gone,
+  check `docs/pipeline/discharges/` on `origin/main` for its name** — a note there means it was
+  deliberately retired (this is the check that would have stopped the 2026-09-23 false S1 and
+  correction PR #2106). ⚠️ **Falsifying probe: re-run the sweep and read section 5.** If a
+  name you retired is still tagged, the move did not take; if a NEW `[STALE]` row names a file that
   is not PR-scoped, read it rather than discharging it.
 - **THEN CROSS THE FRESHNESS TABLE AGAINST `lastRunAt`. THE BREADCRUMB IS ONE INSTRUMENT AND IT
   CANNOT NAME THE CAUSE.** `check-breadcrumb.mjs` compares breadcrumb dates and nothing else, so the

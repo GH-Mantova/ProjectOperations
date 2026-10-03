@@ -1645,6 +1645,45 @@ export function verdictTextApproves(content) {
   return VERDICT_MERGE_RE.test(blankClosedFences(content));
 }
 
+// VERDICT_HEAD_SHA_ANCHOR_V1 — extract the SHA from a REVIEWED-SHA line.
+// Returns a lowercase 40-hex SHA or null. Reads through blankClosedFences first,
+// so a SHA quoted inside a closed code fence is never mistaken for the real one.
+// Tolerates a heading prefix the same way VERDICT_MERGE_RE does. Short SHAs are
+// rejected — a 7-char prefix can match two commits, so only a full 40-char SHA
+// stamps a verdict.
+const REVIEWED_SHA_RE = /^(?:#{1,6}[ \t]+)?REVIEWED-SHA:\s*([0-9a-fA-F]+)\b/m;
+export function verdictReviewedSha(content) {
+  if (typeof content !== "string") return null;
+  const m = REVIEWED_SHA_RE.exec(blankClosedFences(content));
+  if (m === null) return null;
+  const sha = m[1].toLowerCase();
+  if (sha.length !== 40) return null;
+  return sha;
+}
+
+// VERDICT_HEAD_SHA_ANCHOR_V1 — classify a verdict's text against an optional
+// expected head SHA. The merge gate needs more than a yes/no: a stale verdict
+// should trigger a re-review, a missing verdict should trigger a re-review,
+// and only a verdict that matches the current head should approve.
+//
+// Returns "approves" | "stale" | "missing" | "rejects".
+//   - "rejects": the text is not a MERGE verdict (FIX/BLOCK/malformed).
+//   - "missing": MERGE verdict but no REVIEWED-SHA line, AND expectedSha was given.
+//   - "stale":   MERGE verdict with a REVIEWED-SHA that differs from expectedSha.
+//   - "approves": MERGE verdict AND (no expectedSha given, OR SHA matches).
+//
+// Backward compatibility: when expectedSha is null/undefined, this behaves
+// exactly like verdictTextApproves — the SHA is not consulted at all. The one
+// caller that passes a SHA is the tests-docs merge loop.
+export function verdictStatus(content, expectedSha) {
+  if (!verdictTextApproves(content)) return "rejects";
+  if (expectedSha == null) return "approves";
+  const sha = verdictReviewedSha(content);
+  if (sha == null) return "missing";
+  if (sha !== String(expectedSha).toLowerCase()) return "stale";
+  return "approves";
+}
+
 // The reviewer writes docs/pr-reviews/pr-{N}-review.md with the verdict on
 // the first line: "VERDICT: MERGE" (or FIX / BLOCK). Only MERGE approves.
 // When prFiles is provided (string[]), the guard also runs: a MERGE verdict
@@ -1653,25 +1692,50 @@ export function verdictTextApproves(content) {
 // VERDICT_HOME_RESOLVER_V1: opts (repoRoot, archiveDir, devTree) are forwarded
 // to resolveVerdictPath so tests can inject temp-dir homes without touching
 // the real filesystem. Omit opts in production — defaults apply.
+//
+// VERDICT_HEAD_SHA_ANCHOR_V1: when opts.headSha is provided, a MERGE verdict
+// whose REVIEWED-SHA line is absent or does not match returns false. Callers
+// that need to distinguish stale/missing from rejects (for re-review) should
+// call verdictApprovesStatus, which returns the status string instead.
 export async function verdictApproves(prNumber, prFiles, opts) {
-  // VERDICT_HOME_RESOLVER_V1: search clone, archive, and dev tree.
-  const { path: verdictPath } = await resolveVerdictPath(prNumber, opts ?? {});
-  if (verdictPath == null) return false;
+  const result = await verdictApprovesStatus(prNumber, prFiles, opts);
+  return result.status === "approves";
+}
+
+export async function verdictApprovesStatus(prNumber, prFiles, opts) {
+  const effectiveOpts = opts ?? {};
+  const { path: verdictPath } = await resolveVerdictPath(prNumber, effectiveOpts);
+  if (verdictPath == null) return { status: "rejects", reason: "no-verdict-file" };
+  let content;
   try {
-    const content = await readFile(verdictPath, "utf-8");
-    // VERDICT_HEADING_TOLERANT_V1: the approval pattern lives in verdictTextApproves.
-    if (!verdictTextApproves(content)) return false;
-    if (prFiles != null) {
-      const guardResult = validateVerdict({ verdictText: content, prFiles });
-      if (!guardResult.ok) {
-        log("verdict-guard", `PR #${prNumber}: MERGE verdict blocked — cites files not in PR: ${guardResult.unmatched.join(", ")}`);
-        return false;
-      }
-    }
-    return true;
+    content = await readFile(verdictPath, "utf-8");
   } catch {
-    return false;
+    return { status: "rejects", reason: "read-failed" };
   }
+  const status = verdictStatus(content, effectiveOpts.headSha);
+  if (status !== "approves") {
+    if (status === "stale" || status === "missing") {
+      const reviewed = verdictReviewedSha(content);
+      const expectedShort = String(effectiveOpts.headSha ?? "").slice(0, 7);
+      const reviewedShort = reviewed == null ? "none" : reviewed.slice(0, 7);
+      log(
+        "verdict-sha",
+        `stale-verdict: PR #${prNumber} verdict reviewed ${reviewedShort} but head is ${expectedShort}`,
+      );
+    }
+    return { status, reason: status };
+  }
+  if (prFiles != null) {
+    const guardResult = validateVerdict({ verdictText: content, prFiles });
+    if (!guardResult.ok) {
+      log(
+        "verdict-guard",
+        `PR #${prNumber}: MERGE verdict blocked — cites files not in PR: ${guardResult.unmatched.join(", ")}`,
+      );
+      return { status: "rejects", reason: "guard-unmatched-files" };
+    }
+  }
+  return { status: "approves" };
 }
 
 // --- Failure quarantine ---
@@ -2220,8 +2284,12 @@ async function waitForPolicyMerge(prNumber, _hbOpts = {}) {
     while (Date.now() - startedAt < MERGE_TIMEOUT_MS) {
       let data;
       try {
+        // VERDICT_HEAD_SHA_ANCHOR_V1: fetch headRefOid so the verdict can be
+        // tied to the commit it reviewed, and so --match-head-commit can
+        // refuse an in-flight push.
         data = await runGh(
-          ["pr", "view", String(prNumber), "--json", "state,statusCheckRollup,mergedAt"],
+          ["pr", "view", String(prNumber), "--json",
+            "state,statusCheckRollup,mergedAt,headRefOid,title"],
           { json: true },
         );
       } catch (err) {
@@ -2255,17 +2323,33 @@ async function waitForPolicyMerge(prNumber, _hbOpts = {}) {
         checks.length > 0 &&
         checks.every((c) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion));
 
-      if (!mergeEnabled && allGreen && (await verdictApproves(prNumber, policyPrFiles))) {
-        if (DRY_RUN) {
-          log("dry-run", `PR #${prNumber}: all tests-docs conditions met — would enable auto-merge`);
-          return { ok: false, marco: true, reason: "dry-run: auto-merge not executed" };
-        }
-        try {
-          log("merge", `PR #${prNumber}: tests-docs policy satisfied — enabling auto-merge`);
-          await runGh(["pr", "merge", String(prNumber), "--auto", "--squash", "--delete-branch"]);
-          mergeEnabled = true;
-        } catch (err) {
-          log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
+      if (!mergeEnabled && allGreen) {
+        // VERDICT_HEAD_SHA_ANCHOR_V1: the verdict must have been written for
+        // THIS head. A stale or missing verdict is auto-re-reviewed (once per
+        // (PR, head) pair) and the loop keeps waiting.
+        const headSha = data.headRefOid ?? "";
+        const verdict = await verdictApprovesStatus(prNumber, policyPrFiles, { headSha });
+        if (verdict.status === "approves") {
+          if (DRY_RUN) {
+            log("dry-run", `PR #${prNumber}: all tests-docs conditions met — would enable auto-merge`);
+            return { ok: false, marco: true, reason: "dry-run: auto-merge not executed" };
+          }
+          try {
+            log("merge", `PR #${prNumber}: tests-docs policy satisfied — enabling auto-merge`);
+            // VERDICT_HEAD_SHA_ANCHOR_V1: --match-head-commit tells GitHub to
+            // refuse the merge if someone pushed a new head between our check
+            // and the merge call. The verdict only ever approves one commit.
+            await runGh([
+              "pr", "merge", String(prNumber),
+              "--auto", "--squash", "--delete-branch",
+              "--match-head-commit", headSha,
+            ]);
+            mergeEnabled = true;
+          } catch (err) {
+            log("merge", `auto-merge enable failed for PR #${prNumber}: ${err.message}`);
+          }
+        } else if (verdict.status === "stale" || verdict.status === "missing") {
+          await maybeReReviewForStaleVerdict(prNumber, data.title ?? "", headSha);
         }
       }
 
@@ -2562,18 +2646,36 @@ export async function writeReviewedStateFile(filePath, reviewed, watcherOpened) 
   await rename(tmp, filePath);
 }
 
-async function loadReviewedSet() {
+// VERDICT_HEAD_SHA_ANCHOR_V1: reviewedHeads tracks, per PR number, the head
+// SHA(s) we have already queued a re-review for. Dedupe is per (PR, head), so
+// a push to a new head re-queues exactly once more. Shape:
+//   { [prNumber: string]: string[] /* lowercased 40-char SHAs */ }
+// Kept module-level so the merge loop and tests can share it.
+let reviewedHeads = {};
+export function _getReviewedHeads() { return reviewedHeads; }
+export function _resetReviewedHeads() { reviewedHeads = {}; }
+
+export async function loadReviewedSet(stateFile) {
   const set = new Set();
+  const heads = {};
+  const target = stateFile ?? REVIEWED_STATE_FILE;
   try {
-    const data = await readReviewedStateFile(REVIEWED_STATE_FILE);
+    const data = await readReviewedStateFile(target);
     if (data && Array.isArray(data.reviewed)) {
       for (const n of data.reviewed) {
         if (typeof n === "number") set.add(n);
       }
     }
+    // Older state files hold only `reviewed`; keep reading them unchanged.
+    if (data && data.reviewedHeads && typeof data.reviewedHeads === "object") {
+      for (const [k, v] of Object.entries(data.reviewedHeads)) {
+        if (Array.isArray(v)) heads[k] = v.filter((s) => typeof s === "string");
+      }
+    }
   } catch (err) {
     log("review", `warning: could not load reviewed-set (${err.message}) — starting empty`);
   }
+  reviewedHeads = heads;
   return set;
 }
 
@@ -2599,13 +2701,15 @@ export async function loadWatcherOpenedSet() {
   return { set, order };
 }
 
-async function saveReviewedSet(set) {
-  const tmp = REVIEWED_STATE_FILE + ".tmp";
+async function saveReviewedSet(set, stateFile) {
+  const target = stateFile ?? REVIEWED_STATE_FILE;
+  const tmp = target + ".tmp";
   // REVIEW_PRIORITY_WATCHER_PRS_V1 — write both keys atomically so the file
   // always carries reviewed + watcherOpened together.
   const data = JSON.stringify(
     {
       reviewed: [...set].sort((a, b) => a - b),
+      reviewedHeads,
       watcherOpened: [...watcherOpenedOrder],
     },
     null,
@@ -2613,13 +2717,13 @@ async function saveReviewedSet(set) {
   );
   try {
     await writeFile(tmp, data, "utf-8");
-    await rename(tmp, REVIEWED_STATE_FILE);
+    await rename(tmp, target);
   } catch (err) {
     // Retry once — Windows can intermittently throw EPERM on same-volume rename
     log("review", `state save failed (${err.message}), retrying...`);
     try {
       await writeFile(tmp, data, "utf-8");
-      await rename(tmp, REVIEWED_STATE_FILE);
+      await rename(tmp, target);
     } catch (err2) {
       log("review", `state save failed again (${err2.message}) — continuing (worst case: duplicate review next tick)`);
     }
@@ -2667,16 +2771,96 @@ async function seedReviewedSet(set) {
 }
 
 // Render the review prompt template, replacing {{PR_NUMBER}}, {{PR_TITLE}},
-// {{PROMPT_DIR}}, and {{PR_FILES}}.
-export function renderTemplate(template, prNumber, prTitle, promptDir, prFiles) {
+// {{PROMPT_DIR}}, {{PR_FILES}}, and {{HEAD_SHA}}.
+//
+// VERDICT_HEAD_SHA_ANCHOR_V1: headSha is appended at the END of the signature
+// so existing callers and tests that pass four args keep working. An absent
+// or empty SHA renders as "(unknown)", which the reviewer will still echo
+// into the verdict file — a missing REVIEWED-SHA then means "no SHA was ever
+// supplied" and is treated as missing/stale by the merge gate.
+export function renderTemplate(template, prNumber, prTitle, promptDir, prFiles, headSha) {
   const fileList = Array.isArray(prFiles) && prFiles.length > 0
     ? prFiles.map(f => `- ${f}`).join("\n")
     : "(unknown — reviewer must fetch via `gh pr view <N> --json files`)";
+  const sha = typeof headSha === "string" && headSha.length > 0 ? headSha : "(unknown)";
   return template
     .replaceAll("{{PR_NUMBER}}", String(prNumber))
     .replaceAll("{{PR_TITLE}}", prTitle)
     .replaceAll("{{PROMPT_DIR}}", promptDir ?? "")
-    .replaceAll("{{PR_FILES}}", fileList);
+    .replaceAll("{{PR_FILES}}", fileList)
+    .replaceAll("{{HEAD_SHA}}", sha);
+}
+
+// VERDICT_HEAD_SHA_ANCHOR_V1: shared by pollForNewPrs (first review) and the
+// stale-verdict path in waitForPolicyMerge (re-review). Writes rev-<N>-ready.md
+// for the specified head SHA; does not touch any state file — the caller is
+// responsible for recording that the prompt was written.
+async function writeReviewPromptForPr(prNumber, prTitle, headSha) {
+  const promptName = `rev-${prNumber}-ready.md`;
+  const promptPath = path.join(PROMPT_DIR, promptName);
+  let prFilesList = null;
+  try {
+    prFilesList = await prFileList(prNumber);
+  } catch (err) {
+    log("review", `warning: could not fetch file list for PR #${prNumber}: ${err.message} — continuing with empty list`);
+  }
+  const body = renderTemplate(
+    reviewTemplate,
+    prNumber,
+    prTitle,
+    PROMPT_DIR,
+    prFilesList,
+    headSha,
+  );
+  await writeFile(promptPath, body, "utf-8");
+  return promptName;
+}
+
+// VERDICT_HEAD_SHA_ANCHOR_V1: pure predicate for the per-head dedupe. True
+// means the (PR, head) pair has already been queued for review and should
+// NOT be queued again. Separated so tests can exercise the decision without
+// gh calls or filesystem writes.
+export function hasQueuedReviewForHead(reviewedHeadsMap, prNumber, headSha) {
+  if (reviewedHeadsMap == null || typeof reviewedHeadsMap !== "object") return false;
+  if (typeof headSha !== "string" || headSha.length === 0) return false;
+  const key = String(prNumber);
+  const list = reviewedHeadsMap[key] ?? [];
+  return list.includes(headSha.toLowerCase());
+}
+
+// VERDICT_HEAD_SHA_ANCHOR_V1: re-review on a stale/missing verdict, but at
+// most ONCE per (PR, head SHA). Called by the merge loop when all checks are
+// green and verdictApprovesStatus reports stale or missing. A push to a new
+// head makes a fresh (PR, SHA) pair and is allowed exactly one more review.
+async function maybeReReviewForStaleVerdict(prNumber, prTitle, headSha) {
+  if (typeof headSha !== "string" || headSha.length === 0) return;
+  if (DRY_RUN) {
+    log("dry-run", `PR #${prNumber}: stale verdict for head ${headSha.slice(0, 7)} — would queue re-review`);
+    return;
+  }
+  if (hasQueuedReviewForHead(reviewedHeads, prNumber, headSha)) return;
+  const key = String(prNumber);
+  const already = reviewedHeads[key] ?? [];
+  // Need the reviewed-set loaded; this path runs only after startup's
+  // loadReviewedSet, so reviewedSet is a Set. The outer function in main()
+  // owns the lifecycle — we just reuse the module-level reference.
+  let old = already.length > 0 ? already[already.length - 1] : null;
+  try {
+    const promptName = await writeReviewPromptForPr(prNumber, prTitle, headSha);
+    reviewedHeads[key] = [...already, headSha.toLowerCase()];
+    if (reviewedSet != null) {
+      // reviewedSet must stay unchanged — the PR is still "reviewed" for
+      // pollForNewPrs; we're only adding a per-head dedupe entry. Persisting
+      // through saveReviewedSet writes the reviewedHeads map too.
+      await saveReviewedSet(reviewedSet);
+    }
+    log(
+      "review",
+      `re-review: PR #${prNumber} head moved ${old == null ? "(initial)" : old.slice(0, 7)} -> ${headSha.slice(0, 7)}, queued ${promptName}`,
+    );
+  } catch (err) {
+    log("review", `re-review enqueue failed for PR #${prNumber}: ${err.message}`);
+  }
 }
 
 let reviewTemplate = null;
@@ -2708,8 +2892,11 @@ async function pollForNewPrs() {
   if (queuePaused) return;
   let prs;
   try {
+    // VERDICT_HEAD_SHA_ANCHOR_V1: fetch headRefOid so the first review is
+    // tagged with the commit it was fired for.
     prs = await runGh(
-      ["pr", "list", "--state", "open", "--json", "number,title,isDraft,createdAt,baseRefName"],
+      ["pr", "list", "--state", "open", "--json",
+        "number,title,isDraft,createdAt,baseRefName,headRefOid"],
       { json: true },
     );
   } catch (err) {
@@ -2730,21 +2917,23 @@ async function pollForNewPrs() {
       log("dry-run", `would write review prompt ${promptName} for PR #${pr.number} ("${pr.title}")`);
       continue;
     }
-    const promptPath = path.join(PROMPT_DIR, promptName);
-    let prFilesList = null;
+    const headSha = pr.headRefOid ?? "";
     try {
-      prFilesList = await prFileList(pr.number);
-    } catch (err) {
-      log("review", `warning: could not fetch file list for PR #${pr.number}: ${err.message} — continuing with empty list`);
-    }
-    const body = renderTemplate(reviewTemplate, pr.number, pr.title, PROMPT_DIR, prFilesList);
-    try {
-      await writeFile(promptPath, body, "utf-8");
+      await writeReviewPromptForPr(pr.number, pr.title, headSha);
     } catch (err) {
       log("review", `could not write prompt for PR #${pr.number}: ${err.message}`);
       continue;
     }
     reviewedSet.add(pr.number);
+    // Record the head we reviewed so maybeReReviewForStaleVerdict won't
+    // re-queue the same (PR, head) pair.
+    if (headSha.length > 0) {
+      const key = String(pr.number);
+      const already = reviewedHeads[key] ?? [];
+      if (!already.includes(headSha.toLowerCase())) {
+        reviewedHeads[key] = [...already, headSha.toLowerCase()];
+      }
+    }
     await saveReviewedSet(reviewedSet);
     log("review", `enqueued review for PR #${pr.number} ("${pr.title}") → ${promptName}`);
   }

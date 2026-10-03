@@ -2092,6 +2092,48 @@ export function lint(file, opts) {
     return fail("GATE_ALLOW_MISMATCH", "gate_allow declares `migrations` but scope has no migrations/ path.");
   }
 
+  // SEED_GRANT_UNDELIVERABLE — a prompt that writes to the Prisma seed, forbids a migration,
+  // and does not declare `gate_allow: migrations` is unsatisfiable under CP-23. The CP-23 gate
+  // (scripts/pr-gates/pr-gates.mjs) will fail every PR produced from it: its only two legitimate
+  // exits are a new folder under apps/api/prisma/migrations/ (which the body forbids) or a
+  // column-0 `SEED-ONLY: dev` line in the PR body (which asserts prod does not need the data).
+  //
+  // MEASURED 2026-10-02 at origin/main c145476c: PR #1823 (2026-09-09) burned a full
+  // arm/build/review cycle on exactly this shape. See
+  // needs-marco/prompt-declared-seed-only-false-while-forbidding-a-migration-2026-09-09.md.
+  //
+  // Marco's ruling (2026-10-02, docs/pr-prompts/pr-lint-seed-grant-undeliverable-HOLD.md):
+  // REJECT the contradiction only. A prompt that scopes the seed AND permits/includes a
+  // migration must still ADMIT; warn-only was explicitly ruled out. All four conditions must
+  // hold to fire — the forbid wording alone, with no seed in scope, is not this code.
+  {
+    const scopeArrSeed = Array.isArray(fm.scope) ? fm.scope : [String(fm.scope || "")];
+    const normScope = (s) => String(s || "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const scopeTouchesSeed = scopeArrSeed.some((s) => /^apps\/api\/prisma\/seed/i.test(normScope(s)));
+    const scopeTouchesMigrationsPath = scopeArrSeed.some(
+      (s) => /^apps\/api\/prisma\/migrations\//i.test(normScope(s))
+    );
+    // declaresMigration already computed above; re-use it rather than re-parsing fm.gate_allow.
+    if (scopeTouchesSeed && !scopeTouchesMigrationsPath && !declaresMigration) {
+      const bodyMatchSeed = fileText.match(/^---[\s\S]*?^---\r?\n([\s\S]*)$/m);
+      const bodyForSeed = bodyMatchSeed ? bodyMatchSeed[1] : "";
+      const forbidsMigration =
+        /do\s+not\s+add\s+a\s+migration/i.test(bodyForSeed) ||
+        /no\s+migration\s+is\s+needed/i.test(bodyForSeed) ||
+        /no\s+migration\s+(is\s+)?required/i.test(bodyForSeed) ||
+        /without\s+a\s+migration/i.test(bodyForSeed);
+      const declaresSeedOnlyDev = /^SEED-ONLY:\s*dev\b/m.test(bodyForSeed);
+      if (forbidsMigration && !declaresSeedOnlyDev) {
+        return fail("SEED_GRANT_UNDELIVERABLE",
+          "This prompt writes to the Prisma seed, forbids a migration, and does not declare\n" +
+          "        `gate_allow: migrations`. Under CP-23 that is unsatisfiable: the only exits are a\n" +
+          "        migration (which you forbid) or a `SEED-ONLY: dev` PR-body line (which asserts\n" +
+          "        production does not need the data). Either permit the migration or declare the\n" +
+          "        data dev-only.");
+      }
+    }
+  }
+
   // LL-29 (2026-07-23): a turn-capped agent left a migration applied on main with all the consuming
   // code uncommitted, and nothing told the recovery path whether to drop the migration or press on.
   // For migration-scoped prompts, demand a one-line rollback_strategy authored at prompt-write time

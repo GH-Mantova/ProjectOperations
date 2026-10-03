@@ -515,7 +515,11 @@ export async function seedGlobalLists(prisma: PrismaClient, adminUserId: string)
       items: [
         { value: "demolition", label: "Demolition", metadata: { disciplines: ["DEM"] } },
         { value: "asbestos-removal", label: "Asbestos removal", metadata: { disciplines: ["ASB"] } },
-        { value: "enclosure", label: "Enclosure", metadata: { disciplines: ["ASB"] } },
+        // ASB_ENCLOSURE_LINES_V1 -- label renamed from "Enclosure" to
+        // "Enclosure: labour" to distinguish this row type (men x days) from
+        // the new enclosure material/hire lines (ScopeItemEnclosureLine).
+        // Production label change is Marco's to make in Settings > Reference data.
+        { value: "enclosure", label: "Enclosure: labour", metadata: { disciplines: ["ASB"] } },
         { value: "excavation", label: "Excavation", metadata: { disciplines: ["CIV"] } },
         { value: "earthworks", label: "Earthworks", metadata: { disciplines: ["CIV"] } },
         {

@@ -12,6 +12,7 @@ size: 8
 gate_allow: migrations
 seed_only: false
 escalates: true
+module: rates
 backfill: false
 rollback_strategy: >-
   PERMANENT AND NOT AUTO-REVERTABLE - this migration DROPS the legacy rate

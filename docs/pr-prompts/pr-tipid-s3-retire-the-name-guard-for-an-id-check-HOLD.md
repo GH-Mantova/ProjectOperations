@@ -23,6 +23,7 @@ size: 5
 gate_allow: none
 seed_only: false
 escalates: true
+module: map-locations
 ---
 
 # TIP-ID-S3: retire the name guard, and replace it with a check that the id resolves

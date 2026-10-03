@@ -674,6 +674,26 @@ wrong; a prompt that tells its agent
 makes the title correct *by construction*, and the gate never fires. That is the outcome to aim
 for — the check is the backstop, not the mechanism.
 
+**The watcher now hands the module directly to the agent** (`PR_TITLE_MODULE_V1`). For every build
+prompt (not a fix-lane or review prompt) `scripts/pr-watcher/index.mjs` calls
+`resolvePromptModule()` (exported from `lint-prompt.mjs`) and appends this footer to the agent's
+stdin at run time — the file on disk is never modified:
+
+```
+---
+PR TITLE (set by the watcher, PR_TITLE_MODULE_V1): title your PR `<type>(<module>): <summary>`
+with <module> = `<resolved>`. check-pr-title.mjs fails any other scope.
+```
+
+If the module cannot be resolved (ambiguous or unresolvable scope), nothing is appended and the
+agent is responsible for inventing a scope — which is the old behaviour and is tracked by the
+`MODULE_NOT_DECLARED` lint warning (see below). Declaring `module:` is now the expected practice.
+
+**The `MODULE_NOT_DECLARED` warning** is emitted when `module:` is absent and the linter derives
+the module automatically from `scope` (source `derived` or `incidental`). The prompt still lints
+`ADMIT` — this is a warning, not a rejection — but it signals that the prompt author should add
+`module:` explicitly so the watcher footer is unambiguous.
+
 `scripts/pipeline/title-scope-baseline.json` is the title check's ratchet, the same shape as
 `module-baseline.json` above. It is **seeded empty**: measured 2026-09-07, every open PR passes on
 the vocabulary alone. **Do not add to it.** Retitle the PR instead.

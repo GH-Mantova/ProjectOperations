@@ -12,6 +12,7 @@ size: 5
 gate_allow: none
 seed_only: false
 escalates: false
+module: forms
 requires_file_on_main: apps/api/src/modules/forms/ai-form-import.service.ts
 ---
 

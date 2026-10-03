@@ -507,3 +507,37 @@ describe("module-baseline.json — the shipped ratchet", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// MODULE_NOT_DECLARED warning (PR_TITLE_MODULE_V1)
+// ---------------------------------------------------------------------------
+
+describe("lint — MODULE_NOT_DECLARED warning", () => {
+  test("DERIVED case: no module: key emits MODULE_NOT_DECLARED warning and still ADMITs", () => {
+    // A prompt with an unambiguous scope should ADMIT but warn that module: is not declared.
+    const r = runLint(prompt(["apps/api/src/modules/crm/**"]), { baseline: [] });
+    assert.strictEqual(r.code, 0, "should ADMIT; got: " + r.stdout);
+    assert.ok(r.stdout.includes("ADMIT"), r.stdout);
+    assert.ok(r.stdout.includes("MODULE_NOT_DECLARED"), "should warn MODULE_NOT_DECLARED; got: " + r.stdout);
+  });
+
+  test("DECLARED case: a prompt with module: emits NO MODULE_NOT_DECLARED warning", () => {
+    const r = runLint(prompt(["apps/api/src/modules/crm/**"], "module: crm"), { baseline: [] });
+    assert.strictEqual(r.code, 0, "should ADMIT; got: " + r.stdout);
+    assert.ok(r.stdout.includes("ADMIT"), r.stdout);
+    assert.ok(!r.stdout.includes("MODULE_NOT_DECLARED"), "must NOT warn MODULE_NOT_DECLARED when declared; got: " + r.stdout);
+  });
+
+  test("MODULE_NOT_DECLARED warning appears AFTER the verdict line, not before it", () => {
+    const r = runLint(prompt(["apps/api/src/modules/crm/**"]), { baseline: [] });
+    const first = r.stdout.split("\n")[0];
+    assert.ok(first.includes("ADMIT"), "first line must be verdict; got: " + first);
+    assert.ok(!first.includes("MODULE_NOT_DECLARED"), "warning must not appear on the verdict line; got: " + first);
+  });
+
+  test("INCIDENTAL case: a docs-only prompt also emits MODULE_NOT_DECLARED and still ADMITs", () => {
+    const r = runLint(prompt(["docs/plans/a.md", "docs/plans/b.md"]), { baseline: [] });
+    assert.strictEqual(r.code, 0, "should ADMIT; got: " + r.stdout);
+    assert.ok(r.stdout.includes("MODULE_NOT_DECLARED"), "should warn for incidental derivation too; got: " + r.stdout);
+  });
+});

@@ -363,6 +363,11 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   what you have already dispositioned.
 - **You never merge a watcher-routed PR**, and **you never remove a `do-not-merge` label.** Merge via
   `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Native auto-merge only (DOCTRINE §8.3).
+  **UPDATE_AT_MERGE_TIME_V1 (2026-10-03):** `Merge-Pr` now updates a BEHIND branch itself and queues
+  the merge pinned to the fresh head, returning `State = 'QUEUED'` -- GitHub lands it when that one
+  CI run passes. Confirm QUEUED PRs on your next run; never report QUEUED as merged. **Never call
+  `gh pr update-branch` on a PR you are not about to merge** -- the watcher's timer is OFF by
+  default now, and every stray update-branch costs a full CI rebuild.
 - **03, 04 and 05 have their own cadences — do not do their work yourself.** Hand it over by naming
   it in your breadcrumb; they wake on a clock and read it. **02 is different: it is folded into you**
   (2026-09-02), because two things independently mutating git and the queue is the collision LL-38

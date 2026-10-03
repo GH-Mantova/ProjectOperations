@@ -270,6 +270,18 @@ The goal is to keep the board MOVING. For every red:
   **production data or auth writes:** escalate to Marco (section 5). Get them green and mergeable,
   then hand over.
 - Follow-up permanent-fix PRs (from 8.2) are auto-driven on these same rules. **Never hand-merge.**
+- ­ƒö┤ **UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03).** `PR_WATCHER_AUTO_UPDATE` defaults to **OFF**
+  in `scripts/pr-watcher/start-watcher.ps1` from 2026-10-03. The timer used to rebase every BEHIND
+  PR on a tick, which restarted a full CI run on each one -- mostly on PRs that could not merge
+  without Marco anyway. **[MEASURED]** 2026-10-02 watcher log: **72** `branch updated (was BEHIND)`
+  events in one day; one PR was rebuilt **24 times in 9.4 hours**, burning ~360 check-runs. The
+  repo ruleset "Main" requires strict up-to-date for merge, so exactly one update is needed, right
+  before the merge -- and that one is now `Merge-Pr`'s job (`scripts/pipeline/pipeline-lib.ps1`):
+  it reads `mergeStateStatus`, runs `gh pr update-branch` if BEHIND, then queues the merge pinned
+  to the fresh `headRefOid` via `--match-head-commit`, returning `State = 'QUEUED'`. The next
+  Station 00 run confirms MERGED; QUEUED is never read as merged. Set `PR_WATCHER_AUTO_UPDATE=true`
+  explicitly to restore the timer. The DIRTY-PR conflict notification keeps firing either way --
+  the poll still runs, only its `gh pr update-branch` call is gated.
 
 ### 8.3a JS merge queue (`merge-queue.mjs`) -- guards required before wiring
 

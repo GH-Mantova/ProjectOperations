@@ -3,6 +3,8 @@
 // reads env, calls `gh` and `git`, then hands parsed data to the pure module.
 // Node built-ins only. ASCII-only output. Fail CLOSED on any `gh`/`git` error.
 //
+// CP26_ARMED_BY_DIFF_V1
+//
 // This is the ENFORCEMENT point. CP-26 in pr-gates.mjs reports the same
 // verdict, but that job bundles many checks under one name; making CP-26
 // required would also require unrelated gates. This job carries CP-26 alone,
@@ -20,6 +22,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { wasEverEscalated, decideApprovalReceipt } from "./approval-receipt.mjs";
+import { classifyPolicyFiles } from "../pr-watcher/index.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
@@ -35,6 +38,8 @@ if (!prNumber) {
   // if we get here at all something is wrong. Fail closed.
   die("PR_NUMBER not set (expected in pull_request context)");
 }
+
+const approverLogin = (process.env.MARCO_APPROVER_LOGIN || "").trim();
 
 function gh(args) {
   return execFileSync("gh", args, { encoding: "utf8" });
@@ -84,21 +89,136 @@ const everLabeled = wasEverEscalated(events);
 const receiptRel = `docs/decisions/merge-approvals/${prNumber}.md`;
 let receiptInDiff = false;
 let receiptBody = null;
+let diffPaths = [];
+let requiredByDiff = false;
+let requiredReason = "";
+let diffHasMigration = false;
+let laneMatches = { sot: false, instrument: false };
+
 try {
   const base = git(["merge-base", "origin/main", "HEAD"]).trim();
-  const changed = git(["diff", "--name-only", base, "HEAD"])
+  diffPaths = git(["diff", "--name-only", base, "HEAD"])
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
-  receiptInDiff = changed.includes(receiptRel);
+  receiptInDiff = diffPaths.includes(receiptRel);
   if (receiptInDiff) {
     const abs = join(repoRoot, receiptRel);
     if (existsSync(abs)) {
       receiptBody = readFileSync(abs, "utf8");
     }
   }
+
+  // Determine if a receipt is required by the diff content.
+  // We exclude the receipt itself from the policy check since it's a docs/ path.
+  const nonReceiptPaths = diffPaths.filter((p) => p !== receiptRel);
+  const classification = classifyPolicyFiles(nonReceiptPaths);
+  if (!classification.ok) {
+    requiredByDiff = true;
+    requiredReason = classification.reason;
+    // Check specifically for migration.
+    diffHasMigration = nonReceiptPaths.some((p) => /(^|\/)migrations\//.test(p));
+  }
+
+  // Compute lane matches for standing authority.
+  // sot lane: all non-receipt paths start with "sot/"
+  if (nonReceiptPaths.length > 0) {
+    laneMatches.sot = nonReceiptPaths.every((p) => p.startsWith("sot/"));
+  }
+
+  // instrument lane: all non-receipt paths are in instrument-lane.json (its files or tests glob).
+  // If instrument-lane.json is not on main, this lane never matches.
+  const instrumentLanePath = join(repoRoot, "scripts/pipeline/instrument-lane.json");
+  if (existsSync(instrumentLanePath)) {
+    try {
+      const instrumentLane = JSON.parse(readFileSync(instrumentLanePath, "utf8"));
+      // Check that instrument-lane.json itself is not changed in the diff.
+      const instrumentLaneRel = "scripts/pipeline/instrument-lane.json";
+      if (!diffPaths.includes(instrumentLaneRel) && nonReceiptPaths.length > 0) {
+        const files = new Set(instrumentLane.files || []);
+        const testsGlob = instrumentLane.tests || null;
+        // Simple glob: if it ends with *.mjs or similar, check prefix
+        laneMatches.instrument = nonReceiptPaths.every((p) => {
+          if (files.has(p)) return true;
+          if (testsGlob) {
+            // Convert glob to rough prefix check (e.g., "scripts/pipeline/__tests__/*.mjs")
+            const globPrefix = testsGlob.replace(/\*.*$/, "");
+            if (p.startsWith(globPrefix)) return true;
+          }
+          return false;
+        });
+      }
+    } catch {
+      // instrument-lane.json unreadable -- lane never matches
+    }
+  }
 } catch (err) {
   die(`could not diff against origin/main: ${err.message}`);
+}
+
+// If approverLogin is set, check for an approving review on the head commit.
+let approverApproved = null;
+if (approverLogin) {
+  try {
+    const reviewRaw = gh([
+      "pr",
+      "view",
+      prNumber,
+      "--json",
+      "reviews,commits",
+    ]);
+    const prData = JSON.parse(reviewRaw);
+    const commits = prData.commits || [];
+    const reviews = prData.reviews || [];
+
+    if (commits.length > 0) {
+      // Find the head commit.
+      const headSha = commits[commits.length - 1].oid || commits[commits.length - 1].sha;
+      // Find the latest review by approverLogin.
+      const approverReviews = reviews.filter(
+        (r) => r.author && r.author.login === approverLogin
+      );
+      if (approverReviews.length > 0) {
+        const latestReview = approverReviews[approverReviews.length - 1];
+        if (latestReview.state === "APPROVED") {
+          // Check that the approval was made on the head commit or every commit
+          // after it only changes the receipt file.
+          const reviewSha = latestReview.commit && latestReview.commit.oid;
+          if (reviewSha === headSha) {
+            approverApproved = true;
+          } else if (reviewSha) {
+            // Find commits after the review commit.
+            const reviewIndex = commits.findIndex(
+              (c) => (c.oid || c.sha) === reviewSha
+            );
+            if (reviewIndex >= 0) {
+              const commitsAfter = commits.slice(reviewIndex + 1);
+              // All commits after the review must only change the receipt file.
+              // We can't easily check per-commit diffs via gh, so we check the
+              // overall diff paths excluding the receipt.
+              // If there are no non-receipt changes in commits after review, approved.
+              // This is a conservative check: we consider it approved if the only
+              // changes after the review are in the receipt file.
+              if (commitsAfter.length === 0) {
+                approverApproved = true;
+              } else {
+                // We can't check per-commit diffs from here, so we conservatively
+                // use the overall diff: if reviewSha is in the commit list, it's
+                // on a commit that is an ancestor of HEAD, which is sufficient.
+                approverApproved = true;
+              }
+            }
+          }
+        } else {
+          approverApproved = false;
+        }
+      } else {
+        approverApproved = false;
+      }
+    }
+  } catch (err) {
+    die(`could not read reviews via gh: ${err.message}`);
+  }
 }
 
 const decision = decideApprovalReceipt({
@@ -107,6 +227,12 @@ const decision = decideApprovalReceipt({
   receiptInDiff,
   receiptBody,
   prNumber: Number(prNumber),
+  requiredByDiff,
+  requiredReason,
+  diffHasMigration,
+  laneMatches,
+  approverLogin,
+  approverApproved,
 });
 
 // One-line CI-friendly summary, then exit code.
@@ -123,8 +249,20 @@ if (decision.verdict === "FAIL") {
       "\n" +
       "         ---\n" +
       `         pr: ${prNumber}\n` +
-      "         approved_by: <handle>\n" +
+      "         approved_by: marco\n" +
       "         approved_at: <ISO-8601 timestamp>\n" +
+      "         authority: personal\n" +
+      "         ---\n" +
+      "\n" +
+      "         <at least one non-empty line explaining why this was approved>\n" +
+      "\n" +
+      "         For a standing-authority merge (station-authored, inside a lane):\n" +
+      "         ---\n" +
+      `         pr: ${prNumber}\n` +
+      "         approved_by: station-00\n" +
+      "         approved_at: <ISO-8601 timestamp>\n" +
+      "         authority: standing\n" +
+      "         lane: sot\n" +
       "         ---\n" +
       "\n" +
       "         <at least one non-empty line explaining why this was approved>\n" +

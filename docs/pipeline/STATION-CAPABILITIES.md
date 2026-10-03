@@ -459,6 +459,47 @@ Found and landed by Station 00 2026-09-22T00:4xZ.
 ⚠️ The watcher **auto-merges docs PRs itself** under the `tests-docs` policy, so an unmerged docs PR
 is not automatically waiting on a human.
 
+### How to write an approval receipt (CP26_ARMED_BY_DIFF_V1)
+
+From 2026-10-03, CP-26 is armed by the diff: any PR touching a migration file or a file
+outside tests/ or docs/ requires a receipt, labelled or not.
+
+**Standing receipt** -- the merging station writes it when merging a PR inside its own lane:
+
+```markdown
+---
+pr: <N>
+approved_by: station-00
+approved_at: <ISO-8601>
+authority: standing
+lane: sot
+---
+
+Station 00 merged this sot/-only PR under Marco's standing instruction.
+```
+
+- `approved_by` is the station's name, never `"marco"`.
+- `lane` must be a key in `scripts/pr-gates/standing-lanes.json`.
+- Not permitted on a PR that was ever labelled `do-not-merge` (use personal).
+- Not permitted on a PR containing a migration.
+
+**Personal receipt** -- a station writes `authority: personal` only when Marco released
+that PR himself: the `do-not-merge` label was removed, or Marco said "release this" in
+chat in the same turn.
+
+```markdown
+---
+pr: <N>
+approved_by: marco
+approved_at: <ISO-8601>
+authority: personal
+---
+
+Marco released this PR after review. <why approved>
+```
+
+See `docs/decisions/merge-approvals/README.md` for the full template and worked examples.
+
 ---
 
 

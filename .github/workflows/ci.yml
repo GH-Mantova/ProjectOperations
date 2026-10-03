@@ -190,6 +190,9 @@ jobs:
     name: Approval receipt (CP-26)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4.2.2
         with:
@@ -200,6 +203,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
+          MARCO_APPROVER_LOGIN: ${{ vars.MARCO_APPROVER_LOGIN }}
 
   pipeline-tests:
     name: Pipeline — watcher + linter tests

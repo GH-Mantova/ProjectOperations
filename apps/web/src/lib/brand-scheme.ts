@@ -31,6 +31,25 @@
 import { Fragment, createElement, useEffect, type ReactNode } from "react";
 import { useAuth } from "../auth/AuthContext";
 
+// ── Density helpers (inlined to avoid a circular module-load IIFE side effect) ─
+// density.ts calls applyDensity at module load, and importing it here would run
+// that IIFE before the document stub is in place in tests that import brand-scheme.
+// We replicate the two tiny primitives needed for sign-in/out rather than importing.
+
+/** S7c-2: key used by density.ts — kept in sync as a constant. */
+const DENSITY_STORAGE_KEY_S7C2 = "projectops.density";
+
+/** S7c-2: apply or clear the data-density attribute. */
+function applyDensityS7c2(mode: "comfortable" | "compact"): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (mode === "compact") {
+    root.setAttribute("data-density", "compact");
+  } else {
+    root.removeAttribute("data-density");
+  }
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const BRAND_SCHEME_STORAGE_KEY = "projectops.brand-scheme";
@@ -296,15 +315,27 @@ export function clearUserBrandOverride(): void {
 /**
  * Mounts inside AuthProvider. On mount it applies the cached localStorage
  * value synchronously (already done at module load) then re-validates over
- * the network. On user logout / null, the scheme AND the per-user override
- * are cleared so a departing user's brand does not bleed into the login screen.
+ * the network. After the company scheme is fetched, it also fetches the
+ * user's personal appearance preferences (S7c-2) to apply their saved density
+ * and colour-scheme override.
+ *
+ * On user logout / null, the scheme AND the per-user override are cleared so
+ * a departing user's brand does not bleed into the login screen. Additionally,
+ * the saved density is removed from localStorage and the data-density attribute
+ * is reset, so a shared site tablet never shows the last person's density.
  *
  * Renders children unconditionally — a failed fetch degrades gracefully to
  * tokens.css defaults; the app never blanks.
  *
  * S6 logout clear: BRAND_OVERRIDE_STORAGE_KEY is removed on the same code
- * path that removes BRAND_SCHEME_STORAGE_KEY (user === null). This satisfies
- * the requirement that the override clears on logout.
+ * path that removes BRAND_SCHEME_STORAGE_KEY (user === null).
+ *
+ * S7c-2 sign-in apply: after /branding/active, also fetch
+ * GET /appearance-preferences/me and apply density + colour-scheme override.
+ * If the account has no scheme, clear any stale override left in the browser.
+ * localStorage stays a cache that prevents a flash of the wrong look on load.
+ *
+ * S7c-2 sign-out: also removes projectops.density and resets data-density.
  */
 export function BrandSchemeProvider({ children }: { children: ReactNode }): ReactNode {
   const { user, authFetch } = useAuth();
@@ -318,44 +349,83 @@ export function BrandSchemeProvider({ children }: { children: ReactNode }): Reac
       } catch {
         // Private browsing — safe to continue.
       }
+      // S7c-2: clear density so a shared tablet does not show the last person's density.
+      try {
+        localStorage.removeItem(DENSITY_STORAGE_KEY_S7C2);
+      } catch {
+        // Private browsing — safe to continue.
+      }
+      applyDensityS7c2("comfortable");
       return;
     }
 
     let cancelled = false;
 
-    void authFetch("/branding/active")
-      .then(async (response) => {
-        if (cancelled || !response.ok) return;
-        const scheme = (await response.json()) as BrandScheme;
-        if (cancelled) return;
+    void (async () => {
+      // Fetch company scheme and personal appearance prefs in parallel.
+      const [brandResponse, prefsResponse] = await Promise.all([
+        authFetch("/branding/active").catch(() => null),
+        authFetch("/appearance-preferences/me").catch(() => null)
+      ]);
 
-        // Only re-apply if different from cached to avoid unnecessary repaints.
-        // If a per-user override is active, the company scheme is still cached
-        // for re-application when the override is cleared.
-        const cached = readCachedScheme();
-        const changed =
-          !cached ||
-          cached.primaryColorHex !== scheme.primaryColorHex ||
-          cached.secondaryColorHex !== scheme.secondaryColorHex;
+      if (cancelled) return;
 
-        writeCachedScheme(scheme);
+      // Apply company scheme.
+      if (brandResponse?.ok) {
+        try {
+          const scheme = (await brandResponse.json()) as BrandScheme;
+          if (cancelled) return;
 
-        // Do NOT clobber a per-user override with the company scheme.
-        const override = readOverride();
-        if (!override && changed) {
-          applyBrandScheme(scheme);
+          const cached = readCachedScheme();
+          const changed =
+            !cached ||
+            cached.primaryColorHex !== scheme.primaryColorHex ||
+            cached.secondaryColorHex !== scheme.secondaryColorHex;
+
+          writeCachedScheme(scheme);
+
+          // Do NOT clobber a per-user override with the company scheme.
+          const override = readOverride();
+          if (!override && changed) {
+            applyBrandScheme(scheme);
+          }
+        } catch {
+          // Parse failure — degrade gracefully.
         }
-      })
-      .catch(() => {
-        // Network failure — silently degrade to cached/default values.
-      });
+      }
+
+      // Apply personal appearance preferences (S7c-2).
+      if (prefsResponse?.ok) {
+        try {
+          const prefs = (await prefsResponse.json()) as {
+            density: "comfortable" | "compact";
+            colourSchemeId: string | null;
+            colourScheme: BrandScheme | null;
+          };
+          if (cancelled) return;
+
+          // Apply density.
+          applyDensityS7c2(prefs.density);
+
+          // Apply or clear the colour-scheme override.
+          if (prefs.colourScheme) {
+            setUserBrandOverride(prefs.colourScheme);
+          } else {
+            // Account has no personal scheme — clear any stale browser override.
+            clearUserBrandOverride();
+          }
+        } catch {
+          // Parse failure — degrade gracefully.
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
   }, [user, authFetch]);
 
-  // Clear scheme and override when user logs out.
+  // Clear scheme, override, and density when user logs out.
   useEffect(() => {
     if (!user) {
       clearBrandScheme();
@@ -364,6 +434,13 @@ export function BrandSchemeProvider({ children }: { children: ReactNode }): Reac
       } catch {
         // Private browsing — safe to continue.
       }
+      // S7c-2: clear density key and reset DOM attribute.
+      try {
+        localStorage.removeItem(DENSITY_STORAGE_KEY_S7C2);
+      } catch {
+        // Private browsing — safe to continue.
+      }
+      applyDensityS7c2("comfortable");
     }
   }, [user]);
 

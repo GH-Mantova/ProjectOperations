@@ -28,6 +28,8 @@ import { ScopeWasteController, ScopeCardWasteController } from "./scope-waste.co
 import { ScopeWasteService } from "./scope-waste.service";
 import { ScopeCostsController } from "./scope-costs.controller";
 import { ScopeCostsService } from "./scope-costs.service";
+import { ScopeEnclosureController } from "./scope-enclosure.controller";
+import { ScopeEnclosureService } from "./scope-enclosure.service";
 import { ProposalsController } from "./scope/proposals.controller";
 import { ProposalsService } from "./scope/proposals.service";
 import { EstimateProposalsController } from "./scope/estimate-proposals.controller";
@@ -73,6 +75,7 @@ import { CapacityService } from "./capacity.service";
     ScopeWasteController,
     ScopeCardWasteController,
     ScopeCostsController,
+    ScopeEnclosureController,
     ProposalsController,
     EstimateProposalsController,
     QuoteProposalsController,
@@ -91,6 +94,7 @@ import { CapacityService } from "./capacity.service";
     ScopeRedesignService,
     ScopeWasteService,
     ScopeCostsService,
+    ScopeEnclosureService,
     ProposalsService,
     EstimateProposalsService,
     QuoteProposalsService,

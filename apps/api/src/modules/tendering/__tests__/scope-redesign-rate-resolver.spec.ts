@@ -27,6 +27,8 @@ function makeRateResolver(overrides: Partial<{
 function makePrisma(overrides: Record<string, unknown> = {}) {
   return {
     tender: { findUnique: jest.fn().mockResolvedValue({ id: "t-1" }) },
+    scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
     scopeOfWorksItem: { findMany: jest.fn().mockResolvedValue([]) },
     tenderEstimate: { findUnique: jest.fn().mockResolvedValue({ markup: new Prisma.Decimal(30) }) },
     scopeWasteItem: { findMany: jest.fn().mockResolvedValue([]) },

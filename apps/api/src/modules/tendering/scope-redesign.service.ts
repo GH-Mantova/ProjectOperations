@@ -1110,6 +1110,22 @@ export class ScopeRedesignService {
     const rateMaps = buildRateMaps(labourRates, plantRates);
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
+    // ASB_ENCLOSURE_LINES_V1 -- batch-fetch all enclosure lines for this
+    // tender in one query and key by scopeItemId.
+    const allEnclosureLines = await this.prisma.scopeItemEnclosureLine.findMany({
+      where: { scopeItem: { tenderId } },
+      select: { scopeItemId: true, qty: true, rate: true, rateOverride: true }
+    });
+    const enclosureLinesByItem = new Map<
+      string,
+      Array<{ qty: Prisma.Decimal; rate: Prisma.Decimal; rateOverride: Prisma.Decimal | null }>
+    >();
+    for (const el of allEnclosureLines) {
+      const bucket = enclosureLinesByItem.get(el.scopeItemId) ?? [];
+      bucket.push(el);
+      enclosureLinesByItem.set(el.scopeItemId, bucket);
+    }
+
     // SCOPE_QUOTE_DESTINATION_V1 -- each bucket carries four pairs instead of two:
     //   subtotal / withMarkup           -> PRICE destination
     //   provisionalSubtotal / ...WithMarkup -> PROVISIONAL destination
@@ -1176,6 +1192,23 @@ export class ScopeRedesignService {
           effectiveMarkup
         );
         totals = { lineTotal: computed.lineTotal, lineTotalWithMarkup: computed.lineTotalWithMarkup };
+      }
+
+      // ASB_ENCLOSURE_LINES_V1 -- add enclosure lines to this item's
+      // subtotal before markup. Lines follow the item's destination and
+      // markup chain. The item's labour/plant figures are unchanged.
+      const encLines = enclosureLinesByItem.get(item.id) ?? [];
+      if (encLines.length > 0) {
+        let encSubtotal = 0;
+        for (const el of encLines) {
+          const effRate = el.rateOverride !== null ? Number(el.rateOverride) : Number(el.rate);
+          encSubtotal += Number(el.qty) * effRate;
+        }
+        const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
+        totals = {
+          lineTotal: totals.lineTotal + encSubtotal,
+          lineTotalWithMarkup: totals.lineTotalWithMarkup + encSubtotal * markupFactor
+        };
       }
 
       // Route by quoteDestination. INTERNAL is reported but not summed into

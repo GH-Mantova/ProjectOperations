@@ -10,8 +10,8 @@
 //   Adds the money column, folds Title into the Tender cell, drops the Updated
 //   column (it duplicated Last interaction as a bare date), and adds a Columns
 //   picker persisted under its own localStorage key.
-//   NO-OP (see the PR body): the mock-up's channel and one-line-summary halves
-//   of the Last interaction cell are NOT built — the comms API sends neither.
+// CRM_INTERACTION_CHANNEL_V1 — channel (Phone/Email/Meeting/Site visit/Other)
+//   added to the Log form; Last interaction cell shows channel + summary.
 // CRM_FOLLOWUPS_V2 — Follow-ups gets the summary and the controls it was
 //   missing: the four KPI cards (Overdue · Due this week · Never logged ·
 //   Value at risk) above the toggle row, the four entity-type toggles
@@ -74,6 +74,7 @@ import {
   ENTITY_TYPES,
   DEFAULT_ENTITY_TYPE_TOGGLES,
   isStalled,
+  CHANNEL_LABEL,
   ownerOptions,
   UNASSIGNED_OWNER,
   type EntityTypeToggles,
@@ -119,12 +120,16 @@ type TenderRow = {
   tenderClients: Array<{ id: string; clientId: string; client: { id: string; name: string } }>;
 };
 
-/** CRM-S7/S8: Last interaction result returned by POST /crm/comms/last-interaction/batch */
+/** CRM-S7/S8/CRM_INTERACTION_CHANNEL_V1: Last interaction result returned by POST /crm/comms/last-interaction/batch */
 type LastInteraction = {
   entityType: string;
   entityId: string;
   lastMessageAt: string;
   loggedBy: { id: string; firstName: string; lastName: string };
+  /** CRM_INTERACTION_CHANNEL_V1: phone | email | meeting | site_visit | other, or null for legacy. */
+  channel: string | null;
+  /** CRM_INTERACTION_CHANNEL_V1: one-line summary. */
+  summary: string;
 };
 
 /** CRM-S8: Next-action task for a tender (earliest open CommTask). */
@@ -277,19 +282,41 @@ type LogModalProps = {
   onSave: (payload: LogPayload) => Promise<void>;
 };
 
+// CRM_INTERACTION_CHANNEL_V1: channel toggle buttons for the Log form.
+const CHANNEL_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "phone", label: "Phone" },
+  { value: "email", label: "Email" },
+  { value: "meeting", label: "Meeting" },
+  { value: "site_visit", label: "Site visit" },
+  { value: "other", label: "Other" }
+];
+
 function LogModal({ tender, onClose, onSave }: LogModalProps) {
-  const [subject, setSubject] = useState(
-    `Contact — ${new Date().toLocaleDateString("en-AU")}`
-  );
+  const [channel, setChannel] = useState("");
+  const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [nextActionAt, setNextActionAt] = useState("");
   const [nextActionNote, setNextActionNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const channelRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const handleChannelKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = (idx + 1) % CHANNEL_OPTIONS.length;
+      channelRefs.current[next]?.focus();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = (idx - 1 + CHANNEL_OPTIONS.length) % CHANNEL_OPTIONS.length;
+      channelRefs.current[prev]?.focus();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload: LogPayload = {
+      channel,
       subject: subject.trim(),
       body: body.trim(),
       nextActionAt: nextActionAt || null,
@@ -345,20 +372,68 @@ function LogModal({ tender, onClose, onSave }: LogModalProps) {
           </div>
         )}
         <form onSubmit={(e) => { void handleSubmit(e); }}>
+          {/* CRM_INTERACTION_CHANNEL_V1: Channel — required toggle group, five options */}
+          <div style={{ marginBottom: 8 }}>
+            <span
+              className="crm-relationships-field-label"
+              id="log-channel-label"
+              style={{ display: "block", marginBottom: 6 }}
+            >
+              Channel <span style={{ color: "var(--status-danger)" }}>*</span>
+            </span>
+            <div
+              role="radiogroup"
+              aria-label="Channel"
+              aria-labelledby="log-channel-label"
+              style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
+            >
+              {CHANNEL_OPTIONS.map((opt, idx) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={channel === opt.value}
+                  ref={(el) => { channelRefs.current[idx] = el; }}
+                  onClick={() => setChannel(opt.value)}
+                  onKeyDown={(e) => handleChannelKeyDown(e, idx)}
+                  className={`crm-toggle${channel === opt.value ? " crm-toggle--on" : ""}`}
+                  tabIndex={channel === opt.value || (channel === "" && idx === 0) ? 0 : -1}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {error === "Pick how you made contact." && (
+              <p
+                role="alert"
+                style={{ margin: "4px 0 0", fontSize: 12, color: "var(--status-danger)" }}
+              >
+                {error}
+              </p>
+            )}
+          </div>
+          {/* CRM_INTERACTION_CHANNEL_V1: Summary (was "Subject") — starts empty */}
           <label className="crm-relationships-field-label" style={{ marginBottom: 4 }}>
-            Subject
+            Summary <span style={{ color: "var(--status-danger)" }}>*</span>
+            <span
+              className="crm-relationships-hint"
+              style={{ fontWeight: 400, marginLeft: 6 }}
+            >
+              one line, shown on the register
+            </span>
             <input
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               required
+              placeholder="e.g. Chased addendum 3"
               className="s7-input"
               style={{ display: "block", width: "100%", marginTop: 4, boxSizing: "border-box" }}
-              aria-label="Interaction subject"
+              aria-label="Interaction summary"
             />
           </label>
           <label className="crm-relationships-field-label" style={{ marginBottom: 4 }}>
-            Notes
+            Notes <span style={{ color: "var(--status-danger)" }}>*</span>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -668,6 +743,8 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
       return {
         ...t,
         lastInteractionAt: interaction?.lastMessageAt ?? null,
+        lastInteractionChannel: interaction?.channel ?? null,
+        lastInteractionSummary: interaction?.summary ?? null,
         loggedByName: interaction
           ? `${interaction.loggedBy.firstName} ${interaction.loggedBy.lastName}`.trim()
           : null,
@@ -841,6 +918,7 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
       body: JSON.stringify({
         entityType: "TENDER",
         entityId: tenderId,
+        channel: payload.channel,
         subject: payload.subject,
         body: payload.body,
         nextActionAt: payload.nextActionAt ?? null,
@@ -1545,16 +1623,27 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                 const statusLabel = TENDER_STATUS_LABEL[t.status as TenderStatus] ?? t.status;
                 const statusTone = statusBadgeTone(t.status);
                 const interaction = interactions.get(t.id) ?? null;
-                // CRM_REGISTER_V3: the mock-up's "4 days ago" half. The channel
-                // and the one-line summary are NOT rendered — see the NO-OPs at
-                // the top of this file; the API sends neither.
-                const lastInteractionLabel = formatRelativeTime(
+                // CRM_INTERACTION_CHANNEL_V1: channel + "4 days ago" on line 1,
+                // summary on line 2. Legacy logs (channel null) show just the relative time.
+                const relTime = formatRelativeTime(
                   interaction?.lastMessageAt ?? null,
                   now.current
                 );
+                const channelLabel = interaction?.channel
+                  ? (CHANNEL_LABEL[interaction.channel] ?? null)
+                  : null;
+                const lastInteractionLine1 = channelLabel
+                  ? `${channelLabel} — ${relTime}`
+                  : relTime;
+                const lastInteractionSummary = interaction?.summary ?? null;
                 const lastInteractionExact = interaction
                   ? new Date(interaction.lastMessageAt).toLocaleDateString()
                   : undefined;
+                // CRM_REGISTER_V3: stale (amber) colour applies to relTime portion.
+                // The amber stale check: no open task and interaction > 30 days old.
+                const isInteractionStale = interaction != null &&
+                  !nextActions.has(t.id) &&
+                  (now.current.getTime() - new Date(interaction.lastMessageAt).getTime()) > 30 * 24 * 60 * 60 * 1000;
                 const submittedLabel = formatSubmittedLabel(t.submittedAt);
                 // CRM_FOLLOWUPS_V2: derived from the SAME status groups as the
                 // entity-type toggles. Null for a status no group claims
@@ -1631,13 +1720,37 @@ export function TendersRegisterPage(props: TendersRegisterPageProps = {}) {
                     >
                       {valueLabel}
                     </td>
+                    {/* CRM_INTERACTION_CHANNEL_V1: line 1 = channel + relative time,
+                        line 2 = summary. Amber colour for stale interactions. */}
                     <td
                       style={cellStyle("lastInteraction")}
-                      aria-label={`Last interaction: ${lastInteractionLabel}`}
+                      aria-label={`Last interaction: ${lastInteractionLine1}`}
                     >
-                      <span style={registerCellStyle.relativeTime} title={lastInteractionExact}>
-                        {lastInteractionLabel}
-                      </span>
+                      {interaction ? (
+                        <>
+                          <span
+                            style={{
+                              ...registerCellStyle.relativeTime,
+                              color: isInteractionStale ? "var(--status-warning)" : undefined
+                            }}
+                            title={lastInteractionExact}
+                          >
+                            {lastInteractionLine1}
+                          </span>
+                          {lastInteractionSummary && (
+                            <div
+                              className="crm-cell-sub crm-last-interaction-summary"
+                              title={lastInteractionSummary}
+                            >
+                              {lastInteractionSummary}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span style={registerCellStyle.relativeTime}>
+                          {relTime}
+                        </span>
+                      )}
                     </td>
                     {/* Logged by: crm-avatar + name */}
                     <td style={cellStyle("loggedBy")} aria-label={`Logged by: ${loggedByFullName ?? EM_RULE}`}>

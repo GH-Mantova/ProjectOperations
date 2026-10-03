@@ -8162,6 +8162,11 @@ model CommThread {
   /// CRM-S7: conversation (default) or logged_contact.
   /// Existing rows default to conversation; no backfill required.
   kind        CommThreadKind @default(conversation) @map("kind")
+  /// CRM_INTERACTION_CHANNEL_V1: how a logged contact was made. Null for
+  /// conversation threads and for logged contacts recorded before this column.
+  /// Validated at the DTO layer (phone | email | meeting | site_visit | other),
+  /// stored as String like entityType.
+  channel     String?        @map("channel")
   createdById String         @map("created_by_id")
   createdBy   User           @relation("CommThreadCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime       @default(now()) @map("created_at")

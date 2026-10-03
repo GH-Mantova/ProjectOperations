@@ -174,6 +174,10 @@ const REVIEWED_STATE_FILE = path.join(__dirname, ".reviewed-prs.json");
 // Auto-update-branch: each poll, bring the watcher account's open PRs that
 // are BEHIND main up to date via `gh pr update-branch`. Conflicting PRs are
 // skipped (update-branch can't resolve conflicts). Opt-in.
+//
+// UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03): defaulted OFF in start-watcher.ps1.
+// The poll itself still runs so the DIRTY-PR conflict notification keeps firing;
+// only the `gh pr update-branch` call is gated on AUTO_UPDATE.
 const AUTO_UPDATE = process.env.PR_WATCHER_AUTO_UPDATE === "true"; // default OFF
 const UPDATE_POLL_INTERVAL_MS =
   Number(process.env.PR_WATCHER_UPDATE_POLL_SEC ?? 120) * 1000;
@@ -3196,6 +3200,11 @@ async function pollForBehindPrs() {
 
     if (pr.mergeStateStatus !== "BEHIND") continue;
 
+    // UPDATE_AT_MERGE_TIME_V1: BEHIND PRs are updated at merge time by Merge-Pr, not here.
+    // The poll keeps running for the DIRTY-PR conflict notification above, but the
+    // update-branch call is gated on an explicit AUTO_UPDATE=true.
+    if (!AUTO_UPDATE) continue;
+
     // Rebasing now would cancel work already in progress. Leave it; it will still be
     // BEHIND on the next poll, by which time its checks have concluded.
     const gate = shouldSkipUpdate(pr.statusCheckRollup);
@@ -4113,12 +4122,12 @@ async function main() {
     }
   }
 
-  // Auto-update-branch poll loop
-  let updatePollTimer = null;
-  if (AUTO_UPDATE) {
-    updatePollTimer = setInterval(pollForBehindPrs, UPDATE_POLL_INTERVAL_MS);
-    pollForBehindPrs(); // immediate first pass
-  }
+  // UPDATE_AT_MERGE_TIME_V1: the poll always runs so DIRTY-PR conflict
+  // notifications keep firing. The update-branch call inside pollForBehindPrs
+  // is gated on AUTO_UPDATE, so with AUTO_UPDATE=false (the launcher's new
+  // default) the poll scans but never rebases.
+  const updatePollTimer = setInterval(pollForBehindPrs, UPDATE_POLL_INTERVAL_MS);
+  pollForBehindPrs(); // immediate first pass
 
   let shuttingDown = false;
   const shutdown = (signal) => {

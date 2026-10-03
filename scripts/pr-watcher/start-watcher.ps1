@@ -156,7 +156,15 @@ if (-not $claude) {
 
 # --- v2 env defaults (only set if not already set in the parent env) ---
 if (-not $env:PR_WATCHER_AUTO_REVIEW)       { $env:PR_WATCHER_AUTO_REVIEW = "true" }
-if (-not $env:PR_WATCHER_AUTO_UPDATE)       { $env:PR_WATCHER_AUTO_UPDATE = "true" }
+# UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03).
+# The timer used to default to "true", which brought every BEHIND PR up to date on a tick -- mostly
+# on PRs that could not merge without Marco. MEASURED 2026-10-03: the watcher clone's 2026-10-02 log
+# carries 72 "branch updated (was BEHIND)" events in a single day, and one PR was rebuilt 24 times
+# in 9.4 hours before it was merged. The repo ruleset requires strict up-to-date for merge, so
+# exactly one update is needed, right before the merge -- and that one is now Merge-Pr's job
+# (scripts/pipeline/pipeline-lib.ps1). Set this to "true" explicitly to restore the timer; leaving
+# it unset keeps the launcher's default of OFF.
+if (-not $env:PR_WATCHER_AUTO_UPDATE)       { $env:PR_WATCHER_AUTO_UPDATE = "false" }
 if (-not $env:PR_WATCHER_AUTO_MERGE_POLICY) { $env:PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs" }
 if (-not $env:PR_WATCHER_MAX_TURNS)         { $env:PR_WATCHER_MAX_TURNS = "240" }
 if (-not $env:PR_WATCHER_RUN_TIMEOUT_MIN)   { $env:PR_WATCHER_RUN_TIMEOUT_MIN = "75" }

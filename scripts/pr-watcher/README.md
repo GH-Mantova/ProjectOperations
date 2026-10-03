@@ -145,11 +145,25 @@ Review jobs (`rev-*`) always skip merge handling entirely, under every policy.
 
 ## Auto-update-branch
 
-With `PR_WATCHER_AUTO_UPDATE=true`, every `PR_WATCHER_UPDATE_POLL_SEC` seconds
-the watcher lists your open PRs (`gh pr list --author @me`) and runs
-`gh pr update-branch N` on any with merge state `BEHIND`. PRs with conflicts
-(`DIRTY`) are skipped with a log line — update-branch can't resolve conflicts;
-those need a human rebase.
+**UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03): defaults to OFF.** The timer
+used to rebase every BEHIND PR on a tick, which restarted a full CI run on
+each one — mostly on PRs that could not merge without Marco anyway. One
+measured day (2026-10-02): 72 `branch updated (was BEHIND)` events; one PR
+was rebuilt 24 times in 9.4 hours. The repo ruleset requires strict
+up-to-date for merge, so exactly one update is needed and that one is now
+`Merge-Pr`'s job in `scripts/pipeline/pipeline-lib.ps1`: it reads
+`mergeStateStatus`, runs `gh pr update-branch` if BEHIND, then queues the
+merge pinned to the fresh head via `--match-head-commit`.
+
+The BEHIND poll itself still runs every `PR_WATCHER_UPDATE_POLL_SEC`
+seconds so the DIRTY-PR conflict notification keeps firing — only the
+`gh pr update-branch` call inside it is gated on `PR_WATCHER_AUTO_UPDATE`.
+
+Set `PR_WATCHER_AUTO_UPDATE=true` explicitly to restore the timer: it will
+again list the watcher account's open PRs (`gh pr list --author @me`) and
+run `gh pr update-branch N` on any with merge state `BEHIND`. PRs with
+conflicts (`DIRTY`) are skipped with a log line — update-branch can't
+resolve conflicts; those need a human rebase.
 
 ## Failure quarantine and transient retry
 
@@ -289,7 +303,7 @@ pre-flight: refuse unless `git branch --show-current` is `main` AND
 `git status --porcelain` is empty; refuse if another watcher node process
 is already running; refuse if `gh` or `claude` are not on PATH. It then
 sets the v2 env defaults (`PR_WATCHER_AUTO_REVIEW=true`,
-`PR_WATCHER_AUTO_UPDATE=true`,
+`PR_WATCHER_AUTO_UPDATE=false` (UPDATE_AT_MERGE_TIME_V1),
 `PR_WATCHER_AUTO_MERGE_POLICY=tests-docs`, `PR_WATCHER_MAX_TURNS=240`) and
 runs `node --no-deprecation scripts/pr-watcher/index.mjs`, with
 `$ErrorActionPreference = "Continue"` around the node call so a stray

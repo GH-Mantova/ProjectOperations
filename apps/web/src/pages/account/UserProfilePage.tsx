@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { AppearanceSection } from "./AppearanceSection";
 import { DefaultDashboardSection } from "./DefaultDashboardSection";
 
 // §5A.1 PR 8 (PR #132): the legacy "My AI providers" section was removed
@@ -19,6 +20,8 @@ export function UserProfilePage() {
           Signed in as <strong>{user.firstName} {user.lastName}</strong> · {user.email}
         </p>
       ) : null}
+
+      <AppearanceSection />
 
       <DefaultDashboardSection />
 

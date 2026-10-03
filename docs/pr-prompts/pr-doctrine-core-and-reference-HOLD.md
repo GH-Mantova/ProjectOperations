@@ -50,12 +50,18 @@ deleted.** Marco reviews the core's wording before it takes effect (this PR esca
 
 ## Go / no-go: arm this last
 
-This PR moves large blocks of `DOCTRINE.md` and `00-supervisor.md`. Several staged prompts edit those
-files: `pr-board-lease`, `pr-freshness-one-cadence-grace`, `pr-update-branch-at-merge-time`,
-`pr-watcher-retire-docs-automerge-lane`, `pr-dispatched-register` and `pr-retire-escalation-tracked-record`.
-**First check `gh pr list --state open` and the depth-1 `-ready.md` files.** If any of those is armed
-or has an open PR, print `NO-OP: waiting for <names> to land before splitting DOCTRINE` and stop.
-That prompt's change must exist before you move the text it edits.
+This PR moves large blocks of `DOCTRINE.md` and `00-supervisor.md`.
+Other staged prompts edit those files, so their changes must be on main first. **Check each needle
+with `git grep -q <needle> origin/main`:**
+
+`BOARD_LEASE_V1`, `FRESHNESS_ONE_CADENCE_V1`, `UPDATE_AT_MERGE_TIME_V1`,
+`RETIRE_TESTS_DOCS_LANE_V1`, `INSTRUMENT_LANE_V1`, `DISPATCH_REGISTER_V1`,
+`RETIRE_ESCALATION_V1`, `MARCO_QUEUE_LINE_V1`, `CP26_ARMED_BY_DIFF_V1`.
+
+If any needle is missing, print `NO-OP: waiting for <needles> to land before splitting DOCTRINE`
+and stop. The one exception is a prompt Marco has withdrawn: if its prompt file is in
+`docs/pr-prompts/superseded/`, skip its needle. Check needles rather than file names, because a
+consumed prompt can stay on main as `-HOLD.md`.
 
 Tag the core files with `DOCTRINE_CORE_SPLIT_V1`.
 

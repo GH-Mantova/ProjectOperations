@@ -10,6 +10,7 @@ size: 6
 gate_allow: env-vars
 seed_only: false
 escalates: false
+module: procurement
 ---
 <!-- watcher: do-not-arm -->
 

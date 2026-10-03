@@ -12,6 +12,7 @@ size: 8
 gate_allow: migrations
 seed_only: false
 escalates: true
+module: sites
 rollback_strategy: >-
   PRODUCTION DATA. The backfill UPDATE is idempotent (WHERE site_id IS NULL) and
   re-runnable. The NOT NULL constraint is the irreversible half - reverting means

@@ -1144,6 +1144,10 @@ function checkModuleProvenance(fm, fileText, repoRoot, name) {
   }
 
   if (derived.source === "derived" || derived.source === "incidental") {
+    warnings.push(
+      "MODULE_NOT_DECLARED: module: " + derived.module + " resolved from scope - " +
+      "declare it so the PR title is explicit."
+    );
     return { ok: true, warnings, module: derived.module, source: derived.source };
   }
 
@@ -1185,6 +1189,37 @@ function checkModuleProvenance(fm, fileText, repoRoot, name) {
       "        scripts/pipeline/module-baseline.json and still ADMIT. That file may only SHRINK:\n" +
       "        adding your prompt to it is the gate failing open. Add `module:` instead.",
   };
+}
+
+/**
+ * Public helper — resolve the module for an arbitrary prompt file text.
+ *
+ * Used by the watcher (index.mjs) to inject the resolved module into the
+ * agent's stdin footer so the build agent titles its PR with the right scope
+ * (PR_TITLE_MODULE_V1). Callers outside the full lint pipeline use this rather
+ * than calling checkModuleProvenance directly (which requires a parsed fm
+ * object and a resolved name, i.e. the watcher would have to duplicate the
+ * front-matter parsing).
+ *
+ * Returns { module, source } where:
+ *   module  — the resolved module string, or null when ambiguous/unresolvable.
+ *   source  — "declared" | "derived" | "incidental" | "ambiguous" | "unresolvable"
+ *
+ * Never throws. An unparseable file returns { module: null, source: "unresolvable" }.
+ */
+export function resolvePromptModule(fileText, repoRoot) {
+  try {
+    const fm = parseFrontMatter(fileText);
+    if (!fm) return { module: null, source: "unresolvable" };
+    // Re-use checkModuleProvenance. We need a name for the baseline lookup; use a
+    // synthetic slug that will never be in the baseline so it fails safe (returns null
+    // module for the ambiguous case) rather than producing a false positive.
+    const res = checkModuleProvenance(fm, fileText, repoRoot || process.cwd(), "__resolvePromptModule_internal__");
+    if (!res.ok) return { module: null, source: res.code === "MODULE_AMBIGUOUS" ? "ambiguous" : "unresolvable" };
+    return { module: res.module, source: res.source };
+  } catch (_) {
+    return { module: null, source: "unresolvable" };
+  }
 }
 
 const RESET = "\x1b[0m";

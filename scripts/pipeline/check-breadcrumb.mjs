@@ -19,6 +19,11 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { NAME_RE } from './queue-layout.mjs';
+// Re-export NAME_RE so existing importers that do
+//   `import { NAME_RE } from './check-breadcrumb.mjs'`
+// continue to work without change.
+export { NAME_RE };
 
 // Every path below is resolved from THIS MODULE's location, never from process.cwd().
 // A station's shell opens in the Cowork session's outputs folder, which is not a git
@@ -65,7 +70,9 @@ const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];
 // missing sections nobody ever flagged. Measured 2026-08-29: 37 of 149 `00-*` files on main
 // failed this pattern. A validator that skips the reports its own authors SHOUTED is worse
 // than no validator, because its CLEAN reads as coverage. Widened, never narrowed.
-export const NAME_RE = /^00-(\d\d)-([A-Za-z0-9-]+)-(\d{4}-\d{2}-\d{2})-(\d{4})-([A-Za-z0-9-]+)\.md$/;
+//
+// NAME_RE is defined in queue-layout.mjs (single source of truth).
+// It is imported above for local use and re-exported below for existing importers.
 
 // The gitignored-sink gate. A finding is only routed into a gitignored channel when the
 // path is preceded by a routing verb + destination preposition — writing/reporting/logging

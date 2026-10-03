@@ -1,5 +1,10 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { CommsService, extractMentions, type LastInteractionResult } from "../comms.service";
+import {
+  CommsService,
+  extractMentions,
+  interactionSummary,
+  type LastInteractionResult
+} from "../comms.service";
 
 // ── Mock Prisma ───────────────────────────────────────────────────────────────
 
@@ -407,6 +412,7 @@ describe("CommsService.logContact", () => {
     entityType: "TENDER",
     entityId: "tender-1",
     subject: "Call — 2026-08-31",
+    channel: "phone",
     kind: "logged_contact" as const,
     createdById: "user-1",
     createdAt: new Date("2026-08-31T05:00:00Z"),
@@ -446,6 +452,7 @@ describe("CommsService.logContact", () => {
       entityId: "tender-1",
       subject: "Call — 2026-08-31",
       body: "Called the client re pricing.",
+      channel: "phone",
       createdById: "user-1"
     });
 
@@ -462,6 +469,7 @@ describe("CommsService.logContact", () => {
         entityId: "   ",
         subject: "Call",
         body: "Body",
+        channel: "phone",
         createdById: "user-1"
       })
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -475,6 +483,7 @@ describe("CommsService.logContact", () => {
         entityId: "tender-1",
         subject: "   ",
         body: "Body",
+        channel: "phone",
         createdById: "user-1"
       })
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -488,6 +497,7 @@ describe("CommsService.logContact", () => {
         entityId: "tender-1",
         subject: "Call",
         body: "",
+        channel: "phone",
         createdById: "user-1"
       })
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -503,6 +513,7 @@ describe("CommsService.logContact", () => {
         entityId: "tender-1",
         subject: "Call",
         body: "Body",
+        channel: "phone",
         createdById: "ghost"
       })
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -523,15 +534,20 @@ describe("CommsService.lastInteractionFor", () => {
   const OLDER = new Date("2026-08-30T10:00:00Z");
   const AUTHOR = { id: "user-1", firstName: "Marco", lastName: "Rossi" };
 
-  function makeMessage(createdAt: Date) {
+  function makeMessage(createdAt: Date, overrides?: { channel?: string | null; subject?: string | null; body?: string }) {
     return {
       id: `msg-${createdAt.toISOString()}`,
       threadId: "thread-1",
       authorId: "user-1",
-      body: "Some log",
+      body: overrides?.body ?? "Some log",
       createdAt,
       author: AUTHOR,
-      thread: { entityType: "TENDER", entityId: "tender-1" }
+      thread: {
+        entityType: "TENDER",
+        entityId: "tender-1",
+        channel: overrides?.channel ?? "phone",
+        subject: overrides?.subject ?? "Chased addendum 3"
+      }
     };
   }
 
@@ -549,6 +565,8 @@ describe("CommsService.lastInteractionFor", () => {
     expect(result).not.toBeNull();
     expect((result as NonNullable<LastInteractionResult>).lastMessageAt).toEqual(NOW);
     expect((result as NonNullable<LastInteractionResult>).loggedBy.id).toBe("user-1");
+    expect((result as NonNullable<LastInteractionResult>).channel).toBe("phone");
+    expect((result as NonNullable<LastInteractionResult>).summary).toBe("Chased addendum 3");
   });
 
   it("returns null for a tender with no logged contact (sorts last in the register)", async () => {
@@ -573,7 +591,9 @@ describe("CommsService.lastInteractionFor", () => {
       entityType: "TENDER",
       entityId: "tender-1",
       lastMessageAt: OLDER,
-      loggedBy: AUTHOR
+      loggedBy: AUTHOR,
+      channel: "email",
+      summary: "Submitted the tender"
     };
     const noInteraction: LastInteractionResult = null;
 
@@ -601,7 +621,7 @@ describe("CommsService.lastInteractionBatch", () => {
       body: "Newer",
       createdAt: new Date("2026-08-31T10:00:00Z"),
       author: AUTHOR,
-      thread: { entityType: "TENDER", entityId: "tender-1" }
+      thread: { entityType: "TENDER", entityId: "tender-1", channel: "phone", subject: "Chased addendum 3" }
     };
     const msg2 = {
       id: "msg-2",
@@ -610,7 +630,7 @@ describe("CommsService.lastInteractionBatch", () => {
       body: "Older",
       createdAt: new Date("2026-08-30T10:00:00Z"),
       author: AUTHOR,
-      thread: { entityType: "TENDER", entityId: "tender-2" }
+      thread: { entityType: "TENDER", entityId: "tender-2", channel: "email", subject: "Submitted the tender" }
     };
     (prisma as unknown as { commMessage: { findMany: jest.Mock } }).commMessage = {
       findMany: jest.fn().mockResolvedValue([msg1, msg2])
@@ -624,7 +644,10 @@ describe("CommsService.lastInteractionBatch", () => {
 
     expect(result.size).toBe(2);
     expect(result.get("TENDER:tender-1")?.lastMessageAt).toEqual(new Date("2026-08-31T10:00:00Z"));
+    expect(result.get("TENDER:tender-1")?.channel).toBe("phone");
+    expect(result.get("TENDER:tender-1")?.summary).toBe("Chased addendum 3");
     expect(result.get("TENDER:tender-2")?.lastMessageAt).toEqual(new Date("2026-08-30T10:00:00Z"));
+    expect(result.get("TENDER:tender-2")?.channel).toBe("email");
   });
 
   it("tender absent from result map has no logged contact (renders '—' in the register)", async () => {
@@ -639,5 +662,180 @@ describe("CommsService.lastInteractionBatch", () => {
     ]);
 
     expect(result.has("TENDER:tender-no-contact")).toBe(false);
+  });
+});
+
+// ── CRM_INTERACTION_CHANNEL_V1: logContact channel validation ─────────────────
+
+describe("CommsService.logContact — CRM_INTERACTION_CHANNEL_V1 channel", () => {
+  const AUTHOR = { id: "user-1", firstName: "Marco", lastName: "Rossi" };
+
+  it("stores the channel on the thread", async () => {
+    const prisma = makePrisma();
+    const threadWithChannel = {
+      id: "thread-ch-1",
+      entityType: "TENDER",
+      entityId: "tender-1",
+      subject: "Chased addendum 3",
+      channel: "phone",
+      kind: "logged_contact" as const,
+      createdById: "user-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      archivedAt: null
+    };
+    const message = {
+      id: "msg-ch-1",
+      threadId: "thread-ch-1",
+      authorId: "user-1",
+      body: "Called the QS.",
+      mentions: null,
+      createdAt: new Date(),
+      author: AUTHOR
+    };
+    prisma.$transaction.mockImplementation(async (fn) => {
+      const txProxy = {
+        commThread: { create: jest.fn().mockResolvedValue(threadWithChannel) },
+        commMessage: { create: jest.fn().mockResolvedValue(message) }
+      };
+      return fn(txProxy as never);
+    });
+
+    const service = makeService(prisma);
+    const result = await service.logContact({
+      entityType: "TENDER",
+      entityId: "tender-1",
+      subject: "Chased addendum 3",
+      body: "Called the QS.",
+      channel: "phone",
+      createdById: "user-1"
+    });
+
+    expect(result.thread.channel).toBe("phone");
+  });
+
+  it("rejects a missing channel", async () => {
+    const service = makeService(makePrisma());
+    await expect(
+      service.logContact({
+        entityType: "TENDER",
+        entityId: "tender-1",
+        subject: "Call",
+        body: "Body",
+        channel: "" as never,
+        createdById: "user-1"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("rejects an unknown channel", async () => {
+    const service = makeService(makePrisma());
+    await expect(
+      service.logContact({
+        entityType: "TENDER",
+        entityId: "tender-1",
+        subject: "Call",
+        body: "Body",
+        channel: "carrier_pigeon" as never,
+        createdById: "user-1"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+// ── CRM_INTERACTION_CHANNEL_V1: lastInteractionBatch channel + summary ────────
+
+describe("CommsService.lastInteractionBatch — CRM_INTERACTION_CHANNEL_V1", () => {
+  const AUTHOR = { id: "user-1", firstName: "Marco", lastName: "Rossi" };
+
+  it("returns channel and summary for a new log", async () => {
+    const prisma = makePrisma();
+    const msg = {
+      id: "msg-new",
+      threadId: "t1",
+      authorId: "user-1",
+      body: "Called the QS.",
+      createdAt: new Date("2026-09-20T10:00:00Z"),
+      author: AUTHOR,
+      thread: { entityType: "TENDER", entityId: "tender-1", channel: "phone", subject: "Chased addendum 3" }
+    };
+    (prisma as unknown as { commMessage: { findMany: jest.Mock } }).commMessage = {
+      findMany: jest.fn().mockResolvedValue([msg])
+    } as never;
+
+    const service = makeService(prisma);
+    const result = await service.lastInteractionBatch([
+      { entityType: "TENDER", entityId: "tender-1" }
+    ]);
+
+    const entry = result.get("TENDER:tender-1");
+    expect(entry?.channel).toBe("phone");
+    expect(entry?.summary).toBe("Chased addendum 3");
+  });
+
+  it("returns channel: null and summary from body for a legacy thread", async () => {
+    const prisma = makePrisma();
+    const legacyMsg = {
+      id: "msg-legacy",
+      threadId: "t2",
+      authorId: "user-1",
+      body: "Left voicemail for Dan\nmore",
+      createdAt: new Date("2026-09-20T10:00:00Z"),
+      author: AUTHOR,
+      thread: {
+        entityType: "TENDER",
+        entityId: "tender-2",
+        channel: null,
+        subject: "Contact — 20/09/2026"
+      }
+    };
+    (prisma as unknown as { commMessage: { findMany: jest.Mock } }).commMessage = {
+      findMany: jest.fn().mockResolvedValue([legacyMsg])
+    } as never;
+
+    const service = makeService(prisma);
+    const result = await service.lastInteractionBatch([
+      { entityType: "TENDER", entityId: "tender-2" }
+    ]);
+
+    const entry = result.get("TENDER:tender-2");
+    expect(entry?.channel).toBeNull();
+    expect(entry?.summary).toBe("Left voicemail for Dan");
+  });
+});
+
+// ── CRM_INTERACTION_CHANNEL_V1: interactionSummary ────────────────────────────
+
+describe("interactionSummary — CRM_INTERACTION_CHANNEL_V1", () => {
+  it("uses a real subject as-is", () => {
+    expect(interactionSummary("Chased addendum 3", "Some notes")).toBe("Chased addendum 3");
+  });
+
+  it("falls back to first body line when subject is the old default", () => {
+    expect(interactionSummary("Contact — 20/09/2026", "Left voicemail for Dan\nmore")).toBe(
+      "Left voicemail for Dan"
+    );
+  });
+
+  it("falls back to first body line when subject is null", () => {
+    expect(interactionSummary(null, "Left voicemail for Dan\nmore")).toBe("Left voicemail for Dan");
+  });
+
+  it("truncates to 80 characters with ellipsis when longer", () => {
+    const long = "a".repeat(81);
+    const result = interactionSummary(long, "body");
+    expect(result.length).toBe(80);
+    expect(result.endsWith("…")).toBe(true);
+  });
+
+  it("does NOT truncate at exactly 80 characters", () => {
+    const exact = "a".repeat(80);
+    const result = interactionSummary(exact, "body");
+    expect(result).toBe(exact);
+    expect(result.length).toBe(80);
+  });
+
+  it("negative control: a subject starting with 'Contact' but not the old pattern is kept", () => {
+    expect(interactionSummary("Contact form sent", "body")).toBe("Contact form sent");
   });
 });

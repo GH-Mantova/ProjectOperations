@@ -49,6 +49,7 @@ import { fileURLToPath } from "node:url";
 
 import { getToken as getAppInstallationToken, isAuthLive } from "./app-auth.mjs";
 import { validateVerdict, isLikelySpaceTruncation } from "./verdict-guard.mjs";
+import { resolvePromptModule } from "../pipeline/lint-prompt.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Isolation: the watcher can run against a dedicated clone (its own .git)
@@ -93,6 +94,17 @@ const WATCHER_LANES = (() => {
   const n = Number(process.env.PR_WATCHER_LANES);
   return Number.isInteger(n) && n >= 1 ? n : 2;
 })();
+
+// PR_TITLE_MODULE_V1 — the watcher appends this footer to the stdin of a BUILD prompt
+// (not a fix-lane or review prompt) so the agent titles its PR with the correct scope.
+// Exported so the unit test can verify the exact text without spawning a child.
+export function titleFooter(module) {
+  return (
+    "\n\n---\n" +
+    "PR TITLE (set by the watcher, PR_TITLE_MODULE_V1): title your PR `<type>(<module>): <summary>`\n" +
+    "with <module> = `" + module + "`. check-pr-title.mjs fails any other scope.\n"
+  );
+}
 
 const READY_PATTERN = /^(pr|rev)-.*-ready\.md$/i;
 const DEBOUNCE_MS = 800;
@@ -3194,7 +3206,27 @@ async function drain() {
     await recordChildPid(child.pid);
   }
 
-  child.stdin.write(promptBody);
+  // PR_TITLE_MODULE_V1 — for a BUILD prompt only (not a rev-* review, not a
+  // fix-lane prompt), resolve the module from the front matter and append the
+  // title footer so the agent knows which scope to use. This is injected into
+  // stdin only; the file on disk is never modified.
+  const isReview = isReviewJob(name);
+  const isFix = deps.fixesPr != null && Number.isInteger(deps.fixesPr) && deps.fixesPr > 0;
+  let stdinPayload = promptBody;
+  if (!isReview && !isFix) {
+    try {
+      const modRes = resolvePromptModule(promptBody, REPO_ROOT);
+      if (modRes.module) {
+        stdinPayload = promptBody + titleFooter(modRes.module);
+      } else {
+        log("title-module", `${name} has no resolvable module - agent will choose`);
+      }
+    } catch (err) {
+      log("title-module", `${name} module resolution failed (${err.message}) - agent will choose`);
+    }
+  }
+
+  child.stdin.write(stdinPayload);
   child.stdin.end();
 
   const trackLastLine = (c) => {

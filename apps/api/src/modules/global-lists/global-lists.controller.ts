@@ -43,8 +43,15 @@ class ReorderDto {
   order!: ReorderEntryDto[];
 }
 
+// LIST_ITEM_RENAME_V1: super users (isSuperUser flag) are treated as admin
+// in the service layer too, mirroring the PermissionsGuard bypass. Without
+// this, a super user would pass the guard but then fail assertEditable on any
+// seeded item (createdById: null) because isAdmin would be false.
 function toActor(actor: AuthenticatedUser) {
-  return { id: actor.sub, isAdmin: actor.permissions.includes(ADMIN_PERMISSION) };
+  return {
+    id: actor.sub,
+    isAdmin: actor.permissions.includes(ADMIN_PERMISSION) || Boolean(actor.isSuperUser)
+  };
 }
 
 @ApiTags("Global Lists")

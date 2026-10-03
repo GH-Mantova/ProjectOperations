@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+// LIST_ITEM_RENAME_V1
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
 import { useConfirm } from "../../hooks/useConfirm";
+import type { SafeUser } from "../../auth/AuthContext";
 
 type ListSummary = {
   id: string;
@@ -27,6 +29,29 @@ type ListItem = {
 };
 
 type ResolvedList = ListSummary & { items: ListItem[] };
+
+/**
+ * LIST_ITEM_RENAME_V1 — canRenameItem
+ *
+ * Returns true when the Rename control should be shown for a given item.
+ * Mirrors the server's assertEditable so the UI never offers a control
+ * that will 403.
+ *
+ * Exported so it can be unit-tested without mounting the component.
+ */
+export function canRenameItem(
+  item: ListItem,
+  list: Pick<ListSummary, "type">,
+  user: SafeUser | null,
+  canManage: boolean
+): boolean {
+  if (!canManage) return false;
+  if (list.type !== "STATIC") return false;
+  if (item.isArchived) return false;
+  if (!user) return false;
+  const isAdmin = can(user, "platform.admin") || Boolean(user.isSuperUser);
+  return isAdmin || item.createdById === user.id;
+}
 
 export function GlobalListsSection() {
   const { authFetch, user } = useAuth();
@@ -267,9 +292,12 @@ export function GlobalListsSection() {
               newValue={newValue}
               setNewValue={setNewValue}
               canManage={canManage}
+              user={user}
+              authFetch={authFetch}
               onAdd={() => void addItem()}
               onArchive={(id, label) => void archiveItem(id, label)}
               onRestore={(id) => void restoreItem(id)}
+              onReload={() => void loadSelected(selected.slug)}
             />
           )}
         </div>
@@ -331,9 +359,12 @@ function StaticListView({
   newValue,
   setNewValue,
   canManage,
+  user,
+  authFetch,
   onAdd,
   onArchive,
-  onRestore
+  onRestore,
+  onReload
 }: {
   list: ResolvedList;
   visibleItems: ListItem[];
@@ -345,10 +376,50 @@ function StaticListView({
   newValue: string;
   setNewValue: (v: string) => void;
   canManage: boolean;
+  user: SafeUser | null;
+  authFetch: (input: string, init?: RequestInit) => Promise<Response>;
   onAdd: () => void;
   onArchive: (id: string, label: string) => void;
   onRestore: (id: string) => void;
+  onReload: () => void;
 }) {
+  // LIST_ITEM_RENAME_V1 — one item in edit mode at a time
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  const startEdit = (item: ListItem) => {
+    setEditingItemId(item.id);
+    setEditLabel(item.label);
+    setRenameError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    setEditLabel("");
+    setRenameError(null);
+  };
+
+  const saveEdit = async (item: ListItem) => {
+    const trimmed = editLabel.trim();
+    if (!trimmed) return; // Save disabled — guard
+    if (trimmed === item.label) {
+      // Unchanged — just close
+      cancelEdit();
+      return;
+    }
+    const response = await authFetch(`/lists/${list.slug}/items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ label: trimmed })
+    });
+    if (!response.ok) {
+      setRenameError(await readApiErrorMessage(response));
+      return;
+    }
+    cancelEdit();
+    onReload();
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
@@ -366,41 +437,71 @@ function StaticListView({
       {list.description ? <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>{list.description}</p> : null}
 
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-        {visibleItems.map((item) => (
-          <li
-            key={item.id}
-            style={{
-              padding: "8px 10px",
-              borderBottom: "1px solid var(--border, #e5e7eb)",
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              opacity: item.isArchived ? 0.55 : 1
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500 }}>
-                {item.label}
-                {item.isArchived ? <span style={{ fontSize: 11, marginLeft: 8, color: "var(--text-muted)" }}>· archived</span> : null}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>value: {item.value}</div>
-            </div>
-            {canManage ? (
-              item.isArchived ? (
-                <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => onRestore(item.id)}>Restore</button>
+        {visibleItems.map((item) => {
+          const isEditing = editingItemId === item.id;
+          const showRename = canRenameItem(item, list, user, canManage);
+          return (
+            <li
+              key={item.id}
+              style={{
+                padding: "8px 10px",
+                borderBottom: "1px solid var(--border, #e5e7eb)",
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                opacity: item.isArchived ? 0.55 : 1
+              }}
+            >
+              {isEditing ? (
+                // LIST_ITEM_RENAME_V1 — inline edit row
+                <RenameRow
+                  item={item}
+                  editLabel={editLabel}
+                  setEditLabel={setEditLabel}
+                  renameError={renameError}
+                  onSave={() => void saveEdit(item)}
+                  onCancel={cancelEdit}
+                />
               ) : (
-                <button
-                  type="button"
-                  className="s7-btn s7-btn--ghost s7-btn--sm"
-                  onClick={() => onArchive(item.id, item.label)}
-                  aria-label={`Archive ${item.label}`}
-                >
-                  ×
-                </button>
-              )
-            ) : null}
-          </li>
-        ))}
+                <>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500 }}>
+                      {item.label}
+                      {item.isArchived ? <span style={{ fontSize: 11, marginLeft: 8, color: "var(--text-muted)" }}>· archived</span> : null}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>value: {item.value}</div>
+                  </div>
+                  {canManage ? (
+                    item.isArchived ? (
+                      <button type="button" className="s7-btn s7-btn--ghost s7-btn--sm" onClick={() => onRestore(item.id)}>Restore</button>
+                    ) : (
+                      <>
+                        {showRename ? (
+                          <button
+                            type="button"
+                            className="s7-btn s7-btn--ghost s7-btn--sm"
+                            onClick={() => startEdit(item)}
+                            aria-label={`Rename ${item.label}`}
+                          >
+                            Rename
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          onClick={() => onArchive(item.id, item.label)}
+                          aria-label={`Archive ${item.label}`}
+                        >
+                          ×
+                        </button>
+                      </>
+                    )
+                  ) : null}
+                </>
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       {canManage ? (
@@ -430,6 +531,82 @@ function StaticListView({
           </button>
         </form>
       ) : null}
+    </div>
+  );
+}
+
+// LIST_ITEM_RENAME_V1 — inline rename row
+function RenameRow({
+  item,
+  editLabel,
+  setEditLabel,
+  renameError,
+  onSave,
+  onCancel
+}: {
+  item: ListItem;
+  editLabel: string;
+  setEditLabel: (v: string) => void;
+  renameError: string | null;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const trimmed = editLabel.trim();
+  const isEmpty = !trimmed;
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!isEmpty) onSave();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          ref={inputRef}
+          className="s7-input"
+          value={editLabel}
+          onChange={(e) => setEditLabel(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={{ flex: 1 }}
+          aria-label={`New label for ${item.label}`}
+        />
+        <button
+          type="button"
+          className="s7-btn s7-btn--primary s7-btn--sm"
+          onClick={onSave}
+          disabled={isEmpty}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          className="s7-btn s7-btn--ghost s7-btn--sm"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+      {isEmpty ? (
+        <span style={{ fontSize: 12, color: "var(--status-danger)" }}>A label can't be empty.</span>
+      ) : renameError ? (
+        <span style={{ fontSize: 12, color: "var(--status-danger)" }}>{renameError}</span>
+      ) : (
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          The value {item.value} stays the same, so existing records keep working.
+        </span>
+      )}
     </div>
   );
 }

@@ -102,7 +102,7 @@ existing `DO NOT ACT` check and before the worktree CAUTION:
    `CAUTION: <actor> holds the board (<reason>, <n> min old, expires in <m> min). Stand down; COLLECT only.`
    If the caller is not known (no `-Actor`, no env), treat **every** live lease as someone else's.
 2. `BUILD IN FLIGHT` from section 3:
-   `CAUTION: a watcher build is in flight (<prompt>). Do not arm or merge until it lands.`
+   `CAUTION: a watcher build is in flight (<prompt>). Hold off arming or merging until it lands.`
    Change section 3's tag from `NOT a block signal` to `blocks arming and merging (section 7)`.
 
 Also print a section-3 `LIVE` line every run: `board lease: <actor> <reason> <age>` or

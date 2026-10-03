@@ -36,6 +36,21 @@ $script:REPO      = "GH-Mantova/ProjectOperations"
 $script:WATCHER   = "C:\po-watcher\ProjectOperations"   # the watcher's tree - NEVER git-write here
 $script:WORKTREE  = "C:\po-fix"                          # our isolated worktree - safe to git-write
 
+# UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03).
+# Every `gh` call in Merge-Pr / Update-PrBranch routes through this helper so a test can replace
+# it with a fake that records calls and returns scripted JSON. Production code paths keep using the
+# gh CLI exactly as they did before; the seam is call-site-only.
+function Invoke-PipelineGh {
+    param([Parameter(ValueFromRemainingArguments = $true)] [string[]]$GhArgs)
+    Push-Location $script:WATCHER
+    try {
+        $out = & gh @GhArgs 2>$null
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; StdOut = $out }
+    } finally {
+        Pop-Location
+    }
+}
+
 # ---------------------------------------------------------------------------------------------
 # READING THE BOARD
 # ---------------------------------------------------------------------------------------------
@@ -237,30 +252,132 @@ function Assert-Mergeable([int]$PR) {
     }
 }
 
+function Update-PrBranch {
+    <#
+      UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03).
+
+      Bring a BEHIND PR up to date against main, then READ BACK the new headRefOid so the caller
+      can pin the merge to that exact sha. A conflict (DIRTY) throws with GitHub's message; a human
+      rebase is what resolves that, exactly as before.
+    #>
+    param([Parameter(Mandatory = $true)][int]$PR)
+
+    $upd = Invoke-PipelineGh "pr" "update-branch" "$PR"
+    if ($upd.ExitCode -ne 0) {
+        $message = ($upd.StdOut | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($message)) { $message = "exit $($upd.ExitCode)" }
+        throw ("Update-PrBranch: #" + $PR + " update-branch failed -- " + $message)
+    }
+
+    $view = Invoke-PipelineGh "pr" "view" "$PR" "--json" "headRefOid" "-q" ".headRefOid"
+    if ($view.ExitCode -ne 0) {
+        throw ("Update-PrBranch: #" + $PR + " could not read new headRefOid after update-branch.")
+    }
+    $sha = ($view.StdOut | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($sha)) {
+        throw ("Update-PrBranch: #" + $PR + " headRefOid read back empty.")
+    }
+    return $sha
+}
+
 function Merge-Pr {
     <#
-      Merge, then READ BACK and prove the PR is actually MERGED.
+      UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03).
+
+      Merge discipline, per Marco's ruling: Station 00 brings a BEHIND PR up to date as the first
+      step of merging it, lets that one CI run finish, then the merge happens. The watcher's
+      BEHIND-poll stays off by default so idle PRs are not rebuilt on a timer.
+
+      Returns [pscustomobject]@{ State; PR }.
+        State = 'MERGED'  -- CLEAN PR squashed and read back as MERGED.
+        State = 'QUEUED'  -- BEHIND PR updated and queued for auto-merge against its new head.
+                             Station 00's next run confirms MERGED. Never report QUEUED as merged.
+
+      Throws on DIRTY (needs a human rebase) and on BLOCKED/UNSTABLE (names the failing or
+      pending checks, exactly as Assert-Mergeable does for its own callers).
+
       Never report a merge you have not confirmed. (sot/05 LL-38: reports described intentions.)
     #>
-    param([int]$PR, [switch]$Auto)
+    param([Parameter(Mandatory = $true)][int]$PR, [switch]$Auto)
 
     Assert-Mergeable $PR          # at the call site
 
-    Push-Location $script:WATCHER
-    if ($Auto) { gh pr merge $PR --squash --auto --delete-branch 2>$null | Out-Null }
-    else       { gh pr merge $PR --squash --delete-branch 2>$null | Out-Null }
-    $code = $LASTEXITCODE
-    Pop-Location
+    $view = Invoke-PipelineGh "pr" "view" "$PR" "--json" "mergeStateStatus,headRefOid,state"
+    if ($view.ExitCode -ne 0) {
+        throw ("Merge-Pr: #" + $PR + " could not read mergeStateStatus / headRefOid.")
+    }
+    $viewJson = ($view.StdOut | Out-String)
+    try {
+        $viewObj = $viewJson | ConvertFrom-Json
+    } catch {
+        throw ("Merge-Pr: #" + $PR + " view JSON would not parse -- " + $_.Exception.Message)
+    }
+    $mergeState = "$($viewObj.mergeStateStatus)".ToUpper()
+    $headSha    = "$($viewObj.headRefOid)".Trim()
+    $prState    = "$($viewObj.state)".ToUpper()
 
-    if ($Auto) { return ($code -eq 0) }   # --auto merges later; nothing to read back yet
+    if ($prState -eq "MERGED") {
+        return [pscustomobject]@{ State = 'MERGED'; PR = $PR }
+    }
 
-    Start-Sleep -Seconds 5
-    Push-Location $script:WATCHER
-    $state = gh pr view $PR --json state -q .state 2>$null
-    Pop-Location
-
-    if ($state -ne "MERGED") { throw ("Merge-Pr: #" + $PR + " is '" + $state + "', not MERGED. Do not report success.") }
-    return $true
+    switch ($mergeState) {
+        "DIRTY" {
+            throw ("Merge-Pr: #" + $PR + " is DIRTY -- needs a human rebase. Merge-Pr does not resolve conflicts.")
+        }
+        "BLOCKED" {
+            $checks = Get-ChecksFor -PR $PR
+            $bad = @($checks | Where-Object {
+                $state = "$($_.state)".ToUpper()
+                $state -ne "SUCCESS" -and $state -ne "SKIPPED" -and $state -ne "NEUTRAL"
+            } | ForEach-Object { "$($_.name)=$($_.state)" })
+            $detail = if ($bad.Count -gt 0) { $bad -join ", " } else { "no failing checks named -- read the PR ruleset" }
+            throw ("Merge-Pr: #" + $PR + " is BLOCKED -- " + $detail + ".")
+        }
+        "UNSTABLE" {
+            $checks = Get-ChecksFor -PR $PR
+            $bad = @($checks | Where-Object {
+                $state = "$($_.state)".ToUpper()
+                $state -ne "SUCCESS" -and $state -ne "SKIPPED" -and $state -ne "NEUTRAL"
+            } | ForEach-Object { "$($_.name)=$($_.state)" })
+            $detail = if ($bad.Count -gt 0) { $bad -join ", " } else { "state UNSTABLE with no specific failing check" }
+            throw ("Merge-Pr: #" + $PR + " is UNSTABLE -- " + $detail + ".")
+        }
+        "BEHIND" {
+            # Update first, then queue the merge pinned to the fresh head so GitHub lands it
+            # exactly when the single resulting CI run passes.
+            $newSha = Update-PrBranch -PR $PR
+            $queue = Invoke-PipelineGh "pr" "merge" "$PR" "--squash" "--auto" "--delete-branch" "--match-head-commit" $newSha
+            if ($queue.ExitCode -ne 0) {
+                $message = ($queue.StdOut | Out-String).Trim()
+                if ([string]::IsNullOrWhiteSpace($message)) { $message = "exit $($queue.ExitCode)" }
+                throw ("Merge-Pr: #" + $PR + " could not queue auto-merge after update-branch -- " + $message)
+            }
+            return [pscustomobject]@{ State = 'QUEUED'; PR = $PR }
+        }
+        "CLEAN" {
+            if ($Auto) {
+                $queue = Invoke-PipelineGh "pr" "merge" "$PR" "--squash" "--auto" "--delete-branch"
+                if ($queue.ExitCode -ne 0) {
+                    throw ("Merge-Pr: #" + $PR + " auto-merge enable failed (exit " + $queue.ExitCode + ").")
+                }
+                return [pscustomobject]@{ State = 'QUEUED'; PR = $PR }
+            }
+            $merge = Invoke-PipelineGh "pr" "merge" "$PR" "--squash" "--delete-branch"
+            if ($merge.ExitCode -ne 0) {
+                throw ("Merge-Pr: #" + $PR + " squash-merge failed (exit " + $merge.ExitCode + ").")
+            }
+            Start-Sleep -Seconds 5
+            $after = Invoke-PipelineGh "pr" "view" "$PR" "--json" "state" "-q" ".state"
+            $afterState = ($after.StdOut | Out-String).Trim()
+            if ($afterState -ne "MERGED") {
+                throw ("Merge-Pr: #" + $PR + " is '" + $afterState + "', not MERGED. Do not report success.")
+            }
+            return [pscustomobject]@{ State = 'MERGED'; PR = $PR }
+        }
+        default {
+            throw ("Merge-Pr: #" + $PR + " has mergeStateStatus '" + $mergeState + "' -- unexpected; read the PR by hand.")
+        }
+    }
 }
 
 function Assert-ArtifactSurvived {

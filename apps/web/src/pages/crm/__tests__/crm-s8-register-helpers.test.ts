@@ -217,7 +217,9 @@ describe("sortCrmRow — stable sort matches localeCompare (DB collation)", () =
 // ---------------------------------------------------------------------------
 
 describe("validateLogPayload — both interaction and next-action in one payload", () => {
+  // CRM_INTERACTION_CHANNEL_V1: channel is now required in LogPayload.
   const VALID_PAYLOAD: LogPayload = {
+    channel: "phone",
     subject: "Call — 2026-08-31",
     body: "Discussed scope with client.",
     nextActionAt: "2026-09-07",
@@ -237,11 +239,11 @@ describe("validateLogPayload — both interaction and next-action in one payload
     expect("nextActionNote" in VALID_PAYLOAD).toBe(true);
   });
 
-  it("rejects a payload with no subject", () => {
+  it("rejects a payload with no subject (Summary)", () => {
     expect(validateLogPayload({ ...VALID_PAYLOAD, subject: "" })).not.toBeNull();
   });
 
-  it("rejects a payload with whitespace-only subject", () => {
+  it("rejects a payload with whitespace-only subject (Summary)", () => {
     expect(validateLogPayload({ ...VALID_PAYLOAD, subject: "   " })).not.toBeNull();
   });
 
@@ -250,7 +252,8 @@ describe("validateLogPayload — both interaction and next-action in one payload
   });
 
   it("accepts a payload without next-action fields (optional)", () => {
-    expect(validateLogPayload({ subject: "Call", body: "Notes here" })).toBeNull();
+    // CRM_INTERACTION_CHANNEL_V1: channel is required; subject → summary.
+    expect(validateLogPayload({ channel: "phone", subject: "Call", body: "Notes here" })).toBeNull();
   });
 });
 

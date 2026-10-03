@@ -204,6 +204,8 @@ const CRM_CSV_HEADERS = [
   "Status",
   "Updated",
   "Last interaction",
+  "Last interaction channel",
+  "Last interaction summary",
   "Logged by",
   "Next action",
   "Next action note"
@@ -216,6 +218,10 @@ export type CrmExportRow = {
   status: string;
   updatedAt: string;
   lastInteractionAt?: string | null;
+  /** CRM_INTERACTION_CHANNEL_V1: channel of the last interaction, or null for legacy/no logs. */
+  lastInteractionChannel?: string | null;
+  /** CRM_INTERACTION_CHANNEL_V1: one-line summary of the last interaction. */
+  lastInteractionSummary?: string | null;
   loggedByName?: string | null;
   nextActionAt?: string | null;
   nextActionNote?: string | null;
@@ -224,11 +230,15 @@ export type CrmExportRow = {
 /**
  * Build a CRM-register CSV string from the supplied rows.
  * Uses CRLF line endings and double-quoted cells.
+ * CRM_INTERACTION_CHANNEL_V1: includes Last interaction channel and summary columns.
  */
 export function buildCrmRegisterCsv(rows: CrmExportRow[]): string {
   const lines: string[] = [CRM_CSV_HEADERS.map(csvCell).join(",")];
   for (const row of rows) {
     const client = row.tenderClients[0]?.client.name ?? "";
+    const channelLabel = row.lastInteractionChannel
+      ? (CHANNEL_LABEL[row.lastInteractionChannel] ?? row.lastInteractionChannel)
+      : null;
     lines.push(
       [
         csvCell(row.tenderNumber),
@@ -237,6 +247,8 @@ export function buildCrmRegisterCsv(rows: CrmExportRow[]): string {
         csvCell(row.status),
         csvCell(formatDateAU(row.updatedAt)),
         csvCell(row.lastInteractionAt ? formatDateAU(row.lastInteractionAt) : null),
+        csvCell(channelLabel),
+        csvCell(row.lastInteractionSummary ?? null),
         csvCell(row.loggedByName ?? null),
         csvCell(row.nextActionAt ? formatDateAU(row.nextActionAt) : null),
         csvCell(row.nextActionNote ?? null)
@@ -247,10 +259,24 @@ export function buildCrmRegisterCsv(rows: CrmExportRow[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Log-contact payload validation
+// CRM_INTERACTION_CHANNEL_V1 — channel labels and log-contact payload
 // ---------------------------------------------------------------------------
 
+/**
+ * CRM_INTERACTION_CHANNEL_V1: the five communication channels.
+ * Must stay in sync with COMM_CHANNELS in comms.service.ts (server side).
+ */
+export const CHANNEL_LABEL: Record<string, string> = {
+  phone: "Phone",
+  email: "Email",
+  meeting: "Meeting",
+  site_visit: "Site visit",
+  other: "Other"
+};
+
 export type LogPayload = {
+  /** CRM_INTERACTION_CHANNEL_V1: required. */
+  channel: string;
   subject: string;
   body: string;
   nextActionAt?: string | null;
@@ -259,10 +285,14 @@ export type LogPayload = {
 
 /**
  * Validate the log-contact form. Returns null when valid, or an error string.
- * The spec (test 4): assert both `subject` and `body` keys are present.
+ * CRM_INTERACTION_CHANNEL_V1: checks channel first (required).
  */
 export function validateLogPayload(payload: LogPayload): string | null {
-  if (!payload.subject?.trim()) return "Subject is required.";
+  if (!payload.channel) return "Pick how you made contact.";
+  if (!Object.prototype.hasOwnProperty.call(CHANNEL_LABEL, payload.channel)) {
+    return "Pick how you made contact.";
+  }
+  if (!payload.subject?.trim()) return "Summary is required.";
   if (!payload.body?.trim()) return "Interaction notes are required.";
   return null;
 }

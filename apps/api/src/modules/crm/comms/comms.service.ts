@@ -27,6 +27,20 @@ export const COMM_ENTITY_TYPES = [
 ] as const;
 export type CommEntityType = (typeof COMM_ENTITY_TYPES)[number];
 
+/**
+ * CRM_INTERACTION_CHANNEL_V1: the finite set of communication channels a
+ * logged contact can be made through. Stored as a String on the thread row,
+ * like entityType, for sub-module decoupling.
+ */
+export const COMM_CHANNELS = [
+  "phone",
+  "email",
+  "meeting",
+  "site_visit",
+  "other"
+] as const;
+export type CommChannel = (typeof COMM_CHANNELS)[number];
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type CreateThreadInput = {
@@ -88,16 +102,20 @@ export type ListTasksQuery = {
  * CRM-S8: Optional next-action fields. When nextActionAt is provided a
  * CommTask is created in the same transaction so the interaction and the
  * follow-up are always written atomically.
+ *
+ * CRM_INTERACTION_CHANNEL_V1: channel is required for new logs.
  */
 export type LogContactInput = {
   entityType: CommEntityType;
   entityId: string;
-  /** Displayed as the thread subject. Derived by the caller (e.g. "Call — 2026-08-31"). */
+  /** Displayed as the thread subject / summary. */
   subject: string;
   /** Body of the single log message. */
   body: string;
   /** The internal user performing the log action. */
   createdById: string;
+  /** CRM_INTERACTION_CHANNEL_V1: how the contact was made. Required. */
+  channel: string;
   /** CRM-S8: optional next-action due date (ISO string). */
   nextActionAt?: string | null;
   /** CRM-S8: optional next-action note / title. */
@@ -107,12 +125,18 @@ export type LogContactInput = {
 /**
  * CRM-S7: Last-interaction summary for the Tenders Register.
  * NULL when no logged-contact thread exists for the entity.
+ *
+ * CRM_INTERACTION_CHANNEL_V1: channel and summary added.
  */
 export type LastInteractionResult = {
   entityType: string;
   entityId: string;
   lastMessageAt: Date;
   loggedBy: { id: string; firstName: string; lastName: string };
+  /** CRM_INTERACTION_CHANNEL_V1: phone | email | meeting | site_visit | other, or null for legacy logs. */
+  channel: string | null;
+  /** CRM_INTERACTION_CHANNEL_V1: one-line summary derived from thread subject or first body line. */
+  summary: string;
 } | null;
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -398,6 +422,12 @@ export class CommsService {
     if (!subject) throw new BadRequestException("subject is required for a logged contact.");
     const body = input.body?.trim();
     if (!body) throw new BadRequestException("body is required.");
+    // CRM_INTERACTION_CHANNEL_V1: validate channel (required for new logs).
+    if (!COMM_CHANNELS.includes(input.channel as never)) {
+      throw new BadRequestException(
+        "channel must be one of: phone, email, meeting, site_visit, other."
+      );
+    }
     await this.requireUser(input.createdById);
 
     return this.prisma.$transaction(async (tx) => {
@@ -407,6 +437,7 @@ export class CommsService {
           entityId: input.entityId,
           subject,
           kind: CommThreadKind.logged_contact,
+          channel: input.channel,
           createdById: input.createdById
         }
       });
@@ -456,6 +487,7 @@ export class CommsService {
    * author. Rows with no logged contact return null — the Register renders
    * null as "—" and sorts them last.
    *
+   * CRM_INTERACTION_CHANNEL_V1: also returns channel and summary.
    * Does NOT union with relationship_notes. This reads comm_messages only.
    */
   async lastInteractionFor(
@@ -477,18 +509,13 @@ export class CommsService {
       orderBy: { createdAt: "desc" },
       include: {
         author: { select: { id: true, firstName: true, lastName: true } },
-        thread: { select: { entityType: true, entityId: true } }
+        thread: { select: { entityType: true, entityId: true, channel: true, subject: true } }
       }
     });
 
     if (!message) return null;
 
-    return {
-      entityType: message.thread.entityType,
-      entityId: message.thread.entityId,
-      lastMessageAt: message.createdAt,
-      loggedBy: message.author
-    };
+    return this.buildLastInteractionResult(message);
   }
 
   /**
@@ -498,6 +525,8 @@ export class CommsService {
    *
    * Returns a Map keyed by `${entityType}:${entityId}`.
    * Entries absent from the map have no logged contact (render "—").
+   *
+   * CRM_INTERACTION_CHANNEL_V1: also returns channel and summary.
    */
   async lastInteractionBatch(
     pairs: Array<{ entityType: CommEntityType; entityId: string }>
@@ -520,7 +549,7 @@ export class CommsService {
       orderBy: { createdAt: "desc" },
       include: {
         author: { select: { id: true, firstName: true, lastName: true } },
-        thread: { select: { entityType: true, entityId: true } }
+        thread: { select: { entityType: true, entityId: true, channel: true, subject: true } }
       }
     });
 
@@ -529,16 +558,33 @@ export class CommsService {
     for (const msg of messages) {
       const key = `${msg.thread.entityType}:${msg.thread.entityId}`;
       if (!result.has(key)) {
-        result.set(key, {
-          entityType: msg.thread.entityType,
-          entityId: msg.thread.entityId,
-          lastMessageAt: msg.createdAt,
-          loggedBy: msg.author
-        });
+        result.set(key, this.buildLastInteractionResult(msg));
       }
     }
 
     return result;
+  }
+
+  /**
+   * CRM_INTERACTION_CHANNEL_V1: shared private helper so lastInteractionFor and
+   * lastInteractionBatch build the result through the same path and cannot drift.
+   */
+  private buildLastInteractionResult(
+    message: {
+      createdAt: Date;
+      body: string;
+      author: { id: string; firstName: string; lastName: string };
+      thread: { entityType: string; entityId: string; channel: string | null; subject: string | null };
+    }
+  ): NonNullable<LastInteractionResult> {
+    return {
+      entityType: message.thread.entityType,
+      entityId: message.thread.entityId,
+      lastMessageAt: message.createdAt,
+      loggedBy: message.author,
+      channel: message.thread.channel,
+      summary: interactionSummary(message.thread.subject, message.body)
+    };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -586,4 +632,39 @@ export function extractMentions(body: string): string[] {
   const out: string[] = [];
   for (const m of matches) out.push(m[2]);
   return out;
+}
+
+/**
+ * CRM_INTERACTION_CHANNEL_V1: derive the one-line summary shown in the
+ * Tenders Register Last interaction cell.
+ *
+ * Rules:
+ *   - If subject is non-empty AND is NOT the old default
+ *     (matches /^Contact\s+[—-]\s+\d{1,2}\/\d{1,2}\/\d{4}$/), use the subject.
+ *   - Otherwise use the first non-empty line of body.
+ *   - Truncate to 80 characters, appending "…" when cut.
+ *
+ * Exported for unit testing.
+ */
+export function interactionSummary(
+  subject: string | null | undefined,
+  body: string | null | undefined
+): string {
+  const OLD_DEFAULT_RE = /^Contact\s+[—\-]\s+\d{1,2}\/\d{1,2}\/\d{4}$/;
+  const trimmedSubject = subject?.trim() ?? "";
+  if (trimmedSubject && !OLD_DEFAULT_RE.test(trimmedSubject)) {
+    return truncate80(trimmedSubject);
+  }
+  // Fall back to first non-empty line of body.
+  const lines = (body ?? "").split("\n");
+  for (const line of lines) {
+    const t = line.trim();
+    if (t) return truncate80(t);
+  }
+  return "";
+}
+
+function truncate80(s: string): string {
+  if (s.length <= 80) return s;
+  return s.slice(0, 79) + "…";
 }

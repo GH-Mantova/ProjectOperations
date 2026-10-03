@@ -5,6 +5,7 @@ import { isAdminUser } from "../../auth/permissions";
 import { readApiErrorMessage, throwIfApiError } from "../../lib/api-errors";
 import { NoAccess } from "../../components/NoAccess";
 import { useConfirm } from "../../hooks/useConfirm";
+import { BrandThemeSection } from "./BrandThemeSection";
 
 // ── Types shared with backend DTOs ────────────────────────────────────
 type CompanyProfile = {
@@ -348,11 +349,8 @@ export function AdminCompanyPage() {
             <NumberingSection profile={profile} onPatch={patchField} savedFlash={savedFlash} />
           )}
           {section === "branding" && (
-            <BrandingSection
-              profile={profile}
-              branding={branding}
-              onPatch={patchField}
-              savedFlash={savedFlash}
+            <BrandThemeSection
+              isSuperUser={user?.isSuperUser === true}
             />
           )}
           {section === "legal" && <LegalDocumentsSection authFetch={authFetch} />}
@@ -933,42 +931,6 @@ function NumberingSection({ profile, onPatch, savedFlash }: SectionProps) {
       <Field label="Variation prefix" field="variationNumberPrefix" value={profile.variationNumberPrefix} onPatch={onPatch} savedFlash={savedFlash} />
       <Field label="Claim prefix" field="claimNumberPrefix" value={profile.claimNumberPrefix} onPatch={onPatch} savedFlash={savedFlash} />
       <Field label="Incident prefix" field="incidentNumberPrefix" value={profile.incidentNumberPrefix} onPatch={onPatch} savedFlash={savedFlash} />
-    </div>
-  );
-}
-
-function BrandingSection({
-  profile,
-  branding,
-  onPatch,
-  savedFlash
-}: SectionProps & { branding: Branding | null }) {
-  // Prefer the relation values when present; fall back to the CompanyProfile
-  // string columns. Writes still go through PATCH /admin/company/profile —
-  // the /admin/branding endpoints exist for callers that manipulate schemes
-  // and assets directly and keep the legacy columns mirrored.
-  const scheme = branding?.activeColorScheme ?? null;
-  const primary = scheme?.primaryColorHex ?? profile.primaryColorHex;
-  const secondary = scheme?.secondaryColorHex ?? profile.secondaryColorHex;
-  const logoLight = branding?.assets.LOGO_LIGHT ?? profile.logoLightUrl;
-  const logoDark = branding?.assets.LOGO_DARK ?? profile.logoDarkUrl;
-  const favicon = branding?.assets.FAVICON ?? profile.faviconUrl;
-  const letterhead = branding?.assets.PDF_LETTERHEAD ?? profile.pdfLetterheadUrl;
-  return (
-    <div>
-      <h2 style={{ marginTop: 0 }}>Branding</h2>
-      <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        Colors and asset URLs.{" "}
-        {scheme
-          ? `Active palette: ${scheme.name}.`
-          : "No active palette selected — showing legacy string fields."}
-      </p>
-      <Field label="Primary color (hex)" field="primaryColorHex" value={primary} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Secondary color (hex)" field="secondaryColorHex" value={secondary} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Logo light URL" field="logoLightUrl" value={logoLight} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Logo dark URL" field="logoDarkUrl" value={logoDark} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="Favicon URL" field="faviconUrl" value={favicon} onPatch={onPatch} savedFlash={savedFlash} />
-      <Field label="PDF letterhead URL" field="pdfLetterheadUrl" value={letterhead} onPatch={onPatch} savedFlash={savedFlash} />
     </div>
   );
 }

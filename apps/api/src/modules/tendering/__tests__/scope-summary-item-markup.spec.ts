@@ -95,6 +95,8 @@ function makeItem(opts: {
 function makeSummaryPrisma(opts: { items: unknown[]; tenderMarkup: number }) {
   return {
     tender: { findUnique: jest.fn().mockResolvedValue({ id: "t-1" }) },
+    scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
     scopeOfWorksItem: { findMany: jest.fn().mockResolvedValue(opts.items) },
     tenderEstimate: {
       findUnique: jest.fn().mockResolvedValue({ markup: opts.tenderMarkup })
@@ -109,6 +111,8 @@ function makeSummaryPrisma(opts: { items: unknown[]; tenderMarkup: number }) {
 function makeListPrisma(opts: { items: unknown[]; tenderMarkup: number }) {
   return {
     tender: { findUnique: jest.fn().mockResolvedValue({ id: "t-1" }) },
+    scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
     scopeOfWorksItem: { findMany: jest.fn().mockResolvedValue(opts.items) },
     tenderEstimate: {
       findUnique: jest.fn().mockResolvedValue({ markup: opts.tenderMarkup })

@@ -29,6 +29,8 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     estimatePlantLine: { create: jest.fn().mockResolvedValue({}) },
     estimateCuttingLine: { create: jest.fn().mockResolvedValue({}) },
     estimateWasteLine: { create: jest.fn().mockResolvedValue({}) },
+    scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
     scopeOfWorksItem: {
       findUnique: jest.fn().mockResolvedValue(null),
       update: jest.fn().mockResolvedValue({})
@@ -287,6 +289,8 @@ describe("ScopeOfWorksService — rates via RateResolverService (SLICE 2)", () =
       });
       const rateResolver = makeRateResolver({ listRates });
       const prisma = makePrisma({
+        scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
         scopeOfWorksItem: {
           findMany: jest.fn().mockResolvedValue([])
         },

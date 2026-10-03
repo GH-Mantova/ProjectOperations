@@ -167,6 +167,8 @@ function makePrisma(
     tender: {
       findUnique: jest.fn().mockResolvedValue({ id: "tender-1" })
     },
+    scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
     scopeOfWorksItem: {
       findMany: jest.fn().mockResolvedValue(items),
       findUnique: jest.fn(),
@@ -266,6 +268,8 @@ describe("SCOPE_QUOTE_DESTINATION_V1 -- Rule A removed, destination drives money
     const updateMock = jest.fn().mockResolvedValue({ id: "item-dem", quoteDestination: "INTERNAL" });
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: {
         findUnique: jest.fn()
           .mockResolvedValueOnce(covered)
@@ -288,6 +292,8 @@ describe("SCOPE_QUOTE_DESTINATION_V1 -- Rule A removed, destination drives money
     const updateMock = jest.fn().mockResolvedValue({ id: "item-dem" });
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: {
         findUnique: jest.fn()
           .mockResolvedValueOnce(covered)
@@ -328,6 +334,8 @@ describe("unlinkItemFromSubLine", () => {
     const updateMock = jest.fn().mockResolvedValue({ id: "item-1", pricedBySubItemId: null });
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: {
         findUnique: jest.fn().mockResolvedValue(item),
         update: updateMock
@@ -409,6 +417,8 @@ describe("linkItemToSubLine", () => {
     };
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: { findUnique: jest.fn().mockResolvedValue(item) }
     } as never;
     const svc = makeService(prisma);
@@ -423,6 +433,8 @@ describe("linkItemToSubLine", () => {
     const target  = { id: "item-dem2", tenderId: "tender-1", card: { discipline: "DEM" } };
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: {
         findUnique: jest
           .fn()
@@ -442,6 +454,8 @@ describe("linkItemToSubLine", () => {
     const target  = { id: "item-b", tenderId: "tender-2", card: { discipline: "SUB" } };
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: {
         findUnique: jest
           .fn()
@@ -464,6 +478,8 @@ describe("addSubLineQuote", () => {
     const demItem = { id: "item-dem", tenderId: "tender-1", card: { discipline: "DEM" } };
     const prisma = {
       tender: { findUnique: jest.fn().mockResolvedValue({ id: "tender-1" }) },
+      scopeItemEnclosureLine: { findMany: jest.fn().mockResolvedValue([]) },
+
       scopeOfWorksItem: { findUnique: jest.fn().mockResolvedValue(demItem) }
     } as never;
     const svc = makeService(prisma);

@@ -374,6 +374,21 @@ export class ScopeOfWorksService {
     const rateMaps = buildRateMaps(labourRates, plantRates);
     const tenderMarkup = tenderEstimate ? Number(tenderEstimate.markup) : 30;
 
+    // ASB_ENCLOSURE_LINES_V1 -- batch-fetch all enclosure lines for this
+    // tender so the per-item map is built in one query (not N).
+    // Lines are keyed by scopeItemId; each row contributes its effective
+    // total = qty * (rateOverride ?? rate) before markup.
+    const allEnclosureLines = await this.prisma.scopeItemEnclosureLine.findMany({
+      where: { scopeItem: { tenderId } },
+      select: { scopeItemId: true, qty: true, rate: true, rateOverride: true }
+    });
+    const enclosureLinesByItem = new Map<string, typeof allEnclosureLines>();
+    for (const el of allEnclosureLines) {
+      const bucket = enclosureLinesByItem.get(el.scopeItemId) ?? [];
+      bucket.push(el);
+      enclosureLinesByItem.set(el.scopeItemId, bucket);
+    }
+
     const itemsWithTotals = sorted.map((item) => {
       const discipline = (item.card?.discipline ?? "Other") as Discipline;
       // SCOPE_ITEM_LABOUR_STORE_V1 — one shared expression, never inlined:
@@ -384,10 +399,23 @@ export class ScopeOfWorksService {
         tenderMarkup
       );
       const totals = computeScopeItemTotal(toPricingInput(item, discipline), rateMaps, effectiveMarkup);
+
+      // ASB_ENCLOSURE_LINES_V1 -- add enclosure lines to the item subtotal
+      // before applying markup. The enclosure lines follow the item's markup.
+      const encLines = enclosureLinesByItem.get(item.id) ?? [];
+      let enclosureSubtotal = 0;
+      for (const el of encLines) {
+        const effRate = el.rateOverride !== null ? Number(el.rateOverride) : Number(el.rate);
+        enclosureSubtotal += Number(el.qty) * effRate;
+      }
+      const markupFactor = 1 + (Number.isFinite(effectiveMarkup) ? effectiveMarkup : 0) / 100;
+      const lineTotal = totals.lineTotal + enclosureSubtotal;
+      const lineTotalWithMarkup = totals.lineTotalWithMarkup + enclosureSubtotal * markupFactor;
+
       return {
         ...item,
-        lineTotal: totals.lineTotal,
-        lineTotalWithMarkup: totals.lineTotalWithMarkup
+        lineTotal,
+        lineTotalWithMarkup
       };
     });
 

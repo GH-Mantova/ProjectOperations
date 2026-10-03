@@ -200,14 +200,32 @@ if (Test-Path $hb) {
   $age = [int]((New-TimeSpan -Start (Get-Item $hb).LastWriteTime -End (Get-Date)).TotalMinutes)
   Line "LIVE" ("heartbeat age: " + $age + " min  (ticks only mid-run; stale + empty queue = idle, NOT wedged)")
 }
-# watcher CLONE health -- a dirty/wrong-branch clone is what makes start-watcher REFUSE to run
+# watcher CLONE health -- a dirty/wrong-branch clone is what makes start-watcher REFUSE to run.
+# SWEEP_DIRTY_MEANS_WHAT_THE_WATCHER_MEANS_V1 -- 2026-10-03. The old line counted `git status
+# --short`, which includes UNTRACKED files, then warned "may refuse to start". But
+# start-watcher.ps1 (scripts/pr-watcher/start-watcher.ps1) measures dirty with
+# `git status --porcelain --untracked-files=no` -- its own comment is literally "Only TRACKED
+# modified/staged files count as dirty". So the sweep flagged clones the watcher starts on
+# happily, and the "watcher clone dirty=1, may refuse to start" line has been noise for weeks.
+# Fix: match the watcher's own test for the flag, and report untracked separately as INFO.
 if (Test-Path (Join-Path $WatcherClone ".git")) {
   Push-Location $WatcherClone
   $cbranch = (git rev-parse --abbrev-ref HEAD 2>$null)
-  $cdirty = @(git status --short 2>$null).Count
+  # TRACKED dirt -- the exact command start-watcher.ps1 uses. Two instruments on the same
+  # question must share one command, so they cannot disagree.
+  $trackedLines = @(git status --porcelain --untracked-files=no 2>$null | Where-Object { $_ -match '\S' })
+  $cTrackedDirty = $trackedLines.Count
+  # UNTRACKED, counted separately. `??` is the porcelain code for untracked (two spaces then
+  # XY = "??"). The watcher stashes these with --include-untracked at launch, so they do not
+  # refuse the start, but a reader may still want to know they are there.
+  $untrackedLines = @(git status --porcelain --untracked-files=normal 2>$null | Where-Object { $_ -match '^\?\?' })
+  $cUntracked = $untrackedLines.Count
   Pop-Location
-  $cflag = if ($cbranch -ne "main" -or $cdirty -gt 0) { "  <-- NOT clean-on-main; the watcher may refuse to start" } else { "" }
-  Line "LIVE" ("watcher clone: branch=" + ($cbranch) + " dirty=" + $cdirty + $cflag)
+  $cflag = if ($cbranch -ne "main" -or $cTrackedDirty -gt 0) { "  <-- NOT clean-on-main; the watcher may refuse to start" } else { "" }
+  Line "LIVE" ("watcher clone: branch=" + ($cbranch) + " tracked-dirty=" + $cTrackedDirty + " untracked=" + $cUntracked + $cflag)
+  if ($cTrackedDirty -eq 0 -and $cUntracked -gt 0 -and $cbranch -eq "main") {
+    Line "LIVE" ("   watcher clone: " + $cUntracked + " untracked file(s) -- the watcher ignores these; add them to .git/info/exclude if they are expected")
+  }
 } else { Line "LIVE" ("watcher clone MISSING at " + $WatcherClone) }
 
 # worktree-liveness: classify each non-main worktree as LIVE or orphaned based on dirty state
@@ -306,6 +324,28 @@ if ($wt.Count -gt 0) {
       } else {
         Line "LIVE" ("   orphaned worktree (aborted run leftover -- investigate/prune): " + $wtLine)
         Line "LIVE" ("      dirty=" + $dirtyCount + " files  age=" + $ageMinutes + " min")
+        # SWEEP_DIRTY_MEANS_WHAT_THE_WATCHER_MEANS_V1 -- 2026-10-03. An orphaned worktree whose
+        # branch holds commits that exist on no remote is NOT safe to prune: `git worktree remove`
+        # succeeds and the commits go to the reflog of a branch nothing else references, and the
+        # next `git gc` destroys them. Dirty is one warning, unpushed is a SEPARATE warning, and
+        # either one withholds the "safe to prune" wording below.
+        $unpushedRaw = git -C $wtPath rev-list --count HEAD --not --remotes 2>$null
+        $unpushedExit = $LASTEXITCODE
+        $unpushedBlocks = $false
+        if ($unpushedExit -ne 0 -or [string]::IsNullOrWhiteSpace([string]$unpushedRaw)) {
+          # Detached with no history, or git refused -- never fall back to "safe". DOCTRINE 9.6.
+          Line "LIVE" "      [CANNOT MEASURE] unpushed commits; prune advice withheld"
+          $unpushedBlocks = $true
+        } else {
+          $unpushedCount = 0
+          if (-not [int]::TryParse(([string]$unpushedRaw).Trim(), [ref]$unpushedCount)) {
+            Line "LIVE" "      [CANNOT MEASURE] unpushed commits; prune advice withheld"
+            $unpushedBlocks = $true
+          } elseif ($unpushedCount -gt 0) {
+            Line "LIVE" ("      <-- HOLDS " + $unpushedCount + " COMMIT(S) ON NO REMOTE BRANCH. Push or preserve before pruning. A squash-merged branch also shows here: confirm with gh pr list --head " + $wtBranch + " --state merged.")
+            $unpushedBlocks = $true
+          }
+        }
         if ($dirtyCount -gt 0) {
           # Orphaned but dirty: before telling the reader to preserve work, probe whether the working
           # copy actually differs from origin/main (DOCTRINE 9.2/9.3 -- an EOL smudge or a generated
@@ -324,10 +364,13 @@ if ($wt.Count -gt 0) {
             # This is the half of the old rule worth keeping -- it warns, it no longer blocks the board.
             Line "LIVE" ("      <-- HOLDS UNCOMMITTED WORK (" + $dirtyCount + " file(s)). PRESERVE OR COMMIT BEFORE PRUNING; 'git worktree remove' will refuse, and --force would discard it.")
             Line "LIVE" ("          list it first: git -C " + $wtPath + " status --porcelain")
-          } else {
+          } elseif (-not $unpushedBlocks) {
             # Every dirty file matches origin/main byte-for-byte (e.g. CRLF smudge, regenerated file).
-            # Nothing local to lose -- prune is safe without preserving.
+            # Nothing local to lose -- AND no unpushed commits -- so a prune is safe without preserving.
             Line "LIVE" ("      dirty=" + $dirtyCount + " file(s) but ALL match origin/main (e.g. CRLF smudge or regenerated file) -- no local work to preserve; safe to prune.")
+          } else {
+            # Working-copy diff is all smudge, but unpushed commits are still at stake. Say so.
+            Line "LIVE" ("      dirty=" + $dirtyCount + " file(s) match origin/main (CRLF smudge etc.), but unpushed commits above still block the prune.")
           }
         }
       }

@@ -304,6 +304,18 @@
    crm-avatar, and s7-badge which are all defined earlier in this file or in
    the kit. This comment anchors the S4 section for future additions. */
 
+/* ── CRM_INTERACTION_CHANNEL_V1 — Last interaction summary sub-line ───────── */
+
+/* One-line ellipsis summary under the channel + relative time. Reuses
+   crm-cell-sub for colour; adds overflow truncation so long summaries do
+   not stretch the table cell. The full text is in the title attribute. */
+.crm-last-interaction-summary {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Follow-ups SHOW toggles — crmvis-S5 ─────────────────────────────────── */
 
 /* Container — one flex row that wraps on narrow viewports, matching the

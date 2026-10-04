@@ -33,6 +33,9 @@ escalates: true
 module: global-lists
 ---
 
+> **SPENT AND SUPERSEDED 2026-10-04 (Station 06).** Built in #2242, but into `GlobalListsSection.tsx`, a component nothing renders, so the live Settings screen never got the button. Replaced by `pr-list-item-rename-live-screen-HOLD.md`. Do not arm.
+
+
 # Rename a list item from Settings, Reference data and Lists
 
 STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.

@@ -156,12 +156,17 @@ export class GlobalListsService {
     });
   }
 
+  // LIST_ITEM_RENAME_V1
   async updateItem(
     slug: string,
     itemId: string,
     actor: { id: string; isAdmin: boolean },
     dto: { label?: string; metadata?: Prisma.JsonValue | null; sortOrder?: number; isArchived?: boolean }
   ) {
+    // LIST_ITEM_RENAME_V1: if a label is provided it must not be blank after trimming.
+    if (dto.label !== undefined && !dto.label.trim()) {
+      throw new BadRequestException("Label cannot be empty.");
+    }
     const list = await this.requireStaticList(slug);
     const item = await this.prisma.globalListItem.findUnique({ where: { id: itemId } });
     if (!item || item.listId !== list.id) throw new NotFoundException("List item not found.");

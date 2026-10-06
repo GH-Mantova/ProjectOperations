@@ -261,6 +261,12 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
 - **ARM ONE AT A TIME.** Arming is a `git mv` of a **tracked** `-HOLD.md` to `-ready.md` — never the
   creation of a `-ready.md`, which `.gitignore:75` swallows. Lint ADMIT is necessary, not sufficient
   (DOCTRINE §9.5).
+
+  **MARCO_QUEUE_LINE_V1 — read the sweep's WAITING ON MARCO line before arming.** Arming one at a
+  time stops collisions in the dev tree. It does not protect Marco's queue: every armed prompt that
+  is not docs-only adds a PR he must release. There is **no limit** (Marco, 2026-10-03), so the call
+  is yours. Whenever you arm, copy both lines' figures into your breadcrumb. They are the evidence
+  for any future limit.
 - **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
   finding one of the four dispositions. **Start with `node scripts/pipeline/check-breadcrumb.mjs
   --freshness`.** Exit 2 = silence; exit 1 = malformed report. A silent station is a defect you must

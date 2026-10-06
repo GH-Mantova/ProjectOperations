@@ -50,9 +50,14 @@ function runDriver({ body, responseMap = {}, checks = [] }) {
   const transcript = join(tmp, "transcript.json").replace(/\\/g, "/");
   const responseJson = JSON.stringify(responseMap).replace(/'/g, "''");
   const checksJson = JSON.stringify(checks).replace(/'/g, "''");
+  // BOARD_LEASE_V1: point lease path at per-test tmp dir so Merge-Pr never touches the real
+  // dev tree's .git. The driver stubs Enter-/Exit-BoardLease to no-ops anyway (these tests
+  // exercise only the merge logic); board-lease.test.mjs exercises the real lease code.
+  const leasePath = join(tmp, "po-board-lease.json").replace(/\\/g, "/");
 
   const driver = `
 $ErrorActionPreference = 'Continue'
+$env:PO_BOARD_LEASE_PATH = '${leasePath}'
 . '${PIPELINE_LIB.replace(/\\/g, "/")}'
 
 $script:__RESPONSES = '${responseJson}' | ConvertFrom-Json
@@ -72,6 +77,11 @@ function Invoke-PipelineGh {
 }
 
 function Get-ChecksFor { param([int]$PR) return $script:__CHECKS }
+
+# BOARD_LEASE_V1: stub so these tests exercise ONLY the merge logic (board-lease.test.mjs
+# covers the real lease code).
+function Enter-BoardLease { param([string]$Actor, [string]$Reason, [int]$Minutes = 30) return $true }
+function Exit-BoardLease  { param([string]$Actor) return $true }
 
 $outcome = @{ calls = $null; result = $null; error = $null }
 try {

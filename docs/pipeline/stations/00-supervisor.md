@@ -362,8 +362,14 @@ stage-ready items; merge green PRs), under ALL of — these are permanent operat
    to arm. Never raw `gh pr merge` or a hand `git merge`.
 2. **Clean isolated worktree only** — off `origin/main` on the Windows FS. Never the sandbox tree,
    never `C:\po-watcher`, never the interactive tree. Tear it down always.
-3. **Single actor** — first confirm nothing else is mid-mutation (in-progress prompt, git lock, a
-   PR touched in the last ~2 min). If something else is acting, STOP: that is the LL-38 collision.
+3. **Single actor (BOARD_LEASE_V1, 2026-10-03)** — take the board lease (`Enter-BoardLease`) before
+   any arm, merge, branch update or label change. If it is refused, COLLECT only and say WHO held
+   it (the refusal line names the actor and its reason). Release it when the mutation lands;
+   `arm-prompt.ps1` leaves it held so the gap between arm and the watcher's heartbeat stays
+   covered, and the lease expires on its own after 30 minutes. The existing lock, process and
+   recent-activity checks still run — the lease is **in addition to**, not instead of, them:
+   first confirm nothing else is mid-mutation (in-progress prompt, git lock, a PR touched in the
+   last ~2 min). If something else is acting, STOP: that is the LL-38 collision.
 4. **Read back the PR head / merge state**, never just "I pushed".
 
 These four are what make a single actor safe. **Condition 3 is the load-bearing one**: it is the

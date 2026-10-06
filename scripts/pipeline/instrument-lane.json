@@ -1,0 +1,19 @@
+{
+  "files": [
+    "scripts/pipeline/status-sweep.ps1",
+    "scripts/pipeline/check-breadcrumb.mjs",
+    "scripts/pipeline/lint-prompt.mjs",
+    "scripts/pipeline/lint-station.mjs",
+    "scripts/pipeline/check-queue-layout.mjs",
+    "scripts/pipeline/queue-layout.mjs",
+    "scripts/pipeline/triage-holds.ps1",
+    "scripts/pipeline/check-escalations.mjs",
+    "scripts/pipeline/check-backlog.mjs",
+    "scripts/pipeline/check-d-register.mjs",
+    "scripts/pipeline/check-sot-refs.mjs",
+    "scripts/pipeline/check-hex-ratchet.mjs",
+    "scripts/pipeline/module-baseline.json"
+  ],
+  "tests": [ "scripts/pipeline/__tests__/**" ],
+  "_readme": "INSTRUMENT LANE (INSTRUMENT_LANE_V1) — Marco's ruling 2026-10-03.\n\nStation 00 may merge a PR without Marco's involvement only when ALL of the following hold:\n  1. Every changed file in the PR is in the `files` list or matches a `tests` glob.\n  2. The `instrument-lane.json` file itself is UNCHANGED — changing the allowlist always needs Marco.\n  3. CI is green.\n  4. A fresh MERGE verdict exists for the exact current head SHA.\n  5. The PR carries no `do-not-merge` label.\n\nNEVER-LIST — these are explicitly out of scope and always require Marco:\n  - `pipeline-lib.ps1` — the core library all scripts depend on\n  - `arm-prompt.ps1` — the arming mechanism itself\n  - `new-worktree.ps1` — worktree management\n  - `retire-escalation.mjs` — escalation lifecycle\n  - `dispatch.mjs` — the dispatcher\n  - Everything under `scripts/pr-watcher/` — the watcher itself\n  - Everything under `scripts/pr-gates/` — gate evaluation\n  - Everything under `.github/` — CI workflows\n  - Everything under `docs/` — documentation including DOCTRINE and station instructions\n  - Everything under `sot/` — source of truth\n  - Everything under `apps/` — application code\n  - Everything under `prisma/` — database schema and migrations\n  - `instrument-lane.json` itself — changing the allowlist is always Marco's decision\n\nThis file itself is NOT in the lane. Any change to `instrument-lane.json` immediately places the PR out of the instrument lane and routes it to Marco."
+}

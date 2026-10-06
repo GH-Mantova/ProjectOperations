@@ -2576,9 +2576,30 @@ F1, option **(a)**, whose wording this section adopts.
 
 ## 10.3 Route docs-and-tests work through the watcher, not around it
 
-The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,
+🔴 **RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03) — the tests-docs auto-merge lane is RETIRED.**
+`start-watcher.ps1` now sets `PR_WATCHER_AUTO_MERGE_POLICY = "off"` by default; the watcher opens
+the PR, routes it to Marco, and moves straight on to the next job. The code (`waitForPolicyMerge`,
+`verdictApproves`, `classifyPolicyFiles`) is kept, unused by default, so the lane can be restored
+by setting `PR_WATCHER_AUTO_MERGE_POLICY=tests-docs` explicitly. **MEASURED 2026-10-03** from the
+watcher clone's logs (2026-08-24 onward): 240 `policy=tests-docs, waiting` events; the lane enabled
+auto-merge **4** times (3 on 2026-08-24, 1 on 2026-10-02); 14 more PRs merged during a wait because
+a person or Station 00 merged them. The lane almost never merged anything itself while holding the
+single build worker — the point of retirement is to free that worker. The historical measurements
+below are kept as the record of why the lane was tried and why it is being retired; they are no
+longer live policy.
+
+The paragraphs below are the historical record of the lane while it was live. They are preserved
+rather than deleted because the measurements inside them are what retired the lane, and because
+`lint-station.mjs` enforces anchor stability. The surviving sentence that used to read "The
+auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY =
+"tests-docs"`" was CORRECT at the time it was written. From 2026-10-03 the lane is OFF by default;
+treat this subsection as history, not instruction.
+
+The auto-merge policy was live until 2026-10-03: `start-watcher.ps1:160` set
+`PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,
 and `classifyPolicyFiles` admits a diff confined to `tests/**` + `docs/**` with no `migrations/` path.
-**42 PRs have merged with no human through that gate.** It works.
+**42 PRs had merged with no human through that gate.** It worked, intermittently (see the
+`4-of-240` count above and the starvation record further down).
 
 🟢🟢 **REFUTED 2026-09-04T03:1xZ by Station 00 — the lane is NOT dead, and has not been for three days.**
 This paragraph read *“But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to
@@ -2671,6 +2692,10 @@ open escalation `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-
 falsifying probe — *"leave a watcher-built `tests-docs` PR alone; if the review appears and
 auto-merge enables with nobody touching it, this escalation is dead"* — was run unattended today
 and the escalation **SURVIVED it**.
+🟢 **RETIRE_TESTS_DOCS_LANE_V1 (2026-10-03): the cause above is retired with the lane.** The
+merge waiter no longer holds the single worker — the watcher opens the PR and returns to drain —
+so this starvation path cannot fire under the default policy. The escalation file is kept for its
+measurements; it is no longer a live defect in the default configuration.
 
 ⚠️ **The falsifying probe for THIS paragraph is per-PR, not the `ok:true` count**: for a docs PR
 that timed out, check whether its `docs/pr-reviews/pr-<N>-review.md` was written BEFORE the window
@@ -2938,3 +2963,44 @@ fallback, not the replacement. ⚠️ **The 4-of-40 figure is STATE — re-measu
 marker on every prompt this correction is unnecessary; and if the premise-at-head probe ever returns
 a hit for a prompt whose work is demonstrably not in that PR, it is wrong and must be re-measured.
 Found and landed by Station 00 2026-09-10T17:3xZ.
+
+## §INSTRUMENT_LANE_V1
+
+**Marco's ruling, 2026-10-03.** Station 00 may merge a PR without Marco's direct involvement only
+when the PR touches only reporting and checking tools — the "instrument lane". The goal is to let
+small fixes to pipeline instruments flow without a full Marco review cycle, while keeping every
+consequential change (the watcher, merge scripts, CI workflows, docs, app code, database) under
+Marco's control.
+
+### The boundary
+
+- The allowlist is `scripts/pipeline/instrument-lane.json`. It names every file currently in the
+  lane. This file is NOT itself in the lane — changing it always needs Marco.
+- `scripts/pipeline/check-instrument-lane.mjs` enforces the boundary in CI against every PR,
+  reporting `INSTRUMENT_LANE: IN_LANE` or `INSTRUMENT_LANE: OUT_OF_LANE` as the last line of its
+  output. Exit 0 either way; exit 2 is `[CANNOT MEASURE]`.
+- The CI step is evidence only — it is not a required check and does not block merge on its own.
+  Station 00 reads the job summary to determine the verdict for the current head.
+
+### The never-list (always Marco's, never in the lane)
+
+The following are explicitly excluded: the watcher (`scripts/pr-watcher/**`), merge and arm scripts
+(`pipeline-lib.ps1`, `arm-prompt.ps1`, `new-worktree.ps1`, `retire-escalation.mjs`, `dispatch.mjs`),
+gate scripts (`scripts/pr-gates/**`), CI workflows (`.github/**`), documentation (`docs/**`),
+source of truth (`sot/**`), application code (`apps/**`), and database files (`prisma/**`).
+
+### Labels
+
+A labelled PR (`do-not-merge`) is always Marco's — the lane never removes a label, and a label on
+a PR is an explicit hold regardless of what the diff contains.
+
+### Prompts and the lane
+
+Prompts that only touch in-lane files can be staged with `escalates: false`, so no
+`do-not-merge` label is applied and the lane can take them. Prompts already staged with
+`escalates: true` keep their label and stay Marco's.
+
+### Written record
+
+Every instrument-lane merge is named in the run's breadcrumb under a heading **Instrument-lane
+merges**, with the file list, reviewed SHA, and a note that CI was green.

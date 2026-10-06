@@ -465,6 +465,14 @@ before merging:**
 
 Full detail: DOCTRINE-REFERENCE.md §10.1.
 
+**The instrument lane (INSTRUMENT_LANE_V1, from 2026-10-03).** Station 00 may merge a PR without
+Marco removing a label only when the PR carries no `do-not-merge` label, CI is green,
+`check-instrument-lane.mjs` reports `IN_LANE` for the current head, and a fresh MERGE verdict
+exists for that head. The lane boundary is `scripts/pipeline/instrument-lane.json`, enforced
+by `scripts/pipeline/check-instrument-lane.mjs`. It never applies to a PR that carries any
+`do-not-merge` label. The allowlist file itself is Marco's — any change to it places the PR
+outside the lane. Full detail: DOCTRINE-REFERENCE.md §INSTRUMENT_LANE_V1.
+
 ## 10.2 A cloud session is a CODE-WRITING lane. It cannot drive the board.
 
 A cloud session has no access to Marco's PC, the watcher process, the queue files or the dev tree.
@@ -476,7 +484,10 @@ driven by Station 00 like any other. Full detail: DOCTRINE-REFERENCE.md §10.2.
 
 A cloud session that opens its own PR for a docs-or-tests change bypasses `lint-prompt.mjs`, the
 breadcrumb contract, and the register. **Prefer: write a prompt, let the watcher open the PR.**
-Full detail: DOCTRINE-REFERENCE.md §10.3.
+**RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03):** the watcher no longer auto-merges docs/tests
+PRs — it opens the PR and moves on. The latent CI-latency / verdict-starvation defect the lane's
+measurements documented is retired with the lane. Station 00 merges docs/tests PRs the same way it
+merges everything else. Full detail: DOCTRINE-REFERENCE.md §10.3.
 
 ## 10.4 Design decisions are settled BEFORE the prompt, not inside the slice
 

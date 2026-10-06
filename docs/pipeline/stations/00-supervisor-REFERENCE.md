@@ -1526,3 +1526,37 @@ is a lead, not a finding.
 You run in a Linux sandbox. Sanctioned liveness probes are PowerShell on the Windows
 host and are reachable only while the desktop bridge is up. If it is not, that is a
 `[CANNOT MEASURE]` to report - not a gap to fill with reasoning.
+
+## §INSTRUMENT_LANE_V1
+
+**Ruling: Marco, 2026-10-03.**
+
+Station 00 may merge a PR without Marco removing a `do-not-merge` label when ALL of these hold
+simultaneously (any one failing sends the PR to Marco):
+
+1. **No `do-not-merge` label** on the PR — a labelled PR is always Marco's; the lane never
+   removes a label.
+2. **`INSTRUMENT_LANE: IN_LANE`** in the CI job summary for the **current head** — read from
+   GitHub, not inferred from the diff.
+3. **All required checks green** on the current head (same standard as any other merge).
+4. **Fresh MERGE verdict** whose `REVIEWED-SHA` equals the current head SHA.
+
+After merging via `Merge-Pr`, post this comment on the PR:
+
+```
+Merged via the instrument lane (INSTRUMENT_LANE_V1): files <list>; verdict reviewed <sha>; CI green.
+```
+
+Name it in the breadcrumb under **Instrument-lane merges** with: files changed, the reviewed SHA,
+and confirmation that CI was green.
+
+### What is in the lane
+
+`scripts/pipeline/instrument-lane.json` lists every in-lane file. [MEASURED 2026-10-06]: 13 files
+as of the initial lane commit — all reporting and checking tools, no watcher or merge machinery.
+
+### What is never in the lane
+
+The watcher, merge and arm scripts, CI workflows, DOCTRINE, station instructions, `apps/`,
+`prisma/`, `sot/`. The allowlist file itself is never in the lane — any change to it routes the
+PR to Marco automatically (the checker treats it as out-of-lane by definition).

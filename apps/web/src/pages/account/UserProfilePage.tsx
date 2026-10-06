@@ -6,9 +6,9 @@ import { DefaultDashboardSection } from "./DefaultDashboardSection";
 // §5A.1 PR 8 (PR #132): the legacy "My AI providers" section was removed
 // here. Personal AI keys / provider preferences now live on the AI Settings
 // page (/admin/ai-settings) under per-persona override controls.
-// SLICE 6 (settings-restructure): the company-wide GlobalListsSection was
-// removed from this personal page and now lives at /settings/reference-data
-// (the Rates & Lists admin surface); UserProfilePage is personal-only again.
+// SLICE 6 (settings-restructure): the company-wide Lists UI was removed from
+// this personal page. The Lists surface now lives at /settings/reference-data
+// (RatesListsAdminPage → ListItemsTab); UserProfilePage is personal-only.
 export function UserProfilePage() {
   const { user } = useAuth();
 

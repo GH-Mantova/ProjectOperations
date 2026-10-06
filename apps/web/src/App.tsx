@@ -431,11 +431,11 @@ export function App() {
               />
               <Route path="ai" element={<AiSettingsPage />} />
               {/* SLICE 6: Reference data & Lists — single Company home for the
-                  rates/lists surface previously mounted on UserProfilePage
-                  (GlobalListsSection) and reachable at /admin/rates-lists.
-                  Renders the existing RatesListsAdminPage unchanged; that
-                  page gates internally on rates.manage || lists.manage
-                  (settings-restructure-plan §3, §4 redirect map). */}
+                  rates/lists surface, reachable at /admin/rates-lists.
+                  Renders RatesListsAdminPage; that page gates internally on
+                  rates.manage || lists.manage (settings-restructure-plan §3,
+                  §4 redirect map). The list-items UI lives inside
+                  RatesListsAdminPage (ListItemsTab). */}
               <Route path="reference-data" element={<RatesListsAdminPage />} />
               {/* B-HW-3: Handover Template editor — gated on handovertemplate.manage */}
               <Route path="handover-template" element={<HandoverTemplatePage />} />

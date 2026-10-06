@@ -262,8 +262,9 @@ Full detail: DOCTRINE-REFERENCE.md §8.2.
 
 ## 8.3 Merge policy -- native auto-merge only, never by hand
 
-- **Non-migration PRs:** arm native squash auto-merge (`gh pr merge <n> --auto --squash`); it merges
-  itself the moment all required checks are green.
+- **Non-migration PRs:** arm native squash auto-merge through `Assert-SmokedOrEscalate` then
+  `Merge-Pr` (§1) -- `Merge-Pr` runs `gh pr merge --squash --auto` itself and reads the result back;
+  never type that command by hand. It merges the moment all required checks are green.
 - **Additive migrations** (new tables/columns/enums, nullable adds, idempotent insert-if-absent data
   migrations): auto-merge too, but only AFTER the verified apitest passes (station 02 rule 6b) --
   one migration per run, ascending migration-timestamp order, no timestamp collisions.
@@ -314,13 +315,15 @@ exactly one state. The watcher keys on `armed`; the other five are Marco's opera
 subdirectory fires no event; only the 5-minute `RESCAN_INTERVAL_MS` sweep would notice. Moving
 armed into a folder would silently turn arming from immediate into eventual.
 
-**Reports are not prompts.** Under this standard, breadcrumbs and run reports will go in
-`docs/pr-prompts/reports/`. 🔴🔴 **That directory is NOT YET BUILT; until S4 lands, write
-breadcrumbs at depth 1 as the station-contract REPORT CONTRACT says.** Full detail:
-DOCTRINE-REFERENCE.md §8.5.
+**Reports are not prompts.** Breadcrumbs and run reports are written at depth 1 as `00-NN-...`
+breadcrumbs (the station-contract REPORT CONTRACT) and swept to `docs/pr-prompts/archive/`.
+**`archive/` is the reports folder; no `reports/` folder exists or will be created** (Marco,
+ruling 3, 2026-10-02). Full detail: DOCTRINE-REFERENCE.md §8.5.
 
-**Nothing is ever deleted.** Retiring a prompt means moving it. **Not yet enforced.** This standard
-is written in S1 and enforced in S4.
+**Nothing is ever deleted.** Retiring a prompt means moving it. **In force since 2026-10-02**
+(QUEUE_LAYOUT_LINE_AT_TODAY_V1): every file a PR **adds or renames** under `docs/pr-prompts/` must
+follow the layout, checked in CI by `check-queue-layout.mjs`; files that existed before 2026-10-02
+are grandfathered, and the S3 migration of old files is cancelled by decision.
 
 ---
 
@@ -391,8 +394,8 @@ Full detail: DOCTRINE-REFERENCE.md §9.3.
 
 ## 9.4 GitHub
 
-- **The GitHub MCP token cannot merge, and cannot open PRs (403)** — use `gh` through Desktop
-  Commander.
+- **The GitHub MCP token cannot merge, open PRs, or edit a PR's body (403)** — use `gh` through
+  Desktop Commander.
 - **`gh run list --branch main` can be DAYS stale** — read CI from the PR itself (`gh pr checks`).
 - **`mergeStateStatus: CLEAN` can still be refused** — a base-branch policy may still block the
   merge; read the ruleset.

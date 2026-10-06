@@ -216,6 +216,12 @@ site-dissolution, B-P0a-4-ii..8, B-SD), which nothing ever promotes.
 
 ## 8.5 Queue layout -- six states, one location per prompt
 
+> **Correction 2026-10-06 (Station 00):** the "`reports/` is NOT YET BUILT" and "Not yet
+> enforced ... enforced in S4" statements below are superseded. Marco's rulings of 2026-10-02
+> (QUEUE_LAYOUT_LINE_AT_TODAY_V1, `docs/pipeline/QUEUE-LAYOUT.md`): `archive/` is the reports folder
+> and no `reports/` folder will be created; the layout is enforced in CI by `check-queue-layout.mjs` for
+> files a PR adds or renames; S3's migration is cancelled. The text below is kept as history.
+
 The full standard lives in `docs/pipeline/QUEUE-LAYOUT.md` (QUEUE_LAYOUT_V1). This section
 is a summary complete enough to act on without opening that file.
 

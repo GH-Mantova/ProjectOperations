@@ -10,8 +10,9 @@
 //   node scripts/pipeline/check-breadcrumb.mjs --freshness  # + which stations have gone silent (local)
 //   node scripts/pipeline/check-breadcrumb.mjs --station 04
 //
-// Exit 0 = clean.  Exit 1 = a breadcrumb is malformed.  Exit 2 = a station is silent
-// (only with --freshness; never in CI, where no station has run).
+// Exit 0 = clean.  Exit 1 = a breadcrumb is malformed.  Exit 2 = a station is MISSED
+// (only with --freshness; never in CI, where no station has run). Exit code is unchanged
+// from the prior SILENT scheme so pipeline callers keep working — only the label changed.
 //
 // Runs from any working directory.
 
@@ -51,14 +52,34 @@ const DIR_ABS = join(ROOT, DIR);
 // could not possibly have complied. Midnight is the first unambiguously fair line.
 const CONTRACT_FROM = '2026-08-25T0000';
 
-// station -> cadence in hours. A station is SILENT past 2x its cadence.
-// DERIVED FROM THE LIVE CRON, not from a station doc's prose. Verify with the scheduled-tasks
-// MCP (list_scheduled_tasks) before changing any row:
+// FRESHNESS_ONE_CADENCE_V1 (Marco's ruling 2026-10-03). A station is MISSED past one cadence
+// plus a grace that absorbs schedule jitter. The old 2x rule left exactly one missed daily
+// occurrence invisible: 03-machine-minder printed `40.1h ago (cadence 24h) ok` on 2026-09-03
+// after never firing on 09-02 (escalation #23, needs-marco/station-freshness-detector-cannot-
+// see-a-missed-run-2026-09-03.md). MISSED (not SILENT) because the checker cannot distinguish
+// "never fired" from "fired and died before reporting".
+//
+// CADENCE is DERIVED FROM THE LIVE CRON, not from a station doc's prose. Verify with the
+// scheduled-tasks MCP (list_scheduled_tasks) before changing any row:
 //   00 `5 * * * *` hourly  |  03 `0 9 * * *` daily  |  04 `0 */4 * * *` 4h  |  05 `10 0 * * *` daily
-// 00 read `2` here against an hourly cron, so its SILENT threshold was 4h and it could miss
-// THREE consecutive occurrences while printing `ok`. Measured 2026-09-22 by Station 00 and
-// recorded unfixed in the 09-22 13:25Z, 14:14Z and 15:14Z breadcrumbs before this correction.
-const CADENCE = { '00': 1, '02': null, '03': 24, '04': 4, '05': 24 };
+// 00 read `2` here against an hourly cron, so its old SILENT threshold was 4h and it could
+// miss THREE consecutive occurrences while printing `ok`. Measured 2026-09-22 by Station 00 and
+// recorded unfixed in the 09-22 13:25Z, 14:14Z and 15:14Z breadcrumbs before that correction.
+export const CADENCE = { '00': 1, '02': null, '03': 24, '04': 4, '05': 24 };
+// Grace per station, in hours. Rule 2026-10-03: 00 (hourly) +30 min, 04 (4h) +1 h, 03/05
+// (daily) +3 h. Threshold is `ageH > CADENCE[nn] + GRACE_HOURS[nn]`.
+export const GRACE_HOURS = { '00': 0.5, '03': 3, '04': 1, '05': 3 };
+
+// Pure threshold decision — exported so the ruling is pinnable in a unit test rather than
+// reachable only through git + readdir + Date.now. Returns 'ok' | 'MISSED' | 'dispatch-only'.
+// Unknown station throws rather than reading `ok` silently (DOCTRINE §9.6).
+export function freshnessVerdict(station, ageHours) {
+  if (!(station in CADENCE)) throw new Error(`unknown station: ${station}`);
+  const hrs = CADENCE[station];
+  if (hrs === null) return 'dispatch-only';
+  const grace = GRACE_HOURS[station] ?? 0;
+  return ageHours > hrs + grace ? 'MISSED' : 'ok';
+}
 
 const SECTIONS = ['## GROUND', '## WHAT I MEASURED', '## WHAT CHANGED', '## FINDINGS', '## WHAT I DID NOT DO'];
 const DISPOSITIONS = ['ACTIONED', 'DISPATCHED', 'ESCALATED', 'DEFERRED'];
@@ -294,31 +315,33 @@ for (const f of all.sort()) {
 console.log('');
 console.log(`structure: ${checked} checked, ${bad} malformed, ${skipped} skipped as pre-contract (before ${CONTRACT_FROM})`);
 
-let silent = 0;
+let missed = 0;
 if (freshness) {
   console.log('');
-  console.log('freshness (a station is SILENT past 2x its cadence):');
+  console.log('freshness (FRESHNESS_ONE_CADENCE_V1: a station is MISSED past cadence + grace):');
   const now = Date.now();
   for (const [nn, hrs] of Object.entries(CADENCE)) {
     if (only && nn !== only) continue;
     if (hrs === null) { console.log(`  ${nn}  ${C.dim('dispatch-only — no cadence to miss')}`); continue; }
     const n = newest.get(nn);
-    if (!n) { silent++; console.log(`  ${nn}  ${C.red('NO BREADCRUMB EVER')}`); continue; }
+    if (!n) { missed++; console.log(`  ${nn}  ${C.red('NO BREADCRUMB EVER')}`); continue; }
     const ageH = (now - Date.parse(n.stamp)) / 3.6e6;
-    const over = ageH > hrs * 2;
-    if (over) silent++;
-    console.log(`  ${nn}  last ${n.stamp}  ${ageH.toFixed(1)}h ago  (cadence ${hrs}h)  ${over ? C.red('SILENT') : C.grn('ok')}`);
+    const verdict = freshnessVerdict(nn, ageH);
+    const over = verdict === 'MISSED';
+    if (over) missed++;
+    const grace = GRACE_HOURS[nn] ?? 0;
+    console.log(`  ${nn}  last ${n.stamp}  ${ageH.toFixed(1)}h ago  (cadence ${hrs}h + grace ${grace}h)  ${over ? C.red('MISSED') : C.grn('ok')}`);
   }
-  if (silent) {
+  if (missed) {
     console.log('');
-    console.log(C.yel('  A silent station is not a quiet one. Either it did not run, or it ran and did not report.'));
-    console.log(C.yel('  Both are defects. Station 00: disposition this.'));
+    console.log(C.yel('  A MISSED station either never fired, fired and died before reporting (e.g. a turn-one API error),'));
+    console.log(C.yel('  or reported in a PR not yet merged. Cross-check lastRunAt and the session folder before acting.'));
   }
 }
 
 console.log('');
 if (bad) { console.log(C.red(`REJECT: ${bad} malformed breadcrumb(s)`)); process.exit(1); }
-if (silent) { console.log(C.yel(`SILENT: ${silent} station(s) past cadence`)); process.exit(2); }
+if (missed) { console.log(C.yel(`MISSED: ${missed} station(s) past cadence + grace`)); process.exit(2); }
 console.log(C.grn('CLEAN'));
 process.exit(0);
 }

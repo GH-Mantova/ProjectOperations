@@ -45,6 +45,8 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   station is not a quiet one** — either it did not run, or it ran and did not report, and both are
   defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
 
+### §AUTHORITY-STALE - STALE escalation rows during COLLECT
+
   🔴 **THE SWEEP'S SECTION 5 `[STALE]` ESCALATION ROWS ARE YOURS TO CLEAR HERE, AND DISPATCHING
   THEM TO 03 IS A DISPATCH TO NOBODY.** `status-sweep.ps1` tags a `needs-marco/` file `[STALE]`
   when the PR it names has merged, and prints its own instruction — *"escalation is DEAD, clear
@@ -75,6 +77,8 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   correction PR #2106). ⚠️ **Falsifying probe: re-run the sweep and read section 5.** If a
   name you retired is still tagged, the move did not take; if a NEW `[STALE]` row names a file that
   is not PR-scoped, read it rather than discharging it.
+### §AUTHORITY-FRESHNESS - lastRunAt / freshness / session-directory
+
 - **THEN CROSS THE FRESHNESS TABLE AGAINST `lastRunAt`. THE BREADCRUMB IS ONE INSTRUMENT AND IT
   CANNOT NAME THE CAUSE.** `check-breadcrumb.mjs` compares breadcrumb dates and nothing else, so the
   three failures below are identical to it — and two of them print `ok`. Call `list_scheduled_tasks`
@@ -1391,6 +1395,8 @@ healthy ones is not an emergency; it is a bad check.**
 
 
 ## BOARD DRIVING — the four conditions (2026-09-02, Marco; was the DISPATCH-UNAVAILABLE FALLBACK)
+
+### §BOARD-DRIVING - history, incidents, dispatch-unavailable fallback
 
 **This is no longer a fallback. It is the design.** From 2026-07-15 to 2026-09-02 this section applied
 "when — and ONLY when — dispatch is unavailable", on the premise that the Task tool could not spawn

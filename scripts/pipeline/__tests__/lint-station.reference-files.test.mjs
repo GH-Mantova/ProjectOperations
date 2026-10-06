@@ -162,3 +162,22 @@ test('a core file with NO Full detail pointers produces zero pointer fails (nega
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+// -- 4. BACKTICKED file name: the pointer form the 00-supervisor core actually uses ------------------
+// Before this case existed the resolver regex required the file name immediately after "Full detail:",
+// so `Full detail: \`FILE.md\` §X` was never checked at all and three dangling pointers passed lint.
+test('a BACKTICKED Full detail pointer is checked: dangling is a REJECT, valid passes', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, 'REF.md'), ['# Ref', '', '### §GOOD-ANCHOR - text', ''].join('\n'), 'utf8');
+    const corePath = join(dir, 'CORE.md');
+    const bad = 'Full detail: `REF.md` §MISSING-ANCHOR.\n';
+    const good = 'Full detail: `REF.md` §GOOD-ANCHOR.\n';
+    const badFails = checkFullDetailPointers(corePath, bad);
+    assert.ok(badFails.some((x) => /MISSING-ANCHOR/.test(x)), `expected a REJECT for the dangling backticked pointer; got: ${JSON.stringify(badFails)}`);
+    assert.deepEqual(checkFullDetailPointers(corePath, good), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

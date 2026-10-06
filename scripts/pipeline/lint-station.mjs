@@ -128,7 +128,7 @@ function isReferenceFile(file) {
   return name.endsWith('DOCTRINE-REFERENCE.md') || /-REFERENCE\.md$/.test(name);
 }
 
-// Validate every `Full detail: <file> §<section>` pointer. The target may live in the SAME file
+// Validate every `Full detail: <file> §<section>` pointer (the file name may be backticked). The target may live in the SAME file
 // or in a sibling file in docs/pipeline/ or docs/pipeline/stations/. A pointer that cannot be
 // resolved to a heading in its target is a REJECT (DOCTRINE_CORE_SPLIT_V1 — dangling pointers are
 // the exact failure mode this split introduces).
@@ -137,7 +137,7 @@ export function checkFullDetailPointers(file, text) {
   // Section anchors can be numeric (`9.1`, `8.3a`, `10.6`) or named (`AUTHORITY-STALE`,
   // `WATCHER-DOWN`). Trailing punctuation (period, comma) is sentence punctuation, not part of the
   // anchor, so strip it before matching.
-  const re = /Full detail:\s*([A-Za-z0-9_.\-/\\]+\.md)\s+§([A-Za-z0-9._\-]+?)[.,;:)]?(?=[\s`]|$)/g;
+  const re = /Full detail:\s*`?([A-Za-z0-9_.\-/\\]+\.md)`?\s+§([A-Za-z0-9._\-]+?)[.,;:)]?(?=[\s`]|$)/g;
   const here = file.replace(/\\/g, '/');
   const hereDir = here.slice(0, here.lastIndexOf('/'));
   for (const m of text.matchAll(re)) {

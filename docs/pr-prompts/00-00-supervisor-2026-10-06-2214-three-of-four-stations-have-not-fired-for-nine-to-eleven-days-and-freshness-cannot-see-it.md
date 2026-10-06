@@ -119,8 +119,16 @@ here; the exit code I quoted is not, and is reported rather than relied on.
    **force-added** so it is tracked. `needs-marco/` is gitignored by rule, so a new file there is
    invisible by default — the finding is also stated in full under FINDINGS below, at this tracked
    breadcrumb path, so it does not depend on the force-add having worked.
-6. **No scheduled task was enabled, disabled, run, re-run or edited.** **No prompt armed or
-   disarmed.** **No PR merged** — the board held one PR this run and the other actor merged it.
+6. **One PR opened and armed for merge: #2253**, this run's own board PR, carrying items 3–5.
+   Docs-only (`docs/pr-prompts/**`, `docs/pipeline/discharges/**`), so no CP-26 receipt is required
+   and it sits inside 00's own recorded lane. Merge armed through `Assert-SmokedOrEscalate` →
+   `Merge-Pr`, never by hand. **Per UPDATE_AT_MERGE_TIME_V1 a `QUEUED` state is not a merge: the
+   next Station 00 run must confirm #2253 reached MERGED, and if F1 is unfixed there may not be a
+   next run — Marco may need to confirm it himself.**
+7. **No OTHER PR merged.** The board held exactly one inherited PR, #2252, and the concurrent actor
+   merged it mid-run; nothing of anyone else's was merged by me.
+8. **No scheduled task was enabled, disabled, run, re-run or edited.** **No prompt armed or
+   disarmed.**
 
 ## FINDINGS
 
@@ -209,8 +217,9 @@ mount.
 - **Did not touch the scheduled-task store.** No enable, disable, run, re-run or edit of 00, 03, 05,
   04 or `weekly-security-audit`, though F1 is squarely about three of them. Forbidden on a MISSED
   reading alone; it is Marco's layer.
-- **Did not merge anything.** The board held exactly one PR, #2252, and the concurrent actor merged
-  it mid-run. Nothing was left to merge and `Merge-Pr` was never called.
+- **Did not merge anyone else's work.** The only PR on the board when this run started was #2252,
+  and the concurrent actor merged it mid-run. The one merge this run arms is its own board PR
+  #2253, docs-only and inside 00's recorded lane — and `QUEUED` is not MERGED until confirmed.
 - **Did not arm or disarm any prompt** — F4.
 - **Did not clear the `C:/po-wt/retire-spent` worktree or any of the other orphaned worktrees and
   REGISTRY-ESCAPEEs** the sweep listed (`board-lease-wording`, `fix-2228`, `stage-prnum`, two

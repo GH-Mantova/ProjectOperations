@@ -2576,9 +2576,30 @@ F1, option **(a)**, whose wording this section adopts.
 
 ## 10.3 Route docs-and-tests work through the watcher, not around it
 
-The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,
+🔴 **RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03) — the tests-docs auto-merge lane is RETIRED.**
+`start-watcher.ps1` now sets `PR_WATCHER_AUTO_MERGE_POLICY = "off"` by default; the watcher opens
+the PR, routes it to Marco, and moves straight on to the next job. The code (`waitForPolicyMerge`,
+`verdictApproves`, `classifyPolicyFiles`) is kept, unused by default, so the lane can be restored
+by setting `PR_WATCHER_AUTO_MERGE_POLICY=tests-docs` explicitly. **MEASURED 2026-10-03** from the
+watcher clone's logs (2026-08-24 onward): 240 `policy=tests-docs, waiting` events; the lane enabled
+auto-merge **4** times (3 on 2026-08-24, 1 on 2026-10-02); 14 more PRs merged during a wait because
+a person or Station 00 merged them. The lane almost never merged anything itself while holding the
+single build worker — the point of retirement is to free that worker. The historical measurements
+below are kept as the record of why the lane was tried and why it is being retired; they are no
+longer live policy.
+
+The paragraphs below are the historical record of the lane while it was live. They are preserved
+rather than deleted because the measurements inside them are what retired the lane, and because
+`lint-station.mjs` enforces anchor stability. The surviving sentence that used to read "The
+auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY =
+"tests-docs"`" was CORRECT at the time it was written. From 2026-10-03 the lane is OFF by default;
+treat this subsection as history, not instruction.
+
+The auto-merge policy was live until 2026-10-03: `start-watcher.ps1:160` set
+`PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,
 and `classifyPolicyFiles` admits a diff confined to `tests/**` + `docs/**` with no `migrations/` path.
-**42 PRs have merged with no human through that gate.** It works.
+**42 PRs had merged with no human through that gate.** It worked, intermittently (see the
+`4-of-240` count above and the starvation record further down).
 
 🟢🟢 **REFUTED 2026-09-04T03:1xZ by Station 00 — the lane is NOT dead, and has not been for three days.**
 This paragraph read *“But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to
@@ -2671,6 +2692,10 @@ open escalation `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-
 falsifying probe — *"leave a watcher-built `tests-docs` PR alone; if the review appears and
 auto-merge enables with nobody touching it, this escalation is dead"* — was run unattended today
 and the escalation **SURVIVED it**.
+🟢 **RETIRE_TESTS_DOCS_LANE_V1 (2026-10-03): the cause above is retired with the lane.** The
+merge waiter no longer holds the single worker — the watcher opens the PR and returns to drain —
+so this starvation path cannot fire under the default policy. The escalation file is kept for its
+measurements; it is no longer a live defect in the default configuration.
 
 ⚠️ **The falsifying probe for THIS paragraph is per-PR, not the `ok:true` count**: for a docs PR
 that timed out, check whether its `docs/pr-reviews/pr-<N>-review.md` was written BEFORE the window

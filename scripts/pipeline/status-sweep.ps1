@@ -24,10 +24,20 @@
 # Usage:   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline\status-sweep.ps1
 # =============================================================================================
 
+# BOARD_LEASE_V1 (Marco, 2026-10-03). -Actor names the lane running this sweep so the verdict
+# can tell "I hold the lease" apart from "another lane holds it". Defaults to $env:PO_ACTOR,
+# else empty -- and when the caller is unknown, every LIVE lease is treated as someone else's,
+# which is the safe direction (fail into CAUTION, not into SAFE TO ACT).
+[CmdletBinding()]
+param(
+    [string]$Actor = $env:PO_ACTOR
+)
+
 $ErrorActionPreference = "Continue"
 $Repo = "C:\ProjectOperations2"
 $WatcherClone = "C:\po-watcher\ProjectOperations"
 $Queue = Join-Path $Repo "docs\pr-prompts"
+$LeasePath = Join-Path $Repo ".git\po-board-lease.json"
 # Section 4C quotes the body of the freshest *state*.md only while it is younger than this.
 # Past it the line is tagged [STALE] and the body is withheld -- see the block at section 4C for
 # the measurement that motivated it. Deliberately a named constant, not a literal, so the next
@@ -533,7 +543,70 @@ if (Test-Path $buildHeartbeat) {
     $buildReport = "[CANNOT MEASURE] heartbeat.log unreadable: " + $_.Exception.Message
   }
 }
-Line "LIVE" ("watcher build (heartbeat -- reported, NOT a block signal): " + $buildReport)
+Line "LIVE" ("watcher build (heartbeat -- blocks arming and merging (section 7)): " + $buildReport)
+
+# ---- BOARD_LEASE_V1 ------------------------------------------------------------------------
+# A board lease is a short JSON file at .git\po-board-lease.json. A lane that is arming or
+# merging writes it; another lane reads it and stands down. The file expires after 30 min on
+# its own so a crashed lane cannot strand the board. Section 7 reads the result below.
+# Fail-safe: a file that is present but UNREADABLE / MALFORMED is treated as HELD BY 'unknown'
+# until its file time + 30 min, never as 'free' -- the dangerous direction is "board is free"
+# when it is not.
+$leaseObj      = $null
+$leaseAgeStr   = ""
+$leaseHoldLine = "free"
+if (Test-Path -LiteralPath $LeasePath -PathType Leaf) {
+    $corrupt = $false
+    try {
+        $leaseRaw = Get-Content -LiteralPath $LeasePath -Raw -Encoding UTF8 -ErrorAction Stop
+        $leaseObj = $leaseRaw | ConvertFrom-Json -ErrorAction Stop
+    } catch { $corrupt = $true }
+    if ($corrupt -or $null -eq $leaseObj -or [string]::IsNullOrWhiteSpace("$($leaseObj.actor)") -or [string]::IsNullOrWhiteSpace("$($leaseObj.expiresAt)")) {
+        $fileItem = Get-Item -LiteralPath $LeasePath -ErrorAction SilentlyContinue
+        $fileTime = if ($fileItem) { $fileItem.LastWriteTimeUtc } else { [DateTime]::UtcNow.AddMinutes(-30) }
+        $synthExp = $fileTime.AddMinutes(30)
+        if ($synthExp -gt [DateTime]::UtcNow) {
+            $leaseObj = [pscustomobject]@{
+                actor      = "unknown"
+                reason     = "corrupt-lease-file"
+                acquiredAt = $fileTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+                expiresAt  = $synthExp.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            }
+        } else { $leaseObj = $null }
+    } else {
+        # ConvertFrom-Json auto-parses "yyyy-MM-ddTHH:mm:ssZ" into DateTime objects; passing
+        # them back through [DateTime]::Parse goes through a locale-dependent ToString and
+        # under US culture 2026-10-03 becomes 2026-03-10. Coerce if already DateTime;
+        # ParseExact with invariant culture only when a string somehow survived.
+        $leaseExp = $null
+        try {
+            if ($leaseObj.expiresAt -is [DateTime]) {
+                $leaseExp = ([DateTime]$leaseObj.expiresAt).ToUniversalTime()
+            } else {
+                $leaseExp = [DateTime]::ParseExact(
+                    [string]$leaseObj.expiresAt, "yyyy-MM-ddTHH:mm:ssZ",
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+            }
+        } catch { $leaseExp = [DateTime]::UtcNow.AddMinutes(-1) }
+        if ($leaseExp -le [DateTime]::UtcNow) { $leaseObj = $null }
+    }
+    if ($leaseObj) {
+        try {
+            if ($leaseObj.acquiredAt -is [DateTime]) {
+                $leaseAcq = ([DateTime]$leaseObj.acquiredAt).ToUniversalTime()
+            } else {
+                $leaseAcq = [DateTime]::ParseExact(
+                    [string]$leaseObj.acquiredAt, "yyyy-MM-ddTHH:mm:ssZ",
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+            }
+            $leaseAgeStr = "$([int](([DateTime]::UtcNow - $leaseAcq).TotalMinutes)) min old"
+        } catch { $leaseAgeStr = "age unknown" }
+        $leaseHoldLine = "$($leaseObj.actor)  reason=$($leaseObj.reason)  $leaseAgeStr  expires=$($leaseObj.expiresAt)"
+    }
+}
+Line "LIVE" ("board lease: " + $leaseHoldLine)
 # recent remote board activity: a station doing gh-only work (merge/label) leaves NO local lock (close blind-spot 5)
 $recent = @()
 if ($ghOk) {
@@ -858,8 +931,34 @@ if ($nodeOk -and (Test-Path (Join-Path $Repo "scripts\pipeline\check-backlog.mjs
 Section "7. VERDICT"
 # ------------------------------------------------------------------------------------------------
 $safe = -not $boardBusy
+# BOARD_LEASE_V1: a live lease held by ANOTHER actor is a hard CAUTION. When no $Actor was
+# supplied, every live lease is treated as someone else's (fail into CAUTION, not into SAFE).
+$leaseBlocksCaller = $false
+if ($leaseObj) {
+    if ([string]::IsNullOrWhiteSpace($Actor) -or $leaseObj.actor -ne $Actor) {
+        $leaseBlocksCaller = $true
+    }
+}
 if (-not $safe) {
   Line "LIVE" "DO NOT ACT: a board mutation is in progress (section 3 -- a git index.lock is held, or a git process is touching our trees). Wait, re-run, then act."
+} elseif ($leaseBlocksCaller) {
+  # Minutes remaining until the lease auto-expires -- read the verdict and either wait that
+  # long, or COLLECT only (status reads are always safe).
+  $leaseMinsLeft = "?"
+  try {
+      if ($leaseObj.expiresAt -is [DateTime]) {
+          $leaseExpFmt = ([DateTime]$leaseObj.expiresAt).ToUniversalTime()
+      } else {
+          $leaseExpFmt = [DateTime]::ParseExact(
+              [string]$leaseObj.expiresAt, "yyyy-MM-ddTHH:mm:ssZ",
+              [System.Globalization.CultureInfo]::InvariantCulture,
+              [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+      }
+      $leaseMinsLeft = [int]((($leaseExpFmt) - [DateTime]::UtcNow).TotalMinutes)
+  } catch {}
+  Line "LIVE" ("CAUTION: " + $leaseObj.actor + " holds the board (" + $leaseObj.reason + ", " + $leaseAgeStr + ", expires in " + $leaseMinsLeft + " min). Stand down; COLLECT only.")
+} elseif ($buildRunning) {
+  Line "LIVE" ("CAUTION: a watcher build is in flight (" + $buildPromptName + "). Hold off arming or merging until it lands.")
 } elseif ($liveWorktrees.Count -gt 0) {
   # A LIVE STATION WORKTREE means a station is actively working. Do not say SAFE TO ACT.
   # Do NOT say DO NOT ACT either -- a live worktree off origin/main is correct isolation.

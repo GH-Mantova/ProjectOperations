@@ -51,6 +51,203 @@ function Invoke-PipelineGh {
     }
 }
 
+# ============================================================================================
+# BOARD_LEASE_V1 (Marco, 2026-10-03)
+# ============================================================================================
+# Two Station 00 lanes (the scheduled task and the interactive chat) are both authorised to
+# drive the board. The status-sweep safe-to-act gate reads SAFE between arms, so a second lane
+# could arm or merge in the window the first was mid-flight -- measured five times on
+# 2026-09-14 (needs-marco/two-station-00s-on-one-board-...-2026-09-14.md).
+#
+# The lease is the cheap serializer: a lane that is about to mutate the board writes a short
+# JSON file naming itself. Another lane reading that file stands down and reports COLLECT-only.
+# The lease expires after 30 minutes so a crashed lane cannot strand the board.
+#
+# The file lives inside .git/ (never tracked, never shows in `git status`, never blocks a
+# fast-forward) in the dev tree -- the one tree every lane shares.
+# ============================================================================================
+
+$script:DEV_TREE_DEFAULT = "C:\ProjectOperations2"
+
+# Actor-name shape, kept here so arm-prompt.ps1 and the lease code share one rule.
+# Short identifier: letters, digits, and . _ : / - only; 2-64 chars; no spaces. The log line in
+# arm-prompt is space-delimited; an actor containing a space would silently shift every field.
+$script:ACTOR_RE = '^[A-Za-z0-9][A-Za-z0-9._:/-]{1,63}$'
+
+function Get-BoardLeasePath {
+    <#
+      Where the lease file lives. $env:PO_BOARD_LEASE_PATH wins (tests use it). Else:
+      $env:PO_DEV_TREE if set, else $script:DEV_TREE_DEFAULT, joined with .git\po-board-lease.json.
+    #>
+    if ($env:PO_BOARD_LEASE_PATH) { return $env:PO_BOARD_LEASE_PATH }
+    $root = if ($env:PO_DEV_TREE) { $env:PO_DEV_TREE } else { $script:DEV_TREE_DEFAULT }
+    return (Join-Path $root ".git\po-board-lease.json")
+}
+
+$script:_leaseWarnedCorrupt = $false
+
+function Get-BoardLease {
+    <#
+      Returns the lease pscustomobject, or $null when the file is absent, or when the file is
+      readable, parsed, and expiresAt is already in the past.
+
+      An UNREADABLE / MALFORMED file is reported once with Write-Warning and treated as HELD BY
+      'unknown' until it expires by its FILE TIME (LastWriteTimeUtc + 30 minutes). A broken lease
+      is NEVER returned as free: the dangerous direction is "board is free" when it is not.
+    #>
+    $path = Get-BoardLeasePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        $script:_leaseWarnedCorrupt = $false
+        return $null
+    }
+
+    $raw = $null
+    $parseFailed = $false
+    try {
+        $raw = Get-Content -LiteralPath $path -Raw -Encoding UTF8 -ErrorAction Stop
+    } catch { $parseFailed = $true }
+
+    $obj = $null
+    if (-not $parseFailed) {
+        try { $obj = $raw | ConvertFrom-Json -ErrorAction Stop } catch { $parseFailed = $true }
+    }
+
+    if ($parseFailed -or $null -eq $obj -or [string]::IsNullOrWhiteSpace("$($obj.actor)") -or [string]::IsNullOrWhiteSpace("$($obj.expiresAt)")) {
+        if (-not $script:_leaseWarnedCorrupt) {
+            Write-Warning ("board lease file at " + $path + " is unreadable or malformed; treating as held by 'unknown' until file time + 30 minutes.")
+            $script:_leaseWarnedCorrupt = $true
+        }
+        $fileItem = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+        $fileTime = if ($fileItem) { $fileItem.LastWriteTimeUtc } else { [DateTime]::UtcNow.AddMinutes(-30) }
+        $synthExpires = $fileTime.AddMinutes(30)
+        if ($synthExpires -le [DateTime]::UtcNow) { return $null }
+        return [pscustomobject]@{
+            actor      = "unknown"
+            reason     = "corrupt-lease-file"
+            pid        = 0
+            acquiredAt = $fileTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            expiresAt  = $synthExpires.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            _corrupt   = $true
+        }
+    }
+
+    $script:_leaseWarnedCorrupt = $false
+
+    # ConvertFrom-Json deserializes "yyyy-MM-ddTHH:mm:ssZ" into DateTime (NOT string). If we
+    # feed it back through [DateTime]::Parse we go through a locale-dependent ToString and
+    # 2026-10-03 can become 2026-03-10 under US culture -- a time-skip of seven months, in the
+    # BACKWARDS direction, which would mark every live lease as expired. Coerce the DateTime
+    # directly; parse only when ConvertFrom-Json saw a non-ISO string and left it as a string.
+    $expires = $null
+    try {
+        if ($obj.expiresAt -is [DateTime]) {
+            $expires = ([DateTime]$obj.expiresAt).ToUniversalTime()
+        } else {
+            $expires = [DateTime]::ParseExact(
+                [string]$obj.expiresAt, "yyyy-MM-ddTHH:mm:ssZ",
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+        }
+    } catch { $expires = [DateTime]::UtcNow.AddMinutes(-1) }
+
+    if ($expires -le [DateTime]::UtcNow) { return $null }
+    return $obj
+}
+
+function Write-BoardLease {
+    param(
+        [Parameter(Mandatory = $true)][string]$Actor,
+        [Parameter(Mandatory = $true)][string]$Reason,
+        [Parameter(Mandatory = $true)][int]$Minutes
+    )
+    $path = Get-BoardLeasePath
+    $dir  = Split-Path -Parent $path
+    if ($dir -and -not (Test-Path -LiteralPath $dir -PathType Container)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    $now = [DateTime]::UtcNow
+    $exp = $now.AddMinutes($Minutes)
+    $obj = [ordered]@{
+        actor      = $Actor
+        reason     = $Reason
+        pid        = $PID
+        acquiredAt = $now.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        expiresAt  = $exp.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    }
+    $json = ($obj | ConvertTo-Json -Compress)
+    # Atomic write: temp, then rename over. UTF-8 no BOM.
+    $tmp = $path + ".tmp"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($tmp, $json, $utf8NoBom)
+    if (Test-Path -LiteralPath $path -PathType Leaf) { Remove-Item -LiteralPath $path -Force }
+    [System.IO.File]::Move($tmp, $path)
+}
+
+function Enter-BoardLease {
+    <#
+      BOARD_LEASE_V1. Returns $true + writes the lease when:
+       - no lease is held (file absent, or live lease is expired)
+       - the SAME actor already holds the lease (renew: refresh timestamps)
+      Returns $false WITHOUT writing when another actor holds a LIVE lease, and prints who it is
+      and since when.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Actor,
+        [Parameter(Mandatory = $true)][string]$Reason,
+        [int]$Minutes = 30
+    )
+    if ($Actor -notmatch $script:ACTOR_RE) {
+        throw ("Enter-BoardLease: -Actor '" + $Actor + "' is not a usable name. Use short identifier: letters, digits, and . _ : / - only; 2-64 chars; no spaces.")
+    }
+
+    $existing = Get-BoardLease
+    if ($null -ne $existing -and $existing.actor -ne $Actor) {
+        $ageStr = ""
+        try {
+            # Same locale trap as Get-BoardLease: coerce DateTime, ParseExact only for strings.
+            if ($existing.acquiredAt -is [DateTime]) {
+                $acq = ([DateTime]$existing.acquiredAt).ToUniversalTime()
+            } else {
+                $acq = [DateTime]::ParseExact(
+                    [string]$existing.acquiredAt, "yyyy-MM-ddTHH:mm:ssZ",
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+            }
+            $mins = [int](([DateTime]::UtcNow - $acq).TotalMinutes)
+            $ageStr = " ($mins min ago, reason=$($existing.reason))"
+        } catch {}
+        Write-Host ("[board-lease] REFUSED: " + $existing.actor + " holds the board" + $ageStr) -ForegroundColor Yellow
+        return $false
+    }
+
+    Write-BoardLease -Actor $Actor -Reason $Reason -Minutes $Minutes
+    return $true
+}
+
+function Exit-BoardLease {
+    <#
+      Removes the lease ONLY IF this actor holds it. Releasing another actor's lease is REFUSED
+      with a message. Returns $true on release, $false otherwise.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Actor)
+    $path = Get-BoardLeasePath
+    $existing = Get-BoardLease
+    if ($null -eq $existing) { return $false }
+    if ($existing.actor -ne $Actor) {
+        Write-Host ("[board-lease] refusing to release lease held by " + $existing.actor + " (caller is " + $Actor + ")") -ForegroundColor Yellow
+        return $false
+    }
+    try {
+        Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+    } catch {
+        Write-Warning ("Exit-BoardLease: could not remove lease file: " + $_.Exception.Message)
+        return $false
+    }
+    return $true
+}
+
 # ---------------------------------------------------------------------------------------------
 # READING THE BOARD
 # ---------------------------------------------------------------------------------------------
@@ -297,10 +494,28 @@ function Merge-Pr {
       pending checks, exactly as Assert-Mergeable does for its own callers).
 
       Never report a merge you have not confirmed. (sot/05 LL-38: reports described intentions.)
+
+      BOARD_LEASE_V1 (Marco, 2026-10-03): a merge is a board mutation, so Merge-Pr takes the
+      board lease before merging and releases it in a finally after the read-back. -Actor is
+      OPTIONAL -- documented examples (DOCTRINE, station briefs, why-blocked.ps1) show
+      `Merge-Pr <n>` without it. When -Actor is not passed, it defaults to $env:PO_ACTOR, and
+      if that is empty to "pwsh-$PID" with a one-line warning so the lease still carries a name.
     #>
-    param([Parameter(Mandatory = $true)][int]$PR, [switch]$Auto)
+    param([Parameter(Mandatory = $true)][int]$PR, [switch]$Auto, [string]$Actor)
 
     Assert-Mergeable $PR          # at the call site
+
+    if ([string]::IsNullOrWhiteSpace($Actor)) { $Actor = $env:PO_ACTOR }
+    if ([string]::IsNullOrWhiteSpace($Actor)) {
+        $Actor = "pwsh-$PID"
+        Write-Warning ("Merge-Pr: -Actor not set and `$env:PO_ACTOR empty; using '" + $Actor + "' for the board lease.")
+    }
+
+    if (-not (Enter-BoardLease -Actor $Actor -Reason ("merge:#" + $PR))) {
+        throw ("Merge-Pr: #" + $PR + " refused -- another lane holds the board lease. Stand down; COLLECT only.")
+    }
+
+    try {
 
     $view = Invoke-PipelineGh "pr" "view" "$PR" "--json" "mergeStateStatus,headRefOid,state"
     if ($view.ExitCode -ne 0) {
@@ -377,6 +592,11 @@ function Merge-Pr {
         default {
             throw ("Merge-Pr: #" + $PR + " has mergeStateStatus '" + $mergeState + "' -- unexpected; read the PR by hand.")
         }
+    }
+
+    } finally {
+        # BOARD_LEASE_V1: release the lease on EVERY path (success, QUEUED, throw).
+        Exit-BoardLease -Actor $Actor | Out-Null
     }
 }
 

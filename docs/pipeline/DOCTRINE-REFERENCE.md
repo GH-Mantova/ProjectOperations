@@ -1,0 +1,2940 @@
+# DOCTRINE REFERENCE — the full evidence behind the core rules
+
+This file holds the measured incidents, worked examples and long rationale that underpin
+`docs/pipeline/DOCTRINE.md`. The core is read in full every run; **this reference is read when the
+task touches a topic, and ALWAYS before acting on a matching trap in section 9**.
+
+Headings and numbers mirror the core exactly, so every citation like "DOCTRINE §9.4" resolves to
+the same section here. Nothing in this file is new rule-text — it is the evidence the core cites.
+
+## Topic index
+
+- **shell** (PowerShell / sandbox / here-strings / Desktop Commander) → §9.1
+- **git** (clone layout, `fetch`, locks, `rev-parse`, worktrees) → §9.2
+- **files and encoding** (CP1252 / UTF-8 BOM / mojibake / here-string smudges) → §9.3
+- **GitHub** (`gh`, labels, mergeStateStatus, verdicts, auto-merge) → §9.4
+- **instruments** (the pipeline's own scripts: lint, sweep, breadcrumb) → §9.5
+- **board** (fix methodology, merge policy, HOLD, queue layout) → §8
+- **merging** (native auto-merge, additive migrations, receipts) → §8.3
+- **second lanes** (cloud sessions, Design, hijacked verdicts) → §10
+- **provenance** (`[MEASURED] / [INFERRED] / [CANNOT MEASURE]`) → §7.1
+- **instrument lies** (the standing six, false negatives) → §7
+
+---
+
+# 🔬 §7. YOUR INSTRUMENT LIES. CALIBRATE IT BEFORE YOU TRUST THE READING.
+
+**The most dangerous failure here is not a broken system — it is a broken MEASUREMENT of a working
+system.** A broken system fails loudly. A broken instrument hands you a confident, coherent, WRONG
+verdict, and then you act on it.
+
+This has now happened **six times**. Every time, the system was fine and the *tool* was broken.
+Twice it nearly caused real damage: one agent almost "repaired" clean files into corruption; another
+declared a healthy watcher dead and killed the queue.
+
+## The rule
+
+> **Before you believe a NEGATIVE result — "it's broken", "it's missing", "it's already done",
+> "it's down" — prove your instrument can produce a POSITIVE one.**
+
+A check never seen to succeed is not a check. If your script says FAIL, first make it say PASS on
+something you *know* is good. If it can't, **the script is the bug.**
+
+And: **a tool that cannot run must FAIL LOUD, never fail quiet.** "I could not measure it" must
+never silently become "it measured false".
+
+## The six. Recognise them — they will happen to you.
+
+| # | The lie it told | The truth | Why |
+|---|---|---|---|
+| 1 | "WATCHER IS DOWN — QUEUE FROZEN" | It had run **6 minutes ago** | `ps aux \| grep` in a **Linux sandbox** against a **Windows** process. Then compared a UTC log line to a local clock. **Logs are UTC; the machine is Brisbane (UTC+10).** |
+| 2 | "sot/ files are corrupted — em-dashes eaten, `?` everywhere" | Files were **clean UTF-8**, zero replacement chars | **PS 5.1 `Get-Content` decodes BOM-less UTF-8 as Windows-1252.** The mojibake was in the READER. The "fix" (an `-Encoding ascii` patch) would have caused the corruption **for real**. |
+| 3 | "premise satisfied — work already done" → **BINNED THE PROMPT** | The premise never **ran** | `shell: "/bin/bash"` — **Windows has no /bin/bash.** Spawn failure gives `err.status === undefined` -> `-1`, which wasn't in the broken-list, so it was misread as "premise false". It would have **silently discarded the entire backlog** while printing green. |
+| 4 | "NOT IDEMPOTENT / ADMIN EDIT OVERWRITTEN" | The migration was perfectly idempotent | Wrong DB role. **Every query failed**, and the empty strings compared unequal. A connection failure wearing a finding's clothes. |
+| 5 | "No such container: 35" | The container was fine | **PowerShell variables are CASE-INSENSITIVE.** A local `$c` (column count) silently clobbered `$C` (container name). |
+| 6 | "NOT IDEMPOTENT" — while printing two IDENTICAL row counts | It was idempotent | **A PowerShell function returns ALL its output**, not just `return`. `Write-Output` inside the function got captured into the return value. |
+
+Note the shape: **four of the six were a failed call being read as a meaningful answer.**
+
+## Standing guards
+
+1. **Positive control first.** Prove the check CAN pass before believing it failed. (#3, #4)
+2. **Connect, then assert.** Any script touching a DB / API / process must verify the connection and
+   **abort** on failure. Never let a failed call flow into a comparison. (#4)
+3. **Suspected file corruption -> verify with `node`**, which reads UTF-8 correctly. Not
+   `Get-Content`. Check for U+FFFD and the `a-hat-euro` mojibake signature in the BYTES. (#2)
+4. **Liveness ONLY via `scripts\restart-watcher-if-wedged.ps1`.** Never `ps`/`grep` across an OS
+   boundary. **"I cannot verify it" is NOT "it is down".** (#1)
+5. **No single-letter PowerShell variables. Ever.** (#5)
+6. **No `Write-Output` inside a PowerShell function whose return value you capture.** Use
+   `Write-Host`, or build one value and return it. (#6)
+7. **`$ErrorActionPreference = "Continue"` in git scripts.** Git warns on stderr; `"Stop"` will abort
+   you *before your commit* while the log still looks perfectly clean.
+8. **Keep escaped double quotes out of `-q '<jq>'` / `--jq` when calling `gh` from PS 5.1** — spaces survive intact; it is the escaped double quotes that do not (section 9.4).
+   Take raw `--json` and `ConvertFrom-Json`. And **assign-then-foreach**: piping a JSON array
+   straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge queue
+   select **#552 — the production-data PR.**
+
+## If your instrument breaks mid-task
+
+**Say so.** `NO-OP: my check was broken; here is what I could not measure.` That is a **success**.
+
+Reporting a verdict you obtained from a broken instrument is the worst thing you can do here — worse
+than doing nothing, because someone will act on it.
+
+
+---
+
+## 7.1 DECLARE YOUR PROVENANCE - say how you know, or your report is a rumour
+
+Added 2026-08-18 after three separate wrong claims in one morning, from three different
+actors, all with the same shape: **a conclusion drawn from rendered or stale data, written
+down with the same confidence as a measurement.**
+
+- `needs-marco/pr-1156-review-block.md` asserted PR #1156's merge commit deleted
+  `LocationProvider.ts` and two other files and told the reader to re-fire the prompt on a
+  clean branch. The PR's actual file list was **9 files, all added or modified, ZERO
+  deletions**. The block had been true against an older head and was never re-stamped.
+- A CP-11 "undeclared migrations" failure was diagnosed as a malformed `GATE-ALLOW` marker
+  wrapped in backticks. The backticks were **an artefact of how one API client renders JSON**.
+  The raw body was correct. The real cause was that **the gate run itself was stale**.
+- "#1162 is deployed" and "#1162 was never deployed" were both written the same morning.
+  Both were true when sampled. Neither said when, or against which SHA.
+
+### The rule
+
+**Every factual line in a station artifact carries how it was obtained.** Three tags, and there
+is no fourth:
+
+- **`[MEASURED]`** - you ran a probe and are quoting its output. Include the command and enough
+  of the result to re-check. A PID, a byte count, an exit code, a log line.
+- **`[INFERRED]`** - you read something and reasoned. Say what you read. An inference is allowed
+  and often necessary; it is not allowed to be dressed as a measurement.
+- **`[CANNOT MEASURE]`** - the probe you needed was unavailable. **Say so and stop.** Do not
+  substitute an inference and let the reader assume you looked.
+
+Every artifact also carries, at the top: **UTC timestamp** and **the git SHA it was true at**.
+A claim without a SHA cannot be checked later, and a claim that outlives its SHA is how
+`pr-1156-review-block.md` sent its reader to redo finished work.
+
+### Why `[CANNOT MEASURE]` is not optional
+
+Stations run in a Linux sandbox. Several sanctioned probes are PowerShell scripts on the
+Windows host, and the desktop connectors that would reach it are only present while the desktop
+app is running - **so an overnight scheduled run legitimately cannot probe the machine.** That
+is a fact to report, not a gap to paper over. 05-sot-keeper already did this correctly on
+2026-08-17 by stating it had no PowerShell rather than guessing at liveness. That is the
+standard.
+
+### The re-read rule
+
+**Before you act on someone else's artifact - including your own from an earlier run - re-verify
+its central claim against the live system.** If it carries no SHA or the SHA is not current,
+treat it as a lead, not a finding. Anything in `needs-marco/` older than the current head is a
+lead.
+# 8. THE SUPERVISOR ACTS -- FIX METHODOLOGY, MERGE POLICY, IN-CHAIN HOLD
+
+Marco, 2026-08-11. The supervisor drives the WHOLE board -- every open PR to green and merge, fixing
+failures directly -- and escalates only the narrow hard-stop set (section 5). Acting is the job;
+sections 1-7 are the disciplines that make acting safe. The old "dispatch only, zero hands" stance is
+retired: the historical incidents were careless acting in a SHARED tree, never acting itself.
+
+## 8.1 Root-cause before you touch anything
+Diligently diagnose EVERY red before fixing: pull the actual job log (section 3), name the cause and
+its blast radius, never guess from the diff. A fix applied without a proven cause is a second bug. If
+you cannot name the cause, you have not found it (section 2).
+
+## 8.2 Board velocity -- the fix-implementation rule
+The goal is to keep the board MOVING. For every red:
+- **Prefer ONE complete fix in place.** Push the real fix straight to the failing PR's branch when it
+  is quick and safe -- that both unblocks and is permanent in a single move. This is the common case.
+- **Split only when the proper fix is BIG or SYSTEMIC.** Land a legitimate quick unblock now and
+  stage the permanent fix as its own follow-up PR (then auto-drive it green->merge like any other).
+  Example: route around a flaky shared util now, fix the util properly in a trailing PR.
+- **A quick fix is ONLY EVER a legitimate unblock -- NEVER a mask.** No weakened assertions, no
+  skipped or quarantined tests, no GATE-ALLOW / SEED-ONLY marker that is not actually true. If the
+  only fast path would paper over a real defect, do the real fix instead, even if slower -- that
+  becomes the unblock. (Cf. CP-23: the answer to seed-without-migration is an idempotent
+  insert-if-absent migration, never a false marker.)
+
+## 8.3 Merge policy -- native auto-merge only, never by hand
+- **Non-migration PRs:** arm native squash auto-merge (`gh pr merge <n> --auto --squash`); it merges
+  itself the moment all required checks are green.
+- **Additive migrations** (new tables/columns/enums, nullable adds, idempotent insert-if-absent data
+  migrations): auto-merge too, but only AFTER the verified apitest passes (station 02 rule 6b) --
+  one migration per run, ascending migration-timestamp order, no timestamp collisions.
+- **Destructive migrations** (DROP / rename / retype a column or table holding data) and
+  **production data or auth writes:** escalate to Marco (section 5). Get them green and mergeable,
+  then hand over.
+- Follow-up permanent-fix PRs (from 8.2) are auto-driven on these same rules. **Never hand-merge.**
+- ­ƒö┤ **UPDATE_AT_MERGE_TIME_V1 (Marco, 2026-10-03).** `PR_WATCHER_AUTO_UPDATE` defaults to **OFF**
+  in `scripts/pr-watcher/start-watcher.ps1` from 2026-10-03. The timer used to rebase every BEHIND
+  PR on a tick, which restarted a full CI run on each one -- mostly on PRs that could not merge
+  without Marco anyway. **[MEASURED]** 2026-10-02 watcher log: **72** `branch updated (was BEHIND)`
+  events in one day; one PR was rebuilt **24 times in 9.4 hours**, burning ~360 check-runs. The
+  repo ruleset "Main" requires strict up-to-date for merge, so exactly one update is needed, right
+  before the merge -- and that one is now `Merge-Pr`'s job (`scripts/pipeline/pipeline-lib.ps1`):
+  it reads `mergeStateStatus`, runs `gh pr update-branch` if BEHIND, then queues the merge pinned
+  to the fresh `headRefOid` via `--match-head-commit`, returning `State = 'QUEUED'`. The next
+  Station 00 run confirms MERGED; QUEUED is never read as merged. Set `PR_WATCHER_AUTO_UPDATE=true`
+  explicitly to restore the timer. The DIRTY-PR conflict notification keeps firing either way --
+  the poll still runs, only its `gh pr update-branch` call is gated.
+
+### 8.3a JS merge queue (`merge-queue.mjs`) -- guards required before wiring
+
+`scripts/pr-watcher/merge-queue.mjs` is the sequential PR merger used by the supervisor.
+It **must not be wired to any cron, dispatcher, or npm script** until SLICE 7 of the
+cluster-chaining plan is merged -- that slice installs the guards below.
+
+Once SLICE 7 is on `main`, the queue enforces:
+
+1. **NEVER_MERGE list.** Any PR whose number appears in `NEVER_MERGE` is refused before
+   any network call. Default list: empty (PRs #552 and #538 were both discharged; see the
+   NEVER_MERGE comment in `merge-queue.mjs` for history). Override via env
+   `PR_WATCHER_NEVER_MERGE=<comma-separated>` for testing.
+
+2. **Hold labels.** A PR carrying `do-not-merge`, `needs-marco`, or `hold` is refused.
+   Labels are read per-PR with `gh pr view --json labels` -- NOT from a board listing
+   (LL-47). A label-read failure is a REFUSAL, not a pass.
+
+3. **`escalates: true` prompts.** The watcher (`index.mjs`) applies `do-not-merge` to
+   every PR opened for an escalating prompt. Rule 2 above catches that case. There is no
+   separate escalates check -- no reliable PR-to-prompt mapping exists, and a guard that
+   overstates what it verifies is worse than an absent one. This is documented in the
+   source (`merge-queue.mjs` header) so the next reader stops looking.
+
+Merge authority remains with the supervisor and Marco. The queue is a tool; wiring it
+is a separate decision.
+
+## 8.4 The in-chain HOLD rule
+A `*-HOLD.md` prompt is on hold ONLY because it depends on a predecessor PR not yet merged to `main`.
+The moment every predecessor it names is merged and on `main`, it is promoted to `*-ready.md` and
+runs (station 02 step 2). **HOLD is a waiting state, not a veto** -- an ex-HOLD PR is not suspect;
+its promotion means its chain precondition was met, so drive it like any other. This is entirely
+separate from the **forbidden never-arm denylist** enforced in `queue-sync.ps1` (rates-s11c,
+site-dissolution, B-P0a-4-ii..8, B-SD), which nothing ever promotes.
+
+## 8.5 Queue layout -- six states, one location per prompt
+
+> **Correction 2026-10-06 (Station 00):** the "`reports/` is NOT YET BUILT" and "Not yet
+> enforced ... enforced in S4" statements below are superseded. Marco's rulings of 2026-10-02
+> (QUEUE_LAYOUT_LINE_AT_TODAY_V1, `docs/pipeline/QUEUE-LAYOUT.md`): `archive/` is the reports folder
+> and no `reports/` folder will be created; the layout is enforced in CI by `check-queue-layout.mjs` for
+> files a PR adds or renames; S3's migration is cancelled. The text below is kept as history.
+
+The full standard lives in `docs/pipeline/QUEUE-LAYOUT.md` (QUEUE_LAYOUT_V1). This section
+is a summary complete enough to act on without opening that file.
+
+Every prompt lives in exactly one state. The watcher keys on `armed`; the other five are
+Marco's operational categories.
+
+| state | where | meaning |
+|---|---|---|
+| brainstorm | `docs/pr-prompts/brainstorm/` | being thought about; not a prompt yet; nothing reads it |
+| draft | `docs/pr-prompts/draft/` | written, not approved; inert - no gate, no arm, no build |
+| hold | `docs/pr-prompts/*-HOLD.md` | approved and staged; on main; waiting on its gate |
+| armed | `docs/pr-prompts/*-ready.md` | the rename IS the dispatch; the only state `READY_PATTERN` matches |
+| merged | `docs/pr-prompts/merged/` | its PR is confirmed MERGED on main |
+| superseded | `docs/pr-prompts/superseded/` | replaced; the replacement is named inside the file |
+
+**Why hold and armed are filenames, not folders.** `index.mjs` (anchor: `fsWatch(PROMPT_DIR`) calls
+`fsWatch(PROMPT_DIR, { persistent: true }, ...)` with NO `recursive: true`. On Windows,
+a file-system change inside a subdirectory fires no event; only the 5-minute
+`RESCAN_INTERVAL_MS` sweep would notice. Moving armed into a folder would silently turn
+arming from immediate into eventual. Anyone proposing to move it must change the watch
+first. See `docs/pipeline/QUEUE-LAYOUT.md` for the full mechanical argument.
+
+**merged is not processed.** The retired `processed/` folder was entered when a PR OPENED.
+A prompt could sit there while its PR was still open, closed unmerged, or merged, with
+nothing distinguishing the three. On 2026-09-16 two armed prompts (`ratescol-s4`,
+`scopecards-s2b`) were lost to that blind spot. `merged/` is entered only on a confirmed
+MERGED state.
+
+**Exceptions are not lifecycle states.** They sit under `exceptions/<reason>/` with a
+closed vocabulary: `needs-marco`, `blocked`, `failed`, `paused`, `no-pr-opened`,
+`abandoned`. Adding a seventh reason is a change to QUEUE-LAYOUT.md and the shared
+constant, never a new folder.
+
+**Reports are not prompts.** Under this standard, breadcrumbs and run reports will go in
+`docs/pr-prompts/reports/`.
+
+🔴🔴 **THAT DIRECTORY IS NOT BUILT AND IS NOT THE LIVE DESTINATION — WRITE YOUR BREADCRUMB AT
+DEPTH 1, AS THE STATION CONTRACT SAYS.** `REPORTS_DIR_NOT_BUILT_V1` The sentence above is written
+in the PRESENT tense inside the document every station is told it can trust, and it contradicts the
+station-contract REPORT CONTRACT — the canonical block byte-identical in all seven station docs —
+which sends breadcrumbs to
+`docs/pr-prompts/00-<NN>-<station>-<YYYY-MM-DD>-<HHMM>-<slug>.md`, i.e. **depth 1**. The
+*"Not yet enforced"* line below is true of the whole section and is not enough on its own: a run
+that reads §8.5 last acts on the present-tense sentence, not on the caveat four lines under it.
+
+[MEASURED] 2026-09-24T02:1xZ by Station 04 at `fcdf66c0` (F5), re-measured by Station 00 at
+03:3xZ at `ea1d6500`:
+
+| probe | result |
+|---|---|
+| `docs/pr-prompts/reports/` on disk | **ABSENT** |
+| `git ls-tree -r --name-only origin/main -- docs/pr-prompts/reports/` | **0** |
+| tracked breadcrumbs (`/00-NN-`) on `origin/main` — POSITIVE control | **642** (`archive/` 641, depth 1 **1**) |
+| a freshly minted needle over the same tree listing — NEGATIVE control | **0** |
+
+🔴 **The cost is not cosmetic.** `check-breadcrumb.mjs`’s structure pass iterates
+`readdirSync(DIR)` at **depth 1 only** (§9.5), so a report written into `reports/` would fail no
+check, appear in no validator output, and be seen by nobody — the nine-day `qa-findings.md` failure
+with a different path, reached through a binding instruction rather than through a `.gitignore`
+line.
+
+🔧 **Until S4 lands, the live destination is depth 1.** When S4 builds `reports/`, retire this
+block in the same PR that lands it. ⚠️ **Falsifying probe: `git ls-tree -r --name-only origin/main
+-- docs/pr-prompts/reports/`** (trailing slash AND `-r`, §9.2). If it ever returns a path, `reports/`
+exists and this correction is spent. Found by Station 04 2026-09-24T02:1xZ (F5), landed by
+Station 00 at 03:3xZ.
+31 report files were sitting loose in the queue root when this standard was written.
+
+**Nothing is ever deleted.** Retiring a prompt means moving it.
+
+**Not yet enforced.** This standard is written in S1 and enforced in S4.
+
+---
+# 🔧 §9. INSTRUMENTS — the measured traps, in one place
+
+<!-- The canonical-block markers for `instruments v2` live in DOCTRINE.md (the core).
+     The full write-ups below are moved verbatim; the hash-protected summary stays in the core. -->
+
+§7 tells you your instrument lies. This section names the specific lies, each one **measured**, each
+one having already cost this pipeline real work. Before 2026-08-24 these lived scattered across five
+pasted scheduled-task files where they drifted independently and could not be reviewed. They live
+here now because they are true for **every** station.
+
+## 9.1 The shell
+
+- ⚠️ **`$` is EXPANDED by the `-Command "..."` layer before PowerShell parses it** —
+  `$true`→`True`, `$PID`→the new process’s PID, undefined and `$env:` forms→empty. Usually this
+  dies as a parser error that looks like a syntax mistake; **sometimes it produces a VALID command
+  carrying a value you never wrote, and exits 0** — the silent-wrong-value case is the dangerous one.
+  `interact_with_process` does NOT do this (measured 2026-08-29, control `CTRL=42`).
+  **Anything containing `$` goes in a `.ps1` file run with `-File`.**
+  🔴 **AND THE CURE HIDES THE TRAP FROM ITS OWN CONTROL — run the discriminating control through
+  `-Command`, NEVER through `-File`.** MEASURED 2026-09-04T15:1xZ by Station 00, both forms minutes
+  apart inside ONE scheduled Cowork session, same machine, same shell, control `$CTRL=42` (undefined
+  at expansion time, so it MUST print empty if a pre-expansion layer exists):
+  `start_process` with **`-File <script.ps1>`** → `CTRL-literal-is:42` — **no expansion**;
+  `start_process` with **`-Command "..."`** → the assignment arrives as bare `=42`
+  (`CommandNotFoundException`), `$env:USERNAME` arrives already substituted as `Marco`, and `$true`
+  as `True` — **expansion, exactly as this bullet describes.** Only the invocation differs.
+  ⚠️ **So a station that follows the cure and then measures the cure reports "the trap does not
+  reproduce".** That is what Station 04 reported on 2026-09-04T14:09Z (breadcrumb
+  `00-04-scanner-2026-09-04-1409-doctrine-s9-anchors-have-drifted-ninety-lines-under-the-arming-markers.md`,
+  finding F3, dispatched to 00 as a possible retirement). **It is a measurement of the cure working,
+  not a non-reproduction: this bullet stands UNQUALIFIED.**
+
+  **NON-REPRODUCTION RECORDED 2026-09-11, AND THE CURE STANDS UNCONDITIONALLY.**
+  `COMMAND_LAYER_EXPANSION_NOT_REPRODUCED_V1` [MEASURED] 2026-09-11T02:2xZ by Station 04 at
+  `ec7dd590`, through `start_process` shell `powershell.exe` - the transport this bullet's own
+  control mandates, never `-File`: `$CTRL=42; "CTRL-literal-is:$CTRL"` printed
+  **`CTRL-literal-is:42`**, so the `42` survived and nothing substituted an undefined name; and
+  `foreach ($home in @(1,2,3))` raised **`Cannot overwrite variable HOME because it is read-only or
+  constant`** with zero rows - NOT the ParserError naming a filesystem path that this subsection
+  names as the discriminator for pre-expansion. The CAUSE of the difference is **[CANNOT MEASURE]**:
+  a Desktop Commander change between 2026-09-10T10:1xZ and now is the obvious candidate and is
+  unproved. **This is a non-reproduction, not a retirement.** Writing `$` into a `.ps1` and running
+  it with `-File` costs nothing, so the cure is unconditional whatever the answer - a silent wrong
+  value at exit 0 is the worst shape in this section, and one run's inability to reproduce it is not
+  evidence it cannot happen. Re-run both rows, and stamp the transport AND the Desktop Commander
+  version, before anyone edits this bullet again. Found by Station 04 2026-09-11T02:2xZ (F2), landed
+  by Station 00 at 02:5xZ.
+
+  🔴🔴 **CAUSE FOUND 2026-09-14 — THE NON-REPRODUCTION ABOVE IS A PROPERTY OF THE TRANSPORT, AND
+  THIS BULLET'S OWN CONTROL NAMES IT AMBIGUOUSLY. `-Command` MEANS *A NESTED
+  `powershell.exe -Command "…"`*, NOT *THE DESKTOP COMMANDER SHELL WHOSE NAME IS `powershell.exe`*.**
+  `COMMAND_LAYER_EXPANSION_IS_THE_NESTED_FORM_V1` The 2026-09-11 row says it ran *"through
+  `start_process` shell `powershell.exe` - the transport this bullet's own control mandates"*. That
+  is the shell NAME, not the `-Command` LAYER, and there is no expansion layer on it — so the row
+  measured a transport the trap was never claimed for, and read `CTRL-literal-is:42` as a
+  non-reproduction. [MEASURED] 2026-09-14T18:2xZ by Station 00 (scheduled) at `49685973`, host PS
+  **5.1.26100.9444**, Desktop Commander `start_process`, both rows minutes apart in one session,
+  control `$CTRL=42` (undefined at expansion time, so it MUST print empty if a pre-expansion layer
+  exists):
+
+  | transport | result |
+  |---|---|
+  | `start_process` shell `powershell.exe`, statements sent **direct** — the 09-11 row | `ROW_A_direct_shell:42` and `USER_IS:Marco` — **no expansion** |
+  | `start_process` shell `powershell.exe`, command = `powershell.exe -NoProfile -Command "…"` | **`The string is missing the terminator: ".`** — `$CTRL` consumed before the child parsed, **expansion** |
+
+  POSITIVE control that the nested form fires on real work, same run: a `Select-String … \| ForEach-Object { $_.LineNumber … }`
+  written through the nested form arrived as `{ .LineNumber …` and died `ParserError: An expression
+  was expected after '('` — the `$_` gone, not merely mis-valued.
+
+  🔧 **So nothing is retired and nothing is a Desktop Commander regression: the trap is live, and the
+  cure is unchanged and unconditional.** What changes is the CONTROL: a run testing this bullet must
+  nest `powershell.exe -Command "…"` inside the transport, because the bare shell has no layer to
+  demonstrate. ⚠️ **The 2026-09-11 block stays as written** — it is a true measurement of the direct
+  transport, and deleting it would cost the next run the pair. ⚠️ **Falsifying probe: the two rows
+  above.** If the nested row ever prints `ROW_B_nested_Command:42`, this correction is wrong and must
+  be re-measured. Found and landed by Station 00 2026-09-14T18:3xZ.
+- 🔴🔴 **`cmd /c "<command> & echo %ERRORLEVEL%"` PRINTS THE **PREVIOUS** EXIT CODE, BECAUSE `cmd`
+  EXPANDS `%ERRORLEVEL%` WHEN IT *PARSES* THE LINE AND NOT WHEN EXECUTION REACHES THE `echo` — SO THE
+  IDIOM EMITS A WELL-FORMED, PLAUSIBLE INTEGER THAT DESCRIBES A DIFFERENT COMMAND.**
+  `CMD_CHAIN_ERRORLEVEL_IS_PARSE_TIME_V1`
+
+  This is the `cmd` half of the `-Command` bullet above: a Windows shell layer substituting a value
+  **before** the command runs, so the caller reads something the command never produced. The
+  `-Command` layer eats `$`; `cmd` eats `%ERRORLEVEL%`. Neither warns, and both exit 0.
+
+  [MEASURED] 2026-09-24T18:1xZ by Station 04 (F3b) at `11c07025`, on a query whose truth is known in
+  **both** directions — `git check-ignore -v`, which exits **0 with a match line** for an ignored
+  file and **1 with empty output** for a tracked one:
+
+  | form | output | reads as | truth |
+  |---|---|---|---|
+  | `cmd /c "git check-ignore -v <breadcrumb> & echo IGNORE_EXIT=%ERRORLEVEL%"` — **the failing form** | `IGNORE_EXIT=0`, **no match line** | *"this file is ignored"* | **wrong** |
+  | the same query from `powershell.exe -File`, reading `$LASTEXITCODE` on the next line | exit **1**, empty output | *"NOT ignored"* | **right** |
+  | POSITIVE control, `docs/qa/qa-findings.md` through the sound form | exit **0**, `.gitignore:116:docs/qa/qa-findings.md` | *"ignored"* | right |
+
+  🔴 **The two readings are opposite and the failing form is internally incoherent** — exit 0 means
+  *ignored*, and an ignored file always prints its rule, so `0` with no match line is a state
+  `check-ignore` cannot produce. Nothing in the output says so.
+
+  🔴 **It bit the report that found it.** Station 04 used the idiom for `ADVANCE_EXIT` and
+  `BREADCRUMB_EXIT` and wrote both into WHAT CHANGED as `[MEASURED]`. Both were re-measured from
+  `$LASTEXITCODE` and both genuinely were `0` — **so the published numbers were right by luck, not by
+  measurement**, which is the distinction §7 exists to protect. Corroboration for each was
+  independent of the exit code anyway (`next-sweep.mjs` printed `advanced: last_index=2`;
+  `check-breadcrumb.mjs` printed its own `ADMIT` and `CLEAN`), which is the only reason nothing was
+  published false.
+
+  🔧 **Never read an exit code out of a `cmd /c` `&` chain.** Three sound forms, and there is no
+  fourth: `powershell.exe -File <script.ps1>` reading `$LASTEXITCODE` **on the following line**;
+  `cmd /v:on` with delayed expansion `!ERRORLEVEL!`; or giving the command its own invocation and
+  reading the transport's own exit code. ⚠️ **This composes with §9.4's CWD bullet** — a `gh` or
+  `git` call whose exit code you are discarding *and* mis-reading fails twice over, silently.
+
+  ⚠️ **Falsifying probe: the three rows above.** Run `git check-ignore -v` through both forms against
+  one genuinely ignored file and one genuinely tracked one. **The chained form returns the SAME
+  answer for both**; if it ever discriminates them, this bullet is wrong and must be re-measured.
+  Found by Station 04 2026-09-24T18:1xZ (F3b), landed by Station 00 at 2026-09-24T19:3xZ.
+- ⚠️ **Streamed output can return EARLY with output still pending.** The `#`-heading cause did
+  **not** reproduce on Desktop Commander 0.2.47 (measured 2026-08-29: a `#`/`##` fixture returned in
+  the first read), but early returns are real — one was observed the same run on a line with no `#`.
+  This is not a hang. Keep calling `read_process_output` with explicit offsets until it
+  reports `0 remaining`.
+- 🔴🔴 **AND THE EARLY RETURN IS REPORTED AS A *TERMINATION*, NOT AS A TIMEOUT — SO THE CURE
+  ABOVE IS NEVER REACHED, AND THE STATEMENTS THAT DID NOT RUN LOOK LIKE STATEMENTS THAT FOUND
+  NOTHING.** `EARLY_RETURN_REPORTED_AS_TERMINATION_V1` The bullet above tells you an early return
+  *"is not a hang"* and to keep calling `read_process_output`. A reader who is told the process has
+  **finished** has no reason to call anything again. [MEASURED] 2026-09-14T12:1xZ by Station 00
+  (scheduled) at `345c5708`: an `interact_with_process` chain of five statements against shell PID
+  31964 — a node restore, `git merge --ff-only origin/main`, then three read-backs
+  (`git rev-list --left-right --count`, `git diff --numstat`, `git diff --cached --name-status`) —
+  returned the node line, the FIRST line of git’s multi-line refusal, and then
+  **`✅ Process 31964 has finished execution`**. The three read-backs produced no output at all.
+
+  🔴 **POSITIVE CONTROL, and it is the whole finding: the shell was ALIVE.** Twenty minutes later
+  the same PID answered `"PID31964-ALIVE"; git rev-parse --short HEAD` → `345c5708` on the first try,
+  from `C:\ProjectOperations2`, with its working directory intact. Nothing had terminated. **The
+  run had already abandoned it and started a second shell on the strength of that message.**
+
+  🔴 **The cost is §9.6 with the emptiness manufactured by the instrument.** Three read-backs whose
+  whole job is to say whether a tree is clean returned nothing, and *nothing* is exactly what a clean
+  tree returns — `git diff --numstat` EMPTY and `git diff --cached --name-status` EMPTY are the
+  prescribed PASS readings in the post-merge fast-forward cure in `00-supervisor.md`. A run that
+  places its read-backs after a command that can fail therefore reads **UNRUN as CLEAN**, at what the
+  transport calls success.
+
+  🔧 **Two guards, and the first costs nothing.** (1) **Never put a read-back in the same
+  `interact_with_process` chain after a command that can fail** — echo a literal marker after each
+  statement and assert the marker is present, because a statement that never ran and a statement that
+  found nothing are byte-identical otherwise. (2) **Treat `Process has finished execution` as a claim
+  to be falsified, never as a fact**: send one trivial command to the same PID before believing the
+  shell is gone — that probe is one call and it decides.
+
+  ⚠️ **The TRIGGER is [CANNOT MEASURE] after two honest attempts.** Re-running the failing component
+  alone — a `git` command writing a multi-line `NativeCommandError` to stderr through
+  `2>&1 | Select-Object -Last N`, with and without a preceding `node -e` — did **not** reproduce it:
+  both attempts ran every following statement and printed both markers. `$ErrorActionPreference` was
+  `Continue` in every shell measured, so §7 guard 7 is not the mechanism. **The guards above do not
+  depend on the trigger being known.** ⚠️ **Falsifying probe: the positive control.** On the next
+  `finished execution` message, send one command to that PID; if the call genuinely fails, this bullet
+  is wrong and must be re-measured. Found and landed by Station 00 2026-09-14T12:2xZ.
+
+  🔴 **SECOND INSTANCE, EIGHT HOURS LATER, AND IT NARROWS THE TRIGGER: THE STATEMENT THAT PRECEDED
+  THE FALSE TERMINATION WAS A NATIVE COMMAND WRITING A MULTI-LINE ERROR TO STDERR — `gh`, NOT `git`.**
+  `EARLY_RETURN_TRIGGER_IS_A_NATIVE_STDERR_WRITER_V1` The bullet above leaves the trigger
+  `[CANNOT MEASURE]` after two honest attempts, both of which re-ran `git`. [MEASURED]
+  2026-09-14T20:1xZ by Station 00 (scheduled) at `e42cd7ce`, shell PID 31840: an
+  `interact_with_process` chain of four statements — `gh pr checks 1920` piped to `Select-String`,
+  an echo of `$LASTEXITCODE`, then two `gh pr view … --jq` calls — returned the two failing check
+  rows, the exit echo, and `gh`'s own multi-line `failed to parse jq expression` block, and then
+  **`✅ Process 31840 has finished execution`**. The fourth statement produced no output at all.
+  🔴 **POSITIVE CONTROL, and it is again the whole finding: the shell was ALIVE.** The very next
+  call to the same PID answered `PID31840-ALIVE` and `C:\ProjectOperations2` on the first try, with
+  its working directory intact, and carried the rest of the run. **Guard (2) above — treat
+  `Process has finished execution` as a claim to be falsified — cost one call and decided it.**
+  ⚠️ **What is added is the shape of the preceding statement, not a proved mechanism.** Both
+  measured instances share it: a native (non-PowerShell) command emitting a multi-line error to
+  stderr in the middle of a chain. That is a class to re-run against, not a cause — `$ErrorActionPreference`
+  was `Continue` here too, so §7 guard 7 is still not the mechanism. ⚠️ **Falsifying probe: send a
+  deliberately malformed `--jq` expression to `gh` mid-chain with a marker echo after it.** If the
+  marker prints, this narrowing is wrong and must be re-measured. Found and landed by Station 00
+  2026-09-14T20:2xZ.
+
+  🔴🔴 **SELF-REFUTED THIRTY MINUTES LATER, BY ITS OWN FALSIFYING PROBE, AND THE CORRECTION IS
+  LARGER THAN THE CLAUSE: THE STATEMENTS DID RUN. IT IS THE *READER* THAT RETURNED EARLY, NOT THE
+  SHELL THAT STOPPED.** `FALSE_TERMINATION_IS_AN_EARLY_READ_NOT_AN_UNRUN_STATEMENT_V1` The clause
+  above asserts *"The fourth statement produced no output at all"* and narrows the trigger to a
+  native command writing a multi-line error to stderr. **Both halves are wrong**, measured by
+  Station 00 (scheduled) at `66a99999`, in the same session and on the same shell PID 31840:
+
+  | probe | result |
+  |---|---|
+  | `read_process_output` on PID 31840 after the false termination | the full 380-line buffer, **including `MARKER_L`** — the final statement of that chain — and both `gh` jq errors. **Every statement ran.** |
+  | the clause's own falsifying probe: a deliberately malformed `--jq` mid-chain with a marker after it | `PROBE_START` · the parse error · `PROBE_AFTER_JQ` · `PROBE_END`, **all returned in the first read**. No early return, no termination message. |
+
+  🔧 **So `Process has finished execution` is the SAME phenomenon this subsection's earlier bullet
+  already names — *"streamed output can return EARLY with output still pending"* — wearing a
+  different label, and the cure was always written down: keep calling `read_process_output` with
+  explicit offsets until it reports `0 remaining`.** What the termination message adds is that it
+  tells the reader there is nothing left to call for, which is why the cure is never reached.
+  **Guard (2) above is therefore strengthened, not replaced: on that message, do not merely ping the
+  PID — READ ITS BUFFER. The output is pending, not absent.**
+
+  ⚠️ **And this puts the 12:1xZ instance's own key claim back in doubt.** That run recorded *"The
+  three read-backs produced no output at all"* and abandoned the shell on the strength of the
+  message; it never re-read the buffer, so whether those three statements ran is **[CANNOT
+  MEASURE]** — and the reading that cost it, `UNRUN read as CLEAN`, may in fact have been a clean
+  tree correctly reported into a buffer nobody drained. Guard (1) — a literal marker after every
+  statement — is what settles this in either direction, and here the markers settled it.
+
+  ⚠️ **The trigger remains unknown and the narrowing is retired.** A malformed `--jq` alone does not
+  reproduce it. ⚠️ **Falsifying probe: on the next `finished execution` message, call
+  `read_process_output` on that PID and look for the chain's last marker.** If the marker is genuinely
+  absent from the drained buffer, this correction is wrong and the unrun-statement reading returns.
+  Found and landed by Station 00 2026-09-14T20:3xZ.
+
+- 🔴 **`Get-ChildItem <dir> -Recurse -Include '*.log'` RETURNS NOTHING, EXIT 0, UNLESS THE PATH
+  ITSELF ENDS IN A WILDCARD.** In PS 5.1 `-Include` filters the *path* argument, not the recursion,
+  so the directory form silently matches zero items while the identical query with `<dir>\*` works.
+  [MEASURED] 2026-09-06T17:2xZ by Station 00, hunting for a live watcher log: `Get-ChildItem
+  C:\po-watcher -Recurse -Include '*.log'` filtered to the last two hours printed **nothing**, and
+  the available conclusion was *"no log on this machine has been written in two hours"* — while
+  `...\logs\2026-09-06.log` had been written **three minutes earlier**. The same query as
+  `C:\po-watcher\* -Recurse -Include '*.log'` returns it. Nothing warns and nothing is empty in a
+  way §9.6 can see: the cmdlet did exactly what it was asked. 🔧 **Use `-Filter` on a single
+  extension, or put the wildcard in the path** — and control any recursive file search against a
+  file you know is there.
+
+  🔴🔴 **CORRECTED 2026-09-07 — THE BULLET ABOVE IS SCOPED TO THE NO-`-Recurse` FORM ONLY. WITH
+  `-Recurse` IT DOES NOT REPRODUCE, AND READING IT OTHERWISE TELLS A STATION ITS *WORKING* QUERY IS
+  BROKEN — which is how a real absence gets papered over as an instrument fault.** [MEASURED]
+  2026-09-07T06:22Z by Station 04, PS `5.1.26100.9168`, against a purpose-built fixture
+  (`top.log` + `sub\nested.log` + `sub\other.txt`, truth known by construction) and a real tree:
+
+  | form | bare `<dir>` | `<dir>\*` | truth |
+  |---|---|---|---|
+  | real dir (`…\scripts\pr-watcher`), **WITH** `-Recurse` | **45** | 45 | 45 |
+  | fixture, **WITH** `-Recurse` | **2** | 2 | **2** |
+  | fixture, **WITHOUT** `-Recurse` | **0** | 1 | 1 at depth 1 |
+  | `C:\po-watcher`, **WITHOUT** `-Recurse` | **0** | 7 | 7 |
+
+  `-Recurse` rescues the bare-directory path on this build, in both a real tree and a fixture whose
+  truth is known by construction. **The mechanism is real for the depth-1 form** — the last two rows
+  — and that is the form the cure exists for.
+  ⚠️ **[CANNOT MEASURE] the exact query in the worked example above.** `Get-ChildItem C:\po-watcher
+  -Recurse -Include '*.log'` recurses `node_modules` and did not return in six minutes; it was
+  terminated. So the true cause of the 2026-09-06T17:2xZ zero is unmeasured — the surviving
+  candidates are the *"filtered to the last two hours"* clause or the recursion itself, **not** the
+  stated `-Include` mechanism.
+  🔧 **Nothing is retired:** `-Filter`, the wildcard path, and *"control any recursive file search
+  against a file you know is there"* all stand, and are what a reader needs either way. **The
+  falsifying probe is the fixture table above** — rebuild it and re-run both forms. Found by
+  Station 04 2026-09-07T06:2xZ (F1), landed by Station 00 at 07:3xZ.
+  🔴🔴 **CORRECTED 2026-09-10 — "PUT THE WILDCARD IN THE PATH" IS SAFE ONLY WITHOUT `-Recurse`.
+  COMBINED WITH `-Recurse` AND A TYPE FILTER IT RETURNS ZERO WHENEVER DEPTH 1 HOLDS NO MATCHING
+  FILE — and the fixture above cannot fail, because it holds one.** [MEASURED] 2026-09-10T02:2xZ by
+  Station 04 at `ed7dc38f`, PS `5.1.26100.9444`, on a real container directory holding 7
+  subdirectories and **0 files** at depth 1, with 17 files and 11 `SKILL.md` in total:
+
+  | form | result | truth |
+  |---|---|---|
+  | `Get-ChildItem $sd -Recurse -File` | **17** | 17 |
+  | `Get-ChildItem "$sd\*" -Recurse -File` | **0** | 17 |
+  | `Get-ChildItem $sd -Recurse -Filter 'SKILL.md' -File` | **11** | 11 |
+  | `Get-ChildItem "$sd\*" -Recurse -Filter 'SKILL.md' -File` | **0** | 11 |
+  | `Get-ChildItem "$sd\*" -Recurse` (no `-File`) | **22** | recursion itself works |
+  | `Get-ChildItem "$sd\*" -Directory` (no recurse) | **7** | 7 |
+
+  **Mechanism.** With a trailing `\*` the type filter is applied to the *wildcard-resolved depth-1
+  set*, not to the recursed set, so a container directory with no matching file at depth 1 is
+  emptied before recursion contributes anything. No error, no warning, exit 0 — nothing is empty in
+  a way §9.6 can see, because the cmdlet did exactly what it was asked. The available conclusion in
+  the run that met it was *"the bootstrap corpus shrank from 11 to 6"*, which would have retired a
+  live escalation's own corpus; it was caught only because the positive control also read 0 while
+  node had just listed the files.
+
+  🔧 **State the rule positively: with `-Recurse`, pass the BARE directory and use `-Filter`. Never
+  combine a trailing `\*` with `-Recurse` and a type filter.** The wildcard-in-the-path cure is
+  correct and stays — scoped to the depth-1, no-`-Recurse` form it was measured for, which is also
+  the form §9.5's log-selection cure uses and is therefore unaffected.
+
+  ⚠️ **The 2026-09-07 fixture is structurally blind to this and must not be used as the falsifying
+  probe on its own** — it holds a matching file at depth 1, so every form agrees on it, and a reader
+  who rebuilds it is reassured. **The probe is a PAIR of fixtures differing only in what sits at
+  depth 1:**
+
+  | fixture (truth: 2 `.log`) | bare `-Recurse -Filter -File` | star `-Recurse -Filter -File` | bare `-Recurse -File` | star `-Recurse -File` |
+  |---|---|---|---|---|
+  | A — a `.log` present at depth 1 (the 09-07 fixture) | 2 | **2** | 3 | **3** |
+  | B — **ZERO FILES OF ANY KIND at depth 1**, `.log` only deeper | 2 | **0** | 3 | **0** |
+
+  🔴🔴 **CORRECTED 2026-09-11 — FIXTURE B AS ORIGINALLY SPECIFIED ("`.log` files only deeper, none at
+  depth 1") CANNOT FAIL, AND THE SENTENCE BELOW TELLS ITS READER TO RETIRE A LIVE TRAP WHEN IT
+  PASSES.** `WILDCARD_RECURSE_FIXTURE_NEEDS_ZERO_FILES_V1` The mechanism needs **zero files of ANY
+  kind** at depth 1, not zero *matching* files: one non-matching file is enough for the trailing
+  wildcard to resolve a depth-1 set that the type filter can survive. [MEASURED] 2026-09-11T02:2xZ
+  by Station 04 at `ec7dd590`, PS `5.1.26100.9444`, over three fixtures whose truth is known by
+  construction (each: 2 `.log`, 3 files, one subdirectory level). A fixture with a `.log` at depth 1
+  and a fixture with a `top.txt` at depth 1 **both** return star columns `2` and `3` — the exact
+  values this probe nominates as its own refutation — while only a fixture holding **no files at
+  all** at depth 1 returns `0` and `0`. The 2026-09-10 measurement was taken on a real directory
+  holding *"7 subdirectories and **0 files**"*, which is that third shape: the bullet's own worked
+  table states it and the fixture spec then lost it.
+  ⚠️ **The RULE is untouched and nothing is retired** — with `-Recurse`, pass the BARE directory
+  and use `-Filter`; the wildcard-in-path cure stays scoped to the depth-1 no-`-Recurse` form it was
+  measured for. What changes is only that the probe is now able to fail, which is the whole reason a
+  falsifying probe is written down. Found by Station 04 2026-09-11T02:2xZ (F1), landed by Station 00
+  at 03:3xZ.
+
+  Rebuild both and run all four forms; **if fixture B — built with NO files whatever at depth 1 —
+  ever returns star columns of 2 and 3, this correction is wrong and must be re-measured.** ⚠️ **Blast radius is agents, not scripts:**
+  `Select-String -Pattern '\\\*"?\s+-Recurse'` over every `.ps1` under this repo's `scripts`
+  directory returned **0** (POSITIVE control `Get-ChildItem` → 24; NEGATIVE control, a freshly
+  minted needle → 0), so nothing shipped uses the failing form. What is exposed is every run that
+  follows the prescribed cure by hand, over exactly the container-shaped directories stations probe
+  most — and one of them was the run that found this. Found by Station 04 2026-09-10T02:2xZ (F1),
+  landed by Station 00 at 03:3xZ.
+
+  **CORRECTED 2026-09-11 - FIXTURE B AS SPECIFIED CANNOT FAIL, AND THE BULLET ABOVE TELLS ITS READER
+  TO RETIRE A LIVE TRAP WHEN IT PASSES.** `FIXTURE_B_NEEDS_ZERO_FILES_V1` The mechanism needs **zero
+  files of any kind** at depth 1, not zero *matching* files: one non-matching file is enough for the
+  trailing `\*` to resolve a depth-1 set that the type filter can survive. [MEASURED]
+  2026-09-11T02:2xZ by Station 04 at `ec7dd590`, PS `5.1.26100.9444`, three fixtures whose truth is
+  known by construction (each 2 `.log`, 3 files, one subdirectory level):
+
+  | fixture | files at depth 1 | bare `-Recurse -Filter -File` | star `-Recurse -Filter -File` | bare `-Recurse -File` | star `-Recurse -File` |
+  |---|---|---|---|---|---|
+  | A - a `.log` at depth 1 (the 09-07 fixture) | 1 | 2 | **2** | 3 | **3** |
+  | B - `.log` only deeper, `top.txt` at depth 1 (the PRESCRIBED fixture) | 1 | 2 | **2** | 3 | **3** |
+  | C - `.log` only deeper, ZERO FILES at depth 1 | **0** | 2 | **0** | 3 | **0** |
+
+  Fixture B returns exactly the `2` and `3` the paragraph above nominates as its own refutation, so a
+  run that rebuilds the prescribed pair - which is what an `instrument-honesty` sweep is told to do -
+  reads *"this correction is wrong"* and retires a trap that is live. The 2026-09-10 measurement was
+  taken on a real directory holding *"7 subdirectories and 0 files"* - fixture C's shape, stated in
+  that bullet's own worked table and lost in its fixture spec. **Every RULE above is unchanged; only
+  the fixture spec is corrected: FIXTURE B MUST HOLD NO FILES AT ALL AT DEPTH 1.** **Falsifying
+  probe: rebuild A, B and C and read the `files at depth 1` column; if fixture C's star columns ever
+  return 2 and 3, this correction is wrong.** Found by Station 04 2026-09-11T02:2xZ (F1), landed by
+  Station 00 at 02:5xZ.
+
+- 🔴 **A SINGLE-QUOTED PowerShell needle containing `\\` CAN NEVER MATCH A WINDOWS PATH, AND ITS
+  ZERO WEARS AN ABSENCE'S CLOTHES.** PowerShell single quotes do **not** process escapes, so
+  `'C:\\Foo\\Bar'` is searched as a literal *double* backslash and matches nothing on any real path.
+  [MEASURED] 2026-09-06T22:1xZ by Station 04, asking *"do the five scheduled-task bootstraps name the
+  working copy?"* — the question a live escalation turned on:
+
+  | form | result | truth |
+  |---|---|---|
+  | `Select-String -SimpleMatch -Pattern 'C:\\ProjectOperations2\\docs\\pipeline'` | **0** on all five | wrong |
+  | node, counting `C:\ProjectOperations2\docs\pipeline` (single backslash) | **3** on all five | right |
+
+  Both exit 0, neither warns, and §9.6 does not fire because the query *worked*. The trap is specific
+  to this pipeline's habit: Windows paths are written `\\` in JSON, in node source and in half the
+  documents stations read, so copying a needle out of any of them into a single-quoted PowerShell
+  pattern **silently inverts the answer**. Had 04 stopped at that reading it would have filed *"the
+  bootstraps were fixed"* — retiring a live escalation, which is the failure mode this section exists
+  to stop. This is a **different** bullet from the `-Include` and `-SimpleMatch` + `[regex]::Escape()`
+  traps above: those are about the *path argument* and about *escaping a regex*; this one is about
+  the **quoting of the literal itself**.
+  🔧 **Count Windows-path occurrences in node, or put the single-backslash needle in DOUBLE quotes**
+  — and control any path search against a path you know is present. Found by Station 04
+  2026-09-06T22:1xZ (F4), landed by Station 00 at 23:3xZ.
+- 🔴 **A `\b` — OR ANY BACKSLASH ESCAPE — WRITTEN FOR A `node -e` REGEX ARRIVES DOUBLED WHEN THAT
+  SOURCE IS CARRIED IN A POWERSHELL DOUBLE-QUOTED STRING, BECAUSE POWERSHELL DOES NOT CONSUME
+  BACKSLASHES — AND THE NEGATIVE CONTROL THIS DOCUMENT PRESCRIBES CARRIES THE SAME ESCAPE, SO IT
+  RETURNS ZERO FOR THE WRONG REASON AND CANNOT CATCH IT.**
+  `NODE_E_REGEX_BACKSLASH_DOUBLES_THROUGH_POWERSHELL_V1`
+
+  **Mechanism.** PowerShell double quotes expand `$` and backticks and leave `\` **alone**. A writer
+  escaping *"for the shell"* therefore writes four backslashes before the `b`; node receives that
+  verbatim as JS source, the string literal evaluates to two, and `new RegExp` compiles a **literal
+  backslash** followed by `b` — a sequence that occurs in no log this pipeline writes. Nothing warns,
+  nothing is empty in a way §9.6 can see, and the call exits 0.
+
+  [MEASURED] 2026-09-24T04:2xZ by Station 00 (scheduled) at `45bbffbc`, on §10.1 step 1’s lane probe
+  — *"RULE 2 … has exactly one live probe"* — over the 948 `docs/pr-prompts/processed/pr-*.log`:
+
+  | form | #2148 | #2135 | #2131 | #2127 | POSITIVE control | NEGATIVE control |
+  |---|---|---|---|---|---|---|
+  | a `RegExp` built with a shell-escaped `\b` — **the failing form** | **0** | **0** | 0 | **0** | `marco.:true` → **706**, PASSES | a `\b`-bearing needle → 0 |
+  | `indexOf` plus an explicit next-character digit guard — **the cure** | **2** | **1** | 0 | **2** | `PR #2147` / `PR #2150`, board PRs the watcher never opened → **0 / 0** | a backslash-free minted needle → 0 |
+
+  🔴 **The cost is the worst shape available in this document: a uniform zero across a heterogeneous
+  set, on the one probe §10.1 calls RULE 2’s only live probe.** Three of those four PRs carry a real
+  `marco:true` verdict — `#2148` (label), `#2135` (`.claude/hooks/guard.mjs`), `#2127`
+  (`apps/api/…/field.service.ts`). Read through the failing form all four answer **`NO LOG`**, whose
+  prescribed reading in §10.1 step 2 is *"it did not come through the watcher"*. **Three live Marco
+  routings would have been hand-classified as second lane**, on a board where 00 may merge. That is
+  §9.6 with a merge button attached, reached through the NEEDLE rather than through the corpus.
+
+  🔴 **And the standard control pair is structurally blind to it.** The positive control that passed
+  (`marco.:true`) contains no backslash, so it certifies the corpus and the reader and says nothing
+  about the escape; the negative control shape this document prescribes everywhere carries the same
+  `\b` and returns 0 for the wrong reason. **Both controls passed while every real query was broken** —
+  the run that met this caught it on the uniform zero, not on its controls.
+
+  🔧 **Two cures, and the first is free: put NO backslash in a needle that crosses a PowerShell layer
+  into `node -e`.** Match with `indexOf` plus an explicit next-character guard, which is what the `\b`
+  was for. If a regex is genuinely required, build the boundary from a character class rather than an
+  escape — or **write the script to a `.mjs` file and run it from disk**, so no shell layer ever
+  touches the source. That second form is what landed this bullet.
+
+  ⚠️ **A control must carry the SAME escape as the query it certifies.** A backslash-free control over a
+  backslash-bearing needle certifies nothing, and that is a rule about every probe in §9, not only this
+  one.
+
+  ⚠️ **This is NOT the single-quoted Windows-path bullet above.** That one is about a path literal
+  inside PowerShell’s own `Select-String`; this one is about a regex escape surviving into a **different
+  language’s** parser, and its blast radius is every `node -e` one-liner — the transport §9.3 recommends
+  for exactly the file work stations do most.
+
+  ⚠️ **Falsifying probe: the two-row table above.** Re-run both forms over
+  `docs/pr-prompts/processed/pr-*.log` for a PR you know carries a watcher verdict. If the
+  shell-escaped form ever returns a non-zero count, this bullet is wrong and must be re-measured.
+  Found and landed by Station 00 2026-09-24T04:3xZ.
+- 🔴 **`gh run view <run> --job <job> --log` EMITS THREE TAB-SEPARATED COLUMNS, AND COLUMN 1 IS THE
+  JOB NAME — so grepping the whole line for anything that appears in the job's own name matches EVERY
+  LINE OF THE LOG.** [MEASURED] 2026-09-07T18:4xZ by Station 00 on the `Approval receipt (CP-26)` job of
+  run `34151708462` (`#1767`): the log is **220** lines, every one shaped
+  `<job name>\t<step name>\t<timestamp> <text>`, and `Select-String -Pattern 'CP-26'` over the raw lines
+  matched the runner-version banner, the image provisioner and the build date — because `CP-26` is in
+  column 1 of all of them. Nothing is empty and nothing warns, so §9.6 does not fire; the query worked
+  and answered a question about the job's TITLE. The gate's actual verdict is in column 3 and reads
+  `FAIL - CP-26 approval-receipt [LABEL_PRESENT] …`, one line out of 220.
+  🔧 **Split on the tab and search the LAST column** — `$lines | ForEach-Object { ($_ -split "`t")[-1] }`
+  — and control it against a needle you know is in the log body and one you know is nowhere.
+  ⚠️ This is why *"never diagnose a CI failure without reading the job log"* (§3) is not sufficient on
+  its own: reading the log and grepping the log are different acts, and only one of them is protected
+  by this bullet.
+- ⚠️ Blocked commands: `net`, `sc`, `reg`, `netsh`, `takeown`, `shutdown`.
+- 🔴 **NEVER BIND A POWERSHELL AUTOMATIC VARIABLE AS A LOOP OR ASSIGNMENT TARGET; PREFER A NAME NO AUTOMATIC VARIABLE CAN SHADOW.** `AUTOMATIC_VARIABLE_ASSIGNMENT_V1` [MEASURED] 2026-09-07T22:2xZ by Station 04 at `1ddf3fb4`: a `foreach ($home in @(<docs/pr-reviews/…> × 3)) { … }` loop over three review-file homes produced zero rows and exited 0. Cause: `$home` is a read-only PowerShell automatic variable; binding it throws `SessionStateUnauthorizedAccessException: Cannot overwrite variable HOME because it is read-only or constant` to the error stream once, and the loop body never runs. The three homes held 106, 61, and 623 review files at the same minute — §9.6 does not fire because the exit code is 0. Guard 5 of §7 is scoped to **single-letter** names (`$c` vs. `$C`); a reader following it to the letter still writes `$home`, `$host`, `$input`, `$pwd`, `$args`, `$matches`. 🔧 Pick a non-automatic name (`$reviewHome`); control any `foreach` that produces no rows against an input you know is non-empty — a loop that never ran and a loop over an empty collection are byte-identical in output. **Falsifying probe — the argument must reach the child with `$` intact, so SINGLE-quote it, or put it
+in a `.ps1` and run it with `-File`:**
+`powershell -NoProfile -Command 'foreach ($home in @(1,2,3)) { $home }'`. Expect
+`Cannot overwrite variable HOME because it is read-only or constant` and ZERO rows, against a
+POSITIVE control with a non-automatic name (`$loopVar`) that emits three.
+🔴 **A ParserError naming a filesystem path instead of `$home` means your argument was expanded
+before the child ever saw it — that is the FIRST bullet of this subsection firing, not this one, and
+you have measured nothing.** If the single-quoted form ever prints `1 2 3`, this bullet is wrong and
+must be re-measured.
+⚠️ **The probe as written until 2026-09-10 was routed through `-Command` with DOUBLE quotes and was
+therefore unfalsifiable in the direction it exists to protect.** [MEASURED] 2026-09-10T10:1xZ by
+Station 04 at `a2fa8e4e` across four transports: `start_process -Command "…"` and an interactive
+shell with a double-quoted argument both delivered `foreach (C:\Users\Marco in @(1,2,3))` and died
+with `Missing variable name after foreach` — a ParserError that is NOT this bullet’s symptom, read by
+two of four transports as *"not `1 2 3`, so still trapped"* having measured nothing. Only the
+single-quoted form and the `-File` form reach the mechanism. 🔧 **The two cures in this subsection
+point in OPPOSITE directions and neither used to say which bullet it belonged to:** the expansion
+bullet above correctly demands its own control run through `-Command` and never `-File`; this one
+needs a transport that PRESERVES `$`. Applying the first bullet’s instruction to this one arms the
+failure. Found by Station 04 2026-09-10T10:1xZ (F1), landed by Station 00 at 11:4xZ.
+
+## 9.2 Git
+
+- 🔴 **`git ls-tree --name-only <ref> -- <dir>` returns exactly the level you asked for.** With
+  **no trailing slash** it returns the tree entry itself — **ONE line**, not its contents — and any
+  filter over that reports **zero**, which reads as "nothing is there." That produced a false
+  "0 tracked ready-files" against a truth of 9, asserted into a live station prompt. With a
+  **trailing slash** (`-- <dir>/`) it returns that directory’s **direct children**, which is correct
+  for a depth-1 filter and **ZERO for anything deeper** (measured 2026-08-31 at `b19f3db9`:
+  `-- docs/pr-prompts/superseded` returns **1** without `-r` and **252** with it). **Always `-r`
+  unless you deliberately want one level, and always control the query against a file you know is
+  tracked.**
+- 🔴 **`git ls-tree` has NO glob pathspec, and it does not tell you.** Any `*` form returns **0**
+  silently at exit 0: `-- 'docs/pr-prompts/superseded/*.md'` returns 0 *with* `-r` and *without*
+  it — and so does the positive control `-- 'docs/pr-prompts/*.md'`, against a truth of **85**
+  tracked files. The only glob form that fails loudly is the explicit magic:
+  `:(glob)docs/pr-prompts/superseded/**/*.md` → `fatal: pathspec magic not supported by this
+  command: 'glob'`. **So `-r` never rescues a zero-result glob** — it returns the same zero, and now
+  you believe it. `ls-tree` takes literal path prefixes; filter the result, don't glob the pathspec.
+  (Until 2026-08-31 the bullet above used `superseded/*.md` as its worked example, claiming 0
+  without `-r` and 247 with it — a contrast that query form cannot produce in either direction.
+  Found by Station 04 on 2026-08-30, re-measured with the failing control by Station 00 on
+  2026-08-31. The headline rule was never wrong; its illustration was.)
+- ⚠️ **`git status` is structurally blind to gitignored files.** A `*-ready.md` never shows as `??`.
+  Use `git ls-files --others --ignored --exclude-standard`, or `git check-ignore -v` **on a FILE**.
+  🔴 `git check-ignore -v` on a **directory** prints nothing and exits 1 — "not ignored" — even when a
+  rule ignores its contents (measured 2026-08-29 on `docs/pr-prompts/processed`, with and without a
+  trailing slash; the same query on a file **inside** it returns `.gitignore:76`). §9.6’s own failure,
+  sitting inside this cure.
+  🔴 **And that silence is BYTE-IDENTICAL to a true negative, so it carries no information at all.**
+  Measured 2026-08-31 with the control the earlier note lacked: `git check-ignore -v
+  docs/pr-prompts/processed` → exit 1, empty; `git check-ignore -v CLAUDE.md` — a tracked file that
+  genuinely is not ignored → **exit 1, empty**; the same query on a file *inside* the directory →
+  exit 0, `.gitignore:76`. Opposite truths, identical results. **Only the file form answers.**
+- ⚠️ **On git 2.55 a plain `git fetch origin main` DOES opportunistically update
+  `refs/remotes/origin/main`**, because `origin` has a configured fetch refspec. The explicit
+  `git fetch origin +refs/heads/main:refs/remotes/origin/main` form is still the one to write — it
+  is correct on every git version and does not depend on the remote's config — but a stale
+  `origin/main` after a plain fetch is no longer the expected failure and should be investigated,
+  not assumed.
+- 🔴 **Never `git checkout .`, `checkout -- <dir>`, `reset --hard`, `stash pop` or `git clean` in the
+  dev tree** to "get a clean read". Consumed prompts retired into gitignored folders come back armed.
+  **To recover ONE file without tripping it: `git show HEAD:<path>` piped to a write.**
+- 🔴 **Never run `git` through the device bridge against the Windows `.git`.** A cut-short VM-side call
+  leaves a **0-byte `index.lock` with no Windows process**, so "zero git processes" reads true forever,
+  the lock never expires, and `status-sweep.ps1` §7 escalates it to DO NOT ACT — freezing every
+  station. **Three occurrences in two days.**
+- ⚠️ **The dev tree's index is SHARED between concurrent chats.** A `git mv` typed by another chat sits
+  staged and your commit will carry it. **Check `git diff --cached --name-status` before every commit**,
+  and commit with a pathspec (`git commit -- <path>`) when anything else is staged. Two collisions in
+  two sessions, both caught by eye rather than by a guard.
+
+- 🔴 **ON A TREE THAT IS BEHIND `origin/main`, `git status` ANSWERS A QUESTION ABOUT `HEAD`, NOT
+  ABOUT `origin/main` — so a ` M` or ` D` there is NOT evidence of uncommitted work.** [MEASURED]
+  2026-09-07T06:1xZ by Station 04 on a dev tree **7 behind, 0 ahead**: `git status --porcelain`
+  showed ` M docs/pipeline/sweep-rotation.json`, while
+  `git diff --numstat origin/main -- docs/pipeline/sweep-rotation.json` returned **EMPTY** — the
+  working copy matched `origin/main` exactly and differed only from the behind-HEAD. Station 00 had
+  already committed that advance. A run reading the ` M` alone re-files a closed finding against a
+  board where it is fixed, and the same reasoning covers every ` D` for a consumed prompt whose
+  deleting PR is already on `origin/main`. 🔧 **The uncommitted-work probe is
+  `git diff --numstat origin/main -- <path>`, where EMPTY is the real answer** — the same cure §9.3's
+  length-comparison bullet prescribes, applied to the status read. Found by Station 04
+  2026-09-07T06:1xZ (F6), landed by Station 00 at 07:3xZ.
+
+- ⚠️ **`git stash` in the watcher clone is a CLOSED LOOP** — the launcher's preflight stashes on every
+  start, and nothing ever pops. Report the count and its growth. `git stash drop`, **never `pop`**.
+
+- 🔴 **`git branch -r` reads the LOCAL remote-tracking cache, not the remote.** `git fetch`
+  without `--prune` never deletes a tracking ref, so branches GitHub deleted on merge live on
+  locally forever — **54 reported against 21 real, measured 2026-08-29.** Cross-referencing that
+  list against the GitHub API inherits the error and dresses it as a finding. **Ask the remote:
+  `git ls-remote --heads origin`.** 🔴 **AND `--prune` DOES NOT CURE IT — `refs/remotes/` can hold
+  refs NO REFSPEC OWNS.** Measured 2026-09-03 immediately after `git fetch origin --prune`:
+  `git branch -r` = **12** against `git ls-remote --heads origin` = **7**, and prune had worked
+  perfectly — all seven `origin/*` heads matched the remote exactly. The five extras were
+  `refs/remotes/pr/1477`, `pr/1478`, `pr/1483`, `pr/1487` and `pr1273`, hand-made by
+  `git fetch origin pull/N/head:refs/remotes/pr/N`. `remote.origin.fetch =
+  refs/heads/*:refs/remotes/origin/*` does not cover them, so **`--prune` can never remove them,
+  and a pruned cache is still not authoritative.** Ask the remote, pruned or not. Separately, `git branch -r --merged origin/main` is blind to
+  squash merges, which is every merge in this repo, and `gh pr list --limit N` silently TRUNCATES
+  at N — `--limit 600` returned 600 rows and a different, wrong answer from `--limit 2000`.
+
+- 🔴 **`.git/packed-refs` SILENTLY SERVES A STALE `origin/main`, AND A LOOSE REF SHADOWS IT WITH NO
+  WARNING — SO A RUN THAT READS REF FILES INSTEAD OF INVOKING `git` GETS A WELL-FORMED 40-HEX SHA
+  THAT IS SIMPLY WRONG.** `PACKED_REFS_SERVES_A_STALE_ORIGIN_MAIN_V1`
+
+  Git resolves the **loose** ref at `.git/refs/remotes/origin/main` and ignores `packed-refs`
+  whenever a loose ref for that name exists. `packed-refs` is only rewritten when refs are packed,
+  so between packings it holds an arbitrarily old value. Nothing reconciles the two, nothing warns,
+  and both files contain a plausible 40-hex SHA — so **§9.6 cannot fire: nothing is empty and no
+  query failed.**
+
+  [MEASURED] 2026-09-24T23:1xZ by Station 00 (blind run, F3), and **re-measured 2026-09-25T00:23Z by
+  Station 00 (sighted) at a DIFFERENT commit**, which is what turns it from a lag into a staleness:
+
+  | probe | 2026-09-24T23:1xZ (blind) | 2026-09-25T00:23Z (sighted) |
+  |---|---|---|
+  | `.git/refs/remotes/origin/main` — the loose ref | `d8eea113…` | **`54b7cbbf…`** |
+  | `.git/packed-refs` row for `refs/remotes/origin/main` | `66194af6…` | **`66194af6…`** |
+  | `git rev-parse origin/main` — the authority | *(not run: blind)* | **`54b7cbbf…`** |
+
+  🔴 **The packed value did not move while the loose ref advanced twice.** It is not lagging by one
+  commit, it is a frozen snapshot, and `git` agreed with the loose ref on both readings.
+
+  🔴 **It is newly dangerous because of the blind-run path.** `STATION-CAPABILITIES.md` §3 forbids
+  running `git` against the Windows `.git` from the device bridge (§9.2 above — a cut-short call
+  leaves a 0-byte `index.lock` that freezes every station), so a blind run is pushed toward reading
+  ref files directly. **`packed-refs` is the more discoverable of the two files** — it is a single
+  named file at a fixed path, while the loose ref requires knowing the `refs/remotes/<remote>/<branch>`
+  layout — so the failure mode selects for the wrong one. A GROUND block stamped from it names a
+  commit the tree is not on.
+
+  🔧 **Read the LOOSE ref first, and treat `packed-refs` as a fallback only when no loose ref exists
+  for that name.** When a shell is available, neither file is the answer: `git rev-parse origin/main`
+  is, and it is one call. Say in the report which of the three you used.
+
+  ⚠️ **Falsifying probe: the table above.** Read both files and `git rev-parse origin/main` in the
+  same minute in a tree that has fetched recently. If `packed-refs` ever agrees with the loose ref
+  *after* a fetch that moved it, this bullet is not wrong — it simply means the refs were packed in
+  between; re-run it after the next fetch. The bullet is wrong only if `git` is ever observed
+  resolving the **packed** value while a differing loose ref exists. Found by Station 00 (blind run)
+  2026-09-24T23:1xZ (F3), re-measured and landed by Station 00 at 2026-09-25T00:3xZ.
+
+## 9.3 Files and encoding
+
+- ⚠️ **`Get-Content` reports FALSE MOJIBAKE.** The console encoding mangles the display, not the file.
+  **Check the bytes before calling anything corrupt** — decode strictly and look for `U+FFFD`.
+- 🔴 **But real double-encoding exists too, and it is invisible to a validity check.** A file read as
+  CP1252 and rewritten as UTF-8 is *valid* UTF-8 with zero `U+FFFD` — the wrong characters, faithfully
+  encoded. Its signature is `U+00E2 U+20AC U+201D` (`â€"` for an em dash). 133 sequences were found
+  and repaired across five station docs on 2026-08-24. **Distinguish the two by decoding, not by
+  looking.**
+- 🔴 **EDIT DOCS AND PROMPTS WITH NODE** (`readFileSync` / `writeFileSync`, utf8), **not PowerShell.**
+  The double-encoder is **`Set-Content -Encoding UTF8`** and **`Out-File -Encoding utf8`**: PS 5.1 has
+  already decoded the file as CP1252, so re-encoding adds a **BOM** and the `â€”` signature — that is how
+  the 133 damaged sequences above were made. **Plain `Set-Content` is byte-lossless for content**
+  (measured 2026-08-29: em dash intact, +2 bytes of CRLF only), so do **not** "fix" it by adding
+  `-Encoding UTF8` — that adds the actual cause. Neither form is a safe way to edit a doc, because
+  plain `Set-Content` still rewrites line endings. A `--numstat` reading far larger than your
+  intended change is the symptom; check it before you commit.
+
+- 🔴 **...AND NODE HAS ITS OWN TRAP IN THE CURE: `String.replace()` READS `$` IN THE REPLACEMENT AS A
+  SUBSTITUTION PATTERN.** `$&`, `` $` ``, `$'`, `$1` and `$$` are all live in a replacement **string**,
+  and `` $` `` means *"insert everything before the match"*. MEASURED 2026-09-04T19:2xZ by Station 00,
+  editing the project-memory index: a replacement whose text ended `...[cm]?[jt]sx?$` immediately
+  followed by a closing backtick — a regex being **quoted as documentation**, which is the likely way
+  to meet this — injected **7,734 bytes**, the entire preceding file, into the middle of one line. The
+  file went 24.9 KB → **33,801 B**, and the escalation header, a section heading and a whole open
+  escalation were silently duplicated.
+  🔴 **EVERY READ-BACK PASSED.** `old_text_gone=true`, `new_text_present=true`, negative control `0` —
+  all three true, all three worthless, because none of them asks *"is anything ELSE now in the file?"*
+  This is §9.6 inverted: not an empty result read as an empty world, but a **fuller** result read as a
+  correct one. It was found only by measuring the file's byte size, then its per-line sizes.
+  🔧 **The cure is unconditional: never pass a replacement STRING. Pass a FUNCTION** —
+  `s.replace(OLD, () => NEW)` — which disables `$` handling entirely, **or build the result by
+  concatenation** (`pre + NEW + suf`), which is what the repair used.
+  🔧 **And assert the BYTE DELTA on every doc edit:** `after - before` must equal
+  `NEW.length - OLD.length` ± the change you intended. A read-back that only looks for what you wrote
+  cannot see what you spilled. The same assertion catches the `Set-Content` line-ending rewrite in the
+  bullet above, which is why `--numstat` is named there — this is the node-side half of the same rule.
+- 🔴 **PowerShell's `>` redirection writes UTF-16LE in PS 5.1.** `git show <ref>:<path> > file`
+  produces a file **twice the size**, starting `FF FE`, that no byte-wise or hash comparison will
+  ever match the UTF-8 original — while `git diff` correctly reports no difference. Measured
+  2026-08-30 on `docs/pipeline/stations/03-machine-minder.md`: 20489 bytes → **40980**, and
+  `Compare-Object` over the two returned **100 differences** on a 285-line file, while
+  `git diff --stat origin/main -- <path>` returned **empty**. **`Compare-Object` was NOT the liar
+  here** — it returns **0** on a genuinely byte-identical pair (measured the same run, `Copy-Item`
+  control, matching `git hash-object`). Same family as the `Set-Content -Encoding UTF8` bullet
+  above, and it corrupts a grep, a line count, a hash or a node read just as readily. **To dump a
+  blob, write it with node (`readFileSync`/`writeFileSync`, utf8) — never `>` or `Out-File`. To
+  decide whether two files differ, use `git diff`, `git hash-object`, or `Buffer.compare` in node.**
+- 🔴 **A HAND-ROLLED FRONT-MATTER PARSER MATCHING `\s*\n` SILENTLY RETURNS NOTHING ON CRLF,
+  AND A UNIFORM ZERO ACROSS A HETEROGENEOUS CORPUS IS ITS ONLY SYMPTOM.** [MEASURED]
+  2026-09-10T08:3xZ by Station 00, classifying the 11 gate-satisfied `-HOLD.md` prompts against
+  `classifyPolicyFiles` to ask whether any could still enter the `tests-docs` lane. Every prompt in
+  `docs/pr-prompts/` is stored CRLF. The list-form matcher `/^scope:\s*\n((?:\s*-\s*.+\n)+)/m`
+  returned **null on all eleven**, so every prompt read `scope=0` and the run’s headline was
+  `TESTS-DOCS ELIGIBLE = 0 of 11`. The CRLF-explicit form
+  `/^scope:[ \t]*\r?\n((?:[ \t]*-[ \t]*\S.*\r?\n)+)/m` matches the same bytes: on
+  `pr-triage-corpus-suffix-union-HOLD.md`, side by side, the broken form scored **0** and the working
+  form **1**. Re-run with the working parser the eleven parse to scope counts
+  `8 6 4 2 5 6 3 6 4 1 1` — and the answer is **still 0 of 11**.
+  🔴 **That is what makes it dangerous rather than merely wrong: the broken instrument produced the
+  byte-identical headline to the sound one**, and to the six preceding runs that had reported that same
+  number, so nothing in the report looked wrong and no read-back could have caught it.
+  🔧 **The three controls that DID run — POSITIVE paths, NEGATIVE paths, migration clause — all passed,
+  because every one of them tests the CLASSIFIER and none of them tests the PARSER that feeds it.
+  Control the EXTRACTION step separately from the DECISION step:** assert that a file you know carries
+  a scope parses to a non-zero count, and that a key you know is absent parses to zero. A classifier
+  controlled only on synthetic paths it never actually receives is a check nobody has seen fail.
+  ⚠️ **Falsifying probe: run both regexes over any prompt in `docs/pr-prompts/` with a list-form
+  `scope:`.** If the `\s*\n` form ever matches, this bullet is wrong and must be re-measured.
+  Found and landed by Station 00 2026-09-10T08:5xZ.
+- ⚠️ **`*>` IS THE SAME UTF-16LE TRAP AS `>`, AND THE PREFLIGHT’S OWN CURE WALKS STRAIGHT INTO IT.**
+  The bullet below names `git show <ref>:<path> > file`; the all-streams form `*>` behaves identically.
+  [MEASURED] the same run: `status-sweep.ps1 *> sweep.txt` wrote a **129,564**-byte file opening
+  `FF FE`, which `readFileSync(p, "utf8")` then split into 380 lines whose `====` section headers
+  matched **no** regex — a structured report read as structureless, at exit 0. Re-decoded as
+  `utf16le` all ten sections were there. This is worth naming because PREFLIGHT step 4 tells every
+  station to **capture the sweep to a FILE** (the script returns early and hides its own section 7
+  verdict otherwise), so the prescribed cure for one trap is a direct instance of another.
+  🔧 **Capture with `*>` if you like, but decode `utf16le` — or write the capture from node.**
+- 🔴 **AND THE CURE ABOVE HAS ITS OWN READ-BACK TRAP: NEVER COMPARE FILE *LENGTHS* ACROSS A
+  `git show` / WORKING-COPY BOUNDARY.** MEASURED 2026-09-05T10:1xZ by Station 04, comparing the
+  watcher clone's `scripts/pr-watcher/index.mjs` against `origin/main`'s. **Two independent errors
+  stack, both exit 0, both look like measurements**, and together they compose into *"the clone runs
+  different code"* — while the blob hashes were `901ea012…` on both sides the whole time.
+  **(i) A blob is stored LF; a Windows working copy is CRLF**, so the two differ by exactly the
+  file's line count — the measured delta was **3326**, equal to the blob's LF count.
+  **(ii) JavaScript `String.length` counts UTF-16 CODE UNITS, not bytes**, so
+  `readFileSync(p, "utf8").length` under-reports every non-ASCII file — here by **564** on each
+  side. Neither error is visible in the number, and both survive the bullet above: *"read it with
+  node"* is the right cure for the `>` trap, and **comparing lengths is the wrong next step after
+  it.** This is §9.6 in its quietest form — not an empty result read as an empty world, but two
+  well-formed integers that were never measuring the same thing.
+  🔧 **Compare CONTENT, never SIZE, and never across the boundary.** The sound forms, and there
+  is no fourth: `git rev-parse <ref>:<path>` against `git hash-object <path>` (no pipe — §9.1);
+  `git diff --numstat <ref> -- <path>`, where EMPTY output is the real answer; or
+  `Buffer.compare(readFileSync(a), readFileSync(b))` on two files that are on the **same** side of
+  the boundary. If you genuinely want a byte count, read a **Buffer** (`readFileSync(p).length`),
+  never a decoded string. ⚠️ **A size comparison that AGREES proves nothing either** — the two
+  errors push in opposite directions and can cancel, so a matching length is not a match. Found by
+  Station 04 2026-09-05T10:10Z (F4), dispatched to 00, deferred by 00's 10:35Z run for a PR of its
+  own, landed here.
+- 🔴 **`| Measure-Object -Line` SILENTLY DROPS BLANK LINES, and it is the instrument several of the
+  probes in this section prescribe.** It counts lines *within each pipeline element*, and an empty
+  string contributes **zero** - so the number you get is the **non-blank** line count, off by exactly
+  the file's blank-line count, at exit 0 with no warning. MEASURED 2026-09-05T22:2xZ by Station 04 on
+  `origin/main:scripts/pipeline/lint-prompt.mjs`, dumped with `cmd /c` so the `>` trap above is
+  excluded: node LF count **1827** - node blank lines **121** - node non-blank **1706** -
+  `(Get-Content ...) | Measure-Object -Line`.Lines **1706** (WRONG) - `(Get-Content ...) | Measure-Object`.Count
+  **1827** (correct). 04 hit it live twice in one run: it read the file as 1706 lines against §9.5's
+  "(now 1824 lines)" and nearly filed *"the file shrank 118 lines, §9.5 has drifted"* - a confident,
+  coherent, wrong finding about the one document every station is told to trust; and it under-reports
+  BOTH sides of §9.5's `.arming-log.txt` two-line-count comparison, which is that bullet's own
+  **falsifying probe**, so a gap there can be hidden or manufactured by the instrument meant to keep
+  it honest. 🔧 **Never `Measure-Object -Line`. Count with `(Get-Content <path>).Count`, or in node
+  with `split('\n')` - and control any line count against a file whose blank-line count you know.**
+- 🔴 **`Select-String -SimpleMatch` takes a LITERAL, so `[regex]::Escape()` must NEVER be applied
+  to its pattern.** The escaped form `reminder-policy\.service\.ts` is searched *with the
+  backslashes*, matches nothing, and exits 0 — an absent-needle reading that is really an unusable
+  query. Measured 2026-08-30: it reported **6 of 7** gate producers absent, and the only 2 needles
+  it got right were the only 2 with no `.` in them; written up as-is that would have been six
+  confident, coherent, wrong findings. **Control every literal search against a needle you know is
+  present AND one you know is not** — a dotless control passes while every dotted query silently
+  fails.
+
+
+- 🔴 **`Select-String … | Select-Object -ExpandProperty Filename -Unique` COLLAPSES A CORPUS OF
+  IDENTICALLY-NAMED FILES TO ONE, AND THE BOOTSTRAP SWEEP IS EXACTLY SUCH A CORPUS.**
+  `FILENAME_UNIQUE_COLLAPSES_SAME_NAMED_CORPUS_V1` `Select-String`'s `Filename` property is the
+  **basename**, not the path. [MEASURED] 2026-09-21T14:3xZ by Station 04 at `524158cd` over
+  `C:\Users\Marco\Claude\Scheduled\**\SKILL.md` — 11 files, every one named `SKILL.md` — needle
+  `C:\ProjectOperations2\docs\pipeline`:
+
+  | form | result | truth |
+  |---|---|---|
+  | total hits | 17 | 17 |
+  | `… \| Select-Object -ExpandProperty Filename -Unique` — **the failing form** | **1** | 7 |
+  | `… \| Select-Object -ExpandProperty Path -Unique` — the cure | **7** | 7 |
+  | corpus size | 11 | 11 |
+
+  The failing form answers **1** for any truth between 1 and 11, at exit 0, with nothing empty and
+  nothing warning — **§9.6 cannot fire, because the cmdlet answered exactly the question it was
+  asked, about a different quantity from the one the property name implies.**
+  🔴 **It fired live on the probe it most endangers.** §9.1's double-backslash bullet asks *"do the
+  scheduled-task bootstraps name the working copy?"* — a per-FILE question over a directory of
+  identically-named files. 04's first pass reported *"1 file hit"*, whose available write-up was
+  *"only one bootstrap still names the working copy"* — a false drift finding against four healthy
+  files. It was caught only because node, counting per path, answered **3 in each of the four**.
+  This is the same basename collapse §9.5 already records for `check-breadcrumb.mjs`'s *"matched by
+  trailing path segment"*: the pipeline has met it before, in a different instrument, and never
+  generalised it.
+  🔧 **Use `-ExpandProperty Path -Unique`, never `Filename`, whenever the corpus can hold repeated
+  basenames** — `SKILL.md`, `README.md`, `index.mjs` and `package.json` corpora all can.
+  ⚠️ **Falsifying probe: the four-row table above.** Rebuild it over that directory and run both
+  forms; if `Filename -Unique` ever returns 7, this bullet is wrong and must be re-measured. Found
+  by Station 04 2026-09-21T14:3xZ (F3), landed by Station 00 at 15:3xZ.
+
+## 9.4 GitHub
+
+- ⚠️ **The GitHub MCP token cannot merge, and cannot open PRs (403).** Use `gh` through Desktop
+  Commander.
+- 🔴 **A PR CARRYING `do-not-merge` CAN NEVER BE GREEN, AND IT SHOWS AS TWO REDS WITH ONE CAUSE.**
+  `approval-receipt-check.mjs` returns `FAIL - CP-26 approval-receipt [LABEL_PRESENT] PR carries the
+  do-not-merge label (escalates:true). A human must review and REMOVE the label` — quoted verbatim,
+  [MEASURED] 2026-09-07T18:4xZ by Station 00 from column 3 of run `34151708462` on `#1767`. That same
+  check runs **twice**: as the required check `Approval receipt (CP-26)` **and** as a step inside
+  `PR gates — diff checks`, so both failed on that PR, in the same run, from the one cause. This is
+  **PARKED BY DESIGN, not a defect and not work.** Three consecutive collect runs listed such PRs among
+  "the reds" as though they were something to fix.
+  🔧 **Read the CP-26 VERDICT TOKEN, never the pass/fail counts.** `[LABEL_PRESENT]` = parked, nothing
+  to do; `[RELEASED_NO_RECEIPT]` = the label was removed and no receipt was committed, which IS a real
+  finding; `PASS / NEVER_ESCALATED` = the gate never armed at all, because it is armed by LABELLING and
+  not by the diff (§10.2.1 — a green CP-26 on a never-labelled PR is a statement about a release that
+  never happened). ⚠️ **Only Marco removes the label**, so a run that meets `[LABEL_PRESENT]` has
+  finished: there is no agent-side action behind it. **The falsifying probe is the verdict line itself**
+  — pull it from column 3 of the CP-26 job log, per §9.1.
+- 🔴 **A `--jq` expression survives the `-Command` layer intact — spaces included — but escaped
+  double quotes DO NOT.** `join(\",\")` arrives MANGLED and jq fails LOUDLY with `failed to parse jq expression`.
+  ⚠️ **The arrival string is ILLUSTRATION and has drifted once — do not read a different mangling
+  as a non-reproduction.** Recorded as `join(,\)`; [MEASURED] 2026-09-22T18:1xZ by Station 04 at
+  `25aa3115` through the direct Desktop Commander shell it arrives as `join(\",\)` — the first double
+  quote survives — and `gh` reports `invalid escape sequence "\)" in string literal`, exit 1. **The
+  headline rule is unchanged and was re-confirmed both times**; the POSITIVE control, the plain
+  single-quoted form, returned a correct label reading on an open PR. Keep double quotes out of jq expressions, or use `--json` plus
+  `ConvertFrom-Json`. Separately, and still true: **assign-then-foreach**, because piping a JSON
+  array straight into `Where-Object` collapses it to ONE object. That exact bug once let the merge
+  queue select **#552 — the production-data PR.**
+
+  🔴🔴 **THIRD ARRIVAL SHAPE, 2026-09-24 — `& powershell.exe -NoProfile -Command $str` ISSUED
+  FROM INSIDE A `.ps1` STRIPS THE QUOTES AND RE-PARSES THE jq EXPRESSION’S `|` AS A POWERSHELL
+  PIPELINE OPERATOR, SO `gh` IS NEVER INVOKED AND NO `gh`-SIDE jq FINGERPRINT EXISTS TO GREP FOR.**
+  `JQ_TRAP_THIRD_TRANSPORT_IS_CALLER_SIDE_V1`
+
+  Both shapes recorded above attribute the failure to `gh` (`failed to parse jq expression`,
+  `invalid escape sequence`). In this third transport the jq expression is **truncated at the pipe**
+  and its tail is executed as a caller-side command, so a run that greps for a `gh`-side signature as
+  the trap’s fingerprint finds nothing and has *"the jq trap no longer reproduces"* available — which
+  retires a live trap on the one reading that stops an agent merging Marco’s work.
+
+  [MEASURED] 2026-09-24T14:1xZ by Station 04 at `11c07025` (F1, DISPATCHED to 00), reproduced
+  independently by Station 00 at 16:3xZ at `65e5d1bc`, PS 5.1.26100.9444, from a `.ps1` run with
+  `-File` so no `-Command` layer of the caller’s own is in play:
+
+  | probe | result |
+  |---|---|
+  | the argument as it ARRIVED | `--jq .labels[] \| join(",")` — **quotes gone**, `\|` now a PowerShell pipeline operator |
+  | who raised the error | **the child PowerShell**, at `line:1`: `CommandNotFoundException: The term 'join' is not recognized` |
+  | a `gh`-side jq fingerprint anywhere in the output | **NONE** — `failed to parse jq expression` and `invalid escape sequence` both **absent** |
+  | exit code | **1** — loud, never silent |
+  | POSITIVE control: plain single-quoted `--jq '.labels[].name'`, issued directly | exit **0**, `do-not-merge` on open `#2167` — a correct label reading |
+  | NEGATIVE control: a freshly minted needle over the same output | **0** |
+  | control that the CALLER is the parser: the same `& powershell.exe -Command` with **no `gh` at all** | still mangled — `ParserError: Missing expression after unary operator ','`, **not** `CommandNotFoundException` |
+
+  🔧 **The fingerprint is the ABSENCE of a `gh`-side jq error PLUS an error raised by a PowerShell —
+  never a particular exception type.** The last row is why: change the payload and the caller-side
+  error changes CLASS, from `CommandNotFoundException` to a bare `ParserError`. That is the same
+  lesson the paragraph above already teaches about the arrival STRING (*"ILLUSTRATION … do not read a
+  different mangling as a non-reproduction"*), applied to the error CLASS, which carried no such
+  warning — and the error class is what a reader actually greps for.
+
+  ⚠️ **The headline rules are untouched and were re-confirmed on both runs:** keep double quotes out
+  of jq expressions, or use `--json` plus `ConvertFrom-Json`; and every form measured failed **loudly**
+  at exit 1, never silently. What is added is a transport and a fingerprint, not a new prohibition.
+  ⚠️ **Falsifying probe: the table above.** Issue `--jq ".labels[] | join(\",\")"` through
+  `& powershell.exe -NoProfile -Command $str` from inside a `.ps1`. If `gh` itself ever raises the
+  error, or the output ever carries `failed to parse jq expression`, this row is wrong and must be
+  re-measured. Found by Station 04 2026-09-24T14:1xZ (F1), re-measured and landed by Station 00 at
+  2026-09-24T16:3xZ.
+  🔴🔴 **FOURTH TRANSPORT, 2026-09-24 — THE STRIPPING IS NOT CONFINED TO `-Command`, AND NOT TO
+  *ESCAPED* QUOTES: A `.ps1` RUN WITH `-File` STRIPS BARE DOUBLE QUOTES OUT OF A `--jq` ARGUMENT
+  TOO. SO §9.1’S CURE — *“put anything containing `$` in a `.ps1` and run it with `-File`”* — DOES
+  NOT DODGE THIS TRAP, AND A RUN THAT MOVES ITS ONE-LINER INTO A SCRIPT TO ESCAPE §9.1 CARRIES THIS
+  ONE IN WITH IT.** `JQ_STRING_LITERAL_STRIPPED_UNDER_FILE_TOO_V1`
+
+  [MEASURED] 2026-09-24T18:1xZ by Station 04 (F3), over ten probes, **every one of them run under
+  `powershell.exe -File <script.ps1>`** — no `-Command` layer of any kind in play:
+
+  | probe | result | truth |
+  |---|---|---|
+  | `gh pr view <N> --json labels --jq '[.labels[].name]\|join(",")' 2>$null`, all five open PRs | **EMPTY on all five** | all five carry `do-not-merge` |
+  | the discriminating control `--jq '"LITERAL"'` | jq receives `LITERAL` — **the quotes are gone** | should receive `"LITERAL"` |
+  | `--jq '.labels[].name'` · `--jq '[.labels[].name]\|@csv'` · `--jq '.labels\|length'` — no string literal | correct values, exit **0** | correct |
+
+  **Two corrections to the rows above, and the second is the one that bites.** (1) **Not just
+  `-Command`** — the three transports already recorded all name a `-Command` layer; this one has
+  none. (2) **Not just *escaped* quotes** — bare double quotes inside a single-quoted PowerShell
+  string are stripped identically, so there is no quoting escape: single quotes survive the shell
+  but jq rejects them as string delimiters.
+
+  🔴 **The cost, measured on the live board: all five open PRs read back an EMPTY label list, which
+  is byte-identical to “the board is released”** — against a truth of `do-not-merge` on all five.
+  That is §9.6 with a merge button attached, reached through the QUOTING of a filter rather than
+  through the corpus, and it lands on the one fact this board most depends on.
+
+  🔧 **But the failure is LOUD — exit 1, explicit stderr — and it went silent only because the probe
+  wrote `2>$null`.** So the rule is NOT “avoid `--jq`”. It is: **never discard stderr and never skip
+  `$LASTEXITCODE` on a `gh --jq` call, and prefer `@csv` or a bare path over any jq string literal.**
+  The sound alternative remains `--json` plus `ConvertFrom-Json` after assignment (§9.4, above).
+
+  ⚠️ **Blast radius among committed callers is ZERO** — [MEASURED] the same run: every `--jq` under
+  `scripts/` uses no inner string literal (`scripts/security-audit.ps1` is the only caller). **The
+  exposure is ad-hoc agent probes**, which is where it has now bitten twice from two directions.
+  ⚠️ **Falsifying probe: the `--jq '"LITERAL"'` control row.** Run it through `-File`; if jq ever
+  receives `"LITERAL"` with its quotes intact, this row is wrong and must be re-measured. Found by
+  Station 04 2026-09-24T18:1xZ (F3), landed by Station 00 at 2026-09-24T18:4xZ.
+- 🔴 **`@(ConvertFrom-Json …).Count` answers `1` for an EMPTY array and `1` for a
+  forty-element one.** PS 5.1 emits a parsed JSON array as a **single object**, so an array
+  subexpression wrapping the call — inline or piped — counts one item regardless of length.
+  Measured 2026-09-03 on 5.1.26100.9168: `@(ConvertFrom-Json '[]').Count` → **1** (truth 0)
+  and `@(ConvertFrom-Json '[{..}x4]').Count` → **1** (truth 4); the pipeline form gives 1 and 1
+  too. **Always assign first, then count:** `$rows = ConvertFrom-Json $raw; @($rows).Count`
+  → **0** and **4**, correct in both directions. This is the counting twin of the
+  `Where-Object` collapse above, and it is worse, because it silently *refutes* a true finding:
+  it turned `gh run list --commit <short>` → `[]` and `--commit <full>` → 4 runs into the
+  identical reading `1 / 1`, i.e. "§9.4’s short-SHA trap no longer reproduces."
+  🔴 **AND ASSIGN-THEN-COUNT DOES NOT RESCUE AN EMPTY *STRING*, WHICH IS WHAT EVERY FAILED `gh`
+  CALL RETURNS.** `ConvertFrom-Json ""` returns **`$null`**, and **`@($null).Count` is `1`** — so the
+  prescribed cure still answers **one row, with every field empty**, which reads worse than an empty
+  list because it looks like a real answer. [MEASURED] 2026-09-10T10:1xZ by Station 04 at `a2fa8e4e`
+  on a `gh` call made to fail by a cause unrelated to CWD (a `--json` field list written with spaces
+  after the commas, which PowerShell splits into separate arguments): the failing form with `2>$null`
+  exited **1**, wrote **0** chars to stdout, and assign-then-count returned **1** with a first field of
+  `[]`; the same call with `2>&1` showed `gh : unknown command "createdAt" for "gh run list"`; the
+  no-spaces POSITIVE control exited 0 and counted **4**. Controls in the same session:
+  assign-then-count on `'[]'` → **0** (the documented cure, working), and a null-guarded
+  `@($r | Where-Object { $_ }).Count` → **0**.
+  🔧 **So the CWD bullet’s cure — test `$LASTEXITCODE` before parsing — is not a CWD rule: it is the
+  rule for EVERY cause of a failed `gh` call**, because they all produce empty stdout. Test the exit
+  code, or count with a null guard; assign-then-count alone leaves you a phantom row.
+  ⚠️ **Falsifying probe:** `$r = ConvertFrom-Json ""; @($r).Count`. If it ever answers `0`, this
+  clause is wrong and must be re-measured. Found by Station 04 2026-09-10T10:1xZ (F6), landed by
+  Station 00 at 11:4xZ.
+
+  **GENERALISED 2026-09-11 - THE TRAP IS IN THE COUNTER, NOT IN `gh`.**
+  `NULL_COUNT_IS_IN_THE_COUNTER_V1` This clause reads as a `gh`-parsing rule and it is not:
+  `@(...)` wrapping is how stations tally **every** `Select-String` and `Get-ChildItem` result, and
+  `@($null).Count` is `1` there too. [MEASURED] 2026-09-11T02:2xZ by Station 04 at `ec7dd590`,
+  inside its own probe: four independent truths of **0** - a freshly minted negative needle, a spent
+  needle, `STOP-WATCHER*` at the dev-tree root, and the section 9.2 `ls-tree` glob pathspec - all
+  came back as **1**, a uniform and entirely plausible count. It was caught only because one affected
+  row was a fixture whose truth was known by construction; the available write-up was *"the fresh
+  needle is already contaminated"* and *"the `ls-tree` glob no longer returns zero"*, the second of
+  which would have retired a live section 9.2 trap. **Count with the null guard
+  `@($x | Where-Object { $null -ne $_ }).Count` wherever you count at all** - controls in the same
+  session: `$null` to **0**, `@(1,2,3)` to **3**. Found by Station 04 2026-09-11T02:2xZ (F6),
+  landed by Station 00 at 02:5xZ.
+- ⚠️ **`gh run list --branch main` can be DAYS stale** and falsely reads as "main CI is dead". Read CI
+  **per-commit**.
+- 🔴 **...and `gh run list --commit <SHA>` answers `[]` for a SHORT sha, exit 0.** Measured
+  2026-08-30 with controls on gh 2.90.0: `--commit 62fd27f1` returned `[]`, while
+  `--commit 62fd27f1527e963165bfa37962a5476bbaf36d7d` returned that same commit’s **four** runs
+  (Push on main / CI / Deploy / Tendering Browser Smoke, all `success`). The short form does not
+  error and does not warn — so the per-commit cure for the bullet above hands you an empty list that
+  reads as *"no CI ran on this commit"*, which is the same false negative in a new costume. **Pass the
+  full 40-char SHA** (`git rev-parse origin/main`), and control the query against a commit you know
+  has runs.
+- ⚠️ **`mergeStateStatus: CLEAN` can still be refused** — "the base branch policy prohibits the merge"
+  is policy evaluation lagging the rollup. Use `gh pr merge --auto`; never reach for `--admin`.
+- ⚠️ **"Absent from `origin/main`" is NOT "orphaned"** — check open PRs before calling anything dead.
+- 🔴 **`merged` READS FALSE ON EVERY ENTRY OF A PULL-REQUEST *LIST* RESPONSE, INCLUDING PRs
+  THAT ARE MERGED — while `merged_at` in the same payload is populated and correct.** MEASURED
+  2026-09-06T04:1xZ by Station 00 (blind run, GitHub MCP), same PR, two endpoints ~90 s apart:
+  `list_pull_requests(state=closed)` returned `#1685 {"merged": false, "merged_at":
+  "2026-09-06T03:47:00Z"}`, while `pull_request_read(method=get, 1685)` returned
+  `{"merged": true, "merged_at": "2026-09-06T03:47:00Z", "merged_by": "GH-Mantova"}`. **Ten of
+  ten list entries carried `merged: false`**, `#1688` and `#1683` among them — board PRs this
+  pipeline merged itself and holds breadcrumbs for. Both calls exit 0, both payloads are
+  well-formed, and nothing warns, so this is §7's shape rather than a broken call: **a field
+  wearing an answer's clothes.** A run that believes the list field reports the whole recent
+  history as CLOSED-UNMERGED — which is the exact premise of
+  `pr-1612-closed-unmerged-branch-holds-the-only-copy` — so it manufactures a dozen phantom
+  stranded-branch escalations and tells `status-sweep.ps1` §5 the wrong thing about every one.
+  🔧 **Never read `merged` from a list response.** Read **`merged_at`**, which was populated and
+  correct on both endpoints, or re-ask `pull_request_read(method=get)` per PR. From `gh` the
+  sound forms are `gh pr list --state merged` (the filter is applied server-side) and
+  `gh pr view <n> --json mergedAt`. ⚠️ **The falsifying probe is the pair above** — re-run both
+  endpoints on one merged PR; if the list entry ever reads `merged: true`, this bullet is dead.
+  Found by Station 00 2026-09-06T04:2xZ (F2, blind run), landed by 00 at 05:3xZ.
+
+  🔴 **CORRECTED 2026-09-07 — THE RULE STANDS; THE SYMPTOM IS TRANSPORT-SPECIFIC, AND A READER
+  CHECKING IT THROUGH `gh` READS THE TRAP AS DEAD.** The measurement above was taken through the
+  GitHub MCP, the only transport the bullet names. [MEASURED] 2026-09-07T06:3xZ by Station 04
+  through `gh api` — the transport `STATION-CAPABILITIES.md` §3 calls the authority — over
+  `/repos/GH-Mantova/ProjectOperations/pulls?state=closed&per_page=10`: **10** entries returned;
+  `merged === true` on **0**; and the `merged` key **defined at all** on **0** — through `gh` it is
+  **ABSENT**, not `false`. `merged_at` was populated on **10 of 10**. POSITIVE control, same PR,
+  single GET `/pulls/1762`: `{"merged": true, "merged_at": "2026-09-07T05:49:35Z"}`.
+  🔧 **So the shape differs by transport and the conclusion does not: through the MCP the key reads
+  `false`, through `gh api` the key is absent, both readings are unusable, and `merged_at` is correct
+  on both.** A run that goes looking for the documented `false` through `gh` and does not find it
+  must NOT conclude the trap no longer reproduces — that retires a live rule whose whole job is to
+  stop a dozen phantom stranded-branch escalations. The two-endpoint pair remains the falsifying
+  probe and now works from either transport. Found by Station 04 2026-09-07T06:3xZ (F3), landed by
+  Station 00 at 07:3xZ.
+
+
+- 🔴 **`gh` INFERS THE REPO FROM THE CURRENT DIRECTORY, SO A `gh` QUERY RUN FROM A NON-REPO CWD
+  ANSWERS EMPTY FOR EVERY QUESTION — AND §9.1'S OWN CURE IS WHAT PUTS YOU THERE.** [MEASURED]
+  2026-09-10T05:2xZ by Station 00 at `bb04235e`, `gh pr list --state open --json number`, with
+  stderr discarded the way a script discards it:
+
+  | form | exit | stdout chars |
+  |---|---|---|
+  | non-repo CWD, no `-R` — **the failing form** | **1** | **0** |
+  | non-repo CWD, with `-R <owner>/<repo>` — POSITIVE control | 0 | 33 |
+  | dev-tree CWD, no `-R` — POSITIVE control | 0 | 33 |
+  | dev-tree CWD, with `-R` — POSITIVE control | 0 | 33 |
+
+  NEGATIVE control, `-R` naming a repo that does not exist: exit **1**. The failing form writes
+  `failed to run git: fatal: not a git repository (or any of the parent directories): .git` to
+  **stderr**, and nothing at all to stdout.
+
+  🔴 **The exit code is 1, so this is loud — but only to a caller that looks at it.** The trap is a
+  pairing every station already writes: `2>$null` to keep git's stderr chatter out of a report
+  (§7 guard 7 asks for exactly that tolerance), plus a result piped straight into
+  `ConvertFrom-Json` / `Where-Object` with no test of `$LASTEXITCODE`. What comes back is then a
+  well-formed **empty board**, for every query, at what reads as success.
+
+  🔴 **Measured live in the run that found it, and it produced a confident wrong answer rather than
+  a visible failure.** Eight worktree branches were crossed against the board to decide which were
+  safe to tear down; all eight returned `NO PR ON THE BOARD` — including
+  `feat/ea-gate-reporting-team-permission`, which is **PR #1823's own head branch and was OPEN at
+  that moment**. Re-run with `-R`, the same eight returned six MERGED PRs, one OPEN and one merged
+  six days earlier. **A uniform zero across a heterogeneous input set is the signature.**
+
+  🔧 **The mechanism is why this belongs in §9 rather than in one station's notes.** §9.1 says put
+  anything containing `$` in a `.ps1` and run it with `-File`; a `.ps1` launched that way inherits
+  the **session's** working directory, not the repo's. [MEASURED] the same run: Desktop Commander
+  opens its shell in the Cowork session's `outputs` folder, which is not a git repository. **So
+  following §9.1's cure moves the script out of the repo and arms this trap.** Both cures are
+  correct on their own and compose into a silent one — the shape §9 keeps recording.
+
+  🔧 **Pass `-R <owner>/<repo>` on EVERY `gh` call inside a script, and test `$LASTEXITCODE` before
+  parsing.** `-R` is correct from inside the repo too (rows 3 and 4 agree), so there is no case
+  where adding it is wrong. Control every `gh` query against a value you know is on the board.
+
+  ⚠️ **This is NOT the `--jq`, short-SHA or `merged`-field trap above.** Those are about the shape
+  of a query or of a payload; this one is about **where the process was standing**, and it fires on
+  every `gh` sub-command that resolves a repo from context, not only `pr list`.
+
+  ⚠️ **Falsifying probe: the four-row table above.** Rebuild it — one CWD inside the repo, one
+  outside, `-R` present and absent. If row 1 ever returns stdout, this bullet is wrong and must be
+  re-measured. Found and landed by Station 00 2026-09-10T05:3xZ.
+
+
+- 🔴 **`gh pr view <n> --json number` RETURNS A WELL-FORMED ROW AT EXIT 0 FOR A PR THAT DOES
+  NOT EXIST, SO THE NATURAL EXISTENCE PROBE ANSWERS *YES FOR EVERY INTEGER* AND THE NATURAL NEGATIVE
+  CONTROL PASSES.** `number` is derivable from the argument, so `gh` answers it locally and never
+  issues the query; add any field the server must supply and the call fails **loudly**. [MEASURED]
+  2026-09-10T23:0xZ by Station 03 at `3e1be716` and re-measured row-for-row by Station 00 at 23:2xZ,
+  `gh version 2.90.0`, `-R <owner>/<repo>` on every call (the CWD bullet above):
+
+  | form | exit | stdout |
+  |---|---|---|
+  | `gh pr view 999999 --json number` — **the failing form** | **0** | `{"number":999999}` |
+  | `gh pr view 999999 --json number,state` | 1 | `GraphQL: Could not resolve to a PullRequest with the number of 999999.` |
+  | `gh pr view 999999 --json state` | 1 | the same GraphQL error |
+  | `gh pr view 1823 --json number,state` — POSITIVE control, open | 0 | `{"number":1823,"state":"OPEN"}` |
+  | `gh pr view 1863 --json number` — POSITIVE control, merged | 0 | `{"number":1863}` |
+
+  Nothing is empty and nothing warns, so §9.6 cannot fire — this is §9.6 **inverted**, a FABRICATED row
+  read as a real one, the same shape as the `merged`-field bullet above but manufactured locally rather
+  than mis-served.
+  🔴 **The reason it earns a bullet is that it poisons §9.6's own cure.** §9.6 requires every run to mint
+  a fresh negative control; a run that mints one as *"a PR number that cannot exist"* and probes it this
+  way gets a **PASS**, which reads as *"my instrument is broken"* — and that reading is how a true
+  finding gets retired. It fired live in the run that found it: 03's first negative control was exactly
+  this form and returned `negExit=0`, caught only because the answer looked too clean.
+  🔧 **Never probe PR existence with `--json number` alone. Ask for a field the server must answer**
+  — `state`, `title`, `mergedAt` — **or request two fields and test `$LASTEXITCODE` before parsing.**
+  ⚠️ **Falsifying probe: the five rows above.** Re-run them; if row 1 ever exits 1, or row 2 ever exits 0,
+  this bullet is wrong and must be re-measured. Found by Station 03 2026-09-10T23:0xZ (F2), re-measured
+  and landed by Station 00 at 23:3xZ.
+
+## 9.5 The pipeline's own instruments
+
+- 🔴 **ANCHOR BY SYMBOL, NEVER BY LINE NUMBER — and this section violated its own rule sixteen
+  times.** MEASURED 2026-09-04T14:1xZ by Station 04 against `origin/main:scripts/pipeline/lint-prompt.mjs`
+  (now 1824 lines): **16 of 17** line-number citations in this section were wrong, all drifting the
+  same ~90 lines, consistent with ONE insertion above the first of them. `:728`/`:730`/`:732` — the
+  three arming markers RULE 4's detector is built on — held `try {`, `} catch (_) {` and `}`. Nobody
+  edited a claim; the file moved underneath every claim at once, silently, which is the §7 shape.
+  **The available conclusion was wrong in the dangerous direction** (*"the linter does not gate
+  arming"*), and that reasoning ends in arming a never-arm prompt. Every citation below is now a
+  **symbol or fixed-comment anchor**, which cannot rot the same way. The reasoning in this section
+  was verified sound by symbol at the same time and needed no correction. 🔧 **A line number into a
+  file outside this document is invalidated by any edit above it — if you find yourself writing one,
+  write the symbol instead.**
+  🔴 **AND IT BINDS EVERY BINDING DOCUMENT, NOT ONLY THIS ONE — the scoping was measured, and
+  the nine documents that never got the rule are exactly where the surviving rot lives.**
+  [MEASURED] 2026-09-10T18:1xZ by Station 04 at `77137033` across the ten binding documents:
+  `DOCTRINE.md` carries **18** `(anchor: …)` forms and **one** surviving `file:NNN` citation
+  (`start-watcher.ps1:160`, correct), while the other nine carry **0** anchors between them and
+  **four** citations — `ensure-watcher.ps1:10` in `03-machine-minder.md`, and `CLAUDE.md:19`,
+  `pr-gates.mjs:327` and `build-relationship-map.mjs:18-19` in `05-sot-keeper.md`. Two of those
+  four had been re-found and correctly dispositioned by **four** consecutive `instruction-drift`
+  sweeps (09-02, 09-04, 09-07, 09-10) without either being fixed, because the fix that would have
+  prevented them was applied to one file and the rule was never widened. POSITIVE control, the
+  word "anchor": 28 in `DOCTRINE.md`, 1 in `STATION-CAPABILITIES.md`, 0 elsewhere; NEGATIVE
+  control 0 in every row.
+  🔧 **Write a symbol or fixed-comment anchor in EVERY station doc, in `CLAUDE.md` and in
+  `STATION-CAPABILITIES.md`, not only here.** ⚠️ **Those counts are STATE — re-measure, never
+  quote.** **Falsifying probe: extract every `<file>:<NNN>` form from the ten binding documents at
+  `origin/main` and resolve each against the line it cites.** All four survivors were converted to
+  anchors in the same PR that landed this clause, so a re-run returns one citation and not five;
+  if a NEW raw line citation ever appears in a station doc, this clause is being ignored rather
+  than being wrong. Found by Station 04 2026-09-10T18:1xZ (F2), landed by Station 00 at 19:1xZ.
+
+  **CORRECTED 2026-09-11 - THE CLAUSE LANDED AND ITS OWN PROBE READS AS THOUGH IT DID NOT.**
+  `ANCHOR_PROBE_PER_DOCUMENT_V1` [MEASURED] 2026-09-11T02:3xZ by Station 04 at `ec7dd590`: run
+  literally, the probe returns **7**, not the predicted 1 - `DOCTRINE.md` 7, every other binding
+  document **0**. Four of the seven are THIS document quoting the citations it retired from
+  `03-machine-minder.md` and `05-sot-keeper.md` (`ensure-watcher.ps1:10`, `pr-gates.mjs:327`,
+  `build-relationship-map.mjs:18-19`) plus `CLAUDE.md:19`; the other three are the one legitimate
+  survivor `start-watcher.ps1:160`, used once here and twice in section 10.3, and it resolves
+  correctly. So 03 and 05 are clean and the clause shipped - but a reader who counts 7 against a
+  predicted 1 concludes it never did and re-opens four sweeps' worth of closed work. **State the
+  prediction PER DOCUMENT, which cannot be satisfied by prose:** `03` to 0, `05` to 0,
+  `CLAUDE.md` to 0, `STATION-CAPABILITIES.md` to 0, and `DOCTRINE.md` to its
+  `start-watcher.ps1:160` uses only, every other hit being a quotation of a citation it removed.
+  Found by Station 04 2026-09-11T02:3xZ (F4), landed by Station 00 at 02:5xZ.
+
+  🔴🔴 **CORRECTED 2026-09-15 — THE PROBE IS STRUCTURALLY BLIND TO `.gitignore:<N>`, WHICH IS THE
+  ONE CITATION CLASS THAT HAS ACTUALLY ROTTED, AND THE PER-DOCUMENT PREDICTION ABOVE READS
+  SATISFIED WHILE BEING FALSE.** `CITATION_PROBE_BLIND_TO_DOTFILES_V1` The probe is written as
+  *"extract every `<file>:<NNN>` form"*, and the obvious implementation keys on a FILE EXTENSION.
+  `.gitignore` has none, so an extension-keyed form cannot see it — and the prediction one
+  paragraph up (`03`→0, `05`→0, `CLAUDE.md`→0, `STATION-CAPABILITIES.md`→0, `DOCTRINE.md`→its
+  `start-watcher.ps1:160` uses only) is then satisfied EXACTLY, which reads as *"the rule has
+  landed, nothing left to convert"*. [MEASURED] 2026-09-15T02:1xZ by Station 04 at `25db3c36`,
+  both regex forms over the same nine files (five scheduled-task bootstraps + four binding docs):
+  extension-keyed **6**, dotfile-tolerant **17**, i.e. **11 invisible**. Four of the eleven sit
+  inside the binding documents the prediction covers — `STATION-CAPABILITIES.md` carries
+  `.gitignore:28`, `stations/05-sot-keeper.md` carries `.gitignore:76-83` and `.gitignore:75`,
+  `stations/04-scanner.md` carries `.gitignore:76-83`. NEGATIVE control, a freshly minted needle
+  across four of those files → **0**; POSITIVE control, `.gitignore:<N>` present → **4 of 4**.
+
+  ⚠️ **All four resolve correctly today, and that is why it is worth writing down rather than
+  fixing quietly.** They are live raw line-number citations of exactly the class that has already
+  rotted twice (2026-08-30 off by one, 2026-09-06 off by eight), sitting in documents every
+  station is told it can trust, and the prescribed probe reports zero of them. 🔴 **And the
+  compounding half is upstream:** `needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md`
+  ITEM 2 asks Marco for a `lint-station.mjs` check that validates every `<file>:<N>` citation.
+  Built with the obvious extension-keyed regex, **that check is born blind to the entire class
+  that motivated it.**
+
+  🔧 **So the probe's regex is stated here explicitly and dotfile-tolerantly, and any check built
+  from it must use this form and not an extension-keyed one:**
+
+  ```
+  (^|[\s(`"'])(\.?[A-Za-z0-9_.\-/]+):(\d+(?:-\d+)?)\b
+  ```
+
+  — the leading `\.?` is the whole point; a citation's file part may begin with a dot and carry no
+  extension. **The per-document prediction above stands for extension-bearing citations and is
+  INCOMPLETE on its own:** re-state it as `03`→0, `05`→**2** (`.gitignore:76-83`, `.gitignore:75`),
+  `CLAUDE.md`→0, `STATION-CAPABILITIES.md`→**1** (`.gitignore:28`), `04-scanner.md`→**1**
+  (`.gitignore:76-83`), `DOCTRINE.md`→its `start-watcher.ps1:160` uses plus its quotations of
+  citations it retired. ⚠️ **Falsifying probe: run BOTH forms over those nine files.** If the
+  extension-keyed form ever returns 17, this correction is wrong and must be re-measured. Found by
+  Station 04 2026-09-15T02:1xZ (F1), landed by Station 00 at 02:4xZ.
+
+  🔴🔴 **CORRECTED 2026-09-21 — THE PROBE’S CORPUS IS STATED AS A COUNT (“the same nine
+  files”), WHICH IS THE FORMULATION `STATION-CAPABILITIES.md` §1 ALREADY FORBIDS, AND THE
+  PER-DOCUMENT PREDICTION OMITS `00-supervisor.md` ENTIRELY — SO A RUN THAT REBUILDS THE PROBE
+  OVER THE STATION DOCS FINDS TWO UNLISTED CITATIONS AND HAS THIS BULLET’S OWN SENTENCE — *“if a
+  NEW raw line citation ever appears in a station doc, this clause is being ignored rather than
+  being wrong”* — TO HAND, AND RE-OPENS CLOSED WORK.** `CITATION_PROBE_CORPUS_IS_A_COUNT_V1`
+  [MEASURED] 2026-09-21T00:0xZ by Station 04 (F2) and re-measured row-for-row by Station 00 at
+  `c5744acf`: `C:\Users\Marco\Claude\Scheduled` holds **11** `SKILL.md`, of which **4** sit behind
+  tasks the scheduled-tasks MCP reports `enabled: true` (`00-supervisor`, `03-machine-minder`,
+  `04-scanner`, `05-sot-keeper`; `weekly-security-audit` is `enabled: false`) — so “five” is wrong
+  in **both** directions; and `docs/pipeline/stations/` holds **7** station docs (`00`–`06`), not
+  four. **`00-supervisor.md` carries two `.gitignore` citations the prediction does not list**, and
+  both resolve correctly: the gitignored-sinks list in its REPORT CONTRACT section (anchor: the
+  sentence beginning *“plus anything under”*) and the `-ready.md` note in its ARM ONE AT A TIME
+  bullet (anchor: *“which `.gitignore`”* in that bullet). They are named by anchor here rather than
+  by line number, per this subsection’s own opening rule.
+
+  🔧 **State the corpus as a RULE, never as a count, exactly as `STATION-CAPABILITIES.md` §1
+  requires: every `SKILL.md` behind an ENABLED task in the scheduled-tasks MCP, plus all SEVEN
+  station docs, plus `DOCTRINE.md`, `STATION-CAPABILITIES.md` and `CLAUDE.md`.** The per-document
+  prediction gains one row and loses none: **`00-supervisor.md` → 2**. ⚠️ **Nothing above is
+  retired** — the dotfile-tolerant regex, the extension-keyed blindness and every other row stand
+  exactly as measured; what is corrected is the corpus spec and the one missing prediction row.
+  ⚠️ **Those counts are STATE — re-measure them, never quote them.** ⚠️ **Falsifying probe: run
+  both regex forms over the corpus as now stated and read the per-document counts.** If
+  `00-supervisor.md` ever returns **0** `.gitignore` citations, this correction is wrong and must
+  be re-measured. Found by Station 04 2026-09-21T00:0xZ (F2), landed by Station 00 at 01:4xZ.
+  🔴🔴 **CORRECTED 2026-09-21T15:3xZ — THE DOTFILE-TOLERANT REGEX PRESCRIBED ABOVE MATCHES CLOCK
+  TIMES, SO THE `lint-station.mjs` CHECK THE OPEN ESCALATION ASKS MARCO FOR IS BORN CRYING WOLF —
+  AND THE PER-DOCUMENT PREDICTION OMITS FOUR STATION DOCS, THE FOUR BOOTSTRAPS, AND ONE FIRST-CLASS
+  CITATION IN THIS FILE.** `CITATION_REGEX_MATCHES_TIMESTAMPS_V1` ·
+  `CITATION_PREDICTION_OMITS_FOUR_STATION_DOCS_V1`
+
+  **(a) The regex matches times of day.** `2026-09-06T23` and `14` both satisfy
+  `[A-Za-z0-9_.\-/]+`, so `2026-09-06T23:04` and `14:10` are matched as citations. [MEASURED]
+  2026-09-21T14:2xZ by Station 04 at `524158cd`, both forms over the corpus exactly as the
+  2026-09-21 correction now states it:
+
+  | corpus | extension-keyed | dotfile-tolerant |
+  |---|---|---|
+  | whole corpus | **17** | **136** |
+  | `DOCTRINE.md` alone | — | **88**, of which **56** have an all-numeric or `T\d\d` file part |
+
+  NEGATIVE control, a freshly minted needle → **0 files**; POSITIVE control, **13** files carry a
+  real `.gitignore:<N>` citation. Clock sample: `2026-09-06T03:47` · `2026-08-31T01:21` · `05:27`.
+  ⚠️ **Those counts are STATE — re-measure them, never quote them.**
+  🔴 **This is a live defect in a document Marco is about to build a gate from, not a tidy-up.**
+  `needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md` **ITEM 2** asks him for a
+  `lint-station.mjs` check that validates every `<file>:<N>` citation, and the correction above tells
+  its author which regex to use. Built exactly as prescribed, that check reports scores of
+  unresolvable "citations" that are times of day — and **a gate that fails scores of times on its
+  first run is disabled by its first reader**, leaving the class it exists to catch (the bootstraps'
+  own `.gitignore:107-111`) no better protected than it is today.
+  🔧 **Require the file part to contain a `/` or a `.`, and reject an all-digit or `T\d\d`-terminated
+  file part** — anchor on `(\.?[A-Za-z0-9_.\-]*[/.][A-Za-z0-9_.\-/]*)` with a `(?<!\d{2})(?<!T\d)`
+  guard immediately before the colon. Both real classes survive it: `.gitignore:28` (leading dot, no
+  extension) and `start-watcher.ps1:160`. ⚠️ **Falsifying probe: run the 2026-09-15 regex over
+  `DOCTRINE.md` and count the matches whose file part is all-numeric.** If that count is ever **0**,
+  this correction is wrong and must be re-measured.
+
+  **(b) The prediction was widened at the corpus and not at the prediction.** The 2026-09-21
+  correction restates the corpus as a RULE — *"all SEVEN station docs"* plus *"every `SKILL.md`
+  behind an ENABLED task"* — and then lists per-document predictions for only six documents. So a
+  run that rebuilds the probe meets `01`, `02` and `06` unlisted, has this subsection's own sentence
+  (*"if a NEW raw line citation ever appears in a station doc, this clause is being ignored rather
+  than being wrong"*) to hand, and re-opens closed work — which is the precise failure the
+  2026-09-21 correction exists to prevent, reproduced one revision later in itself. [MEASURED]
+  `.gitignore:<N>` citations per document at `524158cd`:
+
+  | document | predicted | measured |
+  |---|---|---|
+  | `00-supervisor.md` | 2 | **2** ✅ |
+  | `03-machine-minder.md` | **0** | **1** ❌ |
+  | `04-scanner.md` | 1 | **1** ✅ |
+  | `05-sot-keeper.md` | 2 | **2** ✅ |
+  | `STATION-CAPABILITIES.md` | 1 | **1** ✅ |
+  | `CLAUDE.md` | 0 | **0** ✅ |
+  | `01-code-writer.md` | **not listed** | **2** |
+  | `02-board-driver.md` | **not listed** | **1** |
+  | `06-pr-master.md` | **not listed** | **1** |
+  | each of the four enabled `SKILL.md` | **not listed** | **1 each** |
+
+  **Every repo-side citation in that table resolves correctly**; only the four bootstrap ones do
+  not, and those are already ITEM 1 of the escalation named above. So none of this is a new
+  violation — and that is the point.
+
+  **(c) And one the prediction does not cover at all sat in THIS file: a first-class raw
+  line-number citation into `scripts/pr-watcher/index.mjs` in §8.5** — not a quotation of a retired
+  one. It resolved correctly when measured (`fsWatch(PROMPT_DIR` was at exactly the cited line on
+  `origin/main`), and it sat 98.5% of the way down a file this pipeline edits constantly, so any
+  insertion above it would have rotted it silently — this subsection's opening rule, violated in
+  the document that states it. **It has been converted to its symbol anchor in the same PR that
+  landed this correction, which discharges it permanently.** ⚠️ **Falsifying probe: search §8.5 for
+  a raw `<file>:<NNN>` form.** If one is there, the conversion did not land.
+  🔧 **State the prediction as a claim about TRUTH rather than about COUNTS, because a truth claim
+  cannot rot when a document is added to the corpus: *every `<file>:<N>` citation in the corpus
+  resolves, and the only ones that do not are the four bootstraps' `.gitignore:107-111`.*** That
+  replaces the per-document count list above, which is kept only as this correction's evidence.
+  ⚠️ **Falsifying probe: the table above.** If `03-machine-minder.md` ever returns 0, this
+  correction is wrong and must be re-measured. Found by Station 04 2026-09-21T14:2xZ (F1 and F4),
+  landed by Station 00 at 15:3xZ.
+
+
+- 🔴 **`lint-prompt.mjs` does NOT reject when `git` is missing or broken — the binary is `git`, NOT
+  `gh`.** `readFromOriginMain` (anchor: `function readFromOriginMain`) runs
+  `execFileSync(process.env.LINT_GIT_BIN || "git", ["show", "origin/main:<path>"])` and on failure
+  `return null; // git broken - skip check, fail SAFE`, and it feeds all five gate probes (anchor: the five
+  `readFromOriginMain(` call sites). **The five GATE probes use `git` only**, so the old advice — *"confirm `gh`
+  resolves"* — proves nothing about them. 🔴 **But `gh` is NOT absent from the file, and this
+  bullet said it was until 2026-08-31.** `lint-prompt.mjs` reads
+  `process.env.LINT_GH_BIN || "gh"` (anchor: `LINT_GH_BIN`) and shells `gh pr view <n> --json state` inside
+  `ghFetchPrState`, reached from the exported `checkFixesPrTargetOpen` (the comment
+  `// Cheaper than the premise (single gh call, no shell subprocess), so run` above the
+  `checkFixesPrTargetOpen({ fixesPr, fetchState: fetch })` call site names it that). **A `fixes_pr`
+  verdict therefore DOES depend on `gh`** — confirm it resolves before trusting one. (Found by
+  Station 04 2026-08-31T14:1xZ; re-measured by 00 the same hour — `Select-String LINT_GH_BIN`.) **A line-number citation into a file outside this document
+  is invalidated by any edit above it — prefer a symbol name or a fixed comment string as the
+  anchor.** **Confirm `git` resolves AND read its stderr before believing any ADMIT.** And "fail
+  SAFE" is safe only against wrongly *binning* a prompt: with respect to **arming** it fails
+  **OPEN**, because a skipped gate reads as an ADMIT — including for prompts that drop database
+  tables.
+- 🔴 **`lint-prompt.mjs` ADMIT is NECESSARY, NOT SUFFICIENT.** The linter *does* now see **three**
+  literal markers — `DO_NOT_ARM_COMMENT` (anchor: `DO_NOT_ARM_COMMENT =`, case-insensitive),
+  `DO_NOT_ARM_CAPS` (anchor: `DO_NOT_ARM_CAPS =`, case-**sensitive**), and 🔴 **`ARM_ONLY` = `/Arm ONLY/i` (anchor: `ARM_ONLY =`,
+  conditional arming), which this bullet omitted until 2026-08-31** — and reports
+  `HUMAN_GATE_PRESENT: line N contains` at its three report sites (anchor: `HUMAN_GATE_PRESENT: line`). **RULE 4's arming detector
+  greps the union of these markers as its second instrument, so a two-marker grep under-reports
+  which prompts the linter actually gates** (Station 04, 2026-08-31; re-measured by 00 the same
+  hour, with the control that `"Arm ONLY"` occurred 0 times in this document). **The advice survives the fix:** a **prose** human gate matches neither regex,
+  and exactly that burned an arm on 2026-08-28T14:09Z — so still read the BODY before arming.
+  🔴 **CORRECTED 2026-09-06 — `ARM_ONLY` is `/Arm ONLY/i`, so TWO of the three markers are
+  case-INSENSITIVE and only `DO_NOT_ARM_CAPS` is case-sensitive.** [MEASURED] by Station 04 at
+  `d1467428` against `scripts/pipeline/lint-prompt.mjs`, anchors `DO_NOT_ARM_COMMENT =`,
+  `DO_NOT_ARM_CAPS =` and `ARM_ONLY =`. A RULE 4 union grep run `-CaseSensitive` over all three
+  therefore **under-reports**: it misses `ARM only`, `arm ONLY` and `Arm only`, which the linter
+  does gate — and the error runs in the ARMING direction, which is the direction this bullet
+  exists to guard. Grep the comment and conditional markers case-INSENSITIVELY and `DO NOT ARM`
+  case-SENSITIVELY. 🔧 **Falsifying probe: the three anchor lines themselves.**
+  Measured 2026-08-30 over the 59 depth-1 `-HOLD`/`-ready` on `origin/main`: the two markers cover
+  **7 distinct prompts**; `## STANDING AUTHORITY` appears on **51 of 59** and is boilerplate, not a
+  gate; and `pr-dns-s5-checker-flip-to-fail-HOLD` carried **neither** marker until #1400
+  (2026-08-30) put `<!-- watcher: do-not-arm -->` on it — `lint-prompt.mjs` now REJECTs it
+  `[HUMAN_GATE_PRESENT]` at exit 1. **Adding the literal marker is the cure for any future
+  never-arm prompt**, and it fires at the `DO_NOT_ARM_COMMENT` test before the premise is ever evaluated. The general
+  warning stands: a **prose** human gate matches neither regex and is invisible to both the
+  linter and any grep built on them.
+- 🔴 **AND THE SAME UNION GREP *OVER*-REPORTS, BECAUSE `checkHumanGate` STRIPS CODE CONTEXT BEFORE IT
+  TESTS THE MARKERS AND A `Select-String` CANNOT — SO A PROMPT THAT *DOCUMENTS* THE ARMING GATE READS
+  AS GATED WHILE THE LINTER CORRECTLY ADMITS IT.** The bullet above records the grep's
+  UNDER-reporting (case sensitivity). This is the other direction, it was undocumented until now, and
+  it costs the opposite thing: it makes a run **refuse to arm real work**, and it lands preferentially
+  on the prompts that repair this pipeline's own instruments — because those are the prompts that
+  quote the marker. `checkHumanGate` (anchor: `export function checkHumanGate`) opens with
+  `const stripped = stripCodeContext(bodyText)` (anchor: `stripCodeContext(bodyText)`), so fenced
+  blocks and inline code spans are removed **before** the three regexes run — exactly as its own doc
+  comment says (*"a prompt that documents this feature … quotes these strings as examples"*). A grep
+  reads the unstripped source and therefore asks a different question.
+  [MEASURED] 2026-09-08T01:2xZ by Station 00 at `e453ee8d`, union grep over the depth-1 `-HOLD.md`
+  in `docs/pr-prompts` (`watcher:\s*do-not-arm` case-insensitive · `DO NOT ARM` `-CaseSensitive` ·
+  `Arm ONLY` case-insensitive), every hit then re-linted with `lint-prompt.mjs`:
+
+  | | count |
+  |---|---|
+  | flagged by the union grep | **12** |
+  | of those, lint exit 1 `HUMAN_GATE_PRESENT` — TRUE positives | **11** |
+  | of those, lint exit 0 **ADMIT**, no gate — FALSE positive | **1** |
+
+  The false positive is `pr-triage-holds-open-pr-duplicate-bucket-HOLD.md`, whose body asks the
+  script to print the heading `DUPLICATES OF AN OPEN PR — DO NOT ARM` inside an inline code span.
+  **NEGATIVE control:** two prompts the grep did *not* flag were re-linted and neither reported
+  `HUMAN_GATE_PRESENT`, so on this board the grep produced no false negatives — its error is
+  one-directional.
+  🔧 **Keep the grep; it is still the required second instrument. But treat a grep hit as a QUESTION
+  and settle it by running `lint-prompt.mjs` on that one file and reading the `HUMAN_GATE_PRESENT`
+  CODE — never the exit code alone**, because a HOLD also exits 1 for `GATE_NOT_RELEASED` and the
+  exit code cannot discriminate. Never arm on the grep's silence; never refuse on its noise.
+  ⚠️ **This is §9.6's closing rule with the corpus changed from this document to the queue:** a
+  prompt that describes the arming gate contains a literal instance of the arming gate, so a probe
+  pointed at it measures the documentation.
+  ⚠️ **DO NOT use the board count above as the falsifying probe — the same PR that landed this
+  bullet also REPAIRED the one false positive it names**, so a re-run over today's HOLDs returns 11
+  of 11 and reads as *"the bullet is wrong"*. **The probe is a FIXTURE whose truth is known by
+  construction.** [MEASURED] the same run against the exported `checkHumanGate`:
+
+  | fixture body line | raw union grep | `checkHumanGate` | truth |
+  |---|---|---|---|
+  | `DO NOT ARM until Marco answers.` — prose | FLAG | `HUMAN_GATE_PRESENT` | gate |
+  | the same words inside an **inline code span** | FLAG | **`ok` — no gate** | not a gate |
+  | the same words inside a **fenced block** | FLAG | **`ok` — no gate** | not a gate |
+  | the `watcher: do-not-arm` HTML comment | FLAG | `HUMAN_GATE_PRESENT` | gate |
+  | no marker at all — NEGATIVE control | clear | `ok` | not a gate |
+
+  Rebuild those five and run both instruments; if the grep and `checkHumanGate` ever agree on all
+  five rows, this bullet is wrong. Found and landed by Station 00 2026-09-08T01:2xZ.
+- 🟢 **LANDED 2026-08-31T01:21:53Z — `parseFrontMatter` now FOLDS block scalars, so the LL-29 rollback
+  gate is real again.** PR **#1414** (`1a62c86d`) added `foldBlockScalar` for `>`, `>-`, `>+`, `|`, `|-`,
+  `|+` with correct chomping. Measured on `origin/main` at `6e105076`:
+  `git grep -c foldBlockScalar origin/main -- scripts/pipeline/lint-prompt.mjs` → **2**, with the
+  negative control `zzzNoSuchTokenZzz` → exit 1. **The three instructions this bullet used to carry
+  are RETIRED — do not follow them:** a block scalar in front matter is now read, a `">-"` in lint
+  output is no longer the expected symptom, and a migration-scoped ADMIT no longer needs
+  `rollback_strategy` checked by eye.
+  **What is still worth knowing.** From 2026-08-19 to 2026-08-31 the parser stored the literal two
+  characters `">-"` and silently dropped the indented body, so **every presence check passed on
+  content nobody wrote.** Across the 61 depth-1 `-HOLD`/`-ready` prompts on main at the
+  time, that was `rollback_strategy` **10** · `premise_means` 19 · `done_when` 12; re-measured by
+  Station 04 on 2026-08-31T14:1xZ over the **59** that survive, it is **8 · 14 · 10**, the drop being
+  the prompts retired in #1448/#1449. ⚠️ **Those are counts, i.e. state: re-measure, never quote.**
+  The 10 included two irreversible
+  table drops (`pr-524-rates-b-slice2-canonical`, `pr-rates-s11c-drop-legacy-tables`) and
+  `pr-siteid-notnull-backfill`. 🔴 **Those prompts have never been linted by a working rollback
+  gate — RE-LINT any of them before arming.** `premise`, `scope`, `fixes_pr` and the `requires_*`
+  family measured **0** on all three occasions this was found, which is the only reason nothing was
+  ever mis-binned. The watcher was never affected — `scripts/pr-watcher/index.mjs` has always had
+  its own extractor that folds correctly.
+  ⚠️ **This bullet went on asserting "the fix is staged as
+  `pr-lint-frontmatter-block-scalar-collapse-HOLD.md` (ADMIT)" for thirteen hours after that file had
+  been armed, consumed and merged.** Four station runs read this block in full inside that window and
+  none caught it. **A hash-gated canonical block is protected against being EDITED, not against going
+  STALE.** So: any claim here about a fix that has not yet landed must name the probe that would
+  falsify it — as this replacement does — or it will outlive its own truth in the one document every
+  station is told it can trust.
+
+- 🔴 **AN ARMED `-ready.md`'s mtime DATES ITS AUTHORSHIP, NOT ITS ARMING — `git mv` preserves mtime.**
+  The only clock that dates an arm is the arming log `.arming-log.txt` in the queue folder.
+  🔴 **CORRECTED 2026-09-04: that log is TRACKED, and has been since #1512 (2026-09-02,
+  "track the arming log"). This bullet asserted it was UNTRACKED and that a clone, CI and any
+  cloud-fired station "must not infer arm age at all" — both halves are false.** It also already
+  carries the actor fields escalation #22 asks for: `by=`, `pid=` and `caller=<parent cmdline>`
+  on every row, so that half of #22's option (A) is built and merged, not open.
+  🔴 **What IS true is worse, because it wears the same symptom: NOTHING COMMITS IT.**
+  [MEASURED] 2026-09-04T12:2xZ at `6c7e94c5`, with controls (`git ls-files --error-unmatch` on the
+  log → exit 0; on a nonexistent path → exit 1): `git show origin/main:docs/pr-prompts/.arming-log.txt`
+  🟢 **THE GAP IS CLOSED AND THE "13 ARMS PUBLISHED NOWHERE" FIGURE IS RETIRED — do not quote it
+  again.** It was [MEASURED] 2026-09-04T12:2xZ at `6c7e94c5` as `origin/main` **37** lines against a
+  **50**-line working copy. Station 04 re-ran this bullet's own falsifying probe at 14:1xZ and
+  Station 00 confirmed it at 15:2xZ: **both sides are 50 lines** and end on the identical row
+  `2026-09-04T11:29:24Z ARMED pr-lint-gate-path-space ... by=Marco@ pid=31616`. Controls unchanged
+  (`git ls-files --error-unmatch` on the log → exit 0, on a nonexistent path → exit 1).
+  🔴 **The DEFECT is untouched and it is the half that matters: NOTHING COMMITS THE LOG ON
+  PURPOSE.** The only commits that have ever carried it were board PRs that happened to sweep it in,
+  so the gap closes and re-opens by luck. When it is open a clone reads a STALE arm history rather
+  than none, which is the more dangerous shape: it answers, and its answer can be a day and a half old.
+  🔧 **The falsifying probe for this bullet is that two-line-count comparison — re-run it before
+  quoting either half.** Until the counts agree: any run that arms something MUST commit the arming
+  log in its board PR, and an arm age read from `origin/main` is a LOWER bound, never the answer.
+  The 2026-08-31 measurement below still stands as written; only the tracked/untracked claim changed.
+  Measured 2026-08-31 by
+  Station 04: at 18:14Z `pr-lint-not-a-prompt-ready.md` sat on disk with mtime **2026-08-28T08:12:35Z**
+  — 3.4 days old — while the arming log recorded `2026-08-31T18:13:56Z ARMED pr-lint-not-a-prompt`,
+  **two minutes earlier.** The file is gitignored at `.gitignore:75`, so `git status` shows only the
+  ` D` of the vanished `-HOLD.md`, and a sweep run 177 seconds before the arm had already printed
+  `armed: 0`. Read together, those three readings compose into *"a prompt has been armed and unseen
+  since 28 August"* — a confident, coherent, wrong S2 that 04 nearly filed. **Never infer arm age from
+  a `-ready.md`'s mtime.** This is also the cleanest instance yet of §7's `[LIVE]` rule: the sweep's
+  `armed: 0` was correct when printed and false three minutes later.
+- ⚠️ **`rev-<n>-ready.md` are auto-generated REVIEW JOBS**, not prompts. They have no front matter **by
+  design**. Exclude them from prompt audits instead of reporting them as malformed.
+- ⚠️ **`STOP-WATCHER-LANE2` has been present BY DESIGN since 2026-08-15, at
+  `C:\po-watcher\STOP-WATCHER-LANE2` — in the `po-watcher` PARENT directory, OUTSIDE both git
+  repos.** It is not drift and it is not a stop signal. The real sentinel is `STOP-WATCHER`,
+  likewise clone-side at `C:\po-watcher\STOP-WATCHER`, and **it cannot stop an already-running
+  watcher.**
+  🔴 **The PATH is the load-bearing half of this bullet, and omitting it manufactured the
+  opposite verdict twice.** Without it the obvious probe — a `STOP-WATCHER*` search in
+  `C:\ProjectOperations2` and in `C:\po-watcher\ProjectOperations` — returns **0 and 0**, which
+  reads as *"the documented mechanism is gone"*. That false negative was written into a table of
+  §9 verdicts on 2026-08-26, and **four** separate Station 04 runs (08-25, 08-26, 08-27, 08-28)
+  have since filed the identical one-clause fix, none of which landed. [MEASURED] 2026-09-05T07:2xZ:
+  `C:\po-watcher\STOP-WATCHER-LANE2` present, **1090 bytes**; `C:\po-watcher\STOP-WATCHER`
+  **absent** (`Test-Path` -> False); NEGATIVE control `C:\po-watcher\zzzNoSuchNeedleZzz*` -> 0 files.
+  🔧 **Check the MECHANISM, not the file.** The readers are the launchers in `C:\po-watcher`,
+  **none of which is in this repo**: `ensure-watcher.ps1` (3 hits), `watcher-launcher.ps1` (4),
+  `watcher-launcher-singlelane.ps1` (4), `watcher-launcher-lane2.ps1` (3).
+  `docs/pipeline/stations/03-machine-minder.md` still repeats the pathless form and inherits this
+  trap.
+- ⚠️ **A restart adopts nothing.** The watcher runs `index.mjs` **from the clone**, so the clone must
+  be fast-forwarded before a restart changes any behaviour.
+- ⚠️ **The watchdog heartbeat only ticks MID-RUN**, so age alone cannot separate idle from wedged. A
+  long-stale heartbeat while a PR is open usually means **merge-wait**, not a hang.
+- ⚠️ **THE VERDICT-ARCHIVE SWEEP USED TO ANSWER AN EMPTY BOARD WITH SILENCE — and silence is the
+  one reading a dead watcher also gives.** `runArchiveSettledVerdicts` (anchor: that symbol in
+  `scripts/pr-watcher/index.mjs`) gated its summary line on a non-zero counter, so when the board
+  emptied at **2026-08-25T07:01Z** the sweep printed nothing inside the same rescan and the log went
+  mute. Two write-ups then had to warn readers not to read that mute log as a death. It now emits
+  **`verdict-archive sweep: idle`** on every sweep that finds no verdict files (anchor:
+  `runVerdictArchiveSweep`), on the same `RESCAN_INTERVAL_MS` cadence as the counted line, so idle
+  is stated rather than inferred. 🔧 **But this line is NOT the freeze probe and must never be wired
+  into one.** A log line proves a **code path ran**; only a GAP catches a freeze. **The authoritative
+  freeze probe remains the `ts` field inside `.queue-state.json`, which lives BESIDE THE SCRIPT
+  at `<watcher clone>/scripts/pr-watcher/.queue-state.json` (anchor: `const QUEUE_STATE_FILE` in
+  `index.mjs`) and NOT beside the queue in `docs/pr-prompts/`** — [MEASURED] 2026-09-22T23:3xZ by
+  Station 03, which probed the natural guess — the same filename beside the QUEUE — and got **False in
+  BOTH trees**, no error, exit 0: the available conclusion is *"the watcher writes no queue state"*,
+  which retires this pipeline’s only authoritative freeze probe on a path typo, and a run that then
+  falls back to heartbeat age alone has nothing left to separate idle from wedged (§9.6, inside a
+  §9.5 cure). Sample it **twice, more than
+  five minutes apart**, and compare the delta against `RESCAN_INTERVAL_MS` (5 min): `ts` unchanged
+  across that window is a frozen rescan loop, whatever the log says. ⚠️ **Both observables die
+  together after `pauseQueue`**, which sets `queuePaused` and makes `rescan()` return before both
+  the sweep and `writeQueueState()` — so a PAUSED watcher still reads exactly like a dead one on
+  both. Read from source 2026-09-07, not measured in the field; treat a simultaneous stop of tick
+  and `ts` as *paused or dead*, and resolve it by PID, never by silence.
+- ⚠️ **Never count or kill by image name.** Resolve PIDs and verify command lines — 19 `node.exe` were
+  running on 2026-08-24 and exactly one was the watcher.
+- ⚠️ **QUARANTINED ledger rows are recorded but NOT binding.** Citing one as authority is an error.
+- ⚠️ **`check-breadcrumb.mjs` measures two different sets, and only ONE of them sees `archive/`.**
+  **Freshness is recursive**: `trackedSet` comes from `git ls-tree -r --name-only origin/main -- docs/pr-prompts`
+  (anchor: the `ls-tree -r` call) and is matched by **trailing path segment** (anchor:
+  `p.lastIndexOf('/')` — the token `basename` does not occur in that file at all), so archiving a station's newest breadcrumb does
+  **not** make it read SILENT — measured 2026-08-30 archiving 152 files, with `03` (15.1h) and `05`
+  (24.0h) unchanged across the move. **Structure is depth-1 only**: it iterates `readdirSync(DIR)`
+  (anchor: `readdirSync(DIR)`), so the same move took `structure: 122 checked` to `11`. Both exited 0. Archiving is
+  therefore safe, but "it counts by basename" is true of freshness and **false** of the structure
+  pass — do not quote the one result as covering both.
+
+- 🔴 **RULE 2's ONLY PROBE HAS TWO HOMES, BOTH ANSWER, AND THE DEAD ONE'S POSITIVE CONTROL
+  PASSES.** The `marco:true` probe reads `docs/pr-prompts/processed/*.log`. That path resolves in
+  **two** trees, and the watcher clone holds a dead DECOY copy of the same directory. Measured
+  2026-09-03T20:1xZ at `054dccd4`:
+  `C:\\ProjectOperations2\\docs\\pr-prompts\\processed` = **1864** logs, newest
+  `2026-09-03T17:20:00Z`, `marco.:true` → **606**; `C:\\po-watcher\\ProjectOperations\\docs\\pr-prompts\\processed`
+  = **21** logs, newest **2026-08-17T14:28:09Z** — seventeen days stale — `marco.:true` → **10**.
+  🔴 **The decoy therefore passes the mandated positive control**: POS=10 (>0), NEG=0, exactly the
+  shape the standing rule asks for — and then returns *no verdict* for every PR opened since
+  17 August. A run that probes the clone reads all four of today's open PRs as carrying no Marco
+  routing, i.e. **RULE 2 fails OPEN on the one gate that exists to stop an agent merging Marco's
+  work.** This was reached by a `Test-Path`-with-fallback that preferred the clone; it is not a
+  typo, it is a plausible path expression that silently selects the corpse.
+  🔧 **Pin the tree: the live probe directory is `C:\\ProjectOperations2\\docs\\pr-prompts\\processed`,
+  and NEVER the watcher clone.** POS>0 is not sufficient on its own — **also assert the newest log is
+  younger than the oldest open PR**, which is the only control that separates the two directories.
+  ⚠️ **And the log is keyed by PROMPT NAME, not PR number**, so match `PR #<n>` in the log BODY;
+  a filename search returns a uniform zero. **Control it against a PR you know the watcher did NOT
+  open** — e.g. a station's own docs PR — which must read `NO LOG`, proving `NO LOG` means
+  *second lane* (§10) and not *probe broken*.
+
+- 🔴 **`NO LOG` HAS TWO CAUSES, AND THE DANGEROUS ONE LOOKS EXACTLY LIKE THE BENIGN ONE.**
+  The control above proves `NO LOG` is not a *broken probe*. It does **not** prove *second lane*.
+  MEASURED 2026-09-04T08:2xZ at `99451d99`: **#1570 was opened BY THE WATCHER**, from the prompt
+  `pr-watcher-merge-policy-nested-test-paths`, whose front matter reads `escalates: true` — and the
+  probe returns `NO LOG` for it. The watcher crashed (`raw node exit: -1`) between opening the PR
+  and writing the merge verdict, so the verdict line was never written at all. One reading, two
+  opposite meanings: a second-lane PR that no human ever routed, and an escalating watcher PR whose
+  human gate died in transit. The probe was well controlled — 1881 logs, newest inside the hour,
+  `marco.:true` → 608, and #1573 as the negative control returning a real verdict — and it still
+  could not tell the two apart.
+  🔧 **So `NO LOG` obliges you to ask WHICH absence — and BOTH probes this bullet used to
+  prescribe are broken. MEASURED 2026-09-04T20:1xZ at `fafd5057`, with controls.**
+  🔴 **(a) THE BRANCH NEEDLE IS GUARANTEED EMPTY.** This bullet read *"check whether any prompt
+  in `docs/pr-prompts/processed/` names that PR’s branch or scope"*. Searching the WHOLE directory
+  for the head branch of **#1606 — a PR the watcher DID open** — returns **0**, while that PR’s own
+  merge verdict sits in the same directory in `pr-wbsshift-s1-web-rate-follows-shift-ready.md.log`.
+  The watcher never writes a head branch name into any processed artefact, so the branch form has
+  **no positive control that can pass** and answers *second lane* for every PR that exists.
+  **Never match on the branch.**
+  🔴 **(b) A BARE `PR #<n>` MATCH OVER `processed\*.log` ALSO HITS SECOND-LANE PRs**, because
+  `rev-<n>-ready.md.log` — the auto-generated REVIEW JOB (§9.5, above) — names the PR by number and
+  by scope, and the review lane reviews PRs the watcher never opened. MEASURED the same run: a
+  `rev-<n>-ready.md.log` exists for **all four** open PRs (#1589 · #1593 · #1594 · #1606), i.e. for
+  BOTH lanes — so its presence carries **zero** lane information, and #1594’s only `PR #1594` hit in
+  `processed\*.log` is that review log.
+  🔧 **The discriminator that works is the PROMPT logs alone — exclude `rev-*`:**
+  `Select-String -Path docs\pr-prompts\processed\pr-*.log -Pattern 'PR #<n>\b'`.
+  MEASURED at `fafd5057`: **#1606 → 2** and **#1589 → 1**, both of which also carry a real
+  `merge result for PR #N: {"ok":false,"marco":true,…}`; **#1593 → 0** and **#1594 → 0**, both
+  second lane and hand-classified as Marco’s under §10.1 step 2; NEGATIVE control `PR #999999`
+  → **0**. Then cross it with `.arming-log.txt` for an arm inside the PR’s window — that half was
+  always sound and stands. **A watcher-opened PR with no verdict is RULE 2 at its most binding, not
+  its least** — the crash silently downgraded an escalating prompt to an ordinary one, and nothing
+  on the PR shows it.
+
+  🔴 **AND THAT DISCRIMINATOR HAS A FRESHNESS PRECONDITION NOBODY WAS ASSERTING.** The watcher
+  launch log's `opened PR #<n>` line is what separates *second lane* from *a watcher PR still
+  inside its `policy=tests-docs, waiting…` window*. [MEASURED] 2026-09-06T14:2xZ by Station 04:
+  `C:\po-watcher\watcher-launch.log` had recorded nothing since **05:27:31Z** and no `opened PR #`
+  line since **02:01:30Z**, while the watcher node was running with a `StartTime` **six hours
+  later** — and the POSITIVE control this pipeline prescribes for it (`opened PR #` > 0) **passed
+  the whole time**, at 167 lines in that file. A frozen transcript answers *“the watcher did not
+  open this PR”* for every PR, in both lanes, at exit 0. That is §7's shape, not §9.6's — nothing
+  is empty and nothing warns.
+  🔧 **So any run using the `opened PR #<n>` test must FIRST assert that the launch log's
+  `LastWriteTimeUtc` is younger than the PR's `createdAt`, and report `[CANNOT MEASURE]` for any
+  PR opened after it** — never *“no `opened PR #` line”* ⇒ *“second lane”*.
+  ⚠️ **A merged board PR has already spent this.** `#1723` classified seven open PRs as second
+  lane at 13:08Z on the strength of that line's absence, from a log that had recorded no such line
+  since 02:01Z. The conclusion survived independent hand-classification by `classifyPolicyFiles`;
+  the **evidence** did not. Found by Station 04 2026-09-06T14:2xZ (F1/F2), landed by Station 00.
+
+  🔴🔴 **CORRECTED 2026-09-06T17:5xZ — `watcher-launch.log` IS NOT THE WATCHER'S LOG, SO THE
+  BULLET ABOVE FAILS SAFE INTO PERMANENT BLINDNESS WHILE A LIVE TRANSCRIPT EXISTS.** It is right
+  that the file was frozen and right to refuse `#1723`'s evidence. What it does not say is **which
+  file the `opened PR #<n>` lines are written to today**, and the answer is not that one.
+  [MEASURED] 2026-09-06T17:3xZ by Station 00 at `eef272df`: `watcher-launcher-singlelane.ps1` line
+  27 is `Start-Transcript -Path "C:\po-watcher\watcher-launch.log" -Append -Force` — the file is a
+  **PowerShell transcript of the LAUNCHER process**, not the watcher's output. It therefore dies
+  with the launcher instance that opened it and says nothing whatever about a watcher still running
+  under a different one. Its final line is `Watcher exited with code 1 (raw node exit: -1)` at
+  `05:27:31Z` — **the transcript ends where its owning launcher's node ended** — while the live node
+  (pid 27236, `StartTime` `11:49:57Z`) has been running under a different launcher family since.
+
+  🔧 **The watcher's real transcript is the DAILY CLONE LOG**, written per line as UTF-8 by
+  `scripts/pr-watcher/start-watcher.ps1` (anchors `$LogFile = Join-Path $LogDir` and the
+  `Add-Content -Path $LogFile` that replaced `Tee-Object`):
+  `C:\po-watcher\ProjectOperations\scripts\pr-watcher\logs\<yyyy-MM-dd>.log`. [MEASURED] the same
+  run: `2026-09-06.log`, mtime **17:15:01Z** (three minutes old), **121,518** bytes, **4**
+  `opened PR #` lines — newest `[2026-09-06T10:33:20.879Z] [merge] ... opened PR #1707,
+  policy=tests-docs, waiting.` — POSITIVE control `[merge]` → **8**, NEGATIVE control (a freshly
+  minted needle) → **0**. The frozen launcher transcript and the live clone log were both on disk
+  the whole time.
+
+  ⚠️ **`ensure-watcher.log` is NOT a third candidate.** It is fresher than either (17:05:03Z) and
+  holds only `watcher alive, pid(s) <n>` ping rows: `opened PR #` → **0**, `[merge]` → **0**,
+  `[queue]` → **0**, negative control → **0**. A run that simply reaches for the freshest log in
+  `C:\po-watcher` gets one with no lane information at all and every count zero — §9.6, an empty
+  result read as an empty world, inside the cure for the bullet above.
+
+  🔧 **So the freshness precondition stands, applied to the RIGHT FILE: assert the DAILY CLONE
+  LOG's `LastWriteTimeUtc` is younger than the PR's `createdAt`**, and report `[CANNOT MEASURE]`
+  only when *that* file is stale. **The falsifying probe is the `Start-Transcript` line itself**
+  — if the launcher stops opening that transcript, or `start-watcher.ps1` stops writing the daily
+  log, this correction is wrong and must be re-measured.
+
+  🔴 **This is not academic — the frozen file cost a live finding the same day.** The 16:12Z
+  collect read `watcher-launch.log`, recorded that the verdict-home-resolver prompt "was armed,
+  looped, and left NO LOG ANYWHERE", and dispatched Station 03 to re-arm it. [MEASURED] from the
+  daily clone log and `gh`: it was armed `09:20:50Z`, the watchdog kill loop built it **five**
+  times, it opened **#1703 · #1704 · #1705 · #1707 · #1708** — four closed unmerged (`#1705` at
+  `10:24:07Z`, then `#1703 · #1707 · #1708` together at `11:04:29–35Z`)
+  and **#1704 MERGED at 11:41:36Z**. `git grep -c VERDICT_HOME_RESOLVER origin/main --
+  scripts/pr-watcher/index.mjs` → **6** (POSITIVE control `classifyPolicyFiles` → 2; NEGATIVE
+  control → exit 1), and `scripts/pr-watcher/__tests__/verdict-home-resolver.test.mjs` is tracked
+  on `main`. **The fix had already landed; the dispatch would have built a SIXTH duplicate of
+  merged work.** Found and landed by Station 00 2026-09-06T17:5xZ. ⚠️ **CORRECTED 2026-09-06T18:3xZ
+  — this paragraph said FOUR builds and named four PRs, and `#1705` was missing.** [MEASURED] by
+  Station 04 and re-measured by Station 00 with `gh pr view <n> --json
+  number,state,title,headRefName,closedAt,mergedAt` on all five: `#1705`
+  (`fix/verdict-home-resolver-v1-impl`, closed `10:24:07Z`) carries the same
+  `VERDICT_HOME_RESOLVER_V1` marker and the same title family, and closed 40 minutes BEFORE the
+  11:04Z batch — so a reader checking only that batch never meets it. **The falsifying probe is
+  the head-branch list**: `git ls-remote --heads origin` still holds all four closed-unmerged
+  branches; if a fifth `*verdict-home-resolver*` head appears, this count is wrong again.
+
+  🔴🔴 **CORRECTED 2026-09-06T19:2xZ — THE DAILY CLONE LOG'S `opened PR #<n>` SET IS INCOMPLETE,
+  NOT MERELY FRESH-OR-STALE, AND IT GOES BLIND EXACTLY WHEN LANE CLASSIFICATION MATTERS MOST.**
+  The correction above replaced a frozen file with a live one and left the test itself intact:
+  *"no `opened PR #<n>` line ⇒ second lane."* [MEASURED] 2026-09-06T19:2xZ by Station 00 at
+  `474aa869`, over a byte-for-byte copy of `…\logs\2026-09-06.log` (129,381 B — the live file is
+  held open by the watcher and `Select-String` against it fails *"because it is being used by
+  another process"*, so copy it first):
+
+  | PR | mentions in the daily log | `opened PR #<n>` lines |
+  |---|---|---|
+  | `#1703` | 2 | **0** |
+  | `#1704` | 6 | **0** |
+  | `#1705` | 0 | **0** |
+  | `#1707` | 14 | 1 |
+  | `#1708` | 4 | **0** |
+  | `#1692` · `#1698` · `#1700` — POSITIVE controls | 7 · 12 · 21 | 1 · 1 · 1 |
+
+  NEGATIVE control, a freshly minted needle over the same copy → **0**. All five of the first group
+  are watcher-opened — that is the paragraph directly above, measured from `gh` and the
+  `VERDICT_HOME_RESOLVER_V1` marker — so **four of five watcher-opened PRs hand-classify as SECOND
+  LANE on this test**, at exit 0, while its positive control passes on three other PRs in the same
+  file. `#1705` leaves no trace in the log at all.
+
+  🔧 **The mechanism, and it is why "wait for a fresher log" cannot cure it.** The line is written
+  by the MERGE step, *after* the build: `<prompt>: opened PR #<n>, policy=…, waiting.` A build the
+  watchdog kills before that step has already opened its PR and never logs the line. The kill loop
+  is precisely the condition that produces duplicate PRs — so the instrument goes blind in the one
+  situation where knowing the lane decides whether to build a sixth.
+
+  🔧 **The test is therefore sound in ONE direction only. `opened PR #<n>` PRESENT ⇒
+  watcher-opened. ABSENT ⇒ `[CANNOT MEASURE]`, never ⇒ second lane.** With the line absent,
+  classify under §10.1 step 2 from `classifyPolicyFiles` alone and record it as
+  `[NO LANE VERDICT — hand-classified]`; then corroborate with an instrument the kill loop cannot
+  erase — `.arming-log.txt` (no arm inside the PR's window ⇒ no watcher build could have started),
+  or the PRs' own `createdAt`, since the single-lane watcher cannot open two PRs nine seconds
+  apart. ⚠️ **The falsifying probe is the table above**: re-run it on any PR whose build was killed
+  mid-flight; if that PR's `opened PR #` line is present, this correction is wrong.
+
+  🔴🔴 **CORRECTED 2026-09-06T23:0xZ — THE "DAILY CLONE LOG" IS NOT DAILY, AND CONSTRUCTING ITS NAME
+  FROM A DATE PICKS THE DEAD FILE OR AN EMPTY ONE, NEVER RELIABLY THE LIVE ONE.** The correction
+  above names the file `…\logs\<yyyy-MM-dd>.log` and every reader since has built that name. **The
+  name is fixed at LAUNCH from the HOST-LOCAL date, while every line inside the file is stamped UTC,
+  and it never rolls at midnight.** [MEASURED] 2026-09-06T23:09Z by Station 03, anchor
+  `$LogFile = Join-Path $LogDir` in `scripts/pr-watcher/start-watcher.ps1`:
+  `("{0}.log" -f (Get-Date -Format "yyyy-MM-dd"))` — a `Get-Date` with no `-AsUTC`, evaluated once,
+  at launch, on a Brisbane (UTC+10) host.
+
+  | | `2026-09-06.log` | `2026-09-07.log` |
+  |---|---|---|
+  | stamped lines | **1157** | **30** |
+  | last line | `[2026-09-06T23:04:05.228Z]` | `[2026-09-06T23:05:08.638Z]` |
+  | written by | pid 27236, **DEAD** | pid 31660, **LIVE** |
+  | `[merge]` (POSITIVE control) | **11** | **0** |
+  | `opened PR #` | **5** | **0** |
+
+  **Both ways of naming the file are wrong, and they are wrong in opposite directions.** A run that
+  computes the name in **UTC** — the clock every station report is written in — gets the DEAD file,
+  whose positive control PASSES (11 `[merge]` lines, 5 `opened PR #`), so it answers confidently
+  about a process that no longer exists. A run that computes it in **LOCAL** time gets the live file,
+  whose `[merge]` and `opened PR #` counts are both **0**, and concludes the watcher has never merged
+  anything — §9.6 exactly, sitting inside the cure written for it six hours earlier. The window is
+  structural, not a coincidence of one run: at UTC+10 the local date leads the UTC date from 14:00Z
+  to 23:59Z **every day**, ten hours in twenty-four, and a launch inside that window pins the name
+  for the whole life of that watcher.
+
+  🔧 **Take the NEWEST `*.log` in that directory by `LastWriteTimeUtc`, and never construct the name
+  from a date, in either clock.** Everything else above stands: the freshness precondition is
+  unchanged, it simply applies to the file you FOUND by mtime rather than one you NAMED. ⚠️ **A young
+  live log legitimately reads `opened PR #` = 0**, which is the one-directional rule below doing its
+  job — ABSENT ⇒ `[CANNOT MEASURE]`, never ⇒ second lane. **The falsifying probe is the two-file
+  table above:** re-run it after any watcher relaunch, and if a single file ever holds both the
+  newest line and the current-UTC name across a 14:00Z boundary, this correction is wrong and must be
+  re-measured. Found by Station 03 2026-09-06T23:0xZ (F1), landed by Station 00 at 23:3xZ.
+
+  🔴🔴 **CORRECTED 2026-09-07 — "TAKE THE NEWEST `*.log` BY `LastWriteTimeUtc`" CAN SELECT A LOG
+  WITH ZERO LANE INFORMATION, BECAUSE THAT DIRECTORY HOLDS FILES THAT ARE NOT DAILY LOGS AT ALL.**
+  The name half of the correction above is right and re-proved. The SELECTION half has an unguarded
+  collision. [MEASURED] 2026-09-07T06:3xZ by Station 04 over
+  `C:\po-watcher\ProjectOperations\scripts\pr-watcher\logs` — **44** `*.log`, each copied before
+  reading (the live file is held open by the watcher):
+
+  | file | `LastWriteTimeUtc` | bytes | `opened PR #` | `[merge]` (POS) | NEG |
+  |---|---|---|---|---|---|
+  | `2026-09-07.log` | **06:23:15Z** | 55,140 | 2 | 5 | 0 |
+  | **`supervisor.log`** | **05:38:27Z** | 680,086 | **0** | **0** | 0 |
+  | `2026-09-06.log` | 2026-09-06T23:04:05Z | 145,258 | 5 | 11 | 0 |
+  | `2026-09-04.log` | 2026-09-06T05:27:31Z | 244,157 | 10 | 20 | 0 |
+
+  **Five of the 44 are not daily logs** — `supervisor.log`, two `supervisor.rot-*`, two
+  `supervisor.crashed-*`. `supervisor.log` was written **today**, sat **second-newest by 45
+  minutes**, and answers `opened PR #` → **0** with its own positive control `[merge]` → **0**. Any
+  gap wider than that margin — a watcher relaunch, a kill-loop pause, the daily name rolling at the
+  next launch — makes it the newest, and the prescribed cure then hands the reader a log where every
+  count is zero **and the positive control fails too.** That is §9.6 exactly, sitting inside the cure
+  written for §9.6 eight hours earlier; it is the same shape as the `ensure-watcher.log` warning
+  above, except that one names a file by hand and this one is structural.
+  🔧 **Filter to the daily-log NAME SHAPE first, and take the newest by mtime second:**
+  `Get-ChildItem "$logDir\*" -Filter '*.log' | Where-Object { $_.BaseName -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1`.
+  The name is still never *constructed*, only *validated*, so the 23:0xZ correction is untouched and
+  the freshness precondition is unchanged. **Naming `supervisor.log` in prose is not the fix** — the
+  directory has already accumulated five non-daily names and the sixth will not be in the prose.
+  **The falsifying probe is the table above.** Found by Station 04 2026-09-07T06:3xZ (F2), landed by
+  Station 00 at 07:3xZ.
+
+
+
+- ⚠️ **`list_sessions` reports `running` long after a session has stopped, so it cannot answer
+  "is another actor live?"** MEASURED 2026-09-04T08:1xZ: two `"00 supervisor"` sessions both read
+  `running` — `local_38901e4d` (created `04:08:48Z`, whose own report declares it ended `04:25Z`,
+  newest file write `05:15:26Z`) and `local_a03e81fe` (created `2026-09-03T21:08:45Z`, newest file
+  write `03:59:32Z`). Nearly three hours and over four hours of zero filesystem activity, both
+  still `running`, against a 00 run that takes 15–25 minutes. **Two runs have already read that
+  flag as a live-actor signal and stood down on it**, and one made *"no other 00 supervisor in
+  `running` state"* a precondition for arming — a precondition a flag that never clears can never
+  satisfy, which livelocks the fix it was gating.
+  🔧 **The single-actor question is answered by `status-sweep.ps1` section 3** — in-progress
+  prompts, `index.lock` in both trees, running `git` processes, and any PR touched in the last two
+  minutes — cross-checked against the session directory’s newest file write. Use those.
+  `list_sessions` is sound for *which* sessions exist and as the way into `read_transcript`; its
+  state field is not a lock.
+
+- 🔴 **`docs/pr-reviews/` IN THE DEV TREE IS A STALE MIRROR, NOT THE REVIEW LANE’S OUTPUT.** The
+  `rev-<N>` review job runs in the watcher’s clone and writes there. MEASURED 2026-09-05T19:2xZ by
+  Station 00: the dev tree’s newest review file was `pr-1669-review.md` (14:33:29Z), which reads as
+  *"the review lane stopped producing artifacts at 14:33Z"* — a clean, five-in-a-row false finding.
+  The artifacts existed the whole time in `C:\po-watcher\ProjectOperations\docs\pr-reviews\`
+  (`pr-1675-review.md` 19:03:00Z, `pr-1676-review.md` 19:05:52Z), with older ones relocated to
+  `C:\po-watcher\verdicts-archive\`; NEGATIVE control, a minted needle over the same recursive search
+  → **0**. **Probe ALL THREE HOMES - the clone, `C:\po-watcher\verdicts-archive\` AND the dev tree - and take the NEWEST (CORRECTED 2026-09-05T23:3xZ; see the correction immediately below)** — §9.6, an
+  empty result read as an empty world.
+  ⚠️ **And the `SessionEnd hook … Hook cancelled` line in a `rev-*` log is NOT the discriminator**:
+  `rev-1660` and `rev-1662` carry it and produced their files; `rev-1674` and `rev-1676` do not carry
+  it and did not.
+  🔴🔴 **CORRECTED 2026-09-05T23:3xZ - THE DIRECTION ABOVE WENT STALE IN FOUR HOURS, AND FOLLOWING IT
+  NOW MANUFACTURES THE FALSE FINDING IT EXISTS TO PREVENT.** The bullet was authored 19:2xZ. MEASURED
+  the same day by Station 04 (22:2xZ, F1) and Station 03 (23:0xZ, F1/F2), independently: the dev tree
+  was **2 h 43 m AHEAD** of the clone, and **nine of the twelve review verdicts produced on
+  2026-09-05 exist ONLY in the dev tree** - `pr-1646 1651 1654 1660 1662 1669 1677 1680 1682`, with
+  `pr-1682-review.md` (2475 B, 22:37:16Z) written **16 seconds before** the watcher's mirror step
+  logged `verdict mirror skipped: docs/pr-reviews/pr-1682-review.md not found`. Newest per home at
+  23:0xZ: dev tree `pr-1682` 22:37:16Z - archive `pr-1681` 22:09:18Z - clone `pr-1675` 19:03:00Z.
+  **The leader is whichever home the last job happened to write to, and on 2026-09-05 it was never
+  the clone.**
+  🔧 **The sound rule is not a direction at all: probe all three, take the newest.** `verdicts-archive`
+  is not a tiebreaker either - at 22:2xZ it held `pr-1681-review.md` (22:09:18Z), newer than either
+  tree.
+  🔴 **The CAUSE is a live S1 defect, not a documentation slip** (Station 03, 2026-09-05T23:0xZ, F1,
+  DISPATCHED to 00). `verdict mirror skipped` appears **68** times in `watcher-launch.log`
+  (POSITIVE control `verdict mirrored to PR` -> **262**), twelve of them on 2026-09-05 alone, and
+  **every one was then filed `[ok] -> processed/`**. Two causes wear that one line: **(a) WRONG TREE**
+  - nine of twelve, the review job wrote into the dev tree while the mirror step reads the clone; and
+  **(b) THE ARCHIVE SWEEP RACES THE MIRROR** - one of twelve, `#1679` was archived at 21:22:23.331Z
+  and the mirror declared it missing **16 seconds later** at 21:22:39.711Z (positive control `#1681`,
+  same two steps in the opposite order, verdict reached the PR). Two more (`pr-1652`, `pr-1672`) are
+  in no home at all and **[CANNOT MEASURE]** which cause they were.
+  🔴 **This is a NEW measured cause for the SECOND conjunct of §10.3**, and it is not the one on file:
+  `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md` attributes the starvation to
+  QUEUE LATENCY (93.5 min on `#1675`). `#1682`'s review job started 33 s after enqueue and finished
+  in 4.5 min - no starvation; the verdict simply went where `verdictApproves` does not read. **A
+  reader who checks only the queueing table finds `#1682` healthy and concludes the mechanism did not
+  reproduce. It reproduced twelve times that day, by a different route.**
+  ⚠️ **Until the mirror step is made tree-agnostic and archive-aware, treat "no verdict for PR N" as
+  UNMEASURED until all three homes have been checked** - and never as evidence the review lane is dead.
+
+
+- 🔴 **`status-sweep.ps1`'s CLONE-DIRTY FLAG COUNTS UNTRACKED FILES AND `start-watcher.ps1` DOES NOT, SO THE
+  SWEEP WARNS *"the watcher may refuse to start"* ON A CONDITION THE WATCHER EXPLICITLY IGNORES — AND IT FIRES
+  ON AN ARTEFACT THE REVIEW LANE CREATES BY DESIGN.** [MEASURED] 2026-09-10T20:2xZ by Station 00 at `2ea16157`,
+  both forms run against `C:\po-watcher\ProjectOperations` in the same minute:
+
+  | form | anchor | result |
+  |---|---|---|
+  | `git status --short` | `status-sweep.ps1`, `$cdirty = @(git status --short` | **2** |
+  | `git status --porcelain --untracked-files=no` | `start-watcher.ps1`, `# --- Pre-flight: branch + clean tree ---` | **0** |
+
+  The two files counted are `?? docs/pr-reviews/pr-1850-review.md` and `?? docs/pr-reviews/pr-1852-review.md` —
+  review verdicts the `rev-<N>` job writes into the clone **by design** (the three-homes bullet above), so this
+  false warning recurs on every reviewed PR whose verdict has not yet been mirrored. `start-watcher.ps1`'s own
+  comment says so in as many words: *"Only TRACKED modified/staged files count as 'dirty' -- untracked files"*.
+
+  🔴 **The second conjunct is false too: a TRACKED-dirty clone does not refuse either — it AUTO-STASHES.**
+  Anchor `# --- Self-heal: AUTO-STASH a dirty tree instead of exiting 1 ---`, whose own comment records that a
+  dirty tracked tree *"used to be a hard PRE-FLIGHT FAIL (exit 1)"*. Refusal now survives only if the stash
+  itself fails. The clone's **71** stashes are that path's receipts. ⚠️ **That is a count, i.e. state —
+  re-measure it, never quote it.**
+
+  ⚠️ **Nothing is empty and nothing warns, so 9.6 does not fire** — the cmdlet answered exactly the question
+  it was asked, about a different quantity from the one the flag's sentence names. **The measured cost is a
+  MIS-ROUTED DISPATCH, repeatedly.** The reading is a `status-sweep.ps1` defect, and archived runs have instead
+  sent it to Station 03 as clone hygiene, or noted in prose that the watcher "has not" refused without reaching
+  the cause. [MEASURED] over `docs/pr-prompts/archive/*.md`: `refuse to start` → **32** hits, **13** of them
+  verbatim quotations of the sweep's own output line; **0** hits at depth 1 and **0** in `needs-marco/`
+  (POSITIVE control `CP-24` → 152 / 17 / 7; NEGATIVE control, a freshly minted needle → 0).
+
+  🔧 **Read the clone's health from `git status --porcelain --untracked-files=no`, and treat the sweep's
+  `dirty=` number as untracked-inclusive until it is scoped.** The corruption test is unchanged and is the one
+  that decides: `MERGE_HEAD`, rebase state, unmerged paths. ⚠️ **Falsifying probe: run both forms against the
+  clone in the same minute while an untracked file is present.** If they ever agree, this bullet is wrong and
+  must be re-measured. Found by Station 00 2026-09-10T20:2xZ.
+
+- 🔴🔴 **`status-sweep.ps1` IS AN INSTRUMENT, AND ITS OWN `[LIVE]` LINES ARE SUBJECT TO §7 — THE
+  REPORT'S HEADER TELLS EVERY STATION TO TRUST THEM, AND TWO OF THEM WERE MEASURED WRONG ON ONE
+  DAY.** `SWEEP_LIVE_LINES_ARE_NOT_EXEMPT_V1` The sweep's HOW TO READ block instructs *"Report ONLY
+  from `[LIVE]` lines"*. That is correct about **provenance** — a `[LIVE]` line came from GitHub or
+  a running process rather than from a file — and it is read as a claim about **correctness**, which
+  it is not. Several `[LIVE]` lines are *derived verdicts over* live data, and a derivation can be
+  wrong while every input is fresh. Nothing is empty and nothing warns, so §9.6 never fires.
+
+  **Two measured instances, both 2026-09-10, and both fail in the direction of manufacturing work:**
+
+  | the `[LIVE]` line | the truth | cost of believing it |
+  |---|---|---|
+  | `watcher clone: branch=main dirty=2  <-- ... the watcher may refuse to start` | `git status --porcelain --untracked-files=no` → **0**; the two files are review verdicts the `rev-<N>` job writes into the clone by design, and a tracked-dirty clone auto-stashes rather than refusing | a MIS-ROUTED DISPATCH to Station 03 as clone hygiene — 13 verbatim quotations of that line in `archive/` (the bullet immediately above) |
+  | `main CI on 6e63dc72: 4 success / 1 failed  <-- TRUNK IS RED` | the only non-success run is **`Dependabot Updates`**; all four real trunk checks are `success` | `00-supervisor.md` rule 5 reads a red trunk under a docs diff as *"instant proof of a MAIN regression"*, so a run hunts — or authors a `fixes_pr` against — a regression that does not exist |
+
+  [MEASURED] 2026-09-10T22:1xZ by Station 00 at `6e63dc72`, `gh run list -R <owner>/<repo> --commit
+  <full 40-char sha> --json conclusion,name,event,workflowName` (full SHA per §9.4; `-R` and
+  `$LASTEXITCODE` per §9.4's CWD bullet): **6** runs — `Dependabot Updates` / `dynamic` /
+  **`failure`**, `Claude Code` / `issue_comment` / `skipped`, and `Deploy` · `CI` · `CodeQL` ·
+  `Tendering Browser Smoke`, **every one `success`**. The trunk verdict counts every run *attributed*
+  to `origin/main`'s head, so a single Dependabot run flipped the headline from `(trunk green)` at
+  21:09Z to `TRUNK IS RED` at 22:10Z **with no commit between the two readings**.
+
+  🔧 **The rule that survives any one fix: report from `[LIVE]`, but before you ACT on a `[LIVE]`
+  line, re-derive it from its own source.** Provenance is not correctness. Both instances were
+  settled by asking the underlying instrument directly rather than by re-reading the sweep.
+
+  🟢 **THE TRUNK ROW IS DISCHARGED — `#1852` (`TRUNK_VERDICT_SCOPED_V1`) MERGED
+  2026-09-11T02:11:13Z at `ec7dd590`, AND THIS PARAGRAPH WENT ON CALLING IT "OPEN AND GREEN ON THE
+  BOARD" FOR THIRTEEN DAYS.** `TRUNK_ROW_DISCHARGED_V1` [MEASURED] 2026-09-23T18:2xZ by Station 00
+  at `dfea18ed`: `gh pr view 1852 -R <owner>/<repo> --json number,state,mergedAt` →
+  `{"mergedAt":"2026-09-11T02:11:13Z","number":1852,"state":"MERGED"}`, and the denylist is live on
+  `origin/main` in `scripts/pipeline/status-sweep.ps1`, read by `git show origin/main:<path>`:
+  `if ($r.workflowName -eq "Dependabot Updates" -or $r.event -eq "schedule") { $otherRuns += $r }`.
+  **The measurement in the table above stands exactly as taken** — a single Dependabot run flipped
+  the headline from `(trunk green)` to `TRUNK IS RED` with no commit between the two readings — and
+  it is now a DISCHARGED instance rather than a live one.
+
+  🔴 **This bullet named the probe that would kill it, and nobody ran the probe for thirteen
+  days. That is the finding, not the stale sentence: a falsifying probe nobody executes is a
+  comment.** The bullet is still the best-behaved one in this section — it wrote its own death
+  certificate — which is exactly why the gap is worth recording rather than quietly closing.
+
+  ⚠️ **The clone row above is the SURVIVING live instance**, re-measured 2026-09-23T18:1xZ by
+  Station 04 with both `git status` forms against the clone in the same minute, still disagreeing.
+  So the headline keeps a worked example and **must survive any edit to this row: provenance is not
+  correctness — re-derive a `[LIVE]` line from its own source before you ACT on it.**
+
+  ⚠️ **The landed script added a THIRD verdict state this bullet never described:**
+  `[CANNOT MEASURE] no trunk-CI run on this commit; NOT a green trunk`. A reader comparing the
+  bullet against the script therefore finds three branches, not two, and that third one is correct
+  behaviour rather than drift. ⚠️ The denylist is deliberate and must not be "simplified" into an
+  allowlist: **`CodeQL` runs as event `dynamic`** and IS a trunk check, so an `event -eq push`
+  allowlist would silently drop it. ⚠️ **Falsifying probe: `gh pr view 1852 --json state,mergedAt`
+  plus the denylist line above.** If `#1852` ever reads OPEN, or the denylist is absent from
+  `origin/main`, this discharge is wrong and must be re-measured. Found by Station 04
+  2026-09-23T18:1xZ (F2), landed by Station 00 at 18:3xZ.
+
+  ⚠️ **Falsifying probe, per row: for the clone, run both `git status` forms against it in the same
+  minute; for the trunk, re-run `gh run list --commit <full sha> --json conclusion,workflowName,event`
+  and compare the aggregate verdict against the trunk-only subset.** If a sweep `[LIVE]` line ever
+  survives being re-derived from its own source on both rows, this bullet is unnecessary. Found and
+  landed by Station 00 2026-09-10T22:1xZ.
+
+### 9.5.1 DISPOSITIONS -- the four spellings a finding may end in
+
+Every finding a station reports must land in exactly one of these four dispositions. Station
+docs defer to DOCTRINE for the canonical spellings; use these forms verbatim.
+
+- **ACTIONED** -- fixed this run; say how you verified.
+- **DISPATCHED** -- handed to another station; name the station and what was handed over. The
+  register is tracked under `docs/pipeline/dispatched/`. The dispatcher runs
+  `node scripts/pipeline/dispatch.mjs open ... --record-into <PR worktree>` in the same PR as
+  the breadcrumb that dispatches it, and the receiving station runs
+  `node scripts/pipeline/dispatch.mjs close --id <id> ...` in the PR that lands the work. The
+  sweep reads open dispatches from `origin/main` in Section 5. A dispatched finding without an
+  open register entry is a lie, not a hand-off.
+- **ESCALATED** -- needs Marco; brings a question with options. Lives under
+  `docs/pr-prompts/needs-marco/` (gitignored); the sweep cross-checks against GitHub.
+- **DEFERRED** -- real, not now; say what would make it urgent.
+
+## 9.6 The rule behind all of them
+
+🔴 **AN EMPTY RESULT IS NOT AN EMPTY WORLD.** Before concluding absence, ask what your instrument is
+blind to, and run the same query against a case you know returns something. Every trap above is a
+query that answered confidently and wrongly.
+
+⚠️ **"No process is holding it" is only evidence when you know WHERE the process would have run.** A
+lock left by a destroyed Linux VM has no Windows process by construction, forever.
+
+🔴 **A NEGATIVE CONTROL YOU WROTE DOWN IS A POSITIVE.** MEASURED 2026-09-05T18:1xZ by Station 04
+over `docs/pr-prompts/**` (depth 1 + `archive/` + `needs-marco/`): the two needles this pipeline has
+been prescribing for weeks — `zzz`+`NoSuchNeedleZzz` and `zzz`+`NoSuchTokenZzz`, written split here
+so this bullet does not add to the count it reports — returned **40** and **36** hits. A negative
+control that returns 36 tells its reader the query is broken while the query is working perfectly,
+and 04 hit exactly that live: a *"has this been reported before?"* search read
+`slug → 3, POSITIVE → 14, NEGATIVE → 36`. The contamination is self-inflicted and strictly
+monotonic — every run that quotes its control in a breadcrumb makes the next run’s control worse —
+and it is worst over exactly the corpus stations search most.
+🔧 **MINT A FRESH NEEDLE EVERY RUN.** Station 04 used `zzQqNeedle04b20260906` → 0 over that corpus;
+Station 00 used `zzQq00Needle20260905T2008` → 0 at 20:1xZ. **Both are now written down too, so
+neither is usable again** — which is the rule, not an oversight: a needle is spent the moment it
+lands in a tracked file.
+⚠️ **Those hit counts are STATE — re-measure them, never quote them.**
+
+🔴🔴 **RUN EVERY §9 PROBE AGAINST THE CORPUS ITS BULLET NAMES — NEVER AGAINST §9 ITSELF. THIS
+DOCUMENT CONTAINS A LITERAL INSTANCE OF EVERY BROKEN QUERY IT RECORDS, SO A PROBE POINTED HERE
+MEASURES THE DOCUMENTATION AND INVERTS THE ANSWER.** [MEASURED] 2026-09-07T06:2xZ by Station 04,
+which walked into it: §9.1's double-backslash-needle probe, run against `DOCTRINE.md` instead of the
+five station bootstraps the bullet names, returned **3** for the BROKEN form and **1** for the
+WORKING form — the exact inverse of the truth, because this document *quotes* the broken form as
+documentation. Re-pointed at the corpus the bullet actually names it returns **0** and **3**, as
+recorded. Written up from the wrong corpus it reads *"the broken needle finds more than the working
+one, so the bullet is backwards"* — a confident, coherent, wrong finding about the one document every
+station is told it can trust.
+🔧 **This generalises the minted-needle rule from NEEDLES to PATTERNS.** §9 is a written description
+of broken queries, so it contains one of each; and `instrument-honesty` is the one sweep in the
+rotation guaranteed to reach for it. **Falsifying probe: run any §9 probe twice, once against this
+file and once against the corpus its bullet names, and compare.** Found by Station 04
+2026-09-07T06:2xZ (F7), landed by Station 00 at 07:3xZ.
+
+<!-- End of §9 moved content. -->
+
+# 🛰️ §10. SECOND LANES — work that reaches the repo without passing through the watcher
+
+Added 2026-08-31. Until now exactly one path put code on this board: a prompt is armed, the watcher
+builds it, the watcher opens the PR, and the watcher writes a merge verdict. **That assumption is now
+false.** A Claude Code cloud session connected to `GH-Mantova/ProjectOperations` can clone, branch,
+commit and open a PR without the watcher, the dev tree or Marco's machine being involved at all, and
+Claude Design can author interface work the same way. Everything below follows from that.
+
+## 10.1 A PR the watcher did not open carries NO RULE-2 verdict — and that reads as "cleared"
+
+🔴🔴 **THIS IS A SAFETY RULE, NOT A CONVENTION.** RULE 2 — never merge a PR the watcher routed to
+Marco — has exactly one live probe: the line
+
+    [watcher] merge result for PR #N: {"ok":false,"marco":true,"reason":"…"}
+
+written into `docs/pr-prompts/processed/<prompt>.md.log` by the watcher's merge step
+(`index.mjs`, `waitForPolicyMerge` / `waitForMerge`). **A PR that never went through the watcher never
+gets that line.** Probing for it returns empty — and an empty result here is indistinguishable from
+"this PR was checked and is not Marco's".
+
+This is §9.6 (*an empty result is not an empty world*) with a merge button attached. Measured
+2026-08-31: the probe's own corpus holds **593** `"marco":true` verdicts across **1801** logs, so the
+probe is well calibrated for watcher-opened PRs and says nothing whatsoever about any other PR.
+
+**THE RULE.** Before merging ANY PR, establish which lane opened it, and say so:
+
+1. `docs/pr-prompts/processed/*.md.log` contains a verdict naming that PR ⇒ obey it. `marco:true` ⇒
+   **RULE 2 applies, do not merge.**
+2. No log names that PR ⇒ **it did not come through the watcher.** The absence proves nothing about
+   its risk. Apply the policy gate BY HAND — `classifyPolicyFiles` in `index.mjs` is the definition,
+   and 🔴 **READ THE FUNCTION, NOT THIS SENTENCE.** It refuses an empty diff, refuses any path
+   matching `(^|/)migrations/`, and then refuses the first path that is not test-or-docs — where
+   test-or-docs is `NESTED_TEST_PATHS` (anchor: `const NESTED_TEST_PATHS`), which as of
+   2026-09-04 accepts **THREE** forms, not one:
+
+   ```js
+   const NESTED_TEST_PATHS = [
+     /^(tests|docs)\//,
+     /(^|\/)__tests__\//,
+     /\.(test|spec)\.[cm]?[jt]sx?$/,
+   ];
+   ```
+
+   **So a PR touching only `scripts/pipeline/__tests__/backlog-parser.test.mjs`, or
+   `apps/api/src/bootstrap/dev-helper.spec.ts`, is TESTS — not Marco's** (both paths are real and
+   tracked, so this example is checkable). Anything outside those three forms is Marco's.
+   ⚠️ **This shorthand had already outgrown its symbol once.** From 2026-08-31 to 2026-09-04 it read
+   *"any path outside `^(tests|docs)/`"*, while the function had been widened precisely because that
+   single regex *"classifies every real test-only PR as 'outside' and routes it to Marco"* (its own
+   comment, still there). Over-routing fails **SAFE** — nothing of Marco's could merge on it — which
+   is why it survived four days unnoticed: it silently manufactured the human decisions this lane
+   exists to remove. That is §9.5's closing bullet, in §10's own text.
+   🔧 **The falsifying probe for this paragraph is the array itself:**
+   `git show origin/main:scripts/pr-watcher/index.mjs | Select-String 'NESTED_TEST_PATHS'`
+   (POSITIVE CONTROL `classifyPolicyFiles`; NEGATIVE `zzzNoSuchTokenZzz` → 0). If the array is gone
+   and the single regex is back, **this paragraph is wrong again** — read the function and correct it
+   here. Found by Station 04 2026-09-04T18:1xZ (F3); confirmed against `origin/main` and landed by
+   Station 00 at 2026-09-04T19:1xZ.
+3. **EXCEPTION - a KNOWN STATION LANE is classified by the authority matrix, not by
+   `classifyPolicyFiles`.** A PR opened by a station acting inside its own recorded authority
+   (`STATION-CAPABILITIES.md` section 5) is classified by that matrix, and the PR body must NAME
+   ITS LANE so the claim is checkable by the next reader. A PR that strays outside its station's
+   lane falls through to step 2 unchanged. **Marco's ruling, 2026-09-04**, on escalation
+   `needs-marco/sot-only-pr-merge-authority-conflict-2026-09-03.md`; first applied to #1554.
+
+   **Why the exception is needed at all.** `classifyPolicyFiles` answers ONE question: *may this
+   merge with no human judgement applied?* Its three rejections - empty diff, migration file,
+   outside `tests|docs` - are reasons to WITHHOLD AUTOMATION. None of them is evidence about
+   WHICH human. Step 2 borrowed that function to answer a different question - *whose* judgement
+   is required - and the only vocabulary the function has is "not the automatic lane", which step
+   2 then read as "Marco". For a watcher-opened PR that inference is sound: the watcher's routing
+   has exactly one human in it (`{ ok: false, marco: true }`). For a station acting inside its own
+   lane it is a category error, because section 5 has already named a competent authority who is
+   not Marco.
+
+   **This removes no gate.** The `do-not-merge` label still binds absolutely - only Marco removes
+   it. A real watcher `marco:true` verdict still binds absolutely: step 1 runs first and wins.
+   Migrations are untouched - they fail `classifyPolicyFiles` on their own clause, and no station
+   lane covers them.
+
+   **In practice this is ONE lane today.** 00's lane is `docs/` and 06 stages under
+   `docs/pr-prompts/` - both already inside `^(tests|docs)/` and already passing step 2
+   unaided. (02 is deliberately not listed: it has no schedule of its own, and its board file
+   is not tracked, so it has no lane a classifier could check.) The only lane step 2 rejects is
+   **05 -> `sot/`**. The wording is general so that the next lane does not reopen the argument,
+   but the live scope of this exception is one station and one directory.
+
+   > **A NEW lane outside `tests|docs` may NOT be added to the section 5 matrix without a CI gate
+   > that proves the lane's boundary.** 05's lane already has one: **CP-24** in
+   > `scripts/pr-gates/pr-gates.mjs` hard-blocks any PR mixing `sot/` with `apps/`, `scripts/`,
+   > `.github/`, `packages/`, `package.json` or `pnpm-lock.yaml`, with no escape hatch (sot/05
+   > LL-36, PR #543 on 2026-07-13). That gate is what makes "05 doc-reconcile" a MEASURED claim
+   > rather than a self-declaration. **A lane with no such gate is self-declaration, and
+   > self-declaration is not classification.**
+
+4. Never record "no verdict found" as "not routed to Marco". Write `[NO LANE VERDICT — hand-classified]`
+   and give the classification.
+
+🔴🔴 **A VERDICT IN THAT CORPUS CAN NAME A PR THE WATCHER NEVER OPENED, BECAUSE THE PR NUMBER IS
+SCRAPED OUT OF THE AGENT'S FREE PROSE — SO STEP 1'S *"a verdict names that PR ⇒ obey it"* CAN BE
+SATISFIED BY A PR THE WATCHER NEITHER BUILT NOR TOUCHED.** `PRNUMBER_SCRAPED_FROM_PROSE_V1`
+Steps 1–4 above assume a verdict line is evidence that the watcher opened that PR. It is not. The
+number is taken from the build agent's combined stdout, by regex, and **any sentence the agent
+writes that mentions a PR supplies one.**
+
+**Mechanism, read from the source** (`scripts/pr-watcher/index.mjs`, anchor
+`function extractPrNumber`), which is called at the single site `const prNumber =
+extractPrNumber(agentOutput)`:
+
+```js
+function extractPrNumber(text) {
+  const urlMatch = text.match(/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/);
+  if (urlMatch) return Number(urlMatch[1]);
+  const hashMatch = text.match(/(?:PR|pr|pull request)\s*#(\d+)/);
+  if (hashMatch) return Number(hashMatch[1]);
+  return null;
+}
+```
+
+Neither alternative is anchored to anything the agent *did*. A quoted URL, a citation, a review note
+or a memory recollection all match, and the first match in the whole output wins.
+
+**[MEASURED] 2026-09-11T01:4xZ by Station 00 (scheduled) at `7b1ba03a`.** `pr-scopecards-s0-plan`
+was armed at `00:57:09Z`; its first build opened no PR and the watcher restaged it as attempt `b`.
+Attempt `b` opened no PR either — it declined on the prompt's own prose `STATUS: HOLD` line — but its
+stdout contained the sentence *"My memory … records reviewing **PR #1866 (SLICE-0 scope cards)** with
+a MERGE verdict earlier today."* `extractPrNumber` returned **1866**. The watcher then ran its whole
+merge path against `#1866` — a PR opened by a **second lane** and already merged **41 minutes
+earlier** — and wrote into `that prompt’s own `docs/pr-prompts/processed/<prompt>.md.log``:
+
+```
+[watcher] merge result for PR #1866: {"ok":true}
+```
+
+**Three consequences, each measured:**
+
+| | before | after |
+|---|---|---|
+| `Select-String docs\pr-prompts\processed\pr-*.log -Pattern 'PR #1866\b'` | **0** (Station 00, 00:1xZ, breadcrumb `…-0011-…`) | **2** (01:4xZ, this run) |
+| `#1866`'s lane under §10.1 step 1 | no verdict ⇒ hand-classified second lane, correctly | a verdict names it ⇒ reads **watcher-opened** |
+| the build's own outcome | agent exited 0 having opened no PR | filed to `processed/`, **not** `no-pr-opened/` |
+
+NEGATIVE control, `PR #999996` over the same corpus → **0**; POSITIVE control, `PR #1850` → **2**,
+carrying a real `marco:true` verdict. `no-pr-opened/`'s newest entry is still `2026-09-02T03:47Z`, so
+**the folder that exists to catch a silent no-op did not catch this one** — the hijacked number made
+the run look like a completed build.
+
+🔴 **The danger is not this instance, it is the polarity.** Here the forged verdict was `{"ok":true}`
+on a PR that was already merged, so nothing moved. Had the scraped number named an **open** PR, the
+watcher would have driven `waitForPolicyMerge` on a PR it did not build, from a prompt that produced
+nothing. Had the verdict come back `marco:true`, §10.1 step 1 says **obey it** — and an unrelated PR
+would be permanently human-gated by a routing decision that was never made about it.
+
+🔴 **And it makes a lane classification NON-MONOTONIC, which no rule above anticipates.** Every
+instruction in this section reads the probe as answering a fixed fact about a PR. It does not: a log
+written later, for a **different** prompt, can add a verdict naming a PR that was correctly classified
+second lane an hour earlier. **A lane verdict is only as of the minute it was taken — re-take it, and
+never carry one forward from an earlier breadcrumb.**
+
+🔧 **Until the scrape is replaced, cross every verdict against the log's OWN prompt.** A verdict line
+is trustworthy only if the `processed/<prompt>.md.log` that carries it also carries that prompt's own
+`opened PR #<n>` / PR-URL line for the **same** number, and the prompt's `scope:` is consistent with
+the PR's files. A verdict for a PR that appears **only** in prose in that log is a scrape, not a
+routing. ⚠️ This does not weaken RULE 2 in the direction that matters: an unexplained `marco:true`
+still binds. It bars reading `ok:true` — or a watcher lane — **into** a PR from a prose mention.
+
+🔴🔴 **AND IT FAILS IN THE OTHER DIRECTION TOO, ON THE SAME PROMPT, THIRTY MINUTES LATER: MARKDOWN
+EMPHASIS DEFEATS THE MATCH, SO A BUILD THAT *DID* OPEN A PR IS RESTAGED AS A DUPLICATE.** `\s*` does
+not match `**`. [MEASURED] 2026-09-11T01:2xZ by Station 00, from the live daily clone log (found by
+name shape then mtime, never constructed):
+
+```
+[2026-09-11T01:25:23.413Z] [start] pr-scopecards-s0-plan-ready.md (max-turns=240)
+PR **#1870** opened and left unmerged: docs/plans/…, ...
+[2026-09-11T01:28:34.743Z] [NO-PR] pr-scopecards-s0-plan-ready.md  pr-scopecards-s0-plan-b-ready.md (no PR found - attempt 2 (b))
+[2026-09-11T01:28:34.816Z] [start] pr-scopecards-s0-plan-b-ready.md (max-turns=240)
+```
+
+`gh pr view 1870 --json number,state,createdAt,headRefName,files` → **OPEN**, created
+**`01:28:16Z`**, head `slice-0-scope-cards-plan`, one file `docs/plans/…`
+— the PR existed **18 seconds before** the watcher declared *"no PR found"* and restaged. The agent
+reported it correctly; the regex could not read `PR **#1870**`. POSITIVE control, `[start] ` over the
+same log → **47**; NEGATIVE control, a freshly minted needle → **0**.
+
+🔴 **So one prompt produced FOUR builds in thirty-two minutes** — `00:57:10`, `00:57:51` (`-b`),
+`01:25:23`, `01:28:34` (`-b`) — two arms and two restages, on a `max-turns=240` agent each time, and
+the fourth was building a **duplicate of a PR that was already open.** The restage is silent: it is a
+`[NO-PR]` line in a clone-side log, not an entry in `no-pr-opened/`, so nothing in the queue census
+shows it. This is the same kill-loop shape §9.5 records for the watchdog, reached from a different
+cause, and it is why the bullet above is not merely an attribution problem: **the two failure modes
+share one function, and the fix for either is the same.**
+
+🔧 **Station 00's sanctioned remedy is the one in its own fix set: rename the looping `*-ready.md` to
+`*-LOOPING.md`.** Done here at `01:29:53Z` on `pr-scopecards-s0-plan-b-ready.md`, read back
+`*-ready.md` → **0** and `*-LOOPING.md` → 1, and no fifth build started. ⚠️ **The rename bounds the
+loop; it does not cancel the build already IN FLIGHT** — the fourth build opened its duplicate four
+minutes later and had to be closed as superseded, so re-check the board AFTER that build’s expected
+duration rather than immediately. ⚠️ **Do not read a restage as
+a failed build** — check the board for a PR on the prompt's head branch first, because on this failure
+mode the work succeeded and only the detection did not.
+
+⚠️ **Falsifying probe: the two counts in the table above.** Re-run the `PR #1866` search over
+`processed\pr-*.log` with both controls and open the one hit that is not a verdict line; if the prose
+sentence is gone, or `extractPrNumber` no longer has the `(?:PR|pr|pull request)\s*#(\d+)` alternative,
+this bullet must be re-measured. The repair is `scripts/pr-watcher/**` and therefore Marco's, and is
+filed as `needs-marco/watcher-scrapes-the-pr-number-out-of-agent-prose-2026-09-11.md`. Found and
+landed by Station 00 2026-09-11T01:4xZ.
+
+⚠️ **The probe must be written without a quote character**: `-Pattern 'marco.:true'` (regex, `.` matches
+the quote). The `-SimpleMatch '"marco":true'` form returns 0 **and so does its negative control** —
+escaped double quotes do not survive the `-Command` layer (§9.4, and it is a SHELL fact, not a `gh` one).
+
+## 10.2 A cloud session is a CODE-WRITING lane. It cannot drive the board.
+
+`arm-prompt.ps1`, `smoke-pr.ps1`, `pipeline-lib.ps1`, `status-sweep.ps1` and `bring-up-to-speed.ps1`
+are Windows PowerShell 5.1 reading absolute paths under `C:\ProjectOperations2` and `C:\po-watcher`.
+A cloud session has none of them. It therefore **cannot arm, cannot smoke, cannot merge through
+`Assert-SmokedOrEscalate`, and cannot read the queue's true state.**
+
+- ✅ It may: write code and docs, open a PR, and say plainly which lane it is.
+- 🚫 It may NOT: arm or disarm a prompt, merge anything, mutate `docs/pr-prompts/`, touch `/sot/`
+  (Station 05's, CP-24), or act as a second supervisor. *"Nobody owns dev-tree convergence"* is an
+  open escalation; a second unsynchronised board actor is exactly the failure it names.
+- 🔧 A cloud session sees **only what is committed to the repo.** The station bootstraps under
+  `C:\Users\Marco\Claude\Scheduled\*\SKILL.md`, the project memory, and any chat are all invisible to
+  it. If a rule is not in `sot/`, `docs/` or `CLAUDE.md`, the cloud lane does not have it.
+
+### 10.2.1 EXCEPTION — Station 00 may also run as a SUPERVISED cloud lane
+
+🔴 **The lane described below is the one that wrote this section.** Read the disclosure at the end
+before you rely on it.
+
+The bullets above are correct about a **headless** cloud session and remain in force for one. They
+are wrong about a cloud session that Marco is **sitting in front of and directing turn by turn**,
+because that lane has the one input §10.2's own last bullet says a cloud session cannot have: Marco
+himself, live, in the chat.
+
+**THE EXCEPTION.** Station 00 may also run as an **interactive or cloud lane under Marco's direct
+supervision**. Such a lane:
+
+- ✅ may open PRs, merge, and update PR branches — but **only** PRs Marco has released in chat, and
+  **only** while he is actively directing that session;
+- ✅ may write prompt files under `docs/pr-prompts/`, because Marco directs that work in the same
+  chat turn;
+- 🚫 may **still not** remove a `do-not-merge` label (CP-26 gate 1 — only Marco), touch `/sot/`
+  (CP-24 — Station 05's), or arm a prompt through `arm-prompt.ps1`, which it does not have;
+- 🚫 may **still not** clear a genuine watcher `marco:true` verdict (§10.1 step 1 runs first and
+  wins), or touch Azure / Entra / SharePoint (§5.1, absolute);
+- 📝 **must leave a `docs/decisions/merge-approvals/<N>.md` receipt naming itself as the author** of
+  every merge it makes, so the lane is identifiable after the fact from the repo alone.
+
+**This removes no gate. It adds one.** The label still binds, CP-26 still binds, a real watcher
+verdict still binds, migrations still fail `classifyPolicyFiles` on their own clause. The receipt
+requirement is new, and it is a *constraint on this lane*, not a permission.
+
+🔴 **CORRECTION, 2026-09-07 — this section's original enforcement claim was FALSE, and the lane it
+authorises is what disproved it.** The paragraph here used to read: *"This lane's gate is `Approval
+receipt (CP-26)` … a merge by this lane that leaves no signature cannot reach `main`. That is the
+boundary, enforced by CI, today."* **It is not, and it never was.**
+
+`approval-receipt.mjs` returns `PASS / NEVER_ESCALATED` whenever `everLabeled` is false — **before**
+it looks for a receipt. **CP-26 is armed by LABELLING, not by the diff.** The `do-not-merge` label is
+applied by the watcher, and the watcher never sees a PR this lane opens. So for this lane the gate
+has never been able to fire, and the receipt requirement above has been enforced by nothing.
+
+**Measured, and it is this lane's own failure.** Between 2026-09-06T07:47Z and 19:45Z the lane made
+**17 merges and left ONE receipt**. The other sixteen were back-filled on 2026-09-07 and each says so
+on its face. Station 00 found the same hole independently and from the other side — breadcrumb 1930
+finding F7 against `#1730` (*"a green CP-26 on this PR is a statement about a release that never
+happened, not about the merge"*) and breadcrumb 2115 against an unlabelled production migration. The
+standing escalation is
+`needs-marco/cp26-passes-vacuously-on-an-unlabelled-destructive-migration-2026-09-05.md`.
+
+**So §10.1 step 3's proviso is NOT satisfied by an existing check.** Until CP-26 is armed by the
+**diff** — a `(^|/)migrations/` or `apps/api` path demanding a receipt regardless of label history —
+this lane's receipt requirement is a **discipline, not a gate**, and this section must not be read as
+though CI enforces it. The honest boundary today is the instrument: `bd-push-slice.ps1` writes the
+receipt into the PR branch before it arms auto-merge, and refuses to arm without one. That is a
+constraint on one script, which is weaker than CI and must be said plainly rather than dressed up.
+
+**DATED NOTE, 2026-10-03 (CP26_ARMED_BY_DIFF_V1).** The paragraph above is the measured record as of
+2026-09-01; it is kept in full because §1 says never delete a measured record. What changed in this
+PR: CP-26 is now armed by the diff. Any PR whose diff contains a migration file, or any file outside
+tests/ or docs/, requires a receipt regardless of label history. The `NEVER_ESCALATED` pass now
+requires both `!everLabeled` AND `!requiredByDiff`. Standing receipts are checked against
+`scripts/pr-gates/standing-lanes.json`. Personal receipts pass as `RECEIPT_VALID_UNCORROBORATED`
+until `MARCO_APPROVER_LOGIN` is configured (see `docs/runbooks/marco-approver-identity.md`).
+This is the CI gate §10.1 step 3's proviso was waiting for.
+
+🔴🔴 **THE RECEIPT'S AUTHORING COMMIT NAMES ITS OWN ACTOR IN THE GIT IDENTITY, AND THE SQUASH MERGE
+IS THE ONLY THING THAT HIDES IT.** [MEASURED] 2026-09-08T00:3xZ by Station 00 (scheduled) via
+`gh pr view <N> --json commits` then `gh api repos/GH-Mantova/ProjectOperations/commits/<sha>`, over
+four receipts written inside twenty-five minutes of each other:
+
+| receipt | authoring commit | `commit.author.name` | message | actor |
+|---|---|---|---|---|
+| `1797.md` | `08ce2ae0` 23:37:35Z | **`Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>`** | `docs(merge-approvals): receipt for #1797 - supervised cloud lane, standing authority` | this lane |
+| `1767.md` | `268a9a54` 23:15:59Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Create 1767.md`** | Marco, GitHub web UI |
+| `1775.md` | `d146637e` 23:17:08Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Add approval details for PR 1775`** | Marco, GitHub web UI |
+| `1796.md` | `6aaf5f62` 2026-09-08T00:08:17Z | `GH-Mantova`, committer `GitHub <noreply@github.com>` | **`Create 1796.md`** | Marco, GitHub web UI |
+
+**POSITIVE control, and it is the load-bearing row:** the same PR's BUILD commit `985fa475`
+(23:36:31Z, carrying the two in-scope doc edits) reads `Marco <marco@initialservices.net>` — the
+**watcher's own local git config on Marco's box**. 🔴 **So the most human-looking identity on this
+board belongs to the most automated actor**, and a run attributing work by author name gets the
+watcher's builds exactly backwards. That is the opposite error to the one `mergedBy` produces, and
+the two together are why identity has to be read per-commit or not at all.
+
+🔧 **Read the AUTHORING commit, never the squash-merge commit.**
+`git log --format=%an origin/main -- docs/decisions/merge-approvals/<N>.md` answers `GH-Mantova` for
+**every** receipt, because the squash commit is all `main` retains — the discriminating identity
+survives only on the PR's own commit list. ⚠️ **Falsifying probe: the table above.** Re-run it on any
+receipt; if a cloud-lane receipt ever reads `Marco <marco@initialservices.net>`, or a watcher build
+commit reads the cloud-lane identity, this block is wrong and must be re-measured.
+
+🔴🔴 **CORRECTED 2026-09-10 — THE AUTHOR IDENTITY NAMES A *TREE*, NOT AN ACTOR, AND THE TABLE
+ABOVE IS MISSING TWO OF THE FIVE PAIRINGS THIS BOARD EMITS. A CLOUD-LANE RECEIPT NOW AUTHORS AS
+`PR Supervisor <supervisor@local>`.** The table is right that the discriminating identity survives
+only on the PR’s own commit list, and right that the watcher’s builds read `Marco`. What it does not
+say is *why*, and the why is load-bearing: `%an` / `%ae` come from whichever **tree** the commit was
+made in, so one actor emits different identities depending on where it committed. [MEASURED]
+2026-09-10T16:2xZ by Station 00 (scheduled), across all five open PRs and both working trees:
+
+| authoring identity | what it actually names | how it is fixed |
+|---|---|---|
+| `Marco <marco@initialservices.net>` | the **watcher clone** `C:\po-watcher\ProjectOperations` — a watcher build | that clone’s `git config user.name` / `user.email` |
+| `PR Supervisor <supervisor@local>` | the **dev tree** `C:\ProjectOperations2` **and every worktree sharing its `.git/config`** | the dev tree’s `git config` |
+| `GH-Mantova <273896040+GH-Mantova@users.noreply.github.com>` | the **GitHub web UI / API** — every squash merge, and every `Merge branch ‘main’ into …` update-branch | GitHub’s own noreply identity |
+| `GH-Mantova <marco@initialservices.net>` | a **fourth pairing, from neither tree** — on this board it is the second lane that opened `#1852` | neither tree’s config |
+| `Claude Opus 5 (station-00 cloud lane) <noreply@anthropic.com>` | the supervised cloud lane, when it commits somewhere supplying that identity | its own signature |
+| `station-00.interactive-0003 <marco@initialservices.net>` | a **SUPERVISED INTERACTIVE lane**, committing from a dev-tree worktree whose `git config user.name` is the lane id while the email stays Marco's — so attribution **by email alone reads it as a watcher build**, and by name alone as an actor no row lists | that lane's own `git config user.name` in its worktree |
+
+**The row that breaks the table.** the merge-approval receipt on `#1823`, commit `9664f95a`,
+authors as **`PR Supervisor <supervisor@local>`** — while the receipt’s own closing line
+reads *“Receipt written by the supervised Station 00 cloud lane”* and its commit message carries
+`Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` and a `Claude-Session:` URL. Same lane, same
+kind of artefact, an identity the table has no row for — because this receipt was committed from a
+**dev-tree worktree** (`git worktree list` shows one parked at exactly that SHA), which supplies its
+own `user.name` through the shared `.git/config`.
+
+🔴 **The table’s own falsifying probe does not fire on this.** It asks whether a cloud-lane receipt
+ever reads `Marco <marco@initialservices.net>`, or a watcher build the cloud-lane identity. Neither
+happened — the receipt read a **fifth** pairing the probe does not mention, so the block stays
+silently under-determined and a reader applying it to today’s newest receipt gets **no answer at
+all**: for the one open PR carrying product code, and against the standing escalation
+`needs-marco/nothing-verifies-a-merge-approval-receipt-2026-09-07.md`, whose whole subject is receipt
+attribution. A scheduled run has already filed a forgery accusation off a misread of this same kind
+and retracted it an hour later; that is recorded two paragraphs down.
+
+🔧 **So attribute by the TRAILERS, and read `%an` as naming a TREE.** `Co-Authored-By:` and
+`Claude-Session:` are written by the actor and survive on the PR’s commit list; `%an` is written by
+whichever `git config` was in scope. Resolve a `PR Supervisor <supervisor@local>` commit by asking
+`git worktree list` which tree carries that SHA, then read the trailers for the actor. **POSITIVE
+controls, both trees, same run:** dev tree `git config user.name` → `PR Supervisor`, `user.email` →
+`supervisor@local`; clone → `Marco` / `marco@initialservices.net`. That second control establishes
+this section’s *“the most human-looking identity belongs to the most automated actor”* from the
+**cause** side — the clone is simply configured that way — rather than from behaviour alone.
+
+⚠️ **Falsifying probe: the two `git config` reads and the worktree list.** If the dev tree’s
+`user.email` ever stops being `supervisor@local`, or a `PR Supervisor` commit resolves to no worktree,
+this correction is wrong and must be re-measured. ⚠️ **The identity SET is state — re-measure it,
+never quote it; a sixth pairing is invisible until it appears.** Found and landed by Station 00
+2026-09-10T16:2xZ.
+
+🔴 **AND `approved_by: marco` IN A RECEIPT'S FRONT MATTER DOES NOT MEAN MARCO SAW THE PR.** On a
+standing-authority receipt the BODY says so in as many words — *"Marco did not see this PR before it
+merged"* — while the machine-readable field one line above says the opposite. The field records
+*whose authority*, not *who looked*. A scheduled Station 00 run read the field, did not read the
+body, and filed a forgery accusation against an actor that had signed its own commit; the
+measurements above retracted it the next hour. **Read the body, and prefer the commit identity to
+the field.** A one-line `authority: standing | personal` discriminator in the front matter would
+remove the ambiguity at the source, and choosing to add one is Marco's, not a station's.
+
+
+**Ruled by Marco, 2026-09-07**, when the conflict between this section and §10.1 was put to him
+directly — may the lane merge `escalates: false` PRs touching `apps/api` and `apps/web`, or is the
+tests-docs boundary the real line? He chose: **the lane merges, but writes a receipt first.**
+
+**PROVENANCE — Marco's own words, chat, 2026-09-04 and 2026-09-05.** Quoted verbatim, in order:
+
+> *"can you takeover station 00 roles now and drive the board?"*
+
+> *"you're supposed to stay at it, 24/7, until all prs are merged"*
+
+> *"I'm handing the board back to you, your goal is to open as many prs possible from the pipeline,
+> and drive the entire board to green and to merge, including prs that the other station 00 opens or
+> the watcher opens"*
+
+> *"i removed the label from all prs with do not merge label / run whatever other checks you need on
+> them, keep driving the board to green and merge / open any other prs that the merged one release
+> the gates"*
+
+**WHY THIS WAS NOT WRITTEN DOWN FOR THREE DAYS, and why it had to be this lane that wrote it.**
+§10.2's last bullet is the cause: *"A cloud session sees only what is committed to the repo … any
+chat are all invisible to it."* The ruling was given in chat. Every scheduled 00 run since could see
+its **effects** on the board — PRs merging with no arm, receipts naming an actor §10 did not list —
+but never its **cause**, so five consecutive runs (00:08Z, 01:08Z, 03:08Z, 05:08Z, 06:08Z on
+2026-09-05) each re-derived *"an unattributable actor is releasing PRs"* from first principles, one
+of them as a suspected attack. The 06:08Z run (`#1644`) reached the correct disposition and stopped
+at the right place: *"I cannot fix it. Recording a ruling I have not heard is guessing Marco's
+intent (§5.5)."* That is right for a lane that was not in the room. This lane **was** in the room,
+so for it the same act is not guessing — it is transcription, and the quotations above are what make
+it checkable.
+
+🔴 **DISCLOSURE — I am the interested party.** This section authorises the lane that wrote it, and
+that is exactly the shape of change a reader should distrust. Three things are offered in place of
+trust: the quotations above are verbatim and Marco can strike them if they are not his; the
+exception is strictly narrower than the practice it records (it adds the receipt requirement and
+re-states four prohibitions); and **this PR was opened WITHOUT auto-merge and is not self-merged** —
+it waits for Marco. If he does not confirm it, strike this section; the correct fallback is option
+**(b)** on `#1644` — the cloud lane stops merging — and not silence, because silence is what cost
+five runs.
+
+**Filed against:** `docs/pr-prompts/archive/00-00-supervisor-2026-09-05-0608-doctrine-forbids-the-cloud-lane-from-merging-and-it-merged-1615-mid-run.md`
+(moved into `archive/` by the 2026-09-05T11:08Z collect once every finding in it carried a disposition;
+the path is corrected here because `lint-station.mjs` REJECTs this document for naming an untracked repo path)
+F1, option **(a)**, whose wording this section adopts.
+
+## 10.3 Route docs-and-tests work through the watcher, not around it
+
+The auto-merge policy is live: `start-watcher.ps1:160` sets `PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs"`,
+and `classifyPolicyFiles` admits a diff confined to `tests/**` + `docs/**` with no `migrations/` path.
+**42 PRs have merged with no human through that gate.** It works.
+
+🟢🟢 **REFUTED 2026-09-04T03:1xZ by Station 00 — the lane is NOT dead, and has not been for three days.**
+This paragraph read *“But it last fired on #1301 — 0 auto-merges since #1400, against 22 PRs routed to
+Marco”* from 2026-09-01 until this correction. It was already false when it was written.
+**[MEASURED]** `Select-String -Path docs\pr-prompts\processed\*.log -Pattern 'merge result for PR #(\d+): \{"ok":true'`,
+run against the LIVE tree `C:\ProjectOperations2` and never the clone (§9.5), returns **48** `ok:true`
+watcher merge verdicts, negative control (`\{"ok":zzzNoSuchZzz`) **0**. **Six of the 48 are after #1400:**
+#1476 (2026-09-01T04:29Z) · #1514 (09-02T04:49Z) · #1531 (09-03T06:29Z) · #1534 (09-03T07:02Z) ·
+#1537 (09-03T08:18Z) · **#1563 (09-04T03:10Z)**.
+
+**Worked instance — #1563**, `docs/pipeline/DOCTRINE.md` + `docs/pipeline/stations/_canonical-blocks.json`,
+both under `docs/`: opened `02:21:34Z`; the watcher enabled native squash auto-merge at `03:09:09Z`;
+**merged `03:10:30Z`**; its log carries `[watcher] merge result for PR #1563: {"ok":true}`. Open-to-enable
+was **47.6 min**, inside the 90-min `MERGE_TIMEOUT_MS` window. Nobody reviewed it and nobody merged it by hand.
+
+🔴 **What survives, and it is the half that matters: the MECHANISM below is untouched.** CI creation
+*can* outrun `MERGE_TIMEOUT_MS`, and when it does the timeout is written **byte-identically** to a genuine
+policy routing (§10.3 table, and the `marco: true` returned inside `waitForPolicyMerge` — anchor:
+`async function waitForPolicyMerge`). That is a **latent, intermittent**
+defect — not a stopped lane — and the distinction changes what you may conclude from one `marco:true`:
+**a single routing verdict on a docs-only PR is evidence of a timeout at least as much as of a policy
+decision, and neither reading clears it for merge** (RULE 2 still binds).
+
+⚠️ **The falsifying probe for THIS paragraph is the `ok:true` count above.** Re-run it before quoting
+either half. The reason the old sentence outlived its truth by three days is that it named no probe —
+the exact failure §9.5's closing bullet records, one section earlier, about a claim in a document every
+station is told it can trust.
+
+⚠️ **This paragraph used to continue "Not because the gate is blocked: because docs work is
+hand-landed … so it never reaches the gate." THAT CAUSE IS REFUTED — measured 2026-09-01/02 by
+direct experiment.** Station 00 armed a docs-only prompt precisely to test it. The work DID reach
+the gate, and the gate still did not fire. **The measured cause is CI-creation latency outrunning
+the merge window:**
+
+| | [MEASURED] |
+|---|---|
+| `#1500` opened | 2026-09-01T20:18:43Z |
+| its first CI run **created** | 2026-09-01T23:51:20Z — **212.6 min later**, `run_attempt=1` (not a re-run) |
+| merge window | `MERGE_TIMEOUT_MS` = **90 min** (anchor: `const MERGE_TIMEOUT_MS` in `index.mjs`), expired at about 21:48Z |
+| controls, same window | `#1502` 0.0 min · `#1501` 0.0 (opened 8 s after #1500) · `#1499` 0.0 · `#1498` 0.0 · `#1497` 0.0 |
+
+`allGreen` in `index.mjs` (anchor: `const allGreen`) needs `checks.length > 0 &&
+checks.every(SUCCESS|NEUTRAL|SKIPPED)` before it will enable auto-merge. With **zero checks in
+existence** `allGreen` is false for the whole window, so the lane falls out of
+`waitForPolicyMerge` (anchor: `async function waitForPolicyMerge`) and records `marco: true` on
+the timeout path inside it.
+
+⚠️ **Every citation into another file in THIS DOCUMENT is a symbol or fixed-comment anchor, not a
+line number — §9.5's opening bullet, applied document-wide.** That bullet scoped itself to "every
+citation below", so §10.3 was never swept, and on 2026-09-05 all four of its `index.mjs` line
+numbers were found wrong at once: `:129-130` -> `const MERGE_TIMEOUT_MS` is at 139, `:1753-1757` ->
+`const allGreen` is at 1837, `:1774` is the `waitForPolicyMerge` header itself, `:1776` -> the
+`marco: true` returns are at 1789/1793. Nobody edited a claim; the file moved under all four
+together, and the available conclusion — *"the mechanism §10.3 describes is not in this code"* —
+would have retired a live RULE-2-affecting defect as non-reproducing. Found by Station 04
+2026-09-05T14:1xZ (F2), landed by Station 00 at 14:4xZ. **POSITIVE control that the instrument was
+sound: §10.3's other line citation, `start-watcher.ps1:160`, was correct at the same moment.**
+
+🔴🔴 **A TIMEOUT IS THEREFORE WRITTEN IN THE BYTE-IDENTICAL FORMAT TO A GENUINE POLICY ROUTING.**
+`{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}` is
+indistinguishable, to every later reader and to RULE 2, from a policy verdict meaning "this one is
+Marco's to decide". A docs-only PR the lane would have merged with no human becomes **permanently
+human-gated** — and RULE 2 correctly forbids any station from clearing it, since a provably-weak
+routing reason does not clear a verdict. **The lane built to remove work from Marco silently
+creates it.** Open with Marco as of 2026-09-02; the falsifying probe is the table above — re-run
+it and this note dies.
+
+🔴🔴 **THE REASON STRING HAS TWO CONJUNCTS, AND ONLY ONE OF THEM HAS A RECORDED CAUSE.**
+`"timeout waiting for green checks + MERGE verdict"` fires if EITHER half misses the window, and the
+table above measures the FIRST half only — CI-creation latency, on `#1500`. **[MEASURED]
+2026-09-05T19:1xZ by Station 00 on `#1675` — the first instance run to completion with no supervisor
+touching it, and one where the first half is 0% of the failure:**
+
+| | [MEASURED] |
+|---|---|
+| armed | `2026-09-05T16:16:51Z` (`.arming-log.txt`) |
+| watcher opened it | `17:27:48Z` — `opened PR #1675, policy=tests-docs, waiting…` |
+| all 3 CI runs **created** | `17:29:33–17:29:35Z` — **2.3 min** after open |
+| all 3 CI runs **success** | `17:31:04Z` — **3.75 min** after open |
+| 90-min `MERGE_TIMEOUT_MS` window | expires ≈ `18:57:48Z` |
+| `rev-1675` review job **started** | **`19:00:48Z`** — 93.5 min after open, 3 min AFTER the window closed |
+| its verdict | `Verdict: MERGE for PR #1675` |
+| watcher’s recorded result | `{"ok":false,"marco":true,"reason":"timeout waiting for green checks + MERGE verdict"}` |
+
+**A reader who applies the table above to `#1675` finds CI healthy and concludes the mechanism does
+not reproduce — retiring a live RULE-2-affecting defect.** It reproduced. The starved conjunct was
+the MERGE verdict, which `verdictApproves` requires at `docs/pr-reviews/pr-<N>-review.md` and which
+the single-lane worker cannot produce while the merge waiter holds the lane. That starvation is the
+open escalation `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md`, whose own
+falsifying probe — *"leave a watcher-built `tests-docs` PR alone; if the review appears and
+auto-merge enables with nobody touching it, this escalation is dead"* — was run unattended today
+and the escalation **SURVIVED it**.
+
+⚠️ **The falsifying probe for THIS paragraph is per-PR, not the `ok:true` count**: for a docs PR
+that timed out, check whether its `docs/pr-reviews/pr-<N>-review.md` was written BEFORE the window
+closed. If it was, this conjunct was not the cause on that PR.
+🔴 **And do not read the six-minute miss as a margin.** The gap between the verdict (19:00:48Z) and
+the window (18:57:48Z) is small only because this PR’s CI was fast; the delay underneath it is 93.5
+minutes of queueing. **Raising `MERGE_TIMEOUT_MS` is not a fix** — a longer wait occupies the single
+lane for longer, which is the defect itself.
+
+Hand-landing is a **contributing** factor, not the cause: Hand-landing is legitimate (00 may merge a docs-only
+PR itself) and it does not consume Marco — but it produces **no review**, and it is how a docs change
+lands with nobody but its author having read it.
+
+**Prefer arming a docs/tests change over hand-landing it.** Hand-land when the content must be exact
+— binding law, a canonical block, a correction to DOCTRINE itself — and say in the PR body that you
+did, and why.
+
+🔴🔴 **AND THE VERDICT THE LANE WAITS FOR IS CONSUMED BY EXACTLY ONE CODE PATH, WHICH RUNS ONLY FOR
+WATCHER-OPENED PRs — SO EVERY `rev-<N>` REVIEW OF A SECOND-LANE PR IS UNREAD BY CONSTRUCTION, AND ITS
+ABSENCE LOOKS IDENTICAL TO A HOLE IN THE MERGE GATE.** `REV_LANE_UNCONSUMED_ON_SECOND_LANE_V1` The
+paragraphs above treat a missing verdict as a starvation defect that permanently human-gates a
+docs-only PR, which is right for a PR the watcher opened. They do not say what a missing verdict
+means for a PR it did not — and the answer is *nothing at all*, because the only reader was never
+going to run.
+
+[MEASURED] 2026-09-11T00:1xZ by Station 00 (scheduled) at `e6e11370`, from the source and from the
+two PRs Station 03 dispatched as a suspected silent hole in the gate (its 2026-09-10T23:10Z
+breadcrumb, F4):
+
+| probe | result |
+|---|---|
+| `verdictApproves` call sites in `scripts/pr-watcher/index.mjs` | **1** — inside `waitForPolicyMerge` (anchor: `if (!mergeEnabled && allGreen && (await verdictApproves(`) |
+| `#1837` — review job exited 0, wrote no verdict in any of the three homes | `processed/pr-*.log` hits for `PR #1837` → **0** ⇒ **not watcher-opened** |
+| `#1746` — same signature | `processed/pr-*.log` hits for `PR #1746` → **0** ⇒ **not watcher-opened** |
+| POSITIVE controls, the four watcher-opened PRs open at that moment | `#1850` · `#1845` · `#1832` · `#1823` → **2** hits each, each carrying a real `merge result for PR #N` verdict |
+| NEGATIVE control, `PR #999998` over the same corpus | **0** |
+
+So `waitForPolicyMerge` never ran for either PR, `verdictApproves` was never called, and no gate was
+bypassed. **The gate is intact.** What is true instead is 03's own second disjunct: the `rev-` lane
+reviewed two PRs whose verdicts no code path would ever read, and a third — `#1866`, reviewed
+`VERDICT: MERGE` into the clone at `00:1xZ` on the same day — was likewise second-lane.
+
+🔴 **Why this earns a bullet rather than a note: the two readings prescribe opposite actions.** A
+missing verdict on a **watcher-opened** PR is a live RULE-2-affecting defect and the PR is stuck. A
+missing verdict on a **second-lane** PR is a review nobody commissioned and the PR is unaffected. The
+observable — `rev-<N>` in `failed/`, exit 0, no file in any of the three homes — is byte-identical,
+and DOCTRINE section 9.5 already records that a `rev-<n>-ready.md.log` exists for BOTH lanes and
+therefore carries **zero** lane information. A run meeting the signature with only the paragraphs
+above to hand reaches for the merge gate, which is the expensive wrong place.
+
+🔧 **Establish the LANE before diagnosing a missing verdict, with the section 10.1 step-1 probe — the
+PROMPT logs alone, `processed/pr-*.log`, excluding `rev-*`.** Hits ⇒ watcher-opened ⇒ a missing
+verdict is the starvation defect above. Zero hits, with the probe's own positive and negative
+controls passing ⇒ second lane ⇒ the verdict was never going to be read, and the finding is the
+wasted review, not the gate.
+
+⚠️ **The wasted review is the residual, and it is not nothing.** Every second-lane PR still enqueues
+a `rev-<N>` job that occupies the single lane for the length of a full review — the same lane whose
+occupancy `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md` already names as the
+starvation cause. **Whether the review lane should skip PRs the watcher did not open is Marco's
+call**, because a human may well want those reviews even though no machine reads them; it is filed as
+`needs-marco/rev-lane-reviews-second-lane-prs-that-nothing-reads-2026-09-11.md` rather than decided
+here.
+
+⚠️ **Falsifying probe: the table above.** Re-run the call-site count and the per-PR prompt-log hits on
+any PR whose `rev-` job left no verdict. If `verdictApproves` ever acquires a second call site outside
+`waitForPolicyMerge`, or a zero-hit PR turns out to have been watcher-opened, this bullet is wrong and
+must be re-measured. Found by Station 03 2026-09-10T23:1xZ (F4), measured and landed by Station 00 at
+2026-09-11T00:2xZ.
+
+## 10.4 Design decisions are settled BEFORE the prompt, not inside the slice
+
+Interface questions have been surfacing as mid-slice STOP-AND-REPORTs — the owner-control permission
+model in `#1416`, the Tip Finder no-coordinates behaviour, the map-locations rename guard. Each one
+burns a slice and then waits on Marco anyway.
+
+**A design question found while writing a prompt is Marco's to answer before the prompt is armed**
+(RULE 3). `PROMPT-SCHEMA.md` already requires an executable premise; an unsettled interface decision
+is a premise that cannot execute. Take it to him as a decision with options and the measured evidence
+for each, not as a status update.
+
+## 10.5 An artifact carries ONE identity for its whole life
+
+Added 2026-09-02. **Ruled by Marco**, after the register became unreadable.
+
+Published artifacts are a second lane in the same sense as §10.1: they reach Marco without passing
+through the repo, and unlike a PR they carry **no history he can read** — an artifact shows only its
+current content and its title. On 2026-09-02 his register held **24 artifacts with at least four
+near-duplicate pairs**, and nothing on any page said which member of a pair was live.
+
+🔴 **The thing that forks an artifact is the SOURCE FILE PATH, not the title.**
+
+- Republishing the **same** file path (or passing the artifact's `url`) updates that artifact **in
+  place, at the same URL**. This is what improvement looks like.
+- Publishing a **different** file path mints a **brand-new artifact** — even when the title is
+  byte-identical. Nothing warns you; the publish succeeds and returns a new URL.
+- Changing the **title** forks nothing. But it **hides a fork that already happened**, because the
+  two pages stop sorting next to each other in the gallery. The rename is the camouflage, not the
+  wound.
+
+**THE RULE.**
+
+1. **The name is fixed at first publish.** Never rename an artifact. If the name has stopped fitting,
+   say so to Marco — that usually means the scope drifted — but the name still does not change. He
+   navigates the register by it.
+2. **The source file is fixed at first publish.** Keep editing that exact path. Never
+   `-v2`, `-final`, `-wbs`, `-new` or any other filename for the same subject.
+3. **The favicon is fixed too.** Omit it on every redeploy. A changed icon reads as a different page.
+4. **A new artifact requires a new SUBJECT** — never a better version of an existing one. If you
+   cannot tell whether the subject is new, it is not (RULE 3: ask).
+5. **Before publishing anything this conversation did not itself publish:** list the register, look
+   for **near**-matches rather than exact title matches — the whole failure mode is that the older
+   page is named something slightly different — then read that artifact and republish to its `url`.
+   If the local source file is gone, recover the content by reading the artifact; do not rebuild it
+   under a new filename.
+6. **Superseded artifacts are never deleted and their URLs never break.** Republish the retired page
+   with a banner at the top naming its replacement and linking to it, so anyone opening the old link
+   is told immediately that it is not current.
+
+⚠️ **Worked example — this rule exists because of a measured failure, not a hypothetical.** On
+2026-09-02 a chat lane published `punch-list.html` as *"PR Master Punch List"*, improved the same
+work, and published the improvement as `wbs.html` titled *"ProjectOperations Work Breakdown"*. Two
+artifacts, one subject, no signal which was current. Rules 1 and 2 each independently prevent it.
+
+## 10.6 A second-lane PR does not consume the prompt that describes the same work
+
+Added 2026-09-05. **The watcher deletes a prompt when it builds it. A second lane does not**, because
+it never reads the queue (§10.2). So work that reaches the board through a second lane leaves its
+`-HOLD.md` sitting there with its premise intact and its gates satisfied — and `triage-holds.ps1`
+lists it under **GATES SATISFIED — CANDIDATES**, which is exactly where an arming decision goes
+looking.
+
+🔴 **The premise dies on MERGE, not on OPEN.** For the whole time a second-lane PR waits on Marco,
+its prompt is `ADMIT` and reads as fresh work. Arming it opens a SECOND PR for work already open.
+
+**[MEASURED] 2026-09-05T15:2xZ at `52232fec` — two live instances at once**, each an exact scope
+match to an open PR, both sitting in that run's `ADMIT` bucket of 40:
+
+| `ADMIT` prompt | `scope:` entries | open PR | PR files | matched |
+|---|---|---|---|---|
+| `pr-plantdays-retire-and-drop-HOLD.md` | 6 | **#1662** | 6 | 6 of 6 |
+| `pr-scopecosts-s1-operational-cost-lines-api-HOLD.md` | 8 | **#1665** | 8 | 8 of 8 |
+
+🔧 **The test to run before arming ANY `ADMIT` is the `scope:` list, not the head branch.** Cross
+the prompt's `scope:` entries against `gh pr list --state open --json number,files`. A head-branch
+match happens to catch both instances above, because this second lane names its branch after the
+prompt slug (`pr-plantdays-retire-and-drop`, `pr-scopecosts-s1-operational-cost-lines-api`) — but
+that is the *other lane's naming convention*, not a property of the prompt.
+[MEASURED] `Select-String -Pattern 'branch|headRef'` over both prompt files returns **0**: the
+prompt carries no branch information at all, so a branch test is checking something the prompt never
+asserted and can stop working without anything warning you. **The scope list is what the prompt does
+assert.**
+
+🔴 **THE CROSS-CHECK IS AGAINST *OPEN* PRs. RUN AGAINST *MERGED* ONES IT IS BOTH REDUNDANT AND
+NOISY.** [MEASURED] 2026-09-06T08:1xZ at `85e70f09` by Station 00, over all **36** `ADMIT` prompts
+`triage-holds.ps1` reported, crossed against the file lists of the **60** most recently merged PRs
+(`gh pr list --state merged --limit 60 --json number,title,mergedAt,files`; POSITIVE control — the
+`-HOLD.md` staged by `#1695` was found in exactly 1 merged PR; NEGATIVE control, a freshly minted
+path, **0**). **Two prompts scored a FULL file match and NEITHER is a duplicate:**
+`pr-vmguard-s2-preflight-installs-guard` **8/8** against `#1694` and `pr-ci-rerun-on-unlabel`
+**1/1** against `#1689` — both because those PRs happened to touch the same files for an unrelated
+reason, and both prompts' premises are still TRUE (`lint-prompt.mjs` **ADMIT**, not exit 3). A merged
+PR's file list carries no information about *why* a file changed, so over merged work the file-overlap
+test has a false-positive rate that swamps it.
+🔧 **Over merged work the PREMISE is the discriminator, and `lint-prompt.mjs` already runs it** — that
+is the SPENT bucket (exit 3), which caught all four instances on 2026-09-06T06:0xZ unaided. **Reserve
+the `scope:` cross-check for OPEN PRs**, where the premise is still alive and the linter therefore
+cannot help. That is what the paragraph above already says; this note exists because a station
+breadcrumb paraphrased it as *"cross against `--state merged`"* and billed the next run to find out.
+
+⚠️ **Same defect as the never-retired-HOLD case, reached from the other side.** There an armed
+prompt outlives its own build because the PR does not delete it; here the prompt was never built at
+all. Both end with an armable duplicate, and neither is visible to `lint-prompt.mjs`, whose gates
+ask only whether the premise still holds — which, until the PR merges, it does.
+
+🔴 **CORRECTED 2026-09-07T03:4xZ — THE `scope:` CROSS-CHECK IS WRONG IN BOTH
+DIRECTIONS, AND ONE FOUR-PR BOARD SHOWED ONE OF EACH.** [MEASURED] 2026-09-07T02:1xZ by Station
+04 at `5a824702`, over all 25 `ADMIT` prompts against the 4 open PRs (POSITIVE control — a PR's
+own first file matches itself; NEGATIVE control — a freshly minted path matches nothing). Five
+overlaps: **two real, three false.**
+
+| `ADMIT` prompt | overlap | open PR | truth |
+|---|---|---|---|
+| `pr-rates-plant-fuel-column` | 3/4 | `#1746` | **TRUE duplicate** |
+| `pr-sweep-stale-check-retires-live-escalations` | 1/1 | `#1750` | **TRUE duplicate** |
+| `pr-statussweep-local-time-timestamps` | 1/1 | `#1750` | false positive |
+| `pr-sweep-dead-queue-dir-reads` | 1/1 | `#1750` | false positive |
+| `pr-rateparity-s1-harness` | 1/4 | `#1746` | false positive |
+
+**(a) It UNDER-reports, on the class it exists to protect.** `pr-rates-plant-fuel-column` scores
+3/4 for one reason: its second `scope:` entry is `apps/api/prisma/migrations/` — a **directory**.
+`#1746` carries a migration file nested one level deeper, inside that very entry.
+An exact-path set test can never match a directory-form scope entry, so a
+**full-match** rule clears a `gate_allow: migrations` prompt — i.e. Marco's — for arming, which is
+precisely the class this section exists to stop being duplicated.
+
+**(b) It OVER-reports whenever `scope:` names a single file.** Three prompts share the sole entry
+`scripts/pipeline/status-sweep.ps1`; `#1750` touches that file, so all three score a perfect 1/1
+and only one of them is `#1750`'s work. **For a one-file scope the test's precision is zero by
+construction.**
+
+🔧 **THE RULE, corrected. Match a scope entry ending in `/` as a PREFIX against the PR's file
+paths, and treat ANY overlap of 1 or more as a CANDIDATE that must then be confirmed — never as a
+verdict, in either direction.** This is the complete-and-additive form: the directory case can no
+longer hide a real duplicate, and a 1/1 stops being a conclusion. The only cost is that the reader
+must look at one more field.
+
+⚠️ **Confirm on the prompt's own MARKER STRING, not on the head branch.** The paragraph above
+already measured that a prompt asserts no branch at all, so a branch test checks something the
+prompt never said. What separated all five rows above was the PR title carrying the prompt's own
+marker (`PLANT_FUEL_COLUMN_V1`), which the prompt **does** assert.
+
+🔧 **The falsifying probe is the table above:** re-run the cross-check on a board carrying one
+prompt whose `scope:` names a directory and another whose `scope:` names a single file. If the
+directory entry still fails to match, or the single-file entry is still being read as a verdict,
+this correction has not landed. Found by Station 04 2026-09-07T02:1xZ (F2), landed by Station 00
+at 03:4xZ.
+
+
+🔴🔴 **CORRECTED 2026-09-10T17:3xZ — THE CONFIRM STEP HAS NO INSTRUMENT ON 90% OF THE QUEUE, AND
+ITS ABSENCE FAILS IN THE ARMING DIRECTION.** The correction above ends *"Confirm on the prompt's own
+MARKER STRING, not on the head branch"*, and its worked example is `PLANT_FUEL_COLUMN_V1`.
+[MEASURED] 2026-09-10T17:2xZ by Station 00 at `4b205fca`, over every `-HOLD.md` at depth 1 of
+`docs/pr-prompts` (40 files): **only 4 carry a `_V<n>` marker at all.** So for **36 of 40** the
+prescribed confirmation cannot be run in either direction, and this section names no fallback — a
+reader who follows it literally reaches no verdict on a CANDIDATE the tool has just flagged, and the
+available next move is to arm it, which is the one outcome this section exists to prevent.
+
+**It fired on this board the same run.** `triage-holds.ps1` flagged
+`pr-company-manage-s1-permission-and-grant-HOLD.md` as a POSSIBLE DUPLICATE of open `#1823`, overlap
+**1 of 4**, on the single shared entry `apps/api/src/common/permissions/permission-registry.ts`.
+Marker tokens in the prompt: **none** — a wide `[A-Z][A-Z0-9]{2,}(_[A-Z0-9]+)+` sweep returns only
+front-matter key names and a migration name. Marker tokens in `#1823`'s title and body: **none**.
+**POSITIVE control that the marker instrument itself works:** the same sweep over
+`pr-rateparity-s1-harness-HOLD.md` returns `RATE_PARITY_HARNESS_V1` and `RATE_LINE_FIELDS_V1`. The
+instrument is sound; the corpus does not carry what it reads.
+
+⚠️ **And the overlap file is the aggravating class, not an accident.** A permission registry, a
+schema, a barrel, a workflow file — a shared REGISTRY that many unrelated prompts must touch — will
+collide with almost any PR in its area, so the single-entry case (b) above already calls *"precision
+zero by construction"* is not rare on this queue; it is where the flags come from.
+
+🔧 **The fallback that always exists is the `premise`, evaluated at the PR's HEAD rather than at
+`main`.** Every prompt carries an executable premise by `docs/pr-prompts/PROMPT-SCHEMA.md`; this
+section's headline — *"the premise dies on MERGE, not on OPEN"* — is a statement about `main`, and it
+is exactly why the premise is still readable at the open PR's head. **If the PR's head already makes
+the premise FALSE, that PR is the prompt's work.** [MEASURED] the same run on the flagged pair, via
+`gh api repos/GH-Mantova/ProjectOperations/contents/<path>?ref=<headRefOid>`:
+
+| probe at `#1823` head `fe98c6be` | count | reading |
+|---|---|---|
+| `company.manage` — the prompt's own premise needle | **0** | premise still TRUE ⇒ **NOT this PR's work** |
+| `reporting.team` — POSITIVE control, `#1823`'s own subject | **1** | the probe can return a hit |
+| a freshly minted needle — NEGATIVE control | **0** | the probe is not matching everything |
+
+**Verdict on the flag: NOT a duplicate**, settled by an instrument that exists on 40 of 40 prompts
+instead of 4. This is the complete-and-additive form — it removes the blind spot permanently, it
+cannot mis-arm anything (a premise that is still true is precisely the definition of work not yet
+done), and it adds no new tooling: the needle is already in the prompt's own front matter.
+
+⚠️ **Keep the marker test FIRST where a marker exists** — it is the stronger evidence, because it
+names the work rather than inferring it from a file's contents. The premise-at-head test is the
+fallback, not the replacement. ⚠️ **The 4-of-40 figure is STATE — re-measure it, never quote it.**
+**Falsifying probe: the marker sweep over the depth-1 `-HOLD.md` corpus.** If it ever returns a
+marker on every prompt this correction is unnecessary; and if the premise-at-head probe ever returns
+a hit for a prompt whose work is demonstrably not in that PR, it is wrong and must be re-measured.
+Found and landed by Station 00 2026-09-10T17:3xZ.

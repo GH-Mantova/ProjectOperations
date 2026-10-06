@@ -204,6 +204,15 @@ and the matching ref in the mount with no Desktop Commander at all.
 `docs/pr-prompts/processed/*.log` (the RULE 2 probe), `.arming-log.txt`, every station breadcrumb,
 and the three binding documents — which is the whole of COLLECT and most of PHASE 1.
 
+🔧 **DOCTRINE_CORE_SPLIT_V1 (2026-10-06).** The binding read is now **TWO files in full every run**
+— `docs/pipeline/DOCTRINE.md` (core) and the station's own `docs/pipeline/stations/0N-*.md` (core).
+The REFERENCE files (`docs/pipeline/DOCTRINE-REFERENCE.md` and
+`docs/pipeline/stations/0N-*-REFERENCE.md`) are **read on demand, and ALWAYS before acting on a
+matching §9 trap**. STATION-CAPABILITIES.md is still read every run — its size is not the problem
+this split was addressing. The scheduled-task bootstraps will be updated by Station 06 in a
+follow-up (noted in the PR body); until that lands they still say "read these three in full", and
+on this transport every file called out above is reachable.
+
 🔴 **AND `ProjectOperations2` IS NOT THE ONLY MOUNT — THE LIST ABOVE ENUMERATED ONE OF ELEVEN, AND THAT UNDERCOUNT COSTS A BLIND RUN ITS CROSS-CHECKS.** `BLIND_RUN_OTHER_MOUNTS_V1` [MEASURED]
 2026-09-08T04:09Z by Station 00 (breadcrumb
 `00-00-supervisor-2026-09-08-0409-blind-run-check-breadcrumb-freshness-reads-two-live-stations-as-never-having-reported.md`,

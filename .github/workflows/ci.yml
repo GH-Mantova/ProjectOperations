@@ -434,6 +434,31 @@ jobs:
       - name: Queue layout — new/renamed files must follow the layout standard
         if: github.event_name == 'pull_request'
         run: node scripts/pipeline/check-queue-layout.mjs --range "origin/${{ github.base_ref }}...HEAD"
+      # INSTRUMENT_LANE_V1: evidence step — reports whether every changed file is in
+      # the instrument-lane allowlist (scripts/pipeline/instrument-lane.json).
+      # Writes its verdict line to the job summary so Station 00 can read it from the PR.
+      # Exit 0 either way (IN_LANE or OUT_OF_LANE is normal); the lane verdict never
+      # blocks CI. Exit 2 ([CANNOT MEASURE]) turns the step red — an unreadable diff
+      # is a broken instrument, not a pass.
+      - name: Instrument lane — evidence only, not required
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set +e
+          out=$(node scripts/pipeline/check-instrument-lane.mjs \
+            --range "origin/${{ github.base_ref }}...HEAD" \
+            "$GITHUB_WORKSPACE")
+          code=$?
+          echo "$out"
+          last=$(echo "$out" | tail -n 1)
+          echo "## Instrument lane" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$last\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -eq 2 ]; then
+            echo "[CANNOT MEASURE] check-instrument-lane exited 2 — diff unreadable or controls failed"
+            exit 2
+          fi
+          exit 0
 
   pipeline-tests-windows:
     name: Pipeline — arm-prompt tests (Windows)

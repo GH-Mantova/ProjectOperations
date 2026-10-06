@@ -311,6 +311,15 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   merge** — the watcher's timer is OFF by default now, and every stray update-branch costs a full
   CI rebuild.
 
+- **INSTRUMENT LANE (INSTRUMENT_LANE_V1).** Station 00 may merge a PR **without Marco removing a
+  label** only when ALL of these hold: the PR carries **no** `do-not-merge` label; the CI job
+  summary for the **current head** says `INSTRUMENT_LANE: IN_LANE`; all required checks are green
+  on the current head; and the review verdict reads MERGE **and** its `REVIEWED-SHA` equals the
+  current head. Merge through `Merge-Pr` as usual, then post this comment on the PR:
+  `Merged via the instrument lane (INSTRUMENT_LANE_V1): files <list>; verdict reviewed <sha>; CI green.`
+  Name it in the run's breadcrumb under a heading **Instrument-lane merges**. Any condition
+  failing → PR stays for Marco. Full detail: 00-supervisor-REFERENCE.md §INSTRUMENT_LANE_V1.
+
 - **You never merge a watcher-routed PR**, and **you never remove a `do-not-merge` label.**
 
 - **03, 04 and 05 have their own cadences — do not do their work yourself.** Hand it over by naming

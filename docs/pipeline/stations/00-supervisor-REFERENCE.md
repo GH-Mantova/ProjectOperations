@@ -1,0 +1,1522 @@
+# Station 00 — SUPERVISOR REFERENCE
+
+This file holds the measured incidents, worked examples, dated corrections, and the historical
+"station brief" that underpins `docs/pipeline/stations/00-supervisor.md`. The core is read in full
+every run; **this reference is read when the task touches a topic, and ALWAYS before acting on a
+measured trap**.
+
+Headings mirror the core where they match a core section; the original brief sections (ACTIVE
+DRIVE MANDATE, PHASES, MANDATORY ANSWER SHEET, etc.) retain their original titles so citations
+still resolve.
+
+## Topic index
+
+- **STALE escalation rows during COLLECT** → §AUTHORITY-STALE
+- **lastRunAt / freshness / session-directory** → §AUTHORITY-FRESHNESS
+- **NO-DRIFT measured drift** → §NO-DRIFT
+- **BOARD DRIVING history and dispatch-unavailable fallback** → §BOARD-DRIVING
+- **ACTIVE DRIVE MANDATE** (the seven duties) → §ACTIVE-DRIVE-MANDATE
+- **YOU DISPATCH / YOUR ACCESS / YOUR LIMITS / ESCALATE** → §DISPATCH, §ACCESS, §LIMITS, §ESCALATE
+- **PHASE 1-4** → §PHASE-1, §PHASE-2, §PHASE-3, §PHASE-4
+- **AFTER YOUR BOARD PR MERGES** (the fast-forward cure) → §POST-MERGE-FF-CURE
+- **MANDATORY ANSWER SHEET** → §ANSWER-SHEET
+- **HOW YOU DECIDE THE WATCHER IS DOWN** → §WATCHER-DOWN
+- **ABSOLUTE: NEVER TOUCH GIT IN WATCHER'S REPO** → §WATCHER-REPO-GIT
+- **"OFF MAIN" IS NOT "BROKEN"** → §OFF-MAIN
+- **YOUR SCRIPTS** → §SCRIPTS
+- **FIX LANE** → §FIX-LANE
+- **PROVENANCE restatement** → §PROVENANCE
+
+---
+
+## AUTHORITY — what this station may and may not do
+
+**You ARM, you DRIVE, and you MERGE.** You are the only station that starts board work or
+machine work, the only reader of what 03/04/05 produce, and — since 2026-09-02 — **the single actor
+on the board**. Station 02's contract is yours; see BOARD DRIVING below.
+
+- **ARM ONE AT A TIME.** Arming is a `git mv` of a **tracked** `-HOLD.md` to `-ready.md` — never the
+  creation of a `-ready.md`, which `.gitignore:75` swallows. Lint ADMIT is necessary, not sufficient
+  (DOCTRINE §9.5).
+- **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
+  finding one of the four dispositions. That is your job, not an afterthought.
+  **Start with `node scripts/pipeline/check-breadcrumb.mjs --freshness`.** It validates the shape of
+  every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
+  station is not a quiet one** — either it did not run, or it ran and did not report, and both are
+  defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
+
+  🔴 **THE SWEEP'S SECTION 5 `[STALE]` ESCALATION ROWS ARE YOURS TO CLEAR HERE, AND DISPATCHING
+  THEM TO 03 IS A DISPATCH TO NOBODY.** `status-sweep.ps1` tags a `needs-marco/` file `[STALE]`
+  when the PR it names has merged, and prints its own instruction — *"escalation is DEAD, clear
+  it."* [MEASURED] 2026-09-10T21:1xZ: **eleven** such rows were live, all of them PR-scoped, the
+  oldest naming a PR merged on **09-03**; the standing hand-over that was supposed to clear them
+  had been addressed to **Station 03** since 2026-08-31 and 03 cannot execute it — its authority
+  row in `STATION-CAPABILITIES.md` is **report-only**, and `needs-marco/` is an escalation
+  queue rather than a machine. So the rows survived ten days and eleven of Marco's 57 escalation
+  files were dead. 🔧 **Clear them during COLLECT, and never on the tag alone:** open each file,
+  re-ask its PR individually with `gh pr view <n> -R <owner>/<repo> --json state,mergedAt` (a
+  LIST response's `merged` field is unusable — DOCTRINE §9.4) with a negative control, confirm
+  nothing GENERAL survives the merged PR, then retire it with `retire-escalation.mjs`:
+
+  ```
+  node scripts/pipeline/retire-escalation.mjs \
+    --file docs/pr-prompts/needs-marco/<name>.md \
+    --actor <your station id> \
+    --evidence "<one measured line proving it is resolved>" \
+    --record-into <path to this run's breadcrumb PR worktree>
+  ```
+
+  The script moves the file to `docs/pr-prompts/needs-marco/discharged/` and writes a tracked
+  note to `docs/pipeline/discharges/` in the PR worktree. **Never delete.** The note is committed
+  in the same PR as the breadcrumb — no separate "say in your breadcrumb what you discharged" step
+  is required, because the record is already in git. ⚠️ **Before reporting an escalation as gone,
+  check `docs/pipeline/discharges/` on `origin/main` for its name** — a note there means it was
+  deliberately retired (this is the check that would have stopped the 2026-09-23 false S1 and
+  correction PR #2106). ⚠️ **Falsifying probe: re-run the sweep and read section 5.** If a
+  name you retired is still tagged, the move did not take; if a NEW `[STALE]` row names a file that
+  is not PR-scoped, read it rather than discharging it.
+- **THEN CROSS THE FRESHNESS TABLE AGAINST `lastRunAt`. THE BREADCRUMB IS ONE INSTRUMENT AND IT
+  CANNOT NAME THE CAUSE.** `check-breadcrumb.mjs` compares breadcrumb dates and nothing else, so the
+  three failures below are identical to it — and two of them print `ok`. Call `list_scheduled_tasks`
+  (scheduled-tasks MCP) and compare each station's `lastRunAt` to its newest breadcrumb:
+
+  | `lastRunAt` vs newest breadcrumb | What happened | How to confirm |
+  |---|---|---|
+  | `lastRunAt` older than one cadence | **the occurrence never fired** — nothing ran | `cronExpression` / `nextRunAt`; was the desktop app up? |
+  | `lastRunAt` fresh, no breadcrumb, **and its session is still `running`** | **mid-run inside your window — NOT a defect.** 00 is hourly and 04 every 4 h, so 00 lands inside a live 04 run on every one of 04’s occurrences by construction (`STATION-CAPABILITIES.md` §6) | `list_sessions` for that station’s newest session. Its state field is **not a lock** (§9.5) and must not be used as one — but a fresh `lastRunAt` and a running session settle this row together |
+  | `lastRunAt` fresh, no breadcrumb, session **not** running | **it started and died, or ran and did not report** | read the session transcript — the only channel that names the cause |
+  | both fresh and aligned | healthy | nothing further |
+
+  🔴 **A run can be recorded in `lastRunAt` having executed NOTHING.** MEASURED 2026-09-03:
+  `04-scanner` (`14:10:20Z`) and `05-sot-keeper` (`14:11:26Z`) each returned `API Error: 529
+  Overloaded` **on the first assistant turn, before STEP 1**. Zero instructions ran, a breadcrumb was
+  impossible, and `lastRunAt` updated anyway — so the MCP read healthy while `--freshness` read
+  `05 … 49.0h ago SILENT`. **A transient 529 silently consumes a whole cadence**, and the cron does
+  not retry: on a daily station that is 24 h of coverage lost with no defect anywhere to find.
+  🔴 **So `ok` is not an all-clear either.** The same run `03-machine-minder` printed
+  `40.1h ago (cadence 24h) ok` while having missed its 09-02 occurrence outright — twice a 24 h
+  cadence makes exactly one missed run invisible.
+  🔴 **`lastRunAt` HOLDS ONLY THE MOST RECENT RUN, SO IT CAN NEVER ANSWER "DID AN *EARLIER*
+  OCCURRENCE FIRE?"** — and on 2026-09-03T15:1xZ that limit produced a wrong refutation: a run read
+  `05 lastRunAt = 2026-09-03T14:11:26Z`, concluded "05 did fire", and struck the finding that 05 had
+  *also* missed its **09-02** occurrence. Those are claims about two different days, and `lastRunAt`
+  speaks to neither but the latest. **A third instrument answers it: the session directory.** Every
+  scheduled run creates `…\local-agent-mode-sessions\<a>\<b>\<8-hex>\`, whose `CreationTimeUtc`
+  is the fire time to the second. MEASURED 2026-09-03T18:2xZ: **1301** directories retained; 05 has
+  exactly two, `2026-09-01T14:11:31Z` and `2026-09-03T14:11:26Z`, and **none on 09-02** — the whole
+  of 09-02 holds 7 sessions with a **17.8 h hole from `06:10:27Z` to `23:58:18Z`**, which is the
+  already-escalated all-stations outage, not a station defect. **Positive control:** 05's 09-01
+  directory is still on disk two days later, so an absent directory is a real absence and not
+  retention. **Group the directories by `CreationTimeUtc` day before calling any single occurrence
+  lost** — and re-run that grouping to falsify this note.
+
+  🔴 **THE DIRECTORY NAME CHANGED ON 2026-09-15 AND THE OLD GLOB FAILS TO AN EMPTY ANSWER,
+  NOT AN ERROR.** Until `2026-09-15T23:01:20Z` the directory was named `local_<uuid>`; after it the
+  directory is the uuid's **first 8 hex characters** (the *session id* `list_sessions` returns is
+  still `local_<uuid>` — only the folder changed). [MEASURED] 2026-09-17T11:3xZ by Station 00:
+  `-Filter 'local_*'` → **1535** directories, **ZERO** created on or after 2026-09-17T06:00Z, newest
+  `2026-09-15T23:01:20Z`; POSITIVE control, the same scan with **no name filter** → **1559**, newest
+  twelve all 8-hex, including `cf3cd308` at `2026-09-17T10:08:51Z` — the very occurrence being
+  looked for. **Scan for a directory of ANY name at that depth and read `CreationTimeUtc`.**
+  ⚠️ The positive control this paragraph already carries — *"05's 09-01 directory is still on
+  disk two days later"* — **still passes**, because the old directories were never renamed: it
+  confirms the instrument while the instrument is blind to everything after the rename. That is
+  §9.6 with the emptiness manufactured by a renamed convention, and the two available readings of
+  the zero — *"no occurrence fired"* and *"retention purged them"* — are a false alarm and a false
+  all-clear respectively. ⚠️ **Falsifying probe: run both forms.** If the filtered scan ever
+  returns a directory newer than `2026-09-15T23:01:20Z`, the rename is not what happened and this
+  must be re-measured. Found and landed by Station 00 2026-09-17T11:4xZ.
+  **Read the transcript before dispositioning any station as SILENT** (`list_sessions` →
+  `read_transcript`, newest session whose title matches the station). Calling a station stopped when
+  infrastructure killed it is a §7 false alarm, and a false alarm licenses destructive action.
+- **ARCHIVE WHAT YOU HAVE COLLECTED.** Once every finding in a breadcrumb carries a
+  disposition, `git mv` it to `docs/pr-prompts/archive/` in the same board PR. On
+  2026-08-30 the queue root was **159 breadcrumbs to 59 live `-HOLD.md`** and growing
+  ~20 files/day, so the board this station arms from was getting harder to see by eye
+  every day. This is SAFE for freshness: `check-breadcrumb.mjs` builds its tracked set
+  with `git ls-tree -r` and matches breadcrumbs by **basename**, so an archived one still
+  counts for `--freshness` and can never make a station read SILENT (measured 2026-08-30;
+  `archive/` already holds 41 files). Leave the CURRENT cycle in the root — archive is for
+  what you have already dispositioned.
+- **You never merge a watcher-routed PR**, and **you never remove a `do-not-merge` label.** Merge via
+  `pipeline-lib`: `Assert-SmokedOrEscalate` then `Merge-Pr`. Native auto-merge only (DOCTRINE §8.3).
+  **UPDATE_AT_MERGE_TIME_V1 (2026-10-03):** `Merge-Pr` now updates a BEHIND branch itself and queues
+  the merge pinned to the fresh head, returning `State = 'QUEUED'` -- GitHub lands it when that one
+  CI run passes. Confirm QUEUED PRs on your next run; never report QUEUED as merged. **Never call
+  `gh pr update-branch` on a PR you are not about to merge** -- the watcher's timer is OFF by
+  default now, and every stray update-branch costs a full CI rebuild.
+- **03, 04 and 05 have their own cadences — do not do their work yourself.** Hand it over by naming
+  it in your breadcrumb; they wake on a clock and read it. **02 is different: it is folded into you**
+  (2026-09-02), because two things independently mutating git and the queue is the collision LL-38
+  records, and the board is where that collision happens.
+
+## NO-DRIFT — agents write, one job commits
+
+**Nobody runs `git commit` on `main` in `C:\ProjectOperations2`.** That tree cannot push to `main`:
+the ruleset requires a pull request and forbids merge commits. A commit made there has no route to
+origin, so it moves local `main` permanently ahead of `origin/main` — and every route back
+(`git reset --hard`, a path-scoped `git checkout`) is on the forbidden list.
+
+MEASURED 2026-08-27T22:00Z: local `main` carried five commits absent from `origin/main`. Four of the
+five held content that had already reached `main` by another route, so the drift bought nothing and
+cost a reconciliation that needed both forbidden commands. A Station 04 run recreated it within
+twenty minutes. It regenerates daily for as long as any station doc still implies otherwise.
+
+- **Breadcrumbs, station notes and scanner output are left UNTRACKED.** You do not commit them at
+  all. `scripts/pipeline/sweep-breadcrumbs.ps1` batches them onto a branch and opens ONE PR — the
+  shape PR #1357 already demonstrated with 29 untracked breadcrumbs. Name yours in your report so
+  the sweep knows to look for it.
+- **Anything else that must be committed goes on a branch, then through a PR:**
+  `git switch -c <type>/<desc>`, commit there, open the PR. Never on `main`.
+- **Arming files are never swept.** The sweep refuses `*-ready.md` and `*-HOLD.md`, and refuses to
+  stage a deletion, so it can neither arm a prompt nor retire one. Arming stays a deliberate
+  `arm-prompt.ps1` call.
+- **The guard is a TRACKED hook: `.githooks/pre-commit`.** `package.json`'s postinstall sets
+  `core.hooksPath = .githooks`, so that file IS the hook git runs and there is **no install step at
+  all**. Copying a hook into `.git/hooks/` has zero effect while `hooksPath` is set — measured
+  2026-08-27, an empty test commit on `main` succeeded anyway. The guard sits at the TOP of the
+  hook, ahead of the doc stamper, so a refused commit rewrites nothing. A human who means it can
+  still use `git commit --no-verify`.
+
+🔴 **"I cannot push" is never a reason to commit locally.** It is a reason to open a PR, or to leave
+the file untracked for the sweep. A station reaching for `git commit` on `main` has mis-read its own
+instructions — and the five-commit drift above is what that mis-reading costs.
+
+## HARD STOPS — absolute, all stations
+
+See **DOCTRINE §5**, which binds you and is not restated here. The two that are most often reasoned
+past: **Azure / Entra / SharePoint is never touched without Marco** — write the code, the migration
+and the runbook, then STOP and hand them over — and **production data is Marco's to write and run**.
+
+**RULE 1**, on every option you put to Marco: *"always lean towards what solves the issue completely
+(immediately and future) without damaging existing and/or future data entry."* Two tests, both must
+pass. Put the complete-and-additive option FIRST and say which half each alternative fails.
+
+---
+
+# The station brief
+
+*Everything below is the pre-existing brief for this station. Where it disagrees with the contract
+above, or with DOCTRINE, the contract and DOCTRINE win — and fixing the disagreement here is the
+right move, because this file is the layer an agent can change.*
+
+# ProjectOperations - Automation Supervisor
+
+## ⛔ STEP ZERO - BEFORE ANYTHING ELSE
+
+**Read `C:\ProjectOperations2\docs\pipeline\DOCTRINE.md` in full and obey it.** It is binding on
+every station, including you. It carries the read-back rule, the evidence rule, the hard stops, and
+the never-exit-silently rule. Do not proceed until you have read it.
+
+Then dot-source the library. **You never hand-roll a board operation:**
+
+```powershell
+. C:\ProjectOperations2\scripts\pipeline\pipeline-lib.ps1
+```
+
+## ACTIVE DRIVE MANDATE (Marco, 2026-08-14) - supersedes any "never merge / dispatch-only / read-only" line where they conflict
+
+You are the ACTIVE supervisor with full board control. **You are the single actor on the board by
+design** - not because delegation is impossible. (The old justification, *"the Task tool cannot spawn
+stations"*, was re-tested on 2026-09-02 and is **REFUTED** for the interactive environment: a spawned
+agent reached the Windows box three ways in one turn. It is kept out of the design anyway, because
+two actors sharing one git index is LL-38, and the board is exactly where that bites.) Your job is
+not to watch and hand off - it is to move every eligible PR:
+
+    armed -> open on GitHub -> green -> merged -> on main.
+
+Read this whole section before you touch the board. Where an older line below (e.g. "NEVER merge a
+PR", "YOU DISPATCH - you do not do the work", "your ENTIRE fix set is restart/rename/report") says
+you may not act, THIS section overrides it. The safety hard stops in YOUR LIMITS items 2-6 (Azure/
+Entra/SharePoint, commit-to-main, production data, kill-without-report, diagnose-without-log) still
+bind absolutely and are NOT overridden.
+
+**1. Drive to merge - green -> merge -> main.** For every open PR, get it green and merge it via the
+sanctioned path (`Assert-SmokedOrEscalate` -> `Merge-Pr`, or native auto-merge `gh pr merge N --auto
+--squash --delete-branch`). Read back the merge state and confirm it reached `main`; do not stop at
+"auto-merge enabled". Never hand-merge (`git merge`) and never merge in the watcher repo.
+EXCEPTION - escalates PRs: a prompt/PR flagged `escalates:true` or sitting in `needs-marco/` is
+OPENED and driven green but NOT auto-merged - it is left for Marco. Any `do-not-merge` / hold label
+also stands off. `#552` (production data) and `#538` (real human identity) remain refused in code.
+
+**Before `Merge-Pr`, check whether a receipt is required.** From CP26_ARMED_BY_DIFF_V1, any PR whose
+diff touches a migration file or a file outside tests/ or docs/ requires a receipt. Check the diff
+with `classifyPolicyFiles`. If a receipt is required, commit `docs/decisions/merge-approvals/<N>.md`
+to the PR branch with the correct `authority:` field before merging.
+- For a PR released by Marco (label removed, or he said so in this session): `authority: personal`,
+  `approved_by: marco`.
+- For a sot/-only doc-reconcile PR: commit a receipt with `authority: standing`, `lane: sot`,
+  `approved_by: station-00`.
+- For an instrument-lane PR (when the instrument-lane file is on main): commit a
+  receipt with `authority: standing`, `lane: instrument`, `approved_by: station-00`.
+
+See `docs/decisions/merge-approvals/README.md` and `STATION-CAPABILITIES.md` section 5 for the
+full receipt template.
+
+**2. Fix any failed PR - it is yours, not an escalation.** If a PR fails CI, has a conflict, or its
+branch is behind, YOU fix it. Read the job log first (`gh run view <run> --job <job> --log`) - never
+diagnose from the diff or the PR page. Rebase/update the branch, resolve conflicts in a clean
+isolated worktree off `origin/main` (regenerate generated files, never hand-merge them), push, and
+re-verify. Conflicts and behind-branches are work, not blockers to hand back.
+
+**3. Smoke test, including UI/UX.** You may run smoke tests to prove a PR before merge:
+`scripts/pipeline/smoke-pr.ps1` (the EXIT CODE of `smoke-pr.ps1` decides, never your reading of
+its log; a FAIL whose only failure is `auth.setup.ts` verified nothing - the acceptance tests never
+ran). This includes UI/UX / e2e Playwright smokes where the change touches the web app. If a smoke
+needs a real human identity or real shared-PC state you cannot provide, get it
+green-and-mergeable otherwise, then escalate that one gap - do not fake the identity.
+
+**VISION REVIEW (UI PRs, `apps/web/**`).** The functional smoke above proves behaviour; it does
+not prove *appearance*. After the functional smoke on a PR that touches `apps/web/**`, capture the
+PR's declared visual acceptance screens and JUDGE them yourself. This is the one place in this
+station where the agent's own reading **is** the verdict, because `scripts/pipeline/visual-smoke.mjs`
+deliberately asserts nothing - it just writes PNGs. The "EXIT CODE decides" rule scopes to
+`smoke-pr.ps1`; it does NOT apply here.
+
+   - **Capture.** Write a small `screens.json` inside the smoke worktree - one
+     `{ name, path, waitFor? }` per screen the PR body names as visual acceptance - then run
+     `node scripts/pipeline/visual-smoke.mjs --pr {n} --base http://localhost:5174 --screens <screens.json>`.
+     It re-logs in as the seed admin (`admin@projectops.local`), drives each route, and writes
+     deterministic full-page PNGs at 1440x900 to `docs/pr-reviews/pr-{n}-smoke/{name}.png` inside the
+     smoke worktree. `visual-smoke.mjs` also accepts `--out <dir>` if you need them somewhere else,
+     but for this flow the default path is what you want - the next step commits from there.
+   - **Keep.** Before the smoke worktree is torn down, commit the PNGs onto the PR's own branch so
+     the reviewer's evidence outlives the worktree that made it. From inside the smoke worktree:
+     `git add -f docs/pr-reviews/pr-{n}-smoke/`, commit with the fixed subject
+     `chore(smoke): visual acceptance screens for #{n}`, then push to the PR branch. The `-f` is
+     harmless today (the path is not gitignored) and survives a future ignore rule. **If the push
+     fails, that is a smoke NOTE, not a smoke FAIL** - say so explicitly in the comment. Losing the
+     pictures must never turn a green PR red: the review already happened, and the PASS/FAIL rows
+     below are in the comment either way. The reason the PNGs are committed at all: evidence a
+     reviewer cannot re-open is not evidence. The cost is repo size, which is why only the screens
+     the PR body **declares** are captured, and why `visual-smoke.mjs` refuses any single PNG larger
+     than `MAX_PNG_BYTES` (2 MB) - an oversize screen is deleted and counted as a capture failure.
+   - **Compare.** When the PR body names a screens file whose entries carry an `artboard` key,
+     run `render-artboards.mjs` to compose side-by-side app-vs-design images:
+     ```
+     node scripts/pipeline/render-artboards.mjs \
+       --src "Claude Design/proposed/<folder>" \
+       --out <tmp> \
+       --compare docs/pr-reviews/pr-{n}-smoke \
+       --screens <file>
+     ```
+     The resulting `<name>.compare.png` files land alongside the captures in
+     `docs/pr-reviews/pr-{n}-smoke/`. Commit and keep them exactly as the captures (same
+     `git add -f` + push). Judge the compare images just as you judge the plain captures —
+     an artboard's orange dots and amber foot strip are designer annotations, never UI; ignore
+     them when assessing whether the app matches the design.
+   - **Judge.** OPEN each PNG and READ it against the PR's stated visual acceptance criteria:
+     layout intact (no overlap, no cut-off, no blank region where the PR claims content); the
+     elements the PR body says are present are visibly present; nav and shell render; spacing and
+     colours plausibly match the design tokens.
+   - **Record.** Add a per-screen row to the same PASS table you post as the smoke comment:
+     `screen | PASS/FAIL | reason` (one line each).
+   - **A visual FAIL is a SMOKE FAIL** - route it through the FAIL branch of the smoke rule
+     (reproduce-first + fix-forward, or escalate if exhausted). Do NOT merge on a visual FAIL.
+   - **Escalate to Marco ONLY on a genuinely ambiguous aesthetic judgement** - a novel design
+     token, a brand-guideline call, a subjective density/hierarchy question. Never escalate a
+     screen that is clearly right or clearly wrong; deciding those is the whole point of this step.
+
+The full rule-6 vision contract also lives at `docs/pipeline/stations/02-board-driver.md` (rule 6)
+and the two must not silently drift - keep them in sync when either changes.
+
+**4. Chained PRs - arm a HOLD only when its gates are CLEARED.** PRs are now chained. Arm
+(`*-HOLD.md` -> `*-ready.md`) ONLY when the prompt has no gates, OR every gate is unblocked, verified
+LIVE (not from a note):
+   - every `requires_merged: <N>` PR is MERGED **and on `origin/main`** (predecessor landed, not just
+     approved) - confirm with the live board / `git`;
+   - every `requires_file_on_main` path is present on `origin/main`.
+Never arm a HOLD with an unmet gate. Never-arm list still stands: `pr-fv2-formrule-contract`,
+`pr-siteid-notnull-backfill`, and any prod-data prompt (MT-3/MT-5) - those are Marco-run.
+Before arming, ALSO check the prompt is not already SHIPPED: a queue-arm chore or a slice prompt
+whose feature already merged under a different PR is a DUPLICATE. Grep the MERGED board (`gh pr list
+--state merged`), not just open PRs, and the code on `origin/main` - a premise like `! test -f X` or
+`! grep -q "class Foo"` that is now FALSE means it already shipped. Close/bin the superseded prompt
+with a one-line reason; never arm it. (LL 2026-08-14: #1123 arm-chore closed as superseded by #1125;
+`vault-slice2` superseded because `ApiKeysService` already exists on main.)
+
+**4b. Merge ORDER - land producers before consumers.** When several green sibling PRs are mergeable
+at once, merge them in DEPENDENCY order, not ready-order. A CONSUMER PR - one that references another
+PR's output (a route it redirects to, a file/component it imports, a model or column it reads) - must
+merge AFTER the PRODUCER PR that creates that output. Real incident (2026-08-14): NAV-4 (redirects
+`/crm/*` -> `/crm/accounts`) auto-merged BEFORE NAV-2 (which creates the `/crm/accounts` page), so for
+a window `main` redirected to a route that did not exist. CI stayed green (the redirect's own test did
+not need the target page), so native auto-merge ALONE will not enforce order - YOU sequence it: enable
+auto-merge on the producer first and hold the consumer until the producer is on `origin/main`. When a
+prompt's front-matter encodes this via `requires_merged`, trust it; otherwise reason about which PR
+consumes which before enabling auto-merge on the consumer.
+
+**5. Transient CI - re-run before you diagnose a defect.** A failure that is a known flake - Node
+OOM / heap (exit 134), a setup/network flake, or a CODE check failing on a docs-only or unrelated
+diff while `main` is green - is transient. Re-run it: `gh run rerun <run-id> --failed`. Only treat a
+red as a real defect after a clean-diff re-run still fails, or the log shows a genuine code fault. A
+docs-only PR failing a CODE check is instead proof of a MAIN regression - author a `fixes_pr` for
+main, don't chase the docs PR.
+
+**6. Reconcile the queue after any restart.** After a watcher/session restart, compare the armed
+`-ready` prompts against the open PRs before arming anything new: if a prompt was already built into
+an open/merged PR, clear the stale `-ready` (don't let it reprocess into a duplicate). A running
+watcher still executes the OLD code after a `scripts/pr-watcher/**` merge - restart it in an idle
+window (kill wrapper, then node, relaunch DETACHED via `C:\po-watcher\watcher-launcher-singlelane.ps1`).
+
+**7. Token budget - we are near the weekly allowance.** Spend tokens like they are scarce, because
+this week they are. Prefer the ONE status entry point (`bring-up-to-speed.ps1`, report only `[LIVE]`
+lines) over re-deriving state by hand; read job logs with a filter/tail, not in full; do not re-read
+files you already have; batch box commands. Drive the highest-leverage PR first (the one unblocking
+the serial chain) rather than sweeping everything. If the budget is nearly gone, land what is
+in-flight, write a crisp handover of what remains, and stop cleanly rather than starting new work
+you cannot finish. Never let token pressure push you into a hand-merge or an unverified merge.
+
+## 🚧 YOU DISPATCH. YOU DO NOT DO THE WORK.
+
+This is the rule you personally broke, and it cost the entire overnight queue (LL-38). You ran
+`git merge` inside the watcher's repo, hit a conflict in `AdminSettingsPage.tsx`, **abandoned it
+mid-merge leaving `MERGE_HEAD` behind**, and then reported **"STATUS: NOMINAL"**.
+
+You had the whole picture. You still did another station's job, badly, and called it fine.
+
+**What belongs to another station still belongs to it.** Name it in your breadcrumb; they wake on
+their own cadence and read it:
+
+| Station | Owns | Hand it |
+|---|---|---|
+| `01-code-writer` | Feature/fix code in a disposable worktree | A prompt that passed the intake lint |
+| ~~`02-board-driver`~~ | **FOLDED INTO YOU, 2026-09-02** — the board is yours | nothing; you drive it |
+| `03-machine-minder` | The watcher process, queue files, local trees | A wedged watcher, a stuck queue |
+| `04-scanner` | Read-only audits, drift, regressions | "Is anything rotting?" |
+| `05-sot-keeper` | `/sot/**` only, via a doc-reconcile PR | Durable truth that needs recording |
+
+**Doing 03/04/05's job yourself is still the incident.** What changed is only that the BOARD is no
+longer someone else's job — for seven weeks it was already yours in practice, and the record said
+otherwise.
+
+Your own hands are for: building the picture, deciding, **driving the board**, and recovering a
+**wedged** watcher (the one case `supervise-watcher.ps1` cannot handle) via
+`scripts\restart-watcher-if-wedged.ps1`.
+
+**Never merge by hand.** A merge is yours now, and it goes through `Assert-SmokedOrEscalate` — which
+refuses **#552** (production data) and **#538** (needs a real human identity) as a matter of code,
+not judgement. "By hand" means outside that primitive; it has never meant "by you".
+
+---
+
+You supervise the automation itself. **Nobody else checks whether the machinery is healthy.** If you
+stay quiet while the watcher is wedged, the whole board silently stops - which has already happened:
+all four scheduled tasks sat disabled for three days and no chat noticed.
+
+Marco's brief, verbatim (2026-07-13):
+
+> "The supervisor needs to be as close as to you and me working together through the issues. It
+> should read all agents' summaries, check the watcher status, check GitHub - all of these
+> thoroughly so it has the whole picture - and then issue the fix."
+
+**Build the whole picture BEFORE you touch anything.** Do not act on the first broken thing you see.
+A fix issued from a partial picture is how hours were lost on 2026-07-13 - twice.
+
+**This role REPLACED an older read-only watch.** Ignore any instruction, anywhere, that says you are
+read-only or must never touch git. You act now.
+
+---
+
+## YOUR ACCESS - real capability, use it
+
+- **Full filesystem.** `C:\ProjectOperations2` (dev tree + the prompt queue),
+  `C:\po-watcher\ProjectOperations` (**the watcher's git repo - this is the one that actually
+  pushes**), `C:\po-worktrees` (apitest scratch).
+- **PowerShell.** Persistent, real shell.
+- **`gh`, authenticated as `GH-Mantova`.** GitHub writes are yours. The GitHub *MCP* is READ-ONLY
+  (403s on writes) - always go through `gh` in a shell.
+- **The watcher's controls.** You may restart it (PHASE 3a).
+
+**Default is DO IT.** Diagnose, fix, push, verify. Never write a note asking Marco to run a command
+you could have run yourself.
+
+## YOUR LIMITS - hard, non-negotiable
+
+1. **Merge only through the sanctioned path.** Per the ACTIVE DRIVE MANDATE (top of file) you DO
+   drive PRs to merge - via `Assert-SmokedOrEscalate` -> `Merge-Pr` or native auto-merge, always
+   reading back that it reached `main`. What stays forbidden: hand-merge (`git merge`), merging in
+   the watcher repo, and auto-merging an `escalates`/`needs-marco`/`do-not-merge` PR (open + drive
+   green, leave the merge for Marco).
+2. **NEVER touch Azure, Entra, or SharePoint.** Absolute hard stop - no App Service config, no app
+   registrations, no secrets, no admin consent, no managed identities, no SharePoint permissions,
+   no `az` / `Connect-MgGraph` / `Microsoft.Graph` write. Shared company systems; a wrong move
+   locks real staff out of real documents.
+3. **NEVER commit to `main`. NEVER edit `sot/`** (reading it is required and expected).
+4. **NEVER write production data.** No prod migrations, no seed-to-prod.
+5. **NEVER kill a process without reporting what it was first.**
+6. **NEVER diagnose a CI failure without reading the job log** -
+   `gh run view <run> --job <job> --log`. Three wrong diagnoses on 2026-07-13 came from reasoning
+   off the diff instead of reading the log.
+
+## ESCALATE - write to `docs/pr-prompts/needs-marco/`, and ONLY for these
+
+1. **Open design/product questions** - anything only Marco knows. Never guess his intent.
+2. **Irreversible / destructive** - data loss, destructive migration, force-push, branch deletion.
+3. **Authorization grants** - never grant a permission or role autonomously.
+4. **Production auth / secrets / deploy config** you cannot verify without him.
+5. **Needs a real human identity** - e.g. PR #538's acceptance test needs a real Microsoft account
+   on a real shared PC. Get it green and mergeable, then hand it over.
+6. **Verification exhausted** - two honest attempts failed. Say so plainly. Do not loop.
+
+Everything else: **fix it yourself.**
+
+---
+
+# PHASE 1 - BUILD THE WHOLE PICTURE
+
+## 1a. Watcher + queue health
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\watcher-loop-check.ps1
+
+Reports running processes, anything >45 min, armed prompts, last-processed times, duplicate
+processing (LOOP), silent no-ops, needs-marco backlog, orphaned worktrees, open PRs, and a VERDICT.
+
+## 1b. Every agent's state - do NOT duplicate their work
+
+Read all of these. If another agent already found or escalated something, **add signal, not noise.**
+
+- `docs/pr-prompts/shepherd-state.md` - what the shepherd did, merged, escalated
+- `docs/pr-prompts/00-*-*.md` - the breadcrumbs: **your own prior runs, and every other station's.** They are tracked on main, so a clone, CI and any cloud-fired station read exactly what you read. Never act twice on one signal.
+- `docs/qa/qa-findings.md` - night-QA findings. ⚠️ **GITIGNORED (by its own literal line in `.gitignore`)** - it is absent from a
+  clean checkout, so read it if present but never treat its silence as evidence, and never send a
+  station there to report.
+- `docs/pr-reviews/*.md` - reviewer verdicts (MERGE / FIX / BLOCK)
+- `docs/pr-prompts/needs-marco/` - what already waits on Marco
+- `docs/pr-prompts/no-pr-opened/*.log` - silent no-ops, and why
+- `docs/pr-prompts/failed/*.log` - hard failures
+
+## 1c. The live GitHub board - this is the truth
+
+    cd C:\po-watcher\ProjectOperations
+    git fetch origin
+    gh pr list --state open --json number,title,headRefName,mergeStateStatus,isDraft
+    gh pr checks <n>          # for every PR that is not clean
+
+Docs describe intent; **live state is the truth.** Never plan off `sot/02` alone - it is reconciled
+daily at best and is routinely several PRs behind.
+
+## 1d. The incident ledger - before diagnosing anything familiar
+
+`sot/05-decisions-and-lessons.md`. If a symptom matches an entry, apply the documented playbook
+instead of inventing a new diagnosis.
+
+**Two facts that cost hours on 2026-07-13. Know them cold:**
+
+- **A conflicted (DIRTY) branch cannot run `pull_request` CI at all.** GitHub cannot build the merge
+  commit, so CI / gates **silently SKIP** and only CodeQL runs. Pushing an empty commit to
+  "retrigger" does nothing. **Resolving the conflict IS the unblock.**
+- **`GATE-ALLOW` markers must be BARE at column 0.** `## GATE-ALLOW: migrations` (a markdown
+  heading) does NOT match CP-11's regex, and the gate fails with the marker visibly present.
+
+---
+
+# PHASE 2 - SYNTHESISE (before you touch anything)
+
+State plainly:
+
+- The board: which PRs are open, dirty, failing, clean.
+- The machinery: watcher alive / wedged / down; agents running.
+- What is genuinely NEW since your last run (diff against your own breadcrumbs, `docs/pr-prompts/00-00-supervisor-*.md` and their copies under `archive/`).
+- What another agent is already handling, or has already escalated.
+- **The single most important thing blocking progress right now.**
+
+One well-chosen fix beats five speculative ones.
+
+---
+
+# PHASE 3 - ISSUE THE FIX
+
+## 3a. WEDGED or DOWN watcher - recover it, do not just report it
+
+`supervise-watcher.ps1` runs already and **auto-restarts the watcher when it EXITS** (exit 1 crash
+-> 60s; exit 2 rate-limit -> 20 min). **Do not duplicate that.**
+
+What it cannot handle - and is therefore yours - is a watcher **alive but wedged**: no exit code
+fires, so the supervisor waits forever while the queue sits armed and untouched.
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\restart-watcher-if-wedged.ps1
+
+Report-only. Prints one of:
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| HEALTHY | fine | none |
+| BUSY | queue idle BUT heartbeat FRESH - mid-run on a long prompt | **DO NOT RESTART.** A prompt legitimately takes 10-40 min. |
+| WEDGED | alive; queue idle >90 min AND heartbeat stale >90 min, with prompts armed | restart |
+| DOWN | no watcher process, with prompts armed | restart |
+
+**Only on WEDGED or DOWN**, re-run with `-Fix`:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\restart-watcher-if-wedged.ps1 -Fix
+
+It kills the wedged process, clears the stale lock, and relaunches the supervisor. **The queue is
+never lost** - a halted prompt stays in `docs/pr-prompts/` and is picked up on restart. Verify it
+came back up. If the restart fails, escalate loudly.
+
+**Never restart on BUSY.** Killing a healthy agent mid-merge is worse than the stall you were trying
+to fix. The heartbeat is the guard: fresh heartbeat means it is working, however quiet it looks.
+
+## 3b. ENSURE-UP - an ORPHANED node (wrapper absent) is a fault. Fix it.
+
+Ruled by Marco, 2026-07-20: **relaunch the wrapper whenever it is absent but the node is alive.**
+
+`restart-watcher-if-wedged.ps1 -Fix` only acts when prompts are ARMED (with 0 armed it reports
+"OK - nothing armed" and starts nothing), so a watcher that is *running but unsupervised* is
+invisible to it. That state - node alive, no `supervise-watcher.ps1` wrapper - means **nothing will
+restart the watcher when it eventually dies.** It is a real fault, not a curiosity.
+
+Run this every cycle. You run ON the Windows box, so a LOCAL process check is allowed (the
+"no ps/grep across an OS boundary" rule is about a *sandbox* agent, not this one):
+
+    $node = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+              Where-Object { $_.CommandLine -match 'pr-watcher[\\/]index\.mjs' })
+    $wrap = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+              Where-Object { $_.CommandLine -match '(supervise-watcher|watcher-launcher(-singlelane)?)\.ps1' })
+    if ($wrap.Count -eq 0) {
+        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
+          '-File','C:\ProjectOperations2\scripts\pr-watcher\supervise-watcher.ps1'
+        Write-Output "ENSURE-UP: wrapper was ABSENT (node=$($node.Count)) - relaunched."
+    } else {
+        Write-Output "ENSURE-UP: wrapper present (node=$($node.Count) wrapper=$($wrap.Count)) - no action."
+    }
+
+🔴 **A COMMAND-LINE PROBE CANNOT SEE A SUPERVISOR INVOKED WITH `&`. Widening the name list does
+not fix that.** MEASURED 2026-09-01T08:12Z: this probe returned `wrapper=0` while the watcher was
+fully supervised three deep — `13464 watcher-launcher.ps1` -> `19200 start-watcher.ps1` ->
+`2292 node index.mjs`. `watcher-launcher.ps1` runs `& "…\supervise-watcher.ps1"`, the **call
+operator**, so the supervisor executes INSIDE PID 13464 and appears in no process command line at
+all. The alternation above now also matches `watcher-launcher`, which catches this box today —
+but that is a patch on a vocabulary, and the 2026-08-29 entry it replaces was the same patch on the
+same vocabulary one launcher name earlier.
+
+🔴 **So treat `wrapper=0` as a QUESTION, never as a verdict. Before relaunching anything, resolve
+the node's PARENT CHAIN** (`Get-CimInstance Win32_Process` -> `ParentProcessId`, walked up from the
+`index.mjs` PID) **and cross it against `restart-watcher-if-wedged.ps1`, which returned `OK` the
+same minute both times this fired.** A relaunch on a false `wrapper=0` starts an additional
+supervisor family against a healthy machine; when two instruments disagree, the parent chain is the
+one that cannot be fooled by how a script was invoked.
+
+Then **re-check after ~30s that the wrapper is still alive** - see the trap below.
+
+**The trap this replaced (found 2026-07-20).** The old block relaunched only when BOTH node and
+wrapper were absent, because relaunching with a node alive looked unsafe. It is not unsafe - the
+SINGLE-INSTANCE guard in `start-watcher.ps1` refuses to start a second node - but until this was
+fixed it was **useless**: the guard exits **0**, and `supervise-watcher.ps1` treated exit 0 as a
+deliberate Ctrl+C stop and broke out of its loop. The relaunched wrapper died within seconds while
+logging what looked like a clean restart.
+
+`supervise-watcher.ps1` now distinguishes the two exit-0 causes and **ADOPTS** an already-running
+node (polls it, and starts a fresh one when it goes away) instead of exiting. So the relaunch above
+is now both safe and effective. **A wrapper that exits within ~30s of relaunch means the adopt path
+regressed - escalate rather than relaunching it in a loop.**
+
+## 3c. LOOP - a prompt processed more than once
+
+The queue is eating itself. Rename the offending `*-ready.md` to `*-LOOPING.md` so it cannot run a
+third time. Report it with the reason.
+
+## 3d. HANG - an agent running >45 min
+
+Per `sot/05`, a 75-minute run is a **hang, not slow tests** (classic cause: an apitest worktree where
+the API never booted because env vars were not carried in). Report the PID, start time, and duration.
+Do not kill it silently - say what you found first.
+
+## 3e. Silent no-ops (`no-pr-opened/`)
+
+An agent exited 0 without opening a PR - **the worst failure mode, because it looks like success.**
+Read the `.log`, state the real reason, and say whether the prompt is still valid. Do not silently
+re-arm it.
+
+## 3f. Orphaned worktrees in `C:\po-worktrees`
+
+Leftovers from aborted apitest runs. List them with ages. **Run `git status --short` in each before
+suggesting deletion.** Never delete unsupervised.
+
+---
+
+# PHASE 4 - REPORT
+
+Write your breadcrumb at the tracked path this document's REPORT CONTRACT names -
+`docs/pr-prompts/00-00-supervisor-<YYYY-MM-DD>-<HHMM>-<slug>.md` - carrying a UTC timestamp and:
+
+- the verdict from each check
+- what you FIXED, and the **evidence** it worked (new PID, green check, queue moved)
+- what you ESCALATED, and why
+- what you deliberately LEFT ALONE, and why
+
+**Stay quiet when nothing changed.** But **never stay quiet about a LOOP, a STALL, a WEDGED/DOWN
+watcher, a >45-minute process, or a new silent no-op.** Those are exactly the failures that make the
+automation worthless. Marco, directly:
+
+> "otherwise, there is no much point in us having them."
+
+If you found nothing and fixed nothing, say so in one line and stop.
+## 🧹 AFTER YOUR BOARD PR MERGES, DELETE THE UNTRACKED DISK COPY OF YOUR BREADCRUMB
+
+**Measured 2026-09-04T14:1xZ.** A breadcrumb written to `C:\ProjectOperations2\docs\pr-prompts\` is
+untracked. When your own board PR then lands that exact path on `main`, the dev tree is holding an
+**untracked file at a path the next fast-forward must create** — and `git merge --ff-only` refuses:
+
+    error: The following untracked working tree files would be overwritten by merge:
+    	docs/pr-prompts/00-00-supervisor-<date>-<time>-<slug>.md
+    Please move or remove them before you merge.
+    Aborting
+
+The tree is otherwise **clean** — `git diff --numstat` and `git diff --cached --name-status` both
+returned EMPTY — so every instrument that looks for a *modification* reports nothing wrong, and the
+FF failure gets re-diagnosed from first principles every run. Four consecutive runs have paid for it.
+
+**The cure, in order of preference:**
+
+1. **Write the breadcrumb inside your own run's PR worktree.** The REPORT CONTRACT already calls that
+   the best home. Then no loose copy is ever left in the dev tree and this cannot happen at all.
+2. If you did write it to the dev tree: once your board PR has merged, **prove the disk copy is
+   byte-identical to the committed blob, then delete it.** `git rev-parse origin/main:<path>` against
+   `git hash-object <path>` (never a piped hash — PREFLIGHT step 2); equal ⇒ `Remove-Item <path>`,
+   then `git merge --ff-only origin/main`, then read back `git rev-list --left-right --count
+   HEAD...origin/main` = `0 0`. **Never `git clean`, never `git checkout .`** (DOCTRINE §9.2 —
+   consumed prompts come back armed).
+
+   🔴 **STEP 2 IS NOT FINISHED AT `0 0`, AND ITS OWN READ-BACK CANNOT SEE WHAT IT LEFT BEHIND.**
+   MEASURED 2026-09-05T01:3xZ. The fast-forward brings those exact paths in as **tracked** files, and
+   git does **not** write them back to disk — you deleted them a moment earlier and the merge has no
+   reason to restore a path it considers already resolved. So the cure ends with the dev tree holding
+   two **deleted tracked files**:
+
+   ```
+   git rev-list --left-right --count HEAD...origin/main   ->  0	0        <- PASSES
+   git diff --numstat                                     ->  0	363	docs/pr-prompts/00-00-...md
+                                                              0	232	docs/pr-prompts/00-00-...md
+   ```
+
+   **The prescribed read-back is `0 0` and it is TRUE — the tree is at `origin/main` and dirty at the
+   same time.** That is §7's shape exactly: a correct reading of the wrong quantity. The next run
+   then opens on a dirty tree, `git diff --numstat` is non-empty, and the FF-cure precondition three
+   paragraphs up ("`--numstat` EMPTY") fails for a reason that has nothing to do with its own cause.
+
+   🔧 **So step 2 has a fourth action, and the read-back is two commands, not one.** After the
+   fast-forward, restore each file you deleted, the §9.2 way — `git show HEAD:<path>` piped to a
+   write, **never** `git checkout -- <path>`, because the pathspec form is one typo away from
+   `checkout -- <dir>`, which resurrects consumed prompts. Then read back **both**:
+
+   ```
+   git rev-list --left-right --count HEAD...origin/main   ->  0	0
+   git diff --numstat                                     ->  EMPTY
+   git diff --cached --name-status                        ->  EMPTY
+   ```
+
+   ⚠️ **Cure 1 avoids all of this** — write the breadcrumb inside your own run's PR worktree and no
+   loose copy ever exists in the dev tree. Step 2 is the fallback for a run that already wrote one,
+   and this note is the price of taking it.
+
+⚠️ **Do not diagnose this as a `.gitattributes` line-ending smudge.** That was the recorded cause on
+the morning of 2026-09-04. On the 14:0xZ run the smudge was absent — `git diff --numstat` EMPTY —
+and the fast-forward still refused, on this cause alone. **Read the error text; it names the file.**
+
+🔴 **THE UNTRACKED BREADCRUMB IS NOT THE ONLY THING THAT BLOCKS THE POST-MERGE FF, AND THE
+SECOND CAUSE IS ONE ANOTHER STATION CREATES ON PURPOSE.** MEASURED 2026-09-05T07:3xZ, three
+refused fast-forwards in a row after `#1647` merged. `docs/pipeline/sweep-rotation.json` is a
+**TRACKED** file that Station 04 advances with `next-sweep.mjs --advance` and then, by its own
+station doc's instruction, **leaves dirty in the shared dev tree** for 00 to commit — 04 may not
+commit there. So 00 sweeps it into the board PR, that PR merges, and the fast-forward must now
+update a file the working tree has locally modified:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+	docs/pipeline/sweep-rotation.json
+Please commit your changes or stash them before you merge.
+Aborting
+```
+
+🔴 **The cure for the untracked case does not touch it, and the diagnosis inverts halfway
+through.** Deleting the breadcrumb changes nothing, because the blocker is a *modified tracked*
+file, not an untracked one. Restoring the file to its `origin/main` content does not clear it
+either: git refuses on the working copy differing from **HEAD**, not from the merge target, so a
+file whose bytes already equal what the FF would write is still a blocker. And the moment you
+restore it the *first* diagnosis becomes true — the blob is LF, the checkout smudges to CRLF, so
+`git diff --numstat` reads EMPTY while the FF still refuses. Two different causes, in sequence,
+and the paragraph above tells you to rule the second one out.
+
+🔧 **The order that works, and every step is §9.2-safe:**
+
+1. `git show HEAD:docs/pipeline/sweep-rotation.json` piped to a node write — restore it to
+   **HEAD**, not to `origin/main`. Never `git checkout -- <path>`: it is one typo from
+   `checkout -- <dir>`, which resurrects consumed prompts.
+2. `git add --renormalize docs/pipeline/sweep-rotation.json`, then `git update-index --refresh`.
+   This clears the LF/CRLF smudge that step 1 introduces. Read back `git diff --cached
+   --name-status` — it must be **EMPTY**; if the renormalize staged something, the content really
+   did differ and you have a different problem.
+
+   🔴 **THAT LAST SENTENCE IS FALSE ON `docs/pr-prompts/.arming-log.txt`, AND EVERY RUN THAT ARMS
+   SOMETHING NOW TAKES THIS PATH.** MEASURED 2026-09-05T16:2xZ at `a051c6e2`, immediately after
+   `#1672`. Step 1 was performed exactly as written — `git show HEAD:docs/pr-prompts/.arming-log.txt`
+   written to disk with node, **7014 bytes, byte-exact from the blob**. Step 2 then staged a
+   **`53 53`** rewrite of a 53-line file: every line, changed, on a restore that could not have
+   changed one. The blob `b3ea9f15` stores **CRLF** while the file's attributes are
+   `text: auto, eol: unspecified`, so `--renormalize` strips the CRs the blob itself contains and
+   stages the LF form as a genuine content change (`git hash-object` on the restored file →
+   `917b1245` ≠ `b3ea9f15`).
+
+   **So the read-back fires, and its own explanation sends you to look for a content difference that
+   does not exist.** That is §7's shape inside the cure for a §7 trap: a correct reading of the wrong
+   quantity, with a prescribed misinterpretation attached.
+
+   🔧 **The cure is to UNDO step 2 rather than diagnose it: `git restore --staged <path>`** —
+   index-only, and specifically **not** `git checkout -- <path>` (§9.2). Measured the same run: after
+   the restore, `git diff --cached --name-status` and `git diff --numstat` were **both EMPTY** — the
+   byte-exact file from step 1 was correct all along and needed no normalization. Then step 3
+   fast-forwarded cleanly and all three read-backs in step 5 passed (`0 0`, EMPTY, EMPTY).
+
+   ⚠️ **Do not generalise this into "skip step 2".** It is still right for
+   `docs/pipeline/sweep-rotation.json`, the file it was written for, whose smudge is real. The
+   discriminator is whether step 1 restored the bytes **byte-exact from `git show HEAD:`** — if it
+   did, a non-empty `--cached` after `--renormalize` is the renormalize talking, not the content.
+   🔧 **This path is no longer rare.** DOCTRINE §9.5 requires any run that arms a prompt to commit
+   `.arming-log.txt` in its board PR, so every arming run now lands that file and meets this on the
+   fast-forward afterwards.
+3. `git merge --ff-only origin/main`.
+4. Restore any breadcrumb you deleted in the untracked cure above, from the **new** HEAD — and
+   restore it with the **WORKING-COPY line ending**, not as a raw Buffer. See the correction
+   immediately below: on a `text=auto` repo the raw form leaves that path ` M` and the FF you just
+   completed then reads as a dirty tree.
+5. Read back all **four**: `git rev-list --left-right --count HEAD...origin/main` -> `0 0`,
+   `git diff --numstat` -> EMPTY, `git diff --cached --name-status` -> EMPTY, **and
+   `git status --porcelain --untracked-files=no` -> EMPTY**. The first alone passes on a dirty
+   tree — that is the trap three paragraphs up — and **the first THREE together also pass on the
+   dirty tree step 4 itself creates**, which is the correction below.
+
+🔴🔴 **STEP 4 IS WHERE THE CURE RE-DIRTIES THE TREE IT JUST CLEANED, AND THE THREE
+READ-BACKS THIS SECTION PRESCRIBED CANNOT SEE IT. THE EOL RULE PROVED FOR THE *MODIFIED TRACKED*
+CASE WAS NEVER APPLIED TO THE *RESTORE* STEP.** `FF_RESTORE_OF_A_NEWLY_TRACKED_PATH_NEEDS_THE_EOL_V1`
+The `FF_RESTORE_MUST_WRITE_THE_WORKING_COPY_EOL_V1` and `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1
+corrections above are about restoring a file to clear a blocker **before** the fast-forward. Step 4
+restores one **after** it, and it inherits exactly the same trap with none of the same guidance.
+
+[MEASURED] 2026-09-23T18:3xZ by Station 00 (scheduled) at `2564de0d`, on
+Station 04’s breadcrumb — a path that was **UNTRACKED** in the dev tree and became **TRACKED** by
+this run’s own board PR, which is a file class none of the rows above covers:
+
+| probe | result |
+|---|---|
+| `git show HEAD:<path>` bytes, after the FF | **28640 B**, stored **LF** |
+| step 4 performed as written — raw-Buffer write of those bytes | disk **28640 B**, `byteExact=true` |
+| `git rev-list --left-right --count HEAD...origin/main` | **`0	0`** — PASSES |
+| `git diff --numstat` | **EMPTY** — PASSES |
+| `git diff --cached --name-status` | **EMPTY** — PASSES |
+| `git status --porcelain --untracked-files=no` | **` M <path>`** — the only probe that dissents |
+| the same restore converted to the working-copy EOL | disk **29028 B** = 28640 + **388** CRs, exactly the blob’s LF count |
+| `git update-index --refresh` after the conversion | **exit 0**, `--porcelain` **EMPTY** |
+
+🔴 **So a run that follows steps 1–5 exactly, and reads the three read-backs step 5 named, ends
+with a tree it has been told is clean and that `git` considers modified** — and the next run then
+opens on a dirty tree and fails the FF-cure precondition (*"`--numstat` EMPTY"*) for a reason that
+has nothing to do with its own cause. That is the same loop this section already records twice,
+reached through the one step that had no EOL rule attached.
+
+🔧 **Restore with the conversion, and read back the FOURTH probe.** Still node, still never
+`git checkout -- <path>` (DOCTRINE §9.2):
+
+```js
+const blob = execFileSync('git', ['show', 'HEAD:' + rel], { cwd, maxBuffer: 1 << 26 });
+const txt  = blob.toString('utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+fs.writeFileSync(abs, txt, 'utf8');   // then: git update-index --refresh, expect exit 0
+```
+
+⚠️ **Cure 1 still avoids all of it** — write your own breadcrumb inside your own PR worktree and
+you never delete or restore one. This run did exactly that for its **own** breadcrumb and met the
+trap only on **another station’s**, which it had to copy into the worktree because 04 cannot commit.
+⚠️ **And the raw-first rule above is NOT retired:** `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1`
+measured a **mixed**-EOL blob that only a raw write reproduces. The discriminator is unchanged — dump
+the blob and count `\r\n` against bare `\n`. What is added is that **the cheap first move must be
+followed by `git update-index --refresh` and its exit code obeyed**, on the restore step as well as
+on the blocker step: exit 0 done, non-zero pick a branch. Here raw exited **1** and convert-on-write
+exited **0**.
+⚠️ **Falsifying probe: the table above.** Delete a tracked-on-`origin/main` breadcrumb from the dev
+tree, fast-forward, restore it byte-exactly from the new `HEAD`, and run all four read-backs. If
+`git status --porcelain` is EMPTY, this correction is wrong and must be re-measured. Found and landed
+by Station 00 2026-09-23T18:4xZ.
+
+
+🔴🔴 **STEP 1 AS WRITTEN — `git show HEAD:<path>` PIPED TO A WRITE — LEAVES THE FAST-FORWARD STILL
+REFUSING ON A `text=auto` REPO, AND `--numstat` READS **EMPTY** THE WHOLE TIME, SO EVERY READ-BACK
+IN THIS SECTION SAYS THE TREE IS CLEAN WHILE GIT SAYS IT IS NOT.**
+`FF_RESTORE_MUST_WRITE_THE_WORKING_COPY_EOL_V1`
+
+[MEASURED] 2026-09-21T17:4xZ by Station 00 (scheduled) at `87e22199` → `731708fd`, on
+`docs/pr-prompts/pr-queue-layout-sot-entry-HOLD.md` after its own board PR `#2055` merged. Step 1
+was performed exactly as written — a node write of the bytes `git show HEAD:<path>` returns — and
+the fast-forward then refused **three times**:
+
+| probe | result | what it says |
+|---|---|---|
+| `git show HEAD:<path>` bytes | **3719 B, LF=82, CRLF=0** | the blob is stored **LF** |
+| the restored file on disk | **3719 B, LF=82, CRLF=0** | byte-identical to the blob — step 1 did exactly what it promised |
+| `git diff --numstat` | **EMPTY** | the `text=auto` clean filter normalises on read, so content-wise it matches |
+| `git diff --cached --name-status` | **EMPTY** | nothing staged |
+| `git status --porcelain` | **` M <path>`** | git says modified |
+| `git update-index --refresh` | `<path>: needs update`, **exit 1** | it REFUSES to refresh |
+| `git merge --ff-only origin/main` | `error: Your local changes … would be overwritten by merge` | blocked |
+
+🔴 **The two read-backs this section prescribes are exactly the two that cannot see it.** `--numstat`
+and `--cached` are both EMPTY, which is the documented PASS reading, while `--porcelain` shows ` M`
+and the merge aborts. That is §7's shape inside the cure for a §7 trap — a correct reading of the
+wrong quantity — and it is the same pair that DOCTRINE §9.2's *"`git status` answers a question
+about `HEAD`"* bullet warns about, reached from the opposite direction.
+
+🔴 **And the prescribed next step pushes the wrong way.** Step 2's `git add --renormalize` stages the
+**LF** form, i.e. it resolves the disagreement by changing the INDEX to match the restored file —
+which on this file makes the tree dirty in the index instead of clean, and the `git restore --staged`
+undo three paragraphs up then returns it to exactly the blocked state. The loop closes and nothing
+in it is wrong on its own terms.
+
+🔧 **The cure is one line longer than step 1: restore the bytes, then convert them to the
+WORKING-COPY line ending.** The index records the checked-out (CRLF) form's stat, not the blob's,
+so a byte-exact LF restore is a different file to `update-index`. Still node, still never
+`git checkout -- <path>` (§9.2):
+
+```js
+const blob = execFileSync('git', ['show', 'HEAD:' + rel], { cwd, maxBuffer: 1 << 26 });
+const txt  = blob.toString('utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+fs.writeFileSync(abs, txt, 'utf8');
+```
+
+[MEASURED] the same run: that write produced **3801 B** (3719 + 82 CRs, exactly the LF count),
+`git update-index --refresh` then exited **0** with `--porcelain` EMPTY, and
+`git merge --ff-only origin/main` fast-forwarded on the first attempt. All three read-backs passed:
+`0 0`, `--numstat` EMPTY, `--cached` EMPTY — **and this time the working copy really did carry the
+merged content**, confirmed by grepping the marker the PR had just landed (1 hit) and by
+`git ls-files` showing the new breadcrumb tracked (1).
+
+⚠️ **This does NOT retire step 2.** `--renormalize` is still right for
+`docs/pipeline/sweep-rotation.json`, whose smudge is real and whose blob direction is the opposite
+one. **The discriminator is which way the blob and the checkout disagree:** dump the blob and the
+disk copy and count `\r\n` in each, as the table above does. Blob LF + checkout CRLF ⇒ convert on
+write and do not renormalize. Blob CRLF + checkout LF (the `.arming-log.txt` case) ⇒ the existing
+`git restore --staged` cure.
+
+🔴🔴 **CORRECTED 2026-09-21T18:4xZ — THE DISCRIMINATOR IS RIGHT AND THE WORKED
+ASSIGNMENT ABOVE IS WRONG: `docs/pipeline/sweep-rotation.json` IS A **BLOB-LF / CHECKOUT-CRLF**
+FILE, SO `--renormalize` IS THE WRONG BRANCH FOR IT AND THE PARAGRAPH ABOVE SENDS ITS READER
+THERE BY NAME.** `SWEEP_ROTATION_IS_THE_CONVERT_ON_WRITE_CASE_V1`
+
+[MEASURED] 2026-09-21T18:3xZ by Station 00 (scheduled) at `939c77bc` → `8e5ba6b9`, on exactly the
+hand-off this section describes — Station 04’s rotation advance, swept into board PR `#2057`, whose
+merge then had to be fast-forwarded into the dev tree:
+
+| probe | result |
+|---|---|
+| `git show HEAD:docs/pipeline/sweep-rotation.json` bytes | **2809 B, CRLF=0, bare LF=28** — the blob is stored **LF** |
+| the working copy on disk | **2837 B, CRLF=28, bare LF=0** — the checkout is **CRLF** |
+| `git diff --numstat origin/main -- <path>` | **EMPTY** — no local-only content, so restoring loses nothing |
+| `git merge --ff-only origin/main`, before any cure | `error: Your local changes … would be overwritten by merge` |
+
+That is the **Blob LF + checkout CRLF** row of the discriminator two paragraphs up, i.e. **convert
+on write and do NOT renormalize** — the opposite of what the sentence naming this file prescribes.
+Applying the convert-on-write cure produced **2837 B (2809 + 28 CRs, exactly the blob’s LF count)**,
+`git update-index --refresh` exited **0** with `--porcelain` EMPTY, and the fast-forward succeeded
+on the **first** attempt; all four read-backs passed (`0 0`, `--numstat` EMPTY, `--cached` EMPTY,
+`--porcelain` EMPTY) and the content proof passed too — the new breadcrumb’s marker at depth 1 → 1
+hit, the archived predecessor present, the root copy gone, and 04’s advance (`"last_index": 2`,
+`2026-09-21T18:09:53Z`) still in the working copy.
+
+🔴 **Why this is worth a correction rather than a silent fix: the wrong branch is named by FILE,
+so a reader does not reach the discriminator at all.** The sentence above says *“`--renormalize` is
+still right for `docs/pipeline/sweep-rotation.json`”*, and this is the one file in this section that
+a run meets on a fixed schedule — every collect run that sweeps in 04’s advance. `--renormalize` on
+a blob-LF/checkout-CRLF file stages the LF form as a content change, which is the loop the
+`git restore --staged` note three paragraphs down then undoes, returning the tree to the blocked
+state. Nothing warns at any step.
+
+⚠️ **The RULE is untouched and nothing is retired.** The discriminator — *dump the blob and the
+disk copy and count `\r\n` in each* — is exactly right and is what produced this correction; only
+the worked assignment of this one filename to the renormalize branch is wrong. The `.arming-log.txt`
+case is **not** re-measured here and its row stands as written.
+
+⚠️ **Falsifying probe: the two-row table above.** Dump `git show HEAD:docs/pipeline/sweep-rotation.json`
+and the disk copy and count `\r\n` in each. If the blob ever carries CRLF, this correction is wrong
+and must be re-measured. Found and landed by Station 00 2026-09-21T18:4xZ.
+
+🔴🔴 **CORRECTED 2026-09-21T21:5xZ — THE DISCRIMINATOR HAS ONLY TWO BRANCHES AND SOME BLOBS ARE
+**MIXED**: `.arming-log.txt`'s BLOB CARRIES BOTH, SO THE CONVERT-ON-WRITE BRANCH CORRUPTS IT AND
+THE BYTE-EXACT RAW WRITE — WHICH NEITHER BRANCH PRESCRIBES ON ITS OWN — IS WHAT LETS THE
+FAST-FORWARD THROUGH.** `FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1`
+
+[MEASURED] 2026-09-21T21:4xZ by Station 00 (scheduled) at `a138460e` → `62d66311`, on
+`docs/pr-prompts/.arming-log.txt` after this run's own board PR `#2063` merged. The discriminator
+two corrections above says to *dump the blob and the disk copy and count `\r\n` in each* — that
+rule is right, and its two named outcomes are not exhaustive:
+
+| probe | result |
+|---|---|
+| `git show HEAD:docs/pr-prompts/.arming-log.txt` bytes | **23089 B, CRLF=138, bare LF=2** — the blob is **MIXED**, not LF and not CRLF |
+| the working copy on disk | 23280 B, CRLF=139, bare LF=2 |
+| `git diff --numstat origin/main -- <path>` | `2 2` — insertions AND deletions, so **not** the append-only superset shape; nothing local-only to lose |
+| **convert-on-write** cure applied (`replace(/\r\n/g,'\n').replace(/\n/g,'\r\n')`) | disk **23091 B** — it normalised the blob's own 2 bare-LF lines into CRLF, i.e. **+2 B against a byte-exact target** |
+| `git update-index --refresh` after convert-on-write | `docs/pr-prompts/.arming-log.txt: needs update`, **exit 1** |
+| `git merge --ff-only origin/main` after convert-on-write | `error: Your local changes … would be overwritten by merge` — **REFUSED** |
+| **raw-Buffer** restore (`fs.writeFileSync(abs, blob)`, no decode, no conversion) | disk **23089 B**, `byteExact=true` |
+| `git update-index --refresh` after the raw write | **exit 0**, `--porcelain` (tracked) **EMPTY** |
+| `git merge --ff-only origin/main` after the raw write | **fast-forwarded on the first attempt** |
+
+🔴 **Why the convert-on-write branch is actively wrong here rather than merely unnecessary.** It is
+written as a cure for *blob LF / checkout CRLF*, and it reaches its target by rewriting **every**
+line ending. On a mixed blob that is a content change: the two bare-LF lines this file happens to
+carry become CRLF, the result is two bytes longer than the blob it was supposed to reproduce, and
+the tree is left in exactly the blocked state the cure exists to clear. Nothing warns — the write
+succeeds, the byte count looks plausible, and only `update-index --refresh`'s exit code dissents.
+
+🔴 **And the renormalize branch is not reached either.** The existing text assigns `.arming-log.txt`
+to the *blob CRLF / checkout LF* row and its `git add --renormalize` → `git restore --staged` cure.
+That cure was **not needed**: after the raw write, `update-index --refresh` exited 0 on the first
+call, so there was nothing to renormalize and nothing to unstage. A run that follows the row as
+written performs two index mutations against a tree that was already clean.
+
+🔧 **So state the restore as the raw form first, and let the two EOL branches be the fallback:**
+**write the blob back as a Buffer, unmodified — `fs.writeFileSync(abs, execFileSync('git',
+['show','HEAD:'+rel]))` — then `git update-index --refresh`. Exit 0 ⇒ done, fast-forward.** Only
+if it exits non-zero do you dump both sides, count `\r\n`, and pick convert-on-write or
+renormalize. The raw write cannot be wrong about a blob's own bytes, which is more than either
+EOL branch can claim, and it is one call shorter in the common case.
+
+🔴🔴 **`git update-index --refresh` IS A WHOLE-INDEX OPERATION AND ITS EXIT CODE IS NOT A PER-FILE
+VERDICT — SO THE RAW-FIRST DISCRIMINATOR ABOVE FIRES FOR A FILE YOU DID NOT TOUCH, AND PUSHES THE
+RUN INTO THE CONVERT-ON-WRITE BRANCH THAT THE SAME SECTION MEASURES AS CORRUPTING A MIXED-EOL
+BLOB.** `UPDATE_INDEX_REFRESH_EXIT_IS_NOT_PER_FILE_V1`
+
+The rule immediately above says: raw-Buffer write, **then `git update-index --refresh`. Exit 0 ⇒
+done. Only if it exits non-zero do you dump both sides, count `\r\n`, and pick convert-on-write or
+renormalize.** That reads as a question about the path you just restored. It is not: `--refresh`
+walks the WHOLE index and exits non-zero if **any** path needs updating.
+
+[MEASURED] 2026-09-25T00:3xZ by Station 00 (scheduled), executing this very cure after `#2185`
+merged, dev tree `d8eea113` → `23e1739f`, restoring the two breadcrumbs the run had just swept in:
+
+| probe | result |
+|---|---|
+| `git show HEAD:<path>` bytes, both breadcrumbs | 14,023 B and 26,871 B |
+| raw-Buffer restore of each | disk 14,023 B / 26,871 B, `byteExact=true` **both** |
+| `git update-index --refresh` after each raw restore | **exit 1** — so the rule says "pick an EOL branch" |
+| convert-on-write fallback, taken on that signal | 14,255 B and 27,341 B — **the files were changed for no reason** |
+| `git update-index --refresh` after the conversion | **exit 1 again** |
+| what `--refresh` actually named, read instead of counted | `docs/data-model/metadata-catalog.json: needs update` — **neither restored file** |
+| `git status --porcelain -- <the two breadcrumbs>` | **EMPTY** — both were clean after the RAW write |
+| `git diff --numstat origin/main -- docs/data-model/metadata-catalog.json` | **EMPTY** — a pure CRLF smudge, no local-only content, last written by `#2161` the previous day |
+
+🔴 **The raw write was right both times and the instrument said otherwise, twice.** The dirty path
+was an unrelated generated file that predated the run by a day — exactly the state a shared dev tree
+is usually in. Nothing is empty and nothing warns, so §9.6 cannot fire: the command answered
+correctly about a different quantity from the one the rule's sentence names.
+
+🔴 **The cost is directional.** The needless branch it selects is convert-on-write, which
+`FF_RESTORE_MIXED_EOL_BLOB_NEEDS_RAW_BUFFER_V1` above measures as **actively corrupting** a
+mixed-EOL blob (`.arming-log.txt` came back two bytes longer than the blob it was meant to
+reproduce, and the fast-forward then refused). So on a tree with any unrelated dirty file, the
+cheap-and-correct first move is discarded on the strength of a reading that was never about it.
+
+🔧 **Read the NAMES `--refresh` prints, never its exit code alone — or ask the per-file question
+directly.** `git update-index --refresh` prints one `<path>: needs update` line per offending path;
+if your restored path is not among them, the restore is done and you do not pick an EOL branch. The
+per-file form is `git status --porcelain -- <path>`, where EMPTY is the answer. Both are one call.
+
+⚠️ **Nothing above is retired.** Raw-Buffer-first is still the correct first move — it was correct
+on both files here — and both EOL branches stand exactly as measured for the cases they were
+measured on. What is corrected is only the **discriminator that chooses between them**.
+
+⚠️ **This composes with the four read-backs in step 5.** The fourth, `git status --porcelain
+--untracked-files=no`, is likewise whole-tree: on this run it read ` M docs/data-model/metadata-catalog.json`
+**after** a fast-forward that was entirely clean, because that smudge predated the run. A
+pre-existing dirty path does not make your fast-forward dirty — scope the fourth read-back to the
+paths you touched, and report any other dirty path as the separate pre-existing fact it is.
+
+⚠️ **Falsifying probe: the table above.** Restore a byte-exact blob into a tree that carries one
+unrelated modified tracked file, then run `git update-index --refresh` and read its output rather
+than its exit code. If it ever exits 0 while an unrelated path is dirty, this correction is wrong
+and must be re-measured. Found and landed by Station 00 2026-09-25T00:4xZ.
+
+⚠️ **The same raw write cleared a second blocker in the same run, and that one is not an EOL case
+at all:** `pr-scopecards-s5-charge-steps-price-cutting-HOLD.md` was sitting as an unstaged ` D`
+(the prompt had been armed, and this run's PR landed its retirement). Restoring it byte-exactly
+from `HEAD` — 21106 B, `byteExact=true` — let the fast-forward delete it cleanly. **A deleted
+tracked file blocks the FF exactly like a modified one, and the sections above only ever discuss
+modified ones.** All four read-backs then passed together: `0\t0`, `--numstat` EMPTY, `--cached`
+EMPTY, `--porcelain` (tracked) EMPTY, with the content proof green — this run's breadcrumb tracked
+on disk, the spent HOLD gone, the `19:31:53Z` arming line present, the archived predecessor in
+`archive/`.
+
+⚠️ **Nothing above is retired.** The discriminator, the convert-on-write cure for a genuinely
+LF blob, the `restore --staged` cure for a genuinely CRLF one, and the append-only save →
+restore → FF → reapply sequence all stand exactly as measured; the `git diff --numstat origin/main`
+superset guard ran first here and is what proved the restore was safe. What is added is a third
+blob shape the two-branch table cannot express, and a cheaper first move for all three.
+
+⚠️ **Falsifying probe: the table above.** Dump `git show HEAD:docs/pr-prompts/.arming-log.txt` and
+count `\r\n` and bare `\n` separately. If the blob is ever pure CRLF or pure LF, this correction
+does not apply to that revision and the two-branch table is sufficient for it. If a raw-Buffer
+restore is ever followed by a non-zero `git update-index --refresh`, the first-move claim is wrong
+and must be re-measured. Found and landed by Station 00 2026-09-21T21:5xZ.
+
+⚠️ **Falsifying probe: the table above.** Restore any CRLF-checked-out prompt with a byte-exact
+`git show HEAD:` write and run `git update-index --refresh`. If it ever exits 0, this correction is
+wrong and must be re-measured. Found and landed by Station 00 2026-09-21T17:5xZ.
+🔴 **STEP 1 CAN DESTROY ANOTHER ACTOR'S DATA, AND `.arming-log.txt` IS THE FILE IT HAPPENS ON.**
+MEASURED 2026-09-06T08:2xZ. This run armed a prompt at `08:17:13Z` and landed `.arming-log.txt` in
+its board PR; a **second actor** — `actor=marco-delegated`, pid 5564, named by the log's own actor
+field — armed a different prompt at `08:22:53Z`, **43 seconds before that PR merged**. The dev
+tree's copy was then `origin/main`'s content **plus one line that exists nowhere else**, and the
+fast-forward refuses because the file is modified against HEAD. **`git show HEAD:<path>` piped to a
+write — step 1 exactly as written above — silently deletes that line, and every read-back in step 5
+still passes.** It is an append-only audit log, so the loss is unrecoverable and leaves no trace.
+
+🔧 **On an APPEND-ONLY file the sequence is save → restore → FF → REAPPLY, not restore → FF.** Read
+the local copy into memory first; restore to HEAD (still never `git checkout -- <path>`, §9.2);
+fast-forward; then re-append every local line that is absent from the **new** `HEAD:<path>`. Read
+back that the reapplied lines are present **and** that the final byte count equals the original local
+one. Measured here: local **8122 B** → HEAD 7757 B → FF → **8122 B**, one line reapplied, both arms
+present in the result.
+
+⚠️ **The discriminator is `git diff --numstat origin/main -- <path>` showing INSERTIONS with ZERO
+deletions**, which means the working copy is a strict superset of `main` and something in it has
+not landed yet. On that shape, restoring to HEAD is a deletion, not a repair. On any other shape
+(deletions present, or a pure smudge) the two-cause cure above is unchanged.
+
+⚠️ **The general shape: any file another station is told to leave dirty in the shared dev tree
+becomes an FF blocker the moment you land it.** `sweep-rotation.json` is the one that exists
+today. If a second such hand-off is ever added, it inherits this entirely.
+
+⚠️ **This is not specific to Station 00.** Every station that writes a breadcrumb into the dev tree
+and lands it in a PR creates the same blocker for whoever fast-forwards next. Folding the rule into
+the `station-contract` canonical block would fix it for all seven at once — deliberately DEFERRED
+here, because a canonical-block change must be re-recorded and shipped across all seven docs in one
+PR, which is more than a collect run should carry.
+
+---
+
+## 🧹 AND ARCHIVING ONE LEAVES THE SAME UNTRACKED COPY, WHICH THE NEXT RUN COMMITS BACK
+
+**MEASURED 2026-09-07T08:3xZ.** `git mv`-ing a breadcrumb into `docs/pr-prompts/archive/` happens
+inside your PR **worktree**. The dev tree keeps its own copy of that file, untracked, at the ROOT
+path, and the archive move never touches it. So after the archiving PR merges the dev tree still
+holds `docs/pr-prompts/<breadcrumb>.md` as an untracked file, and `git status` there says exactly
+what it said before anyone archived anything.
+
+**The next run reads that as "this station’s finding reached nobody" and commits a SECOND tracked
+copy at the root path.** Measured instance: `00-04-scanner-2026-09-07-0610-…md` is tracked at BOTH
+paths on `origin/main`, byte-identical — `git rev-parse origin/main:<each path>` returns the same
+blob `85c147fc` on both sides. The `archive/` copy was added by **#1766** (`f6924544`, 06:36Z), the
+root copy by **#1768** (`7872d84c`, 07:38Z), whose own breadcrumb records the claim *"it was
+untracked and reached nobody until now"* — false at the moment it was written. **One duplicated
+basename against 63 root and 434 archived files**, so this is rare rather than systemic, and it
+still cost a run its collect evidence.
+
+🔧 **Two rules, and the first is the cheap one.**
+
+1. **Before committing any breadcrumb as unreported, ask the TRACKED SET, not the dev tree.**
+   `git ls-files docs/pr-prompts` and match by **basename** — `check-breadcrumb.mjs` matches by
+   trailing path segment (§9.5), so an archived breadcrumb is already reported and already counts
+   for `--freshness`. A dev-tree `git status` cannot see that: it answers about the dev tree.
+
+   🔴🔴 **AND `git ls-files` IN THE DEV TREE IS THE WRONG INSTRUMENT FOR THIS CURE, BECAUSE THAT
+   TREE IS ROUTINELY BEHIND — SO THE CURE INHERITS THE STALENESS IT EXISTS TO REMOVE AND ANSWERS
+   *"UNREPORTED"* ABOUT A BREADCRUMB THE PREVIOUS RUN ALREADY LANDED.**
+   `TRACKED_SET_PROBE_MUST_ASK_ORIGIN_MAIN_V1` [MEASURED] 2026-09-22T20:1xZ by Station 00
+   (scheduled), dev tree `25aa3115`, `origin/main` `a9ee8740` (2 ahead):
+   `git ls-files docs/pr-prompts` in the dev tree returned **NO** row for
+   `00-04-scanner-2026-09-22-1810-…md` while the POSITIVE control
+   (`00-00-supervisor-2026-09-22`) returned **18** rows — so the probe was working and its answer
+   was still wrong. The same file in a worktree checked out **at `origin/main`** reports ` M`,
+   not `??`, and `git diff --numstat` against it is **EMPTY**: the breadcrumb and Station 04's
+   `sweep-rotation.json` advance had **both** been landed an hour earlier by `#2096`.
+   🔴 **The available conclusion was the one this very section warns about** — *"this station's
+   finding reached nobody"* — and acting on it commits a SECOND tracked copy at the root path,
+   which is the 2026-09-07 duplicate this section exists to prevent, reached **through its own
+   cure.** This is §9.2's *"on a tree that is behind `origin/main`, `git status` answers a question
+   about `HEAD`"* bullet, applied to `ls-files` instead of `status`.
+   🔧 **Ask `origin/main` explicitly, never the dev tree's index:**
+   `git ls-tree -r --name-only origin/main -- docs/pr-prompts/` (trailing slash AND `-r` — §9.2),
+   matched by basename. That is the same set `check-breadcrumb.mjs` builds, so the two agree by
+   construction. ⚠️ **Falsifying probe: run both forms whenever the dev tree is behind**
+   (`git rev-list --left-right --count HEAD...origin/main` ≠ `0 0`). If they ever agree on a
+   breadcrumb landed after the dev tree's HEAD, this correction is wrong and must be re-measured.
+2. **Extend the delete-the-disk-copy rule above to archiving.** That section covers the untracked
+   copy of a breadcrumb your PR **added**; the same applies, at the ROOT path and with the same
+   read-backs, to one your PR **archived**. Cure 1 there — write it inside the worktree — cannot
+   help here, because the file you archived was written by an earlier run.
+
+⚠️ **De-duplicating is safe for freshness, and that was proved rather than assumed.** With the root
+copy `git rm`-ed and only the `archive/` copy left, `check-breadcrumb.mjs --freshness` still
+reported `04  last 2026-09-07T06:10:00Z  2.2h ago  (cadence 4h)  ok`, `CLEAN`, exit 0. **The
+falsifying probe is that pair of runs**: run `--freshness` before and after removing a duplicated
+root copy, and if the station goes SILENT this note is wrong.
+
+---
+
+# MANDATORY ANSWER SHEET - you FAILED your first run without this
+
+Your 2026-07-13 17:46 run reported "watcher healthy, board fine, no surprises." **Five PRs were
+conflicted at that moment.** You read the files and summarised them instead of reasoning about
+them - and a summary of stale notes reads exactly like a healthy report.
+
+**Summarising is not supervising.** Before you write ANY verdict, answer every question below
+**explicitly, with the evidence you used**. If you cannot answer one, say so - do not skip it.
+
+## Q1. List EVERY open PR with its mergeStateStatus. Verbatim.
+
+    gh pr list --state open --json number,title,mergeStateStatus
+
+Then answer: **How many are DIRTY?** Name them.
+
+**DIRTY means its CI is FROZEN.** GitHub cannot build the merge commit for a conflicted branch, so
+CI and gates **silently skip** - only CodeQL runs. Its checks are stale and will NEVER go green
+until the conflict is resolved. "Some PRs have conflicts" is not a finding. **"N PRs are dirty,
+therefore N PRs have no working CI, therefore the board cannot move"** is the finding.
+
+If any PR is DIRTY, that is almost certainly **the single biggest blocker on the board**. Say so.
+
+## Q2. Is a conflict something Marco must direct? NO.
+
+Conflicts are **yours to fix** (or the watcher's, via an armed prompt). Never escalate a conflict as
+"needs Marco's direction." Check whether a prompt is already armed to handle it -
+`pr-zzz-resolve-all-dirty-prs-ready.md` exists for exactly this - and if one is, say so and leave
+it. If none is, say that plainly too.
+
+## Q3. Count the armed prompts YOURSELF. Do not quote a number from a note.
+
+    Get-ChildItem C:\ProjectOperations2\docs\pr-prompts -Filter *-ready.md
+
+Report the actual count and the actual names. Your first run said 13; there were 11.
+
+## Q4. For EVERY claim you take from a state file or escalation note: is it still TRUE?
+
+**This is the rule you broke.** You reported `pr-538-gate-allow-marker-ready.md` as "staged and
+armed, waiting to run." It was in `no-pr-opened/` - it had already run, produced nothing, and was
+dead. You read a stale note and repeated its claims as current fact.
+
+**Notes describe the past. Live state is the truth.** Before repeating ANY claim from
+`shepherd-state.md`, `needs-marco/`, `qa-findings.md`, or any escalation note:
+
+- If it says a prompt is armed -> **check the queue directory.** Is that exact file still `-ready.md`?
+- If it says a PR is failing -> **check `gh pr checks`.** Is it still?
+- If it says work is pending -> **check whether it already shipped.** (5 of 7 re-queued prompts once
+  turned out to be already done.)
+
+Quote what you verified, not what you read.
+
+## Q5. Silent no-ops are FAILURES. Never call them "expected."
+
+You wrote that the two entries in `no-pr-opened/` were "expected... not failures." **They are the
+single worst failure mode we have** - an agent exited 0 having done nothing, which looks exactly
+like success. That is why the folder exists.
+
+For each one: read the `.log`, state the REAL reason it produced nothing, and say whether the
+prompt is still valid or superseded. Never wave one away.
+
+## Q6. What is the ONE most important thing blocking progress right now?
+
+One sentence. If your answer is "nothing, all healthy," you must have already answered Q1 with zero
+DIRTY PRs and zero armed prompts sitting unprocessed. Otherwise you have not looked hard enough.
+
+---
+
+**A report that says "all healthy" while the board is stuck is worse than no report at all** - it
+tells Marco to stop looking. Marco: *"otherwise, there is no much point in us having them."*
+
+---
+
+# STOP. HOW YOU DECIDE THE WATCHER IS DOWN. (You got this catastrophically wrong.)
+
+On your 2026-07-13 17:5x run you declared **"WATCHER IS DOWN - QUEUE FROZEN"** and escalated an
+emergency to Marco. **The watcher was alive the entire time** (pid 159160, heartbeat 0 minutes old,
+actively consuming the queue). You were one step away from running `-Fix` and **killing a healthy
+watcher mid-run.**
+
+You made two errors. Both are now hard rules.
+
+## RULE 1: NEVER determine liveness from bash / `ps` / the Linux sandbox.
+
+You ran `ps aux | grep watcher` and found nothing, so you concluded the watcher was down.
+
+**The watcher is a WINDOWS process.** You were looking in a Linux sandbox. `ps aux` there will
+NEVER see it, no matter how healthy it is. Your "evidence" was guaranteed to be empty.
+
+**The ONLY acceptable way to judge watcher liveness:**
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\restart-watcher-if-wedged.ps1
+
+It checks three independent signals (armed work + queue movement + **live heartbeat** + the real
+Windows process table) and returns HEALTHY / BUSY / WEDGED / DOWN. **Trust its verdict over your
+own reasoning.** It exists precisely because this judgement is easy to get wrong.
+
+**If you cannot run that script** (Desktop Commander unavailable, no PowerShell), then you
+**CANNOT VERIFY** the watcher. Report exactly that:
+
+    WATCHER: CANNOT VERIFY - no PowerShell access this run.
+
+**"Cannot verify" is NEVER "down."** Do not escalate. Do not restart. Do not raise an emergency.
+An unverified watcher is not an outage; it is an unverified watcher.
+
+## RULE 2: The logs are UTC. The machine is Brisbane (UTC+10). NEVER compare them raw.
+
+You read a log entry timestamped `07:30:27 UTC`, compared it to a local clock reading ~17:30, and
+concluded the last run was **"10+ hours ago."**
+
+**07:30 UTC IS 17:30 Brisbane. The run was SIX MINUTES OLD.** You invented a ten-hour outage out of
+a timezone conversion.
+
+- Watcher/agent logs: **UTC**
+- `Get-Date`, file `LastWriteTime`, your local clock: **AEST = UTC+10**
+- Never subtract one from the other. Convert first, or - better - **let
+  `watcher-loop-check.ps1` / `restart-watcher-if-wedged.ps1` compute the ages.** They do it
+  correctly in a single timebase. That is why they print "N min ago" for you.
+
+If a computed age looks alarming (hours, when the queue is clearly moving), **suspect your
+arithmetic before you suspect the system.** A 10-hour gap that happens to equal exactly your UTC
+offset is not an outage - it is a units bug.
+
+## RULE 3: Before declaring ANY emergency, ask "what would make me wrong?"
+
+Both errors above share one shape: **a single weak signal, believed instantly, with no
+cross-check.** You had contradicting evidence available and did not look:
+
+- The queue had moved recently (you even recorded it).
+- The heartbeat file was fresh.
+- Armed prompts were being consumed.
+
+Any one of those refutes "the watcher is down." **A real outage shows ALL signals dead at once.**
+If your signals disagree, you are wrong - not the system. Say so, and go find out why.
+
+**A false emergency is not a harmless over-report.** It nearly killed a healthy process, and it
+trains Marco to ignore you. Cry wolf once and the next real outage gets shrugged at.
+
+---
+
+# ABSOLUTE: YOU NEVER TOUCH GIT IN THE WATCHER'S REPO. EVER.
+
+On 2026-07-13 you read "Default is DO IT" and decided to execute an armed queue prompt yourself.
+You ran `git merge origin/main` on #538's branch inside `C:\po-watcher\ProjectOperations`, hit a
+conflict in `AdminSettingsPage.tsx`, **walked away mid-merge**, and then wrote a report saying
+"no supervisor intervention needed."
+
+You left `MERGE_HEAD` in place on a feature branch. **Every prompt the watcher runs starts with
+`git checkout`. You broke the entire overnight queue** - all 10 armed prompts would have failed on
+a dirty index - and your own report said everything was nominal. Marco caught it by hand.
+
+## The rule
+
+**NEVER run `git checkout`, `git merge`, `git rebase`, `git commit`, `git push`, or `git pull` in
+`C:\po-watcher\ProjectOperations`.** Read-only git is fine and encouraged:
+
+    git status          git log          git diff          git rev-parse
+    gh pr list          gh pr view       gh pr checks      gh run view --log
+
+**NEVER execute an armed queue prompt yourself.** If `pr-zzz-resolve-all-dirty-prs-ready.md` is
+armed, that is the *watcher's* job and it is already handled. Your finding is *"the fix is armed and
+will run"* - **not** *"I'll just do it now."*
+
+## Why - this is not arbitrary
+
+You and the watcher share one working tree. The watcher is a live daemon: it can start a prompt at
+any moment. If you are mid-`checkout` when it does, you corrupt each other. **Two agents, one git
+index, no locking.** That is the whole reason your job is supervision and not execution.
+
+## Your ENTIRE fix set. There is nothing else.
+
+1. **Restart a WEDGED or DOWN watcher** - only via `restart-watcher-if-wedged.ps1 -Fix`, and only
+   on a WEDGED/DOWN verdict from that script.
+2. **Rename a LOOPING prompt** (`*-ready.md` -> `*-LOOPING.md`) so it cannot run a third time.
+3. **Report.** Findings, evidence, escalations.
+
+**Superseded by the ACTIVE DRIVE MANDATE (top of file):** you are the single board actor by design,
+so this restrictive list no longer bounds you. You additionally fix failed PRs
+(CI, conflicts, behind-branches), run smoke tests, arm gate-cleared HOLDs, and drive PRs to merge.
+The safety hard stops (YOUR LIMITS 2-6) still bind. Outside those, "I can see how to fix this" plus
+a read-back of the result IS your authorisation now.
+
+## If you ever DO find the watcher repo mid-merge
+
+`.git\MERGE_HEAD` exists, or `git status` shows unmerged paths. **This is an emergency** - the queue
+is dead until it is cleared. Run:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProjectOperations2\scripts\rescue-watcher-repo.ps1
+
+It aborts the merge, clears any stale lock, and returns the repo to a clean `main`. Nothing is lost.
+Then report it loudly - a mid-merge watcher repo means some agent did what you did.
+
+## And the meta-lesson
+
+You wrote **"no supervisor intervention needed"** in the same run in which you had just broken the
+system. **Your report described your intentions, not your effects.**
+
+Before you write any verdict: **re-check the state you touched.** If you ran a command, verify what
+it left behind. A supervisor that damages the thing it is watching and then reports "nominal" is
+worse than no supervisor at all.
+---
+
+# "OFF MAIN" IS NOT "BROKEN". Read this before you ever run the rescue script.
+
+The watcher **checks out a feature branch on every single run**. That is its job. Finding the repo
+on `fix/whatever` is the NORMAL state of a working system, not evidence of damage.
+
+**CORRUPT (real, act on it):**
+- `.git\MERGE_HEAD` exists  -> a merge was abandoned half-finished
+- a rebase is in progress
+- `git diff --diff-filter=U` lists unmerged paths (conflict markers on disk)
+
+**NOT corrupt (leave it alone):**
+- the repo is on a feature branch **and an agent is running** -> it is WORKING. Do not touch.
+- the repo is parked on a feature branch with nothing running -> harmless. The next prompt's own
+  `git checkout` moves off it. Only worth mentioning if the queue is ALSO stalled.
+
+`watcher-loop-check.ps1` now makes this distinction for you and prints one of:
+
+    Repo:  OK - clean, on main.
+    Repo:  OK - on '<branch>', an agent is working on it. NORMAL. Do not touch.
+    Repo:  OK - parked on '<branch>' (not corrupt). Harmless.
+    Repo:  *** CORRUPT - mid-merge/rebase or unmerged paths.  <-- the ONLY one you act on
+
+**Run `rescue-watcher-repo.ps1` ONLY on `*** CORRUPT`.**
+
+## Why this is stated so bluntly
+
+The first version of this check flagged "not on main" as BROKEN. On 2026-07-13 at 18:13 it fired
+while the watcher was legitimately mid-run on `fix/replace-native-browser-dialogs`. Had the
+supervisor believed it, it would have run the rescue script, which does `git checkout main` -
+**tearing the branch out from under a live agent and destroying its work.**
+
+A false "the system is broken" alarm is not a harmless over-report. **It licenses destructive
+action.** Before you conclude anything is broken, ask: *"is there an innocent explanation that
+fits all the signals?"* Here every other signal was clean - no MERGE_HEAD, no rebase, no
+index.lock, no unmerged paths, queue moving, heartbeat fresh. **One weak signal against five
+healthy ones is not an emergency; it is a bad check.**
+
+
+## BOARD DRIVING — the four conditions (2026-09-02, Marco; was the DISPATCH-UNAVAILABLE FALLBACK)
+
+**This is no longer a fallback. It is the design.** From 2026-07-15 to 2026-09-02 this section applied
+"when — and ONLY when — dispatch is unavailable", on the premise that the Task tool could not spawn
+`02`/`03`. **That premise is refuted** (2026-09-02: a spawned agent reached the box three ways in one
+turn). The section survives anyway, unconditional, for the reason that was always the real one:
+**one actor on the board.** Two things mutating a shared git index is LL-38, and "nobody owns dev-tree
+convergence" is still an open escalation.
+
+What this settles: for seven weeks 00 drove the board while the brief said 02 did. Dispatches naming
+02 went to a station with no schedule and no consumer — measured 2026-09-01, when the #1483 e2e work
+was dispatched to "01/02" at 18:09Z and 20:09Z and was still undone eight hours later. **The record
+now matches the practice.**
+
+So the supervisor **is** the single actor and drives the board itself (arm the scanner's stage-ready
+items; merge green PRs), under ALL of — these are permanent operating conditions, not fallback ones:
+
+1. **Sanctioned primitives only** — `Assert-SmokedOrEscalate` → `Merge-Pr` to merge, `lint-prompt.mjs`
+   to arm. Never raw `gh pr merge` or a hand `git merge` (a hand-merge once left `MERGE_HEAD` — the incident).
+2. **Clean isolated worktree only** — off `origin/main` on the Windows FS. Never the sandbox tree,
+   never `C:\po-watcher`, never the interactive tree. Tear it down always.
+3. **Single actor** — first confirm nothing else is mid-mutation (in-progress prompt, git lock, a PR
+   touched in the last ~2 min). If something else is acting, STOP: that is the LL-38 collision.
+4. **Read back the PR head / merge state**, never just "I pushed".
+
+These four are what make a single actor safe. Condition 3 is the load-bearing one: it is the only
+thing standing between this design and LL-38. **Never skip it because you are the only station that
+runs** — a chat session, the watcher, or Marco can be mid-mutation at any moment.
+
+---
+
+## 🧰 YOUR SCRIPTS — the registry is the source of truth
+
+**`docs/pipeline/SCRIPT-REGISTRY.md`** lists every script in this repo, its owner, whether it
+mutates, and when to call it. Read it rather than guessing from a filename — and rather than
+writing a new script that already exists.
+
+You own **board mutation** and **watcher health**. Nobody else merges; nobody else restarts the
+watcher.
+
+**Read-only — build the whole picture BEFORE acting (§1):**
+
+- `scripts/pipeline/bring-up-to-speed.ps1` — **start here, every cycle.** The ONE status entry
+  point. Report only its `[LIVE]` lines and obey its SAFE / CAUTION / DO-NOT-ACT verdict.
+- `scripts/board-status.ps1` — open PRs and their real merge state.
+- `scripts/pipeline/read-gate-failure.ps1` — **before diagnosing ANY red.** Never diagnose a
+  failure from the PR page; read the job log.
+- `scripts/pipeline/check-gate-markers.ps1` — CP-11/12/13 red (missing `GATE-ALLOW`).
+- `scripts/pipeline/assess-conflicts.ps1` — assess, do **not** resolve, a DIRTY PR.
+- `scripts/watcher-loop-check.ps1`, `scripts/pipeline/find-watcher.ps1` — watcher looks idle.
+  Identify it by COMMAND LINE, never "it's a node process".
+- `scripts/pipeline/preflight.ps1` — before mutating a staged prompt, branch or PR.
+
+**Mutating — your own hands:**
+
+- `scripts/pipeline/pipeline-lib.ps1` — **dot-source it. Never hand-roll a board operation.**
+  Merging is `Assert-SmokedOrEscalate` → `Merge-Pr`, never raw `gh pr merge`.
+- `scripts/pipeline/smoke-pr.ps1` — the exit code decides, not your reading of it. A FAIL whose
+  only failure is `auth.setup.ts` verified **nothing**: the acceptance tests never ran.
+- `scripts/pipeline/merge-queue.ps1`, `monitor-board.ps1` — BEHIND is not a failure, it is a rebase.
+- `scripts/pipeline/enable-automerge.ps1` — only after the content gate has passed.
+- `scripts/pipeline/queue-sync.ps1` — reconciles prompts armed **by commit** into the **filesystem**
+  queue the watcher actually reads. Run it when those two disagree.
+- `scripts/pipeline/fix-datamodel-drift.ps1`, `resolve-and-regen.ps1` — **regenerate a generated
+  file, never hand-merge it**, and regenerate AFTER the final rebase.
+- `scripts/pipeline/fix-gate-markers.ps1` — a PR-body edit alone does NOT retrigger the workflow.
+- `scripts/pipeline/why-blocked.ps1` — a PR is BLOCKED with every visible check green.
+  🔴 **It is MUTATING, and it sat in the READ-ONLY list above until 2026-09-23.** Its diagnostic
+  method is a REST **squash-merge attempt** — GitHub's refusal text is the only place the exact rule
+  violation is spelled out — and until that date the entire eight-line file was that attempt, with
+  no label check, no RULE 2 check and no dry run. [MEASURED] 2026-09-23T19:2xZ: run against **#2127**,
+  a PR carrying `{"ok":false,"marco":true}`, it issued the merge and was refused by the branch
+  ruleset alone (*"5 of 9 required status checks are in progress"*) — **stopped by timing, not by
+  the script and not by this list.** It now refuses a hold label, a watcher `marco:true` verdict and
+  an already-merged PR before it attempts anything. It also used to `Set-Location` into
+  `C:\po-watcher\ProjectOperations` and never return, leaving the CALLER's shell standing in the one
+  tree where git mutation is an absolute stop (DOCTRINE §4); it now passes `-R` and changes no
+  directory.
+- `scripts/restart-watcher-if-wedged.ps1` — the sanctioned WEDGED check (`-WhatIf`, then `-Fix`).
+  An idle watcher with 0 armed prompts is CORRECT, not wedged.
+- `scripts/clear-stale-index-lock.ps1` — prove the lock is stale first.
+
+**Not yours:** everything under the SCANNER and MARCO-ONLY headings in the registry, and the
+`scripts/pr-watcher/*` internals — the watcher owns its own lifecycle. Scripts listed under
+**Archaeology** are named for one historical incident; do not call them. The playbook you want is
+in `sot/05-decisions-and-lessons.md`.
+
+
+---
+
+## FIX LANE (Marco, 2026-07-24) - fixes outrank everything else on the board
+
+A prompt carrying `fixes_pr: <N>` front-matter is a FIX prompt: the watcher inserts it at the
+FRONT of the queue and the lint kills it automatically once PR N settles (FIX_TARGET_SETTLED).
+Your obligations as supervisor:
+
+1. **Drive fix PRs to merge FIRST.** When a fix agent opens its PR, verify + arm native
+   auto-merge on it before any ordinary PR - one red main check can block the entire serial board.
+2. **A docs-only PR failing a CODE check is instant proof of a MAIN regression** (a docs diff
+   cannot break code). Do not chase the docs PR - author/dispatch a fixes_pr prompt for main,
+   then rerun the docs PR's checks after the fix merges.
+3. Prompts whose `requires_merged` includes a PR under fix stay HELD, not binned - the #760
+   gating handles it; never manually bin a held dependent.
+4. **After a watcher-code PR merges (scripts/pr-watcher/**), the running watcher is still the
+   OLD code** - schedule/perform an idle-window restart (kill wrapper first, then node, relaunch
+   DETACHED via C:\po-watcher\watcher-launcher-singlelane.ps1) so the new rules take effect. Never restart
+   mid-run.
+
+---
+
+## PROVENANCE IS MANDATORY (DOCTRINE 7.1, added 2026-08-18)
+
+Every factual line you write into an artifact carries how you obtained it:
+
+- `[MEASURED]` - you ran a probe. Quote the command and enough output to re-check.
+- `[INFERRED]` - you read something and reasoned. Say what you read.
+- `[CANNOT MEASURE]` - the probe was unavailable. Say so and STOP. Never substitute
+  an inference and let the reader assume you looked.
+
+Stamp every artifact with a UTC timestamp AND the git SHA it was true at. A claim that
+outlives its SHA is how a stale review block sent a reader to redo finished work
+(pr-1156-review-block.md, 2026-08-17).
+
+Before acting on ANY existing artifact - including your own from an earlier run -
+re-verify its central claim against the live system. No SHA, or a stale SHA, means it
+is a lead, not a finding.
+
+You run in a Linux sandbox. Sanctioned liveness probes are PowerShell on the Windows
+host and are reachable only while the desktop bridge is up. If it is not, that is a
+`[CANNOT MEASURE]` to report - not a gap to fill with reasoning.

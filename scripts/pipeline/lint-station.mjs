@@ -29,6 +29,7 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const STATION_DIR_REL = 'docs/pipeline/stations';
 const STATION_DIR = join(ROOT, STATION_DIR_REL);
 const DOCTRINE = join(ROOT, 'docs/pipeline/DOCTRINE.md');
+const DOCTRINE_REFERENCE = join(ROOT, 'docs/pipeline/DOCTRINE-REFERENCE.md');
 const CANON_FILE_REL = STATION_DIR_REL + '/_canonical-blocks.json';
 const CANON_FILE = join(ROOT, CANON_FILE_REL);
 
@@ -114,17 +115,70 @@ function repoPathsIn(text) {
 
 function stationDocs() {
   if (!existsSync(STATION_DIR)) return [];
-  return readdirSync(STATION_DIR).filter((f) => /^\d\d-[a-z0-9-]+\.md$/.test(f))
+  return readdirSync(STATION_DIR).filter((f) => /^\d\d-[a-z0-9-]+(?:-REFERENCE)?\.md$/.test(f))
     .map((f) => join(STATION_DIR, f)).sort();
+}
+
+// DOCTRINE_CORE_SPLIT_V1 — the REFERENCE files hold moved evidence verbatim. They are PROSE: no
+// front matter, no required-section headings, no canonical block. Path/path-safety/forbidden-outputs
+// checks DO still apply to them (they are read by every station), as does the Full-detail pointer
+// resolution.
+function isReferenceFile(file) {
+  const name = file.replace(/\\/g, '/');
+  return name.endsWith('DOCTRINE-REFERENCE.md') || /-REFERENCE\.md$/.test(name);
+}
+
+// Validate every `Full detail: <file> §<section>` pointer. The target may live in the SAME file
+// or in a sibling file in docs/pipeline/ or docs/pipeline/stations/. A pointer that cannot be
+// resolved to a heading in its target is a REJECT (DOCTRINE_CORE_SPLIT_V1 — dangling pointers are
+// the exact failure mode this split introduces).
+export function checkFullDetailPointers(file, text) {
+  const fails = [];
+  // Section anchors can be numeric (`9.1`, `8.3a`, `10.6`) or named (`AUTHORITY-STALE`,
+  // `WATCHER-DOWN`). Trailing punctuation (period, comma) is sentence punctuation, not part of the
+  // anchor, so strip it before matching.
+  const re = /Full detail:\s*([A-Za-z0-9_.\-/\\]+\.md)\s+§([A-Za-z0-9._\-]+?)[.,;:)]?(?=[\s`]|$)/g;
+  const here = file.replace(/\\/g, '/');
+  const hereDir = here.slice(0, here.lastIndexOf('/'));
+  for (const m of text.matchAll(re)) {
+    const refName = m[1].replace(/\\/g, '/');
+    const section = m[2];
+    // Resolve the target: try bare name in current dir, then docs/pipeline/, then docs/pipeline/stations/
+    const candidates = [
+      join(hereDir, refName),
+      join(ROOT, 'docs/pipeline', refName),
+      join(ROOT, 'docs/pipeline/stations', refName),
+    ];
+    let targetText = null, targetPath = null;
+    for (const c of candidates) {
+      if (existsSync(c)) { targetText = readFileSync(c, 'utf8').replace(/\r\n/g, '\n'); targetPath = c; break; }
+    }
+    if (!targetText) {
+      fails.push(`Full detail pointer target not found: \`${refName}\` for §${section}`);
+      continue;
+    }
+    // A heading match: look for a line starting with ## or ### whose number/anchor matches §<section>.
+    // Accept both "## 9.1 ..." and "### §AUTHORITY-STALE ..." forms.
+    // Trim any trailing sentence punctuation that the regex capture may have left behind.
+    const anchor = section.replace(/[.,;:)]+$/, '');
+    const esc = anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Accept both "## 9.1 ..." / "## 9.1. ..." and "### §AUTHORITY-STALE ..." forms.
+    const headingRe = new RegExp(`^#{1,6}\\s+(?:§)?${esc}(?:[.\\s]|$)`, 'm');
+    if (!headingRe.test(targetText)) {
+      fails.push(`Full detail pointer §${section} does not resolve to a heading in \`${refName}\` (checked ${targetPath})`);
+    }
+  }
+  return fails;
 }
 
 function lintOne(file, canon, collect) {
   const fails = [], warns = [];
   const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const isDoctrine = file.replace(/\\/g, '/').endsWith('DOCTRINE.md');
-  const blocks = isDoctrine ? ['instruments'] : ['station-contract'];
+  const isReference = isReferenceFile(file);
+  const blocks = isDoctrine ? ['instruments'] : (isReference ? [] : ['station-contract']);
 
-  if (!isDoctrine) {
+  if (!isDoctrine && !isReference) {
     const fm = frontMatter(text);
     if (!fm) {
       fails.push('no YAML front matter — expected station, station_doc_version, contract_version');
@@ -150,6 +204,10 @@ function lintOne(file, canon, collect) {
     if (Number(m[1]) !== want.version) fails.push(`canonical block \`${id}\` is v${m[1]}, the recorded contract is v${want.version}`);
     else if (digest !== want.sha) fails.push(`canonical block \`${id}\` has been EDITED (sha ${digest}, expected ${want.sha}) — it is byte-identical across every station by design`);
   }
+
+  // DOCTRINE_CORE_SPLIT_V1 — the Full-detail pointer check runs on all .md targets (core AND
+  // reference), because either could carry a dangling pointer and either reads as binding.
+  for (const f of checkFullDetailPointers(file, text)) fails.push(f);
 
   for (const p of repoPathsIn(text)) {
     if (!isTracked(p)) fails.push(`names a repo path that git does not track: \`${p}\` — it may exist on one machine, but a clone, CI, and any cloud-fired station will not see it`);
@@ -177,7 +235,7 @@ function lintOne(file, canon, collect) {
   if (/watcher-launcher\.ps1/.test(text) && !/watcher-launcher-singlelane\.ps1/.test(text))
     fails.push('names `watcher-launcher.ps1` without naming `watcher-launcher-singlelane.ps1` — singlelane is the real launcher');
 
-  const fm2 = isDoctrine ? null : frontMatter(text);
+  const fm2 = (isDoctrine || isReference) ? null : frontMatter(text);
   return {
     file, fails, warns,
     version: fm2 ? Number(fm2.station_doc_version) : null,
@@ -244,7 +302,12 @@ if (IS_CLI) {
 const args = process.argv.slice(2);
 const writeCanonical = args.includes('--write-canonical');
 const explicit = args.filter((a) => !a.startsWith('--'));
-const targets = explicit.length ? explicit : [DOCTRINE, ...stationDocs()];
+// DOCTRINE_CORE_SPLIT_V1 — the REFERENCE files are linted alongside the core files. stationDocs()
+// already picks up `00-supervisor-REFERENCE.md`; DOCTRINE-REFERENCE.md is added here if present.
+const defaultTargets = [DOCTRINE];
+if (existsSync(DOCTRINE_REFERENCE)) defaultTargets.push(DOCTRINE_REFERENCE);
+defaultTargets.push(...stationDocs());
+const targets = explicit.length ? explicit : defaultTargets;
 
 if (writeCanonical) {
   const collected = {};

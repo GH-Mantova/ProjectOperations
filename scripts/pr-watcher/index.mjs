@@ -132,10 +132,15 @@ const APP_AUTH_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 // Auto-merge policy — opt-in only. The review-gated workflow runs with this
 // OFF. Values:
-//   off        — never auto-merge (default)
+//   off        — never auto-merge (default). RETIRE_TESTS_DOCS_LANE_V1
+//                (Marco, 2026-10-03): under `off` the watcher opens the PR,
+//                routes it to Marco, and moves straight on to the next job —
+//                it does NOT wait for merge, and never calls `gh pr merge --auto`.
 //   all        — auto-merge every PR the agent opens (legacy blanket mode)
 //   tests-docs — auto-merge ONLY tests/** + docs/**-touching PRs with green
-//                checks and a MERGE verdict file; everything else waits for Marco
+//                checks and a MERGE verdict file; everything else waits for Marco.
+//                Code kept (unused by default) so the lane can be restored with
+//                an env var — deletion would make the rollback a rebuild.
 // Back-compat: PR_WATCHER_AUTO_MERGE=true (old blanket flag) maps to "all"
 // when no explicit policy is set.
 const AUTO_MERGE_POLICY = (() => {
@@ -1556,6 +1561,28 @@ export function startHeartbeat(name, getLastLine, onRunTimeout, _opts = {}) {
 }
 
 // --- Policy auto-merge helpers ---
+
+// RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03). Pure routing decision for what
+// the watcher does after a PR is opened. Extracted so the dispatcher stays a
+// one-liner and the four branches are testable without spawning anything.
+//
+// Returns one of:
+//   "route-and-return"  — off, non-escalating: file to processed/ via result.marco,
+//                         syncMainQuietly, drain. NEVER enables auto-merge.
+//   "hold-for-marco"    — any policy, escalates:true: label do-not-merge and return
+//                         (holdForMarco has no polling loop; it returns promptly).
+//   "wait-tests-docs"   — tests-docs, non-escalating: waitForPolicyMerge.
+//   "wait-all"          — all, non-escalating: waitForMerge (legacy blanket).
+//
+// Invariant: no combination with policy === "off" returns a route that leads to
+// `gh pr merge --auto`. The retire-tests-docs-lane test asserts this directly.
+export function postPrRoute({ policy, escalates }) {
+  if (escalates) return "hold-for-marco";
+  if (policy === "tests-docs") return "wait-tests-docs";
+  if (policy === "all") return "wait-all";
+  // policy === "off" (or any unknown value coerced to off at parse time).
+  return "route-and-return";
+}
 
 // tests-docs policy: the diff must touch ONLY tests or docs, and must not
 // contain migration files. "Tests" here is not top-level tests/ only - this
@@ -3742,19 +3769,39 @@ async function drain() {
         drain();
         return;
       } else {
-        log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, waiting…`);
+        // RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03): post-PR routing is a
+        // pure decision, extracted to postPrRoute() so each branch is
+        // test-covered and the default (`off`) short-circuits before any
+        // `gh pr merge --auto` call. The old inline ternary dropped `off`
+        // through to waitForMerge, which did enable blanket auto-merge — the
+        // latent hazard the retirement closes.
+        const route = postPrRoute({ policy: AUTO_MERGE_POLICY, escalates: deps.escalates });
+        log("merge", `${name}: opened PR #${prNumber}, policy=${AUTO_MERGE_POLICY}, route=${route}`);
         // REVIEW_PRIORITY_WATCHER_PRS_V1 — remember this PR so its review job
         // gets promoted to the priority-review tier in the queue.
         await recordWatcherOpenedPr(prNumber);
-        // escalates:true short-circuits BOTH merge paths — the flag means a human decides, so
+        // escalates:true short-circuits every merge path — the flag means a human decides, so
         // auto-merge is never enabled regardless of AUTO_MERGE_POLICY.
         // FIXES_PR_ESCALATION — `deps.fixesPr` (front matter `fixes_pr: N`) is threaded in
         // so holdForMarco can tell a fix-lane prompt from a re-run of a spent one.
-        const result = deps.escalates
-          ? await holdForMarco(prNumber, name, runStartedAtMs, { fixesPr: deps.fixesPr })
-          : AUTO_MERGE_POLICY === "tests-docs"
-            ? await waitForPolicyMerge(prNumber)
-            : await waitForMerge(prNumber, name);
+        const result =
+          route === "hold-for-marco"
+            ? await holdForMarco(prNumber, name, runStartedAtMs, { fixesPr: deps.fixesPr })
+            : route === "wait-tests-docs"
+              ? await waitForPolicyMerge(prNumber)
+              : route === "wait-all"
+                ? await waitForMerge(prNumber, name)
+                : {
+                    // route === "route-and-return": PR opened, prompt files to
+                    // processed/ via the result.marco branch below, syncMainQuietly
+                    // runs, worker returns to drain(). Byte-identical to today's
+                    // "non-qualifying tests-docs diff" routing, which is what we want.
+                    ok: false,
+                    marco: true,
+                    reason:
+                      "RETIRE_TESTS_DOCS_LANE_V1 (2026-10-03): watcher opened PR and moved on; " +
+                      "Marco merges. Set PR_WATCHER_AUTO_MERGE_POLICY=tests-docs to restore the old lane.",
+                  };
         mergeReport = `\n\n---\n[watcher] merge result for PR #${prNumber}: ${JSON.stringify(result)}\n`;
 
         if (result.spent) {
@@ -4060,7 +4107,18 @@ async function main() {
     log("watcher", `app-auth:    OFF (PO_WATCHER_APP_KEY unset — running as ambient GH-Mantova)`);
   }
   log("watcher", `max-turns:   ${MAX_TURNS}`);
-  log("watcher", `merge-pol:   ${AUTO_MERGE_POLICY}`);
+  // RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03): the `off` default no longer
+  // means "no merge handling and nothing else" — it means the lane is retired.
+  // Say so at startup so an operator reading the log knows how to restore it.
+  if (AUTO_MERGE_POLICY === "off") {
+    log(
+      "watcher",
+      "merge-pol:   off (tests-docs lane retired 2026-10-03; " +
+        "set PR_WATCHER_AUTO_MERGE_POLICY=tests-docs to restore)",
+    );
+  } else {
+    log("watcher", `merge-pol:   ${AUTO_MERGE_POLICY}`);
+  }
   log("watcher", `merge-tmout: ${MERGE_TIMEOUT_MS / 60000} min`);
   log("watcher", `run-tmout:   ${RUN_TIMEOUT_MS > 0 ? `${RUN_TIMEOUT_MS / 60000} min` : "OFF"}`);
   log("watcher", `poll-every:  ${POLL_INTERVAL_MS / 1000} s`);

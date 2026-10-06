@@ -79,7 +79,7 @@ Env vars override the defaults:
 | `PR_WATCHER_CLAUDE_BIN` | `claude` | Override if `claude` isn't on PATH. |
 | `PR_WATCHER_GH_BIN` | `gh` | Override if `gh` isn't on PATH. |
 | `PR_WATCHER_AUTO_MERGE` | `false` | **Legacy** blanket flag. `"true"` maps to `PR_WATCHER_AUTO_MERGE_POLICY=all` when no explicit policy is set. Prefer the policy var. |
-| `PR_WATCHER_AUTO_MERGE_POLICY` | `off` | `off` \| `all` \| `tests-docs`. See the policy matrix below. |
+| `PR_WATCHER_AUTO_MERGE_POLICY` | `off` | `off` \| `all` \| `tests-docs`. See the policy matrix below. **RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03)**: `start-watcher.ps1` now defaults to `off` — the tests-docs lane is retired. Set this to `tests-docs` explicitly to restore it. |
 | `PR_WATCHER_MERGE_TIMEOUT_MIN` | `90` | Max wait for a PR to merge after CI starts. |
 | `PR_WATCHER_RUN_TIMEOUT_MIN` | `75` | Per-run wall-clock ceiling (minutes). If a spawned `claude --print` child exceeds this without exiting, the watcher kills the tree (via the same safe helper as shutdown), moves the prompt to `blocked/` with a `.run-timeout.md` note, and keeps draining the queue. Per-prompt quarantine — does NOT global-pause. Distinct from `PR_WATCHER_MAX_TURNS` (turn budget) and `PR_WATCHER_MERGE_TIMEOUT_MIN` (merge-wait cap). Set `0` to disable. |
 | `PR_WATCHER_POLL_INTERVAL_SEC` | `60` | How often to poll PR state during merge wait. |
@@ -132,14 +132,23 @@ opens a PR:
 
 | Policy | Behaviour |
 |---|---|
-| `off` (default) | No merge handling at all. Marco merges everything. |
+| `off` (default) | **RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03)**: the watcher opens the PR, files the prompt to `processed/`, runs `syncMainQuietly`, and moves straight on to the next job — it does **not** wait for merge, and **never** calls `gh pr merge --auto`. Marco merges. |
 | `all` | Legacy blanket mode: enable auto-merge (squash) on every PR the agent opens, wait for merge, sync main. CI red → quarantine; timeout/closed → `blocked/` + queue pause. |
-| `tests-docs` | Auto-merge (squash) **only when ALL of**: checks green; diff touches ONLY `tests/**` and/or `docs/**` (via `gh pr view --json files`); no migration files anywhere in the diff; verdict file `docs/pr-reviews/pr-{N}-review.md` exists and starts a line with `VERDICT: MERGE`. Anything else stays open for Marco (prompt still files to `processed/` — the agent's work succeeded). |
+| `tests-docs` | **Retired by default on 2026-10-03** but the code is kept so the lane can be restored by setting `PR_WATCHER_AUTO_MERGE_POLICY=tests-docs` explicitly. When set: auto-merge (squash) **only when ALL of**: checks green; diff touches ONLY `tests/**` and/or `docs/**` (via `gh pr view --json files`); no migration files anywhere in the diff; verdict file `docs/pr-reviews/pr-{N}-review.md` exists and starts a line with `VERDICT: MERGE`. Anything else stays open for Marco (prompt still files to `processed/` — the agent's work succeeded). |
 
 Under `tests-docs`, a non-qualifying diff is detected immediately (no
 waiting). A qualifying diff polls until checks are green **and** the MERGE
 verdict file appears, up to `PR_WATCHER_MERGE_TIMEOUT_MIN`; a timeout hands
 the PR to Marco rather than blocking the queue.
+
+**Why the lane was retired.** Measured 2026-10-03 from the watcher clone's logs
+(2026-08-24 onward): 240 `policy=tests-docs, waiting` events; the lane enabled
+auto-merge 4 times (3 on 2026-08-24, 1 on 2026-10-02); 14 more PRs merged during
+a wait because a person or Station 00 merged them. The lane almost never merged
+anything itself while holding the single build worker; retiring it frees that
+worker for the next job. See
+`needs-marco/tests-docs-lane-merge-action-has-not-fired-since-2026-08-24.md`
+and `needs-marco/tests-docs-lane-starves-its-own-review-job-2026-09-04.md`.
 
 Review jobs (`rev-*`) always skip merge handling entirely, under every policy.
 
@@ -216,8 +225,9 @@ Then `pnpm pr:watch` from anywhere in the repo starts it.
 - **One agent at a time.** Two `-ready.md` files dropped together are
   queued, not raced. Branches don't collide.
 - **No auto-merge by default.** `PR_WATCHER_AUTO_MERGE_POLICY` defaults to
-  `off` — every PR waits for Marco. See the policy matrix above before
-  enabling `tests-docs` or `all`.
+  `off` — every PR waits for Marco. `start-watcher.ps1` enforces that same
+  default from 2026-10-03 (**RETIRE_TESTS_DOCS_LANE_V1**). See the policy
+  matrix above before enabling `tests-docs` or `all`.
 - **Cost cap.** `--max-turns` is the hard stop. A thrashing agent dies at
   the cap instead of burning the budget.
 - **Failure isolation.** A failed run moves the prompt to `failed/` so the

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, SkeletonList } from "@project-ops/ui";
-import { useAuth } from "../../auth/AuthContext";
+import { useAuth, type SafeUser } from "../../auth/AuthContext";
 import { useConfirm } from "../../hooks/useConfirm";
 import { can } from "../../auth/permissions";
 import { readApiErrorMessage } from "../../lib/api-errors";
@@ -97,6 +97,9 @@ type ListSummary = {
   itemCount: number | null;
 };
 
+// LIST_ITEM_RENAME_LIVE_V1 — `createdById` is needed to decide whether a
+// non-admin masterdata.manage user may rename their own item (mirrors the
+// server's assertEditable).
 type ListItem = {
   id: string;
   value: string;
@@ -104,6 +107,7 @@ type ListItem = {
   metadata: unknown;
   sortOrder: number;
   isArchived: boolean;
+  createdById: string | null;
 };
 
 type ResolvedList = ListSummary & { items: ListItem[] };
@@ -2621,14 +2625,84 @@ function ListsPanel() {
   );
 }
 
-function ListItemsTab({ list, onChanged }: { list: ResolvedList; onChanged: () => void }) {
-  const { authFetch } = useAuth();
+/**
+ * LIST_ITEM_RENAME_LIVE_V1 — canRenameItem
+ *
+ * Returns true when the Rename control should appear for a given item on the
+ * live Reference data & Lists screen. Mirrors the server's assertEditable in
+ * global-lists.service.ts so the UI never offers a control that will 403.
+ *
+ * Exported so it can be unit-tested without mounting the component.
+ */
+export function canRenameItem(
+  item: Pick<ListItem, "isArchived" | "createdById">,
+  list: Pick<ListSummary, "type">,
+  user: SafeUser | null,
+  canManage: boolean
+): boolean {
+  if (!canManage) return false;
+  if (list.type !== "STATIC") return false;
+  if (item.isArchived) return false;
+  if (!user) return false;
+  const isAdmin = can(user, "platform.admin") || Boolean(user.isSuperUser);
+  return isAdmin || item.createdById === user.id;
+}
+
+export function ListItemsTab({ list, onChanged }: { list: ResolvedList; onChanged: () => void }) {
+  const { authFetch, user } = useAuth();
+  // LIST_ITEM_RENAME_LIVE_V1 — the page gates on `lists.manage`, but every
+  // list-item mutation on the server gates on `masterdata.manage`. Trust the
+  // real permission so the UI never offers a control that will 403.
+  const canManage = can(user, "masterdata.manage");
   const confirm = useConfirm();
   const [showArchived, setShowArchived] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [newValue, setNewValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // LIST_ITEM_RENAME_LIVE_V1 — one item in edit mode at a time
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingItemId) {
+      editInputRef.current?.focus();
+      editInputRef.current?.select();
+    }
+  }, [editingItemId]);
+
+  const startEdit = (item: ListItem) => {
+    setEditingItemId(item.id);
+    setEditLabel(item.label);
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    setEditLabel("");
+  };
+
+  const saveEdit = async (item: ListItem) => {
+    const trimmed = editLabel.trim();
+    if (!trimmed) return;
+    if (trimmed === item.label) {
+      cancelEdit();
+      return;
+    }
+    setError(null);
+    const res = await authFetch(`/lists/${list.slug}/items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ label: trimmed })
+    });
+    if (!res.ok) {
+      setError(await readApiErrorMessage(res, "Rename failed."));
+      return;
+    }
+    cancelEdit();
+    onChanged();
+  };
 
   const visibleItems = list.items.filter((i) => showArchived || !i.isArchived);
   const isDynamic = list.type === "DYNAMIC";
@@ -2724,27 +2798,99 @@ function ListItemsTab({ list, onChanged }: { list: ResolvedList; onChanged: () =
             </tr>
           </thead>
           <tbody>
-            {visibleItems.map((i) => (
-              <tr key={i.id} style={{ borderBottom: "1px solid var(--border, #f1f5f9)", opacity: i.isArchived ? 0.55 : 1 }}>
-                <td style={{ padding: "6px 8px" }}>{i.label}</td>
-                <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>
-                  <code>{i.value}</code>
-                </td>
-                <td style={{ padding: "6px 8px" }}>{i.isArchived ? "archived" : "active"}</td>
-                <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                  {!i.isArchived && !isDynamic ? (
-                    <button
-                      type="button"
-                      className="s7-btn s7-btn--ghost s7-btn--sm"
-                      onClick={() => void archiveItem(i.id)}
-                      style={{ minHeight: 32 }}
-                    >
-                      Archive
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+            {visibleItems.map((i) => {
+              const isEditing = editingItemId === i.id;
+              const showRename = canRenameItem(i, list, user, canManage);
+              const trimmed = editLabel.trim();
+              const isEmpty = !trimmed;
+              return (
+                <tr key={i.id} style={{ borderBottom: "1px solid var(--border, #f1f5f9)", opacity: i.isArchived ? 0.55 : 1 }}>
+                  {/* LIST_ITEM_RENAME_LIVE_V1 — inline rename row */}
+                  <td style={{ padding: "6px 8px" }}>
+                    {isEditing ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <input
+                          ref={editInputRef}
+                          className="s7-input"
+                          value={editLabel}
+                          onChange={(e) => setEditLabel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (!isEmpty) void saveEdit(i);
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEdit();
+                            }
+                          }}
+                          aria-label={`New label for ${i.label}`}
+                        />
+                        {isEmpty ? (
+                          <span style={{ fontSize: 12, color: "var(--status-danger, #ef4444)" }}>
+                            A label can&apos;t be empty.
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            The value {i.value} stays the same, so existing records keep working.
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      i.label
+                    )}
+                  </td>
+                  <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>
+                    <code>{i.value}</code>
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>{i.isArchived ? "archived" : "active"}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                    {isEditing ? (
+                      <div style={{ display: "inline-flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--primary s7-btn--sm"
+                          onClick={() => void saveEdit(i)}
+                          disabled={isEmpty}
+                          style={{ minHeight: 32 }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          onClick={cancelEdit}
+                          style={{ minHeight: 32 }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : !i.isArchived && !isDynamic ? (
+                      <div style={{ display: "inline-flex", gap: 6 }}>
+                        {showRename ? (
+                          <button
+                            type="button"
+                            className="s7-btn s7-btn--ghost s7-btn--sm"
+                            onClick={() => startEdit(i)}
+                            aria-label={`Rename ${i.label}`}
+                            style={{ minHeight: 32 }}
+                          >
+                            Rename
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="s7-btn s7-btn--ghost s7-btn--sm"
+                          onClick={() => void archiveItem(i.id)}
+                          style={{ minHeight: 32 }}
+                        >
+                          Archive
+                        </button>
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

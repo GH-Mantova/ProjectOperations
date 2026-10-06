@@ -264,9 +264,12 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
 - **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
   finding one of the four dispositions. That is your job, not an afterthought.
   **Start with `node scripts/pipeline/check-breadcrumb.mjs --freshness`.** It validates the shape of
-  every breadcrumb and names any station that has gone SILENT past twice its cadence. **A silent
-  station is not a quiet one** — either it did not run, or it ran and did not report, and both are
-  defects you must disposition. Exit 2 means silence; exit 1 means a malformed report.
+  every breadcrumb and names any station that has gone MISSED past its cadence plus a grace
+  (**FRESHNESS_ONE_CADENCE_V1**, Marco's ruling 2026-10-03: 00 +30 min, 04 +1 h, 03/05 +3 h). The
+  old 2x rule left exactly one missed daily occurrence invisible (03 printed `40.1h ago ok` on
+  2026-09-03 after never firing on 09-02; escalation #23). **MISSED is a lead, not a verdict** —
+  the checker cannot distinguish "never fired" from "fired and died before reporting" from
+  "reported in a PR not yet merged". Exit 2 means MISSED; exit 1 means a malformed report.
 
   🔴 **THE SWEEP'S SECTION 5 `[STALE]` ESCALATION ROWS ARE YOURS TO CLEAR HERE, AND DISPATCHING
   THEM TO 03 IS A DISPATCH TO NOBODY.** `status-sweep.ps1` tags a `needs-marco/` file `[STALE]`
@@ -349,9 +352,24 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   all-clear respectively. ⚠️ **Falsifying probe: run both forms.** If the filtered scan ever
   returns a directory newer than `2026-09-15T23:01:20Z`, the rename is not what happened and this
   must be re-measured. Found and landed by Station 00 2026-09-17T11:4xZ.
-  **Read the transcript before dispositioning any station as SILENT** (`list_sessions` →
+  **Read the transcript before dispositioning any station as MISSED** (`list_sessions` →
   `read_transcript`, newest session whose title matches the station). Calling a station stopped when
   infrastructure killed it is a §7 false alarm, and a false alarm licenses destructive action.
+
+  🔴 **FRESHNESS_ONE_CADENCE_V1 — MISSED is a lead, not a verdict.** Classify every MISSED
+  station as exactly one of:
+    - **never fired** — no session folder created at the expected time, and `lastRunAt` older
+      than one cadence.
+    - **fired and died** — a session folder exists, `lastRunAt` is fresh, and there is no
+      breadcrumb. Read the transcript's first assistant turn — a turn-one API error (e.g. 529
+      Overloaded) consumes the cadence without running an instruction.
+    - **reported, not merged** — the breadcrumb is in an open PR. `--freshness` already pulls
+      open-PR files; cross-check with `gh pr list --json files` if in doubt.
+  **Allowed action on a MISSED reading: report the classification in your breadcrumb.** If a
+  station has **never fired** on two consecutive occurrences, escalate to Marco.
+  **Forbidden on this reading alone:** disabling, enabling, running, re-running or editing any
+  scheduled task. The reading is one instrument. Use it to open the investigation, not to close
+  it (DOCTRINE §7).
 - **ARCHIVE WHAT YOU HAVE COLLECTED.** Once every finding in a breadcrumb carries a
   disposition, `git mv` it to `docs/pr-prompts/archive/` in the same board PR. On
   2026-08-30 the queue root was **159 breadcrumbs to 59 live `-HOLD.md`** and growing

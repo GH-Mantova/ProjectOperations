@@ -90,6 +90,47 @@ if ($ghOk) {
     $pend = @($ci | Select-String -Pattern "pending", "in_progress", "queued" -SimpleMatch -ErrorAction SilentlyContinue).Count
     Line "LIVE" ("      CI: " + $pass + " pass / " + $fail + " fail / " + $pend + " pending" + $(if ($fail -gt 0) { "  <-- RED, do not expect a merge" } elseif ($pend -gt 0) { "  (still running)" } else { "  (green)" }))
   }
+
+  # MARCO_QUEUE_LINE_V1 (Marco, 2026-10-03). REPORT ONLY -- these lines never feed section 7's
+  # SAFE / CAUTION / DO-NOT-ACT verdict. "ARM ONE AT A TIME" stops two runs colliding in the
+  # dev tree; it does not stop five armed prompts producing five PRs that wait on the same
+  # person. The sweep now reports that queue so stations can see what they are adding to.
+  $marcoQueueScript = Join-Path $Repo "scripts\pipeline\marco-queue.mjs"
+  $marcoTmp = [IO.Path]::GetTempFileName()
+  try {
+    $mqRaw = gh pr list --state open --limit 50 --json number,isDraft,labels,createdAt 2>$null | Out-String
+    if ([string]::IsNullOrWhiteSpace($mqRaw)) { $mqRaw = "[]" }
+    # UTF8 without BOM: PS 5.1's Set-Content/Out-File write a BOM that node's JSON.parse rejects.
+    [IO.File]::WriteAllText($marcoTmp, $mqRaw, (New-Object System.Text.UTF8Encoding($false)))
+    $mqOut = & node $marcoQueueScript --now $nowUtc --file $marcoTmp 2>&1
+    $mqExit = $LASTEXITCODE
+    $mqLines = @($mqOut) | Where-Object { $_ -ne $null -and "$_" -ne "" }
+    if ($mqExit -eq 0 -and $mqLines.Count -ge 2) {
+      foreach ($ln in $mqLines) { Line "LIVE" ([string]$ln) }
+      # Control: ALL OPEN (non-draft) count MUST equal the non-draft PR count from the open-PR
+      # loop above. A mismatch means one or the other is lying -- never silently paper over it.
+      $nonDraftCount = @($open | Where-Object { -not $_.isDraft }).Count
+      $allOpenLine = $mqLines | Where-Object { "$_" -match '^ALL OPEN \(non-draft\): (\d+)' } | Select-Object -First 1
+      if ($allOpenLine -and "$allOpenLine" -match '^ALL OPEN \(non-draft\): (\d+)') {
+        $reported = [int]$matches[1]
+        if ($reported -ne $nonDraftCount) {
+          Line "LIVE" ("MARCO QUEUE MISMATCH: section 1 counted " + $nonDraftCount + " non-draft PR(s), marco-queue.mjs counted " + $reported + " -- do not trust either number")
+        }
+      }
+    } elseif ($mqExit -eq 2) {
+      # CLI reported [CANNOT MEASURE] on its own line; forward it verbatim rather than
+      # inventing a zero. "I could not measure" is a legitimate answer; "0" is not.
+      foreach ($ln in $mqLines) { Line "LIVE" ([string]$ln) }
+      if ($mqLines.Count -eq 0) { Line "LIVE" "WAITING ON MARCO: [CANNOT MEASURE] marco-queue.mjs exited 2 with no output" }
+    } else {
+      Line "LIVE" ("WAITING ON MARCO: [CANNOT MEASURE] marco-queue.mjs exited " + $mqExit + " unexpectedly")
+    }
+  } catch {
+    Line "LIVE" ("WAITING ON MARCO: [CANNOT MEASURE] " + $_.Exception.Message)
+  } finally {
+    if (Test-Path $marcoTmp) { Remove-Item -LiteralPath $marcoTmp -Force -ErrorAction SilentlyContinue }
+  }
+
   $merged = @((gh pr list --state merged --limit 8 --json number,title,mergedAt 2>$null | Out-String | ConvertFrom-Json))
   Line "LIVE" "MERGED (most recent 8):"
   for ($i = 0; $i -lt $merged.Count; $i++) {

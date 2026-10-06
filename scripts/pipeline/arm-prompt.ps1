@@ -85,6 +85,15 @@ $READY_ABS   = "$REPO_ROOT\$($READY_REL -replace '/', '\')"
 
 $LINT_SCRIPT = "$REPO_ROOT\scripts\pipeline\lint-prompt.mjs"
 
+# BOARD_LEASE_V1 (Marco, 2026-10-03). An arm is a board mutation, so it takes the lease
+# before the first write and leaves it held so another lane sees the board busy until the
+# watcher picks the prompt up and starts its own heartbeat. The file lives inside .git/ so
+# it is shared across every lane in this tree, never tracked, and never shows in `git status`.
+# The authoritative implementation and schema live in scripts/pipeline/pipeline-lib.ps1
+# (Get-BoardLease / Enter-BoardLease / Exit-BoardLease). The inline copy below shares that
+# file layout so a status-sweep run from either lane reads the same bytes.
+$LEASE_PATH = "$REPO_ROOT\.git\po-board-lease.json"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -95,6 +104,102 @@ function Write-Step([string]$msg) {
 
 function Write-Fail([string]$msg) {
     Write-Host "[arm-prompt] FAIL: $msg" -ForegroundColor Red
+}
+
+# ---------------------------------------------------------------------------
+# BOARD_LEASE_V1 helpers (match pipeline-lib.ps1's schema byte-for-byte)
+# ---------------------------------------------------------------------------
+function Read-BoardLease {
+    if (-not (Test-Path -LiteralPath $LEASE_PATH -PathType Leaf)) { return $null }
+    $obj = $null
+    $parseFailed = $false
+    try {
+        $raw = Get-Content -LiteralPath $LEASE_PATH -Raw -Encoding UTF8 -ErrorAction Stop
+        $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+    } catch { $parseFailed = $true }
+    if ($parseFailed -or $null -eq $obj -or [string]::IsNullOrWhiteSpace("$($obj.actor)") -or [string]::IsNullOrWhiteSpace("$($obj.expiresAt)")) {
+        # Unreadable: treat as held by 'unknown' until file time + 30 min; never read as free.
+        $fileItem = Get-Item -LiteralPath $LEASE_PATH -ErrorAction SilentlyContinue
+        $fileTime = if ($fileItem) { $fileItem.LastWriteTimeUtc } else { [DateTime]::UtcNow.AddMinutes(-30) }
+        $exp = $fileTime.AddMinutes(30)
+        if ($exp -le [DateTime]::UtcNow) { return $null }
+        return [pscustomobject]@{
+            actor      = "unknown"
+            reason     = "corrupt-lease-file"
+            acquiredAt = $fileTime.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            expiresAt  = $exp.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        }
+    }
+    # ConvertFrom-Json auto-parses "yyyy-MM-ddTHH:mm:ssZ" into a DateTime. Re-parsing it with
+    # [DateTime]::Parse goes through a locale-dependent ToString; under US culture
+    # 2026-10-03 becomes 2026-03-10 (seven months in the past), so every live lease would
+    # look expired. Coerce if already DateTime; ParseExact (invariant) if a string snuck in.
+    try {
+        if ($obj.expiresAt -is [DateTime]) {
+            $exp = ([DateTime]$obj.expiresAt).ToUniversalTime()
+        } else {
+            $exp = [DateTime]::ParseExact(
+                [string]$obj.expiresAt, "yyyy-MM-ddTHH:mm:ssZ",
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+        }
+    } catch { return $null }
+    if ($exp -le [DateTime]::UtcNow) { return $null }
+    return $obj
+}
+
+function Write-BoardLeaseFile([string]$ActorName, [string]$Reason, [int]$Minutes = 30) {
+    $dir = Split-Path -Parent $LEASE_PATH
+    if ($dir -and -not (Test-Path -LiteralPath $dir -PathType Container)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    $now = [DateTime]::UtcNow
+    $exp = $now.AddMinutes($Minutes)
+    $obj = [ordered]@{
+        actor      = $ActorName
+        reason     = $Reason
+        pid        = $PID
+        acquiredAt = $now.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        expiresAt  = $exp.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    }
+    $json = ($obj | ConvertTo-Json -Compress)
+    $tmp = $LEASE_PATH + ".tmp"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($tmp, $json, $utf8NoBom)
+    if (Test-Path -LiteralPath $LEASE_PATH -PathType Leaf) { Remove-Item -LiteralPath $LEASE_PATH -Force }
+    [System.IO.File]::Move($tmp, $LEASE_PATH)
+}
+
+function Try-TakeBoardLease([string]$ActorName, [string]$Reason) {
+    $existing = Read-BoardLease
+    if ($null -ne $existing -and $existing.actor -ne $ActorName) {
+        $ageStr = ""
+        try {
+            if ($existing.acquiredAt -is [DateTime]) {
+                $acq = ([DateTime]$existing.acquiredAt).ToUniversalTime()
+            } else {
+                $acq = [DateTime]::ParseExact(
+                    [string]$existing.acquiredAt, "yyyy-MM-ddTHH:mm:ssZ",
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+            }
+            $mins = [int](([DateTime]::UtcNow - $acq).TotalMinutes)
+            $ageStr = " ($mins min ago, reason=$($existing.reason))"
+        } catch {}
+        Write-Fail "BOARD_LEASE_HELD: $($existing.actor) holds the board$ageStr. Not arming."
+        Write-Host "  The lease is written by another Station 00 lane that is mid-mutation."
+        Write-Host "  It expires at $($existing.expiresAt) (max 30 min from when it was taken)."
+        return $false
+    }
+    Write-BoardLeaseFile -ActorName $ActorName -Reason $Reason -Minutes 30
+    return $true
+}
+
+function Release-BoardLease([string]$ActorName) {
+    $existing = Read-BoardLease
+    if ($null -eq $existing) { return }
+    if ($existing.actor -ne $ActorName) { return }
+    try { Remove-Item -LiteralPath $LEASE_PATH -Force -ErrorAction Stop } catch { }
 }
 
 # Run a git command in the repo root; returns stdout as a string array (lines).
@@ -451,6 +556,7 @@ Write-Step "Acquiring exclusive lock on $LOCK_PATH ..."
 $lockStream = Acquire-Lock
 Write-Step "Lock acquired (PID $PID)."
 
+$leaseTaken = $false
 try {
     # Step 2: index-guard before.
     Write-Step "Checking index is clean (before) ..."
@@ -465,11 +571,24 @@ try {
     Write-Step "Verifying target: $HOLD_REL ..."
     Assert-TargetValid
 
+    # Step 3b: BOARD_LEASE_V1. Take the lease before the first git-mutating write. If another
+    # Station 00 lane is mid-arm or mid-merge, this names it and we stand down with exit 7 --
+    # a new, documented code. Nothing is written. After a successful arm the lease is LEFT
+    # HELD so section 7 of status-sweep.ps1 keeps the board busy for the next lane until the
+    # watcher picks the ready file up and the build heartbeat blocks instead. The lease
+    # expires after 30 minutes on its own.
+    Write-Step "Taking the board lease (BOARD_LEASE_V1) ..."
+    if (-not (Try-TakeBoardLease -ActorName $Actor -Reason "arm:$Name")) {
+        exit 7
+    }
+    $leaseTaken = $true
+
     # Step 4: perform the rename.
     Write-Step "Renaming $HOLD_REL -> $READY_REL ..."
     Invoke-Git @("mv", $HOLD_REL, $READY_REL)
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "git mv failed (exit $LASTEXITCODE)."
+        Release-BoardLease -ActorName $Actor
         exit 1
     }
 
@@ -511,10 +630,15 @@ try {
             foreach ($stuck in $residual) {
                 Write-Host "    git -C $REPO_ROOT restore --staged $stuck"
             }
+            # Lease DELIBERATELY NOT released on exit 4: the index is still dirty and the
+            # next lane must stand down until a human clears it. The 30-minute expiry
+            # bounds the damage.
             exit 4
         }
 
         Write-Step "Rollback verified: index is clean."
+        # Nothing committed, index clean: release the lease so another lane can proceed.
+        Release-BoardLease -ActorName $Actor
         exit 3
     }
 

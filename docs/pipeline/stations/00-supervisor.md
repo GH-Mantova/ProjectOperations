@@ -263,8 +263,10 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   (DOCTRINE §9.5).
 - **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
   finding one of the four dispositions. **Start with `node scripts/pipeline/check-breadcrumb.mjs
-  --freshness`.** Exit 2 = silence; exit 1 = malformed report. A silent station is a defect you must
-  disposition.
+  --freshness`.** It names any station that has gone MISSED past its cadence plus a grace
+  (**FRESHNESS_ONE_CADENCE_V1**, Marco's ruling 2026-10-03: 00 +30 min, 04 +1 h, 03/05 +3 h; the old
+  2x rule left one missed daily occurrence invisible). Exit 2 = MISSED; exit 1 = malformed report.
+  **MISSED is a lead, not a verdict** - classify it (below) before you disposition it.
 - **CLEAR `[STALE]` ESCALATION ROWS during COLLECT.** `status-sweep.ps1` tags `needs-marco/` files
   `[STALE]` when the PR they name has merged. Open each file, re-ask the PR individually with
   `gh pr view <n> --json state,mergedAt` (a LIST response's `merged` field is unusable — DOCTRINE
@@ -297,7 +299,19 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
   🔴 **`lastRunAt` holds only the MOST RECENT run** — for earlier occurrences, use the
   local-agent-mode session directory's `CreationTimeUtc` (DOCTRINE §9.5: the directory name changed
   2026-09-15 — scan at depth with no name filter). **Read the transcript before dispositioning any
-  station as SILENT.** Full detail: `00-supervisor-REFERENCE.md` §AUTHORITY-FRESHNESS.
+  station as MISSED.** Full detail: `00-supervisor-REFERENCE.md` §AUTHORITY-FRESHNESS.
+
+  🔴 **FRESHNESS_ONE_CADENCE_V1 - classify every MISSED station as exactly one of:**
+    - **never fired** - no session folder created at the expected time, and `lastRunAt` older
+      than one cadence.
+    - **fired and died** - a session folder exists, `lastRunAt` is fresh, and there is no
+      breadcrumb. Read the transcript's first assistant turn - a turn-one API error (e.g. 529
+      Overloaded) consumes the cadence without running an instruction.
+    - **reported, not merged** - the breadcrumb is in an open PR. `--freshness` already pulls
+      open-PR files; cross-check with `gh pr list --json files` if in doubt.
+  **Allowed on a MISSED reading: report the classification in your breadcrumb.** If a station has
+  **never fired** on two consecutive occurrences, escalate to Marco. **Forbidden on this reading
+  alone:** disabling, enabling, running, re-running or editing any scheduled task (DOCTRINE §7).
 
 - **ARCHIVE WHAT YOU HAVE COLLECTED.** Once every finding carries a disposition, `git mv` the
   breadcrumb to `docs/pr-prompts/archive/` in the same board PR. `check-breadcrumb.mjs` matches by

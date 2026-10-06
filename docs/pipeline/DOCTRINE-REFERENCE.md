@@ -2963,3 +2963,44 @@ fallback, not the replacement. ⚠️ **The 4-of-40 figure is STATE — re-measu
 marker on every prompt this correction is unnecessary; and if the premise-at-head probe ever returns
 a hit for a prompt whose work is demonstrably not in that PR, it is wrong and must be re-measured.
 Found and landed by Station 00 2026-09-10T17:3xZ.
+
+## §INSTRUMENT_LANE_V1
+
+**Marco's ruling, 2026-10-03.** Station 00 may merge a PR without Marco's direct involvement only
+when the PR touches only reporting and checking tools — the "instrument lane". The goal is to let
+small fixes to pipeline instruments flow without a full Marco review cycle, while keeping every
+consequential change (the watcher, merge scripts, CI workflows, docs, app code, database) under
+Marco's control.
+
+### The boundary
+
+- The allowlist is `scripts/pipeline/instrument-lane.json`. It names every file currently in the
+  lane. This file is NOT itself in the lane — changing it always needs Marco.
+- `scripts/pipeline/check-instrument-lane.mjs` enforces the boundary in CI against every PR,
+  reporting `INSTRUMENT_LANE: IN_LANE` or `INSTRUMENT_LANE: OUT_OF_LANE` as the last line of its
+  output. Exit 0 either way; exit 2 is `[CANNOT MEASURE]`.
+- The CI step is evidence only — it is not a required check and does not block merge on its own.
+  Station 00 reads the job summary to determine the verdict for the current head.
+
+### The never-list (always Marco's, never in the lane)
+
+The following are explicitly excluded: the watcher (`scripts/pr-watcher/**`), merge and arm scripts
+(`pipeline-lib.ps1`, `arm-prompt.ps1`, `new-worktree.ps1`, `retire-escalation.mjs`, `dispatch.mjs`),
+gate scripts (`scripts/pr-gates/**`), CI workflows (`.github/**`), documentation (`docs/**`),
+source of truth (`sot/**`), application code (`apps/**`), and database files (`prisma/**`).
+
+### Labels
+
+A labelled PR (`do-not-merge`) is always Marco's — the lane never removes a label, and a label on
+a PR is an explicit hold regardless of what the diff contains.
+
+### Prompts and the lane
+
+Prompts that only touch in-lane files can be staged with `escalates: false`, so no
+`do-not-merge` label is applied and the lane can take them. Prompts already staged with
+`escalates: true` keep their label and stay Marco's.
+
+### Written record
+
+Every instrument-lane merge is named in the run's breadcrumb under a heading **Instrument-lane
+merges**, with the file list, reviewed SHA, and a note that CI was green.

@@ -465,6 +465,14 @@ before merging:**
 
 Full detail: DOCTRINE-REFERENCE.md §10.1.
 
+**The instrument lane (INSTRUMENT_LANE_V1, from 2026-10-03).** Station 00 may merge a PR without
+Marco removing a label only when the PR carries no `do-not-merge` label, CI is green,
+`check-instrument-lane.mjs` reports `IN_LANE` for the current head, and a fresh MERGE verdict
+exists for that head. The lane boundary is `scripts/pipeline/instrument-lane.json`, enforced
+by `scripts/pipeline/check-instrument-lane.mjs`. It never applies to a PR that carries any
+`do-not-merge` label. The allowlist file itself is Marco's — any change to it places the PR
+outside the lane. Full detail: DOCTRINE-REFERENCE.md §INSTRUMENT_LANE_V1.
+
 ## 10.2 A cloud session is a CODE-WRITING lane. It cannot drive the board.
 
 A cloud session has no access to Marco's PC, the watcher process, the queue files or the dev tree.

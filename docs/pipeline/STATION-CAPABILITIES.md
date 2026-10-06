@@ -465,8 +465,11 @@ green unlabelled second-lane PR whose files sit outside `tests|docs`. If section
 classifies such a PR as anything but Marco’s, this narrowing is wrong and must be re-measured.
 Found and landed by Station 00 2026-09-22T00:4xZ.
 
-⚠️ The watcher **auto-merges docs PRs itself** under the `tests-docs` policy, so an unmerged docs PR
-is not automatically waiting on a human.
+⚠️ **RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03):** the watcher no longer auto-merges docs/tests
+PRs by default — the `tests-docs` lane is retired. An unmerged docs PR **is** waiting on a human
+again (usually Station 00). The lane can still be restored by setting
+`PR_WATCHER_AUTO_MERGE_POLICY=tests-docs` explicitly; see
+`scripts/pr-watcher/README.md` policy matrix.
 
 ### How to write an approval receipt (CP26_ARMED_BY_DIFF_V1)
 

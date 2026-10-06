@@ -476,7 +476,10 @@ driven by Station 00 like any other. Full detail: DOCTRINE-REFERENCE.md §10.2.
 
 A cloud session that opens its own PR for a docs-or-tests change bypasses `lint-prompt.mjs`, the
 breadcrumb contract, and the register. **Prefer: write a prompt, let the watcher open the PR.**
-Full detail: DOCTRINE-REFERENCE.md §10.3.
+**RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03):** the watcher no longer auto-merges docs/tests
+PRs — it opens the PR and moves on. The latent CI-latency / verdict-starvation defect the lane's
+measurements documented is retired with the lane. Station 00 merges docs/tests PRs the same way it
+merges everything else. Full detail: DOCTRINE-REFERENCE.md §10.3.
 
 ## 10.4 Design decisions are settled BEFORE the prompt, not inside the slice
 

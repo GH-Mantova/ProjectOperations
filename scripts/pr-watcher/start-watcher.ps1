@@ -165,7 +165,18 @@ if (-not $env:PR_WATCHER_AUTO_REVIEW)       { $env:PR_WATCHER_AUTO_REVIEW = "tru
 # (scripts/pipeline/pipeline-lib.ps1). Set this to "true" explicitly to restore the timer; leaving
 # it unset keeps the launcher's default of OFF.
 if (-not $env:PR_WATCHER_AUTO_UPDATE)       { $env:PR_WATCHER_AUTO_UPDATE = "false" }
-if (-not $env:PR_WATCHER_AUTO_MERGE_POLICY) { $env:PR_WATCHER_AUTO_MERGE_POLICY = "tests-docs" }
+# RETIRE_TESTS_DOCS_LANE_V1 (Marco, 2026-10-03).
+# The tests-docs auto-merge lane is retired. The watcher opens the PR, routes
+# it to Marco, and moves straight on to the next job -- Station 00 merges
+# docs/tests PRs the same way it merges everything else. The point is to free
+# the single worker that every build and review queues behind. MEASURED
+# 2026-10-03 from the clone's logs (2026-08-24 onward): 240 "policy=tests-docs,
+# waiting" events; the lane enabled auto-merge 4 times (3 on 2026-08-24, 1 on
+# 2026-10-02); 14 more PRs merged during a wait because a person or Station 00
+# merged them. See scripts/pr-watcher/__tests__/retire-tests-docs-lane.test.mjs.
+# An explicit environment value still wins, so setting
+# PR_WATCHER_AUTO_MERGE_POLICY=tests-docs restores the old behaviour exactly.
+if (-not $env:PR_WATCHER_AUTO_MERGE_POLICY) { $env:PR_WATCHER_AUTO_MERGE_POLICY = "off" }
 if (-not $env:PR_WATCHER_MAX_TURNS)         { $env:PR_WATCHER_MAX_TURNS = "240" }
 if (-not $env:PR_WATCHER_RUN_TIMEOUT_MIN)   { $env:PR_WATCHER_RUN_TIMEOUT_MIN = "75" }
 
